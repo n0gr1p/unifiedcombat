@@ -224,6 +224,13 @@ end
 local function follow_dist_sq_bounds(s)
 	local mn = tonumber(s and s.party_follow_min) or 0.5
 	local mx = tonumber(s and s.party_follow_max) or 50
+	local ff_until = tonumber(rawget(_G, 'UC_FIGHT_FOLLOW_ACTIVE_UNTIL')) or 0
+	if os.clock() < ff_until then
+		local fight_min = tonumber(s and s.fight_follow_min) or mn
+		if fight_min >= 0.01 and fight_min <= 99 then
+			mn = fight_min
+		end
+	end
 	if mn < 0.01 then
 		mn = 0.01
 	end

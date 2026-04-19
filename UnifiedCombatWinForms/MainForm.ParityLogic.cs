@@ -239,6 +239,8 @@ public partial class MainForm
             _lblPartyFollowOp.Text = "";
             _pfFollowMinYalms.Text = "0.5";
             _pfFollowMaxYalms.Text = "50";
+            _pfFightFollowMinYalms.Text = "3";
+            _pfFightFollowHoldS.Text = "8";
             _lblAddPriOp.Text = "";
             _lblPartnerOp.Text = "";
             _lblIgnoreInfo.Text = "";
@@ -269,6 +271,8 @@ public partial class MainForm
             _partyFollowCombo.Enabled = false;
             _pfFollowMinYalms.Enabled = false;
             _pfFollowMaxYalms.Enabled = false;
+            _pfFightFollowMinYalms.Enabled = false;
+            _pfFightFollowHoldS.Enabled = false;
             UpdateBooleanCardVisuals();
         }
         finally
@@ -398,6 +402,8 @@ public partial class MainForm
 
             _pfFollowMinYalms.Enabled = pfOn;
             _pfFollowMaxYalms.Enabled = pfOn;
+            _pfFightFollowMinYalms.Enabled = pfOn;
+            _pfFightFollowHoldS.Enabled = pfOn;
             ApplyPartyFollowDistancesFromSnapshot(sid, s);
 
             var prov = SessionStateHelper.GetString(s, "defensive_provider", "internal");
@@ -758,6 +764,8 @@ public partial class MainForm
             _partyFollowCombo.Enabled = val;
             _pfFollowMinYalms.Enabled = val;
             _pfFollowMaxYalms.Enabled = val;
+            _pfFightFollowMinYalms.Enabled = val;
+            _pfFightFollowHoldS.Enabled = val;
             if (val && _partyFollowCombo.SelectedItem is string pfs && !string.IsNullOrEmpty(pfs) &&
                 !_partyFollowCombo.Items.Cast<object>().Any(x => Equals(x.ToString(), pfs)))
             {
@@ -891,6 +899,8 @@ public partial class MainForm
     {
         var minRaw = (_pfFollowMinYalms.Text ?? "").Trim();
         var maxRaw = (_pfFollowMaxYalms.Text ?? "").Trim();
+        var fightMinRaw = (_pfFightFollowMinYalms.Text ?? "").Trim();
+        var holdRaw = (_pfFightFollowHoldS.Text ?? "").Trim();
         if (!double.TryParse(minRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out var minY))
         {
             minY = 0.5;
@@ -900,9 +910,19 @@ public partial class MainForm
         {
             maxY = 50;
         }
+        if (!double.TryParse(fightMinRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out var fightMinY))
+        {
+            fightMinY = 3.0;
+        }
+        if (!double.TryParse(holdRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out var holdS))
+        {
+            holdS = 8.0;
+        }
 
         minY = Math.Clamp(minY, 0.01, 99.0);
         maxY = Math.Clamp(maxY, 0.1, 200.0);
+        fightMinY = Math.Clamp(fightMinY, 0.01, 99.0);
+        holdS = Math.Clamp(holdS, 0.0, 60.0);
         if (minY >= maxY)
         {
             maxY = Math.Min(200.0, minY + 0.01);
@@ -916,14 +936,20 @@ public partial class MainForm
 
         var minS = minY.ToString("0.###", CultureInfo.InvariantCulture);
         var maxS = maxY.ToString("0.###", CultureInfo.InvariantCulture);
+        var fightMinS = fightMinY.ToString("0.###", CultureInfo.InvariantCulture);
+        var holdSS = holdS.ToString("0.###", CultureInfo.InvariantCulture);
         _pfFollowMinYalms.Text = minS;
         _pfFollowMaxYalms.Text = maxS;
+        _pfFightFollowMinYalms.Text = fightMinS;
+        _pfFightFollowHoldS.Text = holdSS;
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "party_follow_min", ["value"] = minS });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "party_follow_max", ["value"] = maxS });
-        _pendingPfDistBySid[sid] = (minS, maxS, DateTime.UtcNow);
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "fight_follow_min", ["value"] = fightMinS });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "fight_follow_hold_s", ["value"] = holdSS });
+        _pendingPfDistBySid[sid] = (minS, maxS, fightMinS, holdSS, DateTime.UtcNow);
     }
 
-    private static bool PartyFollowDistPairEcho(string srvMin, string srvMax, string pendMin, string pendMax)
+    private static bool PartyFollowDistPairEcho(string srvMin, string srvMax, string srvFightMin, string srvHoldS, string pendMin, string pendMax, string pendFightMin, string pendHoldS)
     {
         if (!double.TryParse(srvMin.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var a))
         {
@@ -944,16 +970,34 @@ public partial class MainForm
         {
             return false;
         }
+        if (!double.TryParse(srvFightMin.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var e))
+        {
+            return false;
+        }
+        if (!double.TryParse(srvHoldS.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var f))
+        {
+            return false;
+        }
+        if (!double.TryParse(pendFightMin.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var g))
+        {
+            return false;
+        }
+        if (!double.TryParse(pendHoldS.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var h))
+        {
+            return false;
+        }
 
-        return Math.Abs(a - c) < 1e-9 && Math.Abs(b - d) < 1e-9;
+        return Math.Abs(a - c) < 1e-9 && Math.Abs(b - d) < 1e-9 && Math.Abs(e - g) < 1e-9 && Math.Abs(f - h) < 1e-9;
     }
 
     private void ApplyPartyFollowDistancesFromSnapshot(string sid, JsonElement s)
     {
         var minSrv = SessionStateHelper.GetString(s, "party_follow_min", "0.5");
         var maxSrv = SessionStateHelper.GetString(s, "party_follow_max", "50");
+        var fightMinSrv = SessionStateHelper.GetString(s, "fight_follow_min", "3");
+        var holdSrv = SessionStateHelper.GetString(s, "fight_follow_hold_s", "8");
 
-        if (_pfFollowMinYalms.Focused || _pfFollowMaxYalms.Focused)
+        if (_pfFollowMinYalms.Focused || _pfFollowMaxYalms.Focused || _pfFightFollowMinYalms.Focused || _pfFightFollowHoldS.Focused)
         {
             return;
         }
@@ -961,7 +1005,7 @@ public partial class MainForm
         if (_pendingPfDistBySid.TryGetValue(sid, out var pfd))
         {
             var ageSec = (DateTime.UtcNow - pfd.ts).TotalSeconds;
-            if (PartyFollowDistPairEcho(minSrv, maxSrv, pfd.min, pfd.max))
+            if (PartyFollowDistPairEcho(minSrv, maxSrv, fightMinSrv, holdSrv, pfd.min, pfd.max, pfd.fightMin, pfd.holdS))
             {
                 _pendingPfDistBySid.Remove(sid);
             }
@@ -983,6 +1027,14 @@ public partial class MainForm
         if (!string.Equals(_pfFollowMaxYalms.Text, maxSrv, StringComparison.Ordinal))
         {
             _pfFollowMaxYalms.Text = maxSrv;
+        }
+        if (!string.Equals(_pfFightFollowMinYalms.Text, fightMinSrv, StringComparison.Ordinal))
+        {
+            _pfFightFollowMinYalms.Text = fightMinSrv;
+        }
+        if (!string.Equals(_pfFightFollowHoldS.Text, holdSrv, StringComparison.Ordinal))
+        {
+            _pfFightFollowHoldS.Text = holdSrv;
         }
     }
 

@@ -16,8 +16,8 @@ public partial class MainForm : Form
 
     private readonly Dictionary<string, Dictionary<string, (bool val, DateTime ts)>> _pendingBoolBySid = new();
     private readonly Dictionary<string, (string ws, DateTime ts)> _pendingWsBySid = new();
-    /// <summary>Last party-follow min/max pushed to the game; suppress snapshot overwrite until echoed or timeout.</summary>
-    private readonly Dictionary<string, (string min, string max, DateTime ts)> _pendingPfDistBySid = new(StringComparer.Ordinal);
+    /// <summary>Last party-follow distance settings pushed to the game; suppress snapshot overwrite until echoed or timeout.</summary>
+    private readonly Dictionary<string, (string min, string max, string fightMin, string holdS, DateTime ts)> _pendingPfDistBySid = new(StringComparer.Ordinal);
     private DateTime _abilityInteractionUtc = DateTime.MinValue;
 
     private readonly Dictionary<string, CheckBox> _boolChecks = new(StringComparer.Ordinal);

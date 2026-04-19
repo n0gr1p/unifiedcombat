@@ -98,6 +98,16 @@ local function setting_enabled(v)
 	return false
 end
 
+local function party_follow_hold_seconds(settings)
+	local n = tonumber(settings and settings.fight_follow_hold_s) or 8.0
+	if n < 0 then
+		n = 0
+	elseif n > 60 then
+		n = 60
+	end
+	return n
+end
+
 local function get_active_engine()
 	return 'UC'
 end
@@ -924,6 +934,9 @@ local function run_unified_combat()
 	end
 	_G.UC_WS_LAST_DIAG = 'core ws reason=PENDING'
 	local now_status = p.status or 0
+	if now_status == 1 then
+		_G.UC_FIGHT_FOLLOW_ACTIVE_UNTIL = os.clock() + party_follow_hold_seconds(s)
+	end
 	local now = os.clock()
 	if now_status ~= 1 then
 		if (core.last_player_status or 0) == 1 then
@@ -955,6 +968,7 @@ local function run_unified_combat()
 		-- Hold a short combat-intent window so party-follow does not fight approach movement
 		-- during post-kill re-engage delay.
 		_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 0.8
+		_G.UC_FIGHT_FOLLOW_ACTIVE_UNTIL = os.clock() + party_follow_hold_seconds(s)
 	end
 	local tid = target and target.id or 0
 	local current_before = get_current_target()

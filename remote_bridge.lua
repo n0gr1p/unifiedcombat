@@ -287,6 +287,38 @@ local function apply_set(path, value)
 		last_state_send = 0
 		return
 	end
+	if key == 'fight_follow_min' then
+		local n = tonumber(tostring(value))
+		if not n then
+			_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_BAD_NUMBER:' .. key .. ':' .. tostring(value)
+			return
+		end
+		if n < 0.01 then
+			n = 0.01
+		elseif n > 99 then
+			n = 99
+		end
+		s.fight_follow_min = n
+		_G.UC_LAST_PARTY_FOLLOW_OP = ''
+		last_state_send = 0
+		return
+	end
+	if key == 'fight_follow_hold_s' then
+		local n = tonumber(tostring(value))
+		if not n then
+			_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_BAD_NUMBER:' .. key .. ':' .. tostring(value)
+			return
+		end
+		if n < 0 then
+			n = 0
+		elseif n > 60 then
+			n = 60
+		end
+		s.fight_follow_hold_s = n
+		_G.UC_LAST_PARTY_FOLLOW_OP = ''
+		last_state_send = 0
+		return
+	end
 	t[key] = value
 end
 
@@ -887,6 +919,8 @@ function uc_remote_tick()
 		party_follow = s.party_follow,
 		party_follow_min = tonumber(s.party_follow_min) or 0.5,
 		party_follow_max = tonumber(s.party_follow_max) or 50,
+		fight_follow_min = tonumber(s.fight_follow_min) or 3.0,
+		fight_follow_hold_s = tonumber(s.fight_follow_hold_s) or 8.0,
 		party_follow_leader_name = tostring(s.party_follow_leader_name or ''),
 		add_control = s.add_control,
 		puller_distance_only = (s.puller_distance_only == true),

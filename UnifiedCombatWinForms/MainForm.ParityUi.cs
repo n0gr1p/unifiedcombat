@@ -17,6 +17,8 @@ public partial class MainForm
     private ComboBox _partyFollowCombo = null!;
     private TextBox _pfFollowMinYalms = null!;
     private TextBox _pfFollowMaxYalms = null!;
+    private TextBox _pfFightFollowMinYalms = null!;
+    private TextBox _pfFightFollowHoldS = null!;
     private ComboBox _defProviderCombo = null!;
     private ComboBox _abilityPickCombo = null!;
     private ListBox _abilityList = null!;
@@ -313,6 +315,14 @@ public partial class MainForm
         _pfFollowMaxYalms = new TextBox { Width = 52 };
         _pfFollowMaxYalms.Leave += (_, _) => OnPartyFollowDistanceChanged();
         pfTop.Controls.Add(_pfFollowMaxYalms);
+        pfTop.Controls.Add(new Label { Text = "Fight min", AutoSize = true, Padding = new Padding(8, 4, 0, 0) });
+        _pfFightFollowMinYalms = new TextBox { Width = 52 };
+        _pfFightFollowMinYalms.Leave += (_, _) => OnPartyFollowDistanceChanged();
+        pfTop.Controls.Add(_pfFightFollowMinYalms);
+        pfTop.Controls.Add(new Label { Text = "Hold s", AutoSize = true, Padding = new Padding(8, 4, 0, 0) });
+        _pfFightFollowHoldS = new TextBox { Width = 52 };
+        _pfFightFollowHoldS.Leave += (_, _) => OnPartyFollowDistanceChanged();
+        pfTop.Controls.Add(_pfFightFollowHoldS);
         flFlow.Controls.Add(pfTop);
         _lblPartyFollowOp = new Label { AutoSize = true, Text = "" };
         flFlow.Controls.Add(_lblPartyFollowOp);
