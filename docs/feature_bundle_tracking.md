@@ -24,7 +24,7 @@ Purpose:
 | Bundle | Name | Status | Code Commit/Copy Ref | Implemented By | Tested By | Last Update | Notes |
 |---|---|---|---|---|---|---|---|
 | B1 | Unified Core Engine Skeleton + Entry Wiring | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | UC-only runtime path active; no dd2/melee dispatch in active flow |
-| B2 | Packet-native Target/Attack Primitives | TESTING | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Packet target/attack path integrated; awaiting focused B2 validation pass |
+| B2 | Packet-native Target/Attack Primitives | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Validated across normal aggro, pulled mobs, add-control/fight-leader on/off |
 | B3 | Target Selection + Sticky + Death-switch | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | Sticky/death-switch logic present in unified core; dedicated regression pass pending |
 | B4 | Movement/Facing Parity | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | Unified movement/facing logic present; in-combat tuning pass pending |
 | B5 | Smart WS + JA Pipeline + WS Gate | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | Integrated in UC core; combat-chain validation pending |
@@ -62,13 +62,13 @@ Code:
 - [x] UC core uses packet primitives in target/engage path
 
 Tests:
-- [ ] target+engage works with no command fallback
-- [ ] no attack on/off loop
-- [ ] switch target while engaged works in add-control case
+- [x] target+engage works with no command fallback
+- [x] no attack on/off loop
+- [x] switch target while engaged works in add-control case
 
 Result:
-- Status: TESTING
-- Notes: Code integration complete. Pending validation of (1) no command fallback behavior, (2) no attack packet toggle loop, and (3) engaged switch behavior in add-control scenario.
+- Status: PASS
+- Notes: User validated target switching and engage mechanics under normal aggro, pulled mobs, fight-leader on/off, and add-control on/off.
 
 ### B3 Checklist
 
@@ -206,6 +206,7 @@ Result:
 |---|---|---|---|---|---|---|
 | 2026-04-19 | B7 | WinForms non-reactive / sessions delayed or absent | UI reload + toggle + session discovery tests | High | 46f4f96 | PASS |
 | 2026-04-19 | B7 | Settings type-mismatch warning spam on addon load | Reload addon with legacy settings.xml present | Medium | 46f4f96 | PASS |
+| 2026-04-19 | B2 | Packet target/engage validation | Normal aggro + pulled mobs + add-control/fight-leader on/off | Medium | 46f4f96 | PASS |
 
 ## Session QA Matrix (Multi-character)
 
