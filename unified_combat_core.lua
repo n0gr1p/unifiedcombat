@@ -26,6 +26,11 @@ local core = {
 	last_player_status = 0,
 	last_death_target_id = 0,
 	last_death_at = 0,
+	party_ws_hold_target_id = 0,
+	party_ws_hold_actor_id = 0,
+	party_ws_hold_until = 0,
+	party_ws_hold_category = '',
+	party_ws_hold_name = '',
 }
 
 local skillchain_ids = {
@@ -44,6 +49,7 @@ local death_message_ids = {
 }
 
 local DEATH_SWITCH_WINDOW = 0.9
+local PARTY_WS_HOLD_WINDOW = 1.6
 
 local action_categories = {
 	weaponskill_finish = true,
@@ -102,6 +108,23 @@ end
 
 local function get_current_target()
 	return windower.ffxi.get_mob_by_target('t')
+end
+
+local function is_party_member_id(id)
+	local pid = tonumber(id) or 0
+	if pid == 0 then
+		return false
+	end
+	local party = windower.ffxi.get_party() or {}
+	local keys = { 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }
+	for _, k in ipairs(keys) do
+		local e = party[k]
+		local mob = e and e.mob
+		if mob and mob.id == pid then
+			return true
+		end
+	end
+	return false
 end
 
 local function target_distance(mob)
@@ -664,9 +687,6 @@ function core.on_action(act)
 		return
 	end
 	local category = actionpacket:get_category_string()
-	if not action_categories[category] or act.param == 0 then
-		return
-	end
 	local actor = actionpacket:get_id()
 	local target = actionpacket:get_targets()()
 	if not target then
@@ -682,8 +702,31 @@ function core.on_action(act)
 	local ability = skills[resource] and skills[resource][action_id]
 	local my_id = (windower.ffxi.get_player() or {}).id
 	local current = get_current_target()
+	local is_ws_action = (resource == 'weapon_skills') and ability ~= nil
+	if is_ws_action and actor ~= my_id and is_party_member_id(actor) and target and target.id and target.id ~= 0 then
+		if category ~= 'weaponskill_finish' then
+			core.party_ws_hold_target_id = target.id
+			core.party_ws_hold_actor_id = actor
+			core.party_ws_hold_until = os.clock() + PARTY_WS_HOLD_WINDOW
+			core.party_ws_hold_category = tostring(category or '')
+			core.party_ws_hold_name = tostring((ability and (ability.en or ability.name)) or '')
+		else
+			local held_tid = tonumber(core.party_ws_hold_target_id) or 0
+			local held_actor = tonumber(core.party_ws_hold_actor_id) or 0
+			if held_tid ~= 0 and held_tid == target.id and held_actor == actor then
+				core.party_ws_hold_target_id = 0
+				core.party_ws_hold_actor_id = 0
+				core.party_ws_hold_until = 0
+				core.party_ws_hold_category = ''
+				core.party_ws_hold_name = ''
+			end
+		end
+	end
 	if target and current and target.id == current.id and ability and resource == 'weapon_skills' then
 		core.ws_timer = os.clock() + 3
+	end
+	if not action_categories[category] or act.param == 0 then
+		return
 	end
 
 	if add_effect and conclusion and skillchain_ids[add_effect.message_id] then
@@ -784,6 +827,24 @@ local function select_smart_ws(settings, target_id)
 		return '', 'NO_TARGET'
 	end
 	local player = windower.ffxi.get_player() or {}
+	if not setting_enabled(settings.spam) and not setting_enabled(settings.solo) then
+		local hold_tid = tonumber(core.party_ws_hold_target_id) or 0
+		if hold_tid ~= 0 and hold_tid == tid then
+			local hold_until = tonumber(core.party_ws_hold_until) or 0
+			local now = os.clock()
+			if now < hold_until then
+				return '', ('ALLY_WS_READY_HOLD:%s:%s'):format(
+					tostring(core.party_ws_hold_name or ''),
+					tostring(core.party_ws_hold_category or '')
+				)
+			end
+			core.party_ws_hold_target_id = 0
+			core.party_ws_hold_actor_id = 0
+			core.party_ws_hold_until = 0
+			core.party_ws_hold_category = ''
+			core.party_ws_hold_name = ''
+		end
+	end
 	if setting_enabled(settings.aftermath_enabled) then
 		local am_ws = tostring(settings.aftermath_ws or '')
 		if am_ws ~= '' then
