@@ -173,3 +173,15 @@ Phase D:
 3. Should movement be entirely proposal-driven from Day 1, or phased behind feature flag?
 4. How strict should anti-thrash target lock be under add-control?
 
+## 10. Phase 1 Amendment (Normative)
+
+Phase 1 implementation should follow the tightened amendment document as the source of truth for:
+
+- revised proposal schema
+- pending action state model
+- dispatch plan model
+- lock semantics
+- scoring and tie-break rules
+- evaluation pipeline and invariants
+
+See: [unified_scheduler_phase1_amendment.md](C:\Program Files (x86)\Windower\addons\UnifiedCombat\docs\unified_scheduler_phase1_amendment.md)
