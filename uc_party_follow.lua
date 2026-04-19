@@ -256,6 +256,12 @@ local function combat_engine_suppresses_follow()
 	if not Start_Engine then
 		return false
 	end
+	-- Exception: if combat-close approach is currently gated by puller policy, allow party-follow
+	-- to continue moving the character so it does not orphan or keep stale run vectors.
+	local puller_block_until = tonumber(rawget(_G, 'UC_PULLER_APPROACH_BLOCK_UNTIL')) or 0
+	if os.clock() < puller_block_until then
+		return false
+	end
 	local p = windower.ffxi.get_player()
 	if not p then
 		return true

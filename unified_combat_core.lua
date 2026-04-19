@@ -444,6 +444,7 @@ local function apply_facing(settings, target)
 end
 
 local function apply_movement(settings, target)
+	_G.UC_PULLER_APPROACH_BLOCK_UNTIL = 0
 	if setting_enabled(settings.manual) or setting_enabled(settings.static) or not target then
 		if core.last_run_active then
 			stop_run()
@@ -458,9 +459,11 @@ local function apply_movement(settings, target)
 			allow = near or ((target.hpp or 0) < 99)
 		end
 		if not allow then
-			if core.last_run_active then
-				stop_run()
-			end
+			-- Puller gate blocks combat-close movement: explicitly stop current run vector and
+			-- let party-follow own movement for a short window to avoid orphan/stuck trajectories.
+			windower.ffxi.run(false)
+			core.last_run_active = false
+			_G.UC_PULLER_APPROACH_BLOCK_UNTIL = os.clock() + 0.6
 			return
 		end
 	end
