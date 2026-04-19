@@ -804,8 +804,10 @@ local function run_unified_combat()
 	local s = get_settings()
 	local p = windower.ffxi.get_player()
 	if not p then
+		_G.UC_WS_LAST_DIAG = 'core ws reason=NO_PLAYER'
 		return
 	end
+	_G.UC_WS_LAST_DIAG = 'core ws reason=PENDING'
 	local now_status = p.status or 0
 	local now = os.clock()
 	if now_status ~= 1 then
@@ -831,6 +833,7 @@ local function run_unified_combat()
 			stop_run()
 		end
 		_G.UC_LAST_BLOCK_REASON = 'NO_TARGET'
+		_G.UC_WS_LAST_DIAG = 'core ws reason=NO_TARGET'
 		return
 	end
 	if target and target.id and target.id ~= 0 then
@@ -853,7 +856,10 @@ local function run_unified_combat()
 	end
 	if tid > 0 and setting_enabled(s.autotarget) then
 		if not switched_on_kill then
-			ensure_target_and_attack(tid)
+			local ok_target = ensure_target_and_attack(tid)
+			if not ok_target then
+				_G.UC_WS_LAST_DIAG = 'core ws reason=TARGET_PREP_FAIL'
+			end
 		end
 	end
 	local current = get_current_target()
@@ -871,6 +877,10 @@ local function run_unified_combat()
 	})
 
 	local t = get_current_target()
+	if not t or not t.id or t.id == 0 then
+		_G.UC_WS_LAST_DIAG = 'core ws reason=NO_CURRENT_TARGET'
+		return
+	end
 	local ws_name, ws_pick_reason = select_smart_ws(s, t and t.id or 0)
 	local dist = target_distance(t)
 	local hpp = (t and t.hpp) or 0
