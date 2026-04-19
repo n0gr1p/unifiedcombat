@@ -813,6 +813,30 @@ function uc_remote_tick()
 			end
 		end
 	end
+	local party_names, _, id_to_name = uc_get_party_name_maps()
+	local function uc_name_by_id(id)
+		local nid = tonumber(id) or 0
+		if nid == 0 then
+			return nil
+		end
+		if type(GetNameById) == 'function' then
+			local ok, res = pcall(GetNameById, nid)
+			if ok and type(res) == 'string' and res ~= '' then
+				return res
+			end
+		end
+		local pn = id_to_name[nid]
+		if type(pn) == 'string' and pn ~= '' then
+			return pn
+		end
+		local okm, mob = pcall(function()
+			return windower.ffxi.get_mob_by_id(nid)
+		end)
+		if okm and mob and type(mob.name) == 'string' and mob.name ~= '' then
+			return mob.name
+		end
+		return nil
+	end
 	local zu = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
 	local zone_suspend_active = type(zu) == 'number' and os.clock() < zu
 	local st = {
@@ -886,19 +910,18 @@ function uc_remote_tick()
 		abilities_selected = uc_join_pipe(selected_abilities),
 		ability_options = uc_get_cached_ability_options(),
 		weaponskill_options = uc_join_pipe(uc_get_weaponskill_names()),
-		ignore_entries = uc_ignore.encode_for_ui(s, type(GetNameById) == 'function' and GetNameById or nil),
+		ignore_entries = uc_ignore.encode_for_ui(s, uc_name_by_id),
 		ignore_last_op = _G.UC_LAST_IGNORE_OP or '',
 		target_ignore_entries = uc_target_ignore.encode_for_ui(s),
 		target_ignore_last_op = _G.UC_LAST_TARGET_IGNORE_OP or '',
 		add_priority_entries = uc_add_priority.encode_for_ui(s),
 		add_priority_last_op = _G.UC_LAST_ADD_PRIORITY_OP or '',
-		partner_entries = uc_partner_list.encode_for_ui(s, type(GetNameById) == 'function' and GetNameById or nil),
+		partner_entries = uc_partner_list.encode_for_ui(s, uc_name_by_id),
 		partner_last_op = _G.UC_LAST_PARTNER_OP or '',
 	}
 	local tnm, tid = uc_current_target_snapshot()
 	st.ignore_target_name = tnm
 	st.ignore_target_id = tid
-	local party_names, _, id_to_name = uc_get_party_name_maps()
 	st.partner_options = uc_join_pipe(party_names)
 	st.puller_selected = id_to_name[s.puller_id] or ''
 	st.fight_leader_selected = id_to_name[s.fight_leader_id] or ''
