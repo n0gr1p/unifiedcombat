@@ -208,6 +208,7 @@ Result:
 | 2026-04-19 | B7 | Settings type-mismatch warning spam on addon load | Reload addon with legacy settings.xml present | Medium | 46f4f96 | PASS |
 | 2026-04-19 | B2 | Packet target/engage validation | Normal aggro + pulled mobs + add-control/fight-leader on/off | Medium | 46f4f96 | PASS |
 | 2026-04-19 | B3 | Sticky target + death-switch validation | Same live targeting scenarios from B2 pass set | Medium | 46f4f96 | PASS |
+| 2026-04-19 | B4/B7 (monitor) | Single-client lockup observed on MNK party leader when target acquired with fight-leader configured to WHM (`Niightsiide`) and 3 engines running / 2 off | 5-account run; FL enabled; party leader MNK manually targeted mob; one client locked once | High | N/A (tracking note) | NON-REPRO after relog/reload; monitor for recurrence |
 
 ## Session QA Matrix (Multi-character)
 
