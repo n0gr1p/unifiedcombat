@@ -847,6 +847,8 @@ function uc_remote_tick()
 		autotarget = s.autotarget,
 		ability_active = s.ability_active,
 		weaponskill_active = s.weaponskill_active,
+		aftermath_enabled = s.aftermath_enabled,
+		aftermath_ws = s.aftermath_ws,
 		spam = s.spam,
 		closer = s.closer,
 		manual = s.manual,

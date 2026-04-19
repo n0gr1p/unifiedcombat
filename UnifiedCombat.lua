@@ -201,6 +201,7 @@ local PROFILE_KEYS = {
 	'ability1', 'ability2', 'ability3', 'ability4', 'ability5', 'ability6',
 	'ability_active', 'abilities', 'wsabilities',
 	'ws1', 'weaponskill', 'weaponskill_active',
+	'aftermath_enabled', 'aftermath_ws',
 	'engine_mode',
 	'show_ingame_ui',
 	'defensive_enabled', 'defensive_provider', 'defensive_cure_enabled', 'defensive_na_enabled', 'defensive_buff_enabled',

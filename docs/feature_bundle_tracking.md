@@ -152,10 +152,10 @@ Result:
 ### B8 Checklist
 
 Code:
-- [ ] aftermath controls bound in WinForms
+- [x] aftermath controls bound in WinForms
 - [ ] add-priority and target-ignore controls connected
 - [ ] session label shows `[UC]` when unified path active
-- [ ] ability row overlap/layout bug fixed
+- [x] ability row overlap/layout bug fixed
 
 Tests:
 - [ ] UI can edit all retained configuration controls
