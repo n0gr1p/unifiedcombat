@@ -432,11 +432,9 @@ local function apply_movement(settings, target)
 		end
 	end
 	local dist = target_real_distance(target)
-	-- Tune approach/backoff windows to reduce overrun ping-pong near engage range.
-	-- We start closing only when meaningfully outside contact range, and back off earlier
-	-- if we sink too far into model overlap.
-	local max_range = 0.38
-	local min_range = -0.55
+	-- Comfortable fight-distance band around target.
+	local max_range = 0.4
+	local min_range = -0.9
 	local mover = get_mover()
 	local me = windower.ffxi.get_mob_by_target('me')
 	local closing_to_target = dist > max_range
