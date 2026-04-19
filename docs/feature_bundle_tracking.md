@@ -187,7 +187,7 @@ Result:
 Code:
 - [ ] csproj includes optional python hub rebuild + publish copy targets
 - [ ] launcher points to hub EXE artifact path
-- [ ] `lor` vendored with notices
+- [x] `lor` vendored with notices
 - [ ] build commands doc updated
 
 Tests:
