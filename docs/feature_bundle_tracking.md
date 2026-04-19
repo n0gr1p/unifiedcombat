@@ -26,7 +26,7 @@ Purpose:
 | B1 | Unified Core Engine Skeleton + Entry Wiring | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | UC-only runtime path active; no dd2/melee dispatch in active flow |
 | B2 | Packet-native Target/Attack Primitives | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Validated across normal aggro, pulled mobs, add-control/fight-leader on/off |
 | B3 | Target Selection + Sticky + Death-switch | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Validated in live combat during recent targeting/engage pass |
-| B4 | Movement/Facing Parity | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | Unified movement/facing logic present; in-combat tuning pass pending |
+| B4 | Movement/Facing Parity | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Pass with minor residual ping-pong noted for later refinement |
 | B5 | Smart WS + JA Pipeline + WS Gate | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | Integrated in UC core; combat-chain validation pending |
 | B6 | Incoming Action/Event Integration | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | 0x029 forwarding + action handlers wired; live-combat verification pending |
 | B7 | UI/Bridge State Contract Expansion | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Sessions, engine toggle, state refresh, UI reload reconnection validated |
@@ -94,13 +94,13 @@ Code:
 - [ ] follow-vs-engage conflict resolved in re-engage window
 
 Tests:
-- [ ] close to fight distance reliably
-- [ ] spacing maintained without ping-pong
-- [ ] puller distance respected
+- [x] close to fight distance reliably
+- [x] spacing maintained without ping-pong
+- [x] puller distance respected
 
 Result:
-- Status: CODE COMPLETE
-- Notes: Unified facing/movement path implemented; follow/spacing/close-in interplay still needs dedicated tuning validation.
+- Status: PASS
+- Notes: User validation pass complete. Minor residual ping-pong remains but is currently tolerable and deferred for later refinement.
 
 ### B5 Checklist
 
@@ -209,6 +209,7 @@ Result:
 | 2026-04-19 | B2 | Packet target/engage validation | Normal aggro + pulled mobs + add-control/fight-leader on/off | Medium | 46f4f96 | PASS |
 | 2026-04-19 | B3 | Sticky target + death-switch validation | Same live targeting scenarios from B2 pass set | Medium | 46f4f96 | PASS |
 | 2026-04-19 | B4/B7 (monitor) | Single-client lockup observed on MNK party leader when target acquired with fight-leader configured to WHM (`Niightsiide`) and 3 engines running / 2 off | 5-account run; FL enabled; party leader MNK manually targeted mob; one client locked once | High | N/A (tracking note) | NON-REPRO after relog/reload; monitor for recurrence |
+| 2026-04-19 | B4 | Movement/facing validation | Close-to-target + spacing + puller-distance checks | Medium | 46f4f96 | PASS (minor tolerable ping-pong remains) |
 
 ## Session QA Matrix (Multi-character)
 
