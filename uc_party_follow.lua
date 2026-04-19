@@ -263,6 +263,21 @@ local function combat_engine_suppresses_follow()
 	if p.status == 1 then
 		return true
 	end
+	-- Core sets this while a valid combat target exists (including pre-engage windows).
+	-- Honor it so party-follow never overrides approach movement.
+	local ci_until = tonumber(rawget(_G, 'UC_COMBAT_INTENT_UNTIL')) or 0
+	if os.clock() < ci_until then
+		return true
+	end
+	-- Additional guard: if autotarget is active and we currently have a living monster
+	-- selected, suppress follow even before status flips to Engaged.
+	local s = rawget(_G, 'UC_SETTINGS')
+	if s and s.autotarget then
+		local t = windower.ffxi.get_mob_by_target('t')
+		if t and t.id and t.id ~= 0 and t.valid_target and t.spawn_type == 16 and (t.hpp or 0) > 0 then
+			return true
+		end
+	end
 	return false
 end
 
