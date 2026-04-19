@@ -28,7 +28,7 @@ Purpose:
 | B3 | Target Selection + Sticky + Death-switch | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Validated in live combat during recent targeting/engage pass |
 | B4 | Movement/Facing Parity | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Pass with minor residual ping-pong noted for later refinement |
 | B5 | Smart WS + JA Pipeline + WS Gate | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Core WS/JA behavior validated; `ws_diag` UI visibility accepted as non-blocking limitation |
-| B6 | Incoming Action/Event Integration | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | 0x029 forwarding + action handlers wired; live-combat verification pending |
+| B6 | Incoming Action/Event Integration | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Live validation passed: death/action events influence runtime and malformed chunks do not crash addon |
 | B7 | UI/Bridge State Contract Expansion | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Sessions, engine toggle, state refresh, UI reload reconnection validated |
 | B8 | WinForms Parity Controls + Session Labeling | TESTING | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Core controls + dropdown population validated; full parity checklist still open |
 | B9 | Profile Schema/Storage Cutover | IN PROGRESS | 46f4f96 | Codex |  | 2026-04-19 | UC profile model active; cleanup/validation against edge profile data pending |
@@ -125,12 +125,12 @@ Code:
 - [ ] `core.on_action_message` invoked safely
 
 Tests:
-- [ ] death/action events affect runtime decisions
-- [ ] malformed chunks do not crash addon
+- [x] death/action events affect runtime decisions
+- [x] malformed chunks do not crash addon
 
 Result:
-- Status: CODE COMPLETE
-- Notes: 0x029 forwarding and action/death processing wired into UC core.
+- Status: PASS
+- Notes: User validated both runtime reaction to death/action events and safe behavior under malformed incoming chunk conditions.
 
 ### B7 Checklist
 
