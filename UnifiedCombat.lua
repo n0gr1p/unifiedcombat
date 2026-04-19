@@ -1,3 +1,21 @@
+local function uc_prefer_addon_local_libs()
+	local ap = windower and windower.addon_path or nil
+	if type(ap) ~= 'string' or ap == '' then
+		return
+	end
+	ap = ap:gsub('\\', '/')
+	if ap:sub(-1) ~= '/' then
+		ap = ap .. '/'
+	end
+	local p1 = ap .. '?.lua'
+	local p2 = ap .. '?/?.lua'
+	if not package.path:find(p1, 1, true) then
+		package.path = p1 .. ';' .. p2 .. ';' .. package.path
+	end
+end
+
+uc_prefer_addon_local_libs()
+
 require('lor/lor_utils')
 require('tables')
 require('luau')
