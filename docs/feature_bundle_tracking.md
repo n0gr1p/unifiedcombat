@@ -73,9 +73,9 @@ Result:
 ### B3 Checklist
 
 Code:
-- [ ] sticky target state added
-- [ ] candidate selection preserves current engaged target by default
-- [ ] death-event switch logic integrated
+- [x] sticky target state added
+- [x] candidate selection preserves current engaged target by default
+- [x] death-event switch logic integrated
 
 Tests:
 - [x] no mid-fight closest-mob snap when add-control OFF
@@ -89,9 +89,9 @@ Result:
 ### B4 Checklist
 
 Code:
-- [ ] facing logic integrated
-- [ ] movement priority: close-in before spacing
-- [ ] follow-vs-engage conflict resolved in re-engage window
+- [x] facing logic integrated
+- [x] movement priority: close-in before spacing
+- [x] follow-vs-engage conflict resolved in re-engage window
 
 Tests:
 - [x] close to fight distance reliably
@@ -121,8 +121,8 @@ Result:
 ### B6 Checklist
 
 Code:
-- [ ] incoming 0x029 handler forwards to UC core
-- [ ] `core.on_action_message` invoked safely
+- [x] incoming 0x029 handler forwards to UC core
+- [x] `core.on_action_message` invoked safely
 
 Tests:
 - [x] death/action events affect runtime decisions
@@ -135,15 +135,15 @@ Result:
 ### B7 Checklist
 
 Code:
-- [ ] bridge dirty-state signature dedupe enabled
-- [ ] request_state/start/stop/toggle paths stable
-- [ ] expanded payload fields included
-- [ ] target-ignore/add-priority ops included
+- [x] bridge dirty-state signature dedupe enabled
+- [x] request_state/start/stop/toggle paths stable
+- [x] expanded payload fields included
+- [x] target-ignore/add-priority ops included
 
 Tests:
-- [ ] sessions appear after UI load without addon restart
-- [ ] engine toggle reflects quickly in session list
-- [ ] no excessive redundant redraw behavior
+- [x] sessions appear after UI load without addon restart
+- [x] engine toggle reflects quickly in session list
+- [x] no excessive redundant redraw behavior
 
 Result:
 - Status: PASS
