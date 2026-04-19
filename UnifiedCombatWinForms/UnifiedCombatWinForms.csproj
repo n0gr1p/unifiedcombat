@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>UnifiedCombatWinForms</RootNamespace>
+    <ApplicationTitle>UnifiedCombat</ApplicationTitle>
+    <!-- Application.SetColorMode / SystemColorMode are marked preview (WFO5001) but are the supported hook for system light/dark. -->
+    <NoWarn>$(NoWarn);WFO5001</NoWarn>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="..\unified_combat_ui.py" Link="unified_combat_ui.py" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
