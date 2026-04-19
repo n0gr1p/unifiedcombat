@@ -30,7 +30,7 @@ Purpose:
 | B5 | Smart WS + JA Pipeline + WS Gate | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Core WS/JA behavior validated; `ws_diag` UI visibility accepted as non-blocking limitation |
 | B6 | Incoming Action/Event Integration | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Live validation passed: death/action events influence runtime and malformed chunks do not crash addon |
 | B7 | UI/Bridge State Contract Expansion | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Sessions, engine toggle, state refresh, UI reload reconnection validated |
-| B8 | WinForms Parity Controls + Session Labeling | TESTING | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Core controls + dropdown population validated; full parity checklist still open |
+| B8 | WinForms Parity Controls + Session Labeling | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Acceptance testing passed: retained controls editable, multi-session state reflection validated, no hidden slash-only retained controls |
 | B9 | Profile Schema/Storage Cutover | IN PROGRESS | 46f4f96 | Codex |  | 2026-04-19 | UC profile model active; cleanup/validation against edge profile data pending |
 | B10 | Build/Packaging + Bundled libs | IN PROGRESS | 7d5ef1a | Codex |  | 2026-04-19 | Added ignore/untrack hygiene; build/publish doc and final packaging validation pending |
 
@@ -153,18 +153,18 @@ Result:
 
 Code:
 - [x] aftermath controls bound in WinForms
-- [ ] add-priority and target-ignore controls connected
-- [ ] session label shows `[UC]` when unified path active
+- [x] add-priority and target-ignore controls connected
+- [x] session label shows `[UC]` when unified path active
 - [x] ability row overlap/layout bug fixed
 
 Tests:
-- [ ] UI can edit all retained configuration controls
-- [ ] state reflects across multiple sessions
-- [ ] no hidden slash-command-only controls for retained features
+- [x] UI can edit all retained configuration controls
+- [x] state reflects across multiple sessions
+- [x] no hidden slash-command-only controls for retained features
 
 Result:
-- Status: TESTING
-- Notes: UI interactivity and dropdown data are validated; full retained-control parity sweep still pending.
+- Status: PASS
+- Notes: Acceptance testing passed. UI interactivity and dropdown data are validated for retained controls across sessions.
 
 ### B9 Checklist
 
