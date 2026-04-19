@@ -179,7 +179,7 @@ partial class MainForm
         MinimumSize = new Size(900, 600);
         Name = "MainForm";
         StartPosition = FormStartPosition.CenterScreen;
-        Text = "UnifiedCombat — desktop UI (hub UI channel 127.0.0.1:27183)";
+        Text = "UnifiedCombat — desktop UI (direct addon hub 127.0.0.1:27182)";
         menuStrip.ResumeLayout(false);
         menuStrip.PerformLayout();
         statusStrip.ResumeLayout(false);

@@ -164,6 +164,21 @@ public partial class MainForm
 
             var idx = list.IndexOf(wsVal);
             _wsCombo.SelectedIndex = idx >= 0 ? idx : (list.Count > 0 ? 0 : -1);
+            var amVal = SessionStateHelper.GetString(s, "aftermath_ws");
+            if (!string.IsNullOrEmpty(amVal) && !list.Contains(amVal))
+            {
+                list.Insert(0, amVal);
+            }
+
+            _aftermathCombo.Items.Clear();
+            foreach (var o in list)
+            {
+                _aftermathCombo.Items.Add(o);
+            }
+
+            var amIdx = list.IndexOf(amVal);
+            _aftermathCombo.SelectedIndex = amIdx >= 0 ? amIdx : (list.Count > 0 ? 0 : -1);
+            _aftermathCombo.Enabled = SessionStateHelper.GetBool(s, "aftermath_enabled", false);
             _lblBlock.Text = SessionStateHelper.GetString(s, "block_reason");
             _lblSched.Text = SessionStateHelper.GetString(s, "scheduler_action");
             _lblSchedProv.Text = SessionStateHelper.GetString(s, "scheduler_provider");
@@ -203,6 +218,8 @@ public partial class MainForm
             _pullerCombo.Items.Clear();
             _fightLeaderCombo.Items.Clear();
             _partyFollowCombo.Items.Clear();
+            _aftermathCombo.Items.Clear();
+            _aftermathCombo.Enabled = false;
             _defProviderCombo.SelectedIndex = _defProviderCombo.Items.IndexOf("internal");
             if (_defProviderCombo.SelectedIndex < 0)
             {
@@ -314,6 +331,22 @@ public partial class MainForm
 
             var wsIdx = wsDisplay.IndexOf(wsRaw);
             _wsCombo.SelectedIndex = wsIdx >= 0 ? wsIdx : (wsDisplay.Count > 0 ? 0 : -1);
+            var amDisplay = new List<string>(wsOpts);
+            var amRaw = SessionStateHelper.GetString(s, "aftermath_ws");
+            if (!string.IsNullOrEmpty(amRaw) && !amDisplay.Contains(amRaw))
+            {
+                amDisplay.Insert(0, amRaw);
+            }
+
+            _aftermathCombo.Items.Clear();
+            foreach (var w in amDisplay)
+            {
+                _aftermathCombo.Items.Add(w);
+            }
+
+            var amIdx = amDisplay.IndexOf(amRaw);
+            _aftermathCombo.SelectedIndex = amIdx >= 0 ? amIdx : (amDisplay.Count > 0 ? 0 : -1);
+            _aftermathCombo.Enabled = SessionStateHelper.GetBool(s, "aftermath_enabled", false);
 
             _pullerCombo.Items.Clear();
             foreach (var p in partnerOpts)
@@ -732,6 +765,10 @@ public partial class MainForm
                 OnPartyFollowSelected();
             }
         }
+        else if (key == "aftermath_enabled")
+        {
+            _aftermathCombo.Enabled = val;
+        }
 
         _ = s;
     }
@@ -764,6 +801,23 @@ public partial class MainForm
         var path = eng == "melee" ? "ws1" : "weaponskill";
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = path, ["value"] = val });
         _pendingWsBySid[sid] = (val, DateTime.UtcNow);
+    }
+
+    private void OnAftermathWsSelected()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var val = _aftermathCombo.SelectedItem?.ToString() ?? "";
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "aftermath_ws", ["value"] = val });
     }
 
     private void OnPullerSelected()

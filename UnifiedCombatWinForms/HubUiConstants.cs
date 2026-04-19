@@ -2,7 +2,7 @@ namespace UnifiedCombatWinForms;
 
 internal static class HubUiConstants
 {
-    public static readonly string[] ContextBoolKeys = ["ability_active", "weaponskill_active", "puller"];
+    public static readonly string[] ContextBoolKeys = ["ability_active", "weaponskill_active", "aftermath_enabled", "puller"];
 
     public static readonly string[] GlobalBoolKeys =
     [
@@ -78,6 +78,7 @@ internal static class HubUiConstants
         ["add_control"] = "Add control (off-leader adds when FL on)",
         ["ability_active"] = "abilities",
         ["weaponskill_active"] = "weaponskill",
+        ["aftermath_enabled"] = "aftermath",
         ["puller"] = "puller",
     };
 

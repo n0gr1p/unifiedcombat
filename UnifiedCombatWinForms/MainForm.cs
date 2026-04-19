@@ -24,6 +24,9 @@ public partial class MainForm : Form
     private readonly List<string> _abilityOptions = [];
     private readonly List<string> _selectedAbilities = [];
     private readonly Dictionary<string, string> _abilitySignatureBySid = new(StringComparer.Ordinal);
+    private readonly object _mirrorLineGate = new();
+    private string? _pendingMirrorLine;
+    private int _mirrorPumpQueued;
 
     private List<(int Id, string Name)> _ignoreRows = [];
     private List<(int Id, string Name)> _partnerRows = [];
@@ -52,7 +55,52 @@ public partial class MainForm : Form
             return;
         }
 
-        BeginInvoke(() => ApplyMirrorLine(line));
+        lock (_mirrorLineGate)
+        {
+            _pendingMirrorLine = line;
+        }
+
+        if (Interlocked.Exchange(ref _mirrorPumpQueued, 1) == 0)
+        {
+            BeginInvoke(PumpLatestMirrorLine);
+        }
+    }
+
+    private void PumpLatestMirrorLine()
+    {
+        try
+        {
+            while (true)
+            {
+                string? line;
+                lock (_mirrorLineGate)
+                {
+                    line = _pendingMirrorLine;
+                    _pendingMirrorLine = null;
+                }
+
+                if (string.IsNullOrEmpty(line))
+                {
+                    break;
+                }
+
+                ApplyMirrorLine(line);
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _mirrorPumpQueued, 0);
+            bool hasPending;
+            lock (_mirrorLineGate)
+            {
+                hasPending = !string.IsNullOrEmpty(_pendingMirrorLine);
+            }
+
+            if (hasPending && Interlocked.Exchange(ref _mirrorPumpQueued, 1) == 0 && !IsDisposed && IsHandleCreated)
+            {
+                BeginInvoke(PumpLatestMirrorLine);
+            }
+        }
     }
 
     private void ListSessions_SelectedIndexChanged(object? sender, EventArgs e)

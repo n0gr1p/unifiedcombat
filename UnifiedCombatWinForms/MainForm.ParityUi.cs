@@ -7,9 +7,11 @@ public partial class MainForm
     private GroupBox _grpBehavior = null!;
     private GroupBox _grpVisuals = null!;
     private CheckBox _chkWeaponskill = null!;
+    private CheckBox _chkAftermath = null!;
     private CheckBox _chkAbility = null!;
     private CheckBox _chkPuller = null!;
     private ComboBox _wsCombo = null!;
+    private ComboBox _aftermathCombo = null!;
     private ComboBox _pullerCombo = null!;
     private ComboBox _fightLeaderCombo = null!;
     private ComboBox _partyFollowCombo = null!;
@@ -149,8 +151,6 @@ public partial class MainForm
         var wsLab = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         _chkWeaponskill = MkCtx("weaponskill_active");
         wsLab.Controls.Add(_chkWeaponskill);
-        _chkAbility = MkCtx("ability_active");
-        wsLab.Controls.Add(_chkAbility);
         leftCol.Controls.Add(wsLab, 0, lr);
         _wsCombo = new ComboBox
         {
@@ -162,15 +162,27 @@ public partial class MainForm
         leftCol.Controls.Add(_wsCombo, 1, lr);
         lr++;
 
+        _chkAftermath = MkCtx("aftermath_enabled");
+        leftCol.Controls.Add(_chkAftermath, 0, lr);
+        _aftermathCombo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(120, 0),
+        };
+        _aftermathCombo.SelectedIndexChanged += (_, _) => OnAftermathWsSelected();
+        leftCol.Controls.Add(_aftermathCombo, 1, lr);
+        lr++;
+
         var abPick = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
+        _chkAbility = MkCtx("ability_active");
+        leftCol.Controls.Add(_chkAbility, 0, lr);
         _abilityPickCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
         _btnAbilityAdd = new Button { Text = "Add", AutoSize = true };
         _btnAbilityAdd.Click += (_, _) => AddAbility();
         abPick.Controls.Add(_abilityPickCombo);
         abPick.Controls.Add(_btnAbilityAdd);
-        leftCol.Controls.Add(new Label { Text = "ability pick", AutoSize = true }, 0, lr);
         leftCol.Controls.Add(abPick, 1, lr);
-        leftCol.SetColumnSpan(abPick, 1);
         lr++;
 
         _abilityList = new ListBox

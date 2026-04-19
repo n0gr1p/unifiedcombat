@@ -1,6 +1,6 @@
 --[[
   Non-blocking TCP client to Python hub. NDJSON over newline.
-  Expect _G.UC_SETTINGS, _G.UC_ENGINE, Start_Engine, windower, config.
+  Expect _G.UC_SETTINGS, _G.UC_ENGINE, Start_Engine, windower.
 ]]
 
 local socket = require('socket')
@@ -429,10 +429,8 @@ local function process_line(line)
 	end
 	local op = msg.op
 	local function maybe_start_active_engine()
-		if _G.UC_ENGINE == 'melee' and type(uc_melee_start_engine) == 'function' then
-			uc_melee_start_engine()
-		elseif _G.UC_ENGINE == 'dd2' and type(uc_dd2_start_engine) == 'function' then
-			uc_dd2_start_engine()
+		if type(_G.UC_StartUnifiedEngine) == 'function' then
+			_G.UC_StartUnifiedEngine()
 		end
 	end
 	if op == 'set' then
@@ -745,17 +743,10 @@ local function process_line(line)
 	elseif op == 'save' then
 		if type(_G.UC_SaveActiveProfile) == 'function' then
 			_G.UC_SaveActiveProfile()
-		else
-			local p = windower.ffxi.get_player()
-			if p and _G.UC_SETTINGS then
-				config.save(_G.UC_SETTINGS, p.name)
-			end
 		end
 	elseif op == 'reload' then
 		if type(_G.UC_ReloadActiveProfile) == 'function' then
 			_G.UC_ReloadActiveProfile()
-		elseif _G.UC_SETTINGS then
-			config.reload(_G.UC_SETTINGS)
 		end
 	elseif op == 'request_state' then
 		last_state_send = 0
@@ -822,6 +813,30 @@ function uc_remote_tick()
 			end
 		end
 	end
+	local party_names, _, id_to_name = uc_get_party_name_maps()
+	local function uc_name_by_id(id)
+		local nid = tonumber(id) or 0
+		if nid == 0 then
+			return nil
+		end
+		if type(GetNameById) == 'function' then
+			local ok, res = pcall(GetNameById, nid)
+			if ok and type(res) == 'string' and res ~= '' then
+				return res
+			end
+		end
+		local pn = id_to_name[nid]
+		if type(pn) == 'string' and pn ~= '' then
+			return pn
+		end
+		local okm, mob = pcall(function()
+			return windower.ffxi.get_mob_by_id(nid)
+		end)
+		if okm and mob and type(mob.name) == 'string' and mob.name ~= '' then
+			return mob.name
+		end
+		return nil
+	end
 	local zu = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
 	local zone_suspend_active = type(zu) == 'number' and os.clock() < zu
 	local st = {
@@ -856,6 +871,8 @@ function uc_remote_tick()
 		autotarget = s.autotarget,
 		ability_active = s.ability_active,
 		weaponskill_active = s.weaponskill_active,
+		aftermath_enabled = s.aftermath_enabled,
+		aftermath_ws = s.aftermath_ws,
 		spam = s.spam,
 		closer = s.closer,
 		manual = s.manual,
@@ -893,19 +910,18 @@ function uc_remote_tick()
 		abilities_selected = uc_join_pipe(selected_abilities),
 		ability_options = uc_get_cached_ability_options(),
 		weaponskill_options = uc_join_pipe(uc_get_weaponskill_names()),
-		ignore_entries = uc_ignore.encode_for_ui(s, type(GetNameById) == 'function' and GetNameById or nil),
+		ignore_entries = uc_ignore.encode_for_ui(s, uc_name_by_id),
 		ignore_last_op = _G.UC_LAST_IGNORE_OP or '',
 		target_ignore_entries = uc_target_ignore.encode_for_ui(s),
 		target_ignore_last_op = _G.UC_LAST_TARGET_IGNORE_OP or '',
 		add_priority_entries = uc_add_priority.encode_for_ui(s),
 		add_priority_last_op = _G.UC_LAST_ADD_PRIORITY_OP or '',
-		partner_entries = uc_partner_list.encode_for_ui(s, type(GetNameById) == 'function' and GetNameById or nil),
+		partner_entries = uc_partner_list.encode_for_ui(s, uc_name_by_id),
 		partner_last_op = _G.UC_LAST_PARTNER_OP or '',
 	}
 	local tnm, tid = uc_current_target_snapshot()
 	st.ignore_target_name = tnm
 	st.ignore_target_id = tid
-	local party_names, _, id_to_name = uc_get_party_name_maps()
 	st.partner_options = uc_join_pipe(party_names)
 	st.puller_selected = id_to_name[s.puller_id] or ''
 	st.fight_leader_selected = id_to_name[s.fight_leader_id] or ''
