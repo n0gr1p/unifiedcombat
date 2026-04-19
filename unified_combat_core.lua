@@ -158,6 +158,72 @@ local function uc_heading_to(x, y)
 	return (math.atan2(dx, dy) - 1.5708)
 end
 
+local function uc_heading_from_vector(vx, vy)
+	if vx == nil or vy == nil then
+		return nil
+	end
+	if (vx * vx + vy * vy) < 0.000001 then
+		return nil
+	end
+	return (math.atan2(vx, vy) - 1.5708)
+end
+
+-- Real-time spacing-aware approach heading:
+-- attract toward target while repelling from nearby party members.
+local function uc_spacing_aware_approach_heading(me, target)
+	if not me or not target or me.x == nil or me.y == nil or target.x == nil or target.y == nil then
+		return nil
+	end
+	local tx = target.x - me.x
+	local ty = target.y - me.y
+	local tlen = math.sqrt((tx * tx) + (ty * ty))
+	if tlen < 0.0001 then
+		return nil
+	end
+
+	local ax = tx / tlen
+	local ay = ty / tlen
+	local rx = 0
+	local ry = 0
+	local repel_range = 1.0
+	local party = windower.ffxi.get_party() or {}
+	local keys = { 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }
+
+	for _, k in ipairs(keys) do
+		local e = party[k]
+		local pm = e and e.mob
+		local pid = pm and pm.id or 0
+		if pid ~= 0 and pid ~= me.id then
+			local member = windower.ffxi.get_mob_by_id(pid)
+			if member and member.x ~= nil and member.y ~= nil then
+				local pdist = mob_real_distance(me, member)
+				if pdist < repel_range then
+					local dx = me.x - member.x
+					local dy = me.y - member.y
+					local plen = math.sqrt((dx * dx) + (dy * dy))
+					if plen > 0.0001 then
+						local strength = (repel_range - pdist) / repel_range
+						if strength < 0 then
+							strength = 0
+						end
+						rx = rx + (dx / plen) * strength
+						ry = ry + (dy / plen) * strength
+					end
+				end
+			end
+		end
+	end
+
+	local repel_weight = 1.35
+	local vx = ax + (rx * repel_weight)
+	local vy = ay + (ry * repel_weight)
+	local heading = uc_heading_from_vector(vx, vy)
+	if heading then
+		return heading
+	end
+	return uc_heading_to(target.x, target.y)
+end
+
 local function find_candidate_target(settings)
 	local me = windower.ffxi.get_mob_by_target('me')
 	if not me then
@@ -369,10 +435,18 @@ local function apply_movement(settings, target)
 	local max_range = 0.25
 	local min_range = -0.75
 	local mover = get_mover()
+	local me = windower.ffxi.get_mob_by_target('me')
 	local closing_to_target = dist > max_range
 	if dist > max_range then
 		local moved = false
-		if mover and target.id and type(mover.move_towards) == 'function' then
+		if setting_enabled(settings.spacing) and me then
+			local heading = uc_spacing_aware_approach_heading(me, target)
+			if heading then
+				windower.ffxi.run(heading)
+				moved = true
+			end
+		end
+		if (not moved) and mover and target.id and type(mover.move_towards) == 'function' then
 			local ok = pcall(function()
 				mover:move_towards(target.id)
 			end)
@@ -416,36 +490,19 @@ local function apply_movement(settings, target)
 	end
 
 	if closing_to_target then
-		-- When approaching engage distance, prioritize closing over party-spacing corrections
-		-- to avoid stutter-stepping around temporary roadblocks.
-		core.last_spacing_member_id = 0
-		core.last_spacing_until = 0
+		-- While closing, spacing is already folded into the approach vector above.
 		return
 	end
 
 	if setting_enabled(settings.spacing) then
 		local p = windower.ffxi.get_player()
-		local me = windower.ffxi.get_mob_by_target('me')
 		if p and me and p.status == 1 then
 			local party = windower.ffxi.get_party() or {}
 			local keys = { 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }
-			local now = os.clock()
 			local spacing_trigger = -0.22
-			local spacing_release = -0.10
 			local chosen_id = 0
 			local chosen_member = nil
 			local chosen_dist = 999
-			local pinned_id = tonumber(core.last_spacing_member_id) or 0
-
-			if pinned_id > 0 and now < (core.last_spacing_until or 0) then
-				local member = windower.ffxi.get_mob_by_id(pinned_id)
-				local pdist = mob_real_distance(me, member)
-				if pdist < spacing_release then
-					chosen_id = pinned_id
-					chosen_member = member
-					chosen_dist = pdist
-				end
-			end
 
 			for _, k in ipairs(keys) do
 				local e = party[k]
@@ -454,7 +511,7 @@ local function apply_movement(settings, target)
 				if pid ~= 0 and pid ~= me.id then
 					local member = windower.ffxi.get_mob_by_id(pid)
 					local pdist = mob_real_distance(me, member)
-					if chosen_id == 0 and pdist < spacing_trigger and pdist < chosen_dist then
+					if pdist < spacing_trigger and pdist < chosen_dist then
 						chosen_id = pid
 						chosen_member = member
 						chosen_dist = pdist
@@ -476,13 +533,9 @@ local function apply_movement(settings, target)
 						moved = true
 					end
 				end
-				core.last_spacing_member_id = chosen_id
-				core.last_spacing_until = now + 0.25
 				core.last_run_active = moved
 				return
 			end
-			core.last_spacing_member_id = 0
-			core.last_spacing_until = 0
 		end
 	end
 end
