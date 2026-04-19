@@ -1,8 +1,8 @@
 # UnifiedCombat Feature Bundle Tracking
 
-Last updated: 2026-04-18
-Owner: <fill>
-Test environment: <fill>
+Last updated: 2026-04-19
+Owner: n0gr1p + Codex
+Test environment: Windower multi-session + WinForms direct-connect
 Baseline: `UnifiedCombat` (4:56 AM known-good restore)
 Source reference: `UnifiedCombatBroken`
 
@@ -23,16 +23,16 @@ Purpose:
 
 | Bundle | Name | Status | Code Commit/Copy Ref | Implemented By | Tested By | Last Update | Notes |
 |---|---|---|---|---|---|---|---|
-| B1 | Unified Core Engine Skeleton + Entry Wiring | CODE COMPLETE | local changes (uncommitted) | Codex |  | 2026-04-18 | Awaiting in-game B1 validation |
-| B2 | Packet-native Target/Attack Primitives | NOT STARTED |  |  |  |  |  |
-| B3 | Target Selection + Sticky + Death-switch | NOT STARTED |  |  |  |  |  |
-| B4 | Movement/Facing Parity | NOT STARTED |  |  |  |  |  |
-| B5 | Smart WS + JA Pipeline + WS Gate | NOT STARTED |  |  |  |  |  |
-| B6 | Incoming Action/Event Integration | NOT STARTED |  |  |  |  |  |
-| B7 | UI/Bridge State Contract Expansion | NOT STARTED |  |  |  |  |  |
-| B8 | WinForms Parity Controls + Session Labeling | NOT STARTED |  |  |  |  |  |
-| B9 | Profile Schema/Storage Cutover | NOT STARTED |  |  |  |  |  |
-| B10 | Build/Packaging + Bundled libs | NOT STARTED |  |  |  |  |  |
+| B1 | Unified Core Engine Skeleton + Entry Wiring | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | UC-only runtime path active; no dd2/melee dispatch in active flow |
+| B2 | Packet-native Target/Attack Primitives | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | Added/integrated `uc_settarget.lua` + `uc_attack.lua`; combat behavior soak pending |
+| B3 | Target Selection + Sticky + Death-switch | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | Sticky/death-switch logic present in unified core; dedicated regression pass pending |
+| B4 | Movement/Facing Parity | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | Unified movement/facing logic present; in-combat tuning pass pending |
+| B5 | Smart WS + JA Pipeline + WS Gate | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | Integrated in UC core; combat-chain validation pending |
+| B6 | Incoming Action/Event Integration | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | 0x029 forwarding + action handlers wired; live-combat verification pending |
+| B7 | UI/Bridge State Contract Expansion | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Sessions, engine toggle, state refresh, UI reload reconnection validated |
+| B8 | WinForms Parity Controls + Session Labeling | TESTING | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Core controls + dropdown population validated; full parity checklist still open |
+| B9 | Profile Schema/Storage Cutover | IN PROGRESS | 46f4f96 | Codex |  | 2026-04-19 | UC profile model active; cleanup/validation against edge profile data pending |
+| B10 | Build/Packaging + Bundled libs | IN PROGRESS | 7d5ef1a | Codex |  | 2026-04-19 | Added ignore/untrack hygiene; build/publish doc and final packaging validation pending |
 
 ---
 
@@ -46,13 +46,13 @@ Code:
 - [x] start/stop wrappers call UC core path
 
 Tests:
-- [ ] addon loads with no errors
-- [ ] `//uc start` begins UC tick
-- [ ] `//uc stop` cleanly halts tick
+- [x] addon loads with no errors
+- [x] `//uc start` begins UC tick
+- [x] `//uc stop` cleanly halts tick
 
 Result:
-- Status: CODE COMPLETE
-- Notes: Replaced wrapper with real `unified_combat_core.lua` UC tick path and required UC helper modules; removed dd2/melee runtime dispatch from UnifiedCombat event/combat flow.
+- Status: PASS
+- Notes: Replaced wrapper with real `unified_combat_core.lua` UC tick path and required UC helper modules; removed dd2/melee runtime dispatch from UnifiedCombat event/combat flow. Engine on/off validated via UI start/stop path.
 
 ### B2 Checklist
 
@@ -67,8 +67,8 @@ Tests:
 - [ ] switch target while engaged works in add-control case
 
 Result:
-- Status: NOT STARTED
-- Notes:
+- Status: CODE COMPLETE
+- Notes: `uc_settarget.lua` and `uc_attack.lua` integrated and used by unified core target/engage path.
 
 ### B3 Checklist
 
@@ -83,8 +83,8 @@ Tests:
 - [ ] dead-target transition is prompt
 
 Result:
-- Status: NOT STARTED
-- Notes:
+- Status: CODE COMPLETE
+- Notes: Sticky target and death-triggered switch logic implemented in unified core; requires focused in-combat regression QA.
 
 ### B4 Checklist
 
@@ -99,8 +99,8 @@ Tests:
 - [ ] puller distance respected
 
 Result:
-- Status: NOT STARTED
-- Notes:
+- Status: CODE COMPLETE
+- Notes: Unified facing/movement path implemented; follow/spacing/close-in interplay still needs dedicated tuning validation.
 
 ### B5 Checklist
 
@@ -115,8 +115,8 @@ Tests:
 - [ ] ability list executes in configured order
 
 Result:
-- Status: NOT STARTED
-- Notes:
+- Status: CODE COMPLETE
+- Notes: Smart WS selection + JA pipeline + ws gate integrated in UC core path.
 
 ### B6 Checklist
 
@@ -129,8 +129,8 @@ Tests:
 - [ ] malformed chunks do not crash addon
 
 Result:
-- Status: NOT STARTED
-- Notes:
+- Status: CODE COMPLETE
+- Notes: 0x029 forwarding and action/death processing wired into UC core.
 
 ### B7 Checklist
 
@@ -146,8 +146,8 @@ Tests:
 - [ ] no excessive redundant redraw behavior
 
 Result:
-- Status: NOT STARTED
-- Notes:
+- Status: PASS
+- Notes: Direct-connect WinForms hub + bridge/state flow validated by user tests (session discovery, reactivity, reload reconnection, dropdown hydration).
 
 ### B8 Checklist
 
@@ -163,8 +163,8 @@ Tests:
 - [ ] no hidden slash-command-only controls for retained features
 
 Result:
-- Status: NOT STARTED
-- Notes:
+- Status: TESTING
+- Notes: UI interactivity and dropdown data are validated; full retained-control parity sweep still pending.
 
 ### B9 Checklist
 
@@ -179,8 +179,8 @@ Tests:
 - [ ] no cross-job contamination in character profile
 
 Result:
-- Status: NOT STARTED
-- Notes:
+- Status: IN PROGRESS
+- Notes: UC profile branch/model in place; remaining work is hardening and explicit validation across multi-job profile transitions.
 
 ### B10 Checklist
 
@@ -195,8 +195,8 @@ Tests:
 - [ ] addon runs standalone in target folder
 
 Result:
-- Status: NOT STARTED
-- Notes:
+- Status: IN PROGRESS
+- Notes: `.gitignore` + untrack commit completed; publish documentation/final packaging checks still open.
 
 ---
 
@@ -204,7 +204,8 @@ Result:
 
 | Date/Time | Bundle | Symptom | Repro Steps | Severity | Fix Ref | Retest Result |
 |---|---|---|---|---|---|---|
-|  |  |  |  |  |  |  |
+| 2026-04-19 | B7 | WinForms non-reactive / sessions delayed or absent | UI reload + toggle + session discovery tests | High | 46f4f96 | PASS |
+| 2026-04-19 | B7 | Settings type-mismatch warning spam on addon load | Reload addon with legacy settings.xml present | Medium | 46f4f96 | PASS |
 
 ## Session QA Matrix (Multi-character)
 
