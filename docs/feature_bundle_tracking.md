@@ -32,7 +32,7 @@ Purpose:
 | B7 | UI/Bridge State Contract Expansion | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Sessions, engine toggle, state refresh, UI reload reconnection validated |
 | B8 | WinForms Parity Controls + Session Labeling | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Acceptance testing passed: retained controls editable, multi-session state reflection validated, no hidden slash-only retained controls |
 | B9 | Profile Schema/Storage Cutover | IN PROGRESS | 46f4f96 | Codex |  | 2026-04-19 | UC profile model active; cleanup/validation against edge profile data pending |
-| B10 | Build/Packaging + Bundled libs | IN PROGRESS | 7d5ef1a | Codex |  | 2026-04-19 | Added ignore/untrack hygiene; build/publish doc and final packaging validation pending |
+| B10 | Build/Packaging + Bundled libs | PASS | 7d5ef1a | Codex | n0gr1p | 2026-04-19 | Acceptance passed: direct-connect WinForms path adopted, `lor` vendored, build commands documented, standalone packaging validated |
 
 ---
 
@@ -185,18 +185,18 @@ Result:
 ### B10 Checklist
 
 Code:
-- [ ] csproj includes optional python hub rebuild + publish copy targets
-- [ ] launcher points to hub EXE artifact path
+- [ ] DEPRECATED (direct WinForms connectivity): csproj includes optional python hub rebuild + publish copy targets
+- [ ] DEPRECATED (direct WinForms connectivity): launcher points to hub EXE artifact path
 - [x] `lor` vendored with notices
 - [x] build commands doc updated
 
 Tests:
-- [ ] publish command produces expected fresh artifacts
-- [ ] addon runs standalone in target folder
+- [x] publish command produces expected fresh artifacts
+- [x] addon runs standalone in target folder
 
 Result:
-- Status: IN PROGRESS
-- Notes: `.gitignore` + untrack commit completed; publish documentation/final packaging checks still open.
+- Status: PASS
+- Notes: Passed acceptance testing. Python middleware build/launcher requirements are deprecated by direct WinForms connectivity; standalone package flow validated.
 
 ---
 
