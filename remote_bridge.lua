@@ -1,6 +1,6 @@
 --[[
   Non-blocking TCP client to Python hub. NDJSON over newline.
-  Expect _G.UC_SETTINGS, _G.UC_ENGINE, Start_Engine, windower, config.
+  Expect _G.UC_SETTINGS, _G.UC_ENGINE, Start_Engine, windower.
 ]]
 
 local socket = require('socket')
@@ -429,10 +429,8 @@ local function process_line(line)
 	end
 	local op = msg.op
 	local function maybe_start_active_engine()
-		if _G.UC_ENGINE == 'melee' and type(uc_melee_start_engine) == 'function' then
-			uc_melee_start_engine()
-		elseif _G.UC_ENGINE == 'dd2' and type(uc_dd2_start_engine) == 'function' then
-			uc_dd2_start_engine()
+		if type(_G.UC_StartUnifiedEngine) == 'function' then
+			_G.UC_StartUnifiedEngine()
 		end
 	end
 	if op == 'set' then
@@ -745,17 +743,10 @@ local function process_line(line)
 	elseif op == 'save' then
 		if type(_G.UC_SaveActiveProfile) == 'function' then
 			_G.UC_SaveActiveProfile()
-		else
-			local p = windower.ffxi.get_player()
-			if p and _G.UC_SETTINGS then
-				config.save(_G.UC_SETTINGS, p.name)
-			end
 		end
 	elseif op == 'reload' then
 		if type(_G.UC_ReloadActiveProfile) == 'function' then
 			_G.UC_ReloadActiveProfile()
-		elseif _G.UC_SETTINGS then
-			config.reload(_G.UC_SETTINGS)
 		end
 	elseif op == 'request_state' then
 		last_state_send = 0

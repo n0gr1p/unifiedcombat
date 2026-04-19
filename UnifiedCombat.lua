@@ -7,12 +7,12 @@ _addon.author = 'me'
 _addon.version = '1.0'
 _addon.commands = { 'uc', 'unifiedcombat' }
 
-MELEE_JOBS = S { 'WAR', 'MNK', 'SAM', 'DRG', 'DRK' }
-UC_ENGINE = 'melee'
+UC_ENGINE = 'UC'
 _G.UC_REMOTE_HOST = _G.UC_REMOTE_HOST or '127.0.0.1'
 _G.UC_REMOTE_PORT = _G.UC_REMOTE_PORT or 27182
 
 Start_Engine = false
+_G.UC_ENABLE_LEGACY_JOB_ADAPTERS = false
 
 -- After zoning, suspend unified combat ticks (scheduler + offense) so mob data can settle and we
 -- do not immediately autotarget with stale/cleared engine state (zone resets engagement; no /attack off).
@@ -67,33 +67,86 @@ UC_JOB_DEFAULTS = {
 }
 
 local res = require('resources')
-local config = require('config')
 local files = require('files')
 require('actions')
 
 local uc_partner_list = require('uc_partner_list')
 local uc_add_priority = require('uc_add_priority')
 
-require('melee_engine')
-UC_DD2 = nil
+local function uc_new_settings_defaults()
+	return {
+		profiles = { UC = {} },
+		engine_mode = 'UC',
+		ability_active = false,
+		abilities = {},
+		weaponskill = '',
+		ws1 = '',
+		weaponskill_active = false,
+		aftermath_enabled = false,
+		aftermath_ws = '',
+		autotarget = false,
+		spam = false,
+		closer = false,
+		manual = false,
+		prime = false,
+		static = false,
+		spacing = false,
+		face = false,
+		partner = false,
+		partner2 = false,
+		puller = false,
+		puller_distance_only = false,
+		partner_id = 0,
+		partner_id2 = 0,
+		partner_ids = {},
+		puller_id = 0,
+		fight_leader = false,
+		fight_leader_id = 0,
+		party_follow = false,
+		party_follow_id = 0,
+		party_follow_leader_name = '',
+		party_follow_min = 0.5,
+		party_follow_max = 50,
+		add_control = false,
+		add_priority_names = {},
+		sub = false,
+		sub2 = false,
+		move = false,
+		debug = false,
+		solo = false,
+		aeonic = false,
+		color = false,
+		tank = false,
+		sleep = false,
+		command = false,
+		hunter = false,
+		sleepspell = 'Horde Lullaby II',
+		defensive_enabled = false,
+		defensive_provider = 'internal',
+		defensive_cure_enabled = false,
+		defensive_na_enabled = false,
+		defensive_buff_enabled = false,
+		defensive_critical_hpp = 35,
+		defensive_medium_hpp = 55,
+		defensive_overwrite_enabled = false,
+		defensive_overwrite_interval = 150,
+		defensive_buff_self_only = true,
+		defensive_buffs = '',
+		ignore = {},
+		target_ignore_names = {},
+		show_ingame_ui = false,
+	}
+end
+
+_G.UC_SETTINGS = uc_new_settings_defaults()
+
 require('remote_bridge')
+local UC_COMBAT_CORE = require('unified_combat_core')
 local UC_UNIFIED_ENGINE = require('unified_engine')
 local uc_party_follow = require('uc_party_follow')
 
 local function uc_update_engine()
-	local p = windower.ffxi.get_player()
-	if not p then
-		return
-	end
-	local j = p.main_job
-	if MELEE_JOBS[j] then
-		UC_ENGINE = 'melee'
-	else
-		UC_ENGINE = 'dd2'
-		if not UC_DD2 then
-			UC_DD2 = require('dd2_module')
-		end
-	end
+	UC_ENGINE = 'UC'
 end
 
 local function uc_start_active_engine_if_running()
@@ -114,6 +167,12 @@ end
 _G.UC_StopUnifiedEngine = function()
 	if UC_UNIFIED_ENGINE and type(UC_UNIFIED_ENGINE.stop) == 'function' then
 		UC_UNIFIED_ENGINE.stop()
+	end
+end
+
+_G.UC_CoreCombatTickOnce = function()
+	if UC_COMBAT_CORE and type(UC_COMBAT_CORE.combat_tick_once) == 'function' then
+		UC_COMBAT_CORE.combat_tick_once()
 	end
 end
 
@@ -304,12 +363,7 @@ end
 local function uc_normalize_ws_for_engine(s, eng)
 	local ws = s.weaponskill or s.ws1 or ''
 	s.weaponskill = ws
-	-- Keep backward compatibility field while moving runtime to canonical weaponskill.
-	if eng == 'melee' then
-		s.ws1 = ws
-	else
-		s.ws1 = nil
-	end
+	s.ws1 = ws
 	s.engine_mode = eng
 end
 
@@ -328,7 +382,7 @@ end
 
 uc_get_active_profile_coords = function()
 	local p = windower.ffxi.get_player()
-	local eng = (UC_ENGINE == 'dd2') and 'dd2' or 'melee'
+	local eng = 'UC'
 	local job = p and p.main_job or 'UNKNOWN'
 	if type(job) ~= 'string' then
 		local rj = res.jobs:with('id', job)
@@ -346,11 +400,8 @@ local function uc_get_profiles_root()
 	if type(s.profiles) ~= 'table' then
 		s.profiles = {}
 	end
-	if type(s.profiles.melee) ~= 'table' then
-		s.profiles.melee = {}
-	end
-	if type(s.profiles.dd2) ~= 'table' then
-		s.profiles.dd2 = {}
+	if type(s.profiles.UC) ~= 'table' then
+		s.profiles.UC = {}
 	end
 	return s.profiles
 end
@@ -367,53 +418,37 @@ end
 
 uc_normalize_profiles_tree = function(profiles)
 	if type(profiles) ~= 'table' then
-		return { melee = {}, dd2 = {} }
+		return { UC = {} }
 	end
-	if type(profiles.DD2) == 'table' then
-		profiles.dd2 = profiles.dd2 or {}
-		for job, pdata in pairs(profiles.DD2) do
-			local j = tostring(job):upper()
-			if type(profiles.dd2[j]) ~= 'table' then
-				profiles.dd2[j] = uc_clone_value(pdata)
-			end
-		end
-		profiles.DD2 = nil
-	end
-	profiles.melee = profiles.melee or {}
-	profiles.dd2 = profiles.dd2 or {}
-	local melee_jobs = { WAR = true, MNK = true, SAM = true, DRG = true, DRK = true }
-	for key, val in pairs(profiles) do
-		if key ~= 'melee' and key ~= 'dd2' and type(val) == 'table' then
-			local j = tostring(key):upper()
-			if melee_jobs[j] then
-				if type(profiles.melee[j]) ~= 'table' then
-					profiles.melee[j] = uc_clone_value(val)
-				elseif not uc_table_has_any(profiles.melee[j]) and uc_table_has_any(val) then
-					profiles.melee[j] = uc_clone_value(val)
-				end
-			else
-				if type(profiles.dd2[j]) ~= 'table' then
-					profiles.dd2[j] = uc_clone_value(val)
-				elseif not uc_table_has_any(profiles.dd2[j]) and uc_table_has_any(val) then
-					profiles.dd2[j] = uc_clone_value(val)
+	local uc_branch = profiles.UC
+	if type(uc_branch) ~= 'table' then
+		uc_branch = {}
+		local candidates = { profiles.melee, profiles.dd2, profiles.DD2 }
+		for _, branch in ipairs(candidates) do
+			if type(branch) == 'table' then
+				for job, pdata in pairs(branch) do
+					local j = tostring(job):upper()
+					if type(uc_branch[j]) ~= 'table' then
+						uc_branch[j] = uc_clone_value(pdata)
+					end
 				end
 			end
-			profiles[key] = nil
+		end
+		for key, val in pairs(profiles) do
+			if key ~= 'UC' and key ~= 'melee' and key ~= 'dd2' and key ~= 'DD2' and type(val) == 'table' then
+				local j = tostring(key):upper()
+				if type(uc_branch[j]) ~= 'table' then
+					uc_branch[j] = uc_clone_value(val)
+				end
+			end
 		end
 	end
-	local melee_norm = {}
-	for job, pdata in pairs(profiles.melee) do
+	local out = { UC = {} }
+	for job, pdata in pairs(uc_branch) do
 		local j = tostring(job):upper()
-		melee_norm[j] = uc_clone_value(pdata)
+		out.UC[j] = uc_clone_value(pdata)
 	end
-	local dd2_norm = {}
-	for job, pdata in pairs(profiles.dd2) do
-		local j = tostring(job):upper()
-		dd2_norm[j] = uc_clone_value(pdata)
-	end
-	profiles.melee = melee_norm
-	profiles.dd2 = dd2_norm
-	return profiles
+	return out
 end
 
 local function uc_load_profiles_for_character(char_name)
@@ -475,7 +510,6 @@ local function uc_save_active_profile()
 	uc_capture_active_profile()
 	local profiles = uc_normalize_profiles_tree(uc_get_profiles_root())
 	uc_write_profiles_file(p.name, profiles)
-	config.save(_G.UC_SETTINGS, p.name)
 end
 
 local function uc_reload_character_settings()
@@ -483,7 +517,6 @@ local function uc_reload_character_settings()
 	if not p or not p.name or not _G.UC_SETTINGS then
 		return nil
 	end
-	config.reload(_G.UC_SETTINGS)
 	return p
 end
 
@@ -521,10 +554,8 @@ local function uc_register_action_listener()
 	end
 	ap_listener_id = ActionPacket.open_listener(function(act_org, act_mod)
 		local act = act_org
-		if UC_ENGINE == 'melee' then
-			uc_melee_action_handler(act)
-		else
-			UC_DD2.action_handler(act)
+		if UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_action) == 'function' then
+			UC_COMBAT_CORE.on_action(act)
 		end
 	end)
 end
@@ -534,19 +565,21 @@ windower.register_event('load', function()
 	if windower.ffxi.get_info().logged_in then
 		uc_update_engine()
 		uc_reload_active_profile()
-		if UC_ENGINE == 'melee' then
-			uc_melee_load()
-		else
-			UC_DD2.load()
-		end
 	end
 end)
 
 windower.register_event('incoming chunk', function(id, data)
-	if UC_ENGINE == 'melee' then
-		uc_melee_incoming_chunk(id, data)
-	else
-		UC_DD2.incoming_chunk(id, data)
+	if id == 0x029 and type(data) == 'string' and UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_action_message) == 'function' then
+		local ok = pcall(function()
+			local msg = {
+				target_id = data:unpack('I', 0x09),
+				message_id = data:unpack('H', 0x19) % 32768,
+			}
+			UC_COMBAT_CORE.on_action_message(msg)
+		end)
+		if not ok then
+			-- ignore malformed packet parse; core tick remains authoritative fallback.
+		end
 	end
 end)
 
@@ -555,21 +588,11 @@ windower.register_event('outgoing chunk', function(id, data, modified, injected,
 	if uc_party_follow.outgoing_chunk(id, buf, blocked) then
 		return true
 	end
-	if UC_ENGINE == 'melee' then
-		uc_melee_outgoing_chunk(id, buf)
-	else
-		UC_DD2.outgoing_chunk(id, buf)
-	end
 end)
 
 windower.register_event('prerender', function()
 	uc_party_follow.broadcast_self_ipc()
 	uc_remote_tick()
-	if UC_ENGINE == 'melee' then
-		uc_melee_prerender()
-	else
-		UC_DD2.prerender()
-	end
 	uc_party_follow.prerender()
 end)
 
@@ -577,11 +600,6 @@ windower.register_event('job change', function(job, lvl)
 	local jname = res.jobs:with('id', job).english_short
 	uc_update_engine()
 	uc_reload_active_profile(jname)
-	if UC_ENGINE == 'melee' then
-		uc_melee_job_change(job, lvl)
-	else
-		UC_DD2.job_change(job, lvl)
-	end
 	uc_start_active_engine_if_running()
 	uc_register_action_listener()
 end)
@@ -589,22 +607,12 @@ end)
 windower.register_event('zone change', function()
 	_G.UC_ZONE_SUSPEND_UNTIL = os.clock() + UC_ZONE_SUSPEND_SEC
 	_G.UC_LAST_BLOCK_REASON = 'ZONE_SUSPEND'
-	if UC_ENGINE == 'melee' then
-		uc_melee_zone_change()
-	else
-		UC_DD2.zone_change()
-	end
 end)
 
 windower.register_event('unload', function()
 	uc_remote_unload()
 	if type(_G.UC_StopUnifiedEngine) == 'function' then
 		_G.UC_StopUnifiedEngine()
-	end
-	if UC_ENGINE == 'melee' then
-		uc_melee_unload()
-	else
-		UC_DD2.unload()
 	end
 	if ap_listener_id then
 		ActionPacket.close_listener(ap_listener_id)
@@ -618,17 +626,10 @@ windower.register_event('logout', function()
 	if type(_G.UC_StopUnifiedEngine) == 'function' then
 		_G.UC_StopUnifiedEngine()
 	end
-	if UC_ENGINE == 'melee' then
-		uc_melee_logout()
-	else
-		UC_DD2.logout()
-	end
 end)
 
 windower.register_event('status change', function(a, b)
-	if UC_ENGINE == 'melee' then
-		uc_melee_status_change(a, b)
-	end
+	-- unified core handles runtime behavior; no legacy status hooks.
 end)
 
 local function uc_fight_leader_party_id_by_name(name)
@@ -654,7 +655,33 @@ end
 windower.register_event('addon command', function(...)
 	local args = { ... }
 	local a = args[1] and tostring(args[1]):lower() or ''
-	if a == 'host' and args[2] then
+	if a == 'start' then
+		if not Start_Engine then
+			Start_Engine = true
+			uc_start_active_engine_if_running()
+			windower.add_to_chat(207, 'UnifiedCombat: engine started')
+		end
+		return
+	elseif a == 'stop' then
+		Start_Engine = false
+		if type(_G.UC_StopUnifiedEngine) == 'function' then
+			_G.UC_StopUnifiedEngine()
+		end
+		windower.add_to_chat(207, 'UnifiedCombat: engine stopped')
+		return
+	elseif a == 'save' then
+		if type(_G.UC_SaveActiveProfile) == 'function' then
+			_G.UC_SaveActiveProfile()
+		end
+		windower.add_to_chat(207, 'UnifiedCombat: profile saved')
+		return
+	elseif a == 'reload' then
+		if type(_G.UC_ReloadActiveProfile) == 'function' then
+			_G.UC_ReloadActiveProfile()
+		end
+		windower.add_to_chat(207, 'UnifiedCombat: profile reloaded')
+		return
+	elseif a == 'host' and args[2] then
 		_G.UC_REMOTE_HOST = tostring(args[2])
 		windower.add_to_chat(207, 'UnifiedCombat remote host: ' .. _G.UC_REMOTE_HOST)
 		return
@@ -751,21 +778,12 @@ windower.register_event('addon command', function(...)
 		windower.add_to_chat(207, '//uc add_priority add <mob name>|remove <n>|list|clear')
 		return
 	end
-	if UC_ENGINE == 'melee' then
-		uc_melee_addon_command(...)
-	else
-		UC_DD2.addon_command(...)
-	end
+	windower.add_to_chat(167, 'Unknown command.')
 end)
 
 windower.register_event('login', function()
 	uc_update_engine()
 	uc_reload_active_profile()
-	if UC_ENGINE == 'melee' then
-		uc_melee_load()
-	else
-		UC_DD2.load()
-	end
 	uc_start_active_engine_if_running()
 	uc_register_action_listener()
 end)

@@ -16,20 +16,7 @@ internal static class Program
         Application.ApplicationExit += (_, _) =>
         {
             SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
-            HubLauncher.StopIfWeStartedIt();
         };
-
-        var hubReady = HubLauncher.EnsureHubAsync(CancellationToken.None).GetAwaiter().GetResult();
-        if (!hubReady.ok)
-        {
-            MessageBox.Show(
-                hubReady.error ?? "The UnifiedCombat hub could not be started.",
-                "UnifiedCombat",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error
-            );
-            return;
-        }
 
         Application.Run(new MainForm());
     }

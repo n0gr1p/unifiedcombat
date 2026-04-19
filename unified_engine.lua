@@ -1,22 +1,26 @@
 local scheduler = require('unified_scheduler')
+local core = require('unified_combat_core')
 
 local engine = {
 	running = false,
 	tick_interval = 0.25,
 	processing = false,
 	tick_seq = 0,
+	job_guard_ok = nil,
 }
 
+local function assert_core_no_job_branch()
+	if core and type(core.assert_no_job_branch) == 'function' then
+		return core.assert_no_job_branch()
+	end
+	return true
+end
+
 local function do_active_combat_tick()
-	if _G.UC_ENGINE == 'melee' then
-		if type(_G.uc_melee_combat_tick_once) == 'function' then
-			_G.uc_melee_combat_tick_once()
-		end
-	elseif _G.UC_ENGINE == 'dd2' then
-		local dd2 = rawget(_G, 'UC_DD2')
-		if type(dd2) == 'table' and type(dd2.combat_tick) == 'function' then
-			dd2.combat_tick()
-		end
+	if type(_G.UC_CoreCombatTickOnce) == 'function' then
+		_G.UC_CoreCombatTickOnce()
+	else
+		_G.UC_LAST_BLOCK_REASON = 'CORE_TICK_MISSING'
 	end
 end
 
@@ -57,6 +61,12 @@ local function tick()
 end
 
 function engine.start()
+	engine.job_guard_ok = assert_core_no_job_branch()
+	if not engine.job_guard_ok then
+		_G.UC_LAST_BLOCK_REASON = 'CORE_JOB_BRANCH_GUARD'
+		windower.add_to_chat(123, 'UnifiedCombat: core guard failed (job branch detected in core tick path).')
+		return
+	end
 	if engine.running then
 		return
 	end

@@ -11,7 +11,4 @@
     <NoWarn>$(NoWarn);WFO5001</NoWarn>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
-  <ItemGroup>
-    <None Include="..\unified_combat_ui.py" Link="unified_combat_ui.py" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
 </Project>

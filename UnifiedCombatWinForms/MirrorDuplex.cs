@@ -1,78 +1,88 @@
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
 namespace UnifiedCombatWinForms;
 
 /// <summary>
-/// Localhost duplex line protocol: reads NDJSON from hub (mirror_snapshot, mirror_error);
-/// writes mirror_forward lines built by the UI.
+/// In-process hub for UnifiedCombat addon sessions.
+/// - Hosts a TCP server on 127.0.0.1:27182 for addon clients (NDJSON).
+/// - Emits mirror-style snapshot/error lines to keep MainForm parity logic unchanged.
+/// - Forwards UI commands directly to selected addon sessions.
 /// </summary>
 internal sealed class MirrorDuplex : IDisposable
 {
-    private const string DefaultHost = "127.0.0.1";
-    public static int MirrorPort => HubLauncher.HubUiPort;
+    private const int AddonPort = 27182;
+    private static readonly IPAddress Loopback = IPAddress.Loopback;
 
     private readonly CancellationTokenSource _linkedCts;
-    private readonly Channel<string> _outbound = Channel.CreateUnbounded<string>(
+    private readonly Channel<(string sid, string line)> _outbound = Channel.CreateUnbounded<(string sid, string line)>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false }
     );
-    private Task? _ioTask;
-    private TcpClient? _client;
+    private readonly object _sessionsGate = new();
+    private readonly Dictionary<string, SessionConn> _sessions = new(StringComparer.Ordinal);
+    private TcpListener? _listener;
+    private Task? _acceptTask;
+    private Task? _writeTask;
+    private long _sidSuffix = 0;
 
     public event Action<string>? SnapshotOrErrorLineReceived;
+
+    private sealed class SessionConn
+    {
+        public required string Sid { get; init; }
+        public required TcpClient Client { get; init; }
+        public required StreamWriter Writer { get; init; }
+        public JsonObject State { get; } = new();
+    }
 
     public MirrorDuplex(CancellationToken appCt)
     {
         _linkedCts = CancellationTokenSource.CreateLinkedTokenSource(appCt);
     }
 
-    public void Start() => _ioTask = Task.Run(IoLoopAsync);
+    public void Start()
+    {
+        _acceptTask = Task.Run(AcceptLoopAsync);
+        _writeTask = Task.Run(WritePumpAsync);
+    }
 
     public void EnqueueForward(string sid, IReadOnlyDictionary<string, object?> msg)
     {
-        var env = new Dictionary<string, object?> { ["op"] = "mirror_forward", ["sid"] = sid, ["msg"] = msg };
-        var line = JsonSerializer.Serialize(env) + "\n";
-        _outbound.Writer.TryWrite(line);
+        if (string.IsNullOrWhiteSpace(sid))
+        {
+            return;
+        }
+
+        var line = JsonSerializer.Serialize(msg) + "\n";
+        _outbound.Writer.TryWrite((sid, line));
     }
 
-    private async Task IoLoopAsync()
+    private async Task AcceptLoopAsync()
     {
         var ct = _linkedCts.Token;
+        try
+        {
+            _listener = new TcpListener(Loopback, AddonPort);
+            _listener.Start();
+        }
+        catch (Exception ex)
+        {
+            EmitMirrorError("listen_failed:" + ex.GetType().Name);
+            return;
+        }
+
+        EmitSnapshot();
+
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                _client?.Close();
-                _client = new TcpClient();
-                await _client.ConnectAsync(DefaultHost, MirrorPort, ct).ConfigureAwait(false);
-                await using var stream = _client.GetStream();
-                using var reader = new StreamReader(
-                    stream,
-                    Encoding.UTF8,
-                    detectEncodingFromByteOrderMarks: false,
-                    bufferSize: 65536,
-                    leaveOpen: true
-                );
-                using var connCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                var writerTask = WritePumpAsync(stream, connCts.Token);
-                try
-                {
-                    await ReadPumpAsync(reader, connCts.Token).ConfigureAwait(false);
-                }
-                finally
-                {
-                    connCts.Cancel();
-                    try
-                    {
-                        await writerTask.ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                        // ignore cancel / disconnect
-                    }
-                }
+                var client = await _listener.AcceptTcpClientAsync(ct).ConfigureAwait(false);
+                _ = Task.Run(() => HandleClientAsync(client, ct), ct);
             }
             catch (OperationCanceledException)
             {
@@ -80,54 +90,248 @@ internal sealed class MirrorDuplex : IDisposable
             }
             catch
             {
-                SnapshotOrErrorLineReceived?.Invoke(
-                    """{"op":"mirror_error","reason":"disconnected_or_unreachable"}"""
-                );
+                EmitMirrorError("accept_failed");
+            }
+        }
+    }
+
+    private async Task HandleClientAsync(TcpClient client, CancellationToken ct)
+    {
+        string? sid = null;
+        try
+        {
+            using (client)
+            await using (var stream = client.GetStream())
+            using (var reader = new StreamReader(
+                       stream,
+                       Encoding.UTF8,
+                       detectEncodingFromByteOrderMarks: false,
+                       bufferSize: 65536,
+                       leaveOpen: true
+                   ))
+            using (var writer = new StreamWriter(stream, new UTF8Encoding(false), 65536, leaveOpen: true)
+                   {
+                       AutoFlush = true,
+                       NewLine = "\n",
+                   })
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    var line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
+                    if (line is null)
+                    {
+                        break;
+                    }
+
+                    if (line.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    JsonObject? msg;
+                    try
+                    {
+                        msg = JsonNode.Parse(line) as JsonObject;
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (msg is null)
+                    {
+                        continue;
+                    }
+
+                    var op = msg["op"]?.GetValue<string>();
+                    if (op == "hello")
+                    {
+                        sid = RegisterHelloSession(client, writer, msg);
+                        EmitSnapshot();
+                        await SendRequestStateAsync(writer, ct).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    if (op == "state" && !string.IsNullOrWhiteSpace(sid))
+                    {
+                        UpdateSessionState(sid!, msg);
+                        EmitSnapshot();
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // expected on shutdown
+        }
+        catch
+        {
+            EmitMirrorError("client_error");
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(sid))
+            {
+                RemoveSession(sid!);
+                EmitSnapshot();
+            }
+        }
+    }
+
+    private string RegisterHelloSession(TcpClient client, StreamWriter writer, JsonObject hello)
+    {
+        var proposed = hello["session"]?.GetValue<string>();
+        if (string.IsNullOrWhiteSpace(proposed))
+        {
+            proposed = "session_" + Interlocked.Increment(ref _sidSuffix);
+        }
+
+        var sid = proposed!;
+        lock (_sessionsGate)
+        {
+            if (_sessions.ContainsKey(sid))
+            {
+                sid = proposed + "::" + Interlocked.Increment(ref _sidSuffix);
             }
 
-            if (ct.IsCancellationRequested)
+            var rec = new SessionConn
             {
-                break;
+                Sid = sid,
+                Client = client,
+                Writer = writer,
+            };
+            rec.State["session"] = sid;
+            rec.State["char"] = hello["char"]?.DeepClone();
+            rec.State["job"] = hello["job"]?.DeepClone();
+            rec.State["engine"] = hello["engine"]?.DeepClone();
+            _sessions[sid] = rec;
+        }
+
+        return sid;
+    }
+
+    private void UpdateSessionState(string sid, JsonObject incoming)
+    {
+        lock (_sessionsGate)
+        {
+            if (!_sessions.TryGetValue(sid, out var rec))
+            {
+                return;
+            }
+
+            foreach (var kv in incoming)
+            {
+                rec.State[kv.Key] = kv.Value?.DeepClone();
+            }
+            rec.State["session"] = sid;
+        }
+    }
+
+    private void RemoveSession(string sid)
+    {
+        lock (_sessionsGate)
+        {
+            _sessions.Remove(sid);
+        }
+    }
+
+    private async Task SendRequestStateAsync(StreamWriter writer, CancellationToken ct)
+    {
+        try
+        {
+            await writer.WriteLineAsync("""{"op":"request_state"}""").ConfigureAwait(false);
+            await writer.FlushAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // ignore
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private async Task WritePumpAsync()
+    {
+        var ct = _linkedCts.Token;
+        await foreach (var (sid, line) in _outbound.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+        {
+            StreamWriter? writer = null;
+            lock (_sessionsGate)
+            {
+                if (_sessions.TryGetValue(sid, out var rec))
+                {
+                    writer = rec.Writer;
+                }
+            }
+
+            if (writer is null)
+            {
+                EmitMirrorError("unknown_sid:" + sid);
+                continue;
             }
 
             try
             {
-                await Task.Delay(2000, ct).ConfigureAwait(false);
+                await writer.WriteAsync(line.AsMemory(), ct).ConfigureAwait(false);
+                await writer.FlushAsync().ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch
             {
-                break;
+                EmitMirrorError("send_failed:" + sid);
             }
         }
     }
 
-    private async Task ReadPumpAsync(StreamReader reader, CancellationToken ct)
+    private void EmitSnapshot()
     {
-        while (!ct.IsCancellationRequested)
+        var sessions = new JsonObject();
+        lock (_sessionsGate)
         {
-            var line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
-            if (line is null)
+            foreach (var kv in _sessions)
             {
-                break;
+                sessions[kv.Key] = kv.Value.State.DeepClone();
             }
-
-            if (line.Length == 0)
-            {
-                continue;
-            }
-
-            SnapshotOrErrorLineReceived?.Invoke(line);
         }
+
+        var payload = new JsonObject
+        {
+            ["op"] = "mirror_snapshot",
+            ["sessions"] = sessions,
+        };
+        SnapshotOrErrorLineReceived?.Invoke(payload.ToJsonString());
     }
 
-    private async Task WritePumpAsync(NetworkStream stream, CancellationToken ct)
+    private void EmitMirrorError(string reason)
     {
-        var enc = Encoding.UTF8;
-        await foreach (var line in _outbound.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+        var payload = new JsonObject
         {
-            var bytes = enc.GetBytes(line);
-            await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
-            await stream.FlushAsync(ct).ConfigureAwait(false);
+            ["op"] = "mirror_error",
+            ["reason"] = reason,
+        };
+        SnapshotOrErrorLineReceived?.Invoke(payload.ToJsonString());
+    }
+
+    private void CloseAllSessions()
+    {
+        List<SessionConn> toClose;
+        lock (_sessionsGate)
+        {
+            toClose = _sessions.Values.ToList();
+            _sessions.Clear();
+        }
+
+        foreach (var s in toClose)
+        {
+            try
+            {
+                s.Client.Close();
+            }
+            catch
+            {
+                // ignore
+            }
         }
     }
 
@@ -137,12 +341,13 @@ internal sealed class MirrorDuplex : IDisposable
         _linkedCts.Cancel();
         try
         {
-            _client?.Close();
+            _listener?.Stop();
         }
         catch
         {
             // ignore
         }
+        CloseAllSessions();
 
         _linkedCts.Dispose();
     }

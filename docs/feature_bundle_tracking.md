@@ -23,7 +23,7 @@ Purpose:
 
 | Bundle | Name | Status | Code Commit/Copy Ref | Implemented By | Tested By | Last Update | Notes |
 |---|---|---|---|---|---|---|---|
-| B1 | Unified Core Engine Skeleton + Entry Wiring | NOT STARTED |  |  |  |  |  |
+| B1 | Unified Core Engine Skeleton + Entry Wiring | CODE COMPLETE | local changes (uncommitted) | Codex |  | 2026-04-18 | Awaiting in-game B1 validation |
 | B2 | Packet-native Target/Attack Primitives | NOT STARTED |  |  |  |  |  |
 | B3 | Target Selection + Sticky + Death-switch | NOT STARTED |  |  |  |  |  |
 | B4 | Movement/Facing Parity | NOT STARTED |  |  |  |  |  |
@@ -41,9 +41,9 @@ Purpose:
 ### B1 Checklist
 
 Code:
-- [ ] `unified_combat_core.lua` added and loading
-- [ ] `unified_engine.lua` calls `_G.UC_CoreCombatTickOnce`
-- [ ] start/stop wrappers call UC core path
+- [x] `unified_combat_core.lua` added and loading
+- [x] `unified_engine.lua` calls `_G.UC_CoreCombatTickOnce`
+- [x] start/stop wrappers call UC core path
 
 Tests:
 - [ ] addon loads with no errors
@@ -51,8 +51,8 @@ Tests:
 - [ ] `//uc stop` cleanly halts tick
 
 Result:
-- Status: NOT STARTED
-- Notes:
+- Status: CODE COMPLETE
+- Notes: Replaced wrapper with real `unified_combat_core.lua` UC tick path and required UC helper modules; removed dd2/melee runtime dispatch from UnifiedCombat event/combat flow.
 
 ### B2 Checklist
 
