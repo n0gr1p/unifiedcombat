@@ -27,7 +27,7 @@ Purpose:
 | B2 | Packet-native Target/Attack Primitives | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Validated across normal aggro, pulled mobs, add-control/fight-leader on/off |
 | B3 | Target Selection + Sticky + Death-switch | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Validated in live combat during recent targeting/engage pass |
 | B4 | Movement/Facing Parity | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Pass with minor residual ping-pong noted for later refinement |
-| B5 | Smart WS + JA Pipeline + WS Gate | TESTING | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Skillchain WS + JA order validated; `ws_diag` visibility fix in progress |
+| B5 | Smart WS + JA Pipeline + WS Gate | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Core WS/JA behavior validated; `ws_diag` UI visibility accepted as non-blocking limitation |
 | B6 | Incoming Action/Event Integration | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | 0x029 forwarding + action handlers wired; live-combat verification pending |
 | B7 | UI/Bridge State Contract Expansion | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Sessions, engine toggle, state refresh, UI reload reconnection validated |
 | B8 | WinForms Parity Controls + Session Labeling | TESTING | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Core controls + dropdown population validated; full parity checklist still open |
@@ -111,12 +111,12 @@ Code:
 
 Tests:
 - [x] skillchain-aware WS selection visible
-- [ ] `ws_diag` reflects gate reason
+- [ ] `ws_diag` reflects gate reason (accepted limitation; non-blocking)
 - [x] ability list executes in configured order
 
 Result:
-- Status: TESTING
-- Notes: User validated skillchain-aware WS behavior and ability execution order. Remaining validation item: `ws_diag` gate reason visibility.
+- Status: PASS
+- Notes: User validated skillchain-aware WS behavior and ability execution order. `ws_diag` visibility remains inconsistent in UI and is accepted as a non-blocking limitation for now.
 
 ### B6 Checklist
 
@@ -210,7 +210,7 @@ Result:
 | 2026-04-19 | B3 | Sticky target + death-switch validation | Same live targeting scenarios from B2 pass set | Medium | 46f4f96 | PASS |
 | 2026-04-19 | B4/B7 (monitor) | Single-client lockup observed on MNK party leader when target acquired with fight-leader configured to WHM (`Niightsiide`) and 3 engines running / 2 off | 5-account run; FL enabled; party leader MNK manually targeted mob; one client locked once | High | N/A (tracking note) | NON-REPRO after relog/reload; monitor for recurrence |
 | 2026-04-19 | B4 | Movement/facing validation | Close-to-target + spacing + puller-distance checks | Medium | 46f4f96 | PASS (minor tolerable ping-pong remains) |
-| 2026-04-19 | B5 | `ws_diag` missing in UI/debug despite WS gate operation | Live B5 validation pass (`skillchain` and ability order pass, diag missing) | Medium | pending | FIX IN PROGRESS |
+| 2026-04-19 | B5 | `ws_diag` missing in UI/debug despite WS gate operation | Live B5 validation pass (`skillchain` and ability order pass, diag missing) | Medium | N/A | ACCEPTED LIMITATION (non-blocking) |
 
 ## Session QA Matrix (Multi-character)
 
