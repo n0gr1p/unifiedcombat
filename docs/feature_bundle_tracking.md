@@ -25,7 +25,7 @@ Purpose:
 |---|---|---|---|---|---|---|---|
 | B1 | Unified Core Engine Skeleton + Entry Wiring | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | UC-only runtime path active; no dd2/melee dispatch in active flow |
 | B2 | Packet-native Target/Attack Primitives | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Validated across normal aggro, pulled mobs, add-control/fight-leader on/off |
-| B3 | Target Selection + Sticky + Death-switch | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | Sticky/death-switch logic present in unified core; dedicated regression pass pending |
+| B3 | Target Selection + Sticky + Death-switch | PASS | 46f4f96 | Codex | n0gr1p | 2026-04-19 | Validated in live combat during recent targeting/engage pass |
 | B4 | Movement/Facing Parity | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | Unified movement/facing logic present; in-combat tuning pass pending |
 | B5 | Smart WS + JA Pipeline + WS Gate | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | Integrated in UC core; combat-chain validation pending |
 | B6 | Incoming Action/Event Integration | CODE COMPLETE | 46f4f96 | Codex |  | 2026-04-19 | 0x029 forwarding + action handlers wired; live-combat verification pending |
@@ -78,13 +78,13 @@ Code:
 - [ ] death-event switch logic integrated
 
 Tests:
-- [ ] no mid-fight closest-mob snap when add-control OFF
-- [ ] add-control ON can retarget
-- [ ] dead-target transition is prompt
+- [x] no mid-fight closest-mob snap when add-control OFF
+- [x] add-control ON can retarget
+- [x] dead-target transition is prompt
 
 Result:
-- Status: CODE COMPLETE
-- Notes: Sticky target and death-triggered switch logic implemented in unified core; requires focused in-combat regression QA.
+- Status: PASS
+- Notes: Passed in recent live-combat validation run together with targeting/engage mechanics.
 
 ### B4 Checklist
 
@@ -207,6 +207,7 @@ Result:
 | 2026-04-19 | B7 | WinForms non-reactive / sessions delayed or absent | UI reload + toggle + session discovery tests | High | 46f4f96 | PASS |
 | 2026-04-19 | B7 | Settings type-mismatch warning spam on addon load | Reload addon with legacy settings.xml present | Medium | 46f4f96 | PASS |
 | 2026-04-19 | B2 | Packet target/engage validation | Normal aggro + pulled mobs + add-control/fight-leader on/off | Medium | 46f4f96 | PASS |
+| 2026-04-19 | B3 | Sticky target + death-switch validation | Same live targeting scenarios from B2 pass set | Medium | 46f4f96 | PASS |
 
 ## Session QA Matrix (Multi-character)
 
