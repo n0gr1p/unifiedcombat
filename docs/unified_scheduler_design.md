@@ -3,6 +3,7 @@
 Status: Draft  
 Branch: `feature/unified-scheduler-design`  
 Goal: Replace siloed action execution with one scheduler that arbitrates combat, support, and movement.
+Primary spec: [unified_scheduler_rfc.md](C:\Program Files (x86)\Windower\addons\UnifiedCombat\docs\unified_scheduler_rfc.md)
 
 ## 1. Problem Statement
 
