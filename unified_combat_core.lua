@@ -341,12 +341,10 @@ local function spacing_collect_agents(me)
 	return out, by_id
 end
 
-local function spacing_predict_target(target, st)
+local function spacing_predict_target(target, st, use_prediction, lookahead_s)
 	local now = os.clock()
 	local tx = tonumber(target and target.x) or 0
 	local ty = tonumber(target and target.y) or 0
-	local use_prediction = true
-	local lookahead_s = 0.25
 	local px, py = tx, ty
 	if use_prediction and st.target_prev_x ~= nil and st.target_prev_y ~= nil and st.target_prev_t ~= nil then
 		local dt = now - st.target_prev_t
@@ -553,13 +551,59 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 	local st = core.spacing or {}
 	st.tick = (tonumber(st.tick) or 0) + 1
 	core.spacing = st
+	local use_prediction = setting_enabled(settings.spacing_use_prediction)
+	local lookahead_s = tonumber(settings.spacing_lookahead_s) or 0.25
+	if lookahead_s < 0 then
+		lookahead_s = 0
+	elseif lookahead_s > 1.5 then
+		lookahead_s = 1.5
+	end
+	local anchor_invalid_ticks_required = math.floor((tonumber(settings.spacing_anchor_invalid_ticks) or 5) + 0.5)
+	if anchor_invalid_ticks_required < 1 then
+		anchor_invalid_ticks_required = 1
+	elseif anchor_invalid_ticks_required > 50 then
+		anchor_invalid_ticks_required = 50
+	end
+	local slot_switch_penalty = tonumber(settings.spacing_slot_switch_penalty) or 0.75
+	if slot_switch_penalty < 0 then
+		slot_switch_penalty = 0
+	elseif slot_switch_penalty > 10 then
+		slot_switch_penalty = 10
+	end
+	local slot_switch_margin = tonumber(settings.spacing_slot_switch_margin) or 0.35
+	if slot_switch_margin < 0 then
+		slot_switch_margin = 0
+	elseif slot_switch_margin > 10 then
+		slot_switch_margin = 10
+	end
+	local slot_arrival_tolerance = tonumber(settings.spacing_slot_arrival_tolerance) or 0.20
+	if slot_arrival_tolerance < 0 then
+		slot_arrival_tolerance = 0
+	elseif slot_arrival_tolerance > 5 then
+		slot_arrival_tolerance = 5
+	end
+	local max_agents = math.floor((tonumber(settings.spacing_max_agents) or 6) + 0.5)
+	if max_agents < 1 then
+		max_agents = 1
+	elseif max_agents > 6 then
+		max_agents = 6
+	end
+	local emergency_margin_setting = tonumber(settings.spacing_emergency_margin)
 	local agents, by_id = spacing_collect_agents(me)
 	local local_id = tonumber(me and me.id) or 0
 	if local_id <= 0 or #agents == 0 then
 		return nil, 'HOLD_POSITION'
 	end
-	local tx, ty = spacing_predict_target(target, st)
+	local tx, ty = spacing_predict_target(target, st, use_prediction, lookahead_s)
 	local min_range, max_range, preferred_radius, emergency_margin = spacing_compute_band(target, agents, min_real, max_real)
+	if emergency_margin_setting ~= nil then
+		emergency_margin = emergency_margin_setting
+		if emergency_margin < 0 then
+			emergency_margin = 0
+		elseif emergency_margin > 5 then
+			emergency_margin = 5
+		end
+	end
 	local anchor_id = tonumber(st.anchor_agent_id) or 0
 	local anchor = by_id[anchor_id]
 	if anchor then
@@ -571,7 +615,7 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 			st.anchor_invalid_tick_count = (tonumber(st.anchor_invalid_tick_count) or 0) + 1
 		end
 		local emergency = (d < (min_range - emergency_margin)) or (d > (max_range + emergency_margin))
-		if emergency or (tonumber(st.anchor_invalid_tick_count) or 0) >= 5 then
+		if emergency or (tonumber(st.anchor_invalid_tick_count) or 0) >= anchor_invalid_ticks_required then
 			anchor = nil
 			anchor_id = 0
 			st.anchor_invalid_tick_count = 0
@@ -595,23 +639,22 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 	end
 	local anchor_angle = math.atan2(anchor.y - ty, anchor.x - tx)
 	st.anchor_angle = anchor_angle
-	local slot_count = math.min(6, math.max(1, #agents))
+	local slot_count = math.min(max_agents, math.max(1, #agents))
 	local slots = spacing_generate_slots(tx, ty, anchor_angle, preferred_radius, slot_count)
 	local assignments_prev = st.assignments or {}
 	spacing_sort_agents_for_assignment(agents, assignments_prev, tx, ty, slot_count)
-	local switch_penalty = 0.75
-	local assigned = spacing_assign_slots_greedy(agents, slots, slot_count, assignments_prev, switch_penalty)
+	local assigned = spacing_assign_slots_greedy(agents, slots, slot_count, assignments_prev, slot_switch_penalty)
 	local proposed_slot = assigned[local_id]
 	if proposed_slot == nil then
 		return nil, 'HOLD_POSITION'
 	end
-	local final_slot = spacing_apply_local_stickiness(local_id, proposed_slot, by_id, slots, assignments_prev, 0.35, switch_penalty)
+	local final_slot = spacing_apply_local_stickiness(local_id, proposed_slot, by_id, slots, assignments_prev, slot_switch_margin, slot_switch_penalty)
 	st.assignments = assigned
 	if final_slot ~= (tonumber(st.assigned_slot_index) or -1) then
 		st.assigned_slot_index = final_slot
 		st.last_slot_change_tick = st.tick
 	end
-	local gx, gy, mode = spacing_compute_goal(me, tx, ty, slots, final_slot, min_range, max_range, preferred_radius, 0.20)
+	local gx, gy, mode = spacing_compute_goal(me, tx, ty, slots, final_slot, min_range, max_range, preferred_radius, slot_arrival_tolerance)
 	_G.UC_SPACING_DIAG = ('mode=%s aid=%d slot=%d anchor=%d dist_t=%.2f range=[%.2f,%.2f] pref=%.2f goal=%s,%s'):format(
 		tostring(mode or ''),
 		local_id,
@@ -899,8 +942,21 @@ local function apply_movement(settings, target)
 	end
 	local dist = target_real_distance(target)
 	-- Comfortable fight-distance band around target.
-	local max_range = 0.4
-	local min_range = -0.9
+	local max_range = tonumber(settings.spacing_band_max) or 0.4
+	local min_range = tonumber(settings.spacing_band_min) or -0.9
+	if min_range < -5 then
+		min_range = -5
+	elseif min_range > 2 then
+		min_range = 2
+	end
+	if max_range < -1 then
+		max_range = -1
+	elseif max_range > 5 then
+		max_range = 5
+	end
+	if max_range <= min_range then
+		max_range = min_range + 0.1
+	end
 	local mover = get_mover()
 	local me = windower.ffxi.get_mob_by_target('me')
 	local p = windower.ffxi.get_player()

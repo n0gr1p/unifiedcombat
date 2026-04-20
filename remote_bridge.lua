@@ -319,6 +319,134 @@ local function apply_set(path, value)
 		last_state_send = 0
 		return
 	end
+	if key == 'spacing_band_min' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < -5 then
+			n = -5
+		elseif n > 2 then
+			n = 2
+		end
+		s.spacing_band_min = n
+		last_state_send = 0
+		return
+	end
+	if key == 'spacing_band_max' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < -1 then
+			n = -1
+		elseif n > 5 then
+			n = 5
+		end
+		s.spacing_band_max = n
+		last_state_send = 0
+		return
+	end
+	if key == 'spacing_lookahead_s' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0 then
+			n = 0
+		elseif n > 1.5 then
+			n = 1.5
+		end
+		s.spacing_lookahead_s = n
+		last_state_send = 0
+		return
+	end
+	if key == 'spacing_anchor_invalid_ticks' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		n = math.floor(n + 0.5)
+		if n < 1 then
+			n = 1
+		elseif n > 50 then
+			n = 50
+		end
+		s.spacing_anchor_invalid_ticks = n
+		last_state_send = 0
+		return
+	end
+	if key == 'spacing_emergency_margin' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0 then
+			n = 0
+		elseif n > 5 then
+			n = 5
+		end
+		s.spacing_emergency_margin = n
+		last_state_send = 0
+		return
+	end
+	if key == 'spacing_slot_switch_penalty' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0 then
+			n = 0
+		elseif n > 10 then
+			n = 10
+		end
+		s.spacing_slot_switch_penalty = n
+		last_state_send = 0
+		return
+	end
+	if key == 'spacing_slot_switch_margin' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0 then
+			n = 0
+		elseif n > 10 then
+			n = 10
+		end
+		s.spacing_slot_switch_margin = n
+		last_state_send = 0
+		return
+	end
+	if key == 'spacing_slot_arrival_tolerance' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0 then
+			n = 0
+		elseif n > 5 then
+			n = 5
+		end
+		s.spacing_slot_arrival_tolerance = n
+		last_state_send = 0
+		return
+	end
+	if key == 'spacing_max_agents' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		n = math.floor(n + 0.5)
+		if n < 1 then
+			n = 1
+		elseif n > 6 then
+			n = 6
+		end
+		s.spacing_max_agents = n
+		last_state_send = 0
+		return
+	end
 	t[key] = value
 end
 
@@ -911,6 +1039,16 @@ function uc_remote_tick()
 		prime = s.prime,
 		static = s.static,
 		spacing = s.spacing,
+		spacing_band_min = tonumber(s.spacing_band_min) or -0.9,
+		spacing_band_max = tonumber(s.spacing_band_max) or 0.4,
+		spacing_use_prediction = (s.spacing_use_prediction ~= false),
+		spacing_lookahead_s = tonumber(s.spacing_lookahead_s) or 0.25,
+		spacing_anchor_invalid_ticks = tonumber(s.spacing_anchor_invalid_ticks) or 5,
+		spacing_emergency_margin = tonumber(s.spacing_emergency_margin) or 0.10,
+		spacing_slot_switch_penalty = tonumber(s.spacing_slot_switch_penalty) or 0.75,
+		spacing_slot_switch_margin = tonumber(s.spacing_slot_switch_margin) or 0.35,
+		spacing_slot_arrival_tolerance = tonumber(s.spacing_slot_arrival_tolerance) or 0.20,
+		spacing_max_agents = tonumber(s.spacing_max_agents) or 6,
 		face = s.face,
 		partner = s.partner,
 		partner2 = s.partner2,

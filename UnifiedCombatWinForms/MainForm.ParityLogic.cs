@@ -241,6 +241,16 @@ public partial class MainForm
             _pfFollowMaxYalms.Text = "50";
             _pfFightFollowMinYalms.Text = "3";
             _pfFightFollowHoldS.Text = "8";
+            _spUsePrediction.Checked = true;
+            _spBandMin.Text = "-0.9";
+            _spBandMax.Text = "0.4";
+            _spLookahead.Text = "0.25";
+            _spAnchorInvalidTicks.Text = "5";
+            _spEmergencyMargin.Text = "0.1";
+            _spSwitchPenalty.Text = "0.75";
+            _spSwitchMargin.Text = "0.35";
+            _spArrivalTolerance.Text = "0.2";
+            _spMaxAgents.Text = "6";
             _lblAddPriOp.Text = "";
             _lblPartnerOp.Text = "";
             _lblIgnoreInfo.Text = "";
@@ -405,6 +415,16 @@ public partial class MainForm
             _pfFightFollowMinYalms.Enabled = pfOn;
             _pfFightFollowHoldS.Enabled = pfOn;
             ApplyPartyFollowDistancesFromSnapshot(sid, s);
+            _spUsePrediction.Checked = SessionStateHelper.GetBool(s, "spacing_use_prediction", true);
+            _spBandMin.Text = SessionStateHelper.GetString(s, "spacing_band_min", "-0.9");
+            _spBandMax.Text = SessionStateHelper.GetString(s, "spacing_band_max", "0.4");
+            _spLookahead.Text = SessionStateHelper.GetString(s, "spacing_lookahead_s", "0.25");
+            _spAnchorInvalidTicks.Text = SessionStateHelper.GetString(s, "spacing_anchor_invalid_ticks", "5");
+            _spEmergencyMargin.Text = SessionStateHelper.GetString(s, "spacing_emergency_margin", "0.1");
+            _spSwitchPenalty.Text = SessionStateHelper.GetString(s, "spacing_slot_switch_penalty", "0.75");
+            _spSwitchMargin.Text = SessionStateHelper.GetString(s, "spacing_slot_switch_margin", "0.35");
+            _spArrivalTolerance.Text = SessionStateHelper.GetString(s, "spacing_slot_arrival_tolerance", "0.2");
+            _spMaxAgents.Text = SessionStateHelper.GetString(s, "spacing_max_agents", "6");
 
             var prov = SessionStateHelper.GetString(s, "defensive_provider", "internal");
             if (prov != "internal" && prov != "healbot")
@@ -893,6 +913,72 @@ public partial class MainForm
         }
 
         PushPartyFollowDistances(sid);
+    }
+
+    private void OnSpacingTuningBoolChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_use_prediction", ["value"] = _spUsePrediction.Checked ? "on" : "off" });
+    }
+
+    private void OnSpacingTuningNumericChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        string N(TextBox tb, double defV)
+        {
+            var raw = (tb.Text ?? "").Trim();
+            if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+            {
+                v = defV;
+            }
+
+            var s = v.ToString("0.###", CultureInfo.InvariantCulture);
+            tb.Text = s;
+            return s;
+        }
+
+        string I(TextBox tb, int defV)
+        {
+            var raw = (tb.Text ?? "").Trim();
+            if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v))
+            {
+                v = defV;
+            }
+
+            var s = v.ToString(CultureInfo.InvariantCulture);
+            tb.Text = s;
+            return s;
+        }
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_band_min", ["value"] = N(_spBandMin, -0.9) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_band_max", ["value"] = N(_spBandMax, 0.4) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_lookahead_s", ["value"] = N(_spLookahead, 0.25) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_anchor_invalid_ticks", ["value"] = I(_spAnchorInvalidTicks, 5) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_emergency_margin", ["value"] = N(_spEmergencyMargin, 0.1) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_slot_switch_penalty", ["value"] = N(_spSwitchPenalty, 0.75) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_slot_switch_margin", ["value"] = N(_spSwitchMargin, 0.35) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_slot_arrival_tolerance", ["value"] = N(_spArrivalTolerance, 0.2) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_max_agents", ["value"] = I(_spMaxAgents, 6) });
     }
 
     private void PushPartyFollowDistances(string sid)
