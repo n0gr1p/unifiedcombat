@@ -120,13 +120,59 @@ local function get_current_target()
 	return windower.ffxi.get_mob_by_target('t')
 end
 
+local function path_sep()
+	return package.config:sub(1, 1) == '\\' and '\\' or '/'
+end
+
+local function safe_char_name(name)
+	local n = tostring(name or 'unknown'):lower():gsub('[^%w%-_]+', '_')
+	if n == '' then
+		n = 'unknown'
+	end
+	return n
+end
+
+local function ensure_log_dir()
+	local ap = windower and windower.addon_path or nil
+	if type(ap) ~= 'string' or ap == '' then
+		return nil
+	end
+	local s = path_sep()
+	local data_dir = ap .. 'data' .. s
+	local log_dir = ap .. 'data' .. s .. 'logs' .. s
+	if type(windower) == 'table' and windower.dir_exists and windower.create_dir then
+		if not windower.dir_exists(data_dir) then
+			windower.create_dir(data_dir)
+		end
+		if not windower.dir_exists(log_dir) then
+			windower.create_dir(log_dir)
+		end
+	end
+	return log_dir
+end
+
 local function debug_ja_dispatch(msg)
 	local s = get_settings()
 	if not setting_enabled(s and s.debug) then
 		return
 	end
-	_G.UC_JA_LAST_DIAG = tostring(msg or '')
-	windower.add_to_chat(11, '[UC ja] ' .. tostring(msg or ''))
+	local line = tostring(msg or '')
+	_G.UC_JA_LAST_DIAG = line
+	pcall(function()
+		local p = windower.ffxi.get_player()
+		local char = (p and p.name) or 'unknown'
+		local dir = ensure_log_dir()
+		if not dir then
+			return
+		end
+		local path = dir .. safe_char_name(char) .. '_ja_debug.log'
+		local f = io.open(path, 'a')
+		if not f then
+			return
+		end
+		f:write(os.date('%Y-%m-%d %H:%M:%S'), '\t', line:gsub('\r?\n', ' '), '\n')
+		f:close()
+	end)
 end
 
 local function is_party_member_id(id)
