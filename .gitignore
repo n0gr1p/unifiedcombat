@@ -15,3 +15,4 @@ __pycache__/
 data/settings.xml
 data/profiles/*.lua
 data/profiles_uc_v3/*.lua
+data/logs/*.log
