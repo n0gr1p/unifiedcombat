@@ -31,6 +31,11 @@ local core = {
 	party_ws_hold_until = 0,
 	party_ws_hold_category = '',
 	party_ws_hold_name = '',
+	ja_lock_until = 0,
+	ja_pending_name = '',
+	ja_pending_recast_id = 0,
+	ja_pending_sent_at = 0,
+	ja_last_sent_at = {},
 }
 
 local skillchain_ids = {
@@ -769,6 +774,20 @@ function core.on_action(act)
 	local param, resource, action_id, _, conclusion = action:get_spell()
 	local ability = skills[resource] and skills[resource][action_id]
 	local my_id = (windower.ffxi.get_player() or {}).id
+	if my_id and actor == my_id and (category == 'job_ability' or category == 'job_ability_unblinkable') then
+		local now = os.clock()
+		core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
+		local ack_name = tostring((ability and (ability.en or ability.name)) or '')
+		if ack_name ~= '' and tostring(core.ja_pending_name or '') == ack_name then
+			core.ja_pending_name = ''
+			core.ja_pending_recast_id = 0
+			core.ja_pending_sent_at = 0
+		end
+		if ack_name ~= '' then
+			core.ja_last_sent_at[ack_name] = now
+			debug_ja_dispatch(('ack name="%s" category=%s'):format(ack_name, tostring(category)))
+		end
+	end
 	local current = get_current_target()
 	local is_ws_action = (resource == 'weapon_skills') and ability ~= nil
 	if is_ws_action and actor ~= my_id and is_party_member_id(actor) and target and target.id and target.id ~= 0 then
@@ -845,7 +864,34 @@ local function can_cast_ja(name)
 	if not ja then
 		return false
 	end
+	local now = os.clock()
+	if now < (tonumber(core.ja_lock_until) or 0) then
+		return false
+	end
 	local recasts = windower.ffxi.get_ability_recasts() or {}
+	local pending_name = tostring(core.ja_pending_name or '')
+	if pending_name ~= '' and pending_name == tostring(name) then
+		local pending_recast = tonumber(core.ja_pending_recast_id) or 0
+		local pending_started = (pending_recast > 0 and (recasts[pending_recast] or 0) > 0)
+		if pending_started then
+			core.ja_pending_name = ''
+			core.ja_pending_recast_id = 0
+			core.ja_pending_sent_at = 0
+			core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
+			return false
+		end
+		local sent_at = tonumber(core.ja_pending_sent_at) or 0
+		if sent_at > 0 and (now - sent_at) < 0.5 then
+			return false
+		end
+		core.ja_pending_name = ''
+		core.ja_pending_recast_id = 0
+		core.ja_pending_sent_at = 0
+	end
+	local last_sent = tonumber((core.ja_last_sent_at or {})[tostring(name)]) or 0
+	if last_sent > 0 and (now - last_sent) < 0.5 then
+		return false
+	end
 	if (recasts[ja.recast_id] or 0) > 0 then
 		return false
 	end
@@ -879,6 +925,12 @@ local function cast_ja(name)
 	if not ja then
 		return
 	end
+	local now = os.clock()
+	core.ja_pending_name = tostring(name or '')
+	core.ja_pending_recast_id = tonumber(ja.recast_id) or 0
+	core.ja_pending_sent_at = now
+	core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
+	core.ja_last_sent_at[tostring(name or '')] = now
 	local p = windower.ffxi.get_player() or {}
 	local status = tonumber(p.status) or 0
 	local tp = (((p or {}).vitals or {}).tp) or 0
