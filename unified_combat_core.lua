@@ -120,6 +120,15 @@ local function get_current_target()
 	return windower.ffxi.get_mob_by_target('t')
 end
 
+local function debug_ja_dispatch(msg)
+	local s = get_settings()
+	if not setting_enabled(s and s.debug) then
+		return
+	end
+	_G.UC_JA_LAST_DIAG = tostring(msg or '')
+	windower.add_to_chat(11, '[UC ja] ' .. tostring(msg or ''))
+end
+
 local function is_party_member_id(id)
 	local pid = tonumber(id) or 0
 	if pid == 0 then
@@ -821,12 +830,45 @@ local function cast_ja(name)
 	if not ja then
 		return
 	end
+	local p = windower.ffxi.get_player() or {}
+	local status = tonumber(p.status) or 0
+	local tp = (((p or {}).vitals or {}).tp) or 0
+	local cur = get_current_target()
+	local cur_id = (cur and cur.id) or 0
+	local cur_name = (cur and cur.name) or ''
+	local cur_dist = (cur and target_distance(cur)) or 0
+	local target_desc = tostring(ja.targets or '')
 	if tostring(ja.targets) == '{Self}' or tostring(ja.targets) == '{Self, Player}' then
+		debug_ja_dispatch(('send name="%s" mode=self status=%d tp=%d cur=%d "%s" dist=%.2f'):format(
+			tostring(name),
+			status,
+			tp,
+			tonumber(cur_id) or 0,
+			tostring(cur_name),
+			tonumber(cur_dist) or 0
+		))
 		windower.send_command('input /ja "' .. name .. '" <me>')
 	else
 		local t = get_current_target()
 		if t and t.id and t.id ~= 0 then
+			local tdist = target_distance(t)
+			debug_ja_dispatch(('send name="%s" mode=target ja_targets=%s status=%d tp=%d tid=%d "%s" dist=%.2f'):format(
+				tostring(name),
+				target_desc,
+				status,
+				tp,
+				tonumber(t.id) or 0,
+				tostring(t.name or ''),
+				tonumber(tdist) or 0
+			))
 			windower.send_command('input /ja "' .. name .. '" ' .. tostring(t.id))
+		else
+			debug_ja_dispatch(('skip name="%s" mode=target reason=NO_CURRENT_TARGET ja_targets=%s status=%d tp=%d'):format(
+				tostring(name),
+				target_desc,
+				status,
+				tp
+			))
 		end
 	end
 end
