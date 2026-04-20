@@ -103,6 +103,10 @@ local function setting_enabled(v)
 	return false
 end
 
+local function status_blocks_actions(status)
+	return tonumber(status) == 3
+end
+
 local function party_follow_hold_seconds(settings)
 	local n = tonumber(settings and settings.fight_follow_hold_s) or 8.0
 	if n < 0 then
@@ -864,6 +868,10 @@ local function can_cast_ja(name)
 	if not ja then
 		return false
 	end
+	local player = windower.ffxi.get_player()
+	if status_blocks_actions(player and player.status) then
+		return false
+	end
 	local now = os.clock()
 	if now < (tonumber(core.ja_lock_until) or 0) then
 		return false
@@ -1139,6 +1147,11 @@ local function run_unified_combat()
 	apply_movement(s, current)
 
 	local player = windower.ffxi.get_player()
+	if status_blocks_actions(player and player.status) then
+		_G.UC_LAST_BLOCK_REASON = 'ACTION_BLOCK_STATUS3'
+		_G.UC_WS_LAST_DIAG = 'core action_block status=3'
+		return
+	end
 	uc_ability_pipeline.execute_ordered_abilities({
 		settings = s,
 		ability_active = setting_enabled(s.ability_active),
