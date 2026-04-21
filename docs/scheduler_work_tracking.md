@@ -45,11 +45,13 @@ Status owner: Codex + Peter
   - Timeout path currently uses `effect_deadline` transition to `timed_out`; ack/event-driven transitions come with packet-integrated pending updates.
 
 ### S4 - Lock semantics and enforcement
-- Status: TODO
+- Status: IN_PROGRESS
 - Deliverables:
-  - [ ] `movement_lock`, `cast_lock`, `target_lock`, `duplicate_lock`, `movement_goal_hold`, `zone_guard_lock`.
-  - [ ] Hard vs soft lock behavior in evaluation.
-  - [ ] Lock acquire/release tied to pending lifecycle.
+  - [x] `movement_lock`, `cast_lock`, `target_lock`, `zone_guard_lock` base objects.
+  - [x] Hard-lock behavior in evaluation (`hard_locked`, `zone_guard` rejection paths).
+  - [ ] `duplicate_lock` object and `movement_goal_hold` object formalization.
+  - [ ] Soft suppression behavior in evaluation.
+  - [ ] Lock acquire/release tied to pending lifecycle (beyond current pending-live lock derivation).
 
 ### S5 - Provider migration under scheduler authority
 - Status: IN_PROGRESS
@@ -76,6 +78,6 @@ Status owner: Codex + Peter
 - Proposal collection currently seeded from defensive/internal only (intended for shell bootstrap).
 
 ## Next Slice (immediately next code task)
-1. Implement explicit lock objects and hard/soft lock enforcement in evaluation (S4).
-2. Expand rejection taxonomy (`hard_locked`, `pending_conflict`, `zone_guard`, etc.) in ranked diagnostics.
+1. Finish S4 lock model (`duplicate_lock`, `movement_goal_hold`, soft suppression semantics).
+2. Expand rejection taxonomy (`pending_conflict`, `settings_disabled`, `stale_snapshot`) in ranked diagnostics.
 3. Keep legacy path operational until scheduler-owned dispatch path is enabled.

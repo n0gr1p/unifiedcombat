@@ -900,6 +900,34 @@ local function p1_duplicate_suppressed(ctx, proposal)
 	return false
 end
 
+local function p1_get_locks(ctx)
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	local pending_live = type(pending) == 'table' and p1_pending_is_live_state(tostring(pending.state or ''))
+	local zone_suspend_until = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
+	local zone_guard_active = type(zone_suspend_until) == 'number' and ctx.now < zone_suspend_until
+	return {
+		zone_guard_lock = { hard = zone_guard_active },
+		cast_lock = { hard = pending_live },
+		movement_lock = { hard = pending_live },
+		target_lock = { hard = false },
+	}
+end
+
+local function p1_hard_lock_reject(locks, proposal)
+	if locks.zone_guard_lock and locks.zone_guard_lock.hard then
+		return 'zone_guard'
+	end
+	local action_type = tostring(proposal and proposal.action_type or '')
+	if (action_type == 'spell' or action_type == 'ja' or action_type == 'ws') and locks.cast_lock and locks.cast_lock.hard then
+		return 'hard_locked'
+	end
+	if action_type == 'move' and locks.movement_lock and locks.movement_lock.hard then
+		return 'hard_locked'
+	end
+	return ''
+end
+
 local function p1_validate_proposal(ctx, p)
 	if type(p) ~= 'table' then
 		return false, 'malformed'
@@ -940,13 +968,19 @@ local function p1_score(eval)
 end
 
 local function p1_rank(ctx, proposals)
+	local locks = p1_get_locks(ctx)
 	local valid = {}
 	local reject_counts = {}
 	for _, proposal in ipairs(proposals) do
 		local ok, reject_reason = p1_validate_proposal(ctx, proposal)
 		if ok then
-			p1_score(proposal)
-			valid[#valid + 1] = proposal
+			local lock_reject = p1_hard_lock_reject(locks, proposal)
+			if lock_reject ~= '' then
+				reject_counts[lock_reject] = (reject_counts[lock_reject] or 0) + 1
+			else
+				p1_score(proposal)
+				valid[#valid + 1] = proposal
+			end
 		else
 			reject_counts[reject_reason] = (reject_counts[reject_reason] or 0) + 1
 		end
@@ -969,7 +1003,7 @@ local function p1_rank(ctx, proposals)
 		end
 		return tostring(a.proposal_id or '') < tostring(b.proposal_id or '')
 	end)
-	return valid, reject_counts
+	return valid, reject_counts, locks
 end
 
 local function p1_format_top3(ranked)
@@ -1074,12 +1108,18 @@ local function p1_set_pending_globals()
 	_G.UC_SCHED_P1_PENDING_STATE = tostring(pending.state or '')
 end
 
-local function p1_build_lock_summary(ctx)
+local function p1_build_lock_summary(ctx, locks)
 	local phase = scheduler.phase1
-	local pending = phase.pending
 	local parts = {}
-	if type(pending) == 'table' and p1_pending_is_live_state(tostring(pending.state or '')) then
+	local lock_state = locks or p1_get_locks(ctx)
+	if lock_state.zone_guard_lock and lock_state.zone_guard_lock.hard then
+		parts[#parts + 1] = 'zone_guard_lock'
+	end
+	if lock_state.cast_lock and lock_state.cast_lock.hard then
 		parts[#parts + 1] = 'cast_lock'
+	end
+	if lock_state.movement_lock and lock_state.movement_lock.hard then
+		parts[#parts + 1] = 'movement_lock'
 	end
 	local now = ctx.now
 	local has_dup = false
@@ -1131,7 +1171,7 @@ local function p1_run_dry(settings)
 	local ctx = p1_build_ctx(settings)
 	p1_update_pending_state(ctx)
 	local proposals = p1_collect_proposals(ctx)
-	local ranked, reject_counts = p1_rank(ctx, proposals)
+	local ranked, reject_counts, locks = p1_rank(ctx, proposals)
 	local selected = ranked[1]
 	local plan = p1_build_dispatch_plan(ctx, selected)
 	local commit_ok, commit_reason = p1_revalidate_plan_commit(ctx, selected, plan)
@@ -1159,7 +1199,7 @@ local function p1_run_dry(settings)
 	_G.UC_SCHED_P1_SELECTED_FAMILY = selected and tostring(selected.family_id or '') or ''
 	_G.UC_SCHED_P1_PLAN_PRELUDE = (plan and plan.prelude and tostring(plan.prelude.type or '')) or ''
 	p1_set_pending_globals()
-	_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx)
+	_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, locks)
 	_G.UC_SCHED_P1_REJECT_TOP = phase.last_reject_top or ''
 	_G.UC_SCHED_P1_NOOP_REASON = phase.last_noop_reason or ''
 	_G.UC_SCHED_P1_TOP3 = phase.last_top3 or ''
@@ -1185,7 +1225,7 @@ function scheduler.process_tick()
 			local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
 			p1_record_legacy_dispatch(ctx)
 			p1_set_pending_globals()
-			_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx)
+			_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
 			return true, reason
 		end
 		return false, nil
@@ -1195,7 +1235,7 @@ function scheduler.process_tick()
 		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
 		p1_record_legacy_dispatch(ctx)
 		p1_set_pending_globals()
-		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx)
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
 		return true, reason
 	end
 	return false, nil
