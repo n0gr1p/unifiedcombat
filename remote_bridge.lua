@@ -1038,6 +1038,7 @@ function uc_remote_tick()
 		scheduler_reject_top = _G.UC_SCHED_P1_REJECT_TOP or '',
 		scheduler_noop_reason = _G.UC_SCHED_P1_NOOP_REASON or '',
 		scheduler_top3 = _G.UC_SCHED_P1_TOP3 or '',
+		scheduler_top3_verbose = _G.UC_SCHED_P1_TOP3_VERBOSE or '',
 		autotarget = s.autotarget,
 		ability_active = s.ability_active,
 		weaponskill_active = s.weaponskill_active,

@@ -75,7 +75,7 @@ Status owner: Codex + Peter
 - [x] `scheduler_tick`
 - [x] `scheduler_pending_state`
 - [x] `scheduler_lock_summary`
-- [ ] ranked top candidates with full score part details in UI/debug
+- [x] ranked top candidates with full score part details in UI/debug (`scheduler_top3_verbose`)
 
 ## Current Risk Notes
 - Existing live scheduler execution remains legacy defensive path; dry-run path is advisory only.
@@ -83,5 +83,5 @@ Status owner: Codex + Peter
 
 ## Next Slice (immediately next code task)
 1. Add maintenance provider proposal paths (GEO/COR/BRD) in dry-run scheduler collection.
-2. Improve ranked diagnostics output with score-part visibility for top candidates.
-3. Keep legacy path operational until scheduler-owned dispatch path is enabled.
+2. Keep legacy path operational until scheduler-owned dispatch path is enabled.
+3. After maintenance adapters, begin planner-owned dispatch dark launch for one provider.

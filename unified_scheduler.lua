@@ -1237,6 +1237,27 @@ local function p1_format_top3(ranked)
 	return table.concat(parts, ' | ')
 end
 
+local function p1_format_top3_verbose(ranked)
+	local parts = {}
+	local count = math.min(3, #ranked)
+	for i = 1, count do
+		local p = ranked[i]
+		local sp = p._score_parts or {}
+		parts[#parts + 1] = ('%d)%s score=%.2f pb=%s u=%.2f st=%.2f sk=%.2f rp=%.2f %s'):format(
+			i,
+			tostring(p.provider or ''),
+			p1_number(p._score, 0),
+			tostring(sp.priority_band or ''),
+			p1_number(sp.urgency_bonus, 0),
+			p1_number(sp.starvation_bonus, 0),
+			p1_number(sp.sticky_bonus, 0),
+			p1_number(sp.risk_penalty, 0),
+			tostring(p.action_name or '')
+		)
+	end
+	return table.concat(parts, ' | ')
+end
+
 local function p1_reject_top(reject_counts, proposal_count)
 	if proposal_count <= 0 then
 		return 'no_proposals'
@@ -1407,6 +1428,7 @@ local function p1_run_dry(settings)
 		phase.movement_goal_hold = { family_id = '', until_ts = 0 }
 	end
 	phase.last_top3 = p1_format_top3(ranked)
+	phase.last_top3_verbose = p1_format_top3_verbose(ranked)
 	phase.last_reject_top = p1_reject_top(reject_counts, #proposals)
 	if selected then
 		phase.last_noop_reason = ''
@@ -1427,6 +1449,7 @@ local function p1_run_dry(settings)
 	_G.UC_SCHED_P1_REJECT_TOP = phase.last_reject_top or ''
 	_G.UC_SCHED_P1_NOOP_REASON = phase.last_noop_reason or ''
 	_G.UC_SCHED_P1_TOP3 = phase.last_top3 or ''
+	_G.UC_SCHED_P1_TOP3_VERBOSE = phase.last_top3_verbose or ''
 end
 
 function scheduler.process_tick()
