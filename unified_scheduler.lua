@@ -1,4 +1,5 @@
 local res = require('resources')
+local ability_pipeline = require('uc_ability_pipeline')
 
 local scheduler = {
 	last_action_at = 0,
@@ -920,6 +921,95 @@ local function p1_collect_combat_offense(ctx, out)
 	}
 end
 
+local function p1_collect_combat_ja(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	if not bool_setting(ctx.settings.ability_active, false) then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	if not player or tonumber(player.status) ~= 1 then
+		return
+	end
+	local ordered = ability_pipeline.collect_ordered(ctx.settings, 6)
+	if #ordered == 0 then
+		return
+	end
+	local target = windower.ffxi.get_mob_by_target('t')
+	for _, name in ipairs(ordered) do
+		local ja = get_ja_resource(name)
+		if ja then
+			local ok_ready, _, kind = action_ready(name)
+			if ok_ready and kind == 'ja' then
+				local target_kind = 'self'
+				local target_id = tonumber(player.id) or 0
+				local target_name = tostring(player.name or '')
+				local ja_targets = tostring(ja.targets or '')
+				local ja_target_ok = true
+				if ja_targets == '{Enemy}' then
+					if not target or not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
+						ja_target_ok = false
+					end
+					if ja_target_ok then
+						local r = (tonumber(ja.range) or 0)
+						if r > 20 then
+							r = r * 0.01
+						end
+						if r > 0 then
+							local d = target.distance and target.distance:sqrt() or 999
+							if d > r then
+								ja_target_ok = false
+							end
+						end
+					end
+					if ja_target_ok then
+						target_kind = 'mob'
+						target_id = tonumber(target.id) or 0
+						target_name = tostring(target.name or '')
+					end
+				end
+				if ja_target_ok then
+					out[#out + 1] = {
+						proposal_id = ('combat.ja.%s.%d.%d'):format(tostring(name), target_id, math.floor(ctx.now * 1000)),
+						family_id = 'combat.ja.primary',
+						provider = 'combat',
+						action_type = 'ja',
+						action_name = tostring(name),
+						target_kind = target_kind,
+						target_id = target_id,
+						target_name = target_name,
+						priority_band = 70,
+						urgency = 0.35,
+						starvation_eligible = true,
+						created_at = ctx.now,
+						expires_at = ctx.now + 0.30,
+						commit_deadline = ctx.now + 0.20,
+						movement_policy = 'must_stop',
+						range_policy = { min = 0.0, max = 10.0, los_required = false },
+						recast_key = ('ja:%s'):format(tostring(name)),
+						duplicate_suppression_key = ('ja:%s:%d'):format(tostring(name), target_id),
+						lock_class = 'offense_action',
+						expected_ack = 'action_start',
+						expected_effect = 'ja_effect',
+						sticky = false,
+						can_preempt_movement = true,
+						can_preempt_same_band = false,
+						reason_code = 'ability_ready',
+						detail = {
+							ability = tostring(name),
+						},
+						legacy_command = (target_kind == 'self') and ('input /ja \"%s\" <me>'):format(tostring(name))
+							or ('input /ja \"%s\" %d'):format(tostring(name), target_id),
+						required_setting = 'ability_active',
+					}
+					break
+				end
+			end
+		end
+	end
+end
+
 local function p1_collect_movement(ctx, out)
 	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 		return
@@ -1113,6 +1203,7 @@ local function p1_collect_proposals(ctx)
 	local out = {}
 	p1_collect_defensive_internal(ctx, out)
 	p1_collect_combat_offense(ctx, out)
+	p1_collect_combat_ja(ctx, out)
 	p1_collect_movement(ctx, out)
 	p1_collect_maintenance(ctx, out)
 	return out
@@ -1640,25 +1731,51 @@ local function p1_try_dark_launch_dispatch(settings)
 		if not player or tonumber(player.status) ~= 1 then
 			return false, nil
 		end
-		local tp = tonumber(player.vitals and player.vitals.tp) or 0
-		if tp < 1000 then
+		local action_type = tostring(selected.action_type or '')
+		if action_type == 'ws' then
+			local tp = tonumber(player.vitals and player.vitals.tp) or 0
+			if tp < 1000 then
+				return false, nil
+			end
+			local target = windower.ffxi.get_mob_by_target('t')
+			local expected_tid = tonumber(selected.target_id) or 0
+			if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
+				return false, nil
+			end
+			local ws = tostring(selected.action_name or '')
+			if ws == '' then
+				return false, nil
+			end
+			windower.send_command(('input /ws \"%s\" <t>'):format(ws))
+			_G.UC_LAST_SCHED_ACTION = ('[p1]ws:%s->%s'):format(ws, tostring(selected.target_name or ''))
+		elseif action_type == 'ja' then
+			local ability = tostring(selected.action_name or '')
+			if ability == '' then
+				return false, nil
+			end
+			local ok_ready, _, action_kind = action_ready(ability)
+			if action_kind ~= 'ja' or not ok_ready then
+				return false, nil
+			end
+			local target_kind = tostring(selected.target_kind or 'self')
+			local expected_tid = tonumber(selected.target_id) or 0
+			if target_kind == 'mob' then
+				local target = windower.ffxi.get_mob_by_target('t')
+				if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
+					return false, nil
+				end
+				windower.send_command(('input /ja \"%s\" %d'):format(ability, expected_tid))
+			else
+				windower.send_command(('input /ja \"%s\" <me>'):format(ability))
+			end
+			_G.UC_LAST_SCHED_ACTION = ('[p1]ja:%s->%s'):format(ability, tostring(selected.target_name or ''))
+		else
 			return false, nil
 		end
-		local target = windower.ffxi.get_mob_by_target('t')
-		local expected_tid = tonumber(selected.target_id) or 0
-		if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
-			return false, nil
-		end
-		local ws = tostring(selected.action_name or '')
-		if ws == '' then
-			return false, nil
-		end
-		windower.send_command(('input /ws \"%s\" <t>'):format(ws))
 		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
 		p1_record_legacy_dispatch(ctx)
 		p1_set_pending_globals()
 		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
-		_G.UC_LAST_SCHED_ACTION = ('[p1]ws:%s->%s'):format(ws, tostring(selected.target_name or ''))
 		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT'
 	end
 	if provider == 'defensive_internal' then

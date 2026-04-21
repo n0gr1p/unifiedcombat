@@ -60,11 +60,13 @@ Status owner: Codex + Peter
 - Deliverables:
   - [x] Defensive/internal adapter emits scheduler proposal (dry-run).
   - [x] Defensive dispatch dark-launch scaffold via scheduler-selected proposal path (opt-in setting: `scheduler_dark_launch_defensive`).
-  - [x] Combat provider proposal path (initial WS offense proposal adapter, dry-run).
+  - [x] Combat provider proposal path (WS + JA offense proposal adapters, dry-run).
+  - [x] Combat dispatch dark-launch executes scheduler-selected WS/JA proposals (opt-in setting: `scheduler_dark_launch_combat`).
   - [x] Movement provider proposal path (initial close/retreat proposal adapters, dry-run).
   - [x] Maintenance providers (GEO/COR/BRD) proposal path (state-driven buff presence scaffolding, dry-run).
 - Notes:
-  - Combat proposal adapter currently seeds WS proposals from engine-on + engaged + TP-ready state for ranking/diagnostics, without changing live dispatch flow.
+  - Combat proposal adapter now seeds both WS (TP-ready) and JA (ordered, recast-ready) proposals for ranking/diagnostics.
+  - Combat dark-launch path now dispatches scheduler-selected combat WS/JA proposals; still opt-in and not full-cutover for all combat subsystems.
   - Maintenance adapters now use buff-state intent (COR roll count, BRD song count, GEO indi/geo presence) with throttled proposal emission.
   - Dark-launch dispatch remains opt-in and limited to defensive-internal selection path.
 
