@@ -101,3 +101,4 @@ Status owner: Codex + Peter
 - Dark launch priority correction:
   - Added combat-first dark launch (`scheduler_dark_launch_combat`) and moved dark-launch execution before defensive-provider gating.
   - This ensures combat dark launch can run even when defensive automation is disabled.
+  - Added combat-selection preference while `scheduler_dark_launch_combat` is enabled so ranked combat proposals are chosen ahead of non-combat lanes for dark-launch validation.
