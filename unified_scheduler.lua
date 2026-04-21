@@ -9,6 +9,12 @@ local scheduler = {
 	family_tokens = {},
 	family_counts = {},
 	recent_gain = {},
+	phase1 = {
+		tick = 0,
+		last_selected = nil,
+		last_noop_reason = 'init',
+		last_candidates = {},
+	},
 }
 
 local can_act_statuses = { [0] = true, [1] = true, [5] = true, [85] = true }
@@ -737,9 +743,201 @@ local function try_internal_defensive_action()
 	return false, nil
 end
 
+local function p1_make_ctx(settings)
+	local player = windower.ffxi.get_player() or {}
+	local me = windower.ffxi.get_mob_by_target('me') or {}
+	local p = scheduler.phase1
+	p.tick = (tonumber(p.tick) or 0) + 1
+	return {
+		now = os.clock(),
+		tick = p.tick,
+		settings = settings or {},
+		player_status = tonumber(player.status) or -1,
+		player_id = tonumber(player.id) or 0,
+		player_name = tostring(player.name or ''),
+		me_id = tonumber(me.id) or 0,
+		me_name = tostring(me.name or ''),
+	}
+end
+
+local function p1_validate_number(v, default_value)
+	local n = tonumber(v)
+	if n == nil then
+		return default_value
+	end
+	return n
+end
+
+local function p1_normalize_urgency(v)
+	local n = p1_validate_number(v, 0)
+	if n < 0 then
+		return 0
+	end
+	if n > 1 then
+		return 1
+	end
+	return n
+end
+
+local function p1_collect_defensive_internal(ctx, out)
+	if not bool_setting(ctx.settings.defensive_enabled, false) then
+		return
+	end
+	if tostring(ctx.settings.defensive_provider or 'internal') ~= 'internal' then
+		return
+	end
+	local candidates = build_defensive_candidates()
+	local action, reason = choose_defensive_action(candidates)
+	if not action or not action.spell or not action.target or not action.target.name then
+		return
+	end
+	local expires = ctx.now + 0.40
+	local commit = ctx.now + 0.25
+	local urgency = 0.35
+	if action.type == 'overwrite' then
+		urgency = 0.80
+	elseif action.type == 'cure' then
+		urgency = 0.70
+	elseif action.type == 'debuff' then
+		urgency = 0.60
+	elseif action.type == 'buff' then
+		urgency = 0.25
+	end
+	out[#out + 1] = {
+		proposal_id = ('defensive.internal.%s.%s.%d'):format(tostring(action.type or 'action'), tostring(action.spell), math.floor(ctx.now * 1000)),
+		family_id = ('defensive.internal.%s'):format(tostring(action.type or 'action')),
+		provider = 'defensive_internal',
+		action_type = 'spell',
+		action_name = tostring(action.spell),
+		target_kind = action.target.is_self and 'self' or 'ally',
+		target_id = tonumber(action.target.id) or 0,
+		target_name = tostring(action.target.name),
+		priority_band = 100,
+		urgency = p1_normalize_urgency(urgency),
+		created_at = ctx.now,
+		expires_at = expires,
+		commit_deadline = commit,
+		duplicate_suppression_key = ('spell:%s:%d'):format(tostring(action.spell), tonumber(action.target.id) or 0),
+		lock_class = 'support_action',
+		reason_code = tostring(reason or ''),
+		detail = {
+			action_type = tostring(action.type or ''),
+			target_hpp = tonumber(action.target.hpp) or -1,
+		},
+		legacy_command = action.target.is_self and ('input /ma "%s" <me>'):format(action.spell) or ('input /ma "%s" %s'):format(action.spell, action.target.name),
+	}
+end
+
+local function p1_collect_proposals(ctx)
+	local proposals = {}
+	p1_collect_defensive_internal(ctx, proposals)
+	return proposals
+end
+
+local function p1_validate_proposal(ctx, p)
+	if type(p) ~= 'table' then
+		return false, 'malformed'
+	end
+	if tostring(p.proposal_id or '') == '' then
+		return false, 'malformed'
+	end
+	if tostring(p.provider or '') == '' then
+		return false, 'malformed'
+	end
+	local expires_at = p1_validate_number(p.expires_at, ctx.now + 0.40)
+	if expires_at <= ctx.now then
+		return false, 'expired'
+	end
+	p.expires_at = expires_at
+	p.commit_deadline = p1_validate_number(p.commit_deadline, ctx.now + 0.25)
+	p.priority_band = math.floor(p1_validate_number(p.priority_band, 0))
+	p.urgency = p1_normalize_urgency(p.urgency)
+	return true, ''
+end
+
+local function p1_score(eval)
+	local priority_band = math.floor(p1_validate_number(eval.priority_band, 0))
+	local urgency_bonus = p1_normalize_urgency(eval.urgency) * 9.9
+	local starvation_bonus = 0
+	local sticky_bonus = 0
+	local risk_penalty = 0
+	local score = priority_band + urgency_bonus + starvation_bonus + sticky_bonus - risk_penalty
+	eval._score = score
+	eval._score_parts = {
+		priority_band = priority_band,
+		urgency_bonus = urgency_bonus,
+		starvation_bonus = starvation_bonus,
+		sticky_bonus = sticky_bonus,
+		risk_penalty = risk_penalty,
+	}
+	return score
+end
+
+local function p1_rank_and_select(ctx, proposals)
+	local valid = {}
+	for _, p in ipairs(proposals) do
+		local ok, reason = p1_validate_proposal(ctx, p)
+		if ok then
+			p1_score(p)
+			valid[#valid + 1] = p
+		else
+			p._reject_reason = reason
+		end
+	end
+	table.sort(valid, function(a, b)
+		local sa = p1_validate_number(a._score, -1e9)
+		local sb = p1_validate_number(b._score, -1e9)
+		if sa ~= sb then
+			return sa > sb
+		end
+		local ea = p1_validate_number(a.expires_at, ctx.now + 999)
+		local eb = p1_validate_number(b.expires_at, ctx.now + 999)
+		if ea ~= eb then
+			return ea < eb
+		end
+		local pa = tostring(a.provider or '')
+		local pb = tostring(b.provider or '')
+		if pa ~= pb then
+			return pa < pb
+		end
+		return tostring(a.proposal_id or '') < tostring(b.proposal_id or '')
+	end)
+	return valid[1], valid
+end
+
+local function p1_run_dry_tick(settings)
+	local ctx = p1_make_ctx(settings)
+	local proposals = p1_collect_proposals(ctx)
+	local winner, ranked = p1_rank_and_select(ctx, proposals)
+	local p = scheduler.phase1
+	p.last_candidates = ranked
+	if winner then
+		p.last_selected = winner
+		p.last_noop_reason = ''
+		_G.UC_SCHED_P1_SELECTED_PROVIDER = tostring(winner.provider or '')
+		_G.UC_SCHED_P1_SELECTED_FAMILY = tostring(winner.family_id or '')
+		_G.UC_SCHED_P1_SELECTED_PROPOSAL = tostring(winner.proposal_id or '')
+		_G.UC_SCHED_P1_NOOP_REASON = ''
+	else
+		p.last_selected = nil
+		p.last_noop_reason = (#proposals == 0) and 'no_proposals' or 'all_rejected'
+		_G.UC_SCHED_P1_SELECTED_PROVIDER = ''
+		_G.UC_SCHED_P1_SELECTED_FAMILY = ''
+		_G.UC_SCHED_P1_SELECTED_PROPOSAL = ''
+		_G.UC_SCHED_P1_NOOP_REASON = p.last_noop_reason
+	end
+	local top = ranked[1]
+	if top then
+		_G.UC_SCHED_P1_TOP = ('%s %.2f %s'):format(tostring(top.provider or ''), tonumber(top._score) or 0, tostring(top.action_name or ''))
+	else
+		_G.UC_SCHED_P1_TOP = ''
+	end
+end
+
 function scheduler.process_tick()
 	_G.UC_LAST_SCHED_ACTION = ''
 	local s = get_settings()
+	p1_run_dry_tick(s)
 	if not bool_setting(s.defensive_enabled, false) then
 		return false, nil
 	end
