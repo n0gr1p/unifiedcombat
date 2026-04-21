@@ -1625,36 +1625,61 @@ local function p1_run_dry(settings)
 end
 
 local function p1_try_dark_launch_dispatch(settings)
-	if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
-		return false, nil
-	end
 	local phase = scheduler.phase1
 	local selected = phase.last_selected
 	local plan = phase.last_plan
 	if type(selected) ~= 'table' or type(plan) ~= 'table' then
 		return false, nil
 	end
-	if tostring(selected.provider or '') ~= 'defensive_internal' then
-		return false, nil
+	local provider = tostring(selected.provider or '')
+	if provider == 'defensive_internal' then
+		if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
+			return false, nil
+		end
+		local cmd = tostring(selected.legacy_command or '')
+		if cmd == '' then
+			return false, nil
+		end
+		local ok_ready, _, action_kind = action_ready(tostring(selected.action_name or ''))
+		if action_kind == 'none' then
+			return false, nil
+		end
+		if not ok_ready then
+			return false, nil
+		end
+		windower.send_command(cmd)
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH'
 	end
-	local cmd = tostring(selected.legacy_command or '')
-	if cmd == '' then
-		return false, nil
+	if provider == 'mobility' then
+		if not bool_setting(settings and settings.scheduler_dark_launch_movement, false) then
+			return false, nil
+		end
+		local me = windower.ffxi.get_mob_by_target('me')
+		local target = windower.ffxi.get_mob_by_id(tonumber(selected.target_id) or 0)
+		if not me or not target or not target.x or not target.y or not me.x or not me.y then
+			return false, nil
+		end
+		local action_name = tostring(selected.action_name or '')
+		local heading
+		if action_name == 'retreat' then
+			heading = math.atan2(target.y - me.y, target.x - me.x) + math.pi
+		else
+			heading = math.atan2(target.y - me.y, target.x - me.x)
+		end
+		windower.ffxi.run(heading)
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]move:%s->%s'):format(action_name, tostring(selected.target_name or ''))
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_MOVE'
 	end
-	local ok_ready, _, action_kind = action_ready(tostring(selected.action_name or ''))
-	if action_kind == 'none' then
-		return false, nil
-	end
-	if not ok_ready then
-		return false, nil
-	end
-	windower.send_command(cmd)
-	local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
-	p1_record_legacy_dispatch(ctx)
-	p1_set_pending_globals()
-	_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
-	_G.UC_LAST_SCHED_ACTION = ('[p1]%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
-	return true, 'BLOCK_SCHED_P1_DARKLAUNCH'
+	return false, nil
 end
 
 function scheduler.process_tick()

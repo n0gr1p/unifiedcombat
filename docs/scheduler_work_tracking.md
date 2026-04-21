@@ -84,7 +84,7 @@ Status owner: Codex + Peter
 - Proposal collection currently seeded from defensive/internal only (intended for shell bootstrap).
 
 ## Next Slice (immediately next code task)
-1. Expand dark launch beyond defensive-internal to one additional provider path (likely movement prelude/plan).
+1. Expand dark launch beyond defensive-internal to one additional provider path (likely movement prelude/plan). - DONE
 2. Keep legacy path operational until scheduler-owned dispatch path is fully validated.
 3. Add pending lifecycle event hooks (ack/effect updates) from packet callbacks instead of timeout-only progression. - DONE
 
@@ -94,3 +94,6 @@ Status owner: Codex + Peter
   - Hooked from `UnifiedCombat.lua` action listener + incoming 0x029 parser via global callbacks.
 - Result:
   - pending state can progress by observed action events (ack/effect) instead of timeout-only transitions.
+- Expanded dark launch path:
+  - Added opt-in movement dark launch (`scheduler_dark_launch_movement`) for scheduler-selected mobility proposals.
+  - Defensive dark launch remains opt-in via `scheduler_dark_launch_defensive`.
