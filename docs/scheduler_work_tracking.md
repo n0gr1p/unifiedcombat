@@ -26,11 +26,13 @@ Status owner: Codex + Peter
   - `remote_bridge.lua`
 
 ### S2 - Dispatch plan model (`prelude + primary`) with commit-time revalidation
-- Status: TODO
+- Status: DONE
 - Deliverables:
-  - [ ] Plan model object + builder.
-  - [ ] Commit revalidation function.
-  - [ ] `commit_invalidated` no-op reason path.
+  - [x] Plan model object + builder.
+  - [x] Commit revalidation function.
+  - [x] `commit_invalidated` no-op reason path.
+- Notes:
+  - Implemented in dry-run path (non-dispatch) to preserve behavioral safety while we stand up pending/locks.
 
 ### S3 - Pending action ledger + duplicate suppression
 - Status: TODO
@@ -71,6 +73,6 @@ Status owner: Codex + Peter
 - Proposal collection currently seeded from defensive/internal only (intended for shell bootstrap).
 
 ## Next Slice (immediately next code task)
-1. Build dispatch plan object (`none|stop|retarget|face` prelude + primary).
-2. Add commit-time revalidation before any scheduler-owned dispatch.
-3. Keep legacy path operational until plan path is proven.
+1. Implement pending ledger model and duplicate suppression checks (S3).
+2. Add pending lifecycle timers (`ack_deadline`, `effect_deadline`) and transitions.
+3. Keep legacy path operational until scheduler-owned dispatch path is enabled.
