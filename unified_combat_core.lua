@@ -1651,4 +1651,12 @@ function core.assert_no_job_branch()
 	return true
 end
 
+function core.select_smart_ws_for_scheduler(settings, target_id)
+	local ok, ws_name, ws_reason = pcall(select_smart_ws, settings or {}, target_id)
+	if not ok then
+		return '', 'SMART_WS_ERROR'
+	end
+	return tostring(ws_name or ''), tostring(ws_reason or '')
+end
+
 return core

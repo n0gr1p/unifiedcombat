@@ -1,5 +1,6 @@
 local res = require('resources')
 local ability_pipeline = require('uc_ability_pipeline')
+local combat_core = require('unified_combat_core')
 
 local scheduler = {
 	last_action_at = 0,
@@ -883,7 +884,12 @@ local function p1_collect_combat_offense(ctx, out)
 	if not target or not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
 		return
 	end
-	local ws = tostring(ctx.settings.ws1 or ctx.settings.weaponskill or '')
+	local ws_pick_reason = ''
+	local ws = ''
+	if combat_core and type(combat_core.select_smart_ws_for_scheduler) == 'function' then
+		ws, ws_pick_reason = combat_core.select_smart_ws_for_scheduler(ctx.settings, tonumber(target.id) or 0)
+	end
+	ws = tostring(ws or '')
 	if ws == '' then
 		return
 	end
@@ -921,6 +927,7 @@ local function p1_collect_combat_offense(ctx, out)
 		reason_code = 'tp_ready',
 		detail = {
 			tp = tp,
+			ws_pick_reason = tostring(ws_pick_reason or ''),
 		},
 		legacy_command = ('input /ws \"%s\" <t>'):format(ws),
 		required_setting = 'weaponskill_active',
