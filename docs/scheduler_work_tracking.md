@@ -62,9 +62,10 @@ Status owner: Codex + Peter
   - [ ] Defensive dispatch moved to scheduler dispatch plan path.
   - [x] Combat provider proposal path (initial WS offense proposal adapter, dry-run).
   - [x] Movement provider proposal path (initial close/retreat proposal adapters, dry-run).
-  - [ ] Maintenance providers (GEO/COR/BRD) proposal path.
+  - [x] Maintenance providers (GEO/COR/BRD) proposal path (initial cycle adapters, dry-run).
 - Notes:
   - Combat proposal adapter currently seeds WS proposals from engine-on + engaged + TP-ready state for ranking/diagnostics, without changing live dispatch flow.
+  - Maintenance provider adapters currently emit scheduler-visible cycle proposals as migration scaffolding; provider-specific buff intent refinement is still pending.
 
 ## Observability Checklist
 - [x] `scheduler_selected_proposal`
@@ -82,6 +83,6 @@ Status owner: Codex + Peter
 - Proposal collection currently seeded from defensive/internal only (intended for shell bootstrap).
 
 ## Next Slice (immediately next code task)
-1. Add maintenance provider proposal paths (GEO/COR/BRD) in dry-run scheduler collection.
+1. Refine maintenance provider proposals from cycle scaffolding to state-driven intent (missing/expiring buff signals).
 2. Keep legacy path operational until scheduler-owned dispatch path is enabled.
-3. After maintenance adapters, begin planner-owned dispatch dark launch for one provider.
+3. Begin planner-owned dispatch dark launch for one provider.

@@ -22,6 +22,7 @@ local scheduler = {
 			family_id = '',
 			until_ts = 0,
 		},
+		maintenance_next_at = {},
 	},
 }
 
@@ -999,11 +1000,73 @@ local function p1_collect_movement(ctx, out)
 	end
 end
 
+local function p1_collect_maintenance(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	if not player then
+		return
+	end
+	local job = tostring(player.main_job or '')
+	if job == '' then
+		return
+	end
+	local phase = scheduler.phase1
+	local gate = phase.maintenance_next_at or {}
+	phase.maintenance_next_at = gate
+	local now = ctx.now
+	local function maybe_emit(key, provider, action_type, action_name)
+		local next_at = p1_number(gate[key], 0)
+		if now < next_at then
+			return
+		end
+		gate[key] = now + 8.0
+		out[#out + 1] = {
+			proposal_id = ('maint.%s.%d'):format(key, math.floor(now * 1000)),
+			family_id = ('maintenance.%s'):format(key),
+			provider = provider,
+			action_type = action_type,
+			action_name = action_name,
+			target_kind = 'self',
+			target_id = tonumber(player.id) or 0,
+			target_name = tostring(player.name or ''),
+			priority_band = 75,
+			urgency = 0.20,
+			starvation_eligible = true,
+			created_at = now,
+			expires_at = now + 0.40,
+			commit_deadline = now + 0.25,
+			movement_policy = 'must_stop',
+			range_policy = { min = 0.0, max = 20.0, los_required = false },
+			recast_key = ('maint:%s'):format(key),
+			duplicate_suppression_key = ('maint:%s:%d'):format(key, tonumber(player.id) or 0),
+			lock_class = 'support_action',
+			expected_ack = 'action_start',
+			expected_effect = 'buff_gain',
+			sticky = true,
+			can_preempt_movement = true,
+			can_preempt_same_band = false,
+			reason_code = 'maintenance_cycle',
+			detail = { job = job },
+			legacy_command = '',
+		}
+	end
+	if job == 'COR' then
+		maybe_emit('cor_rolls', 'cor', 'ja', 'maintenance_rolls')
+	elseif job == 'BRD' then
+		maybe_emit('brd_songs', 'brd', 'spell', 'maintenance_songs')
+	elseif job == 'GEO' then
+		maybe_emit('geo_buffs', 'geo', 'spell', 'maintenance_geo')
+	end
+end
+
 local function p1_collect_proposals(ctx)
 	local out = {}
 	p1_collect_defensive_internal(ctx, out)
 	p1_collect_combat_offense(ctx, out)
 	p1_collect_movement(ctx, out)
+	p1_collect_maintenance(ctx, out)
 	return out
 end
 
