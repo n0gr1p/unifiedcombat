@@ -866,6 +866,74 @@ local function p1_collect_defensive_internal(ctx, out)
 	}
 end
 
+local function p1_collect_defensive_healbot(ctx, out)
+	if not bool_setting(ctx.settings.defensive_enabled, false) then
+		return
+	end
+	if tostring(ctx.settings.defensive_provider or 'internal') ~= 'healbot' then
+		return
+	end
+	local ok_actions = type(rawget(_G, 'actions')) == 'table' and type(_G.actions.get_defensive_action) == 'function'
+	local ok_healer = type(rawget(_G, 'healer')) == 'table' and type(_G.healer.take_action) == 'function'
+	if not ok_actions or not ok_healer then
+		return
+	end
+	local hb_action = _G.actions.get_defensive_action()
+	if type(hb_action) ~= 'table' then
+		return
+	end
+	local atype = tostring(hb_action.type or 'action')
+	local aname = tostring((hb_action.action and hb_action.action.en) or atype or 'healbot_action')
+	local target_obj = hb_action.target or {}
+	local target_name = tostring(target_obj.name or target_obj.en or '')
+	local target_id = tonumber(target_obj.id) or 0
+	if target_name == '' then
+		target_name = tostring(ctx.player_name or '')
+	end
+	local target_kind = (target_id ~= 0 and target_id ~= tonumber(ctx.player_id or 0)) and 'ally' or 'self'
+	local urgency = 0.45
+	if atype == 'cure' then
+		urgency = 0.70
+	elseif atype == 'overwrite' then
+		urgency = 0.80
+	elseif atype == 'debuff' then
+		urgency = 0.60
+	elseif atype == 'buff' then
+		urgency = 0.30
+	end
+	out[#out + 1] = {
+		proposal_id = ('def.healbot.%s.%s.%d'):format(atype, aname, math.floor(ctx.now * 1000)),
+		family_id = ('def.healbot.%s'):format(atype),
+		provider = 'defensive_healbot',
+		action_type = 'spell',
+		action_name = aname,
+		target_kind = target_kind,
+		target_id = target_id,
+		target_name = target_name,
+		priority_band = 100,
+		urgency = p1_clamp_urgency(urgency),
+		starvation_eligible = true,
+		created_at = ctx.now,
+		expires_at = ctx.now + 0.40,
+		commit_deadline = ctx.now + 0.25,
+		movement_policy = 'must_stop',
+		range_policy = { min = 0.0, max = 21.0, los_required = true },
+		recast_key = ('healbot:%s:%s'):format(atype, aname),
+		duplicate_suppression_key = ('healbot:%s:%d'):format(aname, target_id),
+		lock_class = 'support_action',
+		expected_ack = 'action_start',
+		expected_effect = 'buff_gain',
+		sticky = false,
+		can_preempt_movement = true,
+		can_preempt_same_band = false,
+		reason_code = ('healbot_%s'):format(atype),
+		detail = {
+			healbot_action = hb_action,
+			def_action_type = atype,
+		},
+	}
+end
+
 local function p1_collect_combat_offense(ctx, out)
 	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 		return
@@ -1216,6 +1284,7 @@ end
 local function p1_collect_proposals(ctx)
 	local out = {}
 	p1_collect_defensive_internal(ctx, out)
+	p1_collect_defensive_healbot(ctx, out)
 	p1_collect_combat_offense(ctx, out)
 	p1_collect_combat_ja(ctx, out)
 	p1_collect_movement(ctx, out)
@@ -1923,6 +1992,27 @@ local function p1_try_dark_launch_dispatch(settings)
 		_G.UC_LAST_SCHED_ACTION = ('[p1]%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
 		return true, 'BLOCK_SCHED_P1_DARKLAUNCH'
 	end
+	if provider == 'defensive_healbot' then
+		if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
+			return false, nil
+		end
+		local hb_action = selected.detail and selected.detail.healbot_action or nil
+		if type(hb_action) ~= 'table' then
+			return false, nil
+		end
+		local ok_actions = type(rawget(_G, 'actions')) == 'table' and type(_G.actions.get_defensive_action) == 'function'
+		local ok_healer = type(rawget(_G, 'healer')) == 'table' and type(_G.healer.take_action) == 'function'
+		if not ok_actions or not ok_healer then
+			return false, nil
+		end
+		_G.healer:take_action(hb_action)
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]hb:%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_HEALBOT'
+	end
 	if provider == 'mobility' then
 		if not bool_setting(settings and settings.scheduler_dark_launch_movement, false) then
 			return false, nil
@@ -2063,6 +2153,8 @@ function scheduler.get_debug_overlay()
 		if p == 'combat' then
 			return bool_setting(s.scheduler_dark_launch_combat, false)
 		elseif p == 'defensive_internal' then
+			return bool_setting(s.scheduler_dark_launch_defensive, false)
+		elseif p == 'defensive_healbot' then
 			return bool_setting(s.scheduler_dark_launch_defensive, false)
 		elseif p == 'mobility' then
 			return bool_setting(s.scheduler_dark_launch_movement, false)

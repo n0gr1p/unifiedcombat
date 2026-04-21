@@ -91,6 +91,13 @@ Status owner: Codex + Peter
 3. Add pending lifecycle event hooks (ack/effect updates) from packet callbacks instead of timeout-only progression. - DONE
 
 ## Recently Completed
+- Added defensive HealBot scheduler path (S5 extension):
+  - `p1_collect_defensive_healbot(ctx, out)` proposal adapter now emits scheduler defensive proposals when provider is `healbot`.
+  - `p1_try_dark_launch_dispatch` now executes selected `defensive_healbot` proposals behind `scheduler_dark_launch_defensive`.
+  - Defensive overlay filtering treats both `defensive_internal` and `defensive_healbot` as defensive opt-in lane.
+- Result:
+  - Defensive provider behavior can route through scheduler selection for both internal and HealBot modes while remaining opt-in.
+
 - Added packet-driven pending lifecycle updates:
   - `scheduler.on_action(act)` and `scheduler.on_action_message(msg)` in `unified_scheduler.lua`
   - Hooked from `UnifiedCombat.lua` action listener + incoming 0x029 parser via global callbacks.
