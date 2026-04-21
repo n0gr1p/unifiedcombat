@@ -16,9 +16,11 @@ local scheduler = {
 		last_noop_reason = 'init',
 		last_reject_top = '',
 		last_top3 = '',
+		last_top5_lines = {},
 		last_plan = nil,
 		pending = nil,
 		recent_duplicate_until = {},
+		recent_rejects = {},
 		movement_goal_hold = {
 			family_id = '',
 			until_ts = 0,
@@ -1427,16 +1429,28 @@ local function p1_rank(ctx, proposals)
 	local valid = {}
 	local soft_blocked = {}
 	local reject_counts = {}
+	local rejected = {}
+	local function add_reject(proposal, reason)
+		local p = proposal or {}
+		rejected[#rejected + 1] = {
+			provider = tostring(p.provider or ''),
+			family = tostring(p.family_id or ''),
+			action = tostring(p.action_name or ''),
+			reason = tostring(reason or ''),
+		}
+	end
 	for _, proposal in ipairs(proposals) do
 		local ok, reject_reason = p1_validate_proposal(ctx, proposal)
 		if ok then
 			local lock_reject = p1_hard_lock_reject(locks, proposal)
 			if lock_reject ~= '' then
 				reject_counts[lock_reject] = (reject_counts[lock_reject] or 0) + 1
+				add_reject(proposal, lock_reject)
 			else
 				local soft_reject = p1_soft_lock_reject(locks, proposal)
 				if soft_reject ~= '' then
 					reject_counts[soft_reject] = (reject_counts[soft_reject] or 0) + 1
+					add_reject(proposal, soft_reject)
 					p1_score(proposal)
 					proposal._soft_blocked = true
 					soft_blocked[#soft_blocked + 1] = proposal
@@ -1446,7 +1460,9 @@ local function p1_rank(ctx, proposals)
 				end
 			end
 		else
-			reject_counts[reject_reason] = (reject_counts[reject_reason] or 0) + 1
+			local rr = reject_reason ~= '' and tostring(reject_reason) or 'invalid'
+			reject_counts[rr] = (reject_counts[rr] or 0) + 1
+			add_reject(proposal, rr)
 		end
 	end
 	table.sort(valid, function(a, b)
@@ -1471,7 +1487,7 @@ local function p1_rank(ctx, proposals)
 		-- Soft suppression may be bypassed when nothing else is valid.
 		valid = soft_blocked
 	end
-	return valid, reject_counts, locks
+	return valid, reject_counts, locks, rejected
 end
 
 local function p1_format_top3(ranked)
@@ -1503,6 +1519,52 @@ local function p1_format_top3_verbose(ranked)
 		)
 	end
 	return table.concat(parts, ' | ')
+end
+
+local function p1_format_topn_lines(ranked, n)
+	local out = {}
+	local count = math.min(tonumber(n) or 5, #ranked)
+	for i = 1, count do
+		local p = ranked[i]
+		local sp = p._score_parts or {}
+		out[#out + 1] = ('%d) %.2f %s/%s %s u=%.2f rp=%.2f'):format(
+			i,
+			p1_number(p._score, 0),
+			tostring(p.provider or ''),
+			tostring(p.family_id or ''),
+			tostring(p.action_name or ''),
+			p1_number(sp.urgency_bonus, 0),
+			p1_number(sp.risk_penalty, 0)
+		)
+	end
+	return out
+end
+
+local function p1_push_recent_rejects(ctx, rejected)
+	local phase = scheduler.phase1
+	if type(phase.recent_rejects) ~= 'table' then
+		phase.recent_rejects = {}
+	end
+	if type(rejected) ~= 'table' or #rejected == 0 then
+		return
+	end
+	for _, r in ipairs(rejected) do
+		local line = ('t%s %s/%s %s :: %s'):format(
+			tostring(ctx.tick or ''),
+			tostring(r.provider or ''),
+			tostring(r.family or ''),
+			tostring(r.action or ''),
+			tostring(r.reason or '')
+		)
+		phase.recent_rejects[#phase.recent_rejects + 1] = line
+	end
+	local max_keep = 25
+	local drop = #phase.recent_rejects - max_keep
+	if drop > 0 then
+		for _ = 1, drop do
+			table.remove(phase.recent_rejects, 1)
+		end
+	end
 end
 
 local function p1_reject_top(reject_counts, proposal_count)
@@ -1671,7 +1733,7 @@ local function p1_run_dry(settings)
 	local ctx = p1_build_ctx(settings)
 	p1_update_pending_state(ctx)
 	local proposals = p1_collect_proposals(ctx)
-	local ranked, reject_counts, locks = p1_rank(ctx, proposals)
+	local ranked, reject_counts, locks, rejected = p1_rank(ctx, proposals)
 	local selected = ranked[1]
 	local plan = p1_build_dispatch_plan(ctx, selected)
 	local commit_ok, commit_reason = p1_revalidate_plan_commit(ctx, selected, plan)
@@ -1692,6 +1754,8 @@ local function p1_run_dry(settings)
 	end
 	phase.last_top3 = p1_format_top3(ranked)
 	phase.last_top3_verbose = p1_format_top3_verbose(ranked)
+	phase.last_top5_lines = p1_format_topn_lines(ranked, 5)
+	p1_push_recent_rejects(ctx, rejected)
 	phase.last_reject_top = p1_reject_top(reject_counts, #proposals)
 	if selected then
 		phase.last_noop_reason = ''
@@ -1713,6 +1777,16 @@ local function p1_run_dry(settings)
 	_G.UC_SCHED_P1_NOOP_REASON = phase.last_noop_reason or ''
 	_G.UC_SCHED_P1_TOP3 = phase.last_top3 or ''
 	_G.UC_SCHED_P1_TOP3_VERBOSE = phase.last_top3_verbose or ''
+	_G.UC_SCHED_P1_TOP5 = table.concat(phase.last_top5_lines or {}, '\n')
+	do
+		local rr = phase.recent_rejects or {}
+		local out = {}
+		local start = math.max(1, #rr - 4)
+		for i = start, #rr do
+			out[#out + 1] = rr[i]
+		end
+		_G.UC_SCHED_P1_REJECT5 = table.concat(out, '\n')
+	end
 end
 
 local function p1_try_dark_launch_dispatch(settings)
@@ -1931,6 +2005,25 @@ _G.UC_SCHED_OnActionMessage = function(msg)
 	if not ok then
 		-- scheduler hooks are best-effort; never destabilize combat tick.
 	end
+end
+
+function scheduler.get_debug_overlay()
+	local phase = scheduler.phase1 or {}
+	local queued = {}
+	for _, line in ipairs(phase.last_top5_lines or {}) do
+		queued[#queued + 1] = tostring(line or '')
+	end
+	local rejected = {}
+	local rr = phase.recent_rejects or {}
+	local start = math.max(1, #rr - 4)
+	for i = start, #rr do
+		rejected[#rejected + 1] = tostring(rr[i] or '')
+	end
+	return {
+		tick = p1_number(phase.tick, 0),
+		queued = queued,
+		rejected = rejected,
+	}
 end
 
 return scheduler
