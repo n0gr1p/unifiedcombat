@@ -907,13 +907,103 @@ local function p1_collect_combat_offense(ctx, out)
 			tp = tp,
 		},
 		legacy_command = ('input /ws \"%s\" <t>'):format(ws),
+		required_setting = 'weaponskill_active',
 	}
+end
+
+local function p1_collect_movement(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	if not player or tonumber(player.status) ~= 1 then
+		return
+	end
+	if not bool_setting(ctx.settings.spacing, false) then
+		return
+	end
+	local target = windower.ffxi.get_mob_by_target('t')
+	if not target or not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
+		return
+	end
+	local dist = target.distance and target.distance:sqrt() or 999
+	local min_range = p1_number(ctx.settings.spacing_band_min, -0.9)
+	local max_range = p1_number(ctx.settings.spacing_band_max, 0.4)
+	if max_range <= min_range then
+		max_range = min_range + 0.1
+	end
+	if dist > max_range then
+		local urgency = (dist - max_range) / 6
+		out[#out + 1] = {
+			proposal_id = ('move.close.%d.%d'):format(tonumber(target.id) or 0, math.floor(ctx.now * 1000)),
+			family_id = 'movement.close_range',
+			provider = 'mobility',
+			action_type = 'move',
+			action_name = 'close_range',
+			target_kind = 'mob',
+			target_id = tonumber(target.id) or 0,
+			target_name = tostring(target.name or ''),
+			priority_band = 50,
+			urgency = p1_clamp_urgency(urgency),
+			starvation_eligible = true,
+			created_at = ctx.now,
+			expires_at = ctx.now + 0.30,
+			commit_deadline = ctx.now + 0.20,
+			movement_policy = 'positioning_only',
+			range_policy = { min = 0.0, max = math.max(1.0, max_range + 0.1), los_required = false },
+			recast_key = 'move:close_range',
+			duplicate_suppression_key = ('move:close:%d'):format(tonumber(target.id) or 0),
+			lock_class = 'movement_action',
+			expected_ack = 'movement_start',
+			expected_effect = 'movement_progress',
+			sticky = true,
+			can_preempt_movement = true,
+			can_preempt_same_band = false,
+			reason_code = 'out_of_range',
+			detail = { dist = dist, min = min_range, max = max_range },
+			legacy_command = '',
+			required_setting = 'spacing',
+		}
+	elseif dist < min_range then
+		local urgency = (min_range - dist) / 3
+		out[#out + 1] = {
+			proposal_id = ('move.retreat.%d.%d'):format(tonumber(target.id) or 0, math.floor(ctx.now * 1000)),
+			family_id = 'movement.spacing',
+			provider = 'mobility',
+			action_type = 'move',
+			action_name = 'retreat',
+			target_kind = 'mob',
+			target_id = tonumber(target.id) or 0,
+			target_name = tostring(target.name or ''),
+			priority_band = 50,
+			urgency = p1_clamp_urgency(urgency),
+			starvation_eligible = true,
+			created_at = ctx.now,
+			expires_at = ctx.now + 0.30,
+			commit_deadline = ctx.now + 0.20,
+			movement_policy = 'positioning_only',
+			range_policy = { min = min_range, max = max_range, los_required = false },
+			recast_key = 'move:spacing',
+			duplicate_suppression_key = ('move:retreat:%d'):format(tonumber(target.id) or 0),
+			lock_class = 'movement_action',
+			expected_ack = 'movement_start',
+			expected_effect = 'movement_progress',
+			sticky = true,
+			can_preempt_movement = true,
+			can_preempt_same_band = false,
+			reason_code = 'too_close',
+			detail = { dist = dist, min = min_range, max = max_range },
+			legacy_command = '',
+			required_setting = 'spacing',
+		}
+	end
 end
 
 local function p1_collect_proposals(ctx)
 	local out = {}
 	p1_collect_defensive_internal(ctx, out)
 	p1_collect_combat_offense(ctx, out)
+	p1_collect_movement(ctx, out)
 	return out
 end
 
@@ -1034,6 +1124,24 @@ local function p1_validate_proposal(ctx, p)
 	end
 	if tostring(p.proposal_id or '') == '' or tostring(p.provider or '') == '' then
 		return false, 'malformed'
+	end
+	local required_setting = tostring(p.required_setting or '')
+	if required_setting ~= '' and not bool_setting(ctx.settings[required_setting], false) then
+		return false, 'settings_disabled'
+	end
+	if p1_number(ctx.now - p1_number(p.created_at, ctx.now), 0) > 0.8 then
+		return false, 'stale_snapshot'
+	end
+	local phase = scheduler.phase1
+	if type(phase.pending) == 'table' and p1_pending_is_live_state(tostring(phase.pending.state or '')) then
+		local pending_lock_class = tostring(phase.pending.lock_class or '')
+		local proposal_lock_class = tostring(p.lock_class or '')
+		if pending_lock_class ~= '' and proposal_lock_class ~= '' and pending_lock_class ~= proposal_lock_class then
+			local at = tostring(p.action_type or '')
+			if at == 'spell' or at == 'ja' or at == 'ws' or at == 'move' then
+				return false, 'pending_conflict'
+			end
+		end
 	end
 	local expires_at = p1_number(p.expires_at, ctx.now + 0.40)
 	if expires_at <= ctx.now then
@@ -1268,6 +1376,7 @@ local function p1_record_legacy_dispatch(ctx)
 		expected_ack = tostring(selected.expected_ack or ''),
 		expected_effect = tostring(selected.expected_effect or ''),
 		result = '',
+		lock_class = tostring(selected.lock_class or ''),
 	}
 	if duplicate_key ~= '' then
 		phase.recent_duplicate_until[duplicate_key] = ctx.now + 0.75
