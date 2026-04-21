@@ -1582,16 +1582,6 @@ local function p1_run_dry(settings)
 	local proposals = p1_collect_proposals(ctx)
 	local ranked, reject_counts, locks = p1_rank(ctx, proposals)
 	local selected = ranked[1]
-	-- Combat-first dark-launch intent: when enabled, prefer the top combat proposal from the
-	-- ranked set so scheduler dark launch validates offense flow before lower-risk support lanes.
-	if bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
-		for _, candidate in ipairs(ranked) do
-			if tostring(candidate.provider or '') == 'combat' then
-				selected = candidate
-				break
-			end
-		end
-	end
 	local plan = p1_build_dispatch_plan(ctx, selected)
 	local commit_ok, commit_reason = p1_revalidate_plan_commit(ctx, selected, plan)
 	if selected and not commit_ok then
