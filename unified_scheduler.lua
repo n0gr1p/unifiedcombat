@@ -68,6 +68,7 @@ local maintenance_buff_cache = {
 }
 
 local ensure_maintenance_buff_cache
+local count_matching_buffs
 
 local function get_settings()
 	return rawget(_G, 'UC_SETTINGS') or {}
@@ -1295,7 +1296,7 @@ ensure_maintenance_buff_cache = function()
 	maintenance_buff_cache.built = true
 end
 
-local function count_matching_buffs(buff_list, id_set)
+count_matching_buffs = function(buff_list, id_set)
 	if type(buff_list) ~= 'table' or type(id_set) ~= 'table' then
 		return 0
 	end
