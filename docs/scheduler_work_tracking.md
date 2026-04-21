@@ -45,13 +45,15 @@ Status owner: Codex + Peter
   - Timeout path currently uses `effect_deadline` transition to `timed_out`; ack/event-driven transitions come with packet-integrated pending updates.
 
 ### S4 - Lock semantics and enforcement
-- Status: IN_PROGRESS
+- Status: DONE
 - Deliverables:
   - [x] `movement_lock`, `cast_lock`, `target_lock`, `zone_guard_lock` base objects.
+  - [x] `duplicate_lock` object and `movement_goal_hold` object formalization.
   - [x] Hard-lock behavior in evaluation (`hard_locked`, `zone_guard` rejection paths).
-  - [ ] `duplicate_lock` object and `movement_goal_hold` object formalization.
-  - [ ] Soft suppression behavior in evaluation.
-  - [ ] Lock acquire/release tied to pending lifecycle (beyond current pending-live lock derivation).
+  - [x] Soft suppression behavior in evaluation (`blocked_soft` path with fallback when no hard-valid proposals exist).
+  - [x] Lock acquire/release tied to pending lifecycle (current model derives cast/move lock from pending live states).
+- Notes:
+  - Current lock model is implemented in dry-run scheduler path and mirrors pending-derived lock lifecycle while legacy dispatch remains active.
 
 ### S5 - Provider migration under scheduler authority
 - Status: IN_PROGRESS
@@ -78,6 +80,6 @@ Status owner: Codex + Peter
 - Proposal collection currently seeded from defensive/internal only (intended for shell bootstrap).
 
 ## Next Slice (immediately next code task)
-1. Finish S4 lock model (`duplicate_lock`, `movement_goal_hold`, soft suppression semantics).
-2. Expand rejection taxonomy (`pending_conflict`, `settings_disabled`, `stale_snapshot`) in ranked diagnostics.
+1. Expand rejection taxonomy (`pending_conflict`, `settings_disabled`, `stale_snapshot`) in ranked diagnostics.
+2. Begin S5 provider migration: combat provider proposal path.
 3. Keep legacy path operational until scheduler-owned dispatch path is enabled.

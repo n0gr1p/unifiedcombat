@@ -18,6 +18,10 @@ local scheduler = {
 		last_plan = nil,
 		pending = nil,
 		recent_duplicate_until = {},
+		movement_goal_hold = {
+			family_id = '',
+			until_ts = 0,
+		},
 	},
 }
 
@@ -906,11 +910,24 @@ local function p1_get_locks(ctx)
 	local pending_live = type(pending) == 'table' and p1_pending_is_live_state(tostring(pending.state or ''))
 	local zone_suspend_until = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
 	local zone_guard_active = type(zone_suspend_until) == 'number' and ctx.now < zone_suspend_until
+	local now = ctx.now
+	local duplicate_lock_until = 0
+	for _, until_ts in pairs(phase.recent_duplicate_until) do
+		local u = p1_number(until_ts, 0)
+		if u > duplicate_lock_until then
+			duplicate_lock_until = u
+		end
+	end
+	local hold = phase.movement_goal_hold or {}
+	local hold_family = tostring(hold.family_id or '')
+	local hold_until = p1_number(hold.until_ts, 0)
 	return {
 		zone_guard_lock = { hard = zone_guard_active },
 		cast_lock = { hard = pending_live },
 		movement_lock = { hard = pending_live },
 		target_lock = { hard = false },
+		duplicate_lock = { hard = duplicate_lock_until > now, until_ts = duplicate_lock_until },
+		movement_goal_hold = { hard = false, soft = (hold_family ~= '' and hold_until > now), family_id = hold_family, until_ts = hold_until },
 	}
 end
 
@@ -926,6 +943,26 @@ local function p1_hard_lock_reject(locks, proposal)
 		return 'hard_locked'
 	end
 	return ''
+end
+
+local function p1_soft_lock_reject(locks, proposal)
+	local action_type = tostring(proposal and proposal.action_type or '')
+	if action_type ~= 'move' then
+		return ''
+	end
+	local hold = locks and locks.movement_goal_hold or nil
+	if not hold or hold.soft ~= true then
+		return ''
+	end
+	local family_id = tostring(proposal and proposal.family_id or '')
+	local can_preempt = proposal and proposal.can_preempt_movement == true
+	if can_preempt then
+		return ''
+	end
+	if family_id ~= '' and family_id == tostring(hold.family_id or '') then
+		return ''
+	end
+	return 'blocked_soft'
 end
 
 local function p1_validate_proposal(ctx, p)
@@ -970,6 +1007,7 @@ end
 local function p1_rank(ctx, proposals)
 	local locks = p1_get_locks(ctx)
 	local valid = {}
+	local soft_blocked = {}
 	local reject_counts = {}
 	for _, proposal in ipairs(proposals) do
 		local ok, reject_reason = p1_validate_proposal(ctx, proposal)
@@ -978,8 +1016,16 @@ local function p1_rank(ctx, proposals)
 			if lock_reject ~= '' then
 				reject_counts[lock_reject] = (reject_counts[lock_reject] or 0) + 1
 			else
-				p1_score(proposal)
-				valid[#valid + 1] = proposal
+				local soft_reject = p1_soft_lock_reject(locks, proposal)
+				if soft_reject ~= '' then
+					reject_counts[soft_reject] = (reject_counts[soft_reject] or 0) + 1
+					p1_score(proposal)
+					proposal._soft_blocked = true
+					soft_blocked[#soft_blocked + 1] = proposal
+				else
+					p1_score(proposal)
+					valid[#valid + 1] = proposal
+				end
 			end
 		else
 			reject_counts[reject_reason] = (reject_counts[reject_reason] or 0) + 1
@@ -1003,6 +1049,10 @@ local function p1_rank(ctx, proposals)
 		end
 		return tostring(a.proposal_id or '') < tostring(b.proposal_id or '')
 	end)
+	if #valid == 0 and #soft_blocked > 0 then
+		-- Soft suppression may be bypassed when nothing else is valid.
+		valid = soft_blocked
+	end
 	return valid, reject_counts, locks
 end
 
@@ -1109,7 +1159,6 @@ local function p1_set_pending_globals()
 end
 
 local function p1_build_lock_summary(ctx, locks)
-	local phase = scheduler.phase1
 	local parts = {}
 	local lock_state = locks or p1_get_locks(ctx)
 	if lock_state.zone_guard_lock and lock_state.zone_guard_lock.hard then
@@ -1121,16 +1170,11 @@ local function p1_build_lock_summary(ctx, locks)
 	if lock_state.movement_lock and lock_state.movement_lock.hard then
 		parts[#parts + 1] = 'movement_lock'
 	end
-	local now = ctx.now
-	local has_dup = false
-	for _, until_ts in pairs(phase.recent_duplicate_until) do
-		if p1_number(until_ts, 0) > now then
-			has_dup = true
-			break
-		end
-	end
-	if has_dup then
+	if lock_state.duplicate_lock and lock_state.duplicate_lock.hard then
 		parts[#parts + 1] = 'duplicate_lock'
+	end
+	if lock_state.movement_goal_hold and lock_state.movement_goal_hold.soft then
+		parts[#parts + 1] = 'movement_goal_hold'
 	end
 	return table.concat(parts, '|')
 end
@@ -1182,6 +1226,14 @@ local function p1_run_dry(settings)
 	local phase = scheduler.phase1
 	phase.last_selected = selected
 	phase.last_plan = plan
+	if selected and tostring(selected.action_type or '') == 'move' then
+		phase.movement_goal_hold = {
+			family_id = tostring(selected.family_id or ''),
+			until_ts = ctx.now + 0.50,
+		}
+	elseif phase.movement_goal_hold and p1_number(phase.movement_goal_hold.until_ts, 0) <= ctx.now then
+		phase.movement_goal_hold = { family_id = '', until_ts = 0 }
+	end
 	phase.last_top3 = p1_format_top3(ranked)
 	phase.last_reject_top = p1_reject_top(reject_counts, #proposals)
 	if selected then
