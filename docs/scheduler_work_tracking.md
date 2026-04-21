@@ -98,3 +98,6 @@ Status owner: Codex + Peter
   - Added opt-in movement dark launch (`scheduler_dark_launch_movement`) for scheduler-selected mobility proposals.
   - Defensive dark launch remains opt-in via `scheduler_dark_launch_defensive`.
   - Added explicit defaults/profile persistence keys for both dark-launch settings in `UnifiedCombat.lua`.
+- Dark launch priority correction:
+  - Added combat-first dark launch (`scheduler_dark_launch_combat`) and moved dark-launch execution before defensive-provider gating.
+  - This ensures combat dark launch can run even when defensive automation is disabled.

@@ -1632,6 +1632,35 @@ local function p1_try_dark_launch_dispatch(settings)
 		return false, nil
 	end
 	local provider = tostring(selected.provider or '')
+	if provider == 'combat' then
+		if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
+			return false, nil
+		end
+		local player = windower.ffxi.get_player()
+		if not player or tonumber(player.status) ~= 1 then
+			return false, nil
+		end
+		local tp = tonumber(player.vitals and player.vitals.tp) or 0
+		if tp < 1000 then
+			return false, nil
+		end
+		local target = windower.ffxi.get_mob_by_target('t')
+		local expected_tid = tonumber(selected.target_id) or 0
+		if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
+			return false, nil
+		end
+		local ws = tostring(selected.action_name or '')
+		if ws == '' then
+			return false, nil
+		end
+		windower.send_command(('input /ws \"%s\" <t>'):format(ws))
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]ws:%s->%s'):format(ws, tostring(selected.target_name or ''))
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT'
+	end
 	if provider == 'defensive_internal' then
 		if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
 			return false, nil
@@ -1686,15 +1715,15 @@ function scheduler.process_tick()
 	_G.UC_LAST_SCHED_ACTION = ''
 	local s = get_settings()
 	p1_run_dry(s)
+	local p1_acted, p1_reason = p1_try_dark_launch_dispatch(s)
+	if p1_acted then
+		return true, p1_reason
+	end
 	if not bool_setting(s.defensive_enabled, false) then
 		return false, nil
 	end
 	local provider = tostring(s.defensive_provider or 'internal')
 	_G.UC_SCHED_PROVIDER = provider
-	local p1_acted, p1_reason = p1_try_dark_launch_dispatch(s)
-	if p1_acted then
-		return true, p1_reason
-	end
 	local acted, reason
 	if provider == 'healbot' then
 		acted, reason = try_delegate_healbot()
