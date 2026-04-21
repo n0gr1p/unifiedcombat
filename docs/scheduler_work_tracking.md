@@ -86,4 +86,11 @@ Status owner: Codex + Peter
 ## Next Slice (immediately next code task)
 1. Expand dark launch beyond defensive-internal to one additional provider path (likely movement prelude/plan).
 2. Keep legacy path operational until scheduler-owned dispatch path is fully validated.
-3. Add pending lifecycle event hooks (ack/effect updates) from packet callbacks instead of timeout-only progression.
+3. Add pending lifecycle event hooks (ack/effect updates) from packet callbacks instead of timeout-only progression. - DONE
+
+## Recently Completed
+- Added packet-driven pending lifecycle updates:
+  - `scheduler.on_action(act)` and `scheduler.on_action_message(msg)` in `unified_scheduler.lua`
+  - Hooked from `UnifiedCombat.lua` action listener + incoming 0x029 parser via global callbacks.
+- Result:
+  - pending state can progress by observed action events (ack/effect) instead of timeout-only transitions.

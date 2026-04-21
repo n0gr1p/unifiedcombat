@@ -591,6 +591,9 @@ local function uc_register_action_listener()
 		if UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_action) == 'function' then
 			UC_COMBAT_CORE.on_action(act)
 		end
+		if type(_G.UC_SCHED_OnAction) == 'function' then
+			_G.UC_SCHED_OnAction(act)
+		end
 	end)
 end
 
@@ -610,6 +613,9 @@ windower.register_event('incoming chunk', function(id, data)
 				message_id = data:unpack('H', 0x19) % 32768,
 			}
 			UC_COMBAT_CORE.on_action_message(msg)
+			if type(_G.UC_SCHED_OnActionMessage) == 'function' then
+				_G.UC_SCHED_OnActionMessage(msg)
+			end
 		end)
 		if not ok then
 			-- ignore malformed packet parse; core tick remains authoritative fallback.

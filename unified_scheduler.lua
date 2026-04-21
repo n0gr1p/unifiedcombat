@@ -1560,6 +1560,22 @@ local function p1_record_legacy_dispatch(ctx)
 	end
 end
 
+local function p1_pending_mark_complete(now, result_code)
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) ~= 'table' then
+		return
+	end
+	pending.state = 'complete'
+	pending.result = tostring(result_code or 'complete')
+	pending.effect_at = now
+	pending.completion_deadline = now + 0.75
+	local dkey = tostring(pending.duplicate_suppression_key or '')
+	if dkey ~= '' then
+		phase.recent_duplicate_until[dkey] = now + 0.75
+	end
+end
+
 local function p1_run_dry(settings)
 	local ctx = p1_build_ctx(settings)
 	p1_update_pending_state(ctx)
@@ -1679,6 +1695,71 @@ function scheduler.process_tick()
 		return true, reason
 	end
 	return false, nil
+end
+
+function scheduler.on_action(act)
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) ~= 'table' then
+		return
+	end
+	local now = os.clock()
+	local state_name = tostring(pending.state or '')
+	if not p1_pending_is_live_state(state_name) then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	local my_id = tonumber(player and player.id) or 0
+	local actor_id = tonumber(act and act.actor_id) or 0
+	if my_id ~= 0 and actor_id == my_id then
+		pending.state = 'acknowledged'
+		pending.ack_at = now
+	end
+	local expected_tid = tonumber(pending.target_id) or 0
+	if expected_tid ~= 0 and type(act and act.targets) == 'table' then
+		for _, t in ipairs(act.targets) do
+			if tonumber(t and t.id) == expected_tid then
+				p1_pending_mark_complete(now, 'action_target_effect')
+				break
+			end
+		end
+	end
+end
+
+function scheduler.on_action_message(msg)
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) ~= 'table' then
+		return
+	end
+	local now = os.clock()
+	local state_name = tostring(pending.state or '')
+	if not p1_pending_is_live_state(state_name) and state_name ~= 'acknowledged' then
+		return
+	end
+	local expected_tid = tonumber(pending.target_id) or 0
+	local msg_tid = tonumber(msg and msg.target_id) or 0
+	if expected_tid ~= 0 and msg_tid ~= 0 and expected_tid ~= msg_tid then
+		return
+	end
+	local message_id = tonumber(msg and msg.message_id) or 0
+	if message_id ~= 0 then
+		p1_pending_mark_complete(now, ('msg_%d'):format(message_id))
+	end
+end
+
+_G.UC_SCHED_OnAction = function(act)
+	local ok = pcall(scheduler.on_action, act)
+	if not ok then
+		-- scheduler hooks are best-effort; never destabilize combat tick.
+	end
+end
+
+_G.UC_SCHED_OnActionMessage = function(msg)
+	local ok = pcall(scheduler.on_action_message, msg)
+	if not ok then
+		-- scheduler hooks are best-effort; never destabilize combat tick.
+	end
 end
 
 return scheduler
