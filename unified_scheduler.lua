@@ -17,6 +17,7 @@ local scheduler = {
 		last_reject_top = '',
 		last_top3 = '',
 		last_top5_lines = {},
+		last_top5_items = {},
 		last_plan = nil,
 		pending = nil,
 		recent_duplicate_until = {},
@@ -1543,6 +1544,25 @@ local function p1_format_topn_lines(ranked, n)
 	return out
 end
 
+local function p1_capture_topn_items(ranked, n)
+	local out = {}
+	local count = math.min(tonumber(n) or 5, #ranked)
+	for i = 1, count do
+		local p = ranked[i]
+		local sp = p._score_parts or {}
+		out[#out + 1] = {
+			idx = i,
+			score = p1_number(p._score, 0),
+			provider = tostring(p.provider or ''),
+			family = tostring(p.family_id or ''),
+			action = tostring(p.action_name or ''),
+			urgency_bonus = p1_number(sp.urgency_bonus, 0),
+			risk_penalty = p1_number(sp.risk_penalty, 0),
+		}
+	end
+	return out
+end
+
 local function p1_push_recent_rejects(ctx, rejected)
 	local phase = scheduler.phase1
 	if type(phase.recent_rejects) ~= 'table' then
@@ -1758,6 +1778,7 @@ local function p1_run_dry(settings)
 	phase.last_top3 = p1_format_top3(ranked)
 	phase.last_top3_verbose = p1_format_top3_verbose(ranked)
 	phase.last_top5_lines = p1_format_topn_lines(ranked, 5)
+	phase.last_top5_items = p1_capture_topn_items(ranked, 5)
 	p1_push_recent_rejects(ctx, rejected)
 	phase.last_reject_top = p1_reject_top(reject_counts, #proposals)
 	if selected then
@@ -2012,9 +2033,31 @@ end
 
 function scheduler.get_debug_overlay()
 	local phase = scheduler.phase1 or {}
+	local s = get_settings()
+	local function enabled_for_provider(provider)
+		local p = tostring(provider or '')
+		if p == 'combat' then
+			return bool_setting(s.scheduler_dark_launch_combat, false)
+		elseif p == 'defensive_internal' then
+			return bool_setting(s.scheduler_dark_launch_defensive, false)
+		elseif p == 'mobility' then
+			return bool_setting(s.scheduler_dark_launch_movement, false)
+		end
+		return false
+	end
 	local queued = {}
-	for _, line in ipairs(phase.last_top5_lines or {}) do
-		queued[#queued + 1] = tostring(line or '')
+	for _, item in ipairs(phase.last_top5_items or {}) do
+		if enabled_for_provider(item.provider) then
+			queued[#queued + 1] = ('%d) %.2f %s/%s %s u=%.2f rp=%.2f'):format(
+				tonumber(item.idx) or 0,
+				tonumber(item.score) or 0,
+				tostring(item.provider or ''),
+				tostring(item.family or ''),
+				tostring(item.action or ''),
+				tonumber(item.urgency_bonus) or 0,
+				tonumber(item.risk_penalty) or 0
+			)
+		end
 	end
 	local rejected = {}
 	local rr = phase.recent_rejects or {}
