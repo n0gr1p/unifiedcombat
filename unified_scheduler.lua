@@ -848,9 +848,72 @@ local function p1_collect_defensive_internal(ctx, out)
 	}
 end
 
+local function p1_collect_combat_offense(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	if not bool_setting(ctx.settings.weaponskill_active, false) then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	if not player or tonumber(player.status) ~= 1 then
+		return
+	end
+	local tp = tonumber(player.vitals and player.vitals.tp) or 0
+	if tp < 1000 then
+		return
+	end
+	local target = windower.ffxi.get_mob_by_target('t')
+	if not target or not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
+		return
+	end
+	local ws = tostring(ctx.settings.ws1 or ctx.settings.weaponskill or '')
+	if ws == '' then
+		return
+	end
+	local urgency = (tp - 1000) / 2000
+	if urgency < 0 then
+		urgency = 0
+	elseif urgency > 1 then
+		urgency = 1
+	end
+	out[#out + 1] = {
+		proposal_id = ('combat.ws.%s.%d.%d'):format(ws, tonumber(target.id) or 0, math.floor(ctx.now * 1000)),
+		family_id = 'combat.ws.primary',
+		provider = 'combat',
+		action_type = 'ws',
+		action_name = ws,
+		target_kind = 'mob',
+		target_id = tonumber(target.id) or 0,
+		target_name = tostring(target.name or ''),
+		priority_band = 70,
+		urgency = p1_clamp_urgency(urgency),
+		starvation_eligible = true,
+		created_at = ctx.now,
+		expires_at = ctx.now + 0.30,
+		commit_deadline = ctx.now + 0.20,
+		movement_policy = 'requires_range',
+		range_policy = { min = 0.0, max = 5.5, los_required = true },
+		recast_key = ('ws:%s'):format(ws),
+		duplicate_suppression_key = ('ws:%s:%d'):format(ws, tonumber(target.id) or 0),
+		lock_class = 'offense_action',
+		expected_ack = 'action_start',
+		expected_effect = 'ws_effect',
+		sticky = true,
+		can_preempt_movement = false,
+		can_preempt_same_band = false,
+		reason_code = 'tp_ready',
+		detail = {
+			tp = tp,
+		},
+		legacy_command = ('input /ws \"%s\" <t>'):format(ws),
+	}
+end
+
 local function p1_collect_proposals(ctx)
 	local out = {}
 	p1_collect_defensive_internal(ctx, out)
+	p1_collect_combat_offense(ctx, out)
 	return out
 end
 

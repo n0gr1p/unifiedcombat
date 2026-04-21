@@ -60,9 +60,11 @@ Status owner: Codex + Peter
 - Deliverables:
   - [x] Defensive/internal adapter emits scheduler proposal (dry-run).
   - [ ] Defensive dispatch moved to scheduler dispatch plan path.
-  - [ ] Combat provider proposal path.
+  - [x] Combat provider proposal path (initial WS offense proposal adapter, dry-run).
   - [ ] Movement provider proposal path.
   - [ ] Maintenance providers (GEO/COR/BRD) proposal path.
+- Notes:
+  - Combat proposal adapter currently seeds WS proposals from engine-on + engaged + TP-ready state for ranking/diagnostics, without changing live dispatch flow.
 
 ## Observability Checklist
 - [x] `scheduler_selected_proposal`
@@ -81,5 +83,5 @@ Status owner: Codex + Peter
 
 ## Next Slice (immediately next code task)
 1. Expand rejection taxonomy (`pending_conflict`, `settings_disabled`, `stale_snapshot`) in ranked diagnostics.
-2. Begin S5 provider migration: combat provider proposal path.
+2. Add movement provider proposal path.
 3. Keep legacy path operational until scheduler-owned dispatch path is enabled.
