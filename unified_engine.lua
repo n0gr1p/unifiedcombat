@@ -86,19 +86,23 @@ local function render_sched_overlay()
 	local queued = type(snap.queued) == 'table' and snap.queued or {}
 	local rejected = type(snap.rejected) == 'table' and snap.rejected or {}
 	local qlines = { ('Scheduler Queue (tick %s)'):format(tostring(snap.tick or 0)) }
-	if #queued == 0 then
-		qlines[#qlines + 1] = '(none)'
-	else
-		for i = 1, math.min(5, #queued) do
+	for i = 1, 5 do
+		if i <= #queued then
 			qlines[#qlines + 1] = queued[i]
+		elseif i == 1 then
+			qlines[#qlines + 1] = '(none)'
+		else
+			qlines[#qlines + 1] = ' '
 		end
 	end
 	local rlines = { 'Scheduler Discarded (last 5)' }
-	if #rejected == 0 then
-		rlines[#rlines + 1] = '(none)'
-	else
-		for i = 1, math.min(5, #rejected) do
+	for i = 1, 5 do
+		if i <= #rejected then
 			rlines[#rlines + 1] = rejected[i]
+		elseif i == 1 then
+			rlines[#rlines + 1] = '(none)'
+		else
+			rlines[#rlines + 1] = ' '
 		end
 	end
 	local qtext = table.concat(qlines, '\n')
