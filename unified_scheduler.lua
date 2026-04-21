@@ -67,6 +67,8 @@ local maintenance_buff_cache = {
 	geo_ids = {},
 }
 
+local ensure_maintenance_buff_cache
+
 local function get_settings()
 	return rawget(_G, 'UC_SETTINGS') or {}
 end
@@ -1261,7 +1263,7 @@ local function p1_duplicate_suppressed(ctx, proposal)
 	return false
 end
 
-local function ensure_maintenance_buff_cache()
+ensure_maintenance_buff_cache = function()
 	if maintenance_buff_cache.built then
 		return
 	end
