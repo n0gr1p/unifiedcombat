@@ -35,11 +35,14 @@ Status owner: Codex + Peter
   - Implemented in dry-run path (non-dispatch) to preserve behavioral safety while we stand up pending/locks.
 
 ### S3 - Pending action ledger + duplicate suppression
-- Status: TODO
+- Status: DONE
 - Deliverables:
-  - [ ] Pending record model + lifecycle states.
-  - [ ] Duplicate suppression against pending + recent history.
-  - [ ] Ack/effect timeout transitions.
+  - [x] Pending record model + lifecycle states.
+  - [x] Duplicate suppression against pending + recent history.
+  - [x] Ack/effect timeout transitions.
+- Notes:
+  - Pending lifecycle is currently wired via legacy-dispatch observation while scheduler dispatch remains dark-launched.
+  - Timeout path currently uses `effect_deadline` transition to `timed_out`; ack/event-driven transitions come with packet-integrated pending updates.
 
 ### S4 - Lock semantics and enforcement
 - Status: TODO
@@ -64,8 +67,8 @@ Status owner: Codex + Peter
 - [x] `scheduler_noop_reason`
 - [x] `scheduler_reject_top`
 - [x] `scheduler_tick`
-- [ ] `scheduler_pending_state` (currently placeholder)
-- [ ] `scheduler_lock_summary` (currently placeholder)
+- [x] `scheduler_pending_state`
+- [x] `scheduler_lock_summary`
 - [ ] ranked top candidates with full score part details in UI/debug
 
 ## Current Risk Notes
@@ -73,6 +76,6 @@ Status owner: Codex + Peter
 - Proposal collection currently seeded from defensive/internal only (intended for shell bootstrap).
 
 ## Next Slice (immediately next code task)
-1. Implement pending ledger model and duplicate suppression checks (S3).
-2. Add pending lifecycle timers (`ack_deadline`, `effect_deadline`) and transitions.
+1. Implement explicit lock objects and hard/soft lock enforcement in evaluation (S4).
+2. Expand rejection taxonomy (`hard_locked`, `pending_conflict`, `zone_guard`, etc.) in ranked diagnostics.
 3. Keep legacy path operational until scheduler-owned dispatch path is enabled.

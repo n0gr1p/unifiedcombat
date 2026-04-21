@@ -15,6 +15,9 @@ local scheduler = {
 		last_noop_reason = 'init',
 		last_reject_top = '',
 		last_top3 = '',
+		last_plan = nil,
+		pending = nil,
+		recent_duplicate_until = {},
 	},
 }
 
@@ -847,6 +850,56 @@ local function p1_collect_proposals(ctx)
 	return out
 end
 
+local function p1_pending_is_live_state(state_name)
+	return state_name == 'selected' or state_name == 'dispatching' or state_name == 'sent' or state_name == 'acknowledged'
+end
+
+local function p1_update_pending_state(ctx)
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) ~= 'table' then
+		phase.pending = nil
+		return
+	end
+	local now = ctx.now
+	local state_name = tostring(pending.state or '')
+	if p1_pending_is_live_state(state_name) and now > p1_number(pending.effect_deadline, 0) then
+		pending.state = 'timed_out'
+		pending.result = 'effect_timeout'
+		local dkey = tostring(pending.duplicate_suppression_key or '')
+		if dkey ~= '' then
+			phase.recent_duplicate_until[dkey] = now + 0.75
+		end
+	end
+	if (pending.state == 'timed_out' or pending.state == 'failed' or pending.state == 'canceled') and now > p1_number(pending.completion_deadline, now) then
+		phase.pending = nil
+	end
+	if pending.state == 'complete' and now > p1_number(pending.completion_deadline, now) then
+		phase.pending = nil
+	end
+end
+
+local function p1_duplicate_suppressed(ctx, proposal)
+	local dkey = tostring(proposal and proposal.duplicate_suppression_key or '')
+	if dkey == '' then
+		return false
+	end
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) == 'table' then
+		local pkey = tostring(pending.duplicate_suppression_key or '')
+		local state_name = tostring(pending.state or '')
+		if pkey == dkey and p1_pending_is_live_state(state_name) then
+			return true
+		end
+	end
+	local until_ts = p1_number(phase.recent_duplicate_until[dkey], 0)
+	if until_ts > ctx.now then
+		return true
+	end
+	return false
+end
+
 local function p1_validate_proposal(ctx, p)
 	if type(p) ~= 'table' then
 		return false, 'malformed'
@@ -862,6 +915,9 @@ local function p1_validate_proposal(ctx, p)
 	p.commit_deadline = p1_number(p.commit_deadline, ctx.now + 0.25)
 	p.priority_band = math.floor(p1_number(p.priority_band, 0))
 	p.urgency = p1_clamp_urgency(p.urgency)
+	if p1_duplicate_suppressed(ctx, p) then
+		return false, 'duplicate_suppressed'
+	end
 	return true, ''
 end
 
@@ -1008,8 +1064,72 @@ local function p1_revalidate_plan_commit(ctx, selected, plan)
 	return true, ''
 end
 
+local function p1_set_pending_globals()
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) ~= 'table' then
+		_G.UC_SCHED_P1_PENDING_STATE = ''
+		return
+	end
+	_G.UC_SCHED_P1_PENDING_STATE = tostring(pending.state or '')
+end
+
+local function p1_build_lock_summary(ctx)
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	local parts = {}
+	if type(pending) == 'table' and p1_pending_is_live_state(tostring(pending.state or '')) then
+		parts[#parts + 1] = 'cast_lock'
+	end
+	local now = ctx.now
+	local has_dup = false
+	for _, until_ts in pairs(phase.recent_duplicate_until) do
+		if p1_number(until_ts, 0) > now then
+			has_dup = true
+			break
+		end
+	end
+	if has_dup then
+		parts[#parts + 1] = 'duplicate_lock'
+	end
+	return table.concat(parts, '|')
+end
+
+local function p1_record_legacy_dispatch(ctx)
+	local phase = scheduler.phase1
+	local selected = phase.last_selected
+	local plan = phase.last_plan
+	if not selected or not plan then
+		return
+	end
+	local duplicate_key = tostring(selected.duplicate_suppression_key or '')
+	phase.pending = {
+		pending_id = ('pend.%d.%d'):format(math.floor(ctx.now * 1000), math.floor(ctx.tick)),
+		proposal_id = tostring(selected.proposal_id or ''),
+		family_id = tostring(selected.family_id or ''),
+		duplicate_suppression_key = duplicate_key,
+		provider = tostring(selected.provider or ''),
+		action_type = tostring(selected.action_type or ''),
+		action_name = tostring(selected.action_name or ''),
+		target_id = tonumber(selected.target_id) or 0,
+		state = 'sent',
+		selected_at = p1_number(selected.created_at, ctx.now),
+		dispatched_at = ctx.now,
+		ack_deadline = ctx.now + 0.6,
+		effect_deadline = ctx.now + 2.5,
+		completion_deadline = ctx.now + 3.0,
+		expected_ack = tostring(selected.expected_ack or ''),
+		expected_effect = tostring(selected.expected_effect or ''),
+		result = '',
+	}
+	if duplicate_key ~= '' then
+		phase.recent_duplicate_until[duplicate_key] = ctx.now + 0.75
+	end
+end
+
 local function p1_run_dry(settings)
 	local ctx = p1_build_ctx(settings)
+	p1_update_pending_state(ctx)
 	local proposals = p1_collect_proposals(ctx)
 	local ranked, reject_counts = p1_rank(ctx, proposals)
 	local selected = ranked[1]
@@ -1021,6 +1141,7 @@ local function p1_run_dry(settings)
 	end
 	local phase = scheduler.phase1
 	phase.last_selected = selected
+	phase.last_plan = plan
 	phase.last_top3 = p1_format_top3(ranked)
 	phase.last_reject_top = p1_reject_top(reject_counts, #proposals)
 	if selected then
@@ -1037,8 +1158,8 @@ local function p1_run_dry(settings)
 	_G.UC_SCHED_P1_SELECTED_PROVIDER = selected and tostring(selected.provider or '') or ''
 	_G.UC_SCHED_P1_SELECTED_FAMILY = selected and tostring(selected.family_id or '') or ''
 	_G.UC_SCHED_P1_PLAN_PRELUDE = (plan and plan.prelude and tostring(plan.prelude.type or '')) or ''
-	_G.UC_SCHED_P1_PENDING_STATE = ''
-	_G.UC_SCHED_P1_LOCK_SUMMARY = ''
+	p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx)
 	_G.UC_SCHED_P1_REJECT_TOP = phase.last_reject_top or ''
 	_G.UC_SCHED_P1_NOOP_REASON = phase.last_noop_reason or ''
 	_G.UC_SCHED_P1_TOP3 = phase.last_top3 or ''
@@ -1061,12 +1182,20 @@ function scheduler.process_tick()
 			return false, nil
 		end
 		if acted then
+			local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+			p1_record_legacy_dispatch(ctx)
+			p1_set_pending_globals()
+			_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx)
 			return true, reason
 		end
 		return false, nil
 	end
 	acted, reason = try_internal_defensive_action()
 	if acted then
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx)
 		return true, reason
 	end
 	return false, nil
