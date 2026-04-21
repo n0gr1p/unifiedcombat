@@ -2092,7 +2092,7 @@ function scheduler.get_debug_overlay()
 		end
 	end
 	local start = math.max(1, #accepted - 4)
-	for i = start, #accepted do
+	for i = #accepted, start, -1 do
 		local item = accepted[i]
 		rejected[#rejected + 1] = ('t%s %s/%s %s :: %s'):format(
 			tostring(item.tick or ''),
