@@ -3,7 +3,7 @@ local core = require('unified_combat_core')
 
 local engine = {
 	running = false,
-	tick_interval = 0.25,
+	tick_interval = 0.20,
 	processing = false,
 	tick_seq = 0,
 	job_guard_ok = nil,

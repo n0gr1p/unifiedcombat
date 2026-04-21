@@ -206,6 +206,7 @@ public partial class MainForm
         try
         {
             _pendingPfDistBySid.Clear();
+            _pendingSpacingBySid.Clear();
             foreach (var key in HubUiConstants.BoolKeys)
             {
                 if (_boolChecks.TryGetValue(key, out var cb))
@@ -241,6 +242,16 @@ public partial class MainForm
             _pfFollowMaxYalms.Text = "50";
             _pfFightFollowMinYalms.Text = "3";
             _pfFightFollowHoldS.Text = "8";
+            _spUsePrediction.Checked = true;
+            _spBandMin.Text = "-0.9";
+            _spBandMax.Text = "0.4";
+            _spLookahead.Text = "0.25";
+            _spAnchorInvalidTicks.Text = "5";
+            _spEmergencyMargin.Text = "0.1";
+            _spSwitchPenalty.Text = "0.75";
+            _spSwitchMargin.Text = "0.35";
+            _spArrivalTolerance.Text = "0.2";
+            _spMaxAgents.Text = "6";
             _lblAddPriOp.Text = "";
             _lblPartnerOp.Text = "";
             _lblIgnoreInfo.Text = "";
@@ -405,6 +416,7 @@ public partial class MainForm
             _pfFightFollowMinYalms.Enabled = pfOn;
             _pfFightFollowHoldS.Enabled = pfOn;
             ApplyPartyFollowDistancesFromSnapshot(sid, s);
+            ApplySpacingTuningFromSnapshot(sid, s);
 
             var prov = SessionStateHelper.GetString(s, "defensive_provider", "internal");
             if (prov != "internal" && prov != "healbot")
@@ -895,6 +907,91 @@ public partial class MainForm
         PushPartyFollowDistances(sid);
     }
 
+    private void OnSpacingTuningBoolChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_use_prediction", ["value"] = _spUsePrediction.Checked ? "on" : "off" });
+        RememberPendingSpacingFromUi(sid);
+    }
+
+    private void OnSpacingTuningNumericChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        string N(TextBox tb, double defV)
+        {
+            var raw = (tb.Text ?? "").Trim();
+            if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+            {
+                v = defV;
+            }
+
+            var s = v.ToString("0.###", CultureInfo.InvariantCulture);
+            tb.Text = s;
+            return s;
+        }
+
+        string I(TextBox tb, int defV)
+        {
+            var raw = (tb.Text ?? "").Trim();
+            if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v))
+            {
+                v = defV;
+            }
+
+            var s = v.ToString(CultureInfo.InvariantCulture);
+            tb.Text = s;
+            return s;
+        }
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_band_min", ["value"] = N(_spBandMin, -0.9) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_band_max", ["value"] = N(_spBandMax, 0.4) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_lookahead_s", ["value"] = N(_spLookahead, 0.25) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_anchor_invalid_ticks", ["value"] = I(_spAnchorInvalidTicks, 5) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_emergency_margin", ["value"] = N(_spEmergencyMargin, 0.1) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_slot_switch_penalty", ["value"] = N(_spSwitchPenalty, 0.75) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_slot_switch_margin", ["value"] = N(_spSwitchMargin, 0.35) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_slot_arrival_tolerance", ["value"] = N(_spArrivalTolerance, 0.2) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_max_agents", ["value"] = I(_spMaxAgents, 6) });
+        RememberPendingSpacingFromUi(sid);
+    }
+
+    private void RememberPendingSpacingFromUi(string sid)
+    {
+        _pendingSpacingBySid[sid] = (
+            _spUsePrediction.Checked,
+            (_spBandMin.Text ?? "").Trim(),
+            (_spBandMax.Text ?? "").Trim(),
+            (_spLookahead.Text ?? "").Trim(),
+            (_spAnchorInvalidTicks.Text ?? "").Trim(),
+            (_spEmergencyMargin.Text ?? "").Trim(),
+            (_spSwitchPenalty.Text ?? "").Trim(),
+            (_spSwitchMargin.Text ?? "").Trim(),
+            (_spArrivalTolerance.Text ?? "").Trim(),
+            (_spMaxAgents.Text ?? "").Trim(),
+            DateTime.UtcNow
+        );
+    }
+
     private void PushPartyFollowDistances(string sid)
     {
         var minRaw = (_pfFollowMinYalms.Text ?? "").Trim();
@@ -1036,6 +1133,129 @@ public partial class MainForm
         {
             _pfFightFollowHoldS.Text = holdSrv;
         }
+    }
+
+    private static bool EquivalentNumericText(string left, string right)
+    {
+        if (string.Equals(left, right, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (!double.TryParse(left.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var a))
+        {
+            return false;
+        }
+
+        if (!double.TryParse(right.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var b))
+        {
+            return false;
+        }
+
+        return Math.Abs(a - b) < 1e-9;
+    }
+
+    private static bool SpacingEchoMatches(
+        bool srvUsePrediction,
+        string srvBandMin,
+        string srvBandMax,
+        string srvLookahead,
+        string srvAnchorInvalidTicks,
+        string srvEmergencyMargin,
+        string srvSwitchPenalty,
+        string srvSwitchMargin,
+        string srvArrivalTolerance,
+        string srvMaxAgents,
+        bool pendUsePrediction,
+        string pendBandMin,
+        string pendBandMax,
+        string pendLookahead,
+        string pendAnchorInvalidTicks,
+        string pendEmergencyMargin,
+        string pendSwitchPenalty,
+        string pendSwitchMargin,
+        string pendArrivalTolerance,
+        string pendMaxAgents)
+    {
+        return srvUsePrediction == pendUsePrediction &&
+               EquivalentNumericText(srvBandMin, pendBandMin) &&
+               EquivalentNumericText(srvBandMax, pendBandMax) &&
+               EquivalentNumericText(srvLookahead, pendLookahead) &&
+               EquivalentNumericText(srvAnchorInvalidTicks, pendAnchorInvalidTicks) &&
+               EquivalentNumericText(srvEmergencyMargin, pendEmergencyMargin) &&
+               EquivalentNumericText(srvSwitchPenalty, pendSwitchPenalty) &&
+               EquivalentNumericText(srvSwitchMargin, pendSwitchMargin) &&
+               EquivalentNumericText(srvArrivalTolerance, pendArrivalTolerance) &&
+               EquivalentNumericText(srvMaxAgents, pendMaxAgents);
+    }
+
+    private static void ApplyNumericTextIfChanged(TextBox tb, string incoming)
+    {
+        if (EquivalentNumericText(tb.Text ?? "", incoming))
+        {
+            return;
+        }
+
+        tb.Text = incoming;
+    }
+
+    private void ApplySpacingTuningFromSnapshot(string sid, JsonElement s)
+    {
+        var usePredictionSrv = SessionStateHelper.GetBool(s, "spacing_use_prediction", true);
+        var bandMinSrv = SessionStateHelper.GetString(s, "spacing_band_min", "-0.9");
+        var bandMaxSrv = SessionStateHelper.GetString(s, "spacing_band_max", "0.4");
+        var lookaheadSrv = SessionStateHelper.GetString(s, "spacing_lookahead_s", "0.25");
+        var anchorInvalidTicksSrv = SessionStateHelper.GetString(s, "spacing_anchor_invalid_ticks", "5");
+        var emergencyMarginSrv = SessionStateHelper.GetString(s, "spacing_emergency_margin", "0.1");
+        var switchPenaltySrv = SessionStateHelper.GetString(s, "spacing_slot_switch_penalty", "0.75");
+        var switchMarginSrv = SessionStateHelper.GetString(s, "spacing_slot_switch_margin", "0.35");
+        var arrivalToleranceSrv = SessionStateHelper.GetString(s, "spacing_slot_arrival_tolerance", "0.2");
+        var maxAgentsSrv = SessionStateHelper.GetString(s, "spacing_max_agents", "6");
+
+        if (_spUsePrediction.Focused || _spBandMin.Focused || _spBandMax.Focused || _spLookahead.Focused ||
+            _spAnchorInvalidTicks.Focused || _spEmergencyMargin.Focused || _spSwitchPenalty.Focused ||
+            _spSwitchMargin.Focused || _spArrivalTolerance.Focused || _spMaxAgents.Focused)
+        {
+            return;
+        }
+
+        if (_pendingSpacingBySid.TryGetValue(sid, out var ps))
+        {
+            var ageSec = (DateTime.UtcNow - ps.ts).TotalSeconds;
+            var echoed = SpacingEchoMatches(
+                usePredictionSrv, bandMinSrv, bandMaxSrv, lookaheadSrv, anchorInvalidTicksSrv, emergencyMarginSrv,
+                switchPenaltySrv, switchMarginSrv, arrivalToleranceSrv, maxAgentsSrv,
+                ps.usePrediction, ps.bandMin, ps.bandMax, ps.lookahead, ps.anchorInvalidTicks, ps.emergencyMargin,
+                ps.switchPenalty, ps.switchMargin, ps.arrivalTolerance, ps.maxAgents
+            );
+            if (echoed)
+            {
+                _pendingSpacingBySid.Remove(sid);
+            }
+            else if (ageSec < 3.0)
+            {
+                return;
+            }
+            else
+            {
+                _pendingSpacingBySid.Remove(sid);
+            }
+        }
+
+        if (_spUsePrediction.Checked != usePredictionSrv)
+        {
+            _spUsePrediction.Checked = usePredictionSrv;
+        }
+
+        ApplyNumericTextIfChanged(_spBandMin, bandMinSrv);
+        ApplyNumericTextIfChanged(_spBandMax, bandMaxSrv);
+        ApplyNumericTextIfChanged(_spLookahead, lookaheadSrv);
+        ApplyNumericTextIfChanged(_spAnchorInvalidTicks, anchorInvalidTicksSrv);
+        ApplyNumericTextIfChanged(_spEmergencyMargin, emergencyMarginSrv);
+        ApplyNumericTextIfChanged(_spSwitchPenalty, switchPenaltySrv);
+        ApplyNumericTextIfChanged(_spSwitchMargin, switchMarginSrv);
+        ApplyNumericTextIfChanged(_spArrivalTolerance, arrivalToleranceSrv);
+        ApplyNumericTextIfChanged(_spMaxAgents, maxAgentsSrv);
     }
 
     private void OnDefProviderSelected()

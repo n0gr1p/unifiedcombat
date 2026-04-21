@@ -36,6 +36,18 @@ local core = {
 	ja_pending_recast_id = 0,
 	ja_pending_sent_at = 0,
 	ja_last_sent_at = {},
+	spacing = {
+		anchor_agent_id = 0,
+		anchor_angle = 0,
+		anchor_invalid_tick_count = 0,
+		assigned_slot_index = -1,
+		last_slot_change_tick = 0,
+		assignments = {},
+		target_prev_x = nil,
+		target_prev_y = nil,
+		target_prev_t = nil,
+		tick = 0,
+	},
 }
 
 local skillchain_ids = {
@@ -263,6 +275,403 @@ local function uc_heading_from_vector(vx, vy)
 		return nil
 	end
 	return (math.atan2(vx, vy) - 1.5708)
+end
+
+local SPACING_EPS = 1e-6
+
+local function spacing_round(v)
+	return math.floor((tonumber(v) or 0) * 10000 + 0.5) / 10000
+end
+
+local function spacing_dist_xy(ax, ay, bx, by)
+	local dx = (ax or 0) - (bx or 0)
+	local dy = (ay or 0) - (by or 0)
+	return math.sqrt((dx * dx) + (dy * dy))
+end
+
+local function spacing_cmp_num(a, b, eps)
+	eps = eps or SPACING_EPS
+	if math.abs(a - b) <= eps then
+		return 0
+	end
+	return a < b and -1 or 1
+end
+
+local function spacing_collect_agents(me)
+	local by_id = {}
+	local out = {}
+	local party = windower.ffxi.get_party() or {}
+	local keys = { 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }
+	for _, k in ipairs(keys) do
+		local e = party[k]
+		local pm = e and e.mob
+		local pid = pm and tonumber(pm.id) or 0
+		if pid > 0 then
+			local mob = windower.ffxi.get_mob_by_id(pid)
+			if mob and mob.x ~= nil and mob.y ~= nil and (mob.hpp == nil or mob.hpp > 0) then
+				local a = {
+					id = pid,
+					x = mob.x,
+					y = mob.y,
+					model = tonumber(mob.model_size) or 0,
+					dist_to_target = 0,
+					prev_slot_valid = false,
+				}
+				out[#out + 1] = a
+				by_id[pid] = a
+			end
+		end
+	end
+	local me_id = tonumber(me and me.id) or 0
+	if me_id > 0 and not by_id[me_id] and me.x ~= nil and me.y ~= nil then
+		local a = {
+			id = me_id,
+			x = me.x,
+			y = me.y,
+			model = tonumber(me.model_size) or 0,
+			dist_to_target = 0,
+			prev_slot_valid = false,
+		}
+		out[#out + 1] = a
+		by_id[me_id] = a
+	end
+	table.sort(out, function(a, b)
+		return (tonumber(a.id) or 0) < (tonumber(b.id) or 0)
+	end)
+	return out, by_id
+end
+
+local function spacing_predict_target(target, st, use_prediction, lookahead_s)
+	local now = os.clock()
+	local tx = tonumber(target and target.x) or 0
+	local ty = tonumber(target and target.y) or 0
+	local px, py = tx, ty
+	if use_prediction and st.target_prev_x ~= nil and st.target_prev_y ~= nil and st.target_prev_t ~= nil then
+		local dt = now - st.target_prev_t
+		if dt > 0.01 and dt < 2.0 then
+			local vx = (tx - st.target_prev_x) / dt
+			local vy = (ty - st.target_prev_y) / dt
+			px = tx + (vx * lookahead_s)
+			py = ty + (vy * lookahead_s)
+		end
+	end
+	st.target_prev_x = tx
+	st.target_prev_y = ty
+	st.target_prev_t = now
+	return px, py
+end
+
+local function spacing_compute_band(target, agents, min_real, max_real)
+	local tmodel = tonumber(target and target.model_size) or 0
+	local sum_model = 0
+	local count = 0
+	for _, a in ipairs(agents) do
+		sum_model = sum_model + (tonumber(a.model) or 0)
+		count = count + 1
+	end
+	local avg_model = (count > 0) and (sum_model / count) or 0.9
+	local min_range = tmodel + avg_model + min_real
+	local max_range = tmodel + avg_model + max_real
+	if min_range < 0.1 then
+		min_range = 0.1
+	end
+	if max_range <= min_range then
+		max_range = min_range + 0.1
+	end
+	local preferred = (min_range + max_range) * 0.5
+	local emergency_margin = math.max(0.1, (max_range - min_range) * 0.10)
+	return min_range, max_range, preferred, emergency_margin
+end
+
+local function spacing_acquire_anchor(agents, tx, ty, min_range, max_range, preferred)
+	local best = nil
+	for _, a in ipairs(agents) do
+		local d = spacing_dist_xy(a.x, a.y, tx, ty)
+		local inside = (d >= min_range and d <= max_range)
+		local radius_delta = math.abs(d - preferred)
+		local cand = {
+			id = tonumber(a.id) or 0,
+			x = a.x,
+			y = a.y,
+			dist = d,
+			inside = inside and 1 or 0,
+			radius_delta = radius_delta,
+		}
+		if not best then
+			best = cand
+		else
+			if cand.inside ~= best.inside then
+				if cand.inside > best.inside then
+					best = cand
+				end
+			else
+				local c1 = spacing_cmp_num(cand.radius_delta, best.radius_delta)
+				if c1 < 0 then
+					best = cand
+				elseif c1 == 0 then
+					local c2 = spacing_cmp_num(cand.dist, best.dist)
+					if c2 < 0 or (c2 == 0 and cand.id < best.id) then
+						best = cand
+					end
+				end
+			end
+		end
+	end
+	return best
+end
+
+local function spacing_generate_slots(tx, ty, anchor_angle, preferred_radius, slot_count)
+	local slots = {}
+	local step = (2 * math.pi) / slot_count
+	for i = 0, slot_count - 1 do
+		local a = anchor_angle + (i * step)
+		slots[i] = {
+			index = i,
+			angle = a,
+			x = tx + (math.cos(a) * preferred_radius),
+			y = ty + (math.sin(a) * preferred_radius),
+		}
+	end
+	return slots
+end
+
+local function spacing_sort_agents_for_assignment(agents, assignments_prev, tx, ty, slot_count)
+	for _, a in ipairs(agents) do
+		a.dist_to_target = spacing_dist_xy(a.x, a.y, tx, ty)
+		local prev = tonumber(assignments_prev[tonumber(a.id) or 0])
+		a.prev_slot_valid = (prev ~= nil and prev >= 0 and prev < slot_count)
+	end
+	table.sort(agents, function(a, b)
+		if a.prev_slot_valid ~= b.prev_slot_valid then
+			return a.prev_slot_valid
+		end
+		local c = spacing_cmp_num(a.dist_to_target, b.dist_to_target)
+		if c ~= 0 then
+			return c < 0
+		end
+		return (tonumber(a.id) or 0) < (tonumber(b.id) or 0)
+	end)
+end
+
+local function spacing_assign_slots_greedy(agents, slots, slot_count, assignments_prev, switch_penalty)
+	local taken = {}
+	local assigned = {}
+	for _, a in ipairs(agents) do
+		local aid = tonumber(a.id) or 0
+		local prev = tonumber(assignments_prev[aid])
+		local best_idx = nil
+		local best_cost = nil
+		for idx = 0, (slot_count - 1) do
+			local s = slots[idx]
+			if not taken[idx] then
+				local d = spacing_dist_xy(a.x, a.y, s.x, s.y)
+				local penalty = 0
+				if prev == nil or prev ~= idx then
+					penalty = switch_penalty
+				end
+				local cost = d + penalty
+				if best_cost == nil then
+					best_cost = cost
+					best_idx = idx
+				else
+					local c = spacing_cmp_num(cost, best_cost)
+					if c < 0 or (c == 0 and idx < best_idx) then
+						best_cost = cost
+						best_idx = idx
+					end
+				end
+			end
+		end
+		if best_idx ~= nil then
+			taken[best_idx] = true
+			assigned[aid] = best_idx
+		end
+	end
+	return assigned
+end
+
+local function spacing_apply_local_stickiness(local_id, proposed_idx, agents_by_id, slots, assignments_prev, switch_margin, switch_penalty)
+	local current_idx = tonumber(assignments_prev[local_id])
+	if current_idx == nil or current_idx < 0 or slots[current_idx] == nil then
+		return proposed_idx
+	end
+	if proposed_idx == nil or slots[proposed_idx] == nil then
+		return current_idx
+	end
+	if proposed_idx == current_idx then
+		return current_idx
+	end
+	local me = agents_by_id[local_id]
+	if not me then
+		return proposed_idx
+	end
+	local current_slot = slots[current_idx]
+	local proposed_slot = slots[proposed_idx]
+	local current_cost = spacing_dist_xy(me.x, me.y, current_slot.x, current_slot.y)
+	local proposed_cost = spacing_dist_xy(me.x, me.y, proposed_slot.x, proposed_slot.y) + switch_penalty
+	if proposed_cost < (current_cost - switch_margin) then
+		return proposed_idx
+	end
+	return current_idx
+end
+
+local function spacing_compute_goal(me, tx, ty, slots, slot_idx, min_range, max_range, preferred_radius, arrival_tolerance)
+	local slot = slots[slot_idx]
+	if not slot then
+		return nil, nil, 'HOLD_POSITION'
+	end
+	local d_target = spacing_dist_xy(me.x, me.y, tx, ty)
+	local d_slot = spacing_dist_xy(me.x, me.y, slot.x, slot.y)
+	if d_target < min_range then
+		local vx = slot.x - tx
+		local vy = slot.y - ty
+		local len = math.sqrt((vx * vx) + (vy * vy))
+		if len < SPACING_EPS then
+			vx = me.x - tx
+			vy = me.y - ty
+			len = math.sqrt((vx * vx) + (vy * vy))
+		end
+		if len < SPACING_EPS then
+			return nil, nil, 'HOLD_POSITION'
+		end
+		local gx = tx + (vx / len) * preferred_radius
+		local gy = ty + (vy / len) * preferred_radius
+		return gx, gy, 'RECOVERY_TO_BAND'
+	end
+	if d_target > max_range then
+		return slot.x, slot.y, 'RECOVERY_TO_BAND'
+	end
+	if d_slot <= arrival_tolerance then
+		return nil, nil, 'HOLD_POSITION'
+	end
+	return slot.x, slot.y, 'DIRECT_TO_SLOT'
+end
+
+local function spacing_compute_heading(settings, me, target, min_real, max_real)
+	local st = core.spacing or {}
+	st.tick = (tonumber(st.tick) or 0) + 1
+	core.spacing = st
+	local use_prediction = setting_enabled(settings.spacing_use_prediction)
+	local lookahead_s = tonumber(settings.spacing_lookahead_s) or 0.25
+	if lookahead_s < 0 then
+		lookahead_s = 0
+	elseif lookahead_s > 1.5 then
+		lookahead_s = 1.5
+	end
+	local anchor_invalid_ticks_required = math.floor((tonumber(settings.spacing_anchor_invalid_ticks) or 5) + 0.5)
+	if anchor_invalid_ticks_required < 1 then
+		anchor_invalid_ticks_required = 1
+	elseif anchor_invalid_ticks_required > 50 then
+		anchor_invalid_ticks_required = 50
+	end
+	local slot_switch_penalty = tonumber(settings.spacing_slot_switch_penalty) or 0.75
+	if slot_switch_penalty < 0 then
+		slot_switch_penalty = 0
+	elseif slot_switch_penalty > 10 then
+		slot_switch_penalty = 10
+	end
+	local slot_switch_margin = tonumber(settings.spacing_slot_switch_margin) or 0.35
+	if slot_switch_margin < 0 then
+		slot_switch_margin = 0
+	elseif slot_switch_margin > 10 then
+		slot_switch_margin = 10
+	end
+	local slot_arrival_tolerance = tonumber(settings.spacing_slot_arrival_tolerance) or 0.20
+	if slot_arrival_tolerance < 0 then
+		slot_arrival_tolerance = 0
+	elseif slot_arrival_tolerance > 5 then
+		slot_arrival_tolerance = 5
+	end
+	local max_agents = math.floor((tonumber(settings.spacing_max_agents) or 6) + 0.5)
+	if max_agents < 1 then
+		max_agents = 1
+	elseif max_agents > 6 then
+		max_agents = 6
+	end
+	local emergency_margin_setting = tonumber(settings.spacing_emergency_margin)
+	local agents, by_id = spacing_collect_agents(me)
+	local local_id = tonumber(me and me.id) or 0
+	if local_id <= 0 or #agents == 0 then
+		return nil, 'HOLD_POSITION'
+	end
+	local tx, ty = spacing_predict_target(target, st, use_prediction, lookahead_s)
+	local min_range, max_range, preferred_radius, emergency_margin = spacing_compute_band(target, agents, min_real, max_real)
+	if emergency_margin_setting ~= nil then
+		emergency_margin = emergency_margin_setting
+		if emergency_margin < 0 then
+			emergency_margin = 0
+		elseif emergency_margin > 5 then
+			emergency_margin = 5
+		end
+	end
+	local anchor_id = tonumber(st.anchor_agent_id) or 0
+	local anchor = by_id[anchor_id]
+	if anchor then
+		local d = spacing_dist_xy(anchor.x, anchor.y, tx, ty)
+		local inside = (d >= min_range and d <= max_range)
+		if inside then
+			st.anchor_invalid_tick_count = 0
+		else
+			st.anchor_invalid_tick_count = (tonumber(st.anchor_invalid_tick_count) or 0) + 1
+		end
+		local emergency = (d < (min_range - emergency_margin)) or (d > (max_range + emergency_margin))
+		if emergency or (tonumber(st.anchor_invalid_tick_count) or 0) >= anchor_invalid_ticks_required then
+			anchor = nil
+			anchor_id = 0
+			st.anchor_invalid_tick_count = 0
+		end
+	else
+		anchor_id = 0
+		st.anchor_invalid_tick_count = 0
+	end
+	if anchor_id == 0 then
+		local picked = spacing_acquire_anchor(agents, tx, ty, min_range, max_range, preferred_radius)
+		if not picked then
+			return nil, 'HOLD_POSITION'
+		end
+		anchor_id = picked.id
+		anchor = by_id[anchor_id]
+		st.anchor_agent_id = anchor_id
+		st.anchor_invalid_tick_count = 0
+	end
+	if not anchor then
+		return nil, 'HOLD_POSITION'
+	end
+	local anchor_angle = math.atan2(anchor.y - ty, anchor.x - tx)
+	st.anchor_angle = anchor_angle
+	local slot_count = math.min(max_agents, math.max(1, #agents))
+	local slots = spacing_generate_slots(tx, ty, anchor_angle, preferred_radius, slot_count)
+	local assignments_prev = st.assignments or {}
+	spacing_sort_agents_for_assignment(agents, assignments_prev, tx, ty, slot_count)
+	local assigned = spacing_assign_slots_greedy(agents, slots, slot_count, assignments_prev, slot_switch_penalty)
+	local proposed_slot = assigned[local_id]
+	if proposed_slot == nil then
+		return nil, 'HOLD_POSITION'
+	end
+	local final_slot = spacing_apply_local_stickiness(local_id, proposed_slot, by_id, slots, assignments_prev, slot_switch_margin, slot_switch_penalty)
+	st.assignments = assigned
+	if final_slot ~= (tonumber(st.assigned_slot_index) or -1) then
+		st.assigned_slot_index = final_slot
+		st.last_slot_change_tick = st.tick
+	end
+	local gx, gy, mode = spacing_compute_goal(me, tx, ty, slots, final_slot, min_range, max_range, preferred_radius, slot_arrival_tolerance)
+	_G.UC_SPACING_DIAG = ('mode=%s aid=%d slot=%d anchor=%d dist_t=%.2f range=[%.2f,%.2f] pref=%.2f goal=%s,%s'):format(
+		tostring(mode or ''),
+		local_id,
+		tonumber(final_slot) or -1,
+		tonumber(anchor_id) or 0,
+		spacing_dist_xy(me.x, me.y, tx, ty),
+		min_range,
+		max_range,
+		preferred_radius,
+		gx and tostring(spacing_round(gx)) or '-',
+		gy and tostring(spacing_round(gy)) or '-'
+	)
+	if not gx or not gy then
+		return nil, mode
+	end
+	local heading = uc_heading_to(gx, gy)
+	return heading, mode
 end
 
 -- Real-time spacing-aware approach heading:
@@ -533,10 +942,38 @@ local function apply_movement(settings, target)
 	end
 	local dist = target_real_distance(target)
 	-- Comfortable fight-distance band around target.
-	local max_range = 0.4
-	local min_range = -0.9
+	local max_range = tonumber(settings.spacing_band_max) or 0.4
+	local min_range = tonumber(settings.spacing_band_min) or -0.9
+	if min_range < -5 then
+		min_range = -5
+	elseif min_range > 2 then
+		min_range = 2
+	end
+	if max_range < -1 then
+		max_range = -1
+	elseif max_range > 5 then
+		max_range = 5
+	end
+	if max_range <= min_range then
+		max_range = min_range + 0.1
+	end
 	local mover = get_mover()
 	local me = windower.ffxi.get_mob_by_target('me')
+	local p = windower.ffxi.get_player()
+	if setting_enabled(settings.spacing) and me then
+		local heading, mode = spacing_compute_heading(settings, me, target, min_range, max_range)
+		if mode == 'HOLD_POSITION' then
+			if core.last_run_active then
+				stop_run()
+			end
+			return
+		end
+		if heading then
+			windower.ffxi.run(heading)
+			core.last_run_active = true
+			return
+		end
+	end
 	local closing_to_target = dist > max_range
 	if dist > max_range then
 		local moved = false
@@ -596,7 +1033,6 @@ local function apply_movement(settings, target)
 	end
 
 	if setting_enabled(settings.spacing) then
-		local p = windower.ffxi.get_player()
 		if p and me and p.status == 1 then
 			local party = windower.ffxi.get_party() or {}
 			local keys = { 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }

@@ -71,6 +71,16 @@ public partial class MainForm
     private Label _lblTargetIgnOp = null!;
     private Button _btnSave = null!;
     private Button _btnToggleEngine = null!;
+    private CheckBox _spUsePrediction = null!;
+    private TextBox _spBandMin = null!;
+    private TextBox _spBandMax = null!;
+    private TextBox _spLookahead = null!;
+    private TextBox _spAnchorInvalidTicks = null!;
+    private TextBox _spEmergencyMargin = null!;
+    private TextBox _spSwitchPenalty = null!;
+    private TextBox _spSwitchMargin = null!;
+    private TextBox _spArrivalTolerance = null!;
+    private TextBox _spMaxAgents = null!;
 
     private void BuildParityEditor(Panel host, FlowLayoutPanel sessionActionsFooter)
     {
@@ -474,7 +484,73 @@ public partial class MainForm
 
         g.Controls.Add(listsSplit, 0, gRow++);
 
-        form.Controls.Add(g);
+        var tabs = new TabControl
+        {
+            Dock = DockStyle.Top,
+            Height = 520,
+        };
+        var tabGeneral = new TabPage("General");
+        tabGeneral.AutoScroll = true;
+        g.Dock = DockStyle.Top;
+        tabGeneral.Controls.Add(g);
+        tabs.TabPages.Add(tabGeneral);
+
+        var tabSpacing = new TabPage("Spacing Tuning");
+        tabSpacing.AutoScroll = true;
+        var sp = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 2,
+            Padding = new Padding(8),
+        };
+        sp.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
+        sp.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
+        var sr = 0;
+        sp.Controls.Add(new Label { Text = "Use target prediction", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spUsePrediction = new CheckBox { AutoSize = true, Anchor = AnchorStyles.Left };
+        _spUsePrediction.CheckedChanged += (_, _) => OnSpacingTuningBoolChanged();
+        sp.Controls.Add(_spUsePrediction, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Comfort band min (real)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spBandMin = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _spBandMin.Leave += (_, _) => OnSpacingTuningNumericChanged();
+        sp.Controls.Add(_spBandMin, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Comfort band max (real)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spBandMax = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _spBandMax.Leave += (_, _) => OnSpacingTuningNumericChanged();
+        sp.Controls.Add(_spBandMax, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Prediction lookahead (s)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spLookahead = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _spLookahead.Leave += (_, _) => OnSpacingTuningNumericChanged();
+        sp.Controls.Add(_spLookahead, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Anchor invalid ticks", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spAnchorInvalidTicks = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _spAnchorInvalidTicks.Leave += (_, _) => OnSpacingTuningNumericChanged();
+        sp.Controls.Add(_spAnchorInvalidTicks, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Emergency margin", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spEmergencyMargin = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _spEmergencyMargin.Leave += (_, _) => OnSpacingTuningNumericChanged();
+        sp.Controls.Add(_spEmergencyMargin, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Slot switch penalty", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spSwitchPenalty = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _spSwitchPenalty.Leave += (_, _) => OnSpacingTuningNumericChanged();
+        sp.Controls.Add(_spSwitchPenalty, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Slot switch margin", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spSwitchMargin = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _spSwitchMargin.Leave += (_, _) => OnSpacingTuningNumericChanged();
+        sp.Controls.Add(_spSwitchMargin, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Slot arrival tolerance", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spArrivalTolerance = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _spArrivalTolerance.Leave += (_, _) => OnSpacingTuningNumericChanged();
+        sp.Controls.Add(_spArrivalTolerance, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Max agents", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spMaxAgents = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _spMaxAgents.Leave += (_, _) => OnSpacingTuningNumericChanged();
+        sp.Controls.Add(_spMaxAgents, 1, sr++);
+        tabSpacing.Controls.Add(sp);
+        tabs.TabPages.Add(tabSpacing);
+
+        form.Controls.Add(tabs);
         root.Controls.Add(form, 0, 1);
 
         _btnSave = new Button { Text = "Save (XML)", AutoSize = true };
