@@ -59,13 +59,14 @@ Status owner: Codex + Peter
 - Status: IN_PROGRESS
 - Deliverables:
   - [x] Defensive/internal adapter emits scheduler proposal (dry-run).
-  - [ ] Defensive dispatch moved to scheduler dispatch plan path.
+  - [x] Defensive dispatch dark-launch scaffold via scheduler-selected proposal path (opt-in setting: `scheduler_dark_launch_defensive`).
   - [x] Combat provider proposal path (initial WS offense proposal adapter, dry-run).
   - [x] Movement provider proposal path (initial close/retreat proposal adapters, dry-run).
-  - [x] Maintenance providers (GEO/COR/BRD) proposal path (initial cycle adapters, dry-run).
+  - [x] Maintenance providers (GEO/COR/BRD) proposal path (state-driven buff presence scaffolding, dry-run).
 - Notes:
   - Combat proposal adapter currently seeds WS proposals from engine-on + engaged + TP-ready state for ranking/diagnostics, without changing live dispatch flow.
-  - Maintenance provider adapters currently emit scheduler-visible cycle proposals as migration scaffolding; provider-specific buff intent refinement is still pending.
+  - Maintenance adapters now use buff-state intent (COR roll count, BRD song count, GEO indi/geo presence) with throttled proposal emission.
+  - Dark-launch dispatch remains opt-in and limited to defensive-internal selection path.
 
 ## Observability Checklist
 - [x] `scheduler_selected_proposal`
@@ -83,6 +84,6 @@ Status owner: Codex + Peter
 - Proposal collection currently seeded from defensive/internal only (intended for shell bootstrap).
 
 ## Next Slice (immediately next code task)
-1. Refine maintenance provider proposals from cycle scaffolding to state-driven intent (missing/expiring buff signals).
-2. Keep legacy path operational until scheduler-owned dispatch path is enabled.
-3. Begin planner-owned dispatch dark launch for one provider.
+1. Expand dark launch beyond defensive-internal to one additional provider path (likely movement prelude/plan).
+2. Keep legacy path operational until scheduler-owned dispatch path is fully validated.
+3. Add pending lifecycle event hooks (ack/effect updates) from packet callbacks instead of timeout-only progression.

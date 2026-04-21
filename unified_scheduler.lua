@@ -56,6 +56,14 @@ local buff_priority = {
 	['Refresh'] = 2, ['Reraise'] = 3,
 }
 
+local maintenance_buff_cache = {
+	built = false,
+	roll_ids = {},
+	song_ids = {},
+	indi_ids = {},
+	geo_ids = {},
+}
+
 local function get_settings()
 	return rawget(_G, 'UC_SETTINGS') or {}
 end
@@ -1016,12 +1024,14 @@ local function p1_collect_maintenance(ctx, out)
 	local gate = phase.maintenance_next_at or {}
 	phase.maintenance_next_at = gate
 	local now = ctx.now
-	local function maybe_emit(key, provider, action_type, action_name)
+	ensure_maintenance_buff_cache()
+	local buff_list = player.buffs or {}
+	local function maybe_emit(key, provider, action_type, action_name, reason_code, urgency, detail)
 		local next_at = p1_number(gate[key], 0)
 		if now < next_at then
 			return
 		end
-		gate[key] = now + 8.0
+		gate[key] = now + 2.0
 		out[#out + 1] = {
 			proposal_id = ('maint.%s.%d'):format(key, math.floor(now * 1000)),
 			family_id = ('maintenance.%s'):format(key),
@@ -1032,7 +1042,7 @@ local function p1_collect_maintenance(ctx, out)
 			target_id = tonumber(player.id) or 0,
 			target_name = tostring(player.name or ''),
 			priority_band = 75,
-			urgency = 0.20,
+			urgency = p1_clamp_urgency(urgency),
 			starvation_eligible = true,
 			created_at = now,
 			expires_at = now + 0.40,
@@ -1047,17 +1057,55 @@ local function p1_collect_maintenance(ctx, out)
 			sticky = true,
 			can_preempt_movement = true,
 			can_preempt_same_band = false,
-			reason_code = 'maintenance_cycle',
-			detail = { job = job },
+			reason_code = reason_code,
+			detail = detail or { job = job },
 			legacy_command = '',
 		}
 	end
 	if job == 'COR' then
-		maybe_emit('cor_rolls', 'cor', 'ja', 'maintenance_rolls')
+		local roll_count = count_matching_buffs(buff_list, maintenance_buff_cache.roll_ids)
+		if roll_count < 2 then
+			maybe_emit('cor_rolls', 'cor', 'ja', 'maintenance_rolls', 'rolls_missing', (roll_count == 0) and 0.85 or 0.55, {
+				job = job,
+				roll_count = roll_count,
+				expected = 2,
+			})
+		else
+			gate.cor_rolls = 0
+		end
 	elseif job == 'BRD' then
-		maybe_emit('brd_songs', 'brd', 'spell', 'maintenance_songs')
+		local song_count = count_matching_buffs(buff_list, maintenance_buff_cache.song_ids)
+		if song_count < 2 then
+			maybe_emit('brd_songs', 'brd', 'spell', 'maintenance_songs', 'songs_missing', (song_count == 0) and 0.80 or 0.50, {
+				job = job,
+				song_count = song_count,
+				expected = 2,
+			})
+		else
+			gate.brd_songs = 0
+		end
 	elseif job == 'GEO' then
-		maybe_emit('geo_buffs', 'geo', 'spell', 'maintenance_geo')
+		local indi_count = count_matching_buffs(buff_list, maintenance_buff_cache.indi_ids)
+		local geo_count = count_matching_buffs(buff_list, maintenance_buff_cache.geo_ids)
+		local missing_indi = indi_count < 1
+		local missing_geo = geo_count < 1
+		if missing_indi or missing_geo then
+			local urgency = 0.45
+			if missing_indi and missing_geo then
+				urgency = 0.80
+			elseif missing_indi then
+				urgency = 0.65
+			end
+			maybe_emit('geo_buffs', 'geo', 'spell', 'maintenance_geo', 'geo_missing', urgency, {
+				job = job,
+				indi_count = indi_count,
+				geo_count = geo_count,
+				expected_indi = 1,
+				expected_geo = 1,
+			})
+		else
+			gate.geo_buffs = 0
+		end
 	end
 end
 
@@ -1118,6 +1166,51 @@ local function p1_duplicate_suppressed(ctx, proposal)
 		return true
 	end
 	return false
+end
+
+local function ensure_maintenance_buff_cache()
+	if maintenance_buff_cache.built then
+		return
+	end
+	local roll_ids, song_ids, indi_ids, geo_ids = {}, {}, {}, {}
+	for id, b in pairs(res.buffs or {}) do
+		local name = tostring((b and b.en) or '')
+		local lname = name:lower()
+		if lname:find('roll', 1, true) then
+			roll_ids[id] = true
+		end
+		if lname:find('march', 1, true) or lname:find('madrigal', 1, true) or lname:find('minuet', 1, true) or
+			lname:find('ballad', 1, true) or lname:find('paeon', 1, true) or lname:find('etude', 1, true) or
+			lname:find('carol', 1, true) or lname:find('prelude', 1, true) or lname:find('scherzo', 1, true) or
+			lname:find('minne', 1, true) or lname:find('mambo', 1, true) or lname:find('mazurka', 1, true) or
+			lname:find('hymnus', 1, true) then
+			song_ids[id] = true
+		end
+		if lname:sub(1, 5) == 'indi-' then
+			indi_ids[id] = true
+		end
+		if lname:sub(1, 4) == 'geo-' then
+			geo_ids[id] = true
+		end
+	end
+	maintenance_buff_cache.roll_ids = roll_ids
+	maintenance_buff_cache.song_ids = song_ids
+	maintenance_buff_cache.indi_ids = indi_ids
+	maintenance_buff_cache.geo_ids = geo_ids
+	maintenance_buff_cache.built = true
+end
+
+local function count_matching_buffs(buff_list, id_set)
+	if type(buff_list) ~= 'table' or type(id_set) ~= 'table' then
+		return 0
+	end
+	local c = 0
+	for _, id in ipairs(buff_list) do
+		if id_set[id] then
+			c = c + 1
+		end
+	end
+	return c
 end
 
 local function p1_get_locks(ctx)
@@ -1515,6 +1608,39 @@ local function p1_run_dry(settings)
 	_G.UC_SCHED_P1_TOP3_VERBOSE = phase.last_top3_verbose or ''
 end
 
+local function p1_try_dark_launch_dispatch(settings)
+	if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
+		return false, nil
+	end
+	local phase = scheduler.phase1
+	local selected = phase.last_selected
+	local plan = phase.last_plan
+	if type(selected) ~= 'table' or type(plan) ~= 'table' then
+		return false, nil
+	end
+	if tostring(selected.provider or '') ~= 'defensive_internal' then
+		return false, nil
+	end
+	local cmd = tostring(selected.legacy_command or '')
+	if cmd == '' then
+		return false, nil
+	end
+	local ok_ready, _, action_kind = action_ready(tostring(selected.action_name or ''))
+	if action_kind == 'none' then
+		return false, nil
+	end
+	if not ok_ready then
+		return false, nil
+	end
+	windower.send_command(cmd)
+	local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+	p1_record_legacy_dispatch(ctx)
+	p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+	_G.UC_LAST_SCHED_ACTION = ('[p1]%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
+	return true, 'BLOCK_SCHED_P1_DARKLAUNCH'
+end
+
 function scheduler.process_tick()
 	_G.UC_LAST_SCHED_ACTION = ''
 	local s = get_settings()
@@ -1524,6 +1650,10 @@ function scheduler.process_tick()
 	end
 	local provider = tostring(s.defensive_provider or 'internal')
 	_G.UC_SCHED_PROVIDER = provider
+	local p1_acted, p1_reason = p1_try_dark_launch_dispatch(s)
+	if p1_acted then
+		return true, p1_reason
+	end
 	local acted, reason
 	if provider == 'healbot' then
 		acted, reason = try_delegate_healbot()
