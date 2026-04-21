@@ -550,6 +550,29 @@ public partial class MainForm
         tabSpacing.Controls.Add(sp);
         tabs.TabPages.Add(tabSpacing);
 
+        var tabScheduler = new TabPage("Scheduler");
+        tabScheduler.AutoScroll = true;
+        var sch = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 1,
+            Padding = new Padding(8),
+        };
+        sch.Controls.Add(
+            new Label
+            {
+                Text = "Dark-launch toggles: opt into scheduler-owned dispatch paths per session.",
+                AutoSize = true,
+                Padding = new Padding(0, 0, 0, 8),
+            }
+        );
+        sch.Controls.Add(MkGlobal("scheduler_dark_launch_combat"));
+        sch.Controls.Add(MkGlobal("scheduler_dark_launch_defensive"));
+        sch.Controls.Add(MkGlobal("scheduler_dark_launch_movement"));
+        tabScheduler.Controls.Add(sch);
+        tabs.TabPages.Add(tabScheduler);
+
         form.Controls.Add(tabs);
         root.Controls.Add(form, 0, 1);
 
