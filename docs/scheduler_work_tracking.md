@@ -97,3 +97,4 @@ Status owner: Codex + Peter
 - Expanded dark launch path:
   - Added opt-in movement dark launch (`scheduler_dark_launch_movement`) for scheduler-selected mobility proposals.
   - Defensive dark launch remains opt-in via `scheduler_dark_launch_defensive`.
+  - Added explicit defaults/profile persistence keys for both dark-launch settings in `UnifiedCombat.lua`.
