@@ -1,6 +1,7 @@
 local res = require('resources')
 local ability_pipeline = require('uc_ability_pipeline')
 local combat_core = require('unified_combat_core')
+local cor_maintenance = require('uc_cor_maintenance')
 
 local scheduler = {
 	last_action_at = 0,
@@ -1235,13 +1236,46 @@ local function p1_collect_maintenance(ctx, out)
 		}
 	end
 	if job == 'COR' then
-		local roll_count = count_matching_buffs(buff_list, maintenance_buff_cache.roll_ids)
-		if roll_count < 2 then
-			maybe_emit('cor_rolls', 'cor', 'ja', 'maintenance_rolls', 'rolls_missing', (roll_count == 0) and 0.85 or 0.55, {
-				job = job,
-				roll_count = roll_count,
-				expected = 2,
-			})
+		local action = cor_maintenance and cor_maintenance.propose and cor_maintenance.propose(ctx.settings) or nil
+		if action and action.action_name and action.action_name ~= '' then
+			local key = 'cor_rolls'
+			local next_at = p1_number(gate[key], 0)
+			if now >= next_at then
+				gate[key] = now + 1.0
+				local urgency = p1_clamp_urgency(tonumber(action.urgency) or 0.65)
+				local action_name = tostring(action.action_name or '')
+				local target_name = tostring(action.target_name or '<me>')
+				local target_kind = tostring(action.target_kind or 'self')
+				local target_id = tonumber(action.target_id) or 0
+				out[#out + 1] = {
+					proposal_id = ('maint.cor.%s.%d'):format(action_name, math.floor(now * 1000)),
+					family_id = 'maintenance.cor.rolls',
+					provider = 'maintenance_cor',
+					action_type = 'ja',
+					action_name = action_name,
+					target_kind = target_kind,
+					target_id = target_id,
+					target_name = target_name,
+					priority_band = 75,
+					urgency = urgency,
+					starvation_eligible = true,
+					created_at = now,
+					expires_at = now + 0.40,
+					commit_deadline = now + 0.25,
+					movement_policy = 'must_stop',
+					range_policy = { min = 0.0, max = 20.0, los_required = false },
+					recast_key = ('maint:cor:%s'):format(action_name),
+					duplicate_suppression_key = ('maint:cor:%s:%d'):format(action_name, target_id),
+					lock_class = 'support_action',
+					expected_ack = 'action_start',
+					expected_effect = 'buff_gain',
+					sticky = true,
+					can_preempt_movement = true,
+					can_preempt_same_band = false,
+					reason_code = tostring(action.reason_code or 'cor_roll_maint'),
+					detail = action.detail or { job = job },
+				}
+			end
 		else
 			gate.cor_rolls = 0
 		end
@@ -2037,6 +2071,26 @@ local function p1_try_dark_launch_dispatch(settings)
 		_G.UC_LAST_SCHED_ACTION = ('[p1]move:%s->%s'):format(action_name, tostring(selected.target_name or ''))
 		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_MOVE'
 	end
+	if provider == 'maintenance_cor' then
+		if not bool_setting(settings and settings.scheduler_dark_launch_maintenance, false) then
+			return false, nil
+		end
+		local ability = tostring(selected.action_name or '')
+		if ability == '' then
+			return false, nil
+		end
+		local ok_ready, _, action_kind = action_ready(ability)
+		if action_kind ~= 'ja' or not ok_ready then
+			return false, nil
+		end
+		windower.send_command(('input /ja \"%s\" <me>'):format(ability))
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]cor:%s'):format(ability)
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_MAINT_COR'
+	end
 	return false, nil
 end
 
@@ -2145,6 +2199,12 @@ _G.UC_SCHED_OnActionMessage = function(msg)
 	end
 end
 
+_G.UC_COR_MAINT_OnIncomingChunk = function(id, data)
+	if cor_maintenance and type(cor_maintenance.update_from_incoming_chunk) == 'function' then
+		pcall(cor_maintenance.update_from_incoming_chunk, id, data)
+	end
+end
+
 function scheduler.get_debug_overlay()
 	local phase = scheduler.phase1 or {}
 	local s = get_settings()
@@ -2158,6 +2218,8 @@ function scheduler.get_debug_overlay()
 			return bool_setting(s.scheduler_dark_launch_defensive, false)
 		elseif p == 'mobility' then
 			return bool_setting(s.scheduler_dark_launch_movement, false)
+		elseif p == 'maintenance_cor' then
+			return bool_setting(s.scheduler_dark_launch_maintenance, false)
 		end
 		return false
 	end

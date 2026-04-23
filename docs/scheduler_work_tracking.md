@@ -83,7 +83,7 @@ Status owner: Codex + Peter
 
 ## Current Risk Notes
 - Existing live scheduler execution remains legacy defensive path; dry-run path is advisory only.
-- Proposal collection currently seeded from defensive/internal only (intended for shell bootstrap).
+- Proposal collection now includes combat/defensive/movement/maintenance lanes; cutover risk is in per-lane dark-launch parity validation.
 
 ## Next Slice (immediately next code task)
 1. Expand dark launch beyond defensive-internal to one additional provider path (likely movement prelude/plan). - DONE
@@ -91,6 +91,21 @@ Status owner: Codex + Peter
 3. Add pending lifecycle event hooks (ack/effect updates) from packet callbacks instead of timeout-only progression. - DONE
 
 ## Recently Completed
+- Added maintenance COR scheduler cut-in (S5 extension):
+  - New module: `uc_cor_maintenance.lua` ports AutoCOR-style roll upkeep decisions into UC runtime.
+  - Scheduler now emits `maintenance_cor` proposals with concrete JA actions (`<Roll>`, `Snake Eye`, `Double-Up`, `Fold`) instead of generic placeholder intents.
+  - Scheduler dark-launch dispatch now executes `maintenance_cor` proposals behind new opt-in setting: `scheduler_dark_launch_maintenance`.
+  - Added packet-fed COR roll-state hook path via `UC_COR_MAINT_OnIncomingChunk` callback wiring from `UnifiedCombat.lua` incoming chunk event.
+  - Added persistence/snapshot/UI parity for new setting:
+    - `UnifiedCombat.lua` defaults/profile keys include `scheduler_dark_launch_maintenance`.
+    - `remote_bridge.lua` includes setting in session snapshot.
+    - WinForms Scheduler tab includes `Scheduler: maintenance dispatch (dark launch)` toggle.
+  - Added WinForms COR maintenance selectors:
+    - Scheduler tab now includes `COR Roll 1` and `COR Roll 2` dropdowns bound to `cor_roll_1` / `cor_roll_2`.
+    - Roll selectors are session-backed and persisted through normal save/profile paths.
+- Result:
+  - COR maintenance can now be tested as a scheduler-owned dispatch lane independently from movement/defensive/combat toggles.
+
 - Added defensive HealBot scheduler path (S5 extension):
   - `p1_collect_defensive_healbot(ctx, out)` proposal adapter now emits scheduler defensive proposals when provider is `healbot`.
   - `p1_try_dark_launch_dispatch` now executes selected `defensive_healbot` proposals behind `scheduler_dark_launch_defensive`.
