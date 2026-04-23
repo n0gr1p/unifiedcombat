@@ -263,6 +263,10 @@ public partial class MainForm
             _pathHunterMaxTargetRange.Text = "20";
             _pathHunterClaimTimeout.Text = "4";
             _pathHunterIgnoreCooldown.Text = "20";
+            _pathPullActionType.SelectedItem = "ja";
+            _pathPullActionName.Items.Clear();
+            _pathPullJaOptions.Clear();
+            _pathPullSpellOptions.Clear();
             _pathHunterList.Items.Clear();
             _pathHunterRows = [];
             _pathHunterName.Text = "";
@@ -328,8 +332,17 @@ public partial class MainForm
 
         var abilityOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("ability_options", out var ao) ? ao : default);
         var wsOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("weaponskill_options", out var wso) ? wso : default);
+        var pullJaOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("path_pull_ja_options", out var pjo) ? pjo : default);
+        var pullSpellOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("path_pull_spell_options", out var pso) ? pso : default);
         var partnerOpts = new List<string> { "" };
         partnerOpts.AddRange(SessionStateHelper.SplitOptions(s.TryGetProperty("partner_options", out var po) ? po : default));
+        var pullerOpts = new List<string> { "" };
+        pullerOpts.AddRange(SessionStateHelper.SplitOptions(s.TryGetProperty("puller_options", out var plo) ? plo : default));
+        if (pullerOpts.Count <= 1)
+        {
+            pullerOpts.Clear();
+            pullerOpts.AddRange(partnerOpts);
+        }
 
         _suppressEvents = true;
         try
@@ -383,19 +396,19 @@ public partial class MainForm
             _aftermathCombo.Enabled = SessionStateHelper.GetBool(s, "aftermath_enabled", false);
 
             _pullerCombo.Items.Clear();
-            foreach (var p in partnerOpts)
+            foreach (var p in pullerOpts)
             {
                 _pullerCombo.Items.Add(p);
             }
 
             var pullOn = SessionStateHelper.GetBool(s, "puller", false);
             var selPull = SessionStateHelper.GetString(s, "puller_selected");
-            if (pullOn && !partnerOpts.Contains(selPull))
+            if (pullOn && !pullerOpts.Contains(selPull))
             {
                 selPull = "";
             }
 
-            _pullerCombo.SelectedIndex = Math.Max(0, partnerOpts.IndexOf(selPull));
+            _pullerCombo.SelectedIndex = Math.Max(0, pullerOpts.IndexOf(selPull));
             _pullerCombo.Enabled = pullOn;
 
             _fightLeaderCombo.Items.Clear();
@@ -499,6 +512,30 @@ public partial class MainForm
             if (!_pathHunterIgnoreCooldown.Focused && !EquivalentNumericText(_pathHunterIgnoreCooldown.Text ?? "", ignoreCooldownIncoming))
             {
                 _pathHunterIgnoreCooldown.Text = ignoreCooldownIncoming;
+            }
+            if (!SequenceEqualOrdinal(_pathPullJaOptions, pullJaOpts))
+            {
+                _pathPullJaOptions.Clear();
+                _pathPullJaOptions.AddRange(pullJaOpts);
+            }
+            if (!SequenceEqualOrdinal(_pathPullSpellOptions, pullSpellOpts))
+            {
+                _pathPullSpellOptions.Clear();
+                _pathPullSpellOptions.AddRange(pullSpellOpts);
+            }
+            var pullTypeIncoming = SessionStateHelper.GetString(s, "path_pull_action_type", "ja");
+            if (!string.Equals(pullTypeIncoming, "spell", StringComparison.OrdinalIgnoreCase))
+            {
+                pullTypeIncoming = "ja";
+            }
+            if (!_pathPullActionType.DroppedDown && !string.Equals(_pathPullActionType.SelectedItem?.ToString() ?? "", pullTypeIncoming, StringComparison.Ordinal))
+            {
+                _pathPullActionType.SelectedItem = pullTypeIncoming;
+            }
+            var pullNameIncoming = SessionStateHelper.GetString(s, "path_pull_action_name");
+            if (!_pathPullActionName.DroppedDown)
+            {
+                RefreshPathPullActionNameOptions(pullTypeIncoming, pullNameIncoming);
             }
             _pathHunterOp.Text = SessionStateHelper.GetString(s, "path_hunter_last_op");
             RenderPathHunterList(s);
@@ -938,6 +975,34 @@ public partial class MainForm
         }
     }
 
+    private void RefreshPathPullActionNameOptions(string pullType, string selectedName)
+    {
+        var src = string.Equals(pullType, "spell", StringComparison.OrdinalIgnoreCase) ? _pathPullSpellOptions : _pathPullJaOptions;
+        var incoming = selectedName ?? "";
+        var next = new List<string>(src);
+
+        var cur = _pathPullActionName.Items.Cast<object>().Select(x => x.ToString() ?? "").ToList();
+        if (!SequenceEqualOrdinal(cur, next))
+        {
+            _pathPullActionName.Items.Clear();
+            foreach (var n in next)
+            {
+                _pathPullActionName.Items.Add(n);
+            }
+        }
+
+        var want = incoming;
+        if (!string.IsNullOrEmpty(want))
+        {
+            var idx = next.FindIndex(x => string.Equals(x, want, StringComparison.Ordinal));
+            _pathPullActionName.SelectedIndex = idx >= 0 ? idx : -1;
+        }
+        else
+        {
+            _pathPullActionName.SelectedIndex = -1;
+        }
+    }
+
     private void EnsureCorRollOptions(ComboBox combo)
     {
         if (combo.Items.Count > 0)
@@ -1179,6 +1244,50 @@ public partial class MainForm
         var normalized = v.ToString("0.###", CultureInfo.InvariantCulture);
         _pathHunterIgnoreCooldown.Text = normalized;
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "path_hunter_ignore_cooldown_s", ["value"] = normalized });
+    }
+
+    private void OnPathPullActionTypeChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var at = _pathPullActionType.SelectedItem?.ToString() ?? "ja";
+        at = string.Equals(at, "spell", StringComparison.OrdinalIgnoreCase) ? "spell" : "ja";
+        _suppressEvents = true;
+        try
+        {
+            RefreshPathPullActionNameOptions(at, _pathPullActionName.SelectedItem?.ToString() ?? "");
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "path_pull_action_type", ["value"] = at });
+    }
+
+    private void OnPathPullActionNameChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var name = _pathPullActionName.SelectedItem?.ToString() ?? "";
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "path_pull_action_name", ["value"] = name });
     }
 
     private void OnPathHunterAdd()

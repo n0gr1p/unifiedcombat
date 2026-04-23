@@ -181,6 +181,8 @@ local function uc_new_settings_defaults()
 		path_hunter_max_target_range = 20.0,
 		path_hunter_claim_timeout_s = 4.0,
 		path_hunter_ignore_cooldown_s = 20.0,
+		path_pull_action_type = 'ja',
+		path_pull_action_name = '',
 		ignore = {},
 		target_ignore_names = {},
 		show_ingame_ui = false,
@@ -260,7 +262,7 @@ local PROFILE_KEYS = {
 	'scheduler_dark_launch_combat',
 	'scheduler_dark_launch_defensive', 'scheduler_dark_launch_movement', 'scheduler_dark_launch_maintenance',
 	'cor_roll_1', 'cor_roll_2',
-	'path_recording', 'path_follow_enabled', 'path_file_name', 'path_route_type', 'path_distance_to_start', 'path_points', 'path_party_gate_yalms', 'path_resume_index_window', 'path_hunter_targets', 'path_hunter_max_z_delta', 'path_hunter_max_target_range', 'path_hunter_claim_timeout_s', 'path_hunter_ignore_cooldown_s',
+	'path_recording', 'path_follow_enabled', 'path_file_name', 'path_route_type', 'path_distance_to_start', 'path_points', 'path_party_gate_yalms', 'path_resume_index_window', 'path_hunter_targets', 'path_hunter_max_z_delta', 'path_hunter_max_target_range', 'path_hunter_claim_timeout_s', 'path_hunter_ignore_cooldown_s', 'path_pull_action_type', 'path_pull_action_name',
 	'autotarget', 'spam', 'closer', 'manual', 'prime', 'static', 'spacing', 'face',
 	'spacing_band_min', 'spacing_band_max', 'spacing_use_prediction', 'spacing_lookahead_s',
 	'spacing_anchor_invalid_ticks', 'spacing_emergency_margin', 'spacing_slot_switch_penalty',
@@ -638,7 +640,9 @@ windower.register_event('incoming chunk', function(id, data)
 	if id == 0x029 and type(data) == 'string' and UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_action_message) == 'function' then
 		local ok = pcall(function()
 			local msg = {
+				actor_id = data:unpack('I', 0x05),
 				target_id = data:unpack('I', 0x09),
+				param_1 = data:unpack('I', 0x0D),
 				message_id = data:unpack('H', 0x19) % 32768,
 			}
 			UC_COMBAT_CORE.on_action_message(msg)

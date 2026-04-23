@@ -25,6 +25,8 @@ public partial class MainForm : Form
     private readonly Dictionary<string, CheckBox> _boolChecks = new(StringComparer.Ordinal);
     private readonly List<string> _abilityOptions = [];
     private readonly List<string> _selectedAbilities = [];
+    private readonly List<string> _pathPullJaOptions = [];
+    private readonly List<string> _pathPullSpellOptions = [];
     private readonly Dictionary<string, string> _abilitySignatureBySid = new(StringComparer.Ordinal);
     private readonly object _mirrorLineGate = new();
     private string? _pendingMirrorLine;

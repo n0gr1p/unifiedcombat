@@ -95,6 +95,8 @@ public partial class MainForm
     private TextBox _pathHunterMaxTargetRange = null!;
     private TextBox _pathHunterClaimTimeout = null!;
     private TextBox _pathHunterIgnoreCooldown = null!;
+    private ComboBox _pathPullActionType = null!;
+    private ComboBox _pathPullActionName = null!;
     private Button _pathHunterAdd = null!;
     private Button _pathHunterRemove = null!;
     private Label _pathHunterOp = null!;
@@ -623,6 +625,26 @@ public partial class MainForm
         _pathHunterIgnoreCooldown = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _pathHunterIgnoreCooldown.Leave += (_, _) => OnPathHunterIgnoreCooldownChanged();
         path.Controls.Add(_pathHunterIgnoreCooldown, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Pull action type", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathPullActionType = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(120, 0),
+        };
+        _pathPullActionType.Items.Add("ja");
+        _pathPullActionType.Items.Add("spell");
+        _pathPullActionType.SelectedIndexChanged += (_, _) => OnPathPullActionTypeChanged();
+        path.Controls.Add(_pathPullActionType, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Pull action", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathPullActionName = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(220, 0),
+        };
+        _pathPullActionName.SelectedIndexChanged += (_, _) => OnPathPullActionNameChanged();
+        path.Controls.Add(_pathPullActionName, 1, pathRow++);
         path.Controls.Add(new Label { Text = "Path hunter targets", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
         _pathHunterOp = new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left };
         path.Controls.Add(_pathHunterOp, 1, pathRow++);

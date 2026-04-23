@@ -449,6 +449,9 @@ local function should_pause_for_combat()
 	if not Start_Engine then
 		return false
 	end
+	if rawget(_G, 'UC_PULL_SPELL_WAITING') == true then
+		return true
+	end
 	local p = windower.ffxi.get_player()
 	if not p then
 		return true

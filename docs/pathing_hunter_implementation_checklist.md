@@ -2,7 +2,7 @@
 
 Last updated: 2026-04-23  
 Branch: `feature/unified-scheduler-design-clean`  
-Status: Phase 1 complete; Phase 2 complete first pass; Phase 3 core hunt targeting complete first pass, pull-action layer pending
+Status: Phase 1 complete; Phase 2 complete first pass; Phase 3 core hunt targeting complete and pull-action layer implemented (pending validation sweep)
 
 ## Rules
 - Implement and test in this order:
@@ -102,20 +102,21 @@ Status: Phase 1 complete; Phase 2 complete first pass; Phase 3 core hunt targeti
 6. timeout-driven drop of unclaimable targets (`path_hunter_claim_timeout_s`).
 7. temporary cooldown blacklist after timeout (`path_hunter_ignore_cooldown_s`).
 8. return-to-path behavior after hunter claim timeout.
-- [ ] Pull-action layer (deferred):
+- [x] Pull-action layer:
 1. `path_pull_action_type`
 2. `path_pull_action_name`
 3. pull dispatch + anti-spam for puller actors
+4. move-into-range coordination for selected pull action (JA/spell) before dispatch
 
 ### Tests
 - [x] Hunter off -> no hunter-name filtering applied.
 - [x] Hunter on + list populated -> only matched names are considered.
 - [x] Fuzzy matching validated in live test (`elemental` style behavior).
 - [x] Timeout + cooldown prevents repeated immediate retries on unreachable targets.
-- [ ] Pull action usage tests (pending pull-action layer).
+- [ ] Pull action usage tests (pending validation pass).
 
 ### Exit Criteria
-- [ ] Hunter phase complete only after pull-action layer is implemented.
+- [ ] Hunter phase complete only after pull-action validation pass is complete.
 
 ---
 
