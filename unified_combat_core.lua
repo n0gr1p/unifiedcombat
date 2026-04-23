@@ -11,6 +11,7 @@ local uc_add_control = require('uc_add_control')
 local uc_targeting_common = require('uc_targeting_common')
 local uc_settarget = require('uc_settarget')
 local uc_attack = require('uc_attack')
+local uc_path_hunter = require('uc_path_hunter')
 
 local core = {
 	adapters = {},
@@ -48,6 +49,11 @@ local core = {
 		target_prev_t = nil,
 		tick = 0,
 	},
+	hunter_acquire = {
+		target_id = 0,
+		started_at = 0,
+	},
+	hunter_ignore_until_by_id = {},
 }
 
 local skillchain_ids = {
@@ -781,7 +787,36 @@ local function find_candidate_target(settings)
 	end
 
 	local claims, claims_set = uc_targeting_common.build_party_claims()
+	local path_hunter_filter_active = setting_enabled(settings.hunter) and setting_enabled(settings.path_follow_enabled)
+	local path_hunter_max_z = tonumber(settings.path_hunter_max_z_delta) or 2.0
+	local path_hunter_max_range = tonumber(settings.path_hunter_max_target_range) or 20.0
+	if path_hunter_max_z < 0 then
+		path_hunter_max_z = 0
+	elseif path_hunter_max_z > 20 then
+		path_hunter_max_z = 20
+	end
+	if path_hunter_max_range < 1 then
+		path_hunter_max_range = 1
+	elseif path_hunter_max_range > 80 then
+		path_hunter_max_range = 80
+	end
 	local marray = windower.ffxi.get_mob_array() or {}
+	local now = os.clock()
+	local function hunter_cooldown_active(mid)
+		local tid = tonumber(mid) or 0
+		if tid == 0 then
+			return false
+		end
+		local until_t = tonumber(core.hunter_ignore_until_by_id[tid]) or 0
+		if until_t <= 0 then
+			return false
+		end
+		if now < until_t then
+			return true
+		end
+		core.hunter_ignore_until_by_id[tid] = nil
+		return false
+	end
 	local partner_target_set = {}
 	if setting_enabled(settings.partner) then
 		local partner_ids = uc_partner_list.as_ordered_ids(settings)
@@ -819,23 +854,64 @@ local function find_candidate_target(settings)
 		end
 	end
 	if cur_alive_monster then
-		return cur
+		if not path_hunter_filter_active then
+			return cur
+		end
+		local hunter_ok = uc_path_hunter.matches_mob(settings, cur.name or '')
+		if hunter_ok and me and me.z ~= nil and cur.z ~= nil then
+			local dz = math.abs((tonumber(cur.z) or 0) - (tonumber(me.z) or 0))
+			if dz > path_hunter_max_z then
+				hunter_ok = false
+			end
+		end
+		if hunter_ok and target_distance(cur) > path_hunter_max_range then
+			hunter_ok = false
+		end
+		if hunter_ok and not hunter_cooldown_active(cur.id) then
+			local allow_prime_unclaimed = (not engaged) or allow_engaged_retarget
+			local prime_unclaimed_ok = (allow_prime_unclaimed and cur.claim_id == 0 and setting_enabled(settings.prime) and cur.status == 1)
+			local hunter_idle_unclaimed_ok = (cur.claim_id == 0 and cur.status == 0)
+			local claim_ok = claims_set[cur.claim_id] == true or prime_unclaimed_ok or hunter_idle_unclaimed_ok
+			if claim_ok then
+				return cur
+			end
+		end
 	end
 	local best = nil
 	local best_dist = 1e9
 	for _, mob in pairs(marray) do
 		if mob and mob.id and mob.valid_target and mob.spawn_type == 16 and (mob.hpp or 0) > 0 then
 			if not uc_target_ignore.is_mob_blocked(settings, mob) then
-				-- Do not pull unclaimed prime candidates while already engaged unless explicit
-				-- engaged-retarget modes are active; this prevents mid-fight target flips.
-				local allow_prime_unclaimed = (not engaged) or allow_engaged_retarget
-				local prime_unclaimed_ok = (allow_prime_unclaimed and mob.claim_id == 0 and setting_enabled(settings.prime) and mob.status == 1)
-				local claim_ok = claims_set[mob.claim_id] == true or prime_unclaimed_ok
-				if claim_ok then
-					local d = target_distance(mob)
-					if d < best_dist then
-						best_dist = d
-						best = mob
+				local hunter_ok = (not path_hunter_filter_active) or uc_path_hunter.matches_mob(settings, mob.name or '')
+				if hunter_ok then
+					if path_hunter_filter_active and hunter_cooldown_active(mob.id) then
+						hunter_ok = false
+					end
+				end
+				if hunter_ok then
+					if path_hunter_filter_active and me and me.z ~= nil and mob.z ~= nil then
+						local dz = math.abs((tonumber(mob.z) or 0) - (tonumber(me.z) or 0))
+						if dz > path_hunter_max_z then
+							hunter_ok = false
+						end
+					end
+				end
+				if hunter_ok and path_hunter_filter_active and target_distance(mob) > path_hunter_max_range then
+					hunter_ok = false
+				end
+				if hunter_ok then
+					-- Do not pull unclaimed prime candidates while already engaged unless explicit
+					-- engaged-retarget modes are active; this prevents mid-fight target flips.
+					local allow_prime_unclaimed = (not engaged) or allow_engaged_retarget
+					local prime_unclaimed_ok = (allow_prime_unclaimed and mob.claim_id == 0 and setting_enabled(settings.prime) and mob.status == 1)
+					local hunter_idle_unclaimed_ok = (path_hunter_filter_active and mob.claim_id == 0 and mob.status == 0)
+					local claim_ok = claims_set[mob.claim_id] == true or prime_unclaimed_ok or hunter_idle_unclaimed_ok
+					if claim_ok then
+						local d = target_distance(mob)
+						if d < best_dist then
+							best_dist = d
+							best = mob
+						end
 					end
 				end
 			end
@@ -1542,7 +1618,24 @@ local function run_unified_combat()
 	end
 	core.last_player_status = now_status
 	local target = find_candidate_target(s)
+	local path_hunter_filter_active = setting_enabled(s.hunter) and setting_enabled(s.path_follow_enabled)
+	local claim_timeout = tonumber(s.path_hunter_claim_timeout_s) or 4.0
+	local ignore_cooldown = tonumber(s.path_hunter_ignore_cooldown_s) or 20.0
+	if claim_timeout < 0.5 then
+		claim_timeout = 0.5
+	elseif claim_timeout > 30 then
+		claim_timeout = 30
+	end
+	if ignore_cooldown < 0 then
+		ignore_cooldown = 0
+	elseif ignore_cooldown > 120 then
+		ignore_cooldown = 120
+	end
 	if not target and not setting_enabled(s.manual) then
+		if path_hunter_filter_active then
+			core.hunter_acquire.target_id = 0
+			core.hunter_acquire.started_at = 0
+		end
 		_G.UC_COMBAT_INTENT_UNTIL = 0
 		if core.last_run_active then
 			stop_run()
@@ -1558,6 +1651,40 @@ local function run_unified_combat()
 		_G.UC_FIGHT_FOLLOW_ACTIVE_UNTIL = os.clock() + party_follow_hold_seconds(s)
 	end
 	local tid = target and target.id or 0
+	if path_hunter_filter_active and tid > 0 then
+		local now = os.clock()
+		if (tonumber(core.hunter_acquire.target_id) or 0) ~= tid then
+			core.hunter_acquire.target_id = tid
+			core.hunter_acquire.started_at = now
+		else
+			local mob = windower.ffxi.get_mob_by_id(tid)
+			local claims, claims_set = uc_targeting_common.build_party_claims()
+			local claimed = mob and claims_set[mob.claim_id] == true
+			if not claimed and (p.status or 0) ~= 1 then
+				local started = tonumber(core.hunter_acquire.started_at) or now
+				if (now - started) >= claim_timeout then
+					if ignore_cooldown > 0 then
+						core.hunter_ignore_until_by_id[tid] = now + ignore_cooldown
+					end
+					core.hunter_acquire.target_id = 0
+					core.hunter_acquire.started_at = 0
+					_G.UC_COMBAT_INTENT_UNTIL = 0
+					_G.UC_LAST_BLOCK_REASON = 'HUNTER_ACQUIRE_TIMEOUT'
+					_G.UC_WS_LAST_DIAG = ('core hunter timeout tid=%d cooldown=%.1f'):format(tid, ignore_cooldown)
+					if core.last_run_active then
+						stop_run()
+					end
+					return
+				end
+			else
+				core.hunter_acquire.target_id = 0
+				core.hunter_acquire.started_at = 0
+			end
+		end
+	elseif path_hunter_filter_active then
+		core.hunter_acquire.target_id = 0
+		core.hunter_acquire.started_at = 0
+	end
 	local current_before = get_current_target()
 	local current_dead = current_before and current_before.spawn_type == 16 and ((current_before.hpp or 0) <= 0)
 	local switched_on_kill = false

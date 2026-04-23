@@ -11,6 +11,7 @@ local uc_ignore = require('uc_ignore')
 local uc_partner_list = require('uc_partner_list')
 local uc_target_ignore = require('uc_target_ignore')
 local uc_add_priority = require('uc_add_priority')
+local uc_path_hunter = require('uc_path_hunter')
 
 local function uc_trim(s)
 	if not s then
@@ -447,7 +448,95 @@ local function apply_set(path, value)
 		last_state_send = 0
 		return
 	end
+	if key == 'path_party_gate_yalms' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0.5 then
+			n = 0.5
+		elseif n > 50 then
+			n = 50
+		end
+		s.path_party_gate_yalms = n
+		last_state_send = 0
+		return
+	end
+	if key == 'path_resume_index_window' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		n = math.floor(n + 0.5)
+		if n < 1 then
+			n = 1
+		elseif n > 200 then
+			n = 200
+		end
+		s.path_resume_index_window = n
+		last_state_send = 0
+		return
+	end
+	if key == 'path_hunter_max_z_delta' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0 then
+			n = 0
+		elseif n > 20 then
+			n = 20
+		end
+		s.path_hunter_max_z_delta = n
+		last_state_send = 0
+		return
+	end
+	if key == 'path_hunter_max_target_range' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 1 then
+			n = 1
+		elseif n > 80 then
+			n = 80
+		end
+		s.path_hunter_max_target_range = n
+		last_state_send = 0
+		return
+	end
+	if key == 'path_hunter_claim_timeout_s' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0.5 then
+			n = 0.5
+		elseif n > 30 then
+			n = 30
+		end
+		s.path_hunter_claim_timeout_s = n
+		last_state_send = 0
+		return
+	end
+	if key == 'path_hunter_ignore_cooldown_s' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0 then
+			n = 0
+		elseif n > 120 then
+			n = 120
+		end
+		s.path_hunter_ignore_cooldown_s = n
+		last_state_send = 0
+		return
+	end
 	t[key] = value
+	if key == 'path_recording' or key == 'path_follow_enabled' then
+		last_state_send = 0
+	end
 end
 
 local function uc_split_pipe(raw)
@@ -886,6 +975,36 @@ local function process_line(line)
 			end
 		end
 		last_state_send = 0
+	elseif op == 'path_hunter_add' then
+		local s = _G.UC_SETTINGS
+		local name = uc_trim(msg.name)
+		if not s or name == '' then
+			_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_ADD_NO_NAME'
+		else
+			local ok, why = uc_path_hunter.append_name(s, name)
+			if ok then
+				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_ADD_OK:' .. name
+			else
+				_G.UC_LAST_PATH_HUNTER_OP = tostring(why or 'PATH_HUNTER_ADD_FAIL')
+			end
+		end
+		last_state_send = 0
+	elseif op == 'path_hunter_remove' then
+		local s = _G.UC_SETTINGS
+		local idx = uc_remote_list_index(msg, line)
+		if not s then
+			_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_NO_SETTINGS'
+		elseif not idx then
+			_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_BAD_INDEX'
+		else
+			local ok, why = uc_path_hunter.remove_index(s, math.floor(idx + 0.5))
+			if ok then
+				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_OK:' .. tostring(idx)
+			else
+				_G.UC_LAST_PATH_HUNTER_OP = tostring(why or 'PATH_HUNTER_REMOVE_FAIL')
+			end
+		end
+		last_state_send = 0
 	elseif op == 'toggle' and msg.key == 'Start_Engine' then
 		local was_running = Start_Engine
 		Start_Engine = not Start_Engine
@@ -1026,6 +1145,23 @@ function uc_remote_tick()
 		scheduler_dark_launch_combat = (s.scheduler_dark_launch_combat == true),
 		scheduler_dark_launch_defensive = (s.scheduler_dark_launch_defensive == true),
 		scheduler_dark_launch_movement = (s.scheduler_dark_launch_movement == true),
+		scheduler_dark_launch_maintenance = (s.scheduler_dark_launch_maintenance == true),
+		cor_roll_1 = tostring(s.cor_roll_1 or ''),
+		cor_roll_2 = tostring(s.cor_roll_2 or ''),
+		path_recording = (s.path_recording == true),
+		path_follow_enabled = (s.path_follow_enabled == true),
+		path_file_name = tostring(s.path_file_name or ''),
+		path_route_type = tostring(s.path_route_type or 'unknown'),
+		path_distance_to_start = tonumber(s.path_distance_to_start) or 0,
+		path_points_count = type(s.path_points) == 'table' and #s.path_points or 0,
+		path_party_gate_yalms = tonumber(s.path_party_gate_yalms) or 3.0,
+		path_resume_index_window = tonumber(s.path_resume_index_window) or 12,
+		path_hunter_max_z_delta = tonumber(s.path_hunter_max_z_delta) or 2.0,
+		path_hunter_max_target_range = tonumber(s.path_hunter_max_target_range) or 20.0,
+		path_hunter_claim_timeout_s = tonumber(s.path_hunter_claim_timeout_s) or 4.0,
+		path_hunter_ignore_cooldown_s = tonumber(s.path_hunter_ignore_cooldown_s) or 20.0,
+		path_hunter_entries = uc_path_hunter.encode_for_ui(s),
+		path_hunter_last_op = _G.UC_LAST_PATH_HUNTER_OP or '',
 		block_reason = _G.UC_LAST_BLOCK_REASON or '',
 		ws_diag = _G.UC_WS_LAST_DIAG or '',
 		scheduler_action = _G.UC_LAST_SCHED_ACTION or '',

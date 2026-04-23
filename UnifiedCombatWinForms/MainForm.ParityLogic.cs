@@ -198,6 +198,7 @@ public partial class MainForm
         RenderPartnerList(s);
         RenderTargetIgnoreList(s);
         RenderAddPriorityList(s);
+        RenderPathHunterList(s);
     }
 
     private void ClearForm()
@@ -252,6 +253,24 @@ public partial class MainForm
             _spSwitchMargin.Text = "0.35";
             _spArrivalTolerance.Text = "0.2";
             _spMaxAgents.Text = "6";
+            _pathFileValue.Text = "";
+            _pathRouteTypeValue.Text = "unknown";
+            _pathDistanceValue.Text = "0.0";
+            _pathPointCountValue.Text = "0";
+            _pathPartyGateYalms.Text = "3";
+            _pathResumeIndexWindow.Text = "12";
+            _pathHunterMaxZDelta.Text = "2";
+            _pathHunterMaxTargetRange.Text = "20";
+            _pathHunterClaimTimeout.Text = "4";
+            _pathHunterIgnoreCooldown.Text = "20";
+            _pathHunterList.Items.Clear();
+            _pathHunterRows = [];
+            _pathHunterName.Text = "";
+            _pathHunterOp.Text = "";
+            _corRoll1Combo.Items.Clear();
+            _corRoll2Combo.Items.Clear();
+            _corRoll1Combo.Enabled = false;
+            _corRoll2Combo.Enabled = false;
             _lblAddPriOp.Text = "";
             _lblPartnerOp.Text = "";
             _lblIgnoreInfo.Text = "";
@@ -442,6 +461,51 @@ public partial class MainForm
             _lblPartnerOp.Text = SessionStateHelper.GetString(s, "partner_last_op");
             _lblIgnoreOp.Text = SessionStateHelper.GetString(s, "ignore_last_op");
             _lblTargetIgnOp.Text = SessionStateHelper.GetString(s, "target_ignore_last_op");
+            _pathFileValue.Text = SessionStateHelper.GetString(s, "path_file_name");
+            _pathRouteTypeValue.Text = SessionStateHelper.GetString(s, "path_route_type", "unknown");
+            var pDist = SessionStateHelper.GetString(s, "path_distance_to_start", "0");
+            if (!double.TryParse(pDist, NumberStyles.Float, CultureInfo.InvariantCulture, out var pDistN))
+            {
+                pDistN = 0;
+            }
+            _pathDistanceValue.Text = pDistN.ToString("0.00", CultureInfo.InvariantCulture);
+            _pathPointCountValue.Text = SessionStateHelper.GetString(s, "path_points_count", "0");
+            var gateIncoming = SessionStateHelper.GetString(s, "path_party_gate_yalms", "3");
+            if (!_pathPartyGateYalms.Focused && !EquivalentNumericText(_pathPartyGateYalms.Text ?? "", gateIncoming))
+            {
+                _pathPartyGateYalms.Text = gateIncoming;
+            }
+            var resumeWindowIncoming = SessionStateHelper.GetString(s, "path_resume_index_window", "12");
+            if (!_pathResumeIndexWindow.Focused && !EquivalentNumericText(_pathResumeIndexWindow.Text ?? "", resumeWindowIncoming))
+            {
+                _pathResumeIndexWindow.Text = resumeWindowIncoming;
+            }
+            var zGateIncoming = SessionStateHelper.GetString(s, "path_hunter_max_z_delta", "2");
+            if (!_pathHunterMaxZDelta.Focused && !EquivalentNumericText(_pathHunterMaxZDelta.Text ?? "", zGateIncoming))
+            {
+                _pathHunterMaxZDelta.Text = zGateIncoming;
+            }
+            var rangeIncoming = SessionStateHelper.GetString(s, "path_hunter_max_target_range", "20");
+            if (!_pathHunterMaxTargetRange.Focused && !EquivalentNumericText(_pathHunterMaxTargetRange.Text ?? "", rangeIncoming))
+            {
+                _pathHunterMaxTargetRange.Text = rangeIncoming;
+            }
+            var claimTimeoutIncoming = SessionStateHelper.GetString(s, "path_hunter_claim_timeout_s", "4");
+            if (!_pathHunterClaimTimeout.Focused && !EquivalentNumericText(_pathHunterClaimTimeout.Text ?? "", claimTimeoutIncoming))
+            {
+                _pathHunterClaimTimeout.Text = claimTimeoutIncoming;
+            }
+            var ignoreCooldownIncoming = SessionStateHelper.GetString(s, "path_hunter_ignore_cooldown_s", "20");
+            if (!_pathHunterIgnoreCooldown.Focused && !EquivalentNumericText(_pathHunterIgnoreCooldown.Text ?? "", ignoreCooldownIncoming))
+            {
+                _pathHunterIgnoreCooldown.Text = ignoreCooldownIncoming;
+            }
+            _pathHunterOp.Text = SessionStateHelper.GetString(s, "path_hunter_last_op");
+            RenderPathHunterList(s);
+            ApplyCorRollFromSnapshot(_corRoll1Combo, SessionStateHelper.GetString(s, "cor_roll_1"));
+            ApplyCorRollFromSnapshot(_corRoll2Combo, SessionStateHelper.GetString(s, "cor_roll_2"));
+            _corRoll1Combo.Enabled = true;
+            _corRoll2Combo.Enabled = true;
 
             foreach (var key in HubUiConstants.BoolKeys)
             {
@@ -838,6 +902,328 @@ public partial class MainForm
 
         var val = _aftermathCombo.SelectedItem?.ToString() ?? "";
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "aftermath_ws", ["value"] = val });
+    }
+
+    private void RenderPathHunterList(JsonElement s)
+    {
+        var newRows = SessionStateHelper.ParseIgnoreEntriesFrom(s, "path_hunter_entries");
+        if (newRows.SequenceEqual(_pathHunterRows) && _pathHunterList.Items.Count == newRows.Count)
+        {
+            return;
+        }
+
+        int? preserved = null;
+        if (_pathHunterList.SelectedIndex >= 0 && _pathHunterRows.Count > 0 && _pathHunterList.SelectedIndex < _pathHunterRows.Count)
+        {
+            preserved = _pathHunterRows[_pathHunterList.SelectedIndex].Id;
+        }
+
+        _pathHunterRows = newRows;
+        _pathHunterList.Items.Clear();
+        foreach (var (_, name) in _pathHunterRows)
+        {
+            _pathHunterList.Items.Add(name);
+        }
+
+        if (preserved is { } pid)
+        {
+            for (var i = 0; i < _pathHunterRows.Count; i++)
+            {
+                if (_pathHunterRows[i].Id == pid)
+                {
+                    _pathHunterList.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    private void EnsureCorRollOptions(ComboBox combo)
+    {
+        if (combo.Items.Count > 0)
+        {
+            return;
+        }
+
+        combo.Items.Add("");
+        foreach (var roll in HubUiConstants.CorRollOptions)
+        {
+            combo.Items.Add(roll);
+        }
+    }
+
+    private void ApplyCorRollFromSnapshot(ComboBox combo, string value)
+    {
+        EnsureCorRollOptions(combo);
+
+        if (combo.Focused || combo.DroppedDown)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(value) && !combo.Items.Cast<object>().Any(x => string.Equals(x?.ToString(), value, StringComparison.Ordinal)))
+        {
+            combo.Items.Insert(1, value);
+        }
+
+        var cur = combo.SelectedItem?.ToString() ?? "";
+        if (string.Equals(cur, value, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var idx = combo.Items.Cast<object>().ToList().FindIndex(x => string.Equals(x?.ToString(), value, StringComparison.Ordinal));
+        combo.SelectedIndex = idx >= 0 ? idx : 0;
+    }
+
+    private void OnCorRollSelected(int slot)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var combo = slot == 1 ? _corRoll1Combo : _corRoll2Combo;
+        var path = slot == 1 ? "cor_roll_1" : "cor_roll_2";
+        var val = combo.SelectedItem?.ToString() ?? "";
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = path, ["value"] = val });
+    }
+
+    private void OnPathPartyGateChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var raw = (_pathPartyGateYalms.Text ?? "").Trim();
+        if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+        {
+            v = 3.0;
+        }
+        if (v < 0.5)
+        {
+            v = 0.5;
+        }
+        else if (v > 50)
+        {
+            v = 50;
+        }
+        var normalized = v.ToString("0.###", CultureInfo.InvariantCulture);
+        _pathPartyGateYalms.Text = normalized;
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "path_party_gate_yalms", ["value"] = normalized });
+    }
+
+    private void OnPathResumeIndexWindowChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var raw = (_pathResumeIndexWindow.Text ?? "").Trim();
+        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v))
+        {
+            v = 12;
+        }
+        if (v < 1)
+        {
+            v = 1;
+        }
+        else if (v > 200)
+        {
+            v = 200;
+        }
+        var normalized = v.ToString(CultureInfo.InvariantCulture);
+        _pathResumeIndexWindow.Text = normalized;
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "path_resume_index_window", ["value"] = normalized });
+    }
+
+    private void OnPathHunterMaxZDeltaChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var raw = (_pathHunterMaxZDelta.Text ?? "").Trim();
+        if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+        {
+            v = 2.0;
+        }
+        if (v < 0)
+        {
+            v = 0;
+        }
+        else if (v > 20)
+        {
+            v = 20;
+        }
+        var normalized = v.ToString("0.###", CultureInfo.InvariantCulture);
+        _pathHunterMaxZDelta.Text = normalized;
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "path_hunter_max_z_delta", ["value"] = normalized });
+    }
+
+    private void OnPathHunterMaxTargetRangeChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var raw = (_pathHunterMaxTargetRange.Text ?? "").Trim();
+        if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+        {
+            v = 20.0;
+        }
+        if (v < 1)
+        {
+            v = 1;
+        }
+        else if (v > 80)
+        {
+            v = 80;
+        }
+        var normalized = v.ToString("0.###", CultureInfo.InvariantCulture);
+        _pathHunterMaxTargetRange.Text = normalized;
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "path_hunter_max_target_range", ["value"] = normalized });
+    }
+
+    private void OnPathHunterClaimTimeoutChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var raw = (_pathHunterClaimTimeout.Text ?? "").Trim();
+        if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+        {
+            v = 4.0;
+        }
+        if (v < 0.5)
+        {
+            v = 0.5;
+        }
+        else if (v > 30)
+        {
+            v = 30;
+        }
+        var normalized = v.ToString("0.###", CultureInfo.InvariantCulture);
+        _pathHunterClaimTimeout.Text = normalized;
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "path_hunter_claim_timeout_s", ["value"] = normalized });
+    }
+
+    private void OnPathHunterIgnoreCooldownChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var raw = (_pathHunterIgnoreCooldown.Text ?? "").Trim();
+        if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+        {
+            v = 20.0;
+        }
+        if (v < 0)
+        {
+            v = 0;
+        }
+        else if (v > 120)
+        {
+            v = 120;
+        }
+        var normalized = v.ToString("0.###", CultureInfo.InvariantCulture);
+        _pathHunterIgnoreCooldown.Text = normalized;
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "path_hunter_ignore_cooldown_s", ["value"] = normalized });
+    }
+
+    private void OnPathHunterAdd()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var name = (_pathHunterName.Text ?? "").Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            return;
+        }
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_add", ["name"] = name });
+        _pathHunterName.Text = "";
+    }
+
+    private void OnPathHunterRemove()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var idx = _pathHunterList.SelectedIndex;
+        if (idx < 0)
+        {
+            return;
+        }
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_remove", ["index"] = idx + 1 });
     }
 
     private void OnPullerSelected()

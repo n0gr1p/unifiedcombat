@@ -34,6 +34,7 @@ public partial class MainForm : Form
     private List<(int Id, string Name)> _partnerRows = [];
     private List<(int Slot, string Name)> _targetIgnoreRows = [];
     private List<(int Slot, string Name)> _addPriorityRows = [];
+    private List<(int Id, string Name)> _pathHunterRows = [];
 
     public MainForm()
     {
