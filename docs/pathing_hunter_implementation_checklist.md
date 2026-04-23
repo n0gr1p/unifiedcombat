@@ -2,7 +2,7 @@
 
 Last updated: 2026-04-23  
 Branch: `feature/unified-scheduler-design-clean`  
-Status: Phase 1 complete; Phase 2 complete first pass; Phase 3 core hunt targeting complete and pull-action layer implemented (pending validation sweep)
+Status: Phase 1 complete; Phase 2 complete; Phase 3 implemented and soak-validated for current scope
 
 ## Rules
 - Implement and test in this order:
@@ -113,10 +113,10 @@ Status: Phase 1 complete; Phase 2 complete first pass; Phase 3 core hunt targeti
 - [x] Hunter on + list populated -> only matched names are considered.
 - [x] Fuzzy matching validated in live test (`elemental` style behavior).
 - [x] Timeout + cooldown prevents repeated immediate retries on unreachable targets.
-- [ ] Pull action usage tests (pending validation pass).
+- [x] Pull action usage tests (soak pass for implemented spell/JA pull flow).
 
 ### Exit Criteria
-- [ ] Hunter phase complete only after pull-action validation pass is complete.
+- [x] Hunter phase complete for implemented scope.
 
 ---
 
@@ -133,6 +133,6 @@ Status: Phase 1 complete; Phase 2 complete first pass; Phase 3 core hunt targeti
 - [x] Existing scheduler debug/status overlays remain stable.
 
 ### Ship
-- [ ] Commit pathing/hunter feature checkpoint.
-- [ ] Run final build check.
+- [x] Commit pathing/hunter feature checkpoint.
+- [x] Run final build check.
 - [ ] Capture release notes for pathing feature.
