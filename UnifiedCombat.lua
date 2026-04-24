@@ -660,7 +660,7 @@ end)
 
 windower.register_event('outgoing chunk', function(id, data, modified, injected, blocked)
 	local buf = modified or data
-	if uc_party_follow.outgoing_chunk(id, buf, blocked) then
+	if uc_party_follow.outgoing_chunk(id, buf, blocked, injected) then
 		return true
 	end
 end)
@@ -683,6 +683,7 @@ windower.register_event('job change', function(job, lvl)
 end)
 
 windower.register_event('zone change', function()
+	_G.UC_LAST_ZONE_CHANGE_AT = os.clock()
 	_G.UC_ZONE_SUSPEND_UNTIL = os.clock() + UC_ZONE_SUSPEND_SEC
 	_G.UC_LAST_BLOCK_REASON = 'ZONE_SUSPEND'
 end)

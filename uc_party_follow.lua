@@ -9,11 +9,183 @@ local packets = require('packets')
 local REQUEST_ZONE = 0x05E
 local zone_min_linear = 5
 local zone_min_dist_sq = zone_min_linear * zone_min_linear
+local zone_suppress = 3.0
+local local_zone_change_block_s = 5.0
+local zone_post_snapshot_delay_s = 2.5
 
 --- [nameLower] = { x, y, zone, t = os.clock() }
 local ipc_pos = {}
 local last_ipc_broadcast = 0
 local ipc_broadcast_interval = 0.05
+local last_zone = os.clock()
+local ff_following = nil -- FastFollow-parity: lowercase leader name when in follower mode
+local ff_target = nil    -- FastFollow-parity: { zone, x, y } from update stream for ff_following
+local last_seen_zone_change_at = 0
+local dist_sq
+local recent_local_zone_change
+local recent_local_request
+local last_local_request_at = 0
+local last_noisy_log_text = ''
+local last_noisy_log_at = 0
+
+local function pf_timestamp()
+	local base = os.date('%H:%M:%S')
+	local ms = math.floor((os.clock() % 1) * 1000)
+	return ('%s.%03d'):format(base, ms)
+end
+
+local function truthy(v)
+	if v == true or v == 1 then
+		return true
+	end
+	if type(v) == 'string' then
+		local s = v:lower()
+		return s == 'true' or s == 'on' or s == '1' or s == 'yes'
+	end
+	return false
+end
+
+local function debug_enabled()
+	local s = rawget(_G, 'UC_SETTINGS')
+	return s and truthy(s.debug) or false
+end
+
+local function path_sep()
+	return package.config:sub(1, 1) == '\\' and '\\' or '/'
+end
+
+local function safe_char_name(name)
+	local n = tostring(name or 'unknown'):lower():gsub('[^%w%-_]+', '_')
+	if n == '' then
+		n = 'unknown'
+	end
+	return n
+end
+
+local function ensure_log_dir()
+	local ap = windower and windower.addon_path or nil
+	if type(ap) ~= 'string' or ap == '' then
+		return nil
+	end
+	local s = path_sep()
+	local data_dir = ap .. 'data' .. s
+	local log_dir = ap .. 'data' .. s .. 'logs' .. s
+	if type(windower) == 'table' and windower.dir_exists and windower.create_dir then
+		if not windower.dir_exists(data_dir) then
+			windower.create_dir(data_dir)
+		end
+		if not windower.dir_exists(log_dir) then
+			windower.create_dir(log_dir)
+		end
+	end
+	return log_dir
+end
+
+local function file_log(text)
+	if not debug_enabled() or type(text) ~= 'string' or text == '' then
+		return
+	end
+	pcall(function()
+		local p = windower.ffxi.get_player()
+		local char = (p and p.name) or 'unknown'
+		local dir = ensure_log_dir()
+		if not dir then
+			return
+		end
+		local path = dir .. safe_char_name(char) .. '_follow_zone_debug.log'
+		local f = io.open(path, 'a')
+		if not f then
+			return
+		end
+		f:write(pf_timestamp(), '\t', text:gsub('\r?\n', ' '), '\n')
+		f:close()
+	end)
+end
+
+local function hex_preview(raw, max_bytes)
+	if type(raw) ~= 'string' then
+		return ''
+	end
+	local n = tonumber(max_bytes) or 32
+	if n < 1 then
+		n = 1
+	end
+	if n > #raw then
+		n = #raw
+	end
+	local out = {}
+	for i = 1, n do
+		out[#out + 1] = ('%02X'):format(raw:byte(i))
+	end
+	return table.concat(out, ' ')
+end
+
+local function packet_raw_preview(pkt)
+	local ok, built = pcall(function()
+		return packets.build(pkt)
+	end)
+	if not ok or type(built) ~= 'string' then
+		return ''
+	end
+	return hex_preview(built, 32)
+end
+
+local function state_snapshot(extra)
+	local p = windower.ffxi.get_player()
+	local me = windower.ffxi.get_mob_by_target('me')
+	local info = windower.ffxi.get_info()
+	local now = os.clock()
+	local parts = {
+		('char=%s'):format(tostring(p and p.name or '?')),
+		('self_zone=%s'):format(tostring(info and info.zone or '?')),
+		('self_x=%.3f'):format(tonumber(me and me.x) or -999),
+		('self_y=%.3f'):format(tonumber(me and me.y) or -999),
+		('party_follow=%s'):format(tostring(rawget(_G, 'UC_SETTINGS') and rawget(_G, 'UC_SETTINGS').party_follow or false)),
+		('ff_following=%s'):format(tostring(ff_following or '')),
+		('ff_target_zone=%s'):format(tostring(ff_target and ff_target.zone or '')),
+		('ff_target_x=%.3f'):format(tonumber(ff_target and ff_target.x) or -999),
+		('ff_target_y=%.3f'):format(tonumber(ff_target and ff_target.y) or -999),
+		('last_zone_delta=%.3f'):format(now - (tonumber(last_zone) or 0)),
+		('recent_zone_change=%s'):format(tostring(recent_local_zone_change(local_zone_change_block_s))),
+	}
+	if me and ff_target and ff_target.x ~= nil and ff_target.y ~= nil then
+		local d = math.sqrt(dist_sq(me.x, me.y, ff_target.x, ff_target.y))
+		parts[#parts + 1] = ('dist_to_ff_target=%.3f'):format(d)
+	end
+	if type(extra) == 'string' and extra ~= '' then
+		parts[#parts + 1] = extra
+	end
+	return table.concat(parts, ' ')
+end
+
+local function pf_set_op(op_text)
+	local msg = tostring(op_text or '')
+	_G.UC_LAST_PARTY_FOLLOW_OP = msg
+	local log = rawget(_G, 'UC_PARTY_FOLLOW_OP_LOG')
+	if type(log) ~= 'table' then
+		log = {}
+	end
+	table.insert(log, 1, ('%s %s'):format(pf_timestamp(), msg))
+	while #log > 5 do
+		table.remove(log)
+	end
+	_G.UC_PARTY_FOLLOW_OP_LOG = log
+	local noisy = (
+		msg == 'PARTY_FOLLOW_ZONE_SKIP_SEND:follower_mode' or
+		msg == 'PARTY_FOLLOW_ZONE_SUPPRESS:block_outgoing_request' or
+		msg == 'PARTY_FOLLOW_ZONE_SUPPRESS:block_after_zone_change'
+	)
+	if noisy then
+		local now = os.clock()
+		if msg == last_noisy_log_text and (now - last_noisy_log_at) < 1.5 then
+			return
+		end
+		last_noisy_log_text = msg
+		last_noisy_log_at = now
+	end
+	file_log(('op=%s %s'):format(msg, state_snapshot()))
+end
+
 local function trim(s)
 	if not s then
 		return ''
@@ -43,9 +215,25 @@ local function leader_name_lower(s, lid)
 	return ''
 end
 
-local function dist_sq(ax, ay, bx, by)
+dist_sq = function(ax, ay, bx, by)
 	local dx, dy = bx - ax, by - ay
 	return dx * dx + dy * dy
+end
+
+local function refresh_ff_following_from_settings()
+	local s = _G.UC_SETTINGS
+	if not s or s.party_follow ~= true then
+		ff_following = nil
+		ff_target = nil
+		return
+	end
+	local lname = leader_name_lower(s, s.party_follow_id or 0)
+	if lname == '' then
+		ff_following = nil
+		ff_target = nil
+		return
+	end
+	ff_following = lname
 end
 
 local function zones_equivalent(zone_self, zipc)
@@ -78,92 +266,174 @@ function M.get_ipc_position(name_lower, zone_self, max_age_s)
 	return c.x, c.y
 end
 
---- FastFollow-style: wait, walk to leader's last IPC xy, inject same Zone Line / Type.
-local function zone_follow_replay(zone_line, zone_type, leader_zone, lx, ly)
+--- FastFollow-parity zone replay core.
+local function zone_follow_replay(zone_line, zone_type, leader_zone, lx, ly, mh_door_menu)
+	file_log(('event=REPLAY_START line=%s type=%s leader_zone=%s lx=%.3f ly=%.3f %s'):format(
+		tostring(zone_line), tostring(zone_type), tostring(leader_zone), tonumber(lx) or -999, tonumber(ly) or -999, state_snapshot()
+	))
+	local function replay_stomped_by_local_zone()
+		return recent_local_request(local_zone_change_block_s) or recent_local_zone_change(local_zone_change_block_s)
+	end
+	if replay_stomped_by_local_zone() then
+		pf_set_op(('PARTY_FOLLOW_ZONE_ABORT:local_zone_priority_pre_sleep line=%s type=%s'):format(
+			tostring(zone_line), tostring(zone_type)
+		))
+		return
+	end
 	coroutine.sleep(0.2 + math.random() * 2.5)
+	if replay_stomped_by_local_zone() then
+		pf_set_op(('PARTY_FOLLOW_ZONE_ABORT:local_zone_priority_post_sleep line=%s type=%s'):format(
+			tostring(zone_line), tostring(zone_type)
+		))
+		return
+	end
 	local self = windower.ffxi.get_mob_by_target('me')
 	local info = windower.ffxi.get_info()
-	if not self or not info or not zones_equivalent(info.zone, leader_zone) then
-		_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_ZONE_ABORT:not_same_zone'
+	if not self or not info then
+		pf_set_op('PARTY_FOLLOW_ZONE_ABORT:not_ready')
+		return
+	end
+	if not zones_equivalent(info.zone, leader_zone) then
+		pf_set_op('PARTY_FOLLOW_ZONE_ABORT:not_same_zone')
 		return
 	end
 	local ok, packet = pcall(function()
-		return packets.new('outgoing', REQUEST_ZONE, {
+		local spec = {
 			['Zone Line'] = zone_line,
 			['Type'] = zone_type,
-		})
+		}
+		if mh_door_menu ~= nil then
+			spec['MH Door Menu'] = mh_door_menu
+		end
+		return packets.new('outgoing', REQUEST_ZONE, spec)
 	end)
 	if not ok or not packet then
-		_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_ZONE_ABORT:packet_new_failed'
+		pf_set_op('PARTY_FOLLOW_ZONE_ABORT:packet_new_failed')
 		return
 	end
 	local i = 0
-	while i < 12 do
-		self = windower.ffxi.get_mob_by_target('me')
-		if not self or not self.x or not self.y then
-			_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_ZONE_ABORT:no_self_mob'
+	local d2 = dist_sq(self.x, self.y, lx, ly)
+	file_log(('event=REPLAY_RANGE_INIT d2=%.3f %s'):format(d2, state_snapshot()))
+	while d2 > zone_min_dist_sq and i < 12 do
+		if replay_stomped_by_local_zone() then
+			pf_set_op(('PARTY_FOLLOW_ZONE_ABORT:local_zone_priority_in_range_wait line=%s type=%s'):format(
+				tostring(zone_line), tostring(zone_type)
+			))
 			return
 		end
-		if dist_sq(self.x, self.y, lx, ly) <= zone_min_dist_sq then
-			break
-		end
 		coroutine.sleep(0.25)
+		self = windower.ffxi.get_mob_by_target('me')
+		if not self then
+			pf_set_op('PARTY_FOLLOW_ZONE_ABORT:no_self_mob')
+			return
+		end
+		d2 = dist_sq(self.x, self.y, lx, ly)
 		i = i + 1
+		file_log(('event=REPLAY_RANGE_TICK i=%d d2=%.3f %s'):format(i, d2, state_snapshot()))
 	end
-	self = windower.ffxi.get_mob_by_target('me')
-	if not self or dist_sq(self.x, self.y, lx, ly) > zone_min_dist_sq then
-		_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_ZONE_TOO_FAR:min_linear_yalms=' .. tostring(zone_min_linear)
+	if d2 > zone_min_dist_sq then
+		pf_set_op('PARTY_FOLLOW_ZONE_TOO_FAR:min_linear_yalms=' .. tostring(zone_min_linear))
 		return
 	end
+	if replay_stomped_by_local_zone() then
+		pf_set_op(('PARTY_FOLLOW_ZONE_ABORT:local_zone_priority_pre_inject line=%s type=%s'):format(
+			tostring(zone_line), tostring(zone_type)
+		))
+		return
+	end
+	file_log(('event=REPLAY_PACKET_SEND id=0x05E line=%s type=%s mh=%s raw=\"%s\" %s'):format(
+		tostring(zone_line),
+		tostring(zone_type),
+		tostring(mh_door_menu),
+		packet_raw_preview(packet),
+		state_snapshot()
+	))
 	local inj_ok, inj_err = pcall(function()
 		packets.inject(packet)
 	end)
 	if not inj_ok then
-		_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_ZONE_INJECT_FAIL:' .. tostring(inj_err)
+		pf_set_op('PARTY_FOLLOW_ZONE_INJECT_FAIL:' .. tostring(inj_err))
 		return
 	end
-	_G.UC_LAST_PARTY_FOLLOW_OP = ''
+	file_log(('event=REPLAY_INJECT_OK line=%s type=%s %s'):format(tostring(zone_line), tostring(zone_type), state_snapshot()))
+	last_zone = os.clock()
+	pf_set_op(('PARTY_FOLLOW_ZONE_OK:line=%s type=%s leader_zone=%s'):format(
+		tostring(zone_line),
+		tostring(zone_type),
+		tostring(leader_zone)
+	))
 end
 
-local function ipc_dispatch_ucpf_zone(msg)
-	local parts = {}
-	for part in msg:gmatch('[^|]+') do
-		parts[#parts + 1] = part
+recent_local_zone_change = function(window_s)
+	local last = tonumber(rawget(_G, 'UC_LAST_ZONE_CHANGE_AT')) or 0
+	local w = tonumber(window_s) or 0
+	return last > 0 and (os.clock() - last) < w
+end
+
+recent_local_request = function(window_s)
+	local w = tonumber(window_s) or 0
+	return (tonumber(last_local_request_at) or 0) > 0 and (os.clock() - last_local_request_at) < w
+end
+
+local function ipc_dispatch_zone(msg)
+	file_log(('event=IPC_ZONE_RECV_RAW msg=\"%s\" %s'):format(tostring(msg), state_snapshot()))
+	local args = {}
+	for part in msg:lower():gmatch('%S+') do
+		args[#args + 1] = part
 	end
-	if #parts < 4 or parts[1] ~= 'ucpf_zone' then
+	if #args < 4 or args[1] ~= 'zone' then return end
+	refresh_ff_following_from_settings()
+	if not ff_following or args[2] ~= ff_following then
 		return
 	end
-	local leader_nm = parts[2]
-	local zone_line = tonumber(parts[3])
-	local zone_type = tonumber(parts[4])
-	if leader_nm == nil or leader_nm == '' or zone_line == nil or zone_type == nil then
+	local zone_line = tonumber(args[3])
+	local zone_type = tonumber(args[4])
+	if not zone_line or not zone_type then
 		return
 	end
-	local s = _G.UC_SETTINGS
-	if not s or not s.party_follow or (s.party_follow_id or 0) == 0 then
+	-- Hard stomp: while local zone flow is active/recent, discard incoming IPC zone
+	-- requests entirely. We do not queue/replay them later.
+	if recent_local_zone_change(local_zone_change_block_s) then
+		pf_set_op(('PARTY_FOLLOW_ZONE_SKIP:local_zone_change_recent line=%s type=%s'):format(
+			tostring(zone_line), tostring(zone_type)
+		))
 		return
 	end
-	local lid = s.party_follow_id or 0
-	local lname = leader_name_lower(s, lid)
-	if lname == '' or leader_nm:lower() ~= lname then
+	if recent_local_request(local_zone_change_block_s) then
+		pf_set_op(('PARTY_FOLLOW_ZONE_SKIP:local_request_recent line=%s type=%s'):format(
+			tostring(zone_line), tostring(zone_type)
+		))
 		return
 	end
-	local c = ipc_pos[lname]
-	if not c or not c.x or not c.y then
-		_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_ZONE_NO_LEADER_POS:' .. lname
+	local source_zone = tonumber(args[5])
+	local source_mh = tonumber(args[6])
+	if source_zone ~= nil then
+		local info = windower.ffxi.get_info()
+		local zself = info and info.zone
+		if zself == nil or not zones_equivalent(zself, source_zone) then
+			pf_set_op(('PARTY_FOLLOW_ZONE_SKIP:stale_source_zone self=%s src=%s'):format(
+				tostring(zself),
+				tostring(source_zone)
+			))
+			return
+		end
+	end
+	if not ff_target or ff_target.x == nil or ff_target.y == nil or ff_target.zone == nil then
+		pf_set_op('PARTY_FOLLOW_ZONE_NO_LEADER_POS:' .. tostring(ff_following))
 		return
 	end
-	coroutine.schedule(function()
-		zone_follow_replay(zone_line, zone_type, c.zone, c.x, c.y)
-	end, 0.05)
+	pf_set_op(('PARTY_FOLLOW_ZONE_RECV:leader=%s line=%s type=%s'):format(
+		tostring(args[2]), tostring(zone_line), tostring(zone_type)
+	))
+	zone_follow_replay(zone_line, zone_type, source_zone or ff_target.zone, ff_target.x, ff_target.y, source_mh)
 end
 
 function M.ipc_message(msg)
 	if type(msg) ~= 'string' then
 		return
 	end
-	if msg:sub(1, 11) == 'ucpf_zone|' then
-		ipc_dispatch_ucpf_zone(msg)
+	if msg:sub(1, 5) == 'zone ' then
+		ipc_dispatch_zone(msg)
 		return
 	end
 	if msg:sub(1, 8) ~= 'ucpf_up|' then
@@ -183,7 +453,11 @@ function M.ipc_message(msg)
 	if not name or not x or not y or zraw == nil or zraw == '' then
 		return
 	end
-	ipc_pos[name:lower()] = { x = x, y = y, zone = zraw, t = os.clock() }
+	local lname = name:lower()
+	ipc_pos[lname] = { x = x, y = y, zone = zraw, t = os.clock() }
+	if ff_following and lname == ff_following then
+		ff_target = { x = x, y = y, zone = tonumber(zraw) or zraw }
+	end
 end
 
 --- Call every prerender from UnifiedCombat (all instances) so followers receive fresh x/y.
@@ -211,23 +485,85 @@ function M.broadcast_self_ipc()
 end
 
 --- Announce this client's zone line/type on IPC so multibox followers can replay (FastFollow-style).
-function M.outgoing_chunk(id, data, blocked)
+function M.outgoing_chunk(id, data, blocked, injected)
 	if blocked or id ~= REQUEST_ZONE or not data then
 		return false
 	end
+	local now = os.clock()
 	local p = windower.ffxi.get_player()
 	if not p or not p.name then
+		return false
+	end
+	local s = _G.UC_SETTINGS
+	if s and s.party_follow == true then
+		local okp, pktp = pcall(function()
+			return packets.parse('outgoing', data)
+		end)
+		if okp and pktp then
+			file_log(('event=OUT_05E_PACKET_OBSERVED_FOLLOWER id=0x05E line=%s type=%s mh=%s injected=%s raw=\"%s\" %s'):format(
+				tostring(pktp['Zone Line']),
+				tostring(pktp['Type']),
+				tostring(pktp['MH Door Menu']),
+				tostring(injected == true),
+				hex_preview(data, 32),
+				state_snapshot()
+			))
+		end
+		-- When following (UC wrapper), mirror FastFollow zone suppress behavior.
+		refresh_ff_following_from_settings()
+		if recent_local_zone_change(local_zone_change_block_s) then
+			pf_set_op('PARTY_FOLLOW_ZONE_SUPPRESS:block_after_zone_change')
+			return true
+		end
+		if (now - (tonumber(last_zone) or 0)) < zone_suppress then
+			pf_set_op('PARTY_FOLLOW_ZONE_SUPPRESS:block_outgoing_request')
+			return true
+		end
+		pf_set_op('PARTY_FOLLOW_ZONE_SKIP_SEND:follower_mode')
+		last_local_request_at = now
+		file_log(('event=FOLLOWER_LOCAL_ZONE_REQUEST_ACTIVATE hold_s=%.2f %s'):format(
+			tonumber(local_zone_change_block_s) or 0,
+			state_snapshot()
+		))
+		last_zone = now
 		return false
 	end
 	local ok, pkt = pcall(function()
 		return packets.parse('outgoing', data)
 	end)
+	if not ok then
+		file_log(('event=OUT_05E_PARSE_FAIL %s'):format(state_snapshot()))
+	end
 	if ok and pkt then
 		local zl = pkt['Zone Line']
 		local zt = pkt['Type']
+		local zmh = pkt['MH Door Menu']
+		file_log(('event=OUT_05E_PACKET_OBSERVED id=0x05E line=%s type=%s mh=%s raw=\"%s\" %s'):format(
+			tostring(zl),
+			tostring(zt),
+			tostring(zmh),
+			hex_preview(data, 32),
+			state_snapshot()
+		))
 		if zl ~= nil and zt ~= nil then
 			local nm = tostring(p.name):gsub('|', '_')
-			windower.send_ipc_message(('ucpf_zone|%s|%s|%s'):format(nm, tostring(zl), tostring(zt)))
+			local info = windower.ffxi.get_info()
+			local src = tonumber(info and info.zone)
+			pf_set_op(('PARTY_FOLLOW_ZONE_SEND:line=%s type=%s mh=%s'):format(
+				tostring(zl), tostring(zt), tostring(zmh)
+			))
+			if src ~= nil then
+				windower.send_ipc_message(('zone %s %s %s %s %s'):format(
+					nm,
+					tostring(zl),
+					tostring(zt),
+					tostring(src),
+					tostring(tonumber(zmh) or 0)
+				))
+			else
+				windower.send_ipc_message(('zone %s %s %s'):format(nm, tostring(zl), tostring(zt)))
+			end
+			last_zone = now
 		end
 	end
 	return false
@@ -311,7 +647,11 @@ end
 
 local function zone_suspend_active()
 	local zu = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
-	return type(zu) == 'number' and os.clock() < zu
+	if type(zu) == 'number' and os.clock() < zu then
+		return true
+	end
+	-- Local zone request should take priority over follow movement/replay.
+	return recent_local_request(local_zone_change_block_s)
 end
 
 local function leader_mob_from_party(lid, lname)
@@ -361,6 +701,15 @@ local function resolve_leader_xy(s, lid, lname, zone_self)
 end
 
 function M.prerender()
+	local zc = tonumber(rawget(_G, 'UC_LAST_ZONE_CHANGE_AT')) or 0
+	if debug_enabled() and zc > 0 and zc ~= last_seen_zone_change_at then
+		last_seen_zone_change_at = zc
+		file_log(('event=ZONE_CHANGE_DETECTED zone_change_at=%.3f %s'):format(zc, state_snapshot()))
+		coroutine.schedule(function()
+			file_log(('event=ZONE_POST_SNAPSHOT delay=%.2f %s'):format(zone_post_snapshot_delay_s, state_snapshot()))
+		end, zone_post_snapshot_delay_s)
+	end
+	refresh_ff_following_from_settings()
 	local s = _G.UC_SETTINGS
 	if not s or not s.party_follow or (s.party_follow_id or 0) == 0 then
 		return

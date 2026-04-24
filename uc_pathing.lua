@@ -433,6 +433,20 @@ local function render_debug_overlay(settings)
 	end
 	local cohesion = party_cohesion_ok(gate)
 	lines[#lines + 1] = ('cohesion<=%.2f: %s'):format(gate, cohesion and 'PASS' or 'BLOCK')
+	local pf_op = tostring(rawget(_G, 'UC_LAST_PARTY_FOLLOW_OP') or '')
+	if pf_op == '' then
+		pf_op = '(none)'
+	end
+	lines[#lines + 1] = 'party_follow_last_op: ' .. pf_op
+	lines[#lines + 1] = 'party_follow_last_5:'
+	local op_log = rawget(_G, 'UC_PARTY_FOLLOW_OP_LOG')
+	if type(op_log) == 'table' and #op_log > 0 then
+		for i = 1, math.min(5, #op_log) do
+			lines[#lines + 1] = ('  %d) %s'):format(i, tostring(op_log[i] or ''))
+		end
+	else
+		lines[#lines + 1] = '  1) (none)'
+	end
 	if #rows == 0 then
 		lines[#lines + 1] = '(no party members found)'
 	else

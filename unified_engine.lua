@@ -86,6 +86,12 @@ local function render_sched_overlay()
 	local queued = type(snap.queued) == 'table' and snap.queued or {}
 	local rejected = type(snap.rejected) == 'table' and snap.rejected or {}
 	local qlines = { ('Scheduler Queue (tick %s)'):format(tostring(snap.tick or 0)) }
+	local pf_op = tostring(rawget(_G, 'UC_LAST_PARTY_FOLLOW_OP') or '')
+	if pf_op ~= '' then
+		qlines[#qlines + 1] = ('PartyFollow: %s'):format(pf_op)
+	else
+		qlines[#qlines + 1] = 'PartyFollow: (none)'
+	end
 	local spacing_diag = tostring(rawget(_G, 'UC_SPACING_DIAG') or '')
 	if spacing_diag ~= '' then
 		qlines[#qlines + 1] = ('Spacing: %s'):format(spacing_diag)
