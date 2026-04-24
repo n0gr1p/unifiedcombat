@@ -91,6 +91,7 @@ local spell_initiating_message_ids = {
 
 local DEATH_SWITCH_WINDOW = 0.9
 local PARTY_WS_HOLD_WINDOW = 1.6
+local DEFAULT_MOVEMENT_MODEL_SIZE_FLOOR = 0.9
 
 local action_categories = {
 	weaponskill_finish = true,
@@ -159,6 +160,19 @@ end
 
 local function get_settings()
 	return rawget(_G, 'UC_SETTINGS') or {}
+end
+
+local function movement_model_size_floor(settings)
+	local n = tonumber(settings and settings.spacing_model_size_floor)
+	if n == nil then
+		n = DEFAULT_MOVEMENT_MODEL_SIZE_FLOOR
+	end
+	if n < 0 then
+		n = 0
+	elseif n > 3 then
+		n = 3
+	end
+	return n
 end
 
 local function get_current_target()
@@ -255,6 +269,30 @@ local function target_real_distance(mob)
 	return mob.distance:sqrt() - (mob.model_size or 0) - (me.model_size or 0)
 end
 
+local function movement_model_size_raw(mob)
+	return tonumber(mob and mob.model_size) or 0
+end
+
+local function movement_target_model_size(mob, settings)
+	local n = tonumber(mob and mob.model_size) or 0
+	local floor = movement_model_size_floor(settings or get_settings())
+	if n < floor then
+		return floor
+	end
+	return n
+end
+
+local function target_real_distance_movement(mob, settings)
+	if not mob then
+		return 999
+	end
+	local me = windower.ffxi.get_mob_by_target('me')
+	if not me or mob.distance == nil then
+		return 999
+	end
+	return mob.distance:sqrt() - movement_target_model_size(mob, settings) - movement_model_size_raw(me)
+end
+
 local function mob_distance(a, b)
 	if not a or not b or a.x == nil or a.y == nil or b.x == nil or b.y == nil then
 		return 999
@@ -270,6 +308,14 @@ local function mob_real_distance(a, b)
 	end
 	local d = mob_distance(a, b)
 	return d - (a.model_size or 0) - (b.model_size or 0)
+end
+
+local function mob_real_distance_movement(a, b, settings)
+	if not a or not b or a.x == nil or a.y == nil or b.x == nil or b.y == nil then
+		return 999
+	end
+	local d = mob_distance(a, b)
+	return d - movement_model_size_raw(a) - movement_model_size_raw(b)
 end
 
 local function death_event_active_for_id(id)
@@ -321,7 +367,7 @@ local function spacing_cmp_num(a, b, eps)
 	return a < b and -1 or 1
 end
 
-local function spacing_collect_agents(me)
+local function spacing_collect_agents(me, settings)
 	local by_id = {}
 	local out = {}
 	local party = windower.ffxi.get_party() or {}
@@ -337,7 +383,7 @@ local function spacing_collect_agents(me)
 					id = pid,
 					x = mob.x,
 					y = mob.y,
-					model = tonumber(mob.model_size) or 0,
+					model = movement_model_size_raw(mob),
 					dist_to_target = 0,
 					prev_slot_valid = false,
 				}
@@ -352,7 +398,7 @@ local function spacing_collect_agents(me)
 			id = me_id,
 			x = me.x,
 			y = me.y,
-			model = tonumber(me.model_size) or 0,
+			model = movement_model_size_raw(me),
 			dist_to_target = 0,
 			prev_slot_valid = false,
 		}
@@ -385,8 +431,8 @@ local function spacing_predict_target(target, st, use_prediction, lookahead_s)
 	return px, py
 end
 
-local function spacing_compute_band(target, agents, min_real, max_real)
-	local tmodel = tonumber(target and target.model_size) or 0
+local function spacing_compute_band(target, agents, min_real, max_real, settings)
+	local tmodel = movement_target_model_size(target, settings)
 	local sum_model = 0
 	local count = 0
 	for _, a in ipairs(agents) do
@@ -613,13 +659,13 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 		max_agents = 6
 	end
 	local emergency_margin_setting = tonumber(settings.spacing_emergency_margin)
-	local agents, by_id = spacing_collect_agents(me)
+	local agents, by_id = spacing_collect_agents(me, settings)
 	local local_id = tonumber(me and me.id) or 0
 	if local_id <= 0 or #agents == 0 then
 		return nil, 'HOLD_POSITION'
 	end
 	local tx, ty = spacing_predict_target(target, st, use_prediction, lookahead_s)
-	local min_range, max_range, preferred_radius, emergency_margin = spacing_compute_band(target, agents, min_real, max_real)
+	local min_range, max_range, preferred_radius, emergency_margin = spacing_compute_band(target, agents, min_real, max_real, settings)
 	if emergency_margin_setting ~= nil then
 		emergency_margin = emergency_margin_setting
 		if emergency_margin < 0 then
@@ -679,7 +725,11 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 		st.last_slot_change_tick = st.tick
 	end
 	local gx, gy, mode = spacing_compute_goal(me, tx, ty, slots, final_slot, min_range, max_range, preferred_radius, slot_arrival_tolerance)
-	_G.UC_SPACING_DIAG = ('mode=%s aid=%d slot=%d anchor=%d dist_t=%.2f range=[%.2f,%.2f] pref=%.2f goal=%s,%s'):format(
+	local me_model_raw = tonumber(me and me.model_size) or 0
+	local target_model_raw = tonumber(target and target.model_size) or 0
+	local me_model_eff = movement_model_size_raw(me)
+	local target_model_eff = movement_target_model_size(target, settings)
+	_G.UC_SPACING_DIAG = ('mode=%s aid=%d slot=%d anchor=%d dist_t=%.2f range=[%.2f,%.2f] pref=%.2f goal=%s,%s me_sz=%.2f->%.2f tgt_sz=%.2f->%.2f'):format(
 		tostring(mode or ''),
 		local_id,
 		tonumber(final_slot) or -1,
@@ -689,7 +739,11 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 		max_range,
 		preferred_radius,
 		gx and tostring(spacing_round(gx)) or '-',
-		gy and tostring(spacing_round(gy)) or '-'
+		gy and tostring(spacing_round(gy)) or '-',
+		me_model_raw,
+		me_model_eff,
+		target_model_raw,
+		target_model_eff
 	)
 	if not gx or not gy then
 		return nil, mode
@@ -700,7 +754,7 @@ end
 
 -- Real-time spacing-aware approach heading:
 -- attract toward target while repelling from nearby party members.
-local function uc_spacing_aware_approach_heading(me, target)
+local function uc_spacing_aware_approach_heading(settings, me, target)
 	if not me or not target or me.x == nil or me.y == nil or target.x == nil or target.y == nil then
 		return nil
 	end
@@ -726,7 +780,7 @@ local function uc_spacing_aware_approach_heading(me, target)
 		if pid ~= 0 and pid ~= me.id then
 			local member = windower.ffxi.get_mob_by_id(pid)
 			if member and member.x ~= nil and member.y ~= nil then
-				local pdist = mob_real_distance(me, member)
+				local pdist = mob_real_distance_movement(me, member, settings)
 				if pdist < repel_range then
 					local dx = me.x - member.x
 					local dy = me.y - member.y
@@ -1332,7 +1386,7 @@ local function apply_movement(settings, target)
 			return
 		end
 	end
-	local dist = target_real_distance(target)
+	local dist = target_real_distance_movement(target, settings)
 	-- Comfortable fight-distance band around target.
 	local max_range = tonumber(settings.spacing_band_max) or 0.4
 	local min_range = tonumber(settings.spacing_band_min) or -0.9
@@ -1370,7 +1424,7 @@ local function apply_movement(settings, target)
 	if dist > max_range then
 		local moved = false
 		if setting_enabled(settings.spacing) and me then
-			local heading = uc_spacing_aware_approach_heading(me, target)
+			local heading = uc_spacing_aware_approach_heading(settings, me, target)
 			if heading then
 				windower.ffxi.run(heading)
 				moved = true
@@ -1439,7 +1493,7 @@ local function apply_movement(settings, target)
 				local pid = pm and pm.id or 0
 				if pid ~= 0 and pid ~= me.id then
 					local member = windower.ffxi.get_mob_by_id(pid)
-					local pdist = mob_real_distance(me, member)
+					local pdist = mob_real_distance_movement(me, member, settings)
 					if pdist < spacing_trigger and pdist < chosen_dist then
 						chosen_id = pid
 						chosen_member = member

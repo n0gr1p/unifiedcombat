@@ -74,6 +74,7 @@ public partial class MainForm
     private CheckBox _spUsePrediction = null!;
     private TextBox _spBandMin = null!;
     private TextBox _spBandMax = null!;
+    private TextBox _spModelSizeFloor = null!;
     private TextBox _spLookahead = null!;
     private TextBox _spAnchorInvalidTicks = null!;
     private TextBox _spEmergencyMargin = null!;
@@ -538,6 +539,10 @@ public partial class MainForm
         _spBandMax = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _spBandMax.Leave += (_, _) => OnSpacingTuningNumericChanged();
         sp.Controls.Add(_spBandMax, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Model size floor (movement)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spModelSizeFloor = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _spModelSizeFloor.Leave += (_, _) => OnSpacingTuningNumericChanged();
+        sp.Controls.Add(_spModelSizeFloor, 1, sr++);
         sp.Controls.Add(new Label { Text = "Prediction lookahead (s)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
         _spLookahead = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _spLookahead.Leave += (_, _) => OnSpacingTuningNumericChanged();

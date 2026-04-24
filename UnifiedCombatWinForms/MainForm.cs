@@ -19,7 +19,7 @@ public partial class MainForm : Form
     /// <summary>Last party-follow distance settings pushed to the game; suppress snapshot overwrite until echoed or timeout.</summary>
     private readonly Dictionary<string, (string min, string max, string fightMin, string holdS, DateTime ts)> _pendingPfDistBySid = new(StringComparer.Ordinal);
     /// <summary>Last spacing tuning values pushed to the game; suppress snapshot overwrite until echoed or timeout.</summary>
-    private readonly Dictionary<string, (bool usePrediction, string bandMin, string bandMax, string lookahead, string anchorInvalidTicks, string emergencyMargin, string switchPenalty, string switchMargin, string arrivalTolerance, string maxAgents, DateTime ts)> _pendingSpacingBySid = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (bool usePrediction, string bandMin, string bandMax, string modelSizeFloor, string lookahead, string anchorInvalidTicks, string emergencyMargin, string switchPenalty, string switchMargin, string arrivalTolerance, string maxAgents, DateTime ts)> _pendingSpacingBySid = new(StringComparer.Ordinal);
     private DateTime _abilityInteractionUtc = DateTime.MinValue;
 
     private readonly Dictionary<string, CheckBox> _boolChecks = new(StringComparer.Ordinal);

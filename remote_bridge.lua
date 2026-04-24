@@ -352,6 +352,20 @@ local function apply_set(path, value)
 		last_state_send = 0
 		return
 	end
+	if key == 'spacing_model_size_floor' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0 then
+			n = 0
+		elseif n > 3 then
+			n = 3
+		end
+		s.spacing_model_size_floor = n
+		last_state_send = 0
+		return
+	end
 	if key == 'spacing_lookahead_s' then
 		local n = tonumber(tostring(value))
 		if not n then
@@ -1321,6 +1335,7 @@ function uc_remote_tick()
 		spacing = s.spacing,
 		spacing_band_min = tonumber(s.spacing_band_min) or -0.9,
 		spacing_band_max = tonumber(s.spacing_band_max) or 0.4,
+		spacing_model_size_floor = tonumber(s.spacing_model_size_floor) or 0.9,
 		spacing_use_prediction = (s.spacing_use_prediction ~= false),
 		spacing_lookahead_s = tonumber(s.spacing_lookahead_s) or 0.25,
 		spacing_anchor_invalid_ticks = tonumber(s.spacing_anchor_invalid_ticks) or 5,

@@ -246,6 +246,7 @@ public partial class MainForm
             _spUsePrediction.Checked = true;
             _spBandMin.Text = "-0.9";
             _spBandMax.Text = "0.4";
+            _spModelSizeFloor.Text = "0.9";
             _spLookahead.Text = "0.25";
             _spAnchorInvalidTicks.Text = "5";
             _spEmergencyMargin.Text = "0.1";
@@ -1460,6 +1461,7 @@ public partial class MainForm
 
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_band_min", ["value"] = N(_spBandMin, -0.9) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_band_max", ["value"] = N(_spBandMax, 0.4) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_model_size_floor", ["value"] = N(_spModelSizeFloor, 0.9) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_lookahead_s", ["value"] = N(_spLookahead, 0.25) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_anchor_invalid_ticks", ["value"] = I(_spAnchorInvalidTicks, 5) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_emergency_margin", ["value"] = N(_spEmergencyMargin, 0.1) });
@@ -1476,6 +1478,7 @@ public partial class MainForm
             _spUsePrediction.Checked,
             (_spBandMin.Text ?? "").Trim(),
             (_spBandMax.Text ?? "").Trim(),
+            (_spModelSizeFloor.Text ?? "").Trim(),
             (_spLookahead.Text ?? "").Trim(),
             (_spAnchorInvalidTicks.Text ?? "").Trim(),
             (_spEmergencyMargin.Text ?? "").Trim(),
@@ -1654,6 +1657,7 @@ public partial class MainForm
         bool srvUsePrediction,
         string srvBandMin,
         string srvBandMax,
+        string srvModelSizeFloor,
         string srvLookahead,
         string srvAnchorInvalidTicks,
         string srvEmergencyMargin,
@@ -1664,6 +1668,7 @@ public partial class MainForm
         bool pendUsePrediction,
         string pendBandMin,
         string pendBandMax,
+        string pendModelSizeFloor,
         string pendLookahead,
         string pendAnchorInvalidTicks,
         string pendEmergencyMargin,
@@ -1675,6 +1680,7 @@ public partial class MainForm
         return srvUsePrediction == pendUsePrediction &&
                EquivalentNumericText(srvBandMin, pendBandMin) &&
                EquivalentNumericText(srvBandMax, pendBandMax) &&
+               EquivalentNumericText(srvModelSizeFloor, pendModelSizeFloor) &&
                EquivalentNumericText(srvLookahead, pendLookahead) &&
                EquivalentNumericText(srvAnchorInvalidTicks, pendAnchorInvalidTicks) &&
                EquivalentNumericText(srvEmergencyMargin, pendEmergencyMargin) &&
@@ -1699,6 +1705,7 @@ public partial class MainForm
         var usePredictionSrv = SessionStateHelper.GetBool(s, "spacing_use_prediction", true);
         var bandMinSrv = SessionStateHelper.GetString(s, "spacing_band_min", "-0.9");
         var bandMaxSrv = SessionStateHelper.GetString(s, "spacing_band_max", "0.4");
+        var modelSizeFloorSrv = SessionStateHelper.GetString(s, "spacing_model_size_floor", "0.9");
         var lookaheadSrv = SessionStateHelper.GetString(s, "spacing_lookahead_s", "0.25");
         var anchorInvalidTicksSrv = SessionStateHelper.GetString(s, "spacing_anchor_invalid_ticks", "5");
         var emergencyMarginSrv = SessionStateHelper.GetString(s, "spacing_emergency_margin", "0.1");
@@ -1707,7 +1714,7 @@ public partial class MainForm
         var arrivalToleranceSrv = SessionStateHelper.GetString(s, "spacing_slot_arrival_tolerance", "0.2");
         var maxAgentsSrv = SessionStateHelper.GetString(s, "spacing_max_agents", "6");
 
-        if (_spUsePrediction.Focused || _spBandMin.Focused || _spBandMax.Focused || _spLookahead.Focused ||
+        if (_spUsePrediction.Focused || _spBandMin.Focused || _spBandMax.Focused || _spModelSizeFloor.Focused || _spLookahead.Focused ||
             _spAnchorInvalidTicks.Focused || _spEmergencyMargin.Focused || _spSwitchPenalty.Focused ||
             _spSwitchMargin.Focused || _spArrivalTolerance.Focused || _spMaxAgents.Focused)
         {
@@ -1718,9 +1725,9 @@ public partial class MainForm
         {
             var ageSec = (DateTime.UtcNow - ps.ts).TotalSeconds;
             var echoed = SpacingEchoMatches(
-                usePredictionSrv, bandMinSrv, bandMaxSrv, lookaheadSrv, anchorInvalidTicksSrv, emergencyMarginSrv,
+                usePredictionSrv, bandMinSrv, bandMaxSrv, modelSizeFloorSrv, lookaheadSrv, anchorInvalidTicksSrv, emergencyMarginSrv,
                 switchPenaltySrv, switchMarginSrv, arrivalToleranceSrv, maxAgentsSrv,
-                ps.usePrediction, ps.bandMin, ps.bandMax, ps.lookahead, ps.anchorInvalidTicks, ps.emergencyMargin,
+                ps.usePrediction, ps.bandMin, ps.bandMax, ps.modelSizeFloor, ps.lookahead, ps.anchorInvalidTicks, ps.emergencyMargin,
                 ps.switchPenalty, ps.switchMargin, ps.arrivalTolerance, ps.maxAgents
             );
             if (echoed)
@@ -1744,6 +1751,7 @@ public partial class MainForm
 
         ApplyNumericTextIfChanged(_spBandMin, bandMinSrv);
         ApplyNumericTextIfChanged(_spBandMax, bandMaxSrv);
+        ApplyNumericTextIfChanged(_spModelSizeFloor, modelSizeFloorSrv);
         ApplyNumericTextIfChanged(_spLookahead, lookaheadSrv);
         ApplyNumericTextIfChanged(_spAnchorInvalidTicks, anchorInvalidTicksSrv);
         ApplyNumericTextIfChanged(_spEmergencyMargin, emergencyMarginSrv);
