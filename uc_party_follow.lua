@@ -59,6 +59,25 @@ local function zones_equivalent(zone_self, zipc)
 	return a ~= nil and b ~= nil and a == b
 end
 
+function M.get_ipc_position(name_lower, zone_self, max_age_s)
+	if type(name_lower) ~= 'string' or name_lower == '' then
+		return nil, nil
+	end
+	local c = ipc_pos[name_lower]
+	if not c or c.x == nil or c.y == nil then
+		return nil, nil
+	end
+	local age = os.clock() - (tonumber(c.t) or 0)
+	local max_age = tonumber(max_age_s) or 2.5
+	if age > max_age then
+		return nil, nil
+	end
+	if not zones_equivalent(zone_self, c.zone) then
+		return nil, nil
+	end
+	return c.x, c.y
+end
+
 --- FastFollow-style: wait, walk to leader's last IPC xy, inject same Zone Line / Type.
 local function zone_follow_replay(zone_line, zone_type, leader_zone, lx, ly)
 	coroutine.sleep(0.2 + math.random() * 2.5)
@@ -255,6 +274,9 @@ end
 local function combat_engine_suppresses_follow()
 	if not Start_Engine then
 		return false
+	end
+	if rawget(_G, 'UC_PULL_SPELL_WAITING') == true then
+		return true
 	end
 	-- Exception: if combat-close approach is currently gated by puller policy, allow party-follow
 	-- to continue moving the character so it does not orphan or keep stale run vectors.

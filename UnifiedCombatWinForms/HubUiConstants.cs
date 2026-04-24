@@ -38,6 +38,12 @@ internal static class HubUiConstants
         "puller_distance_only",
         "fight_leader",
         "party_follow",
+        "scheduler_dark_launch_combat",
+        "scheduler_dark_launch_defensive",
+        "scheduler_dark_launch_movement",
+        "scheduler_dark_launch_maintenance",
+        "path_recording",
+        "path_follow_enabled",
     ];
 
     public static readonly string[] BoolKeys = ContextBoolKeys.Concat(GlobalBoolKeys).ToArray();
@@ -80,6 +86,12 @@ internal static class HubUiConstants
         ["weaponskill_active"] = "weaponskill",
         ["aftermath_enabled"] = "aftermath",
         ["puller"] = "puller",
+        ["scheduler_dark_launch_combat"] = "Scheduler: combat dispatch (dark launch)",
+        ["scheduler_dark_launch_defensive"] = "Scheduler: defensive dispatch (dark launch)",
+        ["scheduler_dark_launch_movement"] = "Scheduler: movement dispatch (dark launch)",
+        ["scheduler_dark_launch_maintenance"] = "Scheduler: maintenance dispatch (dark launch)",
+        ["path_recording"] = "Record path",
+        ["path_follow_enabled"] = "Follow path",
     };
 
     public static readonly string[] HealerCardKeys =
@@ -112,6 +124,41 @@ internal static class HubUiConstants
     ];
 
     public static readonly string[] VisualsCardKeys = ["show_ingame_ui", "debug", "aeonic", "color"];
+
+    public static readonly string[] CorRollOptions =
+    [
+        "Fighter's Roll",
+        "Monk's Roll",
+        "Healer's Roll",
+        "Wizard's Roll",
+        "Warlock's Roll",
+        "Rogue's Roll",
+        "Gallant's Roll",
+        "Chaos Roll",
+        "Beast Roll",
+        "Choral Roll",
+        "Hunter's Roll",
+        "Samurai Roll",
+        "Ninja Roll",
+        "Drachen Roll",
+        "Evoker's Roll",
+        "Magus's Roll",
+        "Corsair's Roll",
+        "Puppet Roll",
+        "Dancer's Roll",
+        "Scholar's Roll",
+        "Bolter's Roll",
+        "Caster's Roll",
+        "Courser's Roll",
+        "Blitzer's Roll",
+        "Tactician's Roll",
+        "Allies' Roll",
+        "Miser's Roll",
+        "Companion's Roll",
+        "Avenger's Roll",
+        "Naturalist's Roll",
+        "Runeist's Roll",
+    ];
 
     public static string BoolLabel(string key) => BoolLabels.TryGetValue(key, out var v) ? v : key;
 }

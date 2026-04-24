@@ -111,6 +111,7 @@ local function uc_new_settings_defaults()
 		spacing = false,
 		spacing_band_min = -0.9,
 		spacing_band_max = 0.4,
+		spacing_model_size_floor = 0.9,
 		spacing_use_prediction = true,
 		spacing_lookahead_s = 0.25,
 		spacing_anchor_invalid_ticks = 5,
@@ -162,6 +163,27 @@ local function uc_new_settings_defaults()
 		defensive_overwrite_interval = 150,
 		defensive_buff_self_only = true,
 		defensive_buffs = '',
+		scheduler_dark_launch_combat = false,
+		scheduler_dark_launch_defensive = false,
+		scheduler_dark_launch_movement = false,
+		scheduler_dark_launch_maintenance = false,
+		cor_roll_1 = '',
+		cor_roll_2 = '',
+		path_recording = false,
+		path_follow_enabled = false,
+		path_file_name = '',
+		path_route_type = 'unknown',
+		path_distance_to_start = 0,
+		path_points = {},
+		path_party_gate_yalms = 3.0,
+		path_resume_index_window = 12,
+		path_hunter_targets = {},
+		path_hunter_max_z_delta = 2.0,
+		path_hunter_max_target_range = 20.0,
+		path_hunter_claim_timeout_s = 4.0,
+		path_hunter_ignore_cooldown_s = 20.0,
+		path_pull_action_type = 'ja',
+		path_pull_action_name = '',
 		ignore = {},
 		target_ignore_names = {},
 		show_ingame_ui = false,
@@ -174,6 +196,7 @@ require('remote_bridge')
 local UC_COMBAT_CORE = require('unified_combat_core')
 local UC_UNIFIED_ENGINE = require('unified_engine')
 local uc_party_follow = require('uc_party_follow')
+local uc_pathing = require('uc_pathing')
 
 local function uc_update_engine()
 	UC_ENGINE = 'UC'
@@ -237,8 +260,13 @@ local PROFILE_KEYS = {
 	'defensive_enabled', 'defensive_provider', 'defensive_cure_enabled', 'defensive_na_enabled', 'defensive_buff_enabled',
 	'defensive_critical_hpp', 'defensive_medium_hpp',
 	'defensive_overwrite_enabled', 'defensive_overwrite_interval', 'defensive_buff_self_only', 'defensive_buffs',
+	'scheduler_dark_launch_combat',
+	'scheduler_dark_launch_defensive', 'scheduler_dark_launch_movement', 'scheduler_dark_launch_maintenance',
+	'cor_roll_1', 'cor_roll_2',
+	'path_recording', 'path_follow_enabled', 'path_file_name', 'path_route_type', 'path_distance_to_start', 'path_points', 'path_party_gate_yalms', 'path_resume_index_window', 'path_hunter_targets', 'path_hunter_max_z_delta', 'path_hunter_max_target_range', 'path_hunter_claim_timeout_s', 'path_hunter_ignore_cooldown_s', 'path_pull_action_type', 'path_pull_action_name',
 	'autotarget', 'spam', 'closer', 'manual', 'prime', 'static', 'spacing', 'face',
 	'spacing_band_min', 'spacing_band_max', 'spacing_use_prediction', 'spacing_lookahead_s',
+	'spacing_model_size_floor',
 	'spacing_anchor_invalid_ticks', 'spacing_emergency_margin', 'spacing_slot_switch_penalty',
 	'spacing_slot_switch_margin', 'spacing_slot_arrival_tolerance', 'spacing_max_agents',
 	'partner', 'partner2', 'puller', 'puller_distance_only', 'partner_id', 'partner_id2', 'partner_ids', 'puller_id',
@@ -591,6 +619,9 @@ local function uc_register_action_listener()
 		if UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_action) == 'function' then
 			UC_COMBAT_CORE.on_action(act)
 		end
+		if type(_G.UC_SCHED_OnAction) == 'function' then
+			_G.UC_SCHED_OnAction(act)
+		end
 	end)
 end
 
@@ -603,13 +634,23 @@ windower.register_event('load', function()
 end)
 
 windower.register_event('incoming chunk', function(id, data)
+	if type(_G.UC_COR_MAINT_OnIncomingChunk) == 'function' then
+		pcall(function()
+			_G.UC_COR_MAINT_OnIncomingChunk(id, data)
+		end)
+	end
 	if id == 0x029 and type(data) == 'string' and UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_action_message) == 'function' then
 		local ok = pcall(function()
 			local msg = {
+				actor_id = data:unpack('I', 0x05),
 				target_id = data:unpack('I', 0x09),
+				param_1 = data:unpack('I', 0x0D),
 				message_id = data:unpack('H', 0x19) % 32768,
 			}
 			UC_COMBAT_CORE.on_action_message(msg)
+			if type(_G.UC_SCHED_OnActionMessage) == 'function' then
+				_G.UC_SCHED_OnActionMessage(msg)
+			end
 		end)
 		if not ok then
 			-- ignore malformed packet parse; core tick remains authoritative fallback.
@@ -625,6 +666,9 @@ windower.register_event('outgoing chunk', function(id, data, modified, injected,
 end)
 
 windower.register_event('prerender', function()
+	pcall(function()
+		uc_pathing.tick()
+	end)
 	uc_party_follow.broadcast_self_ipc()
 	uc_remote_tick()
 	uc_party_follow.prerender()

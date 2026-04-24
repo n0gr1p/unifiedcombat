@@ -1,4 +1,7 @@
 local res = require('resources')
+local ability_pipeline = require('uc_ability_pipeline')
+local combat_core = require('unified_combat_core')
+local cor_maintenance = require('uc_cor_maintenance')
 
 local scheduler = {
 	last_action_at = 0,
@@ -9,6 +12,25 @@ local scheduler = {
 	family_tokens = {},
 	family_counts = {},
 	recent_gain = {},
+	phase1 = {
+		tick = 0,
+		last_selected = nil,
+		last_noop_reason = 'init',
+		last_reject_top = '',
+		last_top3 = '',
+		last_top5_lines = {},
+		last_top5_items = {},
+		last_plan = nil,
+		pending = nil,
+		recent_duplicate_until = {},
+		recent_rejects = {},
+		recent_reject_items = {},
+		movement_goal_hold = {
+			family_id = '',
+			until_ts = 0,
+		},
+		maintenance_next_at = {},
+	},
 }
 
 local can_act_statuses = { [0] = true, [1] = true, [5] = true, [85] = true }
@@ -40,6 +62,17 @@ local buff_priority = {
 	['Afflatus Solace'] = 0, ['Majesty'] = 0, ['Composure'] = 0, ['Light Arts'] = 0, ['Haste'] = 2,
 	['Refresh'] = 2, ['Reraise'] = 3,
 }
+
+local maintenance_buff_cache = {
+	built = false,
+	roll_ids = {},
+	song_ids = {},
+	indi_ids = {},
+	geo_ids = {},
+}
+
+local ensure_maintenance_buff_cache
+local count_matching_buffs
 
 local function get_settings()
 	return rawget(_G, 'UC_SETTINGS') or {}
@@ -737,9 +770,1338 @@ local function try_internal_defensive_action()
 	return false, nil
 end
 
+local function p1_number(v, default_value)
+	local n = tonumber(v)
+	if n == nil then
+		return default_value
+	end
+	return n
+end
+
+local function p1_clamp_urgency(v)
+	local n = p1_number(v, 0)
+	if n < 0 then
+		return 0
+	end
+	if n > 1 then
+		return 1
+	end
+	return n
+end
+
+local function p1_build_ctx(settings)
+	local player = windower.ffxi.get_player() or {}
+	local me = windower.ffxi.get_mob_by_target('me') or {}
+	local p = scheduler.phase1
+	p.tick = (tonumber(p.tick) or 0) + 1
+	return {
+		now = os.clock(),
+		tick = p.tick,
+		settings = settings or {},
+		player_status = tonumber(player.status) or -1,
+		player_id = tonumber(player.id) or 0,
+		player_name = tostring(player.name or ''),
+		me_id = tonumber(me.id) or 0,
+		me_name = tostring(me.name or ''),
+	}
+end
+
+local function p1_collect_defensive_internal(ctx, out)
+	if not bool_setting(ctx.settings.defensive_enabled, false) then
+		return
+	end
+	if tostring(ctx.settings.defensive_provider or 'internal') ~= 'internal' then
+		return
+	end
+	local candidates = build_defensive_candidates()
+	local action, reason = choose_defensive_action(candidates)
+	if not action or not action.spell or not action.target or not action.target.name then
+		return
+	end
+	local urgency = 0.35
+	if action.type == 'overwrite' then
+		urgency = 0.80
+	elseif action.type == 'cure' then
+		urgency = 0.70
+	elseif action.type == 'debuff' then
+		urgency = 0.60
+	elseif action.type == 'buff' then
+		urgency = 0.25
+	end
+	local target_kind = action.target.is_self and 'self' or 'ally'
+	local target_id = tonumber(action.target.id) or 0
+	local target_name = tostring(action.target.name or '')
+	local action_name = tostring(action.spell or '')
+	local legacy_command = action.target.is_self and ('input /ma "%s" <me>'):format(action_name) or ('input /ma "%s" %s'):format(action_name, target_name)
+	out[#out + 1] = {
+		proposal_id = ('def.internal.%s.%s.%d'):format(tostring(action.type or 'action'), action_name, math.floor(ctx.now * 1000)),
+		family_id = ('def.internal.%s'):format(tostring(action.type or 'action')),
+		provider = 'defensive_internal',
+		action_type = 'spell',
+		action_name = action_name,
+		target_kind = target_kind,
+		target_id = target_id,
+		target_name = target_name,
+		priority_band = 100,
+		urgency = p1_clamp_urgency(urgency),
+		starvation_eligible = true,
+		created_at = ctx.now,
+		expires_at = ctx.now + 0.40,
+		commit_deadline = ctx.now + 0.25,
+		movement_policy = 'must_stop',
+		range_policy = { min = 0.0, max = 21.0, los_required = true },
+		recast_key = ('spell:%s'):format(action_name),
+		duplicate_suppression_key = ('spell:%s:%d'):format(action_name, target_id),
+		lock_class = 'support_action',
+		expected_ack = 'action_start',
+		expected_effect = 'buff_gain',
+		sticky = false,
+		can_preempt_movement = true,
+		can_preempt_same_band = false,
+		reason_code = tostring(reason or ''),
+		detail = {
+			def_action_type = tostring(action.type or ''),
+			target_hpp = tonumber(action.target.hpp) or -1,
+		},
+		legacy_command = legacy_command,
+	}
+end
+
+local function p1_collect_defensive_healbot(ctx, out)
+	if not bool_setting(ctx.settings.defensive_enabled, false) then
+		return
+	end
+	if tostring(ctx.settings.defensive_provider or 'internal') ~= 'healbot' then
+		return
+	end
+	local ok_actions = type(rawget(_G, 'actions')) == 'table' and type(_G.actions.get_defensive_action) == 'function'
+	local ok_healer = type(rawget(_G, 'healer')) == 'table' and type(_G.healer.take_action) == 'function'
+	if not ok_actions or not ok_healer then
+		return
+	end
+	local hb_action = _G.actions.get_defensive_action()
+	if type(hb_action) ~= 'table' then
+		return
+	end
+	local atype = tostring(hb_action.type or 'action')
+	local aname = tostring((hb_action.action and hb_action.action.en) or atype or 'healbot_action')
+	local target_obj = hb_action.target or {}
+	local target_name = tostring(target_obj.name or target_obj.en or '')
+	local target_id = tonumber(target_obj.id) or 0
+	if target_name == '' then
+		target_name = tostring(ctx.player_name or '')
+	end
+	local target_kind = (target_id ~= 0 and target_id ~= tonumber(ctx.player_id or 0)) and 'ally' or 'self'
+	local urgency = 0.45
+	if atype == 'cure' then
+		urgency = 0.70
+	elseif atype == 'overwrite' then
+		urgency = 0.80
+	elseif atype == 'debuff' then
+		urgency = 0.60
+	elseif atype == 'buff' then
+		urgency = 0.30
+	end
+	out[#out + 1] = {
+		proposal_id = ('def.healbot.%s.%s.%d'):format(atype, aname, math.floor(ctx.now * 1000)),
+		family_id = ('def.healbot.%s'):format(atype),
+		provider = 'defensive_healbot',
+		action_type = 'spell',
+		action_name = aname,
+		target_kind = target_kind,
+		target_id = target_id,
+		target_name = target_name,
+		priority_band = 100,
+		urgency = p1_clamp_urgency(urgency),
+		starvation_eligible = true,
+		created_at = ctx.now,
+		expires_at = ctx.now + 0.40,
+		commit_deadline = ctx.now + 0.25,
+		movement_policy = 'must_stop',
+		range_policy = { min = 0.0, max = 21.0, los_required = true },
+		recast_key = ('healbot:%s:%s'):format(atype, aname),
+		duplicate_suppression_key = ('healbot:%s:%d'):format(aname, target_id),
+		lock_class = 'support_action',
+		expected_ack = 'action_start',
+		expected_effect = 'buff_gain',
+		sticky = false,
+		can_preempt_movement = true,
+		can_preempt_same_band = false,
+		reason_code = ('healbot_%s'):format(atype),
+		detail = {
+			healbot_action = hb_action,
+			def_action_type = atype,
+		},
+	}
+end
+
+local function p1_collect_combat_offense(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	if not bool_setting(ctx.settings.weaponskill_active, false) then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	if not player or tonumber(player.status) ~= 1 then
+		return
+	end
+	local tp = tonumber(player.vitals and player.vitals.tp) or 0
+	if tp < 1000 then
+		return
+	end
+	local target = windower.ffxi.get_mob_by_target('t')
+	if not target or not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
+		return
+	end
+	local ws_pick_reason = ''
+	local ws = ''
+	if combat_core and type(combat_core.select_smart_ws_for_scheduler) == 'function' then
+		ws, ws_pick_reason = combat_core.select_smart_ws_for_scheduler(ctx.settings, tonumber(target.id) or 0)
+	end
+	ws = tostring(ws or '')
+	if ws == '' then
+		return
+	end
+	local urgency = (tp - 1000) / 2000
+	if urgency < 0 then
+		urgency = 0
+	elseif urgency > 1 then
+		urgency = 1
+	end
+	out[#out + 1] = {
+		proposal_id = ('combat.ws.%s.%d.%d'):format(ws, tonumber(target.id) or 0, math.floor(ctx.now * 1000)),
+		family_id = 'combat.ws.primary',
+		provider = 'combat',
+		action_type = 'ws',
+		action_name = ws,
+		target_kind = 'mob',
+		target_id = tonumber(target.id) or 0,
+		target_name = tostring(target.name or ''),
+		priority_band = 70,
+		urgency = p1_clamp_urgency(urgency),
+		starvation_eligible = true,
+		created_at = ctx.now,
+		expires_at = ctx.now + 0.30,
+		commit_deadline = ctx.now + 0.20,
+		movement_policy = 'requires_range',
+		range_policy = { min = 0.0, max = 5.5, los_required = true },
+		recast_key = ('ws:%s'):format(ws),
+		duplicate_suppression_key = ('ws:%s:%d'):format(ws, tonumber(target.id) or 0),
+		lock_class = 'offense_action',
+		expected_ack = 'action_start',
+		expected_effect = 'ws_effect',
+		sticky = true,
+		can_preempt_movement = false,
+		can_preempt_same_band = false,
+		reason_code = 'tp_ready',
+		detail = {
+			tp = tp,
+			ws_pick_reason = tostring(ws_pick_reason or ''),
+		},
+		legacy_command = ('input /ws \"%s\" <t>'):format(ws),
+		required_setting = 'weaponskill_active',
+	}
+end
+
+local function p1_collect_combat_ja(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	if not bool_setting(ctx.settings.ability_active, false) then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	if not player or tonumber(player.status) ~= 1 then
+		return
+	end
+	local ordered = ability_pipeline.collect_ordered(ctx.settings, 6)
+	if #ordered == 0 then
+		return
+	end
+	local target = windower.ffxi.get_mob_by_target('t')
+	for _, name in ipairs(ordered) do
+		local ja = get_ja_resource(name)
+		if ja then
+			local ok_ready, _, kind = action_ready(name)
+			if ok_ready and kind == 'ja' then
+				local target_kind = 'self'
+				local target_id = tonumber(player.id) or 0
+				local target_name = tostring(player.name or '')
+				local ja_targets = tostring(ja.targets or '')
+				local ja_target_ok = true
+				if ja_targets == '{Enemy}' then
+					if not target or not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
+						ja_target_ok = false
+					end
+					if ja_target_ok then
+						local r = (tonumber(ja.range) or 0)
+						if r > 20 then
+							r = r * 0.01
+						end
+						if r > 0 then
+							local d = target.distance and target.distance:sqrt() or 999
+							if d > r then
+								ja_target_ok = false
+							end
+						end
+					end
+					if ja_target_ok then
+						target_kind = 'mob'
+						target_id = tonumber(target.id) or 0
+						target_name = tostring(target.name or '')
+					end
+				end
+				if ja_target_ok then
+					out[#out + 1] = {
+						proposal_id = ('combat.ja.%s.%d.%d'):format(tostring(name), target_id, math.floor(ctx.now * 1000)),
+						family_id = 'combat.ja.primary',
+						provider = 'combat',
+						action_type = 'ja',
+						action_name = tostring(name),
+						target_kind = target_kind,
+						target_id = target_id,
+						target_name = target_name,
+						priority_band = 70,
+						urgency = 0.35,
+						starvation_eligible = true,
+						created_at = ctx.now,
+						expires_at = ctx.now + 0.30,
+						commit_deadline = ctx.now + 0.20,
+						movement_policy = 'must_stop',
+						range_policy = { min = 0.0, max = 10.0, los_required = false },
+						recast_key = ('ja:%s'):format(tostring(name)),
+						duplicate_suppression_key = ('ja:%s:%d'):format(tostring(name), target_id),
+						lock_class = 'offense_action',
+						expected_ack = 'action_start',
+						expected_effect = 'ja_effect',
+						sticky = false,
+						can_preempt_movement = true,
+						can_preempt_same_band = false,
+						reason_code = 'ability_ready',
+						detail = {
+							ability = tostring(name),
+						},
+						legacy_command = (target_kind == 'self') and ('input /ja \"%s\" <me>'):format(tostring(name))
+							or ('input /ja \"%s\" %d'):format(tostring(name), target_id),
+						required_setting = 'ability_active',
+					}
+					break
+				end
+			end
+		end
+	end
+end
+
+local function p1_collect_movement(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	if not player or tonumber(player.status) ~= 1 then
+		return
+	end
+	if not bool_setting(ctx.settings.spacing, false) then
+		return
+	end
+	local target = windower.ffxi.get_mob_by_target('t')
+	if not target or not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
+		return
+	end
+	local dist = target.distance and target.distance:sqrt() or 999
+	local min_range = p1_number(ctx.settings.spacing_band_min, -0.9)
+	local max_range = p1_number(ctx.settings.spacing_band_max, 0.4)
+	if max_range <= min_range then
+		max_range = min_range + 0.1
+	end
+	if dist > max_range then
+		local urgency = (dist - max_range) / 6
+		out[#out + 1] = {
+			proposal_id = ('move.close.%d.%d'):format(tonumber(target.id) or 0, math.floor(ctx.now * 1000)),
+			family_id = 'movement.close_range',
+			provider = 'mobility',
+			action_type = 'move',
+			action_name = 'close_range',
+			target_kind = 'mob',
+			target_id = tonumber(target.id) or 0,
+			target_name = tostring(target.name or ''),
+			priority_band = 50,
+			urgency = p1_clamp_urgency(urgency),
+			starvation_eligible = true,
+			created_at = ctx.now,
+			expires_at = ctx.now + 0.30,
+			commit_deadline = ctx.now + 0.20,
+			movement_policy = 'positioning_only',
+			range_policy = { min = 0.0, max = math.max(1.0, max_range + 0.1), los_required = false },
+			recast_key = 'move:close_range',
+			duplicate_suppression_key = ('move:close:%d'):format(tonumber(target.id) or 0),
+			lock_class = 'movement_action',
+			expected_ack = 'movement_start',
+			expected_effect = 'movement_progress',
+			sticky = true,
+			can_preempt_movement = true,
+			can_preempt_same_band = false,
+			reason_code = 'out_of_range',
+			detail = { dist = dist, min = min_range, max = max_range },
+			legacy_command = '',
+			required_setting = 'spacing',
+		}
+	elseif dist < min_range then
+		local urgency = (min_range - dist) / 3
+		out[#out + 1] = {
+			proposal_id = ('move.retreat.%d.%d'):format(tonumber(target.id) or 0, math.floor(ctx.now * 1000)),
+			family_id = 'movement.spacing',
+			provider = 'mobility',
+			action_type = 'move',
+			action_name = 'retreat',
+			target_kind = 'mob',
+			target_id = tonumber(target.id) or 0,
+			target_name = tostring(target.name or ''),
+			priority_band = 50,
+			urgency = p1_clamp_urgency(urgency),
+			starvation_eligible = true,
+			created_at = ctx.now,
+			expires_at = ctx.now + 0.30,
+			commit_deadline = ctx.now + 0.20,
+			movement_policy = 'positioning_only',
+			range_policy = { min = min_range, max = max_range, los_required = false },
+			recast_key = 'move:spacing',
+			duplicate_suppression_key = ('move:retreat:%d'):format(tonumber(target.id) or 0),
+			lock_class = 'movement_action',
+			expected_ack = 'movement_start',
+			expected_effect = 'movement_progress',
+			sticky = true,
+			can_preempt_movement = true,
+			can_preempt_same_band = false,
+			reason_code = 'too_close',
+			detail = { dist = dist, min = min_range, max = max_range },
+			legacy_command = '',
+			required_setting = 'spacing',
+		}
+	end
+end
+
+local function p1_collect_maintenance(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	if not player then
+		return
+	end
+	local job = tostring(player.main_job or '')
+	if job == '' then
+		return
+	end
+	local phase = scheduler.phase1
+	local gate = phase.maintenance_next_at or {}
+	phase.maintenance_next_at = gate
+	local now = ctx.now
+	ensure_maintenance_buff_cache()
+	local buff_list = player.buffs or {}
+	local function maybe_emit(key, provider, action_type, action_name, reason_code, urgency, detail)
+		local next_at = p1_number(gate[key], 0)
+		if now < next_at then
+			return
+		end
+		gate[key] = now + 2.0
+		out[#out + 1] = {
+			proposal_id = ('maint.%s.%d'):format(key, math.floor(now * 1000)),
+			family_id = ('maintenance.%s'):format(key),
+			provider = provider,
+			action_type = action_type,
+			action_name = action_name,
+			target_kind = 'self',
+			target_id = tonumber(player.id) or 0,
+			target_name = tostring(player.name or ''),
+			priority_band = 75,
+			urgency = p1_clamp_urgency(urgency),
+			starvation_eligible = true,
+			created_at = now,
+			expires_at = now + 0.40,
+			commit_deadline = now + 0.25,
+			movement_policy = 'must_stop',
+			range_policy = { min = 0.0, max = 20.0, los_required = false },
+			recast_key = ('maint:%s'):format(key),
+			duplicate_suppression_key = ('maint:%s:%d'):format(key, tonumber(player.id) or 0),
+			lock_class = 'support_action',
+			expected_ack = 'action_start',
+			expected_effect = 'buff_gain',
+			sticky = true,
+			can_preempt_movement = true,
+			can_preempt_same_band = false,
+			reason_code = reason_code,
+			detail = detail or { job = job },
+			legacy_command = '',
+		}
+	end
+	if job == 'COR' then
+		local action = cor_maintenance and cor_maintenance.propose and cor_maintenance.propose(ctx.settings) or nil
+		if action and action.action_name and action.action_name ~= '' then
+			local key = 'cor_rolls'
+			local next_at = p1_number(gate[key], 0)
+			if now >= next_at then
+				gate[key] = now + 1.0
+				local urgency = p1_clamp_urgency(tonumber(action.urgency) or 0.65)
+				local action_name = tostring(action.action_name or '')
+				local target_name = tostring(action.target_name or '<me>')
+				local target_kind = tostring(action.target_kind or 'self')
+				local target_id = tonumber(action.target_id) or 0
+				out[#out + 1] = {
+					proposal_id = ('maint.cor.%s.%d'):format(action_name, math.floor(now * 1000)),
+					family_id = 'maintenance.cor.rolls',
+					provider = 'maintenance_cor',
+					action_type = 'ja',
+					action_name = action_name,
+					target_kind = target_kind,
+					target_id = target_id,
+					target_name = target_name,
+					priority_band = 75,
+					urgency = urgency,
+					starvation_eligible = true,
+					created_at = now,
+					expires_at = now + 0.40,
+					commit_deadline = now + 0.25,
+					movement_policy = 'must_stop',
+					range_policy = { min = 0.0, max = 20.0, los_required = false },
+					recast_key = ('maint:cor:%s'):format(action_name),
+					duplicate_suppression_key = ('maint:cor:%s:%d'):format(action_name, target_id),
+					lock_class = 'support_action',
+					expected_ack = 'action_start',
+					expected_effect = 'buff_gain',
+					sticky = true,
+					can_preempt_movement = true,
+					can_preempt_same_band = false,
+					reason_code = tostring(action.reason_code or 'cor_roll_maint'),
+					detail = action.detail or { job = job },
+				}
+			end
+		else
+			gate.cor_rolls = 0
+		end
+	elseif job == 'BRD' then
+		local song_count = count_matching_buffs(buff_list, maintenance_buff_cache.song_ids)
+		if song_count < 2 then
+			maybe_emit('brd_songs', 'brd', 'spell', 'maintenance_songs', 'songs_missing', (song_count == 0) and 0.80 or 0.50, {
+				job = job,
+				song_count = song_count,
+				expected = 2,
+			})
+		else
+			gate.brd_songs = 0
+		end
+	elseif job == 'GEO' then
+		local indi_count = count_matching_buffs(buff_list, maintenance_buff_cache.indi_ids)
+		local geo_count = count_matching_buffs(buff_list, maintenance_buff_cache.geo_ids)
+		local missing_indi = indi_count < 1
+		local missing_geo = geo_count < 1
+		if missing_indi or missing_geo then
+			local urgency = 0.45
+			if missing_indi and missing_geo then
+				urgency = 0.80
+			elseif missing_indi then
+				urgency = 0.65
+			end
+			maybe_emit('geo_buffs', 'geo', 'spell', 'maintenance_geo', 'geo_missing', urgency, {
+				job = job,
+				indi_count = indi_count,
+				geo_count = geo_count,
+				expected_indi = 1,
+				expected_geo = 1,
+			})
+		else
+			gate.geo_buffs = 0
+		end
+	end
+end
+
+local function p1_collect_proposals(ctx)
+	local out = {}
+	p1_collect_defensive_internal(ctx, out)
+	p1_collect_defensive_healbot(ctx, out)
+	p1_collect_combat_offense(ctx, out)
+	p1_collect_combat_ja(ctx, out)
+	p1_collect_movement(ctx, out)
+	p1_collect_maintenance(ctx, out)
+	return out
+end
+
+local function p1_pending_is_live_state(state_name)
+	return state_name == 'selected' or state_name == 'dispatching' or state_name == 'sent' or state_name == 'acknowledged'
+end
+
+local function p1_update_pending_state(ctx)
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) ~= 'table' then
+		phase.pending = nil
+		return
+	end
+	local now = ctx.now
+	local state_name = tostring(pending.state or '')
+	if p1_pending_is_live_state(state_name) and now > p1_number(pending.effect_deadline, 0) then
+		pending.state = 'timed_out'
+		pending.result = 'effect_timeout'
+		local dkey = tostring(pending.duplicate_suppression_key or '')
+		if dkey ~= '' then
+			phase.recent_duplicate_until[dkey] = now + 0.75
+		end
+	end
+	if (pending.state == 'timed_out' or pending.state == 'failed' or pending.state == 'canceled') and now > p1_number(pending.completion_deadline, now) then
+		phase.pending = nil
+	end
+	if pending.state == 'complete' and now > p1_number(pending.completion_deadline, now) then
+		phase.pending = nil
+	end
+end
+
+local function p1_duplicate_suppressed(ctx, proposal)
+	local dkey = tostring(proposal and proposal.duplicate_suppression_key or '')
+	if dkey == '' then
+		return false
+	end
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) == 'table' then
+		local pkey = tostring(pending.duplicate_suppression_key or '')
+		local state_name = tostring(pending.state or '')
+		if pkey == dkey and p1_pending_is_live_state(state_name) then
+			return true
+		end
+	end
+	local until_ts = p1_number(phase.recent_duplicate_until[dkey], 0)
+	if until_ts > ctx.now then
+		return true
+	end
+	return false
+end
+
+ensure_maintenance_buff_cache = function()
+	if maintenance_buff_cache.built then
+		return
+	end
+	local roll_ids, song_ids, indi_ids, geo_ids = {}, {}, {}, {}
+	for id, b in pairs(res.buffs or {}) do
+		local name = tostring((b and b.en) or '')
+		local lname = name:lower()
+		if lname:find('roll', 1, true) then
+			roll_ids[id] = true
+		end
+		if lname:find('march', 1, true) or lname:find('madrigal', 1, true) or lname:find('minuet', 1, true) or
+			lname:find('ballad', 1, true) or lname:find('paeon', 1, true) or lname:find('etude', 1, true) or
+			lname:find('carol', 1, true) or lname:find('prelude', 1, true) or lname:find('scherzo', 1, true) or
+			lname:find('minne', 1, true) or lname:find('mambo', 1, true) or lname:find('mazurka', 1, true) or
+			lname:find('hymnus', 1, true) then
+			song_ids[id] = true
+		end
+		if lname:sub(1, 5) == 'indi-' then
+			indi_ids[id] = true
+		end
+		if lname:sub(1, 4) == 'geo-' then
+			geo_ids[id] = true
+		end
+	end
+	maintenance_buff_cache.roll_ids = roll_ids
+	maintenance_buff_cache.song_ids = song_ids
+	maintenance_buff_cache.indi_ids = indi_ids
+	maintenance_buff_cache.geo_ids = geo_ids
+	maintenance_buff_cache.built = true
+end
+
+count_matching_buffs = function(buff_list, id_set)
+	if type(buff_list) ~= 'table' or type(id_set) ~= 'table' then
+		return 0
+	end
+	local c = 0
+	for _, id in ipairs(buff_list) do
+		if id_set[id] then
+			c = c + 1
+		end
+	end
+	return c
+end
+
+local function p1_get_locks(ctx)
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	local pending_live = type(pending) == 'table' and p1_pending_is_live_state(tostring(pending.state or ''))
+	local zone_suspend_until = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
+	local zone_guard_active = type(zone_suspend_until) == 'number' and ctx.now < zone_suspend_until
+	local now = ctx.now
+	local duplicate_lock_until = 0
+	for _, until_ts in pairs(phase.recent_duplicate_until) do
+		local u = p1_number(until_ts, 0)
+		if u > duplicate_lock_until then
+			duplicate_lock_until = u
+		end
+	end
+	local hold = phase.movement_goal_hold or {}
+	local hold_family = tostring(hold.family_id or '')
+	local hold_until = p1_number(hold.until_ts, 0)
+	return {
+		zone_guard_lock = { hard = zone_guard_active },
+		cast_lock = { hard = pending_live },
+		movement_lock = { hard = pending_live },
+		target_lock = { hard = false },
+		duplicate_lock = { hard = duplicate_lock_until > now, until_ts = duplicate_lock_until },
+		movement_goal_hold = { hard = false, soft = (hold_family ~= '' and hold_until > now), family_id = hold_family, until_ts = hold_until },
+	}
+end
+
+local function p1_hard_lock_reject(locks, proposal)
+	if locks.zone_guard_lock and locks.zone_guard_lock.hard then
+		return 'zone_guard'
+	end
+	local action_type = tostring(proposal and proposal.action_type or '')
+	if (action_type == 'spell' or action_type == 'ja' or action_type == 'ws') and locks.cast_lock and locks.cast_lock.hard then
+		return 'hard_locked'
+	end
+	if action_type == 'move' and locks.movement_lock and locks.movement_lock.hard then
+		return 'hard_locked'
+	end
+	return ''
+end
+
+local function p1_soft_lock_reject(locks, proposal)
+	local action_type = tostring(proposal and proposal.action_type or '')
+	if action_type ~= 'move' then
+		return ''
+	end
+	local hold = locks and locks.movement_goal_hold or nil
+	if not hold or hold.soft ~= true then
+		return ''
+	end
+	local family_id = tostring(proposal and proposal.family_id or '')
+	local can_preempt = proposal and proposal.can_preempt_movement == true
+	if can_preempt then
+		return ''
+	end
+	if family_id ~= '' and family_id == tostring(hold.family_id or '') then
+		return ''
+	end
+	return 'blocked_soft'
+end
+
+local function p1_validate_proposal(ctx, p)
+	if type(p) ~= 'table' then
+		return false, 'malformed'
+	end
+	if tostring(p.proposal_id or '') == '' or tostring(p.provider or '') == '' then
+		return false, 'malformed'
+	end
+	local required_setting = tostring(p.required_setting or '')
+	if required_setting ~= '' and not bool_setting(ctx.settings[required_setting], false) then
+		return false, 'settings_disabled'
+	end
+	if p1_number(ctx.now - p1_number(p.created_at, ctx.now), 0) > 0.8 then
+		return false, 'stale_snapshot'
+	end
+	local phase = scheduler.phase1
+	if type(phase.pending) == 'table' and p1_pending_is_live_state(tostring(phase.pending.state or '')) then
+		local pending_lock_class = tostring(phase.pending.lock_class or '')
+		local proposal_lock_class = tostring(p.lock_class or '')
+		if pending_lock_class ~= '' and proposal_lock_class ~= '' and pending_lock_class ~= proposal_lock_class then
+			local at = tostring(p.action_type or '')
+			if at == 'spell' or at == 'ja' or at == 'ws' or at == 'move' then
+				return false, 'pending_conflict'
+			end
+		end
+	end
+	local expires_at = p1_number(p.expires_at, ctx.now + 0.40)
+	if expires_at <= ctx.now then
+		return false, 'expired'
+	end
+	p.expires_at = expires_at
+	p.commit_deadline = p1_number(p.commit_deadline, ctx.now + 0.25)
+	p.priority_band = math.floor(p1_number(p.priority_band, 0))
+	p.urgency = p1_clamp_urgency(p.urgency)
+	if p1_duplicate_suppressed(ctx, p) then
+		return false, 'duplicate_suppressed'
+	end
+	return true, ''
+end
+
+local function p1_score(eval)
+	local priority_band = math.floor(p1_number(eval.priority_band, 0))
+	local urgency_bonus = p1_clamp_urgency(eval.urgency) * 9.9
+	local starvation_bonus = 0
+	local sticky_bonus = 0
+	local risk_penalty = 0
+	local score = priority_band + urgency_bonus + starvation_bonus + sticky_bonus - risk_penalty
+	eval._score = score
+	eval._score_parts = {
+		priority_band = priority_band,
+		urgency_bonus = urgency_bonus,
+		starvation_bonus = starvation_bonus,
+		sticky_bonus = sticky_bonus,
+		risk_penalty = risk_penalty,
+	}
+	return score
+end
+
+local function p1_rank(ctx, proposals)
+	local locks = p1_get_locks(ctx)
+	local valid = {}
+	local soft_blocked = {}
+	local reject_counts = {}
+	local rejected = {}
+	local function add_reject(proposal, reason)
+		local p = proposal or {}
+		rejected[#rejected + 1] = {
+			provider = tostring(p.provider or ''),
+			family = tostring(p.family_id or ''),
+			action = tostring(p.action_name or ''),
+			reason = tostring(reason or ''),
+		}
+	end
+	for _, proposal in ipairs(proposals) do
+		local ok, reject_reason = p1_validate_proposal(ctx, proposal)
+		if ok then
+			local lock_reject = p1_hard_lock_reject(locks, proposal)
+			if lock_reject ~= '' then
+				reject_counts[lock_reject] = (reject_counts[lock_reject] or 0) + 1
+				add_reject(proposal, lock_reject)
+			else
+				local soft_reject = p1_soft_lock_reject(locks, proposal)
+				if soft_reject ~= '' then
+					reject_counts[soft_reject] = (reject_counts[soft_reject] or 0) + 1
+					add_reject(proposal, soft_reject)
+					p1_score(proposal)
+					proposal._soft_blocked = true
+					soft_blocked[#soft_blocked + 1] = proposal
+				else
+					p1_score(proposal)
+					valid[#valid + 1] = proposal
+				end
+			end
+		else
+			local rr = reject_reason ~= '' and tostring(reject_reason) or 'invalid'
+			reject_counts[rr] = (reject_counts[rr] or 0) + 1
+			add_reject(proposal, rr)
+		end
+	end
+	table.sort(valid, function(a, b)
+		local sa = p1_number(a._score, -1e9)
+		local sb = p1_number(b._score, -1e9)
+		if sa ~= sb then
+			return sa > sb
+		end
+		local ea = p1_number(a.expires_at, ctx.now + 999)
+		local eb = p1_number(b.expires_at, ctx.now + 999)
+		if ea ~= eb then
+			return ea < eb
+		end
+		local pa = tostring(a.provider or '')
+		local pb = tostring(b.provider or '')
+		if pa ~= pb then
+			return pa < pb
+		end
+		return tostring(a.proposal_id or '') < tostring(b.proposal_id or '')
+	end)
+	if #valid == 0 and #soft_blocked > 0 then
+		-- Soft suppression may be bypassed when nothing else is valid.
+		valid = soft_blocked
+	end
+	return valid, reject_counts, locks, rejected
+end
+
+local function p1_format_top3(ranked)
+	local parts = {}
+	local count = math.min(3, #ranked)
+	for i = 1, count do
+		local p = ranked[i]
+		parts[#parts + 1] = ('%d)%s %.2f %s'):format(i, tostring(p.provider or ''), p1_number(p._score, 0), tostring(p.action_name or ''))
+	end
+	return table.concat(parts, ' | ')
+end
+
+local function p1_format_top3_verbose(ranked)
+	local parts = {}
+	local count = math.min(3, #ranked)
+	for i = 1, count do
+		local p = ranked[i]
+		local sp = p._score_parts or {}
+		parts[#parts + 1] = ('%d)%s score=%.2f pb=%s u=%.2f st=%.2f sk=%.2f rp=%.2f %s'):format(
+			i,
+			tostring(p.provider or ''),
+			p1_number(p._score, 0),
+			tostring(sp.priority_band or ''),
+			p1_number(sp.urgency_bonus, 0),
+			p1_number(sp.starvation_bonus, 0),
+			p1_number(sp.sticky_bonus, 0),
+			p1_number(sp.risk_penalty, 0),
+			tostring(p.action_name or '')
+		)
+	end
+	return table.concat(parts, ' | ')
+end
+
+local function p1_format_topn_lines(ranked, n)
+	local out = {}
+	local count = math.min(tonumber(n) or 5, #ranked)
+	for i = 1, count do
+		local p = ranked[i]
+		local sp = p._score_parts or {}
+		out[#out + 1] = ('%d) %.2f %s/%s %s u=%.2f rp=%.2f'):format(
+			i,
+			p1_number(p._score, 0),
+			tostring(p.provider or ''),
+			tostring(p.family_id or ''),
+			tostring(p.action_name or ''),
+			p1_number(sp.urgency_bonus, 0),
+			p1_number(sp.risk_penalty, 0)
+		)
+	end
+	return out
+end
+
+local function p1_capture_topn_items(ranked, n)
+	local out = {}
+	local count = math.min(tonumber(n) or 5, #ranked)
+	for i = 1, count do
+		local p = ranked[i]
+		local sp = p._score_parts or {}
+		out[#out + 1] = {
+			idx = i,
+			score = p1_number(p._score, 0),
+			provider = tostring(p.provider or ''),
+			family = tostring(p.family_id or ''),
+			action = tostring(p.action_name or ''),
+			urgency_bonus = p1_number(sp.urgency_bonus, 0),
+			risk_penalty = p1_number(sp.risk_penalty, 0),
+		}
+	end
+	return out
+end
+
+local function p1_push_recent_rejects(ctx, rejected)
+	local phase = scheduler.phase1
+	if type(phase.recent_rejects) ~= 'table' then
+		phase.recent_rejects = {}
+	end
+	if type(phase.recent_reject_items) ~= 'table' then
+		phase.recent_reject_items = {}
+	end
+	if type(rejected) ~= 'table' or #rejected == 0 then
+		return
+	end
+	for _, r in ipairs(rejected) do
+		local line = ('t%s %s/%s %s :: %s'):format(
+			tostring(ctx.tick or ''),
+			tostring(r.provider or ''),
+			tostring(r.family or ''),
+			tostring(r.action or ''),
+			tostring(r.reason or '')
+		)
+		phase.recent_rejects[#phase.recent_rejects + 1] = line
+		phase.recent_reject_items[#phase.recent_reject_items + 1] = {
+			tick = tostring(ctx.tick or ''),
+			provider = tostring(r.provider or ''),
+			family = tostring(r.family or ''),
+			action = tostring(r.action or ''),
+			reason = tostring(r.reason or ''),
+		}
+	end
+	local max_keep = 25
+	local drop = #phase.recent_rejects - max_keep
+	if drop > 0 then
+		for _ = 1, drop do
+			table.remove(phase.recent_rejects, 1)
+		end
+	end
+	local drop_items = #phase.recent_reject_items - max_keep
+	if drop_items > 0 then
+		for _ = 1, drop_items do
+			table.remove(phase.recent_reject_items, 1)
+		end
+	end
+end
+
+local function p1_reject_top(reject_counts, proposal_count)
+	if proposal_count <= 0 then
+		return 'no_proposals'
+	end
+	local best_reason, best_count = '', -1
+	for reason, count in pairs(reject_counts) do
+		if count > best_count then
+			best_reason = tostring(reason or '')
+			best_count = count
+		end
+	end
+	if best_count < 0 then
+		return ''
+	end
+	return ('%s:%d'):format(best_reason, best_count)
+end
+
+local function p1_build_dispatch_plan(ctx, selected)
+	if not selected then
+		return nil
+	end
+	local prelude_type = 'none'
+	if tostring(selected.movement_policy or '') == 'must_stop' then
+		prelude_type = 'stop'
+	end
+	return {
+		plan_id = ('plan.%d.%d'):format(math.floor(ctx.now * 1000), math.floor(ctx.tick)),
+		selected_proposal_id = tostring(selected.proposal_id or ''),
+		prelude = {
+			type = prelude_type,
+			target_id = tonumber(selected.target_id) or 0,
+			timeout_s = 0.20,
+		},
+		primary = {
+			action_type = tostring(selected.action_type or ''),
+			action_name = tostring(selected.action_name or ''),
+			target_id = tonumber(selected.target_id) or 0,
+			target_name = tostring(selected.target_name or ''),
+		},
+		commit_deadline = p1_number(selected.commit_deadline, ctx.now + 0.25),
+		created_at = ctx.now,
+	}
+end
+
+local function p1_revalidate_plan_commit(ctx, selected, plan)
+	if not selected or not plan then
+		return false, 'invalid_plan'
+	end
+	if p1_number(selected.expires_at, 0) <= ctx.now then
+		return false, 'expired'
+	end
+	if p1_number(plan.commit_deadline, 0) < ctx.now then
+		return false, 'commit_deadline'
+	end
+	local target_kind = tostring(selected.target_kind or 'none')
+	if target_kind == 'self' then
+		return true, ''
+	end
+	local target_id = tonumber(selected.target_id) or 0
+	if target_kind == 'ally' then
+		if target_id <= 0 then
+			return false, 'invalid_target'
+		end
+		local m = windower.ffxi.get_mob_by_id(target_id)
+		if not m then
+			return false, 'invalid_target'
+		end
+		return true, ''
+	end
+	if target_kind == 'mob' then
+		if target_id <= 0 then
+			return false, 'invalid_target'
+		end
+		local mob = windower.ffxi.get_mob_by_id(target_id)
+		if not mob or not mob.valid_target or (tonumber(mob.hpp) or 0) <= 0 then
+			return false, 'invalid_target'
+		end
+		return true, ''
+	end
+	return true, ''
+end
+
+local function p1_set_pending_globals()
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) ~= 'table' then
+		_G.UC_SCHED_P1_PENDING_STATE = ''
+		return
+	end
+	_G.UC_SCHED_P1_PENDING_STATE = tostring(pending.state or '')
+end
+
+local function p1_build_lock_summary(ctx, locks)
+	local parts = {}
+	local lock_state = locks or p1_get_locks(ctx)
+	if lock_state.zone_guard_lock and lock_state.zone_guard_lock.hard then
+		parts[#parts + 1] = 'zone_guard_lock'
+	end
+	if lock_state.cast_lock and lock_state.cast_lock.hard then
+		parts[#parts + 1] = 'cast_lock'
+	end
+	if lock_state.movement_lock and lock_state.movement_lock.hard then
+		parts[#parts + 1] = 'movement_lock'
+	end
+	if lock_state.duplicate_lock and lock_state.duplicate_lock.hard then
+		parts[#parts + 1] = 'duplicate_lock'
+	end
+	if lock_state.movement_goal_hold and lock_state.movement_goal_hold.soft then
+		parts[#parts + 1] = 'movement_goal_hold'
+	end
+	return table.concat(parts, '|')
+end
+
+local function p1_record_legacy_dispatch(ctx)
+	local phase = scheduler.phase1
+	local selected = phase.last_selected
+	local plan = phase.last_plan
+	if not selected or not plan then
+		return
+	end
+	local duplicate_key = tostring(selected.duplicate_suppression_key or '')
+	phase.pending = {
+		pending_id = ('pend.%d.%d'):format(math.floor(ctx.now * 1000), math.floor(ctx.tick)),
+		proposal_id = tostring(selected.proposal_id or ''),
+		family_id = tostring(selected.family_id or ''),
+		duplicate_suppression_key = duplicate_key,
+		provider = tostring(selected.provider or ''),
+		action_type = tostring(selected.action_type or ''),
+		action_name = tostring(selected.action_name or ''),
+		target_id = tonumber(selected.target_id) or 0,
+		state = 'sent',
+		selected_at = p1_number(selected.created_at, ctx.now),
+		dispatched_at = ctx.now,
+		ack_deadline = ctx.now + 0.6,
+		effect_deadline = ctx.now + 2.5,
+		completion_deadline = ctx.now + 3.0,
+		expected_ack = tostring(selected.expected_ack or ''),
+		expected_effect = tostring(selected.expected_effect or ''),
+		result = '',
+		lock_class = tostring(selected.lock_class or ''),
+	}
+	if duplicate_key ~= '' then
+		phase.recent_duplicate_until[duplicate_key] = ctx.now + 0.75
+	end
+end
+
+local function p1_pending_mark_complete(now, result_code)
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) ~= 'table' then
+		return
+	end
+	pending.state = 'complete'
+	pending.result = tostring(result_code or 'complete')
+	pending.effect_at = now
+	pending.completion_deadline = now + 0.75
+	local dkey = tostring(pending.duplicate_suppression_key or '')
+	if dkey ~= '' then
+		phase.recent_duplicate_until[dkey] = now + 0.75
+	end
+end
+
+local function p1_run_dry(settings)
+	local ctx = p1_build_ctx(settings)
+	p1_update_pending_state(ctx)
+	local proposals = p1_collect_proposals(ctx)
+	local ranked, reject_counts, locks, rejected = p1_rank(ctx, proposals)
+	local selected = ranked[1]
+	local plan = p1_build_dispatch_plan(ctx, selected)
+	local commit_ok, commit_reason = p1_revalidate_plan_commit(ctx, selected, plan)
+	if selected and not commit_ok then
+		selected = nil
+		plan = nil
+	end
+	local phase = scheduler.phase1
+	phase.last_selected = selected
+	phase.last_plan = plan
+	if selected and tostring(selected.action_type or '') == 'move' then
+		phase.movement_goal_hold = {
+			family_id = tostring(selected.family_id or ''),
+			until_ts = ctx.now + 0.50,
+		}
+	elseif phase.movement_goal_hold and p1_number(phase.movement_goal_hold.until_ts, 0) <= ctx.now then
+		phase.movement_goal_hold = { family_id = '', until_ts = 0 }
+	end
+	phase.last_top3 = p1_format_top3(ranked)
+	phase.last_top3_verbose = p1_format_top3_verbose(ranked)
+	phase.last_top5_lines = p1_format_topn_lines(ranked, 5)
+	phase.last_top5_items = p1_capture_topn_items(ranked, 5)
+	p1_push_recent_rejects(ctx, rejected)
+	phase.last_reject_top = p1_reject_top(reject_counts, #proposals)
+	if selected then
+		phase.last_noop_reason = ''
+	else
+		if commit_reason and commit_reason ~= '' then
+			phase.last_noop_reason = 'commit_invalidated:' .. tostring(commit_reason)
+		else
+			phase.last_noop_reason = (#proposals == 0) and 'no_proposals' or 'all_rejected'
+		end
+	end
+	_G.UC_SCHED_P1_TICK = ctx.tick
+	_G.UC_SCHED_P1_SELECTED_PROPOSAL = selected and tostring(selected.proposal_id or '') or ''
+	_G.UC_SCHED_P1_SELECTED_PROVIDER = selected and tostring(selected.provider or '') or ''
+	_G.UC_SCHED_P1_SELECTED_FAMILY = selected and tostring(selected.family_id or '') or ''
+	_G.UC_SCHED_P1_PLAN_PRELUDE = (plan and plan.prelude and tostring(plan.prelude.type or '')) or ''
+	p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, locks)
+	_G.UC_SCHED_P1_REJECT_TOP = phase.last_reject_top or ''
+	_G.UC_SCHED_P1_NOOP_REASON = phase.last_noop_reason or ''
+	_G.UC_SCHED_P1_TOP3 = phase.last_top3 or ''
+	_G.UC_SCHED_P1_TOP3_VERBOSE = phase.last_top3_verbose or ''
+	_G.UC_SCHED_P1_TOP5 = table.concat(phase.last_top5_lines or {}, '\n')
+	do
+		local rr = phase.recent_rejects or {}
+		local out = {}
+		local start = math.max(1, #rr - 4)
+		for i = start, #rr do
+			out[#out + 1] = rr[i]
+		end
+		_G.UC_SCHED_P1_REJECT5 = table.concat(out, '\n')
+	end
+end
+
+local function p1_try_dark_launch_dispatch(settings)
+	local phase = scheduler.phase1
+	local selected = phase.last_selected
+	local plan = phase.last_plan
+	if type(selected) ~= 'table' or type(plan) ~= 'table' then
+		return false, nil
+	end
+	local provider = tostring(selected.provider or '')
+	if provider == 'combat' then
+		if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
+			return false, nil
+		end
+		local player = windower.ffxi.get_player()
+		if not player or tonumber(player.status) ~= 1 then
+			return false, nil
+		end
+		local action_type = tostring(selected.action_type or '')
+		if action_type == 'ws' then
+			local tp = tonumber(player.vitals and player.vitals.tp) or 0
+			if tp < 1000 then
+				return false, nil
+			end
+			local target = windower.ffxi.get_mob_by_target('t')
+			local expected_tid = tonumber(selected.target_id) or 0
+			if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
+				return false, nil
+			end
+			local ws = tostring(selected.action_name or '')
+			if ws == '' then
+				return false, nil
+			end
+			windower.send_command(('input /ws \"%s\" <t>'):format(ws))
+			_G.UC_LAST_SCHED_ACTION = ('[p1]ws:%s->%s'):format(ws, tostring(selected.target_name or ''))
+		elseif action_type == 'ja' then
+			local ability = tostring(selected.action_name or '')
+			if ability == '' then
+				return false, nil
+			end
+			local ok_ready, _, action_kind = action_ready(ability)
+			if action_kind ~= 'ja' or not ok_ready then
+				return false, nil
+			end
+			local target_kind = tostring(selected.target_kind or 'self')
+			local expected_tid = tonumber(selected.target_id) or 0
+			if target_kind == 'mob' then
+				local target = windower.ffxi.get_mob_by_target('t')
+				if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
+					return false, nil
+				end
+				windower.send_command(('input /ja \"%s\" %d'):format(ability, expected_tid))
+			else
+				windower.send_command(('input /ja \"%s\" <me>'):format(ability))
+			end
+			_G.UC_LAST_SCHED_ACTION = ('[p1]ja:%s->%s'):format(ability, tostring(selected.target_name or ''))
+		else
+			return false, nil
+		end
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT'
+	end
+	if provider == 'defensive_internal' then
+		if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
+			return false, nil
+		end
+		local cmd = tostring(selected.legacy_command or '')
+		if cmd == '' then
+			return false, nil
+		end
+		local ok_ready, _, action_kind = action_ready(tostring(selected.action_name or ''))
+		if action_kind == 'none' then
+			return false, nil
+		end
+		if not ok_ready then
+			return false, nil
+		end
+		windower.send_command(cmd)
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH'
+	end
+	if provider == 'defensive_healbot' then
+		if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
+			return false, nil
+		end
+		local hb_action = selected.detail and selected.detail.healbot_action or nil
+		if type(hb_action) ~= 'table' then
+			return false, nil
+		end
+		local ok_actions = type(rawget(_G, 'actions')) == 'table' and type(_G.actions.get_defensive_action) == 'function'
+		local ok_healer = type(rawget(_G, 'healer')) == 'table' and type(_G.healer.take_action) == 'function'
+		if not ok_actions or not ok_healer then
+			return false, nil
+		end
+		_G.healer:take_action(hb_action)
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]hb:%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_HEALBOT'
+	end
+	if provider == 'mobility' then
+		if not bool_setting(settings and settings.scheduler_dark_launch_movement, false) then
+			return false, nil
+		end
+		local me = windower.ffxi.get_mob_by_target('me')
+		local target = windower.ffxi.get_mob_by_id(tonumber(selected.target_id) or 0)
+		if not me or not target or not target.x or not target.y or not me.x or not me.y then
+			return false, nil
+		end
+		local action_name = tostring(selected.action_name or '')
+		local heading
+		if action_name == 'retreat' then
+			heading = math.atan2(target.y - me.y, target.x - me.x) + math.pi
+		else
+			heading = math.atan2(target.y - me.y, target.x - me.x)
+		end
+		windower.ffxi.run(heading)
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]move:%s->%s'):format(action_name, tostring(selected.target_name or ''))
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_MOVE'
+	end
+	if provider == 'maintenance_cor' then
+		if not bool_setting(settings and settings.scheduler_dark_launch_maintenance, false) then
+			return false, nil
+		end
+		local ability = tostring(selected.action_name or '')
+		if ability == '' then
+			return false, nil
+		end
+		local ok_ready, _, action_kind = action_ready(ability)
+		if action_kind ~= 'ja' or not ok_ready then
+			return false, nil
+		end
+		windower.send_command(('input /ja \"%s\" <me>'):format(ability))
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]cor:%s'):format(ability)
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_MAINT_COR'
+	end
+	return false, nil
+end
+
 function scheduler.process_tick()
 	_G.UC_LAST_SCHED_ACTION = ''
 	local s = get_settings()
+	p1_run_dry(s)
+	local p1_acted, p1_reason = p1_try_dark_launch_dispatch(s)
+	if p1_acted then
+		return true, p1_reason
+	end
 	if not bool_setting(s.defensive_enabled, false) then
 		return false, nil
 	end
@@ -753,15 +2115,152 @@ function scheduler.process_tick()
 			return false, nil
 		end
 		if acted then
+			local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+			p1_record_legacy_dispatch(ctx)
+			p1_set_pending_globals()
+			_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
 			return true, reason
 		end
 		return false, nil
 	end
 	acted, reason = try_internal_defensive_action()
 	if acted then
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
 		return true, reason
 	end
 	return false, nil
+end
+
+function scheduler.on_action(act)
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) ~= 'table' then
+		return
+	end
+	local now = os.clock()
+	local state_name = tostring(pending.state or '')
+	if not p1_pending_is_live_state(state_name) then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	local my_id = tonumber(player and player.id) or 0
+	local actor_id = tonumber(act and act.actor_id) or 0
+	if my_id ~= 0 and actor_id == my_id then
+		pending.state = 'acknowledged'
+		pending.ack_at = now
+	end
+	local expected_tid = tonumber(pending.target_id) or 0
+	if expected_tid ~= 0 and type(act and act.targets) == 'table' then
+		for _, t in ipairs(act.targets) do
+			if tonumber(t and t.id) == expected_tid then
+				p1_pending_mark_complete(now, 'action_target_effect')
+				break
+			end
+		end
+	end
+end
+
+function scheduler.on_action_message(msg)
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) ~= 'table' then
+		return
+	end
+	local now = os.clock()
+	local state_name = tostring(pending.state or '')
+	if not p1_pending_is_live_state(state_name) and state_name ~= 'acknowledged' then
+		return
+	end
+	local expected_tid = tonumber(pending.target_id) or 0
+	local msg_tid = tonumber(msg and msg.target_id) or 0
+	if expected_tid ~= 0 and msg_tid ~= 0 and expected_tid ~= msg_tid then
+		return
+	end
+	local message_id = tonumber(msg and msg.message_id) or 0
+	if message_id ~= 0 then
+		p1_pending_mark_complete(now, ('msg_%d'):format(message_id))
+	end
+end
+
+_G.UC_SCHED_OnAction = function(act)
+	local ok = pcall(scheduler.on_action, act)
+	if not ok then
+		-- scheduler hooks are best-effort; never destabilize combat tick.
+	end
+end
+
+_G.UC_SCHED_OnActionMessage = function(msg)
+	local ok = pcall(scheduler.on_action_message, msg)
+	if not ok then
+		-- scheduler hooks are best-effort; never destabilize combat tick.
+	end
+end
+
+_G.UC_COR_MAINT_OnIncomingChunk = function(id, data)
+	if cor_maintenance and type(cor_maintenance.update_from_incoming_chunk) == 'function' then
+		pcall(cor_maintenance.update_from_incoming_chunk, id, data)
+	end
+end
+
+function scheduler.get_debug_overlay()
+	local phase = scheduler.phase1 or {}
+	local s = get_settings()
+	local function enabled_for_provider(provider)
+		local p = tostring(provider or '')
+		if p == 'combat' then
+			return bool_setting(s.scheduler_dark_launch_combat, false)
+		elseif p == 'defensive_internal' then
+			return bool_setting(s.scheduler_dark_launch_defensive, false)
+		elseif p == 'defensive_healbot' then
+			return bool_setting(s.scheduler_dark_launch_defensive, false)
+		elseif p == 'mobility' then
+			return bool_setting(s.scheduler_dark_launch_movement, false)
+		elseif p == 'maintenance_cor' then
+			return bool_setting(s.scheduler_dark_launch_maintenance, false)
+		end
+		return false
+	end
+	local queued = {}
+	for _, item in ipairs(phase.last_top5_items or {}) do
+		if enabled_for_provider(item.provider) then
+			queued[#queued + 1] = ('%d) %.2f %s/%s %s u=%.2f rp=%.2f'):format(
+				tonumber(item.idx) or 0,
+				tonumber(item.score) or 0,
+				tostring(item.provider or ''),
+				tostring(item.family or ''),
+				tostring(item.action or ''),
+				tonumber(item.urgency_bonus) or 0,
+				tonumber(item.risk_penalty) or 0
+			)
+		end
+	end
+	local rejected = {}
+	local rri = phase.recent_reject_items or {}
+	local accepted = {}
+	for _, item in ipairs(rri) do
+		if enabled_for_provider(item.provider) then
+			accepted[#accepted + 1] = item
+		end
+	end
+	local start = math.max(1, #accepted - 4)
+	for i = #accepted, start, -1 do
+		local item = accepted[i]
+		rejected[#rejected + 1] = ('t%s %s/%s %s :: %s'):format(
+			tostring(item.tick or ''),
+			tostring(item.provider or ''),
+			tostring(item.family or ''),
+			tostring(item.action or ''),
+			tostring(item.reason or '')
+		)
+	end
+	return {
+		tick = p1_number(phase.tick, 0),
+		queued = queued,
+		rejected = rejected,
+	}
 end
 
 return scheduler

@@ -1,0 +1,695 @@
+local files = require('files')
+local res = require('resources')
+local uc_party_follow = require('uc_party_follow')
+local texts_ok, texts = pcall(require, 'texts')
+
+local mod = {}
+
+local last_recording = false
+local last_follow_enabled = false
+local last_tick_at = 0
+local tick_interval = 0.20
+local last_autoload_file = ''
+local last_autoload_at = 0
+local autoload_interval = 1.0
+local follow_state = {
+	index = 1,
+	dir = 1, -- 1 forward, -1 reverse
+}
+local follow_arrival_tolerance = 0.8
+local debug_overlay = nil
+local follow_paused = false
+local follow_pause_anchor_index = nil
+
+local function sanitize_name(s)
+	local v = tostring(s or ''):lower()
+	v = v:gsub('[^%w%-_]+', '_')
+	v = v:gsub('_+', '_')
+	v = v:gsub('^_+', ''):gsub('_+$', '')
+	if v == '' then
+		return 'unknown'
+	end
+	return v
+end
+
+local function clone_points(points)
+	local out = {}
+	for i = 1, #(points or {}) do
+		local p = points[i]
+		out[#out + 1] = { x = p.x, y = p.y, z = p.z }
+	end
+	return out
+end
+
+local function dist3(a, b)
+	local dx = (a.x or 0) - (b.x or 0)
+	local dy = (a.y or 0) - (b.y or 0)
+	local dz = (a.z or 0) - (b.z or 0)
+	return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+
+local function get_zone_name()
+	local info = windower.ffxi.get_info()
+	local zid = info and info.zone
+	local z = zid and res.zones[zid]
+	return tostring((z and z.en) or 'unknown_zone')
+end
+
+local function build_path_file_name()
+	local p = windower.ffxi.get_player() or {}
+	local char = sanitize_name(p.name or 'unknown')
+	local job = sanitize_name(p.main_job or 'unknown')
+	local zone = sanitize_name(get_zone_name())
+	return string.format('%s_%s_%s_Path.lua', char, job, zone)
+end
+
+local function path_file_relpath(file_name)
+	return 'data/paths/' .. tostring(file_name or '')
+end
+
+local function serialize_lua(v, indent)
+	indent = indent or 0
+	local t = type(v)
+	if t == 'nil' then
+		return 'nil'
+	elseif t == 'number' or t == 'boolean' then
+		return tostring(v)
+	elseif t == 'string' then
+		return string.format('%q', v)
+	elseif t ~= 'table' then
+		return string.format('%q', tostring(v))
+	end
+	local next_indent = indent + 2
+	local pad = string.rep(' ', indent)
+	local npad = string.rep(' ', next_indent)
+	local parts = { '{' }
+	for k, vv in pairs(v) do
+		local key
+		if type(k) == 'string' and k:match('^[_%a][_%w]*$') then
+			key = k
+		else
+			key = '[' .. serialize_lua(k, next_indent) .. ']'
+		end
+		parts[#parts + 1] = '\n' .. npad .. key .. ' = ' .. serialize_lua(vv, next_indent) .. ','
+	end
+	if #parts > 1 then
+		parts[#parts + 1] = '\n' .. pad .. '}'
+	else
+		parts[#parts + 1] = '}'
+	end
+	return table.concat(parts, '')
+end
+
+local function write_path_file(settings)
+	local file_name = tostring(settings.path_file_name or '')
+	if file_name == '' then
+		return false
+	end
+	local p = windower.ffxi.get_player() or {}
+	local payload = {
+		version = 1,
+		character = tostring(p.name or ''),
+		job = tostring(p.main_job or ''),
+		zone = get_zone_name(),
+		route_type = tostring(settings.path_route_type or 'unknown'),
+		points = clone_points(settings.path_points or {}),
+	}
+	local content = 'return ' .. serialize_lua(payload, 0) .. '\n'
+	local fobj = files.new(path_file_relpath(file_name), true)
+	local ok = files.write(fobj, content)
+	return ok ~= nil
+end
+
+local function read_path_file(settings)
+	local file_name = tostring(settings.path_file_name or '')
+	if file_name == '' then
+		return false
+	end
+	local path = path_file_relpath(file_name)
+	if not files.exists(path) then
+		return false
+	end
+	local content = files.read(path)
+	if type(content) ~= 'string' or content == '' then
+		return false
+	end
+	local loader = loadstring or load
+	local chunk = loader and loader(content) or nil
+	if type(chunk) ~= 'function' then
+		return false
+	end
+	local ok, payload = pcall(chunk)
+	if not ok or type(payload) ~= 'table' or type(payload.points) ~= 'table' then
+		return false
+	end
+	local out = {}
+	for i = 1, #payload.points do
+		local p = payload.points[i]
+		local x = tonumber(p and p.x)
+		local y = tonumber(p and p.y)
+		local z = tonumber(p and p.z)
+		if x and y and z then
+			out[#out + 1] = { x = x, y = y, z = z }
+		end
+	end
+	settings.path_points = out
+	settings.path_route_type = tostring(payload.route_type or settings.path_route_type or 'unknown')
+	return #out > 0
+end
+
+local function reset_recording_state(settings)
+	settings.path_file_name = build_path_file_name()
+	settings.path_points = {}
+	settings.path_route_type = 'unknown'
+	settings.path_distance_to_start = 0
+end
+
+local function classify_route(settings)
+	local points = settings.path_points or {}
+	if #points < 2 then
+		settings.path_route_type = 'unknown'
+		settings.path_distance_to_start = 0
+		return
+	end
+	local d = dist3(points[1], points[#points])
+	settings.path_distance_to_start = d
+	if d <= 10.0 then
+		settings.path_route_type = 'loop'
+	else
+		settings.path_route_type = 'patrol'
+	end
+end
+
+local function classify_route_from_points(points)
+	if #points < 2 then
+		return 'unknown'
+	end
+	local d = dist3(points[1], points[#points])
+	if d <= 10.0 then
+		return 'loop'
+	end
+	return 'patrol'
+end
+
+local function current_position()
+	local me = windower.ffxi.get_mob_by_target('me')
+	if not me or not me.x or not me.y or not me.z then
+		return nil
+	end
+	return { x = me.x, y = me.y, z = me.z }
+end
+
+local function dist2_xy(a, b)
+	local dx = (a.x or 0) - (b.x or 0)
+	local dy = (a.y or 0) - (b.y or 0)
+	return math.sqrt(dx * dx + dy * dy)
+end
+
+local function closest_point_index(points, me)
+	local best_i = 1
+	local best_d = math.huge
+	for i = 1, #points do
+		local p = points[i]
+		if p and p.x ~= nil and p.y ~= nil then
+			local d = dist2_xy(me, p)
+			if d < best_d then
+				best_d = d
+				best_i = i
+			end
+		end
+	end
+	return best_i
+end
+
+local function normalize_resume_window(settings)
+	local w = tonumber(settings and settings.path_resume_index_window) or 12
+	w = math.floor(w + 0.5)
+	if w < 1 then
+		w = 1
+	elseif w > 200 then
+		w = 200
+	end
+	return w
+end
+
+local function normalize_route(settings, points)
+	local route = tostring((settings and settings.path_route_type) or 'unknown')
+	if route == 'unknown' then
+		route = classify_route_from_points(points or {})
+		if settings then
+			settings.path_route_type = route
+		end
+	end
+	return route
+end
+
+local function index_distance(route, n, a, b)
+	local da = math.abs((a or 1) - (b or 1))
+	if route == 'loop' and n > 1 then
+		local wrap = n - da
+		if wrap < da then
+			return wrap
+		end
+	end
+	return da
+end
+
+local function closest_point_index_near_anchor(settings, points, me, anchor_index)
+	local n = #points
+	if n <= 0 then
+		return 1
+	end
+	local anchor = math.max(1, math.min(n, tonumber(anchor_index) or 1))
+	local route = normalize_route(settings, points)
+	local window = normalize_resume_window(settings)
+	local best_i, best_d = nil, math.huge
+	for i = 1, n do
+		local p = points[i]
+		if p and p.x ~= nil and p.y ~= nil then
+			local idx_d = index_distance(route, n, i, anchor)
+			if idx_d <= window then
+				local d = dist2_xy(me, p)
+				if d < best_d then
+					best_d = d
+					best_i = i
+				end
+			end
+		end
+	end
+	if best_i then
+		return best_i
+	end
+	return anchor
+end
+
+local function set_follow_paused(paused)
+	if paused then
+		if not follow_paused then
+			follow_pause_anchor_index = tonumber(follow_state.index) or 1
+		end
+		follow_paused = true
+		return
+	end
+	follow_paused = false
+	follow_pause_anchor_index = nil
+end
+
+local function update_distance_to_start(settings, pos)
+	local points = settings.path_points or {}
+	if #points == 0 then
+		settings.path_distance_to_start = 0
+		return
+	end
+	settings.path_distance_to_start = dist3(pos, points[1])
+end
+
+local function maybe_capture_point(settings)
+	local pos = current_position()
+	if not pos then
+		return false
+	end
+	settings.path_points = settings.path_points or {}
+	update_distance_to_start(settings, pos)
+	local points = settings.path_points
+	local last = points[#points]
+	if not last or dist3(pos, last) > 0.9 then
+		points[#points + 1] = pos
+		write_path_file(settings)
+		return true
+	end
+	return false
+end
+
+local function party_follow_active(settings)
+	return settings.party_follow == true and (tonumber(settings.party_follow_id) or 0) > 0
+end
+
+local function resolve_member_xy(pm, zone_self)
+	if not pm then
+		return nil, nil, 'srv'
+	end
+	local px, py = nil, nil
+	local pname = pm.name and tostring(pm.name):lower() or ''
+	if pname ~= '' and uc_party_follow and type(uc_party_follow.get_ipc_position) == 'function' then
+		px, py = uc_party_follow.get_ipc_position(pname, zone_self, 1.2)
+	end
+	if px ~= nil and py ~= nil then
+		return px, py, 'ipc'
+	end
+	return pm.x, pm.y, 'srv'
+end
+
+local function party_cohesion_ok(max_dist)
+	local me = windower.ffxi.get_mob_by_target('me')
+	if not me or me.x == nil or me.y == nil then
+		return false
+	end
+	local info = windower.ffxi.get_info()
+	local zone_self = info and info.zone
+	local party = windower.ffxi.get_party() or {}
+	for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
+		local e = party[key]
+		local pm = e and e.mob
+		if pm and pm.id and pm.id ~= 0 and pm.id ~= me.id and (pm.hpp == nil or pm.hpp > 0) then
+			local px, py = resolve_member_xy(pm, zone_self)
+			if px ~= nil and py ~= nil then
+				local d = math.sqrt((px - me.x) * (px - me.x) + (py - me.y) * (py - me.y))
+				if d > max_dist then
+					return false
+				end
+			end
+		end
+	end
+	return true
+end
+
+local function collect_party_distances()
+	local out = {}
+	local me = windower.ffxi.get_mob_by_target('me')
+	if not me or me.x == nil or me.y == nil then
+		return out
+	end
+	local info = windower.ffxi.get_info()
+	local zone_self = info and info.zone
+	local party = windower.ffxi.get_party() or {}
+	for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
+		local e = party[key]
+		local pm = e and e.mob
+		if pm and pm.id and pm.id ~= 0 and pm.id ~= me.id and (pm.hpp == nil or pm.hpp > 0) and pm.x ~= nil and pm.y ~= nil then
+			local px, py, source = resolve_member_xy(pm, zone_self)
+			if px ~= nil and py ~= nil then
+				local d = math.sqrt((px - me.x) * (px - me.x) + (py - me.y) * (py - me.y))
+				out[#out + 1] = { name = tostring(pm.name or ('id:' .. tostring(pm.id))), dist = d, source = source }
+			end
+		end
+	end
+	table.sort(out, function(a, b)
+		return (a.dist or 999) < (b.dist or 999)
+	end)
+	return out
+end
+
+local function ensure_debug_overlay()
+	if not texts_ok or not texts then
+		return nil
+	end
+	if debug_overlay then
+		return debug_overlay
+	end
+	debug_overlay = texts.new('', {
+		pos = { x = 100, y = 360 },
+		bg = { alpha = 180, red = 20, green = 20, blue = 20 },
+		flags = { right = false, bottom = false, bold = false, draggable = true },
+		padding = 6,
+		text = { font = 'Consolas', size = 10, alpha = 255, red = 180, green = 220, blue = 255, stroke = { width = 1, alpha = 180 } },
+	})
+	return debug_overlay
+end
+
+local function hide_debug_overlay()
+	if debug_overlay then
+		pcall(function()
+			debug_overlay:hide()
+		end)
+	end
+end
+
+local function render_debug_overlay(settings)
+	if settings.debug ~= true then
+		hide_debug_overlay()
+		return
+	end
+	local ov = ensure_debug_overlay()
+	if not ov then
+		return
+	end
+	local rows = collect_party_distances()
+	local lines = { 'UC Pathing Party Distances (yalm)' }
+	local gate = tonumber(settings.path_party_gate_yalms) or 3.0
+	if gate < 0.5 then
+		gate = 0.5
+	elseif gate > 50 then
+		gate = 50
+	end
+	local cohesion = party_cohesion_ok(gate)
+	lines[#lines + 1] = ('cohesion<=%.2f: %s'):format(gate, cohesion and 'PASS' or 'BLOCK')
+	if #rows == 0 then
+		lines[#lines + 1] = '(no party members found)'
+	else
+		for i = 1, #rows do
+			local r = rows[i]
+			lines[#lines + 1] = ('%s: %.2f [%s]'):format(r.name, r.dist or 0, r.source or 'srv')
+		end
+	end
+	ov:text(table.concat(lines, '\n'))
+	ov:show()
+end
+
+local function should_pause_for_combat()
+	if not Start_Engine then
+		return false
+	end
+	if rawget(_G, 'UC_PULL_SPELL_WAITING') == true then
+		return true
+	end
+	local p = windower.ffxi.get_player()
+	if not p then
+		return true
+	end
+	if tonumber(p.status) == 1 then
+		return true
+	end
+	local ci_until = tonumber(rawget(_G, 'UC_COMBAT_INTENT_UNTIL')) or 0
+	return os.clock() < ci_until
+end
+
+local function stop_move()
+	windower.ffxi.run(false)
+end
+
+local function run_to_point(me, point)
+	local dx = (point.x or 0) - (me.x or 0)
+	local dy = (point.y or 0) - (me.y or 0)
+	local len = math.sqrt(dx * dx + dy * dy)
+	if len < 0.001 then
+		return false
+	end
+	windower.ffxi.run(dx / len, dy / len)
+	return true
+end
+
+local function ensure_path_points(settings)
+	if type(settings.path_points) == 'table' and #settings.path_points > 0 then
+		return true
+	end
+	return read_path_file(settings)
+end
+
+local function maybe_autoload_for_ui(settings)
+	local file_name = tostring(settings.path_file_name or '')
+	if file_name == '' then
+		return false
+	end
+	local now = os.clock()
+	if file_name == last_autoload_file and (now - last_autoload_at) < autoload_interval then
+		return false
+	end
+	last_autoload_file = file_name
+	last_autoload_at = now
+	local have_points = type(settings.path_points) == 'table' and #settings.path_points > 0
+	if have_points then
+		return false
+	end
+	return read_path_file(settings)
+end
+
+local function ensure_path_file_binding(settings)
+	local expected = build_path_file_name()
+	if tostring(settings.path_file_name or '') == '' then
+		settings.path_file_name = expected
+		return
+	end
+	-- If char/job/zone changed, rebind to that context for follow.
+	if tostring(settings.path_file_name) ~= expected and settings.path_recording ~= true then
+		settings.path_file_name = expected
+		settings.path_points = {}
+		settings.path_route_type = 'unknown'
+	end
+end
+
+local function advance_follow_index(settings, points)
+	local n = #points
+	if n <= 1 then
+		follow_state.index = 1
+		return
+	end
+	local route = tostring(settings.path_route_type or 'unknown')
+	if route == 'unknown' then
+		route = classify_route_from_points(points)
+		settings.path_route_type = route
+	end
+	if route == 'loop' then
+		follow_state.index = follow_state.index + 1
+		if follow_state.index > n then
+			follow_state.index = 1
+		end
+		return
+	end
+	-- patrol behavior (or unknown fallback): bounce back and forth.
+	local next_index = follow_state.index + follow_state.dir
+	if next_index > n then
+		follow_state.dir = -1
+		next_index = n - 1
+		if next_index < 1 then
+			next_index = 1
+		end
+	elseif next_index < 1 then
+		follow_state.dir = 1
+		next_index = 2
+		if next_index > n then
+			next_index = n
+		end
+	end
+	follow_state.index = next_index
+end
+
+local function tick_follow(settings)
+	if settings.path_follow_enabled ~= true then
+		return
+	end
+	ensure_path_file_binding(settings)
+	if not ensure_path_points(settings) then
+		stop_move()
+		return
+	end
+	local points = settings.path_points
+	if #points == 0 then
+		stop_move()
+		return
+	end
+	local me = windower.ffxi.get_mob_by_target('me')
+	if not me or me.x == nil or me.y == nil then
+		stop_move()
+		return
+	end
+	update_distance_to_start(settings, { x = me.x, y = me.y, z = me.z or 0 })
+	if party_follow_active(settings) then
+		-- Party-follow owns movement when active.
+		set_follow_paused(true)
+		return
+	end
+	local gate = tonumber(settings.path_party_gate_yalms) or 3.0
+	if gate < 0.5 then
+		gate = 0.5
+	elseif gate > 50 then
+		gate = 50
+	end
+	if not party_cohesion_ok(gate) then
+		stop_move()
+		set_follow_paused(true)
+		return
+	end
+	if should_pause_for_combat() then
+		set_follow_paused(true)
+		return
+	end
+	if follow_paused and #points > 0 then
+		follow_state.index = closest_point_index_near_anchor(
+			settings,
+			points,
+			{ x = me.x, y = me.y },
+			follow_pause_anchor_index or follow_state.index
+		)
+		if follow_state.index >= #points then
+			follow_state.dir = -1
+		else
+			follow_state.dir = 1
+		end
+		set_follow_paused(false)
+	end
+	if follow_state.index < 1 or follow_state.index > #points then
+		follow_state.index = 1
+		follow_state.dir = 1
+	end
+	local pt = points[follow_state.index]
+	if not pt then
+		stop_move()
+		return
+	end
+	local d = dist2_xy({ x = me.x, y = me.y }, pt)
+	if d <= follow_arrival_tolerance then
+		advance_follow_index(settings, points)
+		pt = points[follow_state.index]
+		if not pt then
+			stop_move()
+			return
+		end
+	end
+	run_to_point(me, pt)
+end
+
+function mod.tick()
+	local now = os.clock()
+	if (now - last_tick_at) < tick_interval then
+		return
+	end
+	last_tick_at = now
+
+	local s = rawget(_G, 'UC_SETTINGS')
+	if type(s) ~= 'table' then
+		hide_debug_overlay()
+		return
+	end
+	render_debug_overlay(s)
+	ensure_path_file_binding(s)
+	maybe_autoload_for_ui(s)
+
+	if s.path_recording == true and not last_recording then
+		reset_recording_state(s)
+		write_path_file(s)
+	end
+
+	if s.path_recording == true then
+		maybe_capture_point(s)
+	elseif last_recording then
+		classify_route(s)
+		write_path_file(s)
+	else
+		local pos = current_position()
+		if pos then
+			update_distance_to_start(s, pos)
+		end
+	end
+
+	if s.path_follow_enabled == true and not last_follow_enabled then
+		follow_state.index = 1
+		follow_state.dir = 1
+		if #s.path_points == 0 then
+			read_path_file(s)
+		end
+		local me = windower.ffxi.get_mob_by_target('me')
+		if me and me.x ~= nil and me.y ~= nil and type(s.path_points) == 'table' and #s.path_points > 0 then
+			follow_state.index = closest_point_index(s.path_points, { x = me.x, y = me.y })
+			if follow_state.index >= #s.path_points then
+				follow_state.dir = -1
+			else
+				follow_state.dir = 1
+			end
+		end
+	elseif s.path_follow_enabled ~= true and last_follow_enabled then
+		-- Explicitly stop any active run vector when path-follow is disabled.
+		stop_move()
+		set_follow_paused(false)
+	end
+	if s.path_recording ~= true then
+		tick_follow(s)
+	else
+		-- Recording should not inherit prior movement vectors from follow.
+		stop_move()
+	end
+
+	last_recording = (s.path_recording == true)
+	last_follow_enabled = (s.path_follow_enabled == true)
+end
+
+return mod
