@@ -74,6 +74,7 @@ public partial class MainForm
     private CheckBox _spUsePrediction = null!;
     private TextBox _spBandMin = null!;
     private TextBox _spBandMax = null!;
+    private TextBox _spModelSizeFloor = null!;
     private TextBox _spLookahead = null!;
     private TextBox _spAnchorInvalidTicks = null!;
     private TextBox _spEmergencyMargin = null!;
@@ -81,6 +82,25 @@ public partial class MainForm
     private TextBox _spSwitchMargin = null!;
     private TextBox _spArrivalTolerance = null!;
     private TextBox _spMaxAgents = null!;
+    private ComboBox _corRoll1Combo = null!;
+    private ComboBox _corRoll2Combo = null!;
+    private Label _pathFileValue = null!;
+    private Label _pathRouteTypeValue = null!;
+    private Label _pathDistanceValue = null!;
+    private Label _pathPointCountValue = null!;
+    private TextBox _pathPartyGateYalms = null!;
+    private TextBox _pathResumeIndexWindow = null!;
+    private ListBox _pathHunterList = null!;
+    private TextBox _pathHunterName = null!;
+    private TextBox _pathHunterMaxZDelta = null!;
+    private TextBox _pathHunterMaxTargetRange = null!;
+    private TextBox _pathHunterClaimTimeout = null!;
+    private TextBox _pathHunterIgnoreCooldown = null!;
+    private ComboBox _pathPullActionType = null!;
+    private ComboBox _pathPullActionName = null!;
+    private Button _pathHunterAdd = null!;
+    private Button _pathHunterRemove = null!;
+    private Label _pathHunterOp = null!;
 
     private void BuildParityEditor(Panel host, FlowLayoutPanel sessionActionsFooter)
     {
@@ -519,6 +539,10 @@ public partial class MainForm
         _spBandMax = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _spBandMax.Leave += (_, _) => OnSpacingTuningNumericChanged();
         sp.Controls.Add(_spBandMax, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Model size floor (movement)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spModelSizeFloor = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _spModelSizeFloor.Leave += (_, _) => OnSpacingTuningNumericChanged();
+        sp.Controls.Add(_spModelSizeFloor, 1, sr++);
         sp.Controls.Add(new Label { Text = "Prediction lookahead (s)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
         _spLookahead = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _spLookahead.Leave += (_, _) => OnSpacingTuningNumericChanged();
@@ -549,6 +573,162 @@ public partial class MainForm
         sp.Controls.Add(_spMaxAgents, 1, sr++);
         tabSpacing.Controls.Add(sp);
         tabs.TabPages.Add(tabSpacing);
+
+        var tabPathing = new TabPage("Pathing");
+        tabPathing.AutoScroll = true;
+        var path = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 2,
+            Padding = new Padding(8),
+        };
+        path.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
+        path.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        var pathRow = 0;
+        var rec = MkGlobal("path_recording");
+        var fol = MkGlobal("path_follow_enabled");
+        path.Controls.Add(rec, 0, pathRow);
+        path.SetColumnSpan(rec, 2);
+        pathRow++;
+        path.Controls.Add(fol, 0, pathRow);
+        path.SetColumnSpan(fol, 2);
+        pathRow++;
+        path.Controls.Add(new Label { Text = "Path file", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathFileValue = new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left };
+        path.Controls.Add(_pathFileValue, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Route type", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathRouteTypeValue = new Label { Text = "unknown", AutoSize = true, Anchor = AnchorStyles.Left };
+        path.Controls.Add(_pathRouteTypeValue, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Distance to start", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathDistanceValue = new Label { Text = "0.0", AutoSize = true, Anchor = AnchorStyles.Left };
+        path.Controls.Add(_pathDistanceValue, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Recorded points", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathPointCountValue = new Label { Text = "0", AutoSize = true, Anchor = AnchorStyles.Left };
+        path.Controls.Add(_pathPointCountValue, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Party gate (yalms)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathPartyGateYalms = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _pathPartyGateYalms.Leave += (_, _) => OnPathPartyGateChanged();
+        path.Controls.Add(_pathPartyGateYalms, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Resume index window", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathResumeIndexWindow = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _pathResumeIndexWindow.Leave += (_, _) => OnPathResumeIndexWindowChanged();
+        path.Controls.Add(_pathResumeIndexWindow, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Hunter max Z delta", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathHunterMaxZDelta = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _pathHunterMaxZDelta.Leave += (_, _) => OnPathHunterMaxZDeltaChanged();
+        path.Controls.Add(_pathHunterMaxZDelta, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Hunter max range (yalms)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathHunterMaxTargetRange = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _pathHunterMaxTargetRange.Leave += (_, _) => OnPathHunterMaxTargetRangeChanged();
+        path.Controls.Add(_pathHunterMaxTargetRange, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Hunter claim timeout (s)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathHunterClaimTimeout = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _pathHunterClaimTimeout.Leave += (_, _) => OnPathHunterClaimTimeoutChanged();
+        path.Controls.Add(_pathHunterClaimTimeout, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Hunter ignore cooldown (s)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathHunterIgnoreCooldown = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
+        _pathHunterIgnoreCooldown.Leave += (_, _) => OnPathHunterIgnoreCooldownChanged();
+        path.Controls.Add(_pathHunterIgnoreCooldown, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Pull action type", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathPullActionType = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(120, 0),
+        };
+        _pathPullActionType.Items.Add("ja");
+        _pathPullActionType.Items.Add("spell");
+        _pathPullActionType.SelectedIndexChanged += (_, _) => OnPathPullActionTypeChanged();
+        path.Controls.Add(_pathPullActionType, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Pull action", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathPullActionName = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(220, 0),
+        };
+        _pathPullActionName.SelectedIndexChanged += (_, _) => OnPathPullActionNameChanged();
+        path.Controls.Add(_pathPullActionName, 1, pathRow++);
+        path.Controls.Add(new Label { Text = "Path hunter targets", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
+        _pathHunterOp = new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left };
+        path.Controls.Add(_pathHunterOp, 1, pathRow++);
+        _pathHunterList = new ListBox
+        {
+            Height = 100,
+            IntegralHeight = false,
+            Dock = DockStyle.Top,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+        };
+        path.Controls.Add(_pathHunterList, 0, pathRow);
+        path.SetColumnSpan(_pathHunterList, 2);
+        pathRow++;
+        var pathHunterRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        _pathHunterName = new TextBox { Width = 220 };
+        _pathHunterAdd = new Button { Text = "Add by name", AutoSize = true };
+        _pathHunterAdd.Click += (_, _) => OnPathHunterAdd();
+        _pathHunterRemove = new Button { Text = "Remove selected", AutoSize = true };
+        _pathHunterRemove.Click += (_, _) => OnPathHunterRemove();
+        pathHunterRow.Controls.Add(_pathHunterName);
+        pathHunterRow.Controls.Add(_pathHunterAdd);
+        pathHunterRow.Controls.Add(_pathHunterRemove);
+        path.Controls.Add(pathHunterRow, 0, pathRow);
+        path.SetColumnSpan(pathHunterRow, 2);
+        pathRow++;
+        tabPathing.Controls.Add(path);
+        tabs.TabPages.Add(tabPathing);
+
+        var tabScheduler = new TabPage("Scheduler");
+        tabScheduler.AutoScroll = true;
+        var sch = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 1,
+            Padding = new Padding(8),
+        };
+        sch.Controls.Add(
+            new Label
+            {
+                Text = "Dark-launch toggles: opt into scheduler-owned dispatch paths per session.",
+                AutoSize = true,
+                Padding = new Padding(0, 0, 0, 8),
+            }
+        );
+        sch.Controls.Add(MkGlobal("scheduler_dark_launch_combat"));
+        sch.Controls.Add(MkGlobal("scheduler_dark_launch_defensive"));
+        sch.Controls.Add(MkGlobal("scheduler_dark_launch_movement"));
+        sch.Controls.Add(MkGlobal("scheduler_dark_launch_maintenance"));
+        var corCfg = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 2,
+            Padding = new Padding(0, 8, 0, 0),
+        };
+        corCfg.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
+        corCfg.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        corCfg.Controls.Add(new Label { Text = "COR Roll 1", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+        _corRoll1Combo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(160, 0),
+        };
+        _corRoll1Combo.SelectedIndexChanged += (_, _) => OnCorRollSelected(1);
+        corCfg.Controls.Add(_corRoll1Combo, 1, 0);
+        corCfg.Controls.Add(new Label { Text = "COR Roll 2", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+        _corRoll2Combo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(160, 0),
+        };
+        _corRoll2Combo.SelectedIndexChanged += (_, _) => OnCorRollSelected(2);
+        corCfg.Controls.Add(_corRoll2Combo, 1, 1);
+        sch.Controls.Add(corCfg);
+        tabScheduler.Controls.Add(sch);
+        tabs.TabPages.Add(tabScheduler);
 
         form.Controls.Add(tabs);
         root.Controls.Add(form, 0, 1);

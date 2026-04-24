@@ -15,4 +15,6 @@ __pycache__/
 data/settings.xml
 data/profiles/*.lua
 data/profiles_uc_v3/*.lua
+data/paths/*.lua
+!data/paths/.gitkeep
 data/logs/*.log

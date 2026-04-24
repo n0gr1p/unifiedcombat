@@ -19,12 +19,14 @@ public partial class MainForm : Form
     /// <summary>Last party-follow distance settings pushed to the game; suppress snapshot overwrite until echoed or timeout.</summary>
     private readonly Dictionary<string, (string min, string max, string fightMin, string holdS, DateTime ts)> _pendingPfDistBySid = new(StringComparer.Ordinal);
     /// <summary>Last spacing tuning values pushed to the game; suppress snapshot overwrite until echoed or timeout.</summary>
-    private readonly Dictionary<string, (bool usePrediction, string bandMin, string bandMax, string lookahead, string anchorInvalidTicks, string emergencyMargin, string switchPenalty, string switchMargin, string arrivalTolerance, string maxAgents, DateTime ts)> _pendingSpacingBySid = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (bool usePrediction, string bandMin, string bandMax, string modelSizeFloor, string lookahead, string anchorInvalidTicks, string emergencyMargin, string switchPenalty, string switchMargin, string arrivalTolerance, string maxAgents, DateTime ts)> _pendingSpacingBySid = new(StringComparer.Ordinal);
     private DateTime _abilityInteractionUtc = DateTime.MinValue;
 
     private readonly Dictionary<string, CheckBox> _boolChecks = new(StringComparer.Ordinal);
     private readonly List<string> _abilityOptions = [];
     private readonly List<string> _selectedAbilities = [];
+    private readonly List<string> _pathPullJaOptions = [];
+    private readonly List<string> _pathPullSpellOptions = [];
     private readonly Dictionary<string, string> _abilitySignatureBySid = new(StringComparer.Ordinal);
     private readonly object _mirrorLineGate = new();
     private string? _pendingMirrorLine;
@@ -34,6 +36,7 @@ public partial class MainForm : Form
     private List<(int Id, string Name)> _partnerRows = [];
     private List<(int Slot, string Name)> _targetIgnoreRows = [];
     private List<(int Slot, string Name)> _addPriorityRows = [];
+    private List<(int Id, string Name)> _pathHunterRows = [];
 
     public MainForm()
     {

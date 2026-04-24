@@ -11,6 +11,7 @@ local uc_add_control = require('uc_add_control')
 local uc_targeting_common = require('uc_targeting_common')
 local uc_settarget = require('uc_settarget')
 local uc_attack = require('uc_attack')
+local uc_path_hunter = require('uc_path_hunter')
 
 local core = {
 	adapters = {},
@@ -48,7 +49,24 @@ local core = {
 		target_prev_t = nil,
 		tick = 0,
 	},
+	hunter_acquire = {
+		target_id = 0,
+		started_at = 0,
+	},
+	hunter_ignore_until_by_id = {},
+	pull_lock_until = 0,
+	pull_pending_action = '',
+	pull_pending_type = '',
+	pull_pending_target_id = 0,
+	pull_pending_sent_at = 0,
+	pull_spell_waiting = false,
+	pull_spell_wait_until = 0,
+	pull_spell_settle_key = '',
+	pull_spell_settle_until = 0,
+	pull_last_sent_at = {},
 }
+local stop_run
+local get_mover
 
 local skillchain_ids = {
 	[288] = true, [289] = true, [290] = true, [291] = true, [292] = true, [293] = true, [294] = true, [295] = true,
@@ -64,9 +82,16 @@ local action_message_ids = {
 local death_message_ids = {
 	[6] = true, [20] = true, [113] = true, [406] = true, [605] = true, [646] = true,
 }
+local spell_success_message_ids = {
+	[2] = true, [236] = true, [237] = true, [252] = true, [268] = true, [271] = true,
+}
+local spell_initiating_message_ids = {
+	[3] = true, [43] = true, [326] = true, [327] = true, [675] = true, [716] = true,
+}
 
 local DEATH_SWITCH_WINDOW = 0.9
 local PARTY_WS_HOLD_WINDOW = 1.6
+local DEFAULT_MOVEMENT_MODEL_SIZE_FLOOR = 0.9
 
 local action_categories = {
 	weaponskill_finish = true,
@@ -135,6 +160,19 @@ end
 
 local function get_settings()
 	return rawget(_G, 'UC_SETTINGS') or {}
+end
+
+local function movement_model_size_floor(settings)
+	local n = tonumber(settings and settings.spacing_model_size_floor)
+	if n == nil then
+		n = DEFAULT_MOVEMENT_MODEL_SIZE_FLOOR
+	end
+	if n < 0 then
+		n = 0
+	elseif n > 3 then
+		n = 3
+	end
+	return n
 end
 
 local function get_current_target()
@@ -231,6 +269,30 @@ local function target_real_distance(mob)
 	return mob.distance:sqrt() - (mob.model_size or 0) - (me.model_size or 0)
 end
 
+local function movement_model_size_raw(mob)
+	return tonumber(mob and mob.model_size) or 0
+end
+
+local function movement_target_model_size(mob, settings)
+	local n = tonumber(mob and mob.model_size) or 0
+	local floor = movement_model_size_floor(settings or get_settings())
+	if n < floor then
+		return floor
+	end
+	return n
+end
+
+local function target_real_distance_movement(mob, settings)
+	if not mob then
+		return 999
+	end
+	local me = windower.ffxi.get_mob_by_target('me')
+	if not me or mob.distance == nil then
+		return 999
+	end
+	return mob.distance:sqrt() - movement_target_model_size(mob, settings) - movement_model_size_raw(me)
+end
+
 local function mob_distance(a, b)
 	if not a or not b or a.x == nil or a.y == nil or b.x == nil or b.y == nil then
 		return 999
@@ -246,6 +308,14 @@ local function mob_real_distance(a, b)
 	end
 	local d = mob_distance(a, b)
 	return d - (a.model_size or 0) - (b.model_size or 0)
+end
+
+local function mob_real_distance_movement(a, b, settings)
+	if not a or not b or a.x == nil or a.y == nil or b.x == nil or b.y == nil then
+		return 999
+	end
+	local d = mob_distance(a, b)
+	return d - movement_model_size_raw(a) - movement_model_size_raw(b)
 end
 
 local function death_event_active_for_id(id)
@@ -297,7 +367,7 @@ local function spacing_cmp_num(a, b, eps)
 	return a < b and -1 or 1
 end
 
-local function spacing_collect_agents(me)
+local function spacing_collect_agents(me, settings)
 	local by_id = {}
 	local out = {}
 	local party = windower.ffxi.get_party() or {}
@@ -313,7 +383,7 @@ local function spacing_collect_agents(me)
 					id = pid,
 					x = mob.x,
 					y = mob.y,
-					model = tonumber(mob.model_size) or 0,
+					model = movement_model_size_raw(mob),
 					dist_to_target = 0,
 					prev_slot_valid = false,
 				}
@@ -328,7 +398,7 @@ local function spacing_collect_agents(me)
 			id = me_id,
 			x = me.x,
 			y = me.y,
-			model = tonumber(me.model_size) or 0,
+			model = movement_model_size_raw(me),
 			dist_to_target = 0,
 			prev_slot_valid = false,
 		}
@@ -361,8 +431,8 @@ local function spacing_predict_target(target, st, use_prediction, lookahead_s)
 	return px, py
 end
 
-local function spacing_compute_band(target, agents, min_real, max_real)
-	local tmodel = tonumber(target and target.model_size) or 0
+local function spacing_compute_band(target, agents, min_real, max_real, settings)
+	local tmodel = movement_target_model_size(target, settings)
 	local sum_model = 0
 	local count = 0
 	for _, a in ipairs(agents) do
@@ -589,13 +659,13 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 		max_agents = 6
 	end
 	local emergency_margin_setting = tonumber(settings.spacing_emergency_margin)
-	local agents, by_id = spacing_collect_agents(me)
+	local agents, by_id = spacing_collect_agents(me, settings)
 	local local_id = tonumber(me and me.id) or 0
 	if local_id <= 0 or #agents == 0 then
 		return nil, 'HOLD_POSITION'
 	end
 	local tx, ty = spacing_predict_target(target, st, use_prediction, lookahead_s)
-	local min_range, max_range, preferred_radius, emergency_margin = spacing_compute_band(target, agents, min_real, max_real)
+	local min_range, max_range, preferred_radius, emergency_margin = spacing_compute_band(target, agents, min_real, max_real, settings)
 	if emergency_margin_setting ~= nil then
 		emergency_margin = emergency_margin_setting
 		if emergency_margin < 0 then
@@ -655,7 +725,11 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 		st.last_slot_change_tick = st.tick
 	end
 	local gx, gy, mode = spacing_compute_goal(me, tx, ty, slots, final_slot, min_range, max_range, preferred_radius, slot_arrival_tolerance)
-	_G.UC_SPACING_DIAG = ('mode=%s aid=%d slot=%d anchor=%d dist_t=%.2f range=[%.2f,%.2f] pref=%.2f goal=%s,%s'):format(
+	local me_model_raw = tonumber(me and me.model_size) or 0
+	local target_model_raw = tonumber(target and target.model_size) or 0
+	local me_model_eff = movement_model_size_raw(me)
+	local target_model_eff = movement_target_model_size(target, settings)
+	_G.UC_SPACING_DIAG = ('mode=%s aid=%d slot=%d anchor=%d dist_t=%.2f range=[%.2f,%.2f] pref=%.2f goal=%s,%s me_sz=%.2f->%.2f tgt_sz=%.2f->%.2f'):format(
 		tostring(mode or ''),
 		local_id,
 		tonumber(final_slot) or -1,
@@ -665,7 +739,11 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 		max_range,
 		preferred_radius,
 		gx and tostring(spacing_round(gx)) or '-',
-		gy and tostring(spacing_round(gy)) or '-'
+		gy and tostring(spacing_round(gy)) or '-',
+		me_model_raw,
+		me_model_eff,
+		target_model_raw,
+		target_model_eff
 	)
 	if not gx or not gy then
 		return nil, mode
@@ -676,7 +754,7 @@ end
 
 -- Real-time spacing-aware approach heading:
 -- attract toward target while repelling from nearby party members.
-local function uc_spacing_aware_approach_heading(me, target)
+local function uc_spacing_aware_approach_heading(settings, me, target)
 	if not me or not target or me.x == nil or me.y == nil or target.x == nil or target.y == nil then
 		return nil
 	end
@@ -702,7 +780,7 @@ local function uc_spacing_aware_approach_heading(me, target)
 		if pid ~= 0 and pid ~= me.id then
 			local member = windower.ffxi.get_mob_by_id(pid)
 			if member and member.x ~= nil and member.y ~= nil then
-				local pdist = mob_real_distance(me, member)
+				local pdist = mob_real_distance_movement(me, member, settings)
 				if pdist < repel_range then
 					local dx = me.x - member.x
 					local dy = me.y - member.y
@@ -781,7 +859,36 @@ local function find_candidate_target(settings)
 	end
 
 	local claims, claims_set = uc_targeting_common.build_party_claims()
+	local path_hunter_filter_active = setting_enabled(settings.hunter) and setting_enabled(settings.path_follow_enabled)
+	local path_hunter_max_z = tonumber(settings.path_hunter_max_z_delta) or 2.0
+	local path_hunter_max_range = tonumber(settings.path_hunter_max_target_range) or 20.0
+	if path_hunter_max_z < 0 then
+		path_hunter_max_z = 0
+	elseif path_hunter_max_z > 20 then
+		path_hunter_max_z = 20
+	end
+	if path_hunter_max_range < 1 then
+		path_hunter_max_range = 1
+	elseif path_hunter_max_range > 80 then
+		path_hunter_max_range = 80
+	end
 	local marray = windower.ffxi.get_mob_array() or {}
+	local now = os.clock()
+	local function hunter_cooldown_active(mid)
+		local tid = tonumber(mid) or 0
+		if tid == 0 then
+			return false
+		end
+		local until_t = tonumber(core.hunter_ignore_until_by_id[tid]) or 0
+		if until_t <= 0 then
+			return false
+		end
+		if now < until_t then
+			return true
+		end
+		core.hunter_ignore_until_by_id[tid] = nil
+		return false
+	end
 	local partner_target_set = {}
 	if setting_enabled(settings.partner) then
 		local partner_ids = uc_partner_list.as_ordered_ids(settings)
@@ -819,29 +926,368 @@ local function find_candidate_target(settings)
 		end
 	end
 	if cur_alive_monster then
-		return cur
+		if not path_hunter_filter_active then
+			return cur
+		end
+		local hunter_ok = uc_path_hunter.matches_mob(settings, cur.name or '')
+		if hunter_ok and me and me.z ~= nil and cur.z ~= nil then
+			local dz = math.abs((tonumber(cur.z) or 0) - (tonumber(me.z) or 0))
+			if dz > path_hunter_max_z then
+				hunter_ok = false
+			end
+		end
+		if hunter_ok and target_distance(cur) > path_hunter_max_range then
+			hunter_ok = false
+		end
+		if hunter_ok and not hunter_cooldown_active(cur.id) then
+			local allow_prime_unclaimed = (not engaged) or allow_engaged_retarget
+			local prime_unclaimed_ok = (allow_prime_unclaimed and cur.claim_id == 0 and setting_enabled(settings.prime) and cur.status == 1)
+			local hunter_idle_unclaimed_ok = (cur.claim_id == 0 and cur.status == 0)
+			local claim_ok = claims_set[cur.claim_id] == true or prime_unclaimed_ok or hunter_idle_unclaimed_ok
+			if claim_ok then
+				return cur
+			end
+		end
 	end
 	local best = nil
 	local best_dist = 1e9
 	for _, mob in pairs(marray) do
 		if mob and mob.id and mob.valid_target and mob.spawn_type == 16 and (mob.hpp or 0) > 0 then
 			if not uc_target_ignore.is_mob_blocked(settings, mob) then
-				-- Do not pull unclaimed prime candidates while already engaged unless explicit
-				-- engaged-retarget modes are active; this prevents mid-fight target flips.
-				local allow_prime_unclaimed = (not engaged) or allow_engaged_retarget
-				local prime_unclaimed_ok = (allow_prime_unclaimed and mob.claim_id == 0 and setting_enabled(settings.prime) and mob.status == 1)
-				local claim_ok = claims_set[mob.claim_id] == true or prime_unclaimed_ok
-				if claim_ok then
-					local d = target_distance(mob)
-					if d < best_dist then
-						best_dist = d
-						best = mob
+				local hunter_ok = (not path_hunter_filter_active) or uc_path_hunter.matches_mob(settings, mob.name or '')
+				if hunter_ok then
+					if path_hunter_filter_active and hunter_cooldown_active(mob.id) then
+						hunter_ok = false
+					end
+				end
+				if hunter_ok then
+					if path_hunter_filter_active and me and me.z ~= nil and mob.z ~= nil then
+						local dz = math.abs((tonumber(mob.z) or 0) - (tonumber(me.z) or 0))
+						if dz > path_hunter_max_z then
+							hunter_ok = false
+						end
+					end
+				end
+				if hunter_ok and path_hunter_filter_active and target_distance(mob) > path_hunter_max_range then
+					hunter_ok = false
+				end
+				if hunter_ok then
+					-- Do not pull unclaimed prime candidates while already engaged unless explicit
+					-- engaged-retarget modes are active; this prevents mid-fight target flips.
+					local allow_prime_unclaimed = (not engaged) or allow_engaged_retarget
+					local prime_unclaimed_ok = (allow_prime_unclaimed and mob.claim_id == 0 and setting_enabled(settings.prime) and mob.status == 1)
+					local hunter_idle_unclaimed_ok = (path_hunter_filter_active and mob.claim_id == 0 and mob.status == 0)
+					local claim_ok = claims_set[mob.claim_id] == true or prime_unclaimed_ok or hunter_idle_unclaimed_ok
+					if claim_ok then
+						local d = target_distance(mob)
+						if d < best_dist then
+							best_dist = d
+							best = mob
+						end
 					end
 				end
 			end
 		end
 	end
 	return best
+end
+
+local function clear_pull_spell_wait_state()
+	core.pull_spell_waiting = false
+	core.pull_spell_wait_until = 0
+	core.pull_pending_type = ''
+	core.pull_pending_action = ''
+	core.pull_pending_target_id = 0
+	core.pull_pending_sent_at = 0
+	core.pull_spell_settle_key = ''
+	core.pull_spell_settle_until = 0
+	_G.UC_PULL_SPELL_WAITING = false
+end
+
+local function get_spell_resource(name)
+	if not name or name == '' then
+		return nil
+	end
+	return res.spells:with('en', name)
+end
+
+local function get_ja_resource(name)
+	if not name or name == '' then
+		return nil
+	end
+	return res.job_abilities:with('en', name)
+end
+
+local RANGE_MULT = {
+	[2] = 1.95,
+	[3] = 1.490909,
+	[4] = 1.44,
+	[5] = 1.377778,
+	[6] = 1.30,
+	[7] = 1.15,
+	[8] = 1.25,
+	[9] = 1.377778,
+	[10] = 1.45,
+	[11] = 1.454545454545455,
+	[12] = 1.666666666666667,
+}
+
+local function action_effective_range(raw_range)
+	local r = tonumber(raw_range) or 0
+	if r <= 0 then
+		return 0
+	end
+	local m = RANGE_MULT[r]
+	if m then
+		return r * m
+	end
+	if r > 20 then
+		return r * 0.01
+	end
+	return r
+end
+
+local function should_use_pull_action(settings, player, target)
+	if not setting_enabled(settings and settings.hunter) then
+		return false
+	end
+	if not setting_enabled(settings and settings.path_follow_enabled) then
+		return false
+	end
+	if not setting_enabled(settings and settings.puller) then
+		return false
+	end
+	local pid = tonumber(settings and settings.puller_id) or 0
+	if pid == 0 or (tonumber(player and player.id) or 0) ~= pid then
+		return false
+	end
+	if not target or not target.id or target.id == 0 then
+		return false
+	end
+	if (tonumber(player and player.status) or 0) == 1 then
+		return false
+	end
+	local claims, claims_set = uc_targeting_common.build_party_claims()
+	if claims_set[target.claim_id] == true then
+		return false
+	end
+	if tonumber(target.claim_id) ~= 0 then
+		return false
+	end
+	return true
+end
+
+local function pull_action_config(settings)
+	local at = tostring(settings and settings.path_pull_action_type or 'ja'):lower()
+	if at ~= 'spell' then
+		at = 'ja'
+	end
+	local name = tostring(settings and settings.path_pull_action_name or '')
+	name = name:match('^%s*(.-)%s*$') or ''
+	return at, name
+end
+
+local function pull_action_ready(action_type, action_name)
+	local now = os.clock()
+	if now < (tonumber(core.pull_lock_until) or 0) then
+		return false, 'PULL_LOCK'
+	end
+	local player = windower.ffxi.get_player()
+	if status_blocks_actions(player and player.status) then
+		return false, 'ACTION_BLOCK_STATUS3'
+	end
+	local key = tostring(action_type) .. ':' .. tostring(action_name)
+	local last = tonumber(core.pull_last_sent_at[key]) or 0
+	if last > 0 and (now - last) < 0.5 then
+		return false, 'PULL_RECENT_SEND'
+	end
+	if action_type == 'spell' then
+		local sp = get_spell_resource(action_name)
+		if not sp then
+			return false, 'PULL_UNKNOWN_SPELL'
+		end
+		local known = windower.ffxi.get_spells() or {}
+		if not known[sp.id] then
+			return false, 'PULL_SPELL_NOT_LEARNED'
+		end
+		local recasts = windower.ffxi.get_spell_recasts() or {}
+		local rc = recasts[sp.recast_id or sp.id] or recasts[sp.id] or 0
+		if rc > 0 then
+			return false, 'PULL_RECAST'
+		end
+		local mp = tonumber(((player or {}).vitals or {}).mp) or 0
+		if mp < (tonumber(sp.mp_cost) or 0) then
+			return false, 'PULL_NO_MP'
+		end
+		return true, ''
+	end
+	local ja = get_ja_resource(action_name)
+	if not ja then
+		return false, 'PULL_UNKNOWN_JA'
+	end
+	local recasts = windower.ffxi.get_ability_recasts() or {}
+	if (recasts[ja.recast_id] or 0) > 0 then
+		return false, 'PULL_RECAST'
+	end
+	return true, ''
+end
+
+local function move_toward_target_for_pull(target)
+	if not target then
+		windower.ffxi.run(false)
+		core.last_run_active = false
+		return false
+	end
+	local mover = get_mover()
+	if mover and target.id and type(mover.move_towards) == 'function' then
+		local ok = pcall(function()
+			mover:move_towards(target.id)
+		end)
+		if ok then
+			core.last_run_active = true
+			return true
+		end
+	end
+	local heading = uc_heading_to(target.x, target.y)
+	if heading then
+		windower.ffxi.run(heading)
+		core.last_run_active = true
+		return true
+	end
+	windower.ffxi.run(false)
+	core.last_run_active = false
+	return false
+end
+
+local function try_pull_action(settings, player, target)
+	if not should_use_pull_action(settings, player, target) then
+		return false
+	end
+	local action_type, action_name = pull_action_config(settings)
+	if action_name == '' then
+		return false
+	end
+	local now = os.clock()
+	if core.pull_spell_waiting == true then
+		if now < (tonumber(core.pull_spell_wait_until) or 0) then
+			-- Keep stationary until the spell action completion packet arrives.
+			windower.ffxi.run(false)
+			core.last_run_active = false
+			_G.UC_PULL_SPELL_WAITING = true
+			_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 0.6
+			_G.UC_LAST_BLOCK_REASON = 'PULL_SPELL_WAITING'
+			_G.UC_WS_LAST_DIAG = ('core pull spell-wait action=%s'):format(tostring(core.pull_pending_action or action_name))
+			return true
+		end
+		-- Safety timeout in case completion packets are missed.
+		clear_pull_spell_wait_state()
+	end
+	if not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
+		return false
+	end
+	local resource = (action_type == 'spell') and get_spell_resource(action_name) or get_ja_resource(action_name)
+	if not resource then
+		_G.UC_LAST_BLOCK_REASON = 'PULL_ACTION_UNKNOWN'
+		_G.UC_WS_LAST_DIAG = ('core pull unknown type=%s action=%s'):format(action_type, action_name)
+		return true
+	end
+
+	local cur = get_current_target()
+	if not cur or cur.id ~= target.id then
+		local ok_set = uc_settarget.select_by_id(target.id)
+		if not ok_set then
+			windower.ffxi.run(false)
+			core.last_run_active = false
+			_G.UC_LAST_BLOCK_REASON = 'PULL_TARGET_SET_FAIL'
+			_G.UC_WS_LAST_DIAG = ('core pull target-set fail tid=%d action=%s'):format(tonumber(target.id) or 0, action_name)
+			return true
+		end
+		coroutine.sleep(0.05)
+		cur = get_current_target()
+		if not cur or cur.id ~= target.id then
+			windower.ffxi.run(false)
+			core.last_run_active = false
+			_G.UC_LAST_BLOCK_REASON = 'PULL_TARGET_SET_FAIL'
+			return true
+		end
+	end
+
+	local max_range = action_effective_range(resource.range)
+	if max_range <= 0 then
+		max_range = (action_type == 'spell') and 20 or 10
+	end
+	local cast_max_range = max_range
+	if action_type == 'spell' then
+		local buffer = max_range * 0.10
+		cast_max_range = max_range - buffer
+		if cast_max_range < 1.0 then
+			cast_max_range = 1.0
+		end
+	end
+	local dist = target_real_distance(cur)
+	if dist > cast_max_range then
+		core.pull_spell_settle_key = ''
+		core.pull_spell_settle_until = 0
+		_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 0.8
+		_G.UC_LAST_BLOCK_REASON = 'PULL_MOVE_INTO_RANGE'
+		_G.UC_WS_LAST_DIAG = ('core pull move type=%s action=%s dist=%.2f cast_range=%.2f max=%.2f'):format(action_type, action_name, dist, cast_max_range, max_range)
+		local moved = move_toward_target_for_pull(cur)
+		if not moved then
+			_G.UC_LAST_BLOCK_REASON = 'PULL_MOVE_VECTOR_FAIL'
+		end
+		return true
+	end
+
+	-- Hard-stop before pull spell casting only. JAs are intentionally allowed while moving.
+	if action_type == 'spell' then
+		local settle_key = ('%s:%d'):format(tostring(action_name), tonumber(cur.id) or 0)
+		local now_settle = os.clock()
+		if core.pull_spell_settle_key ~= settle_key then
+			core.pull_spell_settle_key = settle_key
+			core.pull_spell_settle_until = now_settle + 0.40
+		end
+		windower.ffxi.run(false)
+		core.last_run_active = false
+		if now_settle < (tonumber(core.pull_spell_settle_until) or 0) then
+			_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 0.6
+			_G.UC_LAST_BLOCK_REASON = 'PULL_PRECAST_SETTLE'
+			_G.UC_WS_LAST_DIAG = ('core pull settle action=%s tid=%d'):format(action_name, tonumber(cur.id) or 0)
+			return true
+		end
+	end
+	local ok_ready, why = pull_action_ready(action_type, action_name)
+	if not ok_ready then
+		_G.UC_LAST_BLOCK_REASON = why
+		_G.UC_WS_LAST_DIAG = ('core pull wait type=%s action=%s reason=%s'):format(action_type, action_name, tostring(why or 'BLOCK'))
+		return true
+	end
+
+	local sent_key = tostring(action_type) .. ':' .. tostring(action_name)
+	if action_type == 'spell' then
+		windower.send_command('input /ma "' .. action_name .. '" ' .. tostring(cur.id))
+		core.pull_lock_until = math.max(tonumber(core.pull_lock_until) or 0, now + 0.9)
+		core.pull_pending_type = 'spell'
+		core.pull_spell_waiting = true
+		core.pull_spell_wait_until = now + 8.0
+		_G.UC_PULL_SPELL_WAITING = true
+		_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 2.5
+	else
+		windower.send_command('input /ja "' .. action_name .. '" ' .. tostring(cur.id))
+		core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
+		core.pull_lock_until = math.max(tonumber(core.pull_lock_until) or 0, now + 0.6)
+		core.pull_pending_type = 'ja'
+	end
+	core.pull_pending_action = tostring(action_name)
+	core.pull_pending_target_id = tonumber(cur.id) or 0
+	core.pull_pending_sent_at = now
+	core.pull_last_sent_at[sent_key] = now
+	if (tonumber(core.hunter_acquire.target_id) or 0) == (tonumber(cur.id) or 0) then
+		core.hunter_acquire.started_at = now
+	end
+	_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 0.8
+	_G.UC_LAST_BLOCK_REASON = 'PULL_ACTION_SENT'
+	_G.UC_WS_LAST_DIAG = ('core pull sent type=%s action=%s tid=%d cast_range=%.2f max=%.2f'):format(action_type, action_name, tonumber(cur.id) or 0, cast_max_range, max_range)
+	return true
 end
 
 local function ensure_target_and_attack(tid)
@@ -885,12 +1331,12 @@ local function ensure_target_and_attack(tid)
 	return true
 end
 
-local function stop_run()
+stop_run = function()
 	windower.ffxi.run(false)
 	core.last_run_active = false
 end
 
-local function get_mover()
+get_mover = function()
 	if core.mover ~= nil then
 		return core.mover or nil
 	end
@@ -940,7 +1386,7 @@ local function apply_movement(settings, target)
 			return
 		end
 	end
-	local dist = target_real_distance(target)
+	local dist = target_real_distance_movement(target, settings)
 	-- Comfortable fight-distance band around target.
 	local max_range = tonumber(settings.spacing_band_max) or 0.4
 	local min_range = tonumber(settings.spacing_band_min) or -0.9
@@ -978,7 +1424,7 @@ local function apply_movement(settings, target)
 	if dist > max_range then
 		local moved = false
 		if setting_enabled(settings.spacing) and me then
-			local heading = uc_spacing_aware_approach_heading(me, target)
+			local heading = uc_spacing_aware_approach_heading(settings, me, target)
 			if heading then
 				windower.ffxi.run(heading)
 				moved = true
@@ -1047,7 +1493,7 @@ local function apply_movement(settings, target)
 				local pid = pm and pm.id or 0
 				if pid ~= 0 and pid ~= me.id then
 					local member = windower.ffxi.get_mob_by_id(pid)
-					local pdist = mob_real_distance(me, member)
+					local pdist = mob_real_distance_movement(me, member, settings)
 					if pdist < spacing_trigger and pdist < chosen_dist then
 						chosen_id = pid
 						chosen_member = member
@@ -1228,6 +1674,18 @@ function core.on_action(act)
 			debug_ja_dispatch(('ack name="%s" category=%s'):format(ack_name, tostring(category)))
 		end
 	end
+	if my_id and actor == my_id and category == 'spell_finish' and core.pull_spell_waiting == true then
+		local ack_name = tostring((ability and (ability.en or ability.name)) or '')
+		local pending_name = tostring(core.pull_pending_action or '')
+		local pending_tid = tonumber(core.pull_pending_target_id) or 0
+		local target_ok = (pending_tid == 0) or (tonumber(target.id) or 0) == pending_tid
+		local name_ok = (pending_name == '') or (ack_name ~= '' and pending_name == ack_name)
+		if target_ok and name_ok then
+			clear_pull_spell_wait_state()
+			_G.UC_LAST_BLOCK_REASON = 'PULL_SPELL_COMPLETE'
+			_G.UC_WS_LAST_DIAG = ('core pull spell-complete action=%s'):format(ack_name ~= '' and ack_name or pending_name)
+		end
+	end
 	local current = get_current_target()
 	local is_ws_action = (resource == 'weapon_skills') and ability ~= nil
 	if is_ws_action and actor ~= my_id and is_party_member_id(actor) and target and target.id and target.id ~= 0 then
@@ -1293,9 +1751,34 @@ function core.on_action_message(msg)
 	end
 	local mid = tonumber(msg.message_id) or 0
 	local tid = tonumber(msg.target_id) or 0
+	local aid = tonumber(msg.actor_id) or 0
 	if tid > 0 and death_message_ids[mid] then
 		core.last_death_target_id = tid
 		core.last_death_at = os.clock()
+	end
+	if core.pull_spell_waiting == true then
+		local my_id = tonumber((windower.ffxi.get_player() or {}).id) or 0
+		local pending_tid = tonumber(core.pull_pending_target_id) or 0
+		local actor_ok = (my_id > 0 and aid == my_id)
+		local target_ok = (pending_tid == 0) or (tid > 0 and tid == pending_tid)
+		if actor_ok and target_ok and mid ~= 0 then
+			if spell_initiating_message_ids[mid] then
+				-- Casting started/initiated: remain in pull-spell wait.
+				_G.UC_PULL_SPELL_WAITING = true
+				_G.UC_LAST_BLOCK_REASON = 'PULL_SPELL_WAITING'
+				_G.UC_WS_LAST_DIAG = ('core pull spell-msg init mid=%d'):format(mid)
+			elseif spell_success_message_ids[mid] then
+				clear_pull_spell_wait_state()
+				_G.UC_LAST_BLOCK_REASON = 'PULL_SPELL_COMPLETE'
+				_G.UC_WS_LAST_DIAG = ('core pull spell-msg success mid=%d'):format(mid)
+			else
+				-- Includes out-of-range / invalid-cast style failures: end wait immediately
+				-- so pull flow can move into range and retry.
+				clear_pull_spell_wait_state()
+				_G.UC_LAST_BLOCK_REASON = 'PULL_SPELL_RETRY'
+				_G.UC_WS_LAST_DIAG = ('core pull spell-msg retry mid=%d'):format(mid)
+			end
+		end
 	end
 end
 
@@ -1525,6 +2008,18 @@ local function run_unified_combat()
 		_G.UC_FIGHT_FOLLOW_ACTIVE_UNTIL = os.clock() + party_follow_hold_seconds(s)
 	end
 	local now = os.clock()
+	if core.pull_spell_waiting == true then
+		if now < (tonumber(core.pull_spell_wait_until) or 0) then
+			windower.ffxi.run(false)
+			core.last_run_active = false
+			_G.UC_PULL_SPELL_WAITING = true
+			_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 0.6
+			_G.UC_LAST_BLOCK_REASON = 'PULL_SPELL_WAITING'
+			_G.UC_WS_LAST_DIAG = ('core pull spell-wait action=%s'):format(tostring(core.pull_pending_action or ''))
+			return
+		end
+		clear_pull_spell_wait_state()
+	end
 	if now_status ~= 1 then
 		if (core.last_player_status or 0) == 1 then
 			-- Engagement just dropped; keep sticky target briefly to absorb status jitter.
@@ -1542,7 +2037,24 @@ local function run_unified_combat()
 	end
 	core.last_player_status = now_status
 	local target = find_candidate_target(s)
+	local path_hunter_filter_active = setting_enabled(s.hunter) and setting_enabled(s.path_follow_enabled)
+	local claim_timeout = tonumber(s.path_hunter_claim_timeout_s) or 4.0
+	local ignore_cooldown = tonumber(s.path_hunter_ignore_cooldown_s) or 20.0
+	if claim_timeout < 0.5 then
+		claim_timeout = 0.5
+	elseif claim_timeout > 30 then
+		claim_timeout = 30
+	end
+	if ignore_cooldown < 0 then
+		ignore_cooldown = 0
+	elseif ignore_cooldown > 120 then
+		ignore_cooldown = 120
+	end
 	if not target and not setting_enabled(s.manual) then
+		if path_hunter_filter_active then
+			core.hunter_acquire.target_id = 0
+			core.hunter_acquire.started_at = 0
+		end
 		_G.UC_COMBAT_INTENT_UNTIL = 0
 		if core.last_run_active then
 			stop_run()
@@ -1558,6 +2070,50 @@ local function run_unified_combat()
 		_G.UC_FIGHT_FOLLOW_ACTIVE_UNTIL = os.clock() + party_follow_hold_seconds(s)
 	end
 	local tid = target and target.id or 0
+	if path_hunter_filter_active and tid > 0 then
+		local now = os.clock()
+		if (tonumber(core.hunter_acquire.target_id) or 0) ~= tid then
+			core.hunter_acquire.target_id = tid
+			core.hunter_acquire.started_at = now
+		else
+			local mob = windower.ffxi.get_mob_by_id(tid)
+			local claims, claims_set = uc_targeting_common.build_party_claims()
+			local claimed = mob and claims_set[mob.claim_id] == true
+			if not claimed and (p.status or 0) ~= 1 then
+				local pull_wait_same_target = (core.pull_spell_waiting == true) and ((tonumber(core.pull_pending_target_id) or 0) == tid)
+				if pull_wait_same_target then
+					core.hunter_acquire.started_at = now
+				end
+				local started = tonumber(core.hunter_acquire.started_at) or now
+				if (not pull_wait_same_target) and (now - started) >= claim_timeout then
+					if ignore_cooldown > 0 then
+						core.hunter_ignore_until_by_id[tid] = now + ignore_cooldown
+					end
+					core.hunter_acquire.target_id = 0
+					core.hunter_acquire.started_at = 0
+					_G.UC_COMBAT_INTENT_UNTIL = 0
+					_G.UC_LAST_BLOCK_REASON = 'HUNTER_ACQUIRE_TIMEOUT'
+					_G.UC_WS_LAST_DIAG = ('core hunter timeout tid=%d cooldown=%.1f'):format(tid, ignore_cooldown)
+					if core.last_run_active then
+						stop_run()
+					end
+					return
+				end
+			else
+				core.hunter_acquire.target_id = 0
+				core.hunter_acquire.started_at = 0
+			end
+		end
+	elseif path_hunter_filter_active then
+		core.hunter_acquire.target_id = 0
+		core.hunter_acquire.started_at = 0
+	end
+	if tid > 0 and setting_enabled(s.autotarget) then
+		local pull_handled = try_pull_action(s, p, target)
+		if pull_handled then
+			return
+		end
+	end
 	local current_before = get_current_target()
 	local current_dead = current_before and current_before.spawn_type == 16 and ((current_before.hpp or 0) <= 0)
 	local switched_on_kill = false
@@ -1649,6 +2205,14 @@ end
 
 function core.assert_no_job_branch()
 	return true
+end
+
+function core.select_smart_ws_for_scheduler(settings, target_id)
+	local ok, ws_name, ws_reason = pcall(select_smart_ws, settings or {}, target_id)
+	if not ok then
+		return '', 'SMART_WS_ERROR'
+	end
+	return tostring(ws_name or ''), tostring(ws_reason or '')
 end
 
 return core

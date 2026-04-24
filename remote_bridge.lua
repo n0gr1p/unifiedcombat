@@ -11,6 +11,7 @@ local uc_ignore = require('uc_ignore')
 local uc_partner_list = require('uc_partner_list')
 local uc_target_ignore = require('uc_target_ignore')
 local uc_add_priority = require('uc_add_priority')
+local uc_path_hunter = require('uc_path_hunter')
 
 local function uc_trim(s)
 	if not s then
@@ -143,6 +144,10 @@ local last_state_send = 0
 local session_id = nil
 local cached_ability_options = ''
 local last_ability_signature = ''
+local cached_pull_ja_options = ''
+local cached_pull_spell_options = ''
+local last_pull_option_signature = ''
+local uc_pull_action_name_valid
 
 local function build_session_id()
 	local p = windower.ffxi.get_player()
@@ -347,6 +352,20 @@ local function apply_set(path, value)
 		last_state_send = 0
 		return
 	end
+	if key == 'spacing_model_size_floor' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0 then
+			n = 0
+		elseif n > 3 then
+			n = 3
+		end
+		s.spacing_model_size_floor = n
+		last_state_send = 0
+		return
+	end
 	if key == 'spacing_lookahead_s' then
 		local n = tonumber(tostring(value))
 		if not n then
@@ -447,7 +466,118 @@ local function apply_set(path, value)
 		last_state_send = 0
 		return
 	end
+	if key == 'path_party_gate_yalms' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0.5 then
+			n = 0.5
+		elseif n > 50 then
+			n = 50
+		end
+		s.path_party_gate_yalms = n
+		last_state_send = 0
+		return
+	end
+	if key == 'path_resume_index_window' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		n = math.floor(n + 0.5)
+		if n < 1 then
+			n = 1
+		elseif n > 200 then
+			n = 200
+		end
+		s.path_resume_index_window = n
+		last_state_send = 0
+		return
+	end
+	if key == 'path_hunter_max_z_delta' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0 then
+			n = 0
+		elseif n > 20 then
+			n = 20
+		end
+		s.path_hunter_max_z_delta = n
+		last_state_send = 0
+		return
+	end
+	if key == 'path_hunter_max_target_range' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 1 then
+			n = 1
+		elseif n > 80 then
+			n = 80
+		end
+		s.path_hunter_max_target_range = n
+		last_state_send = 0
+		return
+	end
+	if key == 'path_hunter_claim_timeout_s' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0.5 then
+			n = 0.5
+		elseif n > 30 then
+			n = 30
+		end
+		s.path_hunter_claim_timeout_s = n
+		last_state_send = 0
+		return
+	end
+	if key == 'path_hunter_ignore_cooldown_s' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0 then
+			n = 0
+		elseif n > 120 then
+			n = 120
+		end
+		s.path_hunter_ignore_cooldown_s = n
+		last_state_send = 0
+		return
+	end
+	if key == 'path_pull_action_type' then
+		local v = tostring(value or ''):lower()
+		if v ~= 'ja' and v ~= 'spell' then
+			v = 'ja'
+		end
+		s.path_pull_action_type = v
+		if not uc_pull_action_name_valid(v, s.path_pull_action_name) then
+			s.path_pull_action_name = ''
+		end
+		last_state_send = 0
+		return
+	end
+	if key == 'path_pull_action_name' then
+		local v = uc_trim(value or '')
+		local at = tostring(s.path_pull_action_type or 'ja')
+		if uc_pull_action_name_valid(at, v) then
+			s.path_pull_action_name = v
+		else
+			s.path_pull_action_name = ''
+		end
+		last_state_send = 0
+		return
+	end
 	t[key] = value
+	if key == 'path_recording' or key == 'path_follow_enabled' then
+		last_state_send = 0
+	end
 end
 
 local function uc_split_pipe(raw)
@@ -496,6 +626,67 @@ local function uc_get_job_ability_names()
 	return uc_unique_sorted(out)
 end
 
+local function uc_get_enemy_job_ability_names()
+	local out = {}
+	local ab = windower.ffxi.get_abilities()
+	local ids = ab and ab.job_abilities or {}
+	for _, id in ipairs(ids) do
+		local ja = res.job_abilities[id]
+		local targets = tostring((ja and ja.targets) or '')
+		if ja and ja.en and targets:find('Enemy', 1, true) then
+			out[#out + 1] = ja.en
+		end
+	end
+	return uc_unique_sorted(out)
+end
+
+local function uc_get_enemy_spell_names()
+	local function spell_known_flag(v)
+		return v == true or v == 1 or v == 'true'
+	end
+	local function job_id_by_short(short_name)
+		local j = res.jobs:with('english_short', tostring(short_name or ''))
+		return tonumber(j and j.id) or 0
+	end
+	local function spell_usable_by_current_job(sp)
+		if type(sp) ~= 'table' then
+			return false
+		end
+		local p = windower.ffxi.get_player() or {}
+		local main_id = tonumber(p.main_job_id) or job_id_by_short(p.main_job)
+		local sub_id = tonumber(p.sub_job_id) or job_id_by_short(p.sub_job)
+		local main_lvl = tonumber(p.main_job_level) or tonumber(p.main_job_lv) or 99
+		local sub_lvl = tonumber(p.sub_job_level) or tonumber(p.sub_job_lv) or 49
+		local jobs = sp.jobs or sp.levels
+		if type(jobs) ~= 'table' then
+			-- If resource does not expose per-job requirements, do not over-filter.
+			return true
+		end
+		local req_main = tonumber(jobs[main_id] or jobs[tostring(main_id)])
+		if req_main and req_main > 0 and main_lvl >= req_main then
+			return true
+		end
+		local req_sub = tonumber(jobs[sub_id] or jobs[tostring(sub_id)])
+		if req_sub and req_sub > 0 and sub_lvl >= req_sub then
+			return true
+		end
+		return false
+	end
+	local out = {}
+	local known = windower.ffxi.get_spells() or {}
+	for id, has in pairs(known) do
+		if spell_known_flag(has) then
+			local sid = tonumber(id) or 0
+			local sp = sid > 0 and res.spells[sid] or nil
+			local targets = tostring((sp and sp.targets) or '')
+			if sp and sp.en and targets:find('Enemy', 1, true) and spell_usable_by_current_job(sp) then
+				out[#out + 1] = sp.en
+			end
+		end
+	end
+	return uc_unique_sorted(out)
+end
+
 local function uc_get_ability_signature()
 	local p = windower.ffxi.get_player()
 	local info = windower.ffxi.get_info()
@@ -515,6 +706,35 @@ local function uc_get_cached_ability_options()
 		cached_ability_options = uc_join_pipe(uc_get_job_ability_names())
 	end
 	return cached_ability_options
+end
+
+local function uc_get_cached_pull_action_options()
+	local sig = uc_get_ability_signature()
+	if sig ~= last_pull_option_signature then
+		last_pull_option_signature = sig
+		cached_pull_ja_options = uc_join_pipe(uc_get_enemy_job_ability_names())
+		cached_pull_spell_options = uc_join_pipe(uc_get_enemy_spell_names())
+	end
+	return cached_pull_ja_options, cached_pull_spell_options
+end
+
+uc_pull_action_name_valid = function(action_type, action_name)
+	local at = tostring(action_type or 'ja'):lower()
+	if at ~= 'spell' then
+		at = 'ja'
+	end
+	local nm = uc_trim(action_name or '')
+	if nm == '' then
+		return true
+	end
+	local ja_opts, spell_opts = uc_get_cached_pull_action_options()
+	local options = (at == 'spell') and uc_split_pipe(spell_opts) or uc_split_pipe(ja_opts)
+	for _, v in ipairs(options) do
+		if v == nm then
+			return true
+		end
+	end
+	return false
 end
 
 local function uc_get_main_weapon_skill_id()
@@ -549,7 +769,7 @@ local function uc_get_weaponskill_names()
 	return uc_unique_sorted(out)
 end
 
-local function uc_get_party_name_maps()
+local function uc_get_party_name_maps(include_self)
 	local names = {}
 	local name_to_id = {}
 	local id_to_name = {}
@@ -559,7 +779,7 @@ local function uc_get_party_name_maps()
 	local keys = { 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }
 	for _, key in ipairs(keys) do
 		local entry = party and party[key]
-		if entry and entry.mob and entry.mob.id and entry.mob.id ~= 0 and entry.mob.id ~= self_id then
+		if entry and entry.mob and entry.mob.id and entry.mob.id ~= 0 and (include_self or entry.mob.id ~= self_id) then
 			local name = entry.mob.name
 			if name and name ~= '' and not name_to_id[name] then
 				name_to_id[name] = entry.mob.id
@@ -598,11 +818,11 @@ local function process_line(line)
 	elseif op == 'set_partner' then
 		local s = _G.UC_SETTINGS
 		if s then
-			local _, name_to_id = uc_get_party_name_maps()
 			local slot = tostring(msg.slot or '')
 			local name = tostring(msg.name or '')
-			local id = name_to_id[name] or 0
 			if slot == 'puller' then
+				local _, name_to_id = uc_get_party_name_maps(true)
+				local id = name_to_id[name] or 0
 				if name ~= '' and id == 0 then
 					_G.UC_LAST_PARTNER_OP = 'PULLER_NAME_NOT_IN_PARTY:' .. name
 				end
@@ -886,6 +1106,36 @@ local function process_line(line)
 			end
 		end
 		last_state_send = 0
+	elseif op == 'path_hunter_add' then
+		local s = _G.UC_SETTINGS
+		local name = uc_trim(msg.name)
+		if not s or name == '' then
+			_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_ADD_NO_NAME'
+		else
+			local ok, why = uc_path_hunter.append_name(s, name)
+			if ok then
+				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_ADD_OK:' .. name
+			else
+				_G.UC_LAST_PATH_HUNTER_OP = tostring(why or 'PATH_HUNTER_ADD_FAIL')
+			end
+		end
+		last_state_send = 0
+	elseif op == 'path_hunter_remove' then
+		local s = _G.UC_SETTINGS
+		local idx = uc_remote_list_index(msg, line)
+		if not s then
+			_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_NO_SETTINGS'
+		elseif not idx then
+			_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_BAD_INDEX'
+		else
+			local ok, why = uc_path_hunter.remove_index(s, math.floor(idx + 0.5))
+			if ok then
+				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_OK:' .. tostring(idx)
+			else
+				_G.UC_LAST_PATH_HUNTER_OP = tostring(why or 'PATH_HUNTER_REMOVE_FAIL')
+			end
+		end
+		last_state_send = 0
 	elseif op == 'toggle' and msg.key == 'Start_Engine' then
 		local was_running = Start_Engine
 		Start_Engine = not Start_Engine
@@ -973,7 +1223,18 @@ function uc_remote_tick()
 			end
 		end
 	end
-	local party_names, _, id_to_name = uc_get_party_name_maps()
+	local party_names, _, id_to_name = uc_get_party_name_maps(false)
+	local puller_names, _, puller_id_to_name = uc_get_party_name_maps(true)
+	local pull_ja_options, pull_spell_options = uc_get_cached_pull_action_options()
+	local pull_type = tostring(s.path_pull_action_type or 'ja'):lower()
+	if pull_type ~= 'spell' then
+		pull_type = 'ja'
+	end
+	local pull_name = uc_trim(s.path_pull_action_name or '')
+	if not uc_pull_action_name_valid(pull_type, pull_name) then
+		pull_name = ''
+		s.path_pull_action_name = ''
+	end
 	local function uc_name_by_id(id)
 		local nid = tonumber(id) or 0
 		if nid == 0 then
@@ -1023,11 +1284,44 @@ function uc_remote_tick()
 		defensive_overwrite_interval = s.defensive_overwrite_interval,
 		defensive_buff_self_only = s.defensive_buff_self_only,
 		defensive_buffs = s.defensive_buffs,
+		scheduler_dark_launch_combat = (s.scheduler_dark_launch_combat == true),
+		scheduler_dark_launch_defensive = (s.scheduler_dark_launch_defensive == true),
+		scheduler_dark_launch_movement = (s.scheduler_dark_launch_movement == true),
+		scheduler_dark_launch_maintenance = (s.scheduler_dark_launch_maintenance == true),
+		cor_roll_1 = tostring(s.cor_roll_1 or ''),
+		cor_roll_2 = tostring(s.cor_roll_2 or ''),
+		path_recording = (s.path_recording == true),
+		path_follow_enabled = (s.path_follow_enabled == true),
+		path_file_name = tostring(s.path_file_name or ''),
+		path_route_type = tostring(s.path_route_type or 'unknown'),
+		path_distance_to_start = tonumber(s.path_distance_to_start) or 0,
+		path_points_count = type(s.path_points) == 'table' and #s.path_points or 0,
+		path_party_gate_yalms = tonumber(s.path_party_gate_yalms) or 3.0,
+		path_resume_index_window = tonumber(s.path_resume_index_window) or 12,
+		path_hunter_max_z_delta = tonumber(s.path_hunter_max_z_delta) or 2.0,
+		path_hunter_max_target_range = tonumber(s.path_hunter_max_target_range) or 20.0,
+		path_hunter_claim_timeout_s = tonumber(s.path_hunter_claim_timeout_s) or 4.0,
+		path_hunter_ignore_cooldown_s = tonumber(s.path_hunter_ignore_cooldown_s) or 20.0,
+		path_pull_action_type = pull_type,
+		path_pull_action_name = pull_name,
+		path_hunter_entries = uc_path_hunter.encode_for_ui(s),
+		path_hunter_last_op = _G.UC_LAST_PATH_HUNTER_OP or '',
 		block_reason = _G.UC_LAST_BLOCK_REASON or '',
 		ws_diag = _G.UC_WS_LAST_DIAG or '',
 		scheduler_action = _G.UC_LAST_SCHED_ACTION or '',
 		scheduler_provider = _G.UC_SCHED_PROVIDER or '',
 		scheduler_tick_seq = _G.UC_SCHED_TICK_SEQ or 0,
+		scheduler_tick = _G.UC_SCHED_P1_TICK or 0,
+		scheduler_selected_proposal = _G.UC_SCHED_P1_SELECTED_PROPOSAL or '',
+		scheduler_selected_provider = _G.UC_SCHED_P1_SELECTED_PROVIDER or '',
+		scheduler_selected_family = _G.UC_SCHED_P1_SELECTED_FAMILY or '',
+		scheduler_plan_prelude = _G.UC_SCHED_P1_PLAN_PRELUDE or '',
+		scheduler_pending_state = _G.UC_SCHED_P1_PENDING_STATE or '',
+		scheduler_lock_summary = _G.UC_SCHED_P1_LOCK_SUMMARY or '',
+		scheduler_reject_top = _G.UC_SCHED_P1_REJECT_TOP or '',
+		scheduler_noop_reason = _G.UC_SCHED_P1_NOOP_REASON or '',
+		scheduler_top3 = _G.UC_SCHED_P1_TOP3 or '',
+		scheduler_top3_verbose = _G.UC_SCHED_P1_TOP3_VERBOSE or '',
 		autotarget = s.autotarget,
 		ability_active = s.ability_active,
 		weaponskill_active = s.weaponskill_active,
@@ -1041,6 +1335,7 @@ function uc_remote_tick()
 		spacing = s.spacing,
 		spacing_band_min = tonumber(s.spacing_band_min) or -0.9,
 		spacing_band_max = tonumber(s.spacing_band_max) or 0.4,
+		spacing_model_size_floor = tonumber(s.spacing_model_size_floor) or 0.9,
 		spacing_use_prediction = (s.spacing_use_prediction ~= false),
 		spacing_lookahead_s = tonumber(s.spacing_lookahead_s) or 0.25,
 		spacing_anchor_invalid_ticks = tonumber(s.spacing_anchor_invalid_ticks) or 5,
@@ -1082,6 +1377,8 @@ function uc_remote_tick()
 		abilities_selected = uc_join_pipe(selected_abilities),
 		ability_options = uc_get_cached_ability_options(),
 		weaponskill_options = uc_join_pipe(uc_get_weaponskill_names()),
+		path_pull_ja_options = pull_ja_options,
+		path_pull_spell_options = pull_spell_options,
 		ignore_entries = uc_ignore.encode_for_ui(s, uc_name_by_id),
 		ignore_last_op = _G.UC_LAST_IGNORE_OP or '',
 		target_ignore_entries = uc_target_ignore.encode_for_ui(s),
@@ -1095,7 +1392,8 @@ function uc_remote_tick()
 	st.ignore_target_name = tnm
 	st.ignore_target_id = tid
 	st.partner_options = uc_join_pipe(party_names)
-	st.puller_selected = id_to_name[s.puller_id] or ''
+	st.puller_options = uc_join_pipe(puller_names)
+	st.puller_selected = puller_id_to_name[s.puller_id] or ''
 	st.fight_leader_selected = id_to_name[s.fight_leader_id] or ''
 	st.fight_leader_last_op = _G.UC_LAST_FIGHT_LEADER_OP or ''
 	st.party_follow_selected = id_to_name[s.party_follow_id] or ''
