@@ -120,6 +120,8 @@ local function uc_new_settings_defaults()
 		spacing_slot_switch_margin = 0.35,
 		spacing_slot_arrival_tolerance = 0.20,
 		spacing_max_agents = 6,
+		spacing_global_anchor_enabled = false,
+		spacing_global_anchor_name = '',
 		face = false,
 		partner = false,
 		partner2 = false,

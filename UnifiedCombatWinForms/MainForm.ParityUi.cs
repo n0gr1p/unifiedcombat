@@ -71,6 +71,8 @@ public partial class MainForm
     private TextBox _spSwitchMargin = null!;
     private TextBox _spArrivalTolerance = null!;
     private TextBox _spMaxAgents = null!;
+    private CheckBox _spGlobalAnchorEnabled = null!;
+    private ComboBox _spGlobalAnchorMember = null!;
     private ComboBox _corRoll1Combo = null!;
     private ComboBox _corRoll2Combo = null!;
     private Label _pathFileValue = null!;
@@ -618,6 +620,19 @@ public partial class MainForm
         _spMaxAgents = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _spMaxAgents.Leave += (_, _) => OnSpacingTuningNumericChanged();
         sp.Controls.Add(_spMaxAgents, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Global anchor override", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spGlobalAnchorEnabled = new CheckBox { AutoSize = true, Anchor = AnchorStyles.Left };
+        _spGlobalAnchorEnabled.CheckedChanged += (_, _) => OnGlobalSpacingAnchorChanged();
+        sp.Controls.Add(_spGlobalAnchorEnabled, 1, sr++);
+        sp.Controls.Add(new Label { Text = "Global anchor member", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        _spGlobalAnchorMember = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(160, 0),
+        };
+        _spGlobalAnchorMember.SelectedIndexChanged += (_, _) => OnGlobalSpacingAnchorChanged();
+        sp.Controls.Add(_spGlobalAnchorMember, 1, sr++);
         tabSpacing.Controls.Add(sp);
         tabs.TabPages.Add(tabSpacing);
 

@@ -32,6 +32,7 @@ public partial class MainForm : Form
     /// <summary>Last spacing tuning values pushed to the game; suppress snapshot overwrite until echoed or timeout.</summary>
     private readonly Dictionary<string, (bool usePrediction, string bandMin, string bandMax, string modelSizeFloor, string lookahead, string anchorInvalidTicks, string emergencyMargin, string switchPenalty, string switchMargin, string arrivalTolerance, string maxAgents, DateTime ts)> _pendingSpacingBySid = new(StringComparer.Ordinal);
     private DateTime _abilityInteractionUtc = DateTime.MinValue;
+    private readonly HashSet<string> _globalAnchorAppliedSids = new(StringComparer.Ordinal);
 
     private readonly Dictionary<string, CheckBox> _boolChecks = new(StringComparer.Ordinal);
     private readonly List<string> _abilityOptions = [];
@@ -55,6 +56,7 @@ public partial class MainForm : Form
     {
         InitializeComponent();
         BuildParityEditor(panelEditorHost, flowSessionActions);
+        LoadGlobalUiSettings();
         _mirror = new MirrorDuplex(_cts.Token);
         _mirror.SnapshotOrErrorLineReceived += OnMirrorLine;
         _mirror.Start();
@@ -324,12 +326,22 @@ public partial class MainForm : Form
             {
                 _optionsHydratedJobBySid.Remove(oldSid);
                 _optionsRequestInFlightBySid.Remove(oldSid);
+                _globalAnchorAppliedSids.Remove(oldSid);
             }
         }
         _sessionRunningBySid.Clear();
         foreach (var kv in nextRun)
         {
             _sessionRunningBySid[kv.Key] = kv.Value;
+        }
+        RefreshGlobalAnchorMemberOptions();
+        foreach (var sid in nextMeta.Keys)
+        {
+            if (!_globalAnchorAppliedSids.Contains(sid))
+            {
+                PushGlobalAnchorSettingsToSid(sid);
+                _globalAnchorAppliedSids.Add(sid);
+            }
         }
         TryApplyQueuedEngineReapply();
 

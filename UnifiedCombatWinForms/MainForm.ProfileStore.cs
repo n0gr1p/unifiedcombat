@@ -46,6 +46,8 @@ public partial class MainForm
         }
     }
 
+    private string GlobalUiSettingsPath => Path.Combine(ProfileRootDir, "ui_global.json");
+
     private static string SafeToken(string? s)
     {
         var raw = (s ?? "").Trim();
@@ -307,6 +309,71 @@ public partial class MainForm
             var path = ProfilePathForSid(sid);
             var obj = BuildProfileFromUi(sid);
             File.WriteAllText(path, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch
+        {
+            // keep UI responsive
+        }
+    }
+
+    private void LoadGlobalUiSettings()
+    {
+        bool enabled = false;
+        string member = "";
+        try
+        {
+            var path = GlobalUiSettingsPath;
+            if (File.Exists(path))
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(path));
+                var root = doc.RootElement;
+                enabled = SessionStateHelper.GetBool(root, "spacing_global_anchor_enabled", false);
+                member = SessionStateHelper.GetString(root, "spacing_global_anchor_name", "");
+            }
+        }
+        catch
+        {
+            enabled = false;
+            member = "";
+        }
+
+        _suppressEvents = true;
+        try
+        {
+            _spGlobalAnchorEnabled.Checked = enabled;
+            if (_spGlobalAnchorMember.Items.Count == 0)
+            {
+                _spGlobalAnchorMember.Items.Add("");
+            }
+
+            var match = -1;
+            for (var i = 0; i < _spGlobalAnchorMember.Items.Count; i++)
+            {
+                if (string.Equals(_spGlobalAnchorMember.Items[i]?.ToString() ?? "", member, StringComparison.Ordinal))
+                {
+                    match = i;
+                    break;
+                }
+            }
+
+            _spGlobalAnchorMember.SelectedIndex = match >= 0 ? match : 0;
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+    }
+
+    private void SaveGlobalUiSettings()
+    {
+        try
+        {
+            var obj = new JsonObject
+            {
+                ["spacing_global_anchor_enabled"] = _spGlobalAnchorEnabled.Checked,
+                ["spacing_global_anchor_name"] = (_spGlobalAnchorMember.SelectedItem?.ToString() ?? "").Trim(),
+            };
+            File.WriteAllText(GlobalUiSettingsPath, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         }
         catch
         {

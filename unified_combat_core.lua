@@ -78,6 +78,20 @@ local core = {
 	tank_debug_last_at = 0,
 	tank_debug_last_violation_sig = '',
 	tank_tick_log_at = 0,
+	move_guard = {
+		last_x = nil,
+		last_y = nil,
+		last_dist = nil,
+		last_sample_at = 0,
+		stuck_ticks = 0,
+		recovery_active = false,
+		recovery_dir = 1,
+		recovery_hold_until = 0,
+		recovery_flip_at = 0,
+		recovery_flipped = false,
+		recovery_until = 0,
+		retreat_suppress_until = 0,
+	},
 }
 local stop_run
 local get_mover
@@ -452,6 +466,16 @@ local function spacing_cmp_num(a, b, eps)
 	return a < b and -1 or 1
 end
 
+local function spacing_name_key(name)
+	if type(name) ~= 'string' then
+		return ''
+	end
+	local s = name:lower()
+	s = s:gsub('^%s+', '')
+	s = s:gsub('%s+$', '')
+	return s
+end
+
 local function spacing_collect_agents(me, settings)
 	local by_id = {}
 	local out = {}
@@ -464,10 +488,13 @@ local function spacing_collect_agents(me, settings)
 		if pid > 0 then
 			local mob = windower.ffxi.get_mob_by_id(pid)
 			if mob and mob.x ~= nil and mob.y ~= nil and (mob.hpp == nil or mob.hpp > 0) then
+				local raw_name = tostring((e and e.name) or mob.name or '')
 				local a = {
 					id = pid,
 					x = mob.x,
 					y = mob.y,
+					name = raw_name,
+					name_key = spacing_name_key(raw_name),
 					model = movement_model_size_raw(mob),
 					dist_to_target = 0,
 					prev_slot_valid = false,
@@ -479,10 +506,13 @@ local function spacing_collect_agents(me, settings)
 	end
 	local me_id = tonumber(me and me.id) or 0
 	if me_id > 0 and not by_id[me_id] and me.x ~= nil and me.y ~= nil then
+		local raw_name = tostring((me and me.name) or '')
 		local a = {
 			id = me_id,
 			x = me.x,
 			y = me.y,
+			name = raw_name,
+			name_key = spacing_name_key(raw_name),
 			model = movement_model_size_raw(me),
 			dist_to_target = 0,
 			prev_slot_valid = false,
@@ -702,6 +732,37 @@ local function spacing_compute_goal(me, tx, ty, slots, slot_idx, min_range, max_
 	return slot.x, slot.y, 'DIRECT_TO_SLOT'
 end
 
+local function spacing_should_hold_tangential(me, tx, ty, gx, gy, min_range, max_range, arrival_tolerance)
+	if not me or me.x == nil or me.y == nil or gx == nil or gy == nil then
+		return false
+	end
+	local d_target = spacing_dist_xy(me.x, me.y, tx, ty)
+	if d_target < min_range or d_target > max_range then
+		return false
+	end
+	local mvx = gx - me.x
+	local mvy = gy - me.y
+	local mvlen = math.sqrt((mvx * mvx) + (mvy * mvy))
+	if mvlen <= math.max(0.05, (tonumber(arrival_tolerance) or 0.2)) then
+		return false
+	end
+	local rvx = me.x - tx
+	local rvy = me.y - ty
+	local rvlen = math.sqrt((rvx * rvx) + (rvy * rvy))
+	if rvlen < SPACING_EPS then
+		return false
+	end
+	local rux = rvx / rvlen
+	local ruy = rvy / rvlen
+	local mux = mvx / mvlen
+	local muy = mvy / mvlen
+	local radial = (mux * rux) + (muy * ruy)
+	local tangential = math.abs((mux * ruy) - (muy * rux))
+	-- If movement is almost entirely tangential while already in comfort band,
+	-- hold to avoid orbital slot-chasing.
+	return math.abs(radial) < 0.20 and tangential > 0.90
+end
+
 local function spacing_compute_heading(settings, me, target, min_real, max_real)
 	local st = core.spacing or {}
 	st.tick = (tonumber(st.tick) or 0) + 1
@@ -744,6 +805,9 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 		max_agents = 6
 	end
 	local emergency_margin_setting = tonumber(settings.spacing_emergency_margin)
+	local forced_anchor_enabled = setting_enabled(settings.spacing_global_anchor_enabled)
+	local forced_anchor_name = tostring(settings.spacing_global_anchor_name or '')
+	local forced_anchor_name_key = spacing_name_key(forced_anchor_name)
 	local agents, by_id = spacing_collect_agents(me, settings)
 	local local_id = tonumber(me and me.id) or 0
 	if local_id <= 0 or #agents == 0 then
@@ -761,7 +825,21 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 	end
 	local anchor_id = tonumber(st.anchor_agent_id) or 0
 	local anchor = by_id[anchor_id]
-	if anchor then
+	local forced_anchor = nil
+	if forced_anchor_enabled and forced_anchor_name_key ~= '' then
+		for _, a in ipairs(agents) do
+			if a.name_key == forced_anchor_name_key then
+				forced_anchor = a
+				break
+			end
+		end
+	end
+	if forced_anchor then
+		anchor_id = tonumber(forced_anchor.id) or 0
+		anchor = by_id[anchor_id]
+		st.anchor_agent_id = anchor_id
+		st.anchor_invalid_tick_count = 0
+	elseif anchor then
 		local d = spacing_dist_xy(anchor.x, anchor.y, tx, ty)
 		local inside = (d >= min_range and d <= max_range)
 		if inside then
@@ -779,7 +857,7 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 		anchor_id = 0
 		st.anchor_invalid_tick_count = 0
 	end
-	if anchor_id == 0 then
+	if anchor_id == 0 and not forced_anchor then
 		local picked = spacing_acquire_anchor(agents, tx, ty, min_range, max_range, preferred_radius)
 		if not picked then
 			return nil, 'HOLD_POSITION'
@@ -804,21 +882,31 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 		return nil, 'HOLD_POSITION'
 	end
 	local final_slot = spacing_apply_local_stickiness(local_id, proposed_slot, by_id, slots, assignments_prev, slot_switch_margin, slot_switch_penalty)
+	if anchor_id == local_id then
+		-- Anchor self-lock: do not chase rotating offset slots when local actor is anchor.
+		final_slot = 0
+		assigned[local_id] = 0
+	end
 	st.assignments = assigned
 	if final_slot ~= (tonumber(st.assigned_slot_index) or -1) then
 		st.assigned_slot_index = final_slot
 		st.last_slot_change_tick = st.tick
 	end
 	local gx, gy, mode = spacing_compute_goal(me, tx, ty, slots, final_slot, min_range, max_range, preferred_radius, slot_arrival_tolerance)
+	if mode == 'DIRECT_TO_SLOT' and spacing_should_hold_tangential(me, tx, ty, gx, gy, min_range, max_range, slot_arrival_tolerance) then
+		mode = 'HOLD_TANGENTIAL_GUARD'
+		gx, gy = nil, nil
+	end
 	local me_model_raw = tonumber(me and me.model_size) or 0
 	local target_model_raw = tonumber(target and target.model_size) or 0
 	local me_model_eff = movement_model_size_raw(me)
 	local target_model_eff = movement_target_model_size(target, settings)
-	_G.UC_SPACING_DIAG = ('mode=%s aid=%d slot=%d anchor=%d dist_t=%.2f range=[%.2f,%.2f] pref=%.2f goal=%s,%s me_sz=%.2f->%.2f tgt_sz=%.2f->%.2f'):format(
+	_G.UC_SPACING_DIAG = ('mode=%s aid=%d slot=%d anchor=%d forced=%s dist_t=%.2f range=[%.2f,%.2f] pref=%.2f goal=%s,%s me_sz=%.2f->%.2f tgt_sz=%.2f->%.2f'):format(
 		tostring(mode or ''),
 		local_id,
 		tonumber(final_slot) or -1,
 		tonumber(anchor_id) or 0,
+		(forced_anchor and tostring(forced_anchor.name or '')) or '-',
 		spacing_dist_xy(me.x, me.y, tx, ty),
 		min_range,
 		max_range,
@@ -1964,6 +2052,143 @@ local function apply_facing(settings, target)
 	end
 end
 
+local function ensure_move_guard_state()
+	if type(core.move_guard) ~= 'table' then
+		core.move_guard = {}
+	end
+	local g = core.move_guard
+	if type(g.stuck_ticks) ~= 'number' then
+		g.stuck_ticks = 0
+	end
+	if type(g.recovery_active) ~= 'boolean' then
+		g.recovery_active = false
+	end
+	if type(g.recovery_dir) ~= 'number' or g.recovery_dir == 0 then
+		g.recovery_dir = 1
+	end
+	g.last_sample_at = tonumber(g.last_sample_at) or 0
+	g.recovery_hold_until = tonumber(g.recovery_hold_until) or 0
+	g.recovery_flip_at = tonumber(g.recovery_flip_at) or 0
+	g.recovery_until = tonumber(g.recovery_until) or 0
+	g.retreat_suppress_until = tonumber(g.retreat_suppress_until) or 0
+	if type(g.recovery_flipped) ~= 'boolean' then
+		g.recovery_flipped = false
+	end
+	return g
+end
+
+local function force_face_target(target)
+	if not target or target.x == nil or target.y == nil then
+		return
+	end
+	local heading = uc_heading_to(target.x, target.y)
+	if heading then
+		windower.ffxi.turn(heading)
+	end
+end
+
+local function movement_guard_sample(g, me, dist, now)
+	if not g or not me or me.x == nil or me.y == nil then
+		return
+	end
+	local moved = nil
+	local ddelta = nil
+	if g.last_x ~= nil and g.last_y ~= nil then
+		local dx = tonumber(me.x) - tonumber(g.last_x)
+		local dy = tonumber(me.y) - tonumber(g.last_y)
+		moved = math.sqrt((dx * dx) + (dy * dy))
+	end
+	if g.last_dist ~= nil then
+		ddelta = math.abs((tonumber(dist) or 0) - (tonumber(g.last_dist) or 0))
+	end
+	if moved ~= nil and ddelta ~= nil then
+		if moved < 0.05 and ddelta < 0.08 then
+			g.stuck_ticks = (tonumber(g.stuck_ticks) or 0) + 1
+		else
+			g.stuck_ticks = 0
+			if g.recovery_active then
+				g.recovery_active = false
+			end
+		end
+	end
+	if g.recovery_active and now >= (tonumber(g.recovery_until) or 0) then
+		g.recovery_active = false
+	end
+	g.last_x = tonumber(me.x)
+	g.last_y = tonumber(me.y)
+	g.last_dist = tonumber(dist) or 0
+	g.last_sample_at = tonumber(now) or os.clock()
+end
+
+local function run_heading_guarded(target, me, heading, tag, is_retreat_intent)
+	if not heading then
+		return false
+	end
+	local g = ensure_move_guard_state()
+	local now = os.clock()
+	local away = is_retreat_intent == true
+	if me and target and me.x ~= nil and me.y ~= nil and target.x ~= nil and target.y ~= nil then
+		local tx = tonumber(target.x) - tonumber(me.x)
+		local ty = tonumber(target.y) - tonumber(me.y)
+		local len = math.sqrt((tx * tx) + (ty * ty))
+		if len > 0.0001 then
+			local ux = tx / len
+			local uy = ty / len
+			local rx = math.cos(heading)
+			local ry = math.sin(heading)
+			local dot = (ux * rx) + (uy * ry)
+			if dot < -0.15 then
+				away = true
+			end
+		end
+	end
+	if g.recovery_active and now < (tonumber(g.recovery_until) or 0) and target and target.x ~= nil and target.y ~= nil then
+		if now < (tonumber(g.recovery_hold_until) or 0) then
+			windower.ffxi.run(false)
+			core.last_run_active = false
+			force_face_target(target)
+			_G.UC_MOVE_DIAG = ('stuck_recovery_hold ticks=%d'):format(tonumber(g.stuck_ticks) or 0)
+			return false
+		end
+		if (not g.recovery_flipped) and now >= (tonumber(g.recovery_flip_at) or 0) then
+			g.recovery_dir = (tonumber(g.recovery_dir) or 1) * -1
+			g.recovery_flipped = true
+		end
+		local toward = uc_heading_to(target.x, target.y)
+		if toward then
+			local side = ((tonumber(g.recovery_dir) or 1) >= 0) and (math.pi / 2) or (-math.pi / 2)
+			heading = toward + side
+			away = false
+			tag = (tostring(tag or '') .. ':sidestep')
+		end
+	end
+	if away and now < (tonumber(g.retreat_suppress_until) or 0) then
+		windower.ffxi.run(false)
+		core.last_run_active = false
+		force_face_target(target)
+		_G.UC_MOVE_DIAG = ('retreat_suppressed until=%.2f tag=%s'):format(tonumber(g.retreat_suppress_until) or 0, tostring(tag or ''))
+		return false
+	end
+	if away and (tonumber(g.stuck_ticks) or 0) >= 3 then
+		g.recovery_active = true
+		g.recovery_dir = (tonumber(g.recovery_dir) or 1) * -1
+		g.recovery_hold_until = now + 0.20
+		g.recovery_flip_at = now + 0.60
+		g.recovery_flipped = false
+		g.recovery_until = now + 1.00
+		g.retreat_suppress_until = math.max(tonumber(g.retreat_suppress_until) or 0, now + 2.0)
+		windower.ffxi.run(false)
+		core.last_run_active = false
+		force_face_target(target)
+		_G.UC_MOVE_DIAG = ('stuck_detected ticks=%d tag=%s -> hold+sidestep+suppress'):format(tonumber(g.stuck_ticks) or 0, tostring(tag or ''))
+		return false
+	end
+	windower.ffxi.run(heading)
+	core.last_run_active = true
+	_G.UC_MOVE_DIAG = ('move tag=%s away=%s stuck=%d'):format(tostring(tag or ''), tostring(away), tonumber(g.stuck_ticks) or 0)
+	return true
+end
+
 local function apply_movement(settings, target)
 	_G.UC_PULLER_APPROACH_BLOCK_UNTIL = 0
 	if setting_enabled(settings.manual) or setting_enabled(settings.static) or not target then
@@ -2008,6 +2233,8 @@ local function apply_movement(settings, target)
 	local mover = get_mover()
 	local me = windower.ffxi.get_mob_by_target('me')
 	local p = windower.ffxi.get_player()
+	local g = ensure_move_guard_state()
+	movement_guard_sample(g, me, dist, os.clock())
 	local spacing_on = setting_enabled(settings.spacing)
 	if spacing_on and me then
 		local heading, mode = spacing_compute_heading(settings, me, target, min_range, max_range)
@@ -2060,8 +2287,7 @@ local function apply_movement(settings, target)
 		if spacing_on and me then
 			local heading = uc_spacing_aware_approach_heading(settings, me, target)
 			if heading then
-				windower.ffxi.run(heading)
-				moved = true
+				moved = run_heading_guarded(target, me, heading, 'close_spacing', false)
 			end
 		end
 		if (not moved) and mover and target.id and type(mover.move_towards) == 'function' then
@@ -2073,32 +2299,23 @@ local function apply_movement(settings, target)
 		if not moved then
 			local heading = uc_heading_to(target.x, target.y)
 			if heading then
-				windower.ffxi.run(heading)
-				moved = true
+				moved = run_heading_guarded(target, me, heading, 'close_direct', false)
 			end
 		end
 		if not moved then
 			windower.ffxi.run()
 			moved = true
 		end
-		core.last_run_active = true
+		core.last_run_active = moved
 	elseif dist < min_range then
 		local moved = false
-		if mover and target.id and type(mover.move_away_from) == 'function' then
-			local ok = pcall(function()
-				mover:move_away_from(target.id)
-			end)
-			moved = ok
-		end
-		if not moved then
-			local heading = uc_heading_to(target.x, target.y)
-			if heading then
-				windower.ffxi.run(heading + math.pi)
-				moved = true
-			end
+		local heading = uc_heading_to(target.x, target.y)
+		if heading then
+			moved = run_heading_guarded(target, me, heading + math.pi, 'retreat_target', true)
 		end
 		if not moved then
 			stop_run()
+			force_face_target(target)
 		end
 		core.last_run_active = moved
 	else
@@ -2146,8 +2363,7 @@ local function apply_movement(settings, target)
 				if not moved and chosen_member and chosen_member.x and chosen_member.y then
 					local heading = uc_heading_to(chosen_member.x, chosen_member.y)
 					if heading then
-						windower.ffxi.run(heading + math.pi)
-						moved = true
+						moved = run_heading_guarded(target, me, heading + math.pi, 'retreat_party', true)
 					end
 				end
 				core.last_run_active = moved

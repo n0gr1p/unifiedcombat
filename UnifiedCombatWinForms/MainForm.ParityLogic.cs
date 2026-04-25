@@ -1675,6 +1675,102 @@ public partial class MainForm
         RememberPendingSpacingFromUi(sid);
     }
 
+    private void OnGlobalSpacingAnchorChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        SaveGlobalUiSettings();
+        PushGlobalAnchorSettingsToAllSessions();
+    }
+
+    private void RefreshGlobalAnchorMemberOptions()
+    {
+        var current = _spGlobalAnchorMember.SelectedItem?.ToString() ?? "";
+        var names = CurrentPartyNameOptions();
+
+        _suppressEvents = true;
+        try
+        {
+            _spGlobalAnchorMember.Items.Clear();
+            _spGlobalAnchorMember.Items.Add("");
+            foreach (var name in names)
+            {
+                _spGlobalAnchorMember.Items.Add(name);
+            }
+            if (!string.IsNullOrWhiteSpace(current))
+            {
+                var exists = false;
+                for (var i = 0; i < _spGlobalAnchorMember.Items.Count; i++)
+                {
+                    if (string.Equals(_spGlobalAnchorMember.Items[i]?.ToString() ?? "", current, StringComparison.Ordinal))
+                    {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists)
+                {
+                    _spGlobalAnchorMember.Items.Add(current);
+                }
+            }
+
+            var idx = 0;
+            for (var i = 0; i < _spGlobalAnchorMember.Items.Count; i++)
+            {
+                if (string.Equals(_spGlobalAnchorMember.Items[i]?.ToString() ?? "", current, StringComparison.Ordinal))
+                {
+                    idx = i;
+                    break;
+                }
+            }
+            _spGlobalAnchorMember.SelectedIndex = idx;
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+    }
+
+    private void PushGlobalAnchorSettingsToAllSessions()
+    {
+        foreach (var sid in _listSids)
+        {
+            PushGlobalAnchorSettingsToSid(sid);
+        }
+    }
+
+    private void PushGlobalAnchorSettingsToSid(string sid)
+    {
+        if (string.IsNullOrWhiteSpace(sid))
+        {
+            return;
+        }
+
+        var enabled = _spGlobalAnchorEnabled.Checked;
+        var name = (_spGlobalAnchorMember.SelectedItem?.ToString() ?? "").Trim();
+        Forward(
+            sid,
+            new Dictionary<string, object?>
+            {
+                ["op"] = "set",
+                ["path"] = "spacing_global_anchor_enabled",
+                ["value"] = enabled ? "on" : "off",
+            }
+        );
+        Forward(
+            sid,
+            new Dictionary<string, object?>
+            {
+                ["op"] = "set",
+                ["path"] = "spacing_global_anchor_name",
+                ["value"] = name,
+            }
+        );
+    }
+
     private void RememberPendingSpacingFromUi(string sid)
     {
         _pendingSpacingBySid[sid] = (
@@ -2634,6 +2730,7 @@ public partial class MainForm
         var pf = _partyFollowCombo.SelectedItem?.ToString() ?? "";
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set_party_follow", ["name"] = pf });
         PushPartyFollowDistances(sid);
+        PushGlobalAnchorSettingsToSid(sid);
         UpdateBooleanCardVisuals();
     }
 }
