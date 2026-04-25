@@ -2,6 +2,7 @@ local res = require('resources')
 local ability_pipeline = require('uc_ability_pipeline')
 local combat_core = require('unified_combat_core')
 local cor_maintenance = require('uc_cor_maintenance')
+local uc_settarget = require('uc_settarget')
 
 local scheduler = {
 	last_action_at = 0,
@@ -30,6 +31,10 @@ local scheduler = {
 			until_ts = 0,
 		},
 		maintenance_next_at = {},
+		tank_spell_settle_key = '',
+		tank_spell_settle_until = 0,
+		tank_action_settle_key = '',
+		tank_action_settle_until = 0,
 	},
 }
 
@@ -90,6 +95,84 @@ local function bool_setting(v, default_value)
 		return s == 'true' or s == 'on' or s == '1' or s == 'yes'
 	end
 	return false
+end
+
+local function log_ja_sched(msg)
+	if type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
+		pcall(_G.UC_LOG_DIAG, 'ja_sched', msg)
+	end
+end
+
+local SCHED_RANGE_MULT = {
+	[2] = 1.95,
+	[3] = 1.490909,
+	[4] = 1.44,
+	[5] = 1.377778,
+	[6] = 1.30,
+	[7] = 1.15,
+	[8] = 1.25,
+	[9] = 1.377778,
+	[10] = 1.45,
+	[11] = 1.454545454545455,
+	[12] = 1.666666666666667,
+}
+
+local function action_effective_range(raw_range)
+	local r = tonumber(raw_range) or 0
+	if r <= 0 then
+		return 0
+	end
+	local m = SCHED_RANGE_MULT[r]
+	if m then
+		return r * m
+	end
+	if r > 20 then
+		return r * 0.01
+	end
+	return r
+end
+
+local function ja_targets_enemy(ja)
+	local targets = ja and ja.targets
+	if type(targets) == 'string' then
+		return targets:find('Enemy', 1, true) ~= nil
+	end
+	if type(targets) == 'number' then
+		local n = math.floor(targets)
+		return (n % 64) >= 32
+	end
+	if type(targets) == 'table' then
+		return targets.Enemy == true or targets.enemy == true
+	end
+	return false
+end
+
+local function normalize_angle_rad(a)
+	local two_pi = math.pi * 2
+	while a > math.pi do
+		a = a - two_pi
+	end
+	while a < -math.pi do
+		a = a + two_pi
+	end
+	return a
+end
+
+local function target_is_in_front_arc(target, arc)
+	local me = windower.ffxi.get_mob_by_target('me')
+	if not me or not target or me.x == nil or me.y == nil or target.x == nil or target.y == nil or me.facing == nil then
+		return false
+	end
+	local heading = math.atan2(target.y - me.y, target.x - me.x)
+	local delta = math.abs(normalize_angle_rad(heading - tonumber(me.facing)))
+	return delta <= (tonumber(arc) or (math.pi / 2))
+end
+
+local function ja_requires_engaged_front(name, ja)
+	if (tonumber(ja and ja.id) or 0) == 46 then -- Shield Bash
+		return true
+	end
+	return tostring(name or ''):lower() == 'shield bash'
 end
 
 local function get_party_members()
@@ -187,10 +270,42 @@ local function spell_ready(name)
 	return true, ''
 end
 
-local function ja_ready(name)
+local function ja_ready(name, target_id)
 	local ja = get_ja_resource(name)
 	if not ja then
 		return false, 'BLOCK_DEFENSIVE_UNKNOWN_JA'
+	end
+	local p = windower.ffxi.get_player()
+	local status = tonumber(p and p.status) or 0
+	if status == 3 then
+		return false, 'BLOCK_ACTION_STATUS3'
+	end
+	local requires_engaged_front = ja_requires_engaged_front(name, ja)
+	if requires_engaged_front and status ~= 1 then
+		return false, 'BLOCK_JA_REQUIRES_ENGAGED'
+	end
+	if ja_targets_enemy(ja) then
+		local target = nil
+		local tid = tonumber(target_id) or 0
+		if tid > 0 then
+			target = windower.ffxi.get_mob_by_id(tid)
+		end
+		if not target then
+			target = windower.ffxi.get_mob_by_target('t')
+		end
+		if not target or not target.valid_target or tonumber(target.spawn_type) ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
+			return false, 'BLOCK_JA_BAD_TARGET'
+		end
+		local r = action_effective_range(ja.range)
+		if r > 0 then
+			local d = target.distance and target.distance:sqrt() or 999
+			if d > r then
+				return false, 'BLOCK_JA_OUT_OF_RANGE'
+			end
+		end
+		if requires_engaged_front and not target_is_in_front_arc(target, math.pi / 2) then
+			return false, 'BLOCK_JA_NOT_FRONT'
+		end
 	end
 	local recasts = windower.ffxi.get_ability_recasts() or {}
 	if (recasts[ja.recast_id] or 0) > 0 then
@@ -199,7 +314,7 @@ local function ja_ready(name)
 	return true, ''
 end
 
-local function action_ready(name)
+local function action_ready(name, target_id)
 	local sp = get_spell_resource(name)
 	if sp then
 		local ok, reason = spell_ready(name)
@@ -207,7 +322,7 @@ local function action_ready(name)
 	end
 	local ja = get_ja_resource(name)
 	if ja then
-		local ok, reason = ja_ready(name)
+		local ok, reason = ja_ready(name, target_id)
 		return ok, reason, 'ja'
 	end
 	return false, 'BLOCK_DEFENSIVE_UNKNOWN_ACTION', 'none'
@@ -1004,6 +1119,77 @@ local function p1_collect_combat_offense(ctx, out)
 	}
 end
 
+local function p1_collect_combat_tank_enmity(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	if not combat_core or type(combat_core.select_tank_enmity_for_scheduler) ~= 'function' then
+		return
+	end
+	local pick = combat_core.select_tank_enmity_for_scheduler(ctx.settings)
+	if type(pick) ~= 'table' then
+		return
+	end
+	local kind = tostring(pick.kind or ''):lower()
+	if kind ~= 'ja' and kind ~= 'spell' then
+		return
+	end
+	local action_name = tostring(pick.name or '')
+	local target_id = tonumber(pick.target_id) or 0
+	if action_name == '' or target_id <= 0 then
+		return
+	end
+	-- Higher than normal combat (70) so enmity recovery wins combat arbitration.
+	local prio = 85
+	local urgency = 0.85
+	local victim_hpp = tonumber(pick.victim_hpp) or 0
+	if victim_hpp > 0 then
+		urgency = p1_clamp_urgency(1.0 - (math.min(victim_hpp, 100) / 100.0))
+		if urgency < 0.60 then
+			urgency = 0.60
+		end
+	end
+	out[#out + 1] = {
+		proposal_id = ('combat.tank.%s.%s.%d.%d'):format(kind, action_name, target_id, math.floor(ctx.now * 1000)),
+		family_id = 'combat.tank_enmity.primary',
+		provider = 'combat',
+		action_type = kind,
+		action_name = action_name,
+		target_kind = 'mob',
+		target_id = target_id,
+		target_name = tostring(pick.target_name or ''),
+		priority_band = prio,
+		urgency = p1_clamp_urgency(urgency),
+		starvation_eligible = true,
+		created_at = ctx.now,
+		expires_at = ctx.now + 0.30,
+		commit_deadline = ctx.now + 0.20,
+		movement_policy = (kind == 'spell') and 'must_stop' or 'requires_range',
+		range_policy = { min = 0.0, max = math.max(1.0, tonumber(pick.action_range) or 20.0), los_required = false },
+		recast_key = ('tank:%s:%s'):format(kind, action_name),
+		duplicate_suppression_key = ('tank:%s:%s:%d'):format(kind, action_name, target_id),
+		lock_class = 'offense_action',
+		expected_ack = 'action_start',
+		expected_effect = (kind == 'spell') and 'spell_effect' or 'ja_effect',
+		sticky = true,
+		can_preempt_movement = true,
+		can_preempt_same_band = true,
+		reason_code = 'tank_enmity_violation',
+		detail = {
+			tank_enmity = true,
+			victim_name = tostring(pick.victim_name or ''),
+			victim_hpp = tonumber(pick.victim_hpp) or 0,
+			mob_hpp = tonumber(pick.mob_hpp) or 0,
+			dist = tonumber(pick.dist) or 0,
+			action_range = tonumber(pick.action_range) or 0,
+			selection_reason = tostring(pick.reason or ''),
+		},
+		legacy_command = (kind == 'spell')
+			and ('input /ma \"%s\" %d'):format(action_name, target_id)
+			or ('input /ja \"%s\" %d'):format(action_name, target_id),
+	}
+end
+
 local function p1_collect_combat_ja(ctx, out)
 	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 		return
@@ -1023,7 +1209,7 @@ local function p1_collect_combat_ja(ctx, out)
 	for _, name in ipairs(ordered) do
 		local ja = get_ja_resource(name)
 		if ja then
-			local ok_ready, _, kind = action_ready(name)
+			local ok_ready, reason, kind = action_ready(name, target and target.id or 0)
 			if ok_ready and kind == 'ja' then
 				local target_kind = 'self'
 				local target_id = tonumber(player.id) or 0
@@ -1035,10 +1221,7 @@ local function p1_collect_combat_ja(ctx, out)
 						ja_target_ok = false
 					end
 					if ja_target_ok then
-						local r = (tonumber(ja.range) or 0)
-						if r > 20 then
-							r = r * 0.01
-						end
+						local r = action_effective_range(ja.range)
 						if r > 0 then
 							local d = target.distance and target.distance:sqrt() or 999
 							if d > r then
@@ -1087,7 +1270,20 @@ local function p1_collect_combat_ja(ctx, out)
 						required_setting = 'ability_active',
 					}
 					break
+				else
+					log_ja_sched(('collect_skip name=\"%s\" reason=TARGET_INVALID status=%s target_id=%s'):format(
+						tostring(name),
+						tostring((windower.ffxi.get_player() or {}).status or ''),
+						tostring(target and target.id or 0)
+					))
 				end
+			elseif kind == 'ja' then
+				log_ja_sched(('collect_skip name=\"%s\" reason=%s status=%s pending=%s'):format(
+					tostring(name),
+					tostring(reason or 'NOT_READY'),
+					tostring((windower.ffxi.get_player() or {}).status or ''),
+					tostring((scheduler.phase1.pending and scheduler.phase1.pending.action_name) or '')
+				))
 			end
 		end
 	end
@@ -1319,6 +1515,7 @@ local function p1_collect_proposals(ctx)
 	local out = {}
 	p1_collect_defensive_internal(ctx, out)
 	p1_collect_defensive_healbot(ctx, out)
+	p1_collect_combat_tank_enmity(ctx, out)
 	p1_collect_combat_offense(ctx, out)
 	p1_collect_combat_ja(ctx, out)
 	p1_collect_movement(ctx, out)
@@ -1940,6 +2137,50 @@ local function p1_run_dry(settings)
 	end
 end
 
+local function p1_is_tank_enmity_selected(selected)
+	if type(selected) ~= 'table' then
+		return false
+	end
+	if tostring(selected.family_id or '') == 'combat.tank_enmity.primary' then
+		return true
+	end
+	return selected.detail and selected.detail.tank_enmity == true
+end
+
+local function p1_try_target_prep(target_id)
+	local tid = tonumber(target_id) or 0
+	if tid <= 0 then
+		return false
+	end
+	local cur = windower.ffxi.get_mob_by_target('t')
+	if cur and tonumber(cur.id) == tid then
+		return true
+	end
+	local ok = false
+	if uc_settarget and type(uc_settarget.select_by_id) == 'function' then
+		ok = (uc_settarget.select_by_id(tid) == true)
+	end
+	return ok
+end
+
+local function p1_target_distance_to_id(target_id)
+	local mob = windower.ffxi.get_mob_by_id(tonumber(target_id) or 0)
+	if not mob or mob.distance == nil then
+		return nil, nil
+	end
+	return mob.distance:sqrt(), mob
+end
+
+local function p1_move_toward_mob(mob)
+	local me = windower.ffxi.get_mob_by_target('me')
+	if not me or not mob or me.x == nil or me.y == nil or mob.x == nil or mob.y == nil then
+		return false
+	end
+	local heading = math.atan2(mob.y - me.y, mob.x - me.x)
+	windower.ffxi.run(heading)
+	return true
+end
+
 local function p1_try_dark_launch_dispatch(settings)
 	local phase = scheduler.phase1
 	local selected = phase.last_selected
@@ -1952,18 +2193,54 @@ local function p1_try_dark_launch_dispatch(settings)
 		if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
 			return false, nil
 		end
-		local player = windower.ffxi.get_player()
-		if not player or tonumber(player.status) ~= 1 then
-			return false, nil
-		end
 		local action_type = tostring(selected.action_type or '')
+		local tank_enmity = p1_is_tank_enmity_selected(selected)
+		local expected_tid = tonumber(selected.target_id) or 0
+		local target_kind = tostring(selected.target_kind or 'self')
+		if tank_enmity and target_kind == 'mob' and expected_tid > 0 then
+			local max_range = math.max(0, p1_number(selected.range_policy and selected.range_policy.max, 0))
+			local dist, mob = p1_target_distance_to_id(expected_tid)
+			if not mob or not mob.valid_target or (tonumber(mob.hpp) or 0) <= 0 then
+				return false, nil
+			end
+			-- Safety: do not force-move from scheduler for tank intents while parity is stabilizing.
+			-- Let core movement/follow/spacing continue to own locomotion to avoid run-lock behavior.
+			if max_range > 0 and dist and dist > max_range then
+				return false, nil
+			end
+			-- T7: target prep owned by scheduler for tank actions.
+			p1_try_target_prep(expected_tid)
+		end
+		if tank_enmity and (action_type == 'ja' or action_type == 'spell') and target_kind == 'mob' and expected_tid > 0 then
+			-- Regression guard: always stop briefly before tank enmity action dispatch so we
+			-- don't issue JA/spell while still carrying a previous run vector.
+			local settle_key = ('%s:%s:%d'):format(action_type, tostring(selected.action_name or ''), expected_tid)
+			local now = os.clock()
+			if tostring(phase.tank_action_settle_key or '') ~= settle_key then
+				phase.tank_action_settle_key = settle_key
+				phase.tank_action_settle_until = now + 0.25
+			end
+			windower.ffxi.run(false)
+			if now < p1_number(phase.tank_action_settle_until, 0) then
+				_G.UC_LAST_SCHED_ACTION = ('[p1]tank_action_settle:%s->%s'):format(
+					tostring(selected.action_name or ''),
+					tostring(selected.target_name or '')
+				)
+				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_ACTION_SETTLE'
+			end
+			phase.tank_action_settle_key = ''
+			phase.tank_action_settle_until = 0
+		end
 		if action_type == 'ws' then
+			local player = windower.ffxi.get_player()
+			if not player or tonumber(player.status) ~= 1 then
+				return false, nil
+			end
 			local tp = tonumber(player.vitals and player.vitals.tp) or 0
 			if tp < 1000 then
 				return false, nil
 			end
 			local target = windower.ffxi.get_mob_by_target('t')
-			local expected_tid = tonumber(selected.target_id) or 0
 			if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
 				return false, nil
 			end
@@ -1978,22 +2255,77 @@ local function p1_try_dark_launch_dispatch(settings)
 			if ability == '' then
 				return false, nil
 			end
-			local ok_ready, _, action_kind = action_ready(ability)
+			local ok_ready, reason, action_kind = action_ready(ability, expected_tid)
 			if action_kind ~= 'ja' or not ok_ready then
+				log_ja_sched(('dispatch_block name=\"%s\" reason=%s kind=%s status=%s pending=%s'):format(
+					tostring(ability),
+					tostring(reason or 'NOT_READY'),
+					tostring(action_kind or ''),
+					tostring((windower.ffxi.get_player() or {}).status or ''),
+					tostring((scheduler.phase1.pending and scheduler.phase1.pending.action_name) or '')
+				))
 				return false, nil
 			end
-			local target_kind = tostring(selected.target_kind or 'self')
-			local expected_tid = tonumber(selected.target_id) or 0
 			if target_kind == 'mob' then
-				local target = windower.ffxi.get_mob_by_target('t')
-				if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
-					return false, nil
+				-- For tank-enmity parity, we dispatch JA by id after scheduler target prep.
+				if not tank_enmity then
+					local target = windower.ffxi.get_mob_by_target('t')
+					if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
+						return false, nil
+					end
 				end
 				windower.send_command(('input /ja \"%s\" %d'):format(ability, expected_tid))
+				log_ja_sched(('dispatch_send name=\"%s\" mode=target tid=%d'):format(tostring(ability), tonumber(expected_tid) or 0))
 			else
+				if tank_enmity then
+					windower.ffxi.run(false)
+				end
 				windower.send_command(('input /ja \"%s\" <me>'):format(ability))
+				log_ja_sched(('dispatch_send name=\"%s\" mode=self'):format(tostring(ability)))
 			end
 			_G.UC_LAST_SCHED_ACTION = ('[p1]ja:%s->%s'):format(ability, tostring(selected.target_name or ''))
+		elseif action_type == 'spell' then
+			local spell = tostring(selected.action_name or '')
+			if spell == '' then
+				return false, nil
+			end
+			local ok_ready, _, action_kind = action_ready(spell)
+			if action_kind ~= 'spell' or not ok_ready then
+				return false, nil
+			end
+			if tank_enmity then
+				local settle_key = ('%s:%d'):format(spell, expected_tid)
+				local now = os.clock()
+				if tostring(phase.tank_spell_settle_key or '') ~= settle_key then
+					phase.tank_spell_settle_key = settle_key
+					phase.tank_spell_settle_until = now + 0.40
+				end
+				windower.ffxi.run(false)
+				if now < p1_number(phase.tank_spell_settle_until, 0) then
+					_G.UC_LAST_SCHED_ACTION = ('[p1]tank_settle:%s->%s'):format(spell, tostring(selected.target_name or ''))
+					return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_SETTLE'
+				end
+				phase.tank_spell_settle_key = ''
+				phase.tank_spell_settle_until = 0
+			end
+			if target_kind == 'mob' then
+				if not tank_enmity then
+					local target = windower.ffxi.get_mob_by_target('t')
+					if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
+						return false, nil
+					end
+				end
+				if tank_enmity then
+					windower.ffxi.run(false)
+				end
+				windower.send_command(('input /ma \"%s\" %d'):format(spell, expected_tid))
+			else
+				if tank_enmity then
+					windower.ffxi.run(false)
+				end
+				windower.send_command(('input /ma \"%s\" <me>'):format(spell))
+			end
+			_G.UC_LAST_SCHED_ACTION = ('[p1]spell:%s->%s'):format(spell, tostring(selected.target_name or ''))
 		else
 			return false, nil
 		end

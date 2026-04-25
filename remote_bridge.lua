@@ -813,6 +813,24 @@ local function process_line(line)
 			_G.UC_StartUnifiedEngine()
 		end
 	end
+	local function send_options_snapshot()
+		local p = windower.ffxi.get_player()
+		if not p then
+			return
+		end
+		local st = {
+			op = 'options',
+			session = session_id,
+			char = p.name,
+			job = p.main_job,
+			engine = _G.UC_ENGINE,
+			ability_options = uc_get_cached_ability_options(),
+			weaponskill_options = uc_join_pipe(uc_get_weaponskill_names()),
+			path_pull_ja_options = select(1, uc_get_cached_pull_action_options()),
+			path_pull_spell_options = select(2, uc_get_cached_pull_action_options()),
+		}
+		safe_send_line(json_encode_simple(st))
+	end
 	if op == 'set' then
 		apply_set(msg.path, msg.value)
 	elseif op == 'set_partner' then
@@ -927,6 +945,101 @@ local function process_line(line)
 				s['ability' .. tostring(i)] = vals[i] or ''
 			end
 		end
+	elseif op == 'tank_enmity_replace_actions' then
+		local s = _G.UC_SETTINGS
+		if s then
+			local vals = uc_split_pipe(msg.value)
+			local out = {}
+			local seen = {}
+			for _, entry in ipairs(vals) do
+				local n = uc_trim(entry)
+				local k = n:lower()
+				if n ~= '' and not seen[k] then
+					seen[k] = true
+					out[#out + 1] = n
+				end
+			end
+			s.tank_enmity_actions = out
+		end
+		last_state_send = 0
+	elseif op == 'ignore_replace_names' then
+		local s = _G.UC_SETTINGS
+		if s then
+			local vals = uc_split_pipe(msg.value)
+			s.ignore = {}
+			for _, name in ipairs(vals) do
+				local tid = uc_resolve_target_id_by_name(name)
+				if tid and tid ~= 0 then
+					uc_ignore.append_id(s, tid)
+				end
+			end
+		end
+		last_state_send = 0
+	elseif op == 'partner_replace_names' then
+		local s = _G.UC_SETTINGS
+		if s then
+			local vals = uc_split_pipe(msg.value)
+			s.partner_ids = {}
+			for _, name in ipairs(vals) do
+				local tid = uc_resolve_target_id_by_name(name)
+				if tid and tid ~= 0 then
+					uc_partner_list.append_id(s, tid)
+				end
+			end
+			uc_partner_list.sync_legacy_partner_fields(s)
+		end
+		last_state_send = 0
+	elseif op == 'target_ignore_replace_names' then
+		local s = _G.UC_SETTINGS
+		if s then
+			local vals = uc_split_pipe(msg.value)
+			local out = {}
+			local seen = {}
+			for _, name in ipairs(vals) do
+				local n = uc_trim(name)
+				local k = n:lower()
+				if n ~= '' and not seen[k] then
+					seen[k] = true
+					out[#out + 1] = n
+				end
+			end
+			s.target_ignore_names = out
+		end
+		last_state_send = 0
+	elseif op == 'add_priority_replace_names' then
+		local s = _G.UC_SETTINGS
+		if s then
+			local vals = uc_split_pipe(msg.value)
+			local out = {}
+			local seen = {}
+			for _, name in ipairs(vals) do
+				local n = uc_trim(name)
+				local k = n:lower()
+				if n ~= '' and not seen[k] then
+					seen[k] = true
+					out[#out + 1] = n
+				end
+			end
+			s.add_priority_names = out
+		end
+		last_state_send = 0
+	elseif op == 'path_hunter_replace_names' then
+		local s = _G.UC_SETTINGS
+		if s then
+			local vals = uc_split_pipe(msg.value)
+			local out = {}
+			local seen = {}
+			for _, name in ipairs(vals) do
+				local n = uc_trim(name)
+				local k = n:lower()
+				if n ~= '' and not seen[k] then
+					seen[k] = true
+					out[#out + 1] = n
+				end
+			end
+			s.path_hunter_targets = out
+		end
+		last_state_send = 0
 	elseif op == 'ignore_add' then
 		local s = _G.UC_SETTINGS
 		local name = uc_trim(msg.name)
@@ -1158,8 +1271,13 @@ local function process_line(line)
 		if type(_G.UC_ReloadActiveProfile) == 'function' then
 			_G.UC_ReloadActiveProfile()
 		end
+	elseif op == 'addon_reload' then
+		-- Explicit UI-initiated full addon reload. This is intentionally separate from profile reload.
+		windower.send_command('lua reload unifiedcombat')
 	elseif op == 'request_state' then
 		last_state_send = 0
+	elseif op == 'request_options' then
+		send_options_snapshot()
 	end
 end
 
@@ -1197,67 +1315,6 @@ function uc_remote_tick()
 	if not p then
 		return
 	end
-	local s = _G.UC_SETTINGS
-	if not s then
-		return
-	end
-	pcall(function()
-		uc_ws_memory.sync_settings(s)
-	end)
-	pcall(function()
-		uc_partner_list.migrate_from_legacy(s)
-		uc_partner_list.sync_legacy_partner_fields(s)
-	end)
-	local selected_abilities = {}
-	if type(s.abilities) == 'table' then
-		for _, a in ipairs(s.abilities) do
-			if a and a ~= '' then
-				selected_abilities[#selected_abilities + 1] = a
-			end
-		end
-	else
-		for i = 1, 6 do
-			local a = s['ability' .. tostring(i)]
-			if a and a ~= '' then
-				selected_abilities[#selected_abilities + 1] = a
-			end
-		end
-	end
-	local party_names, _, id_to_name = uc_get_party_name_maps(false)
-	local puller_names, _, puller_id_to_name = uc_get_party_name_maps(true)
-	local pull_ja_options, pull_spell_options = uc_get_cached_pull_action_options()
-	local pull_type = tostring(s.path_pull_action_type or 'ja'):lower()
-	if pull_type ~= 'spell' then
-		pull_type = 'ja'
-	end
-	local pull_name = uc_trim(s.path_pull_action_name or '')
-	if not uc_pull_action_name_valid(pull_type, pull_name) then
-		pull_name = ''
-		s.path_pull_action_name = ''
-	end
-	local function uc_name_by_id(id)
-		local nid = tonumber(id) or 0
-		if nid == 0 then
-			return nil
-		end
-		if type(GetNameById) == 'function' then
-			local ok, res = pcall(GetNameById, nid)
-			if ok and type(res) == 'string' and res ~= '' then
-				return res
-			end
-		end
-		local pn = id_to_name[nid]
-		if type(pn) == 'string' and pn ~= '' then
-			return pn
-		end
-		local okm, mob = pcall(function()
-			return windower.ffxi.get_mob_by_id(nid)
-		end)
-		if okm and mob and type(mob.name) == 'string' and mob.name ~= '' then
-			return mob.name
-		end
-		return nil
-	end
 	local zu = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
 	local zone_suspend_active = type(zu) == 'number' and os.clock() < zu
 	local st = {
@@ -1265,139 +1322,10 @@ function uc_remote_tick()
 		session = session_id,
 		char = p.name,
 		job = p.main_job,
-		sub_job = p.sub_job,
-		level_sync = windower.ffxi.get_info() and windower.ffxi.get_info().level_sync or '',
 		engine = _G.UC_ENGINE,
 		Start_Engine = Start_Engine,
 		zone_suspend_active = zone_suspend_active,
-		ws1 = s.ws1,
-		weaponskill = s.weaponskill,
-		show_ingame_ui = (s.show_ingame_ui ~= false),
-		defensive_enabled = s.defensive_enabled,
-		defensive_provider = s.defensive_provider,
-		defensive_cure_enabled = s.defensive_cure_enabled,
-		defensive_na_enabled = s.defensive_na_enabled,
-		defensive_buff_enabled = s.defensive_buff_enabled,
-		defensive_critical_hpp = s.defensive_critical_hpp,
-		defensive_medium_hpp = s.defensive_medium_hpp,
-		defensive_overwrite_enabled = s.defensive_overwrite_enabled,
-		defensive_overwrite_interval = s.defensive_overwrite_interval,
-		defensive_buff_self_only = s.defensive_buff_self_only,
-		defensive_buffs = s.defensive_buffs,
-		scheduler_dark_launch_combat = (s.scheduler_dark_launch_combat == true),
-		scheduler_dark_launch_defensive = (s.scheduler_dark_launch_defensive == true),
-		scheduler_dark_launch_movement = (s.scheduler_dark_launch_movement == true),
-		scheduler_dark_launch_maintenance = (s.scheduler_dark_launch_maintenance == true),
-		cor_roll_1 = tostring(s.cor_roll_1 or ''),
-		cor_roll_2 = tostring(s.cor_roll_2 or ''),
-		path_recording = (s.path_recording == true),
-		path_follow_enabled = (s.path_follow_enabled == true),
-		path_file_name = tostring(s.path_file_name or ''),
-		path_route_type = tostring(s.path_route_type or 'unknown'),
-		path_distance_to_start = tonumber(s.path_distance_to_start) or 0,
-		path_points_count = type(s.path_points) == 'table' and #s.path_points or 0,
-		path_party_gate_yalms = tonumber(s.path_party_gate_yalms) or 3.0,
-		path_resume_index_window = tonumber(s.path_resume_index_window) or 12,
-		path_hunter_max_z_delta = tonumber(s.path_hunter_max_z_delta) or 2.0,
-		path_hunter_max_target_range = tonumber(s.path_hunter_max_target_range) or 20.0,
-		path_hunter_claim_timeout_s = tonumber(s.path_hunter_claim_timeout_s) or 4.0,
-		path_hunter_ignore_cooldown_s = tonumber(s.path_hunter_ignore_cooldown_s) or 20.0,
-		path_pull_action_type = pull_type,
-		path_pull_action_name = pull_name,
-		path_hunter_entries = uc_path_hunter.encode_for_ui(s),
-		path_hunter_last_op = _G.UC_LAST_PATH_HUNTER_OP or '',
-		block_reason = _G.UC_LAST_BLOCK_REASON or '',
-		ws_diag = _G.UC_WS_LAST_DIAG or '',
-		scheduler_action = _G.UC_LAST_SCHED_ACTION or '',
-		scheduler_provider = _G.UC_SCHED_PROVIDER or '',
-		scheduler_tick_seq = _G.UC_SCHED_TICK_SEQ or 0,
-		scheduler_tick = _G.UC_SCHED_P1_TICK or 0,
-		scheduler_selected_proposal = _G.UC_SCHED_P1_SELECTED_PROPOSAL or '',
-		scheduler_selected_provider = _G.UC_SCHED_P1_SELECTED_PROVIDER or '',
-		scheduler_selected_family = _G.UC_SCHED_P1_SELECTED_FAMILY or '',
-		scheduler_plan_prelude = _G.UC_SCHED_P1_PLAN_PRELUDE or '',
-		scheduler_pending_state = _G.UC_SCHED_P1_PENDING_STATE or '',
-		scheduler_lock_summary = _G.UC_SCHED_P1_LOCK_SUMMARY or '',
-		scheduler_reject_top = _G.UC_SCHED_P1_REJECT_TOP or '',
-		scheduler_noop_reason = _G.UC_SCHED_P1_NOOP_REASON or '',
-		scheduler_top3 = _G.UC_SCHED_P1_TOP3 or '',
-		scheduler_top3_verbose = _G.UC_SCHED_P1_TOP3_VERBOSE or '',
-		autotarget = s.autotarget,
-		ability_active = s.ability_active,
-		weaponskill_active = s.weaponskill_active,
-		aftermath_enabled = s.aftermath_enabled,
-		aftermath_ws = s.aftermath_ws,
-		spam = s.spam,
-		closer = s.closer,
-		manual = s.manual,
-		prime = s.prime,
-		static = s.static,
-		spacing = s.spacing,
-		spacing_band_min = tonumber(s.spacing_band_min) or -0.9,
-		spacing_band_max = tonumber(s.spacing_band_max) or 0.4,
-		spacing_model_size_floor = tonumber(s.spacing_model_size_floor) or 0.9,
-		spacing_use_prediction = (s.spacing_use_prediction ~= false),
-		spacing_lookahead_s = tonumber(s.spacing_lookahead_s) or 0.25,
-		spacing_anchor_invalid_ticks = tonumber(s.spacing_anchor_invalid_ticks) or 5,
-		spacing_emergency_margin = tonumber(s.spacing_emergency_margin) or 0.10,
-		spacing_slot_switch_penalty = tonumber(s.spacing_slot_switch_penalty) or 0.75,
-		spacing_slot_switch_margin = tonumber(s.spacing_slot_switch_margin) or 0.35,
-		spacing_slot_arrival_tolerance = tonumber(s.spacing_slot_arrival_tolerance) or 0.20,
-		spacing_max_agents = tonumber(s.spacing_max_agents) or 6,
-		face = s.face,
-		partner = s.partner,
-		partner2 = s.partner2,
-		puller = s.puller,
-		fight_leader = s.fight_leader,
-		party_follow = s.party_follow,
-		party_follow_min = tonumber(s.party_follow_min) or 0.5,
-		party_follow_max = tonumber(s.party_follow_max) or 50,
-		fight_follow_min = tonumber(s.fight_follow_min) or 3.0,
-		fight_follow_hold_s = tonumber(s.fight_follow_hold_s) or 8.0,
-		party_follow_leader_name = tostring(s.party_follow_leader_name or ''),
-		add_control = s.add_control,
-		puller_distance_only = (s.puller_distance_only == true),
-		sub = s.sub,
-		sub2 = s.sub2,
-		move = s.move,
-		debug = s.debug,
-		solo = s.solo,
-		aeonic = s.aeonic,
-		color = s.color,
-		tank = s.tank,
-		sleep = s.sleep,
-		command = s.command,
-		hunter = s.hunter,
-		ability1 = s.ability1,
-		ability2 = s.ability2,
-		ability3 = s.ability3,
-		ability4 = s.ability4,
-		ability5 = s.ability5,
-		ability6 = s.ability6,
-		abilities_selected = uc_join_pipe(selected_abilities),
-		ability_options = uc_get_cached_ability_options(),
-		weaponskill_options = uc_join_pipe(uc_get_weaponskill_names()),
-		path_pull_ja_options = pull_ja_options,
-		path_pull_spell_options = pull_spell_options,
-		ignore_entries = uc_ignore.encode_for_ui(s, uc_name_by_id),
-		ignore_last_op = _G.UC_LAST_IGNORE_OP or '',
-		target_ignore_entries = uc_target_ignore.encode_for_ui(s),
-		target_ignore_last_op = _G.UC_LAST_TARGET_IGNORE_OP or '',
-		add_priority_entries = uc_add_priority.encode_for_ui(s),
-		add_priority_last_op = _G.UC_LAST_ADD_PRIORITY_OP or '',
-		partner_entries = uc_partner_list.encode_for_ui(s, uc_name_by_id),
-		partner_last_op = _G.UC_LAST_PARTNER_OP or '',
 	}
-	local tnm, tid = uc_current_target_snapshot()
-	st.ignore_target_name = tnm
-	st.ignore_target_id = tid
-	st.partner_options = uc_join_pipe(party_names)
-	st.puller_options = uc_join_pipe(puller_names)
-	st.puller_selected = puller_id_to_name[s.puller_id] or ''
-	st.fight_leader_selected = id_to_name[s.fight_leader_id] or ''
-	st.fight_leader_last_op = _G.UC_LAST_FIGHT_LEADER_OP or ''
-	st.party_follow_selected = id_to_name[s.party_follow_id] or ''
-	st.party_follow_last_op = _G.UC_LAST_PARTY_FOLLOW_OP or ''
 	if not safe_send_line(json_encode_simple(st)) then
 		return
 	end

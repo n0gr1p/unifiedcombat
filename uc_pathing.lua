@@ -18,6 +18,7 @@ local follow_state = {
 }
 local follow_arrival_tolerance = 0.8
 local debug_overlay = nil
+local debug_target_overlay = nil
 local follow_paused = false
 local follow_pause_anchor_index = nil
 
@@ -389,6 +390,118 @@ local function collect_party_distances()
 	return out
 end
 
+local function collect_aggressive_mobs_with_targets(max_dist)
+	local out = {}
+	local me = windower.ffxi.get_mob_by_target('me')
+	if not me or me.x == nil or me.y == nil then
+		return out
+	end
+	local party_name_by_id = {}
+	local p = windower.ffxi.get_player()
+	if p and p.id and p.id ~= 0 then
+		party_name_by_id[tonumber(p.id) or 0] = tostring(p.name or 'me')
+	end
+	local party = windower.ffxi.get_party() or {}
+	for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
+		local e = party[key]
+		local pm = e and e.mob
+		if pm and pm.id and pm.id ~= 0 then
+			party_name_by_id[tonumber(pm.id) or 0] = tostring(pm.name or ('id:' .. tostring(pm.id)))
+		end
+	end
+	local max_scan = tonumber(max_dist) or 30.0
+	if max_scan < 5.0 then
+		max_scan = 5.0
+	elseif max_scan > 120.0 then
+		max_scan = 120.0
+	end
+	local marray = windower.ffxi.get_mob_array() or {}
+	for _, mob in pairs(marray) do
+		if mob and mob.id and mob.id ~= 0 and (tonumber(mob.hpp) or 0) > 0 and mob.x ~= nil and mob.y ~= nil and (tonumber(mob.status) or 0) == 1 then
+			local dx = (mob.x or 0) - (me.x or 0)
+			local dy = (mob.y or 0) - (me.y or 0)
+			local dist = math.sqrt(dx * dx + dy * dy)
+			if dist <= max_scan then
+				local t = nil
+				local claim_tid = tonumber(mob.claim_id) or 0
+				if claim_tid > 0 and party_name_by_id[claim_tid] ~= nil then
+					local ok_claim, by_claim = pcall(function()
+						return windower.ffxi.get_mob_by_id(claim_tid)
+					end)
+					if ok_claim then
+						t = by_claim
+					end
+					if not t or not t.id or t.id == 0 then
+						t = { id = claim_tid, name = '(claim)' }
+					end
+				end
+				if (not t or not t.id or t.id == 0) and mob.target_index and tonumber(mob.target_index) and tonumber(mob.target_index) > 0 then
+					local ok_idx, by_idx = pcall(function()
+						return windower.ffxi.get_mob_by_index(mob.target_index)
+					end)
+					if ok_idx then
+						t = by_idx
+					end
+				end
+				if (not t or not t.id or t.id == 0) and mob.target and tonumber(mob.target) and tonumber(mob.target) > 0 then
+					local ok_id, by_id = pcall(function()
+						return windower.ffxi.get_mob_by_id(mob.target)
+					end)
+					if ok_id then
+						t = by_id
+					end
+				end
+				if (not t or not t.id or t.id == 0) then
+					local amap = rawget(_G, 'UC_MOB_LAST_ACTION_TARGETS')
+					local rec = type(amap) == 'table' and amap[tonumber(mob.id) or 0] or nil
+					if type(rec) == 'table' then
+						local age = os.clock() - (tonumber(rec.at) or 0)
+						if age >= 0 and age <= 5.0 then
+							local rid = tonumber(rec.target_id) or 0
+							if rid > 0 then
+								local ok_rec, by_rec = pcall(function()
+									return windower.ffxi.get_mob_by_id(rid)
+								end)
+								if ok_rec and by_rec and by_rec.id and by_rec.id ~= 0 then
+									t = by_rec
+								else
+									t = { id = rid, name = '(pkt)' }
+								end
+							end
+						end
+					end
+				end
+				local tid = tonumber(t and t.id) or 0
+				local pname = party_name_by_id[tid]
+				local target_name = pname or tostring((t and t.name) or '(none)')
+				out[#out + 1] = {
+					mob_name = tostring(mob.name or ('mob:' .. tostring(mob.id))),
+					mob_id = tonumber(mob.id) or 0,
+					dist = dist,
+					hpp = tonumber(mob.hpp) or 0,
+					status = tonumber(mob.status) or 0,
+					spawn_type = tonumber(mob.spawn_type) or 0,
+					valid_target = mob.valid_target == true and 1 or 0,
+					claim_id = claim_tid,
+					target_name = target_name,
+					target_id = tid,
+					target_is_party = pname and 1 or 0,
+				}
+			end
+		end
+	end
+	table.sort(out, function(a, b)
+		if (a.target_is_party or 0) ~= (b.target_is_party or 0) then
+			return (a.target_is_party or 0) > (b.target_is_party or 0)
+		end
+		if (a.dist or 999) ~= (b.dist or 999) then
+			return (a.dist or 999) < (b.dist or 999)
+		end
+		return (a.mob_id or 0) < (b.mob_id or 0)
+	end)
+	return out
+end
+
 local function ensure_debug_overlay()
 	if not texts_ok or not texts then
 		return nil
@@ -406,12 +519,142 @@ local function ensure_debug_overlay()
 	return debug_overlay
 end
 
+local function ensure_target_debug_overlay()
+	if not texts_ok or not texts then
+		return nil
+	end
+	if debug_target_overlay then
+		return debug_target_overlay
+	end
+	debug_target_overlay = texts.new('', {
+		pos = { x = 620, y = 360 },
+		bg = { alpha = 180, red = 20, green = 20, blue = 20 },
+		flags = { right = false, bottom = false, bold = false, draggable = true },
+		padding = 6,
+		text = { font = 'Consolas', size = 10, alpha = 255, red = 220, green = 220, blue = 220, stroke = { width = 1, alpha = 180 } },
+	})
+	return debug_target_overlay
+end
+
 local function hide_debug_overlay()
 	if debug_overlay then
 		pcall(function()
 			debug_overlay:hide()
 		end)
 	end
+	if debug_target_overlay then
+		pcall(function()
+			debug_target_overlay:hide()
+		end)
+	end
+end
+
+local function player_status_description(status)
+	local s = tonumber(status) or -1
+	local map = {
+		[0] = 'Idle',
+		[1] = 'Engaged',
+		[2] = 'Dead',
+		[3] = 'Event/Cutscene',
+		[4] = 'Chocobo/Mount',
+	}
+	return map[s] or 'Unknown'
+end
+
+local function append_table_lines(out, key, value, indent, depth, max_depth, max_lines, seen)
+	if #out >= max_lines then
+		return
+	end
+	local pad = string.rep(' ', indent)
+	local vt = type(value)
+	if vt ~= 'table' then
+		local rendered
+		if vt == 'string' then
+			rendered = string.format('%q', value)
+		else
+			rendered = tostring(value)
+		end
+		out[#out + 1] = string.format('%s%s: %s', pad, tostring(key), rendered)
+		return
+	end
+	if seen[value] then
+		out[#out + 1] = string.format('%s%s: <cycle>', pad, tostring(key))
+		return
+	end
+	seen[value] = true
+	out[#out + 1] = string.format('%s%s: {', pad, tostring(key))
+	if depth >= max_depth then
+		out[#out + 1] = string.format('%s  ...', pad)
+		out[#out + 1] = string.format('%s}', pad)
+		return
+	end
+	local keys = {}
+	for k in pairs(value) do
+		keys[#keys + 1] = k
+	end
+	table.sort(keys, function(a, b)
+		return tostring(a) < tostring(b)
+	end)
+	for i = 1, #keys do
+		if #out >= max_lines then
+			break
+		end
+		local k = keys[i]
+		append_table_lines(out, k, value[k], indent + 2, depth + 1, max_depth, max_lines, seen)
+	end
+	if #out < max_lines then
+		out[#out + 1] = string.format('%s}', pad)
+	end
+end
+
+local function render_target_debug_overlay()
+	local ov = ensure_target_debug_overlay()
+	if not ov then
+		return
+	end
+	local lines = { 'UC Target Metadata (get_mob_by_id)' }
+	local cur = windower.ffxi.get_mob_by_target('t')
+	if not cur or not cur.id or cur.id == 0 then
+		lines[#lines + 1] = '(no current target)'
+		ov:text(table.concat(lines, '\n'))
+		ov:show()
+		return
+	end
+	local mob = windower.ffxi.get_mob_by_id(cur.id)
+	if not mob then
+		lines[#lines + 1] = ('target_id=%d (lookup failed)'):format(tonumber(cur.id) or 0)
+		ov:text(table.concat(lines, '\n'))
+		ov:show()
+		return
+	end
+	lines[#lines + 1] = ('target_id=%d name=%s'):format(tonumber(mob.id) or 0, tostring(mob.name or '?'))
+	local claim_id = tonumber(mob.claim_id) or 0
+	if claim_id > 0 then
+		local claim_name = ''
+		local claim_mob = windower.ffxi.get_mob_by_id(claim_id)
+		if claim_mob and claim_mob.name and tostring(claim_mob.name) ~= '' then
+			claim_name = tostring(claim_mob.name)
+		else
+			local party = windower.ffxi.get_party() or {}
+			for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
+				local entry = party[key]
+				local pm = entry and entry.mob
+				if pm and tonumber(pm.id) == claim_id then
+					claim_name = tostring(pm.name or '')
+					break
+				end
+			end
+		end
+		if claim_name == '' then
+			claim_name = '(unknown)'
+		end
+		lines[#lines + 1] = ('claim: %d -> %s'):format(claim_id, claim_name)
+	else
+		lines[#lines + 1] = ('claim: %d -> (unclaimed)'):format(claim_id)
+	end
+	append_table_lines(lines, 'mob', mob, 0, 0, 3, 140, {})
+	ov:text(table.concat(lines, '\n'))
+	ov:show()
 end
 
 local function render_debug_overlay(settings)
@@ -425,6 +668,9 @@ local function render_debug_overlay(settings)
 	end
 	local rows = collect_party_distances()
 	local lines = { 'UC Pathing Party Distances (yalm)' }
+	local player = windower.ffxi.get_player() or {}
+	local st = tonumber(player.status) or -1
+	lines[#lines + 1] = ('state: %d %s'):format(st, player_status_description(st))
 	local gate = tonumber(settings.path_party_gate_yalms) or 3.0
 	if gate < 0.5 then
 		gate = 0.5
@@ -433,6 +679,34 @@ local function render_debug_overlay(settings)
 	end
 	local cohesion = party_cohesion_ok(gate)
 	lines[#lines + 1] = ('cohesion<=%.2f: %s'):format(gate, cohesion and 'PASS' or 'BLOCK')
+	local function count_tank_actions(v)
+		if type(v) == 'table' then
+			return #v
+		end
+		if type(v) == 'string' then
+			local n = 0
+			for part in v:gmatch('[^|]+') do
+				if tostring(part):match('%S') then
+					n = n + 1
+				end
+			end
+			return n
+		end
+		return 0
+	end
+	local tank_on = (settings and (settings.tank == true or settings.tank == 1 or tostring(settings.tank):lower() == 'true')) and 1 or 0
+	local at_on = (settings and (settings.autotarget == true or settings.autotarget == 1 or tostring(settings.autotarget):lower() == 'true')) and 1 or 0
+	local ta_n = count_tank_actions(settings and settings.tank_enmity_actions)
+	local v_mob = tostring(rawget(_G, 'UC_TANK_VIOLATION_MOB_NAME') or '')
+	local v_victim = tostring(rawget(_G, 'UC_TANK_VIOLATION_VICTIM_NAME') or '')
+	local v_hpp = tonumber(rawget(_G, 'UC_TANK_VIOLATION_VICTIM_HPP') or 0) or 0
+	local last_br = tostring(rawget(_G, 'UC_LAST_BLOCK_REASON') or '')
+	if last_br == '' then
+		last_br = '(none)'
+	end
+	lines[#lines + 1] = ('tank=%d autotarget=%d tank_actions=%d'):format(tank_on, at_on, ta_n)
+	lines[#lines + 1] = ('tank_violation: mob=%s victim=%s(%d%%)'):format(v_mob ~= '' and v_mob or '(none)', v_victim ~= '' and v_victim or '(none)', v_hpp)
+	lines[#lines + 1] = ('last_block: %s'):format(last_br)
 	local pf_op = tostring(rawget(_G, 'UC_LAST_PARTY_FOLLOW_OP') or '')
 	if pf_op == '' then
 		pf_op = '(none)'
@@ -455,8 +729,35 @@ local function render_debug_overlay(settings)
 			lines[#lines + 1] = ('%s: %.2f [%s]'):format(r.name, r.dist or 0, r.source or 'srv')
 		end
 	end
+	local tank_rows = collect_aggressive_mobs_with_targets(30.0)
+	lines[#lines + 1] = ''
+	lines[#lines + 1] = 'aggressive mobs<=30y (party targets first):'
+	if #tank_rows == 0 then
+		lines[#lines + 1] = '  (none)'
+	else
+		local shown = math.min(8, #tank_rows)
+		for i = 1, shown do
+			local r = tank_rows[i]
+			lines[#lines + 1] = ('  %s[%d] %.1fy hpp=%d st=%d sp=%d vt=%d -> %s[%d] party=%d'):format(
+				tostring(r.mob_name or '?'),
+				tonumber(r.mob_id) or 0,
+				tonumber(r.dist) or 0,
+				tonumber(r.hpp) or 0,
+				tonumber(r.status) or 0,
+				tonumber(r.spawn_type) or 0,
+				tonumber(r.valid_target) or 0,
+				tostring(r.target_name or '?'),
+				tonumber(r.target_id) or 0,
+				tonumber(r.target_is_party) or 0
+			)
+			if tonumber(r.claim_id) and tonumber(r.claim_id) > 0 then
+				lines[#lines] = lines[#lines] .. (' claim=%d'):format(tonumber(r.claim_id))
+			end
+		end
+	end
 	ov:text(table.concat(lines, '\n'))
 	ov:show()
+	render_target_debug_overlay()
 end
 
 local function should_pause_for_combat()
