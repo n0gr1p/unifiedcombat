@@ -148,6 +148,7 @@ local function uc_new_settings_defaults()
 		aeonic = false,
 		color = false,
 		tank = false,
+		tank_enmity_actions = {},
 		sleep = false,
 		command = false,
 		hunter = false,
@@ -273,6 +274,7 @@ local PROFILE_KEYS = {
 	'fight_leader', 'fight_leader_id', 'party_follow', 'party_follow_id', 'party_follow_leader_name', 'party_follow_min', 'party_follow_max', 'fight_follow_min', 'fight_follow_hold_s',
 	'add_control', 'add_priority_names',
 	'sub', 'sub2', 'move', 'debug', 'solo', 'aeonic', 'color', 'tank', 'sleep', 'command', 'hunter',
+	'tank_enmity_actions',
 	'target1', 'target2', 'target3', 'targets',
 	'targetability', 'targetability_active',
 	'spell', 'spell_active', 'sleepspell',
@@ -593,14 +595,7 @@ local function uc_reload_active_profile(job_for_defaults)
 	else
 		uc_apply_job_defaults(p.main_job)
 	end
-	if not uc_apply_active_profile() then
-		-- Missing profile: capture exactly current state without silent correction.
-		uc_capture_active_profile()
-	end
-	if not loaded_from_file then
-		local profiles = uc_normalize_profiles_tree(uc_get_profiles_root())
-		uc_write_profiles_file(p.name, profiles)
-	end
+	uc_apply_active_profile()
 	return p
 end
 

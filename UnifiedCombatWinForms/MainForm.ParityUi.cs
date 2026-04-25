@@ -30,14 +30,7 @@ public partial class MainForm
     private TextBox _defMed = null!;
     private TextBox _defOverwrite = null!;
     private TextBox _defBuffs = null!;
-    private Label _lblBlock = null!;
-    private Label _lblSched = null!;
-    private Label _lblSchedProv = null!;
-    private Label _lblTick = null!;
-    private Label _lblWsDiag = null!;
     private GroupBox _grpFightLeader = null!;
-    private Label _lblFightLeaderOp = null!;
-    private Label _lblPartyFollowOp = null!;
     private GroupBox _grpAddPri = null!;
     private ListBox _addPriList = null!;
     private TextBox _addPriName = null!;
@@ -46,31 +39,27 @@ public partial class MainForm
     private Button _addPriRemove = null!;
     private Button _addPriUp = null!;
     private Button _addPriDown = null!;
-    private Label _lblAddPriOp = null!;
     private GroupBox _grpPartner = null!;
     private ListBox _partnerList = null!;
     private TextBox _partnerName = null!;
     private Button _partnerByName = null!;
     private Button _partnerCurTarget = null!;
     private Button _partnerRemove = null!;
-    private Label _lblPartnerOp = null!;
     private GroupBox _grpIgnore = null!;
     private ListBox _ignoreList = null!;
     private TextBox _ignoreName = null!;
     private Button _ignoreByName = null!;
     private Button _ignoreCurTarget = null!;
     private Button _ignoreRemove = null!;
-    private Label _lblIgnoreInfo = null!;
-    private Label _lblIgnoreOp = null!;
     private GroupBox _grpTargetIgn = null!;
     private ListBox _targetIgnList = null!;
     private TextBox _targetIgnName = null!;
     private Button _targetIgnByName = null!;
     private Button _targetIgnCurTarget = null!;
     private Button _targetIgnRemove = null!;
-    private Label _lblTargetIgnOp = null!;
     private Button _btnSave = null!;
     private Button _btnToggleEngine = null!;
+    private Button _btnReloadAddon = null!;
     private CheckBox _spUsePrediction = null!;
     private TextBox _spBandMin = null!;
     private TextBox _spBandMax = null!;
@@ -100,7 +89,13 @@ public partial class MainForm
     private ComboBox _pathPullActionName = null!;
     private Button _pathHunterAdd = null!;
     private Button _pathHunterRemove = null!;
-    private Label _pathHunterOp = null!;
+    private ListBox _tankEnmityList = null!;
+    private ComboBox _tankEnmityTypeCombo = null!;
+    private ComboBox _tankEnmityNameCombo = null!;
+    private Button _tankEnmityAdd = null!;
+    private Button _tankEnmityRemove = null!;
+    private Button _tankEnmityUp = null!;
+    private Button _tankEnmityDown = null!;
 
     private void BuildParityEditor(Panel host, FlowLayoutPanel sessionActionsFooter)
     {
@@ -186,11 +181,19 @@ public partial class MainForm
         leftCol.Controls.Add(wsLab, 0, lr);
         _wsCombo = new ComboBox
         {
-            DropDownStyle = ComboBoxStyle.DropDownList,
+            DropDownStyle = ComboBoxStyle.DropDown,
             Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
             MinimumSize = new Size(120, 0),
         };
         _wsCombo.SelectedIndexChanged += (_, _) => OnWsSelected();
+        _wsCombo.DropDown += (_, _) =>
+        {
+            var sid = _selectedSid;
+            if (!string.IsNullOrWhiteSpace(sid))
+            {
+                EnsureOptionsHydrated(sid);
+            }
+        };
         leftCol.Controls.Add(_wsCombo, 1, lr);
         lr++;
 
@@ -198,18 +201,34 @@ public partial class MainForm
         leftCol.Controls.Add(_chkAftermath, 0, lr);
         _aftermathCombo = new ComboBox
         {
-            DropDownStyle = ComboBoxStyle.DropDownList,
+            DropDownStyle = ComboBoxStyle.DropDown,
             Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
             MinimumSize = new Size(120, 0),
         };
         _aftermathCombo.SelectedIndexChanged += (_, _) => OnAftermathWsSelected();
+        _aftermathCombo.DropDown += (_, _) =>
+        {
+            var sid = _selectedSid;
+            if (!string.IsNullOrWhiteSpace(sid))
+            {
+                EnsureOptionsHydrated(sid);
+            }
+        };
         leftCol.Controls.Add(_aftermathCombo, 1, lr);
         lr++;
 
         var abPick = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
         _chkAbility = MkCtx("ability_active");
         leftCol.Controls.Add(_chkAbility, 0, lr);
-        _abilityPickCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
+        _abilityPickCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Width = 220 };
+        _abilityPickCombo.DropDown += (_, _) =>
+        {
+            var sid = _selectedSid;
+            if (!string.IsNullOrWhiteSpace(sid))
+            {
+                EnsureOptionsHydrated(sid);
+            }
+        };
         _btnAbilityAdd = new Button { Text = "Add", AutoSize = true };
         _btnAbilityAdd.Click += (_, _) => AddAbility();
         abPick.Controls.Add(_abilityPickCombo);
@@ -297,24 +316,6 @@ public partial class MainForm
         topSplit.Controls.Add(rightCol, 1, 0);
         g.Controls.Add(topSplit, 0, gRow++);
 
-        var diag = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true };
-        diag.Controls.Add(new Label { Text = "block_reason:", AutoSize = true });
-        diag.Controls.Add(_lblBlock = new Label { AutoSize = true, Text = "" });
-        diag.Controls.Add(new Label { Text = "scheduler_action:", AutoSize = true, Padding = new Padding(10, 0, 0, 0) });
-        diag.Controls.Add(_lblSched = new Label { AutoSize = true, Text = "" });
-        diag.Controls.Add(new Label { Text = "provider:", AutoSize = true });
-        diag.Controls.Add(_lblSchedProv = new Label { AutoSize = true, Text = "" });
-        diag.Controls.Add(new Label { Text = "tick:", AutoSize = true });
-        diag.Controls.Add(_lblTick = new Label { AutoSize = true, Text = "" });
-        g.Controls.Add(diag, 0, gRow++);
-        diag.Dock = DockStyle.Top;
-
-        var diagWs = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
-        diagWs.Controls.Add(new Label { Text = "ws_diag:", AutoSize = true });
-        diagWs.Controls.Add(_lblWsDiag = new Label { AutoSize = true, Text = "" });
-        g.Controls.Add(diagWs, 0, gRow++);
-        diagWs.Dock = DockStyle.Top;
-
         _grpFightLeader = new GroupBox
         {
             Text = "Fight leader — autotarget prefers leader target; add control uses priority list.",
@@ -330,8 +331,6 @@ public partial class MainForm
         flTop.Controls.Add(_fightLeaderCombo);
         var flFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0) };
         flFlow.Controls.Add(flTop);
-        _lblFightLeaderOp = new Label { AutoSize = true, Text = "" };
-        flFlow.Controls.Add(_lblFightLeaderOp);
         var pfTop = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0) };
         pfTop.Controls.Add(MkGlobal("party_follow"));
         _partyFollowCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
@@ -354,8 +353,6 @@ public partial class MainForm
         _pfFightFollowHoldS.Leave += (_, _) => OnPartyFollowDistanceChanged();
         pfTop.Controls.Add(_pfFightFollowHoldS);
         flFlow.Controls.Add(pfTop);
-        _lblPartyFollowOp = new Label { AutoSize = true, Text = "" };
-        flFlow.Controls.Add(_lblPartyFollowOp);
         _grpFightLeader.Controls.Add(flFlow);
         g.Controls.Add(_grpFightLeader, 0, gRow++);
 
@@ -402,8 +399,6 @@ public partial class MainForm
         _addPriDown.Click += (_, _) => AddPriorityMove("down");
         apr.Controls.Add(_addPriDown);
         apFlow.Controls.Add(apr);
-        _lblAddPriOp = new Label { AutoSize = true, Text = "", Padding = new Padding(0, 6, 0, 0) };
-        apFlow.Controls.Add(_lblAddPriOp);
         _grpAddPri.Controls.Add(apFlow);
         listsSplit.Controls.Add(_grpAddPri, 0, 0);
 
@@ -435,8 +430,6 @@ public partial class MainForm
         _partnerRemove.Click += (_, _) => PartnerRemove();
         pr.Controls.Add(_partnerRemove);
         pFlow.Controls.Add(pr);
-        _lblPartnerOp = new Label { AutoSize = true, Text = "", Padding = new Padding(0, 6, 0, 0) };
-        pFlow.Controls.Add(_lblPartnerOp);
         _grpPartner.Controls.Add(pFlow);
         listsSplit.Controls.Add(_grpPartner, 0, 1);
 
@@ -465,10 +458,6 @@ public partial class MainForm
         _ignoreRemove.Click += (_, _) => IgnoreRemove();
         ign.Controls.Add(_ignoreRemove);
         iFlow.Controls.Add(ign);
-        var ignInf = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0) };
-        ignInf.Controls.Add(_lblIgnoreInfo = new Label { AutoSize = true, Text = "" });
-        ignInf.Controls.Add(_lblIgnoreOp = new Label { AutoSize = true, Text = "", Padding = new Padding(16, 0, 0, 0) });
-        iFlow.Controls.Add(ignInf);
         _grpIgnore.Controls.Add(iFlow);
         listsSplit.Controls.Add(_grpIgnore, 1, 0);
 
@@ -497,12 +486,70 @@ public partial class MainForm
         _targetIgnRemove.Click += (_, _) => TargetIgnRemove();
         tigr.Controls.Add(_targetIgnRemove);
         tiFlow.Controls.Add(tigr);
-        _lblTargetIgnOp = new Label { AutoSize = true, Text = "", Padding = new Padding(0, 6, 0, 0) };
-        tiFlow.Controls.Add(_lblTargetIgnOp);
         _grpTargetIgn.Controls.Add(tiFlow);
         listsSplit.Controls.Add(_grpTargetIgn, 1, 1);
 
         g.Controls.Add(listsSplit, 0, gRow++);
+
+        var tankGroup = new GroupBox
+        {
+            Text = "Tank Enmity Actions — single prioritized JA/spell list for threat recovery.",
+            Dock = DockStyle.Top,
+            Padding = new Padding(8),
+            AutoSize = true,
+            MinimumSize = new Size(200, 120),
+        };
+        var tankFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
+        _tankEnmityList = new ListBox
+        {
+            Height = 90,
+            IntegralHeight = false,
+            Dock = DockStyle.Top,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+        };
+        tankFlow.Controls.Add(_tankEnmityList);
+        var tankAddRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 6, 0, 0) };
+        _tankEnmityTypeCombo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 70,
+        };
+        _tankEnmityTypeCombo.Items.Add("ja");
+        _tankEnmityTypeCombo.Items.Add("spell");
+        _tankEnmityTypeCombo.SelectedItem = "ja";
+        _tankEnmityTypeCombo.SelectedIndexChanged += (_, _) => OnTankEnmityTypeChanged();
+        tankAddRow.Controls.Add(_tankEnmityTypeCombo);
+        _tankEnmityNameCombo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDown,
+            Width = 260,
+        };
+        _tankEnmityNameCombo.DropDown += (_, _) =>
+        {
+            var sid = _selectedSid;
+            if (!string.IsNullOrWhiteSpace(sid))
+            {
+                EnsureOptionsHydrated(sid);
+            }
+        };
+        tankAddRow.Controls.Add(_tankEnmityNameCombo);
+        _tankEnmityAdd = new Button { Text = "Add", AutoSize = true };
+        _tankEnmityAdd.Click += (_, _) => OnTankEnmityAdd();
+        tankAddRow.Controls.Add(_tankEnmityAdd);
+        tankFlow.Controls.Add(tankAddRow);
+        var tankBtnRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        _tankEnmityRemove = new Button { Text = "Remove", AutoSize = true };
+        _tankEnmityRemove.Click += (_, _) => OnTankEnmityRemove();
+        _tankEnmityUp = new Button { Text = "Up", AutoSize = true };
+        _tankEnmityUp.Click += (_, _) => OnTankEnmityMove("up");
+        _tankEnmityDown = new Button { Text = "Down", AutoSize = true };
+        _tankEnmityDown.Click += (_, _) => OnTankEnmityMove("down");
+        tankBtnRow.Controls.Add(_tankEnmityRemove);
+        tankBtnRow.Controls.Add(_tankEnmityUp);
+        tankBtnRow.Controls.Add(_tankEnmityDown);
+        tankFlow.Controls.Add(tankBtnRow);
+        tankGroup.Controls.Add(tankFlow);
+        g.Controls.Add(tankGroup, 0, gRow++);
 
         var tabs = new TabControl
         {
@@ -644,15 +691,14 @@ public partial class MainForm
         path.Controls.Add(new Label { Text = "Pull action", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
         _pathPullActionName = new ComboBox
         {
-            DropDownStyle = ComboBoxStyle.DropDownList,
+            DropDownStyle = ComboBoxStyle.DropDown,
             Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
             MinimumSize = new Size(220, 0),
         };
         _pathPullActionName.SelectedIndexChanged += (_, _) => OnPathPullActionNameChanged();
         path.Controls.Add(_pathPullActionName, 1, pathRow++);
         path.Controls.Add(new Label { Text = "Path hunter targets", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
-        _pathHunterOp = new Label { Text = "", AutoSize = true, Anchor = AnchorStyles.Left };
-        path.Controls.Add(_pathHunterOp, 1, pathRow++);
+        pathRow++;
         _pathHunterList = new ListBox
         {
             Height = 100,
@@ -737,7 +783,9 @@ public partial class MainForm
         _btnSave.Click += (_, _) => SaveRemote();
         _btnToggleEngine = new Button { Text = "Toggle engine run", AutoSize = true };
         _btnToggleEngine.Click += (_, _) => ToggleEngine();
-        sessionActionsFooter.Controls.AddRange(new Control[] { _btnSave, _btnToggleEngine });
+        _btnReloadAddon = new Button { Text = "Reload addon (+reapply run)", AutoSize = true };
+        _btnReloadAddon.Click += (_, _) => ReloadAddonAndReapplyRun();
+        sessionActionsFooter.Controls.AddRange(new Control[] { _btnSave, _btnToggleEngine, _btnReloadAddon });
 
         CheckBox MkCtx(string key)
         {

@@ -37,6 +37,7 @@ local core = {
 	ja_pending_recast_id = 0,
 	ja_pending_sent_at = 0,
 	ja_last_sent_at = {},
+	ja_gate_log_at = {},
 	spacing = {
 		anchor_agent_id = 0,
 		anchor_angle = 0,
@@ -64,9 +65,23 @@ local core = {
 	pull_spell_settle_key = '',
 	pull_spell_settle_until = 0,
 	pull_last_sent_at = {},
+	tank_spell_waiting = false,
+	tank_spell_wait_until = 0,
+	tank_spell_settle_key = '',
+	tank_spell_settle_until = 0,
+	tank_pending_action = '',
+	tank_pending_type = '',
+	tank_pending_target_id = 0,
+	tank_pending_sent_at = 0,
+	tank_last_sent_at = {},
+	tank_debug_last_line = '',
+	tank_debug_last_at = 0,
+	tank_debug_last_violation_sig = '',
+	tank_tick_log_at = 0,
 }
 local stop_run
 local get_mover
+local resolve_mob_current_target
 
 local skillchain_ids = {
 	[288] = true, [289] = true, [290] = true, [291] = true, [292] = true, [293] = true, [294] = true, [295] = true,
@@ -162,6 +177,34 @@ local function get_settings()
 	return rawget(_G, 'UC_SETTINGS') or {}
 end
 
+local function split_pipe(s)
+	if type(s) ~= 'string' or s == '' then
+		return {}
+	end
+	local out = {}
+	for part in s:gmatch('[^|]+') do
+		local n = tostring(part):match('^%s*(.-)%s*$') or ''
+		if n ~= '' then
+			out[#out + 1] = n
+		end
+	end
+	return out
+end
+
+local function list_has_name(list, name)
+	local n = tostring(name or ''):lower()
+	for _, v in ipairs(list or {}) do
+		local probe = v
+		if type(v) == 'table' then
+			probe = v.key or v.name or ''
+		end
+		if tostring(probe or ''):lower() == n then
+			return true
+		end
+	end
+	return false
+end
+
 local function movement_model_size_floor(settings)
 	local n = tonumber(settings and settings.spacing_model_size_floor)
 	if n == nil then
@@ -210,13 +253,15 @@ local function ensure_log_dir()
 	return log_dir
 end
 
-local function debug_ja_dispatch(msg)
+local function debug_log_channel(channel, msg)
 	local s = get_settings()
 	if not setting_enabled(s and s.debug) then
 		return
 	end
 	local line = tostring(msg or '')
-	_G.UC_JA_LAST_DIAG = line
+	if tostring(channel or '') == 'ja_debug' then
+		_G.UC_JA_LAST_DIAG = line
+	end
 	pcall(function()
 		local p = windower.ffxi.get_player()
 		local char = (p and p.name) or 'unknown'
@@ -224,7 +269,11 @@ local function debug_ja_dispatch(msg)
 		if not dir then
 			return
 		end
-		local path = dir .. safe_char_name(char) .. '_ja_debug.log'
+		local suffix = tostring(channel or 'uc_debug')
+		if suffix == '' then
+			suffix = 'uc_debug'
+		end
+		local path = dir .. safe_char_name(char) .. '_' .. suffix .. '.log'
 		local f = io.open(path, 'a')
 		if not f then
 			return
@@ -232,6 +281,42 @@ local function debug_ja_dispatch(msg)
 		f:write(os.date('%Y-%m-%d %H:%M:%S'), '\t', line:gsub('\r?\n', ' '), '\n')
 		f:close()
 	end)
+end
+
+local function debug_ja_dispatch(msg)
+	debug_log_channel('ja_debug', msg)
+end
+
+_G.UC_LOG_DIAG = function(channel, msg)
+	pcall(debug_log_channel, channel, msg)
+end
+
+local function debug_ja_gate(name, reason, extra)
+	local now = os.clock()
+	local key = tostring(name or '?') .. '|' .. tostring(reason or '?')
+	local last = tonumber((core.ja_gate_log_at or {})[key]) or 0
+	if (now - last) < 0.25 then
+		return
+	end
+	core.ja_gate_log_at[key] = now
+	local p = windower.ffxi.get_player() or {}
+	local status = tonumber(p.status) or -1
+	local lock_left = math.max(0, (tonumber(core.ja_lock_until) or 0) - now)
+	local pending_name = tostring(core.ja_pending_name or '')
+	local pending_age = 0
+	local sent_at = tonumber(core.ja_pending_sent_at) or 0
+	if sent_at > 0 then
+		pending_age = now - sent_at
+	end
+	debug_ja_dispatch(('gate name=\"%s\" reason=%s status=%d lock_left=%.2f pending=\"%s\" pending_age=%.2f %s'):format(
+		tostring(name or ''),
+		tostring(reason or ''),
+		status,
+		lock_left,
+		pending_name,
+		pending_age,
+		tostring(extra or '')
+	))
 end
 
 local function is_party_member_id(id)
@@ -813,6 +898,28 @@ local function find_candidate_target(settings)
 	if not me then
 		return nil
 	end
+	local function prime_unclaimed_party_aggressive_ok(mob)
+		if not mob then
+			return false
+		end
+		if not setting_enabled(settings.prime) then
+			return false
+		end
+		if (tonumber(mob.status) or 0) ~= 1 then
+			return false
+		end
+		local t = resolve_mob_current_target and resolve_mob_current_target(mob) or nil
+		local tid = tonumber(t and t.id) or 0
+		if tid == 0 or not is_party_member_id(tid) then
+			return false
+		end
+		-- Prime should not target mobs clearly focused on non-party entities.
+		local claim_id = tonumber(mob.claim_id) or 0
+		if claim_id ~= 0 and not is_party_member_id(claim_id) then
+			return false
+		end
+		return true
+	end
 	local player = windower.ffxi.get_player()
 	local engaged = player and player.status == 1
 	-- Engaged retarget is only allowed for the explicit add-control flow (which already
@@ -941,7 +1048,7 @@ local function find_candidate_target(settings)
 		end
 		if hunter_ok and not hunter_cooldown_active(cur.id) then
 			local allow_prime_unclaimed = (not engaged) or allow_engaged_retarget
-			local prime_unclaimed_ok = (allow_prime_unclaimed and cur.claim_id == 0 and setting_enabled(settings.prime) and cur.status == 1)
+			local prime_unclaimed_ok = (allow_prime_unclaimed and prime_unclaimed_party_aggressive_ok(cur))
 			local hunter_idle_unclaimed_ok = (cur.claim_id == 0 and cur.status == 0)
 			local claim_ok = claims_set[cur.claim_id] == true or prime_unclaimed_ok or hunter_idle_unclaimed_ok
 			if claim_ok then
@@ -951,6 +1058,8 @@ local function find_candidate_target(settings)
 	end
 	local best = nil
 	local best_dist = 1e9
+	local best_hpp = -1
+	local tank_mode = setting_enabled(settings.tank)
 	for _, mob in pairs(marray) do
 		if mob and mob.id and mob.valid_target and mob.spawn_type == 16 and (mob.hpp or 0) > 0 then
 			if not uc_target_ignore.is_mob_blocked(settings, mob) then
@@ -975,13 +1084,27 @@ local function find_candidate_target(settings)
 					-- Do not pull unclaimed prime candidates while already engaged unless explicit
 					-- engaged-retarget modes are active; this prevents mid-fight target flips.
 					local allow_prime_unclaimed = (not engaged) or allow_engaged_retarget
-					local prime_unclaimed_ok = (allow_prime_unclaimed and mob.claim_id == 0 and setting_enabled(settings.prime) and mob.status == 1)
+					local prime_unclaimed_ok = (allow_prime_unclaimed and prime_unclaimed_party_aggressive_ok(mob))
 					local hunter_idle_unclaimed_ok = (path_hunter_filter_active and mob.claim_id == 0 and mob.status == 0)
 					local claim_ok = claims_set[mob.claim_id] == true or prime_unclaimed_ok or hunter_idle_unclaimed_ok
 					if claim_ok then
 						local d = target_distance(mob)
-						if d < best_dist then
+						local hp = tonumber(mob.hpp) or 0
+						local replace = false
+						if not tank_mode then
+							replace = d < best_dist
+						else
+							if hp ~= best_hpp then
+								replace = hp > best_hpp
+							elseif d ~= best_dist then
+								replace = d < best_dist
+							else
+								replace = (tonumber(mob.id) or 0) < (tonumber(best and best.id) or 0)
+							end
+						end
+						if replace then
 							best_dist = d
+							best_hpp = hp
 							best = mob
 						end
 					end
@@ -1045,6 +1168,49 @@ local function action_effective_range(raw_range)
 		return r * 0.01
 	end
 	return r
+end
+
+local function ja_targets_enemy(ja)
+	local targets = ja and ja.targets
+	if type(targets) == 'string' then
+		return targets:find('Enemy', 1, true) ~= nil
+	end
+	if type(targets) == 'number' then
+		local n = math.floor(targets)
+		return (n % 64) >= 32
+	end
+	if type(targets) == 'table' then
+		return targets.Enemy == true or targets.enemy == true
+	end
+	return false
+end
+
+local function normalize_angle_rad(a)
+	local two_pi = math.pi * 2
+	while a > math.pi do
+		a = a - two_pi
+	end
+	while a < -math.pi do
+		a = a + two_pi
+	end
+	return a
+end
+
+local function target_is_in_front_arc(target, arc)
+	local me = windower.ffxi.get_mob_by_target('me')
+	if not me or not target or me.x == nil or me.y == nil or target.x == nil or target.y == nil or me.facing == nil then
+		return false
+	end
+	local heading = math.atan2(target.y - me.y, target.x - me.x)
+	local delta = math.abs(normalize_angle_rad(heading - tonumber(me.facing)))
+	return delta <= (tonumber(arc) or (math.pi / 2))
+end
+
+local function ja_requires_engaged_front(name, ja)
+	if (tonumber(ja and ja.id) or 0) == 46 then -- Shield Bash
+		return true
+	end
+	return tostring(name or ''):lower() == 'shield bash'
 end
 
 local function should_use_pull_action(settings, player, target)
@@ -1156,6 +1322,442 @@ local function move_toward_target_for_pull(target)
 	end
 	windower.ffxi.run(false)
 	core.last_run_active = false
+	return false
+end
+
+local function debug_tank(msg, force)
+	local s = get_settings()
+	if not setting_enabled(s and s.debug) then
+		return
+	end
+	local line = tostring(msg or '')
+	if line == '' then
+		return
+	end
+	local now = os.clock()
+	if not force then
+		local last_line = tostring(core.tank_debug_last_line or '')
+		local last_at = tonumber(core.tank_debug_last_at) or 0
+		if line == last_line and (now - last_at) < 0.30 then
+			return
+		end
+	end
+	core.tank_debug_last_line = line
+	core.tank_debug_last_at = now
+	_G.UC_TANK_LAST_DIAG = line
+	pcall(function()
+		local p = windower.ffxi.get_player()
+		local char = (p and p.name) or 'unknown'
+		local dir = ensure_log_dir()
+		if not dir then
+			return
+		end
+		local path = dir .. safe_char_name(char) .. '_tank_debug.log'
+		local f = io.open(path, 'a')
+		if not f then
+			return
+		end
+		f:write(os.date('%Y-%m-%d %H:%M:%S'), '\t', line:gsub('\r?\n', ' '), '\n')
+		f:close()
+	end)
+end
+
+local function clear_tank_spell_wait_state()
+	core.tank_spell_waiting = false
+	core.tank_spell_wait_until = 0
+	core.tank_spell_settle_key = ''
+	core.tank_spell_settle_until = 0
+	core.tank_pending_action = ''
+	core.tank_pending_type = ''
+	core.tank_pending_target_id = 0
+	core.tank_pending_sent_at = 0
+end
+
+local function parse_tank_enmity_actions(settings)
+	local src = settings and settings.tank_enmity_actions or {}
+	local rows = {}
+	if type(src) == 'string' then
+		src = split_pipe(src)
+	end
+	if type(src) ~= 'table' then
+		return rows
+	end
+	for _, item in ipairs(src) do
+		local raw = ''
+		local kind = ''
+		local name = ''
+		if type(item) == 'table' then
+			raw = tostring(item.raw or item.entry or item.name or '')
+			kind = tostring(item.kind or item.type or ''):lower()
+			name = tostring(item.name or '')
+		else
+			raw = tostring(item or '')
+		end
+		if raw ~= '' and name == '' then
+			local k, n = raw:match('^(%a+)%s*:%s*(.+)$')
+			if k and n then
+				kind = tostring(k):lower()
+				name = tostring(n)
+			else
+				name = raw
+			end
+		end
+		name = tostring(name or ''):match('^%s*(.-)%s*$') or ''
+		if name ~= '' then
+			if kind ~= 'ja' and kind ~= 'spell' then
+				if get_ja_resource(name) then
+					kind = 'ja'
+				elseif get_spell_resource(name) then
+					kind = 'spell'
+				end
+			end
+			if kind == 'ja' or kind == 'spell' then
+				local key = kind .. ':' .. name:lower()
+				if not list_has_name(rows, key) then
+					rows[#rows + 1] = {
+						kind = kind,
+						name = name,
+						key = key,
+						raw = raw ~= '' and raw or (kind .. ':' .. name),
+					}
+				end
+			end
+		end
+	end
+	return rows
+end
+
+local function target_is_party_member_non_tank(target_id, me_id)
+	local tid = tonumber(target_id) or 0
+	local mid = tonumber(me_id) or 0
+	if tid == 0 or tid == mid then
+		return false
+	end
+	return is_party_member_id(tid)
+end
+
+resolve_mob_current_target = function(mob)
+	if not mob then
+		return nil
+	end
+	local t = nil
+	local claim_tid = tonumber(mob.claim_id) or 0
+	if claim_tid > 0 and is_party_member_id(claim_tid) then
+		t = windower.ffxi.get_mob_by_id(claim_tid)
+		if (not t or not t.id or t.id == 0) then
+			t = { id = claim_tid, name = '(claim)' }
+		end
+	end
+	local ti = tonumber(mob.target_index) or 0
+	if (not t or not t.id or t.id == 0) and ti > 0 then
+		t = windower.ffxi.get_mob_by_index(ti)
+	end
+	if (not t or not t.id or t.id == 0) then
+		local tid = tonumber(mob.target) or 0
+		if tid > 0 then
+			t = windower.ffxi.get_mob_by_id(tid)
+		end
+	end
+	if (not t or not t.id or t.id == 0) then
+		local amap = rawget(_G, 'UC_MOB_LAST_ACTION_TARGETS')
+		local rec = type(amap) == 'table' and amap[tonumber(mob.id) or 0] or nil
+		if type(rec) == 'table' then
+			local age = os.clock() - (tonumber(rec.at) or 0)
+			if age >= 0 and age <= 5.0 then
+				local rid = tonumber(rec.target_id) or 0
+				if rid > 0 then
+					t = windower.ffxi.get_mob_by_id(rid)
+					if (not t or not t.id or t.id == 0) then
+						t = { id = rid, name = '(pkt)' }
+					end
+				end
+			end
+		end
+	end
+	return t
+end
+
+local function pick_tank_violation_target(settings, player)
+	if not setting_enabled(settings and settings.tank) then
+		if core.tank_debug_last_violation_sig ~= 'OFF' then
+			core.tank_debug_last_violation_sig = 'OFF'
+			debug_tank('scan tank=off', true)
+		end
+		return nil
+	end
+	local me_id = tonumber((player or {}).id) or 0
+	if me_id == 0 then
+		if core.tank_debug_last_violation_sig ~= 'NO_ME' then
+			core.tank_debug_last_violation_sig = 'NO_ME'
+			debug_tank('scan no_player_id', true)
+		end
+		return nil
+	end
+	local marray = windower.ffxi.get_mob_array() or {}
+	local best = nil
+	for _, mob in pairs(marray) do
+		if mob and mob.id and mob.id ~= 0 and mob.valid_target and mob.spawn_type == 16 and (tonumber(mob.hpp) or 0) > 0 then
+			if (tonumber(mob.status) or 0) == 1 and not uc_target_ignore.is_mob_blocked(settings, mob) then
+				local victim = resolve_mob_current_target(mob)
+				local victim_id = tonumber(victim and victim.id) or 0
+				if victim and target_is_party_member_non_tank(victim_id, me_id) then
+					local c = {
+						mob = mob,
+						victim = victim,
+						victim_hpp = tonumber(victim.hpp) or 100,
+						dist = target_distance(mob),
+						mob_hpp = tonumber(mob.hpp) or 0,
+						mob_id = tonumber(mob.id) or 0,
+					}
+					if not best then
+						best = c
+					else
+						local replace = false
+						if c.victim_hpp ~= best.victim_hpp then
+							replace = c.victim_hpp < best.victim_hpp
+						elseif c.dist ~= best.dist then
+							replace = c.dist < best.dist
+						elseif c.mob_hpp ~= best.mob_hpp then
+							replace = c.mob_hpp > best.mob_hpp
+						else
+							replace = c.mob_id < best.mob_id
+						end
+						if replace then
+							best = c
+						end
+					end
+				end
+			end
+		end
+	end
+	local sig
+	if best and best.mob then
+		sig = ('HIT:%d>%d'):format(tonumber(best.mob.id) or 0, tonumber((best.victim and best.victim.id) or 0) or 0)
+	else
+		sig = 'NONE'
+	end
+	if sig ~= core.tank_debug_last_violation_sig then
+		core.tank_debug_last_violation_sig = sig
+		if best and best.mob then
+			debug_tank(('scan violation mob=%s[%d] victim=%s[%d] victim_hpp=%d dist=%.2f'):format(
+				tostring(best.mob.name or '?'),
+				tonumber(best.mob.id) or 0,
+				tostring((best.victim and best.victim.name) or '?'),
+				tonumber((best.victim and best.victim.id) or 0) or 0,
+				tonumber(best.victim_hpp) or 0,
+				tonumber(best.dist) or 0
+			), true)
+		else
+			debug_tank('scan violation none', true)
+		end
+	end
+	return best
+end
+
+local function tank_action_range(kind, resource)
+	local max_range = action_effective_range(resource and resource.range)
+	if max_range <= 0 then
+		max_range = (kind == 'spell') and 20 or 10
+	end
+	local cast_max_range = max_range
+	if kind == 'spell' then
+		local buffer = max_range * 0.10
+		cast_max_range = max_range - buffer
+		if cast_max_range < 1.0 then
+			cast_max_range = 1.0
+		end
+	end
+	return max_range, cast_max_range
+end
+
+local function tank_action_ready(entry, mob, player)
+	if not entry or not mob then
+		return false, 'TANK_ACTION_INVALID'
+	end
+	local now = os.clock()
+	if status_blocks_actions(player and player.status) then
+		return false, 'ACTION_BLOCK_STATUS3'
+	end
+	local key = tostring(entry.kind) .. ':' .. tostring(entry.name)
+	local last = tonumber(core.tank_last_sent_at[key]) or 0
+	if last > 0 and (now - last) < 0.5 then
+		return false, 'TANK_RECENT_SEND'
+	end
+	if entry.kind == 'ja' then
+		local ja = get_ja_resource(entry.name)
+		if not ja then
+			return false, 'TANK_JA_UNKNOWN'
+		end
+		local recasts = windower.ffxi.get_ability_recasts() or {}
+		if (recasts[ja.recast_id] or 0) > 0 then
+			return false, 'TANK_RECAST'
+		end
+		if now < (tonumber(core.ja_lock_until) or 0) then
+			return false, 'TANK_JA_LOCK'
+		end
+		local abil = windower.ffxi.get_abilities() or {}
+		local owns = false
+		for _, id in ipairs(abil.job_abilities or {}) do
+			if id == ja.id then
+				owns = true
+				break
+			end
+		end
+		if not owns then
+			return false, 'TANK_JA_NOT_OWNED'
+		end
+		local targets = tostring(ja.targets or '')
+		if not targets:find('Enemy', 1, true) then
+			return false, 'TANK_JA_NOT_ENEMY'
+		end
+		local _, cast_max = tank_action_range('ja', ja)
+		local dist = target_distance(mob)
+		if dist > cast_max then
+			return false, 'TANK_OUT_OF_RANGE', cast_max, dist
+		end
+		return true, ''
+	end
+	local sp = get_spell_resource(entry.name)
+	if not sp then
+		return false, 'TANK_SPELL_UNKNOWN'
+	end
+	local targets = tostring(sp.targets or '')
+	if not targets:find('Enemy', 1, true) then
+		return false, 'TANK_SPELL_NOT_ENEMY'
+	end
+	local known = windower.ffxi.get_spells() or {}
+	if not known[sp.id] then
+		return false, 'TANK_SPELL_NOT_LEARNED'
+	end
+	local recasts = windower.ffxi.get_spell_recasts() or {}
+	local rc = recasts[sp.recast_id or sp.id] or recasts[sp.id] or 0
+	if rc > 0 then
+		return false, 'TANK_RECAST'
+	end
+	local mp = tonumber(((player or {}).vitals or {}).mp) or 0
+	if mp < (tonumber(sp.mp_cost) or 0) then
+		return false, 'TANK_NO_MP'
+	end
+	if core.tank_spell_waiting == true and now < (tonumber(core.tank_spell_wait_until) or 0) then
+		return false, 'TANK_SPELL_WAITING'
+	end
+	local _, cast_max = tank_action_range('spell', sp)
+	local dist = target_distance(mob)
+	if dist > cast_max then
+		return false, 'TANK_OUT_OF_RANGE', cast_max, dist
+	end
+	return true, ''
+end
+
+local function execute_tank_enmity(settings, player, violation)
+	if not violation or not violation.mob then
+		return false
+	end
+	local actions = parse_tank_enmity_actions(settings)
+	if #actions == 0 then
+		local mob = windower.ffxi.get_mob_by_id(violation.mob.id) or violation.mob
+		_G.UC_LAST_BLOCK_REASON = 'TANK_ENMITY_NO_ACTIONS'
+		_G.UC_WS_LAST_DIAG = ('core tank no_actions mob=%s victim=%s(%s%%)'):format(
+			tostring((mob and mob.name) or '?'),
+			tostring((violation.victim and violation.victim.name) or '?'),
+			tostring(tonumber(violation.victim_hpp) or 0)
+		)
+		debug_tank(_G.UC_WS_LAST_DIAG)
+		return false
+	end
+	local mob = windower.ffxi.get_mob_by_id(violation.mob.id) or violation.mob
+	if not mob or not mob.id or not mob.valid_target or (tonumber(mob.hpp) or 0) <= 0 then
+		return false
+	end
+	local now = os.clock()
+	if core.tank_spell_waiting == true then
+		if now < (tonumber(core.tank_spell_wait_until) or 0) then
+			windower.ffxi.run(false)
+			core.last_run_active = false
+			_G.UC_LAST_BLOCK_REASON = 'TANK_SPELL_WAITING'
+			_G.UC_WS_LAST_DIAG = ('core tank wait action=%s mob=%s'):format(tostring(core.tank_pending_action or ''), tostring(mob.name or '?'))
+			debug_tank(_G.UC_WS_LAST_DIAG)
+			return true
+		end
+		clear_tank_spell_wait_state()
+	end
+	for _, entry in ipairs(actions) do
+		local ready, reason, cast_max, dist = tank_action_ready(entry, mob, player)
+		if ready then
+			if entry.kind == 'spell' then
+				local settle_key = ('%s:%d'):format(tostring(entry.name), tonumber(mob.id) or 0)
+				local now_settle = os.clock()
+				if core.tank_spell_settle_key ~= settle_key then
+					core.tank_spell_settle_key = settle_key
+					core.tank_spell_settle_until = now_settle + 0.40
+				end
+				windower.ffxi.run(false)
+				core.last_run_active = false
+				if now_settle < (tonumber(core.tank_spell_settle_until) or 0) then
+					_G.UC_LAST_BLOCK_REASON = 'TANK_PRECAST_SETTLE'
+					_G.UC_WS_LAST_DIAG = ('core tank settle action=%s mob=%s'):format(tostring(entry.name), tostring(mob.name or '?'))
+					debug_tank(_G.UC_WS_LAST_DIAG)
+					return true
+				end
+				windower.send_command(('input /ma "%s" %d'):format(entry.name, tonumber(mob.id) or 0))
+				core.tank_spell_waiting = true
+				core.tank_spell_wait_until = now + 8.0
+				core.tank_pending_type = 'spell'
+				core.tank_pending_action = tostring(entry.name)
+				core.tank_pending_target_id = tonumber(mob.id) or 0
+				core.tank_pending_sent_at = now
+				core.tank_last_sent_at[tostring(entry.kind) .. ':' .. tostring(entry.name)] = now
+				_G.UC_LAST_BLOCK_REASON = 'TANK_ENMITY_SENT'
+				_G.UC_WS_LAST_DIAG = ('core tank sent spell=%s mob=%s victim=%s'):format(tostring(entry.name), tostring(mob.name or '?'), tostring((violation.victim and violation.victim.name) or '?'))
+				debug_tank(_G.UC_WS_LAST_DIAG, true)
+				return true
+			end
+			local ja = get_ja_resource(entry.name)
+			if ja then
+				core.ja_pending_name = tostring(entry.name or '')
+				core.ja_pending_recast_id = tonumber(ja.recast_id) or 0
+				core.ja_pending_sent_at = now
+				core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
+				core.ja_last_sent_at[tostring(entry.name or '')] = now
+			end
+			windower.send_command(('input /ja "%s" %d'):format(entry.name, tonumber(mob.id) or 0))
+			core.tank_pending_type = 'ja'
+			core.tank_pending_action = tostring(entry.name)
+			core.tank_pending_target_id = tonumber(mob.id) or 0
+			core.tank_pending_sent_at = now
+			core.tank_last_sent_at[tostring(entry.kind) .. ':' .. tostring(entry.name)] = now
+			_G.UC_LAST_BLOCK_REASON = 'TANK_ENMITY_SENT'
+			_G.UC_WS_LAST_DIAG = ('core tank sent ja=%s mob=%s victim=%s'):format(tostring(entry.name), tostring(mob.name or '?'), tostring((violation.victim and violation.victim.name) or '?'))
+			debug_tank(_G.UC_WS_LAST_DIAG, true)
+			return true
+		end
+		if reason == 'TANK_OUT_OF_RANGE' then
+			move_toward_target_for_pull(mob)
+			_G.UC_LAST_BLOCK_REASON = 'TANK_ENMITY_MOVE'
+			_G.UC_WS_LAST_DIAG = ('core tank move action=%s:%s mob=%s dist=%.2f need<=%.2f victim=%s(%s%%)'):format(
+				tostring(entry.kind),
+				tostring(entry.name),
+				tostring(mob.name or '?'),
+				tonumber(dist) or 999,
+				tonumber(cast_max) or 0,
+				tostring((violation.victim and violation.victim.name) or '?'),
+				tostring(tonumber(violation.victim_hpp) or 0)
+			)
+			debug_tank(_G.UC_WS_LAST_DIAG)
+			return true
+		end
+		if reason ~= 'TANK_RECAST' and reason ~= 'TANK_RECENT_SEND' and reason ~= 'TANK_JA_LOCK' and reason ~= 'TANK_SPELL_WAITING' then
+			_G.UC_WS_LAST_DIAG = ('core tank skip action=%s:%s reason=%s'):format(tostring(entry.kind), tostring(entry.name), tostring(reason or 'BLOCK'))
+			debug_tank(_G.UC_WS_LAST_DIAG)
+		end
+	end
+	_G.UC_LAST_BLOCK_REASON = 'TANK_ENMITY_NO_READY_ACTION'
+	_G.UC_WS_LAST_DIAG = ('core tank no_ready_action mob=%s victim=%s(%s%%)'):format(
+		tostring(mob.name or '?'),
+		tostring((violation.victim and violation.victim.name) or '?'),
+		tostring(tonumber(violation.victim_hpp) or 0)
+	)
+	debug_tank(_G.UC_WS_LAST_DIAG)
 	return false
 end
 
@@ -1406,7 +2008,8 @@ local function apply_movement(settings, target)
 	local mover = get_mover()
 	local me = windower.ffxi.get_mob_by_target('me')
 	local p = windower.ffxi.get_player()
-	if setting_enabled(settings.spacing) and me then
+	local spacing_on = setting_enabled(settings.spacing)
+	if spacing_on and me then
 		local heading, mode = spacing_compute_heading(settings, me, target, min_range, max_range)
 		if mode == 'HOLD_POSITION' then
 			if core.last_run_active then
@@ -1420,10 +2023,41 @@ local function apply_movement(settings, target)
 			return
 		end
 	end
+	-- When spacing is off, use simple "close then stop" behavior.
+	-- Do not run retreat/comfort-band corrections, which feel like hidden spacing.
+	if not spacing_on then
+		local stop_range = math.max(0.2, max_range)
+		if dist > stop_range then
+			local moved = false
+			if mover and target.id and type(mover.move_towards) == 'function' then
+				local ok = pcall(function()
+					mover:move_towards(target.id)
+				end)
+				moved = ok
+			end
+			if not moved then
+				local heading = uc_heading_to(target.x, target.y)
+				if heading then
+					windower.ffxi.run(heading)
+					moved = true
+				end
+			end
+			if not moved then
+				windower.ffxi.run()
+				moved = true
+			end
+			core.last_run_active = moved
+		else
+			if core.last_run_active then
+				stop_run()
+			end
+		end
+		return
+	end
 	local closing_to_target = dist > max_range
 	if dist > max_range then
 		local moved = false
-		if setting_enabled(settings.spacing) and me then
+		if spacing_on and me then
 			local heading = uc_spacing_aware_approach_heading(settings, me, target)
 			if heading then
 				windower.ffxi.run(heading)
@@ -1478,7 +2112,7 @@ local function apply_movement(settings, target)
 		return
 	end
 
-	if setting_enabled(settings.spacing) then
+	if spacing_on then
 		if p and me and p.status == 1 then
 			local party = windower.ffxi.get_party() or {}
 			local keys = { 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }
@@ -1660,6 +2294,22 @@ function core.on_action(act)
 	local param, resource, action_id, _, conclusion = action:get_spell()
 	local ability = skills[resource] and skills[resource][action_id]
 	local my_id = (windower.ffxi.get_player() or {}).id
+	-- Packet-fed fallback map for mob->target visibility (used by debug overlays when mob.target_index is stale/missing).
+	if actor and target and target.id and tonumber(actor) and tonumber(target.id) and tonumber(actor) > 0 and tonumber(target.id) > 0 then
+		local am = windower.ffxi.get_mob_by_id(actor)
+		if am and (tonumber(am.spawn_type) or 0) == 16 then
+			local map = rawget(_G, 'UC_MOB_LAST_ACTION_TARGETS')
+			if type(map) ~= 'table' then
+				map = {}
+				_G.UC_MOB_LAST_ACTION_TARGETS = map
+			end
+			map[tonumber(actor)] = {
+				target_id = tonumber(target.id) or 0,
+				at = os.clock(),
+				category = tostring(category or ''),
+			}
+		end
+	end
 	if my_id and actor == my_id and (category == 'job_ability' or category == 'job_ability_unblinkable') then
 		local now = os.clock()
 		core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
@@ -1684,6 +2334,19 @@ function core.on_action(act)
 			clear_pull_spell_wait_state()
 			_G.UC_LAST_BLOCK_REASON = 'PULL_SPELL_COMPLETE'
 			_G.UC_WS_LAST_DIAG = ('core pull spell-complete action=%s'):format(ack_name ~= '' and ack_name or pending_name)
+		end
+	end
+	if my_id and actor == my_id and category == 'spell_finish' and core.tank_spell_waiting == true then
+		local ack_name = tostring((ability and (ability.en or ability.name)) or '')
+		local pending_name = tostring(core.tank_pending_action or '')
+		local pending_tid = tonumber(core.tank_pending_target_id) or 0
+		local target_ok = (pending_tid == 0) or (tonumber(target.id) or 0) == pending_tid
+		local name_ok = (pending_name == '') or (ack_name ~= '' and pending_name == ack_name)
+		if target_ok and name_ok then
+			clear_tank_spell_wait_state()
+			_G.UC_LAST_BLOCK_REASON = 'TANK_SPELL_COMPLETE'
+			_G.UC_WS_LAST_DIAG = ('core tank spell-complete action=%s'):format(ack_name ~= '' and ack_name or pending_name)
+			debug_tank(_G.UC_WS_LAST_DIAG, true)
 		end
 	end
 	local current = get_current_target()
@@ -1780,19 +2443,50 @@ function core.on_action_message(msg)
 			end
 		end
 	end
+	if core.tank_spell_waiting == true then
+		local my_id = tonumber((windower.ffxi.get_player() or {}).id) or 0
+		local pending_tid = tonumber(core.tank_pending_target_id) or 0
+		local actor_ok = (my_id > 0 and aid == my_id)
+		local target_ok = (pending_tid == 0) or (tid > 0 and tid == pending_tid)
+		if actor_ok and target_ok and mid ~= 0 then
+			if spell_initiating_message_ids[mid] then
+				_G.UC_LAST_BLOCK_REASON = 'TANK_SPELL_WAITING'
+				_G.UC_WS_LAST_DIAG = ('core tank spell-msg init mid=%d'):format(mid)
+				debug_tank(_G.UC_WS_LAST_DIAG)
+			elseif spell_success_message_ids[mid] then
+				clear_tank_spell_wait_state()
+				_G.UC_LAST_BLOCK_REASON = 'TANK_SPELL_COMPLETE'
+				_G.UC_WS_LAST_DIAG = ('core tank spell-msg success mid=%d'):format(mid)
+				debug_tank(_G.UC_WS_LAST_DIAG, true)
+			else
+				clear_tank_spell_wait_state()
+				_G.UC_LAST_BLOCK_REASON = 'TANK_SPELL_RETRY'
+				_G.UC_WS_LAST_DIAG = ('core tank spell-msg retry mid=%d'):format(mid)
+				debug_tank(_G.UC_WS_LAST_DIAG)
+			end
+		end
+	end
 end
 
 local function can_cast_ja(name)
 	local ja = res.job_abilities:with('en', name)
 	if not ja then
+		debug_ja_gate(name, 'JA_UNKNOWN')
 		return false
 	end
 	local player = windower.ffxi.get_player()
 	if status_blocks_actions(player and player.status) then
+		debug_ja_gate(name, 'ACTION_BLOCK_STATUS3')
+		return false
+	end
+	local requires_engaged_front = ja_requires_engaged_front(name, ja)
+	if requires_engaged_front and (tonumber(player and player.status) or 0) ~= 1 then
+		debug_ja_gate(name, 'JA_REQUIRES_ENGAGED')
 		return false
 	end
 	local now = os.clock()
 	if now < (tonumber(core.ja_lock_until) or 0) then
+		debug_ja_gate(name, 'JA_LOCK_ACTIVE')
 		return false
 	end
 	local recasts = windower.ffxi.get_ability_recasts() or {}
@@ -1805,10 +2499,12 @@ local function can_cast_ja(name)
 			core.ja_pending_recast_id = 0
 			core.ja_pending_sent_at = 0
 			core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
+			debug_ja_gate(name, 'PENDING_RECAST_STARTED')
 			return false
 		end
 		local sent_at = tonumber(core.ja_pending_sent_at) or 0
 		if sent_at > 0 and (now - sent_at) < 0.5 then
+			debug_ja_gate(name, 'PENDING_RECENT_SEND')
 			return false
 		end
 		core.ja_pending_name = ''
@@ -1817,9 +2513,11 @@ local function can_cast_ja(name)
 	end
 	local last_sent = tonumber((core.ja_last_sent_at or {})[tostring(name)]) or 0
 	if last_sent > 0 and (now - last_sent) < 0.5 then
+		debug_ja_gate(name, 'LAST_SENT_WINDOW')
 		return false
 	end
 	if (recasts[ja.recast_id] or 0) > 0 then
+		debug_ja_gate(name, 'JA_RECAST')
 		return false
 	end
 	local abil = windower.ffxi.get_abilities() or {}
@@ -1831,19 +2529,27 @@ local function can_cast_ja(name)
 		end
 	end
 	if not owns then
+		debug_ja_gate(name, 'JA_NOT_OWNED')
 		return false
 	end
 	local t = get_current_target()
-	if tostring(ja.targets) == '{Enemy}' then
-		if not t or t.id == 0 then
+	if ja_targets_enemy(ja) then
+		if not t or t.id == 0 or not t.valid_target or tonumber(t.spawn_type) ~= 16 or (tonumber(t.hpp) or 0) <= 0 then
+			debug_ja_gate(name, 'NO_TARGET')
 			return false
 		end
 		local d = target_distance(t)
-		local r = (tonumber(ja.range) or 0) * ((tonumber(ja.range) or 0) > 20 and 0.01 or 1)
+		local r = action_effective_range(ja.range)
 		if r > 0 and d > r then
+			debug_ja_gate(name, 'OUT_OF_RANGE', ('dist=%.2f range=%.2f'):format(tonumber(d) or 0, tonumber(r) or 0))
+			return false
+		end
+		if requires_engaged_front and not target_is_in_front_arc(t, math.pi / 2) then
+			debug_ja_gate(name, 'TARGET_NOT_IN_FRONT')
 			return false
 		end
 	end
+	debug_ja_gate(name, 'READY')
 	return true
 end
 
@@ -2002,6 +2708,19 @@ local function run_unified_combat()
 		_G.UC_WS_LAST_DIAG = 'core ws reason=NO_PLAYER'
 		return
 	end
+	if setting_enabled(s.tank) then
+		local now_dbg = os.clock()
+		local last_dbg = tonumber(core.tank_tick_log_at) or 0
+		if (now_dbg - last_dbg) >= 1.0 then
+			core.tank_tick_log_at = now_dbg
+			debug_tank(('tick status=%s autotarget=%s puller=%s hunter=%s'):format(
+				tostring(p.status or 0),
+				tostring(setting_enabled(s.autotarget)),
+				tostring(setting_enabled(s.puller)),
+				tostring(setting_enabled(s.hunter) and setting_enabled(s.path_follow_enabled))
+			), true)
+		end
+	end
 	_G.UC_WS_LAST_DIAG = 'core ws reason=PENDING'
 	local now_status = p.status or 0
 	if now_status == 1 then
@@ -2019,6 +2738,20 @@ local function run_unified_combat()
 			return
 		end
 		clear_pull_spell_wait_state()
+	end
+	-- Tank enmity spell wait is global movement/action lock until completion or timeout.
+	-- This must apply even if the current violation disappears, otherwise normal movement
+	-- can resume and self-interrupt the in-progress enmity cast.
+	if core.tank_spell_waiting == true then
+		if now < (tonumber(core.tank_spell_wait_until) or 0) then
+			windower.ffxi.run(false)
+			core.last_run_active = false
+			_G.UC_LAST_BLOCK_REASON = 'TANK_SPELL_WAITING'
+			_G.UC_WS_LAST_DIAG = ('core tank spell-wait action=%s'):format(tostring(core.tank_pending_action or ''))
+			debug_tank(_G.UC_WS_LAST_DIAG)
+			return
+		end
+		clear_tank_spell_wait_state()
 	end
 	if now_status ~= 1 then
 		if (core.last_player_status or 0) == 1 then
@@ -2051,17 +2784,37 @@ local function run_unified_combat()
 		ignore_cooldown = 120
 	end
 	if not target and not setting_enabled(s.manual) then
-		if path_hunter_filter_active then
-			core.hunter_acquire.target_id = 0
-			core.hunter_acquire.started_at = 0
+		-- Tank fallback: if normal target selection yields none, still attempt to acquire
+		-- a live violation target (mob attacking a non-tank party member).
+		if setting_enabled(s.tank) and setting_enabled(s.autotarget) then
+			local tank_violation_fallback = pick_tank_violation_target(s, p)
+			if tank_violation_fallback and tank_violation_fallback.mob and tank_violation_fallback.mob.id and tank_violation_fallback.mob.id ~= 0 then
+				target = windower.ffxi.get_mob_by_id(tank_violation_fallback.mob.id) or tank_violation_fallback.mob
+				_G.UC_LAST_BLOCK_REASON = 'TANK_FALLBACK_TARGET'
+				_G.UC_WS_LAST_DIAG = ('core tank fallback-target mob=%s victim=%s(%s%%)'):format(
+					tostring((target and target.name) or '?'),
+					tostring((tank_violation_fallback.victim and tank_violation_fallback.victim.name) or '?'),
+					tostring(tonumber(tank_violation_fallback.victim_hpp) or 0)
+				)
+				debug_tank(_G.UC_WS_LAST_DIAG, true)
+			end
 		end
-		_G.UC_COMBAT_INTENT_UNTIL = 0
-		if core.last_run_active then
-			stop_run()
+		if not target then
+			if path_hunter_filter_active then
+				core.hunter_acquire.target_id = 0
+				core.hunter_acquire.started_at = 0
+			end
+			_G.UC_COMBAT_INTENT_UNTIL = 0
+			if core.last_run_active then
+				stop_run()
+			end
+			_G.UC_LAST_BLOCK_REASON = 'NO_TARGET'
+			_G.UC_WS_LAST_DIAG = 'core ws reason=NO_TARGET'
+			if setting_enabled(s.tank) then
+				debug_tank('tick no_target')
+			end
+			return
 		end
-		_G.UC_LAST_BLOCK_REASON = 'NO_TARGET'
-		_G.UC_WS_LAST_DIAG = 'core ws reason=NO_TARGET'
-		return
 	end
 	if target and target.id and target.id ~= 0 then
 		-- Hold a short combat-intent window so party-follow does not fight approach movement
@@ -2111,6 +2864,9 @@ local function run_unified_combat()
 	if tid > 0 and setting_enabled(s.autotarget) then
 		local pull_handled = try_pull_action(s, p, target)
 		if pull_handled then
+			if setting_enabled(s.tank) then
+				debug_tank(('tick bypass_tank reason=pull_handled tid=%d'):format(tonumber(tid) or 0), true)
+			end
 			return
 		end
 	end
@@ -2133,6 +2889,35 @@ local function run_unified_combat()
 				_G.UC_WS_LAST_DIAG = 'core ws reason=TARGET_PREP_FAIL'
 			end
 		end
+	end
+	local tank_violation = pick_tank_violation_target(s, p)
+	if tank_violation and tank_violation.mob then
+		_G.UC_TANK_VIOLATION_MOB_ID = tonumber(tank_violation.mob.id) or 0
+		_G.UC_TANK_VIOLATION_MOB_NAME = tostring(tank_violation.mob.name or '')
+		_G.UC_TANK_VIOLATION_VICTIM_ID = tonumber((tank_violation.victim and tank_violation.victim.id) or 0)
+		_G.UC_TANK_VIOLATION_VICTIM_NAME = tostring((tank_violation.victim and tank_violation.victim.name) or '')
+		_G.UC_TANK_VIOLATION_VICTIM_HPP = tonumber(tank_violation.victim_hpp) or 0
+		-- T7: when combat dark launch is enabled, tank enmity dispatch is scheduler-owned.
+		if setting_enabled(s.scheduler_dark_launch_combat) then
+			_G.UC_LAST_BLOCK_REASON = 'TANK_ENMITY_SCHED_OWNED'
+			_G.UC_WS_LAST_DIAG = ('core tank sched-owned mob=%s victim=%s(%s%%)'):format(
+				tostring((tank_violation.mob and tank_violation.mob.name) or '?'),
+				tostring((tank_violation.victim and tank_violation.victim.name) or '?'),
+				tostring(tonumber(tank_violation.victim_hpp) or 0)
+			)
+			debug_tank(_G.UC_WS_LAST_DIAG, true)
+		else
+			local tank_handled = execute_tank_enmity(s, p, tank_violation)
+			if tank_handled then
+				return
+			end
+		end
+	else
+		_G.UC_TANK_VIOLATION_MOB_ID = 0
+		_G.UC_TANK_VIOLATION_MOB_NAME = ''
+		_G.UC_TANK_VIOLATION_VICTIM_ID = 0
+		_G.UC_TANK_VIOLATION_VICTIM_NAME = ''
+		_G.UC_TANK_VIOLATION_VICTIM_HPP = 0
 	end
 	local current = get_current_target()
 	apply_facing(s, current)
@@ -2213,6 +2998,61 @@ function core.select_smart_ws_for_scheduler(settings, target_id)
 		return '', 'SMART_WS_ERROR'
 	end
 	return tostring(ws_name or ''), tostring(ws_reason or '')
+end
+
+function core.select_tank_enmity_for_scheduler(settings)
+	local s = settings or get_settings() or {}
+	if not setting_enabled(s.tank) or not setting_enabled(s.autotarget) then
+		return nil
+	end
+	local player = windower.ffxi.get_player()
+	if not player then
+		return nil
+	end
+	local violation = pick_tank_violation_target(s, player)
+	if not violation or not violation.mob or not violation.mob.id then
+		return nil
+	end
+	local mob = windower.ffxi.get_mob_by_id(violation.mob.id) or violation.mob
+	if not mob or not mob.id or not mob.valid_target or (tonumber(mob.hpp) or 0) <= 0 or tonumber(mob.spawn_type) ~= 16 then
+		return nil
+	end
+	local actions = parse_tank_enmity_actions(s)
+	for _, entry in ipairs(actions) do
+		local ready, reason, cast_max, dist = tank_action_ready(entry, mob, player)
+		if ready then
+			return {
+				kind = tostring(entry.kind or ''),
+				name = tostring(entry.name or ''),
+				target_id = tonumber(mob.id) or 0,
+				target_name = tostring(mob.name or ''),
+				victim_id = tonumber((violation.victim and violation.victim.id) or 0),
+				victim_name = tostring((violation.victim and violation.victim.name) or ''),
+				victim_hpp = tonumber(violation.victim_hpp) or 0,
+				mob_hpp = tonumber(mob.hpp) or 0,
+				dist = target_distance(mob),
+				action_dist = tonumber(dist) or target_distance(mob),
+				action_range = tonumber(cast_max) or 0,
+				reason = 'READY',
+			}
+		end
+		if reason == 'TANK_OUT_OF_RANGE' then
+			return {
+				kind = tostring(entry.kind or ''),
+				name = tostring(entry.name or ''),
+				target_id = tonumber(mob.id) or 0,
+				target_name = tostring(mob.name or ''),
+				victim_id = tonumber((violation.victim and violation.victim.id) or 0),
+				victim_name = tostring((violation.victim and violation.victim.name) or ''),
+				victim_hpp = tonumber(violation.victim_hpp) or 0,
+				mob_hpp = tonumber(mob.hpp) or 0,
+				dist = tonumber(dist) or target_distance(mob),
+				action_range = tonumber(cast_max) or 0,
+				reason = 'OUT_OF_RANGE',
+			}
+		end
+	end
+	return nil
 end
 
 return core

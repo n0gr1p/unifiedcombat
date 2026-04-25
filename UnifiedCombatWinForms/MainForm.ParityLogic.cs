@@ -64,56 +64,24 @@ public partial class MainForm
 
     private void RefreshEditorFromSnapshot()
     {
-        if (_snapshotDoc is null || string.IsNullOrEmpty(_selectedSid))
+        if (string.IsNullOrEmpty(_selectedSid))
+        {
+            ClearForm();
+            return;
+        }
+        if (!TryLoadWorkingProfileForSid(_selectedSid, out var profileDoc)
+            && !TryLoadProfileForSid(_selectedSid, out profileDoc))
         {
             ClearForm();
             return;
         }
 
-        if (!_snapshotDoc.RootElement.TryGetProperty("sessions", out var sessions) || sessions.ValueKind != JsonValueKind.Object)
+        using (profileDoc)
         {
-            ClearForm();
-            return;
+            FillFromSession(_selectedSid, profileDoc.RootElement);
         }
 
-        if (!sessions.TryGetProperty(_selectedSid, out var s))
-        {
-            ClearForm();
-            return;
-        }
-
-        PrunePendingBoolEchoes(_selectedSid, s);
-
-        if (_pendingWsBySid.TryGetValue(_selectedSid, out var pws))
-        {
-            var eng = SessionStateHelper.GetString(s, "engine", "melee");
-            var incomingWs = SessionStateHelper.WsFromState(s, eng);
-            if (incomingWs == pws.ws)
-            {
-                _pendingWsBySid.Remove(_selectedSid);
-            }
-            else if ((DateTime.UtcNow - pws.ts).TotalSeconds < 3)
-            {
-                SetWsComboOnly(pws.ws, s, eng);
-                RenderAuxLists(s);
-                return;
-            }
-            else
-            {
-                _pendingWsBySid.Remove(_selectedSid);
-            }
-        }
-
-        if ((DateTime.UtcNow - _abilityInteractionUtc).TotalSeconds < 2.0)
-        {
-            var eng = SessionStateHelper.GetString(s, "engine", "melee");
-            var wsv = SessionStateHelper.WsFromState(s, eng);
-            SetWsComboOnly(wsv, s, eng);
-            RenderAuxLists(s);
-            return;
-        }
-
-        FillFromSession(_selectedSid, s);
+        PushFullFormState(_selectedSid);
     }
 
     private void PrunePendingBoolEchoes(string sid, JsonElement s)
@@ -179,11 +147,6 @@ public partial class MainForm
             var amIdx = list.IndexOf(amVal);
             _aftermathCombo.SelectedIndex = amIdx >= 0 ? amIdx : (list.Count > 0 ? 0 : -1);
             _aftermathCombo.Enabled = SessionStateHelper.GetBool(s, "aftermath_enabled", false);
-            _lblBlock.Text = SessionStateHelper.GetString(s, "block_reason");
-            _lblSched.Text = SessionStateHelper.GetString(s, "scheduler_action");
-            _lblSchedProv.Text = SessionStateHelper.GetString(s, "scheduler_provider");
-            _lblTick.Text = SessionStateHelper.GetString(s, "scheduler_tick_seq");
-            _lblWsDiag.Text = SessionStateHelper.GetString(s, "ws_diag");
             _ = eng;
         }
         finally
@@ -232,13 +195,6 @@ public partial class MainForm
             _defMed.Text = "55";
             _defOverwrite.Text = "150";
             _defBuffs.Text = "";
-            _lblBlock.Text = "";
-            _lblSched.Text = "";
-            _lblSchedProv.Text = "";
-            _lblTick.Text = "";
-            _lblWsDiag.Text = "";
-            _lblFightLeaderOp.Text = "";
-            _lblPartyFollowOp.Text = "";
             _pfFollowMinYalms.Text = "0.5";
             _pfFollowMaxYalms.Text = "50";
             _pfFightFollowMinYalms.Text = "3";
@@ -270,17 +226,16 @@ public partial class MainForm
             _pathPullSpellOptions.Clear();
             _pathHunterList.Items.Clear();
             _pathHunterRows = [];
+            _tankEnmityList.Items.Clear();
+            _tankEnmityRows = [];
+            _tankEnmityTypeCombo.SelectedItem = "ja";
+            _tankEnmityNameCombo.Items.Clear();
+            _tankEnmityNameCombo.Text = "";
             _pathHunterName.Text = "";
-            _pathHunterOp.Text = "";
             _corRoll1Combo.Items.Clear();
             _corRoll2Combo.Items.Clear();
             _corRoll1Combo.Enabled = false;
             _corRoll2Combo.Enabled = false;
-            _lblAddPriOp.Text = "";
-            _lblPartnerOp.Text = "";
-            _lblIgnoreInfo.Text = "";
-            _lblIgnoreOp.Text = "";
-            _lblTargetIgnOp.Text = "";
             _ignoreName.Text = "";
             _targetIgnName.Text = "";
             _addPriName.Text = "";
@@ -335,6 +290,7 @@ public partial class MainForm
         var wsOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("weaponskill_options", out var wso) ? wso : default);
         var pullJaOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("path_pull_ja_options", out var pjo) ? pjo : default);
         var pullSpellOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("path_pull_spell_options", out var pso) ? pso : default);
+        var tankEnmityActions = SessionStateHelper.SplitOptions(s.TryGetProperty("tank_enmity_actions", out var tea) ? tea : default);
         var partnerOpts = new List<string> { "" };
         partnerOpts.AddRange(SessionStateHelper.SplitOptions(s.TryGetProperty("partner_options", out var po) ? po : default));
         var pullerOpts = new List<string> { "" };
@@ -464,17 +420,6 @@ public partial class MainForm
             _defOverwrite.Text = SessionStateHelper.GetString(s, "defensive_overwrite_interval", "150");
             _defBuffs.Text = SessionStateHelper.GetString(s, "defensive_buffs");
 
-            _lblBlock.Text = SessionStateHelper.GetString(s, "block_reason");
-            _lblSched.Text = SessionStateHelper.GetString(s, "scheduler_action");
-            _lblSchedProv.Text = SessionStateHelper.GetString(s, "scheduler_provider");
-            _lblTick.Text = SessionStateHelper.GetString(s, "scheduler_tick_seq");
-            _lblWsDiag.Text = SessionStateHelper.GetString(s, "ws_diag");
-            _lblFightLeaderOp.Text = SessionStateHelper.GetString(s, "fight_leader_last_op");
-            _lblPartyFollowOp.Text = SessionStateHelper.GetString(s, "party_follow_last_op");
-            _lblAddPriOp.Text = SessionStateHelper.GetString(s, "add_priority_last_op");
-            _lblPartnerOp.Text = SessionStateHelper.GetString(s, "partner_last_op");
-            _lblIgnoreOp.Text = SessionStateHelper.GetString(s, "ignore_last_op");
-            _lblTargetIgnOp.Text = SessionStateHelper.GetString(s, "target_ignore_last_op");
             _pathFileValue.Text = SessionStateHelper.GetString(s, "path_file_name");
             _pathRouteTypeValue.Text = SessionStateHelper.GetString(s, "path_route_type", "unknown");
             var pDist = SessionStateHelper.GetString(s, "path_distance_to_start", "0");
@@ -524,6 +469,11 @@ public partial class MainForm
                 _pathPullSpellOptions.Clear();
                 _pathPullSpellOptions.AddRange(pullSpellOpts);
             }
+            if (!SequenceEqualOrdinal(_tankEnmityRows, tankEnmityActions))
+            {
+                _tankEnmityRows = tankEnmityActions.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+                RebindTankEnmityListUi();
+            }
             var pullTypeIncoming = SessionStateHelper.GetString(s, "path_pull_action_type", "ja");
             if (!string.Equals(pullTypeIncoming, "spell", StringComparison.OrdinalIgnoreCase))
             {
@@ -538,7 +488,11 @@ public partial class MainForm
             {
                 RefreshPathPullActionNameOptions(pullTypeIncoming, pullNameIncoming);
             }
-            _pathHunterOp.Text = SessionStateHelper.GetString(s, "path_hunter_last_op");
+            if (_tankEnmityTypeCombo.SelectedItem is not string tenType || (tenType != "ja" && tenType != "spell"))
+            {
+                _tankEnmityTypeCombo.SelectedItem = "ja";
+            }
+            RefreshTankEnmityNameOptions((_tankEnmityTypeCombo.SelectedItem?.ToString() ?? "ja"), _tankEnmityNameCombo.Text ?? "");
             RenderPathHunterList(s);
             ApplyCorRollFromSnapshot(_corRoll1Combo, SessionStateHelper.GetString(s, "cor_roll_1"));
             ApplyCorRollFromSnapshot(_corRoll2Combo, SessionStateHelper.GetString(s, "cor_roll_2"));
@@ -569,6 +523,126 @@ public partial class MainForm
         {
             _suppressEvents = false;
         }
+    }
+
+    private void ApplyOptionsFromSnapshotIfPresent(string sid, JsonElement s)
+    {
+        var hasAbility = s.TryGetProperty("ability_options", out var ao) && ao.ValueKind == JsonValueKind.String;
+        var hasWs = s.TryGetProperty("weaponskill_options", out var wso) && wso.ValueKind == JsonValueKind.String;
+        var hasPullJa = s.TryGetProperty("path_pull_ja_options", out var pjo) && pjo.ValueKind == JsonValueKind.String;
+        var hasPullSpell = s.TryGetProperty("path_pull_spell_options", out var pso) && pso.ValueKind == JsonValueKind.String;
+        if (!hasAbility && !hasWs && !hasPullJa && !hasPullSpell)
+        {
+            return;
+        }
+
+        var abilityOpts = SessionStateHelper.SplitOptions(hasAbility ? ao : default);
+        var wsOpts = SessionStateHelper.SplitOptions(hasWs ? wso : default);
+        var pullJaOpts = SessionStateHelper.SplitOptions(hasPullJa ? pjo : default);
+        var pullSpellOpts = SessionStateHelper.SplitOptions(hasPullSpell ? pso : default);
+        var changed = false;
+
+        _suppressEvents = true;
+        try
+        {
+            if (hasAbility && !SequenceEqualOrdinal(_abilityOptions, abilityOpts))
+            {
+                _abilityOptions.Clear();
+                _abilityOptions.AddRange(abilityOpts);
+                RefreshAbilityPickIfChanged();
+                changed = true;
+            }
+
+            if (hasWs)
+            {
+                var wsText = (_wsCombo.Text ?? "").Trim();
+                var wsDisplay = new List<string>(wsOpts);
+                if (!string.IsNullOrEmpty(wsText) && !wsDisplay.Contains(wsText))
+                {
+                    wsDisplay.Insert(0, wsText);
+                }
+
+                var currentWs = _wsCombo.Items.Cast<object>().Select(x => x.ToString() ?? "").ToList();
+                if (!SequenceEqualOrdinal(currentWs, wsDisplay))
+                {
+                    _wsCombo.Items.Clear();
+                    foreach (var w in wsDisplay)
+                    {
+                        _wsCombo.Items.Add(w);
+                    }
+                    changed = true;
+                }
+                var wsIdx = wsDisplay.FindIndex(x => string.Equals(x, wsText, StringComparison.Ordinal));
+                _wsCombo.SelectedIndex = wsIdx >= 0 ? wsIdx : (wsDisplay.Count > 0 ? 0 : -1);
+
+                var amText = (_aftermathCombo.Text ?? "").Trim();
+                var amDisplay = new List<string>(wsOpts);
+                if (!string.IsNullOrEmpty(amText) && !amDisplay.Contains(amText))
+                {
+                    amDisplay.Insert(0, amText);
+                }
+                var currentAm = _aftermathCombo.Items.Cast<object>().Select(x => x.ToString() ?? "").ToList();
+                if (!SequenceEqualOrdinal(currentAm, amDisplay))
+                {
+                    _aftermathCombo.Items.Clear();
+                    foreach (var w in amDisplay)
+                    {
+                        _aftermathCombo.Items.Add(w);
+                    }
+                    changed = true;
+                }
+                var amIdx = amDisplay.FindIndex(x => string.Equals(x, amText, StringComparison.Ordinal));
+                _aftermathCombo.SelectedIndex = amIdx >= 0 ? amIdx : (amDisplay.Count > 0 ? 0 : -1);
+            }
+
+            if (hasPullJa && !SequenceEqualOrdinal(_pathPullJaOptions, pullJaOpts))
+            {
+                _pathPullJaOptions.Clear();
+                _pathPullJaOptions.AddRange(pullJaOpts);
+                changed = true;
+            }
+            if (hasPullSpell && !SequenceEqualOrdinal(_pathPullSpellOptions, pullSpellOpts))
+            {
+                _pathPullSpellOptions.Clear();
+                _pathPullSpellOptions.AddRange(pullSpellOpts);
+                changed = true;
+            }
+            if (hasPullJa || hasPullSpell)
+            {
+                var pullType = (_pathPullActionType.SelectedItem?.ToString() ?? "ja").ToLowerInvariant();
+                var pullName = (_pathPullActionName.Text ?? "").Trim();
+                RefreshPathPullActionNameOptions(pullType, pullName);
+                var tankType = (_tankEnmityTypeCombo.SelectedItem?.ToString() ?? "ja").ToLowerInvariant();
+                var tankName = (_tankEnmityNameCombo.Text ?? "").Trim();
+                RefreshTankEnmityNameOptions(tankType, tankName);
+            }
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+
+        var job = _sessionMetaBySid.TryGetValue(sid, out var meta)
+            ? meta.Job
+            : SessionStateHelper.GetString(s, "job", "");
+        if (!string.IsNullOrWhiteSpace(job))
+        {
+            _optionsHydratedJobBySid[sid] = job;
+        }
+        _optionsRequestInFlightBySid.Remove(sid);
+        if (changed && string.Equals(_selectedSid, sid, StringComparison.Ordinal))
+        {
+            statusConnection.Text = $"Mirror: options hydrated ({metaOrJob(sid, job)})";
+        }
+    }
+
+    private string metaOrJob(string sid, string fallbackJob)
+    {
+        if (_sessionMetaBySid.TryGetValue(sid, out var meta) && !string.IsNullOrWhiteSpace(meta.Job))
+        {
+            return meta.Job;
+        }
+        return string.IsNullOrWhiteSpace(fallbackJob) ? "unknown" : fallbackJob;
     }
 
     private void UpdateBooleanCardVisuals()
@@ -664,18 +738,9 @@ public partial class MainForm
     private void RenderIgnoreList(JsonElement s)
     {
         var newRows = SessionStateHelper.ParseIgnoreEntriesFrom(s, "ignore_entries");
-        var itid = 0;
-        if (s.TryGetProperty("ignore_target_id", out var tid) && tid.ValueKind == JsonValueKind.Number)
-        {
-            itid = tid.GetInt32();
-        }
-
-        var tname = SessionStateHelper.GetString(s, "ignore_target_name");
-        _lblIgnoreInfo.Text = itid > 0 ? $"Current target: {tname} (id {itid})" : "Current target: (none)";
-        var tgtOk = itid > 0;
-        _ignoreCurTarget.Enabled = tgtOk;
-        _targetIgnCurTarget.Enabled = tgtOk;
-        _addPriCurTarget.Enabled = tgtOk;
+        _ignoreCurTarget.Enabled = true;
+        _targetIgnCurTarget.Enabled = true;
+        _addPriCurTarget.Enabled = true;
 
         if (newRows.SequenceEqual(_ignoreRows) && _ignoreList.Items.Count == newRows.Count)
         {
@@ -711,13 +776,7 @@ public partial class MainForm
     private void RenderPartnerList(JsonElement s)
     {
         var newRows = SessionStateHelper.ParseIgnoreEntriesFrom(s, "partner_entries");
-        var itid = 0;
-        if (s.TryGetProperty("ignore_target_id", out var tid) && tid.ValueKind == JsonValueKind.Number)
-        {
-            itid = tid.GetInt32();
-        }
-
-        _partnerCurTarget.Enabled = itid > 0;
+        _partnerCurTarget.Enabled = true;
         if (newRows.SequenceEqual(_partnerRows) && _partnerList.Items.Count == newRows.Count)
         {
             return;
@@ -830,14 +889,10 @@ public partial class MainForm
             return;
         }
 
-        if (_snapshotDoc is null || !_snapshotDoc.RootElement.TryGetProperty("sessions", out var sessions) || !sessions.TryGetProperty(sid, out var s))
-        {
-            return;
-        }
-
         if (key == "Start_Engine")
         {
             Forward(sid, val ? new Dictionary<string, object?> { ["op"] = "start_engine" } : new Dictionary<string, object?> { ["op"] = "stop_engine" });
+            _sessionRunningBySid[sid] = val;
         }
         else
         {
@@ -892,7 +947,6 @@ public partial class MainForm
             _aftermathCombo.Enabled = val;
         }
 
-        _ = s;
     }
 
     private void OnWsSelected()
@@ -908,13 +962,8 @@ public partial class MainForm
             return;
         }
 
-        if (_snapshotDoc is null || !_snapshotDoc.RootElement.TryGetProperty("sessions", out var sessions) || !sessions.TryGetProperty(sid, out var s))
-        {
-            return;
-        }
-
-        var eng = SessionStateHelper.GetString(s, "engine", "melee");
-        var val = _wsCombo.SelectedItem?.ToString() ?? "";
+        var eng = GetEngineForSid(sid);
+        var val = (_wsCombo.Text ?? "").Trim();
         SendWsUpdate(sid, eng, val);
     }
 
@@ -938,7 +987,7 @@ public partial class MainForm
             return;
         }
 
-        var val = _aftermathCombo.SelectedItem?.ToString() ?? "";
+        var val = (_aftermathCombo.Text ?? "").Trim();
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "aftermath_ws", ["value"] = val });
     }
 
@@ -1287,7 +1336,7 @@ public partial class MainForm
             return;
         }
 
-        var name = _pathPullActionName.SelectedItem?.ToString() ?? "";
+        var name = (_pathPullActionName.Text ?? "").Trim();
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "path_pull_action_name", ["value"] = name });
     }
 
@@ -1308,6 +1357,11 @@ public partial class MainForm
         if (string.IsNullOrEmpty(name))
         {
             return;
+        }
+        if (!HasName(_pathHunterRows, name))
+        {
+            _pathHunterRows.Add((NextId(_pathHunterRows), name));
+            RebindPathHunterListUi();
         }
 
         Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_add", ["name"] = name });
@@ -1332,8 +1386,157 @@ public partial class MainForm
         {
             return;
         }
+        if (idx < _pathHunterRows.Count)
+        {
+            _pathHunterRows.RemoveAt(idx);
+            RebindPathHunterListUi();
+        }
 
         Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_remove", ["index"] = idx + 1 });
+    }
+
+    private static string NormalizeTankEnmityEntry(string type, string name)
+    {
+        var t = string.Equals(type, "spell", StringComparison.OrdinalIgnoreCase) ? "spell" : "ja";
+        var n = (name ?? "").Trim();
+        return n.Length == 0 ? "" : $"{t}:{n}";
+    }
+
+    private void RefreshTankEnmityNameOptions(string type, string selectedName)
+    {
+        var src = string.Equals(type, "spell", StringComparison.OrdinalIgnoreCase) ? _pathPullSpellOptions : _pathPullJaOptions;
+        var next = new List<string>(src);
+        var cur = _tankEnmityNameCombo.Items.Cast<object>().Select(x => x.ToString() ?? "").ToList();
+        if (!SequenceEqualOrdinal(cur, next))
+        {
+            _tankEnmityNameCombo.Items.Clear();
+            foreach (var n in next)
+            {
+                _tankEnmityNameCombo.Items.Add(n);
+            }
+        }
+
+        var incoming = (selectedName ?? "").Trim();
+        if (incoming.Length > 0)
+        {
+            var idx = next.FindIndex(x => string.Equals(x, incoming, StringComparison.Ordinal));
+            _tankEnmityNameCombo.SelectedIndex = idx >= 0 ? idx : -1;
+            if (idx < 0 && !_tankEnmityNameCombo.DroppedDown && !_tankEnmityNameCombo.Focused)
+            {
+                _tankEnmityNameCombo.Text = incoming;
+            }
+        }
+        else if (!_tankEnmityNameCombo.DroppedDown)
+        {
+            _tankEnmityNameCombo.SelectedIndex = next.Count > 0 ? 0 : -1;
+        }
+    }
+
+    private void PushTankEnmityActions(string sid)
+    {
+        Forward(
+            sid,
+            new Dictionary<string, object?>
+            {
+                ["op"] = "tank_enmity_replace_actions",
+                ["value"] = string.Join("|", _tankEnmityRows),
+            }
+        );
+    }
+
+    private void OnTankEnmityTypeChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var at = _tankEnmityTypeCombo.SelectedItem?.ToString() ?? "ja";
+        at = string.Equals(at, "spell", StringComparison.OrdinalIgnoreCase) ? "spell" : "ja";
+        _suppressEvents = true;
+        try
+        {
+            RefreshTankEnmityNameOptions(at, _tankEnmityNameCombo.Text ?? "");
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+    }
+
+    private void OnTankEnmityAdd()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+        var at = _tankEnmityTypeCombo.SelectedItem?.ToString() ?? "ja";
+        at = string.Equals(at, "spell", StringComparison.OrdinalIgnoreCase) ? "spell" : "ja";
+        var name = (_tankEnmityNameCombo.Text ?? "").Trim();
+        var entry = NormalizeTankEnmityEntry(at, name);
+        if (entry.Length == 0)
+        {
+            return;
+        }
+        if (!_tankEnmityRows.Any(x => string.Equals(x, entry, StringComparison.OrdinalIgnoreCase)))
+        {
+            _tankEnmityRows.Add(entry);
+            RebindTankEnmityListUi();
+        }
+        PushTankEnmityActions(sid);
+    }
+
+    private void OnTankEnmityRemove()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+        var idx = _tankEnmityList.SelectedIndex;
+        if (idx < 0 || idx >= _tankEnmityRows.Count)
+        {
+            return;
+        }
+        _tankEnmityRows.RemoveAt(idx);
+        RebindTankEnmityListUi();
+        PushTankEnmityActions(sid);
+    }
+
+    private void OnTankEnmityMove(string direction)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+        var idx = _tankEnmityList.SelectedIndex;
+        if (idx < 0 || idx >= _tankEnmityRows.Count)
+        {
+            return;
+        }
+        var next = string.Equals(direction, "up", StringComparison.OrdinalIgnoreCase) ? idx - 1 : idx + 1;
+        if (next < 0 || next >= _tankEnmityRows.Count)
+        {
+            return;
+        }
+        (_tankEnmityRows[next], _tankEnmityRows[idx]) = (_tankEnmityRows[idx], _tankEnmityRows[next]);
+        RebindTankEnmityListUi();
+        _tankEnmityList.SelectedIndex = next;
+        PushTankEnmityActions(sid);
     }
 
     private void OnPullerSelected()
@@ -1853,7 +2056,8 @@ public partial class MainForm
     private void AddAbility()
     {
         _abilityInteractionUtc = DateTime.UtcNow;
-        if (_abilityPickCombo.SelectedItem is not string name || string.IsNullOrEmpty(name))
+        var name = _abilityPickCombo.Text?.Trim() ?? _abilityPickCombo.SelectedItem?.ToString() ?? "";
+        if (string.IsNullOrEmpty(name))
         {
             return;
         }
@@ -1925,6 +2129,11 @@ public partial class MainForm
         {
             return;
         }
+        if (!HasName(_ignoreRows, name))
+        {
+            _ignoreRows.Add((NextId(_ignoreRows), name));
+            RebindIgnoreListUi();
+        }
 
         Forward(sid, new Dictionary<string, object?> { ["op"] = "ignore_add", ["name"] = name });
     }
@@ -1959,6 +2168,11 @@ public partial class MainForm
         {
             return;
         }
+        if (idx < _ignoreRows.Count)
+        {
+            _ignoreRows.RemoveAt(idx);
+            RebindIgnoreListUi();
+        }
 
         Forward(
             sid,
@@ -1978,6 +2192,11 @@ public partial class MainForm
         if (name.Length == 0)
         {
             return;
+        }
+        if (!HasName(_partnerRows, name))
+        {
+            _partnerRows.Add((NextId(_partnerRows), name));
+            RebindPartnerListUi();
         }
 
         Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_add", ["name"] = name });
@@ -2013,6 +2232,11 @@ public partial class MainForm
         {
             return;
         }
+        if (idx < _partnerRows.Count)
+        {
+            _partnerRows.RemoveAt(idx);
+            RebindPartnerListUi();
+        }
 
         Forward(
             sid,
@@ -2032,6 +2256,11 @@ public partial class MainForm
         if (name.Length == 0)
         {
             return;
+        }
+        if (!HasName(_targetIgnoreRows, name))
+        {
+            _targetIgnoreRows.Add((NextSlot(_targetIgnoreRows), name));
+            RebindTargetIgnoreListUi();
         }
 
         Forward(sid, new Dictionary<string, object?> { ["op"] = "target_ignore_add", ["name"] = name });
@@ -2067,6 +2296,15 @@ public partial class MainForm
         {
             return;
         }
+        if (idx < _targetIgnoreRows.Count)
+        {
+            _targetIgnoreRows.RemoveAt(idx);
+            for (var i = 0; i < _targetIgnoreRows.Count; i++)
+            {
+                _targetIgnoreRows[i] = (i + 1, _targetIgnoreRows[i].Name);
+            }
+            RebindTargetIgnoreListUi();
+        }
 
         Forward(
             sid,
@@ -2091,6 +2329,11 @@ public partial class MainForm
         if (name.Length == 0)
         {
             return;
+        }
+        if (!HasName(_addPriorityRows, name))
+        {
+            _addPriorityRows.Add((NextSlot(_addPriorityRows), name));
+            RebindAddPriorityListUi();
         }
 
         Forward(sid, new Dictionary<string, object?> { ["op"] = "add_priority_add", ["name"] = name });
@@ -2126,6 +2369,15 @@ public partial class MainForm
         {
             return;
         }
+        if (idx < _addPriorityRows.Count)
+        {
+            _addPriorityRows.RemoveAt(idx);
+            for (var i = 0; i < _addPriorityRows.Count; i++)
+            {
+                _addPriorityRows[i] = (i + 1, _addPriorityRows[i].Name);
+            }
+            RebindAddPriorityListUi();
+        }
 
         Forward(
             sid,
@@ -2151,8 +2403,28 @@ public partial class MainForm
         {
             return;
         }
+        var localSlot = idx + 1;
+        if (idx < _addPriorityRows.Count)
+        {
+            var next = string.Equals(direction, "up", StringComparison.OrdinalIgnoreCase) ? idx - 1 : idx + 1;
+            if (next >= 0 && next < _addPriorityRows.Count)
+            {
+                (_addPriorityRows[next], _addPriorityRows[idx]) = (_addPriorityRows[idx], _addPriorityRows[next]);
+                for (var i = 0; i < _addPriorityRows.Count; i++)
+                {
+                    _addPriorityRows[i] = (i + 1, _addPriorityRows[i].Name);
+                }
+                RebindAddPriorityListUi();
+                _addPriList.SelectedIndex = next;
+                localSlot = idx + 1;
+            }
+        }
 
-        var slot = idx < _addPriorityRows.Count ? _addPriorityRows[idx].Slot : SessionStateHelper.ParseTrailingBracketId(_addPriList.Items[idx]?.ToString() ?? "");
+        int? slot = localSlot;
+        if (idx >= _addPriorityRows.Count)
+        {
+            slot = SessionStateHelper.ParseTrailingBracketId(_addPriList.Items[idx]?.ToString() ?? "") ?? 0;
+        }
         if (!slot.HasValue || slot.Value < 1)
         {
             return;
@@ -2178,6 +2450,7 @@ public partial class MainForm
             return;
         }
 
+        TrySaveProfileFromUi(sid);
         PushFullFormState(sid);
         await Task.Delay(200).ConfigureAwait(true);
         if (!IsDisposed)
@@ -2194,33 +2467,142 @@ public partial class MainForm
             return;
         }
 
-        if (_snapshotDoc is null || !_snapshotDoc.RootElement.TryGetProperty("sessions", out var sessions) || !sessions.TryGetProperty(sid, out var s))
-        {
-            return;
-        }
-
-        var running = SessionStateHelper.GetBool(s, "Start_Engine", false);
+        var running = _sessionRunningBySid.TryGetValue(sid, out var rv) && rv;
         if (running)
         {
             Forward(sid, new Dictionary<string, object?> { ["op"] = "stop_engine" });
+            _sessionRunningBySid[sid] = false;
         }
         else
         {
             Forward(sid, new Dictionary<string, object?> { ["op"] = "start_engine" });
+            _sessionRunningBySid[sid] = true;
+        }
+    }
+
+    private void ReloadAddonAndReapplyRun()
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var wasRunning = _sessionRunningBySid.TryGetValue(sid, out var rv) && rv;
+        if (_sessionMetaBySid.TryGetValue(sid, out var meta) && !string.IsNullOrWhiteSpace(meta.CharName))
+        {
+            if (wasRunning)
+            {
+                _pendingEngineReapplyByChar[meta.CharName] = DateTime.UtcNow.AddSeconds(60);
+                statusConnection.Text = $"Mirror: reload sent ({meta.CharName}), queued run-state reapply";
+            }
+            else
+            {
+                _pendingEngineReapplyByChar.Remove(meta.CharName);
+                statusConnection.Text = $"Mirror: reload sent ({meta.CharName})";
+            }
+        }
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "addon_reload" });
+    }
+
+    private static int NextId(List<(int Id, string Name)> rows)
+    {
+        var mx = 0;
+        foreach (var r in rows)
+        {
+            if (r.Id > mx)
+            {
+                mx = r.Id;
+            }
+        }
+        return mx + 1;
+    }
+
+    private static int NextSlot(List<(int Slot, string Name)> rows)
+    {
+        var mx = 0;
+        foreach (var r in rows)
+        {
+            if (r.Slot > mx)
+            {
+                mx = r.Slot;
+            }
+        }
+        return mx + 1;
+    }
+
+    private static bool HasName(IEnumerable<(int, string)> rows, string name)
+    {
+        return rows.Any(r => string.Equals(r.Item2, name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void RebindIgnoreListUi()
+    {
+        _ignoreList.Items.Clear();
+        foreach (var (id, name) in _ignoreRows)
+        {
+            _ignoreList.Items.Add($"{name} [{id}]");
+        }
+    }
+
+    private void RebindPartnerListUi()
+    {
+        _partnerList.Items.Clear();
+        foreach (var (id, name) in _partnerRows)
+        {
+            _partnerList.Items.Add($"{name} [{id}]");
+        }
+    }
+
+    private void RebindTargetIgnoreListUi()
+    {
+        _targetIgnList.Items.Clear();
+        foreach (var (slot, name) in _targetIgnoreRows)
+        {
+            _targetIgnList.Items.Add($"{name} [{slot}]");
+        }
+    }
+
+    private void RebindAddPriorityListUi()
+    {
+        _addPriList.Items.Clear();
+        foreach (var (slot, name) in _addPriorityRows)
+        {
+            _addPriList.Items.Add($"{name} [{slot}]");
+        }
+    }
+
+    private void RebindPathHunterListUi()
+    {
+        _pathHunterList.Items.Clear();
+        foreach (var (_, name) in _pathHunterRows)
+        {
+            _pathHunterList.Items.Add(name);
+        }
+    }
+
+    private void RebindTankEnmityListUi()
+    {
+        _tankEnmityList.Items.Clear();
+        foreach (var entry in _tankEnmityRows)
+        {
+            _tankEnmityList.Items.Add(entry);
         }
     }
 
     private void PushFullFormState(string sid)
     {
-        if (_snapshotDoc is null || !_snapshotDoc.RootElement.TryGetProperty("sessions", out var sessions) || !sessions.TryGetProperty(sid, out var s))
-        {
-            return;
-        }
-
-        var eng = SessionStateHelper.GetString(s, "engine", "melee");
-        var wsVal = _wsCombo.SelectedItem?.ToString() ?? "";
+        var eng = GetEngineForSid(sid);
+        var wsVal = (_wsCombo.Text ?? "").Trim();
         SendWsUpdate(sid, eng, wsVal);
         SendAbilitiesUpdate();
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "ignore_replace_names", ["value"] = string.Join("|", _ignoreRows.Select(r => r.Name)) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "target_ignore_replace_names", ["value"] = string.Join("|", _targetIgnoreRows.Select(r => r.Name)) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "add_priority_replace_names", ["value"] = string.Join("|", _addPriorityRows.Select(r => r.Name)) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_replace_names", ["value"] = string.Join("|", _pathHunterRows.Select(r => r.Name)) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "tank_enmity_replace_actions", ["value"] = string.Join("|", _tankEnmityRows) });
         foreach (var key in HubUiConstants.BoolKeys)
         {
             var val = _boolChecks.TryGetValue(key, out var cb) && cb.Checked;

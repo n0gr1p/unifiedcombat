@@ -1,6 +1,6 @@
 # Unified Scheduler Work Tracking
 
-Last updated: 2026-04-21
+Last updated: 2026-04-25
 Branch: feature/unified-scheduler-design-clean
 Status owner: Codex + Peter
 
@@ -56,7 +56,7 @@ Status owner: Codex + Peter
   - Current lock model is implemented in dry-run scheduler path and mirrors pending-derived lock lifecycle while legacy dispatch remains active.
 
 ### S5 - Provider migration under scheduler authority
-- Status: IN_PROGRESS
+- Status: DONE
 - Deliverables:
   - [x] Defensive/internal adapter emits scheduler proposal (dry-run).
   - [x] Defensive dispatch dark-launch scaffold via scheduler-selected proposal path (opt-in setting: `scheduler_dark_launch_defensive`).
@@ -66,6 +66,14 @@ Status owner: Codex + Peter
   - [x] Maintenance providers (GEO/COR/BRD) proposal path (state-driven buff presence scaffolding, dry-run).
 - Notes:
   - Combat proposal adapter now seeds both WS (TP-ready) and JA (ordered, recast-ready) proposals for ranking/diagnostics.
+  - Added tank enmity intent lane under `combat` provider:
+    - New high-priority (`priority_band=85`) combat proposals for tank enmity JA/spell actions.
+    - Source of truth remains UC core violation/action selection logic via `select_tank_enmity_for_scheduler`.
+    - Scheduler combat dark-launch dispatch now supports `action_type='spell'` in addition to WS/JA.
+    - Result: when combat dark launch is enabled, tank enmity intents preempt normal combat WS/JA intents.
+  - T7 completed (tank enmity scheduler ownership parity):
+    - Scheduler owns target-prep, range-approach, and spell settle for tank enmity intents.
+    - Core tank-enmity dispatch is suppressed when `scheduler_dark_launch_combat` is enabled.
   - Combat dark-launch path now dispatches scheduler-selected combat WS/JA proposals; still opt-in and not full-cutover for all combat subsystems.
   - Maintenance adapters now use buff-state intent (COR roll count, BRD song count, GEO indi/geo presence) with throttled proposal emission.
   - Dark-launch dispatch remains opt-in and limited to defensive-internal selection path.
@@ -84,6 +92,7 @@ Status owner: Codex + Peter
 ## Current Risk Notes
 - Existing live scheduler execution remains legacy defensive path; dry-run path is advisory only.
 - Proposal collection now includes combat/defensive/movement/maintenance lanes; cutover risk is in per-lane dark-launch parity validation.
+- Tank enmity lane accepted for forward use; follow-up issues handled as case-by-case bug fixes.
 
 ## Next Slice (immediately next code task)
 1. Expand dark launch beyond defensive-internal to one additional provider path (likely movement prelude/plan). - DONE
@@ -91,6 +100,13 @@ Status owner: Codex + Peter
 3. Add pending lifecycle event hooks (ack/effect updates) from packet callbacks instead of timeout-only progression. - DONE
 
 ## Recently Completed
+- Added T7 tank-enmity scheduler ownership cut-in:
+  - Scheduler combat dark-launch path now performs tank target prep via `uc_settarget` before JA/spell dispatch.
+  - Scheduler handles tank out-of-range approach movement (`BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_MOVE`) instead of falling through to core.
+  - Scheduler applies tank spell settle (`0.40s`) before cast dispatch (`BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_SETTLE`).
+  - Core tick now suppresses legacy tank-enmity dispatch when `scheduler_dark_launch_combat` is enabled (`TANK_ENMITY_SCHED_OWNED`).
+  - `luac -p` validation passed for `unified_scheduler.lua` and `unified_combat_core.lua`.
+
 - Added maintenance COR scheduler cut-in (S5 extension):
   - New module: `uc_cor_maintenance.lua` ports AutoCOR-style roll upkeep decisions into UC runtime.
   - Scheduler now emits `maintenance_cor` proposals with concrete JA actions (`<Roll>`, `Snake Eye`, `Double-Up`, `Fold`) instead of generic placeholder intents.

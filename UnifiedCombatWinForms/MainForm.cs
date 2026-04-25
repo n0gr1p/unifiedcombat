@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace UnifiedCombatWinForms;
 
@@ -11,11 +12,21 @@ public partial class MainForm : Form
     private bool _suppressEvents;
 
     private readonly List<string> _listSids = [];
+    private readonly Dictionary<string, string> _sessionLabelBySid = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SessionMeta> _sessionMetaBySid = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> _sessionRunningBySid = new(StringComparer.Ordinal);
+    /// <summary>UI-only reload workflow: char names queued for engine run-state reapply after addon reconnect.</summary>
+    private readonly Dictionary<string, DateTime> _pendingEngineReapplyByChar = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTime> _engineReapplyAttemptBySid = new(StringComparer.Ordinal);
+    /// <summary>In-memory per-session working profiles. Session switching reads from here first; disk remains explicit-save only.</summary>
+    private readonly Dictionary<string, JsonObject> _workingProfileBySid = new(StringComparer.Ordinal);
     private string? _selectedSid;
     private string? _lastFillSid;
 
     private readonly Dictionary<string, Dictionary<string, (bool val, DateTime ts)>> _pendingBoolBySid = new();
     private readonly Dictionary<string, (string ws, DateTime ts)> _pendingWsBySid = new();
+    private readonly Dictionary<string, string> _optionsHydratedJobBySid = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTime> _optionsRequestInFlightBySid = new(StringComparer.Ordinal);
     /// <summary>Last party-follow distance settings pushed to the game; suppress snapshot overwrite until echoed or timeout.</summary>
     private readonly Dictionary<string, (string min, string max, string fightMin, string holdS, DateTime ts)> _pendingPfDistBySid = new(StringComparer.Ordinal);
     /// <summary>Last spacing tuning values pushed to the game; suppress snapshot overwrite until echoed or timeout.</summary>
@@ -37,6 +48,8 @@ public partial class MainForm : Form
     private List<(int Slot, string Name)> _targetIgnoreRows = [];
     private List<(int Slot, string Name)> _addPriorityRows = [];
     private List<(int Id, string Name)> _pathHunterRows = [];
+    private List<string> _tankEnmityRows = [];
+    private sealed record SessionMeta(string Sid, string CharName, string Job, string Engine);
 
     public MainForm()
     {
@@ -110,6 +123,12 @@ public partial class MainForm : Form
 
     private void ListSessions_SelectedIndexChanged(object? sender, EventArgs e)
     {
+        var prevSid = _selectedSid;
+        if (!string.IsNullOrWhiteSpace(prevSid) && _listSids.Contains(prevSid))
+        {
+            CaptureWorkingProfileFromUi(prevSid);
+        }
+
         if (listSessions.SelectedItem is SessionListItem li)
         {
             _selectedSid = li.Sid;
@@ -138,7 +157,25 @@ public partial class MainForm : Form
         return null;
     }
 
-    private void Forward(string sid, Dictionary<string, object?> msg) => _mirror?.EnqueueForward(sid, msg);
+    private void Forward(string sid, Dictionary<string, object?> msg)
+    {
+        _mirror?.EnqueueForward(sid, msg);
+        if (!string.Equals(_selectedSid, sid, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var op = msg.TryGetValue("op", out var ov) ? Convert.ToString(ov) ?? "" : "";
+        if (
+            string.Equals(op, "request_state", StringComparison.Ordinal)
+            || string.Equals(op, "request_options", StringComparison.Ordinal)
+        )
+        {
+            return;
+        }
+
+        // Profile persistence is explicit-only via Save action.
+    }
 
     private void ApplyMirrorLine(string line)
     {
@@ -168,62 +205,234 @@ public partial class MainForm : Form
             return;
         }
 
+        var prevMeta = new Dictionary<string, SessionMeta>(_sessionMetaBySid, StringComparer.Ordinal);
         _snapshotDoc?.Dispose();
         _snapshotDoc = doc;
 
         var keepSid = _selectedSid;
-        _listSids.Clear();
-        var items = new List<SessionListItem>();
+        var nextSids = new List<string>();
+        var nextLabels = new Dictionary<string, string>(StringComparer.Ordinal);
+        var nextMeta = new Dictionary<string, SessionMeta>(StringComparer.Ordinal);
+        var nextRun = new Dictionary<string, bool>(StringComparer.Ordinal);
         foreach (var p in sessionsEl.EnumerateObject())
         {
-            _listSids.Add(p.Name);
-            items.Add(new SessionListItem(p.Name, SessionLineLabel(p.Name, p.Value)));
+            nextSids.Add(p.Name);
+            nextLabels[p.Name] = SessionLineLabel(p.Name, p.Value);
+            var ch = SessionStateHelper.GetString(p.Value, "char", "");
+            var job = SessionStateHelper.GetString(p.Value, "job", "");
+            var eng = SessionStateHelper.GetString(p.Value, "engine", "UC");
+            nextMeta[p.Name] = new SessionMeta(p.Name, ch, job, eng);
+            nextRun[p.Name] = SessionStateHelper.GetBool(p.Value, "Start_Engine", false);
         }
 
-        listSessions.BeginUpdate();
-        try
+        var listChanged = nextLabels.Count != _sessionLabelBySid.Count;
+        if (!listChanged)
         {
-            listSessions.Items.Clear();
-            foreach (var it in items)
+            foreach (var kv in nextLabels)
             {
-                listSessions.Items.Add(it);
-            }
-
-            var newIndex = -1;
-            if (keepSid != null)
-            {
-                for (var i = 0; i < listSessions.Items.Count; i++)
+                if (!_sessionLabelBySid.TryGetValue(kv.Key, out var cur) || !string.Equals(cur, kv.Value, StringComparison.Ordinal))
                 {
-                    if (listSessions.Items[i] is SessionListItem li && li.Sid == keepSid)
-                    {
-                        newIndex = i;
-                        break;
-                    }
+                    listChanged = true;
+                    break;
                 }
             }
+        }
 
-            if (newIndex >= 0)
-            {
-                listSessions.SelectedIndex = newIndex;
-            }
-            else if (listSessions.Items.Count > 0)
-            {
-                listSessions.SelectedIndex = 0;
-            }
-            else
-            {
-                _selectedSid = null;
-                ClearForm();
-            }
-        }
-        finally
+        _listSids.Clear();
+        _listSids.AddRange(nextSids);
+
+        if (listChanged)
         {
-            listSessions.EndUpdate();
+            listSessions.BeginUpdate();
+            try
+            {
+                listSessions.Items.Clear();
+                foreach (var sid in nextSids)
+                {
+                    if (nextLabels.TryGetValue(sid, out var label))
+                    {
+                        listSessions.Items.Add(new SessionListItem(sid, label));
+                    }
+                }
+
+                var newIndex = -1;
+                if (keepSid != null)
+                {
+                    for (var i = 0; i < listSessions.Items.Count; i++)
+                    {
+                        if (listSessions.Items[i] is SessionListItem li && li.Sid == keepSid)
+                        {
+                            newIndex = i;
+                            break;
+                        }
+                    }
+                }
+
+                if (newIndex >= 0)
+                {
+                    listSessions.SelectedIndex = newIndex;
+                }
+                else if (listSessions.Items.Count > 0)
+                {
+                    listSessions.SelectedIndex = 0;
+                }
+                else
+                {
+                    _selectedSid = null;
+                    ClearForm();
+                }
+            }
+            finally
+            {
+                listSessions.EndUpdate();
+            }
         }
+        else if (_selectedSid != null && !_listSids.Contains(_selectedSid))
+        {
+            _selectedSid = null;
+            ClearForm();
+        }
+
+        _sessionLabelBySid.Clear();
+        foreach (var kv in nextLabels)
+        {
+            _sessionLabelBySid[kv.Key] = kv.Value;
+        }
+        _sessionMetaBySid.Clear();
+        foreach (var kv in nextMeta)
+        {
+            _sessionMetaBySid[kv.Key] = kv.Value;
+        }
+        foreach (var kv in nextMeta)
+        {
+            if (!prevMeta.TryGetValue(kv.Key, out var oldMeta))
+            {
+                _optionsHydratedJobBySid.Remove(kv.Key);
+                _optionsRequestInFlightBySid.Remove(kv.Key);
+                continue;
+            }
+
+            if (!string.Equals(oldMeta.Job, kv.Value.Job, StringComparison.OrdinalIgnoreCase))
+            {
+                _optionsHydratedJobBySid.Remove(kv.Key);
+                _optionsRequestInFlightBySid.Remove(kv.Key);
+            }
+        }
+        foreach (var oldSid in prevMeta.Keys)
+        {
+            if (!nextMeta.ContainsKey(oldSid))
+            {
+                _optionsHydratedJobBySid.Remove(oldSid);
+                _optionsRequestInFlightBySid.Remove(oldSid);
+            }
+        }
+        _sessionRunningBySid.Clear();
+        foreach (var kv in nextRun)
+        {
+            _sessionRunningBySid[kv.Key] = kv.Value;
+        }
+        TryApplyQueuedEngineReapply();
 
         statusConnection.Text = $"Mirror: snapshot ({_listSids.Count} sessions)";
         statusLastUpdate.Text = "Last snapshot: " + DateTime.Now.ToString("T");
-        RefreshEditorFromSnapshot();
+        if (!string.IsNullOrWhiteSpace(_selectedSid) && sessionsEl.TryGetProperty(_selectedSid, out var selectedState))
+        {
+            ApplyOptionsFromSnapshotIfPresent(_selectedSid!, selectedState);
+        }
+        // UI is authoritative after initial/manual session selection.
+        // Do not force-refresh controls on every inbound snapshot.
+    }
+
+    private void TryApplyQueuedEngineReapply()
+    {
+        if (_pendingEngineReapplyByChar.Count == 0)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        foreach (var key in _pendingEngineReapplyByChar.Keys.ToList())
+        {
+            if (_pendingEngineReapplyByChar[key] <= now)
+            {
+                _pendingEngineReapplyByChar.Remove(key);
+            }
+        }
+
+        if (_pendingEngineReapplyByChar.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var kv in _sessionMetaBySid)
+        {
+            var sid = kv.Key;
+            var meta = kv.Value;
+            if (string.IsNullOrWhiteSpace(meta.CharName))
+            {
+                continue;
+            }
+            if (!_pendingEngineReapplyByChar.ContainsKey(meta.CharName))
+            {
+                continue;
+            }
+
+            var running = _sessionRunningBySid.TryGetValue(sid, out var rv) && rv;
+            if (running)
+            {
+                _pendingEngineReapplyByChar.Remove(meta.CharName);
+                continue;
+            }
+
+            if (_engineReapplyAttemptBySid.TryGetValue(sid, out var lastTry) && (now - lastTry).TotalSeconds < 2.0)
+            {
+                continue;
+            }
+
+            _engineReapplyAttemptBySid[sid] = now;
+            Forward(sid, new Dictionary<string, object?> { ["op"] = "start_engine" });
+            _sessionRunningBySid[sid] = true;
+            _pendingEngineReapplyByChar.Remove(meta.CharName);
+            statusConnection.Text = $"Mirror: re-applied engine run after reload ({meta.CharName})";
+        }
+    }
+
+    private bool IsOptionsHydratedForCurrentJob(string sid)
+    {
+        if (!_sessionMetaBySid.TryGetValue(sid, out var meta))
+        {
+            return false;
+        }
+        if (!_optionsHydratedJobBySid.TryGetValue(sid, out var hydratedJob))
+        {
+            return false;
+        }
+        return string.Equals(hydratedJob, meta.Job, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void EnsureOptionsHydrated(string sid, bool force = false)
+    {
+        if (string.IsNullOrWhiteSpace(sid))
+        {
+            return;
+        }
+        if (!force && IsOptionsHydratedForCurrentJob(sid))
+        {
+            return;
+        }
+        if (!force && _optionsRequestInFlightBySid.TryGetValue(sid, out var lastReq) && (DateTime.UtcNow - lastReq).TotalSeconds < 2)
+        {
+            return;
+        }
+
+        _optionsRequestInFlightBySid[sid] = DateTime.UtcNow;
+        Forward(
+            sid,
+            new Dictionary<string, object?>
+            {
+                ["op"] = "request_options",
+            }
+        );
     }
 
     private static string SessionLineLabel(string sid, JsonElement s)

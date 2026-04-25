@@ -152,7 +152,7 @@ internal sealed class MirrorDuplex : IDisposable
                         continue;
                     }
 
-                    if (op == "state" && !string.IsNullOrWhiteSpace(sid))
+                    if ((op == "state" || op == "options") && !string.IsNullOrWhiteSpace(sid))
                     {
                         UpdateSessionState(sid!, msg);
                         EmitSnapshot();
