@@ -3,6 +3,17 @@ local ability_pipeline = require('uc_ability_pipeline')
 local combat_core = require('unified_combat_core')
 local cor_maintenance = require('uc_cor_maintenance')
 local uc_settarget = require('uc_settarget')
+local uc_attack = require('uc_attack')
+local uc_partner_list = require('uc_partner_list')
+local hb_buff_maint = require('uc_hb_buff_maint')
+
+local action_buff_map = {}
+do
+	local ok, map = pcall(dofile, windower.addon_path .. 'data/action_buff_map.lua')
+	if ok and type(map) == 'table' then
+		action_buff_map = map
+	end
+end
 
 local scheduler = {
 	last_action_at = 0,
@@ -36,9 +47,33 @@ local scheduler = {
 		tank_action_settle_key = '',
 		tank_action_settle_until = 0,
 	},
+	party_state_ipc = {
+		last_sent_at = 0,
+		send_interval = 0.5,
+		ttl = 2.5,
+		by_id = {},
+	},
+	maintenance_state = {
+		buffs = {},
+		debuffs = {},
+		status_snapshot = {},
+	},
+	action_state = {
+		action_start = 0,
+		action_end = 0,
+		action_delay = 0.1,
+		last_action = 0,
+		last_acting_state = false,
+		cooldown_until = 0,
+		lag_timeout = 8.0,
+		last_send_kind = '',
+	},
 }
 
 local can_act_statuses = { [0] = true, [1] = true, [5] = true, [85] = true }
+local doom_buff_id = nil
+local doom_last_item_at = 0
+local DOOM_ITEM_COOLDOWN = 1.2
 local choose_cure_spell
 local BRD_OVERWRITE_CLUSTER_SECONDS = 5
 local BRD_OVERWRITE_SAFETY_SECONDS = 6
@@ -63,6 +98,18 @@ local status_removal_priority = {
 	['silence'] = 1, ['slow'] = 1, ['weight'] = 4,
 }
 
+local function normalize_status_removal_key(buff_res)
+	local en = tostring((buff_res and buff_res.en) or '')
+	if en == '' then
+		return ''
+	end
+	local key = en:lower():gsub('%s+', '_')
+	if key == 'blindness' then
+		return 'blind'
+	end
+	return key
+end
+
 local buff_priority = {
 	['Afflatus Solace'] = 0, ['Majesty'] = 0, ['Composure'] = 0, ['Light Arts'] = 0, ['Haste'] = 2,
 	['Refresh'] = 2, ['Reraise'] = 3,
@@ -76,8 +123,327 @@ local maintenance_buff_cache = {
 	geo_ids = {},
 }
 
+local spell_name_cache = { built = false, by_name = {} }
+local ja_name_cache = { built = false, by_name = {} }
+
+local buff_runtime = {
+	last_queue_debug = '',
+}
+local dec2roman = { 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI' }
+
+local function to_roman_numeral(val)
+	local n = tonumber(val)
+	if not n then
+		return nil
+	end
+	return dec2roman[n]
+end
+
+local function ucfirst(s)
+	local t = tostring(s or '')
+	if t == '' then
+		return t
+	end
+	return t:sub(1, 1):upper() .. t:sub(2):lower()
+end
+
+local function decode_json_escapes(s)
+	local t = tostring(s or '')
+	if t == '' then
+		return ''
+	end
+	t = t:gsub('\\u(%x%x%x%x)', function(h)
+		local code = tonumber(h, 16)
+		if not code then
+			return ''
+		end
+		if code < 128 then
+			return string.char(code)
+		end
+		-- Keep non-ASCII codepoints unchanged in this lightweight decoder.
+		return '\\u' .. h
+	end)
+	t = t:gsub('\\"', '"')
+	t = t:gsub("\\'", "'")
+	t = t:gsub('\\\\', '\\')
+	return t
+end
+
+local function normalize_action_name_like_healbot(text)
+	if type(text) ~= 'string' or #text < 1 then
+		return ''
+	end
+	local raw = decode_json_escapes(tostring(text))
+	raw = raw:gsub('[\226\128\153\226\128\152`´]', "'")
+	raw = raw:gsub('%s+', ' '):gsub('^%s+', ''):gsub('%s+$', '')
+	if raw == '' then
+		return ''
+	end
+	local parts = {}
+	for part in raw:gmatch('%S+') do
+		parts[#parts + 1] = part
+	end
+	if #parts == 0 then
+		return ''
+	end
+	local out = {}
+	for _, part in ipairs(parts) do
+		local rn = to_roman_numeral(part)
+		local upper = tostring(part):upper()
+		if rn then
+			out[#out + 1] = rn
+		elseif upper:match('^[IVX]+$') then
+			out[#out + 1] = upper
+		else
+			-- Preserve internal punctuation/casing (ex: Boost-STR, Mage's) to avoid
+			-- breaking spell/resource lookups while still normalizing whitespace/roman numerals.
+			out[#out + 1] = part
+		end
+	end
+	return table.concat(out, ' ')
+end
+
 local ensure_maintenance_buff_cache
 local count_matching_buffs
+local ensure_maintenance_state_tables
+local canon_name
+local PARTY_STATE_IPC_PREFIX = 'ucps'
+
+local function now_s()
+	return os.clock()
+end
+
+local function set_has(settbl, v)
+	if type(settbl) ~= 'table' then
+		return false
+	end
+	if type(settbl.contains) == 'function' then
+		return settbl:contains(v)
+	end
+	return settbl[v] == true
+end
+
+local function action_state()
+	scheduler.action_state = scheduler.action_state or {}
+	return scheduler.action_state
+end
+
+local function action_mark_sent(kind)
+	local st = action_state()
+	local now = os.clock()
+	st.action_start = now
+	st.action_end = now - 0.001
+	st.last_action = now
+	st.action_delay = 0.6
+	st.cooldown_until = math.max(tonumber(st.cooldown_until) or 0, now + 0.6)
+	st.last_send_kind = tostring(kind or '')
+end
+
+local function action_mark_packet_start()
+	local st = action_state()
+	st.action_start = os.clock()
+end
+
+local function action_mark_packet_end()
+	local st = action_state()
+	st.action_end = os.clock()
+end
+
+local function action_is_acting()
+	local st = action_state()
+	local now = os.clock()
+	local start_at = tonumber(st.action_start) or 0
+	local end_at = tonumber(st.action_end) or 0
+	local timeout = tonumber(st.lag_timeout) or 8.0
+	if start_at > 0 and end_at < start_at and (now - start_at) > timeout then
+		st.action_end = now
+		end_at = now
+	end
+	local acting = end_at < start_at
+	local last = st.last_acting_state == true
+	if last and not acting then
+		st.action_delay = 0.5
+		st.last_action = now
+		st.cooldown_until = math.max(tonumber(st.cooldown_until) or 0, now + 0.5)
+	elseif (not last) and acting then
+		st.action_delay = 0.6
+	end
+	st.last_acting_state = acting
+	return acting
+end
+
+local function action_dispatch_blocked()
+	local st = action_state()
+	local now = os.clock()
+	if action_is_acting() then
+		return true, 'BLOCK_ACTION_ACTING'
+	end
+	if now < (tonumber(st.cooldown_until) or 0) then
+		return true, 'BLOCK_ACTION_COOLDOWN'
+	end
+	return false, nil
+end
+
+local function split_pipe(msg)
+	local out = {}
+	local s = tostring(msg or '')
+	for token in (s .. '|'):gmatch('(.-)|') do
+		out[#out + 1] = token
+	end
+	return out
+end
+
+local function split_csv_numbers(s)
+	local out = {}
+	local txt = tostring(s or '')
+	if txt == '' then
+		return out
+	end
+	for part in string.gmatch(txt, '([^,]+)') do
+		local n = tonumber(part)
+		if n and n > 0 then
+			out[#out + 1] = n
+		end
+	end
+	return out
+end
+
+local function current_zone_id()
+	local info = windower.ffxi.get_info()
+	return tonumber(info and info.zone) or 0
+end
+
+local function encode_party_state_payload()
+	local p = windower.ffxi.get_player()
+	if not p or not p.name or not p.id or not p.vitals then
+		return nil
+	end
+	local hp = tonumber(p.vitals.hp) or 0
+	local hpp = tonumber(p.vitals.hpp) or 100
+	local max_hp = tonumber(p.vitals.max_hp) or 0
+	local mp = tonumber(p.vitals.mp) or 0
+	local max_mp = tonumber(p.vitals.max_mp) or 0
+	local mpp = tonumber(p.vitals.mpp) or ((max_mp > 0) and math.floor((mp / max_mp) * 100) or 100)
+	local zone = current_zone_id()
+	if zone <= 0 then
+		return nil
+	end
+	local buffs = p.buffs or {}
+	local bparts = {}
+	for i = 1, #buffs do
+		local bid = tonumber(buffs[i]) or 0
+		if bid > 0 then
+			bparts[#bparts + 1] = tostring(bid)
+		end
+	end
+	local bcsv = table.concat(bparts, ',')
+	local nm = tostring(p.name):gsub('|', '_')
+	return table.concat({
+		PARTY_STATE_IPC_PREFIX,
+		'1',
+		tostring(tonumber(p.id) or 0),
+		nm,
+		tostring(zone),
+		tostring(hp),
+		tostring(hpp),
+		tostring(max_hp),
+		tostring(mp),
+		tostring(max_mp),
+		tostring(mpp),
+		bcsv,
+		('%.3f'):format(now_s()),
+	}, '|')
+end
+
+local function maybe_broadcast_party_state_ipc()
+	local ps = scheduler.party_state_ipc or {}
+	local now = now_s()
+	local last = tonumber(ps.last_sent_at) or 0
+	if (now - last) < (tonumber(ps.send_interval) or 1.0) then
+		return
+	end
+	local payload = encode_party_state_payload()
+	if not payload then
+		return
+	end
+	ps.last_sent_at = now
+	scheduler.party_state_ipc = ps
+	windower.send_ipc_message(payload)
+end
+
+local function apply_party_state_ipc_message(msg)
+	local parts = split_pipe(msg)
+	if #parts < 13 then
+		return
+	end
+	if tostring(parts[1]) ~= PARTY_STATE_IPC_PREFIX then
+		return
+	end
+	if tostring(parts[2]) ~= '1' then
+		return
+	end
+	local actor_id = tonumber(parts[3]) or 0
+	local actor_name = tostring(parts[4] or '')
+	local zone = tonumber(parts[5]) or 0
+	if actor_id <= 0 or actor_name == '' or zone <= 0 then
+		return
+	end
+	if zone ~= current_zone_id() then
+		return
+	end
+	local hp = tonumber(parts[6]) or 0
+	local hpp = tonumber(parts[7]) or 100
+	local max_hp = tonumber(parts[8]) or 0
+	local mp = tonumber(parts[9]) or 0
+	local max_mp = tonumber(parts[10]) or 0
+	local mpp = tonumber(parts[11]) or ((max_mp > 0) and math.floor((mp / max_mp) * 100) or 100)
+	local buffs = split_csv_numbers(parts[12] or '')
+	local stamp = tonumber(parts[13]) or now_s()
+	local ps = scheduler.party_state_ipc or {}
+	ps.by_id = ps.by_id or {}
+	local prev = ps.by_id[actor_id]
+	if prev and tonumber(prev.seq_ts or 0) > stamp then
+		return
+	end
+	ps.by_id[actor_id] = {
+		id = actor_id,
+		name = actor_name,
+		zone = zone,
+		hp = hp,
+		hpp = hpp,
+		max_hp = max_hp,
+		mp = mp,
+		max_mp = max_mp,
+		mpp = mpp,
+		buffs = buffs,
+		seq_ts = stamp,
+		rcv_ts = now_s(),
+	}
+	scheduler.party_state_ipc = ps
+end
+
+local function get_party_state_ipc_entry(member_id, member_name)
+	local ps = scheduler.party_state_ipc or {}
+	local by_id = ps.by_id or {}
+	local e = by_id[tonumber(member_id) or 0]
+	if not e then
+		return nil
+	end
+	local ttl = tonumber(ps.ttl) or 4.0
+	local now = now_s()
+	if (now - (tonumber(e.rcv_ts) or 0)) > ttl then
+		by_id[tonumber(member_id) or 0] = nil
+		return nil
+	end
+	if tonumber(e.zone) ~= current_zone_id() then
+		return nil
+	end
+	local nm = tostring(member_name or '')
+	if nm ~= '' and tostring(e.name or ''):lower() ~= nm:lower() then
+		return nil
+	end
+	return e
+end
 
 local function get_settings()
 	return rawget(_G, 'UC_SETTINGS') or {}
@@ -97,10 +463,264 @@ local function bool_setting(v, default_value)
 	return false
 end
 
+local function resolve_doom_buff_id()
+	if type(doom_buff_id) == 'number' then
+		return doom_buff_id
+	end
+	doom_buff_id = 15
+	for id, b in pairs(res.buffs or {}) do
+		local en = tostring((b and b.en) or ''):lower()
+		if en == 'doom' then
+			doom_buff_id = tonumber(id) or 15
+			break
+		end
+	end
+	return doom_buff_id
+end
+
+local function player_has_doom(player)
+	if not player or type(player.buffs) ~= 'table' then
+		return false
+	end
+	local bid = resolve_doom_buff_id()
+	for _, id in ipairs(player.buffs) do
+		if tonumber(id) == bid then
+			return true
+		end
+	end
+	return false
+end
+
+local function try_doom_water_emergency(settings)
+	if not bool_setting(settings and settings.defensive_enabled, false) then
+		return false, nil
+	end
+	if not bool_setting(settings and settings.defensive_doom_water, false) then
+		return false, nil
+	end
+	local p = windower.ffxi.get_player()
+	if not p then
+		return false, nil
+	end
+	if not player_has_doom(p) then
+		return false, nil
+	end
+	windower.ffxi.run(false)
+	local now = os.clock()
+	if now - doom_last_item_at < DOOM_ITEM_COOLDOWN then
+		_G.UC_LAST_SCHED_ACTION = '[doom]holding_for_item_reuse'
+		return true, 'BLOCK_DOOM_WATER_HOLD'
+	end
+	doom_last_item_at = now
+	windower.send_command('input /item "Holy Water" <me>')
+	_G.UC_LAST_SCHED_ACTION = '[doom]holy_water'
+	return true, 'BLOCK_DOOM_WATER'
+end
+
+local function build_partner_target_set(settings)
+	local out = {}
+	if not bool_setting(settings and settings.partner, false) then
+		return out
+	end
+	local partner_ids = uc_partner_list.as_ordered_ids(settings or {})
+	for _, pid in ipairs(partner_ids or {}) do
+		local pm = windower.ffxi.get_mob_by_id(tonumber(pid) or 0)
+		if pm and pm.target_index then
+			local tm = windower.ffxi.get_mob_by_index(pm.target_index)
+			local tid = tonumber(tm and tm.id) or 0
+			if tid > 0 then
+				out[tid] = true
+			end
+		end
+	end
+	return out
+end
+
+local maintenance_blocked_zone_names = {
+	["southern san d'oria"] = true,
+	["northern san d'oria"] = true,
+	["port san d'oria"] = true,
+	["chateau d'oraguille"] = true,
+	["bastok mines"] = true,
+	["bastok markets"] = true,
+	["port bastok"] = true,
+	["metalworks"] = true,
+	["windurst waters"] = true,
+	["windurst walls"] = true,
+	["port windurst"] = true,
+	["windurst woods"] = true,
+	["heavens tower"] = true,
+	["ru'lude gardens"] = true,
+	["upper jeuno"] = true,
+	["lower jeuno"] = true,
+	["port jeuno"] = true,
+	["norg"] = true,
+	["selbina"] = true,
+	["mhaura"] = true,
+	["kazham"] = true,
+	["rabao"] = true,
+	["aht urhgan whitegate"] = true,
+	["nashmau"] = true,
+	["tavnazian safehold"] = true,
+	["western adoulin"] = true,
+	["eastern adoulin"] = true,
+}
+
+local function is_city_zone_for_maintenance()
+	local info = windower.ffxi.get_info()
+	if not info then
+		return false
+	end
+	local zid = tonumber(info.zone) or 0
+	if zid <= 0 then
+		return false
+	end
+	local z = res.zones and res.zones[zid] or nil
+	local name = tostring((z and (z.en or z.name)) or ''):lower()
+	if name == '' then
+		return false
+	end
+	if maintenance_blocked_zone_names[name] then
+		return true
+	end
+	-- Defensive fallback: treat mog house / residential names as non-maintenance zones.
+	if name:find('mog house', 1, true) or name:find('residential area', 1, true) then
+		return true
+	end
+	return false
+end
+
 local function log_ja_sched(msg)
+	if rawget(_G, 'UC_LOG_JA_SCHED') ~= true then
+		return
+	end
 	if type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
 		pcall(_G.UC_LOG_DIAG, 'ja_sched', msg)
 	end
+end
+
+local function log_tank_sched(msg)
+	if rawget(_G, 'UC_LOG_TANK_SCHED') ~= true then
+		return
+	end
+	if type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
+		pcall(_G.UC_LOG_DIAG, 'tank_sched', msg)
+	end
+end
+
+local function log_combat_sched(msg)
+	if rawget(_G, 'UC_LOG_COMBAT_SCHED') ~= true then
+		return
+	end
+	if type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
+		pcall(_G.UC_LOG_DIAG, 'combat_sched', msg)
+	end
+end
+
+local function log_def_sched(msg)
+	if rawget(_G, 'UC_LOG_DEF_SCHED') ~= true then
+		return
+	end
+	if type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
+		pcall(_G.UC_LOG_DIAG, 'def_sched', msg)
+	end
+	local s = get_settings()
+	if not bool_setting(s and s.debug, false) then
+		return
+	end
+	local m = tostring(msg or '')
+	local verbose = bool_setting(rawget(_G, 'UC_DEF_SCHED_VERBOSE_LOG'), false)
+	if not verbose then
+		local keep = (
+			m:find('CURE_ACCEPT', 1, true) or
+			m:find('BUFF_ACCEPT', 1, true) or
+			m:find('BUFF_SKIP', 1, true) or
+			m:find('DEF_CFG_SET_OP', 1, true) or
+			m:find('DEF_CFG_RECV', 1, true) or
+			m:find('DEF_CFG_APPLY', 1, true)
+		)
+		if not keep then
+			return
+		end
+	end
+	local p = windower.ffxi.get_player()
+	local name = tostring((p and p.name) or 'unknown'):lower()
+	local path = windower.addon_path .. 'data/logs/' .. name .. '_def_sched.log'
+	local fh = io.open(path, 'a')
+	if fh then
+		fh:write(('%s\t%s\n'):format(os.date('%Y-%m-%d %H:%M:%S'), m))
+		fh:close()
+	end
+end
+
+local diag_init = {
+	ja_sched = false,
+	ja_debug = false,
+	def_sched = false,
+	combat_sched = false,
+}
+
+local function ensure_diag_logs_initialized()
+	local s = get_settings()
+	if not bool_setting(s and s.debug, false) then
+		return
+	end
+	if type(rawget(_G, 'UC_LOG_DIAG')) ~= 'function' then
+		return
+	end
+	if rawget(_G, 'UC_LOG_JA_SCHED') == true and not diag_init.ja_sched then
+		diag_init.ja_sched = true
+		pcall(_G.UC_LOG_DIAG, 'ja_sched', 'JA_SCHED_LOG_INIT')
+	end
+	if rawget(_G, 'UC_LOG_JA_DEBUG') == true and not diag_init.ja_debug then
+		diag_init.ja_debug = true
+		pcall(_G.UC_LOG_DIAG, 'ja_debug', 'JA_DEBUG_LOG_INIT')
+	end
+	if rawget(_G, 'UC_LOG_DEF_SCHED') == true and not diag_init.def_sched then
+		diag_init.def_sched = true
+		pcall(_G.UC_LOG_DIAG, 'def_sched', 'DEF_SCHED_LOG_INIT')
+	end
+	if rawget(_G, 'UC_LOG_COMBAT_SCHED') == true and not diag_init.combat_sched then
+		diag_init.combat_sched = true
+		pcall(_G.UC_LOG_DIAG, 'combat_sched', 'COMBAT_SCHED_LOG_INIT')
+	end
+end
+
+local function can_run_parallel_movement_after_dispatch()
+	local s = get_settings()
+	if not bool_setting(s and s.scheduler_dark_launch_movement, false) then
+		return false
+	end
+	if not combat_core or type(combat_core.apply_movement_for_scheduler) ~= 'function' then
+		return false
+	end
+	local p = windower.ffxi.get_player()
+	if not p then
+		return false
+	end
+	-- Do not move while spellcasting/channeling.
+	local st = tonumber(p.status) or -1
+	if st == 4 then
+		return false
+	end
+	local ast = action_state()
+	if action_is_acting() and tostring(ast.last_send_kind or '') == 'spell' then
+		return false
+	end
+	return true
+end
+
+local function tank_enmity_diag(reason, selected, extra)
+	local r = tostring(reason or '')
+	local action = tostring(selected and selected.action_name or '')
+	local target = tostring(selected and selected.target_name or '')
+	local tid = tonumber(selected and selected.target_id) or 0
+	local line = ('%s action="%s" target="%s" tid=%d'):format(r, action, target, tid)
+	if extra and extra ~= '' then
+		line = line .. ' ' .. tostring(extra)
+	end
+	_G.UC_TANK_ENMITY_BLOCK = line
+	log_tank_sched(line)
 end
 
 local SCHED_RANGE_MULT = {
@@ -187,14 +807,67 @@ local function get_party_members()
 	for _, key in ipairs(keys) do
 		local entry = party[key]
 		if entry and entry.mob and entry.mob.id and entry.mob.id ~= 0 then
+			local is_self = entry.mob.id == self_id
+			local ipc = get_party_state_ipc_entry(entry.mob.id, entry.mob.name)
+			local hp = tonumber(entry.hp) or 0
+			local hpp = tonumber(entry.hpp) or 100
+			local mp = tonumber(entry.mp) or 0
+			local mpp = tonumber(entry.mpp) or 100
+			local max_mp = tonumber(entry.max_mp) or 0
+			local max_hp = 0
+			if hp > 0 and hpp > 0 then
+				max_hp = math.floor((hp / hpp) * 100 + 0.5)
+			end
+			local buffs = entry.buffs or {}
+			-- Source of truth for self state must be local player object, not party snapshot/IPC.
+			if is_self and player and player.vitals then
+				hp = tonumber(player.vitals.hp) or hp
+				hpp = tonumber(player.vitals.hpp) or hpp
+				mp = tonumber(player.vitals.mp) or mp
+				mpp = tonumber(player.vitals.mpp) or mpp
+				max_mp = tonumber(player.vitals.max_mp) or max_mp
+				if tonumber(player.vitals.max_hp) and tonumber(player.vitals.max_hp) > 0 then
+					max_hp = tonumber(player.vitals.max_hp)
+				elseif hp > 0 and hpp > 0 then
+					max_hp = math.floor((hp / hpp) * 100 + 0.5)
+				end
+				buffs = player.buffs or buffs
+			end
+			if ipc then
+				hp = tonumber(ipc.hp) or hp
+				hpp = tonumber(ipc.hpp) or hpp
+				max_hp = tonumber(ipc.max_hp) or max_hp
+				mp = tonumber(ipc.mp) or mp
+				max_mp = tonumber(ipc.max_mp) or max_mp
+				mpp = tonumber(ipc.mpp) or mpp
+				buffs = ipc.buffs or buffs
+			end
+			-- Never let IPC override local self authoritative state.
+			if is_self and player and player.vitals then
+				hp = tonumber(player.vitals.hp) or hp
+				hpp = tonumber(player.vitals.hpp) or hpp
+				mp = tonumber(player.vitals.mp) or mp
+				mpp = tonumber(player.vitals.mpp) or mpp
+				max_mp = tonumber(player.vitals.max_mp) or max_mp
+				if tonumber(player.vitals.max_hp) and tonumber(player.vitals.max_hp) > 0 then
+					max_hp = tonumber(player.vitals.max_hp)
+				elseif hp > 0 and hpp > 0 then
+					max_hp = math.floor((hp / hpp) * 100 + 0.5)
+				end
+				buffs = player.buffs or buffs
+			end
 			out[#out + 1] = {
 				id = entry.mob.id,
 				name = entry.mob.name,
-				is_self = entry.mob.id == self_id,
+				is_self = is_self,
 				spawn_type = entry.mob.spawn_type,
-				hpp = tonumber(entry.hpp) or 100,
-				hp = tonumber(entry.hp) or 0,
-				buffs = entry.buffs or {},
+				hpp = hpp,
+				hp = hp,
+				max_hp = max_hp,
+				mp = mp,
+				mpp = mpp,
+				max_mp = max_mp,
+				buffs = buffs,
 			}
 		end
 	end
@@ -217,6 +890,9 @@ local function in_party_cast_range(member)
 	if not member or not member.id then
 		return false
 	end
+	if member.is_self then
+		return true
+	end
 	local m = windower.ffxi.get_mob_by_id(member.id)
 	if not m or m.distance == nil then
 		return false
@@ -229,14 +905,143 @@ local function get_spell_resource(name)
 	if not name or name == '' then
 		return nil
 	end
-	return res.spells:with('en', name)
+	local function normalize_label(s)
+		return decode_json_escapes(tostring(s or ''))
+			:gsub('[\226\128\153\226\128\152`´]', "'")
+			:gsub('%s+', ' ')
+			:gsub('^%s+', '')
+			:gsub('%s+$', '')
+	end
+	local want = normalize_label(name)
+	local healbot_norm = normalize_action_name_like_healbot(want)
+	if healbot_norm ~= '' then
+		want = healbot_norm
+	end
+	local function ensure_spell_cache()
+		if spell_name_cache.built then return end
+		local map = {}
+		for _, v in pairs(res.spells or {}) do
+			local en = normalize_label(v and v.en or '')
+			if en ~= '' then
+				map[en:lower()] = v
+				local en_norm = normalize_action_name_like_healbot(en)
+				if en_norm ~= '' then
+					map[en_norm:lower()] = v
+				end
+			end
+		end
+		spell_name_cache.by_name = map
+		spell_name_cache.built = true
+	end
+	local sp = res.spells:with('en', want)
+	if sp then
+		return sp
+	end
+	local wl = want:lower()
+	ensure_spell_cache()
+	sp = spell_name_cache.by_name[wl]
+	if sp then return sp end
+	-- Last chance: direct lowercase resource map.
+	local lc = _libs and _libs.lor and _libs.lor.resources and _libs.lor.resources.lc_res
+	if lc and lc.spells and lc.spells[wl] then
+		return lc.spells[wl]
+	end
+	return nil
+end
+
+local function spell_known_flag(v)
+	return v == true or v == 1 or v == 'true'
+end
+
+local function job_id_by_short(short_name)
+	local j = res.jobs:with('english_short', tostring(short_name or ''))
+	return tonumber(j and j.id) or 0
+end
+
+local function spell_usable_by_current_job(sp)
+	if type(sp) ~= 'table' then
+		return false
+	end
+	local p = windower.ffxi.get_player() or {}
+	local main_id = tonumber(p.main_job_id) or job_id_by_short(p.main_job)
+	local sub_id = tonumber(p.sub_job_id) or job_id_by_short(p.sub_job)
+	local main_lvl = tonumber(p.main_job_level) or tonumber(p.main_job_lv) or 99
+	local sub_lvl = tonumber(p.sub_job_level) or tonumber(p.sub_job_lv) or 49
+	local jobs = sp.jobs or sp.levels
+	if type(jobs) ~= 'table' then
+		-- If resource does not expose per-job requirements, do not over-filter.
+		return true
+	end
+	local req_main = tonumber(jobs[main_id] or jobs[tostring(main_id)])
+	if req_main and req_main > 0 and main_lvl >= req_main then
+		return true
+	end
+	local req_sub = tonumber(jobs[sub_id] or jobs[tostring(sub_id)])
+	if req_sub and req_sub > 0 and sub_lvl >= req_sub then
+		return true
+	end
+	return false
+end
+
+local function spell_known_and_usable(sp)
+	if type(sp) ~= 'table' or not sp.id then
+		return false, 'BLOCK_DEFENSIVE_UNKNOWN_SPELL'
+	end
+	local known = windower.ffxi.get_spells() or {}
+	if not spell_known_flag(known[sp.id]) then
+		return false, 'BLOCK_DEFENSIVE_NOT_LEARNED'
+	end
+	if not spell_usable_by_current_job(sp) then
+		return false, 'BLOCK_DEFENSIVE_JOB_LEVEL'
+	end
+	return true, ''
 end
 
 local function get_ja_resource(name)
 	if not name or name == '' then
 		return nil
 	end
-	return res.job_abilities:with('en', name)
+	local function normalize_label(s)
+		return decode_json_escapes(tostring(s or ''))
+			:gsub('[\226\128\153\226\128\152`´]', "'")
+			:gsub('%s+', ' ')
+			:gsub('^%s+', '')
+			:gsub('%s+$', '')
+	end
+	local want = normalize_label(name)
+	local healbot_norm = normalize_action_name_like_healbot(want)
+	if healbot_norm ~= '' then
+		want = healbot_norm
+	end
+	local function ensure_ja_cache()
+		if ja_name_cache.built then return end
+		local map = {}
+		for _, v in pairs(res.job_abilities or {}) do
+			local en = normalize_label(v and v.en or '')
+			if en ~= '' then
+				map[en:lower()] = v
+				local en_norm = normalize_action_name_like_healbot(en)
+				if en_norm ~= '' then
+					map[en_norm:lower()] = v
+				end
+			end
+		end
+		ja_name_cache.by_name = map
+		ja_name_cache.built = true
+	end
+	local ja = res.job_abilities:with('en', want)
+	if ja then
+		return ja
+	end
+	local wl = want:lower()
+	ensure_ja_cache()
+	ja = ja_name_cache.by_name[wl]
+	if ja then return ja end
+	local lc = _libs and _libs.lor and _libs.lor.resources and _libs.lor.resources.lc_res
+	if lc and lc.job_abilities and lc.job_abilities[wl] then
+		return lc.job_abilities[wl]
+	end
+	return nil
 end
 
 local function action_status_id(name)
@@ -256,6 +1061,10 @@ local function spell_ready(name)
 	if not sp then
 		return false, 'BLOCK_DEFENSIVE_UNKNOWN_SPELL'
 	end
+	local known_ok, known_reason = spell_known_and_usable(sp)
+	if not known_ok then
+		return false, known_reason
+	end
 	local recasts = windower.ffxi.get_spell_recasts() or {}
 	if (recasts[sp.recast_id] or 0) > 0 then
 		return false, 'BLOCK_DEFENSIVE_RECAST'
@@ -270,15 +1079,125 @@ local function spell_ready(name)
 	return true, ''
 end
 
+local cure_by_tier = {
+	[1] = { name = 'Cure', id = 1, potency = 120 },
+	[2] = { name = 'Cure II', id = 2, potency = 260 },
+	[3] = { name = 'Cure III', id = 3, potency = 520 },
+	[4] = { name = 'Cure IV', id = 4, potency = 860 },
+	[5] = { name = 'Cure V', id = 5, potency = 1300 },
+	[6] = { name = 'Cure VI', id = 6, potency = 1700 },
+}
+
+local function estimate_missing_hp(member)
+	local hp = tonumber(member and member.hp) or 0
+	local hpp = tonumber(member and member.hpp) or 100
+	local max_hp = tonumber(member and member.max_hp) or 0
+	if hpp <= 0 then
+		return 0
+	end
+	if max_hp > 0 and hp >= 0 and hp <= max_hp then
+		return math.max(0, math.ceil(max_hp - hp))
+	end
+	if hp > 0 then
+		local max_hp = hp / (hpp / 100.0)
+		return math.max(0, math.ceil(max_hp - hp))
+	end
+	-- HealBot-style fallback guess when exact hp is unavailable.
+	local fallback_max = 1500
+	local estimated_hp = math.ceil((hpp / 100.0) * fallback_max)
+	return math.max(0, fallback_max - estimated_hp)
+end
+
+local function available_cure_tier_max()
+	local highest = 0
+	for tier = 1, 6 do
+		local c = cure_by_tier[tier]
+		if c and spell_ready(c.name) then
+			highest = tier
+		end
+	end
+	return highest
+end
+
+local function cure_tier_for_missing_hp(hp_missing, max_tier)
+	local tier = math.max(1, math.min(tonumber(max_tier) or 1, 6))
+	while tier > 1 do
+		local cur = cure_by_tier[tier] and cure_by_tier[tier].potency or 0
+		local prev = cure_by_tier[tier - 1] and cure_by_tier[tier - 1].potency or 0
+		local delta = cur - prev
+		local threshold = cur - (delta * 0.5)
+		if hp_missing >= threshold then
+			break
+		end
+		tier = tier - 1
+	end
+	return tier
+end
+
+local function get_usable_cure_from_tier(orig_tier, min_tier)
+	local start_tier = math.max(1, math.min(tonumber(orig_tier) or 1, 6))
+	local floor_tier = math.max(1, math.min(tonumber(min_tier) or 1, 6))
+	if start_tier < floor_tier then
+		return nil
+	end
+	local tier = start_tier
+	while tier >= floor_tier do
+		local c = cure_by_tier[tier]
+		if c then
+			local ok = spell_ready(c.name)
+			if ok then
+				return c.name, tier
+			end
+		end
+		tier = tier - 1
+	end
+	return nil
+end
+
+local function dedupe_numeric_ids(ids)
+	local out, seen = {}, {}
+	for _, v in ipairs(ids or {}) do
+		local n = tonumber(v) or 0
+		if n > 0 and not seen[n] then
+			seen[n] = true
+			out[#out + 1] = n
+		end
+	end
+	return out
+end
+
 local function ja_ready(name, target_id)
 	local ja = get_ja_resource(name)
 	if not ja then
 		return false, 'BLOCK_DEFENSIVE_UNKNOWN_JA'
 	end
+	local abil = windower.ffxi.get_abilities() or {}
+	local owns = false
+	for _, id in ipairs(abil.job_abilities or {}) do
+		if tonumber(id) == tonumber(ja.id) then
+			owns = true
+			break
+		end
+	end
+	if not owns then
+		return false, 'BLOCK_DEFENSIVE_JA_NOT_OWNED'
+	end
 	local p = windower.ffxi.get_player()
 	local status = tonumber(p and p.status) or 0
 	if status == 3 then
 		return false, 'BLOCK_ACTION_STATUS3'
+	end
+	if tostring(name or ''):lower() == 'chivalry' then
+		local tp = tonumber(((p or {}).vitals or {}).tp) or 0
+		if tp < 2000 then
+			return false, 'BLOCK_CHIVALRY_TP_LOW'
+		end
+		local mp = tonumber(((p or {}).vitals or {}).mp) or 0
+		local mmp = tonumber(((p or {}).vitals or {}).max_mp) or 0
+		local mp_pct = (mmp > 0) and ((mp / mmp) * 100.0) or 100.0
+		if mp_pct >= 50 then
+			return false, 'BLOCK_CHIVALRY_MP_TOO_HIGH'
+		end
 	end
 	local requires_engaged_front = ja_requires_engaged_front(name, ja)
 	if requires_engaged_front and status ~= 1 then
@@ -326,6 +1245,43 @@ local function action_ready(name, target_id)
 		return ok, reason, 'ja'
 	end
 	return false, 'BLOCK_DEFENSIVE_UNKNOWN_ACTION', 'none'
+end
+
+local function action_target_mode(action_name, action_kind)
+	local targets = ''
+	if action_kind == 'spell' then
+		local sp = get_spell_resource(action_name)
+		targets = tostring((sp and sp.targets) or '')
+	elseif action_kind == 'ja' then
+		local ja = get_ja_resource(action_name)
+		targets = tostring((ja and ja.targets) or '')
+	end
+	local has_self = targets:find('Self', 1, true) ~= nil
+	local has_other = targets:find('Player', 1, true) ~= nil or
+		targets:find('Party', 1, true) ~= nil or
+		targets:find('Ally', 1, true) ~= nil or
+		targets:find('Enemy', 1, true) ~= nil
+	if has_self and not has_other then
+		return 'self_only'
+	end
+	return 'normal'
+end
+
+local function build_action_command(action_name, action_kind, target_member)
+	local target = target_member or {}
+	local mode = action_target_mode(action_name, action_kind)
+	local target_token = '<me>'
+	if mode ~= 'self_only' then
+		if target.is_self == true then
+			target_token = '<me>'
+		elseif target.name and tostring(target.name) ~= '' then
+			target_token = tostring(target.name)
+		end
+	end
+	if action_kind == 'ja' then
+		return ('input /ja "%s" %s'):format(tostring(action_name), target_token)
+	end
+	return ('input /ma "%s" %s'):format(tostring(action_name), target_token)
 end
 
 local function member_priority(member)
@@ -394,17 +1350,27 @@ local function debuff_spell_for_buff_id(buff_id)
 end
 
 local function split_actions(raw)
+	local function norm(s)
+		return decode_json_escapes(tostring(s or ''))
+			:gsub('[\226\128\153\226\128\152`´]', "'")
+			:gsub('%s+', ' ')
+			:gsub('^%s+', '')
+			:gsub('%s+$', '')
+	end
 	local out = {}
 	if type(raw) == 'table' then
 		for _, v in ipairs(raw) do
 			if v and v ~= '' then
-				out[#out + 1] = tostring(v)
+				local n = normalize_action_name_like_healbot(norm(v))
+				if n ~= '' then
+					out[#out + 1] = n
+				end
 			end
 		end
 		return out
 	end
 	for token in tostring(raw or ''):gmatch('[^|,]+') do
-		local t = token:gsub('^%s+', ''):gsub('%s+$', '')
+		local t = normalize_action_name_like_healbot(norm(token))
 		if t ~= '' then
 			out[#out + 1] = t
 		end
@@ -474,16 +1440,6 @@ local function get_recent_gain(member_name, buff_id, max_age, now)
 	return nil
 end
 
-local function family_order_for(member_name, buff_id)
-	local k = family_key(member_name, buff_id)
-	local order = scheduler.family_order[k]
-	if type(order) ~= 'table' then
-		order = {}
-		scheduler.family_order[k] = order
-	end
-	return order
-end
-
 local function family_tokens_for(member_name, buff_id)
 	local k = family_key(member_name, buff_id)
 	local tokens = scheduler.family_tokens[k]
@@ -494,136 +1450,6 @@ local function family_tokens_for(member_name, buff_id)
 	return tokens
 end
 
-local function prune_family_unknown(order, tokens, known)
-	for i = #order, 1, -1 do
-		if not known[order[i]] then
-			table.remove(order, i)
-		end
-	end
-	for name, _ in pairs(tokens) do
-		if not known[name] then
-			tokens[name] = nil
-		end
-	end
-end
-
-local function due_overwrite_names(member_name, buff_id, order, tokens)
-	local rem = {}
-	local due = {}
-	local songs = {}
-	local now = os.clock()
-	for _, name in ipairs(order) do
-		local expiry = tokens[name]
-		if expiry ~= nil and is_bard_song(name) then
-			local remaining = expiry - now
-			rem[name] = remaining
-			songs[#songs + 1] = name
-		end
-	end
-	if #songs == 0 then
-		return due, rem
-	end
-	table.sort(songs, function(a, b)
-		local ar, br = rem[a] or 1e9, rem[b] or 1e9
-		if ar ~= br then
-			return ar < br
-		end
-		return tostring(a) < tostring(b)
-	end)
-	local i = 1
-	while i <= #songs do
-		local cluster_start = i
-		local cluster_end = i
-		while cluster_end < #songs do
-			local cur = rem[songs[cluster_end]] or 1e9
-			local nxt = rem[songs[cluster_end + 1]] or 1e9
-			if (nxt - cur) <= BRD_OVERWRITE_CLUSTER_SECONDS then
-				cluster_end = cluster_end + 1
-			else
-				break
-			end
-		end
-		local cluster_size = (cluster_end - cluster_start + 1)
-		local lead = (BRD_OVERWRITE_CLUSTER_SECONDS * cluster_size) + BRD_OVERWRITE_SAFETY_SECONDS
-		local earliest = rem[songs[cluster_start]] or 1e9
-		if earliest <= lead then
-			for idx = cluster_start, cluster_end do
-				due[songs[idx]] = true
-			end
-		end
-		i = cluster_end + 1
-	end
-	return due, rem
-end
-
-local function reconcile_family_state(member_name, buff_id, family_actions, active_count, default_duration, now)
-	local known = {}
-	for _, name in ipairs(family_actions) do
-		known[name] = true
-	end
-	local order = family_order_for(member_name, buff_id)
-	local tokens = family_tokens_for(member_name, buff_id)
-	prune_family_unknown(order, tokens, known)
-	local in_order = {}
-	for _, name in ipairs(order) do
-		in_order[name] = true
-	end
-	for _, name in ipairs(family_actions) do
-		if not in_order[name] then
-			order[#order + 1] = name
-		end
-	end
-	for name, expiry in pairs(tokens) do
-		if expiry ~= nil and expiry <= now then
-			tokens[name] = nil
-		end
-	end
-	local target = math.max(0, math.min(tonumber(active_count) or 0, #family_actions))
-	local active_names = {}
-	for name, expiry in pairs(tokens) do
-		if expiry ~= nil and expiry > now then
-			active_names[#active_names + 1] = name
-		end
-	end
-	local active_n = #active_names
-	if target == 0 then
-		for name, _ in pairs(tokens) do
-			tokens[name] = nil
-		end
-		scheduler.family_counts[family_key(member_name, buff_id)] = 0
-		return order, tokens
-	end
-	if active_n < target then
-		local recent = get_recent_gain(member_name, buff_id, 20, now)
-		if recent and known[recent] and tokens[recent] == nil then
-			tokens[recent] = now + action_duration_seconds(recent, default_duration)
-			active_n = active_n + 1
-		end
-		for idx = #order, 1, -1 do
-			if active_n >= target then
-				break
-			end
-			local name = order[idx]
-			if known[name] and tokens[name] == nil then
-				tokens[name] = now + action_duration_seconds(name, default_duration)
-				active_n = active_n + 1
-			end
-		end
-	elseif active_n > target then
-		table.sort(active_names, function(a, b)
-			local ar, br = tokens[a] or 1e9, tokens[b] or 1e9
-			if ar ~= br then
-				return ar < br
-			end
-			return tostring(a) < tostring(b)
-		end)
-		for i = 1, (active_n - target) do
-			tokens[active_names[i]] = nil
-		end
-	end
-	scheduler.family_counts[family_key(member_name, buff_id)] = target
-	return order, tokens
-end
 
 local function build_defensive_candidates()
 	local s = get_settings()
@@ -635,17 +1461,82 @@ local function build_defensive_candidates()
 		overwrite = nil,
 	}
 	local now = os.clock()
-	local overwrite_enabled = bool_setting(s.defensive_buff_enabled, true) and bool_setting(s.defensive_overwrite_enabled, false)
-	local overwrite_interval = tonumber(s.defensive_overwrite_interval or 150) or 150
-	local desired_buffs = split_actions(s.defensive_buffs or '')
-	local self_only_buffs = bool_setting(s.defensive_buff_self_only, true)
+	local ignore_trusts = bool_setting(s.def_heal_ignore_trusts, true)
+
+	if bool_setting(s.defensive_buff_enabled, true) then
+		scheduler.maintenance_scan = scheduler.maintenance_scan or { next_at = 0, buff_pick = nil }
+		local scan = scheduler.maintenance_scan
+		local picked = nil
+		if now >= (tonumber(scan.next_at) or 0) then
+			picked = hb_buff_maint.choose(s, members, {
+				bool_setting = bool_setting,
+				in_party_cast_range = in_party_cast_range,
+				action_ready = action_ready,
+				get_spell_resource = get_spell_resource,
+				get_ja_resource = get_ja_resource,
+				is_bard_song = is_bard_song,
+				attempt_allowed = attempt_allowed,
+				member_priority = member_priority,
+				pri_default = pri_default,
+				buff_priority = buff_priority,
+				last_overwrite = scheduler.last_overwrite,
+			})
+			scan.buff_pick = picked
+			scan.next_at = now + 1.0
+		else
+			picked = scan.buff_pick
+		end
+		if picked and picked.spell and picked.target then
+			if picked.type == 'overwrite' then
+				out.overwrite = picked
+			else
+				out.buff = picked
+			end
+		end
+	else
+		if scheduler.maintenance_scan then
+			scheduler.maintenance_scan.buff_pick = nil
+		end
+	end
+
 	for _, m in ipairs(members) do
-		local active_counts = count_buff_occurrences(m.buffs or {})
-		if m.hpp > 0 and m.hpp < 95 and bool_setting(s.defensive_cure_enabled, true) and in_party_cast_range(m) then
-			local spell = choose_cure_spell(m.hpp)
+		if not (ignore_trusts and tonumber(m.spawn_type) == 14) then
+			local active_counts = count_buff_occurrences(m.buffs or {})
+			if m.hpp > 0 and m.hpp < 95 and bool_setting(s.defensive_cure_enabled, true) and in_party_cast_range(m) then
+			local missing_hp = estimate_missing_hp(m)
+			local missing_gate = tonumber(s.def_heal_min_missing_hp) or 250
+			missing_gate = math.max(0, missing_gate)
+			log_def_sched(('CURE_CANDIDATE target="%s" hp=%d hpp=%d missing=%d gate=%d in_range=1'):format(
+				tostring(m.name or '?'),
+				tonumber(m.hp) or 0,
+				tonumber(m.hpp) or 0,
+				tonumber(missing_hp) or 0,
+				tonumber(missing_gate) or 0
+			))
+			if missing_hp >= missing_gate then
+			local spell = choose_cure_spell(m)
+			if not spell then
+				log_def_sched(('CURE_REJECT target="%s" reason=NO_SPELL hp=%d hpp=%d missing=%d gate=%d'):format(
+					tostring(m.name or '?'),
+					tonumber(m.hp) or 0,
+					tonumber(m.hpp) or 0,
+					tonumber(missing_hp) or 0,
+					tonumber(missing_gate) or 0
+				))
+			end
 			if spell then
 				local ready = spell_ready(spell)
-				if ready then
+				if not ready then
+					log_def_sched(('CURE_REJECT target="%s" reason=SPELL_NOT_READY spell="%s" hp=%d hpp=%d missing=%d gate=%d'):format(
+						tostring(m.name or '?'),
+						tostring(spell),
+						tonumber(m.hp) or 0,
+						tonumber(m.hpp) or 0,
+						tonumber(missing_hp) or 0,
+						tonumber(missing_gate) or 0
+					))
+				end
+				if ready and attempt_allowed('cure', m.name, spell, now, 2.5) then
 					local c = {
 						type = 'cure',
 						spell = spell,
@@ -656,11 +1547,39 @@ local function build_defensive_candidates()
 					}
 					if cure_better(c, out.cure) then
 						out.cure = c
+						log_def_sched(('CURE_ACCEPT target="%s" spell="%s" hp=%d hpp=%d missing=%d gate=%d prio=%0.2f'):format(
+							tostring(m.name or '?'),
+							tostring(spell),
+							tonumber(m.hp) or 0,
+							tonumber(m.hpp) or 0,
+							tonumber(missing_hp) or 0,
+							tonumber(missing_gate) or 0,
+							tonumber(c.prio) or 0
+						))
 					end
+				elseif ready then
+					log_def_sched(('CURE_REJECT target="%s" reason=ATTEMPT_THROTTLE spell="%s" hp=%d hpp=%d missing=%d gate=%d'):format(
+						tostring(m.name or '?'),
+						tostring(spell),
+						tonumber(m.hp) or 0,
+						tonumber(m.hpp) or 0,
+						tonumber(missing_hp) or 0,
+						tonumber(missing_gate) or 0
+					))
 				end
 			end
-		end
-		if bool_setting(s.defensive_na_enabled, true) and in_party_cast_range(m) then
+			else
+				log_def_sched(('CURE_REJECT target="%s" reason=MISSING_BELOW_GATE hp=%d hpp=%d missing=%d gate=%d'):format(
+					tostring(m.name or '?'),
+					tonumber(m.hp) or 0,
+					tonumber(m.hpp) or 0,
+					tonumber(missing_hp) or 0,
+					tonumber(missing_gate) or 0
+				))
+			end
+			end
+			if bool_setting(s.defensive_na_enabled, true) and in_party_cast_range(m) then
+			local best = nil
 			for _, buff_id in ipairs(m.buffs or {}) do
 				local debuff = res.buffs[buff_id]
 				local debuff_en = debuff and debuff.en or ''
@@ -668,124 +1587,82 @@ local function build_defensive_candidates()
 				if na_spell then
 					local ready = action_ready(na_spell)
 					if ready and attempt_allowed('debuff', m.name, na_spell, now, 3) then
-						local p = member_priority(m)
-						local action_prio = status_removal_priority[(debuff and (debuff.enn or debuff_en:lower():gsub('%s+', '_'))) or ''] or 5
-						local d = {
-							type = 'debuff',
-							spell = na_spell,
-							target = m,
-							buff_id = buff_id,
-							prio = pri_default(p, action_prio),
-						}
-						if not out.debuff or d.prio < out.debuff.prio then
-							out.debuff = d
-						end
-					end
-					break
-				end
-			end
-		end
-		if bool_setting(s.defensive_buff_enabled, true) and in_party_cast_range(m) and (not self_only_buffs or m.is_self) then
-			local by_name = {}
-			local by_family = {}
-			for _, buff_action in ipairs(desired_buffs) do
-				local bid = action_status_id(buff_action)
-				if bid ~= nil then
-					by_name[buff_action] = { bid = bid, name = buff_action }
-					by_family[bid] = by_family[bid] or {}
-					by_family[bid][#by_family[bid] + 1] = buff_action
-				end
-			end
-			local family_due = {}
-			local family_remaining = {}
-			for bid, names in pairs(by_family) do
-				local order, tokens = reconcile_family_state(
-					m.name,
-					bid,
-					names,
-					active_counts[bid] or 0,
-					overwrite_interval,
-					now
-				)
-				if overwrite_enabled and (#names > 1) then
-					local due, rem = due_overwrite_names(m.name, bid, order, tokens)
-					family_due[bid] = due
-					family_remaining[bid] = rem
-				end
-			end
-			local spell_names = {}
-			for name, _ in pairs(by_name) do
-				spell_names[#spell_names + 1] = name
-			end
-			table.sort(spell_names, function(a, b)
-				local ai = by_name[a]
-				local bi = by_name[b]
-				local ad = ai and family_due[ai.bid] and family_due[ai.bid][a] == true or false
-				local bd = bi and family_due[bi.bid] and family_due[bi.bid][b] == true or false
-				if ad and bd then
-					local ar = family_remaining[ai.bid] and family_remaining[ai.bid][a] or 1e9
-					local br = family_remaining[bi.bid] and family_remaining[bi.bid][b] or 1e9
-					if ar ~= br then
-						return ar < br
-					end
-					return tostring(a) < tostring(b)
-				elseif ad ~= bd then
-					return ad
-				end
-				return tostring(a) < tostring(b)
-			end)
-			local family_enqueued = {}
-			for _, buff_action in ipairs(spell_names) do
-				local info = by_name[buff_action]
-				local bid = info and info.bid or nil
-				if bid then
-					local tokens = family_tokens_for(m.name, bid)
-					local landed = tokens[buff_action] ~= nil and tokens[buff_action] > now
-					local due = family_due[bid] and family_due[bid][buff_action] == true or false
-					local should_queue = false
-					local reason = nil
-					if not landed then
-						should_queue = true
-						reason = 'missing'
-					elseif due then
-						should_queue = true
-						reason = 'overwrite'
-					end
-					if should_queue and attempt_allowed(reason or 'buff', m.name, buff_action, now, 3) then
-						local is_dup_family = (by_family[bid] and #by_family[bid] > 1) or false
-						local block_for_family_wait = is_dup_family and family_enqueued[bid] and (reason ~= 'overwrite')
-						if not block_for_family_wait then
-							local ready = action_ready(buff_action)
-							if ready then
-								local bprio = buff_priority[buff_action] or 5
-								local candidate = {
-									type = (reason == 'overwrite') and 'overwrite' or 'buff',
-									spell = buff_action,
-									target = m,
-									buff_id = bid,
-									prio = pri_default(member_priority(m), bprio),
-								}
-								if candidate.type == 'overwrite' then
-									if not out.overwrite or candidate.prio < out.overwrite.prio then
-										out.overwrite = candidate
-									end
-								else
-									if not out.buff or candidate.prio < out.buff.prio then
-										out.buff = candidate
-									end
-								end
-								if is_dup_family then
-									family_enqueued[bid] = true
-								end
-							end
+						local key = normalize_status_removal_key(debuff)
+						local action_prio = status_removal_priority[key] or 5
+						if (not best) or action_prio < best.action_prio then
+							best = {
+								spell = na_spell,
+								buff_id = buff_id,
+								action_prio = action_prio,
+							}
 						end
 					end
 				end
+			end
+			if best then
+				local p = member_priority(m)
+				local d = {
+					type = 'debuff',
+					spell = best.spell,
+					target = m,
+					buff_id = best.buff_id,
+					prio = pri_default(p, best.action_prio),
+				}
+				if not out.debuff or d.prio < out.debuff.prio then
+					out.debuff = d
+				end
+			end
 			end
 		end
 	end
 	return out
 end
+
+local function parse_status_snapshot_063(data)
+	if type(data) ~= 'string' or #data < 80 then
+		return nil
+	end
+	if data:byte(5) ~= 9 then
+		return nil
+	end
+	local status_by_id = {}
+	for n = 1, 32 do
+		local buff_id = data:unpack('H', n * 2 + 7)
+		if buff_id == 255 then
+			break
+		end
+		local endtime = data:unpack('I', n * 4 + 71)
+		status_by_id[buff_id] = status_by_id[buff_id] or { count = 0, endtimes = {} }
+		status_by_id[buff_id].count = status_by_id[buff_id].count + 1
+		if endtime and endtime > 0 then
+			status_by_id[buff_id].endtimes[#status_by_id[buff_id].endtimes + 1] = endtime
+		end
+	end
+	for _, v in pairs(status_by_id) do
+		table.sort(v.endtimes, function(a, b)
+			return (tonumber(a) or 0) < (tonumber(b) or 0)
+		end)
+	end
+	return status_by_id
+end
+
+canon_name = function(s)
+	return decode_json_escapes(tostring(s or ''))
+		:gsub('[\226\128\153\226\128\152`´]', "'")
+		:gsub('%s+', ' ')
+		:gsub('^%s+', '')
+		:gsub('%s+$', '')
+end
+
+
+ensure_maintenance_state_tables = function()
+	scheduler.maintenance_state = scheduler.maintenance_state or {}
+	scheduler.maintenance_state.buffs = scheduler.maintenance_state.buffs or {}
+	scheduler.maintenance_state.debuffs = scheduler.maintenance_state.debuffs or {}
+	scheduler.maintenance_state.status_snapshot = scheduler.maintenance_state.status_snapshot or {}
+	return scheduler.maintenance_state
+end
+
 
 local function choose_defensive_action(c)
 	if c.overwrite then
@@ -826,16 +1703,26 @@ local function try_delegate_healbot()
 	return true, reason
 end
 
-choose_cure_spell = function(hpp)
+choose_cure_spell = function(member)
 	local s = get_settings()
-	local crit = tonumber(s.defensive_critical_hpp) or 35
-	local med = tonumber(s.defensive_medium_hpp) or 55
-	if hpp <= crit then
-		return 'Cure IV'
-	elseif hpp <= med then
-		return 'Cure III'
-	elseif hpp <= 75 then
-		return 'Cure II'
+	local max_available = available_cure_tier_max()
+	if max_available <= 0 then
+		return nil
+	end
+	local min_tier = tonumber(s.def_heal_min_tier_cure) or 2
+	local max_tier_cfg = tonumber(s.def_heal_max_tier_cure) or 4
+	local max_tier = math.max(1, math.min(max_available, max_tier_cfg, 6))
+	min_tier = math.max(1, math.min(min_tier, max_tier, 6))
+	local missing = estimate_missing_hp(member)
+	local wanted_tier = cure_tier_for_missing_hp(missing, max_tier)
+	local spell = get_usable_cure_from_tier(wanted_tier, min_tier)
+	if spell then
+		return spell
+	end
+	-- Last-resort fallback for very low HP if configured floor blocked all options.
+	local hpp = tonumber(member and member.hpp) or 100
+	if hpp <= (tonumber(s.defensive_critical_hpp) or 35) then
+		return get_usable_cure_from_tier(max_tier, 1)
 	end
 	return nil
 end
@@ -854,24 +1741,35 @@ local function try_internal_defensive_action()
 	end
 	local now = os.clock()
 	local candidates = build_defensive_candidates()
+	_G.UC_BUFF_QUEUE = tostring(buff_runtime.last_queue_debug or '')
 	local action, reason = choose_defensive_action(candidates)
 	if action and action.spell and action.target and action.target.name then
+		local blocked, b_reason = action_dispatch_blocked()
+		if blocked then
+			return true, b_reason
+		end
 		if now - scheduler.last_action_at < scheduler.action_delay then
 			-- Cooldown paces defensive casts only; do not freeze offensive combat ticks.
 			return false, nil
 		end
 		local _, _, action_kind = action_ready(action.spell)
-		local cmd
-		if action_kind == 'ja' then
-			local target_name = action.target.is_self and '<me>' or action.target.name
-			cmd = ('input /ja "%s" %s'):format(action.spell, target_name)
-		else
-			cmd = ('input /ma "%s" %s'):format(action.spell, action.target.name)
-		end
+		local cmd = build_action_command(action.spell, action_kind, action.target)
 		windower.send_command(cmd)
+		action_mark_sent(action_kind or action.type or 'defensive')
 		scheduler.last_action_at = now
 		_G.UC_LAST_SCHED_ACTION = action.spell .. '->' .. tostring(action.target.name)
 		mark_attempt(action.type or 'defensive', action.target.name, action.spell, now)
+		if action.entry_key then
+			local st = ensure_maintenance_state_tables()
+			local e = st.buffs[action.entry_key] or {}
+			e.attempted = now
+			e.last_attempt_reason = tostring(action.reason or action.type or '')
+			e.last_seen_at = now
+			if action.type == 'buff' or action.type == 'overwrite' then
+				e.landed = now + action_duration_seconds(action.spell, tonumber(get_settings().defensive_overwrite_interval or 150) or 150)
+			end
+			st.buffs[action.entry_key] = e
+		end
 		if action.type == 'overwrite' then
 			scheduler.last_overwrite[attempt_key('overwrite', action.target.name, action.spell)] = now
 		end
@@ -907,12 +1805,18 @@ end
 local function p1_build_ctx(settings)
 	local player = windower.ffxi.get_player() or {}
 	local me = windower.ffxi.get_mob_by_target('me') or {}
+	local party = windower.ffxi.get_party() or {}
+	local mob_array = windower.ffxi.get_mob_array() or {}
 	local p = scheduler.phase1
 	p.tick = (tonumber(p.tick) or 0) + 1
 	return {
 		now = os.clock(),
 		tick = p.tick,
 		settings = settings or {},
+		player = player,
+		me = me,
+		party = party,
+		mob_array = mob_array,
 		player_status = tonumber(player.status) or -1,
 		player_id = tonumber(player.id) or 0,
 		player_name = tostring(player.name or ''),
@@ -947,12 +1851,13 @@ local function p1_collect_defensive_internal(ctx, out)
 	local target_id = tonumber(action.target.id) or 0
 	local target_name = tostring(action.target.name or '')
 	local action_name = tostring(action.spell or '')
-	local legacy_command = action.target.is_self and ('input /ma "%s" <me>'):format(action_name) or ('input /ma "%s" %s'):format(action_name, target_name)
+	local _, _, action_kind = action_ready(action_name, target_id)
+	local legacy_command = build_action_command(action_name, action_kind, action.target)
 	out[#out + 1] = {
 		proposal_id = ('def.internal.%s.%s.%d'):format(tostring(action.type or 'action'), action_name, math.floor(ctx.now * 1000)),
 		family_id = ('def.internal.%s'):format(tostring(action.type or 'action')),
 		provider = 'defensive_internal',
-		action_type = 'spell',
+		action_type = action_kind,
 		action_name = action_name,
 		target_kind = target_kind,
 		target_id = target_id,
@@ -1069,6 +1974,10 @@ local function p1_collect_combat_offense(ctx, out)
 	if not target or not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
 		return
 	end
+	local partner_target_set = build_partner_target_set(ctx.settings)
+	if partner_target_set[tonumber(target.id) or 0] == true then
+		return
+	end
 	local ws_pick_reason = ''
 	local ws = ''
 	if combat_core and type(combat_core.select_smart_ws_for_scheduler) == 'function' then
@@ -1119,6 +2028,191 @@ local function p1_collect_combat_offense(ctx, out)
 	}
 end
 
+local function p1_collect_combat_engage(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	if not bool_setting(ctx.settings.scheduler_dark_launch_combat, false) then
+		return
+	end
+	if not bool_setting(ctx.settings.autotarget, false) then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	if not player then
+		return
+	end
+	if tonumber(player.status) == 1 then
+		return
+	end
+	local t = windower.ffxi.get_mob_by_target('t')
+	if not t or not t.valid_target or tonumber(t.spawn_type) ~= 16 or (tonumber(t.hpp) or 0) <= 0 then
+		if bool_setting(ctx.settings and ctx.settings.debug, false) then
+			_G.UC_LAST_SCHED_ACTION = '[p1]engage:collect_skip:no_valid_target'
+		end
+		return
+	end
+	if bool_setting(ctx.settings and ctx.settings.debug, false) then
+		_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_emit tid=%d name=%s'):format(
+			tonumber(t.id) or 0,
+			tostring(t.name or '')
+		)
+	end
+	out[#out + 1] = {
+		proposal_id = ('combat.engage.%d.%d'):format(tonumber(t.id) or 0, math.floor(ctx.now * 1000)),
+		family_id = 'combat.engage.primary',
+		provider = 'combat',
+		action_type = 'engage',
+		action_name = 'engage_target',
+		target_kind = 'mob',
+		target_id = tonumber(t.id) or 0,
+		target_name = tostring(t.name or ''),
+		priority_band = 72,
+		urgency = p1_clamp_urgency(0.70),
+		starvation_eligible = true,
+		created_at = ctx.now,
+		expires_at = ctx.now + 0.30,
+		commit_deadline = ctx.now + 0.20,
+		movement_policy = 'can_move',
+		range_policy = { min = 0.0, max = 30.0, los_required = false },
+		recast_key = 'engage:attack_on',
+		duplicate_suppression_key = ('engage:%d'):format(tonumber(t.id) or 0),
+		lock_class = 'offense_action',
+		expected_ack = 'action_start',
+		expected_effect = 'engage',
+		sticky = true,
+		can_preempt_movement = true,
+		can_preempt_same_band = false,
+		reason_code = 'engage_ready',
+		detail = {},
+		required_setting = 'autotarget',
+	}
+end
+
+local function p1_collect_target_control(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	if not bool_setting(ctx.settings.autotarget, false) then
+		return
+	end
+	if not combat_core or type(combat_core.select_target_for_scheduler) ~= 'function' then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	if not player then
+		return
+	end
+	-- Keep parity with core engaged stickiness for this first migration slice:
+	-- target acquisition proposals are for pre-engage control only.
+	if tonumber(player.status) == 1 then
+		return
+	end
+	local pick = combat_core.select_target_for_scheduler(ctx.settings)
+	if type(pick) ~= 'table' then
+		return
+	end
+	local tid = tonumber(pick.target_id) or 0
+	if tid <= 0 then
+		return
+	end
+	local cur = windower.ffxi.get_mob_by_target('t')
+	if cur and tonumber(cur.id) == tid then
+		return
+	end
+	out[#out + 1] = {
+		proposal_id = ('target.acquire.%d.%d'):format(tid, math.floor(ctx.now * 1000)),
+		family_id = 'target.acquire.primary',
+		provider = 'target_control',
+		action_type = 'target',
+		action_name = 'acquire_target',
+		target_kind = 'mob',
+		target_id = tid,
+		target_name = tostring(pick.target_name or ''),
+		priority_band = 66,
+		urgency = p1_clamp_urgency(0.55),
+		starvation_eligible = true,
+		created_at = ctx.now,
+		expires_at = ctx.now + 0.35,
+		commit_deadline = ctx.now + 0.25,
+		movement_policy = 'can_move',
+		range_policy = { min = 0.0, max = 50.0, los_required = false },
+		recast_key = ('target:%d'):format(tid),
+		duplicate_suppression_key = ('target.acquire:%d'):format(tid),
+		lock_class = 'target_control',
+		expected_ack = 'target_set',
+		expected_effect = 'target_selected',
+		sticky = true,
+		can_preempt_movement = true,
+		can_preempt_same_band = false,
+		reason_code = 'acquire_candidate',
+		detail = {
+			hpp = tonumber(pick.hpp) or 0,
+		},
+		required_setting = 'autotarget',
+	}
+end
+
+local function p1_collect_pull_control(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	if not bool_setting(ctx.settings.scheduler_dark_launch_combat, false) then
+		return
+	end
+	if not bool_setting(ctx.settings.autotarget, false) then
+		return
+	end
+	if not combat_core or type(combat_core.select_pull_for_scheduler) ~= 'function' then
+		return
+	end
+	local pick = combat_core.select_pull_for_scheduler(ctx.settings)
+	if type(pick) ~= 'table' then
+		return
+	end
+	local tid = tonumber(pick.target_id) or 0
+	local aname = tostring(pick.action_name or '')
+	local atype = tostring(pick.action_type or '')
+	if tid <= 0 or aname == '' or (atype ~= 'spell' and atype ~= 'ja') then
+		return
+	end
+	local urgency = (pick.in_range == true) and 0.92 or 0.75
+	out[#out + 1] = {
+		proposal_id = ('pull.%s.%s.%d.%d'):format(atype, aname, tid, math.floor(ctx.now * 1000)),
+		family_id = 'combat.pull.primary',
+		provider = 'pull_control',
+		action_type = 'pull',
+		action_name = aname,
+		target_kind = 'mob',
+		target_id = tid,
+		target_name = tostring(pick.target_name or ''),
+		priority_band = 82,
+		urgency = p1_clamp_urgency(urgency),
+		starvation_eligible = true,
+		created_at = ctx.now,
+		expires_at = ctx.now + 0.30,
+		commit_deadline = ctx.now + 0.20,
+		movement_policy = 'requires_range',
+		range_policy = { min = 0.0, max = tonumber(pick.range_max) or 20.0, los_required = false },
+		recast_key = ('pull:%s:%s'):format(atype, aname),
+		duplicate_suppression_key = ('pull:%s:%s:%d'):format(atype, aname, tid),
+		lock_class = 'offense_action',
+		expected_ack = 'action_start',
+		expected_effect = 'pull_action',
+		sticky = true,
+		can_preempt_movement = true,
+		can_preempt_same_band = false,
+		reason_code = (pick.in_range == true) and 'pull_ready' or 'pull_move_into_range',
+		detail = {
+			action_type = atype,
+			dist = tonumber(pick.dist) or 999,
+			range_max = tonumber(pick.range_max) or 0,
+			in_range = pick.in_range == true,
+		},
+		required_setting = 'autotarget',
+	}
+end
+
 local function p1_collect_combat_tank_enmity(ctx, out)
 	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 		return
@@ -1149,6 +2243,10 @@ local function p1_collect_combat_tank_enmity(ctx, out)
 			urgency = 0.60
 		end
 	end
+	local action_range = tonumber(pick.action_range)
+	if not action_range or action_range <= 0 then
+		action_range = 20.0
+	end
 	out[#out + 1] = {
 		proposal_id = ('combat.tank.%s.%s.%d.%d'):format(kind, action_name, target_id, math.floor(ctx.now * 1000)),
 		family_id = 'combat.tank_enmity.primary',
@@ -1165,7 +2263,7 @@ local function p1_collect_combat_tank_enmity(ctx, out)
 		expires_at = ctx.now + 0.30,
 		commit_deadline = ctx.now + 0.20,
 		movement_policy = (kind == 'spell') and 'must_stop' or 'requires_range',
-		range_policy = { min = 0.0, max = math.max(1.0, tonumber(pick.action_range) or 20.0), los_required = false },
+		range_policy = { min = 0.0, max = math.max(1.0, action_range), los_required = false },
 		recast_key = ('tank:%s:%s'):format(kind, action_name),
 		duplicate_suppression_key = ('tank:%s:%s:%d'):format(kind, action_name, target_id),
 		lock_class = 'offense_action',
@@ -1206,6 +2304,7 @@ local function p1_collect_combat_ja(ctx, out)
 		return
 	end
 	local target = windower.ffxi.get_mob_by_target('t')
+	local partner_target_set = build_partner_target_set(ctx.settings)
 	for _, name in ipairs(ordered) do
 		local ja = get_ja_resource(name)
 		if ja then
@@ -1218,6 +2317,9 @@ local function p1_collect_combat_ja(ctx, out)
 				local ja_target_ok = true
 				if ja_targets == '{Enemy}' then
 					if not target or not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
+						ja_target_ok = false
+					end
+					if ja_target_ok and partner_target_set[tonumber(target.id) or 0] == true then
 						ja_target_ok = false
 					end
 					if ja_target_ok then
@@ -1293,88 +2395,47 @@ local function p1_collect_movement(ctx, out)
 	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 		return
 	end
-	local player = windower.ffxi.get_player()
-	if not player or tonumber(player.status) ~= 1 then
+	if not bool_setting(ctx.settings.scheduler_dark_launch_movement, false) then
 		return
 	end
-	if not bool_setting(ctx.settings.spacing, false) then
+	if type(rawget(_G, 'UC_IsMovementParticipant')) == 'function' then
+		if not _G.UC_IsMovementParticipant(ctx.settings) then
+			return
+		end
+	end
+	if not combat_core or type(combat_core.apply_movement_for_scheduler) ~= 'function' then
 		return
 	end
-	local target = windower.ffxi.get_mob_by_target('t')
-	if not target or not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
-		return
-	end
-	local dist = target.distance and target.distance:sqrt() or 999
-	local min_range = p1_number(ctx.settings.spacing_band_min, -0.9)
-	local max_range = p1_number(ctx.settings.spacing_band_max, 0.4)
-	if max_range <= min_range then
-		max_range = min_range + 0.1
-	end
-	if dist > max_range then
-		local urgency = (dist - max_range) / 6
-		out[#out + 1] = {
-			proposal_id = ('move.close.%d.%d'):format(tonumber(target.id) or 0, math.floor(ctx.now * 1000)),
-			family_id = 'movement.close_range',
-			provider = 'mobility',
-			action_type = 'move',
-			action_name = 'close_range',
-			target_kind = 'mob',
-			target_id = tonumber(target.id) or 0,
-			target_name = tostring(target.name or ''),
-			priority_band = 50,
-			urgency = p1_clamp_urgency(urgency),
-			starvation_eligible = true,
-			created_at = ctx.now,
-			expires_at = ctx.now + 0.30,
-			commit_deadline = ctx.now + 0.20,
-			movement_policy = 'positioning_only',
-			range_policy = { min = 0.0, max = math.max(1.0, max_range + 0.1), los_required = false },
-			recast_key = 'move:close_range',
-			duplicate_suppression_key = ('move:close:%d'):format(tonumber(target.id) or 0),
-			lock_class = 'movement_action',
-			expected_ack = 'movement_start',
-			expected_effect = 'movement_progress',
-			sticky = true,
-			can_preempt_movement = true,
-			can_preempt_same_band = false,
-			reason_code = 'out_of_range',
-			detail = { dist = dist, min = min_range, max = max_range },
-			legacy_command = '',
-			required_setting = 'spacing',
-		}
-	elseif dist < min_range then
-		local urgency = (min_range - dist) / 3
-		out[#out + 1] = {
-			proposal_id = ('move.retreat.%d.%d'):format(tonumber(target.id) or 0, math.floor(ctx.now * 1000)),
-			family_id = 'movement.spacing',
-			provider = 'mobility',
-			action_type = 'move',
-			action_name = 'retreat',
-			target_kind = 'mob',
-			target_id = tonumber(target.id) or 0,
-			target_name = tostring(target.name or ''),
-			priority_band = 50,
-			urgency = p1_clamp_urgency(urgency),
-			starvation_eligible = true,
-			created_at = ctx.now,
-			expires_at = ctx.now + 0.30,
-			commit_deadline = ctx.now + 0.20,
-			movement_policy = 'positioning_only',
-			range_policy = { min = min_range, max = max_range, los_required = false },
-			recast_key = 'move:spacing',
-			duplicate_suppression_key = ('move:retreat:%d'):format(tonumber(target.id) or 0),
-			lock_class = 'movement_action',
-			expected_ack = 'movement_start',
-			expected_effect = 'movement_progress',
-			sticky = true,
-			can_preempt_movement = true,
-			can_preempt_same_band = false,
-			reason_code = 'too_close',
-			detail = { dist = dist, min = min_range, max = max_range },
-			legacy_command = '',
-			required_setting = 'spacing',
-		}
-	end
+	out[#out + 1] = {
+		proposal_id = ('move.core.tick.%d'):format(math.floor(ctx.now * 1000)),
+		family_id = 'movement.core',
+		provider = 'mobility',
+		action_type = 'move',
+		action_name = 'core_movement_tick',
+		target_kind = 'none',
+		target_id = 0,
+		target_name = '',
+		priority_band = 50,
+		urgency = p1_clamp_urgency(0.45),
+		starvation_eligible = true,
+		created_at = ctx.now,
+		expires_at = ctx.now + 0.25,
+		commit_deadline = ctx.now + 0.20,
+		movement_policy = 'positioning_only',
+		range_policy = { min = 0.0, max = 50.0, los_required = false },
+		recast_key = 'move:core_tick',
+		duplicate_suppression_key = 'move:core_tick',
+		lock_class = 'movement_action',
+		expected_ack = 'movement_start',
+		expected_effect = 'movement_progress',
+		sticky = true,
+		can_preempt_movement = true,
+		can_preempt_same_band = false,
+		reason_code = 'scheduler_movement_tick',
+		detail = {},
+		legacy_command = '',
+		required_setting = 'scheduler_dark_launch_movement',
+	}
 end
 
 local function p1_collect_maintenance(ctx, out)
@@ -1392,6 +2453,12 @@ local function p1_collect_maintenance(ctx, out)
 	local phase = scheduler.phase1
 	local gate = phase.maintenance_next_at or {}
 	phase.maintenance_next_at = gate
+	if is_city_zone_for_maintenance() then
+		gate.cor_rolls = 0
+		gate.brd_songs = 0
+		gate.geo_buffs = 0
+		return
+	end
 	local now = ctx.now
 	ensure_maintenance_buff_cache()
 	local buff_list = player.buffs or {}
@@ -1513,13 +2580,24 @@ end
 
 local function p1_collect_proposals(ctx)
 	local out = {}
-	p1_collect_defensive_internal(ctx, out)
-	p1_collect_defensive_healbot(ctx, out)
+	local s = ctx.settings or {}
+	-- 5 Hz domains
+	p1_collect_target_control(ctx, out)
+	p1_collect_combat_engage(ctx, out)
+	p1_collect_pull_control(ctx, out)
 	p1_collect_combat_tank_enmity(ctx, out)
 	p1_collect_combat_offense(ctx, out)
 	p1_collect_combat_ja(ctx, out)
 	p1_collect_movement(ctx, out)
-	p1_collect_maintenance(ctx, out)
+	-- 2 Hz defensive
+	if ctx.now >= (tonumber(s._sched_next_defensive_at) or 0) then
+		p1_collect_defensive_internal(ctx, out)
+		p1_collect_defensive_healbot(ctx, out)
+	end
+	-- 1 Hz maintenance
+	if ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0) then
+		p1_collect_maintenance(ctx, out)
+	end
 	return out
 end
 
@@ -1798,6 +2876,36 @@ local function p1_rank(ctx, proposals)
 	if #valid == 0 and #soft_blocked > 0 then
 		-- Soft suppression may be bypassed when nothing else is valid.
 		valid = soft_blocked
+	end
+	if bool_setting(ctx and ctx.settings and ctx.settings.debug, false) then
+		local seen_engage = false
+		local won_engage = false
+		local top_provider = ''
+		local top_family = ''
+		local top_action = ''
+		local top_score = 0
+		if type(valid) == 'table' and #valid > 0 then
+			top_provider = tostring(valid[1].provider or '')
+			top_family = tostring(valid[1].family_id or '')
+			top_action = tostring(valid[1].action_type or '')
+			top_score = tonumber(valid[1]._score) or 0
+		end
+		for _, v in ipairs(valid) do
+			if tostring(v.family_id or '') == 'combat.engage.primary' then
+				seen_engage = true
+				if v == valid[1] then
+					won_engage = true
+				end
+				break
+			end
+		end
+		if seen_engage and (not won_engage) then
+			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:rank_lost top=%s/%s/%s score=%.2f'):format(
+				top_provider, top_family, top_action, top_score
+			)
+		elseif seen_engage and won_engage then
+			_G.UC_LAST_SCHED_ACTION = '[p1]engage:rank_win'
+		end
 	end
 	return valid, reject_counts, locks, rejected
 end
@@ -2189,9 +3297,71 @@ local function p1_try_dark_launch_dispatch(settings)
 		return false, nil
 	end
 	local provider = tostring(selected.provider or '')
-	if provider == 'combat' then
+	if provider == 'target_control' then
 		if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
 			return false, nil
+		end
+		local blocked, b_reason = action_dispatch_blocked()
+		if blocked then
+			return true, b_reason
+		end
+		local tid = tonumber(selected.target_id) or 0
+		if tid <= 0 then
+			return false, nil
+		end
+		local ok = p1_try_target_prep(tid)
+		if not ok then
+			return false, nil
+		end
+		-- Target prep is a focus-selection operation, not a cast/JA/WS in-flight action.
+		-- Do not enter the global acting lock path here or engage can be delayed by timeout.
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]target:%d->%s'):format(tid, tostring(selected.target_name or ''))
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_TARGET'
+	end
+
+	if provider == 'pull_control' then
+		if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
+			return false, nil
+		end
+		local blocked, b_reason = action_dispatch_blocked()
+		if blocked then
+			return true, b_reason
+		end
+		if not combat_core or type(combat_core.dispatch_pull_for_scheduler) ~= 'function' then
+			return false, nil
+		end
+		local tid = tonumber(selected.target_id) or 0
+		if tid <= 0 then
+			return false, nil
+		end
+		local ok, reason = combat_core.dispatch_pull_for_scheduler(settings, tid)
+		if not ok then
+			return false, nil
+		end
+		action_mark_sent('pull')
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]pull:%s->%s:%s'):format(
+			tostring(selected.action_name or ''),
+			tostring(selected.target_name or ''),
+			tostring(reason or '')
+		)
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_PULL'
+	end
+	if provider == 'combat' then
+		_G.UC_TANK_ENMITY_BLOCK = ''
+		if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
+			return false, nil
+		end
+		local blocked, b_reason = action_dispatch_blocked()
+		if blocked then
+			return true, b_reason
 		end
 		local action_type = tostring(selected.action_type or '')
 		local tank_enmity = p1_is_tank_enmity_selected(selected)
@@ -2201,15 +3371,16 @@ local function p1_try_dark_launch_dispatch(settings)
 			local max_range = math.max(0, p1_number(selected.range_policy and selected.range_policy.max, 0))
 			local dist, mob = p1_target_distance_to_id(expected_tid)
 			if not mob or not mob.valid_target or (tonumber(mob.hpp) or 0) <= 0 then
+				tank_enmity_diag('TANK_ENMITY_DROP_BAD_TARGET', selected, ('dist=%s max=%.2f'):format(tostring(dist), max_range))
 				return false, nil
 			end
 			-- Safety: do not force-move from scheduler for tank intents while parity is stabilizing.
 			-- Let core movement/follow/spacing continue to own locomotion to avoid run-lock behavior.
 			if max_range > 0 and dist and dist > max_range then
+				tank_enmity_diag('TANK_ENMITY_DROP_OUT_OF_RANGE', selected, ('dist=%.2f max=%.2f'):format(tonumber(dist) or -1, max_range))
 				return false, nil
 			end
-			-- T7: target prep owned by scheduler for tank actions.
-			p1_try_target_prep(expected_tid)
+			-- Tank enmity dispatch is by target_id; no prep target-switch required.
 		end
 		if tank_enmity and (action_type == 'ja' or action_type == 'spell') and target_kind == 'mob' and expected_tid > 0 then
 			-- Regression guard: always stop briefly before tank enmity action dispatch so we
@@ -2222,6 +3393,7 @@ local function p1_try_dark_launch_dispatch(settings)
 			end
 			windower.ffxi.run(false)
 			if now < p1_number(phase.tank_action_settle_until, 0) then
+				tank_enmity_diag('TANK_ENMITY_WAIT_ACTION_SETTLE', selected, ('remain=%.2f'):format(p1_number(phase.tank_action_settle_until, 0) - now))
 				_G.UC_LAST_SCHED_ACTION = ('[p1]tank_action_settle:%s->%s'):format(
 					tostring(selected.action_name or ''),
 					tostring(selected.target_name or '')
@@ -2231,7 +3403,43 @@ local function p1_try_dark_launch_dispatch(settings)
 			phase.tank_action_settle_key = ''
 			phase.tank_action_settle_until = 0
 		end
-		if action_type == 'ws' then
+		if action_type == 'engage' then
+			local target = windower.ffxi.get_mob_by_target('t')
+			if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
+				local ok_set = p1_try_target_prep(expected_tid)
+				if not ok_set then
+					log_combat_sched(('engage_drop reason=TARGET_PREP_FAIL expected_tid=%d'):format(expected_tid))
+					if bool_setting(settings and settings.debug, false) then
+						_G.UC_LAST_SCHED_ACTION = ('[p1]engage:dispatch_fail:settarget tid=%d'):format(expected_tid)
+					end
+					return false, nil
+				end
+			end
+			local p = windower.ffxi.get_player()
+			if p and tonumber(p.status) == 1 then
+				log_combat_sched(('engage_drop reason=ALREADY_ENGAGED expected_tid=%d'):format(expected_tid))
+				_G.UC_LAST_SCHED_ACTION = ('[p1]engage:already:%s'):format(tostring(selected.target_name or ''))
+				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_ENGAGED'
+			end
+			if not uc_attack or type(uc_attack.engage_target) ~= 'function' then
+				log_combat_sched('engage_drop reason=NO_UC_ATTACK')
+				if bool_setting(settings and settings.debug, false) then
+					_G.UC_LAST_SCHED_ACTION = '[p1]engage:dispatch_fail:no_uc_attack'
+				end
+				return false, nil
+			end
+			local ok_attack, engage_reason = uc_attack.engage_target(expected_tid)
+			if not ok_attack then
+				log_combat_sched(('engage_send_fail tid=%d reason=%s'):format(expected_tid, tostring(engage_reason or 'ENGAGE_FAIL')))
+				if bool_setting(settings and settings.debug, false) then
+					_G.UC_LAST_SCHED_ACTION = ('[p1]engage:dispatch_fail:%s'):format(tostring(engage_reason or 'ENGAGE_FAIL'))
+				end
+				return false, nil
+			end
+			action_mark_sent('engage')
+			log_combat_sched(('engage_send_ok tid=%d target=\"%s\"'):format(expected_tid, tostring(selected.target_name or '')))
+			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:sent:%s'):format(tostring(selected.target_name or ''))
+		elseif action_type == 'ws' then
 			local player = windower.ffxi.get_player()
 			if not player or tonumber(player.status) ~= 1 then
 				return false, nil
@@ -2248,7 +3456,17 @@ local function p1_try_dark_launch_dispatch(settings)
 			if ws == '' then
 				return false, nil
 			end
-			windower.send_command(('input /ws \"%s\" <t>'):format(ws))
+			if combat_core and type(combat_core.try_dispatch_ws_with_intent) == 'function' then
+				local sent, why = combat_core.try_dispatch_ws_with_intent(ws, expected_tid, settings)
+				if not sent then
+					_G.UC_LAST_SCHED_ACTION = ('[p1]ws_hold:%s:%s'):format(ws, tostring(why or 'BLOCK'))
+					return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_WS_INTENT'
+				end
+				action_mark_sent('ws')
+			else
+				windower.send_command(('input /ws \"%s\" <t>'):format(ws))
+				action_mark_sent('ws')
+			end
 			_G.UC_LAST_SCHED_ACTION = ('[p1]ws:%s->%s'):format(ws, tostring(selected.target_name or ''))
 		elseif action_type == 'ja' then
 			local ability = tostring(selected.action_name or '')
@@ -2257,6 +3475,9 @@ local function p1_try_dark_launch_dispatch(settings)
 			end
 			local ok_ready, reason, action_kind = action_ready(ability, expected_tid)
 			if action_kind ~= 'ja' or not ok_ready then
+				if tank_enmity then
+					tank_enmity_diag('TANK_ENMITY_DROP_JA_NOT_READY', selected, ('reason=%s kind=%s'):format(tostring(reason or ''), tostring(action_kind or '')))
+				end
 				log_ja_sched(('dispatch_block name=\"%s\" reason=%s kind=%s status=%s pending=%s'):format(
 					tostring(ability),
 					tostring(reason or 'NOT_READY'),
@@ -2275,22 +3496,36 @@ local function p1_try_dark_launch_dispatch(settings)
 					end
 				end
 				windower.send_command(('input /ja \"%s\" %d'):format(ability, expected_tid))
+				action_mark_sent('ja')
+				if tank_enmity then
+					tank_enmity_diag('TANK_ENMITY_SEND_JA', selected, 'mode=target_id')
+				end
 				log_ja_sched(('dispatch_send name=\"%s\" mode=target tid=%d'):format(tostring(ability), tonumber(expected_tid) or 0))
 			else
 				if tank_enmity then
 					windower.ffxi.run(false)
 				end
 				windower.send_command(('input /ja \"%s\" <me>'):format(ability))
+				action_mark_sent('ja')
+				if tank_enmity then
+					tank_enmity_diag('TANK_ENMITY_SEND_JA', selected, 'mode=self')
+				end
 				log_ja_sched(('dispatch_send name=\"%s\" mode=self'):format(tostring(ability)))
 			end
 			_G.UC_LAST_SCHED_ACTION = ('[p1]ja:%s->%s'):format(ability, tostring(selected.target_name or ''))
 		elseif action_type == 'spell' then
 			local spell = tostring(selected.action_name or '')
 			if spell == '' then
+				if tank_enmity then
+					tank_enmity_diag('TANK_ENMITY_DROP_SPELL_EMPTY', selected, '')
+				end
 				return false, nil
 			end
-			local ok_ready, _, action_kind = action_ready(spell)
+			local ok_ready, ready_reason, action_kind = action_ready(spell)
 			if action_kind ~= 'spell' or not ok_ready then
+				if tank_enmity then
+					tank_enmity_diag('TANK_ENMITY_DROP_SPELL_NOT_READY', selected, ('reason=%s kind=%s'):format(tostring(ready_reason or ''), tostring(action_kind or '')))
+				end
 				return false, nil
 			end
 			if tank_enmity then
@@ -2302,6 +3537,7 @@ local function p1_try_dark_launch_dispatch(settings)
 				end
 				windower.ffxi.run(false)
 				if now < p1_number(phase.tank_spell_settle_until, 0) then
+					tank_enmity_diag('TANK_ENMITY_WAIT_SPELL_SETTLE', selected, ('remain=%.2f'):format(p1_number(phase.tank_spell_settle_until, 0) - now))
 					_G.UC_LAST_SCHED_ACTION = ('[p1]tank_settle:%s->%s'):format(spell, tostring(selected.target_name or ''))
 					return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_SETTLE'
 				end
@@ -2319,14 +3555,25 @@ local function p1_try_dark_launch_dispatch(settings)
 					windower.ffxi.run(false)
 				end
 				windower.send_command(('input /ma \"%s\" %d'):format(spell, expected_tid))
+				action_mark_sent('spell')
+				if tank_enmity then
+					tank_enmity_diag('TANK_ENMITY_SEND_SPELL', selected, 'mode=target_id')
+				end
 			else
 				if tank_enmity then
 					windower.ffxi.run(false)
 				end
 				windower.send_command(('input /ma \"%s\" <me>'):format(spell))
+				action_mark_sent('spell')
+				if tank_enmity then
+					tank_enmity_diag('TANK_ENMITY_SEND_SPELL', selected, 'mode=self')
+				end
 			end
 			_G.UC_LAST_SCHED_ACTION = ('[p1]spell:%s->%s'):format(spell, tostring(selected.target_name or ''))
 		else
+			if tank_enmity then
+				tank_enmity_diag('TANK_ENMITY_DROP_UNSUPPORTED_ACTION_TYPE', selected, ('action_type=%s'):format(action_type))
+			end
 			return false, nil
 		end
 		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
@@ -2338,6 +3585,10 @@ local function p1_try_dark_launch_dispatch(settings)
 	if provider == 'defensive_internal' then
 		if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
 			return false, nil
+		end
+		local blocked, b_reason = action_dispatch_blocked()
+		if blocked then
+			return true, b_reason
 		end
 		local cmd = tostring(selected.legacy_command or '')
 		if cmd == '' then
@@ -2351,6 +3602,7 @@ local function p1_try_dark_launch_dispatch(settings)
 			return false, nil
 		end
 		windower.send_command(cmd)
+		action_mark_sent(action_kind or selected.action_type or 'defensive_internal')
 		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
 		p1_record_legacy_dispatch(ctx)
 		p1_set_pending_globals()
@@ -2362,6 +3614,10 @@ local function p1_try_dark_launch_dispatch(settings)
 		if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
 			return false, nil
 		end
+		local blocked, b_reason = action_dispatch_blocked()
+		if blocked then
+			return true, b_reason
+		end
 		local hb_action = selected.detail and selected.detail.healbot_action or nil
 		if type(hb_action) ~= 'table' then
 			return false, nil
@@ -2372,6 +3628,7 @@ local function p1_try_dark_launch_dispatch(settings)
 			return false, nil
 		end
 		_G.healer:take_action(hb_action)
+		action_mark_sent('defensive_healbot')
 		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
 		p1_record_legacy_dispatch(ctx)
 		p1_set_pending_globals()
@@ -2383,29 +3640,36 @@ local function p1_try_dark_launch_dispatch(settings)
 		if not bool_setting(settings and settings.scheduler_dark_launch_movement, false) then
 			return false, nil
 		end
-		local me = windower.ffxi.get_mob_by_target('me')
-		local target = windower.ffxi.get_mob_by_id(tonumber(selected.target_id) or 0)
-		if not me or not target or not target.x or not target.y or not me.x or not me.y then
+		if not combat_core or type(combat_core.apply_movement_for_scheduler) ~= 'function' then
 			return false, nil
 		end
-		local action_name = tostring(selected.action_name or '')
-		local heading
-		if action_name == 'retreat' then
-			heading = math.atan2(target.y - me.y, target.x - me.x) + math.pi
-		else
-			heading = math.atan2(target.y - me.y, target.x - me.x)
+		local ok = false
+		local ok_call, call_err = pcall(function()
+			ok = combat_core.apply_movement_for_scheduler(settings) == true
+		end)
+		if not ok_call then
+			_G.UC_LAST_SCHED_ACTION = '[p1]move:error:' .. tostring(call_err or '')
+			return false, nil
 		end
-		windower.ffxi.run(heading)
+		if not ok then
+			return false, nil
+		end
+		_G.UC_MOVEMENT_OWNER = 'scheduler'
+		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock() + 0.40
 		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
 		p1_record_legacy_dispatch(ctx)
 		p1_set_pending_globals()
 		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
-		_G.UC_LAST_SCHED_ACTION = ('[p1]move:%s->%s'):format(action_name, tostring(selected.target_name or ''))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]move:%s'):format(tostring(selected.action_name or 'core_movement_tick'))
 		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_MOVE'
 	end
 	if provider == 'maintenance_cor' then
 		if not bool_setting(settings and settings.scheduler_dark_launch_maintenance, false) then
 			return false, nil
+		end
+		local blocked, b_reason = action_dispatch_blocked()
+		if blocked then
+			return true, b_reason
 		end
 		local ability = tostring(selected.action_name or '')
 		if ability == '' then
@@ -2416,6 +3680,7 @@ local function p1_try_dark_launch_dispatch(settings)
 			return false, nil
 		end
 		windower.send_command(('input /ja \"%s\" <me>'):format(ability))
+		action_mark_sent('maintenance_cor')
 		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
 		p1_record_legacy_dispatch(ctx)
 		p1_set_pending_globals()
@@ -2426,12 +3691,41 @@ local function p1_try_dark_launch_dispatch(settings)
 	return false, nil
 end
 
-function scheduler.process_tick()
+function scheduler.process_tick(cadence)
 	_G.UC_LAST_SCHED_ACTION = ''
 	local s = get_settings()
+	if type(cadence) == 'table' then
+		s._sched_next_defensive_at = tonumber(cadence.next_defensive_at) or 0
+		s._sched_next_maintenance_at = tonumber(cadence.next_maintenance_at) or 0
+	end
+	_G.UC_LOG_COMBAT_SCHED = bool_setting(s and s.log_combat_sched, false)
+	_G.UC_LOG_JA_SCHED = bool_setting(s and s.log_ja_sched, false)
+	_G.UC_LOG_JA_DEBUG = bool_setting(s and s.log_ja_debug, false)
+	_G.UC_LOG_DEF_SCHED = bool_setting(s and s.log_def_sched, false)
+	_G.UC_LOG_TANK_SCHED = bool_setting(s and s.log_tank_sched, false)
+	ensure_diag_logs_initialized()
+	maybe_broadcast_party_state_ipc()
+	local doom_blocked, doom_reason = try_doom_water_emergency(s)
+	if doom_blocked then
+		local ctx = { now = os.clock(), tick = p1_number(scheduler.phase1.tick, 0) }
+		p1_record_legacy_dispatch(ctx)
+		p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		return true, doom_reason
+	end
 	p1_run_dry(s)
 	local p1_acted, p1_reason = p1_try_dark_launch_dispatch(s)
 	if p1_acted then
+		if can_run_parallel_movement_after_dispatch() then
+			local ok = false
+			local ok_call = pcall(function()
+				ok = combat_core.apply_movement_for_scheduler(s) == true
+			end)
+			if ok_call and ok then
+				_G.UC_MOVEMENT_OWNER = 'scheduler'
+				_G.UC_MOVEMENT_LOCK_UNTIL = os.clock() + 0.40
+			end
+		end
 		return true, p1_reason
 	end
 	if not bool_setting(s.defensive_enabled, false) then
@@ -2466,7 +3760,36 @@ function scheduler.process_tick()
 	return false, nil
 end
 
+function scheduler.on_ipc_message(msg)
+	apply_party_state_ipc_message(msg)
+end
+
+function scheduler.on_incoming_chunk(id, data)
+	if tonumber(id) ~= 0x063 then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	if not player or not player.name then
+		return
+	end
+	local snap = parse_status_snapshot_063(data)
+	if not snap then
+		return
+	end
+	local st = ensure_maintenance_state_tables()
+	st.status_snapshot[tostring(player.name)] = snap
+end
+
 function scheduler.on_action(act)
+	local player = windower.ffxi.get_player()
+	local my_id = tonumber(player and player.id) or 0
+	local actor_id = tonumber(act and act.actor_id) or 0
+	if my_id ~= 0 and actor_id == my_id then
+		-- Actor-centric lock state (HealBot-style): always honor self action-start packets,
+		-- independent of scheduler pending bookkeeping.
+		action_mark_packet_start()
+	end
+
 	local phase = scheduler.phase1
 	local pending = phase.pending
 	if type(pending) ~= 'table' then
@@ -2477,9 +3800,6 @@ function scheduler.on_action(act)
 	if not p1_pending_is_live_state(state_name) then
 		return
 	end
-	local player = windower.ffxi.get_player()
-	local my_id = tonumber(player and player.id) or 0
-	local actor_id = tonumber(act and act.actor_id) or 0
 	if my_id ~= 0 and actor_id == my_id then
 		pending.state = 'acknowledged'
 		pending.ack_at = now
@@ -2496,6 +3816,16 @@ function scheduler.on_action(act)
 end
 
 function scheduler.on_action_message(msg)
+	local player = windower.ffxi.get_player()
+	local my_id = tonumber(player and player.id) or 0
+	local actor_id = tonumber(msg and msg.actor_id) or 0
+	local message_id = tonumber(msg and msg.message_id) or 0
+	if my_id ~= 0 and actor_id == my_id and message_id ~= 0 then
+		-- Actor-centric lock state (HealBot-style): always honor self action-complete messages,
+		-- independent of scheduler pending bookkeeping.
+		action_mark_packet_end()
+	end
+
 	local phase = scheduler.phase1
 	local pending = phase.pending
 	if type(pending) ~= 'table' then
@@ -2506,12 +3836,14 @@ function scheduler.on_action_message(msg)
 	if not p1_pending_is_live_state(state_name) and state_name ~= 'acknowledged' then
 		return
 	end
+	if my_id ~= 0 and actor_id ~= my_id then
+		return
+	end
 	local expected_tid = tonumber(pending.target_id) or 0
 	local msg_tid = tonumber(msg and msg.target_id) or 0
 	if expected_tid ~= 0 and msg_tid ~= 0 and expected_tid ~= msg_tid then
 		return
 	end
-	local message_id = tonumber(msg and msg.message_id) or 0
 	if message_id ~= 0 then
 		p1_pending_mark_complete(now, ('msg_%d'):format(message_id))
 	end
@@ -2526,6 +3858,20 @@ end
 
 _G.UC_SCHED_OnActionMessage = function(msg)
 	local ok = pcall(scheduler.on_action_message, msg)
+	if not ok then
+		-- scheduler hooks are best-effort; never destabilize combat tick.
+	end
+end
+
+_G.UC_SCHED_OnIpcMessage = function(msg)
+	local ok = pcall(scheduler.on_ipc_message, msg)
+	if not ok then
+		-- scheduler hooks are best-effort; never destabilize combat tick.
+	end
+end
+
+_G.UC_SCHED_OnIncomingChunk = function(id, data)
+	local ok = pcall(scheduler.on_incoming_chunk, id, data)
 	if not ok then
 		-- scheduler hooks are best-effort; never destabilize combat tick.
 	end
