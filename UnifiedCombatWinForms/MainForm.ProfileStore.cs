@@ -6,6 +6,8 @@ namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
+    private const int ProfileSchemaVersion = 2;
+
     private static string? FindAddonRootFrom(string startDir)
     {
         try
@@ -61,16 +63,25 @@ public partial class MainForm
         return new string(chars);
     }
 
-    private string ProfilePathForSid(string sid)
+    private bool TryProfilePathForSid(string sid, out string path)
     {
+        path = "";
         if (!_sessionMetaBySid.TryGetValue(sid, out var meta))
         {
-            return Path.Combine(ProfileRootDir, $"sid_{SafeToken(sid)}.json");
+            return false;
         }
 
-        var ch = SafeToken(meta.CharName);
-        var job = SafeToken(meta.Job);
-        return Path.Combine(ProfileRootDir, $"{ch}_{job}.json");
+        var chRaw = (meta.CharName ?? "").Trim();
+        var jobRaw = (meta.Job ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(chRaw) || string.IsNullOrWhiteSpace(jobRaw))
+        {
+            return false;
+        }
+
+        var ch = SafeToken(chRaw);
+        var job = SafeToken(jobRaw);
+        path = Path.Combine(ProfileRootDir, $"{ch}_{job}.json");
+        return true;
     }
 
     private string GetEngineForSid(string sid)
@@ -99,6 +110,7 @@ public partial class MainForm
         var running = _sessionRunningBySid.TryGetValue(sid, out var rv) && rv;
         var profile = new JsonObject
         {
+            ["profile_schema_version"] = ProfileSchemaVersion,
             ["engine"] = GetEngineForSid(sid),
             ["Start_Engine"] = running,
             ["ability_options"] = string.Join("|", _abilityOptions),
@@ -123,9 +135,9 @@ public partial class MainForm
             ["path_hunter_ignore_cooldown_s"] = ParseDouble(_pathHunterIgnoreCooldown.Text, 20),
             ["path_hunter_entries"] = string.Join("|", _pathHunterRows.Select(r => $"{r.Id}:{r.Name}")),
             ["tank_enmity_actions"] = string.Join("|", _tankEnmityRows),
-            ["puller_selected"] = _pullerCombo.SelectedItem?.ToString() ?? "",
-            ["fight_leader_selected"] = _fightLeaderCombo.SelectedItem?.ToString() ?? "",
-            ["party_follow_selected"] = _partyFollowCombo.SelectedItem?.ToString() ?? "",
+            ["puller_selected"] = SelectedPartyName(_pullerCombo),
+            ["fight_leader_selected"] = SelectedPartyName(_fightLeaderCombo),
+            ["party_follow_selected"] = SelectedPartyName(_partyFollowCombo),
             ["party_follow_min"] = ParseDouble(_pfFollowMinYalms.Text, 0.5),
             ["party_follow_max"] = ParseDouble(_pfFollowMaxYalms.Text, 50),
             ["fight_follow_min"] = ParseDouble(_pfFightFollowMinYalms.Text, 3),
@@ -135,25 +147,41 @@ public partial class MainForm
             ["spacing_band_max"] = ParseDouble(_spBandMax.Text, 0.4),
             ["spacing_model_size_floor"] = ParseDouble(_spModelSizeFloor.Text, 0.9),
             ["spacing_lookahead_s"] = ParseDouble(_spLookahead.Text, 0.25),
-            ["spacing_anchor_invalid_ticks"] = ParseInt(_spAnchorInvalidTicks.Text, 5),
-            ["spacing_emergency_margin"] = ParseDouble(_spEmergencyMargin.Text, 0.1),
-            ["spacing_slot_switch_penalty"] = ParseDouble(_spSwitchPenalty.Text, 0.75),
-            ["spacing_slot_switch_margin"] = ParseDouble(_spSwitchMargin.Text, 0.35),
-            ["spacing_slot_arrival_tolerance"] = ParseDouble(_spArrivalTolerance.Text, 0.2),
-            ["spacing_max_agents"] = ParseInt(_spMaxAgents.Text, 6),
+            ["spacing_repel_hold_ticks"] = ParseInt(_spAnchorInvalidTicks.Text, 5),
+            ["spacing_overlap_deadband"] = ParseDouble(_spEmergencyMargin.Text, 0.1),
+            ["spacing_repel_weight"] = ParseDouble(_spSwitchMargin.Text, 0.35),
+            ["spacing_band_deadband"] = ParseDouble(_spArrivalTolerance.Text, 0.2),
             ["defensive_provider"] = _defProviderCombo.SelectedItem?.ToString() ?? "internal",
             ["defensive_critical_hpp"] = ParseInt(_defCrit.Text, 35),
             ["defensive_medium_hpp"] = ParseInt(_defMed.Text, 55),
+            ["def_heal_min_tier_cure"] = ParseInt(_defHealMinTier.Text, 3),
+            ["def_heal_max_tier_cure"] = ParseInt(_defHealMaxTier.Text, 4),
+            ["def_heal_min_missing_hp"] = ParseInt(_defHealMinMissingHp.Text, 250),
+            ["def_heal_ignore_trusts"] = _defHealIgnoreTrusts.Checked,
             ["defensive_overwrite_interval"] = ParseInt(_defOverwrite.Text, 150),
             ["defensive_buffs"] = _defBuffs.Text ?? "",
+            ["defensive_targeted_buffs"] = _defTargetedBuffs.Text ?? "",
             ["cor_roll_1"] = _corRoll1Combo.SelectedItem?.ToString() ?? "",
             ["cor_roll_2"] = _corRoll2Combo.SelectedItem?.ToString() ?? "",
+            ["cor_roll_options"] = string.Join("|", _corRollOptions),
+            ["cor_crooked_roll_slot"] = _corCrookedRoll1.Checked ? 1 : (_corCrookedRoll2.Checked ? 2 : 0),
+            ["cor_elevens"] = _corElevens.Checked,
+            ["cor_luzaf_range_override"] = _corLuzafRangeOverride.Checked,
+            ["cor_roll_range_selected"] = string.Join(
+                "|",
+                _corRangePartyPanel.Controls.OfType<CheckBox>()
+                    .Where(c => c.Checked)
+                    .Select(c => c.Tag?.ToString() ?? c.Text)
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+            ),
             ["ignore_entries"] = string.Join("|", _ignoreRows.Select(r => $"{r.Id}:{r.Name}")),
             ["partner_entries"] = string.Join("|", _partnerRows.Select(r => $"{r.Id}:{r.Name}")),
             ["target_ignore_entries"] = string.Join("|", _targetIgnoreRows.Select(r => $"{r.Slot}:{r.Name}")),
             ["add_priority_entries"] = string.Join("|", _addPriorityRows.Select(r => $"{r.Slot}:{r.Name}")),
             ["weaponskill"] = (_wsCombo.Text ?? "").Trim(),
             ["ws1"] = (_wsCombo.Text ?? "").Trim(),
+            ["ws_mode"] = string.Equals(_wsModeCombo.SelectedItem?.ToString(), "Primary Only (No SC)", StringComparison.Ordinal) ? "primary_no_sc" : "smart",
         };
 
         foreach (var key in HubUiConstants.BoolKeys)
@@ -179,6 +207,7 @@ public partial class MainForm
         var partyNames = CurrentPartyNameOptions();
         var p = new JsonObject
         {
+            ["profile_schema_version"] = ProfileSchemaVersion,
             ["engine"] = GetEngineForSid(sid),
             ["Start_Engine"] = false,
             ["ability_options"] = "",
@@ -190,12 +219,18 @@ public partial class MainForm
             ["abilities_selected"] = "",
             ["weaponskill"] = "",
             ["ws1"] = "",
+            ["ws_mode"] = "smart",
             ["aftermath_ws"] = "",
             ["defensive_provider"] = "internal",
             ["defensive_critical_hpp"] = 35,
             ["defensive_medium_hpp"] = 55,
+            ["def_heal_min_tier_cure"] = 3,
+            ["def_heal_max_tier_cure"] = 4,
+            ["def_heal_min_missing_hp"] = 250,
+            ["def_heal_ignore_trusts"] = true,
             ["defensive_overwrite_interval"] = 150,
             ["defensive_buffs"] = "",
+            ["defensive_targeted_buffs"] = "",
             ["party_follow_min"] = 0.5,
             ["party_follow_max"] = 50,
             ["fight_follow_min"] = 3,
@@ -219,17 +254,20 @@ public partial class MainForm
             ["add_priority_entries"] = "",
             ["cor_roll_1"] = "",
             ["cor_roll_2"] = "",
+            ["cor_roll_options"] = "",
+            ["cor_crooked_roll_slot"] = 0,
+            ["cor_elevens"] = false,
+            ["cor_luzaf_range_override"] = false,
+            ["cor_roll_range_selected"] = "",
             ["spacing_band_min"] = -0.9,
             ["spacing_band_max"] = 0.4,
             ["spacing_model_size_floor"] = 0.9,
             ["spacing_use_prediction"] = true,
             ["spacing_lookahead_s"] = 0.25,
-            ["spacing_anchor_invalid_ticks"] = 5,
-            ["spacing_emergency_margin"] = 0.1,
-            ["spacing_slot_switch_penalty"] = 0.75,
-            ["spacing_slot_switch_margin"] = 0.35,
-            ["spacing_slot_arrival_tolerance"] = 0.2,
-            ["spacing_max_agents"] = 6,
+            ["spacing_repel_hold_ticks"] = 5,
+            ["spacing_overlap_deadband"] = 0.1,
+            ["spacing_repel_weight"] = 0.35,
+            ["spacing_band_deadband"] = 0.2,
         };
         foreach (var key in HubUiConstants.BoolKeys)
         {
@@ -241,12 +279,22 @@ public partial class MainForm
 
     private bool TryLoadProfileForSid(string sid, out JsonDocument doc)
     {
-        var path = ProfilePathForSid(sid);
+        if (!TryProfilePathForSid(sid, out var path))
+        {
+            doc = null!;
+            return false;
+        }
         try
         {
             if (File.Exists(path))
             {
-                doc = JsonDocument.Parse(File.ReadAllText(path));
+                var text = File.ReadAllText(path);
+                var node = JsonNode.Parse(text) as JsonObject ?? new JsonObject();
+                if (MigrateProfileInPlace(node))
+                {
+                    File.WriteAllText(path, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                }
+                doc = JsonDocument.Parse(node.ToJsonString());
                 return true;
             }
 
@@ -306,7 +354,10 @@ public partial class MainForm
         try
         {
             CaptureWorkingProfileFromUi(sid);
-            var path = ProfilePathForSid(sid);
+            if (!TryProfilePathForSid(sid, out var path))
+            {
+                return;
+            }
             var obj = BuildProfileFromUi(sid);
             File.WriteAllText(path, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         }
@@ -316,68 +367,115 @@ public partial class MainForm
         }
     }
 
-    private void LoadGlobalUiSettings()
+    private static bool MigrateProfileInPlace(JsonObject root)
     {
-        bool enabled = false;
-        string member = "";
-        try
+        var changed = false;
+        var schema = 0;
+        if (root.TryGetPropertyValue("profile_schema_version", out var v) && v is not null)
         {
-            var path = GlobalUiSettingsPath;
-            if (File.Exists(path))
+            if (v is JsonValue jv && jv.TryGetValue<int>(out var parsed))
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(path));
-                var root = doc.RootElement;
-                enabled = SessionStateHelper.GetBool(root, "spacing_global_anchor_enabled", false);
-                member = SessionStateHelper.GetString(root, "spacing_global_anchor_name", "");
+                schema = parsed;
             }
         }
-        catch
+
+        if (schema >= ProfileSchemaVersion)
         {
-            enabled = false;
-            member = "";
+            return false;
         }
 
-        _suppressEvents = true;
-        try
+        static void MoveIfMissing(JsonObject obj, string oldKey, string newKey, ref bool dirty)
         {
-            _spGlobalAnchorEnabled.Checked = enabled;
-            if (_spGlobalAnchorMember.Items.Count == 0)
+            if (obj.ContainsKey(newKey))
             {
-                _spGlobalAnchorMember.Items.Add("");
-            }
-
-            var match = -1;
-            for (var i = 0; i < _spGlobalAnchorMember.Items.Count; i++)
-            {
-                if (string.Equals(_spGlobalAnchorMember.Items[i]?.ToString() ?? "", member, StringComparison.Ordinal))
+                if (obj.Remove(oldKey))
                 {
-                    match = i;
-                    break;
+                    dirty = true;
                 }
+                return;
             }
-
-            _spGlobalAnchorMember.SelectedIndex = match >= 0 ? match : 0;
-        }
-        finally
-        {
-            _suppressEvents = false;
-        }
-    }
-
-    private void SaveGlobalUiSettings()
-    {
-        try
-        {
-            var obj = new JsonObject
+            if (obj.TryGetPropertyValue(oldKey, out var val) && val is not null)
             {
-                ["spacing_global_anchor_enabled"] = _spGlobalAnchorEnabled.Checked,
-                ["spacing_global_anchor_name"] = (_spGlobalAnchorMember.SelectedItem?.ToString() ?? "").Trim(),
-            };
-            File.WriteAllText(GlobalUiSettingsPath, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                obj[newKey] = val.DeepClone();
+                obj.Remove(oldKey);
+                dirty = true;
+            }
         }
-        catch
+
+        MoveIfMissing(root, "spacing_slot_arrival_tolerance", "spacing_band_deadband", ref changed);
+        MoveIfMissing(root, "spacing_slot_switch_margin", "spacing_repel_weight", ref changed);
+        MoveIfMissing(root, "spacing_emergency_margin", "spacing_overlap_deadband", ref changed);
+        MoveIfMissing(root, "spacing_anchor_invalid_ticks", "spacing_repel_hold_ticks", ref changed);
+
+        if (root.Remove("spacing_slot_switch_penalty"))
         {
-            // keep UI responsive
+            changed = true;
         }
+        if (root.Remove("spacing_max_agents"))
+        {
+            changed = true;
+        }
+        if (root.Remove("spacing_global_anchor_enabled"))
+        {
+            changed = true;
+        }
+        if (root.Remove("spacing_global_anchor_name"))
+        {
+            changed = true;
+        }
+
+        if (!root.ContainsKey("spacing_use_prediction"))
+        {
+            root["spacing_use_prediction"] = true;
+            changed = true;
+        }
+        if (!root.ContainsKey("spacing_band_min"))
+        {
+            root["spacing_band_min"] = -0.9;
+            changed = true;
+        }
+        if (!root.ContainsKey("spacing_band_max"))
+        {
+            root["spacing_band_max"] = 0.4;
+            changed = true;
+        }
+        if (!root.ContainsKey("spacing_model_size_floor"))
+        {
+            root["spacing_model_size_floor"] = 0.9;
+            changed = true;
+        }
+        if (!root.ContainsKey("spacing_lookahead_s"))
+        {
+            root["spacing_lookahead_s"] = 0.25;
+            changed = true;
+        }
+        if (!root.ContainsKey("spacing_repel_hold_ticks"))
+        {
+            root["spacing_repel_hold_ticks"] = 5;
+            changed = true;
+        }
+        if (!root.ContainsKey("spacing_overlap_deadband"))
+        {
+            root["spacing_overlap_deadband"] = 0.1;
+            changed = true;
+        }
+        if (!root.ContainsKey("spacing_repel_weight"))
+        {
+            root["spacing_repel_weight"] = 0.35;
+            changed = true;
+        }
+        if (!root.ContainsKey("spacing_band_deadband"))
+        {
+            root["spacing_band_deadband"] = 0.2;
+            changed = true;
+        }
+
+        if (!root.TryGetPropertyValue("profile_schema_version", out var sv) || sv is null || !(sv is JsonValue svv && svv.TryGetValue<int>(out var sver) && sver == ProfileSchemaVersion))
+        {
+            root["profile_schema_version"] = ProfileSchemaVersion;
+            changed = true;
+        }
+
+        return changed;
     }
 }

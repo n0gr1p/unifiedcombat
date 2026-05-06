@@ -417,7 +417,7 @@ local function collect_aggressive_mobs_with_targets(max_dist)
 	end
 	local marray = windower.ffxi.get_mob_array() or {}
 	for _, mob in pairs(marray) do
-		if mob and mob.id and mob.id ~= 0 and (tonumber(mob.hpp) or 0) > 0 and mob.x ~= nil and mob.y ~= nil and (tonumber(mob.status) or 0) == 1 then
+		if mob and mob.id and mob.id ~= 0 and mob.is_npc == true and (tonumber(mob.hpp) or 0) > 0 and mob.x ~= nil and mob.y ~= nil and (tonumber(mob.status) or 0) == 1 then
 			local dx = (mob.x or 0) - (me.x or 0)
 			local dy = (mob.y or 0) - (me.y or 0)
 			local dist = math.sqrt(dx * dx + dy * dy)
@@ -704,9 +704,14 @@ local function render_debug_overlay(settings)
 	if last_br == '' then
 		last_br = '(none)'
 	end
+	local tank_sched = tostring(rawget(_G, 'UC_TANK_ENMITY_BLOCK') or '')
+	if tank_sched == '' then
+		tank_sched = '(none)'
+	end
 	lines[#lines + 1] = ('tank=%d autotarget=%d tank_actions=%d'):format(tank_on, at_on, ta_n)
 	lines[#lines + 1] = ('tank_violation: mob=%s victim=%s(%d%%)'):format(v_mob ~= '' and v_mob or '(none)', v_victim ~= '' and v_victim or '(none)', v_hpp)
 	lines[#lines + 1] = ('last_block: %s'):format(last_br)
+	lines[#lines + 1] = ('tank_sched: %s'):format(tank_sched)
 	local pf_op = tostring(rawget(_G, 'UC_LAST_PARTY_FOLLOW_OP') or '')
 	if pf_op == '' then
 		pf_op = '(none)'

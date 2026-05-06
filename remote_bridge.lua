@@ -217,6 +217,7 @@ local function try_connect()
 		session = session_id,
 		char = p and p.name or 'unknown',
 		job = p and p.main_job or '',
+		sub_job = p and p.sub_job or '',
 		engine = _G.UC_ENGINE or 'melee',
 	}
 	if not safe_send_line(json_encode_simple(hello)) then
@@ -243,7 +244,9 @@ local function apply_set(path, value)
 	end
 	local key = parts[#parts]
 	local existing = t[key]
-	if type(value) == 'string' then
+	-- Keep numeric selector keys as numeric strings; generic bool coercion
+	-- would turn "1" into true and break tonumber parsing later.
+	if type(value) == 'string' and key ~= 'cor_crooked_roll_slot' then
 		local v = value:lower()
 		if v == 'true' or v == 'on' or v == '1' then
 			value = true
@@ -380,7 +383,7 @@ local function apply_set(path, value)
 		last_state_send = 0
 		return
 	end
-	if key == 'spacing_anchor_invalid_ticks' then
+	if key == 'spacing_repel_hold_ticks' then
 		local n = tonumber(tostring(value))
 		if not n then
 			return
@@ -388,81 +391,52 @@ local function apply_set(path, value)
 		n = math.floor(n + 0.5)
 		if n < 1 then
 			n = 1
-		elseif n > 50 then
-			n = 50
+		elseif n > 9 then
+			n = 9
 		end
-		s.spacing_anchor_invalid_ticks = n
+		s.spacing_repel_hold_ticks = n
 		last_state_send = 0
 		return
 	end
-	if key == 'spacing_emergency_margin' then
+	if key == 'spacing_overlap_deadband' then
 		local n = tonumber(tostring(value))
 		if not n then
 			return
 		end
-		if n < 0 then
-			n = 0
-		elseif n > 5 then
-			n = 5
-		end
-		s.spacing_emergency_margin = n
-		last_state_send = 0
-		return
-	end
-	if key == 'spacing_slot_switch_penalty' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 0 then
-			n = 0
-		elseif n > 10 then
-			n = 10
-		end
-		s.spacing_slot_switch_penalty = n
-		last_state_send = 0
-		return
-	end
-	if key == 'spacing_slot_switch_margin' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 0 then
-			n = 0
-		elseif n > 10 then
-			n = 10
-		end
-		s.spacing_slot_switch_margin = n
-		last_state_send = 0
-		return
-	end
-	if key == 'spacing_slot_arrival_tolerance' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 0 then
-			n = 0
-		elseif n > 5 then
-			n = 5
-		end
-		s.spacing_slot_arrival_tolerance = n
-		last_state_send = 0
-		return
-	end
-	if key == 'spacing_max_agents' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		n = math.floor(n + 0.5)
-		if n < 1 then
+		if n < 0.05 then
+			n = 0.05
+		elseif n > 1 then
 			n = 1
-		elseif n > 6 then
-			n = 6
 		end
-		s.spacing_max_agents = n
+		s.spacing_overlap_deadband = n
+		last_state_send = 0
+		return
+	end
+	if key == 'spacing_repel_weight' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0.05 then
+			n = 0.05
+		elseif n > 1.5 then
+			n = 1.5
+		end
+		s.spacing_repel_weight = n
+		last_state_send = 0
+		return
+	end
+	if key == 'spacing_band_deadband' then
+		local n = tonumber(tostring(value))
+		if not n then
+			return
+		end
+		if n < 0.05 then
+			n = 0.05
+		elseif n > 1 then
+			n = 1
+		end
+		s.spacing_band_deadband = n
 		last_state_send = 0
 		return
 	end
@@ -574,6 +548,51 @@ local function apply_set(path, value)
 		last_state_send = 0
 		return
 	end
+	if key == 'cor_crooked_roll_slot' then
+		local n = tonumber(tostring(value))
+		if not n then
+			n = 0
+		end
+		n = math.floor(n + 0.5)
+		if n < 0 then
+			n = 0
+		elseif n > 2 then
+			n = 2
+		end
+		s.cor_crooked_roll_slot = n
+		last_state_send = 0
+		return
+	end
+	if key == 'def_heal_min_missing_hp' then
+		if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
+			local p = windower.ffxi.get_player() or {}
+			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_RECV key=def_heal_min_missing_hp raw=%s type=%s char=%s job=%s'):format(
+				tostring(value),
+				type(value),
+				tostring(p.name or '?'),
+				tostring(p.main_job or '?')
+			))
+		end
+		local n = tonumber(tostring(value))
+		if not n then
+			if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
+				pcall(_G.UC_LOG_DIAG, 'def_sched', 'DEF_CFG_REJECT key=def_heal_min_missing_hp reason=bad_number')
+			end
+			return
+		end
+		n = math.floor(n + 0.5)
+		if n < 0 then
+			n = 0
+		elseif n > 5000 then
+			n = 5000
+		end
+		s.def_heal_min_missing_hp = n
+		if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
+			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_APPLY key=def_heal_min_missing_hp value=%d'):format(n))
+		end
+		last_state_send = 0
+		return
+	end
 	t[key] = value
 	if key == 'path_recording' or key == 'path_follow_enabled' then
 		last_state_send = 0
@@ -634,6 +653,19 @@ local function uc_get_enemy_job_ability_names()
 		local ja = res.job_abilities[id]
 		local targets = tostring((ja and ja.targets) or '')
 		if ja and ja.en and targets:find('Enemy', 1, true) then
+			out[#out + 1] = ja.en
+		end
+	end
+	return uc_unique_sorted(out)
+end
+
+local function uc_get_roll_ability_names()
+	local out = {}
+	local ab = windower.ffxi.get_abilities()
+	local ids = ab and ab.job_abilities or {}
+	for _, id in ipairs(ids) do
+		local ja = res.job_abilities[id]
+		if ja and ja.en and tostring(ja.en):find('Roll', 1, true) then
 			out[#out + 1] = ja.en
 		end
 	end
@@ -753,15 +785,40 @@ local function uc_get_main_weapon_skill_id()
 	return it.skill
 end
 
+local function uc_get_ranged_weapon_skill_id()
+	local eq = windower.ffxi.get_items('equipment')
+	if not eq or not eq.range_bag or not eq.range then
+		return nil
+	end
+	local item = windower.ffxi.get_items(eq.range_bag, eq.range)
+	if not item or not item.id then
+		return nil
+	end
+	local it = res.items[item.id]
+	if not it then
+		return nil
+	end
+	return it.skill
+end
+
 local function uc_get_weaponskill_names()
 	local out = {}
+	local allowed_skills = {}
 	local main_skill_id = uc_get_main_weapon_skill_id()
+	local ranged_skill_id = uc_get_ranged_weapon_skill_id()
+	if main_skill_id then
+		allowed_skills[main_skill_id] = true
+	end
+	if ranged_skill_id then
+		allowed_skills[ranged_skill_id] = true
+	end
+	local has_allowed = next(allowed_skills) ~= nil
 	local ab = windower.ffxi.get_abilities()
 	local ws_ids = ab and ab.weapon_skills or {}
 	for _, id in ipairs(ws_ids) do
 		local ws = res.weapon_skills[id]
 		if ws and ws.en then
-			if (not main_skill_id) or ws.skill == main_skill_id then
+			if (not has_allowed) or allowed_skills[ws.skill] then
 				out[#out + 1] = ws.en
 			end
 		end
@@ -793,6 +850,41 @@ local function uc_get_party_name_maps(include_self)
 end
 
 local function process_line(line)
+	local function uc_msg_get(tbl, key)
+		if type(tbl) ~= 'table' then
+			return nil
+		end
+		local v = rawget(tbl, key)
+		if v ~= nil then
+			return v
+		end
+		v = tbl[key]
+		if v ~= nil then
+			return v
+		end
+		if type(line) ~= 'string' or key == nil then
+			return nil
+		end
+		local k = tostring(key)
+		local q = line:match('"' .. k .. '"%s*:%s*"(.-)"')
+		if q ~= nil then
+			q = q:gsub('\\"', '"')
+			q = q:gsub('\\\\', '\\')
+			q = q:gsub('\\u0027', "'")
+			q = q:gsub('\\x27', "'")
+			return q
+		end
+		local n = line:match('"' .. k .. '"%s*:%s*(-?%d+)')
+		if n ~= nil then
+			return tonumber(n)
+		end
+		local b = line:match('"' .. k .. '"%s*:%s*(true|false)')
+		if b ~= nil then
+			return b == 'true'
+		end
+		return nil
+	end
+
 	local ok, msg = pcall(json.parse, line)
 	if not ok or type(msg) ~= 'table' then
 		return
@@ -807,7 +899,7 @@ local function process_line(line)
 			msg = inner
 		end
 	end
-	local op = msg.op
+	local op = tostring(uc_msg_get(msg, 'op') or '')
 	local function maybe_start_active_engine()
 		if type(_G.UC_StartUnifiedEngine) == 'function' then
 			_G.UC_StartUnifiedEngine()
@@ -823,16 +915,39 @@ local function process_line(line)
 			session = session_id,
 			char = p.name,
 			job = p.main_job,
+			sub_job = p.sub_job,
 			engine = _G.UC_ENGINE,
 			ability_options = uc_get_cached_ability_options(),
 			weaponskill_options = uc_join_pipe(uc_get_weaponskill_names()),
 			path_pull_ja_options = select(1, uc_get_cached_pull_action_options()),
 			path_pull_spell_options = select(2, uc_get_cached_pull_action_options()),
+			cor_roll_options = uc_join_pipe(uc_get_roll_ability_names()),
+			party_options = uc_join_pipe(select(1, uc_get_party_name_maps(false))),
 		}
 		safe_send_line(json_encode_simple(st))
 	end
 	if op == 'set' then
-		apply_set(msg.path, msg.value)
+		local set_path = uc_msg_get(msg, 'path')
+		local set_value = uc_msg_get(msg, 'value')
+		-- Fallback parse for malformed decoder tables where key lookup loses numeric fields.
+		if set_value == nil and type(line) == 'string' and set_path == 'def_heal_min_missing_hp' then
+			local parsed_num = tonumber(line:match('"value"%s*:%s*(-?%d+)'))
+			if parsed_num ~= nil then
+				set_value = parsed_num
+			end
+		end
+		if set_path == 'def_heal_min_missing_hp' and rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
+			local raw_val = tostring(set_value)
+			local raw_type = type(set_value)
+			local raw_line = tostring(line or '')
+			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_SET_OP path=%s raw=%s type=%s line=%s'):format(
+				tostring(set_path),
+				raw_val,
+				raw_type,
+				raw_line
+			))
+		end
+		apply_set(set_path, set_value)
 	elseif op == 'set_partner' then
 		local s = _G.UC_SETTINGS
 		if s then
@@ -978,7 +1093,7 @@ local function process_line(line)
 	elseif op == 'partner_replace_names' then
 		local s = _G.UC_SETTINGS
 		if s then
-			local vals = uc_split_pipe(msg.value)
+			local vals = uc_split_pipe(uc_msg_get(msg, 'value'))
 			s.partner_ids = {}
 			for _, name in ipairs(vals) do
 				local tid = uc_resolve_target_id_by_name(name)
@@ -1004,6 +1119,32 @@ local function process_line(line)
 				end
 			end
 			s.target_ignore_names = out
+		end
+		last_state_send = 0
+	elseif op == 'cor_roll_range_replace_names' then
+		local s = _G.UC_SETTINGS
+		if s then
+			local vals = uc_split_pipe(msg.value)
+			local out = {}
+			local seen = {}
+			local keep_names = {}
+			local seen_name = {}
+			local _, name_to_id = uc_get_party_name_maps(false)
+			for _, name in ipairs(vals) do
+				local n = uc_trim(name)
+				local pid = name_to_id[n] or 0
+				if n ~= '' and pid ~= 0 and not seen[pid] then
+					seen[pid] = true
+					out[#out + 1] = pid
+					local nk = n:lower()
+					if not seen_name[nk] then
+						seen_name[nk] = true
+						keep_names[#keep_names + 1] = n
+					end
+				end
+			end
+			s.cor_roll_range_require_ids = out
+			s.cor_roll_range_selected = table.concat(keep_names, '|')
 		end
 		last_state_send = 0
 	elseif op == 'add_priority_replace_names' then
@@ -1322,6 +1463,7 @@ function uc_remote_tick()
 		session = session_id,
 		char = p.name,
 		job = p.main_job,
+		sub_job = p.sub_job,
 		engine = _G.UC_ENGINE,
 		Start_Engine = Start_Engine,
 		zone_suspend_active = zone_suspend_active,

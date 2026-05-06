@@ -123,11 +123,11 @@ partial class MainForm
         tableSessionSidebar.Padding = new Padding(0);
         tableSessionSidebar.RowCount = 3;
         tableSessionSidebar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        tableSessionSidebar.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         tableSessionSidebar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        tableSessionSidebar.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         tableSessionSidebar.Controls.Add(labelSessionsHeader, 0, 0);
-        tableSessionSidebar.Controls.Add(listSessions, 0, 1);
-        tableSessionSidebar.Controls.Add(flowSessionActions, 0, 2);
+        tableSessionSidebar.Controls.Add(flowSessionActions, 0, 1);
+        tableSessionSidebar.Controls.Add(listSessions, 0, 2);
         //
         // labelSessionsHeader
         //
@@ -145,11 +145,11 @@ partial class MainForm
         flowSessionActions.AutoSize = true;
         flowSessionActions.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         flowSessionActions.Dock = DockStyle.Fill;
-        flowSessionActions.FlowDirection = FlowDirection.LeftToRight;
+        flowSessionActions.FlowDirection = FlowDirection.TopDown;
         flowSessionActions.Margin = new Padding(0, 6, 0, 0);
         flowSessionActions.Name = "flowSessionActions";
         flowSessionActions.Padding = new Padding(4, 6, 4, 8);
-        flowSessionActions.WrapContents = true;
+        flowSessionActions.WrapContents = false;
         //
         // listSessions
         //

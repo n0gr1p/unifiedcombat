@@ -100,6 +100,7 @@ local function uc_new_settings_defaults()
 		weaponskill = '',
 		ws1 = '',
 		weaponskill_active = false,
+		ws_mode = 'smart',
 		aftermath_enabled = false,
 		aftermath_ws = '',
 		autotarget = false,
@@ -114,14 +115,10 @@ local function uc_new_settings_defaults()
 		spacing_model_size_floor = 0.9,
 		spacing_use_prediction = true,
 		spacing_lookahead_s = 0.25,
-		spacing_anchor_invalid_ticks = 5,
-		spacing_emergency_margin = 0.10,
-		spacing_slot_switch_penalty = 0.75,
-		spacing_slot_switch_margin = 0.35,
-		spacing_slot_arrival_tolerance = 0.20,
-		spacing_max_agents = 6,
-		spacing_global_anchor_enabled = false,
-		spacing_global_anchor_name = '',
+		spacing_repel_hold_ticks = 5,
+		spacing_overlap_deadband = 0.10,
+		spacing_repel_weight = 0.35,
+		spacing_band_deadband = 0.20,
 		face = false,
 		partner = false,
 		partner2 = false,
@@ -146,6 +143,11 @@ local function uc_new_settings_defaults()
 		sub2 = false,
 		move = false,
 		debug = false,
+		log_combat_sched = false,
+		log_ja_sched = false,
+		log_ja_debug = false,
+		log_def_sched = false,
+		log_tank_sched = false,
 		solo = false,
 		aeonic = false,
 		color = false,
@@ -158,6 +160,11 @@ local function uc_new_settings_defaults()
 		defensive_enabled = false,
 		defensive_provider = 'internal',
 		defensive_cure_enabled = false,
+		defensive_doom_water = false,
+		def_heal_min_tier_cure = 3,
+		def_heal_max_tier_cure = 4,
+		def_heal_min_missing_hp = 250,
+		def_heal_ignore_trusts = true,
 		defensive_na_enabled = false,
 		defensive_buff_enabled = false,
 		defensive_critical_hpp = 35,
@@ -166,12 +173,23 @@ local function uc_new_settings_defaults()
 		defensive_overwrite_interval = 150,
 		defensive_buff_self_only = true,
 		defensive_buffs = '',
+		engine_enabled = false,
+		domain_combat_enabled = true,
+		domain_defensive_enabled = true,
+		domain_movement_enabled = true,
+		domain_maintenance_enabled = true,
+		domain_follow_enabled = true,
 		scheduler_dark_launch_combat = false,
 		scheduler_dark_launch_defensive = false,
 		scheduler_dark_launch_movement = false,
 		scheduler_dark_launch_maintenance = false,
 		cor_roll_1 = '',
 		cor_roll_2 = '',
+		cor_crooked_roll_slot = 0,
+		cor_elevens = false,
+		cor_luzaf_range_override = false,
+		cor_roll_range_selected = '',
+		cor_roll_range_require_ids = {},
 		path_recording = false,
 		path_follow_enabled = false,
 		path_file_name = '',
@@ -194,6 +212,79 @@ local function uc_new_settings_defaults()
 end
 
 _G.UC_SETTINGS = uc_new_settings_defaults()
+
+local function uc_truthy(v)
+	if v == true or v == 1 then
+		return true
+	end
+	if type(v) == 'string' then
+		local s = v:lower()
+		return s == 'true' or s == 'on' or s == '1' or s == 'yes'
+	end
+	return false
+end
+
+local function uc_domain_enabled(s, key)
+	local st = s or _G.UC_SETTINGS or {}
+	if key == 'follow' then
+		return uc_truthy(st.domain_follow_enabled)
+	end
+	if not uc_truthy(st.engine_enabled) then
+		return false
+	end
+	if key == 'combat' then
+		return uc_truthy(st.domain_combat_enabled)
+	elseif key == 'defensive' then
+		return uc_truthy(st.domain_defensive_enabled)
+	elseif key == 'movement' then
+		return uc_truthy(st.domain_movement_enabled)
+	elseif key == 'maintenance' then
+		return uc_truthy(st.domain_maintenance_enabled)
+	end
+	return false
+end
+
+local function uc_is_combat_participant(s)
+	local st = s or _G.UC_SETTINGS or {}
+	if not uc_domain_enabled(st, 'combat') then
+		return false
+	end
+	return uc_truthy(st.autotarget)
+		or uc_truthy(st.move)
+		or uc_truthy(st.tank)
+		or (uc_truthy(st.hunter) and uc_truthy(st.path_follow_enabled))
+		or uc_truthy(st.puller)
+		or uc_truthy(st.add_control)
+end
+
+local function uc_is_defensive_participant(s)
+	local st = s or _G.UC_SETTINGS or {}
+	return uc_domain_enabled(st, 'defensive') and uc_truthy(st.defensive_enabled)
+end
+
+local function uc_is_movement_participant(s)
+	local st = s or _G.UC_SETTINGS or {}
+	return uc_domain_enabled(st, 'movement') and (
+		uc_truthy(st.move)
+		or uc_truthy(st.spacing)
+		or uc_truthy(st.autotarget)
+		or (uc_truthy(st.hunter) and uc_truthy(st.path_follow_enabled))
+		or uc_truthy(st.puller)
+		or uc_truthy(st.tank)
+		or uc_truthy(st.add_control)
+	)
+end
+
+local function uc_is_follow_participant(s)
+	local st = s or _G.UC_SETTINGS or {}
+	return uc_domain_enabled(st, 'follow') and uc_truthy(st.party_follow)
+end
+
+_G.UC_DomainEnabled = uc_domain_enabled
+_G.UC_IsCombatParticipant = uc_is_combat_participant
+_G.UC_IsDefensiveParticipant = uc_is_defensive_participant
+_G.UC_IsMovementParticipant = uc_is_movement_participant
+_G.UC_IsFollowParticipant = uc_is_follow_participant
 
 require('remote_bridge')
 local UC_COMBAT_CORE = require('unified_combat_core')
@@ -256,26 +347,26 @@ end
 local PROFILE_KEYS = {
 	'ability1', 'ability2', 'ability3', 'ability4', 'ability5', 'ability6',
 	'ability_active', 'abilities', 'wsabilities',
-	'ws1', 'weaponskill', 'weaponskill_active',
+	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode',
 	'aftermath_enabled', 'aftermath_ws',
 	'engine_mode',
 	'show_ingame_ui',
-	'defensive_enabled', 'defensive_provider', 'defensive_cure_enabled', 'defensive_na_enabled', 'defensive_buff_enabled',
+	'defensive_enabled', 'defensive_provider', 'defensive_cure_enabled', 'defensive_doom_water', 'defensive_na_enabled', 'defensive_buff_enabled',
 	'defensive_critical_hpp', 'defensive_medium_hpp',
 	'defensive_overwrite_enabled', 'defensive_overwrite_interval', 'defensive_buff_self_only', 'defensive_buffs',
+	'engine_enabled', 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled',
 	'scheduler_dark_launch_combat',
 	'scheduler_dark_launch_defensive', 'scheduler_dark_launch_movement', 'scheduler_dark_launch_maintenance',
-	'cor_roll_1', 'cor_roll_2',
+	'cor_roll_1', 'cor_roll_2', 'cor_crooked_roll_slot', 'cor_elevens', 'cor_luzaf_range_override', 'cor_roll_range_selected', 'cor_roll_range_require_ids',
 	'path_recording', 'path_follow_enabled', 'path_file_name', 'path_route_type', 'path_distance_to_start', 'path_points', 'path_party_gate_yalms', 'path_resume_index_window', 'path_hunter_targets', 'path_hunter_max_z_delta', 'path_hunter_max_target_range', 'path_hunter_claim_timeout_s', 'path_hunter_ignore_cooldown_s', 'path_pull_action_type', 'path_pull_action_name',
 	'autotarget', 'spam', 'closer', 'manual', 'prime', 'static', 'spacing', 'face',
 	'spacing_band_min', 'spacing_band_max', 'spacing_use_prediction', 'spacing_lookahead_s',
 	'spacing_model_size_floor',
-	'spacing_anchor_invalid_ticks', 'spacing_emergency_margin', 'spacing_slot_switch_penalty',
-	'spacing_slot_switch_margin', 'spacing_slot_arrival_tolerance', 'spacing_max_agents',
+	'spacing_repel_hold_ticks', 'spacing_overlap_deadband', 'spacing_repel_weight', 'spacing_band_deadband',
 	'partner', 'partner2', 'puller', 'puller_distance_only', 'partner_id', 'partner_id2', 'partner_ids', 'puller_id',
 	'fight_leader', 'fight_leader_id', 'party_follow', 'party_follow_id', 'party_follow_leader_name', 'party_follow_min', 'party_follow_max', 'fight_follow_min', 'fight_follow_hold_s',
 	'add_control', 'add_priority_names',
-	'sub', 'sub2', 'move', 'debug', 'solo', 'aeonic', 'color', 'tank', 'sleep', 'command', 'hunter',
+	'sub', 'sub2', 'move', 'debug', 'log_combat_sched', 'log_ja_sched', 'log_ja_debug', 'log_def_sched', 'log_tank_sched', 'solo', 'aeonic', 'color', 'tank', 'sleep', 'command', 'hunter',
 	'tank_enmity_actions',
 	'target1', 'target2', 'target3', 'targets',
 	'targetability', 'targetability_active',
@@ -433,6 +524,33 @@ local function uc_normalize_ws_for_engine(s, eng)
 	s.engine_mode = eng
 end
 
+local function uc_normalize_domain_settings(s)
+	if type(s) ~= 'table' then
+		return
+	end
+	-- Canonical domain settings migration:
+	-- - legacy behavior implied combat/defensive/movement/maintenance/follow domains enabled.
+	-- - preserve existing runtime engine flag when available.
+	if s.engine_enabled == nil then
+		s.engine_enabled = Start_Engine == true
+	end
+	if s.domain_combat_enabled == nil then
+		s.domain_combat_enabled = true
+	end
+	if s.domain_defensive_enabled == nil then
+		s.domain_defensive_enabled = true
+	end
+	if s.domain_movement_enabled == nil then
+		s.domain_movement_enabled = true
+	end
+	if s.domain_maintenance_enabled == nil then
+		s.domain_maintenance_enabled = true
+	end
+	if s.domain_follow_enabled == nil then
+		s.domain_follow_enabled = true
+	end
+end
+
 local function uc_normalize_active_settings()
 	local s = _G.UC_SETTINGS
 	if not s then
@@ -442,6 +560,7 @@ local function uc_normalize_active_settings()
 	uc_normalize_abilities(s)
 	uc_normalize_targets(s)
 	uc_normalize_ws_for_engine(s, eng)
+	uc_normalize_domain_settings(s)
 	uc_partner_list.migrate_from_legacy(s)
 	uc_partner_list.sync_legacy_partner_fields(s)
 end
@@ -631,6 +750,11 @@ windower.register_event('load', function()
 end)
 
 windower.register_event('incoming chunk', function(id, data)
+	if type(_G.UC_SCHED_OnIncomingChunk) == 'function' then
+		pcall(function()
+			_G.UC_SCHED_OnIncomingChunk(id, data)
+		end)
+	end
 	if type(_G.UC_COR_MAINT_OnIncomingChunk) == 'function' then
 		pcall(function()
 			_G.UC_COR_MAINT_OnIncomingChunk(id, data)
@@ -652,6 +776,19 @@ windower.register_event('incoming chunk', function(id, data)
 		if not ok then
 			-- ignore malformed packet parse; core tick remains authoritative fallback.
 		end
+	end
+end)
+
+windower.register_event('ipc message', function(msg)
+	if UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_ipc_message) == 'function' then
+		pcall(function()
+			UC_COMBAT_CORE.on_ipc_message(msg)
+		end)
+	end
+	if type(_G.UC_SCHED_OnIpcMessage) == 'function' then
+		pcall(function()
+			_G.UC_SCHED_OnIpcMessage(msg)
+		end)
 	end
 end)
 
@@ -734,12 +871,18 @@ windower.register_event('addon command', function(...)
 	if a == 'start' then
 		if not Start_Engine then
 			Start_Engine = true
+			if _G.UC_SETTINGS then
+				_G.UC_SETTINGS.engine_enabled = true
+			end
 			uc_start_active_engine_if_running()
 			windower.add_to_chat(207, 'UnifiedCombat: engine started')
 		end
 		return
 	elseif a == 'stop' then
 		Start_Engine = false
+		if _G.UC_SETTINGS then
+			_G.UC_SETTINGS.engine_enabled = false
+		end
 		if type(_G.UC_StopUnifiedEngine) == 'function' then
 			_G.UC_StopUnifiedEngine()
 		end

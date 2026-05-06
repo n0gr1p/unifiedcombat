@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
+using System.IO;
 
 namespace UnifiedCombatWinForms;
 
@@ -58,6 +59,30 @@ internal sealed class MirrorDuplex : IDisposable
         }
 
         var line = JsonSerializer.Serialize(msg) + "\n";
+        try
+        {
+            if (msg.TryGetValue("op", out var opObj)
+                && string.Equals(Convert.ToString(opObj), "set", StringComparison.Ordinal)
+                && msg.TryGetValue("path", out var pathObj)
+                && string.Equals(Convert.ToString(pathObj), "def_heal_min_missing_hp", StringComparison.Ordinal))
+            {
+                var valText = msg.TryGetValue("value", out var vObj) && vObj is not null
+                    ? Convert.ToString(vObj) ?? "(unprintable)"
+                    : "(null-or-missing)";
+                var root = AppContext.BaseDirectory;
+                var logDir = Path.Combine(root, "data", "ui_profiles");
+                Directory.CreateDirectory(logDir);
+                var logPath = Path.Combine(logDir, "ui_def_sync.log");
+                File.AppendAllText(
+                    logPath,
+                    $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}\tMIRROR_ENQUEUE sid={sid} value={valText} line={line.Trim()}{Environment.NewLine}"
+                );
+            }
+        }
+        catch
+        {
+            // debug logging must never impact flow
+        }
         _outbound.Writer.TryWrite((sid, line));
     }
 

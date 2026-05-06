@@ -9,6 +9,7 @@ internal static class HubUiConstants
         "show_ingame_ui",
         "defensive_enabled",
         "defensive_cure_enabled",
+        "defensive_doom_water",
         "defensive_na_enabled",
         "defensive_buff_enabled",
         "defensive_overwrite_enabled",
@@ -27,6 +28,11 @@ internal static class HubUiConstants
         "sub2",
         "move",
         "debug",
+        "log_combat_sched",
+        "log_ja_sched",
+        "log_ja_debug",
+        "log_def_sched",
+        "log_tank_sched",
         "solo",
         "aeonic",
         "color",
@@ -52,6 +58,7 @@ internal static class HubUiConstants
     {
         ["defensive_enabled"] = "Healer Enabled",
         ["defensive_cure_enabled"] = "Allow Cures",
+        ["defensive_doom_water"] = "Doom water",
         ["defensive_na_enabled"] = "Allow NA/Status Removal",
         ["defensive_buff_enabled"] = "Allow Buff Support",
         ["defensive_overwrite_enabled"] = "Allow Buff Overwrite",
@@ -70,6 +77,11 @@ internal static class HubUiConstants
         ["sub2"] = "Sub2",
         ["move"] = "Move",
         ["debug"] = "Debug",
+        ["log_combat_sched"] = "Log: combat scheduler",
+        ["log_ja_sched"] = "Log: JA scheduler",
+        ["log_ja_debug"] = "Log: JA debug",
+        ["log_def_sched"] = "Log: defensive scheduler",
+        ["log_tank_sched"] = "Log: tank scheduler",
         ["solo"] = "Solo",
         ["aeonic"] = "Aeonic",
         ["color"] = "Color",
@@ -98,6 +110,7 @@ internal static class HubUiConstants
     [
         "defensive_enabled",
         "defensive_cure_enabled",
+        "defensive_doom_water",
         "defensive_na_enabled",
         "defensive_buff_enabled",
         "defensive_overwrite_enabled",
@@ -123,7 +136,18 @@ internal static class HubUiConstants
         "command",
     ];
 
-    public static readonly string[] VisualsCardKeys = ["show_ingame_ui", "debug", "aeonic", "color"];
+    public static readonly string[] VisualsCardKeys =
+    [
+        "show_ingame_ui",
+        "debug",
+        "log_combat_sched",
+        "log_ja_sched",
+        "log_ja_debug",
+        "log_def_sched",
+        "log_tank_sched",
+        "aeonic",
+        "color",
+    ];
 
     public static readonly string[] CorRollOptions =
     [

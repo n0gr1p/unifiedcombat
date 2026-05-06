@@ -97,6 +97,37 @@ internal static partial class SessionStateHelper
         };
     }
 
+    public static int GetInt(JsonElement s, string name, int defaultValue = 0)
+    {
+        if (!s.TryGetProperty(name, out var p))
+        {
+            return defaultValue;
+        }
+
+        if (p.ValueKind == JsonValueKind.Number)
+        {
+            if (p.TryGetInt32(out var i32))
+            {
+                return i32;
+            }
+            if (p.TryGetInt64(out var i64))
+            {
+                return (int)Math.Clamp(i64, int.MinValue, int.MaxValue);
+            }
+        }
+
+        if (p.ValueKind == JsonValueKind.String)
+        {
+            var raw = p.GetString();
+            if (int.TryParse(raw, out var parsed))
+            {
+                return parsed;
+            }
+        }
+
+        return defaultValue;
+    }
+
     public static string AbilitySignature(JsonElement s)
     {
         var job = GetString(s, "job");

@@ -11,10 +11,12 @@ public partial class MainForm
     private CheckBox _chkAbility = null!;
     private CheckBox _chkPuller = null!;
     private ComboBox _wsCombo = null!;
+    private ComboBox _wsModeCombo = null!;
     private ComboBox _aftermathCombo = null!;
     private ComboBox _pullerCombo = null!;
     private ComboBox _fightLeaderCombo = null!;
     private ComboBox _partyFollowCombo = null!;
+    private Label _partyFollowModeWarning = null!;
     private TextBox _pfFollowMinYalms = null!;
     private TextBox _pfFollowMaxYalms = null!;
     private TextBox _pfFightFollowMinYalms = null!;
@@ -28,8 +30,13 @@ public partial class MainForm
     private Button _btnAbilityDown = null!;
     private TextBox _defCrit = null!;
     private TextBox _defMed = null!;
+    private TextBox _defHealMinTier = null!;
+    private TextBox _defHealMaxTier = null!;
+    private TextBox _defHealMinMissingHp = null!;
+    private CheckBox _defHealIgnoreTrusts = null!;
     private TextBox _defOverwrite = null!;
     private TextBox _defBuffs = null!;
+    private TextBox _defTargetedBuffs = null!;
     private GroupBox _grpFightLeader = null!;
     private GroupBox _grpAddPri = null!;
     private ListBox _addPriList = null!;
@@ -67,14 +74,17 @@ public partial class MainForm
     private TextBox _spLookahead = null!;
     private TextBox _spAnchorInvalidTicks = null!;
     private TextBox _spEmergencyMargin = null!;
-    private TextBox _spSwitchPenalty = null!;
     private TextBox _spSwitchMargin = null!;
     private TextBox _spArrivalTolerance = null!;
-    private TextBox _spMaxAgents = null!;
-    private CheckBox _spGlobalAnchorEnabled = null!;
-    private ComboBox _spGlobalAnchorMember = null!;
+    private TabControl _settingsTabs = null!;
+    private TabPage _tabCor = null!;
     private ComboBox _corRoll1Combo = null!;
     private ComboBox _corRoll2Combo = null!;
+    private CheckBox _corCrookedRoll1 = null!;
+    private CheckBox _corCrookedRoll2 = null!;
+    private CheckBox _corElevens = null!;
+    private CheckBox _corLuzafRangeOverride = null!;
+    private FlowLayoutPanel _corRangePartyPanel = null!;
     private Label _pathFileValue = null!;
     private Label _pathRouteTypeValue = null!;
     private Label _pathDistanceValue = null!;
@@ -199,6 +209,20 @@ public partial class MainForm
         leftCol.Controls.Add(_wsCombo, 1, lr);
         lr++;
 
+        leftCol.Controls.Add(new Label { Text = "WS mode", AutoSize = true, Anchor = AnchorStyles.Left }, 0, lr);
+        _wsModeCombo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(120, 0),
+        };
+        _wsModeCombo.Items.Add("Smart");
+        _wsModeCombo.Items.Add("Primary Only (No SC)");
+        _wsModeCombo.SelectedIndex = 0;
+        _wsModeCombo.SelectedIndexChanged += (_, _) => OnWsModeSelected();
+        leftCol.Controls.Add(_wsModeCombo, 1, lr);
+        lr++;
+
         _chkAftermath = MkCtx("aftermath_enabled");
         leftCol.Controls.Add(_chkAftermath, 0, lr);
         _aftermathCombo = new ComboBox
@@ -303,6 +327,26 @@ public partial class MainForm
         _defMed.Leave += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defMed, 1, dr);
         dr++;
+        rightCol.Controls.Add(new Label { Text = "heal_min_tier", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        _defHealMinTier = new TextBox { Width = 72, Anchor = AnchorStyles.Left };
+        _defHealMinTier.Leave += (_, _) => OnDefThresholdChanged();
+        rightCol.Controls.Add(_defHealMinTier, 1, dr);
+        dr++;
+        rightCol.Controls.Add(new Label { Text = "heal_max_tier", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        _defHealMaxTier = new TextBox { Width = 72, Anchor = AnchorStyles.Left };
+        _defHealMaxTier.Leave += (_, _) => OnDefThresholdChanged();
+        rightCol.Controls.Add(_defHealMaxTier, 1, dr);
+        dr++;
+        rightCol.Controls.Add(new Label { Text = "heal_min_missing_hp", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        _defHealMinMissingHp = new TextBox { Width = 72, Anchor = AnchorStyles.Left };
+        _defHealMinMissingHp.Leave += (_, _) => OnDefThresholdChanged();
+        rightCol.Controls.Add(_defHealMinMissingHp, 1, dr);
+        dr++;
+        rightCol.Controls.Add(new Label { Text = "heal_ignore_trusts", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        _defHealIgnoreTrusts = new CheckBox { AutoSize = true, Anchor = AnchorStyles.Left };
+        _defHealIgnoreTrusts.CheckedChanged += (_, _) => OnDefThresholdChanged();
+        rightCol.Controls.Add(_defHealIgnoreTrusts, 1, dr);
+        dr++;
         rightCol.Controls.Add(new Label { Text = "buff_overwrite_s", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defOverwrite = new TextBox { Width = 72, Anchor = AnchorStyles.Left };
         _defOverwrite.Leave += (_, _) => OnDefThresholdChanged();
@@ -312,6 +356,11 @@ public partial class MainForm
         _defBuffs = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top, MinimumSize = new Size(80, 23) };
         _defBuffs.Leave += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defBuffs, 1, dr);
+        dr++;
+        rightCol.Controls.Add(new Label { Text = "targeted_buffs (Target:Buff|...)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        _defTargetedBuffs = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top, MinimumSize = new Size(80, 23) };
+        _defTargetedBuffs.Leave += (_, _) => OnDefThresholdChanged();
+        rightCol.Controls.Add(_defTargetedBuffs, 1, dr);
         dr++;
 
         topSplit.Controls.Add(leftCol, 0, 0);
@@ -355,6 +404,15 @@ public partial class MainForm
         _pfFightFollowHoldS.Leave += (_, _) => OnPartyFollowDistanceChanged();
         pfTop.Controls.Add(_pfFightFollowHoldS);
         flFlow.Controls.Add(pfTop);
+        _partyFollowModeWarning = new Label
+        {
+            AutoSize = true,
+            ForeColor = Color.DarkOrange,
+            Visible = false,
+            Text = "Non-UC follow target selected; precision may be lower.",
+            Padding = new Padding(2, 2, 0, 0),
+        };
+        flFlow.Controls.Add(_partyFollowModeWarning);
         _grpFightLeader.Controls.Add(flFlow);
         g.Controls.Add(_grpFightLeader, 0, gRow++);
 
@@ -553,7 +611,7 @@ public partial class MainForm
         tankGroup.Controls.Add(tankFlow);
         g.Controls.Add(tankGroup, 0, gRow++);
 
-        var tabs = new TabControl
+        _settingsTabs = new TabControl
         {
             Dock = DockStyle.Top,
             Height = 520,
@@ -562,7 +620,7 @@ public partial class MainForm
         tabGeneral.AutoScroll = true;
         g.Dock = DockStyle.Top;
         tabGeneral.Controls.Add(g);
-        tabs.TabPages.Add(tabGeneral);
+        _settingsTabs.TabPages.Add(tabGeneral);
 
         var tabSpacing = new TabPage("Spacing Tuning");
         tabSpacing.AutoScroll = true;
@@ -580,11 +638,11 @@ public partial class MainForm
         _spUsePrediction = new CheckBox { AutoSize = true, Anchor = AnchorStyles.Left };
         _spUsePrediction.CheckedChanged += (_, _) => OnSpacingTuningBoolChanged();
         sp.Controls.Add(_spUsePrediction, 1, sr++);
-        sp.Controls.Add(new Label { Text = "Comfort band min (real)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        sp.Controls.Add(new Label { Text = "Combat band min (real)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
         _spBandMin = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _spBandMin.Leave += (_, _) => OnSpacingTuningNumericChanged();
         sp.Controls.Add(_spBandMin, 1, sr++);
-        sp.Controls.Add(new Label { Text = "Comfort band max (real)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        sp.Controls.Add(new Label { Text = "Combat band max (real)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
         _spBandMax = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _spBandMax.Leave += (_, _) => OnSpacingTuningNumericChanged();
         sp.Controls.Add(_spBandMax, 1, sr++);
@@ -596,45 +654,24 @@ public partial class MainForm
         _spLookahead = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _spLookahead.Leave += (_, _) => OnSpacingTuningNumericChanged();
         sp.Controls.Add(_spLookahead, 1, sr++);
-        sp.Controls.Add(new Label { Text = "Anchor invalid ticks", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        sp.Controls.Add(new Label { Text = "Repel hold ticks", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
         _spAnchorInvalidTicks = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _spAnchorInvalidTicks.Leave += (_, _) => OnSpacingTuningNumericChanged();
         sp.Controls.Add(_spAnchorInvalidTicks, 1, sr++);
-        sp.Controls.Add(new Label { Text = "Emergency margin", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        sp.Controls.Add(new Label { Text = "Overlap deadband", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
         _spEmergencyMargin = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _spEmergencyMargin.Leave += (_, _) => OnSpacingTuningNumericChanged();
         sp.Controls.Add(_spEmergencyMargin, 1, sr++);
-        sp.Controls.Add(new Label { Text = "Slot switch penalty", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
-        _spSwitchPenalty = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
-        _spSwitchPenalty.Leave += (_, _) => OnSpacingTuningNumericChanged();
-        sp.Controls.Add(_spSwitchPenalty, 1, sr++);
-        sp.Controls.Add(new Label { Text = "Slot switch margin", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        sp.Controls.Add(new Label { Text = "Repel weight", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
         _spSwitchMargin = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _spSwitchMargin.Leave += (_, _) => OnSpacingTuningNumericChanged();
         sp.Controls.Add(_spSwitchMargin, 1, sr++);
-        sp.Controls.Add(new Label { Text = "Slot arrival tolerance", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
+        sp.Controls.Add(new Label { Text = "Band deadband", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
         _spArrivalTolerance = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
         _spArrivalTolerance.Leave += (_, _) => OnSpacingTuningNumericChanged();
         sp.Controls.Add(_spArrivalTolerance, 1, sr++);
-        sp.Controls.Add(new Label { Text = "Max agents", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
-        _spMaxAgents = new TextBox { Width = 90, Anchor = AnchorStyles.Left };
-        _spMaxAgents.Leave += (_, _) => OnSpacingTuningNumericChanged();
-        sp.Controls.Add(_spMaxAgents, 1, sr++);
-        sp.Controls.Add(new Label { Text = "Global anchor override", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
-        _spGlobalAnchorEnabled = new CheckBox { AutoSize = true, Anchor = AnchorStyles.Left };
-        _spGlobalAnchorEnabled.CheckedChanged += (_, _) => OnGlobalSpacingAnchorChanged();
-        sp.Controls.Add(_spGlobalAnchorEnabled, 1, sr++);
-        sp.Controls.Add(new Label { Text = "Global anchor member", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
-        _spGlobalAnchorMember = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
-            MinimumSize = new Size(160, 0),
-        };
-        _spGlobalAnchorMember.SelectedIndexChanged += (_, _) => OnGlobalSpacingAnchorChanged();
-        sp.Controls.Add(_spGlobalAnchorMember, 1, sr++);
         tabSpacing.Controls.Add(sp);
-        tabs.TabPages.Add(tabSpacing);
+        _settingsTabs.TabPages.Add(tabSpacing);
 
         var tabPathing = new TabPage("Pathing");
         tabPathing.AutoScroll = true;
@@ -737,7 +774,78 @@ public partial class MainForm
         path.SetColumnSpan(pathHunterRow, 2);
         pathRow++;
         tabPathing.Controls.Add(path);
-        tabs.TabPages.Add(tabPathing);
+        _settingsTabs.TabPages.Add(tabPathing);
+
+        _tabCor = new TabPage("COR");
+        _tabCor.AutoScroll = true;
+        var corRoot = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 1,
+            Padding = new Padding(8),
+        };
+        var corRollCfg = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 3,
+            Padding = new Padding(0, 0, 0, 8),
+        };
+        corRollCfg.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
+        corRollCfg.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        corRollCfg.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
+        corRollCfg.Controls.Add(new Label { Text = "Roll 1", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+        _corRoll1Combo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(180, 0),
+        };
+        _corRoll1Combo.SelectedIndexChanged += (_, _) => OnCorRollSelected(1);
+        corRollCfg.Controls.Add(_corRoll1Combo, 1, 0);
+        _corCrookedRoll1 = new CheckBox { Text = "Use Crooked Cards", AutoSize = true, Anchor = AnchorStyles.Left };
+        _corCrookedRoll1.CheckedChanged += (_, _) => OnCorCrookedChanged(1, _corCrookedRoll1.Checked);
+        corRollCfg.Controls.Add(_corCrookedRoll1, 2, 0);
+        corRollCfg.Controls.Add(new Label { Text = "Roll 2", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+        _corRoll2Combo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(180, 0),
+        };
+        _corRoll2Combo.SelectedIndexChanged += (_, _) => OnCorRollSelected(2);
+        corRollCfg.Controls.Add(_corRoll2Combo, 1, 1);
+        _corCrookedRoll2 = new CheckBox { Text = "Use Crooked Cards", AutoSize = true, Anchor = AnchorStyles.Left };
+        _corCrookedRoll2.CheckedChanged += (_, _) => OnCorCrookedChanged(2, _corCrookedRoll2.Checked);
+        corRollCfg.Controls.Add(_corCrookedRoll2, 2, 1);
+        corRoot.Controls.Add(corRollCfg);
+        var corFlags = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true };
+        _corElevens = new CheckBox { Text = "11's", AutoSize = true };
+        _corElevens.CheckedChanged += (_, _) => OnCorFlagChanged("cor_elevens", _corElevens.Checked);
+        corFlags.Controls.Add(_corElevens);
+        _corLuzafRangeOverride = new CheckBox { Text = "Force Luzaf range (16y)", AutoSize = true };
+        _corLuzafRangeOverride.CheckedChanged += (_, _) => OnCorFlagChanged("cor_luzaf_range_override", _corLuzafRangeOverride.Checked);
+        corFlags.Controls.Add(_corLuzafRangeOverride);
+        corRoot.Controls.Add(corFlags);
+        corRoot.Controls.Add(
+            new Label
+            {
+                Text = "Roll range required members (must be in range before rolling):",
+                AutoSize = true,
+                Padding = new Padding(0, 6, 0, 2),
+            }
+        );
+        _corRangePartyPanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            Dock = DockStyle.Top,
+        };
+        corRoot.Controls.Add(_corRangePartyPanel);
+        _tabCor.Controls.Add(corRoot);
+        _settingsTabs.TabPages.Add(_tabCor);
 
         var tabScheduler = new TabPage("Scheduler");
         tabScheduler.AutoScroll = true;
@@ -760,47 +868,30 @@ public partial class MainForm
         sch.Controls.Add(MkGlobal("scheduler_dark_launch_defensive"));
         sch.Controls.Add(MkGlobal("scheduler_dark_launch_movement"));
         sch.Controls.Add(MkGlobal("scheduler_dark_launch_maintenance"));
-        var corCfg = new TableLayoutPanel
-        {
-            AutoSize = true,
-            Dock = DockStyle.Top,
-            ColumnCount = 2,
-            Padding = new Padding(0, 8, 0, 0),
-        };
-        corCfg.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
-        corCfg.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        corCfg.Controls.Add(new Label { Text = "COR Roll 1", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-        _corRoll1Combo = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
-            MinimumSize = new Size(160, 0),
-        };
-        _corRoll1Combo.SelectedIndexChanged += (_, _) => OnCorRollSelected(1);
-        corCfg.Controls.Add(_corRoll1Combo, 1, 0);
-        corCfg.Controls.Add(new Label { Text = "COR Roll 2", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
-        _corRoll2Combo = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
-            MinimumSize = new Size(160, 0),
-        };
-        _corRoll2Combo.SelectedIndexChanged += (_, _) => OnCorRollSelected(2);
-        corCfg.Controls.Add(_corRoll2Combo, 1, 1);
-        sch.Controls.Add(corCfg);
         tabScheduler.Controls.Add(sch);
-        tabs.TabPages.Add(tabScheduler);
+        _settingsTabs.TabPages.Add(tabScheduler);
 
-        form.Controls.Add(tabs);
+        form.Controls.Add(_settingsTabs);
         root.Controls.Add(form, 0, 1);
 
-        _btnSave = new Button { Text = "Save (XML)", AutoSize = true };
+        _btnSave = new Button { Text = "Save (XML)", AutoSize = false };
         _btnSave.Click += (_, _) => SaveRemote();
-        _btnToggleEngine = new Button { Text = "Toggle engine run", AutoSize = true };
+        _btnToggleEngine = new Button { Text = "Toggle engine run", AutoSize = false };
         _btnToggleEngine.Click += (_, _) => ToggleEngine();
-        _btnReloadAddon = new Button { Text = "Reload addon (+reapply run)", AutoSize = true };
+        _btnReloadAddon = new Button { Text = "Reload addon (+reapply run)", AutoSize = false };
         _btnReloadAddon.Click += (_, _) => ReloadAddonAndReapplyRun();
         sessionActionsFooter.Controls.AddRange(new Control[] { _btnSave, _btnToggleEngine, _btnReloadAddon });
+        void sizeSessionButtons()
+        {
+            var w = Math.Max(120, sessionActionsFooter.ClientSize.Width - sessionActionsFooter.Padding.Horizontal - 2);
+            foreach (var b in new[] { _btnSave, _btnToggleEngine, _btnReloadAddon })
+            {
+                b.Width = w;
+                b.Margin = new Padding(0, 0, 0, 6);
+            }
+        }
+        sessionActionsFooter.SizeChanged += (_, _) => sizeSessionButtons();
+        sizeSessionButtons();
 
         CheckBox MkCtx(string key)
         {

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.IO;
 
 namespace UnifiedCombatWinForms;
 
@@ -27,15 +28,18 @@ public partial class MainForm : Form
     private readonly Dictionary<string, (string ws, DateTime ts)> _pendingWsBySid = new();
     private readonly Dictionary<string, string> _optionsHydratedJobBySid = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DateTime> _optionsRequestInFlightBySid = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (int expected, DateTime lastSend, DateTime expires)> _pendingDefMinGateBySid = new(StringComparer.Ordinal);
     /// <summary>Last party-follow distance settings pushed to the game; suppress snapshot overwrite until echoed or timeout.</summary>
     private readonly Dictionary<string, (string min, string max, string fightMin, string holdS, DateTime ts)> _pendingPfDistBySid = new(StringComparer.Ordinal);
     /// <summary>Last spacing tuning values pushed to the game; suppress snapshot overwrite until echoed or timeout.</summary>
-    private readonly Dictionary<string, (bool usePrediction, string bandMin, string bandMax, string modelSizeFloor, string lookahead, string anchorInvalidTicks, string emergencyMargin, string switchPenalty, string switchMargin, string arrivalTolerance, string maxAgents, DateTime ts)> _pendingSpacingBySid = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (bool usePrediction, string bandMin, string bandMax, string modelSizeFloor, string lookahead, string repelHoldTicks, string overlapDeadband, string repelWeight, string bandDeadband, DateTime ts)> _pendingSpacingBySid = new(StringComparer.Ordinal);
     private DateTime _abilityInteractionUtc = DateTime.MinValue;
-    private readonly HashSet<string> _globalAnchorAppliedSids = new(StringComparer.Ordinal);
 
     private readonly Dictionary<string, CheckBox> _boolChecks = new(StringComparer.Ordinal);
     private readonly List<string> _abilityOptions = [];
+    private readonly List<string> _corRollOptions = [];
+    private readonly List<string> _corPartyOptions = [];
+    private readonly List<string> _partyOptions = [];
     private readonly List<string> _selectedAbilities = [];
     private readonly List<string> _pathPullJaOptions = [];
     private readonly List<string> _pathPullSpellOptions = [];
@@ -50,13 +54,25 @@ public partial class MainForm : Form
     private List<(int Slot, string Name)> _addPriorityRows = [];
     private List<(int Id, string Name)> _pathHunterRows = [];
     private List<string> _tankEnmityRows = [];
-    private sealed record SessionMeta(string Sid, string CharName, string Job, string Engine);
+    private sealed record SessionMeta(string Sid, string CharName, string Job, string SubJob, string Engine);
+
+    private void LogDefSync(string message)
+    {
+        try
+        {
+            var path = Path.Combine(ProfileRootDir, "ui_def_sync.log");
+            File.AppendAllText(path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}\t{message}{Environment.NewLine}");
+        }
+        catch
+        {
+            // ignore logging failures
+        }
+    }
 
     public MainForm()
     {
         InitializeComponent();
         BuildParityEditor(panelEditorHost, flowSessionActions);
-        LoadGlobalUiSettings();
         _mirror = new MirrorDuplex(_cts.Token);
         _mirror.SnapshotOrErrorLineReceived += OnMirrorLine;
         _mirror.Start();
@@ -161,6 +177,43 @@ public partial class MainForm : Form
 
     private void Forward(string sid, Dictionary<string, object?> msg)
     {
+        if (msg.TryGetValue("op", out var opGuardObj)
+            && string.Equals(Convert.ToString(opGuardObj), "set", StringComparison.Ordinal)
+            && msg.TryGetValue("path", out var pathGuardObj)
+            && string.Equals(Convert.ToString(pathGuardObj), "def_heal_min_missing_hp", StringComparison.Ordinal))
+        {
+            if (!msg.TryGetValue("value", out var gateObj) || gateObj is null)
+            {
+                LogDefSync($"UI_DROP sid={sid} reason=nil_value path=def_heal_min_missing_hp");
+                return;
+            }
+
+            var gateText = Convert.ToString(gateObj) ?? string.Empty;
+            if (!int.TryParse(gateText, out var gateVal))
+            {
+                LogDefSync($"UI_DROP sid={sid} reason=bad_value path=def_heal_min_missing_hp raw={gateText}");
+                return;
+            }
+
+            gateVal = Math.Clamp(gateVal, 0, 5000);
+            msg["value"] = gateVal;
+        }
+
+        try
+        {
+            var opDbg = msg.TryGetValue("op", out var opObj) ? Convert.ToString(opObj) ?? "" : "";
+            if (string.Equals(opDbg, "set", StringComparison.Ordinal)
+                && msg.TryGetValue("path", out var pathObj)
+                && string.Equals(Convert.ToString(pathObj) ?? "", "def_heal_min_missing_hp", StringComparison.Ordinal))
+            {
+                var valueDbg = msg.TryGetValue("value", out var vObj) ? Convert.ToString(vObj) ?? "(null)" : "(missing)";
+                LogDefSync($"UI_SEND sid={sid} selected={_selectedSid ?? ""} value={valueDbg}");
+            }
+        }
+        catch
+        {
+            // ignore debug-only path
+        }
         _mirror?.EnqueueForward(sid, msg);
         if (!string.Equals(_selectedSid, sid, StringComparison.Ordinal))
         {
@@ -216,14 +269,16 @@ public partial class MainForm : Form
         var nextLabels = new Dictionary<string, string>(StringComparer.Ordinal);
         var nextMeta = new Dictionary<string, SessionMeta>(StringComparer.Ordinal);
         var nextRun = new Dictionary<string, bool>(StringComparer.Ordinal);
+        var newlyAddedSids = new List<string>();
         foreach (var p in sessionsEl.EnumerateObject())
         {
             nextSids.Add(p.Name);
             nextLabels[p.Name] = SessionLineLabel(p.Name, p.Value);
             var ch = SessionStateHelper.GetString(p.Value, "char", "");
             var job = SessionStateHelper.GetString(p.Value, "job", "");
+            var subJob = SessionStateHelper.GetString(p.Value, "sub_job", "");
             var eng = SessionStateHelper.GetString(p.Value, "engine", "UC");
-            nextMeta[p.Name] = new SessionMeta(p.Name, ch, job, eng);
+            nextMeta[p.Name] = new SessionMeta(p.Name, ch, job, subJob, eng);
             nextRun[p.Name] = SessionStateHelper.GetBool(p.Value, "Start_Engine", false);
         }
 
@@ -311,6 +366,8 @@ public partial class MainForm : Form
             {
                 _optionsHydratedJobBySid.Remove(kv.Key);
                 _optionsRequestInFlightBySid.Remove(kv.Key);
+                _workingProfileBySid.Remove(kv.Key);
+                newlyAddedSids.Add(kv.Key);
                 continue;
             }
 
@@ -318,6 +375,7 @@ public partial class MainForm : Form
             {
                 _optionsHydratedJobBySid.Remove(kv.Key);
                 _optionsRequestInFlightBySid.Remove(kv.Key);
+                _workingProfileBySid.Remove(kv.Key);
             }
         }
         foreach (var oldSid in prevMeta.Keys)
@@ -326,7 +384,7 @@ public partial class MainForm : Form
             {
                 _optionsHydratedJobBySid.Remove(oldSid);
                 _optionsRequestInFlightBySid.Remove(oldSid);
-                _globalAnchorAppliedSids.Remove(oldSid);
+                _workingProfileBySid.Remove(oldSid);
             }
         }
         _sessionRunningBySid.Clear();
@@ -334,14 +392,10 @@ public partial class MainForm : Form
         {
             _sessionRunningBySid[kv.Key] = kv.Value;
         }
-        RefreshGlobalAnchorMemberOptions();
-        foreach (var sid in nextMeta.Keys)
+        // Reapply after metadata is committed so profile path resolves as Character_Job.json, not sid fallback.
+        foreach (var sid in newlyAddedSids)
         {
-            if (!_globalAnchorAppliedSids.Contains(sid))
-            {
-                PushGlobalAnchorSettingsToSid(sid);
-                _globalAnchorAppliedSids.Add(sid);
-            }
+            ReapplyDefensiveMinMissingHpForSid(sid);
         }
         TryApplyQueuedEngineReapply();
 
@@ -351,8 +405,171 @@ public partial class MainForm : Form
         {
             ApplyOptionsFromSnapshotIfPresent(_selectedSid!, selectedState);
         }
+        EnforceAuthoritativeDefMinAgainstSnapshot(sessionsEl);
+        ReconcileDefensiveMinGateAgainstSnapshot(sessionsEl);
         // UI is authoritative after initial/manual session selection.
         // Do not force-refresh controls on every inbound snapshot.
+    }
+
+    private bool TryReadProfileDefMinForSid(string sid, out int gate)
+    {
+        gate = 0;
+        try
+        {
+            if (!TryLoadProfileForSid(sid, out var prof))
+            {
+                return false;
+            }
+            using (prof)
+            {
+                var root = prof.RootElement;
+                if (!root.TryGetProperty("def_heal_min_missing_hp", out var gateEl))
+                {
+                    LogDefSync($"PROFILE_READ sid={sid} result=no_key");
+                    return false;
+                }
+                var raw = gateEl.ValueKind == JsonValueKind.String ? (gateEl.GetString() ?? "") : gateEl.GetRawText();
+                if (!int.TryParse(raw, out gate))
+                {
+                    LogDefSync($"PROFILE_READ sid={sid} result=bad_parse raw={raw}");
+                    return false;
+                }
+                gate = Math.Clamp(gate, 0, 5000);
+                if (TryProfilePathForSid(sid, out var profPath))
+                {
+                    LogDefSync($"PROFILE_READ sid={sid} value={gate} path={profPath}");
+                }
+                return true;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void EnforceAuthoritativeDefMinAgainstSnapshot(JsonElement sessionsEl)
+    {
+        var now = DateTime.UtcNow;
+        foreach (var p in sessionsEl.EnumerateObject())
+        {
+            var sid = p.Name;
+            if (!TryReadProfileDefMinForSid(sid, out var desired))
+            {
+                continue;
+            }
+
+            if (_pendingDefMinGateBySid.TryGetValue(sid, out var pend) && (now - pend.lastSend).TotalMilliseconds < 900)
+            {
+                continue;
+            }
+
+            if (!p.Value.TryGetProperty("def_heal_min_missing_hp", out var curEl))
+            {
+                LogDefSync($"ENFORCE sid={sid} current=(missing) desired={desired}");
+                SendDefensiveMinGate(sid, desired);
+                continue;
+            }
+            var raw = curEl.ValueKind == JsonValueKind.String ? (curEl.GetString() ?? "") : curEl.GetRawText();
+            if (!int.TryParse(raw, out var current))
+            {
+                LogDefSync($"ENFORCE sid={sid} current=(bad:{raw}) desired={desired}");
+                SendDefensiveMinGate(sid, desired);
+                continue;
+            }
+            if (current != desired)
+            {
+                LogDefSync($"ENFORCE sid={sid} current={current} desired={desired}");
+                SendDefensiveMinGate(sid, desired);
+            }
+        }
+    }
+
+    private void ReapplyDefensiveMinMissingHpForSid(string sid)
+    {
+        try
+        {
+            JsonDocument prof;
+            if (!TryLoadProfileForSid(sid, out prof) && !TryLoadWorkingProfileForSid(sid, out prof))
+            {
+                return;
+            }
+            using (prof)
+            {
+                var root = prof.RootElement;
+                if (root.TryGetProperty("def_heal_min_missing_hp", out var gateEl))
+                {
+                    var val = gateEl.ValueKind == JsonValueKind.String
+                        ? (gateEl.GetString() ?? "")
+                        : gateEl.GetRawText();
+                    if (!int.TryParse(val, out var n))
+                    {
+                        return;
+                    }
+                    n = Math.Clamp(n, 0, 5000);
+                    SendDefensiveMinGate(sid, n);
+                }
+            }
+        }
+        catch
+        {
+            // best-effort reconnect reapply only
+        }
+    }
+
+    private void SendDefensiveMinGate(string sid, int n)
+    {
+        Forward(
+            sid,
+            new Dictionary<string, object?>
+            {
+                ["op"] = "set",
+                ["path"] = "def_heal_min_missing_hp",
+                ["value"] = n,
+            }
+        );
+        _pendingDefMinGateBySid[sid] = (n, DateTime.UtcNow, DateTime.UtcNow.AddSeconds(30));
+    }
+
+    private void ReconcileDefensiveMinGateAgainstSnapshot(JsonElement sessionsEl)
+    {
+        var now = DateTime.UtcNow;
+        foreach (var sid in _pendingDefMinGateBySid.Keys.ToList())
+        {
+            if (_pendingDefMinGateBySid[sid].expires <= now)
+            {
+                _pendingDefMinGateBySid.Remove(sid);
+            }
+        }
+
+        foreach (var p in sessionsEl.EnumerateObject())
+        {
+            var sid = p.Name;
+            if (!_pendingDefMinGateBySid.TryGetValue(sid, out var pend))
+            {
+                continue;
+            }
+
+            if (!p.Value.TryGetProperty("def_heal_min_missing_hp", out var curEl))
+            {
+                continue;
+            }
+            var currentRaw = curEl.ValueKind == JsonValueKind.String ? (curEl.GetString() ?? "") : curEl.GetRawText();
+            if (!int.TryParse(currentRaw, out var current))
+            {
+                continue;
+            }
+            if (current == pend.expected)
+            {
+                _pendingDefMinGateBySid.Remove(sid);
+                continue;
+            }
+
+            if ((now - pend.lastSend).TotalSeconds >= 1.0 && pend.expires > now)
+            {
+                SendDefensiveMinGate(sid, pend.expected);
+            }
+        }
     }
 
     private void TryApplyQueuedEngineReapply()

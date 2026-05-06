@@ -62,6 +62,158 @@ public partial class MainForm
         return outl;
     }
 
+    private sealed class PartyChoice
+    {
+        public string Name { get; }
+        public bool IsUc { get; }
+
+        public PartyChoice(string name, bool isUc)
+        {
+            Name = name ?? "";
+            IsUc = isUc;
+        }
+
+        public override string ToString()
+        {
+            if (string.IsNullOrWhiteSpace(Name))
+            {
+                return "";
+            }
+            return $"{Name} [{(IsUc ? "UC" : "party")}]";
+        }
+    }
+
+    private HashSet<string> GetUcNameSet()
+    {
+        return _sessionMetaBySid.Values
+            .Select(x => x.CharName ?? "")
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private string SelectedPartyName(ComboBox combo)
+    {
+        var raw = combo.SelectedItem switch
+        {
+            PartyChoice pc => pc.Name,
+            _ => combo.SelectedItem?.ToString() ?? combo.Text ?? "",
+        };
+        return NormalizePartyName(raw);
+    }
+
+    private static string NormalizePartyName(string? value)
+    {
+        var n = (value ?? "").Trim();
+        if (string.IsNullOrEmpty(n))
+        {
+            return "";
+        }
+        const string ucSuffix = " [UC]";
+        const string partySuffix = " [party]";
+        if (n.EndsWith(ucSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            return n[..^ucSuffix.Length].Trim();
+        }
+        if (n.EndsWith(partySuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            return n[..^partySuffix.Length].Trim();
+        }
+        return n;
+    }
+
+    private bool ComboContainsPartyName(ComboBox combo, string name)
+    {
+        name = NormalizePartyName(name);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return true;
+        }
+        foreach (var item in combo.Items.Cast<object>())
+        {
+            if (item is PartyChoice pc && string.Equals(pc.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            if (item is string s && string.Equals(s, name, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void BindPartyCombo(ComboBox combo, IReadOnlyList<string> rawNames, string selectedName)
+    {
+        selectedName = NormalizePartyName(selectedName);
+        var ucNames = GetUcNameSet();
+        var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var n in rawNames)
+        {
+            var t = (n ?? "").Trim();
+            if (string.IsNullOrEmpty(t) || !seen.Add(t))
+            {
+                continue;
+            }
+            list.Add(t);
+        }
+
+        combo.Items.Clear();
+        combo.Items.Add(new PartyChoice("", true));
+        foreach (var n in list)
+        {
+            combo.Items.Add(new PartyChoice(n, ucNames.Contains(n)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(selectedName) && !list.Any(x => string.Equals(x, selectedName, StringComparison.OrdinalIgnoreCase)))
+        {
+            combo.Items.Add(new PartyChoice(selectedName, ucNames.Contains(selectedName)));
+        }
+
+        var idx = 0;
+        for (var i = 0; i < combo.Items.Count; i++)
+        {
+            if (combo.Items[i] is PartyChoice pc && string.Equals(pc.Name, selectedName, StringComparison.OrdinalIgnoreCase))
+            {
+                idx = i;
+                break;
+            }
+        }
+        combo.SelectedIndex = idx;
+    }
+
+    private void UpdatePartyFollowModeWarning(string sid)
+    {
+        if (_partyFollowModeWarning is null)
+        {
+            return;
+        }
+        var selected = SelectedPartyName(_partyFollowCombo);
+        var partyFollowOn = _boolChecks.TryGetValue("party_follow", out var cb) && cb.Checked;
+        var isUc = GetUcNameSet().Contains(selected);
+        var show = partyFollowOn && !string.IsNullOrWhiteSpace(selected) && !isUc;
+        _partyFollowModeWarning.Visible = show;
+        _partyFollowModeWarning.Text = show
+            ? "Non-UC follow target selected; precision may be lower."
+            : "";
+    }
+
+    private string FormatPartyDisplayName(string name)
+    {
+        var n = (name ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(n))
+        {
+            return n;
+        }
+        var partyKnown = _partyOptions.Any(x => string.Equals(x, n, StringComparison.OrdinalIgnoreCase));
+        if (!partyKnown)
+        {
+            return n;
+        }
+        var isUc = GetUcNameSet().Contains(n);
+        return $"{n} [{(isUc ? "UC" : "party")}]";
+    }
+
     private void RefreshEditorFromSnapshot()
     {
         if (string.IsNullOrEmpty(_selectedSid))
@@ -69,8 +221,8 @@ public partial class MainForm
             ClearForm();
             return;
         }
-        if (!TryLoadWorkingProfileForSid(_selectedSid, out var profileDoc)
-            && !TryLoadProfileForSid(_selectedSid, out profileDoc))
+        if (!TryLoadProfileForSid(_selectedSid, out var profileDoc)
+            && !TryLoadWorkingProfileForSid(_selectedSid, out profileDoc))
         {
             ClearForm();
             return;
@@ -80,8 +232,6 @@ public partial class MainForm
         {
             FillFromSession(_selectedSid, profileDoc.RootElement);
         }
-
-        PushFullFormState(_selectedSid);
     }
 
     private void PrunePendingBoolEchoes(string sid, JsonElement s)
@@ -132,6 +282,8 @@ public partial class MainForm
 
             var idx = list.IndexOf(wsVal);
             _wsCombo.SelectedIndex = idx >= 0 ? idx : (list.Count > 0 ? 0 : -1);
+            var wsMode = SessionStateHelper.GetString(s, "ws_mode", "smart");
+            _wsModeCombo.SelectedItem = WsModeRuntimeToUi(wsMode);
             var amVal = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amVal) && !list.Contains(amVal))
             {
@@ -180,6 +332,7 @@ public partial class MainForm
             }
 
             _wsCombo.Items.Clear();
+            _wsModeCombo.SelectedItem = "Smart";
             _pullerCombo.Items.Clear();
             _fightLeaderCombo.Items.Clear();
             _partyFollowCombo.Items.Clear();
@@ -195,6 +348,7 @@ public partial class MainForm
             _defMed.Text = "55";
             _defOverwrite.Text = "150";
             _defBuffs.Text = "";
+            _defTargetedBuffs.Text = "";
             _pfFollowMinYalms.Text = "0.5";
             _pfFollowMaxYalms.Text = "50";
             _pfFightFollowMinYalms.Text = "3";
@@ -206,10 +360,8 @@ public partial class MainForm
             _spLookahead.Text = "0.25";
             _spAnchorInvalidTicks.Text = "5";
             _spEmergencyMargin.Text = "0.1";
-            _spSwitchPenalty.Text = "0.75";
             _spSwitchMargin.Text = "0.35";
             _spArrivalTolerance.Text = "0.2";
-            _spMaxAgents.Text = "6";
             _pathFileValue.Text = "";
             _pathRouteTypeValue.Text = "unknown";
             _pathDistanceValue.Text = "0.0";
@@ -236,6 +388,20 @@ public partial class MainForm
             _corRoll2Combo.Items.Clear();
             _corRoll1Combo.Enabled = false;
             _corRoll2Combo.Enabled = false;
+            _corCrookedRoll1.Checked = false;
+            _corCrookedRoll2.Checked = false;
+            _corCrookedRoll1.Enabled = false;
+            _corCrookedRoll2.Enabled = false;
+            _corElevens.Checked = false;
+            _corLuzafRangeOverride.Checked = false;
+            _corElevens.Enabled = false;
+            _corLuzafRangeOverride.Enabled = false;
+            _corRangePartyPanel.Controls.Clear();
+            _corRollOptions.Clear();
+            _corPartyOptions.Clear();
+            _partyOptions.Clear();
+            _partyFollowModeWarning.Visible = false;
+            _partyFollowModeWarning.Text = "";
             _ignoreName.Text = "";
             _targetIgnName.Text = "";
             _addPriName.Text = "";
@@ -291,14 +457,24 @@ public partial class MainForm
         var pullJaOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("path_pull_ja_options", out var pjo) ? pjo : default);
         var pullSpellOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("path_pull_spell_options", out var pso) ? pso : default);
         var tankEnmityActions = SessionStateHelper.SplitOptions(s.TryGetProperty("tank_enmity_actions", out var tea) ? tea : default);
-        var partnerOpts = new List<string> { "" };
-        partnerOpts.AddRange(SessionStateHelper.SplitOptions(s.TryGetProperty("partner_options", out var po) ? po : default));
-        var pullerOpts = new List<string> { "" };
-        pullerOpts.AddRange(SessionStateHelper.SplitOptions(s.TryGetProperty("puller_options", out var plo) ? plo : default));
-        if (pullerOpts.Count <= 1)
+        var partyOptsLive = SessionStateHelper.SplitOptions(s.TryGetProperty("party_options", out var pto) ? pto : default);
+        if (!SequenceEqualOrdinal(_partyOptions, partyOptsLive))
         {
-            pullerOpts.Clear();
-            pullerOpts.AddRange(partnerOpts);
+            _partyOptions.Clear();
+            _partyOptions.AddRange(partyOptsLive);
+        }
+        if (!SequenceEqualOrdinal(_corPartyOptions, partyOptsLive))
+        {
+            _corPartyOptions.Clear();
+            _corPartyOptions.AddRange(partyOptsLive);
+        }
+        var partnerOpts = _partyOptions.Count > 0
+            ? new List<string>(_partyOptions)
+            : SessionStateHelper.SplitOptions(s.TryGetProperty("partner_options", out var po) ? po : default);
+        var pullerOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("puller_options", out var plo) ? plo : default);
+        if (pullerOpts.Count == 0)
+        {
+            pullerOpts = new List<string>(partnerOpts);
         }
 
         _suppressEvents = true;
@@ -335,6 +511,8 @@ public partial class MainForm
 
             var wsIdx = wsDisplay.IndexOf(wsRaw);
             _wsCombo.SelectedIndex = wsIdx >= 0 ? wsIdx : (wsDisplay.Count > 0 ? 0 : -1);
+            var wsMode = SessionStateHelper.GetString(s, "ws_mode", "smart");
+            _wsModeCombo.SelectedItem = WsModeRuntimeToUi(wsMode);
             var amDisplay = new List<string>(wsOpts);
             var amRaw = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amRaw) && !amDisplay.Contains(amRaw))
@@ -352,53 +530,24 @@ public partial class MainForm
             _aftermathCombo.SelectedIndex = amIdx >= 0 ? amIdx : (amDisplay.Count > 0 ? 0 : -1);
             _aftermathCombo.Enabled = SessionStateHelper.GetBool(s, "aftermath_enabled", false);
 
-            _pullerCombo.Items.Clear();
-            foreach (var p in pullerOpts)
-            {
-                _pullerCombo.Items.Add(p);
-            }
-
             var pullOn = SessionStateHelper.GetBool(s, "puller", false);
-            var selPull = SessionStateHelper.GetString(s, "puller_selected");
-            if (pullOn && !pullerOpts.Contains(selPull))
-            {
-                selPull = "";
-            }
+            var selPull = NormalizePartyName(SessionStateHelper.GetString(s, "puller_selected"));
 
-            _pullerCombo.SelectedIndex = Math.Max(0, pullerOpts.IndexOf(selPull));
+            BindPartyCombo(_pullerCombo, pullerOpts, selPull);
             _pullerCombo.Enabled = pullOn;
 
-            _fightLeaderCombo.Items.Clear();
-            foreach (var p in partnerOpts)
-            {
-                _fightLeaderCombo.Items.Add(p);
-            }
-
             var flOn = SessionStateHelper.GetBool(s, "fight_leader", false);
-            var selFl = SessionStateHelper.GetString(s, "fight_leader_selected");
-            if (flOn && !partnerOpts.Contains(selFl))
-            {
-                selFl = "";
-            }
+            var selFl = NormalizePartyName(SessionStateHelper.GetString(s, "fight_leader_selected"));
 
-            _fightLeaderCombo.SelectedIndex = Math.Max(0, partnerOpts.IndexOf(selFl));
+            BindPartyCombo(_fightLeaderCombo, partnerOpts, selFl);
             _fightLeaderCombo.Enabled = flOn;
 
-            _partyFollowCombo.Items.Clear();
-            foreach (var p in partnerOpts)
-            {
-                _partyFollowCombo.Items.Add(p);
-            }
-
             var pfOn = SessionStateHelper.GetBool(s, "party_follow", false);
-            var selPf = SessionStateHelper.GetString(s, "party_follow_selected");
-            if (pfOn && !partnerOpts.Contains(selPf))
-            {
-                selPf = "";
-            }
+            var selPf = NormalizePartyName(SessionStateHelper.GetString(s, "party_follow_selected"));
 
-            _partyFollowCombo.SelectedIndex = Math.Max(0, partnerOpts.IndexOf(selPf));
+            BindPartyCombo(_partyFollowCombo, partnerOpts, selPf);
             _partyFollowCombo.Enabled = pfOn;
+            UpdatePartyFollowModeWarning(sid);
 
             _pfFollowMinYalms.Enabled = pfOn;
             _pfFollowMaxYalms.Enabled = pfOn;
@@ -417,8 +566,13 @@ public partial class MainForm
 
             _defCrit.Text = SessionStateHelper.GetString(s, "defensive_critical_hpp", "35");
             _defMed.Text = SessionStateHelper.GetString(s, "defensive_medium_hpp", "55");
+            _defHealMinTier.Text = SessionStateHelper.GetString(s, "def_heal_min_tier_cure", "3");
+            _defHealMaxTier.Text = SessionStateHelper.GetString(s, "def_heal_max_tier_cure", "4");
+            _defHealMinMissingHp.Text = SessionStateHelper.GetString(s, "def_heal_min_missing_hp", "250");
+            _defHealIgnoreTrusts.Checked = SessionStateHelper.GetBool(s, "def_heal_ignore_trusts", true);
             _defOverwrite.Text = SessionStateHelper.GetString(s, "defensive_overwrite_interval", "150");
             _defBuffs.Text = SessionStateHelper.GetString(s, "defensive_buffs");
+            _defTargetedBuffs.Text = SessionStateHelper.GetString(s, "defensive_targeted_buffs");
 
             _pathFileValue.Text = SessionStateHelper.GetString(s, "path_file_name");
             _pathRouteTypeValue.Text = SessionStateHelper.GetString(s, "path_route_type", "unknown");
@@ -494,10 +648,30 @@ public partial class MainForm
             }
             RefreshTankEnmityNameOptions((_tankEnmityTypeCombo.SelectedItem?.ToString() ?? "ja"), _tankEnmityNameCombo.Text ?? "");
             RenderPathHunterList(s);
-            ApplyCorRollFromSnapshot(_corRoll1Combo, SessionStateHelper.GetString(s, "cor_roll_1"));
-            ApplyCorRollFromSnapshot(_corRoll2Combo, SessionStateHelper.GetString(s, "cor_roll_2"));
-            _corRoll1Combo.Enabled = true;
-            _corRoll2Combo.Enabled = true;
+            var meta = _sessionMetaBySid.TryGetValue(sid, out var m) ? m : null;
+            var mainJob = (meta?.Job ?? SessionStateHelper.GetString(s, "job", "")).ToUpperInvariant();
+            var subJob = (meta?.SubJob ?? SessionStateHelper.GetString(s, "sub_job", "")).ToUpperInvariant();
+            var corVisible = string.Equals(mainJob, "COR", StringComparison.Ordinal) || string.Equals(subJob, "COR", StringComparison.Ordinal);
+            EnsureCorTabVisibility(corVisible);
+            if (corVisible)
+            {
+                ApplyCorRollFromSnapshot(_corRoll1Combo, SessionStateHelper.GetString(s, "cor_roll_1"));
+                ApplyCorRollFromSnapshot(_corRoll2Combo, SessionStateHelper.GetString(s, "cor_roll_2"));
+                var subCorOnly = !string.Equals(mainJob, "COR", StringComparison.Ordinal) && string.Equals(subJob, "COR", StringComparison.Ordinal);
+                _corRoll1Combo.Enabled = true;
+                _corRoll2Combo.Enabled = !subCorOnly;
+                var crookedSlot = SessionStateHelper.GetString(s, "cor_crooked_roll_slot", "0");
+                _corCrookedRoll1.Enabled = !subCorOnly;
+                _corCrookedRoll2.Enabled = !subCorOnly;
+                _corCrookedRoll1.Checked = !subCorOnly && crookedSlot == "1";
+                _corCrookedRoll2.Checked = !subCorOnly && crookedSlot == "2";
+                _corElevens.Enabled = true;
+                _corLuzafRangeOverride.Enabled = true;
+                _corElevens.Checked = SessionStateHelper.GetBool(s, "cor_elevens", false);
+                _corLuzafRangeOverride.Checked = SessionStateHelper.GetBool(s, "cor_luzaf_range_override", false);
+                var selectedNames = SessionStateHelper.SplitOptions(s.TryGetProperty("cor_roll_range_selected", out var crs) ? crs : default);
+                RenderCorRangePartyChecks(sid, selectedNames);
+            }
 
             foreach (var key in HubUiConstants.BoolKeys)
             {
@@ -531,7 +705,9 @@ public partial class MainForm
         var hasWs = s.TryGetProperty("weaponskill_options", out var wso) && wso.ValueKind == JsonValueKind.String;
         var hasPullJa = s.TryGetProperty("path_pull_ja_options", out var pjo) && pjo.ValueKind == JsonValueKind.String;
         var hasPullSpell = s.TryGetProperty("path_pull_spell_options", out var pso) && pso.ValueKind == JsonValueKind.String;
-        if (!hasAbility && !hasWs && !hasPullJa && !hasPullSpell)
+        var hasCorRolls = s.TryGetProperty("cor_roll_options", out var cro) && cro.ValueKind == JsonValueKind.String;
+        var hasPartyOpts = s.TryGetProperty("party_options", out var po) && po.ValueKind == JsonValueKind.String;
+        if (!hasAbility && !hasWs && !hasPullJa && !hasPullSpell && !hasCorRolls && !hasPartyOpts)
         {
             return;
         }
@@ -540,6 +716,8 @@ public partial class MainForm
         var wsOpts = SessionStateHelper.SplitOptions(hasWs ? wso : default);
         var pullJaOpts = SessionStateHelper.SplitOptions(hasPullJa ? pjo : default);
         var pullSpellOpts = SessionStateHelper.SplitOptions(hasPullSpell ? pso : default);
+        var corRollOpts = SessionStateHelper.SplitOptions(hasCorRolls ? cro : default);
+        var partyOpts = SessionStateHelper.SplitOptions(hasPartyOpts ? po : default);
         var changed = false;
 
         _suppressEvents = true;
@@ -607,6 +785,54 @@ public partial class MainForm
                 _pathPullSpellOptions.AddRange(pullSpellOpts);
                 changed = true;
             }
+            if (hasCorRolls && !SequenceEqualOrdinal(_corRollOptions, corRollOpts))
+            {
+                _corRollOptions.Clear();
+                _corRollOptions.AddRange(corRollOpts);
+                EnsureCorRollOptions(_corRoll1Combo);
+                EnsureCorRollOptions(_corRoll2Combo);
+                changed = true;
+            }
+            if (hasPartyOpts && !SequenceEqualOrdinal(_corPartyOptions, partyOpts))
+            {
+                _corPartyOptions.Clear();
+                _corPartyOptions.AddRange(partyOpts);
+                _partyOptions.Clear();
+                _partyOptions.AddRange(partyOpts);
+                var partnerOpts = _partyOptions.Count > 0
+                    ? new List<string>(_partyOptions)
+                    : SessionStateHelper.SplitOptions(s.TryGetProperty("partner_options", out var po2) ? po2 : default);
+                var pullerOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("puller_options", out var plo2) ? plo2 : default);
+                if (pullerOpts.Count == 0)
+                {
+                    pullerOpts = new List<string>(partnerOpts);
+                }
+                var snapPuller = NormalizePartyName(SessionStateHelper.GetString(s, "puller_selected"));
+                var snapFightLeader = NormalizePartyName(SessionStateHelper.GetString(s, "fight_leader_selected"));
+                var snapPartyFollow = NormalizePartyName(SessionStateHelper.GetString(s, "party_follow_selected"));
+                var keepPuller = SelectedPartyName(_pullerCombo);
+                var keepFightLeader = SelectedPartyName(_fightLeaderCombo);
+                var keepPartyFollow = SelectedPartyName(_partyFollowCombo);
+                if (string.IsNullOrWhiteSpace(snapPuller) && !string.IsNullOrWhiteSpace(keepPuller))
+                {
+                    snapPuller = keepPuller;
+                }
+                if (string.IsNullOrWhiteSpace(snapFightLeader) && !string.IsNullOrWhiteSpace(keepFightLeader))
+                {
+                    snapFightLeader = keepFightLeader;
+                }
+                if (string.IsNullOrWhiteSpace(snapPartyFollow) && !string.IsNullOrWhiteSpace(keepPartyFollow))
+                {
+                    snapPartyFollow = keepPartyFollow;
+                }
+                BindPartyCombo(_pullerCombo, pullerOpts, snapPuller);
+                BindPartyCombo(_fightLeaderCombo, partnerOpts, snapFightLeader);
+                BindPartyCombo(_partyFollowCombo, partnerOpts, snapPartyFollow);
+                UpdatePartyFollowModeWarning(sid);
+                var selectedNames = SessionStateHelper.SplitOptions(s.TryGetProperty("cor_roll_range_selected", out var crs2) ? crs2 : default);
+                RenderCorRangePartyChecks(sid, selectedNames);
+                changed = true;
+            }
             if (hasPullJa || hasPullSpell)
             {
                 var pullType = (_pathPullActionType.SelectedItem?.ToString() ?? "ja").ToLowerInvariant();
@@ -654,6 +880,7 @@ public partial class MainForm
         foreach (var key in new[]
                  {
                      "defensive_cure_enabled",
+                     "defensive_doom_water",
                      "defensive_na_enabled",
                      "defensive_buff_enabled",
                      "defensive_overwrite_enabled",
@@ -757,7 +984,7 @@ public partial class MainForm
         _ignoreList.Items.Clear();
         foreach (var (id, name) in _ignoreRows)
         {
-            _ignoreList.Items.Add($"{name} [{id}]");
+            _ignoreList.Items.Add($"{FormatPartyDisplayName(name)} [{id}]");
         }
 
         if (preserved is { } pid)
@@ -792,7 +1019,7 @@ public partial class MainForm
         _partnerList.Items.Clear();
         foreach (var (id, name) in _partnerRows)
         {
-            _partnerList.Items.Add($"{name} [{id}]");
+            _partnerList.Items.Add($"{FormatPartyDisplayName(name)} [{id}]");
         }
 
         if (preserved is { } pid)
@@ -911,7 +1138,8 @@ public partial class MainForm
         if (key == "puller")
         {
             _pullerCombo.Enabled = val;
-            if (val && _pullerCombo.SelectedItem is string ps && !string.IsNullOrEmpty(ps) && !_pullerCombo.Items.Cast<object>().Any(x => Equals(x.ToString(), ps)))
+            var ps = SelectedPartyName(_pullerCombo);
+            if (val && !string.IsNullOrEmpty(ps) && !ComboContainsPartyName(_pullerCombo, ps))
             {
                 _pullerCombo.SelectedIndex = 0;
                 OnPullerSelected();
@@ -921,7 +1149,8 @@ public partial class MainForm
         if (key == "fight_leader")
         {
             _fightLeaderCombo.Enabled = val;
-            if (val && _fightLeaderCombo.SelectedItem is string fs && !string.IsNullOrEmpty(fs) && !_fightLeaderCombo.Items.Cast<object>().Any(x => Equals(x.ToString(), fs)))
+            var fs = SelectedPartyName(_fightLeaderCombo);
+            if (val && !string.IsNullOrEmpty(fs) && !ComboContainsPartyName(_fightLeaderCombo, fs))
             {
                 _fightLeaderCombo.SelectedIndex = 0;
                 OnFightLeaderSelected();
@@ -935,11 +1164,15 @@ public partial class MainForm
             _pfFollowMaxYalms.Enabled = val;
             _pfFightFollowMinYalms.Enabled = val;
             _pfFightFollowHoldS.Enabled = val;
-            if (val && _partyFollowCombo.SelectedItem is string pfs && !string.IsNullOrEmpty(pfs) &&
-                !_partyFollowCombo.Items.Cast<object>().Any(x => Equals(x.ToString(), pfs)))
+            var pfs = SelectedPartyName(_partyFollowCombo);
+            if (val && !string.IsNullOrEmpty(pfs) && !ComboContainsPartyName(_partyFollowCombo, pfs))
             {
                 _partyFollowCombo.SelectedIndex = 0;
                 OnPartyFollowSelected();
+            }
+            if (!string.IsNullOrWhiteSpace(sid))
+            {
+                UpdatePartyFollowModeWarning(sid);
             }
         }
         else if (key == "aftermath_enabled")
@@ -965,6 +1198,37 @@ public partial class MainForm
         var eng = GetEngineForSid(sid);
         var val = (_wsCombo.Text ?? "").Trim();
         SendWsUpdate(sid, eng, val);
+    }
+
+    private static string WsModeUiToRuntime(string? ui)
+    {
+        return string.Equals(ui, "Primary Only (No SC)", StringComparison.Ordinal)
+            ? "primary_no_sc"
+            : "smart";
+    }
+
+    private static string WsModeRuntimeToUi(string? runtime)
+    {
+        return string.Equals(runtime, "primary_no_sc", StringComparison.OrdinalIgnoreCase)
+            ? "Primary Only (No SC)"
+            : "Smart";
+    }
+
+    private void OnWsModeSelected()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var mode = WsModeUiToRuntime(_wsModeCombo.SelectedItem?.ToString() ?? "Smart");
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "ws_mode", ["value"] = mode });
     }
 
     private void SendWsUpdate(string sid, string eng, string val)
@@ -1055,15 +1319,41 @@ public partial class MainForm
 
     private void EnsureCorRollOptions(ComboBox combo)
     {
-        if (combo.Items.Count > 0)
+        var src = _corRollOptions.Count > 0 ? _corRollOptions : HubUiConstants.CorRollOptions.ToList();
+        var next = new List<string> { "" };
+        next.AddRange(src);
+        var cur = combo.Items.Cast<object>().Select(x => x?.ToString() ?? "").ToList();
+        if (SequenceEqualOrdinal(cur, next))
+        {
+            return;
+        }
+        combo.Items.Clear();
+        foreach (var roll in next)
+        {
+            combo.Items.Add(roll);
+        }
+    }
+
+    private void EnsureCorTabVisibility(bool shouldShow)
+    {
+        if (_settingsTabs is null || _tabCor is null)
         {
             return;
         }
 
-        combo.Items.Add("");
-        foreach (var roll in HubUiConstants.CorRollOptions)
+        var hasCorTab = _settingsTabs.TabPages.Contains(_tabCor);
+        if (shouldShow && !hasCorTab)
         {
-            combo.Items.Add(roll);
+            _settingsTabs.TabPages.Add(_tabCor);
+        }
+        else if (!shouldShow && hasCorTab)
+        {
+            var wasSelected = ReferenceEquals(_settingsTabs.SelectedTab, _tabCor);
+            _settingsTabs.TabPages.Remove(_tabCor);
+            if (wasSelected && _settingsTabs.TabPages.Count > 0)
+            {
+                _settingsTabs.SelectedIndex = 0;
+            }
         }
     }
 
@@ -1108,6 +1398,128 @@ public partial class MainForm
         var path = slot == 1 ? "cor_roll_1" : "cor_roll_2";
         var val = combo.SelectedItem?.ToString() ?? "";
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = path, ["value"] = val });
+    }
+
+    private void OnCorCrookedChanged(int slot, bool enabled)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+        if (_sessionMetaBySid.TryGetValue(sid, out var meta))
+        {
+            var main = (meta.Job ?? "").ToUpperInvariant();
+            var sub = (meta.SubJob ?? "").ToUpperInvariant();
+            var subCorOnly = !string.Equals(main, "COR", StringComparison.Ordinal) && string.Equals(sub, "COR", StringComparison.Ordinal);
+            if (subCorOnly)
+            {
+                _suppressEvents = true;
+                try
+                {
+                    _corCrookedRoll1.Checked = false;
+                    _corCrookedRoll2.Checked = false;
+                }
+                finally
+                {
+                    _suppressEvents = false;
+                }
+                Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "cor_crooked_roll_slot", ["value"] = "0" });
+                return;
+            }
+        }
+        _suppressEvents = true;
+        try
+        {
+            if (slot == 1 && enabled)
+            {
+                _corCrookedRoll2.Checked = false;
+            }
+            else if (slot == 2 && enabled)
+            {
+                _corCrookedRoll1.Checked = false;
+            }
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+        var slotVal = _corCrookedRoll1.Checked ? 1 : (_corCrookedRoll2.Checked ? 2 : 0);
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "cor_crooked_roll_slot", ["value"] = slotVal.ToString(CultureInfo.InvariantCulture) });
+    }
+
+    private void OnCorFlagChanged(string key, bool value)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = key, ["value"] = value ? "on" : "off" });
+    }
+
+    private void RenderCorRangePartyChecks(string sid, IReadOnlyList<string> selectedNames)
+    {
+        var selectedSet = new HashSet<string>(selectedNames.Where(x => !string.IsNullOrWhiteSpace(x)), StringComparer.OrdinalIgnoreCase);
+        var me = _sessionMetaBySid.TryGetValue(sid, out var meta) ? (meta.CharName ?? "") : "";
+        var options = _corPartyOptions.Count > 0 ? _corPartyOptions : CurrentPartyNameOptions();
+        var ucNames = GetUcNameSet();
+        _corRangePartyPanel.SuspendLayout();
+        try
+        {
+            _corRangePartyPanel.Controls.Clear();
+            foreach (var name in options.Where(n => !string.IsNullOrWhiteSpace(n) && !string.Equals(n, me, StringComparison.OrdinalIgnoreCase)))
+            {
+                var cb = new CheckBox
+                {
+                    AutoSize = true,
+                    Text = $"{name} [{(ucNames.Contains(name) ? "UC" : "party")}]",
+                    Checked = selectedSet.Contains(name),
+                    Tag = name,
+                };
+                cb.CheckedChanged += (_, _) => OnCorRangePartySelectionChanged();
+                _corRangePartyPanel.Controls.Add(cb);
+            }
+        }
+        finally
+        {
+            _corRangePartyPanel.ResumeLayout();
+        }
+    }
+
+    private void OnCorRangePartySelectionChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+        var names = _corRangePartyPanel.Controls.OfType<CheckBox>()
+            .Where(c => c.Checked)
+            .Select(c => c.Tag?.ToString() ?? c.Text)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        Forward(
+            sid,
+            new Dictionary<string, object?>
+            {
+                ["op"] = "cor_roll_range_replace_names",
+                ["value"] = string.Join("|", names),
+            }
+        );
     }
 
     private void OnPathPartyGateChanged()
@@ -1552,7 +1964,7 @@ public partial class MainForm
             return;
         }
 
-        var name = _pullerCombo.SelectedItem?.ToString() ?? "";
+        var name = SelectedPartyName(_pullerCombo);
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set_partner", ["slot"] = "puller", ["name"] = name });
     }
 
@@ -1569,7 +1981,7 @@ public partial class MainForm
             return;
         }
 
-        var name = _fightLeaderCombo.SelectedItem?.ToString() ?? "";
+        var name = SelectedPartyName(_fightLeaderCombo);
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set_fight_leader", ["name"] = name });
     }
 
@@ -1586,8 +1998,9 @@ public partial class MainForm
             return;
         }
 
-        var name = _partyFollowCombo.SelectedItem?.ToString() ?? "";
+        var name = SelectedPartyName(_partyFollowCombo);
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set_party_follow", ["name"] = name });
+        UpdatePartyFollowModeWarning(sid);
     }
 
     private void OnPartyFollowDistanceChanged()
@@ -1666,109 +2079,11 @@ public partial class MainForm
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_band_max", ["value"] = N(_spBandMax, 0.4) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_model_size_floor", ["value"] = N(_spModelSizeFloor, 0.9) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_lookahead_s", ["value"] = N(_spLookahead, 0.25) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_anchor_invalid_ticks", ["value"] = I(_spAnchorInvalidTicks, 5) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_emergency_margin", ["value"] = N(_spEmergencyMargin, 0.1) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_slot_switch_penalty", ["value"] = N(_spSwitchPenalty, 0.75) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_slot_switch_margin", ["value"] = N(_spSwitchMargin, 0.35) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_slot_arrival_tolerance", ["value"] = N(_spArrivalTolerance, 0.2) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_max_agents", ["value"] = I(_spMaxAgents, 6) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_repel_hold_ticks", ["value"] = I(_spAnchorInvalidTicks, 5) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_overlap_deadband", ["value"] = N(_spEmergencyMargin, 0.1) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_repel_weight", ["value"] = N(_spSwitchMargin, 0.35) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "spacing_band_deadband", ["value"] = N(_spArrivalTolerance, 0.2) });
         RememberPendingSpacingFromUi(sid);
-    }
-
-    private void OnGlobalSpacingAnchorChanged()
-    {
-        if (_suppressEvents)
-        {
-            return;
-        }
-
-        SaveGlobalUiSettings();
-        PushGlobalAnchorSettingsToAllSessions();
-    }
-
-    private void RefreshGlobalAnchorMemberOptions()
-    {
-        var current = _spGlobalAnchorMember.SelectedItem?.ToString() ?? "";
-        var names = CurrentPartyNameOptions();
-
-        _suppressEvents = true;
-        try
-        {
-            _spGlobalAnchorMember.Items.Clear();
-            _spGlobalAnchorMember.Items.Add("");
-            foreach (var name in names)
-            {
-                _spGlobalAnchorMember.Items.Add(name);
-            }
-            if (!string.IsNullOrWhiteSpace(current))
-            {
-                var exists = false;
-                for (var i = 0; i < _spGlobalAnchorMember.Items.Count; i++)
-                {
-                    if (string.Equals(_spGlobalAnchorMember.Items[i]?.ToString() ?? "", current, StringComparison.Ordinal))
-                    {
-                        exists = true;
-                        break;
-                    }
-                }
-                if (!exists)
-                {
-                    _spGlobalAnchorMember.Items.Add(current);
-                }
-            }
-
-            var idx = 0;
-            for (var i = 0; i < _spGlobalAnchorMember.Items.Count; i++)
-            {
-                if (string.Equals(_spGlobalAnchorMember.Items[i]?.ToString() ?? "", current, StringComparison.Ordinal))
-                {
-                    idx = i;
-                    break;
-                }
-            }
-            _spGlobalAnchorMember.SelectedIndex = idx;
-        }
-        finally
-        {
-            _suppressEvents = false;
-        }
-    }
-
-    private void PushGlobalAnchorSettingsToAllSessions()
-    {
-        foreach (var sid in _listSids)
-        {
-            PushGlobalAnchorSettingsToSid(sid);
-        }
-    }
-
-    private void PushGlobalAnchorSettingsToSid(string sid)
-    {
-        if (string.IsNullOrWhiteSpace(sid))
-        {
-            return;
-        }
-
-        var enabled = _spGlobalAnchorEnabled.Checked;
-        var name = (_spGlobalAnchorMember.SelectedItem?.ToString() ?? "").Trim();
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "set",
-                ["path"] = "spacing_global_anchor_enabled",
-                ["value"] = enabled ? "on" : "off",
-            }
-        );
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "set",
-                ["path"] = "spacing_global_anchor_name",
-                ["value"] = name,
-            }
-        );
     }
 
     private void RememberPendingSpacingFromUi(string sid)
@@ -1779,12 +2094,10 @@ public partial class MainForm
             (_spBandMax.Text ?? "").Trim(),
             (_spModelSizeFloor.Text ?? "").Trim(),
             (_spLookahead.Text ?? "").Trim(),
-            (_spAnchorInvalidTicks.Text ?? "").Trim(),
-            (_spEmergencyMargin.Text ?? "").Trim(),
-            (_spSwitchPenalty.Text ?? "").Trim(),
-            (_spSwitchMargin.Text ?? "").Trim(),
-            (_spArrivalTolerance.Text ?? "").Trim(),
-            (_spMaxAgents.Text ?? "").Trim(),
+            (_spAnchorInvalidTicks.Text ?? "").Trim(), // repel hold ticks
+            (_spEmergencyMargin.Text ?? "").Trim(), // overlap deadband
+            (_spSwitchMargin.Text ?? "").Trim(), // repel weight
+            (_spArrivalTolerance.Text ?? "").Trim(), // band deadband
             DateTime.UtcNow
         );
     }
@@ -1958,35 +2271,29 @@ public partial class MainForm
         string srvBandMax,
         string srvModelSizeFloor,
         string srvLookahead,
-        string srvAnchorInvalidTicks,
-        string srvEmergencyMargin,
-        string srvSwitchPenalty,
-        string srvSwitchMargin,
-        string srvArrivalTolerance,
-        string srvMaxAgents,
+        string srvRepelHoldTicks,
+        string srvOverlapDeadband,
+        string srvRepelWeight,
+        string srvBandDeadband,
         bool pendUsePrediction,
         string pendBandMin,
         string pendBandMax,
         string pendModelSizeFloor,
         string pendLookahead,
-        string pendAnchorInvalidTicks,
-        string pendEmergencyMargin,
-        string pendSwitchPenalty,
-        string pendSwitchMargin,
-        string pendArrivalTolerance,
-        string pendMaxAgents)
+        string pendRepelHoldTicks,
+        string pendOverlapDeadband,
+        string pendRepelWeight,
+        string pendBandDeadband)
     {
         return srvUsePrediction == pendUsePrediction &&
                EquivalentNumericText(srvBandMin, pendBandMin) &&
                EquivalentNumericText(srvBandMax, pendBandMax) &&
                EquivalentNumericText(srvModelSizeFloor, pendModelSizeFloor) &&
                EquivalentNumericText(srvLookahead, pendLookahead) &&
-               EquivalentNumericText(srvAnchorInvalidTicks, pendAnchorInvalidTicks) &&
-               EquivalentNumericText(srvEmergencyMargin, pendEmergencyMargin) &&
-               EquivalentNumericText(srvSwitchPenalty, pendSwitchPenalty) &&
-               EquivalentNumericText(srvSwitchMargin, pendSwitchMargin) &&
-               EquivalentNumericText(srvArrivalTolerance, pendArrivalTolerance) &&
-               EquivalentNumericText(srvMaxAgents, pendMaxAgents);
+               EquivalentNumericText(srvRepelHoldTicks, pendRepelHoldTicks) &&
+               EquivalentNumericText(srvOverlapDeadband, pendOverlapDeadband) &&
+               EquivalentNumericText(srvRepelWeight, pendRepelWeight) &&
+               EquivalentNumericText(srvBandDeadband, pendBandDeadband);
     }
 
     private static void ApplyNumericTextIfChanged(TextBox tb, string incoming)
@@ -2006,16 +2313,14 @@ public partial class MainForm
         var bandMaxSrv = SessionStateHelper.GetString(s, "spacing_band_max", "0.4");
         var modelSizeFloorSrv = SessionStateHelper.GetString(s, "spacing_model_size_floor", "0.9");
         var lookaheadSrv = SessionStateHelper.GetString(s, "spacing_lookahead_s", "0.25");
-        var anchorInvalidTicksSrv = SessionStateHelper.GetString(s, "spacing_anchor_invalid_ticks", "5");
-        var emergencyMarginSrv = SessionStateHelper.GetString(s, "spacing_emergency_margin", "0.1");
-        var switchPenaltySrv = SessionStateHelper.GetString(s, "spacing_slot_switch_penalty", "0.75");
-        var switchMarginSrv = SessionStateHelper.GetString(s, "spacing_slot_switch_margin", "0.35");
-        var arrivalToleranceSrv = SessionStateHelper.GetString(s, "spacing_slot_arrival_tolerance", "0.2");
-        var maxAgentsSrv = SessionStateHelper.GetString(s, "spacing_max_agents", "6");
+        var repelHoldTicksSrv = SessionStateHelper.GetString(s, "spacing_repel_hold_ticks", "5");
+        var overlapDeadbandSrv = SessionStateHelper.GetString(s, "spacing_overlap_deadband", "0.1");
+        var repelWeightSrv = SessionStateHelper.GetString(s, "spacing_repel_weight", "0.35");
+        var bandDeadbandSrv = SessionStateHelper.GetString(s, "spacing_band_deadband", "0.2");
 
         if (_spUsePrediction.Focused || _spBandMin.Focused || _spBandMax.Focused || _spModelSizeFloor.Focused || _spLookahead.Focused ||
-            _spAnchorInvalidTicks.Focused || _spEmergencyMargin.Focused || _spSwitchPenalty.Focused ||
-            _spSwitchMargin.Focused || _spArrivalTolerance.Focused || _spMaxAgents.Focused)
+            _spAnchorInvalidTicks.Focused || _spEmergencyMargin.Focused ||
+            _spSwitchMargin.Focused || _spArrivalTolerance.Focused)
         {
             return;
         }
@@ -2024,10 +2329,10 @@ public partial class MainForm
         {
             var ageSec = (DateTime.UtcNow - ps.ts).TotalSeconds;
             var echoed = SpacingEchoMatches(
-                usePredictionSrv, bandMinSrv, bandMaxSrv, modelSizeFloorSrv, lookaheadSrv, anchorInvalidTicksSrv, emergencyMarginSrv,
-                switchPenaltySrv, switchMarginSrv, arrivalToleranceSrv, maxAgentsSrv,
-                ps.usePrediction, ps.bandMin, ps.bandMax, ps.modelSizeFloor, ps.lookahead, ps.anchorInvalidTicks, ps.emergencyMargin,
-                ps.switchPenalty, ps.switchMargin, ps.arrivalTolerance, ps.maxAgents
+                usePredictionSrv, bandMinSrv, bandMaxSrv, modelSizeFloorSrv, lookaheadSrv, repelHoldTicksSrv, overlapDeadbandSrv,
+                repelWeightSrv, bandDeadbandSrv,
+                ps.usePrediction, ps.bandMin, ps.bandMax, ps.modelSizeFloor, ps.lookahead, ps.repelHoldTicks, ps.overlapDeadband,
+                ps.repelWeight, ps.bandDeadband
             );
             if (echoed)
             {
@@ -2052,12 +2357,10 @@ public partial class MainForm
         ApplyNumericTextIfChanged(_spBandMax, bandMaxSrv);
         ApplyNumericTextIfChanged(_spModelSizeFloor, modelSizeFloorSrv);
         ApplyNumericTextIfChanged(_spLookahead, lookaheadSrv);
-        ApplyNumericTextIfChanged(_spAnchorInvalidTicks, anchorInvalidTicksSrv);
-        ApplyNumericTextIfChanged(_spEmergencyMargin, emergencyMarginSrv);
-        ApplyNumericTextIfChanged(_spSwitchPenalty, switchPenaltySrv);
-        ApplyNumericTextIfChanged(_spSwitchMargin, switchMarginSrv);
-        ApplyNumericTextIfChanged(_spArrivalTolerance, arrivalToleranceSrv);
-        ApplyNumericTextIfChanged(_spMaxAgents, maxAgentsSrv);
+        ApplyNumericTextIfChanged(_spAnchorInvalidTicks, repelHoldTicksSrv);
+        ApplyNumericTextIfChanged(_spEmergencyMargin, overlapDeadbandSrv);
+        ApplyNumericTextIfChanged(_spSwitchMargin, repelWeightSrv);
+        ApplyNumericTextIfChanged(_spArrivalTolerance, bandDeadbandSrv);
     }
 
     private void OnDefProviderSelected()
@@ -2084,13 +2387,17 @@ public partial class MainForm
 
     private void OnDefThresholdChanged()
     {
+        if (_suppressEvents)
+        {
+            return;
+        }
         var sid = RequireSelectedSid();
         if (sid is null)
         {
             return;
         }
 
-        int crit = 35, med = 55, overwrite = 150;
+        int crit = 35, med = 55, overwrite = 150, healMinTier = 3, healMaxTier = 4, healMinMissingHp = 250;
         try
         {
             crit = (int)Math.Clamp(int.Parse(_defCrit.Text.Trim()), 1, 99);
@@ -2117,6 +2424,35 @@ public partial class MainForm
         {
             /* keep default */
         }
+        try
+        {
+            healMinTier = (int)Math.Clamp(int.Parse((_defHealMinTier.Text ?? "").Trim()), 1, 6);
+        }
+        catch
+        {
+            /* keep default */
+        }
+        try
+        {
+            healMaxTier = (int)Math.Clamp(int.Parse((_defHealMaxTier.Text ?? "").Trim()), 1, 6);
+        }
+        catch
+        {
+            /* keep default */
+        }
+        if (healMaxTier < healMinTier)
+        {
+            healMaxTier = healMinTier;
+        }
+        try
+        {
+            healMinMissingHp = (int)Math.Clamp(int.Parse((_defHealMinMissingHp.Text ?? "").Trim()), 0, 5000);
+        }
+        catch
+        {
+            /* keep default */
+        }
+        var ignoreTrusts = _defHealIgnoreTrusts.Checked;
 
         if (med < crit)
         {
@@ -2128,14 +2464,28 @@ public partial class MainForm
             "|",
             buffsRaw.Replace(',', '|').Split('|').Select(x => x.Trim()).Where(x => x.Length > 0)
         );
+        var targetedRaw = _defTargetedBuffs.Text ?? "";
+        var targetedClean = string.Join(
+            "|",
+            targetedRaw.Split('|').Select(x => x.Trim()).Where(x => x.Length > 0 && x.Contains(':'))
+        );
         _defCrit.Text = crit.ToString();
         _defMed.Text = med.ToString();
+        _defHealMinTier.Text = healMinTier.ToString();
+        _defHealMaxTier.Text = healMaxTier.ToString();
+        _defHealMinMissingHp.Text = healMinMissingHp.ToString();
         _defOverwrite.Text = overwrite.ToString();
         _defBuffs.Text = buffsClean;
+        _defTargetedBuffs.Text = targetedClean;
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_critical_hpp", ["value"] = crit });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_medium_hpp", ["value"] = med });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_min_tier_cure", ["value"] = healMinTier });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_max_tier_cure", ["value"] = healMaxTier });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_min_missing_hp", ["value"] = healMinMissingHp });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_ignore_trusts", ["value"] = ignoreTrusts ? "on" : "off" });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_overwrite_interval", ["value"] = overwrite });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_buffs", ["value"] = buffsClean });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_targeted_buffs", ["value"] = targetedClean });
     }
 
     private void SendAbilitiesUpdate()
@@ -2692,6 +3042,8 @@ public partial class MainForm
         var eng = GetEngineForSid(sid);
         var wsVal = (_wsCombo.Text ?? "").Trim();
         SendWsUpdate(sid, eng, wsVal);
+        var wsMode = WsModeUiToRuntime(_wsModeCombo.SelectedItem?.ToString() ?? "Smart");
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "ws_mode", ["value"] = wsMode });
         SendAbilitiesUpdate();
         Forward(sid, new Dictionary<string, object?> { ["op"] = "ignore_replace_names", ["value"] = string.Join("|", _ignoreRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });
@@ -2722,15 +3074,84 @@ public partial class MainForm
 
         var prov = (_defProviderCombo.SelectedItem as string) ?? "internal";
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_provider", ["value"] = prov });
-        OnDefThresholdChanged();
-        var pull = _pullerCombo.SelectedItem?.ToString() ?? "";
+        PushDefensiveThresholdsForSid(sid);
+        var pull = SelectedPartyName(_pullerCombo);
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set_partner", ["slot"] = "puller", ["name"] = pull });
-        var fl = _fightLeaderCombo.SelectedItem?.ToString() ?? "";
+        var fl = SelectedPartyName(_fightLeaderCombo);
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set_fight_leader", ["name"] = fl });
-        var pf = _partyFollowCombo.SelectedItem?.ToString() ?? "";
+        var pf = SelectedPartyName(_partyFollowCombo);
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set_party_follow", ["name"] = pf });
         PushPartyFollowDistances(sid);
-        PushGlobalAnchorSettingsToSid(sid);
+
+        // COR maintenance settings (must be explicitly pushed on full state reapply).
+        var corRoll1 = _corRoll1Combo.SelectedItem?.ToString() ?? "";
+        var corRoll2 = _corRoll2Combo.SelectedItem?.ToString() ?? "";
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "cor_roll_1", ["value"] = corRoll1 });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "cor_roll_2", ["value"] = corRoll2 });
+        var corSlot = _corCrookedRoll1.Checked ? 1 : (_corCrookedRoll2.Checked ? 2 : 0);
+        if (_sessionMetaBySid.TryGetValue(sid, out var meta))
+        {
+            var main = (meta.Job ?? "").ToUpperInvariant();
+            var sub = (meta.SubJob ?? "").ToUpperInvariant();
+            var subCorOnly = !string.Equals(main, "COR", StringComparison.Ordinal) && string.Equals(sub, "COR", StringComparison.Ordinal);
+            if (subCorOnly)
+            {
+                corSlot = 0;
+            }
+        }
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "cor_crooked_roll_slot", ["value"] = corSlot.ToString(CultureInfo.InvariantCulture) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "cor_elevens", ["value"] = _corElevens.Checked ? "on" : "off" });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "cor_luzaf_range_override", ["value"] = _corLuzafRangeOverride.Checked ? "on" : "off" });
+        var corRangeNames = _corRangePartyPanel.Controls.OfType<CheckBox>()
+            .Where(c => c.Checked)
+            .Select(c => c.Tag?.ToString() ?? c.Text)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "cor_roll_range_replace_names", ["value"] = string.Join("|", corRangeNames) });
+
         UpdateBooleanCardVisuals();
+    }
+
+    private void PushDefensiveThresholdsForSid(string sid)
+    {
+        int crit = 35, med = 55, overwrite = 150, healMinTier = 3, healMaxTier = 4, healMinMissingHp = 250;
+        try { crit = (int)Math.Clamp(int.Parse((_defCrit.Text ?? "").Trim()), 1, 99); } catch { }
+        try { med = (int)Math.Clamp(int.Parse((_defMed.Text ?? "").Trim()), 1, 99); } catch { }
+        try { overwrite = (int)Math.Clamp(int.Parse((_defOverwrite.Text ?? "").Trim()), 10, 1800); } catch { }
+        try { healMinTier = (int)Math.Clamp(int.Parse((_defHealMinTier.Text ?? "").Trim()), 1, 6); } catch { }
+        try { healMaxTier = (int)Math.Clamp(int.Parse((_defHealMaxTier.Text ?? "").Trim()), 1, 6); } catch { }
+        if (healMaxTier < healMinTier) healMaxTier = healMinTier;
+        try { healMinMissingHp = (int)Math.Clamp(int.Parse((_defHealMinMissingHp.Text ?? "").Trim()), 0, 5000); } catch { }
+        if (med < crit) med = crit;
+        var ignoreTrusts = _defHealIgnoreTrusts.Checked;
+        var buffsRaw = _defBuffs.Text ?? "";
+        var buffsClean = string.Join(
+            "|",
+            buffsRaw.Replace(',', '|').Split('|').Select(x => x.Trim()).Where(x => x.Length > 0)
+        );
+        var targetedRaw = _defTargetedBuffs.Text ?? "";
+        var targetedClean = string.Join(
+            "|",
+            targetedRaw.Split('|').Select(x => x.Trim()).Where(x => x.Length > 0 && x.Contains(':'))
+        );
+
+        _defCrit.Text = crit.ToString();
+        _defMed.Text = med.ToString();
+        _defHealMinTier.Text = healMinTier.ToString();
+        _defHealMaxTier.Text = healMaxTier.ToString();
+        _defHealMinMissingHp.Text = healMinMissingHp.ToString();
+        _defOverwrite.Text = overwrite.ToString();
+        _defBuffs.Text = buffsClean;
+        _defTargetedBuffs.Text = targetedClean;
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_critical_hpp", ["value"] = crit });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_medium_hpp", ["value"] = med });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_min_tier_cure", ["value"] = healMinTier });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_max_tier_cure", ["value"] = healMaxTier });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_min_missing_hp", ["value"] = healMinMissingHp });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_ignore_trusts", ["value"] = ignoreTrusts ? "on" : "off" });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_overwrite_interval", ["value"] = overwrite });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_buffs", ["value"] = buffsClean });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_targeted_buffs", ["value"] = targetedClean });
     }
 }

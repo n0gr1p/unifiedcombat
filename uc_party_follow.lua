@@ -21,6 +21,7 @@ local last_zone = os.clock()
 local ff_following = nil -- FastFollow-parity: lowercase leader name when in follower mode
 local ff_target = nil    -- FastFollow-parity: { zone, x, y } from update stream for ff_following
 local last_seen_zone_change_at = 0
+local last_follow_suppressed = false
 local dist_sq
 local recent_local_zone_change
 local recent_local_request
@@ -580,7 +581,11 @@ local function follow_dist_sq_bounds(s)
 	local mn = tonumber(s and s.party_follow_min) or 0.5
 	local mx = tonumber(s and s.party_follow_max) or 50
 	local ff_until = tonumber(rawget(_G, 'UC_FIGHT_FOLLOW_ACTIVE_UNTIL')) or 0
-	if os.clock() < ff_until then
+	local allow_fight_follow = false
+	if type(rawget(_G, 'UC_IsCombatParticipant')) == 'function' then
+		allow_fight_follow = _G.UC_IsCombatParticipant(s) == true
+	end
+	if allow_fight_follow and os.clock() < ff_until then
 		local fight_min = tonumber(s and s.fight_follow_min) or mn
 		if fight_min >= 0.01 and fight_min <= 99 then
 			mn = fight_min
@@ -608,39 +613,16 @@ local function follow_dist_sq_bounds(s)
 end
 
 local function combat_engine_suppresses_follow()
-	if not Start_Engine then
-		return false
+	local now = os.clock()
+	local owner = tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or 'none')
+	local lock_until = tonumber(rawget(_G, 'UC_MOVEMENT_LOCK_UNTIL')) or 0
+	if owner ~= 'none' and owner ~= 'follow' and now < lock_until then
+		return true
 	end
+	-- Hard suppressors (explicit cast/item wait states) remain valid even if movement
+	-- ownership lock was not refreshed this exact frame.
 	if rawget(_G, 'UC_PULL_SPELL_WAITING') == true then
 		return true
-	end
-	-- Exception: if combat-close approach is currently gated by puller policy, allow party-follow
-	-- to continue moving the character so it does not orphan or keep stale run vectors.
-	local puller_block_until = tonumber(rawget(_G, 'UC_PULLER_APPROACH_BLOCK_UNTIL')) or 0
-	if os.clock() < puller_block_until then
-		return false
-	end
-	local p = windower.ffxi.get_player()
-	if not p then
-		return true
-	end
-	if p.status == 1 then
-		return true
-	end
-	-- Core sets this while a valid combat target exists (including pre-engage windows).
-	-- Honor it so party-follow never overrides approach movement.
-	local ci_until = tonumber(rawget(_G, 'UC_COMBAT_INTENT_UNTIL')) or 0
-	if os.clock() < ci_until then
-		return true
-	end
-	-- Additional guard: if autotarget is active and we currently have a living monster
-	-- selected, suppress follow even before status flips to Engaged.
-	local s = rawget(_G, 'UC_SETTINGS')
-	if s and s.autotarget then
-		local t = windower.ffxi.get_mob_by_target('t')
-		if t and t.id and t.id ~= 0 and t.valid_target and t.spawn_type == 16 and (t.hpp or 0) > 0 then
-			return true
-		end
 	end
 	return false
 end
@@ -712,11 +694,28 @@ function M.prerender()
 	refresh_ff_following_from_settings()
 	local s = _G.UC_SETTINGS
 	if not s or not s.party_follow or (s.party_follow_id or 0) == 0 then
+		_G.UC_MOVEMENT_OWNER = 'none'
+		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock()
+		last_follow_suppressed = false
 		return
 	end
-	if combat_engine_suppresses_follow() then
+	if type(rawget(_G, 'UC_IsFollowParticipant')) == 'function' and not _G.UC_IsFollowParticipant(s) then
+		_G.UC_MOVEMENT_OWNER = 'none'
+		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock()
+		last_follow_suppressed = false
 		return
 	end
+	local suppressed = combat_engine_suppresses_follow()
+	if suppressed then
+		-- Transition hard-stop: prevent stale run vector drift when follow yields to
+		-- combat-owned movement.
+		if not last_follow_suppressed then
+			windower.ffxi.run(false)
+		end
+		last_follow_suppressed = true
+		return
+	end
+	last_follow_suppressed = false
 	if zone_suspend_active() then
 		return
 	end
@@ -738,6 +737,8 @@ function M.prerender()
 	local lx, ly = resolve_leader_xy(s, lid, lname, zone_self)
 	if not lx or not ly then
 		windower.ffxi.run(false)
+		_G.UC_MOVEMENT_OWNER = 'follow'
+		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock() + 0.20
 		return
 	end
 	local ok, leader_mob = pcall(function()
@@ -745,6 +746,8 @@ function M.prerender()
 	end)
 	if ok and leader_mob and leader_mob.id and leader_mob.id ~= 0 and leader_mob.hpp ~= nil and leader_mob.hpp <= 0 then
 		windower.ffxi.run(false)
+		_G.UC_MOVEMENT_OWNER = 'follow'
+		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock() + 0.20
 		return
 	end
 	local min_dist, max_dist = follow_dist_sq_bounds(s)
@@ -755,10 +758,16 @@ function M.prerender()
 			len = 1
 		end
 		windower.ffxi.run((lx - self_mob.x) / len, (ly - self_mob.y) / len)
+		_G.UC_MOVEMENT_OWNER = 'follow'
+		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock() + 0.25
 	elseif d2 <= min_dist then
 		windower.ffxi.run(false)
+		_G.UC_MOVEMENT_OWNER = 'follow'
+		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock() + 0.20
 	else
 		windower.ffxi.run(false)
+		_G.UC_MOVEMENT_OWNER = 'follow'
+		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock() + 0.20
 	end
 end
 
