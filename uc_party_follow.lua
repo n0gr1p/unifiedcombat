@@ -6,6 +6,14 @@
 
 local M = {}
 local packets = require('packets')
+local socket_ok, socket_mod = pcall(require, 'socket')
+local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime or nil
+
+local function now_s()
+	-- C7 unified timing source for follow/movement gating (no os.clock fallback).
+	return socket_gettime()
+end
+
 local REQUEST_ZONE = 0x05E
 local zone_min_linear = 5
 local zone_min_dist_sq = zone_min_linear * zone_min_linear
@@ -13,11 +21,11 @@ local zone_suppress = 3.0
 local local_zone_change_block_s = 5.0
 local zone_post_snapshot_delay_s = 2.5
 
---- [nameLower] = { x, y, zone, t = os.clock() }
+--- [nameLower] = { x, y, zone, t = now_s() }
 local ipc_pos = {}
 local last_ipc_broadcast = 0
 local ipc_broadcast_interval = 0.05
-local last_zone = os.clock()
+local last_zone = now_s()
 local ff_following = nil -- FastFollow-parity: lowercase leader name when in follower mode
 local ff_target = nil    -- FastFollow-parity: { zone, x, y } from update stream for ff_following
 local last_seen_zone_change_at = 0
@@ -31,7 +39,7 @@ local last_noisy_log_at = 0
 
 local function pf_timestamp()
 	local base = os.date('%H:%M:%S')
-	local ms = math.floor((os.clock() % 1) * 1000)
+	local ms = math.floor((now_s() % 1) * 1000)
 	return ('%s.%03d'):format(base, ms)
 end
 
@@ -98,7 +106,7 @@ local function file_log(text)
 		if not f then
 			return
 		end
-		f:write(pf_timestamp(), '\t', text:gsub('\r?\n', ' '), '\n')
+		f:write(pf_timestamp(), '	', text:gsub('\r?\n', ' '), '\n')
 		f:close()
 	end)
 end
@@ -135,7 +143,7 @@ local function state_snapshot(extra)
 	local p = windower.ffxi.get_player()
 	local me = windower.ffxi.get_mob_by_target('me')
 	local info = windower.ffxi.get_info()
-	local now = os.clock()
+	local now = now_s()
 	local parts = {
 		('char=%s'):format(tostring(p and p.name or '?')),
 		('self_zone=%s'):format(tostring(info and info.zone or '?')),
@@ -177,7 +185,7 @@ local function pf_set_op(op_text)
 		msg == 'PARTY_FOLLOW_ZONE_SUPPRESS:block_after_zone_change'
 	)
 	if noisy then
-		local now = os.clock()
+		local now = now_s()
 		if msg == last_noisy_log_text and (now - last_noisy_log_at) < 1.5 then
 			return
 		end
@@ -256,7 +264,7 @@ function M.get_ipc_position(name_lower, zone_self, max_age_s)
 	if not c or c.x == nil or c.y == nil then
 		return nil, nil
 	end
-	local age = os.clock() - (tonumber(c.t) or 0)
+	local age = now_s() - (tonumber(c.t) or 0)
 	local max_age = tonumber(max_age_s) or 2.5
 	if age > max_age then
 		return nil, nil
@@ -357,7 +365,7 @@ local function zone_follow_replay(zone_line, zone_type, leader_zone, lx, ly, mh_
 		return
 	end
 	file_log(('event=REPLAY_INJECT_OK line=%s type=%s %s'):format(tostring(zone_line), tostring(zone_type), state_snapshot()))
-	last_zone = os.clock()
+	last_zone = now_s()
 	pf_set_op(('PARTY_FOLLOW_ZONE_OK:line=%s type=%s leader_zone=%s'):format(
 		tostring(zone_line),
 		tostring(zone_type),
@@ -368,12 +376,12 @@ end
 recent_local_zone_change = function(window_s)
 	local last = tonumber(rawget(_G, 'UC_LAST_ZONE_CHANGE_AT')) or 0
 	local w = tonumber(window_s) or 0
-	return last > 0 and (os.clock() - last) < w
+	return last > 0 and (now_s() - last) < w
 end
 
 recent_local_request = function(window_s)
 	local w = tonumber(window_s) or 0
-	return (tonumber(last_local_request_at) or 0) > 0 and (os.clock() - last_local_request_at) < w
+	return (tonumber(last_local_request_at) or 0) > 0 and (now_s() - last_local_request_at) < w
 end
 
 local function ipc_dispatch_zone(msg)
@@ -455,7 +463,7 @@ function M.ipc_message(msg)
 		return
 	end
 	local lname = name:lower()
-	ipc_pos[lname] = { x = x, y = y, zone = zraw, t = os.clock() }
+	ipc_pos[lname] = { x = x, y = y, zone = zraw, t = now_s() }
 	if ff_following and lname == ff_following then
 		ff_target = { x = x, y = y, zone = tonumber(zraw) or zraw }
 	end
@@ -463,7 +471,7 @@ end
 
 --- Call every prerender from UnifiedCombat (all instances) so followers receive fresh x/y.
 function M.broadcast_self_ipc()
-	local now = os.clock()
+	local now = now_s()
 	if now - last_ipc_broadcast < ipc_broadcast_interval then
 		return
 	end
@@ -490,7 +498,7 @@ function M.outgoing_chunk(id, data, blocked, injected)
 	if blocked or id ~= REQUEST_ZONE or not data then
 		return false
 	end
-	local now = os.clock()
+	local now = now_s()
 	local p = windower.ffxi.get_player()
 	if not p or not p.name then
 		return false
@@ -585,7 +593,7 @@ local function follow_dist_sq_bounds(s)
 	if type(rawget(_G, 'UC_IsCombatParticipant')) == 'function' then
 		allow_fight_follow = _G.UC_IsCombatParticipant(s) == true
 	end
-	if allow_fight_follow and os.clock() < ff_until then
+	if allow_fight_follow and now_s() < ff_until then
 		local fight_min = tonumber(s and s.fight_follow_min) or mn
 		if fight_min >= 0.01 and fight_min <= 99 then
 			mn = fight_min
@@ -612,11 +620,30 @@ local function follow_dist_sq_bounds(s)
 	return mn * mn, mx * mx
 end
 
-local function combat_engine_suppresses_follow()
-	local now = os.clock()
-	local owner = tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or 'none')
-	local lock_until = tonumber(rawget(_G, 'UC_MOVEMENT_LOCK_UNTIL')) or 0
-	if owner ~= 'none' and owner ~= 'follow' and now < lock_until then
+local function combat_engine_suppresses_follow(s)
+	local now = now_s()
+	-- Hard engage suppression for combat participants:
+	-- prevents follow from re-asserting between short movement lock refresh windows.
+	local combat_participant = false
+	if type(rawget(_G, 'UC_IsCombatParticipant')) == 'function' then
+		combat_participant = _G.UC_IsCombatParticipant(s) == true
+	end
+	if combat_participant then
+		local p = windower.ffxi.get_player()
+		if p and tonumber(p.status) == 1 then
+			return true
+		end
+		local intent_until = tonumber(rawget(_G, 'UC_COMBAT_INTENT_UNTIL')) or 0
+		if now < intent_until then
+			return true
+		end
+	end
+	-- Spell freeze / cast settle guard.
+	local prep_until = tonumber(rawget(_G, 'UC_MOVE_FREEZE_PREP_UNTIL')) or 0
+	if now < prep_until then
+		return true
+	end
+	if tostring(rawget(_G, 'UC_MOVEMENT_MODE') or '') == 'CAST_FREEZE' then
 		return true
 	end
 	-- Hard suppressors (explicit cast/item wait states) remain valid even if movement
@@ -629,7 +656,7 @@ end
 
 local function zone_suspend_active()
 	local zu = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
-	if type(zu) == 'number' and os.clock() < zu then
+	if type(zu) == 'number' and now_s() < zu then
 		return true
 	end
 	-- Local zone request should take priority over follow movement/replay.
@@ -661,7 +688,7 @@ local function resolve_leader_xy(s, lid, lname, zone_self)
 	lname = lname or ''
 	if lname ~= '' then
 		local c = ipc_pos[lname]
-		if c and c.x and c.y and (os.clock() - c.t) < 2.5 then
+		if c and c.x and c.y and (now_s() - c.t) < 2.5 then
 			if zones_equivalent(zone_self, c.zone) then
 				return c.x, c.y
 			end
@@ -695,17 +722,17 @@ function M.prerender()
 	local s = _G.UC_SETTINGS
 	if not s or not s.party_follow or (s.party_follow_id or 0) == 0 then
 		_G.UC_MOVEMENT_OWNER = 'none'
-		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock()
+		_G.UC_MOVEMENT_LOCK_UNTIL = now_s()
 		last_follow_suppressed = false
 		return
 	end
 	if type(rawget(_G, 'UC_IsFollowParticipant')) == 'function' and not _G.UC_IsFollowParticipant(s) then
 		_G.UC_MOVEMENT_OWNER = 'none'
-		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock()
+		_G.UC_MOVEMENT_LOCK_UNTIL = now_s()
 		last_follow_suppressed = false
 		return
 	end
-	local suppressed = combat_engine_suppresses_follow()
+	local suppressed = combat_engine_suppresses_follow(s)
 	if suppressed then
 		-- Transition hard-stop: prevent stale run vector drift when follow yields to
 		-- combat-owned movement.
@@ -738,7 +765,7 @@ function M.prerender()
 	if not lx or not ly then
 		windower.ffxi.run(false)
 		_G.UC_MOVEMENT_OWNER = 'follow'
-		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock() + 0.20
+		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.20
 		return
 	end
 	local ok, leader_mob = pcall(function()
@@ -747,7 +774,7 @@ function M.prerender()
 	if ok and leader_mob and leader_mob.id and leader_mob.id ~= 0 and leader_mob.hpp ~= nil and leader_mob.hpp <= 0 then
 		windower.ffxi.run(false)
 		_G.UC_MOVEMENT_OWNER = 'follow'
-		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock() + 0.20
+		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.20
 		return
 	end
 	local min_dist, max_dist = follow_dist_sq_bounds(s)
@@ -759,16 +786,17 @@ function M.prerender()
 		end
 		windower.ffxi.run((lx - self_mob.x) / len, (ly - self_mob.y) / len)
 		_G.UC_MOVEMENT_OWNER = 'follow'
-		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock() + 0.25
+		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.25
 	elseif d2 <= min_dist then
 		windower.ffxi.run(false)
 		_G.UC_MOVEMENT_OWNER = 'follow'
-		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock() + 0.20
+		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.20
 	else
 		windower.ffxi.run(false)
 		_G.UC_MOVEMENT_OWNER = 'follow'
-		_G.UC_MOVEMENT_LOCK_UNTIL = os.clock() + 0.20
+		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.20
 	end
 end
 
 return M
+

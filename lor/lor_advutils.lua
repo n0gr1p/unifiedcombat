@@ -1,3 +1,17 @@
+local function uc_now_s()
+	local s = rawget(_G, 'socket')
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		local ok, mod = pcall(require, 'socket')
+		if ok then
+			s = mod
+		end
+	end
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		error('uc_now_s requires LuaSocket socket.gettime')
+	end
+	return s.gettime()
+end
+
 --[[
     Misc. "advanced" utilities that require functionality provided in other lor libs
     
@@ -50,7 +64,7 @@ function lor_advutils.tcached(expiration, fn)
     local cached = nil
     local last_time = nil
     return function()
-        local now = os.clock()
+        local now = uc_now_s()
         if last_time == nil or ((now - last_time) > expiration) then
             last_time = now
             cached = fn()

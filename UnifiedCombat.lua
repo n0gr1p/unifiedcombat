@@ -18,6 +18,21 @@ uc_prefer_addon_local_libs()
 
 require('lor/lor_utils')
 require('tables')
+
+local function uc_now_s()
+	local s = rawget(_G, 'socket')
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		local ok, mod = pcall(require, 'socket')
+		if ok then
+			s = mod
+		end
+	end
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		error('uc_now_s requires LuaSocket socket.gettime')
+	end
+	return s.gettime()
+end
+
 require('luau')
 
 _addon.name = 'unifiedcombat'
@@ -161,6 +176,7 @@ local function uc_new_settings_defaults()
 		defensive_provider = 'internal',
 		defensive_cure_enabled = false,
 		defensive_doom_water = false,
+		def_remove_enemy_buffs = false,
 		def_heal_min_tier_cure = 3,
 		def_heal_max_tier_cure = 4,
 		def_heal_min_missing_hp = 250,
@@ -351,7 +367,7 @@ local PROFILE_KEYS = {
 	'aftermath_enabled', 'aftermath_ws',
 	'engine_mode',
 	'show_ingame_ui',
-	'defensive_enabled', 'defensive_provider', 'defensive_cure_enabled', 'defensive_doom_water', 'defensive_na_enabled', 'defensive_buff_enabled',
+	'defensive_enabled', 'defensive_provider', 'defensive_cure_enabled', 'defensive_doom_water', 'def_remove_enemy_buffs', 'defensive_na_enabled', 'defensive_buff_enabled',
 	'defensive_critical_hpp', 'defensive_medium_hpp',
 	'defensive_overwrite_enabled', 'defensive_overwrite_interval', 'defensive_buff_self_only', 'defensive_buffs',
 	'engine_enabled', 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled',
@@ -760,15 +776,18 @@ windower.register_event('incoming chunk', function(id, data)
 			_G.UC_COR_MAINT_OnIncomingChunk(id, data)
 		end)
 	end
-	if id == 0x029 and type(data) == 'string' and UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_action_message) == 'function' then
+	if id == 0x029 and type(data) == 'string' then
 		local ok = pcall(function()
 			local msg = {
 				actor_id = data:unpack('I', 0x05),
 				target_id = data:unpack('I', 0x09),
 				param_1 = data:unpack('I', 0x0D),
+				effect_id = data:unpack('I', 0x0D),
 				message_id = data:unpack('H', 0x19) % 32768,
 			}
-			UC_COMBAT_CORE.on_action_message(msg)
+			if UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_action_message) == 'function' then
+				UC_COMBAT_CORE.on_action_message(msg)
+			end
 			if type(_G.UC_SCHED_OnActionMessage) == 'function' then
 				_G.UC_SCHED_OnActionMessage(msg)
 			end
@@ -817,8 +836,8 @@ windower.register_event('job change', function(job, lvl)
 end)
 
 windower.register_event('zone change', function()
-	_G.UC_LAST_ZONE_CHANGE_AT = os.clock()
-	_G.UC_ZONE_SUSPEND_UNTIL = os.clock() + UC_ZONE_SUSPEND_SEC
+	_G.UC_LAST_ZONE_CHANGE_AT = uc_now_s()
+	_G.UC_ZONE_SUSPEND_UNTIL = uc_now_s() + UC_ZONE_SUSPEND_SEC
 	_G.UC_LAST_BLOCK_REASON = 'ZONE_SUSPEND'
 end)
 

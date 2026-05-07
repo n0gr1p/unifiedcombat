@@ -9,6 +9,21 @@ lor_actor._author = 'Ragnarok.Lorand'
 lor_actor._version = '2018.05.27.0'
 
 require('tables')
+
+local function uc_now_s()
+	local s = rawget(_G, 'socket')
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		local ok, mod = pcall(require, 'socket')
+		if ok then
+			s = mod
+		end
+	end
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		error('uc_now_s requires LuaSocket socket.gettime')
+	end
+	return s.gettime()
+end
+
 require('lor/lor_utils')
 _libs.lor.actor = lor_actor
 _libs.lor.req('chat', 'position', 'resources')
@@ -28,7 +43,7 @@ local lag_timeout = 8
 local Actor = {}
 
 function Actor.new(id)
-    local now = os.clock()
+    local now = uc_now_s()
     local player = windower.ffxi.get_player()
     local self = T{     -- Note: some of these fields are HealBot-specific
         id = id,
@@ -83,7 +98,7 @@ function Actor:take_action(action, target)
     target = target or action.name
     atcd(act.en .. string.char(129, 168) .. target .. msg)
 
-    self.last_action = os.clock()
+    self.last_action = uc_now_s()
     self:send_cmd(('input %s "%s" %s'):format(act.prefix, act.en, target))
     if instant_prefixes:contains(act.prefix) then
         self.action_delay = 2.75
@@ -95,12 +110,12 @@ end
 
 
 function Actor:action_delay_passed()
-    return (os.clock() - self.last_action) > self.action_delay
+    return (uc_now_s() - self.last_action) > self.action_delay
 end
 
 
 function Actor:is_acting()
-    local now = os.clock()
+    local now = uc_now_s()
     if (now - self.action_start) > lag_timeout then
         --Precaution in case an action completion isn't registered for a long time
         self.action_end = now
@@ -129,7 +144,7 @@ function Actor:time_at_pos()
     if (current_pos == nil) then
         return nil
     end
-    return math.floor((os.clock() - self.pos_arrival)*10)/10
+    return math.floor((uc_now_s() - self.pos_arrival)*10)/10
 end
 
 
@@ -144,7 +159,7 @@ function Actor:is_moving()
         moving = (self:time_at_pos() < 1)
     else
         self.last_pos = current_pos
-        self.pos_arrival = os.clock()
+        self.pos_arrival = uc_now_s()
     end
     return moving
 end
@@ -201,19 +216,19 @@ function Actor:update_status(id, parsed_action)
             for _,targ in pairs(parsed_action.targets) do
                 for _,tact in pairs(targ.actions) do
                     if messages_initiating:contains(tact.message_id) then
-                        self.action_start = os.clock()
+                        self.action_start = uc_now_s()
                         return
                     elseif messages_completing:contains(tact.message_id) then
-                        self.action_end = os.clock()
+                        self.action_end = uc_now_s()
                         return
                     end
                 end
             end
         elseif id == 0x29 then
             if messages_initiating:contains(parsed_action.message_id) then
-                self.action_start = os.clock()
+                self.action_start = uc_now_s()
             elseif messages_completing:contains(parsed_action.message_id) then
-                self.action_end = os.clock()
+                self.action_end = uc_now_s()
             end
         end
     end

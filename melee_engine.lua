@@ -1,6 +1,21 @@
 require('lor/lor_chat')
 require('lor/lor_utils')
 require('strings')
+
+local function uc_now_s()
+	local s = rawget(_G, 'socket')
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		local ok, mod = pcall(require, 'socket')
+		if ok then
+			s = mod
+		end
+	end
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		error('uc_now_s requires LuaSocket socket.gettime')
+	end
+	return s.gettime()
+end
+
 require('chat')
 require('logger')
 require('tables')
@@ -49,7 +64,7 @@ local wsinuse = false
 local status = 'initializing'
 local actiontext = ''
 local wsusedonmytarget = ''
-local wstimer = os.clock()
+local wstimer = uc_now_s()
 local pullerpetid = 0
 local WSForSkillchain = T {}
 local attacksent = false
@@ -212,8 +227,8 @@ local mid = 0
 local primemid = 0
 local mtarget = 0
 local lasttarget = 0
-local last = (os.clock() - 0)
-local last2 = (os.clock() - 0)
+local last = (uc_now_s() - 0)
+local last2 = (uc_now_s() - 0)
 local ws = 1
 local step = 0
 local combatflag = false
@@ -357,7 +372,7 @@ local smartws = {
 			return
 		end
 		if GetTP() >= wstp then
-			if (os.clock() >= wstimer or GetResonatingStep(targetsetid) == 0) and wstouse ~= '' then
+			if (uc_now_s() >= wstimer or GetResonatingStep(targetsetid) == 0) and wstouse ~= '' then
 				debugmsg(11, ('melee smartws send ws="%s" target=%d tp=%d'):format(wstouse, targetsetid or 0, GetTP()))
 				windower.send_command('input /ws "' .. wstouse .. '" ' .. tostring(targetsetid))
 				actiontext = wstouse
@@ -368,7 +383,7 @@ local smartws = {
 				actiontext = wstouse
 				ws_gate_debug = ('WS fire: sent spam %s'):format(wstouse)
 			else
-				ws_gate_debug = ('WS fire: timer lock ws=%s tleft=%.2f'):format(wstouse, math.max(0, wstimer - os.clock()))
+				ws_gate_debug = ('WS fire: timer lock ws=%s tleft=%.2f'):format(wstouse, math.max(0, wstimer - uc_now_s()))
 			end
 		end
 	end
@@ -493,7 +508,7 @@ end
 
 function GetResonatingStep(tid)
 	local reson = resonating[tid]
-	local timer = reson and (reson.times - os.clock()) or 0
+	local timer = reson and (reson.times - uc_now_s()) or 0
 	if reson then
 		if not reson.closed and timer > 0 then
 			return reson.step
@@ -596,8 +611,8 @@ function colorize(t)
 	return _raw.table.concat(temp or t, ',')
 end
 
-local next_frame = os.clock()
-local fast_frame = os.clock()
+local next_frame = uc_now_s()
+local fast_frame = uc_now_s()
 
 function sleep(x)
 	coroutine.sleep(x)
@@ -1031,7 +1046,7 @@ end
 
 function uc_melee_prerender()
 	uc_keep_ui_visible()
-	local now = os.clock()
+	local now = uc_now_s()
 	if uc_ingame_ui_enabled() then
 		sam_status:text(display_box2())
 		sam_status:show()
@@ -1053,7 +1068,7 @@ function uc_melee_prerender()
 	end
 	fast_frame = now + 0.1
 	if Start_Engine == true then
-		fightnow = os.clock()
+		fightnow = uc_now_s()
 		--Find_Nearest_Target()
 		melee_CheckTarget()
 	end
@@ -1147,7 +1162,7 @@ categories = S {
 }
 
 function apply_properties(target, resource, action_id, properties, delay, step1, closed, bound)
-	local clock = os.clock()
+	local clock = uc_now_s()
 	resonating[target] = {
 		res = resource,
 		id = action_id,
@@ -1189,7 +1204,7 @@ local function melee_action_handler(act)
 		if ability then
 			if resource == 'weapon_skills' then
 				wsusedonmytarget = ability.en
-				wstimer = os.clock() + 3
+				wstimer = uc_now_s() + 3
 			end
 		end
 	end
@@ -1647,7 +1662,7 @@ end
 function uc_melee_combat_tick_once()
 	if isBusy < 1 then
 		local zu = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
-		if type(zu) ~= 'number' or os.clock() >= zu then
+		if type(zu) ~= 'number' or uc_now_s() >= zu then
 			uc_melee_Combat()
 		end
 	else
@@ -1913,7 +1928,7 @@ function Combat_MNK()
 		if combatflag == true then
 			StoreParty()
 			combatflag = false
-			fighttime = os.clock() + 15
+			fighttime = uc_now_s() + 15
 		end
 		if not table.contains(windower.ffxi.get_player().buffs, 461) and targetsetid > 0 then
 			if Can_Cast_Ability_Me('Impetus') then
@@ -1948,7 +1963,7 @@ function Combat_MNK()
 			if act and not wsinuse then
 				wsinuse = true
 				act()
-				fighttime = os.clock() + 15
+				fighttime = uc_now_s() + 15
 				wsinuse = false
 			end
 		end
@@ -2028,7 +2043,7 @@ function Combat_SAM()
 		if combatflag == true then
 			StoreParty()
 			combatflag = false
-			fighttime = os.clock() + 15
+			fighttime = uc_now_s() + 15
 		end
 		if targetsetid ~= lasttarget then
 			pullerpetid = GetPullerPetId()
@@ -2047,7 +2062,7 @@ function Combat_SAM()
 			if act and not wsinuse then
 				wsinuse = true
 				act()
-				fighttime = os.clock() + 15
+				fighttime = uc_now_s() + 15
 				wsinuse = false
 			end
 		end
@@ -2130,7 +2145,7 @@ function Combat_DRG()
 		if combatflag == true then
 			StoreParty()
 			combatflag = false
-			fighttime = os.clock() + 15
+			fighttime = uc_now_s() + 15
 		end
 		if targetsetid ~= lasttarget then
 			pullerpetid = GetPullerPetId()
@@ -2149,7 +2164,7 @@ function Combat_DRG()
 			if act and not wsinuse then
 				wsinuse = true
 				act()
-				fighttime = os.clock() + 15
+				fighttime = uc_now_s() + 15
 				wsinuse = false
 			end
 		end
@@ -2234,7 +2249,7 @@ function Combat_DRK()
 		if combatflag == true then
 			StoreParty()
 			combatflag = false
-			fighttime = os.clock() + 15
+			fighttime = uc_now_s() + 15
 		end
 		if targetsetid ~= lasttarget then
 			pullerpetid = GetPullerPetId()
@@ -2262,7 +2277,7 @@ function Combat_DRK()
 			if act and not wsinuse then
 				wsinuse = true
 				act()
-				fighttime = os.clock() + 15
+				fighttime = uc_now_s() + 15
 				wsinuse = false
 			end
 		end
@@ -2421,7 +2436,7 @@ function Combat_WAR()
 			StoreParty()
 			--debugmsg(11, "in combat")
 			combatflag = false
-			fighttime = os.clock() + 15
+			fighttime = uc_now_s() + 15
 		end
 
 		if targetsetid ~= lasttarget then
@@ -2458,7 +2473,7 @@ function Combat_WAR()
 			if (act) and not wsinuse then
 				wsinuse = true
 				act()
-				fighttime = os.clock() + 15
+				fighttime = uc_now_s() + 15
 				wsinuse = false
 			end
 		end
@@ -2684,7 +2699,7 @@ function uc_melee_zone_change()
 	fighttime = 0
 	fightnow = 0
 	pullerpetid = 0
-	wstimer = os.clock()
+	wstimer = uc_now_s()
 	actiontext = ''
 	ws_gate_debug = 'WS gate: zone reset'
 end

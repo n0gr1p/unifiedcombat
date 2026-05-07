@@ -63,20 +63,27 @@ internal sealed class MirrorDuplex : IDisposable
         {
             if (msg.TryGetValue("op", out var opObj)
                 && string.Equals(Convert.ToString(opObj), "set", StringComparison.Ordinal)
-                && msg.TryGetValue("path", out var pathObj)
-                && string.Equals(Convert.ToString(pathObj), "def_heal_min_missing_hp", StringComparison.Ordinal))
+                && msg.TryGetValue("path", out var pathObj))
             {
-                var valText = msg.TryGetValue("value", out var vObj) && vObj is not null
-                    ? Convert.ToString(vObj) ?? "(unprintable)"
-                    : "(null-or-missing)";
-                var root = AppContext.BaseDirectory;
-                var logDir = Path.Combine(root, "data", "ui_profiles");
-                Directory.CreateDirectory(logDir);
-                var logPath = Path.Combine(logDir, "ui_def_sync.log");
-                File.AppendAllText(
-                    logPath,
-                    $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}\tMIRROR_ENQUEUE sid={sid} value={valText} line={line.Trim()}{Environment.NewLine}"
-                );
+                var path = Convert.ToString(pathObj) ?? string.Empty;
+                if (string.Equals(path, "def_heal_min_missing_hp", StringComparison.Ordinal)
+                    || string.Equals(path, "def_remove_enemy_buffs", StringComparison.Ordinal))
+                {
+                    var valText = msg.TryGetValue("value", out var vObj) && vObj is not null
+                        ? Convert.ToString(vObj) ?? "(unprintable)"
+                        : "(null-or-missing)";
+                    var trace = msg.TryGetValue("trace_id", out var trObj) && trObj is not null
+                        ? Convert.ToString(trObj) ?? ""
+                        : "";
+                    var root = AppContext.BaseDirectory;
+                    var logDir = Path.Combine(root, "data", "ui_profiles");
+                    Directory.CreateDirectory(logDir);
+                    var logPath = Path.Combine(logDir, "ui_def_sync.log");
+                    File.AppendAllText(
+                        logPath,
+                        $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}\tMIRROR_ENQUEUE sid={sid} path={path} value={valText} trace={trace} line={line.Trim()}{Environment.NewLine}"
+                    );
+                }
             }
         }
         catch
@@ -301,6 +308,26 @@ internal sealed class MirrorDuplex : IDisposable
             {
                 await writer.WriteAsync(line.AsMemory(), ct).ConfigureAwait(false);
                 await writer.FlushAsync().ConfigureAwait(false);
+                try
+                {
+                    if (line.Contains("\"op\":\"set\"", StringComparison.Ordinal)
+                        && (line.Contains("\"path\":\"def_remove_enemy_buffs\"", StringComparison.Ordinal)
+                            || line.Contains("\"path\":\"def_heal_min_missing_hp\"", StringComparison.Ordinal)))
+                    {
+                        var root = AppContext.BaseDirectory;
+                        var logDir = Path.Combine(root, "data", "ui_profiles");
+                        Directory.CreateDirectory(logDir);
+                        var logPath = Path.Combine(logDir, "ui_def_sync.log");
+                        File.AppendAllText(
+                            logPath,
+                            $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}\tMIRROR_WRITE_OK sid={sid} line={line.Trim()}{Environment.NewLine}"
+                        );
+                    }
+                }
+                catch
+                {
+                    // never fail flow for logging
+                }
             }
             catch
             {

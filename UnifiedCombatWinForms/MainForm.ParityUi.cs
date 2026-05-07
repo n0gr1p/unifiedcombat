@@ -738,6 +738,14 @@ public partial class MainForm
         };
         _pathPullActionType.Items.Add("ja");
         _pathPullActionType.Items.Add("spell");
+        _pathPullActionType.DropDown += (_, _) =>
+        {
+            var sid = _selectedSid;
+            if (!string.IsNullOrWhiteSpace(sid))
+            {
+                EnsureOptionsHydrated(sid);
+            }
+        };
         _pathPullActionType.SelectedIndexChanged += (_, _) => OnPathPullActionTypeChanged();
         path.Controls.Add(_pathPullActionType, 1, pathRow++);
         path.Controls.Add(new Label { Text = "Pull action", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
@@ -746,6 +754,14 @@ public partial class MainForm
             DropDownStyle = ComboBoxStyle.DropDown,
             Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
             MinimumSize = new Size(220, 0),
+        };
+        _pathPullActionName.DropDown += (_, _) =>
+        {
+            var sid = _selectedSid;
+            if (!string.IsNullOrWhiteSpace(sid))
+            {
+                EnsureOptionsHydrated(sid);
+            }
         };
         _pathPullActionName.SelectedIndexChanged += (_, _) => OnPathPullActionNameChanged();
         path.Controls.Add(_pathPullActionName, 1, pathRow++);

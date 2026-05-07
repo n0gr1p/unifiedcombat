@@ -2897,6 +2897,9 @@ public partial class MainForm
         }
 
         TrySaveProfileFromUi(sid);
+        // Force a full config reapply on explicit Save so addon runtime
+        // cannot stay stale behind UI-side set dedupe.
+        _lastSentSetBySidPath.Remove(sid);
         PushFullFormState(sid);
         await Task.Delay(200).ConfigureAwait(true);
         if (!IsDisposed)

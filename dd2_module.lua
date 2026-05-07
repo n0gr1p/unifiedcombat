@@ -1,6 +1,21 @@
 ---@diagnostic disable: lowercase-global, undefined-field, undefined-global, deprecated, param-type-mismatch
 require('chat')
 require('logger')
+
+local function uc_now_s()
+	local s = rawget(_G, 'socket')
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		local ok, mod = pcall(require, 'socket')
+		if ok then
+			s = mod
+		end
+	end
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		error('uc_now_s requires LuaSocket socket.gettime')
+	end
+	return s.gettime()
+end
+
 require('tables')
 require('luau')
 require('pack')
@@ -39,11 +54,11 @@ local moved = false
 local moving = false
 local partyMembers = T {}
 local WSForSkillchain = T {}
-local wstimer = os.clock()
+local wstimer = uc_now_s()
 local wsinuse = false
 local maneuver = 0
 local mv = false
-local lastmanuever = os.clock()
+local lastmanuever = uc_now_s()
 local lastmv = 0
 local attacksent = false
 local box = 0
@@ -78,7 +93,7 @@ local actiontext = ''
 local last_ws_precheck_log = 0
 local last_ws_decision_log = 0
 
-local next_frame = os.clock()
+local next_frame = uc_now_s()
 local firem = 0
 local earthm = 0
 local waterm = 0
@@ -103,7 +118,7 @@ local function log_ws_precheck(prefix)
 	if not settings.debug then
 		return
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	if now - last_ws_precheck_log < 0.75 then
 		return
 	end
@@ -142,7 +157,7 @@ local function log_ws_decision(msg)
 	if not settings.debug then
 		return
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	if now - last_ws_decision_log < 0.5 then
 		return
 	end
@@ -190,7 +205,7 @@ local smartws = {
 			return
 		end
 		if GetTP() > 999 and dd2_bool(settings.weaponskill_active) then
-			if  (os.clock() >= wstimer or dd2_GetResonatingStep(targetsetid) == 0) or (GetHppById(targetsetid) < 20 and settings.closer) then
+			if  (uc_now_s() >= wstimer or dd2_GetResonatingStep(targetsetid) == 0) or (GetHppById(targetsetid) < 20 and settings.closer) then
 				if settings.ability_active == true then
 					for i, v in pairs(settings.wsabilities) do
 						if Can_Cast_Ability(v) then
@@ -205,7 +220,7 @@ local smartws = {
 					actiontext = wstouse
 				end
 			else
-				log_ws_decision(('smartws timer lock wstimer_left=%.2f reson=%d'):format(math.max(0, wstimer - os.clock()), dd2_GetResonatingStep(targetsetid)))
+				log_ws_decision(('smartws timer lock wstimer_left=%.2f reson=%d'):format(math.max(0, wstimer - uc_now_s()), dd2_GetResonatingStep(targetsetid)))
 			end
 		else
 			log_ws_decision(('smartws gate fail tp=%d ws_on=%s'):format(GetTP(), tostring(dd2_bool(settings.weaponskill_active))))
@@ -332,7 +347,7 @@ function apply_debuff(target, effect, spell, actor)
 	end
 
 	-- Create timer
-	debuffed_mobs[target][effect] = { id = spell, timer = (os.clock() + (res.spells[spell].duration or 0)), actor = actor }
+	debuffed_mobs[target][effect] = { id = spell, timer = (uc_now_s() + (res.spells[spell].duration or 0)), actor = actor }
 end
 
 function handle_shot(target)
@@ -1280,7 +1295,7 @@ local function dd2_combat_tick_once()
 	end
 	if isBusy < 1 then
 		local zu = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
-		if type(zu) ~= 'number' or os.clock() >= zu then
+		if type(zu) ~= 'number' or uc_now_s() >= zu then
 			dd2_Combat()
 		end
 	else
@@ -1401,7 +1416,7 @@ end
 
 function dd2_GetResonatingStep(tid)
 	local reson = resonating[tid]
-	local timer = reson and (reson.times - os.clock()) or 0
+	local timer = reson and (reson.times - uc_now_s()) or 0
 	if reson then
 		if not reson.closed and timer > 0 then
 			return reson.step
@@ -2236,7 +2251,7 @@ categories = S {
 }
 
 function apply_properties(target, resource, action_id, properties, delay, step, closed, bound)
-	local clock = os.clock()
+	local clock = uc_now_s()
 	resonating[target] = {
 		res = resource,
 		id = action_id,
@@ -2278,7 +2293,7 @@ local function dd2_action_handler(act)
 		if ability then
 			if resource == 'weapon_skills' then
 				wsusedonmytarget = ability.en
-				wstimer = os.clock() + 3
+				wstimer = uc_now_s() + 3
 			end
 		end
 	end
@@ -2334,7 +2349,7 @@ local function uc_dd2_zone_change()
 	sleepid = -1
 	WSForSkillchain = T {}
 	ws = 1
-	wstimer = os.clock()
+	wstimer = uc_now_s()
 	wsinuse = false
 	attacksent = false
 	combatflag = false
@@ -2343,7 +2358,7 @@ local function uc_dd2_zone_change()
 	feather = 0
 	stutter = 0
 	debuffed_mobs = {}
-	wstimer = os.clock()
+	wstimer = uc_now_s()
 end
 
 local function uc_dd2_unload()
@@ -2381,7 +2396,7 @@ end
 
 local function uc_dd2_prerender()
 	uc_keep_ui_visible()
-	local now = os.clock()
+	local now = uc_now_s()
 
 	if uc_ingame_ui_enabled() then
 		dd2_status:text(display_box())
@@ -2465,53 +2480,53 @@ local function uc_dd2_prerender()
 					dark = dark + 1
 				end
 			end
-			if fire < firem and not mv and (os.clock() > lastmanuever + 45 or lastmv ~= 1) then
+			if fire < firem and not mv and (uc_now_s() > lastmanuever + 45 or lastmv ~= 1) then
 				if Can_Cast_Ability('Fire Maneuver') then
 					Cast_Ability('Fire Maneuver')
 					lastmv = 1
-					lastmanuever = os.clock()
+					lastmanuever = uc_now_s()
 				end
-			elseif ice < icem and not mv and (os.clock() > lastmanuever + 45 or lastmv ~= 2) then
+			elseif ice < icem and not mv and (uc_now_s() > lastmanuever + 45 or lastmv ~= 2) then
 				if Can_Cast_Ability('Ice Maneuver') then
 					Cast_Ability('Ice Maneuver')
 					lastmv = 2
-					lastmanuever = os.clock()
+					lastmanuever = uc_now_s()
 				end
-			elseif wind < windm and not mv and (os.clock() > lastmanuever + 45 or lastmv ~= 3) then
+			elseif wind < windm and not mv and (uc_now_s() > lastmanuever + 45 or lastmv ~= 3) then
 				if Can_Cast_Ability('Wind Maneuver') then
 					Cast_Ability('Wind Maneuver')
 					lastmv = 3
-					lastmanuever = os.clock()
+					lastmanuever = uc_now_s()
 				end
-			elseif earth < earthm and not mv and (os.clock() > lastmanuever + 45 or lastmv ~= 4) then
+			elseif earth < earthm and not mv and (uc_now_s() > lastmanuever + 45 or lastmv ~= 4) then
 				if Can_Cast_Ability('Earth Maneuver') then
 					Cast_Ability('Earth Maneuver')
 					lastmv = 4
-					lastmanuever = os.clock()
+					lastmanuever = uc_now_s()
 				end
-			elseif thunder < thunderm and not mv and (os.clock() > lastmanuever + 45 or lastmv ~= 5) then
+			elseif thunder < thunderm and not mv and (uc_now_s() > lastmanuever + 45 or lastmv ~= 5) then
 				if Can_Cast_Ability('Thunder Maneuver') then
 					Cast_Ability('Thunder Maneuver')
 					lastmv = 5
-					lastmanuever = os.clock()
+					lastmanuever = uc_now_s()
 				end
-			elseif water < waterm and not mv and (os.clock() > lastmanuever + 45 or lastmv ~= 6) then
+			elseif water < waterm and not mv and (uc_now_s() > lastmanuever + 45 or lastmv ~= 6) then
 				if Can_Cast_Ability('Water Maneuver') then
 					Cast_Ability('Water Maneuver')
 					lastmv = 6
-					lastmanuever = os.clock()
+					lastmanuever = uc_now_s()
 				end
-			elseif light < lightm and not mv and (os.clock() > lastmanuever + 45 or lastmv ~= 7) then
+			elseif light < lightm and not mv and (uc_now_s() > lastmanuever + 45 or lastmv ~= 7) then
 				if Can_Cast_Ability('Light Maneuver') then
 					Cast_Ability('Light Maneuver')
 					lastmv = 7
-					lastmanuever = os.clock()
+					lastmanuever = uc_now_s()
 				end
-			elseif dark < darkm and not mv and (os.clock() > lastmanuever + 45 or lastmv ~= 8) then
+			elseif dark < darkm and not mv and (uc_now_s() > lastmanuever + 45 or lastmv ~= 8) then
 				if Can_Cast_Ability('Dark Maneuver') then
 					Cast_Ability('Dark Maneuver')
 					lastmv = 8
-					lastmanuever = os.clock()
+					lastmanuever = uc_now_s()
 				end
 			end
 		end

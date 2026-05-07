@@ -1,4 +1,11 @@
 local res = require('resources')
+local socket_ok, socket_mod = pcall(require, 'socket')
+local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
+	or nil
+
+local function now_s()
+	return socket_gettime()
+end
 
 local mod = {}
 local state = {
@@ -87,6 +94,7 @@ local buff_map = {
 	["Hunter's Prelude"] = 'Prelude', ["Archer's Prelude"] = 'Prelude',
 	["Sheepfoe Mambo"] = 'Mambo', ["Dragonfoe Mambo"] = 'Mambo',
 	["Advancing March"] = 'March', ["Victory March"] = 'March', ["Honor March"] = 'March',
+	['Enlight II'] = 'Enlight',
 	['Boost-STR'] = 'STR Boost', ['Boost-DEX'] = 'DEX Boost', ['Boost-VIT'] = 'VIT Boost',
 	['Boost-AGI'] = 'AGI Boost', ['Boost-INT'] = 'INT Boost', ['Boost-MND'] = 'MND Boost',
 	['Boost-CHR'] = 'CHR Boost', ['Gain-STR'] = 'STR Boost', ['Gain-DEX'] = 'DEX Boost',
@@ -123,7 +131,8 @@ end
 
 local function resolve_status_ids(action_name, get_spell_resource, get_ja_resource)
 	local ids = {}
-	local mapped = buff_map[normalize_name(action_name)]
+	local norm_action = normalize_name(action_name)
+	local mapped = buff_map[norm_action]
 	if mapped then
 		for _, bid in ipairs(status_ids_by_buff_name(mapped)) do
 			ids[#ids + 1] = bid
@@ -155,8 +164,26 @@ local function resolve_status_ids(action_name, get_spell_resource, get_ja_resour
 	end
 
 	if #ids == 0 then
-		for _, bid in ipairs(status_ids_by_buff_name(action_name)) do
+		for _, bid in ipairs(status_ids_by_buff_name(norm_action)) do
 			ids[#ids + 1] = bid
+		end
+	end
+
+	-- HealBot-style final fallback:
+	-- If a tiered spell name has no direct status mapping (e.g. "Enlight II"),
+	-- retry lookup by first token ("Enlight").
+	if #ids == 0 then
+		local first = norm_action:match('^([^%s]+)')
+		if first and first ~= '' and first:lower() ~= norm_action:lower() then
+			local fallback_name = buff_map[first] or first
+			for _, bid in ipairs(status_ids_by_buff_name(fallback_name)) do
+				ids[#ids + 1] = bid
+			end
+			if #ids == 0 and fallback_name ~= first then
+				for _, bid in ipairs(status_ids_by_buff_name(first)) do
+					ids[#ids + 1] = bid
+				end
+			end
 		end
 	end
 	return dedupe(ids)
@@ -230,10 +257,19 @@ function mod.choose(settings, members, helpers)
 	local self_only = helpers.bool_setting(settings.defensive_buff_self_only, true)
 	local overwrite = helpers.bool_setting(settings.defensive_overwrite_enabled, false)
 	local overwrite_interval = tonumber(settings.defensive_overwrite_interval or 150) or 150
-	local now = os.clock()
+	local now = now_s()
 
 	for _, m in ipairs(members or {}) do
-		if helpers.in_party_cast_range(m) and ((not self_only) or m.is_self) then
+		local in_range = helpers.in_party_cast_range(m)
+		if helpers.log_debug then
+			helpers.log_debug(('HB_BUFF_MEMBER name="%s" self=%s in_range=%s self_only=%s'):format(
+				tostring(m.name or '?'),
+				tostring(m.is_self == true),
+				tostring(in_range == true),
+				tostring(self_only == true)
+			))
+		end
+		if in_range and ((not self_only) or m.is_self) then
 			local actions = {}
 			for _, a in ipairs(desired) do
 				actions[#actions + 1] = a
@@ -262,6 +298,17 @@ function mod.choose(settings, members, helpers)
 				local ready, reason, action_kind = helpers.action_ready(action_name)
 				if ready then
 					local bids = resolve_status_ids(action_name, helpers.get_spell_resource, helpers.get_ja_resource)
+					if helpers.log_debug and normalize_name(action_name):lower() == 'enlight ii' then
+						local id_parts = {}
+						for _, bid in ipairs(bids or {}) do
+							id_parts[#id_parts + 1] = tostring(bid)
+						end
+						helpers.log_debug(('HB_BUFF_TRACE action="%s" target="%s" ready=1 status_ids=[%s]'):format(
+							tostring(action_name),
+							tostring(m.name or '?'),
+							table.concat(id_parts, ',')
+						))
+					end
 					local is_present = has_any_buff(m.buffs or {}, bids)
 					local should_cast = not is_present
 					local fam = nil
@@ -302,9 +349,27 @@ function mod.choose(settings, members, helpers)
 							action_kind = action_kind,
 						}
 						return out
+					elseif helpers.log_debug then
+						helpers.log_debug(('HB_BUFF_SKIP name="%s" target="%s" reason=attempt_gate'):format(
+							tostring(action_name),
+							tostring(m.name or '?')
+						))
 					end
-				elseif reason == 'BLOCK_DEFENSIVE_NOT_LEARNED' or reason == 'BLOCK_DEFENSIVE_JOB_LEVEL' then
-					-- Hard skip invalid action and continue list.
+				elseif helpers.log_debug then
+					-- Emit explicit non-ready reason for visibility; previously most
+					-- reasons were silent unless not-learned/job-level.
+					helpers.log_debug(('HB_BUFF_SKIP name="%s" target="%s" reason=%s'):format(
+						tostring(action_name),
+						tostring(m.name or '?'),
+						tostring(reason or 'NOT_READY')
+					))
+					if normalize_name(action_name):lower() == 'enlight ii' then
+						helpers.log_debug(('HB_BUFF_TRACE action="%s" target="%s" ready=0 reason=%s'):format(
+							tostring(action_name),
+							tostring(m.name or '?'),
+							tostring(reason or 'NOT_READY')
+						))
+					end
 				end
 			end
 		end

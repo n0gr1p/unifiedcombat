@@ -1,3 +1,17 @@
+local function uc_now_s()
+	local s = rawget(_G, 'socket')
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		local ok, mod = pcall(require, 'socket')
+		if ok then
+			s = mod
+		end
+	end
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		error('uc_now_s requires LuaSocket socket.gettime')
+	end
+	return s.gettime()
+end
+
 --[[
   Non-blocking TCP client to Python hub. NDJSON over newline.
   Expect _G.UC_SETTINGS, _G.UC_ENGINE, Start_Engine, windower.
@@ -141,6 +155,7 @@ local sock = nil
 local recv_buf = ''
 local last_connect_try = 0
 local last_state_send = 0
+local last_cfg_version = 0
 local session_id = nil
 local cached_ability_options = ''
 local last_ability_signature = ''
@@ -153,7 +168,7 @@ local function build_session_id()
 	local p = windower.ffxi.get_player()
 	local char = (p and p.name) or 'unknown'
 	local pid = (p and p.id) or 0
-	local now_ms = math.floor((socket.gettime and socket.gettime() or os.clock()) * 1000)
+	local now_ms = math.floor((socket.gettime and socket.gettime() or uc_now_s()) * 1000)
 	return table.concat({ char, tostring(pid), tostring(now_ms) }, '_')
 end
 
@@ -187,7 +202,7 @@ local function uc_remote_port()
 end
 
 local function try_connect()
-	local now = os.clock()
+	local now = uc_now_s()
 	if sock then
 		return
 	end
@@ -586,11 +601,56 @@ local function apply_set(path, value)
 		elseif n > 5000 then
 			n = 5000
 		end
+		if tonumber(s.def_heal_min_missing_hp) == n then
+			return
+		end
 		s.def_heal_min_missing_hp = n
 		if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
 			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_APPLY key=def_heal_min_missing_hp value=%d'):format(n))
 		end
 		last_state_send = 0
+		return
+	end
+	if key == 'def_remove_enemy_buffs' then
+		if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
+			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_RECV key=def_remove_enemy_buffs raw=%s type=%s'):format(
+				tostring(value),
+				type(value)
+			))
+		end
+		local b = value
+		if type(b) == 'string' then
+			local v = b:lower()
+			if v == 'true' or v == 'on' or v == '1' or v == 'yes' then
+				b = true
+			elseif v == 'false' or v == 'off' or v == '0' or v == 'no' then
+				b = false
+			else
+				b = nil
+			end
+		elseif type(b) == 'number' then
+			b = (b ~= 0)
+		end
+		if type(b) ~= 'boolean' then
+			if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
+				pcall(_G.UC_LOG_DIAG, 'def_sched',
+					'DEF_CFG_REJECT key=def_remove_enemy_buffs reason=bad_bool')
+			end
+			return
+		end
+		if s.def_remove_enemy_buffs == b then
+			return
+		end
+		s.def_remove_enemy_buffs = b
+		if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
+			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_APPLY key=def_remove_enemy_buffs value=%s'):format(
+				tostring(b)
+			))
+		end
+		last_state_send = 0
+		return
+	end
+	if t[key] == value then
 		return
 	end
 	t[key] = value
@@ -632,6 +692,27 @@ local function uc_unique_sorted(values)
 	return out
 end
 
+local function uc_targets_include_enemy(targets)
+	if type(targets) == 'string' then
+		return targets:find('Enemy', 1, true) ~= nil
+	end
+	if type(targets) ~= 'table' then
+		return false
+	end
+	if targets.Enemy == true or targets.enemy == true then
+		return true
+	end
+	for k, v in pairs(targets) do
+		if v == true and (k == 'Enemy' or k == 'enemy') then
+			return true
+		end
+		if type(v) == 'string' and (v == 'Enemy' or v == 'enemy') then
+			return true
+		end
+	end
+	return false
+end
+
 local function uc_get_job_ability_names()
 	local out = {}
 	local ab = windower.ffxi.get_abilities()
@@ -651,8 +732,8 @@ local function uc_get_enemy_job_ability_names()
 	local ids = ab and ab.job_abilities or {}
 	for _, id in ipairs(ids) do
 		local ja = res.job_abilities[id]
-		local targets = tostring((ja and ja.targets) or '')
-		if ja and ja.en and targets:find('Enemy', 1, true) then
+		local targets = ja and ja.targets or nil
+		if ja and ja.en and uc_targets_include_enemy(targets) then
 			out[#out + 1] = ja.en
 		end
 	end
@@ -710,8 +791,8 @@ local function uc_get_enemy_spell_names()
 		if spell_known_flag(has) then
 			local sid = tonumber(id) or 0
 			local sp = sid > 0 and res.spells[sid] or nil
-			local targets = tostring((sp and sp.targets) or '')
-			if sp and sp.en and targets:find('Enemy', 1, true) and spell_usable_by_current_job(sp) then
+			local targets = sp and sp.targets or nil
+			if sp and sp.en and uc_targets_include_enemy(targets) and spell_usable_by_current_job(sp) then
 				out[#out + 1] = sp.en
 			end
 		end
@@ -927,13 +1008,38 @@ local function process_line(line)
 		safe_send_line(json_encode_simple(st))
 	end
 	if op == 'set' then
+		local cfg_ver = tonumber(uc_msg_get(msg, 'cfg_version')) or 0
+		if cfg_ver > 0 then
+			if cfg_ver <= last_cfg_version then
+				return
+			end
+			last_cfg_version = cfg_ver
+		end
 		local set_path = uc_msg_get(msg, 'path')
 		local set_value = uc_msg_get(msg, 'value')
+		local set_trace = uc_msg_get(msg, 'trace_id')
+		if set_path == 'def_remove_enemy_buffs' and rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
+			local raw_line = tostring(line or '')
+			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_SET_OP path=%s raw=%s type=%s trace=%s line=%s'):format(
+				tostring(set_path),
+				tostring(set_value),
+				type(set_value),
+				tostring(set_trace or ''),
+				raw_line
+			))
+		end
 		-- Fallback parse for malformed decoder tables where key lookup loses numeric fields.
 		if set_value == nil and type(line) == 'string' and set_path == 'def_heal_min_missing_hp' then
 			local parsed_num = tonumber(line:match('"value"%s*:%s*(-?%d+)'))
 			if parsed_num ~= nil then
 				set_value = parsed_num
+			end
+		end
+		-- Parse boolean directly from raw json when table decode loses "value".
+		if set_value == nil and type(line) == 'string' and set_path == 'def_remove_enemy_buffs' then
+			local parsed_bool = line:match('"value"%s*:%s*(true|false)')
+			if parsed_bool ~= nil then
+				set_value = (parsed_bool == 'true')
 			end
 		end
 		if set_path == 'def_heal_min_missing_hp' and rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
@@ -1447,7 +1553,7 @@ function uc_remote_tick()
 			process_line(line)
 		end
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	if now - last_state_send < 1.5 then
 		return
 	end
@@ -1457,7 +1563,7 @@ function uc_remote_tick()
 		return
 	end
 	local zu = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
-	local zone_suspend_active = type(zu) == 'number' and os.clock() < zu
+	local zone_suspend_active = type(zu) == 'number' and uc_now_s() < zu
 	local st = {
 		op = 'state',
 		session = session_id,

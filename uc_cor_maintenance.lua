@@ -1,3 +1,17 @@
+local function uc_now_s()
+	local s = rawget(_G, 'socket')
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		local ok, mod = pcall(require, 'socket')
+		if ok then
+			s = mod
+		end
+	end
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		error('uc_now_s requires LuaSocket socket.gettime')
+	end
+	return s.gettime()
+end
+
 local mod = {}
 
 local default_roll_pair = { "Ninja Roll", "Corsair's Roll" }
@@ -47,6 +61,8 @@ local state = {
 	busy_until = 0,
 }
 
+local DOUBLE_UP_CHANCE_BUFF_ID = 308
+
 local cor_diag_state = {
 	last_sig = "",
 	last_at = 0,
@@ -58,7 +74,7 @@ local function cor_diag(sig, msg)
 	end
 	local s = tostring(sig or "")
 	local line = tostring(msg or "")
-	local now = os.clock()
+	local now = uc_now_s()
 	if s ~= "" then
 		if s == cor_diag_state.last_sig and (now - (tonumber(cor_diag_state.last_at) or 0)) < 1.5 then
 			return
@@ -193,7 +209,7 @@ function mod.update_from_incoming_chunk(id, data)
 		local category, param = data:unpack("b4b16", 11, 3)
 		local recast = data:unpack("b32", 15, 7)
 		local effect, message = data:unpack("b17b10", 27, 6)
-		local now = os.clock()
+		local now = uc_now_s()
 		if start_act[category] then
 			state.is_busy = true
 			local hold = tonumber(recast) or 0
@@ -252,8 +268,8 @@ function mod.propose(settings)
 		cor_diag("amnesia", "skip amnesia")
 		return nil
 	end
-	if state.is_busy and os.clock() < (tonumber(state.busy_until) or 0) then
-		cor_diag("busy", ("skip busy_until=%.2f now=%.2f"):format(tonumber(state.busy_until) or 0, os.clock()))
+	if state.is_busy and uc_now_s() < (tonumber(state.busy_until) or 0) then
+		cor_diag("busy", ("skip busy_until=%.2f now=%.2f"):format(tonumber(state.busy_until) or 0, uc_now_s()))
 		return nil
 	end
 	local max_range = roll_aoe_range(settings or {})
@@ -295,6 +311,7 @@ function mod.propose(settings)
 			local roll_val = tonumber(state.roll_value_by_buff[info.buff]) or nil
 			local active_roll_id = tonumber(state.active_roll_id) or 0
 			local has_snake_eye = has_buff(p, 357)
+			local has_double_up_chance = has_buff(p, DOUBLE_UP_CHANCE_BUFF_ID)
 
 			if not has_roll_buff then
 				if crooked_slot == idx and not has_buff(p, 601) and (recasts[96] or 0) == 0 then
@@ -345,7 +362,7 @@ function mod.propose(settings)
 						)
 					)
 				end
-			elseif active_roll_id == info.id and roll_val and roll_val ~= 11 then
+			elseif active_roll_id == info.id and has_double_up_chance and roll_val and roll_val ~= 11 then
 				if elevens then
 					if roll_val == 10 and not has_snake_eye and (recasts[197] or 0) == 0 then
 						cor_diag(("pick_snake_e11:%s:%d"):format(tostring(info.en), tonumber(roll_val) or 0), ('pick action="Snake Eye" roll="%s" roll_val=%d mode=elevens'):format(tostring(info.en), tonumber(roll_val) or 0))
@@ -366,6 +383,13 @@ function mod.propose(settings)
 						return make_action("Double-Up", "cor_roll_double_up", 0.68, { roll = info.en, roll_val = roll_val, lucky = info.lucky, unlucky = info.unlucky })
 					end
 				end
+			elseif active_roll_id == info.id and not has_double_up_chance and roll_val and roll_val ~= 11 then
+				cor_diag(
+					("skip_du_window_closed:%s:%d"):format(tostring(info.en), tonumber(roll_val) or 0),
+					('skip action="Snake Eye/Double-Up" roll="%s" roll_val=%d reason=double_up_chance_inactive'):format(
+						tostring(info.en), tonumber(roll_val) or 0
+					)
+				)
 			end
 		end
 	end

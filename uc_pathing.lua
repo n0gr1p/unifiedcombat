@@ -1,3 +1,17 @@
+local function uc_now_s()
+	local s = rawget(_G, 'socket')
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		local ok, mod = pcall(require, 'socket')
+		if ok then
+			s = mod
+		end
+	end
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		error('uc_now_s requires LuaSocket socket.gettime')
+	end
+	return s.gettime()
+end
+
 local files = require('files')
 local res = require('resources')
 local uc_party_follow = require('uc_party_follow')
@@ -455,7 +469,7 @@ local function collect_aggressive_mobs_with_targets(max_dist)
 					local amap = rawget(_G, 'UC_MOB_LAST_ACTION_TARGETS')
 					local rec = type(amap) == 'table' and amap[tonumber(mob.id) or 0] or nil
 					if type(rec) == 'table' then
-						local age = os.clock() - (tonumber(rec.at) or 0)
+						local age = uc_now_s() - (tonumber(rec.at) or 0)
 						if age >= 0 and age <= 5.0 then
 							local rid = tonumber(rec.target_id) or 0
 							if rid > 0 then
@@ -780,7 +794,7 @@ local function should_pause_for_combat()
 		return true
 	end
 	local ci_until = tonumber(rawget(_G, 'UC_COMBAT_INTENT_UNTIL')) or 0
-	return os.clock() < ci_until
+	return uc_now_s() < ci_until
 end
 
 local function stop_move()
@@ -810,7 +824,7 @@ local function maybe_autoload_for_ui(settings)
 	if file_name == '' then
 		return false
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	if file_name == last_autoload_file and (now - last_autoload_at) < autoload_interval then
 		return false
 	end
@@ -949,7 +963,7 @@ local function tick_follow(settings)
 end
 
 function mod.tick()
-	local now = os.clock()
+	local now = uc_now_s()
 	if (now - last_tick_at) < tick_interval then
 		return
 	end

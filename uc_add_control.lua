@@ -1,3 +1,17 @@
+local function uc_now_s()
+	local s = rawget(_G, 'socket')
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		local ok, mod = pcall(require, 'socket')
+		if ok then
+			s = mod
+		end
+	end
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		error('uc_now_s requires LuaSocket socket.gettime')
+	end
+	return s.gettime()
+end
+
 -- Add control: when fight leader is active, prefer a non-leader mob (add) other than the leader target.
 -- Requires settings.add_control, settings.fight_leader, and a resolved leader_mid > 0.
 -- Fight-adds only considers mobs within ADD_PICK_MAX_YALM (see below); unclaimed adds still need settings.prime
@@ -75,7 +89,7 @@ local function file_log(settings, text)
 		if not f then
 			return
 		end
-		f:write(os.date('%Y-%m-%d %H:%M:%S'), '\t', text:gsub('\r?\n', ' '), '\n')
+		f:write(os.date('%Y-%m-%d %H:%M:%S'), '	', text:gsub('\r?\n', ' '), '\n')
 		f:close()
 	end)
 end
@@ -112,7 +126,7 @@ local function should_emit_detail(settings)
 	if not settings or not truthy(settings.debug) then
 		return false
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	if now - last_detail_emit < DETAIL_INTERVAL then
 		return false
 	end
@@ -444,7 +458,7 @@ function M.execute_add_retarget(settings, want_mid, attack_cmd)
 		end
 		M.log_line(settings, ('retarget BLOCKED still_engaged loops=%d want=%d status_before=%s last_status=%s'):format(
 			loops, want_mid, tostring(status_before), tostring(last_status)))
-		local nowc = os.clock()
+		local nowc = uc_now_s()
 		if nowc - last_retarget_blocked_chat >= RETARGET_BLOCK_CHAT_INTERVAL then
 			last_retarget_blocked_chat = nowc
 			pcall(function()
@@ -468,7 +482,7 @@ function M.log_line(settings, msg)
 	if not settings or not truthy(settings.debug) or type(msg) ~= 'string' then
 		return
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	_G.UC_ADD_LINE_LOG_T = _G.UC_ADD_LINE_LOG_T or 0
 	if now - _G.UC_ADD_LINE_LOG_T < 0.5 then
 		return

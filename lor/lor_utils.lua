@@ -88,7 +88,7 @@ if not _libs.lor.utils then
             if status then return nil end
         --]]
         local st_re = '([^/]+/[^/]+%.lua:.*)'
-        local tb = debug.traceback():gsub('\t', '    '):gsub('%[C%]: ', ''):split('\n'):slice(2):reverse()
+        local tb = debug.traceback():gsub('	', '    '):gsub('%[C%]: ', ''):split('\n'):slice(2):reverse()
         tb = T({'stack traceback:'}):extend(tb):append(err)
         for _,tl in pairs(tb) do
             local trunc_line = tl:match(st_re)

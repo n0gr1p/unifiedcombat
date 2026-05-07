@@ -1,3 +1,17 @@
+local function uc_now_s()
+	local s = rawget(_G, 'socket')
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		local ok, mod = pcall(require, 'socket')
+		if ok then
+			s = mod
+		end
+	end
+	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
+		error('uc_now_s requires LuaSocket socket.gettime')
+	end
+	return s.gettime()
+end
+
 local res = require('resources')
 local skills = require('skills')
 local uc_ability_pipeline = require('uc_ability_pipeline')
@@ -101,7 +115,7 @@ local get_mover
 local resolve_mob_current_target
 local function set_movement_owner(owner, hold_s)
 	_G.UC_MOVEMENT_OWNER = tostring(owner or 'none')
-	local now = os.clock()
+	local now = uc_now_s()
 	local hold = tonumber(hold_s) or 0
 	if hold > 0 then
 		_G.UC_MOVEMENT_LOCK_UNTIL = now + hold
@@ -276,7 +290,7 @@ local function ws_intent_emit(ws_name, target_id)
 	end
 	-- IPC payload format: ucws_intent|actor_id|target_id|ws_name|clock
 	-- ws_name in FFXI does not contain pipe characters.
-	windower.send_ipc_message(('%s|%d|%d|%s|%.3f'):format(WS_INTENT_PREFIX, my_id, tid, ws, os.clock()))
+	windower.send_ipc_message(('%s|%d|%d|%s|%.3f'):format(WS_INTENT_PREFIX, my_id, tid, ws, uc_now_s()))
 	return true
 end
 
@@ -287,7 +301,7 @@ local function ws_hold_emit(target_id, hold_until)
 	if my_id <= 0 or tid <= 0 or until_ts <= 0 then
 		return false
 	end
-	windower.send_ipc_message(('%s|%d|%d|%.3f|%.3f'):format(WS_HOLD_PREFIX, my_id, tid, until_ts, os.clock()))
+	windower.send_ipc_message(('%s|%d|%d|%.3f|%.3f'):format(WS_HOLD_PREFIX, my_id, tid, until_ts, uc_now_s()))
 	return true
 end
 
@@ -301,7 +315,7 @@ local function ws_hold_remote_active_for(actor_id, target_id)
 	if type(entry) ~= 'table' then
 		return false
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	local until_ts = tonumber(entry.until_ts) or 0
 	if now >= until_ts then
 		core.ws_hold_remote[aid] = nil
@@ -314,7 +328,7 @@ local function ws_intent_gate(settings, ws_name, target_id)
 	if setting_enabled(settings and settings.solo) or setting_enabled(settings and settings.spam) then
 		return true, 'WS_INTENT_BYPASS'
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	local my_id = get_my_player_id()
 	local tid = tonumber(target_id) or 0
 	local ws = tostring(ws_name or '')
@@ -403,7 +417,7 @@ local function debug_log_channel(channel, msg)
 		if not f then
 			return
 		end
-		f:write(os.date('%Y-%m-%d %H:%M:%S'), '\t', line:gsub('\r?\n', ' '), '\n')
+		f:write(os.date('%Y-%m-%d %H:%M:%S'), '	', line:gsub('\r?\n', ' '), '\n')
 		f:close()
 	end)
 end
@@ -417,7 +431,7 @@ _G.UC_LOG_DIAG = function(channel, msg)
 end
 
 local function debug_ja_gate(name, reason, extra)
-	local now = os.clock()
+	local now = uc_now_s()
 	local key = tostring(name or '?') .. '|' .. tostring(reason or '?')
 	local last = tonumber((core.ja_gate_log_at or {})[key]) or 0
 	if (now - last) < 0.25 then
@@ -534,7 +548,7 @@ local function death_event_active_for_id(id)
 		return false
 	end
 	return (tonumber(core.last_death_target_id) or 0) == tid and
-		((os.clock() - (tonumber(core.last_death_at) or 0)) <= DEATH_SWITCH_WINDOW)
+		((uc_now_s() - (tonumber(core.last_death_at) or 0)) <= DEATH_SWITCH_WINDOW)
 end
 
 local function uc_heading_to(x, y)
@@ -616,7 +630,7 @@ local function spacing_collect_agents(me, settings)
 end
 
 local function spacing_predict_target(target, st, use_prediction, lookahead_s)
-	local now = os.clock()
+	local now = uc_now_s()
 	local tx = tonumber(target and target.x) or 0
 	local ty = tonumber(target and target.y) or 0
 	local px, py = tx, ty
@@ -774,7 +788,7 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 		return nil, 'HOLD_POSITION'
 	end
 
-	local now = os.clock()
+	local now = uc_now_s()
 	local heading = uc_heading_from_vector(vx, vy)
 	if heading and repelled > 0 then
 		local hold_until = tonumber(st.soft_heading_hold_until) or 0
@@ -975,7 +989,7 @@ local function find_candidate_target(settings)
 	-- keep current living combat target locked unless explicit engaged retarget modes are enabled.
 	if not allow_engaged_retarget then
 		local sticky_id = tonumber(core.sticky_target_id) or 0
-		local sticky_active = engaged or (os.clock() < (tonumber(core.sticky_hold_until) or 0))
+		local sticky_active = engaged or (uc_now_s() < (tonumber(core.sticky_hold_until) or 0))
 		local sticky_dead_event = death_event_active_for_id(sticky_id)
 		if sticky_id > 0 then
 			local sticky = windower.ffxi.get_mob_by_id(sticky_id)
@@ -1029,7 +1043,7 @@ local function find_candidate_target(settings)
 		path_hunter_max_range = 80
 	end
 	local marray = windower.ffxi.get_mob_array() or {}
-	local now = os.clock()
+	local now = uc_now_s()
 	local function hunter_cooldown_active(mid)
 		local tid = tonumber(mid) or 0
 		if tid == 0 then
@@ -1077,6 +1091,11 @@ local function find_candidate_target(settings)
 			return cur
 		end
 		local hunter_ok = uc_path_hunter.matches_mob(settings, cur.name or '')
+		local cur_prime_party_aggressive = prime_unclaimed_party_aggressive_ok(cur)
+		-- Prime party-aggressive targets should not be blocked by hunter name filters.
+		if (not hunter_ok) and cur_prime_party_aggressive then
+			hunter_ok = true
+		end
 		if hunter_ok and me and me.z ~= nil and cur.z ~= nil then
 			local dz = math.abs((tonumber(cur.z) or 0) - (tonumber(me.z) or 0))
 			if dz > path_hunter_max_z then
@@ -1112,6 +1131,11 @@ local function find_candidate_target(settings)
 			(not partner_target_owned_by_lower_id(mob.id)) then
 			if not uc_target_ignore.is_mob_blocked(settings, mob) then
 				local hunter_ok = (not path_hunter_filter_active) or uc_path_hunter.matches_mob(settings, mob.name or '')
+				local mob_prime_party_aggressive = prime_unclaimed_party_aggressive_ok(mob)
+				-- Prime party-aggressive targets should not be blocked by hunter name filters.
+				if (not hunter_ok) and mob_prime_party_aggressive then
+					hunter_ok = true
+				end
 				if hunter_ok then
 					if path_hunter_filter_active and hunter_cooldown_active(mob.id) then
 						hunter_ok = false
@@ -1327,7 +1351,7 @@ local function pull_action_config(settings)
 end
 
 local function pull_action_ready(action_type, action_name)
-	local now = os.clock()
+	local now = uc_now_s()
 	if now < (tonumber(core.pull_lock_until) or 0) then
 		return false, 'PULL_LOCK'
 	end
@@ -1411,7 +1435,7 @@ local function debug_tank(msg, force)
 	if line == '' then
 		return
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	if not force then
 		local last_line = tostring(core.tank_debug_last_line or '')
 		local last_at = tonumber(core.tank_debug_last_at) or 0
@@ -1434,7 +1458,7 @@ local function debug_tank(msg, force)
 		if not f then
 			return
 		end
-		f:write(os.date('%Y-%m-%d %H:%M:%S'), '\t', line:gsub('\r?\n', ' '), '\n')
+		f:write(os.date('%Y-%m-%d %H:%M:%S'), '	', line:gsub('\r?\n', ' '), '\n')
 		f:close()
 	end)
 end
@@ -1539,7 +1563,7 @@ resolve_mob_current_target = function(mob)
 		local amap = rawget(_G, 'UC_MOB_LAST_ACTION_TARGETS')
 		local rec = type(amap) == 'table' and amap[tonumber(mob.id) or 0] or nil
 		if type(rec) == 'table' then
-			local age = os.clock() - (tonumber(rec.at) or 0)
+			local age = uc_now_s() - (tonumber(rec.at) or 0)
 			if age >= 0 and age <= 5.0 then
 				local rid = tonumber(rec.target_id) or 0
 				if rid > 0 then
@@ -1651,7 +1675,7 @@ local function tank_action_ready(entry, mob, player)
 	if not entry or not mob then
 		return false, 'TANK_ACTION_INVALID'
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	if status_blocks_actions(player and player.status) then
 		return false, 'ACTION_BLOCK_STATUS3'
 	end
@@ -1746,7 +1770,7 @@ local function execute_tank_enmity(settings, player, violation)
 	if not mob or not mob.id or not mob.valid_target or (tonumber(mob.hpp) or 0) <= 0 then
 		return false
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	if core.tank_spell_waiting == true then
 		if now < (tonumber(core.tank_spell_wait_until) or 0) then
 			windower.ffxi.run(false)
@@ -1763,7 +1787,7 @@ local function execute_tank_enmity(settings, player, violation)
 		if ready then
 			if entry.kind == 'spell' then
 				local settle_key = ('%s:%d'):format(tostring(entry.name), tonumber(mob.id) or 0)
-				local now_settle = os.clock()
+				local now_settle = uc_now_s()
 				if core.tank_spell_settle_key ~= settle_key then
 					core.tank_spell_settle_key = settle_key
 					core.tank_spell_settle_until = now_settle + 0.40
@@ -1846,14 +1870,14 @@ local function try_pull_action(settings, player, target)
 	if action_name == '' then
 		return false
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	if core.pull_spell_waiting == true then
 		if now < (tonumber(core.pull_spell_wait_until) or 0) then
 			-- Keep stationary until the spell action completion packet arrives.
 			windower.ffxi.run(false)
 			core.last_run_active = false
 			_G.UC_PULL_SPELL_WAITING = true
-			_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 0.6
+			_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 0.6
 			_G.UC_LAST_BLOCK_REASON = 'PULL_SPELL_WAITING'
 			_G.UC_WS_LAST_DIAG = ('core pull spell-wait action=%s'):format(tostring(core.pull_pending_action or action_name))
 			return true
@@ -1907,7 +1931,7 @@ local function try_pull_action(settings, player, target)
 	if dist > cast_max_range then
 		core.pull_spell_settle_key = ''
 		core.pull_spell_settle_until = 0
-		_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 0.8
+		_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 0.8
 		_G.UC_LAST_BLOCK_REASON = 'PULL_MOVE_INTO_RANGE'
 		_G.UC_WS_LAST_DIAG = ('core pull move type=%s action=%s dist=%.2f cast_range=%.2f max=%.2f'):format(action_type, action_name, dist, cast_max_range, max_range)
 		local moved = move_toward_target_for_pull(cur)
@@ -1920,7 +1944,7 @@ local function try_pull_action(settings, player, target)
 	-- Hard-stop before pull spell casting only. JAs are intentionally allowed while moving.
 	if action_type == 'spell' then
 		local settle_key = ('%s:%d'):format(tostring(action_name), tonumber(cur.id) or 0)
-		local now_settle = os.clock()
+		local now_settle = uc_now_s()
 		if core.pull_spell_settle_key ~= settle_key then
 			core.pull_spell_settle_key = settle_key
 			core.pull_spell_settle_until = now_settle + 0.40
@@ -1928,7 +1952,7 @@ local function try_pull_action(settings, player, target)
 		windower.ffxi.run(false)
 		core.last_run_active = false
 		if now_settle < (tonumber(core.pull_spell_settle_until) or 0) then
-			_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 0.6
+			_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 0.6
 			_G.UC_LAST_BLOCK_REASON = 'PULL_PRECAST_SETTLE'
 			_G.UC_WS_LAST_DIAG = ('core pull settle action=%s tid=%d'):format(action_name, tonumber(cur.id) or 0)
 			return true
@@ -1949,7 +1973,7 @@ local function try_pull_action(settings, player, target)
 		core.pull_spell_waiting = true
 		core.pull_spell_wait_until = now + 8.0
 		_G.UC_PULL_SPELL_WAITING = true
-		_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 2.5
+		_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 2.5
 	else
 		windower.send_command('input /ja "' .. action_name .. '" ' .. tostring(cur.id))
 		core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
@@ -1963,7 +1987,7 @@ local function try_pull_action(settings, player, target)
 	if (tonumber(core.hunter_acquire.target_id) or 0) == (tonumber(cur.id) or 0) then
 		core.hunter_acquire.started_at = now
 	end
-	_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 0.8
+	_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 0.8
 	_G.UC_LAST_BLOCK_REASON = 'PULL_ACTION_SENT'
 	_G.UC_WS_LAST_DIAG = ('core pull sent type=%s action=%s tid=%d cast_range=%.2f max=%.2f'):format(action_type, action_name, tonumber(cur.id) or 0, cast_max_range, max_range)
 	return true
@@ -2107,7 +2131,7 @@ local function movement_guard_sample(g, me, dist, now)
 	g.last_x = tonumber(me.x)
 	g.last_y = tonumber(me.y)
 	g.last_dist = tonumber(dist) or 0
-	g.last_sample_at = tonumber(now) or os.clock()
+	g.last_sample_at = tonumber(now) or uc_now_s()
 end
 
 local function run_heading_guarded(target, me, heading, tag, is_retreat_intent)
@@ -2115,7 +2139,7 @@ local function run_heading_guarded(target, me, heading, tag, is_retreat_intent)
 		return false
 	end
 	local g = ensure_move_guard_state()
-	local now = os.clock()
+	local now = uc_now_s()
 	local away = is_retreat_intent == true
 	if me and target and me.x ~= nil and me.y ~= nil and target.x ~= nil and target.y ~= nil then
 		local tx = tonumber(target.x) - tonumber(me.x)
@@ -2207,7 +2231,7 @@ local function apply_movement(settings, target)
 			-- let party-follow own movement for a short window to avoid orphan/stuck trajectories.
 			windower.ffxi.run(false)
 			core.last_run_active = false
-			_G.UC_PULLER_APPROACH_BLOCK_UNTIL = os.clock() + 0.6
+			_G.UC_PULLER_APPROACH_BLOCK_UNTIL = uc_now_s() + 0.6
 			return
 		end
 	end
@@ -2232,8 +2256,9 @@ local function apply_movement(settings, target)
 	local me = windower.ffxi.get_mob_by_target('me')
 	local p = windower.ffxi.get_player()
 	local g = ensure_move_guard_state()
-	movement_guard_sample(g, me, dist, os.clock())
-	local spacing_on = setting_enabled(settings.spacing)
+	movement_guard_sample(g, me, dist, uc_now_s())
+	-- Spacing is combat-only behavior; never apply it while out of combat/following.
+	local spacing_on = setting_enabled(settings.spacing) and p and (tonumber(p.status) or 0) == 1
 	if spacing_on and me then
 		local heading, mode = spacing_compute_heading(settings, me, target, min_range, max_range)
 		if mode == 'HOLD_POSITION' then
@@ -2402,7 +2427,7 @@ end
 
 local function get_resonating_step(tid)
 	local reson = core.resonating[tid]
-	local timer = reson and (reson.times - os.clock()) or 0
+	local timer = reson and (reson.times - uc_now_s()) or 0
 	if reson and (not reson.closed) and timer > 0 then
 		return reson.step or 0
 	end
@@ -2429,7 +2454,7 @@ local function check_props(old_props, new_props)
 end
 
 local function apply_properties(target_id, resource, action_id, properties, delay, step, closed, bound)
-	local clock = os.clock()
+	local clock = uc_now_s()
 	core.resonating[target_id] = {
 		res = resource,
 		id = action_id,
@@ -2519,13 +2544,13 @@ function core.on_action(act)
 			end
 			map[tonumber(actor)] = {
 				target_id = tonumber(target.id) or 0,
-				at = os.clock(),
+				at = uc_now_s(),
 				category = tostring(category or ''),
 			}
 		end
 	end
 	if my_id and actor == my_id and (category == 'job_ability' or category == 'job_ability_unblinkable') then
-		local now = os.clock()
+		local now = uc_now_s()
 		core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
 		local ack_name = tostring((ability and (ability.en or ability.name)) or '')
 		if ack_name ~= '' and tostring(core.ja_pending_name or '') == ack_name then
@@ -2569,7 +2594,7 @@ function core.on_action(act)
 		if category ~= 'weaponskill_finish' then
 			core.party_ws_hold_target_id = target.id
 			core.party_ws_hold_actor_id = actor
-			core.party_ws_hold_until = os.clock() + PARTY_WS_HOLD_WINDOW
+			core.party_ws_hold_until = uc_now_s() + PARTY_WS_HOLD_WINDOW
 			core.party_ws_hold_category = tostring(category or '')
 			core.party_ws_hold_name = tostring((ability and (ability.en or ability.name)) or '')
 		else
@@ -2585,7 +2610,7 @@ function core.on_action(act)
 		end
 	end
 	if target and current and target.id == current.id and ability and resource == 'weapon_skills' then
-		core.ws_timer = os.clock() + 3
+		core.ws_timer = uc_now_s() + 3
 	end
 	if not action_categories[category] or act.param == 0 then
 		return
@@ -2631,7 +2656,7 @@ function core.on_action_message(msg)
 	local aid = tonumber(msg.actor_id) or 0
 	if tid > 0 and death_message_ids[mid] then
 		core.last_death_target_id = tid
-		core.last_death_at = os.clock()
+		core.last_death_at = uc_now_s()
 	end
 	if core.pull_spell_waiting == true then
 		local my_id = tonumber((windower.ffxi.get_player() or {}).id) or 0
@@ -2693,11 +2718,11 @@ function core.on_ipc_message(msg)
 			local target_id = tonumber(parts[3]) or 0
 			local hold_until = tonumber(parts[4]) or 0
 			local my_id = get_my_player_id()
-			if sender_id > 0 and sender_id ~= my_id and target_id > 0 and hold_until > os.clock() then
+			if sender_id > 0 and sender_id ~= my_id and target_id > 0 and hold_until > uc_now_s() then
 				core.ws_hold_remote[sender_id] = {
 					target_id = target_id,
 					until_ts = hold_until,
-					seen_at = os.clock(),
+					seen_at = uc_now_s(),
 				}
 			end
 		end
@@ -2720,7 +2745,7 @@ function core.on_ipc_message(msg)
 	if my_id > 0 and sender_id == my_id then
 		return
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	core.ws_intent_remote_target_id = target_id
 	core.ws_intent_remote_name = ws_name
 	core.ws_intent_remote_actor_id = sender_id
@@ -2751,7 +2776,7 @@ local function can_cast_ja(name)
 		debug_ja_gate(name, 'JA_REQUIRES_ENGAGED')
 		return false
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	if now < (tonumber(core.ja_lock_until) or 0) then
 		debug_ja_gate(name, 'JA_LOCK_ACTIVE')
 		return false
@@ -2839,7 +2864,7 @@ local function cast_ja(name)
 	if not ja then
 		return
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	core.ja_pending_name = tostring(name or '')
 	core.ja_pending_recast_id = tonumber(ja.recast_id) or 0
 	core.ja_pending_sent_at = now
@@ -2898,7 +2923,7 @@ local function should_hold_ws_for_chivalry(settings, player)
 	if not player or not player.vitals then
 		return false
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	if now < (tonumber(core.chivalry_hold_until) or 0) then
 		return true
 	end
@@ -2963,7 +2988,7 @@ local function select_smart_ws(settings, target_id)
 		local hold_tid = tonumber(core.party_ws_hold_target_id) or 0
 		if hold_tid ~= 0 and hold_tid == tid then
 			local hold_until = tonumber(core.party_ws_hold_until) or 0
-			local now = os.clock()
+			local now = uc_now_s()
 			if now < hold_until then
 				return '', ('ALLY_WS_READY_HOLD:%s:%s'):format(
 					tostring(core.party_ws_hold_name or ''),
@@ -3028,7 +3053,7 @@ local function select_smart_ws(settings, target_id)
 			return '', 'PRIMARY_WS_INVALID'
 		end
 		if sc_step > 0 and not spam_on then
-			local hold_until = tonumber((core.resonating[tid] or {}).times) or (os.clock() + 2.0)
+			local hold_until = tonumber((core.resonating[tid] or {}).times) or (uc_now_s() + 2.0)
 			ws_hold_emit(tid, hold_until)
 			return '', 'WS_MODE_PRIMARY_ONLY_SC_HOLD'
 		end
@@ -3044,7 +3069,7 @@ local function select_smart_ws(settings, target_id)
 		end
 	end
 	if chosen == '' and sc_step > 0 and not spam_on then
-		local hold_until = tonumber((core.resonating[tid] or {}).times) or (os.clock() + 2.0)
+		local hold_until = tonumber((core.resonating[tid] or {}).times) or (uc_now_s() + 2.0)
 		ws_hold_emit(tid, hold_until)
 		return '', 'SC_HOLD_NO_CONTINUE'
 	end
@@ -3062,7 +3087,7 @@ local function select_smart_ws(settings, target_id)
 	if spam_on then
 		return chosen, 'READY_SPAM'
 	end
-	if os.clock() >= (core.ws_timer or 0) or get_resonating_step(tid) == 0 or (hpp < 20 and setting_enabled(settings.closer)) then
+	if uc_now_s() >= (core.ws_timer or 0) or get_resonating_step(tid) == 0 or (hpp < 20 and setting_enabled(settings.closer)) then
 		return chosen, 'READY'
 	end
 	return '', 'TIMER_LOCK'
@@ -3076,7 +3101,7 @@ local function run_unified_combat()
 		return
 	end
 	if setting_enabled(s.tank) then
-		local now_dbg = os.clock()
+		local now_dbg = uc_now_s()
 		local last_dbg = tonumber(core.tank_tick_log_at) or 0
 		if (now_dbg - last_dbg) >= 1.0 then
 			core.tank_tick_log_at = now_dbg
@@ -3102,16 +3127,16 @@ local function run_unified_combat()
 	end
 	local now_status = p.status or 0
 	if combat_participant and setting_enabled(s.autotarget) and now_status == 1 then
-		_G.UC_FIGHT_FOLLOW_ACTIVE_UNTIL = os.clock() + party_follow_hold_seconds(s)
+		_G.UC_FIGHT_FOLLOW_ACTIVE_UNTIL = uc_now_s() + party_follow_hold_seconds(s)
 	end
-	local now = os.clock()
+	local now = uc_now_s()
 	if core.pull_spell_waiting == true then
 		if now < (tonumber(core.pull_spell_wait_until) or 0) then
 			windower.ffxi.run(false)
 			core.last_run_active = false
 			set_movement_owner('core', 0.6)
 			_G.UC_PULL_SPELL_WAITING = true
-			_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 0.6
+			_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 0.6
 			_G.UC_LAST_BLOCK_REASON = 'PULL_SPELL_WAITING'
 			_G.UC_WS_LAST_DIAG = ('core pull spell-wait action=%s'):format(tostring(core.pull_pending_action or ''))
 			return
@@ -3298,14 +3323,14 @@ local function run_unified_combat()
 		-- Hold a short combat-intent window so party-follow does not fight approach movement
 		-- during post-kill re-engage delay.
 		if combat_participant and setting_enabled(s.autotarget) then
-			_G.UC_COMBAT_INTENT_UNTIL = os.clock() + 0.8
-			_G.UC_FIGHT_FOLLOW_ACTIVE_UNTIL = os.clock() + party_follow_hold_seconds(s)
+			_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 0.8
+			_G.UC_FIGHT_FOLLOW_ACTIVE_UNTIL = uc_now_s() + party_follow_hold_seconds(s)
 			set_movement_owner('core', 0.8)
 		end
 	end
 	local tid = target and target.id or 0
 	if path_hunter_filter_active and tid > 0 then
-		local now = os.clock()
+		local now = uc_now_s()
 		if (tonumber(core.hunter_acquire.target_id) or 0) ~= tid then
 			core.hunter_acquire.target_id = tid
 			core.hunter_acquire.started_at = now
