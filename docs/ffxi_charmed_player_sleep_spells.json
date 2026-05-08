@@ -1,0 +1,1167 @@
+{
+  "dataset": "ffxi_charmed_player_sleep_spells",
+  "version": "1.0.0",
+  "generated_at_utc": "2026-05-07T22:24:20Z",
+  "purpose": "Automation-friendly metadata for choosing player-castable FFXI sleep spells/actions to control a charmed party member.",
+  "scope": {
+    "included": [
+      "Black Magic sleep spells",
+      "White Magic Repose",
+      "Bard Lullaby songs",
+      "Blue Magic sleep spells",
+      "Conditional Summoner Blood Pact sleep actions in a separate array"
+    ],
+    "excluded": [
+      "Non-sleep control effects such as Bind, Break, Stun, Terror, and Gravity",
+      "Weapon skills and item/proc sleeps from the main spell list",
+      "Trust/automaton behavior that is not directly player-castable/reliably selectable"
+    ],
+    "assumption": "A charmed player is treated as a foe/enemy target for combat/spell purposes; FFXI strategy pages explicitly discuss sleeping charmed party members."
+  },
+  "global_usage_notes": {
+    "sleep_status_id": 2,
+    "sleep_break_conditions": [
+      "Damage generally wakes Sleep.",
+      "Direct HP-restorative actions such as Cure can wake Sleep.",
+      "DoT effects can wake Sleep on ticks, so poisoned or otherwise DoT'd charmed players may not stay asleep."
+    ],
+    "charm_specific_notes": [
+      "Charmed players cannot operate normally and are treated as foes; sleeping them is a standard containment tactic.",
+      "Prefer not to damage the charmed player unless the alternative is worse.",
+      "Targeting/facing/position checks matter for BLU gaze and caster-centered AoE sleeps.",
+      "Resist Sleep traits/gear can make some players harder to sleep; light-based sleeps such as Repose/Lullaby/Sheep Song/Yawn may be preferable in some cases."
+    ],
+    "support_job_model": {
+      "normal_level_99_support_job_cap": 49,
+      "master_level_support_job_rule": "Support job cap increases by 1 every 5 Master Levels, up to 59 at Master Level 50.",
+      "fields": {
+        "usable_as_subjob_at_99_ml0": "True if spell level is <=49.",
+        "minimum_master_level_for_subjob": "Minimum Master Level on the main job needed for support job to reach that spell level, or null if impossible under ML50 cap.",
+        "usable_as_subjob_with_ml50_cap": "True if spell/action is at support job level 59 or lower."
+      }
+    }
+  },
+  "rating_model": {
+    "strength_rating_1_to_5": {
+      "5": "Best practical control: long duration, strong overwrite/priority, safe/no damage, or excellent main-job option.",
+      "4": "Strong but with meaningful caveat: AoE/caster-centered, element/resist concern, main-job-only, or recast/facing issue.",
+      "3": "Usable baseline control: shorter duration or lower practical strength but safe enough to use.",
+      "2": "Emergency/conditional only: damage, variable additional effect, DoT, pet timing, or major caveat.",
+      "1": "Not recommended; retained only for completeness if present."
+    },
+    "selection_score_0_to_100": "Opinionated automation score balancing duration, target safety, accessibility, element, AoE risk, cast/recast, and special requirements."
+  },
+  "selector_policy": {
+    "default_sort_order": [
+      "repose",
+      "foe_lullaby_ii",
+      "sleep_ii",
+      "dream_flower",
+      "horde_lullaby_ii",
+      "sleepga_ii",
+      "yawn",
+      "soporific",
+      "foe_lullaby",
+      "sheep_song",
+      "horde_lullaby",
+      "sleepga",
+      "sleep",
+      "pinecone_bomb"
+    ],
+    "single_target_preference": [
+      "repose",
+      "foe_lullaby_ii",
+      "sleep_ii",
+      "foe_lullaby",
+      "sleep",
+      "pinecone_bomb"
+    ],
+    "multiple_charm_targets_preference": [
+      "horde_lullaby_ii",
+      "sleepga_ii",
+      "dream_flower",
+      "yawn",
+      "soporific",
+      "horde_lullaby",
+      "sheep_song",
+      "sleepga"
+    ],
+    "light_based_preference": [
+      "repose",
+      "foe_lullaby_ii",
+      "horde_lullaby_ii",
+      "foe_lullaby",
+      "horde_lullaby",
+      "yawn",
+      "sheep_song"
+    ],
+    "dark_based_preference": [
+      "sleep_ii",
+      "sleepga_ii",
+      "dream_flower",
+      "soporific",
+      "sleepga",
+      "sleep"
+    ],
+    "exclude_by_default": [
+      "pinecone_bomb",
+      "nightmare"
+    ],
+    "why_exclude_by_default": {
+      "pinecone_bomb": "Damages the charmed player and sleep is only an additional effect.",
+      "nightmare": "Damages and adds DoT; high risk on a player target."
+    },
+    "rules": [
+      "Prefer single-target sleeps when exactly one player is charmed and enemy/add collateral is dangerous.",
+      "Prefer light-based sleep if dark-based sleep is likely to resist.",
+      "Prefer 90-second sleep over 60/30-second sleep when the spell can land reliably.",
+      "Avoid any sleep that damages the charmed player unless explicitly configured as emergency-only.",
+      "Do not cast a cure on a sleeping charmed player unless waking them is intended.",
+      "Avoid DoT on the charmed player before sleeping; DoT damage can wake Sleep."
+    ]
+  },
+  "sleep_spells": [
+    {
+      "id": "sleep",
+      "name": "Sleep",
+      "category": "spell",
+      "spell_type": "Black Magic",
+      "windower_spell_id": 253,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Dark",
+      "targeting": {
+        "target": "Enemy",
+        "area": "single",
+        "range_yalms": 12,
+        "aoe_radius_yalms": null
+      },
+      "base_duration_seconds": 60,
+      "cast_time_seconds": 2.5,
+      "recast_time_seconds": 30,
+      "mp_cost": 19,
+      "job_access": [
+        {
+          "job": "BLM",
+          "level": 20,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        },
+        {
+          "job": "RDM",
+          "level": 25,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        },
+        {
+          "job": "DRK",
+          "level": 30,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        },
+        {
+          "job": "SCH",
+          "level": 30,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        },
+        {
+          "job": "GEO",
+          "level": 35,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        }
+      ],
+      "special_requirements": [
+        "SCH requires Addendum: Black."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 3,
+        "selection_score_0_to_100": 62,
+        "tier_label": "baseline_single_target_sleep",
+        "ranking_reason": "Low-level, widely subjob-accessible single-target sleep. Weaker than 90-second sleeps but safer than AoE when only one party member is charmed."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "Use when no tier-2 or light-based single-target sleep is available.",
+        "risks": [
+          "Dark-based; less useful on targets with strong dark resistance or Resist Sleep traits.",
+          "Will break on damage or cure effects."
+        ],
+        "automation_notes": [
+          "Good fallback for any character with /BLM, /RDM, /DRK, /SCH, or /GEO access."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "ffxiclopedia_sleep"
+      ]
+    },
+    {
+      "id": "sleep_ii",
+      "name": "Sleep II",
+      "category": "spell",
+      "spell_type": "Black Magic",
+      "windower_spell_id": 259,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Dark",
+      "targeting": {
+        "target": "Enemy",
+        "area": "single",
+        "range_yalms": 12,
+        "aoe_radius_yalms": null
+      },
+      "base_duration_seconds": 90,
+      "cast_time_seconds": 3.0,
+      "recast_time_seconds": 30,
+      "mp_cost": 29,
+      "job_access": [
+        {
+          "job": "BLM",
+          "level": 41,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        },
+        {
+          "job": "RDM",
+          "level": 46,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        },
+        {
+          "job": "DRK",
+          "level": 56,
+          "usable_as_subjob_at_99_ml0": false,
+          "minimum_master_level_for_subjob": 35,
+          "usable_as_subjob_with_ml50_cap": true
+        },
+        {
+          "job": "SCH",
+          "level": 65,
+          "usable_as_subjob_at_99_ml0": false,
+          "minimum_master_level_for_subjob": null,
+          "usable_as_subjob_with_ml50_cap": false
+        },
+        {
+          "job": "GEO",
+          "level": 70,
+          "usable_as_subjob_at_99_ml0": false,
+          "minimum_master_level_for_subjob": null,
+          "usable_as_subjob_with_ml50_cap": false
+        }
+      ],
+      "special_requirements": [
+        "SCH requires Addendum: Black."
+      ],
+      "overwrites_or_priority_notes": [
+        "Overwrites tier-1 Sleep/Sleepga and tier-1 Lullaby-style sleeps according to common wiki notes.",
+        "Does not overwrite Repose per FFXIclopedia Repose notes."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 5,
+        "selection_score_0_to_100": 88,
+        "tier_label": "strong_single_target_sleep",
+        "ranking_reason": "90-second single-target sleep with broad BLM/RDM access. Excellent for charmed players when dark-based sleep is acceptable."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "Preferred dark-based single-target option for sleeping one charmed player.",
+        "risks": [
+          "Dark-based; target may resist.",
+          "Will break on damage or cure effects."
+        ],
+        "automation_notes": [
+          "At ML0, /BLM41 and /RDM46 can use it. /DRK56 requires main job ML35. /SCH65 and /GEO70 are not subjob-accessible under the ML50 support-job cap."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "ffxiclopedia_sleep_ii"
+      ]
+    },
+    {
+      "id": "sleepga",
+      "name": "Sleepga",
+      "category": "spell",
+      "spell_type": "Black Magic",
+      "windower_spell_id": 273,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Dark",
+      "targeting": {
+        "target": "Enemy",
+        "area": "aoe_centered_on_target",
+        "range_yalms": 12,
+        "aoe_radius_yalms": 10
+      },
+      "base_duration_seconds": 60,
+      "cast_time_seconds": 3.0,
+      "recast_time_seconds": 30,
+      "mp_cost": 38,
+      "job_access": [
+        {
+          "job": "BLM",
+          "level": 31,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        }
+      ],
+      "special_requirements": [],
+      "selector": {
+        "strength_rating_1_to_5": 3,
+        "selection_score_0_to_100": 58,
+        "tier_label": "baseline_aoe_sleep",
+        "ranking_reason": "Useful when multiple party members are charmed or when target shadows/positioning make AoE attractive, but lower duration and AoE collateral risk make it worse than single-target 90-second options for one charm target."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "Use when multiple nearby players are charmed or you need an accessible /BLM AoE sleep.",
+        "risks": [
+          "Can sleep unintended enemies or hit the active boss/adds.",
+          "Dark-based; may resist.",
+          "Will break on damage or cure effects."
+        ],
+        "automation_notes": [
+          "Subjob-accessible at /BLM31 even without Master Levels."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "ffxiclopedia_sleepga"
+      ]
+    },
+    {
+      "id": "sleepga_ii",
+      "name": "Sleepga II",
+      "category": "spell",
+      "spell_type": "Black Magic",
+      "windower_spell_id": 274,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Dark",
+      "targeting": {
+        "target": "Enemy",
+        "area": "aoe_centered_on_target",
+        "range_yalms": 12,
+        "aoe_radius_yalms": 10
+      },
+      "base_duration_seconds": 90,
+      "cast_time_seconds": 3.5,
+      "recast_time_seconds": 45,
+      "mp_cost": 58,
+      "job_access": [
+        {
+          "job": "BLM",
+          "level": 56,
+          "usable_as_subjob_at_99_ml0": false,
+          "minimum_master_level_for_subjob": 35,
+          "usable_as_subjob_with_ml50_cap": true
+        }
+      ],
+      "special_requirements": [],
+      "selector": {
+        "strength_rating_1_to_5": 5,
+        "selection_score_0_to_100": 82,
+        "tier_label": "strong_aoe_sleep",
+        "ranking_reason": "90-second AoE sleep. Extremely strong for multiple charm targets, but less safe than a single-target spell when only one party member is charmed."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "Use when multiple party members are charmed or an AoE sleep is explicitly wanted.",
+        "risks": [
+          "AoE may sleep unintended enemies or interact badly with boss positioning.",
+          "Dark-based; may resist.",
+          "Longer recast than Sleep/Sleep II."
+        ],
+        "automation_notes": [
+          "Main BLM56 normally. /BLM56 becomes possible only on a main job with at least Master Level 35."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "bg_wiki_sleepga_ii"
+      ]
+    },
+    {
+      "id": "repose",
+      "name": "Repose",
+      "category": "spell",
+      "spell_type": "White Magic",
+      "windower_spell_id": 98,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Light",
+      "targeting": {
+        "target": "Enemy",
+        "area": "single",
+        "range_yalms": 12,
+        "aoe_radius_yalms": null
+      },
+      "base_duration_seconds": 90,
+      "cast_time_seconds": 3.0,
+      "recast_time_seconds": 30,
+      "mp_cost": 26,
+      "job_access": [
+        {
+          "job": "WHM",
+          "level": 48,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        }
+      ],
+      "special_requirements": [],
+      "overwrites_or_priority_notes": [
+        "Light-based Divine Magic sleep.",
+        "FFXIclopedia notes Repose overwrites Sleep/Horde Lullaby/Foe Lullaby/Yawn, but not Sleep II; Sleep II also does not overwrite Repose."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 5,
+        "selection_score_0_to_100": 94,
+        "tier_label": "top_single_target_light_sleep",
+        "ranking_reason": "Best general-purpose charmed-player single-target sleep: 90 seconds, light-based, WHM48 is subjob-accessible, and it avoids AoE collateral."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "First-choice single-target spell when available, especially on WHM or /WHM characters.",
+        "risks": [
+          "Accuracy is based on Divine Magic / magic accuracy, so non-WHM subjob users may need macc support.",
+          "Will break on damage or cure effects."
+        ],
+        "automation_notes": [
+          "Subjob-accessible at /WHM48 with no Master Levels needed."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "bg_wiki_repose"
+      ]
+    },
+    {
+      "id": "foe_lullaby",
+      "name": "Foe Lullaby",
+      "category": "song",
+      "spell_type": "Bard Song",
+      "windower_spell_id": 463,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Light",
+      "targeting": {
+        "target": "Enemy",
+        "area": "single",
+        "range_yalms": 12,
+        "aoe_radius_yalms": null
+      },
+      "base_duration_seconds": 30,
+      "windower_resource_duration_seconds": 45,
+      "cast_time_seconds": 2.0,
+      "recast_time_seconds": 24,
+      "mp_cost": 0,
+      "job_access": [
+        {
+          "job": "BRD",
+          "level": 16,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        }
+      ],
+      "special_requirements": [
+        "Can be enhanced by Lullaby+ / All Songs+ gear and song-duration gear.",
+        "Job Points can add Lullaby duration for main BRD."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 3,
+        "selection_score_0_to_100": 70,
+        "tier_label": "fast_single_target_light_sleep",
+        "ranking_reason": "Shorter base duration than Repose/Sleep II, but fast, free, light-based, and subjob-accessible."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "Good fast single-target sleep from BRD or /BRD, especially when dark sleep is unreliable.",
+        "risks": [
+          "Shorter base duration unless enhanced by Bard gear.",
+          "Will break on damage or cure effects."
+        ],
+        "automation_notes": [
+          "Subjob-accessible at /BRD16. Useful emergency charm-control button on non-BRD if /BRD is present."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "ffxiclopedia_foe_lullaby",
+        "ffxiclopedia_lullaby"
+      ]
+    },
+    {
+      "id": "horde_lullaby",
+      "name": "Horde Lullaby",
+      "category": "song",
+      "spell_type": "Bard Song",
+      "windower_spell_id": 376,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Light",
+      "targeting": {
+        "target": "Enemy",
+        "area": "aoe_centered_on_target",
+        "range_yalms": 11,
+        "aoe_radius_yalms": "small; radius affected by instrument/skill mechanics"
+      },
+      "base_duration_seconds": 30,
+      "windower_resource_duration_seconds": 45,
+      "cast_time_seconds": 2.0,
+      "recast_time_seconds": 24,
+      "mp_cost": 0,
+      "job_access": [
+        {
+          "job": "BRD",
+          "level": 27,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        }
+      ],
+      "special_requirements": [
+        "Can be enhanced by Lullaby+ / All Songs+ gear and song-duration gear.",
+        "String instruments can affect Horde Lullaby AoE radius mechanics."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 3,
+        "selection_score_0_to_100": 66,
+        "tier_label": "fast_aoe_light_sleep",
+        "ranking_reason": "Fast AoE light sleep. Lower base duration than tier-II lullabies, but available as /BRD and useful for multiple charm targets."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "Use when multiple party members are charmed or when a fast /BRD AoE light sleep is the best available option.",
+        "risks": [
+          "AoE can hit enemies you did not intend to sleep.",
+          "Shorter base duration unless enhanced.",
+          "Will break on damage or cure effects."
+        ],
+        "automation_notes": [
+          "Subjob-accessible at /BRD27."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "ffxiclopedia_lullaby"
+      ]
+    },
+    {
+      "id": "foe_lullaby_ii",
+      "name": "Foe Lullaby II",
+      "category": "song",
+      "spell_type": "Bard Song",
+      "windower_spell_id": 471,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Light",
+      "targeting": {
+        "target": "Enemy",
+        "area": "single",
+        "range_yalms": 12,
+        "aoe_radius_yalms": null
+      },
+      "base_duration_seconds": 60,
+      "windower_resource_duration_seconds": 90,
+      "cast_time_seconds": 2.0,
+      "recast_time_seconds": 24,
+      "mp_cost": 0,
+      "job_access": [
+        {
+          "job": "BRD",
+          "level": 83,
+          "usable_as_subjob_at_99_ml0": false,
+          "minimum_master_level_for_subjob": null,
+          "usable_as_subjob_with_ml50_cap": false
+        }
+      ],
+      "special_requirements": [
+        "Main BRD only in practical terms; not subjob-accessible under current support-job cap.",
+        "Can be enhanced by Lullaby+ / All Songs+ gear, song-duration gear, Troubadour, and JP duration."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 5,
+        "selection_score_0_to_100": 90,
+        "tier_label": "strong_single_target_light_song",
+        "ranking_reason": "High-end single-target light sleep with fast cast/recast and strong Bard duration scaling. Great on real BRD, unavailable as a subjob."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "Preferred BRD single-target option for one charmed player.",
+        "risks": [
+          "Will break on damage or cure effects.",
+          "Main BRD only; not usable from /BRD."
+        ],
+        "automation_notes": [
+          "If a main BRD has this, rank it near Repose/Sleep II for one target."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "bg_wiki_foe_lullaby_ii",
+        "ffxiclopedia_lullaby"
+      ]
+    },
+    {
+      "id": "horde_lullaby_ii",
+      "name": "Horde Lullaby II",
+      "category": "song",
+      "spell_type": "Bard Song",
+      "windower_spell_id": 377,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Light",
+      "targeting": {
+        "target": "Enemy",
+        "area": "aoe_centered_on_target",
+        "range_yalms": 11,
+        "aoe_radius_yalms": "small; radius affected by instrument/skill mechanics"
+      },
+      "base_duration_seconds": 60,
+      "windower_resource_duration_seconds": 90,
+      "cast_time_seconds": 2.0,
+      "recast_time_seconds": 24,
+      "mp_cost": 0,
+      "job_access": [
+        {
+          "job": "BRD",
+          "level": 92,
+          "usable_as_subjob_at_99_ml0": false,
+          "minimum_master_level_for_subjob": null,
+          "usable_as_subjob_with_ml50_cap": false
+        }
+      ],
+      "special_requirements": [
+        "Main BRD only in practical terms; not subjob-accessible under current support-job cap.",
+        "Can be enhanced by Lullaby+ / All Songs+ gear, song-duration gear, Troubadour, and JP duration."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 5,
+        "selection_score_0_to_100": 86,
+        "tier_label": "strong_aoe_light_song",
+        "ranking_reason": "High-end AoE light sleep. Excellent for multiple charm targets, but less safe than single-target Lullaby II if only one player is charmed."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "Preferred BRD AoE option when multiple players are charmed or clustered.",
+        "risks": [
+          "AoE collateral.",
+          "Will break on damage or cure effects.",
+          "Main BRD only; not usable from /BRD."
+        ],
+        "automation_notes": [
+          "Use single-target Foe Lullaby II instead when only one target needs control and collateral sleep is risky."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "bg_wiki_horde_lullaby_ii",
+        "ffxiclopedia_lullaby"
+      ]
+    },
+    {
+      "id": "sheep_song",
+      "name": "Sheep Song",
+      "category": "spell",
+      "spell_type": "Blue Magic",
+      "windower_spell_id": 584,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Light",
+      "targeting": {
+        "target": "Enemy",
+        "area": "aoe_centered_on_caster",
+        "range_yalms": 4,
+        "aoe_radius_yalms": 6
+      },
+      "base_duration_seconds": "40-60",
+      "cast_time_seconds": 3.0,
+      "recast_time_seconds": 60,
+      "mp_cost": 22,
+      "blue_magic_points": 2,
+      "job_access": [
+        {
+          "job": "BLU",
+          "level": 16,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        }
+      ],
+      "special_requirements": [
+        "BLU spell must be learned and set.",
+        "Creates Auto Regen trait when paired with Healing Breeze."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 3,
+        "selection_score_0_to_100": 68,
+        "tier_label": "accessible_aoe_light_blue_sleep",
+        "ranking_reason": "Subjob-accessible AoE light sleep. Shorter and close-range, but useful from /BLU and good when dark sleep is poor."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "Emergency /BLU light-based AoE sleep when the charmed player is close.",
+        "risks": [
+          "Caster-centered AoE requires proximity to the charmed player.",
+          "AoE collateral.",
+          "Shorter duration than 90-second options.",
+          "Will break on damage or cure effects."
+        ],
+        "automation_notes": [
+          "Requires BLU spell to be set; check set spell list before selecting."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "bg_wiki_sheep_song"
+      ]
+    },
+    {
+      "id": "soporific",
+      "name": "Soporific",
+      "category": "spell",
+      "spell_type": "Blue Magic",
+      "windower_spell_id": 598,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Dark",
+      "targeting": {
+        "target": "Enemy",
+        "area": "aoe_centered_on_caster",
+        "range_yalms": 4,
+        "aoe_radius_yalms": 6
+      },
+      "base_duration_seconds": 90,
+      "cast_time_seconds": 3.0,
+      "recast_time_seconds": 90,
+      "windower_resource_recast_seconds": 26,
+      "mp_cost": 38,
+      "blue_magic_points": 4,
+      "job_access": [
+        {
+          "job": "BLU",
+          "level": 24,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        }
+      ],
+      "special_requirements": [
+        "BLU spell must be learned and set.",
+        "Creates Clear Mind trait when paired with certain BLU spells."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 4,
+        "selection_score_0_to_100": 76,
+        "tier_label": "strong_accessible_blue_sleep",
+        "ranking_reason": "90-second /BLU-accessible sleep is strong, but dark element, close-range caster-centered AoE, and recast/collateral considerations keep it below Repose/Sleep II."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "Strong /BLU option if the caster can safely stand near the charmed player.",
+        "risks": [
+          "Caster-centered AoE requires proximity.",
+          "AoE collateral.",
+          "Dark-based; may resist.",
+          "Will break on damage or cure effects."
+        ],
+        "automation_notes": [
+          "Requires BLU spell set. If both Sheep Song and Soporific are set, prefer Soporific for duration unless dark resistance is likely."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "bg_wiki_soporific"
+      ]
+    },
+    {
+      "id": "yawn",
+      "name": "Yawn",
+      "category": "spell",
+      "spell_type": "Blue Magic",
+      "windower_spell_id": 576,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Light",
+      "targeting": {
+        "target": "Enemy",
+        "area": "aoe_gaze_centered_on_caster",
+        "range_yalms": 4,
+        "aoe_radius_yalms": 6
+      },
+      "base_duration_seconds": "70-90",
+      "cast_time_seconds": 3.0,
+      "recast_time_seconds": 60,
+      "mp_cost": 55,
+      "blue_magic_points": 3,
+      "job_access": [
+        {
+          "job": "BLU",
+          "level": 64,
+          "usable_as_subjob_at_99_ml0": false,
+          "minimum_master_level_for_subjob": null,
+          "usable_as_subjob_with_ml50_cap": false
+        }
+      ],
+      "special_requirements": [
+        "BLU spell must be learned and set.",
+        "Gaze-based: target must be facing caster for the spell to take effect."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 4,
+        "selection_score_0_to_100": 78,
+        "tier_label": "strong_light_blue_sleep_with_facing_requirement",
+        "ranking_reason": "Long-duration light-based AoE sleep, but main-BLU-only and gaze/facing requirements make automation riskier."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "Good main-BLU light sleep if the charmed player is facing the BLU and close enough.",
+        "risks": [
+          "Gaze/facing requirement can fail in messy charm situations.",
+          "Caster-centered AoE/proximity risk.",
+          "Will break on damage or cure effects."
+        ],
+        "automation_notes": [
+          "Do not auto-select if target facing cannot be verified; prefer Dream Flower, Repose, or Sleep II if available."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "bg_wiki_yawn"
+      ]
+    },
+    {
+      "id": "dream_flower",
+      "name": "Dream Flower",
+      "category": "spell",
+      "spell_type": "Blue Magic",
+      "windower_spell_id": 678,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Dark",
+      "targeting": {
+        "target": "Enemy",
+        "area": "aoe_centered_on_caster",
+        "range_yalms": 8,
+        "aoe_radius_yalms": 10
+      },
+      "base_duration_seconds": 90,
+      "cast_time_seconds": 2.0,
+      "windower_resource_cast_time_seconds": 2.0,
+      "wiki_cast_time_seconds": 2.5,
+      "recast_time_seconds": 45,
+      "mp_cost": 68,
+      "blue_magic_points": 3,
+      "job_access": [
+        {
+          "job": "BLU",
+          "level": 87,
+          "usable_as_subjob_at_99_ml0": false,
+          "minimum_master_level_for_subjob": null,
+          "usable_as_subjob_with_ml50_cap": false
+        }
+      ],
+      "special_requirements": [
+        "BLU spell must be learned and set."
+      ],
+      "overwrites_or_priority_notes": [
+        "Does not overwrite Sleep II, Sleepga II, or itself according to FFXIclopedia notes."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 5,
+        "selection_score_0_to_100": 84,
+        "tier_label": "strong_main_blu_aoe_sleep",
+        "ranking_reason": "Excellent main-BLU 90-second AoE sleep with better range/recast than older BLU sleeps. Dark element and AoE collateral still matter."
+      },
+      "charmed_player_usage": {
+        "recommended": true,
+        "best_use": "Best main-BLU AoE sleep when multiple charm targets or close-range BLU control is needed.",
+        "risks": [
+          "Dark-based; may resist.",
+          "AoE collateral.",
+          "Will break on damage or cure effects."
+        ],
+        "automation_notes": [
+          "Main BLU only; not subjob-accessible. Prefer single-target options if only one charmed player and collateral is risky."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "bg_wiki_dream_flower"
+      ]
+    },
+    {
+      "id": "pinecone_bomb",
+      "name": "Pinecone Bomb",
+      "category": "spell",
+      "spell_type": "Blue Magic",
+      "windower_spell_id": 596,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2,
+        "via": "additional_effect"
+      },
+      "element": "Physical/Piercing",
+      "targeting": {
+        "target": "Enemy",
+        "area": "single",
+        "range_yalms": 12,
+        "aoe_radius_yalms": null
+      },
+      "base_duration_seconds": "variable; TP-dependent/verification needed",
+      "cast_time_seconds": 2.5,
+      "recast_time_seconds": 26.5,
+      "mp_cost": 48,
+      "blue_magic_points": 2,
+      "job_access": [
+        {
+          "job": "BLU",
+          "level": 36,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        }
+      ],
+      "special_requirements": [
+        "BLU spell must be learned and set.",
+        "Deals physical damage before attempting Sleep additional effect."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 2,
+        "selection_score_0_to_100": 38,
+        "tier_label": "emergency_damage_plus_sleep",
+        "ranking_reason": "Single-target and subjob-accessible, but it damages the charmed player and the sleep is an additional effect with variable duration."
+      },
+      "charmed_player_usage": {
+        "recommended": "emergency_only",
+        "best_use": "Last-resort /BLU single-target sleep when other real sleep spells are unavailable.",
+        "risks": [
+          "Can injure or kill the charmed player.",
+          "Additional-effect sleep may fail.",
+          "Physical accuracy and target defenses matter.",
+          "Will wake on later damage/cure effects."
+        ],
+        "automation_notes": [
+          "Exclude from normal selector unless explicitly allowing damage-to-charmed-player emergency actions."
+        ]
+      },
+      "source_keys": [
+        "windower_spells_lua",
+        "ffxiclopedia_pinecone_bomb"
+      ]
+    }
+  ],
+  "conditional_player_available_sleep_actions": [
+    {
+      "id": "sleepga_blood_pact",
+      "name": "Sleepga",
+      "category": "blood_pact",
+      "spell_type": "Summoner Blood Pact: Ward",
+      "windower_spell_id": null,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2
+      },
+      "element": "Dark",
+      "avatar": "Shiva",
+      "targeting": {
+        "target": "Enemy",
+        "area": "aoe_centered_on_target",
+        "range_yalms": 10,
+        "aoe_radius_yalms": "AoE"
+      },
+      "base_duration_seconds": 90,
+      "cast_time_seconds": null,
+      "recast_time_seconds": "Blood Pact timer",
+      "mp_cost": 54,
+      "job_access": [
+        {
+          "job": "SMN",
+          "level": 39,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        }
+      ],
+      "special_requirements": [
+        "Requires Shiva summoned and Blood Pact: Ward available.",
+        "Not a normal magic spell; included because it is a player-controlled sleep action."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 4,
+        "selection_score_0_to_100": 72,
+        "tier_label": "conditional_smn_aoe_sleep",
+        "ranking_reason": "90-second AoE dark sleep available through SMN, including /SMN39, but pet command timing and Blood Pact recast make it less immediate than normal magic."
+      },
+      "charmed_player_usage": {
+        "recommended": "conditional",
+        "best_use": "Useful if a SMN already has Shiva out or can execute Blood Pact quickly.",
+        "risks": [
+          "AoE collateral.",
+          "Pet positioning/timing.",
+          "Dark-based resist.",
+          "Blood Pact recast lockout."
+        ],
+        "automation_notes": [
+          "Keep out of normal spell selector unless pet-action support exists."
+        ]
+      },
+      "source_keys": [
+        "bg_wiki_sleepga_blood_pact"
+      ]
+    },
+    {
+      "id": "nightmare",
+      "name": "Nightmare",
+      "category": "blood_pact",
+      "spell_type": "Summoner Blood Pact: Ward",
+      "windower_spell_id": null,
+      "inflicts_status": {
+        "name": "Sleep",
+        "windower_buff_id": 2,
+        "additional_effects": [
+          "damage",
+          "damage_over_time"
+        ]
+      },
+      "element": "Dark",
+      "avatar": "Diabolos",
+      "targeting": {
+        "target": "Enemy",
+        "area": "aoe_centered_on_target",
+        "range_yalms": 10,
+        "aoe_radius_yalms": "AoE"
+      },
+      "base_duration_seconds": 90,
+      "cast_time_seconds": null,
+      "recast_time_seconds": "Blood Pact timer",
+      "mp_cost": 42,
+      "job_access": [
+        {
+          "job": "SMN",
+          "level": 29,
+          "usable_as_subjob_at_99_ml0": true,
+          "minimum_master_level_for_subjob": 0,
+          "usable_as_subjob_with_ml50_cap": true
+        }
+      ],
+      "special_requirements": [
+        "Requires Diabolos summoned and Blood Pact: Ward available.",
+        "Not a normal magic spell; included because it is a player-controlled sleep action.",
+        "Adds damage/DoT behavior, so it is risky on player targets."
+      ],
+      "selector": {
+        "strength_rating_1_to_5": 2,
+        "selection_score_0_to_100": 34,
+        "tier_label": "high_risk_smn_sleep_dot",
+        "ranking_reason": "Can sleep, but damage/DoT makes it dangerous on a charmed player. Treat as emergency or excluded by default."
+      },
+      "charmed_player_usage": {
+        "recommended": "emergency_only",
+        "best_use": "Only when stopping the charmed player matters more than avoiding damage and no safer sleep exists.",
+        "risks": [
+          "Can damage/kill the charmed player.",
+          "DoT/damage behavior is not desirable for sleep control.",
+          "AoE collateral.",
+          "Blood Pact timing/recast."
+        ],
+        "automation_notes": [
+          "Default selector should exclude this unless allow_high_risk_sleep_actions=true."
+        ]
+      },
+      "source_keys": [
+        "bg_wiki_nightmare"
+      ]
+    }
+  ],
+  "excluded_or_related_control_options": [
+    {
+      "name": "Shockwave",
+      "type": "Weapon Skill",
+      "reason_excluded": "Player-available AoE sleep effect, but not a spell and it deals weapon-skill damage. Useful as a separate emergency-control table, not in the spell list."
+    },
+    {
+      "name": "Sleep Bolt / sleep-ammo style effects",
+      "type": "Ranged/Item effect",
+      "reason_excluded": "Not castable magic. Also depends on ranged attack accuracy/proc mechanics and may damage the charmed player."
+    },
+    {
+      "name": "Break / Breakga",
+      "type": "Black Magic",
+      "reason_excluded": "Crowd-control spell but inflicts Petrification, not Sleep."
+    },
+    {
+      "name": "Bind / Gravity / Stun / Terror effects",
+      "type": "Control effects",
+      "reason_excluded": "Can help contain charm in some fights, but they are not sleep spells."
+    },
+    {
+      "name": "Maiden's Virelai",
+      "type": "Bard Song",
+      "reason_excluded": "Charm effect, not Sleep. Do not use as sleep control."
+    }
+  ],
+  "sources": {
+    "windower_spells_lua": "https://github.com/Windower/Resources/blob/master/resources_data/spells.lua",
+    "windower_buffs_lua": "https://github.com/Windower/Resources/blob/master/resources_data/buffs.lua",
+    "bg_wiki_sleep_status": "https://www.bg-wiki.com/ffxi/Sleep_(Status)",
+    "ffxiclopedia_charm_status": "https://ffxiclopedia.fandom.com/wiki/Charm_(Status_Effect)",
+    "ffxiclopedia_bloody_rondo": "https://ffxiclopedia.fandom.com/wiki/Bloody_Rondo",
+    "bg_wiki_support_job": "https://www.bg-wiki.com/ffxi/Support_Job",
+    "bg_wiki_master_levels": "https://www.bg-wiki.com/ffxi/Master_Levels",
+    "ffxiclopedia_sleep": "https://ffxiclopedia.fandom.com/wiki/Sleep",
+    "ffxiclopedia_sleep_ii": "https://ffxiclopedia.fandom.com/wiki/Sleep_II",
+    "ffxiclopedia_sleepga": "https://ffxiclopedia.fandom.com/wiki/Sleepga",
+    "bg_wiki_sleepga_ii": "https://www.bg-wiki.com/ffxi/Sleepga_II",
+    "bg_wiki_repose": "https://www.bg-wiki.com/ffxi/Repose",
+    "ffxiclopedia_lullaby": "https://ffxiclopedia.fandom.com/wiki/Lullaby",
+    "ffxiclopedia_foe_lullaby": "https://ffxiclopedia.fandom.com/wiki/Foe_Lullaby",
+    "bg_wiki_foe_lullaby_ii": "https://www.bg-wiki.com/ffxi/Foe_Lullaby_II",
+    "bg_wiki_horde_lullaby_ii": "https://www.bg-wiki.com/ffxi/Horde_Lullaby_II",
+    "bg_wiki_sheep_song": "https://www.bg-wiki.com/ffxi/Sheep_Song",
+    "bg_wiki_soporific": "https://www.bg-wiki.com/ffxi/Soporific",
+    "bg_wiki_yawn": "https://www.bg-wiki.com/ffxi/Yawn",
+    "bg_wiki_dream_flower": "https://www.bg-wiki.com/ffxi/Dream_Flower",
+    "ffxiclopedia_pinecone_bomb": "https://ffxiclopedia.fandom.com/wiki/Pinecone_Bomb",
+    "bg_wiki_sleepga_blood_pact": "https://www.bg-wiki.com/ffxi/Sleepga_(Blood_Pact)",
+    "bg_wiki_nightmare": "https://www.bg-wiki.com/ffxi/Nightmare"
+  }
+}
