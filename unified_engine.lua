@@ -108,12 +108,52 @@ local function render_sched_overlay()
 	local rejected = type(snap.rejected) == 'table' and snap.rejected or {}
 	local buff_up = type(snap.buff_up) == 'table' and snap.buff_up or {}
 	local qlines = { ('Scheduler Queue (tick %s)'):format(tostring(snap.tick or 0)) }
+	local domain_enabled_fn = rawget(_G, 'UC_DomainEnabled')
+	local function domain_live(name)
+		if type(domain_enabled_fn) == 'function' then
+			return domain_enabled_fn(s, name) == true
+		end
+		return false
+	end
+	qlines[#qlines + 1] = ('EngineEnabled: %s'):format(tostring(bool_setting(s.engine_enabled, false)))
+	qlines[#qlines + 1] = ('DomainCombatLive: %s'):format(tostring(domain_live('combat')))
+	qlines[#qlines + 1] = ('DomainMovementLive: %s'):format(tostring(domain_live('movement')))
+	qlines[#qlines + 1] = ('DomainDefensiveLive: %s'):format(tostring(domain_live('defensive')))
+	qlines[#qlines + 1] = ('DomainMaintenanceLive: %s'):format(tostring(domain_live('maintenance')))
+	qlines[#qlines + 1] = ('DomainFollowLive: %s'):format(tostring(domain_live('follow')))
 	local pf_op = tostring(rawget(_G, 'UC_LAST_PARTY_FOLLOW_OP') or '')
 	if pf_op ~= '' then
 		qlines[#qlines + 1] = ('PartyFollow: %s'):format(pf_op)
 	else
 		qlines[#qlines + 1] = 'PartyFollow: (none)'
 	end
+	qlines[#qlines + 1] = ('FollowRunActive: %s'):format(tostring(rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE') == true))
+	qlines[#qlines + 1] = ('FollowNeedsCatchup: %s'):format(tostring(rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP') == true))
+	local p1_provider = tostring(rawget(_G, 'UC_SCHED_P1_SELECTED_PROVIDER') or '')
+	if p1_provider == '' then
+		p1_provider = '(none)'
+	end
+	qlines[#qlines + 1] = ('P1Provider: %s'):format(p1_provider)
+	local p1_family = tostring(rawget(_G, 'UC_SCHED_P1_SELECTED_FAMILY') or '')
+	if p1_family == '' then
+		p1_family = '(none)'
+	end
+	qlines[#qlines + 1] = ('P1Family: %s'):format(p1_family)
+	local p1_pending = tostring(rawget(_G, 'UC_SCHED_P1_PENDING_STATE') or '')
+	if p1_pending == '' then
+		p1_pending = '(none)'
+	end
+	qlines[#qlines + 1] = ('P1Pending: %s'):format(p1_pending)
+	local sched_block = tostring(rawget(_G, 'UC_LAST_BLOCK_REASON') or '')
+	if sched_block == '' then
+		sched_block = '(none)'
+	end
+	qlines[#qlines + 1] = ('SchedBlock: %s'):format(sched_block)
+	local last_sched_action = tostring(rawget(_G, 'UC_LAST_SCHED_ACTION') or '')
+	if last_sched_action == '' then
+		last_sched_action = '(none)'
+	end
+	qlines[#qlines + 1] = ('LastSchedAction: %s'):format(last_sched_action)
 	local spacing_diag = tostring(rawget(_G, 'UC_SPACING_DIAG') or '')
 	if spacing_diag ~= '' then
 		qlines[#qlines + 1] = ('Spacing: %s'):format(spacing_diag)

@@ -2469,6 +2469,24 @@ local function try_internal_defensive_action()
 	_G.UC_BUFF_QUEUE = tostring(buff_runtime.last_queue_debug or '')
 	local action, reason = choose_defensive_action(candidates)
 	if action and action.spell and action.target and action.target.name then
+		local _, _, action_kind = action_ready(action.spell)
+		local out_of_combat = (tonumber(p and p.status) or 0) ~= 1
+		local now_gate = now_s()
+		local follow_run_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE_UNTIL')) or 0
+		local follow_run_active = (rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE') == true) or (now_gate < follow_run_until)
+		local follow_catchup_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL')) or 0
+		local follow_needs_catchup = (rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP') == true) or (now_gate < follow_catchup_until)
+		if action_kind == 'spell' and out_of_combat and (follow_run_active or follow_needs_catchup) then
+			_G.UC_LAST_SCHED_ACTION = ('def_defer_follow_move:%s->%s'):format(
+				tostring(action.spell or ''),
+				tostring(action.target and action.target.name or '')
+			)
+			log_def_sched(('DEF_SKIP reason=FOLLOW_MOVE_ACTIVE action="%s" target="%s"'):format(
+				tostring(action.spell or ''),
+				tostring(action.target and action.target.name or '')
+			))
+			return false, nil
+		end
 		local blocked, b_reason = action_dispatch_blocked()
 		if blocked then
 			log_def_sched(('DEF_BLOCK reason=%s action="%s" target="%s" type=%s'):format(
@@ -2489,7 +2507,6 @@ local function try_internal_defensive_action()
 			))
 			return false, nil
 		end
-		local _, _, action_kind = action_ready(action.spell)
 		local cmd = build_action_command(action.spell, action_kind, action.target)
 		log_def_sched(('DEF_SEND type=%s action="%s" target="%s" cmd=%s'):format(
 			tostring(action_kind or action.type or 'defensive'),
@@ -3197,9 +3214,11 @@ local function p1_collect_combat_tank_enmity(ctx, out)
 		))
 		return
 	end
-	-- Tank engagement/enmity recovery should outrank everything except
-	-- DOOM emergency handling and critical-HP cures.
-	local prio = 108
+	-- Tank enmity recovery should stay high, but cures must outrank it so
+	-- party sustain wins over threat correction when both are available.
+	-- Cure intents currently score from priority_band=100 (+ urgency), with
+	-- critical cures at 110, so keep tank below that envelope.
+	local prio = 96
 	local urgency = 0.85
 	local victim_hpp = tonumber(pick.victim_hpp) or 0
 	if victim_hpp > 0 then
@@ -4578,6 +4597,20 @@ local function p1_try_dark_launch_dispatch(settings)
 		end
 		if not ok_ready then
 			return false, nil
+		end
+		local p = windower.ffxi.get_player()
+		local out_of_combat = (tonumber(p and p.status) or 0) ~= 1
+		local now_gate = now_s()
+		local follow_run_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE_UNTIL')) or 0
+		local follow_run_active = (rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE') == true) or (now_gate < follow_run_until)
+		local follow_catchup_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL')) or 0
+		local follow_needs_catchup = (rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP') == true) or (now_gate < follow_catchup_until)
+		if action_kind == 'spell' and out_of_combat and (follow_run_active or follow_needs_catchup) then
+			_G.UC_LAST_SCHED_ACTION = ('[p1]defer_follow_move:%s->%s'):format(
+				tostring(selected.action_name or ''),
+				tostring(selected.target_name or '')
+			)
+			return true, 'BLOCK_DEFENSIVE_FOLLOW_MOVE_ACTIVE'
 		end
 		windower.send_command(cmd)
 		action_mark_sent(action_kind or selected.action_type or 'defensive_internal')
