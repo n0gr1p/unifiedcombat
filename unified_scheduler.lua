@@ -12,6 +12,8 @@ local enemy_effect_tracker = require('uc_enemy_effect_tracker')
 local lor_packets = require('lor/lor_packets')
 local json = require('json')
 local tb_effect_table = require('uc_tb_effect_table')
+local scheduler_locks = require('uc_scheduler_locks')
+local scheduler_pending = require('uc_scheduler_pending')
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
 	or nil
@@ -109,15 +111,7 @@ local status_removal_priority = {
 }
 
 local function normalize_status_removal_key(buff_res)
-	local en = tostring((buff_res and buff_res.en) or '')
-	if en == '' then
-		return ''
-	end
-	local key = en:lower():gsub('%s+', '_')
-	if key == 'blindness' then
-		return 'blind'
-	end
-	return key
+	return require('uc_scheduler_enemy_effect_utils').normalize_status_removal_key(buff_res)
 end
 
 local buff_priority = {
@@ -139,78 +133,20 @@ local ja_name_cache = { built = false, by_name = {} }
 local buff_runtime = {
 	last_queue_debug = '',
 }
-local dec2roman = { 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI' }
-
 local function to_roman_numeral(val)
-	local n = tonumber(val)
-	if not n then
-		return nil
-	end
-	return dec2roman[n]
+	return require('uc_scheduler_text_utils').to_roman_numeral(val)
 end
 
 local function ucfirst(s)
-	local t = tostring(s or '')
-	if t == '' then
-		return t
-	end
-	return t:sub(1, 1):upper() .. t:sub(2):lower()
+	return require('uc_scheduler_text_utils').ucfirst(s)
 end
 
 local function decode_json_escapes(s)
-	local t = tostring(s or '')
-	if t == '' then
-		return ''
-	end
-	t = t:gsub('\\u(%x%x%x%x)', function(h)
-		local code = tonumber(h, 16)
-		if not code then
-			return ''
-		end
-		if code < 128 then
-			return string.char(code)
-		end
-		-- Keep non-ASCII codepoints unchanged in this lightweight decoder.
-		return '\\u' .. h
-	end)
-	t = t:gsub('\\"', '"')
-	t = t:gsub("\\'", "'")
-	t = t:gsub('\\\\', '\\')
-	return t
+	return require('uc_scheduler_text_utils').decode_json_escapes(s)
 end
 
 local function normalize_action_name_like_healbot(text)
-	if type(text) ~= 'string' or #text < 1 then
-		return ''
-	end
-	local raw = decode_json_escapes(tostring(text))
-	raw = raw:gsub('[\226\128\153\226\128\152`´]', "'")
-	raw = raw:gsub('%s+', ' '):gsub('^%s+', ''):gsub('%s+$', '')
-	if raw == '' then
-		return ''
-	end
-	local parts = {}
-	for part in raw:gmatch('%S+') do
-		parts[#parts + 1] = part
-	end
-	if #parts == 0 then
-		return ''
-	end
-	local out = {}
-	for _, part in ipairs(parts) do
-		local rn = to_roman_numeral(part)
-		local upper = tostring(part):upper()
-		if rn then
-			out[#out + 1] = rn
-		elseif upper:match('^[IVX]+$') then
-			out[#out + 1] = upper
-		else
-			-- Preserve internal punctuation/casing (ex: Boost-STR, Mage's) to avoid
-			-- breaking spell/resource lookups while still normalizing whitespace/roman numerals.
-			out[#out + 1] = part
-		end
-	end
-	return table.concat(out, ' ')
+	return require('uc_scheduler_text_utils').normalize_action_name_like_healbot(text)
 end
 
 local ensure_maintenance_buff_cache
@@ -270,17 +206,7 @@ end
 local enemy_effect_observed_once = {}
 
 local function danger_weight_to_priority(w)
-	local n = tonumber(w) or 0
-	if n <= 1 then
-		return 72
-	elseif n == 2 then
-		return 76
-	elseif n == 3 then
-		return 82
-	elseif n == 4 then
-		return 88
-	end
-	return 94
+	return require('uc_scheduler_enemy_effect_utils').danger_weight_to_priority(w)
 end
 
 local function load_enemy_dispel_map_from_json()
@@ -417,143 +343,43 @@ local function apply_catalog_effects(catalog, action_id, actor_id, target_id, fr
 end
 
 local function set_has(settbl, v)
-	if type(settbl) ~= 'table' then
-		return false
-	end
-	if type(settbl.contains) == 'function' then
-		return settbl:contains(v)
-	end
-	return settbl[v] == true
+	return require('uc_scheduler_maintenance_utils').set_has(settbl, v)
 end
 
 local function action_state()
-	scheduler.action_state = scheduler.action_state or {}
-	return scheduler.action_state
+	return require('uc_scheduler_action_state').action_state(scheduler)
 end
 
 local function action_mark_sent(kind)
-	local st = action_state()
-	local now = now_s()
-	st.action_start = now
-	st.action_end = now - 0.001
-	st.last_action = now
-	st.action_delay = 0.6
-	st.cooldown_until = math.max(tonumber(st.cooldown_until) or 0, now + 0.6)
-	st.last_send_kind = tostring(kind or '')
+	return require('uc_scheduler_action_state').action_mark_sent(scheduler, kind, now_s)
 end
 
 local function action_mark_packet_start()
-	local st = action_state()
-	st.action_start = now_s()
+	return require('uc_scheduler_action_state').action_mark_packet_start(scheduler, now_s)
 end
 
 local function action_mark_packet_end()
-	local st = action_state()
-	st.action_end = now_s()
+	return require('uc_scheduler_action_state').action_mark_packet_end(scheduler, now_s)
 end
 
 local function action_is_acting()
-	local st = action_state()
-	local now = now_s()
-	local start_at = tonumber(st.action_start) or 0
-	local end_at = tonumber(st.action_end) or 0
-	local send_kind = tostring(st.last_send_kind or '')
-	local timeout = tonumber(st.lag_timeout) or 8.0
-	if send_kind == 'ja' then
-		timeout = tonumber(st.ja_lag_timeout) or 1.0
-	end
-	if start_at > 0 and end_at < start_at and (now - start_at) > timeout then
-		st.action_end = now
-		end_at = now
-	end
-	local acting = end_at < start_at
-	local last = st.last_acting_state == true
-	if last and not acting then
-		st.action_delay = 0.5
-		st.last_action = now
-		st.cooldown_until = math.max(tonumber(st.cooldown_until) or 0, now + 0.5)
-	elseif (not last) and acting then
-		st.action_delay = 0.6
-	end
-	st.last_acting_state = acting
-	return acting
+	return require('uc_scheduler_action_state').action_is_acting(scheduler, now_s)
 end
 
 local function action_dispatch_blocked()
-	local st = action_state()
-	local now = now_s()
-	local settings = rawget(_G, 'UC_SETTINGS') or {}
-	local combat_log_on = (settings.log_combat_sched == true) or (settings.log_combat_sched == 1) or (tostring(settings.log_combat_sched or ''):lower() == 'true')
-	local diag = rawget(_G, 'UC_LOG_DIAG')
-	local function direct_combat_log(msg)
-		if not combat_log_on then
-			return
-		end
-		if type(diag) == 'function' then
-			pcall(diag, 'combat_sched', tostring(msg or ''))
-		end
-	end
-	if action_is_acting() then
-		if combat_log_on then
-			local start_at = tonumber(st.action_start) or 0
-			local end_at = tonumber(st.action_end) or 0
-			local send_kind = tostring(st.last_send_kind or '')
-			local timeout = tonumber(st.lag_timeout) or 8.0
-			if send_kind == 'ja' then
-				timeout = tonumber(st.ja_lag_timeout) or 1.0
-			end
-			direct_combat_log(('action_block acting=1 kind=%s now=%.3f start=%.3f end=%.3f age=%.3f timeout=%.3f'):format(
-				send_kind,
-				tonumber(now) or 0,
-				tonumber(start_at) or 0,
-				tonumber(end_at) or 0,
-				(tonumber(now) or 0) - (tonumber(start_at) or 0),
-				tonumber(timeout) or 0
-			))
-		end
-		return true, 'BLOCK_ACTION_ACTING'
-	end
-	if now < (tonumber(st.cooldown_until) or 0) then
-		if combat_log_on then
-			direct_combat_log(('action_block cooldown=1 now=%.3f until=%.3f remain=%.3f kind=%s'):format(
-				tonumber(now) or 0,
-				tonumber(st.cooldown_until) or 0,
-				(tonumber(st.cooldown_until) or 0) - (tonumber(now) or 0),
-				tostring(st.last_send_kind or '')
-			))
-		end
-		return true, 'BLOCK_ACTION_COOLDOWN'
-	end
-	return false, nil
+	return require('uc_scheduler_action_state').action_dispatch_blocked(scheduler, now_s, _G)
 end
 
 local function split_pipe(msg)
-	local out = {}
-	local s = tostring(msg or '')
-	for token in (s .. '|'):gmatch('(.-)|') do
-		out[#out + 1] = token
-	end
-	return out
+	return require('uc_scheduler_text_utils').split_pipe(msg)
 end
 
 local function split_csv_numbers(s)
-	local out = {}
-	local txt = tostring(s or '')
-	if txt == '' then
-		return out
-	end
-	for part in string.gmatch(txt, '([^,]+)') do
-		local n = tonumber(part)
-		if n and n > 0 then
-			out[#out + 1] = n
-		end
-	end
-	return out
+	return require('uc_scheduler_text_utils').split_csv_numbers(s)
 end
 
 local function current_zone_id()
-	local info = windower.ffxi.get_info()
-	return tonumber(info and info.zone) or 0
+	return require('uc_scheduler_context_utils').current_zone_id()
 end
 
 local function enemy_dispel_diag(msg)
@@ -578,16 +404,9 @@ local function enemy_dispel_log(msg)
 end
 
 local function enemy_effect_log_label(effect_id)
-	local eid = tonumber(effect_id) or 0
-	if eid <= 0 then
-		return ('id:%d'):format(eid)
-	end
-	local buff = res.buffs and res.buffs[eid] or nil
-	local name = tostring((buff and buff.en) or '')
-	if name == '' then
-		return ('id:%d'):format(eid)
-	end
-	return ('%s(%d)'):format(name, eid)
+	return require('uc_scheduler_enemy_effect_utils').enemy_effect_log_label({
+		buffs = res and res.buffs,
+	}, effect_id)
 end
 
 local function enemy_dispel_attempt_map()
@@ -736,8 +555,7 @@ local function enemy_dispel_choose_action(target_id)
 end
 
 local function enemy_dispel_claim_valid(claim_id, party_claim_set)
-	local cid = tonumber(claim_id) or 0
-	return cid > 0 and type(party_claim_set) == 'table' and party_claim_set[cid] == true
+	return require('uc_scheduler_enemy_effect_utils').enemy_dispel_claim_valid(claim_id, party_claim_set)
 end
 
 local raw_enemy_gain_messages = {
@@ -997,49 +815,20 @@ local function get_party_state_ipc_entry(member_id, member_name)
 end
 
 local function get_settings()
-	return rawget(_G, 'UC_SETTINGS') or {}
+	return require('uc_scheduler_context_utils').get_settings()
 end
 
 local function bool_setting(v, default_value)
-	if v == nil then
-		return default_value == true
-	end
-	if v == true or v == 1 then
-		return true
-	end
-	if type(v) == 'string' then
-		local s = v:lower()
-		return s == 'true' or s == 'on' or s == '1' or s == 'yes'
-	end
-	return false
+	return require('uc_scheduler_numeric_utils').bool_setting(v, default_value)
 end
 
 local function resolve_doom_buff_id()
-	if type(doom_buff_id) == 'number' then
-		return doom_buff_id
-	end
-	doom_buff_id = 15
-	for id, b in pairs(res.buffs or {}) do
-		local en = tostring((b and b.en) or ''):lower()
-		if en == 'doom' then
-			doom_buff_id = tonumber(id) or 15
-			break
-		end
-	end
+	doom_buff_id = require('uc_scheduler_defensive_utils').resolve_doom_buff_id(res, doom_buff_id)
 	return doom_buff_id
 end
 
 local function player_has_doom(player)
-	if not player or type(player.buffs) ~= 'table' then
-		return false
-	end
-	local bid = resolve_doom_buff_id()
-	for _, id in ipairs(player.buffs) do
-		if tonumber(id) == bid then
-			return true
-		end
-	end
-	return false
+	return require('uc_scheduler_defensive_utils').player_has_doom(resolve_doom_buff_id, player)
 end
 
 local function try_doom_water_emergency(settings)
@@ -1069,22 +858,10 @@ local function try_doom_water_emergency(settings)
 end
 
 local function build_partner_target_set(settings)
-	local out = {}
-	if not bool_setting(settings and settings.partner, false) then
-		return out
-	end
-	local partner_ids = uc_partner_list.as_ordered_ids(settings or {})
-	for _, pid in ipairs(partner_ids or {}) do
-		local pm = windower.ffxi.get_mob_by_id(tonumber(pid) or 0)
-		if pm and pm.target_index then
-			local tm = windower.ffxi.get_mob_by_index(pm.target_index)
-			local tid = tonumber(tm and tm.id) or 0
-			if tid > 0 then
-				out[tid] = true
-			end
-		end
-	end
-	return out
+	return require('uc_scheduler_context_utils').build_partner_target_set({
+		bool_setting = bool_setting,
+		uc_partner_list = uc_partner_list,
+	}, settings)
 end
 
 local maintenance_blocked_zone_names = {
@@ -1118,27 +895,7 @@ local maintenance_blocked_zone_names = {
 }
 
 local function is_city_zone_for_maintenance()
-	local info = windower.ffxi.get_info()
-	if not info then
-		return false
-	end
-	local zid = tonumber(info.zone) or 0
-	if zid <= 0 then
-		return false
-	end
-	local z = res.zones and res.zones[zid] or nil
-	local name = tostring((z and (z.en or z.name)) or ''):lower()
-	if name == '' then
-		return false
-	end
-	if maintenance_blocked_zone_names[name] then
-		return true
-	end
-	-- Defensive fallback: treat mog house / residential names as non-maintenance zones.
-	if name:find('mog house', 1, true) or name:find('residential area', 1, true) then
-		return true
-	end
-	return false
+	return require('uc_scheduler_context_utils').is_city_zone_for_maintenance(maintenance_blocked_zone_names)
 end
 
 local function log_ja_sched(msg)
@@ -1385,61 +1142,25 @@ local SCHED_RANGE_MULT = {
 }
 
 local function action_effective_range(raw_range)
-	local r = tonumber(raw_range) or 0
-	if r <= 0 then
-		return 0
-	end
-	local m = SCHED_RANGE_MULT[r]
-	if m then
-		return r * m
-	end
-	if r > 20 then
-		return r * 0.01
-	end
-	return r
+	return require('uc_scheduler_action_metadata').action_effective_range({
+		SCHED_RANGE_MULT = SCHED_RANGE_MULT,
+	}, raw_range)
 end
 
 local function ja_targets_enemy(ja)
-	local targets = ja and ja.targets
-	if type(targets) == 'string' then
-		return targets:find('Enemy', 1, true) ~= nil
-	end
-	if type(targets) == 'number' then
-		local n = math.floor(targets)
-		return (n % 64) >= 32
-	end
-	if type(targets) == 'table' then
-		return targets.Enemy == true or targets.enemy == true
-	end
-	return false
+	return require('uc_scheduler_action_predicates').ja_targets_enemy(ja)
 end
 
 local function normalize_angle_rad(a)
-	local two_pi = math.pi * 2
-	while a > math.pi do
-		a = a - two_pi
-	end
-	while a < -math.pi do
-		a = a + two_pi
-	end
-	return a
+	return require('uc_scheduler_geometry').normalize_angle_rad(a)
 end
 
 local function target_is_in_front_arc(target, arc)
-	local me = windower.ffxi.get_mob_by_target('me')
-	if not me or not target or me.x == nil or me.y == nil or target.x == nil or target.y == nil or me.facing == nil then
-		return false
-	end
-	local heading = math.atan2(target.y - me.y, target.x - me.x)
-	local delta = math.abs(normalize_angle_rad(heading - tonumber(me.facing)))
-	return delta <= (tonumber(arc) or (math.pi / 2))
+	return require('uc_scheduler_geometry').target_is_in_front_arc(target, arc)
 end
 
 local function ja_requires_engaged_front(name, ja)
-	if (tonumber(ja and ja.id) or 0) == 46 then -- Shield Bash
-		return true
-	end
-	return tostring(name or ''):lower() == 'shield bash'
+	return require('uc_scheduler_action_predicates').ja_requires_engaged_front(name, ja)
 end
 
 local function get_party_members()
@@ -1527,15 +1248,9 @@ local function get_party_members()
 end
 
 local function p1_build_party_id_set()
-	local ids = {}
-	local members = get_party_members()
-	for _, m in ipairs(members) do
-		local id = tonumber(m and m.id) or 0
-		if id > 0 then
-			ids[id] = true
-		end
-	end
-	return ids
+	return require('uc_scheduler_context_utils').p1_build_party_id_set({
+		get_party_members = get_party_members,
+	})
 end
 
 local function p1_prime_unclaimed_party_aggressive_ok(settings, mob, party_ids)
@@ -1571,15 +1286,7 @@ local function p1_prime_unclaimed_party_aggressive_ok(settings, mob, party_ids)
 end
 
 local function has_buff(buff_list, buff_id)
-	if type(buff_list) ~= 'table' then
-		return false
-	end
-	for _, b in ipairs(buff_list) do
-		if b == buff_id then
-			return true
-		end
-	end
-	return false
+	return require('uc_scheduler_defensive_utils').has_buff(buff_list, buff_id)
 end
 
 local function in_party_cast_range(member)
@@ -1646,12 +1353,13 @@ local function get_spell_resource(name)
 end
 
 local function spell_known_flag(v)
-	return v == true or v == 1 or v == 'true'
+	return require('uc_scheduler_action_metadata').spell_known_flag(v)
 end
 
 local function job_id_by_short(short_name)
-	local j = res.jobs:with('english_short', tostring(short_name or ''))
-	return tonumber(j and j.id) or 0
+	return require('uc_scheduler_action_metadata').job_id_by_short({
+		jobs = res and res.jobs,
+	}, short_name)
 end
 
 local function spell_usable_by_current_job(sp)
@@ -1748,15 +1456,10 @@ local function get_ja_resource(name)
 end
 
 local function action_status_id(name)
-	local sp = get_spell_resource(name)
-	if sp and type(sp.status) == 'number' then
-		return sp.status
-	end
-	local ja = get_ja_resource(name)
-	if ja and type(ja.status) == 'number' then
-		return ja.status
-	end
-	return nil
+	return require('uc_scheduler_action_metadata').action_status_id({
+		get_spell_resource = get_spell_resource,
+		get_ja_resource = get_ja_resource,
+	}, name)
 end
 
 local function spell_ready(name)
@@ -1792,23 +1495,7 @@ local cure_by_tier = {
 }
 
 local function estimate_missing_hp(member)
-	local hp = tonumber(member and member.hp) or 0
-	local hpp = tonumber(member and member.hpp) or 100
-	local max_hp = tonumber(member and member.max_hp) or 0
-	if hpp <= 0 then
-		return 0
-	end
-	if max_hp > 0 and hp >= 0 and hp <= max_hp then
-		return math.max(0, math.ceil(max_hp - hp))
-	end
-	if hp > 0 then
-		local max_hp = hp / (hpp / 100.0)
-		return math.max(0, math.ceil(max_hp - hp))
-	end
-	-- HealBot-style fallback guess when exact hp is unavailable.
-	local fallback_max = 1500
-	local estimated_hp = math.ceil((hpp / 100.0) * fallback_max)
-	return math.max(0, fallback_max - estimated_hp)
+	return require('uc_scheduler_defensive_utils').estimate_missing_hp(member)
 end
 
 local function available_cure_tier_max()
@@ -1823,18 +1510,7 @@ local function available_cure_tier_max()
 end
 
 local function cure_tier_for_missing_hp(hp_missing, max_tier)
-	local tier = math.max(1, math.min(tonumber(max_tier) or 1, 6))
-	while tier > 1 do
-		local cur = cure_by_tier[tier] and cure_by_tier[tier].potency or 0
-		local prev = cure_by_tier[tier - 1] and cure_by_tier[tier - 1].potency or 0
-		local delta = cur - prev
-		local threshold = cur - (delta * 0.5)
-		if hp_missing >= threshold then
-			break
-		end
-		tier = tier - 1
-	end
-	return tier
+	return require('uc_scheduler_defensive_utils').cure_tier_for_missing_hp(hp_missing, max_tier, cure_by_tier)
 end
 
 local function get_usable_cure_from_tier(orig_tier, min_tier)
@@ -1858,15 +1534,7 @@ local function get_usable_cure_from_tier(orig_tier, min_tier)
 end
 
 local function dedupe_numeric_ids(ids)
-	local out, seen = {}, {}
-	for _, v in ipairs(ids or {}) do
-		local n = tonumber(v) or 0
-		if n > 0 and not seen[n] then
-			seen[n] = true
-			out[#out + 1] = n
-		end
-	end
-	return out
+	return require('uc_scheduler_maintenance_utils').dedupe_numeric_ids(ids)
 end
 
 local function ja_ready(name, target_id)
@@ -1951,144 +1619,48 @@ action_ready = function(name, target_id)
 end
 
 local function action_target_mode(action_name, action_kind)
-	local targets = ''
-	if action_kind == 'spell' then
-		local sp = get_spell_resource(action_name)
-		targets = tostring((sp and sp.targets) or '')
-	elseif action_kind == 'ja' then
-		local ja = get_ja_resource(action_name)
-		targets = tostring((ja and ja.targets) or '')
-	end
-	local has_self = targets:find('Self', 1, true) ~= nil
-	local has_other = targets:find('Player', 1, true) ~= nil or
-		targets:find('Party', 1, true) ~= nil or
-		targets:find('Ally', 1, true) ~= nil or
-		targets:find('Enemy', 1, true) ~= nil
-	if has_self and not has_other then
-		return 'self_only'
-	end
-	return 'normal'
+	return require('uc_scheduler_action_metadata').action_target_mode({
+		get_spell_resource = get_spell_resource,
+		get_ja_resource = get_ja_resource,
+	}, action_name, action_kind)
 end
 
 local function build_action_command(action_name, action_kind, target_member)
-	local target = target_member or {}
-	local mode = action_target_mode(action_name, action_kind)
-	local target_token = '<me>'
-	if mode ~= 'self_only' then
-		if target.is_self == true then
-			target_token = '<me>'
-		elseif (tonumber(target.id) or 0) > 0 and target.is_mob == true then
-			target_token = tostring(tonumber(target.id) or 0)
-		elseif target.name and tostring(target.name) ~= '' then
-			target_token = '"' .. tostring(target.name):gsub('"', '') .. '"'
-		end
-	end
-	if action_kind == 'ja' then
-		return ('input /ja "%s" %s'):format(tostring(action_name), target_token)
-	end
-	return ('input /ma "%s" %s'):format(tostring(action_name), target_token)
+	return require('uc_scheduler_command_builder').build_action_command({
+		action_target_mode = action_target_mode,
+	}, action_name, action_kind, target_member)
 end
 
 local function member_priority(member)
-	-- Lower number means higher priority.
-	if member.is_self then
-		return 1
-	end
-	if member.spawn_type == 14 then
-		return 6
-	end
-	return 5
+	return require('uc_scheduler_defensive_utils').member_priority(member)
 end
 
 local function pri_default(player_prio, action_prio)
-	return player_prio + ((action_prio or 5) / 10)
+	return require('uc_scheduler_defensive_utils').pri_default(player_prio, action_prio)
 end
 
 local function danger_level(hpp)
-	if hpp <= 20 then
-		return 3
-	elseif hpp <= 40 then
-		return 2
-	elseif hpp <= 60 then
-		return 1
-	end
-	return 0
+	return require('uc_scheduler_defensive_utils').danger_level(hpp)
 end
 
 local function cure_better(c1, c2)
-	if not c1 then
-		return false
-	end
-	if not c2 then
-		return true
-	end
-	local p1, p2 = c1.member_prio, c2.member_prio
-	local d1, d2 = c1.danger, c2.danger
-	if p1 < p2 then
-		return not (d2 > d1)
-	elseif p1 > p2 then
-		return d1 > d2
-	end
-	if d1 ~= d2 then
-		return d1 > d2
-	end
-	return c1.target.hpp < c2.target.hpp
+	return require('uc_scheduler_defensive_utils').cure_better(c1, c2)
 end
 
 local function debuff_spell_for_buff_id(buff_id)
-	local b = res.buffs[buff_id]
-	local en = b and b.en and b.en:lower() or ''
-	if en == '' then
-		return nil
-	end
-	local mapping = {
-		['paralysis'] = 'Paralyna',
-		['silence'] = 'Silena',
-		['blindness'] = 'Blindna',
-		['poison'] = 'Poisona',
-		['petrification'] = 'Stona',
-		['curse'] = 'Cursna',
-		['disease'] = 'Viruna',
-		['plague'] = 'Viruna',
-	}
-	return mapping[en]
+	return require('uc_scheduler_defensive_utils').debuff_spell_for_buff_id(res, buff_id)
 end
 
 local function split_actions(raw)
-	local function norm(s)
-		return decode_json_escapes(tostring(s or ''))
-			:gsub('[\226\128\153\226\128\152`´]', "'")
-			:gsub('%s+', ' ')
-			:gsub('^%s+', '')
-			:gsub('%s+$', '')
-	end
-	local out = {}
-	if type(raw) == 'table' then
-		for _, v in ipairs(raw) do
-			if v and v ~= '' then
-				local n = normalize_action_name_like_healbot(norm(v))
-				if n ~= '' then
-					out[#out + 1] = n
-				end
-			end
-		end
-		return out
-	end
-	for token in tostring(raw or ''):gmatch('[^|,]+') do
-		local t = normalize_action_name_like_healbot(norm(token))
-		if t ~= '' then
-			out[#out + 1] = t
-		end
-	end
-	return out
+	return require('uc_scheduler_maintenance_utils').split_actions(raw)
 end
 
 local function family_key(member_name, buff_id)
-	return tostring(member_name) .. ':' .. tostring(buff_id)
+	return require('uc_scheduler_proposal_keys').family_key(member_name, buff_id)
 end
 
 local function attempt_key(kind, member_name, action_name)
-	return table.concat({ tostring(kind), tostring(member_name), tostring(action_name) }, '::')
+	return require('uc_scheduler_proposal_keys').attempt_key(kind, member_name, action_name)
 end
 
 local function attempt_allowed(kind, member_name, action_name, now, min_gap)
@@ -2106,31 +1678,18 @@ local function mark_attempt(kind, member_name, action_name, now)
 end
 
 local function count_buff_occurrences(buffs)
-	local out = {}
-	for _, bid in ipairs(buffs or {}) do
-		out[bid] = (out[bid] or 0) + 1
-	end
-	return out
+	return require('uc_scheduler_maintenance_utils').count_buff_occurrences(buffs)
 end
 
 local function is_bard_song(spell_name)
-	local sp = get_spell_resource(spell_name)
-	if not sp then
-		return false
-	end
-	if tostring(sp.type or '') == 'BardSong' then
-		return true
-	end
-	local skill = tostring(sp.skill or ''):lower()
-	return skill == 'singing'
+	return require('uc_scheduler_defensive_utils').is_bard_song(spell_name, get_spell_resource)
 end
 
 local function action_duration_seconds(name, default_seconds)
-	local sp = get_spell_resource(name)
-	if sp and type(sp.duration) == 'number' and sp.duration > 0 then
-		return sp.duration
-	end
-	return default_seconds
+	return require('uc_scheduler_action_metadata').action_duration_seconds({
+		get_spell_resource = get_spell_resource,
+		get_ja_resource = get_ja_resource,
+	}, name, default_seconds)
 end
 
 local function set_recent_gain(member_name, buff_id, spell_name, now)
@@ -2355,39 +1914,11 @@ local function build_defensive_candidates()
 end
 
 local function parse_status_snapshot_063(data)
-	if type(data) ~= 'string' or #data < 80 then
-		return nil
-	end
-	if data:byte(5) ~= 9 then
-		return nil
-	end
-	local status_by_id = {}
-	for n = 1, 32 do
-		local buff_id = data:unpack('H', n * 2 + 7)
-		if buff_id == 255 then
-			break
-		end
-		local endtime = data:unpack('I', n * 4 + 71)
-		status_by_id[buff_id] = status_by_id[buff_id] or { count = 0, endtimes = {} }
-		status_by_id[buff_id].count = status_by_id[buff_id].count + 1
-		if endtime and endtime > 0 then
-			status_by_id[buff_id].endtimes[#status_by_id[buff_id].endtimes + 1] = endtime
-		end
-	end
-	for _, v in pairs(status_by_id) do
-		table.sort(v.endtimes, function(a, b)
-			return (tonumber(a) or 0) < (tonumber(b) or 0)
-		end)
-	end
-	return status_by_id
+	return require('uc_scheduler_status_snapshot_parser').parse_status_snapshot_063(data)
 end
 
 canon_name = function(s)
-	return decode_json_escapes(tostring(s or ''))
-		:gsub('[\226\128\153\226\128\152`´]', "'")
-		:gsub('%s+', ' ')
-		:gsub('^%s+', '')
-		:gsub('%s+$', '')
+	return require('uc_scheduler_maintenance_utils').canon_name(s)
 end
 
 
@@ -2594,22 +2125,11 @@ local function try_internal_defensive_action()
 end
 
 local function p1_number(v, default_value)
-	local n = tonumber(v)
-	if n == nil then
-		return default_value
-	end
-	return n
+	return require('uc_scheduler_numeric_utils').p1_number(v, default_value)
 end
 
 local function p1_clamp_urgency(v)
-	local n = p1_number(v, 0)
-	if n < 0 then
-		return 0
-	end
-	if n > 1 then
-		return 1
-	end
-	return n
+	return require('uc_scheduler_numeric_utils').p1_clamp_urgency(v)
 end
 
 local function p1_build_ctx(settings)
@@ -3663,53 +3183,15 @@ local function p1_collect_proposals(ctx)
 end
 
 local function p1_pending_is_live_state(state_name)
-	return state_name == 'selected' or state_name == 'dispatching' or state_name == 'sent' or state_name == 'acknowledged'
+	return scheduler_locks.p1_pending_is_live_state(state_name)
 end
 
 local function p1_update_pending_state(ctx)
-	local phase = scheduler.phase1
-	local pending = phase.pending
-	if type(pending) ~= 'table' then
-		phase.pending = nil
-		return
-	end
-	local now = ctx.now
-	local state_name = tostring(pending.state or '')
-	if p1_pending_is_live_state(state_name) and now > p1_number(pending.effect_deadline, 0) then
-		pending.state = 'timed_out'
-		pending.result = 'effect_timeout'
-		local dkey = tostring(pending.duplicate_suppression_key or '')
-		if dkey ~= '' then
-			phase.recent_duplicate_until[dkey] = now + 0.75
-		end
-	end
-	if (pending.state == 'timed_out' or pending.state == 'failed' or pending.state == 'canceled') and now > p1_number(pending.completion_deadline, now) then
-		phase.pending = nil
-	end
-	if pending.state == 'complete' and now > p1_number(pending.completion_deadline, now) then
-		phase.pending = nil
-	end
+	return scheduler_pending.p1_update_pending_state(scheduler, ctx, p1_pending_is_live_state, p1_number)
 end
 
 local function p1_duplicate_suppressed(ctx, proposal)
-	local dkey = tostring(proposal and proposal.duplicate_suppression_key or '')
-	if dkey == '' then
-		return false
-	end
-	local phase = scheduler.phase1
-	local pending = phase.pending
-	if type(pending) == 'table' then
-		local pkey = tostring(pending.duplicate_suppression_key or '')
-		local state_name = tostring(pending.state or '')
-		if pkey == dkey and p1_pending_is_live_state(state_name) then
-			return true
-		end
-	end
-	local until_ts = p1_number(phase.recent_duplicate_until[dkey], 0)
-	if until_ts > ctx.now then
-		return true
-	end
-	return false
+	return scheduler_locks.p1_duplicate_suppressed(scheduler, ctx, proposal, p1_number)
 end
 
 ensure_maintenance_buff_cache = function()
@@ -3745,53 +3227,15 @@ ensure_maintenance_buff_cache = function()
 end
 
 count_matching_buffs = function(buff_list, id_set)
-	if type(buff_list) ~= 'table' or type(id_set) ~= 'table' then
-		return 0
-	end
-	local c = 0
-	for _, id in ipairs(buff_list) do
-		if id_set[id] then
-			c = c + 1
-		end
-	end
-	return c
+	return require('uc_scheduler_maintenance_utils').count_matching_buffs(buff_list, id_set)
 end
 
 local function p1_get_locks(ctx)
-	local phase = scheduler.phase1
-	local pending = phase.pending
-	local pending_live = type(pending) == 'table' and p1_pending_is_live_state(tostring(pending.state or ''))
-	local zone_suspend_until = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
-	local zone_guard_active = type(zone_suspend_until) == 'number' and ctx.now < zone_suspend_until
-	local now = ctx.now
-	local duplicate_lock_until = 0
-	for _, until_ts in pairs(phase.recent_duplicate_until) do
-		local u = p1_number(until_ts, 0)
-		if u > duplicate_lock_until then
-			duplicate_lock_until = u
-		end
-	end
-	return {
-		zone_guard_lock = { hard = zone_guard_active },
-		cast_lock = { hard = pending_live },
-		movement_lock = { hard = pending_live },
-		target_lock = { hard = false },
-		duplicate_lock = { hard = duplicate_lock_until > now, until_ts = duplicate_lock_until },
-	}
+	return scheduler_locks.p1_get_locks(scheduler, ctx, p1_number, _G)
 end
 
 local function p1_hard_lock_reject(locks, proposal)
-	if locks.zone_guard_lock and locks.zone_guard_lock.hard then
-		return 'zone_guard'
-	end
-	local action_type = tostring(proposal and proposal.action_type or '')
-	if (action_type == 'spell' or action_type == 'ja' or action_type == 'ws') and locks.cast_lock and locks.cast_lock.hard then
-		return 'hard_locked'
-	end
-	if action_type == 'move' and locks.movement_lock and locks.movement_lock.hard then
-		return 'hard_locked'
-	end
-	return ''
+	return scheduler_locks.p1_hard_lock_reject(locks, proposal)
 end
 
 local function p1_validate_proposal(ctx, p)
@@ -3934,274 +3378,51 @@ local function p1_rank(ctx, proposals)
 end
 
 local function p1_format_top3(ranked)
-	local parts = {}
-	local count = math.min(3, #ranked)
-	for i = 1, count do
-		local p = ranked[i]
-		parts[#parts + 1] = ('%d)%s %.2f %s'):format(i, tostring(p.provider or ''), p1_number(p._score, 0), tostring(p.action_name or ''))
-	end
-	return table.concat(parts, ' | ')
+	return require('uc_scheduler_rank_output').p1_format_top3(scheduler, ranked, p1_number)
 end
 
 local function p1_format_top3_verbose(ranked)
-	local parts = {}
-	local count = math.min(3, #ranked)
-	for i = 1, count do
-		local p = ranked[i]
-		local sp = p._score_parts or {}
-		parts[#parts + 1] = ('%d)%s score=%.2f pb=%s u=%.2f st=%.2f sk=%.2f rp=%.2f %s'):format(
-			i,
-			tostring(p.provider or ''),
-			p1_number(p._score, 0),
-			tostring(sp.priority_band or ''),
-			p1_number(sp.urgency_bonus, 0),
-			p1_number(sp.starvation_bonus, 0),
-			p1_number(sp.sticky_bonus, 0),
-			p1_number(sp.risk_penalty, 0),
-			tostring(p.action_name or '')
-		)
-	end
-	return table.concat(parts, ' | ')
+	return require('uc_scheduler_rank_output').p1_format_top3_verbose(scheduler, ranked, p1_number)
 end
 
 local function p1_format_topn_lines(ranked, n)
-	local out = {}
-	local count = math.min(tonumber(n) or 5, #ranked)
-	for i = 1, count do
-		local p = ranked[i]
-		local sp = p._score_parts or {}
-		out[#out + 1] = ('%d) %.2f %s/%s %s u=%.2f rp=%.2f'):format(
-			i,
-			p1_number(p._score, 0),
-			tostring(p.provider or ''),
-			tostring(p.family_id or ''),
-			tostring(p.action_name or ''),
-			p1_number(sp.urgency_bonus, 0),
-			p1_number(sp.risk_penalty, 0)
-		)
-	end
-	return out
+	return require('uc_scheduler_rank_output').p1_format_topn_lines(scheduler, ranked, n, p1_number)
 end
 
 local function p1_capture_topn_items(ranked, n)
-	local out = {}
-	local count = math.min(tonumber(n) or 5, #ranked)
-	for i = 1, count do
-		local p = ranked[i]
-		local sp = p._score_parts or {}
-		out[#out + 1] = {
-			idx = i,
-			score = p1_number(p._score, 0),
-			provider = tostring(p.provider or ''),
-			family = tostring(p.family_id or ''),
-			action = tostring(p.action_name or ''),
-			urgency_bonus = p1_number(sp.urgency_bonus, 0),
-			risk_penalty = p1_number(sp.risk_penalty, 0),
-		}
-	end
-	return out
+	return require('uc_scheduler_rank_output').p1_capture_topn_items(scheduler, ranked, n, p1_number)
 end
 
 local function p1_push_recent_rejects(ctx, rejected)
-	local phase = scheduler.phase1
-	if type(phase.recent_rejects) ~= 'table' then
-		phase.recent_rejects = {}
-	end
-	if type(phase.recent_reject_items) ~= 'table' then
-		phase.recent_reject_items = {}
-	end
-	if type(rejected) ~= 'table' or #rejected == 0 then
-		return
-	end
-	for _, r in ipairs(rejected) do
-		local line = ('t%s %s/%s %s :: %s'):format(
-			tostring(ctx.tick or ''),
-			tostring(r.provider or ''),
-			tostring(r.family or ''),
-			tostring(r.action or ''),
-			tostring(r.reason or '')
-		)
-		phase.recent_rejects[#phase.recent_rejects + 1] = line
-		phase.recent_reject_items[#phase.recent_reject_items + 1] = {
-			tick = tostring(ctx.tick or ''),
-			provider = tostring(r.provider or ''),
-			family = tostring(r.family or ''),
-			action = tostring(r.action or ''),
-			reason = tostring(r.reason or ''),
-		}
-	end
-	local max_keep = 25
-	local drop = #phase.recent_rejects - max_keep
-	if drop > 0 then
-		for _ = 1, drop do
-			table.remove(phase.recent_rejects, 1)
-		end
-	end
-	local drop_items = #phase.recent_reject_items - max_keep
-	if drop_items > 0 then
-		for _ = 1, drop_items do
-			table.remove(phase.recent_reject_items, 1)
-		end
-	end
+	return require('uc_scheduler_reject_history').p1_push_recent_rejects(scheduler, ctx, rejected)
 end
 
 local function p1_reject_top(reject_counts, proposal_count)
-	if proposal_count <= 0 then
-		return 'no_proposals'
-	end
-	local best_reason, best_count = '', -1
-	for reason, count in pairs(reject_counts) do
-		if count > best_count then
-			best_reason = tostring(reason or '')
-			best_count = count
-		end
-	end
-	if best_count < 0 then
-		return ''
-	end
-	return ('%s:%d'):format(best_reason, best_count)
+	return require('uc_scheduler_rank_output').p1_reject_top(scheduler, reject_counts, proposal_count)
 end
 
 local function p1_build_dispatch_plan(ctx, selected)
-	if not selected then
-		return nil
-	end
-	local prelude_type = 'none'
-	if tostring(selected.movement_policy or '') == 'must_stop' then
-		prelude_type = 'stop'
-	end
-	return {
-		plan_id = ('plan.%d.%d'):format(math.floor(ctx.now * 1000), math.floor(ctx.tick)),
-		selected_proposal_id = tostring(selected.proposal_id or ''),
-		prelude = {
-			type = prelude_type,
-			target_id = tonumber(selected.target_id) or 0,
-			timeout_s = 0.20,
-		},
-		primary = {
-			action_type = tostring(selected.action_type or ''),
-			action_name = tostring(selected.action_name or ''),
-			target_id = tonumber(selected.target_id) or 0,
-			target_name = tostring(selected.target_name or ''),
-		},
-		commit_deadline = p1_number(selected.commit_deadline, ctx.now + 0.25),
-		created_at = ctx.now,
-	}
+	return require('uc_scheduler_dispatch_plan').p1_build_dispatch_plan(scheduler, ctx, selected, p1_number)
 end
 
 local function p1_revalidate_plan_commit(ctx, selected, plan)
-	if not selected or not plan then
-		return false, 'invalid_plan'
-	end
-	if p1_number(selected.expires_at, 0) <= ctx.now then
-		return false, 'expired'
-	end
-	if p1_number(plan.commit_deadline, 0) < ctx.now then
-		return false, 'commit_deadline'
-	end
-	local target_kind = tostring(selected.target_kind or 'none')
-	if target_kind == 'self' then
-		return true, ''
-	end
-	local target_id = tonumber(selected.target_id) or 0
-	if target_kind == 'ally' then
-		if target_id <= 0 then
-			return false, 'invalid_target'
-		end
-		local m = windower.ffxi.get_mob_by_id(target_id)
-		if not m then
-			return false, 'invalid_target'
-		end
-		return true, ''
-	end
-	if target_kind == 'mob' then
-		if target_id <= 0 then
-			return false, 'invalid_target'
-		end
-		local mob = windower.ffxi.get_mob_by_id(target_id)
-		if not mob or not mob.valid_target or (tonumber(mob.hpp) or 0) <= 0 then
-			return false, 'invalid_target'
-		end
-		return true, ''
-	end
-	return true, ''
+	return require('uc_scheduler_dispatch_plan').p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, windower)
 end
 
 local function p1_set_pending_globals()
-	local phase = scheduler.phase1
-	local pending = phase.pending
-	if type(pending) ~= 'table' then
-		_G.UC_SCHED_P1_PENDING_STATE = ''
-		return
-	end
-	_G.UC_SCHED_P1_PENDING_STATE = tostring(pending.state or '')
+	return scheduler_pending.p1_set_pending_globals(scheduler, _G)
 end
 
 local function p1_build_lock_summary(ctx, locks)
-	local parts = {}
-	local lock_state = locks or p1_get_locks(ctx)
-	if lock_state.zone_guard_lock and lock_state.zone_guard_lock.hard then
-		parts[#parts + 1] = 'zone_guard_lock'
-	end
-	if lock_state.cast_lock and lock_state.cast_lock.hard then
-		parts[#parts + 1] = 'cast_lock'
-	end
-	if lock_state.movement_lock and lock_state.movement_lock.hard then
-		parts[#parts + 1] = 'movement_lock'
-	end
-	if lock_state.duplicate_lock and lock_state.duplicate_lock.hard then
-		parts[#parts + 1] = 'duplicate_lock'
-	end
-	return table.concat(parts, '|')
+	return scheduler_locks.p1_build_lock_summary(ctx, locks, p1_get_locks)
 end
 
 local function p1_record_legacy_dispatch(ctx)
-	local phase = scheduler.phase1
-	local selected = phase.last_selected
-	local plan = phase.last_plan
-	if not selected or not plan then
-		return
-	end
-	local duplicate_key = tostring(selected.duplicate_suppression_key or '')
-	phase.pending = {
-		pending_id = ('pend.%d.%d'):format(math.floor(ctx.now * 1000), math.floor(ctx.tick)),
-		proposal_id = tostring(selected.proposal_id or ''),
-		family_id = tostring(selected.family_id or ''),
-		duplicate_suppression_key = duplicate_key,
-		provider = tostring(selected.provider or ''),
-		action_type = tostring(selected.action_type or ''),
-		action_name = tostring(selected.action_name or ''),
-		target_id = tonumber(selected.target_id) or 0,
-		state = 'sent',
-		selected_at = p1_number(selected.created_at, ctx.now),
-		dispatched_at = ctx.now,
-		ack_deadline = ctx.now + 0.6,
-		effect_deadline = ctx.now + 2.5,
-		completion_deadline = ctx.now + 3.0,
-		expected_ack = tostring(selected.expected_ack or ''),
-		expected_effect = tostring(selected.expected_effect or ''),
-		result = '',
-		lock_class = tostring(selected.lock_class or ''),
-	}
-	if duplicate_key ~= '' then
-		phase.recent_duplicate_until[duplicate_key] = ctx.now + 0.75
-	end
+	return require('uc_scheduler_pending_record').p1_record_legacy_dispatch(scheduler, ctx, p1_number)
 end
 
 local function p1_pending_mark_complete(now, result_code)
-	local phase = scheduler.phase1
-	local pending = phase.pending
-	if type(pending) ~= 'table' then
-		return
-	end
-	pending.state = 'complete'
-	pending.result = tostring(result_code or 'complete')
-	pending.effect_at = now
-	pending.completion_deadline = now + 0.75
-	local dkey = tostring(pending.duplicate_suppression_key or '')
-	if dkey ~= '' then
-		phase.recent_duplicate_until[dkey] = now + 0.75
-	end
+	return scheduler_pending.p1_pending_mark_complete(scheduler, now, result_code)
 end
 
 local function p1_run_dry(settings)
@@ -4216,55 +3437,31 @@ local function p1_run_dry(settings)
 		selected = nil
 		plan = nil
 	end
-	local phase = scheduler.phase1
-	phase.last_selected = selected
-	phase.last_plan = plan
-	phase.last_top3 = p1_format_top3(ranked)
-	phase.last_top3_verbose = p1_format_top3_verbose(ranked)
-	phase.last_top5_lines = p1_format_topn_lines(ranked, 5)
-	phase.last_top5_items = p1_capture_topn_items(ranked, 5)
-	p1_push_recent_rejects(ctx, rejected)
-	phase.last_reject_top = p1_reject_top(reject_counts, #proposals)
-	if selected then
-		phase.last_noop_reason = ''
-	else
-		if commit_reason and commit_reason ~= '' then
-			phase.last_noop_reason = 'commit_invalidated:' .. tostring(commit_reason)
-		else
-			phase.last_noop_reason = (#proposals == 0) and 'no_proposals' or 'all_rejected'
-		end
-	end
-	_G.UC_SCHED_P1_TICK = ctx.tick
-	_G.UC_SCHED_P1_SELECTED_PROPOSAL = selected and tostring(selected.proposal_id or '') or ''
-	_G.UC_SCHED_P1_SELECTED_PROVIDER = selected and tostring(selected.provider or '') or ''
-	_G.UC_SCHED_P1_SELECTED_FAMILY = selected and tostring(selected.family_id or '') or ''
-	_G.UC_SCHED_P1_PLAN_PRELUDE = (plan and plan.prelude and tostring(plan.prelude.type or '')) or ''
-	p1_set_pending_globals()
-	_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, locks)
-	_G.UC_SCHED_P1_REJECT_TOP = phase.last_reject_top or ''
-	_G.UC_SCHED_P1_NOOP_REASON = phase.last_noop_reason or ''
-	_G.UC_SCHED_P1_TOP3 = phase.last_top3 or ''
-	_G.UC_SCHED_P1_TOP3_VERBOSE = phase.last_top3_verbose or ''
-	_G.UC_SCHED_P1_TOP5 = table.concat(phase.last_top5_lines or {}, '\n')
-	do
-		local rr = phase.recent_rejects or {}
-		local out = {}
-		local start = math.max(1, #rr - 4)
-		for i = start, #rr do
-			out[#out + 1] = rr[i]
-		end
-		_G.UC_SCHED_P1_REJECT5 = table.concat(out, '\n')
-	end
+	require('uc_scheduler_dryrun_publish').publish(
+		scheduler,
+		_G,
+		ctx,
+		selected,
+		ranked,
+		reject_counts,
+		rejected,
+		proposals,
+		locks,
+		plan,
+		commit_reason,
+		p1_format_top3,
+		p1_format_top3_verbose,
+		p1_format_topn_lines,
+		p1_capture_topn_items,
+		p1_push_recent_rejects,
+		p1_reject_top,
+		p1_set_pending_globals,
+		p1_build_lock_summary
+	)
 end
 
 local function p1_is_tank_enmity_selected(selected)
-	if type(selected) ~= 'table' then
-		return false
-	end
-	if tostring(selected.family_id or '') == 'combat.tank_enmity.primary' then
-		return true
-	end
-	return selected.detail and selected.detail.tank_enmity == true
+	return require('uc_scheduler_target_utils').p1_is_tank_enmity_selected(scheduler, selected)
 end
 
 local function p1_try_target_prep(target_id)
@@ -4284,11 +3481,7 @@ local function p1_try_target_prep(target_id)
 end
 
 local function p1_target_distance_to_id(target_id)
-	local mob = windower.ffxi.get_mob_by_id(tonumber(target_id) or 0)
-	if not mob or mob.distance == nil then
-		return nil, nil
-	end
-	return mob.distance:sqrt(), mob
+	return require('uc_scheduler_target_utils').p1_target_distance_to_id(scheduler, target_id)
 end
 
 p1_apply_face_to_target = function(settings, target_id)
@@ -5360,16 +4553,7 @@ function scheduler.get_debug_overlay()
 end
 
 function scheduler.reset_runtime_locks()
-	_G.UC_MOVE_FREEZE_PREP_KEY = ''
-	_G.UC_MOVE_FREEZE_PREP_UNTIL = 0
-	local st = action_state()
-	st.action_start = 0
-	st.action_end = 0
-	st.last_send_kind = ''
-	st.cooldown_until = 0
-	st.action_delay = 0
-	st.last_action = 0
-	st.last_acting_state = false
+	scheduler_locks.reset_runtime_locks(_G, action_state)
 end
 
 _G.UC_ResetSchedulerRuntimeLocks = function()
