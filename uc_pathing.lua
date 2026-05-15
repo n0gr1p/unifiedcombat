@@ -31,10 +31,12 @@ local follow_state = {
 	dir = 1, -- 1 forward, -1 reverse
 }
 local follow_arrival_tolerance = 0.8
+local single_point_slack_yalms = 0.5
 local debug_overlay = nil
 local debug_target_overlay = nil
 local follow_paused = false
 local follow_pause_anchor_index = nil
+local follow_pause_reason = 'NONE'
 
 local function sanitize_name(s)
 	local v = tostring(s or ''):lower()
@@ -307,6 +309,7 @@ local function set_follow_paused(paused)
 	end
 	follow_paused = false
 	follow_pause_anchor_index = nil
+	follow_pause_reason = 'NONE'
 end
 
 local function update_distance_to_start(settings, pos)
@@ -693,6 +696,10 @@ local function render_debug_overlay(settings)
 	end
 	local cohesion = party_cohesion_ok(gate)
 	lines[#lines + 1] = ('cohesion<=%.2f: %s'):format(gate, cohesion and 'PASS' or 'BLOCK')
+	lines[#lines + 1] = ('path_follow_enabled: %s'):format(tostring(settings.path_follow_enabled == true))
+	lines[#lines + 1] = ('path_points_count: %d'):format(type(settings.path_points) == 'table' and #settings.path_points or 0)
+	lines[#lines + 1] = ('path_follow_paused: %s'):format(tostring(follow_paused == true))
+	lines[#lines + 1] = ('path_pause_reason: %s'):format(tostring(follow_pause_reason or 'NONE'))
 	local function count_tank_actions(v)
 		if type(v) == 'table' then
 			return #v
@@ -781,20 +788,56 @@ end
 
 local function should_pause_for_combat()
 	if not Start_Engine then
-		return false
+		return false, 'ENGINE_OFF'
 	end
-	if rawget(_G, 'UC_PULL_SPELL_WAITING') == true then
-		return true
+	local now = uc_now_s()
+	local owner = tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or 'none')
+	local lock_until = tonumber(rawget(_G, 'UC_MOVEMENT_LOCK_UNTIL')) or 0
+	if owner ~= 'none' and owner ~= 'path' and now < lock_until then
+		return true, ('OWNER_%s'):format(owner)
 	end
 	local p = windower.ffxi.get_player()
 	if not p then
-		return true
+		return true, 'NO_PLAYER'
 	end
-	if tonumber(p.status) == 1 then
-		return true
+	local engaged = tonumber(p.status) == 1
+	local cur = windower.ffxi.get_mob_by_target('t')
+	local have_live_target = cur and cur.valid_target and tonumber(cur.spawn_type) == 16 and (tonumber(cur.hpp) or 0) > 0
+	local pull_waiting = (rawget(_G, 'UC_PULL_SPELL_WAITING') == true)
+	local pull_wait_until = tonumber(rawget(_G, 'UC_PULL_SPELL_WAIT_UNTIL')) or 0
+	local pull_cast_hold_until = tonumber(rawget(_G, 'UC_PULL_CAST_HOLD_UNTIL')) or 0
+	if now < pull_cast_hold_until then
+		return true, 'PULL_CAST_HOLD'
 	end
-	local ci_until = tonumber(rawget(_G, 'UC_COMBAT_INTENT_UNTIL')) or 0
-	return uc_now_s() < ci_until
+	if pull_waiting and now >= pull_wait_until and pull_wait_until > 0 then
+		-- Pull wait timed out but flag survived: clear stale wait so path-follow can resume.
+		_G.UC_PULL_SPELL_WAITING = false
+		_G.UC_PULL_SPELL_WAIT_UNTIL = 0
+		pull_waiting = false
+	end
+	if (not engaged) and (not have_live_target) and (not pull_waiting) then
+		-- Defensive stale-state cleanup: these flags should only hold while actively
+		-- approaching/casting pull. If we are idle with no live combat target, clear them.
+		_G.UC_PREENGAGE_APPROACH_ACTIVE = false
+		local pa = tonumber(rawget(_G, 'UC_PULL_APPROACH_UNTIL')) or 0
+		if pa > now then
+			_G.UC_PULL_APPROACH_UNTIL = 0
+		end
+	end
+	local pull_approach_until = tonumber(rawget(_G, 'UC_PULL_APPROACH_UNTIL')) or 0
+	if now < pull_approach_until then
+		return true, 'PULL_APPROACH'
+	end
+	if rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true then
+		return true, 'PREENGAGE'
+	end
+	if pull_waiting then
+		return true, 'PULL_WAIT'
+	end
+	if engaged then
+		return true, 'ENGAGED'
+	end
+	return false, 'NONE'
 end
 
 local function stop_move()
@@ -889,15 +932,18 @@ end
 
 local function tick_follow(settings)
 	if settings.path_follow_enabled ~= true then
+		follow_pause_reason = 'PATH_FOLLOW_DISABLED'
 		return
 	end
 	ensure_path_file_binding(settings)
 	if not ensure_path_points(settings) then
+		follow_pause_reason = 'NO_PATH_POINTS'
 		stop_move()
 		return
 	end
 	local points = settings.path_points
 	if #points == 0 then
+		follow_pause_reason = 'NO_PATH_POINTS'
 		stop_move()
 		return
 	end
@@ -909,6 +955,7 @@ local function tick_follow(settings)
 	update_distance_to_start(settings, { x = me.x, y = me.y, z = me.z or 0 })
 	if party_follow_active(settings) then
 		-- Party-follow owns movement when active.
+		follow_pause_reason = 'PARTY_FOLLOW_ACTIVE'
 		set_follow_paused(true)
 		return
 	end
@@ -919,11 +966,21 @@ local function tick_follow(settings)
 		gate = 50
 	end
 	if not party_cohesion_ok(gate) then
+		follow_pause_reason = 'PARTY_COHESION_BLOCK'
 		stop_move()
 		set_follow_paused(true)
 		return
 	end
-	if should_pause_for_combat() then
+	local combat_pause, combat_pause_why = should_pause_for_combat()
+	if combat_pause then
+		local why = tostring(combat_pause_why or 'UNKNOWN')
+		local owner_pause = (why:find('^OWNER_', 1, false) ~= nil)
+		local pull_approach_pause = (why == 'PULL_APPROACH')
+		-- Yield-only pauses: another movement source should continue driving motion.
+		if not owner_pause and not pull_approach_pause then
+			stop_move()
+		end
+		follow_pause_reason = 'COMBAT_PAUSE:' .. why
 		set_follow_paused(true)
 		return
 	end
@@ -951,6 +1008,18 @@ local function tick_follow(settings)
 		return
 	end
 	local d = dist2_xy({ x = me.x, y = me.y }, pt)
+	if #points == 1 then
+		-- Single-point path acts as a soft anchor: return to point only when outside
+		-- slack radius to avoid jitter/bounce around exact coordinates.
+		if d <= single_point_slack_yalms then
+			stop_move()
+			follow_pause_reason = 'SINGLE_POINT_HOLD'
+			return
+		end
+		run_to_point(me, pt)
+		follow_pause_reason = 'RUNNING_PATH'
+		return
+	end
 	if d <= follow_arrival_tolerance then
 		advance_follow_index(settings, points)
 		pt = points[follow_state.index]
@@ -960,6 +1029,7 @@ local function tick_follow(settings)
 		end
 	end
 	run_to_point(me, pt)
+	follow_pause_reason = 'RUNNING_PATH'
 end
 
 function mod.tick()

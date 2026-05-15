@@ -6,6 +6,7 @@ local cor_maintenance = require('uc_cor_maintenance')
 local uc_settarget = require('uc_settarget')
 local uc_attack = require('uc_attack')
 local uc_partner_list = require('uc_partner_list')
+local uc_fight_leader = require('uc_fight_leader')
 local hb_buff_maint = require('uc_hb_buff_maint')
 local enemy_effect_tracker = require('uc_enemy_effect_tracker')
 local lor_packets = require('lor/lor_packets')
@@ -1278,6 +1279,19 @@ local function run_movement_coordinator_tick()
 		windower.ffxi.run(false)
 		return false, 'MOVE_COORD_CAST_FREEZE_PREP'
 	end
+	local pull_cast_hold_until = tonumber(rawget(_G, 'UC_PULL_CAST_HOLD_UNTIL')) or 0
+	if now < pull_cast_hold_until then
+		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
+		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_PULL_CAST_HOLD'
+		windower.ffxi.run(false)
+		return false, 'MOVE_COORD_PULL_CAST_HOLD'
+	end
+	if rawget(_G, 'UC_PULL_SPELL_WAITING') == true then
+		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
+		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_PULL_SPELL_WAIT'
+		windower.ffxi.run(false)
+		return false, 'MOVE_COORD_PULL_SPELL_WAIT'
+	end
 	if not bool_setting(s and s.scheduler_dark_launch_movement, false) then
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_TOGGLE_OFF'
 		return false, 'MOVE_COORD_TOGGLE_OFF'
@@ -2387,6 +2401,29 @@ end
 
 
 local function choose_defensive_action(c)
+	local function is_majesty_action(a)
+		return type(a) == 'table' and tostring(a.spell or ''):lower() == 'majesty'
+	end
+	local function cure_is_critical(cure_action)
+		if type(cure_action) ~= 'table' then
+			return false
+		end
+		local target_hpp = tonumber(cure_action.target and cure_action.target.hpp) or 0
+		if target_hpp <= 0 then
+			return false
+		end
+		local critical_hpp = tonumber(get_settings().defensive_critical_hpp) or 35
+		return target_hpp <= critical_hpp
+	end
+	local majesty_action = nil
+	if is_majesty_action(c.buff) then
+		majesty_action = c.buff
+	elseif is_majesty_action(c.overwrite) then
+		majesty_action = c.overwrite
+	end
+	if majesty_action and (not c.cure or not cure_is_critical(c.cure)) then
+		return majesty_action, 'BLOCK_DEFENSIVE_MAJESTY'
+	end
 	if c.overwrite then
 		return c.overwrite, 'BLOCK_DEFENSIVE_OVERWRITE'
 	elseif c.cure then
@@ -2472,10 +2509,22 @@ local function try_internal_defensive_action()
 		local _, _, action_kind = action_ready(action.spell)
 		local out_of_combat = (tonumber(p and p.status) or 0) ~= 1
 		local now_gate = now_s()
+		local preengage_move_active = (rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true)
 		local follow_run_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE_UNTIL')) or 0
 		local follow_run_active = (rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE') == true) or (now_gate < follow_run_until)
 		local follow_catchup_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL')) or 0
 		local follow_needs_catchup = (rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP') == true) or (now_gate < follow_catchup_until)
+		if action_kind == 'spell' and out_of_combat and preengage_move_active then
+			_G.UC_LAST_SCHED_ACTION = ('def_defer_preengage_move:%s->%s'):format(
+				tostring(action.spell or ''),
+				tostring(action.target and action.target.name or '')
+			)
+			log_def_sched(('DEF_SKIP reason=PREENGAGE_MOVE_ACTIVE action="%s" target="%s"'):format(
+				tostring(action.spell or ''),
+				tostring(action.target and action.target.name or '')
+			))
+			return false, nil
+		end
 		if action_kind == 'spell' and out_of_combat and (follow_run_active or follow_needs_catchup) then
 			_G.UC_LAST_SCHED_ACTION = ('def_defer_follow_move:%s->%s'):format(
 				tostring(action.spell or ''),
@@ -2770,6 +2819,15 @@ local function p1_collect_combat_offense(ctx, out)
 	elseif urgency > 1 then
 		urgency = 1
 	end
+	local priority_band = 70
+	local reason_code = 'tp_ready'
+	if tostring(ws_pick_reason or '') == 'AM_READY' then
+		-- Keep aftermath WS above defensive buffs/cures, but still below critical cures (110)
+		-- and doom emergency handling, which is processed before proposal dispatch.
+		priority_band = 108
+		reason_code = 'aftermath_ready'
+		urgency = 1
+	end
 	out[#out + 1] = {
 		proposal_id = ('combat.ws.%s.%d.%d'):format(ws, tonumber(target.id) or 0, math.floor(ctx.now * 1000)),
 		family_id = 'combat.ws.primary',
@@ -2779,7 +2837,7 @@ local function p1_collect_combat_offense(ctx, out)
 		target_kind = 'mob',
 		target_id = tonumber(target.id) or 0,
 		target_name = tostring(target.name or ''),
-		priority_band = 70,
+		priority_band = priority_band,
 		urgency = p1_clamp_urgency(urgency),
 		starvation_eligible = true,
 		created_at = ctx.now,
@@ -2795,7 +2853,7 @@ local function p1_collect_combat_offense(ctx, out)
 		sticky = true,
 		can_preempt_movement = false,
 		can_preempt_same_band = false,
-		reason_code = 'tp_ready',
+		reason_code = reason_code,
 		detail = {
 			tp = tp,
 			ws_pick_reason = tostring(ws_pick_reason or ''),
@@ -2981,22 +3039,55 @@ local function p1_collect_combat_engage(ctx, out)
 	if not player then
 		return
 	end
-	if tonumber(player.status) == 1 then
+	local engaged = tonumber(player.status) == 1
+	local fight_leader_force_target_id = 0
+	local fight_leader_on = bool_setting(ctx.settings and ctx.settings.fight_leader, false)
+	if fight_leader_on and (tonumber(ctx.settings and ctx.settings.fight_leader_id) or 0) > 0
+		and uc_fight_leader and type(uc_fight_leader.leader_target_id) == 'function' then
+		fight_leader_force_target_id = tonumber(uc_fight_leader.leader_target_id(tonumber(ctx.settings.fight_leader_id) or 0)) or 0
+	end
+	if engaged and fight_leader_force_target_id <= 0 then
 		return
 	end
-	local t = windower.ffxi.get_mob_by_target('t')
+	local t = nil
+	if fight_leader_force_target_id > 0 then
+		t = windower.ffxi.get_mob_by_id(fight_leader_force_target_id)
+	end
+	if not t then
+		t = windower.ffxi.get_mob_by_target('t')
+	end
 	if not t or not t.valid_target or tonumber(t.spawn_type) ~= 16 or (tonumber(t.hpp) or 0) <= 0 then
 		if bool_setting(ctx.settings and ctx.settings.debug, false) then
 			_G.UC_LAST_SCHED_ACTION = '[p1]engage:collect_skip:no_valid_target'
 		end
 		return
 	end
+	-- Hunter/path pull ownership: when a pull action is currently applicable, suppress
+	-- engage proposals so we do not run into melee before the configured pull executes.
+	if combat_core and type(combat_core.select_pull_for_scheduler) == 'function' then
+		local pull_pick = combat_core.select_pull_for_scheduler(ctx.settings)
+		if type(pull_pick) == 'table' then
+			local pull_tid = tonumber(pull_pick.target_id) or 0
+			local this_tid = tonumber(t.id) or 0
+			if pull_tid > 0 and this_tid > 0 and pull_tid == this_tid then
+				if bool_setting(ctx.settings and ctx.settings.debug, false) then
+					_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:pull_owner tid=%d action=%s:%s'):format(
+						this_tid,
+						tostring(pull_pick.action_type or ''),
+						tostring(pull_pick.action_name or '')
+					)
+				end
+				return
+			end
+		end
+	end
 	local _, claims_set = uc_targeting_common.build_party_claims()
 	local claim_id = tonumber(t.claim_id) or 0
 	local party_ids = p1_build_party_id_set()
 	local party_claimed_ok = claims_set[claim_id] == true
 	local prime_unclaimed_ok = p1_prime_unclaimed_party_aggressive_ok(ctx.settings, t, party_ids)
-	if not party_claimed_ok and not prime_unclaimed_ok then
+	local force_leader_engage = (fight_leader_force_target_id > 0 and fight_leader_force_target_id == (tonumber(t.id) or 0))
+	if not party_claimed_ok and not prime_unclaimed_ok and not force_leader_engage then
 		if bool_setting(ctx.settings and ctx.settings.debug, false) then
 			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:policy claim=%d st=%d prime=%s'):format(
 				claim_id,
@@ -3007,10 +3098,17 @@ local function p1_collect_combat_engage(ctx, out)
 		return
 	end
 	if bool_setting(ctx.settings and ctx.settings.debug, false) then
-		_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_emit tid=%d name=%s'):format(
-			tonumber(t.id) or 0,
-			tostring(t.name or '')
-		)
+		if force_leader_engage then
+			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_emit_force_leader tid=%d name=%s'):format(
+				tonumber(t.id) or 0,
+				tostring(t.name or '')
+			)
+		else
+			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_emit tid=%d name=%s'):format(
+				tonumber(t.id) or 0,
+				tostring(t.name or '')
+			)
+		end
 	end
 	out[#out + 1] = {
 		proposal_id = ('combat.engage.%d.%d'):format(tonumber(t.id) or 0, math.floor(ctx.now * 1000)),
@@ -3083,7 +3181,7 @@ local function p1_collect_target_control(ctx, out)
 		target_kind = 'mob',
 		target_id = tid,
 		target_name = tostring(pick.target_name or ''),
-		priority_band = 66,
+		priority_band = 84,
 		urgency = p1_clamp_urgency(0.55),
 		starvation_eligible = true,
 		created_at = ctx.now,
@@ -4248,10 +4346,6 @@ local function p1_try_dark_launch_dispatch(settings)
 		if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
 			return false, nil
 		end
-		local blocked, b_reason = action_dispatch_blocked()
-		if blocked then
-			return true, b_reason
-		end
 		local tid = tonumber(selected.target_id) or 0
 		if tid <= 0 then
 			return false, nil
@@ -4289,11 +4383,21 @@ local function p1_try_dark_launch_dispatch(settings)
 		if not ok then
 			return false, nil
 		end
-		action_mark_sent('pull')
+		local sent = tostring(reason or '') == 'PULL_ACTION_SENT'
 		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-		p1_record_legacy_dispatch(ctx)
-		p1_set_pending_globals()
-		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		if sent then
+			-- Only create/refresh scheduler pending locks when an actual pull action packet
+			-- was sent. Movement/setup states must not enter acting lock bookkeeping.
+			action_mark_sent('pull')
+			p1_record_legacy_dispatch(ctx)
+			p1_set_pending_globals()
+			_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		else
+			-- Pull move/setup/no-op outcomes should never keep a live pending lock.
+			p1_pending_mark_complete(ctx.now, ('pull_no_send:%s'):format(tostring(reason or 'BLOCK')))
+			p1_set_pending_globals()
+			_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		end
 		_G.UC_LAST_SCHED_ACTION = ('[p1]pull:%s->%s:%s'):format(
 			tostring(selected.action_name or ''),
 			tostring(selected.target_name or ''),
@@ -4388,9 +4492,12 @@ local function p1_try_dark_launch_dispatch(settings)
 			end
 			local p = windower.ffxi.get_player()
 			if p and tonumber(p.status) == 1 then
-				log_combat_sched(('engage_drop reason=ALREADY_ENGAGED expected_tid=%d'):format(expected_tid))
-				_G.UC_LAST_SCHED_ACTION = ('[p1]engage:already:%s'):format(tostring(selected.target_name or ''))
-				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_ENGAGED'
+				local cur = windower.ffxi.get_mob_by_target('t')
+				if cur and tonumber(cur.id) == expected_tid then
+					log_combat_sched(('engage_drop reason=ALREADY_ENGAGED expected_tid=%d'):format(expected_tid))
+					_G.UC_LAST_SCHED_ACTION = ('[p1]engage:already:%s'):format(tostring(selected.target_name or ''))
+					return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_ENGAGED'
+				end
 			end
 			if not uc_attack or type(uc_attack.engage_target) ~= 'function' then
 				log_combat_sched('engage_drop reason=NO_UC_ATTACK')
@@ -4601,10 +4708,18 @@ local function p1_try_dark_launch_dispatch(settings)
 		local p = windower.ffxi.get_player()
 		local out_of_combat = (tonumber(p and p.status) or 0) ~= 1
 		local now_gate = now_s()
+		local preengage_move_active = (rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true)
 		local follow_run_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE_UNTIL')) or 0
 		local follow_run_active = (rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE') == true) or (now_gate < follow_run_until)
 		local follow_catchup_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL')) or 0
 		local follow_needs_catchup = (rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP') == true) or (now_gate < follow_catchup_until)
+		if action_kind == 'spell' and out_of_combat and preengage_move_active then
+			_G.UC_LAST_SCHED_ACTION = ('[p1]defer_preengage_move:%s->%s'):format(
+				tostring(selected.action_name or ''),
+				tostring(selected.target_name or '')
+			)
+			return true, 'BLOCK_DEFENSIVE_PREENGAGE_MOVE_ACTIVE'
+		end
 		if action_kind == 'spell' and out_of_combat and (follow_run_active or follow_needs_catchup) then
 			_G.UC_LAST_SCHED_ACTION = ('[p1]defer_follow_move:%s->%s'):format(
 				tostring(selected.action_name or ''),
@@ -5242,6 +5357,25 @@ function scheduler.get_debug_overlay()
 		rejected = rejected,
 		buff_up = build_buff_up_lines(),
 	}
+end
+
+function scheduler.reset_runtime_locks()
+	_G.UC_MOVE_FREEZE_PREP_KEY = ''
+	_G.UC_MOVE_FREEZE_PREP_UNTIL = 0
+	local st = action_state()
+	st.action_start = 0
+	st.action_end = 0
+	st.last_send_kind = ''
+	st.cooldown_until = 0
+	st.action_delay = 0
+	st.last_action = 0
+	st.last_acting_state = false
+end
+
+_G.UC_ResetSchedulerRuntimeLocks = function()
+	if scheduler and type(scheduler.reset_runtime_locks) == 'function' then
+		scheduler.reset_runtime_locks()
+	end
 end
 
 function scheduler.get_enemy_effect_table_overlay()

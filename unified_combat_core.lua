@@ -26,6 +26,7 @@ local uc_targeting_common = require('uc_targeting_common')
 local uc_settarget = require('uc_settarget')
 local uc_attack = require('uc_attack')
 local uc_path_hunter = require('uc_path_hunter')
+local aftermath_table = dofile(windower.addon_path .. 'docs/aftermath_table.lua')
 
 local core = {
 	adapters = {},
@@ -79,6 +80,7 @@ local core = {
 	pull_pending_sent_at = 0,
 	pull_spell_waiting = false,
 	pull_spell_wait_until = 0,
+	pull_spell_halt_until = 0,
 	pull_spell_settle_key = '',
 	pull_spell_settle_until = 0,
 	pull_last_sent_at = {},
@@ -113,6 +115,9 @@ local core = {
 local stop_run
 local get_mover
 local resolve_mob_current_target
+local function set_preengage_approach_active(active)
+	_G.UC_PREENGAGE_APPROACH_ACTIVE = (active == true)
+end
 local function set_movement_owner(owner, hold_s)
 	_G.UC_MOVEMENT_OWNER = tostring(owner or 'none')
 	local now = uc_now_s()
@@ -1215,6 +1220,7 @@ end
 local function clear_pull_spell_wait_state()
 	core.pull_spell_waiting = false
 	core.pull_spell_wait_until = 0
+	core.pull_spell_halt_until = 0
 	core.pull_pending_type = ''
 	core.pull_pending_action = ''
 	core.pull_pending_target_id = 0
@@ -1222,6 +1228,7 @@ local function clear_pull_spell_wait_state()
 	core.pull_spell_settle_key = ''
 	core.pull_spell_settle_until = 0
 	_G.UC_PULL_SPELL_WAITING = false
+	_G.UC_PULL_SPELL_WAIT_UNTIL = 0
 end
 
 local function get_spell_resource(name)
@@ -1317,14 +1324,10 @@ local function should_use_pull_action(settings, player, target)
 	if not setting_enabled(settings and settings.path_follow_enabled) then
 		return false
 	end
-	if not setting_enabled(settings and settings.puller) then
-		return false
-	end
-	local pid = tonumber(settings and settings.puller_id) or 0
-	if pid == 0 or (tonumber(player and player.id) or 0) ~= pid then
-		return false
-	end
 	if not target or not target.id or target.id == 0 then
+		return false
+	end
+	if not uc_path_hunter.matches_mob(settings, target.name or '') then
 		return false
 	end
 	if (tonumber(player and player.status) or 0) == 1 then
@@ -1402,22 +1405,13 @@ local function move_toward_target_for_pull(target)
 		set_movement_owner('none', 0)
 		return false
 	end
-	local mover = get_mover()
-	if mover and target.id and type(mover.move_towards) == 'function' then
-		local ok = pcall(function()
-			mover:move_towards(target.id)
-		end)
-		if ok then
-			core.last_run_active = true
-			set_movement_owner('core', 0.4)
-			return true
-		end
-	end
+	-- Pull approach must be range-precise (stop to cast) and must not delegate to
+	-- mover:move_towards(), which can continue advancing into melee beyond pull range.
 	local heading = uc_heading_to(target.x, target.y)
 	if heading then
 		windower.ffxi.run(heading)
 		core.last_run_active = true
-		set_movement_owner('core', 0.4)
+		set_movement_owner('core', 0.8)
 		return true
 	end
 	windower.ffxi.run(false)
@@ -1863,6 +1857,7 @@ local function execute_tank_enmity(settings, player, violation)
 end
 
 local function try_pull_action(settings, player, target)
+	set_preengage_approach_active(false)
 	if not should_use_pull_action(settings, player, target) then
 		return false
 	end
@@ -1876,6 +1871,7 @@ local function try_pull_action(settings, player, target)
 			-- Keep stationary until the spell action completion packet arrives.
 			windower.ffxi.run(false)
 			core.last_run_active = false
+			set_movement_owner('core', 0.6)
 			_G.UC_PULL_SPELL_WAITING = true
 			_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 0.6
 			_G.UC_LAST_BLOCK_REASON = 'PULL_SPELL_WAITING'
@@ -1919,6 +1915,11 @@ local function try_pull_action(settings, player, target)
 	if max_range <= 0 then
 		max_range = (action_type == 'spell') and 20 or 10
 	end
+	if action_type == 'spell' and max_range < 5.0 then
+		-- Pull spells are expected to be ranged actions; very small computed ranges
+		-- indicate malformed resource-range mapping for this action.
+		max_range = 20.0
+	end
 	local cast_max_range = max_range
 	if action_type == 'spell' then
 		local buffer = max_range * 0.10
@@ -1932,11 +1933,14 @@ local function try_pull_action(settings, player, target)
 		core.pull_spell_settle_key = ''
 		core.pull_spell_settle_until = 0
 		_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 0.8
+		_G.UC_PULL_APPROACH_UNTIL = uc_now_s() + 0.8
 		_G.UC_LAST_BLOCK_REASON = 'PULL_MOVE_INTO_RANGE'
 		_G.UC_WS_LAST_DIAG = ('core pull move type=%s action=%s dist=%.2f cast_range=%.2f max=%.2f'):format(action_type, action_name, dist, cast_max_range, max_range)
 		local moved = move_toward_target_for_pull(cur)
 		if not moved then
 			_G.UC_LAST_BLOCK_REASON = 'PULL_MOVE_VECTOR_FAIL'
+		else
+			set_preengage_approach_active(true)
 		end
 		return true
 	end
@@ -1948,9 +1952,19 @@ local function try_pull_action(settings, player, target)
 		if core.pull_spell_settle_key ~= settle_key then
 			core.pull_spell_settle_key = settle_key
 			core.pull_spell_settle_until = now_settle + 0.40
+			core.pull_spell_halt_until = now_settle + 0.40
 		end
+		_G.UC_PULL_APPROACH_UNTIL = now_settle + 0.5
 		windower.ffxi.run(false)
 		core.last_run_active = false
+		set_movement_owner('core', 0.5)
+		_G.UC_MOVE_FREEZE_PREP_UNTIL = math.max(tonumber(rawget(_G, 'UC_MOVE_FREEZE_PREP_UNTIL')) or 0, now_settle + 0.45)
+		if now_settle < (tonumber(core.pull_spell_halt_until) or 0) then
+			_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 0.6
+			_G.UC_LAST_BLOCK_REASON = 'PULL_PRECAST_HALT'
+			_G.UC_WS_LAST_DIAG = ('core pull halt action=%s tid=%d'):format(action_name, tonumber(cur.id) or 0)
+			return true
+		end
 		if now_settle < (tonumber(core.pull_spell_settle_until) or 0) then
 			_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 0.6
 			_G.UC_LAST_BLOCK_REASON = 'PULL_PRECAST_SETTLE'
@@ -1973,12 +1987,16 @@ local function try_pull_action(settings, player, target)
 		core.pull_spell_waiting = true
 		core.pull_spell_wait_until = now + 8.0
 		_G.UC_PULL_SPELL_WAITING = true
+		_G.UC_PULL_SPELL_WAIT_UNTIL = core.pull_spell_wait_until
+		_G.UC_PULL_CAST_HOLD_UNTIL = now + 1.0
 		_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 2.5
+		_G.UC_PULL_APPROACH_UNTIL = uc_now_s() + 2.5
 	else
 		windower.send_command('input /ja "' .. action_name .. '" ' .. tostring(cur.id))
 		core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
 		core.pull_lock_until = math.max(tonumber(core.pull_lock_until) or 0, now + 0.6)
 		core.pull_pending_type = 'ja'
+		_G.UC_PULL_APPROACH_UNTIL = uc_now_s() + 0.8
 	end
 	core.pull_pending_action = tostring(action_name)
 	core.pull_pending_target_id = tonumber(cur.id) or 0
@@ -2204,6 +2222,7 @@ local function run_heading_guarded(target, me, heading, tag, is_retreat_intent)
 end
 
 local function apply_movement(settings, target)
+	set_preengage_approach_active(false)
 	_G.UC_PULLER_APPROACH_BLOCK_UNTIL = 0
 	-- Guard: do not drive combat-close movement from a manually selected target
 	-- unless autotarget is enabled (normal combat ownership) or explicit move mode is on.
@@ -2297,6 +2316,7 @@ local function apply_movement(settings, target)
 				moved = true
 			end
 			core.last_run_active = moved
+			set_preengage_approach_active(moved)
 		else
 			if core.last_run_active then
 				stop_run()
@@ -2330,6 +2350,7 @@ local function apply_movement(settings, target)
 			moved = true
 		end
 		core.last_run_active = moved
+		set_preengage_approach_active(moved)
 	elseif dist < min_range then
 		local moved = false
 		local heading = uc_heading_to(target.x, target.y)
@@ -2984,6 +3005,39 @@ local function select_smart_ws(settings, target_id)
 	if should_hold_ws_for_chivalry(settings, player) then
 		return '', 'CHIVALRY_HOLD_TP'
 	end
+	if setting_enabled(settings.aftermath_enabled) then
+		local am_ws = tostring(settings.aftermath_ws or '')
+		if am_ws ~= '' then
+			local weapon_name, weapon = aftermath_table.get_weapon_by_ws(am_ws)
+			if not weapon_name or type(weapon) ~= 'table' then
+				return '', 'AM_WS_UNMAPPED'
+			end
+			local profile = weapon.aftermath
+			local stage = tonumber(weapon.minimum_aftermath_stage) or 3
+			local stage_info = profile and profile.tp and profile.tp[stage] or nil
+			local required_buff_id = tonumber(stage_info and stage_info.buff_id) or 0
+			if required_buff_id <= 0 then
+				return '', 'AM_PROFILE_INVALID'
+			end
+			local has_am = false
+			for _, bid in ipairs(player.buffs or {}) do
+				if tonumber(bid) == required_buff_id then
+					has_am = true
+					break
+				end
+			end
+			if not has_am then
+				if not uc_ws_memory.valid_ws_name(am_ws) then
+					return '', 'AM_WS_INVALID'
+				end
+				local tp = (player.vitals and player.vitals.tp) or 0
+				if tp >= 3000 then
+					return am_ws, 'AM_READY'
+				end
+				return '', 'AM_HOLD_TP'
+			end
+		end
+	end
 	if not setting_enabled(settings.spam) and not setting_enabled(settings.solo) then
 		local hold_tid = tonumber(core.party_ws_hold_target_id) or 0
 		if hold_tid ~= 0 and hold_tid == tid then
@@ -3000,29 +3054,6 @@ local function select_smart_ws(settings, target_id)
 			core.party_ws_hold_until = 0
 			core.party_ws_hold_category = ''
 			core.party_ws_hold_name = ''
-		end
-	end
-	if setting_enabled(settings.aftermath_enabled) then
-		local am_ws = tostring(settings.aftermath_ws or '')
-		if am_ws ~= '' then
-			local has_am = false
-			for _, bid in ipairs(player.buffs or {}) do
-				-- Only treat AM3 as satisfied: Lv1/Lv2 are intentionally ignored and 273 may be external.
-				if bid == 272 then
-					has_am = true
-					break
-				end
-			end
-			if not has_am then
-				if not uc_ws_memory.valid_ws_name(am_ws) then
-					return '', 'AM_WS_INVALID'
-				end
-				local tp = (player.vitals and player.vitals.tp) or 0
-				if tp >= 3000 then
-					return am_ws, 'AM_READY'
-				end
-				return '', 'AM_HOLD_TP'
-			end
 		end
 	end
 	local spam_on = setting_enabled(settings.spam)
@@ -3094,6 +3125,7 @@ local function select_smart_ws(settings, target_id)
 end
 
 local function run_unified_combat()
+	set_preengage_approach_active(false)
 	local s = get_settings()
 	local p = windower.ffxi.get_player()
 	if not p then
@@ -3307,6 +3339,16 @@ local function run_unified_combat()
 				core.hunter_acquire.target_id = 0
 				core.hunter_acquire.started_at = 0
 			end
+			-- No live target: pull wait/approach flags are stale and must be cleared so
+			-- out-of-combat path follow can resume immediately.
+			clear_pull_spell_wait_state()
+			_G.UC_PULL_APPROACH_UNTIL = 0
+			set_preengage_approach_active(false)
+			-- Path-hunter route follow pauses while engaged. If no valid combat target remains,
+			-- force disengage so path-follow can immediately resume after kill.
+			if path_hunter_filter_active and (tonumber(p and p.status) or 0) == 1 then
+				uc_attack.disengage()
+			end
 			_G.UC_COMBAT_INTENT_UNTIL = 0
 			if core.last_run_active then
 				stop_run()
@@ -3393,19 +3435,26 @@ local function run_unified_combat()
 		tid = 0
 		target = nil
 	end
-	if setting_enabled(s.autotarget) and p.status == 1 and current_dead and tid > 0 and
+	if setting_enabled(s.autotarget) and current_dead and tid > 0 and
 		(not current_before or current_before.id ~= tid) then
 		local ok_sw = uc_attack.switch_target(tid)
 		if ok_sw then
 			core.sticky_target_id = tid
 			core.sticky_hold_until = 0
 			switched_on_kill = true
+			_G.UC_WS_LAST_DIAG = ('core death fast-switch from=%d to=%d status=%d'):format(
+				tonumber(current_before and current_before.id) or 0,
+				tonumber(tid) or 0,
+				tonumber(p and p.status) or 0
+			)
 		end
 	end
 	if tid > 0 and setting_enabled(s.autotarget) then
-		if not switched_on_kill then
-			local ok_target = ensure_target_and_attack(tid)
-			if not ok_target then
+		local ok_target = ensure_target_and_attack(tid)
+		if not ok_target then
+			if switched_on_kill then
+				_G.UC_WS_LAST_DIAG = 'core ws reason=TARGET_PREP_FAIL_AFTER_DEATH_SWITCH'
+			else
 				_G.UC_WS_LAST_DIAG = 'core ws reason=TARGET_PREP_FAIL'
 			end
 		end
@@ -3653,6 +3702,9 @@ function core.select_pull_for_scheduler(settings)
 	if max_range <= 0 then
 		max_range = (action_type == 'spell') and 20 or 10
 	end
+	if action_type == 'spell' and max_range < 5.0 then
+		max_range = 20.0
+	end
 	local cast_max_range = max_range
 	if action_type == 'spell' then
 		local buffer = max_range * 0.10
@@ -3691,8 +3743,13 @@ end
 function core.apply_movement_for_scheduler(settings)
 	local s = settings or get_settings() or {}
 	local current = get_current_target()
+	local before_run = (core.last_run_active == true)
 	apply_movement(s, current)
-	return true
+	local after_run = (core.last_run_active == true)
+	local preengage = (rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true)
+	-- Movement coordinator should only claim ownership when this tick produced
+	-- active movement ownership intent.
+	return after_run or preengage or (before_run and after_run)
 end
 
 return core

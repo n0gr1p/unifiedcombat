@@ -1502,6 +1502,9 @@ local function process_line(line)
 		if _G.UC_SETTINGS then
 			_G.UC_SETTINGS.engine_enabled = (Start_Engine == true)
 		end
+		if was_running and (not Start_Engine) and type(_G.UC_ResetMovementLocksForFollow) == 'function' then
+			_G.UC_ResetMovementLocksForFollow()
+		end
 		if (not was_running) and Start_Engine then
 			maybe_start_active_engine()
 		end
@@ -1518,6 +1521,9 @@ local function process_line(line)
 		Start_Engine = false
 		if _G.UC_SETTINGS then
 			_G.UC_SETTINGS.engine_enabled = false
+		end
+		if type(_G.UC_ResetMovementLocksForFollow) == 'function' then
+			_G.UC_ResetMovementLocksForFollow()
 		end
 	elseif op == 'save' then
 		if type(_G.UC_SaveActiveProfile) == 'function' then

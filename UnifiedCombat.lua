@@ -339,6 +339,21 @@ _G.UC_CoreCombatTickOnce = function()
 	end
 end
 
+_G.UC_ResetMovementLocksForFollow = function()
+	_G.UC_MOVE_FREEZE_PREP_KEY = ''
+	_G.UC_MOVE_FREEZE_PREP_UNTIL = 0
+	_G.UC_MOVEMENT_MODE = 'OUT_OF_COMBAT'
+	_G.UC_MOVEMENT_BLOCK_REASON = ''
+	_G.UC_MOVEMENT_OWNER = 'none'
+	_G.UC_MOVEMENT_LOCK_UNTIL = 0
+	_G.UC_COMBAT_INTENT_UNTIL = 0
+	_G.UC_PULL_SPELL_WAITING = false
+	if type(_G.UC_ResetSchedulerRuntimeLocks) == 'function' then
+		_G.UC_ResetSchedulerRuntimeLocks()
+	end
+	windower.ffxi.run(false)
+end
+
 local function uc_apply_job_defaults(job)
 	if not job or not _G.UC_SETTINGS then
 		return
@@ -901,6 +916,9 @@ windower.register_event('addon command', function(...)
 		Start_Engine = false
 		if _G.UC_SETTINGS then
 			_G.UC_SETTINGS.engine_enabled = false
+		end
+		if type(_G.UC_ResetMovementLocksForFollow) == 'function' then
+			_G.UC_ResetMovementLocksForFollow()
 		end
 		if type(_G.UC_StopUnifiedEngine) == 'function' then
 			_G.UC_StopUnifiedEngine()

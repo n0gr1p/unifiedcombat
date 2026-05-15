@@ -665,6 +665,9 @@ local function combat_engine_suppresses_follow(s)
 		if p and tonumber(p.status) == 1 then
 			return true
 		end
+		if rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true then
+			return true
+		end
 		local intent_until = tonumber(rawget(_G, 'UC_COMBAT_INTENT_UNTIL')) or 0
 		if now < intent_until then
 			return true

@@ -28,9 +28,14 @@ UnifiedCombat provides:
 - Party-claim-aware targeting with fight leader and add-control support.
 - Spacing + close-range movement with puller gating support.
 - Smart WS selection and skillchain-aware WS behavior.
+  - Aftermath hold logic is weapon-table driven via `docs/aftermath_table.lua` and validates `aftermath_ws` against mapped ultimate-weapon WS entries.
+  - In scheduler combat ownership mode, `AM_READY` aftermath WS intents are prioritized above defensive buffs/non-critical cures, while critical cures and doom emergency still preempt.
 - Ordered JA execution pipeline.
 - Party-follow with zone replay behavior.
 - Defensive scheduler integration path.
+  - Majesty is treated as a high-priority defensive buff and is cast before non-critical cures.
+  - Defensive spell casts are deferred while pre-engage combat approach movement is active.
+  - In scheduler combat ownership mode, target selection dispatch is lane-separated from action-block gates and is prioritized above engage dispatch.
 - Real-time multi-session WinForms control and state sync.
 
 ## Architecture
