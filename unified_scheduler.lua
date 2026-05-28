@@ -2094,6 +2094,22 @@ local function try_internal_defensive_action()
 			tostring(action.target and action.target.name or ''),
 			tostring(cmd or '')
 		))
+		local dispatch_intent = {
+			kind = 'send_command',
+			source = 'unified_scheduler:T2.1_darklaunch',
+			command = cmd,
+			meta = {
+				action_kind = tostring(action_kind or action.type or 'defensive'),
+				action_name = tostring(action.spell or ''),
+				target_name = tostring(action.target and action.target.name or ''),
+			},
+		}
+		local dispatch_ok, dispatch_reason = require('uc_scheduler_dispatcher').validate_intent({
+			kind = dispatch_intent.kind,
+			reason = dispatch_intent.source,
+			payload = { command = dispatch_intent.command },
+		})
+		_G.UC_SCHED_P1_DARKLAUNCH_DISPATCH_VALIDATE = dispatch_ok and 'ok' or tostring(dispatch_reason or '')
 		windower.send_command(cmd)
 		action_mark_sent(action_kind or action.type or 'defensive')
 		scheduler.last_action_at = now
@@ -3475,6 +3491,20 @@ local function p1_try_target_prep(target_id)
 	end
 	local ok = false
 	if uc_settarget and type(uc_settarget.select_by_id) == 'function' then
+		local dispatch_intent = {
+			kind = 'select_target',
+			source = 'unified_scheduler:T2.2_darklaunch',
+			target_id = tid,
+			meta = {
+				current_target_id = tonumber(cur and cur.id) or 0,
+			},
+		}
+		local dispatch_ok, dispatch_reason = require('uc_scheduler_dispatcher').validate_intent({
+			kind = 'set_target',
+			reason = dispatch_intent.source,
+			payload = { target_id = dispatch_intent.target_id },
+		})
+		_G.UC_SCHED_P1_DARKLAUNCH_TARGET_VALIDATE = dispatch_ok and 'ok' or tostring(dispatch_reason or '')
 		ok = (uc_settarget.select_by_id(tid) == true)
 	end
 	return ok
@@ -3513,6 +3543,22 @@ p1_apply_face_to_target = function(settings, target_id)
 	local dy = (mob.y - me.y)
 	local heading = math.atan2(dx, dy) - 1.5708
 	if heading then
+		local intent = {
+			kind = 'turn',
+			source = 'unified_scheduler:T2.3c_darklaunch',
+			heading = heading,
+			meta = {
+				target_id = tid,
+			},
+		}
+		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		_G.UC_SCHED_P1_DARKLAUNCH_TURN_VALIDATE = {
+			ok = _darklaunch_ok and true or false,
+			reason = _darklaunch_reason,
+			kind = intent.kind,
+			source = intent.source,
+			heading = tonumber(intent.heading) or 0,
+		}
 		windower.ffxi.turn(heading)
 	end
 end
@@ -3523,6 +3569,25 @@ local function p1_move_toward_mob(mob)
 		return false
 	end
 	local heading = math.atan2(mob.y - me.y, mob.x - me.x)
+	local dispatch_intent = {
+		kind = 'run',
+		source = 'unified_scheduler:T2.3_darklaunch',
+		run_x = math.cos(heading),
+		run_y = math.sin(heading),
+		meta = {
+			target_id = tonumber(mob.id) or 0,
+			heading = heading,
+		},
+	}
+	local dispatch_ok, dispatch_reason = require('uc_scheduler_dispatcher').validate_intent({
+		kind = dispatch_intent.kind,
+		reason = dispatch_intent.source,
+		payload = {
+			run_x = dispatch_intent.run_x,
+			run_y = dispatch_intent.run_y,
+		},
+	})
+	_G.UC_SCHED_P1_DARKLAUNCH_RUN_VALIDATE = dispatch_ok and 'ok' or tostring(dispatch_reason or '')
 	windower.ffxi.run(heading)
 	return true
 end
@@ -3735,7 +3800,26 @@ local function p1_try_dark_launch_dispatch(settings)
 				end
 				action_mark_sent('ws')
 			else
-				windower.send_command(('input /ws \"%s\" <t>'):format(ws))
+				local ws_command = ('input /ws \"%s\" <t>'):format(ws)
+				local intent = {
+					kind = 'send_command',
+					source = 'unified_scheduler:T2.3d_darklaunch',
+					command = ws_command,
+					meta = {
+						action_type = tostring(action_type or ''),
+						action_name = ws,
+						target_id = expected_tid,
+					},
+				}
+				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				_G.UC_SCHED_P1_DARKLAUNCH_COMBAT_COMMAND_VALIDATE = {
+					ok = _darklaunch_ok and true or false,
+					reason = _darklaunch_reason,
+					kind = intent.kind,
+					source = intent.source,
+					command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+				}
+				windower.send_command(ws_command)
 				action_mark_sent('ws')
 			end
 			_G.UC_LAST_SCHED_ACTION = ('[p1]ws:%s->%s'):format(ws, tostring(selected.target_name or ''))
@@ -3767,7 +3851,27 @@ local function p1_try_dark_launch_dispatch(settings)
 						return false, nil
 					end
 				end
-				windower.send_command(('input /ja \"%s\" %d'):format(ability, expected_tid))
+				local ja_target_command = ('input /ja \"%s\" %d'):format(ability, expected_tid)
+				local intent = {
+					kind = 'send_command',
+					source = 'unified_scheduler:T2.3e_darklaunch',
+					command = ja_target_command,
+					meta = {
+						action_type = tostring(action_type or ''),
+						action_name = ability,
+						target_id = expected_tid,
+						target_kind = tostring(target_kind or ''),
+					},
+				}
+				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				_G.UC_SCHED_P1_DARKLAUNCH_JA_COMMAND_VALIDATE = {
+					ok = _darklaunch_ok and true or false,
+					reason = _darklaunch_reason,
+					kind = intent.kind,
+					source = intent.source,
+					command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+				}
+				windower.send_command(ja_target_command)
 				action_mark_sent('ja')
 				if tank_enmity then
 					tank_enmity_diag('TANK_ENMITY_SEND_JA', selected, 'mode=target_id')
@@ -3777,7 +3881,26 @@ local function p1_try_dark_launch_dispatch(settings)
 				if tank_enmity then
 					windower.ffxi.run(false)
 				end
-				windower.send_command(('input /ja \"%s\" <me>'):format(ability))
+				local ja_self_command = ('input /ja \"%s\" <me>'):format(ability)
+				local intent = {
+					kind = 'send_command',
+					source = 'unified_scheduler:T2.3f_darklaunch',
+					command = ja_self_command,
+					meta = {
+						action_type = tostring(action_type or ''),
+						action_name = ability,
+						target_kind = tostring(target_kind or ''),
+					},
+				}
+				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				_G.UC_SCHED_P1_DARKLAUNCH_JA_SELF_COMMAND_VALIDATE = {
+					ok = _darklaunch_ok and true or false,
+					reason = _darklaunch_reason,
+					kind = intent.kind,
+					source = intent.source,
+					command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+				}
+				windower.send_command(ja_self_command)
 				action_mark_sent('ja')
 				if tank_enmity then
 					tank_enmity_diag('TANK_ENMITY_SEND_JA', selected, 'mode=self')

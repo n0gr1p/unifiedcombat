@@ -24,6 +24,7 @@ local RUNTIME_LUA_FILES = {
     "uc_scheduler_context_utils.lua",
     "uc_scheduler_defensive_utils.lua",
     "uc_scheduler_dispatch_plan.lua",
+    "uc_scheduler_dispatcher.lua",
     "uc_scheduler_dryrun_publish.lua",
     "uc_scheduler_enemy_effect_utils.lua",
     "uc_scheduler_geometry.lua",

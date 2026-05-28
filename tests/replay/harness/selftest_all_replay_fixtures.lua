@@ -4,6 +4,8 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_fixture_runner.lua",
     "tests/replay/harness/selftest_fixture_suite_runner.lua",
     "tests/replay/harness/selftest_runtime_parse.lua",
+    "tests/replay/harness/selftest_side_effect_inventory.lua",
+    "tests/replay/harness/selftest_dispatcher_fixtures.lua",
     "tests/replay/harness/selftest_status_snapshot_063_fixtures.lua",
     "tests/replay/harness/selftest_enemy_effect_utils_fixtures.lua",
     "tests/replay/harness/selftest_text_utils_fixtures.lua",
