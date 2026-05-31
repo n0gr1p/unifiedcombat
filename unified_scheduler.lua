@@ -3974,7 +3974,27 @@ local function p1_try_dark_launch_dispatch(settings)
 				if tank_enmity then
 					windower.ffxi.run(false)
 				end
-				windower.send_command(('input /ma \"%s\" %d'):format(spell, expected_tid))
+				local spell_target_command = ('input /ma \"%s\" %d'):format(spell, expected_tid)
+				local intent = {
+					kind = 'send_command',
+					source = 'unified_scheduler:T2.3g_darklaunch',
+					command = spell_target_command,
+					meta = {
+						action_type = tostring(action_type or ''),
+						action_name = spell,
+						target_id = expected_tid,
+						target_kind = tostring(target_kind or ''),
+					},
+				}
+				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				_G.UC_SCHED_P1_DARKLAUNCH_SPELL_TARGET_COMMAND_VALIDATE = {
+					ok = _darklaunch_ok and true or false,
+					reason = _darklaunch_reason,
+					kind = intent.kind,
+					source = intent.source,
+					command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+				}
+				windower.send_command(spell_target_command)
 				action_mark_sent('spell')
 				if tank_enmity then
 					tank_enmity_diag('TANK_ENMITY_SEND_SPELL', selected, 'mode=target_id')
@@ -3983,7 +4003,26 @@ local function p1_try_dark_launch_dispatch(settings)
 				if tank_enmity then
 					windower.ffxi.run(false)
 				end
-				windower.send_command(('input /ma \"%s\" <me>'):format(spell))
+				local spell_self_command = ('input /ma \"%s\" <me>'):format(spell)
+				local intent = {
+					kind = 'send_command',
+					source = 'unified_scheduler:T2.3h_darklaunch',
+					command = spell_self_command,
+					meta = {
+						action_type = tostring(action_type or ''),
+						action_name = spell,
+						target_kind = tostring(target_kind or ''),
+					},
+				}
+				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				_G.UC_SCHED_P1_DARKLAUNCH_SPELL_SELF_COMMAND_VALIDATE = {
+					ok = _darklaunch_ok and true or false,
+					reason = _darklaunch_reason,
+					kind = intent.kind,
+					source = intent.source,
+					command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+				}
+				windower.send_command(spell_self_command)
 				action_mark_sent('spell')
 				if tank_enmity then
 					tank_enmity_diag('TANK_ENMITY_SEND_SPELL', selected, 'mode=self')
@@ -4043,6 +4082,24 @@ local function p1_try_dark_launch_dispatch(settings)
 			)
 			return true, 'BLOCK_DEFENSIVE_FOLLOW_MOVE_ACTIVE'
 		end
+		local intent = {
+			kind = 'send_command',
+			source = 'unified_scheduler:T2.3i_darklaunch',
+			command = cmd,
+			meta = {
+				action_type = tostring(action_kind or selected.action_type or ''),
+				action_name = tostring(selected.action_name or ''),
+				target_id = tonumber(selected.target_id) or 0,
+			},
+		}
+		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		_G.UC_SCHED_P1_DARKLAUNCH_DEFENSIVE_INTERNAL_COMMAND_VALIDATE = {
+			ok = _darklaunch_ok and true or false,
+			reason = _darklaunch_reason,
+			kind = intent.kind,
+			source = intent.source,
+			command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+		}
 		windower.send_command(cmd)
 		action_mark_sent(action_kind or selected.action_type or 'defensive_internal')
 		local dispatch_now = now_s()
