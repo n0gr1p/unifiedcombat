@@ -1,8 +1,8 @@
 local INVENTORY_BASELINE = {
     ["unified_scheduler.lua"] = {
-        ["windower.send_command("] = { 855, 2113, 3822, 3874, 3903, 3997, 4025, 4103, 4171 },
-        ["windower.ffxi.run("] = { 848, 1036, 1043, 1049, 3591, 3724, 3882, 3927, 3932, 3955, 3975, 4004 },
-        ["uc_settarget.select_by_id("] = { 3508 },
+        ["windower.send_command("] = { 891, 2202, 3962, 4014, 4062, 4238, 4284, 4362, 4449 },
+        ["windower.ffxi.run("] = { 865, 1089, 1113, 1136, 3710, 3864, 4041, 4107, 4133, 4177, 4216, 4263 },
+        ["uc_settarget.select_by_id("] = { 3599 },
     },
     ["unified_combat_core.lua"] = {
         ["windower.send_command("] = { 1797, 1818, 1984, 1995, 2914, 2928, 3600 },

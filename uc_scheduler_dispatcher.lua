@@ -151,6 +151,10 @@ function M.validate_intent(intent)
         return true, ""
     end
 
+    if kind == "run_stop" then
+        return true, ""
+    end
+
     if kind == "turn" then
         if n.payload.heading == nil then
             return false, "missing_heading"
@@ -158,7 +162,7 @@ function M.validate_intent(intent)
         return true, ""
     end
 
-    if kind == "set_target" then
+    if kind == "select_target" or kind == "set_target" then
         if n.payload.target_id <= 0 then
             return false, "invalid_target_id"
         end
@@ -229,6 +233,19 @@ function M.dispatch_intent(intent, deps)
             }
         end
         fn(normalized.payload.run_x, normalized.payload.run_y)
+    elseif kind == "run_stop" then
+        local fn
+        fn, err = require_dep_fn(deps, "run")
+        if not fn then
+            scrub_validation_fields(normalized)
+            return {
+                ok = false,
+                reason = err,
+                executed = false,
+                normalized_intent = normalized,
+            }
+        end
+        fn(false)
     elseif kind == "turn" then
         local fn
         fn, err = require_dep_fn(deps, "turn")
@@ -242,7 +259,7 @@ function M.dispatch_intent(intent, deps)
             }
         end
         fn(normalized.payload.heading)
-    elseif kind == "set_target" then
+    elseif kind == "select_target" or kind == "set_target" then
         local fn
         fn, err = require_dep_fn(deps, "set_target")
         if not fn then

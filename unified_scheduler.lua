@@ -845,6 +845,23 @@ local function try_doom_water_emergency(settings)
 	if not player_has_doom(p) then
 		return false, nil
 	end
+	local stop_intent = {
+		kind = 'run_stop',
+		source = 'unified_scheduler:T2.4j_darklaunch',
+		meta = {
+			reason = 'DOOM_HOLY_WATER',
+			action_type = 'item',
+			action_name = 'Holy Water',
+		},
+	}
+	local _stop_darklaunch_ok, _stop_darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(stop_intent)
+	_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_DOOM_HOLY_WATER_VALIDATE = {
+		ok = _stop_darklaunch_ok and true or false,
+		reason = _stop_darklaunch_reason,
+		kind = stop_intent.kind,
+		source = stop_intent.source,
+		stop = true,
+	}
 	windower.ffxi.run(false)
 	local now = now_s()
 	if now - doom_last_item_at < DOOM_ITEM_COOLDOWN then
@@ -852,7 +869,26 @@ local function try_doom_water_emergency(settings)
 		return true, 'BLOCK_DOOM_WATER_HOLD'
 	end
 	doom_last_item_at = now
-	windower.send_command('input /item "Holy Water" <me>')
+	local doom_holy_water_command = 'input /item "Holy Water" <me>'
+	local intent = {
+		kind = 'send_command',
+		source = 'unified_scheduler:T2.3k_darklaunch',
+		command = doom_holy_water_command,
+		meta = {
+			action_type = 'item',
+			action_name = 'Holy Water',
+			reason = 'doom_emergency',
+		},
+	}
+	local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+	_G.UC_SCHED_P1_DARKLAUNCH_DOOM_HOLY_WATER_COMMAND_VALIDATE = {
+		ok = _darklaunch_ok and true or false,
+		reason = _darklaunch_reason,
+		kind = intent.kind,
+		source = intent.source,
+		command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+	}
+	windower.send_command(doom_holy_water_command)
 	_G.UC_LAST_SCHED_ACTION = '[doom]holy_water'
 	return true, 'BLOCK_DOOM_WATER'
 end
@@ -1033,6 +1069,23 @@ local function run_movement_coordinator_tick()
 	if now < freeze_prep_until then
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_CAST_FREEZE_PREP'
+		local intent = {
+			kind = 'run_stop',
+			source = 'unified_scheduler:T2.4c_darklaunch',
+			meta = {
+				reason = 'MOVE_COORD_CAST_FREEZE_PREP',
+				movement_mode = 'CAST_FREEZE',
+				freeze_prep_until = freeze_prep_until,
+			},
+		}
+		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_VALIDATE = {
+			ok = _darklaunch_ok and true or false,
+			reason = _darklaunch_reason,
+			kind = intent.kind,
+			source = intent.source,
+			stop = true,
+		}
 		windower.ffxi.run(false)
 		return false, 'MOVE_COORD_CAST_FREEZE_PREP'
 	end
@@ -1040,12 +1093,46 @@ local function run_movement_coordinator_tick()
 	if now < pull_cast_hold_until then
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_PULL_CAST_HOLD'
+		local intent = {
+			kind = 'run_stop',
+			source = 'unified_scheduler:T2.4d_darklaunch',
+			meta = {
+				reason = 'MOVE_COORD_PULL_CAST_HOLD',
+				movement_mode = 'CAST_FREEZE',
+				pull_cast_hold_until = pull_cast_hold_until,
+			},
+		}
+		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_PULL_CAST_HOLD_VALIDATE = {
+			ok = _darklaunch_ok and true or false,
+			reason = _darklaunch_reason,
+			kind = intent.kind,
+			source = intent.source,
+			stop = true,
+		}
 		windower.ffxi.run(false)
 		return false, 'MOVE_COORD_PULL_CAST_HOLD'
 	end
 	if rawget(_G, 'UC_PULL_SPELL_WAITING') == true then
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_PULL_SPELL_WAIT'
+		local intent = {
+			kind = 'run_stop',
+			source = 'unified_scheduler:T2.4e_darklaunch',
+			meta = {
+				reason = 'MOVE_COORD_PULL_SPELL_WAIT',
+				movement_mode = 'CAST_FREEZE',
+				pull_spell_waiting = true,
+			},
+		}
+		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_PULL_SPELL_WAIT_VALIDATE = {
+			ok = _darklaunch_ok and true or false,
+			reason = _darklaunch_reason,
+			kind = intent.kind,
+			source = intent.source,
+			stop = true,
+		}
 		windower.ffxi.run(false)
 		return false, 'MOVE_COORD_PULL_SPELL_WAIT'
 	end
@@ -2094,7 +2181,7 @@ local function try_internal_defensive_action()
 			tostring(action.target and action.target.name or ''),
 			tostring(cmd or '')
 		))
-		local dispatch_intent = {
+		local intent = {
 			kind = 'send_command',
 			source = 'unified_scheduler:T2.1_darklaunch',
 			command = cmd,
@@ -2104,12 +2191,14 @@ local function try_internal_defensive_action()
 				target_name = tostring(action.target and action.target.name or ''),
 			},
 		}
-		local dispatch_ok, dispatch_reason = require('uc_scheduler_dispatcher').validate_intent({
-			kind = dispatch_intent.kind,
-			reason = dispatch_intent.source,
-			payload = { command = dispatch_intent.command },
-		})
-		_G.UC_SCHED_P1_DARKLAUNCH_DISPATCH_VALIDATE = dispatch_ok and 'ok' or tostring(dispatch_reason or '')
+		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		_G.UC_SCHED_P1_DARKLAUNCH_DISPATCH_VALIDATE = {
+			ok = _darklaunch_ok and true or false,
+			reason = _darklaunch_reason,
+			kind = intent.kind,
+			source = intent.source,
+			command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+		}
 		windower.send_command(cmd)
 		action_mark_sent(action_kind or action.type or 'defensive')
 		scheduler.last_action_at = now
@@ -3491,7 +3580,7 @@ local function p1_try_target_prep(target_id)
 	end
 	local ok = false
 	if uc_settarget and type(uc_settarget.select_by_id) == 'function' then
-		local dispatch_intent = {
+		local intent = {
 			kind = 'select_target',
 			source = 'unified_scheduler:T2.2_darklaunch',
 			target_id = tid,
@@ -3499,12 +3588,14 @@ local function p1_try_target_prep(target_id)
 				current_target_id = tonumber(cur and cur.id) or 0,
 			},
 		}
-		local dispatch_ok, dispatch_reason = require('uc_scheduler_dispatcher').validate_intent({
-			kind = 'set_target',
-			reason = dispatch_intent.source,
-			payload = { target_id = dispatch_intent.target_id },
-		})
-		_G.UC_SCHED_P1_DARKLAUNCH_TARGET_VALIDATE = dispatch_ok and 'ok' or tostring(dispatch_reason or '')
+		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		_G.UC_SCHED_P1_DARKLAUNCH_TARGET_VALIDATE = {
+			ok = _darklaunch_ok and true or false,
+			reason = _darklaunch_reason,
+			kind = intent.kind,
+			source = intent.source,
+			target_id = tonumber(intent.target_id) or 0,
+		}
 		ok = (uc_settarget.select_by_id(tid) == true)
 	end
 	return ok
@@ -3551,15 +3642,43 @@ p1_apply_face_to_target = function(settings, target_id)
 				target_id = tid,
 			},
 		}
-		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		local dispatcher = require('uc_scheduler_dispatcher')
+		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+		local ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TURN_OWNERSHIP == true)
+		local dispatched = false
+		local dispatch_ok = false
+		local dispatch_reason = ''
+		local fallback_used = false
+		local use_direct_turn = true
+		if ownership_enabled then
+			use_direct_turn = false
+			dispatched = true
+			local dispatch_result = dispatcher.dispatch_intent(intent, {
+				execute = true,
+				turn = windower.ffxi.turn,
+			})
+			dispatch_ok = (type(dispatch_result) == 'table' and dispatch_result.ok == true and dispatch_result.executed == true)
+			dispatch_reason = type(dispatch_result) == 'table' and tostring(dispatch_result.reason or '') or 'missing_dispatch_result'
+			if not dispatch_ok then
+				fallback_used = true
+				use_direct_turn = true
+			end
+		end
 		_G.UC_SCHED_P1_DARKLAUNCH_TURN_VALIDATE = {
 			ok = _darklaunch_ok and true or false,
 			reason = _darklaunch_reason,
 			kind = intent.kind,
 			source = intent.source,
 			heading = tonumber(intent.heading) or 0,
+			ownership_enabled = ownership_enabled,
+			dispatched = dispatched,
+			dispatch_ok = dispatch_ok,
+			dispatch_reason = dispatch_reason,
+			fallback_used = fallback_used,
 		}
-		windower.ffxi.turn(heading)
+		if use_direct_turn then
+			windower.ffxi.turn(heading)
+		end
 	end
 end
 
@@ -3569,7 +3688,7 @@ local function p1_move_toward_mob(mob)
 		return false
 	end
 	local heading = math.atan2(mob.y - me.y, mob.x - me.x)
-	local dispatch_intent = {
+	local intent = {
 		kind = 'run',
 		source = 'unified_scheduler:T2.3_darklaunch',
 		run_x = math.cos(heading),
@@ -3579,15 +3698,15 @@ local function p1_move_toward_mob(mob)
 			heading = heading,
 		},
 	}
-	local dispatch_ok, dispatch_reason = require('uc_scheduler_dispatcher').validate_intent({
-		kind = dispatch_intent.kind,
-		reason = dispatch_intent.source,
-		payload = {
-			run_x = dispatch_intent.run_x,
-			run_y = dispatch_intent.run_y,
-		},
-	})
-	_G.UC_SCHED_P1_DARKLAUNCH_RUN_VALIDATE = dispatch_ok and 'ok' or tostring(dispatch_reason or '')
+	local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+	_G.UC_SCHED_P1_DARKLAUNCH_RUN_VALIDATE = {
+		ok = _darklaunch_ok and true or false,
+		reason = _darklaunch_reason,
+		kind = intent.kind,
+		source = intent.source,
+		run_x = tonumber(intent.run_x) or 0,
+		run_y = tonumber(intent.run_y) or 0,
+	}
 	windower.ffxi.run(heading)
 	return true
 end
@@ -3721,6 +3840,27 @@ local function p1_try_dark_launch_dispatch(settings)
 				phase.tank_action_settle_key = settle_key
 				phase.tank_action_settle_until = now + 0.25
 			end
+			local intent = {
+				kind = 'run_stop',
+				source = 'unified_scheduler:T2.4f_darklaunch',
+				meta = {
+					reason = 'TANK_ACTION_SETTLE',
+					action_type = action_type,
+					action_name = selected.action_name,
+					target_id = expected_tid,
+					target_kind = target_kind,
+					settle_key = settle_key,
+					tank_action_settle_until = phase.tank_action_settle_until,
+				},
+			}
+			local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+			_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ACTION_SETTLE_VALIDATE = {
+				ok = _darklaunch_ok and true or false,
+				reason = _darklaunch_reason,
+				kind = intent.kind,
+				source = intent.source,
+				stop = true,
+			}
 			windower.ffxi.run(false)
 			if now < p1_number(phase.tank_action_settle_until, 0) then
 				tank_enmity_diag('TANK_ENMITY_WAIT_ACTION_SETTLE', selected, ('remain=%.2f'):format(p1_number(phase.tank_action_settle_until, 0) - now))
@@ -3879,6 +4019,25 @@ local function p1_try_dark_launch_dispatch(settings)
 				log_ja_sched(('dispatch_send name=\"%s\" mode=target tid=%d'):format(tostring(ability), tonumber(expected_tid) or 0))
 			else
 				if tank_enmity then
+					local stop_intent = {
+						kind = 'run_stop',
+						source = 'unified_scheduler:T2.4k_darklaunch',
+						meta = {
+							reason = 'TANK_ENMITY_JA_SELF_SEND',
+							action_type = action_type,
+							action_name = ability,
+							target_kind = target_kind,
+							tank_enmity = true,
+						},
+					}
+					local _stop_darklaunch_ok, _stop_darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(stop_intent)
+					_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_JA_SELF_SEND_VALIDATE = {
+						ok = _stop_darklaunch_ok and true or false,
+						reason = _stop_darklaunch_reason,
+						kind = stop_intent.kind,
+						source = stop_intent.source,
+						stop = true,
+					}
 					windower.ffxi.run(false)
 				end
 				local ja_self_command = ('input /ja \"%s\" <me>'):format(ability)
@@ -3924,11 +4083,53 @@ local function p1_try_dark_launch_dispatch(settings)
 			if active_key ~= prep_key then
 				_G.UC_MOVE_FREEZE_PREP_KEY = prep_key
 				_G.UC_MOVE_FREEZE_PREP_UNTIL = prep_now + 0.75
+				local intent = {
+					kind = 'run_stop',
+					source = 'unified_scheduler:T2.4l_darklaunch',
+					meta = {
+						reason = 'COMBAT_SPELL_SETTLE',
+						action_type = action_type,
+						action_name = spell,
+						target_id = selected.target_id,
+						target_kind = target_kind,
+						prep_key = prep_key,
+						freeze_prep_until = _G.UC_MOVE_FREEZE_PREP_UNTIL,
+					},
+				}
+				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_COMBAT_SPELL_SETTLE_VALIDATE = {
+					ok = _darklaunch_ok and true or false,
+					reason = _darklaunch_reason,
+					kind = intent.kind,
+					source = intent.source,
+					stop = true,
+				}
 				windower.ffxi.run(false)
 				_G.UC_LAST_SCHED_ACTION = ('[p1]spell_settle:%s->%s'):format(spell, tostring(selected.target_name or ''))
 				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_SPELL_SETTLE'
 			end
 			if prep_now < prep_until then
+				local intent = {
+					kind = 'run_stop',
+					source = 'unified_scheduler:T2.4m_darklaunch',
+					meta = {
+						reason = 'COMBAT_SPELL_PREP_WAIT',
+						action_type = action_type,
+						action_name = spell,
+						target_id = selected.target_id,
+						target_kind = target_kind,
+						prep_key = prep_key,
+						freeze_prep_until = prep_until,
+					},
+				}
+				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_COMBAT_SPELL_PREP_WAIT_VALIDATE = {
+					ok = _darklaunch_ok and true or false,
+					reason = _darklaunch_reason,
+					kind = intent.kind,
+					source = intent.source,
+					stop = true,
+				}
 				windower.ffxi.run(false)
 				_G.UC_LAST_SCHED_ACTION = ('[p1]spell_prep:%s->%s'):format(spell, tostring(selected.target_name or ''))
 				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_SPELL_PREP'
@@ -3952,6 +4153,27 @@ local function p1_try_dark_launch_dispatch(settings)
 					phase.tank_spell_settle_key = settle_key
 					phase.tank_spell_settle_until = now + 0.75
 				end
+				local intent = {
+					kind = 'run_stop',
+					source = 'unified_scheduler:T2.4g_darklaunch',
+					meta = {
+						reason = 'TANK_SPELL_SETTLE',
+						action_type = action_type,
+						action_name = spell,
+						target_id = expected_tid,
+						target_kind = target_kind,
+						settle_key = settle_key,
+						tank_spell_settle_until = phase.tank_spell_settle_until,
+					},
+				}
+				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_SPELL_SETTLE_VALIDATE = {
+					ok = _darklaunch_ok and true or false,
+					reason = _darklaunch_reason,
+					kind = intent.kind,
+					source = intent.source,
+					stop = true,
+				}
 				windower.ffxi.run(false)
 				if now < p1_number(phase.tank_spell_settle_until, 0) then
 					tank_enmity_diag('TANK_ENMITY_WAIT_SPELL_SETTLE', selected, ('remain=%.2f'):format(p1_number(phase.tank_spell_settle_until, 0) - now))
@@ -3972,6 +4194,25 @@ local function p1_try_dark_launch_dispatch(settings)
 					end
 				end
 				if tank_enmity then
+					local intent = {
+						kind = 'run_stop',
+						source = 'unified_scheduler:T2.4h_darklaunch',
+						meta = {
+							reason = 'TANK_ENMITY_SPELL_TARGET_SEND',
+							action_type = action_type,
+							action_name = spell,
+							target_id = expected_tid,
+							target_kind = target_kind,
+						},
+					}
+					local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+					_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_SPELL_SEND_VALIDATE = {
+						ok = _darklaunch_ok and true or false,
+						reason = _darklaunch_reason,
+						kind = intent.kind,
+						source = intent.source,
+						stop = true,
+					}
 					windower.ffxi.run(false)
 				end
 				local spell_target_command = ('input /ma \"%s\" %d'):format(spell, expected_tid)
@@ -4001,6 +4242,24 @@ local function p1_try_dark_launch_dispatch(settings)
 				end
 			else
 				if tank_enmity then
+					local intent = {
+						kind = 'run_stop',
+						source = 'unified_scheduler:T2.4i_darklaunch',
+						meta = {
+							reason = 'TANK_ENMITY_SPELL_SELF_SEND',
+							action_type = action_type,
+							action_name = spell,
+							target_kind = target_kind,
+						},
+					}
+					local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+					_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_SPELL_SELF_SEND_VALIDATE = {
+						ok = _darklaunch_ok and true or false,
+						reason = _darklaunch_reason,
+						kind = intent.kind,
+						source = intent.source,
+						stop = true,
+					}
 					windower.ffxi.run(false)
 				end
 				local spell_self_command = ('input /ma \"%s\" <me>'):format(spell)
@@ -4167,8 +4426,27 @@ local function p1_try_dark_launch_dispatch(settings)
 			))
 			return false, nil
 		end
+		local maintenance_cor_command = ('input /ja \"%s\" <me>'):format(ability)
+		local intent = {
+			kind = 'send_command',
+			source = 'unified_scheduler:T2.3j_darklaunch',
+			command = maintenance_cor_command,
+			meta = {
+				action_type = tostring(action_kind or 'ja'),
+				action_name = ability,
+				provider = tostring(provider or ''),
+			},
+		}
+		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		_G.UC_SCHED_P1_DARKLAUNCH_MAINTENANCE_COR_COMMAND_VALIDATE = {
+			ok = _darklaunch_ok and true or false,
+			reason = _darklaunch_reason,
+			kind = intent.kind,
+			source = intent.source,
+			command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+		}
 		log_def_sched(('MAINT_COR_DISPATCH_SEND action=\"%s\"'):format(tostring(ability)))
-		windower.send_command(('input /ja \"%s\" <me>'):format(ability))
+		windower.send_command(maintenance_cor_command)
 		action_mark_sent(action_kind or 'ja')
 		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
 		p1_record_legacy_dispatch(ctx)
