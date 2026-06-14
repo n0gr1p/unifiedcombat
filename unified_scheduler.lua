@@ -1408,9 +1408,8 @@ local function get_party_members()
 end
 
 local function p1_build_party_id_set()
-	return require('uc_scheduler_context_utils').p1_build_party_id_set({
-		get_party_members = get_party_members,
-	})
+	local _, id_set = require('uc_targeting_common').get_friendly_combat_member_ids()
+	return id_set
 end
 
 local function p1_prime_unclaimed_party_aggressive_ok(settings, mob, party_ids)
@@ -2592,7 +2591,7 @@ local function p1_collect_enemy_buff_removal(ctx, out)
 		enemy_dispel_log('ENEMY_DISPEL_SKIP reason=TOGGLE_OFF')
 		return
 	end
-	local _, claims_set = uc_targeting_common.build_party_claims()
+	local _, claims_set = uc_targeting_common.build_friendly_claims()
 	enemy_effect_state_prune_expired(ctx.now)
 	local state = enemy_effect_state_map()
 	local has_any_target = false
@@ -2795,7 +2794,7 @@ local function p1_collect_combat_engage(ctx, out)
 			end
 		end
 	end
-	local _, claims_set = uc_targeting_common.build_party_claims()
+	local _, claims_set = uc_targeting_common.build_friendly_claims()
 	local claim_id = tonumber(t.claim_id) or 0
 	local party_ids = p1_build_party_id_set()
 	local party_claimed_ok = claims_set[claim_id] == true

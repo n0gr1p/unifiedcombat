@@ -93,6 +93,10 @@ Legend:
 | T3.0a scheduler ownership promotion readiness audit | DONE | Added a docs-only ownership promotion readiness audit that inventories all 21 scheduler ownership flags, separates scheduler-owned seams from core/pathing/follow systems, recommends 11 low-risk default-on candidates, keeps 9 flags default-off for now, and marks vector run ownership as unreachable/dormant rather than promotion-ready. |
 | T3.0b promote low-risk field-tested scheduler ownership flags | DONE | Promoted 11 low-risk scheduler ownership paths to default-on by extending helper gating semantics, preserved per-flag `false` opt-out plus shared temporary kill switch `_G.UC_SCHED_P1_DISABLE_PROMOTED_OWNERSHIP == true`, and left deferred/tank/Doom/vector flags on explicit default-off behavior. |
 | T3.0c close promoted ownership field-test pass and define remaining default-off policy | DONE | Closed the T3.0b promotion field test as PASS in docs, confirmed the 11 promoted paths remain accepted as default-on with no rollback/opt-out needed, and documented the near-term default-off policy for Doom, combat-spell run_stop, tank run_stop, and dormant vector-run ownership without changing runtime behavior. |
+| T3.1a targeted coverage plan for remaining default-off scheduler run_stop ownership paths | DONE | Added a docs-only per-path coverage plan for the remaining default-off Doom, combat-spell, and tank ownership branches, separated replay/mock-first work from realistic field-packet work, kept vector run parked as a separate dormant path, and recommended a replay/mock-first T3.1b slice without changing runtime behavior. |
+| T3.2a alliance target-scope audit for targeting, claim, and aggro validity | DONE | Added a docs-only audit of party-only target-validity assumptions across core, scheduler, and fight-leader helpers; identified the central party-only claim/id collectors that should become friendly combat group helpers for alliance support; paused T3.1b temporarily; and left runtime behavior unchanged. |
+| T3.2b alliance-aware friendly combat target scope | DONE | Added default-off alliance-aware friendly combat member helpers in `uc_targeting_common.lua` and wired them into low-risk claim validity, prime/aggressive-target inference, scheduler engage/dispel claim checks, and tank victim detection while intentionally leaving fight-leader, follow/pathing, spacing, and party TP/WS observation party-only. |
+| T3.2c alliance target-scope field-test closure | DONE | Documented the successful T3.2b field-test PASS, confirmed no regressions were observed, kept the alliance scope flag optional for now, and unpaused the scheduler ownership track so `T3.1b` can resume next without changing runtime behavior. |
 | 0x063 status snapshot parser fixtures | DONE | Real extracted parser module covered by permanent fixtures and suite. |
 | Enemy effect utils fixtures | DONE | Full helper coverage including edge-case top-up completed. |
 | Text utils fixtures | DONE | Core text normalization/decoding/splitting helpers covered. |
@@ -716,6 +720,61 @@ Historical recommendation: T2.5g created a Windower-free target-select ownership
 | Recommended next task | `T3.1a — targeted coverage plan for remaining default-off run_stop paths`. |
 
 - 2026-06-13: Completed T3.0c documentation closure for promoted scheduler ownership. Updated `docs/TestResults/scheduler_ownership_promotion_t3_0b_results.md`, `docs/scheduler_ownership_promotion_plan.md`, and `docs/scheduler_ownership_promotion_readiness_audit.md` to record the T3.0b field-test PASS, confirm the 11 promoted default-on paths remained stable without rollback, and define the near-term policy for the remaining default-off Doom, combat-spell run_stop, tank run_stop, and dormant vector-run ownership paths. Updated the tracker with the closed promotion status and the recommended next task `T3.1a — targeted coverage plan for remaining default-off run_stop paths`. No runtime behavior changed. Validation: `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.41 T3.1a targeted coverage plan for remaining default-off scheduler run_stop ownership paths
+
+| Item | Details |
+| --- | --- |
+| New plan doc | Added `docs/scheduler_remaining_run_stop_coverage_plan.md`. |
+| Remaining scope | Covers Doom Holy Water command ownership, Doom run_stop ownership, combat spell settle/prep-wait run_stop ownership, and the remaining tank action/tank spell/tank enmity run_stop ownership paths. |
+| Per-path policy | Assigns each remaining path to replay/mock-first coverage, a targeted field-test packet, continued parking, or later retirement/unwiring based on reachability and safety. |
+| Vector status | Keeps `UC_SCHED_P1_ENABLE_DISPATCHER_RUN_VECTOR_OWNERSHIP` separate from run_stop planning and parked as dormant/unreachable. |
+| Recommended next task | `T3.1b — Add replay/mock coverage for the remaining Doom and combat-spell default-off ownership branches`. |
+| Runtime impact | No runtime behavior changed. |
+
+- 2026-06-14: Completed T3.1a targeted coverage planning for the remaining default-off scheduler ownership branches. Added `docs/scheduler_remaining_run_stop_coverage_plan.md` with per-path reachability, safety, replay/mock feasibility, exact scenario requirements, next-action recommendations, promotion risk, and rollback posture for Doom, combat-spell, tank, and vector-owned leftovers. Updated `docs/scheduler_ownership_promotion_plan.md` and `docs/scheduler_ownership_promotion_readiness_audit.md` so the remaining default-off set is governed by the new coverage plan rather than treated as one undifferentiated promotion bucket. Updated the tracker with the recommended next task `T3.1b — Add replay/mock coverage for the remaining Doom and combat-spell default-off ownership branches`. No runtime behavior changed. Validation: `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.42 T3.2a alliance target-scope audit for targeting, claim, and aggro validity
+
+| Item | Details |
+| --- | --- |
+| New audit doc | Added `docs/alliance_target_scope_audit.md`. |
+| Audit scope | Claim validity, aggro detection, prime/autotarget selection, combat target validity, assist/engage decisions, current target reuse, and fast-switch/transition targeting. |
+| Party-only centralizers found | `uc_targeting_common.build_party_claims()`, `unified_combat_core.lua` `is_party_member_id()`, scheduler `get_party_members()` / `p1_build_party_id_set()`, and `UnifiedCombat.lua` fight-leader name lookup. |
+| Alliance data status | Current code uses `windower.ffxi.get_party()` heavily but scans only `p0` through `p5`; alliance slots are not currently consumed in audited runtime paths. |
+| T3.1b status | Paused temporarily while this gameplay targeting-scope audit is addressed. |
+| Recommended next task | `T3.2b — Add a centralized friendly combat member id/claim helper, wire it into claim validity, prime/aggressive-target inference, scheduler engage validity, and tank violation target checks, while leaving follow/pathing and other non-combat party semantics unchanged unless explicitly required.` |
+| Runtime impact | No runtime behavior changed. |
+
+- 2026-06-14: Completed T3.2a alliance target-scope audit. Added `docs/alliance_target_scope_audit.md` documenting current party-only assumptions in `uc_targeting_common.lua`, `unified_combat_core.lua`, `unified_scheduler.lua`, and `UnifiedCombat.lua`, including claim validity, prime/autotarget aggressive-target inference, tank violation victim detection, scheduler engage policy, fight-leader lookup, and party-only spacing/TP helpers. The audit concludes that alliance support should be implemented through a centralized friendly combat member id/claim helper rather than duplicated slot scans. T3.1b replay/mock coverage work is paused temporarily while this gameplay targeting-scope requirement is addressed. No runtime behavior changed. Validation: `luac -p unified_combat_core.lua`, `luac -p unified_scheduler.lua`, `luac -p uc_party_follow.lua`, `luac -p uc_pathing.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.43 T3.2b alliance-aware friendly combat target scope
+
+| Item | Details |
+| --- | --- |
+| Feature flag | `_G.UC_ENABLE_ALLIANCE_TARGET_SCOPE == true` |
+| Default behavior | Unset or non-`true` values preserve current party-only behavior. |
+| New helpers | `uc_targeting_common.get_friendly_combat_member_ids(opts)`, `uc_targeting_common.build_friendly_claims(opts)`, and `uc_targeting_common.is_friendly_party_or_alliance_member_id(id, opts)`. |
+| Core wiring | Widened low-risk combat-validity paths for prime/aggressive target checks, candidate claim validity, tank victim detection, and current-target claim-owner resolution. |
+| Scheduler wiring | Widened friendly id / claim validity only for engage-prime and enemy-buff-removal combat paths. |
+| Explicitly not widened | `UnifiedCombat.lua` fight-leader lookup, follow/pathing, spacing, party TP / WS observation, and other non-combat party semantics. |
+| Test coverage | Added `tests/replay/harness/selftest_alliance_target_scope.lua` and registered it in the aggregate replay suite. |
+| Recommended field test | Enable the flag locally, use alliance-only claim/aggro scenarios outside the immediate party, and confirm combat-valid targeting broadens without changing non-combat party-only behavior. |
+
+- 2026-06-14: Completed T3.2b alliance-aware friendly combat target scope. Added default-off friendly combat member helpers in `uc_targeting_common.lua`, kept `unified_combat_core.lua` party-only WS observation intentionally unchanged, and widened only low-risk combat target-validity paths in `unified_combat_core.lua` and `unified_scheduler.lua` for alliance-aware claim validity, aggressive-target inference, current-target claim ownership, and tank victim selection. Added `tests/replay/harness/selftest_alliance_target_scope.lua`, updated the aggregate replay suite, and refreshed the line-pin side-effect inventory to reflect helper insertion shifts only. Validation: `luac -p uc_targeting_common.lua`, `luac -p unified_combat_core.lua`, `luac -p unified_scheduler.lua`, `lua tests/replay/harness/selftest_alliance_target_scope.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.44 T3.2c alliance target-scope field-test closure
+
+| Item | Details |
+| --- | --- |
+| Result file | `docs/TestResults/alliance_target_scope_t3_2b_results.md` records T3.2b as a field-test PASS. |
+| Field result | Alliance claim validity, alliance aggro/victim validity, unrelated claim rejection, zero-HP/death-animation safety, and flag-off party-only baseline behavior all passed with no observed regressions. |
+| Runtime impact | No runtime behavior changed in T3.2c. |
+| Flag recommendation | Keep `_G.UC_ENABLE_ALLIANCE_TARGET_SCOPE == true` as an optional enable for now. |
+| Scheduler track status | `T3.1b` is no longer paused and should resume next. |
+| Recommended next task | `T3.1b — Add replay/mock coverage for the remaining Doom and combat-spell default-off ownership branches`. |
+
+- 2026-06-14: Completed T3.2c documentation closure for alliance target scope. Updated `docs/TestResults/alliance_target_scope_t3_2b_results.md`, `docs/alliance_target_scope_audit.md`, and `docs/UnifiedCombat_scheduler_refactor_tracking.md` to record the successful T3.2b field-test PASS, confirm that flag-off party-only behavior remained preserved, note that no regressions were observed, and keep `_G.UC_ENABLE_ALLIANCE_TARGET_SCOPE` optional for now as a controlled gameplay expansion. No runtime behavior changed. The scheduler ownership track is now unpaused and `T3.1b` should resume next. Validation: `lua tests/replay/harness/selftest_alliance_target_scope.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
 
 ## 3) Completed Work (Concrete File Deliverables)
 

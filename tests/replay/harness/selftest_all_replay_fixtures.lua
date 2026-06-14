@@ -8,6 +8,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_dispatcher_fixtures.lua",
     "tests/replay/harness/selftest_movement_priority_arbitration.lua",
     "tests/replay/harness/selftest_zero_hp_actionable_target.lua",
+    "tests/replay/harness/selftest_alliance_target_scope.lua",
     "tests/replay/harness/selftest_scheduler_ownership_closure_static.lua",
     "tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua",
     "tests/replay/harness/selftest_scheduler_ownership_flags_static.lua",

@@ -3,24 +3,96 @@
 local M = {}
 
 local PARTY_KEYS = { 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }
+local PARTY_KEY_SET = {
+	['p0'] = true,
+	['p1'] = true,
+	['p2'] = true,
+	['p3'] = true,
+	['p4'] = true,
+	['p5'] = true,
+}
 
-function M.build_party_claims()
-	local party = windower.ffxi.get_party()
+local function alliance_scope_enabled(opts)
+	if type(opts) == 'table' and opts.include_alliance ~= nil then
+		return opts.include_alliance == true
+	end
+	return rawget(_G, 'UC_ENABLE_ALLIANCE_TARGET_SCOPE') == true
+end
+
+local function get_party_table(opts)
+	if type(opts) == 'table' and type(opts.party) == 'table' then
+		return opts.party
+	end
+	return windower.ffxi.get_party()
+end
+
+local function append_member_id(ids, set, id)
+	local member_id = tonumber(id) or 0
+	if member_id <= 0 or set[member_id] == true then
+		return
+	end
+	ids[#ids + 1] = member_id
+	set[member_id] = true
+end
+
+local function sorted_alliance_keys(party)
+	local keys = {}
+	for key, _ in pairs(party or {}) do
+		if type(key) == 'string' and not PARTY_KEY_SET[key] and key:match('^a%d+$') then
+			keys[#keys + 1] = key
+		end
+	end
+	table.sort(keys, function(a, b)
+		local na = tonumber(a:match('(%d+)')) or 0
+		local nb = tonumber(b:match('(%d+)')) or 0
+		if na ~= nb then
+			return na < nb
+		end
+		return a < b
+	end)
+	return keys
+end
+
+function M.get_friendly_combat_member_ids(opts)
+	local party = get_party_table(opts)
 	local ids = {}
 	local set = {}
 	if type(party) ~= 'table' then
 		return ids, set
 	end
+
 	for _, key in ipairs(PARTY_KEYS) do
 		local entry = party[key]
 		local mob = entry and entry.mob
-		local id = mob and mob.id or 0
-		if id ~= 0 then
-			ids[#ids + 1] = id
-			set[id] = true
+		append_member_id(ids, set, mob and mob.id)
+	end
+
+	if alliance_scope_enabled(opts) then
+		for _, key in ipairs(sorted_alliance_keys(party)) do
+			local entry = party[key]
+			local mob = entry and entry.mob
+			append_member_id(ids, set, mob and mob.id)
 		end
 	end
+
 	return ids, set
+end
+
+function M.build_friendly_claims(opts)
+	return M.get_friendly_combat_member_ids(opts)
+end
+
+function M.is_friendly_party_or_alliance_member_id(id, opts)
+	local member_id = tonumber(id) or 0
+	if member_id <= 0 then
+		return false
+	end
+	local _, set = M.get_friendly_combat_member_ids(opts)
+	return set[member_id] == true
+end
+
+function M.build_party_claims()
+	return M.build_friendly_claims()
 end
 
 --- Select claimed main target plus optional prime fallback.

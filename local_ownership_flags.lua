@@ -128,3 +128,5 @@ end) ]]
 
 -- T2.8b movement priority arbitration test.
 _G.UC_ENABLE_COMBAT_TRANSITION_MOVEMENT_ARBITRATION = true
+-- T3.2b alliance target-scope field test.
+_G.UC_ENABLE_ALLIANCE_TARGET_SCOPE = true

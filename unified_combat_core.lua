@@ -464,20 +464,13 @@ local function debug_ja_gate(name, reason, extra)
 end
 
 local function is_party_member_id(id)
-	local pid = tonumber(id) or 0
-	if pid == 0 then
-		return false
-	end
-	local party = windower.ffxi.get_party() or {}
-	local keys = { 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }
-	for _, k in ipairs(keys) do
-		local e = party[k]
-		local mob = e and e.mob
-		if mob and mob.id == pid then
-			return true
-		end
-	end
-	return false
+	return uc_targeting_common.is_friendly_party_or_alliance_member_id(id, {
+		include_alliance = false,
+	})
+end
+
+local function is_friendly_combat_member_id(id)
+	return uc_targeting_common.is_friendly_party_or_alliance_member_id(id)
 end
 
 local function target_distance(mob)
@@ -973,12 +966,12 @@ local function find_candidate_target(settings)
 		end
 		local t = resolve_mob_current_target and resolve_mob_current_target(mob) or nil
 		local tid = tonumber(t and t.id) or 0
-		if tid == 0 or not is_party_member_id(tid) then
+		if tid == 0 or not is_friendly_combat_member_id(tid) then
 			return false
 		end
-		-- Prime should not target mobs clearly focused on non-party entities.
+		-- Prime should not target mobs clearly focused on non-friendly entities.
 		local claim_id = tonumber(mob.claim_id) or 0
-		if claim_id ~= 0 and not is_party_member_id(claim_id) then
+		if claim_id ~= 0 and not is_friendly_combat_member_id(claim_id) then
 			return false
 		end
 		return true
@@ -1063,7 +1056,7 @@ local function find_candidate_target(settings)
 		end
 	end
 
-	local claims, claims_set = uc_targeting_common.build_party_claims()
+	local claims, claims_set = uc_targeting_common.build_friendly_claims()
 	local path_hunter_filter_active = setting_enabled(settings.hunter) and setting_enabled(settings.path_follow_enabled)
 	local path_hunter_max_z = tonumber(settings.path_hunter_max_z_delta) or 2.0
 	local path_hunter_max_range = tonumber(settings.path_hunter_max_target_range) or 20.0
@@ -1363,7 +1356,7 @@ local function should_use_pull_action(settings, player, target)
 	if (tonumber(player and player.status) or 0) == 1 then
 		return false
 	end
-	local claims, claims_set = uc_targeting_common.build_party_claims()
+	local claims, claims_set = uc_targeting_common.build_friendly_claims()
 	if claims_set[target.claim_id] == true then
 		return false
 	end
@@ -1558,7 +1551,7 @@ local function target_is_party_member_non_tank(target_id, me_id)
 	if tid == 0 or tid == mid then
 		return false
 	end
-	return is_party_member_id(tid)
+	return is_friendly_combat_member_id(tid)
 end
 
 resolve_mob_current_target = function(mob)
@@ -1567,7 +1560,7 @@ resolve_mob_current_target = function(mob)
 	end
 	local t = nil
 	local claim_tid = tonumber(mob.claim_id) or 0
-	if claim_tid > 0 and is_party_member_id(claim_tid) then
+	if claim_tid > 0 and is_friendly_combat_member_id(claim_tid) then
 		t = windower.ffxi.get_mob_by_id(claim_tid)
 		if (not t or not t.id or t.id == 0) then
 			t = { id = claim_tid, name = '(claim)' }
@@ -3282,7 +3275,7 @@ local function run_unified_combat()
 				end
 			end
 			if lowest_partner_on_cur > 0 and my_id > lowest_partner_on_cur and setting_enabled(s.autotarget) then
-				local claims, claims_set = uc_targeting_common.build_party_claims()
+				local claims, claims_set = uc_targeting_common.build_friendly_claims()
 				local marray = windower.ffxi.get_mob_array() or {}
 				local best = nil
 				local best_dist = 1e9
@@ -3422,7 +3415,7 @@ local function run_unified_combat()
 			core.hunter_acquire.started_at = now
 		else
 			local mob = windower.ffxi.get_mob_by_id(tid)
-			local claims, claims_set = uc_targeting_common.build_party_claims()
+			local claims, claims_set = uc_targeting_common.build_friendly_claims()
 			local claimed = mob and claims_set[mob.claim_id] == true
 			if not claimed and (p.status or 0) ~= 1 then
 				local pull_wait_same_target = (core.pull_spell_waiting == true) and ((tonumber(core.pull_pending_target_id) or 0) == tid)

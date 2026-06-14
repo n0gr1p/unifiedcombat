@@ -277,6 +277,17 @@ These promoted paths are now accepted as the near-term default-on scheduler owne
 - Treat the remaining default-off set as intentionally deferred rather than silently pending promotion.
 - Do not promote vector run ownership without an explicit reachability/reconnection decision first.
 
+## T3.1a Coverage Plan
+
+The remaining default-off branches are now governed by `docs/scheduler_remaining_run_stop_coverage_plan.md`.
+
+Near-term policy from that plan:
+
+- Doom Holy Water command and Doom run_stop move to replay/mock-first coverage rather than live-testing-first.
+- Combat spell settle/prep-wait run_stop move to replay/mock-first coverage before any new promotion decision.
+- Tank action/tank spell/tank enmity run_stop paths move to a narrower targeted field-test packet, with replay/mock fallback if realistic live scenarios are unavailable.
+- Vector run stays parked as dormant/unreachable and is not part of run_stop promotion planning.
+
 ## Field-Test Instructions After Promotion
 
 - Start with no per-flag opt-outs and no kill switch set.

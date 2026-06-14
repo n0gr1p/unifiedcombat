@@ -260,3 +260,5 @@ The following 11 paths are now accepted as promoted/default-on rather than pendi
 - combat spell settle/prep-wait run_stop ownership: pending further replay/mock or targeted coverage, keep default-off.
 - tank action/tank spell/tank enmity run_stop ownership: pending further targeted field coverage, keep default-off.
 - vector run ownership: dormant / not live-reachable, do not treat as active promotion work.
+
+These remaining default-off paths are now governed by `docs/scheduler_remaining_run_stop_coverage_plan.md`, which assigns replay/mock-first, targeted-field-packet, parked, or future-retirement treatment per path instead of treating them as one promotion bucket.
