@@ -394,6 +394,7 @@ return {
             },
             deps = {
                 execute = true,
+                set_target_return = true,
             },
         },
         expected = {
@@ -401,6 +402,7 @@ return {
                 ok = true,
                 reason = "executed",
                 executed = true,
+                dep_result = true,
                 normalized_intent = {
                     kind = "select_target",
                     reason = "",

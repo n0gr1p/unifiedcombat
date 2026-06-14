@@ -652,8 +652,77 @@ local function follow_dist_sq_bounds(s)
 	return mn * mn, mx * mx
 end
 
+local function movement_arbitration_enabled()
+	return rawget(_G, 'UC_ENABLE_COMBAT_TRANSITION_MOVEMENT_ARBITRATION') == true
+end
+
+local function combat_participant_active(s)
+	if type(rawget(_G, 'UC_IsCombatParticipant')) == 'function' then
+		return _G.UC_IsCombatParticipant(s) == true
+	end
+	return false
+end
+
+local function live_combat_transition_target_exists()
+	local ffxi = windower and windower.ffxi
+	if type(ffxi) ~= 'table' or type(ffxi.get_mob_by_target) ~= 'function' then
+		return false
+	end
+	local target = ffxi.get_mob_by_target('t')
+	if not target or target.valid_target ~= true then
+		return false
+	end
+	if tonumber(target.spawn_type) ~= 16 then
+		return false
+	end
+	if (tonumber(target.hpp) or 0) <= 0 then
+		return false
+	end
+	return true
+end
+
+local function should_suppress_follow_or_path_return_now(s, now)
+	if not movement_arbitration_enabled() then
+		return false, 'flag_off'
+	end
+	if not combat_participant_active(s) then
+		return false, 'not_combat_participant'
+	end
+	now = tonumber(now) or now_s()
+	local owner = tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or 'none')
+	local lock_until = tonumber(rawget(_G, 'UC_MOVEMENT_LOCK_UNTIL')) or 0
+	if owner == 'core' and now < lock_until then
+		return true, 'movement_lock'
+	end
+	if rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true then
+		return true, 'preengage'
+	end
+	local have_live_transition_target = live_combat_transition_target_exists()
+	local intent_until = tonumber(rawget(_G, 'UC_COMBAT_INTENT_UNTIL')) or 0
+	if now < intent_until then
+		if have_live_transition_target then
+			return true, 'combat_intent_target'
+		end
+		return false, 'combat_intent_stale'
+	end
+	local fight_follow_until = tonumber(rawget(_G, 'UC_FIGHT_FOLLOW_ACTIVE_UNTIL')) or 0
+	if now < fight_follow_until then
+		if have_live_transition_target then
+			return true, 'fight_follow_hold_target'
+		end
+		return false, 'fight_follow_hold_stale'
+	end
+	return false, 'none'
+end
+
+M.should_suppress_follow_or_path_return_now = should_suppress_follow_or_path_return_now
+
 local function combat_engine_suppresses_follow(s)
 	local now = now_s()
+	local arbitration_suppress = should_suppress_follow_or_path_return_now(s, now)
+	if arbitration_suppress == true then
+		return true
+	end
 	-- Hard engage suppression for combat participants:
 	-- prevents follow from re-asserting between short movement lock refresh windows.
 	local combat_participant = false

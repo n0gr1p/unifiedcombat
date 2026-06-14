@@ -26,6 +26,7 @@ local function make_deps(input_deps, calls)
     deps.set_target = function(target_id)
         calls.set_target = calls.set_target or {}
         calls.set_target[#calls.set_target + 1] = { target_id }
+        return input_deps and input_deps.set_target_return
     end
 
     if input_deps and input_deps.missing then

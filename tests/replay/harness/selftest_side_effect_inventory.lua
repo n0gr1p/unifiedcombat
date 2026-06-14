@@ -1,22 +1,22 @@
 local INVENTORY_BASELINE = {
     ["unified_scheduler.lua"] = {
-        ["windower.send_command("] = { 891, 2202, 3962, 4014, 4062, 4238, 4284, 4362, 4449 },
-        ["windower.ffxi.run("] = { 865, 1089, 1113, 1136, 3710, 3864, 4041, 4107, 4133, 4177, 4216, 4263 },
-        ["uc_settarget.select_by_id("] = { 3599 },
+        ["windower.send_command("] = {},
+        ["windower.ffxi.run("] = {},
+        ["uc_settarget.select_by_id("] = {},
     },
     ["unified_combat_core.lua"] = {
-        ["windower.send_command("] = { 1797, 1818, 1984, 1995, 2914, 2928, 3600 },
-        ["windower.ffxi.run("] = { 1403, 1412, 1417, 1770, 1789, 1872, 1898, 1907, 1958, 2056, 2179, 2198, 2212, 2218, 2251, 2290, 2310, 2315, 2349, 3167, 3183 },
-        ["uc_settarget.select_by_id("] = { 1896, 2031 },
+        ["windower.send_command("] = { 1827, 1848, 2014, 2025, 2958, 2972, 3644 },
+        ["windower.ffxi.run("] = { 1433, 1442, 1447, 1800, 1819, 1902, 1928, 1937, 1988, 2093, 2216, 2235, 2249, 2255, 2295, 2334, 2354, 2359, 2393, 3211, 3227 },
+        ["uc_settarget.select_by_id("] = { 1926, 2062 },
     },
     ["UnifiedCombat.lua"] = {
         ["windower.ffxi.run("] = { 354 },
     },
     ["uc_party_follow.lua"] = {
-        ["windower.ffxi.run("] = { 800, 831, 841, 854, 859, 864 },
+        ["windower.ffxi.run("] = { 869, 900, 910, 923, 928, 933 },
     },
     ["uc_pathing.lua"] = {
-        ["windower.ffxi.run("] = { 844, 854 },
+        ["windower.ffxi.run("] = { 850, 860 },
     },
     ["uc_add_control.lua"] = {
         ["windower.send_command("] = { 433, 474, 476 },

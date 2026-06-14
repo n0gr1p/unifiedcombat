@@ -354,6 +354,23 @@ _G.UC_ResetMovementLocksForFollow = function()
 	windower.ffxi.run(false)
 end
 
+local function uc_try_load_local_ownership_flags()
+	local ok, mod_or_err = pcall(require, 'local_ownership_flags')
+	if ok then
+		return mod_or_err
+	end
+	local err = tostring(mod_or_err or '')
+	if err:find("module 'local_ownership_flags' not found", 1, true) then
+		return nil
+	end
+	if windower and windower.add_to_chat then
+		windower.add_to_chat(167, 'UnifiedCombat: failed loading local_ownership_flags.lua: ' .. err)
+	end
+	return nil
+end
+
+uc_try_load_local_ownership_flags()
+
 local function uc_apply_job_defaults(job)
 	if not job or not _G.UC_SETTINGS then
 		return

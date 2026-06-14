@@ -157,6 +157,10 @@ local action_ready
 local PARTY_STATE_IPC_PREFIX = 'ucps'
 local DISPell_ATTEMPT_COOLDOWN_S = 3.0
 
+local function promoted_ownership_kill_switch_enabled()
+	return rawget(_G, 'UC_SCHED_P1_DISABLE_PROMOTED_OWNERSHIP') == true
+end
+
 local dispellable_enemy_effect_priority = {
 	[33] = 100,   -- Haste
 	[580] = 95,   -- Haste II
@@ -854,15 +858,27 @@ local function try_doom_water_emergency(settings)
 			action_name = 'Holy Water',
 		},
 	}
-	local _stop_darklaunch_ok, _stop_darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(stop_intent)
+	local dispatcher = require('uc_scheduler_dispatcher')
+	local _stop_darklaunch_ok, _stop_darklaunch_reason = dispatcher.validate_intent(stop_intent)
+	local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+		dispatcher = dispatcher,
+		direct_run = windower.ffxi.run,
+		run = windower.ffxi.run,
+		ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP == true),
+		intent = stop_intent,
+	})
 	_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_DOOM_HOLY_WATER_VALIDATE = {
 		ok = _stop_darklaunch_ok and true or false,
 		reason = _stop_darklaunch_reason,
 		kind = stop_intent.kind,
 		source = stop_intent.source,
-		stop = true,
+		ownership_enabled = run_stop_ownership_status.ownership_enabled,
+		dispatched = run_stop_ownership_status.dispatched,
+		dispatch_ok = run_stop_ownership_status.dispatch_ok,
+		dispatch_reason = run_stop_ownership_status.dispatch_reason,
+		fallback_used = run_stop_ownership_status.fallback_used,
+		stop = run_stop_ownership_status.stop,
 	}
-	windower.ffxi.run(false)
 	local now = now_s()
 	if now - doom_last_item_at < DOOM_ITEM_COOLDOWN then
 		_G.UC_LAST_SCHED_ACTION = '[doom]holding_for_item_reuse'
@@ -880,15 +896,27 @@ local function try_doom_water_emergency(settings)
 			reason = 'doom_emergency',
 		},
 	}
-	local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+	local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+	local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+		dispatcher = dispatcher,
+		direct_send_command = windower.send_command,
+		send_command = windower.send_command,
+		ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP == true),
+		intent = intent,
+		command = doom_holy_water_command,
+	})
 	_G.UC_SCHED_P1_DARKLAUNCH_DOOM_HOLY_WATER_COMMAND_VALIDATE = {
 		ok = _darklaunch_ok and true or false,
 		reason = _darklaunch_reason,
 		kind = intent.kind,
 		source = intent.source,
-		command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+		command_present = command_ownership_status.command_present,
+		ownership_enabled = command_ownership_status.ownership_enabled,
+		dispatched = command_ownership_status.dispatched,
+		dispatch_ok = command_ownership_status.dispatch_ok,
+		dispatch_reason = command_ownership_status.dispatch_reason,
+		fallback_used = command_ownership_status.fallback_used,
 	}
-	windower.send_command(doom_holy_water_command)
 	_G.UC_LAST_SCHED_ACTION = '[doom]holy_water'
 	return true, 'BLOCK_DOOM_WATER'
 end
@@ -1078,15 +1106,30 @@ local function run_movement_coordinator_tick()
 				freeze_prep_until = freeze_prep_until,
 			},
 		}
-		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		local dispatcher = require('uc_scheduler_dispatcher')
+		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+				dispatcher = dispatcher,
+				direct_run = windower.ffxi.run,
+				run = windower.ffxi.run,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_CAST_FREEZE_PREP_RUN_STOP_OWNERSHIP == true),
+				promoted_default_on = true,
+				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_CAST_FREEZE_PREP_RUN_STOP_OWNERSHIP == false),
+				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+				intent = intent,
+			})
 		_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_VALIDATE = {
 			ok = _darklaunch_ok and true or false,
 			reason = _darklaunch_reason,
 			kind = intent.kind,
 			source = intent.source,
-			stop = true,
+			ownership_enabled = run_stop_ownership_status.ownership_enabled,
+			dispatched = run_stop_ownership_status.dispatched,
+			dispatch_ok = run_stop_ownership_status.dispatch_ok,
+			dispatch_reason = run_stop_ownership_status.dispatch_reason,
+			fallback_used = run_stop_ownership_status.fallback_used,
+			stop = run_stop_ownership_status.stop,
 		}
-		windower.ffxi.run(false)
 		return false, 'MOVE_COORD_CAST_FREEZE_PREP'
 	end
 	local pull_cast_hold_until = tonumber(rawget(_G, 'UC_PULL_CAST_HOLD_UNTIL')) or 0
@@ -1102,15 +1145,30 @@ local function run_movement_coordinator_tick()
 				pull_cast_hold_until = pull_cast_hold_until,
 			},
 		}
-		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		local dispatcher = require('uc_scheduler_dispatcher')
+		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+				dispatcher = dispatcher,
+				direct_run = windower.ffxi.run,
+				run = windower.ffxi.run,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_CAST_HOLD_RUN_STOP_OWNERSHIP == true),
+				promoted_default_on = true,
+				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_CAST_HOLD_RUN_STOP_OWNERSHIP == false),
+				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+				intent = intent,
+			})
 		_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_PULL_CAST_HOLD_VALIDATE = {
 			ok = _darklaunch_ok and true or false,
 			reason = _darklaunch_reason,
 			kind = intent.kind,
 			source = intent.source,
-			stop = true,
+			ownership_enabled = run_stop_ownership_status.ownership_enabled,
+			dispatched = run_stop_ownership_status.dispatched,
+			dispatch_ok = run_stop_ownership_status.dispatch_ok,
+			dispatch_reason = run_stop_ownership_status.dispatch_reason,
+			fallback_used = run_stop_ownership_status.fallback_used,
+			stop = run_stop_ownership_status.stop,
 		}
-		windower.ffxi.run(false)
 		return false, 'MOVE_COORD_PULL_CAST_HOLD'
 	end
 	if rawget(_G, 'UC_PULL_SPELL_WAITING') == true then
@@ -1125,15 +1183,30 @@ local function run_movement_coordinator_tick()
 				pull_spell_waiting = true,
 			},
 		}
-		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		local dispatcher = require('uc_scheduler_dispatcher')
+		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+				dispatcher = dispatcher,
+				direct_run = windower.ffxi.run,
+				run = windower.ffxi.run,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_SPELL_WAIT_RUN_STOP_OWNERSHIP == true),
+				promoted_default_on = true,
+				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_SPELL_WAIT_RUN_STOP_OWNERSHIP == false),
+				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+				intent = intent,
+			})
 		_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_PULL_SPELL_WAIT_VALIDATE = {
 			ok = _darklaunch_ok and true or false,
 			reason = _darklaunch_reason,
 			kind = intent.kind,
 			source = intent.source,
-			stop = true,
+			ownership_enabled = run_stop_ownership_status.ownership_enabled,
+			dispatched = run_stop_ownership_status.dispatched,
+			dispatch_ok = run_stop_ownership_status.dispatch_ok,
+			dispatch_reason = run_stop_ownership_status.dispatch_reason,
+			fallback_used = run_stop_ownership_status.fallback_used,
+			stop = run_stop_ownership_status.stop,
 		}
-		windower.ffxi.run(false)
 		return false, 'MOVE_COORD_PULL_SPELL_WAIT'
 	end
 	if not bool_setting(s and s.scheduler_dark_launch_movement, false) then
@@ -2191,15 +2264,31 @@ local function try_internal_defensive_action()
 				target_name = tostring(action.target and action.target.name or ''),
 			},
 		}
-		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		local dispatcher = require('uc_scheduler_dispatcher')
+		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+				dispatcher = dispatcher,
+				direct_send_command = windower.send_command,
+				send_command = windower.send_command,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_INTERNAL_DISPATCH_COMMAND_OWNERSHIP == true),
+				promoted_default_on = true,
+				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_INTERNAL_DISPATCH_COMMAND_OWNERSHIP == false),
+				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+				intent = intent,
+				command = cmd,
+			})
 		_G.UC_SCHED_P1_DARKLAUNCH_DISPATCH_VALIDATE = {
 			ok = _darklaunch_ok and true or false,
 			reason = _darklaunch_reason,
 			kind = intent.kind,
 			source = intent.source,
-			command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+			command_present = command_ownership_status.command_present,
+			ownership_enabled = command_ownership_status.ownership_enabled,
+			dispatched = command_ownership_status.dispatched,
+			dispatch_ok = command_ownership_status.dispatch_ok,
+			dispatch_reason = command_ownership_status.dispatch_reason,
+			fallback_used = command_ownership_status.fallback_used,
 		}
-		windower.send_command(cmd)
 		action_mark_sent(action_kind or action.type or 'defensive')
 		scheduler.last_action_at = now
 		_G.UC_LAST_SCHED_ACTION = action.spell .. '->' .. tostring(action.target.name)
@@ -3588,15 +3677,33 @@ local function p1_try_target_prep(target_id)
 				current_target_id = tonumber(cur and cur.id) or 0,
 			},
 		}
-		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		local dispatcher = require('uc_scheduler_dispatcher')
+		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+		local target_ownership_status = require('uc_scheduler_target_ownership').apply_target_ownership({
+			dispatcher = dispatcher,
+			direct_select_target = uc_settarget.select_by_id,
+			set_target = uc_settarget.select_by_id,
+			ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TARGET_OWNERSHIP == true),
+			promoted_default_on = true,
+			ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TARGET_OWNERSHIP == false),
+			promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+			intent = intent,
+			target_id = tid,
+		})
 		_G.UC_SCHED_P1_DARKLAUNCH_TARGET_VALIDATE = {
 			ok = _darklaunch_ok and true or false,
 			reason = _darklaunch_reason,
 			kind = intent.kind,
 			source = intent.source,
 			target_id = tonumber(intent.target_id) or 0,
+			ownership_enabled = target_ownership_status.ownership_enabled,
+			dispatched = target_ownership_status.dispatched,
+			dispatch_ok = target_ownership_status.dispatch_ok,
+			dispatch_reason = target_ownership_status.dispatch_reason,
+			fallback_used = target_ownership_status.fallback_used,
+			selected = target_ownership_status.selected,
 		}
-		ok = (uc_settarget.select_by_id(tid) == true)
+		ok = target_ownership_status.selected
 	end
 	return ok
 end
@@ -3644,41 +3751,28 @@ p1_apply_face_to_target = function(settings, target_id)
 		}
 		local dispatcher = require('uc_scheduler_dispatcher')
 		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-		local ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TURN_OWNERSHIP == true)
-		local dispatched = false
-		local dispatch_ok = false
-		local dispatch_reason = ''
-		local fallback_used = false
-		local use_direct_turn = true
-		if ownership_enabled then
-			use_direct_turn = false
-			dispatched = true
-			local dispatch_result = dispatcher.dispatch_intent(intent, {
-				execute = true,
-				turn = windower.ffxi.turn,
-			})
-			dispatch_ok = (type(dispatch_result) == 'table' and dispatch_result.ok == true and dispatch_result.executed == true)
-			dispatch_reason = type(dispatch_result) == 'table' and tostring(dispatch_result.reason or '') or 'missing_dispatch_result'
-			if not dispatch_ok then
-				fallback_used = true
-				use_direct_turn = true
-			end
-		end
+		local turn_ownership_status = require('uc_scheduler_turn_ownership').apply_turn_ownership({
+			dispatcher = dispatcher,
+			direct_turn = windower.ffxi.turn,
+			turn = windower.ffxi.turn,
+			ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TURN_OWNERSHIP == true),
+			promoted_default_on = true,
+			ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TURN_OWNERSHIP == false),
+			promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+			intent = intent,
+		})
 		_G.UC_SCHED_P1_DARKLAUNCH_TURN_VALIDATE = {
 			ok = _darklaunch_ok and true or false,
 			reason = _darklaunch_reason,
 			kind = intent.kind,
 			source = intent.source,
 			heading = tonumber(intent.heading) or 0,
-			ownership_enabled = ownership_enabled,
-			dispatched = dispatched,
-			dispatch_ok = dispatch_ok,
-			dispatch_reason = dispatch_reason,
-			fallback_used = fallback_used,
+			ownership_enabled = turn_ownership_status.ownership_enabled,
+			dispatched = turn_ownership_status.dispatched,
+			dispatch_ok = turn_ownership_status.dispatch_ok,
+			dispatch_reason = turn_ownership_status.dispatch_reason,
+			fallback_used = turn_ownership_status.fallback_used,
 		}
-		if use_direct_turn then
-			windower.ffxi.turn(heading)
-		end
 	end
 end
 
@@ -3698,16 +3792,37 @@ local function p1_move_toward_mob(mob)
 			heading = heading,
 		},
 	}
-	local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+	local dispatcher = require('uc_scheduler_dispatcher')
+	local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+	local direct_run = windower.ffxi.run
+	local dispatcher_run = function(run_x, run_y)
+		if run_x == nil or run_y == nil then
+			return direct_run(heading)
+		end
+		return direct_run(heading)
+	end
+	local run_ownership_status = require('uc_scheduler_run_ownership').apply_run_ownership({
+		dispatcher = dispatcher,
+		direct_run = direct_run,
+		run = dispatcher_run,
+		ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_RUN_VECTOR_OWNERSHIP == true),
+		intent = intent,
+		heading = heading,
+	})
 	_G.UC_SCHED_P1_DARKLAUNCH_RUN_VALIDATE = {
 		ok = _darklaunch_ok and true or false,
 		reason = _darklaunch_reason,
 		kind = intent.kind,
 		source = intent.source,
-		run_x = tonumber(intent.run_x) or 0,
-		run_y = tonumber(intent.run_y) or 0,
+		run_x = run_ownership_status.run_x,
+		run_y = run_ownership_status.run_y,
+		heading = run_ownership_status.heading,
+		ownership_enabled = run_ownership_status.ownership_enabled,
+		dispatched = run_ownership_status.dispatched,
+		dispatch_ok = run_ownership_status.dispatch_ok,
+		dispatch_reason = run_ownership_status.dispatch_reason,
+		fallback_used = run_ownership_status.fallback_used,
 	}
-	windower.ffxi.run(heading)
 	return true
 end
 
@@ -3853,15 +3968,27 @@ local function p1_try_dark_launch_dispatch(settings)
 					tank_action_settle_until = phase.tank_action_settle_until,
 				},
 			}
-			local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+			local dispatcher = require('uc_scheduler_dispatcher')
+			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+				dispatcher = dispatcher,
+				direct_run = windower.ffxi.run,
+				run = windower.ffxi.run,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP == true),
+				intent = intent,
+			})
 			_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ACTION_SETTLE_VALIDATE = {
 				ok = _darklaunch_ok and true or false,
 				reason = _darklaunch_reason,
 				kind = intent.kind,
 				source = intent.source,
-				stop = true,
+				ownership_enabled = run_stop_ownership_status.ownership_enabled,
+				dispatched = run_stop_ownership_status.dispatched,
+				dispatch_ok = run_stop_ownership_status.dispatch_ok,
+				dispatch_reason = run_stop_ownership_status.dispatch_reason,
+				fallback_used = run_stop_ownership_status.fallback_used,
+				stop = run_stop_ownership_status.stop,
 			}
-			windower.ffxi.run(false)
 			if now < p1_number(phase.tank_action_settle_until, 0) then
 				tank_enmity_diag('TANK_ENMITY_WAIT_ACTION_SETTLE', selected, ('remain=%.2f'):format(p1_number(phase.tank_action_settle_until, 0) - now))
 				log_combat_sched(('dispatch_block reason=TANK_ACTION_SETTLE name=\"%s\" tid=%d remain=%.2f'):format(
@@ -3887,6 +4014,14 @@ local function p1_try_dark_launch_dispatch(settings)
 					end
 					return false, nil
 				end
+				target = windower.ffxi.get_mob_by_target('t')
+			end
+			if not combat_core.is_live_actionable_combat_target(target, now_s(), true) then
+				log_combat_sched(('engage_drop reason=TARGET_NOT_ACTIONABLE expected_tid=%d'):format(expected_tid))
+				if bool_setting(settings and settings.debug, false) then
+					_G.UC_LAST_SCHED_ACTION = ('[p1]engage:dispatch_fail:not_actionable tid=%d'):format(expected_tid)
+				end
+				return false, nil
 			end
 			local p = windower.ffxi.get_player()
 			if p and tonumber(p.status) == 1 then
@@ -3925,7 +4060,10 @@ local function p1_try_dark_launch_dispatch(settings)
 				return false, nil
 			end
 			local target = windower.ffxi.get_mob_by_target('t')
-			if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
+			if not target or (tonumber(target.id) or 0) ~= expected_tid then
+				return false, nil
+			end
+			if not combat_core.is_live_actionable_combat_target(target, now_s(), true) then
 				return false, nil
 			end
 			local ws = tostring(selected.action_name or '')
@@ -3951,15 +4089,31 @@ local function p1_try_dark_launch_dispatch(settings)
 						target_id = expected_tid,
 					},
 				}
-				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				local dispatcher = require('uc_scheduler_dispatcher')
+				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+				local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+					dispatcher = dispatcher,
+					direct_send_command = windower.send_command,
+					send_command = windower.send_command,
+					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP == true),
+					promoted_default_on = true,
+					ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP == false),
+					promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+					intent = intent,
+					command = ws_command,
+				})
 				_G.UC_SCHED_P1_DARKLAUNCH_COMBAT_COMMAND_VALIDATE = {
 					ok = _darklaunch_ok and true or false,
 					reason = _darklaunch_reason,
 					kind = intent.kind,
 					source = intent.source,
-					command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+					command_present = command_ownership_status.command_present,
+					ownership_enabled = command_ownership_status.ownership_enabled,
+					dispatched = command_ownership_status.dispatched,
+					dispatch_ok = command_ownership_status.dispatch_ok,
+					dispatch_reason = command_ownership_status.dispatch_reason,
+					fallback_used = command_ownership_status.fallback_used,
 				}
-				windower.send_command(ws_command)
 				action_mark_sent('ws')
 			end
 			_G.UC_LAST_SCHED_ACTION = ('[p1]ws:%s->%s'):format(ws, tostring(selected.target_name or ''))
@@ -4003,15 +4157,31 @@ local function p1_try_dark_launch_dispatch(settings)
 						target_kind = tostring(target_kind or ''),
 					},
 				}
-				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				local dispatcher = require('uc_scheduler_dispatcher')
+				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+				local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+					dispatcher = dispatcher,
+					direct_send_command = windower.send_command,
+					send_command = windower.send_command,
+					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP == true),
+					promoted_default_on = true,
+					ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP == false),
+					promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+					intent = intent,
+					command = ja_target_command,
+				})
 				_G.UC_SCHED_P1_DARKLAUNCH_JA_COMMAND_VALIDATE = {
 					ok = _darklaunch_ok and true or false,
 					reason = _darklaunch_reason,
 					kind = intent.kind,
 					source = intent.source,
-					command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+					command_present = command_ownership_status.command_present,
+					ownership_enabled = command_ownership_status.ownership_enabled,
+					dispatched = command_ownership_status.dispatched,
+					dispatch_ok = command_ownership_status.dispatch_ok,
+					dispatch_reason = command_ownership_status.dispatch_reason,
+					fallback_used = command_ownership_status.fallback_used,
 				}
-				windower.send_command(ja_target_command)
 				action_mark_sent('ja')
 				if tank_enmity then
 					tank_enmity_diag('TANK_ENMITY_SEND_JA', selected, 'mode=target_id')
@@ -4030,15 +4200,27 @@ local function p1_try_dark_launch_dispatch(settings)
 							tank_enmity = true,
 						},
 					}
-					local _stop_darklaunch_ok, _stop_darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(stop_intent)
+					local dispatcher = require('uc_scheduler_dispatcher')
+					local _stop_darklaunch_ok, _stop_darklaunch_reason = dispatcher.validate_intent(stop_intent)
+					local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+						dispatcher = dispatcher,
+						direct_run = windower.ffxi.run,
+						run = windower.ffxi.run,
+						ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP == true),
+						intent = stop_intent,
+					})
 					_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_JA_SELF_SEND_VALIDATE = {
 						ok = _stop_darklaunch_ok and true or false,
 						reason = _stop_darklaunch_reason,
 						kind = stop_intent.kind,
 						source = stop_intent.source,
-						stop = true,
+						ownership_enabled = run_stop_ownership_status.ownership_enabled,
+						dispatched = run_stop_ownership_status.dispatched,
+						dispatch_ok = run_stop_ownership_status.dispatch_ok,
+						dispatch_reason = run_stop_ownership_status.dispatch_reason,
+						fallback_used = run_stop_ownership_status.fallback_used,
+						stop = run_stop_ownership_status.stop,
 					}
-					windower.ffxi.run(false)
 				end
 				local ja_self_command = ('input /ja \"%s\" <me>'):format(ability)
 				local intent = {
@@ -4051,15 +4233,31 @@ local function p1_try_dark_launch_dispatch(settings)
 						target_kind = tostring(target_kind or ''),
 					},
 				}
-				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				local dispatcher = require('uc_scheduler_dispatcher')
+				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+				local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+					dispatcher = dispatcher,
+					direct_send_command = windower.send_command,
+					send_command = windower.send_command,
+					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP == true),
+					promoted_default_on = true,
+					ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP == false),
+					promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+					intent = intent,
+					command = ja_self_command,
+				})
 				_G.UC_SCHED_P1_DARKLAUNCH_JA_SELF_COMMAND_VALIDATE = {
 					ok = _darklaunch_ok and true or false,
 					reason = _darklaunch_reason,
 					kind = intent.kind,
 					source = intent.source,
-					command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+					command_present = command_ownership_status.command_present,
+					ownership_enabled = command_ownership_status.ownership_enabled,
+					dispatched = command_ownership_status.dispatched,
+					dispatch_ok = command_ownership_status.dispatch_ok,
+					dispatch_reason = command_ownership_status.dispatch_reason,
+					fallback_used = command_ownership_status.fallback_used,
 				}
-				windower.send_command(ja_self_command)
 				action_mark_sent('ja')
 				if tank_enmity then
 					tank_enmity_diag('TANK_ENMITY_SEND_JA', selected, 'mode=self')
@@ -4096,15 +4294,27 @@ local function p1_try_dark_launch_dispatch(settings)
 						freeze_prep_until = _G.UC_MOVE_FREEZE_PREP_UNTIL,
 					},
 				}
-				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				local dispatcher = require('uc_scheduler_dispatcher')
+				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+				local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+					dispatcher = dispatcher,
+					direct_run = windower.ffxi.run,
+					run = windower.ffxi.run,
+					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP == true),
+					intent = intent,
+				})
 				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_COMBAT_SPELL_SETTLE_VALIDATE = {
 					ok = _darklaunch_ok and true or false,
 					reason = _darklaunch_reason,
 					kind = intent.kind,
 					source = intent.source,
-					stop = true,
+					ownership_enabled = run_stop_ownership_status.ownership_enabled,
+					dispatched = run_stop_ownership_status.dispatched,
+					dispatch_ok = run_stop_ownership_status.dispatch_ok,
+					dispatch_reason = run_stop_ownership_status.dispatch_reason,
+					fallback_used = run_stop_ownership_status.fallback_used,
+					stop = run_stop_ownership_status.stop,
 				}
-				windower.ffxi.run(false)
 				_G.UC_LAST_SCHED_ACTION = ('[p1]spell_settle:%s->%s'):format(spell, tostring(selected.target_name or ''))
 				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_SPELL_SETTLE'
 			end
@@ -4122,15 +4332,27 @@ local function p1_try_dark_launch_dispatch(settings)
 						freeze_prep_until = prep_until,
 					},
 				}
-				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				local dispatcher = require('uc_scheduler_dispatcher')
+				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+				local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+					dispatcher = dispatcher,
+					direct_run = windower.ffxi.run,
+					run = windower.ffxi.run,
+					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP == true),
+					intent = intent,
+				})
 				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_COMBAT_SPELL_PREP_WAIT_VALIDATE = {
 					ok = _darklaunch_ok and true or false,
 					reason = _darklaunch_reason,
 					kind = intent.kind,
 					source = intent.source,
-					stop = true,
+					ownership_enabled = run_stop_ownership_status.ownership_enabled,
+					dispatched = run_stop_ownership_status.dispatched,
+					dispatch_ok = run_stop_ownership_status.dispatch_ok,
+					dispatch_reason = run_stop_ownership_status.dispatch_reason,
+					fallback_used = run_stop_ownership_status.fallback_used,
+					stop = run_stop_ownership_status.stop,
 				}
-				windower.ffxi.run(false)
 				_G.UC_LAST_SCHED_ACTION = ('[p1]spell_prep:%s->%s'):format(spell, tostring(selected.target_name or ''))
 				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_SPELL_PREP'
 			end
@@ -4166,15 +4388,27 @@ local function p1_try_dark_launch_dispatch(settings)
 						tank_spell_settle_until = phase.tank_spell_settle_until,
 					},
 				}
-				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				local dispatcher = require('uc_scheduler_dispatcher')
+				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+				local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+					dispatcher = dispatcher,
+					direct_run = windower.ffxi.run,
+					run = windower.ffxi.run,
+					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP == true),
+					intent = intent,
+				})
 				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_SPELL_SETTLE_VALIDATE = {
 					ok = _darklaunch_ok and true or false,
 					reason = _darklaunch_reason,
 					kind = intent.kind,
 					source = intent.source,
-					stop = true,
+					ownership_enabled = run_stop_ownership_status.ownership_enabled,
+					dispatched = run_stop_ownership_status.dispatched,
+					dispatch_ok = run_stop_ownership_status.dispatch_ok,
+					dispatch_reason = run_stop_ownership_status.dispatch_reason,
+					fallback_used = run_stop_ownership_status.fallback_used,
+					stop = run_stop_ownership_status.stop,
 				}
-				windower.ffxi.run(false)
 				if now < p1_number(phase.tank_spell_settle_until, 0) then
 					tank_enmity_diag('TANK_ENMITY_WAIT_SPELL_SETTLE', selected, ('remain=%.2f'):format(p1_number(phase.tank_spell_settle_until, 0) - now))
 					log_combat_sched(('dispatch_block reason=TANK_SPELL_SETTLE spell=\"%s\" tid=%d remain=%.2f'):format(
@@ -4205,15 +4439,27 @@ local function p1_try_dark_launch_dispatch(settings)
 							target_kind = target_kind,
 						},
 					}
-					local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+					local dispatcher = require('uc_scheduler_dispatcher')
+					local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+					local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+						dispatcher = dispatcher,
+						direct_run = windower.ffxi.run,
+						run = windower.ffxi.run,
+						ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP == true),
+						intent = intent,
+					})
 					_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_SPELL_SEND_VALIDATE = {
 						ok = _darklaunch_ok and true or false,
 						reason = _darklaunch_reason,
 						kind = intent.kind,
 						source = intent.source,
-						stop = true,
+						ownership_enabled = run_stop_ownership_status.ownership_enabled,
+						dispatched = run_stop_ownership_status.dispatched,
+						dispatch_ok = run_stop_ownership_status.dispatch_ok,
+						dispatch_reason = run_stop_ownership_status.dispatch_reason,
+						fallback_used = run_stop_ownership_status.fallback_used,
+						stop = run_stop_ownership_status.stop,
 					}
-					windower.ffxi.run(false)
 				end
 				local spell_target_command = ('input /ma \"%s\" %d'):format(spell, expected_tid)
 				local intent = {
@@ -4227,15 +4473,31 @@ local function p1_try_dark_launch_dispatch(settings)
 						target_kind = tostring(target_kind or ''),
 					},
 				}
-				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				local dispatcher = require('uc_scheduler_dispatcher')
+				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+				local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+					dispatcher = dispatcher,
+					direct_send_command = windower.send_command,
+					send_command = windower.send_command,
+					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP == true),
+					promoted_default_on = true,
+					ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP == false),
+					promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+					intent = intent,
+					command = spell_target_command,
+				})
 				_G.UC_SCHED_P1_DARKLAUNCH_SPELL_TARGET_COMMAND_VALIDATE = {
 					ok = _darklaunch_ok and true or false,
 					reason = _darklaunch_reason,
 					kind = intent.kind,
 					source = intent.source,
-					command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+					command_present = command_ownership_status.command_present,
+					ownership_enabled = command_ownership_status.ownership_enabled,
+					dispatched = command_ownership_status.dispatched,
+					dispatch_ok = command_ownership_status.dispatch_ok,
+					dispatch_reason = command_ownership_status.dispatch_reason,
+					fallback_used = command_ownership_status.fallback_used,
 				}
-				windower.send_command(spell_target_command)
 				action_mark_sent('spell')
 				if tank_enmity then
 					tank_enmity_diag('TANK_ENMITY_SEND_SPELL', selected, 'mode=target_id')
@@ -4252,15 +4514,27 @@ local function p1_try_dark_launch_dispatch(settings)
 							target_kind = target_kind,
 						},
 					}
-					local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+					local dispatcher = require('uc_scheduler_dispatcher')
+					local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+					local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+						dispatcher = dispatcher,
+						direct_run = windower.ffxi.run,
+						run = windower.ffxi.run,
+						ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP == true),
+						intent = intent,
+					})
 					_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_SPELL_SELF_SEND_VALIDATE = {
 						ok = _darklaunch_ok and true or false,
 						reason = _darklaunch_reason,
 						kind = intent.kind,
 						source = intent.source,
-						stop = true,
+						ownership_enabled = run_stop_ownership_status.ownership_enabled,
+						dispatched = run_stop_ownership_status.dispatched,
+						dispatch_ok = run_stop_ownership_status.dispatch_ok,
+						dispatch_reason = run_stop_ownership_status.dispatch_reason,
+						fallback_used = run_stop_ownership_status.fallback_used,
+						stop = run_stop_ownership_status.stop,
 					}
-					windower.ffxi.run(false)
 				end
 				local spell_self_command = ('input /ma \"%s\" <me>'):format(spell)
 				local intent = {
@@ -4273,15 +4547,31 @@ local function p1_try_dark_launch_dispatch(settings)
 						target_kind = tostring(target_kind or ''),
 					},
 				}
-				local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+				local dispatcher = require('uc_scheduler_dispatcher')
+				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+				local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+					dispatcher = dispatcher,
+					direct_send_command = windower.send_command,
+					send_command = windower.send_command,
+					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP == true),
+					promoted_default_on = true,
+					ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP == false),
+					promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+					intent = intent,
+					command = spell_self_command,
+				})
 				_G.UC_SCHED_P1_DARKLAUNCH_SPELL_SELF_COMMAND_VALIDATE = {
 					ok = _darklaunch_ok and true or false,
 					reason = _darklaunch_reason,
 					kind = intent.kind,
 					source = intent.source,
-					command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+					command_present = command_ownership_status.command_present,
+					ownership_enabled = command_ownership_status.ownership_enabled,
+					dispatched = command_ownership_status.dispatched,
+					dispatch_ok = command_ownership_status.dispatch_ok,
+					dispatch_reason = command_ownership_status.dispatch_reason,
+					fallback_used = command_ownership_status.fallback_used,
 				}
-				windower.send_command(spell_self_command)
 				action_mark_sent('spell')
 				if tank_enmity then
 					tank_enmity_diag('TANK_ENMITY_SEND_SPELL', selected, 'mode=self')
@@ -4351,15 +4641,31 @@ local function p1_try_dark_launch_dispatch(settings)
 				target_id = tonumber(selected.target_id) or 0,
 			},
 		}
-		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		local dispatcher = require('uc_scheduler_dispatcher')
+		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+				dispatcher = dispatcher,
+				direct_send_command = windower.send_command,
+				send_command = windower.send_command,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_DEFENSIVE_INTERNAL_COMMAND_OWNERSHIP == true),
+				promoted_default_on = true,
+				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_DEFENSIVE_INTERNAL_COMMAND_OWNERSHIP == false),
+				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+				intent = intent,
+				command = cmd,
+			})
 		_G.UC_SCHED_P1_DARKLAUNCH_DEFENSIVE_INTERNAL_COMMAND_VALIDATE = {
 			ok = _darklaunch_ok and true or false,
 			reason = _darklaunch_reason,
 			kind = intent.kind,
 			source = intent.source,
-			command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+			command_present = command_ownership_status.command_present,
+			ownership_enabled = command_ownership_status.ownership_enabled,
+			dispatched = command_ownership_status.dispatched,
+			dispatch_ok = command_ownership_status.dispatch_ok,
+			dispatch_reason = command_ownership_status.dispatch_reason,
+			fallback_used = command_ownership_status.fallback_used,
 		}
-		windower.send_command(cmd)
 		action_mark_sent(action_kind or selected.action_type or 'defensive_internal')
 		local dispatch_now = now_s()
 		local d = selected.detail
@@ -4437,16 +4743,32 @@ local function p1_try_dark_launch_dispatch(settings)
 				provider = tostring(provider or ''),
 			},
 		}
-		local _darklaunch_ok, _darklaunch_reason = require('uc_scheduler_dispatcher').validate_intent(intent)
+		local dispatcher = require('uc_scheduler_dispatcher')
+		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+				dispatcher = dispatcher,
+				direct_send_command = windower.send_command,
+				send_command = windower.send_command,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MAINTENANCE_COR_COMMAND_OWNERSHIP == true),
+				promoted_default_on = true,
+				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MAINTENANCE_COR_COMMAND_OWNERSHIP == false),
+				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+				intent = intent,
+				command = maintenance_cor_command,
+			})
 		_G.UC_SCHED_P1_DARKLAUNCH_MAINTENANCE_COR_COMMAND_VALIDATE = {
 			ok = _darklaunch_ok and true or false,
 			reason = _darklaunch_reason,
 			kind = intent.kind,
 			source = intent.source,
-			command_present = intent.command ~= nil and tostring(intent.command) ~= '',
+			ownership_enabled = command_ownership_status.ownership_enabled,
+			dispatched = command_ownership_status.dispatched,
+			dispatch_ok = command_ownership_status.dispatch_ok,
+			dispatch_reason = command_ownership_status.dispatch_reason,
+			fallback_used = command_ownership_status.fallback_used,
+			command_present = command_ownership_status.command_present,
 		}
 		log_def_sched(('MAINT_COR_DISPATCH_SEND action=\"%s\"'):format(tostring(ability)))
-		windower.send_command(maintenance_cor_command)
 		action_mark_sent(action_kind or 'ja')
 		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
 		p1_record_legacy_dispatch(ctx)

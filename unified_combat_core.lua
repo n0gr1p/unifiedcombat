@@ -547,13 +547,43 @@ local function mob_real_distance_movement(a, b, settings)
 	return d - movement_model_size_raw(a) - movement_model_size_raw(b)
 end
 
-local function death_event_active_for_id(id)
+local function death_event_active_for_id(id, now)
 	local tid = tonumber(id) or 0
 	if tid <= 0 then
 		return false
 	end
+	now = tonumber(now) or uc_now_s()
 	return (tonumber(core.last_death_target_id) or 0) == tid and
-		((uc_now_s() - (tonumber(core.last_death_at) or 0)) <= DEATH_SWITCH_WINDOW)
+		((now - (tonumber(core.last_death_at) or 0)) <= DEATH_SWITCH_WINDOW)
+end
+
+local function is_live_actionable_combat_target(mob_or_target, now, include_recent_death)
+	if type(mob_or_target) ~= 'table' then
+		return false
+	end
+	local tid = tonumber(mob_or_target.id) or 0
+	if tid <= 0 then
+		return false
+	end
+	if mob_or_target.valid_target ~= true then
+		return false
+	end
+	if tonumber(mob_or_target.spawn_type) ~= 16 then
+		return false
+	end
+	if mob_or_target.hpp == nil then
+		return false
+	end
+	if (tonumber(mob_or_target.hpp) or 0) <= 0 then
+		return false
+	end
+	if include_recent_death == true then
+		now = tonumber(now) or uc_now_s()
+		if death_event_active_for_id(tid, now) then
+			return false
+		end
+	end
+	return true
 end
 
 local function uc_heading_to(x, y)
@@ -2016,6 +2046,7 @@ local function ensure_target_and_attack(tid)
 		return false
 	end
 	local cur = get_current_target()
+	local now = uc_now_s()
 	local p = windower.ffxi.get_player()
 	local engaged = p and p.status == 1
 	if engaged and cur and cur.id and cur.id ~= tid then
@@ -2039,6 +2070,10 @@ local function ensure_target_and_attack(tid)
 	if not cur or cur.id ~= tid then
 		return false
 	end
+	if not is_live_actionable_combat_target(cur, now, true) then
+		_G.UC_LAST_BLOCK_REASON = 'TARGET_NOT_ACTIONABLE'
+		return false
+	end
 	-- Avoid re-sending engage while already engaged on the correct target; repeated engage
 	-- injections can create churn on some clients/servers.
 	if engaged then
@@ -2051,6 +2086,8 @@ local function ensure_target_and_attack(tid)
 	end
 	return true
 end
+
+core.is_live_actionable_combat_target = is_live_actionable_combat_target
 
 stop_run = function()
 	windower.ffxi.run(false)
@@ -2236,6 +2273,13 @@ local function apply_movement(settings, target)
 		if core.last_run_active then
 			stop_run()
 		end
+		return
+	end
+	if not is_live_actionable_combat_target(target, uc_now_s(), true) then
+		if core.last_run_active then
+			stop_run()
+		end
+		_G.UC_MOVE_DIAG = 'move_skip_not_actionable_target'
 		return
 	end
 	if setting_enabled(settings.puller) and (tonumber(settings.puller_id) or 0) > 0 then

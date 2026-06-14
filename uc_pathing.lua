@@ -796,6 +796,12 @@ local function should_pause_for_combat()
 	if owner ~= 'none' and owner ~= 'path' and now < lock_until then
 		return true, ('OWNER_%s'):format(owner)
 	end
+	if uc_party_follow and type(uc_party_follow.should_suppress_follow_or_path_return_now) == 'function' then
+		local suppress, suppress_reason = uc_party_follow.should_suppress_follow_or_path_return_now(rawget(_G, 'UC_SETTINGS') or {}, now)
+		if suppress == true then
+			return true, ('COMBAT_TRANSITION:%s'):format(tostring(suppress_reason or 'ACTIVE'))
+		end
+	end
 	local p = windower.ffxi.get_player()
 	if not p then
 		return true, 'NO_PLAYER'

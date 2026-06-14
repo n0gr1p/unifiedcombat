@@ -64,6 +64,7 @@ local function main()
     local select_target_execute = find_entry(result.entries, "dispatcher_dispatch_execute_select_target_calls_deps")
     assert_true(select_target_execute ~= nil, "select_target execute fixture missing")
     assert_equal(select_target_execute.actual.calls.set_target[1][1], 5678, "select_target execute argument mismatch")
+    assert_equal(select_target_execute.actual.result.dep_result, true, "select_target execute dep_result mismatch")
 
     local run_missing = find_entry(result.entries, "dispatcher_dispatch_execute_run_missing_dep")
     assert_true(run_missing ~= nil, "run missing dep fixture missing")

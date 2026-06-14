@@ -271,7 +271,15 @@ function M.dispatch_intent(intent, deps)
                 normalized_intent = normalized,
             }
         end
-        fn(normalized.payload.target_id)
+        local dep_result = fn(normalized.payload.target_id)
+        scrub_validation_fields(normalized)
+        return {
+            ok = true,
+            reason = "executed",
+            executed = true,
+            dep_result = dep_result,
+            normalized_intent = normalized,
+        }
     else
         scrub_validation_fields(normalized)
         return {
