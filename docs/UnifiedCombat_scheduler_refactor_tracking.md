@@ -11,6 +11,28 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 
 ## Latest Task Notes
 
+### `T3.4n` Complete explicit attack-on action-state bypass for WS/JA/spell/post-spell gates
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `uc_scheduler_action_state.lua`
+  - `tests/replay/harness/selftest_engage_action_state_bypass.lua`
+  - `tests/replay/harness/selftest_action_economy_timeline_logging.lua`
+  - `docs/engage_action_state_bypass_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Runtime behavior:
+  - Completed the T3.4m partial explicit-engage policy so scheduler `attack_on` may bypass local `weaponskill`, `job_ability`, `spell`, `post_spell_tail`, and generic `cooldown` state when the player is not already engaged, not dead, the target is still valid, and retry cadence is ready.
+  - Kept bounded explicit engage retry/debounce behavior intact through the existing pending-engage and engage-duplicate state instead of reintroducing generic action-state hard blocking.
+  - Added clearer blocker logging for legitimate holds such as `pending_engage_retry_wait` and `BLOCK_PLAYER_DEAD`.
+- Validation summary:
+  - Expanded focused engage-bypass coverage to include WS, JA, spell, post-spell tail, generic cooldown, dead-player, invalid-target, and already-engaged cases.
+  - Kept ownership/default-off policy unchanged and did not add direct scheduler side-effect calls.
+- Field-test instructions:
+  - Enable `_G.UC_DEBUG_ACTION_TIMELINE = true` and verify explicit `attack_on` can send promptly after target selection even when stale WS/JA/spell/post-tail state is still visible locally.
+  - Confirm retry cadence still prevents every-tick engage spam and that message id `94` continues to drive bounded retry scheduling.
+  - Confirm critical Cure still overrides, while non-critical Cure/maintenance/Sleep remain behind pending engage.
+
 ### `T3.4i` Add focused action-economy timeline logging for target/engage/cure/buff ordering
 
 - Status: `DONE`

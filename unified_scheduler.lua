@@ -1653,8 +1653,8 @@ function scheduler.action_timeline_format_fields(fields)
 		return ''
 	end
 	local order = {
-		'tid', 'name', 'spell', 'action', 'provider', 'band', 'urgency', 'critical', 'reason',
-		'status', 'from', 'to', 'target', 'target_id', 'old_target_id', 'message_id', 'retry_in_s', 'retry_count', 'age_s', 'remaining_s', 'tail_s', 'kind', 'command', 'dispatch_method', 'pending_engage', 'sent_for_target', 'immediate'
+		'tid', 'name', 'role', 'tank', 'spell', 'action', 'provider', 'band', 'urgency', 'critical', 'reason',
+		'status', 'from', 'to', 'target', 'target_id', 'old_target_id', 'message_id', 'retry_in_s', 'retry_count', 'age_s', 'remaining_s', 'tail_s', 'kind', 'command', 'dispatch_method', 'pending_engage', 'sent_for_target', 'pull_owner', 'target_valid', 'range', 'claim_check', 'action_state', 'top_family', 'top_provider', 'top_action', 'immediate'
 	}
 	local parts = {}
 	local seen = {}
@@ -3859,6 +3859,70 @@ local function p1_collect_combat_engage(ctx, out)
 	local engage_priority = tank_mode and scheduler.TANK_ENGAGE_PRIORITY or scheduler.DEFAULT_ENGAGE_PRIORITY
 	local engage_urgency = tank_mode and scheduler.TANK_ENGAGE_URGENCY or scheduler.DEFAULT_ENGAGE_URGENCY
 	local engaged = tonumber(player.status) == 1
+	local function p1_engage_action_state_summary()
+		local st = scheduler.action_state or {}
+		local now_value = tonumber(ctx.now) or now_s()
+		local cooldown_until = tonumber(st.cooldown_until) or 0
+		local post_spell_tail_until = tonumber(st.post_spell_tail_until) or 0
+		local action_start = tonumber(st.action_start) or 0
+		local action_end = tonumber(st.action_end) or 0
+		local acting = action_end < action_start
+		local parts = {
+			('kind=%s'):format(tostring(st.last_send_kind or '')),
+			('acting=%s'):format(acting and '1' or '0'),
+			('cooldown=%.2f'):format(math.max(0, cooldown_until - now_value)),
+			('tail=%.2f'):format(math.max(0, post_spell_tail_until - now_value)),
+		}
+		return table.concat(parts, ',')
+	end
+	local function p1_engage_pending_state_summary()
+		local pending = scheduler.p1_pending_engage_state(scheduler.phase1)
+		if type(pending) ~= 'table' then
+			return 'inactive'
+		end
+		local retry_ready_at = tonumber(pending.retry_ready_at) or 0
+		local retry_count = tonumber(pending.retry_count) or 0
+		local now_value = tonumber(ctx.now) or now_s()
+		if scheduler.p1_pending_engage_live(scheduler.phase1, now_value) then
+			return ('active:retry=%.2f,count=%d'):format(math.max(0, retry_ready_at - now_value), retry_count)
+		end
+		return ('stale:count=%d'):format(retry_count)
+	end
+	local function p1_existing_top_proposal_summary()
+		local top = type(out) == 'table' and out[1] or nil
+		if type(top) ~= 'table' then
+			return '', '', ''
+		end
+		return tostring(top.family_id or ''), tostring(top.provider or ''), tostring(top.action_name or '')
+	end
+	local function p1_log_engage_proposal_probe(event_code, target, skip_reason, pull_owner_state, claim_check)
+		if not target or tonumber(player.status) == 1 then
+			return
+		end
+		local dist = target.distance and target.distance:sqrt() or 999
+		local top_family, top_provider, top_action = p1_existing_top_proposal_summary()
+		scheduler.action_timeline_log(event_code, {
+			tid = tonumber(target.id) or 0,
+			name = tostring(target.name or ''),
+			role = tank_mode and 'tank' or 'default',
+			tank = tank_mode and 1 or 0,
+			status = tonumber(player.status) or 0,
+			pull_owner = tostring(pull_owner_state or ''),
+			target_valid = target.valid_target == true and 1 or 0,
+			range = ('%.2f'):format(tonumber(dist) or 999),
+			claim_check = tostring(claim_check or ''),
+			pending_engage = p1_engage_pending_state_summary(),
+			action_state = p1_engage_action_state_summary(),
+			top_family = top_family,
+			top_provider = top_provider,
+			top_action = top_action,
+			reason = tostring(skip_reason or ''),
+		}, ('engage_proposal_probe:%s:%d:%s'):format(
+			tostring(event_code or ''),
+			tonumber(target.id) or 0,
+			tostring(skip_reason or '')
+		), 0.50)
+	end
 	local fight_leader_force_target_id = 0
 	local fight_leader_on = bool_setting(ctx.settings and ctx.settings.fight_leader, false)
 	if fight_leader_on and (tonumber(ctx.settings and ctx.settings.fight_leader_id) or 0) > 0
@@ -3879,15 +3943,24 @@ local function p1_collect_combat_engage(ctx, out)
 		if bool_setting(ctx.settings and ctx.settings.debug, false) then
 			_G.UC_LAST_SCHED_ACTION = '[p1]engage:collect_skip:no_valid_target'
 		end
+		if t then
+			p1_log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', t, 'no_valid_target', 'inactive', 'not_checked')
+		end
 		return
 	end
 	-- Hunter/path pull ownership: when a pull action is currently applicable, suppress
 	-- engage proposals so we do not run into melee before the configured pull executes.
+	local pull_owner_state = 'inactive'
 	if combat_core and type(combat_core.select_pull_for_scheduler) == 'function' then
 		local pull_pick = combat_core.select_pull_for_scheduler(ctx.settings)
 		if type(pull_pick) == 'table' then
 			local pull_tid = tonumber(pull_pick.target_id) or 0
 			local this_tid = tonumber(t.id) or 0
+			pull_owner_state = ('candidate:%s:%s:%d'):format(
+				tostring(pull_pick.provider or ''),
+				tostring(pull_pick.action_name or pull_pick.action_type or ''),
+				pull_tid
+			)
 			if pull_tid > 0 and this_tid > 0 and pull_tid == this_tid then
 				if bool_setting(ctx.settings and ctx.settings.debug, false) then
 					_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:pull_owner tid=%d action=%s:%s'):format(
@@ -3896,6 +3969,7 @@ local function p1_collect_combat_engage(ctx, out)
 						tostring(pull_pick.action_name or '')
 					)
 				end
+				p1_log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', t, 'pull_owner', pull_owner_state, 'not_checked')
 				return
 			end
 		end
@@ -3906,6 +3980,12 @@ local function p1_collect_combat_engage(ctx, out)
 	local party_claimed_ok = claims_set[claim_id] == true
 	local prime_unclaimed_ok = p1_prime_unclaimed_party_aggressive_ok(ctx.settings, t, party_ids)
 	local force_leader_engage = (fight_leader_force_target_id > 0 and fight_leader_force_target_id == (tonumber(t.id) or 0))
+	local claim_check = ('party_claimed=%s,prime_unclaimed=%s,force_leader=%s,claim_id=%d'):format(
+		party_claimed_ok and '1' or '0',
+		prime_unclaimed_ok and '1' or '0',
+		force_leader_engage and '1' or '0',
+		claim_id
+	)
 	if not party_claimed_ok and not prime_unclaimed_ok and not force_leader_engage then
 		if bool_setting(ctx.settings and ctx.settings.debug, false) then
 			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:policy claim=%d st=%d prime=%s'):format(
@@ -3914,6 +3994,7 @@ local function p1_collect_combat_engage(ctx, out)
 				tostring(bool_setting(ctx.settings and ctx.settings.prime, false))
 			)
 		end
+		p1_log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', t, 'claim_policy', pull_owner_state, claim_check)
 		return
 	end
 	if bool_setting(ctx.settings and ctx.settings.debug, false) then
@@ -3935,6 +4016,7 @@ local function p1_collect_combat_engage(ctx, out)
 		band = engage_priority,
 		urgency = ('%.2f'):format(p1_clamp_urgency(engage_urgency)),
 	}, ('engage_proposed:%d'):format(tonumber(t.id) or 0), 0.50)
+	p1_log_engage_proposal_probe('ENGAGE_PROPOSAL_CREATED', t, 'engage_ready', pull_owner_state, claim_check)
 	out[#out + 1] = {
 		proposal_id = ('combat.engage.%d.%d'):format(tonumber(t.id) or 0, math.floor(ctx.now * 1000)),
 		family_id = 'combat.engage.primary',
@@ -4616,6 +4698,15 @@ local function p1_validate_proposal(ctx, p)
 				local pending = scheduler.p1_pending_engage_state(phase)
 				local retry_ready_at = tonumber(pending and pending.retry_ready_at) or 0
 				if retry_ready_at > ctx.now then
+					scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
+						tid = tonumber(p.target_id) or 0,
+						name = tostring(p.target_name or ''),
+						reason = 'pending_engage_retry_wait',
+						retry_in_s = ('%.2f'):format(math.max(0, retry_ready_at - ctx.now)),
+						retry_count = tonumber(pending and pending.retry_count) or 0,
+						pending_engage = 'retry_wait',
+						dispatch_method = scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON,
+					}, ('engage_retry_wait:%d'):format(tonumber(p.target_id) or 0), 0.25)
 					return false, 'pending_engage_retry_wait'
 				end
 			elseif not scheduler.p1_is_critical_defensive_proposal(ctx.settings, p) then
@@ -4900,8 +4991,8 @@ local function p1_run_dry(settings)
 		p1_capture_topn_items,
 		p1_push_recent_rejects,
 		p1_reject_top,
-		p1_set_pending_globals,
-		p1_build_lock_summary
+		scheduler.p1_set_pending_globals,
+		scheduler.p1_build_lock_summary
 	)
 end
 
@@ -5221,7 +5312,22 @@ local function p1_dispatch_combat_engage(selected, settings, phase, expected_tid
 		return false, nil
 	end
 	local player = windower.ffxi.get_player()
-	if player and tonumber(player.status) == 1 then
+	local player_status = tonumber(player and player.status) or 0
+	local player_hp = tonumber(player and player.vitals and player.vitals.hp) or 0
+	local player_hpp = tonumber(player and player.vitals and player.vitals.hpp) or 0
+	local player_dead = (player_status == 3) or player_hp <= 0 or player_hpp <= 0
+	if player_dead then
+		log_combat_sched(('engage_drop reason=PLAYER_DEAD expected_tid=%d'):format(expected_tid))
+		_G.UC_LAST_SCHED_ACTION = ('[p1]engage:blocked:dead tid=%d'):format(expected_tid)
+		scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
+			tid = expected_tid,
+			name = tostring(selected.target_name or ''),
+			reason = 'BLOCK_PLAYER_DEAD',
+			status = player_status,
+		}, ('engage_dispatch_blocked:%d:dead'):format(expected_tid), 0.50)
+		return true, 'BLOCK_PLAYER_DEAD'
+	end
+	if player_status == 1 then
 		local cur = windower.ffxi.get_mob_by_target('t')
 		if cur and tonumber(cur.id) == expected_tid then
 			log_combat_sched(('engage_drop reason=ALREADY_ENGAGED expected_tid=%d'):format(expected_tid))
@@ -5230,20 +5336,27 @@ local function p1_dispatch_combat_engage(selected, settings, phase, expected_tid
 				tid = expected_tid,
 				name = tostring(selected.target_name or ''),
 				reason = 'BLOCK_ALREADY_ENGAGED',
+				status = player_status,
 			}, ('engage_dispatch_blocked:%d:already'):format(expected_tid), 0.50)
 			return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_ENGAGED'
 		end
 	end
 	_G.UC_ACTION_TIMELINE_CURRENT_ACTION = 'engage'
 	scheduler.p1_maybe_release_stale_spell_lock_for_target_transition(selected, now_s())
+	local pending = scheduler.p1_pending_engage_state(phase)
+	local retry_ready_at = tonumber(pending and pending.retry_ready_at) or 0
+	local retry_in_s = math.max(0, retry_ready_at - now_s())
 	local blocked, block_reason = engage_attack_on_action_state_gate({
 		explicit_attack_on = true,
-		player_status = tonumber(player and player.status) or 0,
+		player_status = player_status,
+		player_dead = player_dead,
 		target_selected = true,
 		target_valid = true,
 		target_id = expected_tid,
 		target_name = tostring(selected.target_name or ''),
 		dispatch_method = scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON,
+		retry_in_s = ('%.2f'):format(retry_in_s),
+		retry_count = tonumber(pending and pending.retry_count) or 0,
 	})
 	_G.UC_ACTION_TIMELINE_CURRENT_ACTION = nil
 	if blocked then

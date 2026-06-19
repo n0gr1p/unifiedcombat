@@ -1,4 +1,4 @@
-# T3.4m — Engage action-state bypass audit
+# T3.4n — Complete explicit attack-on action-state bypass audit
 
 ## Field-log evidence summary
 
@@ -31,56 +31,84 @@
   - engage debounce
 - `STALE_SPELL_LOCK_RELEASE` existed, but a stale combat-spell lock could still wait for `action_is_acting()` to clear first, so transition release could land late.
 
-## New explicit attack-on bypass behavior
+## Why T3.4m was partial
+
+- T3.4m correctly moved explicit `attack_on` off the old generic pre-send stall for stale WS/JA state.
+- But it still kept explicit engage behind:
+  - active `spell` action-state
+  - post-spell tail
+  - generic cooldown
+  - the narrow local action-state gate itself even when retry cadence and ownership already allowed another send
+- That was narrower than the intended policy for explicit `uc_attack.engage_target(...)`, which is allowed to try and let message id `94` drive bounded retry if the server still wants more time.
+
+## Completed T3.4n explicit attack-on bypass behavior
 
 - Scheduler engage now validates target selection/actionability first, then applies an explicit attack-on action-state gate.
 - For explicit `attack_on` engage while `status ~= 1` and the selected target is valid/current:
-  - stale WS action-state is bypassed
-  - stale JA action-state is bypassed
-  - stale spell cooldown/post-tail is bypassed
-  - stale generic cooldown is bypassed
+  - `weaponskill` action-state is bypassed
+  - `job_ability` action-state is bypassed
+  - `spell` action-state is bypassed
+  - `post_spell_tail` is bypassed
+  - generic `cooldown` is bypassed
 - Engage retry debounce is **not** bypassed.
-- Active in-progress spell casts are still held unless the old mob-target combat spell lock is proven stale by target transition and released immediately.
+- Pending-engage confirmation/retry state is still respected, but only for:
+  - confirmation wait
+  - retry cadence
+  - target validity
+  - critical Cure override
+- Explicit attack-on no longer uses generic scheduler action-state as a hard predictor for whether a retry attempt may be sent.
 
 ## What action-state kinds can be bypassed
 
-- `ws`
-- `ja`
-- stale `spell` cooldown / tail
-- stale generic cooldown from earlier non-engage action-state
+- `weaponskill`
+- `job_ability`
+- `spell`
+- `post_spell_tail`
+- `cooldown`
 
-## What action-state kinds still block
+## Remaining legitimate blockers
 
-- active in-progress `spell` cast that is not yet proven stale by target transition
 - explicit engage debounce from the last `attack_on` send
-- actual target-invalid / already-engaged / engage-send failure conditions outside action-state
+- pending-engage retry cadence not ready yet
+- invalid or non-actionable target
+- player already `status == 1`
+- dead player
+- critical Cure / true emergency defensive override
+- actual engage-send failure conditions outside action-state
 
 ## Wait-longer rejection relationship
 
-- This patch intentionally lets explicit attack-on attempt earlier.
+- T3.4n intentionally lets explicit attack-on attempt earlier and more consistently.
 - If the game still refuses that attempt due to true animation lockout, the existing raw action message id `94` path continues to drive bounded retry handling.
 - No new text fallback or ownership reroute was added.
-
-## Stale spell release timing change
-
-- Before patch:
-  - stale mob-target combat spell release could wait until `action_is_acting()` expired, which could be multiple seconds after target selection.
-- After patch:
-  - stale mob-target combat spell release can clear immediately on proven target transition, including the previously acting case, and now logs:
-    - `age_s`
-    - `immediate`
 
 ## Timeline additions
 
 - `ENGAGE_ACTION_STATE_BYPASS`
-- `ENGAGE_ACTION_STATE_HELD_ACTIVE_CAST`
-- `STALE_SPELL_LOCK_RELEASE` now includes `age_s` and `immediate`
+- bypass `kind` now reports:
+  - `weaponskill`
+  - `job_ability`
+  - `spell`
+  - `post_spell_tail`
+  - `cooldown`
+- bypass logs now also include:
+  - `tid`
+  - `name`
+  - `status`
+  - `retry_in_s`
+  - `retry_count`
+  - `dispatch_method`
+- engage holds now log exact remaining legitimate blockers such as:
+  - `pending_engage_retry_wait`
+  - `BLOCK_PLAYER_DEAD`
+  - `BLOCK_INVALID_TARGET`
+  - `BLOCK_ALREADY_ENGAGED`
 
 ## Risks
 
-- Explicit attack-on can now be attempted earlier against stale WS/JA/spell lock state; that is intentional.
+- Explicit attack-on can now be attempted earlier against WS/JA/spell/post-tail/cooldown state; that is intentional.
 - Engage debounce from T3.4l remains the anti-spam guardrail.
-- Active spell casts still remain conservative unless target transition proves the old mob-target spell state is stale.
+- Retry cadence from T3.4j/T3.4l still prevents every-tick spam.
 - No ownership policy or side-effect routing changed.
 
 ## Rollback note
@@ -93,7 +121,7 @@
 1. Set `_G.UC_DEBUG_ACTION_TIMELINE = true`.
 2. Reproduce a next-target transition where tank engage previously waited on stale WS/JA/spell state.
 3. Confirm `TARGET_SELECTED` is followed by prompt `ENGAGE_DISPATCH_ATTEMPT` / `ENGAGE_DISPATCHED` without repeated `ENGAGE_DISPATCH_BLOCKED` from stale WS/JA state.
-4. If stale action-state is present, confirm `ENGAGE_ACTION_STATE_BYPASS` logs the old `kind`.
-5. If a real active cast is still in progress, confirm `ENGAGE_ACTION_STATE_HELD_ACTIVE_CAST` appears instead of a bypass.
-6. Force a stale mob-target combat spell transition and confirm `STALE_SPELL_LOCK_RELEASE` now logs promptly with `age_s` and `immediate`.
-7. If the game still rejects the engage because it is too soon, confirm the existing `PENDING_ENGAGE_REJECTED_WAIT_LONGER` / retry flow remains intact.
+4. Confirm `ENGAGE_ACTION_STATE_BYPASS` logs one of `weaponskill`, `job_ability`, `spell`, `post_spell_tail`, or `cooldown` when explicit engage bypasses stale local action-state.
+5. If the game still rejects the engage because it is too soon, confirm the existing `PENDING_ENGAGE_REJECTED_WAIT_LONGER` / `PENDING_ENGAGE_RETRY_READY` flow remains intact and bounded.
+6. Confirm non-critical Cure, maintenance, and Sleep still stay behind pending engage, while critical Cure can still override.
+7. Confirm dead-player, invalid-target, and already-engaged cases now log their explicit blocker reason without changing ownership routing.

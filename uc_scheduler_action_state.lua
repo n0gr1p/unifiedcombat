@@ -2,6 +2,28 @@ local M = {}
 local ENGAGE_ACTION_TAIL_S = 0.35
 local SPELL_SUCCESS_TAIL_S = 0.2
 
+local function engage_bypass_kind(st, reason, now)
+	local send_kind = tostring(st.last_send_kind or '')
+	local timeline_reason = tostring(st.timeline_last_engage_block_reason or '')
+	local post_spell_tail_until = tonumber(st.post_spell_tail_until) or 0
+	if send_kind == 'ws' then
+		return 'weaponskill'
+	end
+	if send_kind == 'ja' then
+		return 'job_ability'
+	end
+	if send_kind == 'spell' then
+		if reason == 'BLOCK_ACTION_ACTING' then
+			return 'spell'
+		end
+		if timeline_reason == 'BLOCK_POST_SPELL_TAIL' or (post_spell_tail_until > 0 and now < post_spell_tail_until) then
+			return 'post_spell_tail'
+		end
+		return 'cooldown'
+	end
+	return 'cooldown'
+end
+
 function M.action_state(scheduler)
 	scheduler.action_state = scheduler.action_state or {}
 	return scheduler.action_state
@@ -252,37 +274,32 @@ function M.engage_attack_on_action_state_gate(scheduler, now_s, globals, meta)
 	if meta.explicit_attack_on ~= true then
 		return true, reason
 	end
+	if meta.player_dead == true then
+		return true, 'BLOCK_PLAYER_DEAD'
+	end
 	if tonumber(meta.player_status) == 1 then
-		return true, reason
+		return true, 'BLOCK_ALREADY_ENGAGED'
 	end
 	if meta.target_selected ~= true or meta.target_valid ~= true then
-		return true, reason
+		return true, 'BLOCK_INVALID_TARGET'
 	end
 	local send_kind = tostring(st.last_send_kind or '')
 	local status_value = tonumber(meta.player_status) or 0
 	local timeline_log = rawget(globals, 'UC_ACTION_TIMELINE_LOG')
-	if send_kind == 'spell' and M.action_is_acting(scheduler, now_s) then
-		if type(timeline_log) == 'function' then
-			pcall(timeline_log, 'ENGAGE_ACTION_STATE_HELD_ACTIVE_CAST', {
-				tid = tonumber(meta.target_id) or 0,
-				name = tostring(meta.target_name or ''),
-				status = status_value,
-				kind = send_kind,
-				reason = tostring(reason or 'BLOCK_ACTION_ACTING'),
-			}, ('engage_action_state_held:%d'):format(tonumber(meta.target_id) or 0), 0.25)
-		end
-		return true, reason
-	end
 	if send_kind == 'engage' then
 		return true, reason
 	end
+	local bypass_kind = engage_bypass_kind(st, tostring(reason or ''), now)
 	if type(timeline_log) == 'function' then
 		pcall(timeline_log, 'ENGAGE_ACTION_STATE_BYPASS', {
 			tid = tonumber(meta.target_id) or 0,
 			name = tostring(meta.target_name or ''),
 			status = status_value,
-			kind = send_kind,
+			kind = bypass_kind,
 			reason = tostring(reason or 'BLOCK_ACTION_STATE'),
+			retry_in_s = tostring(meta.retry_in_s or ''),
+			retry_count = tostring(meta.retry_count or ''),
+			dispatch_method = tostring(meta.dispatch_method or ''),
 		}, ('engage_action_state_bypass:%s:%d'):format(send_kind, tonumber(meta.target_id) or 0), 0.25)
 	end
 	return false, nil

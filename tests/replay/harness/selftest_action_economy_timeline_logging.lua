@@ -37,8 +37,8 @@ end
 
 local function format_fields(fields)
     local order = {
-        "tid", "name", "spell", "action", "provider", "band", "urgency", "critical", "reason",
-        "status", "from", "to", "target", "target_id", "old_target_id", "message_id", "retry_in_s", "retry_count", "age_s", "remaining_s", "tail_s", "kind", "command", "dispatch_method", "pending_engage", "sent_for_target"
+        "tid", "name", "role", "tank", "spell", "action", "provider", "band", "urgency", "critical", "reason",
+        "status", "from", "to", "target", "target_id", "old_target_id", "message_id", "retry_in_s", "retry_count", "age_s", "remaining_s", "tail_s", "kind", "command", "dispatch_method", "pending_engage", "sent_for_target", "pull_owner", "target_valid", "range", "claim_check", "action_state", "top_family", "top_provider", "top_action"
     }
     local parts = {}
     local seen = {}
@@ -104,6 +104,8 @@ local function main()
         "TARGET_SELECT_BLOCKED",
         "TARGET_SELECT_DEBOUNCED",
         "ENGAGE_PROPOSED",
+        "ENGAGE_PROPOSAL_CREATED",
+        "ENGAGE_PROPOSAL_SKIPPED",
         "ENGAGE_PREEMPT_SELECTED",
         "ENGAGE_DISPATCH_ATTEMPT",
         "ENGAGE_DISPATCHED",
@@ -114,7 +116,6 @@ local function main()
         "ENGAGE_DUPLICATE_RESET_TARGET_CHANGE",
         "ENGAGE_DUPLICATE_RESET_REJECTION",
         "ENGAGE_ACTION_STATE_BYPASS",
-        "ENGAGE_ACTION_STATE_HELD_ACTIVE_CAST",
         "PENDING_ENGAGE_START",
         "PENDING_ENGAGE_CONFIRMED",
         "PENDING_ENGAGE_TIMEOUT",
@@ -157,6 +158,7 @@ local function main()
         "BLOCK_DEBOUNCE",
         "BLOCK_INVALID_TARGET",
         "BLOCK_ALREADY_ENGAGED",
+        "BLOCK_PLAYER_DEAD",
         "BLOCK_UNKNOWN",
     }
     for i = 1, #blocker_codes do
@@ -165,18 +167,24 @@ local function main()
 
     assert_contains(scheduler_source, "action_timeline_log('TARGET_SELECTED'", "enabled timeline logging must record target selected events")
     assert_contains(scheduler_source, "action_timeline_log('ENGAGE_PROPOSED'", "enabled timeline logging must record engage proposed events")
+    assert_contains(scheduler_source, "p1_log_engage_proposal_probe('ENGAGE_PROPOSAL_CREATED'", "enabled timeline logging must record engage proposal creation probes")
+    assert_contains(scheduler_source, "p1_log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED'", "enabled timeline logging must record engage proposal skip probes")
     assert_contains(scheduler_source, "action_timeline_log('ENGAGE_DISPATCHED'", "enabled timeline logging must record engage dispatched events")
     assert_contains(scheduler_source, "action_timeline_log('ENGAGE_DUPLICATE_SUPPRESSED'", "enabled timeline logging must record engage duplicate suppression events")
     assert_contains(action_state_source, "ENGAGE_ACTION_STATE_BYPASS", "enabled timeline logging must include explicit engage action-state bypass events")
-    assert_contains(action_state_source, "ENGAGE_ACTION_STATE_HELD_ACTIVE_CAST", "enabled timeline logging must include active-cast hold events")
     assert_contains(scheduler_source, "action_timeline_log('PENDING_ENGAGE_START'", "enabled timeline logging must record pending engage start events")
     assert_contains(scheduler_source, "action_timeline_log('PENDING_ENGAGE_REJECTED_WAIT_LONGER'", "enabled timeline logging must record engage rejection events")
+    assert_contains(scheduler_source, "reason = 'pending_engage_retry_wait'", "enabled timeline logging must record retry-cadence engage holds")
     assert_contains(scheduler_source, "action_timeline_log('PENDING_ENGAGE_BLOCK_NONCRITICAL'", "enabled timeline logging must record pending engage block events")
     assert_contains(scheduler_source, "action_timeline_log('STALE_SPELL_LOCK_RELEASE'", "enabled timeline logging must record stale spell release events")
     assert_contains(scheduler_source, "'remaining_s'", "timeline field formatting must allow engage duplicate remaining debounce timing")
     assert_contains(scheduler_source, "'dispatch_method'", "timeline field formatting must allow engage dispatch-method annotations")
     assert_contains(scheduler_source, "'pending_engage'", "timeline field formatting must allow pending engage state annotations")
     assert_contains(scheduler_source, "'sent_for_target'", "timeline field formatting must allow sent-for-target engage annotations")
+    assert_contains(scheduler_source, "'pull_owner'", "timeline field formatting must allow engage proposal pull-owner annotations")
+    assert_contains(scheduler_source, "'claim_check'", "timeline field formatting must allow engage proposal claim annotations")
+    assert_contains(scheduler_source, "'action_state'", "timeline field formatting must allow engage proposal action-state annotations")
+    assert_contains(scheduler_source, "'top_family'", "timeline field formatting must allow engage proposal competing-top annotations")
     assert_contains(scheduler_source, "'immediate'", "timeline field formatting must allow immediate stale-release annotations")
     assert_contains(scheduler_source, "CRITICAL_CURE_DISPATCHED", "enabled timeline logging must classify critical Cure dispatch events")
     assert_contains(scheduler_source, "NONCRITICAL_CURE_DISPATCHED", "enabled timeline logging must classify non-critical Cure dispatch events")

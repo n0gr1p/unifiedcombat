@@ -23,6 +23,18 @@ local function find_entry(entries, fixture_id)
 end
 
 local function main()
+    local scheduler_source = assert(io.open(scheduler_path or "unified_scheduler.lua", "r"))
+    local scheduler_text = scheduler_source:read("*a")
+    scheduler_source:close()
+    assert_true(
+        scheduler_text:find("scheduler%.p1_set_pending_globals", 1) ~= nil,
+        "dryrun publish wiring must pass scheduler.p1_set_pending_globals"
+    )
+    assert_true(
+        scheduler_text:find("scheduler%.p1_build_lock_summary", 1) ~= nil,
+        "dryrun publish wiring must pass scheduler.p1_build_lock_summary"
+    )
+
     local result = runner.run_suite(fixtures, {
         suite_id = "dryrun_publish",
     })
