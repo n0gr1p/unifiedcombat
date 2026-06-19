@@ -179,6 +179,7 @@ public partial class MainForm
             ["partner_entries"] = string.Join("|", _partnerRows.Select(r => $"{r.Id}:{r.Name}")),
             ["target_ignore_entries"] = string.Join("|", _targetIgnoreRows.Select(r => $"{r.Slot}:{r.Name}")),
             ["add_priority_entries"] = string.Join("|", _addPriorityRows.Select(r => $"{r.Slot}:{r.Name}")),
+            ["sleep_spell_entries"] = string.Join("|", _sleepSpellRows.Select(r => $"{r.Slot}:{r.Name}")),
             ["weaponskill"] = (_wsCombo.Text ?? "").Trim(),
             ["ws1"] = (_wsCombo.Text ?? "").Trim(),
             ["ws_mode"] = string.Equals(_wsModeCombo.SelectedItem?.ToString(), "Primary Only (No SC)", StringComparison.Ordinal) ? "primary_no_sc" : "smart",
@@ -252,6 +253,7 @@ public partial class MainForm
             ["partner_entries"] = "",
             ["target_ignore_entries"] = "",
             ["add_priority_entries"] = "",
+            ["sleep_spell_entries"] = "1:Horde Lullaby II",
             ["cor_roll_1"] = "",
             ["cor_roll_2"] = "",
             ["cor_roll_options"] = "",
@@ -467,6 +469,38 @@ public partial class MainForm
         if (!root.ContainsKey("spacing_band_deadband"))
         {
             root["spacing_band_deadband"] = 0.2;
+            changed = true;
+        }
+
+        if (!root.ContainsKey("sleep_spell_entries"))
+        {
+            var migratedSleep = new List<string>();
+            if (root.TryGetPropertyValue("sleepspells", out var sleepListNode) && sleepListNode is JsonArray sleepArray)
+            {
+                for (var i = 0; i < sleepArray.Count; i++)
+                {
+                    var raw = sleepArray[i]?.GetValue<string>() ?? "";
+                    var trimmed = raw.Trim();
+                    if (trimmed.Length > 0)
+                    {
+                        migratedSleep.Add(trimmed);
+                    }
+                }
+            }
+            if (migratedSleep.Count == 0 && root.TryGetPropertyValue("sleepspell", out var sleepNode) && sleepNode is not null)
+            {
+                var raw = sleepNode.GetValue<string>() ?? "";
+                var trimmed = raw.Trim();
+                if (trimmed.Length > 0)
+                {
+                    migratedSleep.Add(trimmed);
+                }
+            }
+            if (migratedSleep.Count == 0)
+            {
+                migratedSleep.Add("Horde Lullaby II");
+            }
+            root["sleep_spell_entries"] = string.Join("|", migratedSleep.Select((name, idx) => $"{idx + 1}:{name}"));
             changed = true;
         }
 

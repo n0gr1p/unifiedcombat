@@ -5,9 +5,213 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 
 ## 1) Overall Status Snapshot
 
-- Current phase focus: non-runtime replay harness and extracted-helper fixture coverage.
-- Completed in this phase: core harness foundation plus fixture suites for extracted modules.
-- Not started in this phase: dispatcher ownership migration, provider extraction/cutover, movement ownership runtime migration, legacy fallback removal.
+- Current phase focus: scheduler runtime parity slices that stay inside existing ownership policy, plus replay/static coverage for those slices.
+- Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.4b`.
+- Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
+
+## Latest Task Notes
+
+### `T3.4i` Add focused action-economy timeline logging for target/engage/cure/buff ordering
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `uc_scheduler_action_state.lua`
+  - `tests/replay/harness/selftest_action_economy_timeline_logging.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `docs/action_economy_timeline_logging.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Runtime behavior:
+  - Added a default-off action-economy timeline logger behind `_G.UC_DEBUG_ACTION_TIMELINE = true`.
+  - Timeline output is passive, event-only, and rate-limited; no ranking or ownership behavior changes when disabled.
+  - Logging covers target acquisition, engage proposal/dispatch, status transitions, Cure/maintenance/Sleep proposal+dispatch, spell start/success/failure, and engage-relevant action-state blocking/release.
+- Validation summary:
+  - Added focused static+mock coverage for default-off gating, event code coverage, blocker code coverage, low-noise formatting, and rate-limited repeated blocker logging.
+  - Kept T3.4g/T3.4h behavior unchanged and did not add direct scheduler side-effect calls.
+- Field-test instructions:
+  - Set `_G.UC_DEBUG_ACTION_TIMELINE = true`, reload, and compare per-character `action_timeline_<character>.log` files for tank vs DPS pull timing.
+  - Inspect the ordering of `TARGET_SELECTED`, `ENGAGE_PROPOSED`, `ENGAGE_DISPATCHED`, `STATUS_CHANGED`, and any Cure/maintenance/Sleep dispatch events.
+
+### `T3.4h` Prevent engage dispatch from being starved by non-critical actions and stale post-spell lockout
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `uc_scheduler_action_state.lua`
+  - `tests/replay/harness/selftest_engage_dispatch_priority.lua`
+  - `tests/replay/harness/selftest_tank_engage_priority.lua`
+  - `tests/replay/harness/selftest_scheduler_spell_success_action_state.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `docs/engage_dispatch_priority_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Runtime behavior:
+  - Added a narrow engage-preemption rule so a valid engage proposal is selected ahead of non-critical Cure, maintenance buffs, Sleep, and other routine actions once the next target is already selected.
+  - Preserved the critical Cure exception using the existing critical-threshold classification.
+  - Shortened generic local spell success/interruption lockout for engage follow-up and explicitly clear matching tank spell wait on local spell completion/failure.
+- Validation summary:
+  - Added focused coverage for engage winning over non-critical action competition, the preserved critical Cure exception, and bounded generic post-spell action-state release after confirmed spell success/interruption.
+  - Kept T3.4g target acquisition intact and left ownership/default-off policy unchanged.
+- Field-test instructions:
+  - Verify a selected valid target engages promptly even when non-critical self-buffs, routine Cure, or Sleep are also available.
+  - Verify critical Cure still wins first at or below the existing critical HP threshold.
+  - Verify completed or interrupted spells no longer leave a visible stale engage lockout.
+
+### `T3.4g` Decouple next-target acquisition from tank defensive action economy
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_target_acquire_nonblocking.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `docs/target_acquire_nonblocking_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Runtime behavior:
+  - Added a narrow pre-action nonblocking target-acquire lane that runs before ranked action dispatch and before defensive spell wait can stall the tick.
+  - Target acquisition still uses the existing target ownership helper seam, but no longer creates a normal pending action lock that can couple target selection to spell/JA/WS action economy.
+  - A short role-neutral `0.20` second debounce remains to prevent target-selection spam.
+- Validation summary:
+  - Added focused static+mock coverage for target acquisition proceeding promptly despite pending Cure, maintenance, Sleep, and critical defensive action contexts, while preserving existing target safety gates and no-direct-side-effect ownership rules.
+  - T3.4f engage priority remains intact; this patch decouples the earlier target-acquire stage only.
+- Field-test instructions:
+  - Compare tank and non-tank next-target selection on the same pull flow and verify both acquire the next valid target promptly.
+  - Verify critical Cure may still win action dispatch, but does not delay target selection itself.
+  - Verify target selection does not spam repeatedly on the same mob.
+
+### `T3.4f` Prioritize tank next-target engage above non-critical defensive actions
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_tank_engage_priority.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `docs/tank_engage_priority_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Runtime behavior:
+  - Restored explicit scoped engage priority values inside `p1_collect_combat_engage(...)`, fixing a ranking bug where tank engage could lose because undefined locals collapsed its effective score.
+  - Raised tank-only pre-engage target acquisition above non-critical defensive actions so tanks can acquire the next valid mob before engage is available.
+  - Kept critical Cure above both tank target acquire and tank engage, and left non-tank behavior unchanged.
+- Validation summary:
+  - Added focused static+mock coverage for tank target-acquire/engage outranking non-critical Cure, maintenance buffs, and Sleep; preserved the critical Cure exception; and confirmed duplicate engage suppression remains intact.
+  - No direct scheduler side-effect call expressions were introduced, and ownership promotion/default-off policy did not change.
+- Field-test instructions:
+  - With `tank` and `autotarget` enabled, verify an unengaged tank acquires and engages the next valid target before spending another non-critical Cure/support action.
+  - Verify critical Cure still wins when HP is at or below the existing critical threshold.
+  - Verify non-tank characters still behave as before.
+
+### `T3.4e` Hotfix scheduler Sleep runtime nil helper `p1_target_distance_to_id`
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_scheduler_sleep_toggle.lua`
+  - `docs/scheduler_sleep_toggle_parity.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Runtime behavior:
+  - Fixed one invalid bare `p1_target_distance_to_id(...)` callsite by routing it through the existing shared helper table as `p1_combat_helpers.target_distance_to_id(...)`.
+  - No Sleep feature behavior changed beyond removing the runtime nil-helper crash.
+  - The hard `6.0`-yalm Sleep boundary, first-available configured spell selection, and T3.4d slept-target suppression remain unchanged.
+- Validation summary:
+  - Added static coverage that fails if the scheduler reintroduces a bare `p1_target_distance_to_id(...)` call where only the shared helper-table function exists.
+  - Added mock coverage for the target-id spell revalidation path used by Sleep sends, including both inside-`6.0` and beyond-`6.0` yalm paths.
+- Field-test instructions:
+  - Keep `Sleep` enabled, present an eligible add within `6.0` yalms, and confirm the scheduler casts without any `p1_target_distance_to_id` runtime error.
+  - Move an otherwise eligible add beyond `6.0` yalms and confirm the scheduler still rejects the cast.
+  - Sleep target A, then verify target A stays suppressed while target B can still be slept independently.
+
+### `T3.4d` Prevent redundant Sleep casts on already-slept targets
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_scheduler_sleep_toggle.lua`
+  - `tests/replay/harness/selftest_sleep_target_state_suppression.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `docs/scheduler_sleep_toggle_parity.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Runtime behavior:
+  - Scheduler Sleep now rejects targets already controlled by a configured Sleep-family effect before proposing another Sleep cast.
+  - Detection prefers the existing scheduler enemy-effect map using configured Sleep-family status ids, then falls back to a bounded local success cache keyed by target id after confirmed local combat Sleep success.
+  - The bounded local cache expires after `45.0` seconds and clears on death, despawn/invalid-target sweep, zoning, or known sleep-effect removal.
+  - Ordered first-available Sleep spell selection remains intact for other eligible unslept mobs, including while not engaged, and the `6.0`-yalm target boundary remains unchanged.
+- Validation summary:
+  - Added focused static+mock coverage for already-slept target suppression, per-target scoping, timeout expiry, death clear, effect-tracking precedence, and unchanged first-available spell fallback behavior.
+  - No direct scheduler side-effect call expressions were introduced, and ownership promotion/default-off policy remains unchanged.
+  - Requested validation sweep passed: `luac -p UnifiedCombat.lua`, `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_targeting_common.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_sleep_target_state_suppression.lua`, `lua tests/replay/harness/selftest_scheduler_sleep_toggle.lua`, `lua tests/replay/harness/selftest_sleep_spell_selection.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, and `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+- Field-test instructions:
+  - Enable `Sleep` with an ordered Sleep spell list and verify the first successful Sleep on target A suppresses repeat Sleep casts on target A.
+  - While target A remains slept, present target B and verify the scheduler still uses the first available configured Sleep spell on target B.
+  - Verify suppression clears naturally after wake/death/despawn or after the bounded timeout if no exact live effect state is available.
+
+### `T3.4b` complete Sleep spell list UI integration and resolve T3.4a validation blockers
+
+- Status: `DONE`
+- Changed files:
+  - `UnifiedCombat.lua`
+  - `remote_bridge.lua`
+  - `unified_scheduler.lua`
+  - `UnifiedCombatWinForms/MainForm.cs`
+  - `UnifiedCombatWinForms/MainForm.ParityUi.cs`
+  - `UnifiedCombatWinForms/MainForm.ParityLogic.cs`
+  - `UnifiedCombatWinForms/MainForm.ProfileStore.cs`
+  - `tests/replay/harness/selftest_scheduler_sleep_toggle.lua`
+  - `tests/replay/harness/selftest_sleep_spell_selection.lua`
+  - `tests/replay/harness/selftest_side_effect_inventory.lua`
+  - `docs/scheduler_sleep_toggle_parity.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Runtime behavior:
+  - The real WinForms UI now owns an ordered **Sleep spells** list and sends list edits through `remote_bridge.lua` into the same `settings.sleepspells` data used by slash commands.
+  - `settings.sleepspell` remains the backward-compatible first-entry mirror of the ordered list.
+  - Scheduler Sleep behavior is unchanged apart from remaining parse-clean under Lua 5.1; Sleep still works while not engaged and still uses the first available configured spell.
+- Validation summary:
+  - Fixed the Lua 5.1 parse blocker by moving Sleep/spell-target helper logic onto a shared `p1_combat_helpers` table, reducing top-level chunk locals without changing behavior.
+  - Confirmed the side-effect inventory mismatches were line-pin drift only and updated `UnifiedCombat.lua | windower.ffxi.run(` to line `355` plus `remote_bridge.lua | windower.send_command(` to line `1572`.
+  - Requested Lua validation sweep now passes, and `UnifiedCombatWinForms.csproj` also builds cleanly in `Release`.
+- Field-test instructions:
+  - Open the session in WinForms, toggle `Sleep`, edit the ordered **Sleep spells** list, and click Save so the bridge pushes the list into runtime settings.
+  - Verify `//uc sleep list` matches the UI order, then verify Sleep still falls through to the next configured spell when the first choice is unavailable.
+  - Verify Sleep remains usable pre-engage / while not engaged and does not steal the current kill target.
+
+### `T3.4c` enforce 6-yalm Sleep target boundary in scheduler Sleep behavior
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_scheduler_sleep_toggle.lua`
+  - `tests/replay/harness/selftest_sleep_spell_selection.lua`
+  - `docs/scheduler_sleep_toggle_parity.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Runtime behavior:
+  - Scheduler Sleep now enforces a hard `SLEEP_MAX_TARGET_DISTANCE = 6.0` rule before proposal emission.
+  - Selected spell range still matters, but the effective allowed range is now `min(spell cast range, 6.0)`.
+  - First-available spell selection remains intact; it only runs on targets inside the 6-yalm Sleep boundary.
+- Validation summary:
+  - Added static+mock coverage for pre-engage and engaged Sleep inside `6.0` yalms, rejection beyond `6.0`, and fallback-to-next-spell behavior within the hard boundary.
+  - No scheduler ownership routing changed and no new direct scheduler side-effect expressions were introduced.
+- Field-test instructions:
+  - Keep `Sleep` enabled, position an eligible add at `6.0` yalms or closer, and verify Sleep can still trigger.
+  - Move an otherwise eligible add just beyond `6.0` yalms and verify no Sleep proposal/cast occurs even when the configured spell would normally reach farther.
+  - Verify both pre-engage and engaged add-control Sleep obey the same `6.0`-yalm limit.
+
+### `T3.4a` scheduler-owned Sleep toggle with UI-owned configurable Sleep spell list
+
+- Status: `DONE`
+- Changed files:
+  - `UnifiedCombat.lua`
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_scheduler_sleep_toggle.lua`
+  - `tests/replay/harness/selftest_sleep_spell_selection.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `docs/scheduler_sleep_toggle_parity.md`
+- Runtime behavior:
+  - Existing `sleep` toggle now gates a scheduler-owned Sleep proposal path when scheduler combat ownership is active.
+  - Sleep spell selection is now driven by ordered `settings.sleepspells`, with legacy `settings.sleepspell` preserved as a backward-compatible first-entry mirror.
+  - Scheduler Sleep casts send by target id through the existing combat spell ownership seam, so Sleep can work while not engaged without hijacking the current target.
+- Validation summary:
+  - Added focused static+mock coverage for ordered Sleep spell selection and scheduler Sleep proposal gating/ranking.
+  - Full requested validation command set pending per-task run after code/doc updates.
+- Field-test instructions:
+  - Use `//uc sleep list|set <spell>|add <spell>|remove <n>|clear` to configure the ordered spell list.
+  - Enable scheduler combat ownership, turn `sleep` on, and verify Sleep triggers only for live eligible adds and falls through to the next configured spell when the first choice is unavailable.
 
 ## 2) Progress Board
 
@@ -97,6 +301,23 @@ Legend:
 | T3.2a alliance target-scope audit for targeting, claim, and aggro validity | DONE | Added a docs-only audit of party-only target-validity assumptions across core, scheduler, and fight-leader helpers; identified the central party-only claim/id collectors that should become friendly combat group helpers for alliance support; paused T3.1b temporarily; and left runtime behavior unchanged. |
 | T3.2b alliance-aware friendly combat target scope | DONE | Added default-off alliance-aware friendly combat member helpers in `uc_targeting_common.lua` and wired them into low-risk claim validity, prime/aggressive-target inference, scheduler engage/dispel claim checks, and tank victim detection while intentionally leaving fight-leader, follow/pathing, spacing, and party TP/WS observation party-only. |
 | T3.2c alliance target-scope field-test closure | DONE | Documented the successful T3.2b field-test PASS, confirmed no regressions were observed, kept the alliance scope flag optional for now, and unpaused the scheduler ownership track so `T3.1b` can resume next without changing runtime behavior. |
+| T3.1b replay/mock coverage for remaining Doom and combat-spell default-off ownership branches | DONE | Added focused static+mock coverage for the Doom Holy Water command, Doom run_stop, combat spell settle run_stop, and combat spell prep-wait run_stop default-off branches, confirmed they remain explicit `== true` paths with fallback preserved, and left runtime behavior unchanged. |
+| T3.1c combat-spell default-off run_stop promotion policy decision | DONE | Documented that the combat-spell settle/prep-wait run_stop pair are future promotion candidates only after targeted live confirmation, kept Doom command/run_stop intentionally default-off, and left runtime behavior unchanged. |
+| T3.1d targeted combat-spell run_stop field-test packet | DONE | Added a focused field-test packet for the combat-spell settle/prep-wait run-stop pair, kept Doom branches outside the packet, and left runtime behavior unchanged. |
+| T3.1e scheduler tank-spell movement-lock mismatch fix | DONE | Fixed the scheduler tank-spell runtime bug where movement could resume after the pre-send stop while the spell was still in flight by adding a bounded scheduler-local tank-spell wait lock; ownership promotion policy remains unchanged. |
+| T3.1e cure-cast movement-stop audit correction | DONE | Audited the corrected Cure-cast movement-stop report, found the most likely source in the scheduler defensive Cure paths rather than tank spell routing, documented the missing stop/lock lifecycle, and left runtime behavior unchanged. |
+| T3.1f scheduler defensive Cure movement-stop/lock lifecycle fix | DONE | Fixed the scheduler defensive Cure/spell runtime bug by adding a bounded scheduler-owned stop/lock lifecycle at the direct and ranked defensive internal spell send points, while leaving ownership promotion policy unchanged. |
+| T3.1g defensive Cure priority audit and chooser fix | DONE | Audited defensive candidate generation and confirmed valid Cure candidates were losing to normal self-buff selection in `choose_defensive_action(...)`; applied the first narrow chooser fix for ordinary self-buff preemption, which was later refined in T3.1h after Majesty-over-Cure field-use correction. |
+| T3.1h Majesty-over-Cure restoration and defensive JA-to-Cure follow-up | DONE | Restored Majesty as a special defensive setup action that can beat Cure, kept ordinary self-buffs from beating valid Cure candidates, and added a bounded defensive-only Majesty->Cure action-state allowance so the follow-up Cure is not delayed behind the generic JA acting/cooldown block. |
+| T3.1i bounded JA/WS weave allowance between repeated Cure actions | DONE | Added a narrow final-selection weave policy so repeated non-critical defensive Cure sends can allow exactly one eligible combat JA or WS between Cure casts, without restoring ordinary self-buff starvation or changing ownership policy. |
+| T3.1i hb_buff_maint Majesty preference in defensive buff candidate selection | DONE | Confirmed the remaining Majesty gap was upstream of the chooser and updated `uc_hb_buff_maint.choose(...)` so an eligible missing ready Majesty candidate is surfaced ahead of other ordinary defensive buffs, while preserving existing readiness/recast/missing/throttle gates and leaving ownership policy unchanged. |
+| T3.1j cast interruption action-state audit | DONE | Audited incoming `0x029` action-message handling and found broad self action-message packet-end wiring plus core pull/tank spell retry clearing, but no exact `<playername>'s casting is interrupted` handling and no scheduler defensive spell-wait interruption bridge; no runtime behavior changed. |
+| T3.1k local-player scheduler defensive spell interruption handling | DONE | Added a narrow scheduler `0x029` local-player defensive spell interruption/failure bridge that clears scheduler defensive spell wait, clears/shortens local defensive spell action-state cooldown, and only shortens scheduler-owned movement lock; unrelated JA/WS/core state and ownership policy remain unchanged. |
+| T3.1l spell cast start/success handling audit | DONE | Audited local-player and other-player spell start/success handling across action packets and raw `0x029` action messages, confirmed scheduler action-state start/end behavior, and documented that scheduler defensive spell success still releases by later polling instead of an explicit success bridge; no runtime behavior changed. |
+| T3.1m local-player scheduler defensive spell success handling | DONE | Added a narrow scheduler `0x029` local-player defensive spell success bridge that clears scheduler defensive spell wait promptly, shortens local defensive spell action-state and scheduler-owned movement lock to bounded tails, removes `spell_finish` from the scheduler start-marker bucket, and leaves ownership policy unchanged. |
+| T3.1n delayed target acquisition and engage audit | DONE | Audited the full death→target→engage pipeline and found the strongest evidence-backed delay candidate in scheduler action-state: successful engage sends enter the generic 8-second acting timeout path via `action_mark_sent('engage')`, but no engage-specific completion bridge is visible; target-control/engage sequencing and short engaged/sticky windows appear secondary. No runtime behavior changed and no diagnostics were added. |
+| T3.1o scheduler engage action-state release fix | DONE | Added a narrow engage-specific scheduler action-state policy so successful engage sends no longer enter the generic 8-second acting timeout path, and now leave only a short bounded cooldown debounce while preserving duplicate/pending suppression and leaving spell/JA/WS timing and ownership policy unchanged. |
+| T3.4a scheduler-owned Sleep toggle with UI-owned configurable Sleep spell list | DONE | Added ordered `sleepspells` settings + legacy `sleepspell` migration in `UnifiedCombat.lua`, added a scheduler combat Sleep proposal path with first-available spell selection in `unified_scheduler.lua`, preserved existing ownership promotion/default-off policy, and added focused static+mock replay coverage plus parity docs. |
 | 0x063 status snapshot parser fixtures | DONE | Real extracted parser module covered by permanent fixtures and suite. |
 | Enemy effect utils fixtures | DONE | Full helper coverage including edge-case top-up completed. |
 | Text utils fixtures | DONE | Core text normalization/decoding/splitting helpers covered. |
@@ -776,6 +997,293 @@ Historical recommendation: T2.5g created a Windower-free target-select ownership
 
 - 2026-06-14: Completed T3.2c documentation closure for alliance target scope. Updated `docs/TestResults/alliance_target_scope_t3_2b_results.md`, `docs/alliance_target_scope_audit.md`, and `docs/UnifiedCombat_scheduler_refactor_tracking.md` to record the successful T3.2b field-test PASS, confirm that flag-off party-only behavior remained preserved, note that no regressions were observed, and keep `_G.UC_ENABLE_ALLIANCE_TARGET_SCOPE` optional for now as a controlled gameplay expansion. No runtime behavior changed. The scheduler ownership track is now unpaused and `T3.1b` should resume next. Validation: `lua tests/replay/harness/selftest_alliance_target_scope.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
 
+### 2.45 T3.1b replay/mock coverage for remaining Doom and combat-spell default-off ownership branches
+
+| Item | Details |
+| --- | --- |
+| New test | Added `tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`. |
+| Coverage approach | Static scheduler branch verification plus helper-level mock execution for explicit true routing and fallback preservation. |
+| Branches covered | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP`, `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`, `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`, and `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`. |
+| Default-off status | All four remain explicit `== true` branches with no promotion in this task. |
+| Kill switch interaction | Verified these four branches do not gain promoted default-on / false-opt-out / kill-switch wiring. |
+| Runtime impact | No runtime behavior changed. |
+| Recommended next task | `T3.1c — decide whether combat-spell default-off run_stop branches are promotion candidates or should remain intentionally default-off pending targeted live confirmation`. |
+
+- 2026-06-14: Completed T3.1b replay/mock coverage for the remaining Doom and combat-spell default-off ownership branches. Added `tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua` and registered it in the aggregate replay suite, using static branch verification plus helper-level mock execution to prove default-off semantics, explicit true routing through the intended ownership helpers, preserved fallback behavior, and absence of promoted kill-switch/default-on wiring for the four scoped branches. Updated `docs/scheduler_remaining_run_stop_coverage_plan.md`, `docs/scheduler_ownership_promotion_plan.md`, `docs/scheduler_ownership_promotion_readiness_audit.md`, and this tracker to reflect the new coverage status. No runtime behavior changed. Validation: `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.46 T3.1c combat-spell default-off run_stop promotion policy decision
+
+| Item | Details |
+| --- | --- |
+| Scope | Docs-only decision for `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` and `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`, while confirming Doom branches remain default-off. |
+| Combat-spell decision | Do not promote now; require a targeted live field-test packet before any promotion decision. |
+| Doom policy | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP` and `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP` remain intentionally default-off with no real Doom live-test recommendation. |
+| Runtime impact | No runtime behavior changed. |
+| Recommended next task | `T3.1d — targeted combat-spell run_stop field-test packet for settle/prep-wait branches`. |
+
+- 2026-06-14: Completed T3.1c promotion-policy decision for the combat-spell default-off run_stop branches. Applied the T3.1b coverage status to the planning docs, recorded that replay/mock confidence is strong for ownership routing but still insufficient to replace targeted live confirmation of settle/prep-wait timing behavior, kept both combat-spell run_stop flags default-off pending a focused field-test packet, and reaffirmed that the Doom command/run_stop pair remain intentionally default-off without recommending real Doom live testing. Updated `docs/scheduler_remaining_run_stop_coverage_plan.md`, `docs/scheduler_ownership_promotion_plan.md`, `docs/scheduler_ownership_promotion_readiness_audit.md`, and this tracker. No runtime behavior changed. Validation: `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.47 T3.1d targeted combat-spell run_stop field-test packet
+
+| Item | Details |
+| --- | --- |
+| New doc | Added `docs/scheduler_combat_spell_run_stop_field_test_packet.md`. |
+| Packet scope | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` and `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` only. |
+| Excluded scope | Doom command/run_stop, tank run-stop paths, and vector run ownership are explicitly outside this packet. |
+| Runtime impact | No runtime behavior changed. |
+| Recommended next action | Run the packet and record field results before any promotion decision. |
+
+- 2026-06-14: Completed T3.1d targeted combat-spell run-stop field-test packet. Added `docs/scheduler_combat_spell_run_stop_field_test_packet.md` with purpose, exact flags under test, required local flag setup, a safe local flag snippet, setup guidance, scenario list, pass/fail criteria, a copy/paste result template, and explicit promotion-decision rules. Updated `docs/scheduler_remaining_run_stop_coverage_plan.md`, `docs/scheduler_ownership_promotion_plan.md`, `docs/scheduler_ownership_promotion_readiness_audit.md`, and this tracker to mark the packet as created with no promotion yet. No runtime behavior changed. Validation: `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.48 T3.1e scheduler tank-spell movement-lock mismatch fix
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Goal | Keep scheduler tank-spell movement suppressed after the existing pre-send `run_stop` so movement does not resume while the spell is still in flight. |
+| Runtime files changed | `unified_scheduler.lua` |
+| Test files changed | `tests/replay/harness/selftest_scheduler_tank_spell_movement_lock.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Docs changed | `docs/scheduler_remaining_run_stop_coverage_plan.md`, `docs/scheduler_ownership_promotion_plan.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Root cause | The scheduler tank-spell branch issued the existing stop but did not carry forward the bounded post-send movement lock / wait bookkeeping already present in the core tank-spell flow. |
+| Fix summary | Added scheduler-local tank-spell wait state after tank spell send and refreshed a short bounded scheduler movement lock while the spell remains in-flight or in immediate spell cooldown. |
+| Ownership policy impact | None. Tank run-stop ownership flags remain in their prior default-off/default-on states. |
+| Validation summary | `luac -p unified_scheduler.lua`; `luac -p unified_combat_core.lua`; `luac -p uc_pathing.lua`; `luac -p uc_party_follow.lua`; `lua tests/replay/harness/selftest_scheduler_tank_spell_movement_lock.lua`; `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Next field test | Reproduce the Terrasjr tank-enmity spell scenario with schedulers enabled and confirm the character stops for the spell, does not run through the mob, and resumes movement only after the cast window clears. |
+
+- 2026-06-17: Completed T3.1e scheduler tank-spell movement-lock mismatch fix. Updated `unified_scheduler.lua` so tank spell sends now create bounded scheduler-local wait bookkeeping and a refreshed short scheduler movement lock while the in-flight spell remains active, preventing movement from resuming immediately after the existing pre-send `run_stop`. Added `tests/replay/harness/selftest_scheduler_tank_spell_movement_lock.lua` and registered it in the aggregate replay suite to pin the new wait-state fields, helper lifecycle, bounded lock refresh, provider-entry guard, and post-send wiring for both target and self tank-spell sends. Updated `docs/scheduler_remaining_run_stop_coverage_plan.md`, `docs/scheduler_ownership_promotion_plan.md`, and this tracker to record the bugfix as a runtime parity repair rather than an ownership-promotion decision. Ownership promotion policy did not change. Validation: `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_pathing.lua`, `luac -p uc_party_follow.lua`, `lua tests/replay/harness/selftest_scheduler_tank_spell_movement_lock.lua`, `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.49 T3.1e cure-cast movement-stop audit correction
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Goal | Audit the corrected report that the observed movement-stop failure was a Cure cast during initial mob approach, not a tank-enmity spell. |
+| Files changed | `docs/cure_cast_movement_stop_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Runtime behavior changed | No |
+| Most likely source | Scheduler defensive Cure send paths in `unified_scheduler.lua`, especially `try_internal_defensive_action()` and ranked `provider == 'defensive_internal'`, which send Cure commands without `run_stop`, movement-owner refresh, movement-lock refresh, or cast-wait state. |
+| Secondary source | Scheduler healbot wrapper also provides no stop/lock lifecycle of its own, though the underlying healer implementation was outside this audit scope. |
+| Not the source | The corrected report does not match the tank-spell runtime path; no evidence in the audited proposal collectors shows Cure routing through the generic combat spell family today. |
+| Recommended next task | Add a narrow scheduler defensive spell-cast movement-stop/lock fix at the Cure/defensive spell send point, without changing ownership promotion policy. |
+| Validation summary | `luac -p unified_scheduler.lua`; `luac -p unified_combat_core.lua`; `luac -p uc_party_follow.lua`; `luac -p uc_pathing.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+
+- 2026-06-17: Completed the corrected Cure-cast movement-stop audit. Added `docs/cure_cast_movement_stop_audit.md` documenting the observed field behavior, the corrected context that the spell was Cure rather than tank enmity, the Cure-capable path inventory, and a comparison against spell flows that already stop correctly. The audit finds the strongest evidence in the scheduler defensive Cure paths inside `unified_scheduler.lua`: they can send Cure while moving, but they do not issue `run_stop`, do not set `_G.UC_MOVEMENT_OWNER`, do not refresh `_G.UC_MOVEMENT_LOCK_UNTIL`, and do not create a cast-wait state. Movement consumers in `uc_pathing.lua` and `uc_party_follow.lua` already honor those kinds of locks/waits when present, which makes the missing defensive spell lifecycle the most likely source. No runtime behavior changed. Recommended next step: a narrow defensive spell-cast movement-lock fix at the Cure send point, separate from tank spell ownership/promotion work. Validation: `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_party_follow.lua`, `luac -p uc_pathing.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.50 T3.1f scheduler defensive Cure movement-stop/lock lifecycle fix
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Goal | Patch the scheduler defensive Cure/spell send lifecycle so defensive spell casts establish a bounded movement stop/lock lifecycle at send time. |
+| Runtime files changed | `unified_scheduler.lua` |
+| Test files changed | `tests/replay/harness/selftest_scheduler_defensive_cure_movement_lock.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Docs changed | `docs/cure_cast_movement_stop_audit.md`, `docs/scheduler_remaining_run_stop_coverage_plan.md`, `docs/scheduler_ownership_promotion_plan.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Root cause | Confirmed: the scheduler defensive Cure/internal spell send paths were sending spells without a scheduler-owned stop, without movement-owner/lock refresh, and without a bounded post-send spell wait lifecycle. |
+| Exact patched paths | `try_internal_defensive_action()` direct internal defensive spell send and ranked `provider == 'defensive_internal'` dispatch send in `unified_scheduler.lua`. |
+| Healbot wrapper finding | No broad healbot rewrite was needed in this task; the healbot wrapper still delegates to `_G.healer:take_action(...)` and should be field-verified separately if symptoms persist under `defensive_provider='healbot'`. |
+| Fix summary | Added a scheduler-local defensive spell stop helper using the existing run-stop seam with unchanged ownership policy, plus bounded defensive spell wait bookkeeping refreshed before later movement ticks. |
+| Side-effect invariant | No new direct textual scheduler side-effect call expressions were introduced. |
+| Ownership policy impact | None. No promoted/default-off ownership policy changed. |
+| Validation summary | `luac -p unified_scheduler.lua`; `luac -p unified_combat_core.lua`; `luac -p uc_party_follow.lua`; `luac -p uc_pathing.lua`; `lua tests/replay/harness/selftest_scheduler_defensive_cure_movement_lock.lua`; `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Next field test | Reproduce the original Cure-during-approach scenario with `defensive_provider='internal'`, confirm the character stops for Cure and resumes movement after the bounded spell window, then separately verify whether any remaining symptom is healbot-specific. |
+
+- 2026-06-17: Completed T3.1f scheduler defensive Cure movement-stop/lock lifecycle fix. Updated `unified_scheduler.lua` so the direct internal defensive spell sender and the ranked `provider == 'defensive_internal'` send path now apply a bounded scheduler-owned stop/lock lifecycle at the spell send point. The fix uses the existing `uc_scheduler_run_stop_ownership` seam with unchanged ownership policy, sets `_G.UC_MOVEMENT_OWNER` / `_G.UC_MOVEMENT_LOCK_UNTIL`, records a scheduler-local defensive spell wait state after send, and refreshes that lock before later scheduler movement ticks while the spell remains active or in immediate cooldown. Added `tests/replay/harness/selftest_scheduler_defensive_cure_movement_lock.lua` and registered it in the aggregate replay suite to pin the new helper fields, bounded wait lifecycle, send-point wiring, stale-target guard, process-tick refresh order, side-effect invariant, and unchanged ownership policy. Updated the Cure audit and promotion-planning docs to record the bugfix separately from ownership promotion work. Validation: `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_party_follow.lua`, `luac -p uc_pathing.lua`, `lua tests/replay/harness/selftest_scheduler_defensive_cure_movement_lock.lua`, `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.51 T3.1g defensive Cure priority audit and chooser fix
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Goal | Audit why valid ally Cure opportunities were losing to self-buffs and apply the narrowest safe fix if the cause was clear. |
+| Runtime files changed | `unified_scheduler.lua` |
+| Test files changed | `tests/replay/harness/selftest_defensive_cure_priority.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Docs changed | `docs/defensive_cure_priority_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Cure candidates missing or losing | Losing |
+| Exact rule causing issue | `choose_defensive_action(...)` previously allowed normal `c.buff` and Majesty to beat an already-valid Cure candidate based on low self-buff `prio` vs higher ally Cure `prio`. |
+| Diagnostics added | No |
+| Fix summary | Removed the normal buff-vs-cure preemption in the Cure branch as the first pass. Majesty handling was later refined in T3.1h. |
+| Runtime behavior changed | Yes, narrowly in defensive pre-selection only |
+| Validation summary | `luac -p unified_scheduler.lua`; `luac -p unified_combat_core.lua`; `luac -p uc_targeting_common.lua`; `lua tests/replay/harness/selftest_defensive_cure_priority.lua`; `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Field-test instructions | Reproduce the yellow/red ally HP scenario with overwrite disabled and confirm Cure is selected over self-buffs whenever a valid Cure candidate exists; recheck solo self-buff and self-Paralyna behavior afterward. |
+
+- 2026-06-17: Completed T3.1g defensive Cure priority audit and chooser fix. Added `docs/defensive_cure_priority_audit.md` documenting the defensive candidate flow, Cure generation gates, and the exact chooser rule that let a low-priority self-buff beat a valid ally Cure candidate before the scheduler ever ranked the proposal. The audit confirmed Cure candidates were being generated but were losing inside `choose_defensive_action(...)`, not disappearing from candidate generation. Updated `unified_scheduler.lua` narrowly so Majesty no longer preempts an available Cure candidate and normal `c.buff` no longer beats `c.cure` inside the Cure branch, while preserving overwrite behavior and self-Paralyna/debuff priority handling. Added `tests/replay/harness/selftest_defensive_cure_priority.lua` and registered it in the aggregate replay suite to pin the new chooser behavior and the key source-text invariants. Validation: `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_targeting_common.lua`, `lua tests/replay/harness/selftest_defensive_cure_priority.lua`, `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.52 T3.1h Majesty-over-Cure restoration and defensive JA-to-Cure follow-up
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Goal | Restore Majesty-over-Cure priority while keeping ordinary self-buffs behind valid Cure candidates, and remove the overly broad JA action-state delay for the immediate defensive Cure follow-up. |
+| Runtime files changed | `unified_scheduler.lua`, `uc_scheduler_action_state.lua` |
+| Test files changed | `tests/replay/harness/selftest_defensive_cure_priority.lua`, `tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Docs changed | `docs/defensive_cure_priority_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Majesty-vs-Cure policy | Majesty is restored as a special setup action that may beat an available Cure candidate. |
+| Ordinary buff-vs-Cure policy | Ordinary self-buffs still do not beat valid Cure candidates. |
+| Root cause of delayed Cure follow-up | Generic JA action-state acting/cooldown blocking in `uc_scheduler_action_state.lua` was also gating the immediate defensive Cure that should follow Majesty. |
+| Action-state change | Added last-action metadata plus a bounded defensive-only Majesty -> Cure bypass in `action_dispatch_blocked(...)`, keyed by transient `_G.UC_DEFENSIVE_CHAIN_ACTION` context set around the defensive scheduler block check. |
+| Generic JA lock outside this chain | Preserved |
+| Ownership policy impact | None. No promoted/default-off ownership policy changed. |
+| Validation summary | `luac -p unified_scheduler.lua`; `luac -p uc_scheduler_action_state.lua`; `lua tests/replay/harness/selftest_defensive_cure_priority.lua`; `lua tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`; `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Field-test instructions | Enable the same defensive scheduler setup used for the earlier Cure tests, reproduce a Majesty -> Cure opportunity on an injured ally, confirm Majesty still fires first, confirm the Cure follows immediately without waiting out the full JA pause, and confirm ordinary self-buffs still do not preempt valid Cure opportunities. |
+
+- 2026-06-17: Completed T3.1h Majesty-over-Cure restoration and defensive JA-to-Cure follow-up. Refined the T3.1g chooser change in `unified_scheduler.lua` so Majesty again wins as a special defensive setup action, while ordinary `c.buff` candidates still lose to valid Cure candidates and self-Paralyna keeps its higher urgency behavior. Audited `uc_scheduler_action_state.lua` and confirmed the real follow-up delay came from the generic JA acting/cooldown block after Majesty. Added lightweight last-action metadata plus a narrow bounded bypass that only applies to the defensive_internal Majesty -> Cure chain, and wired the ranked defensive scheduler branch to publish the chain context before `action_dispatch_blocked()` and clear it immediately after. Added `tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`, updated `tests/replay/harness/selftest_defensive_cure_priority.lua`, and kept ownership promotion/default-off policy unchanged. Validation: `luac -p unified_scheduler.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_defensive_cure_priority.lua`, `lua tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`, `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.53 T3.1i bounded JA/WS weave allowance between repeated Cure actions
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Goal | Prevent repeated non-critical defensive Cure selection from fully starving eligible instant JA/WS actions, while keeping Cure dominant when healing is urgent. |
+| Runtime files changed | `unified_scheduler.lua`, `uc_scheduler_action_state.lua` |
+| Test files changed | `tests/replay/harness/selftest_defensive_cure_priority.lua`, `tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`, `tests/replay/harness/selftest_defensive_cure_weave_policy.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Docs changed | `docs/defensive_cure_priority_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Root cause of starvation | Defensive Cure proposals repeatedly won ranked selection because they score at `priority_band = 100/110`, while ordinary combat JA/WS proposals usually score around `70`; this was primarily a ranking/selection issue rather than a generic action-block issue. |
+| Weave policy | After a recent defensive Cure send, if the next top-ranked action is another non-critical defensive Cure and an eligible combat JA or WS also passes final commit-time revalidation, the scheduler may select exactly one such instant action before Cure resumes. |
+| Eligible weave actions | Combat WS and combat JA proposals only. |
+| Critical Cure safety | No weave is allowed when the Cure target is at or below the configured critical HP threshold. |
+| Ordinary self-buffs vs Cure | Preserved: ordinary self-buffs still do not beat a valid Cure candidate. |
+| Majesty behavior | Preserved from T3.1h. |
+| Ownership policy impact | None. No promoted/default-off ownership policy changed. |
+| Validation summary | `luac -p unified_scheduler.lua`; `luac -p uc_scheduler_action_state.lua`; `lua tests/replay/harness/selftest_defensive_cure_priority.lua`; `lua tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`; `lua tests/replay/harness/selftest_defensive_cure_weave_policy.lua`; `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Field-test instructions | Keep a non-critical injured ally in sustained healing range, confirm one eligible JA/WS can weave between repeated Cure casts, confirm only one instant action is woven before Cure resumes, then separately confirm critical Cure still blocks that weave. |
+
+- 2026-06-17: Completed T3.1i bounded JA/WS weave allowance between repeated Cure actions. Audited the ranked scheduler flow and confirmed the starvation came from defensive Cure proposals repeatedly winning at `priority_band = 100/110` while ordinary combat JA/WS proposals sat around `70`, not from the T3.1h Majesty follow-up allowance itself. Updated `uc_scheduler_action_state.lua` to arm a bounded recent-Cure weave window after defensive Cure sends, then refined `unified_scheduler.lua` at the final ranked selection seam so only a non-critical repeated defensive Cure may be temporarily displaced by one commit-valid combat JA or WS. The next Cure resumes priority naturally after that single instant action because the last-send kind is no longer the defensive spell, and the bounded timeout cleans up unused allowance. Added `tests/replay/harness/selftest_defensive_cure_weave_policy.lua`, registered it in the aggregate replay suite, and kept ordinary self-buff suppression, Majesty priority, critical Cure safety, and ownership promotion policy unchanged. Validation: `luac -p unified_scheduler.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_defensive_cure_priority.lua`, `lua tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`, `lua tests/replay/harness/selftest_defensive_cure_weave_policy.lua`, `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.54 T3.1i hb_buff_maint Majesty preference in defensive buff candidate selection
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Goal | Prefer Majesty in `hb_buff_maint.choose(...)` when it is missing and eligible, so the defensive chooser actually receives a Majesty candidate before Cure when appropriate. |
+| Runtime files changed | `uc_hb_buff_maint.lua` |
+| Test files changed | `tests/replay/harness/selftest_hb_buff_maint_majesty_priority.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Docs changed | `docs/defensive_cure_priority_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Root cause confirmed or revised | Revised/confirmed upstream: `uc_hb_buff_maint.choose(...)` previously returned the first eligible missing ready buff in listed order, so Majesty could fail to surface as the single buff candidate passed into `choose_defensive_action(...)`. |
+| Majesty selection behavior | If Majesty is missing and eligible, it now wins over earlier ordinary defensive buffs inside `hb_buff_maint.choose(...)`; otherwise the prior first-eligible non-Majesty behavior remains. |
+| Readiness/recast/throttle bypass | None. Majesty still respects existing readiness, missing-buff, and attempt/throttle gates. |
+| Ordinary self-buffs vs Cure | Preserved: ordinary self-buffs still do not beat valid Cure candidates. |
+| Majesty-vs-Cure chooser behavior | Preserved from T3.1h. |
+| Ownership policy impact | None. No promoted/default-off ownership policy changed. |
+| Validation summary | `luac -p uc_hb_buff_maint.lua`; `luac -p unified_scheduler.lua`; `luac -p uc_scheduler_action_state.lua`; `lua tests/replay/harness/selftest_hb_buff_maint_majesty_priority.lua`; `lua tests/replay/harness/selftest_defensive_cure_priority.lua`; `lua tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`; `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Field-test instructions | Keep Majesty absent while another ordinary defensive buff is also missing, confirm Majesty is selected first when ready, then confirm ordinary buffs resume normal selection only when Majesty is unavailable, already active, or gated. |
+
+- 2026-06-17: Completed T3.1i hb_buff_maint Majesty preference in defensive buff candidate selection. Confirmed the remaining repeated-Cure-without-Majesty behavior was not explained by the chooser-level T3.1h policy alone, because `build_defensive_candidates()` only receives one buff candidate from `uc_hb_buff_maint.choose(...)`. Updated `uc_hb_buff_maint.lua` so the module still evaluates buff eligibility exactly as before, but now remembers the first eligible non-Majesty buff and returns Majesty immediately if it is also eligible and missing. This preserves all existing readiness, missing-buff, and attempt/throttle gates, while ensuring the defensive chooser actually sees a Majesty candidate when it should. Added `tests/replay/harness/selftest_hb_buff_maint_majesty_priority.lua`, registered it in the aggregate replay suite, and left the T3.1h chooser policy plus ownership promotion/default-off policy unchanged. Validation: `luac -p uc_hb_buff_maint.lua`, `luac -p unified_scheduler.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_hb_buff_maint_majesty_priority.lua`, `lua tests/replay/harness/selftest_defensive_cure_priority.lua`, `lua tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`, `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.55 T3.1j cast interruption action-state audit
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Goal | Determine whether incoming spell interruption outcomes such as `<playername>'s casting is interrupted` are currently parsed and bridged into scheduler action state, spell waits, and movement locks. |
+| Runtime files changed | None |
+| Docs changed | `docs/cast_interruption_action_state_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Incoming handlers found | `UnifiedCombat.lua` incoming chunk hook; raw `0x029` action-message parsing forwarded to both core and scheduler; scheduler `on_incoming_chunk`, `on_action`, and `on_action_message`; core `on_action_message`. |
+| Exact `casting is interrupted` handling found | No |
+| Cast interruption currently detected | Not explicitly in scheduler paths; core pull/tank spell wait uses a generic non-init/non-success action-message retry branch, but no explicit interruption classification was found. |
+| Scheduler action state consumes interruption | Not explicitly. Scheduler action state currently uses outbound send markers, action starts, broad self action-message packet-end handling, and timeout/cooldown release; no interruption-specific defensive spell-wait bridge was found. |
+| Likely future implementation hook | `scheduler.on_action_message(msg)` using existing raw `0x029` action-message parsing, scoped first to local-player spell interruption only. |
+| Runtime behavior changed | No |
+| Validation summary | `luac -p UnifiedCombat.lua`; `luac -p unified_scheduler.lua`; `luac -p unified_combat_core.lua`; `luac -p uc_scheduler_action_state.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Recommended next task | Add replay/mock coverage for local-player spell interruption `0x029` outcomes, then bridge only scheduler defensive spell wait and local spell action-state release from that event. |
+
+- 2026-06-17: Completed T3.1j cast interruption action-state audit. Audited `UnifiedCombat.lua`, `unified_scheduler.lua`, `unified_combat_core.lua`, and `uc_scheduler_action_state.lua` for incoming packet/message handling related to the exact game message `<playername>'s casting is interrupted`. Found existing raw `0x029` action-message parsing and forwarding into both core and scheduler, plus actor-centric scheduler `action_mark_packet_end()` for any non-zero local-player action message and generic core pull/tank spell retry clearing when a spell message is neither initiating nor successful. Did not find explicit interruption text handling, an interruption-specific message-id bucket, or a scheduler defensive-spell-wait bridge that clears immediately on interruption. Documented the disconnect and recommended the narrowest future implementation hook in `scheduler.on_action_message(msg)` scoped to local-player spell interruption only, with replay/mock coverage before field rollout. Validation: `luac -p UnifiedCombat.lua`, `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.56 T3.1k local-player scheduler defensive spell interruption handling
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Goal | Clear scheduler defensive spell wait and local defensive spell action-state promptly on confirmed local-player interruption/failure, without clearing unrelated JA/WS/core state. |
+| Runtime files changed | `unified_scheduler.lua`, `uc_scheduler_action_state.lua` |
+| Test files changed | `tests/replay/harness/selftest_scheduler_spell_interruption_action_state.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Docs changed | `docs/cast_interruption_action_state_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Interruption classification used | Parsed local-player `0x029` action message during active scheduler defensive spell wait where target matches pending target when present and `message_id` is non-zero, not a known spell-init id, and not a known spell-success id. |
+| Scheduler state cleared | `clear_defensive_spell_wait_state()` plus local defensive spell action-state acting/cooldown shortening via `clear_local_defensive_spell_interruption()`. |
+| State intentionally not cleared | JA state, WS state, another player's action state, core pull/tank spell wait state, and movement locks owned by unrelated systems. |
+| Movement-lock behavior | Scheduler-owned movement lock is shortened to a brief tail (`min(current_lock_until, now + 0.2)`) rather than dropped immediately, to reduce self-interrupt loop risk. |
+| Ownership policy impact | None. No promoted/default-off ownership policy changed. |
+| Runtime behavior changed | Yes, narrowly for local-player scheduler defensive spell interruption/failure only. |
+| Validation summary | `luac -p UnifiedCombat.lua`; `luac -p unified_scheduler.lua`; `luac -p unified_combat_core.lua`; `luac -p uc_scheduler_action_state.lua`; `lua tests/replay/harness/selftest_scheduler_spell_interruption_action_state.lua`; `lua tests/replay/harness/selftest_defensive_cure_priority.lua`; `lua tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Field-test instructions | Trigger a scheduler defensive Cure or spell, interrupt it via movement/hit, confirm defensive spell wait clears immediately, confirm local action-state no longer waits for timeout, and confirm only a short scheduler movement-lock tail remains before retry/reselection. |
+
+- 2026-06-17: Completed T3.1k local-player scheduler defensive spell interruption handling. Reused the existing `0x029` action-message plumbing in `UnifiedCombat.lua` and `unified_scheduler.lua` to classify local-player scheduler defensive spell interruption/failure narrowly as a non-zero action message received during active scheduler defensive spell wait that is neither a known spell-init id nor a known spell-success id, with pending-target matching when present. Updated `uc_scheduler_action_state.lua` with a narrow helper that clears only local defensive spell acting/cooldown state when the last send was a defensive spell provider, then updated `scheduler.on_action_message(msg)` to clear scheduler defensive spell wait and shorten only scheduler-owned movement lock to a brief tail. Added `tests/replay/harness/selftest_scheduler_spell_interruption_action_state.lua`, registered it in the aggregate replay suite, and left ownership promotion, JA/WS state, and core pull/tank spell wait behavior unchanged. Validation: `luac -p UnifiedCombat.lua`, `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_scheduler_spell_interruption_action_state.lua`, `lua tests/replay/harness/selftest_defensive_cure_priority.lua`, `lua tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.57 T3.1l spell cast start/success handling audit
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Runtime behavior changed | No |
+| Files modified | `docs/cast_success_action_state_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Incoming spell-start handlers found | `UnifiedCombat.lua` action listener -> `UC_COMBAT_CORE.on_action(act)` and `_G.UC_SCHED_OnAction(act)`; raw `0x029` incoming chunk -> `UC_COMBAT_CORE.on_action_message(msg)` and `_G.UC_SCHED_OnActionMessage(msg)` |
+| Known spell-init ids | `3`, `43`, `326`, `327`, `675`, `716` |
+| Known spell-success ids | `2`, `236`, `237`, `252`, `268`, `271` |
+| Scheduler spell-start state | `scheduler.on_action(act)` calls `action_mark_packet_start()` for local-player `spell` and also `spell_finish`, so action-state enters acting until a later end signal or timeout. |
+| Scheduler spell-success state | `scheduler.on_action_message(msg)` calls `action_mark_packet_end()` for any non-zero local-player action message, including spell success, then generic action-state cooldown tail is applied on the next `action_is_acting()` evaluation. |
+| Scheduler defensive spell wait on success | No success-specific clear exists today; wait remains active until `refresh_defensive_spell_wait_lock()` later observes `not acting` and cooldown expiry, then clears with `released_complete`. |
+| Movement lock on success | While defensive spell wait remains active, `_G.UC_MOVEMENT_OWNER = 'scheduler'` and `_G.UC_MOVEMENT_LOCK_UNTIL` keeps being refreshed to a short rolling tail; release is poll-based rather than success-message-based. |
+| Core pull/tank spell success comparison | `core.on_action_message(msg)` explicitly clears pull/tank spell waits on known success ids, and `core.on_action(act)` also clears those waits on local-player `spell_finish` when target/name match. |
+| Main gap found | Scheduler interruption handling is now more precise than scheduler success handling; defensive spell success does not explicitly clear scheduler defensive spell wait or shorten the scheduler-owned movement-lock tail promptly on success. |
+| Recommended next task | T3.1m — Add local-player scheduler defensive spell success bridge with replay/mock coverage and bounded post-cast release behavior. |
+| Validation summary | `luac -p UnifiedCombat.lua`; `luac -p unified_scheduler.lua`; `luac -p unified_combat_core.lua`; `luac -p uc_scheduler_action_state.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+
+- 2026-06-17: Completed T3.1l spell cast start/success handling audit. Audited `UnifiedCombat.lua`, `unified_scheduler.lua`, `unified_combat_core.lua`, and `uc_scheduler_action_state.lua` for local-player and other-player spell start/success handling through the action listener and raw `0x029` action-message path. Confirmed the scheduler marks local-player spell start through `scheduler.on_action(act)` and ends generic local-player action-state on any non-zero self action message through `scheduler.on_action_message(msg)`, but does not explicitly clear scheduler defensive spell wait on known spell-success ids. Documented that scheduler defensive spell wait and scheduler-owned movement lock currently release by later polling after the generic cooldown tail, while core pull/tank spell waits already clear explicitly on known success ids and matching `spell_finish` action packets. No runtime behavior changed in this audit. Validation: `luac -p UnifiedCombat.lua`, `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.58 T3.1m local-player scheduler defensive spell success handling
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Runtime behavior changed | Yes, narrowly for local-player scheduler defensive spell success only |
+| Runtime files changed | `unified_scheduler.lua`, `uc_scheduler_action_state.lua` |
+| Test files changed | `tests/replay/harness/selftest_scheduler_spell_success_action_state.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Docs changed | `docs/cast_success_action_state_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Success classification used | Parsed local-player `0x029` action message during active scheduler defensive spell wait where target matches pending target when present and `message_id` is a known spell-success id (`2`, `236`, `237`, `252`, `268`, `271`) and not a known spell-init id (`3`, `43`, `326`, `327`, `675`, `716`). |
+| Scheduler state cleared on success | `clear_defensive_spell_wait_state()` plus local defensive spell action-state shortening via `clear_local_defensive_spell_success()`. |
+| State intentionally not cleared | JA state, WS state, another player's action-state, core pull/tank spell wait state, and movement locks owned by unrelated systems. |
+| Movement-lock behavior | Scheduler-owned movement lock is shortened to a bounded tail (`min(current_lock_until, now + 0.2)`) so follow/path/reselection can release promptly without hard-dropping unrelated protections. |
+| `spell_finish` review result | Removed `spell_finish` from scheduler start-lock categories because spell completion is not a start signal and could refresh `action_start` immediately before success-message handling. |
+| Ownership policy impact | None. No promoted/default-off ownership policy changed. |
+| Validation summary | `luac -p UnifiedCombat.lua`; `luac -p unified_scheduler.lua`; `luac -p unified_combat_core.lua`; `luac -p uc_scheduler_action_state.lua`; `lua tests/replay/harness/selftest_scheduler_spell_success_action_state.lua`; `lua tests/replay/harness/selftest_scheduler_spell_interruption_action_state.lua`; `lua tests/replay/harness/selftest_defensive_cure_priority.lua`; `lua tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Field-test instructions | Trigger a scheduler defensive Cure or spell while movement-maintenance/follow behavior is active, confirm spell success clears scheduler defensive spell wait immediately, confirm follow/path releases after only the short bounded tail, confirm interruption behavior from T3.1k still works, and confirm JA/WS behavior remains unchanged. |
+
+- 2026-06-17: Completed T3.1m local-player scheduler defensive spell success handling. Added a narrow local-player scheduler defensive spell success bridge in `scheduler.on_action_message(msg)` that classifies only known spell-success ids during active scheduler defensive spell wait, requires pending-target match when present, clears scheduler defensive spell wait promptly, shortens local defensive spell action-state to a bounded `0.2` post-cast tail, and shortens only scheduler-owned movement lock to the same bounded tail. Added `clear_local_defensive_spell_success()` in `uc_scheduler_action_state.lua`, removed `spell_finish` from the scheduler start-marker bucket so completion no longer refreshes `action_start`, added `tests/replay/harness/selftest_scheduler_spell_success_action_state.lua`, registered it in the aggregate replay suite, and left ownership promotion, JA/WS state, core pull/tank spell waits, and unrelated movement locks unchanged. Validation: `luac -p UnifiedCombat.lua`, `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_scheduler_spell_success_action_state.lua`, `lua tests/replay/harness/selftest_scheduler_spell_interruption_action_state.lua`, `lua tests/replay/harness/selftest_defensive_cure_priority.lua`, `lua tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.59 T3.1n delayed target acquisition and engage audit
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Runtime behavior changed | No |
+| Diagnostics added | No |
+| Files modified | `docs/target_engage_delay_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Audit scope | Target death/current-target invalidation, next-target scan, claim validity, scheduler target proposal, scheduler engage proposal, ranking, ownership dispatch, target prep, engage dispatch, action-state blocking, movement-lock blocking, duplicate suppression, and long-lived state that can survive extended play. |
+| Strongest blocker candidate | Scheduler engage dispatch calls `action_mark_sent('engage')`, which enters the generic action-state acting path with `lag_timeout = 8.0`, but the audit did not find an engage-specific completion bridge; if `/attack on` does not generate a usable local self action-message end signal, the next engage can stay blocked until timeout. |
+| Secondary blocker candidates | Short post-kill engaged-state / sticky windows, pre-engage target-control then engage sequencing, and hunter claim-timeout/ignore-cooldown flow in claim-transition scenarios. |
+| Ownership dispatch finding | Promoted target/turn ownership helpers fall back immediately in-process and are unlikely to create multi-second delay; engage attack-on is direct `uc_attack.engage_target(...)`, not command-ownership routed. |
+| Validation summary | `luac -p UnifiedCombat.lua`; `luac -p unified_scheduler.lua`; `luac -p unified_combat_core.lua`; `luac -p uc_targeting_common.lua`; `luac -p uc_scheduler_action_state.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Recommended next task | `T3.1o — Add a narrow scheduler engage completion/release bridge, or remove engage from the generic 8-second acting timeout path if no reliable local completion signal exists.` |
+
+- 2026-06-18: Completed T3.1n delayed target acquisition and engage audit. Added `docs/target_engage_delay_audit.md` tracing the full death→target→engage pipeline across core target selection, scheduler target/engage proposal creation, ranking, ownership dispatch, target prep, engage dispatch, and action-state/movement-lock gates. The audit found the strongest evidence-backed blocker at the scheduler action-state layer: successful engage dispatch currently calls `action_mark_sent('engage')`, which enters the generic acting path with `lag_timeout = 8.0`, but the current scheduler audit did not find an engage-specific completion bridge analogous to the recent spell interruption/success bridges. If `/attack on` does not emit a usable local action-message end signal, the next valid target can wait until timeout before engage dispatch unblocks, which matches the reported 5–10 second symptom window. Secondary contributors documented were short post-kill engaged/sticky windows, target-control→engage serialization, and hunter claim timeout flow for claim-transition scenarios. No runtime behavior changed and no diagnostics were added. Validation: `luac -p UnifiedCombat.lua`, `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_targeting_common.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
+### 2.60 T3.1o scheduler engage action-state release fix
+
+| Item | Details |
+| --- | --- |
+| Status | DONE |
+| Runtime behavior changed | Yes, narrowly for scheduler engage action-state release only |
+| Runtime files changed | `unified_scheduler.lua`, `uc_scheduler_action_state.lua` |
+| Test files changed | `tests/replay/harness/selftest_scheduler_engage_action_state_release.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Docs changed | `docs/target_engage_delay_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md` |
+| Root cause | Confirmed from the T3.1n audit: successful scheduler engage dispatch entered the generic action-state acting path via `action_mark_sent('engage')`, but no engage-specific completion bridge was visible, so engage could stay blocked until the generic `lag_timeout = 8.0` if no useful local completion signal arrived. |
+| Before patch | Successful engage send entered generic acting state and could block later engage dispatch through `action_dispatch_blocked()` until local packet-end/message evidence arrived or the generic `8.0` second timeout expired. |
+| After patch | Successful engage send uses an engage-specific action-state helper that does not enter generic acting state and instead leaves only a bounded cooldown/debounce tail of `0.35` seconds. |
+| Generic timing unchanged | Spell, JA, and WS action-state timing remain on their prior generic / JA-specific timeout paths. |
+| Ownership policy impact | None. No promoted/default-off ownership flags, dispatcher behavior, or ownership helpers changed. |
+| Validation summary | `luac -p UnifiedCombat.lua`; `luac -p unified_scheduler.lua`; `luac -p unified_combat_core.lua`; `luac -p uc_scheduler_action_state.lua`; `lua tests/replay/harness/selftest_scheduler_engage_action_state_release.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`; `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`; `lua tests/replay/harness/selftest_scheduler_spell_success_action_state.lua`; `lua tests/replay/harness/selftest_scheduler_spell_interruption_action_state.lua`; `lua tests/replay/harness/selftest_runtime_parse.lua`; `lua tests/replay/harness/selftest_side_effect_inventory.lua`; `lua tests/replay/harness/selftest_all_replay_fixtures.lua` |
+| Field-test instructions | Reproduce a kill-to-next-target transition where delayed engage previously appeared, confirm the next valid target engages without the old 5–10 second stall, confirm no per-tick `/attack on` spam appears, and confirm spell/JA/WS behavior remains unchanged. |
+
+- 2026-06-18: Completed T3.1o scheduler engage action-state release fix. Confirmed the T3.1n root-cause candidate and patched it narrowly by adding `action_mark_engage_sent()` in `uc_scheduler_action_state.lua`, then wiring the scheduler engage dispatch branch in `unified_scheduler.lua` to use that helper instead of the generic `action_mark_sent('engage')`. The new engage-specific helper does not enter the generic acting state and instead leaves only a bounded `0.35` second cooldown/debounce tail, while existing pending and duplicate-suppression windows continue to prevent attack-on spam. Added `tests/replay/harness/selftest_scheduler_engage_action_state_release.lua`, registered it in the aggregate replay suite, and left spell/JA/WS action-state timing, recent defensive spell interruption/success handling, dispatcher behavior, and ownership promotion policy unchanged. Validation: `luac -p UnifiedCombat.lua`, `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_scheduler_engage_action_state_release.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_scheduler_spell_success_action_state.lua`, `lua tests/replay/harness/selftest_scheduler_spell_interruption_action_state.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+
 ## 3) Completed Work (Concrete File Deliverables)
 
 ### 3.1 Harness foundation
@@ -1004,3 +1512,8 @@ For each new task completion, append:
 - 2026-06-11: Completed T2.5e turn ownership helper seam slice. Status change: T2.5e turn ownership helper seam marked `IN PROGRESS`; added `uc_scheduler_turn_ownership.lua` as a Windower-free injected-dependency helper for the selected face-to-target turn ownership branch, updated `unified_scheduler.lua` to call the helper with injected `windower.ffxi.turn` function references, added `tests/replay/harness/selftest_turn_ownership_runtime.lua` for default-off direct behavior, flag-on dispatcher success, and flag-on fallback behavior, and updated static coverage for the helper-backed shape. Files created: `uc_scheduler_turn_ownership.lua`, `tests/replay/harness/selftest_turn_ownership_runtime.lua`. Files modified: `unified_scheduler.lua`, `tests/replay/harness/selftest_side_effect_inventory.lua`, `tests/replay/harness/selftest_turn_ownership_static.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua`, `docs/UnifiedCombat_scheduler_refactor_tracking.md`. Validation: `lua tests/replay/harness/selftest_turn_ownership_runtime.lua`, `lua tests/replay/harness/selftest_turn_ownership_static.lua`, `luac -p unified_scheduler.lua`, `luac -p uc_scheduler_dispatcher.lua`, `luac -p uc_scheduler_turn_ownership.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_dispatcher_fixtures.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
 - 2026-06-11: Completed T2.5f second dispatcher runtime-ownership candidate audit. Status change: T2.5f second dispatcher runtime-ownership candidate audit marked `DONE`; reviewed `select_target`, isolated `send_command`, `run_stop`, and `run` vector candidates after the turn helper seam, and recommends `select_target` as the next candidate because it is a single isolated callsite with existing validation and dispatcher execute coverage, and its boolean return can be preserved by a helper that captures the injected `set_target` dependency return through dispatcher execution. File modified: `docs/UnifiedCombat_scheduler_refactor_tracking.md`. Validation: `luac -p unified_scheduler.lua`, `luac -p uc_scheduler_dispatcher.lua`, `luac -p uc_scheduler_turn_ownership.lua`, `lua tests/replay/harness/selftest_turn_ownership_runtime.lua`, `lua tests/replay/harness/selftest_turn_ownership_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_dispatcher_fixtures.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
 - 2026-06-11: Completed T2.5g target ownership helper seam slice. Status change: T2.5g target ownership helper seam marked `IN PROGRESS`; added `uc_scheduler_target_ownership.lua` as a Windower-free injected-dependency helper for the scheduler target-select branch, extended `uc_scheduler_dispatcher.lua` execute results for `select_target`/`set_target` to return the injected dependency result as `dep_result`, updated `unified_scheduler.lua` so only `p1_try_target_prep` routes through the helper behind `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TARGET_OWNERSHIP == true`, preserved default-off direct selection semantics and dispatcher-failure fallback, added focused runtime/static selftests, added the new suites to the aggregate runner, and updated side-effect line pins after confirming the callsite counts and set remained unchanged. Files created: `uc_scheduler_target_ownership.lua`, `tests/replay/harness/selftest_target_ownership_runtime.lua`, `tests/replay/harness/selftest_target_ownership_static.lua`. Files modified: `uc_scheduler_dispatcher.lua`, `unified_scheduler.lua`, `tests/replay/fixtures/dispatcher/dispatcher_fixtures.lua`, `tests/replay/harness/dispatcher_fixture_runner.lua`, `tests/replay/harness/selftest_dispatcher_fixtures.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua`, `tests/replay/harness/selftest_side_effect_inventory.lua`, `docs/UnifiedCombat_scheduler_refactor_tracking.md`. Validation: `lua tests/replay/harness/selftest_target_ownership_runtime.lua`, `lua tests/replay/harness/selftest_target_ownership_static.lua`, `lua tests/replay/harness/selftest_turn_ownership_runtime.lua`, `lua tests/replay/harness/selftest_turn_ownership_static.lua`, `luac -p unified_scheduler.lua`, `luac -p uc_scheduler_dispatcher.lua`, `luac -p uc_scheduler_target_ownership.lua`, `luac -p uc_scheduler_turn_ownership.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_dispatcher_fixtures.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`.
+- 2026-06-18: Completed T3.3a Bard song identity tracking slice. Status change: T3.3a marked `DONE`; narrowed the fix to Bard defensive buff maintenance by preserving exact same-family song identity after confirmed local defensive spell success, without changing scheduler ownership routing, movement arbitration, or non-song maintenance behavior. `uc_hb_buff_maint.lua` now stores bounded per-target/per-family exact song confirmations and clips them to the current live family-effect count so generic `March` packets can still satisfy exact songs like `Honor March` versus `Victory March`. `unified_scheduler.lua` now records confirmed Bard song identity only from the local defensive spell success path, using the already-tracked pending spell name and target id/name. Files created: `docs/bard_song_identity_tracking_audit.md`, `tests/replay/harness/selftest_bard_song_identity_tracking.lua`. Files modified: `uc_hb_buff_maint.lua`, `unified_scheduler.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua`, `docs/UnifiedCombat_scheduler_refactor_tracking.md`. Validation: `luac -p uc_hb_buff_maint.lua`, `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p UnifiedCombat.lua`, `lua tests/replay/harness/selftest_bard_song_identity_tracking.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`. Field test: configure same-family Bard songs such as `Honor March|Victory March`, confirm a successful `Honor March` followed by only a generic `March` effect no longer triggers immediate `Honor March` recast, and verify interrupted `Honor March` remains eligible.
+- 2026-06-18: Completed T3.4j pending engage confirmation guard slice. Status change: T3.4j marked `DONE`; added scheduler-owned pending engage confirmation between `attack_on` send and actual `status=1`, detects the game-side wait-longer rejection by raw action message id `94`, retries on a bounded `0.40s` delay inside a bounded `1.75s` timeout window, blocks non-critical ranked and legacy defensive actions while pending engage is live, preserves critical Cure override, and keeps target acquisition nonblocking. `uc_scheduler_action_state.lua` now reports explicit bounded post-spell tail duration so field logs no longer inflate the intended `0.2s` tail. Files created: `docs/pending_engage_confirmation_audit.md`, `tests/replay/harness/selftest_pending_engage_confirmation.lua`, `tests/replay/harness/selftest_engage_rejection_retry.lua`. Files modified: `unified_scheduler.lua`, `uc_scheduler_action_state.lua`, `tests/replay/harness/selftest_action_economy_timeline_logging.lua`, `tests/replay/harness/selftest_scheduler_engage_action_state_release.lua`, `tests/replay/harness/selftest_scheduler_spell_success_action_state.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua`, `docs/UnifiedCombat_scheduler_refactor_tracking.md`. Validation: `luac -p UnifiedCombat.lua`, `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_pending_engage_confirmation.lua`, `lua tests/replay/harness/selftest_engage_rejection_retry.lua`, `lua tests/replay/harness/selftest_engage_dispatch_priority.lua`, `lua tests/replay/harness/selftest_target_acquire_nonblocking.lua`, `lua tests/replay/harness/selftest_tank_engage_priority.lua`, `lua tests/replay/harness/selftest_scheduler_spell_success_action_state.lua`, `lua tests/replay/harness/selftest_action_economy_timeline_logging.lua`, `lua tests/replay/harness/selftest_defensive_cure_priority.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`. Field test: enable `_G.UC_DEBUG_ACTION_TIMELINE = true`, force an engage immediately after a spell or Cure tail, confirm `PENDING_ENGAGE_*` events appear between `ENGAGE_DISPATCHED` and `STATUS_CHANGED ... to=1`, confirm wait-longer rejection logs id `94` plus bounded retry events, and confirm non-critical Cure / maintenance / Sleep no longer dispatch during the pending-engage window.
+- 2026-06-19: Completed T3.4k stale spell action-state release and retry-aware pending timeout slice. Status change: T3.4k marked `DONE`; added a narrow target-aware stale combat-spell lock release so old mob-target combat spell cooldown/tail does not block next-target engage after target death/status-zero transition, while leaving actual in-progress casts, defensive Cure/self-buff spells, JA, and WS state untouched. Pending-engage timeout is now refreshed from the latest engage attempt/retry rather than remaining anchored to the first send, and timeout logs now include `age_s` from the latest attempt plus `retry_count`. Files created: `tests/replay/harness/selftest_stale_spell_lockout_target_transition.lua`. Files modified: `unified_scheduler.lua`, `uc_scheduler_action_state.lua`, `tests/replay/harness/selftest_pending_engage_confirmation.lua`, `tests/replay/harness/selftest_engage_rejection_retry.lua`, `tests/replay/harness/selftest_action_economy_timeline_logging.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua`, `docs/pending_engage_confirmation_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md`. Validation: `luac -p UnifiedCombat.lua`, `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_stale_spell_lockout_target_transition.lua`, `lua tests/replay/harness/selftest_pending_engage_confirmation.lua`, `lua tests/replay/harness/selftest_engage_rejection_retry.lua`, `lua tests/replay/harness/selftest_engage_dispatch_priority.lua`, `lua tests/replay/harness/selftest_scheduler_spell_success_action_state.lua`, `lua tests/replay/harness/selftest_action_economy_timeline_logging.lua`, `lua tests/replay/harness/selftest_defensive_cure_priority.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`. Field test: enable `_G.UC_DEBUG_ACTION_TIMELINE = true`, send a mob-target combat spell immediately before the old target dies, confirm the next target transition logs `STALE_SPELL_LOCK_RELEASE` and engage proceeds without waiting on the old spell tail, then force one or more wait-longer engage retries and confirm timeout age is measured from the latest retry attempt rather than the first engage send.
+- 2026-06-19: Completed T3.4l engage duplicate suppression audit and hotfix. Status change: T3.4l marked `DONE`; audited the live engage seam and confirmed scheduler engage still dispatches through explicit `uc_attack.engage_target(...)` / `attack_on`, not console `/attack`, command ownership, or dispatcher routing. Replaced the stale generic engage duplicate lockout during `status ~= 1` with a scheduler-local explicit attack-on retry debounce (`0.30s`), kept the existing pending-engage wait-longer retry gate (`0.40s`), and added targeted reset/logging for target-change and wait-longer rejection recovery. Runtime behavior changed narrowly in `unified_scheduler.lua`; non-critical pending-engage blocking, critical Cure override, target acquisition behavior, and ownership policy remain unchanged. Files created: `docs/engage_duplicate_suppression_audit.md`, `tests/replay/harness/selftest_engage_duplicate_suppression.lua`. Files modified: `unified_scheduler.lua`, `tests/replay/harness/selftest_pending_engage_confirmation.lua`, `tests/replay/harness/selftest_engage_rejection_retry.lua`, `tests/replay/harness/selftest_action_economy_timeline_logging.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua`, `docs/pending_engage_confirmation_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md`. Validation: `luac -p UnifiedCombat.lua`, `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_engage_duplicate_suppression.lua`, `lua tests/replay/harness/selftest_pending_engage_confirmation.lua`, `lua tests/replay/harness/selftest_engage_rejection_retry.lua`, `lua tests/replay/harness/selftest_engage_dispatch_priority.lua`, `lua tests/replay/harness/selftest_target_acquire_nonblocking.lua`, `lua tests/replay/harness/selftest_action_economy_timeline_logging.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`. Field test: enable `_G.UC_DEBUG_ACTION_TIMELINE = true`, force engage retries while still not engaged, confirm `ENGAGE_DUPLICATE_SUPPRESSED` no longer creates multi-second delay, confirm `ENGAGE_DUPLICATE_RESET_REJECTION` appears after wait-longer rejection, and confirm target-change plus pending-engage non-critical blocking behavior remains intact.
+- 2026-06-19: Completed T3.4m explicit attack-on action-state bypass slice. Status change: T3.4m marked `DONE`; confirmed the remaining tank engage delay was the generic pre-send action-state gate, not duplicate suppression. `unified_scheduler.lua` now validates engage target selection/actionability before the engage-specific action-state check, attempts stale mob-target combat spell release immediately on proven target transition, and routes explicit `attack_on` engage through a narrow action-state gate. `uc_scheduler_action_state.lua` now allows explicit attack-on to bypass stale WS/JA/spell-cooldown action-state while still holding active in-progress spell casts and engage retry debounce, and stale combat-spell release can now clear immediately on proven target transition even in the previously acting case. Files created: `docs/engage_action_state_bypass_audit.md`, `tests/replay/harness/selftest_engage_action_state_bypass.lua`. Files modified: `unified_scheduler.lua`, `uc_scheduler_action_state.lua`, `tests/replay/harness/selftest_stale_spell_lockout_target_transition.lua`, `tests/replay/harness/selftest_action_economy_timeline_logging.lua`, `tests/replay/harness/selftest_all_replay_fixtures.lua`, `docs/engage_duplicate_suppression_audit.md`, `docs/pending_engage_confirmation_audit.md`, `docs/UnifiedCombat_scheduler_refactor_tracking.md`. Validation: `luac -p UnifiedCombat.lua`, `luac -p unified_scheduler.lua`, `luac -p unified_combat_core.lua`, `luac -p uc_scheduler_action_state.lua`, `lua tests/replay/harness/selftest_engage_action_state_bypass.lua`, `lua tests/replay/harness/selftest_engage_duplicate_suppression.lua`, `lua tests/replay/harness/selftest_pending_engage_confirmation.lua`, `lua tests/replay/harness/selftest_engage_rejection_retry.lua`, `lua tests/replay/harness/selftest_engage_dispatch_priority.lua`, `lua tests/replay/harness/selftest_stale_spell_lockout_target_transition.lua`, `lua tests/replay/harness/selftest_action_economy_timeline_logging.lua`, `lua tests/replay/harness/selftest_defensive_cure_priority.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`, `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`. Field test: enable `_G.UC_DEBUG_ACTION_TIMELINE = true`, confirm stale WS/JA action-state no longer delays the first `ENGAGE_DISPATCH_ATTEMPT`, confirm active spell casts log `ENGAGE_ACTION_STATE_HELD_ACTIVE_CAST` instead of bypassing, and confirm wait-longer `94` handling plus pending-engage non-critical blocking remain intact.

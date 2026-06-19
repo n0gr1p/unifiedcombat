@@ -55,8 +55,15 @@ local scheduler = {
 		maintenance_next_at = {},
 		tank_spell_settle_key = '',
 		tank_spell_settle_until = 0,
+		tank_spell_waiting = false,
+		tank_spell_wait_until = 0,
+		tank_pending_action = '',
+		tank_pending_target_id = 0,
+		tank_pending_sent_at = 0,
 		tank_action_settle_key = '',
 		tank_action_settle_until = 0,
+		pending_engage = nil,
+		engage_duplicate = nil,
 	},
 	party_state_ipc = {
 		last_sent_at = 0,
@@ -80,6 +87,11 @@ local scheduler = {
 		ja_lag_timeout = 1.0,
 		last_send_kind = '',
 	},
+	defensive_spell_waiting = false,
+	defensive_spell_wait_until = 0,
+	defensive_pending_action = '',
+	defensive_pending_target_id = 0,
+	defensive_pending_sent_at = 0,
 }
 
 local can_act_statuses = { [0] = true, [1] = true, [5] = true, [85] = true }
@@ -89,6 +101,11 @@ local DOOM_ITEM_COOLDOWN = 1.2
 local choose_cure_spell
 local BRD_OVERWRITE_CLUSTER_SECONDS = 5
 local BRD_OVERWRITE_SAFETY_SECONDS = 6
+scheduler.PENDING_ENGAGE_TIMEOUT_S = 1.75
+scheduler.PENDING_ENGAGE_RETRY_DELAY_S = 0.40
+scheduler.ENGAGE_REJECT_WAIT_LONGER_MESSAGE_ID = 94
+scheduler.ENGAGE_DUPLICATE_RETRY_DEBOUNCE_S = 0.30
+scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON = 'attack_on'
 
 local debuff_map = {
 	['Accuracy Down'] = 'Erase', ['addle'] = 'Erase', ['AGI Down'] = 'Erase', ['Attack Down'] = 'Erase',
@@ -354,7 +371,10 @@ local function action_state()
 	return require('uc_scheduler_action_state').action_state(scheduler)
 end
 
-local function action_mark_sent(kind)
+local function action_mark_sent(kind, meta)
+	if type(meta) == 'table' then
+		return require('uc_scheduler_action_state').action_mark_sent_with_meta(scheduler, kind, now_s, meta)
+	end
 	return require('uc_scheduler_action_state').action_mark_sent(scheduler, kind, now_s)
 end
 
@@ -372,6 +392,547 @@ end
 
 local function action_dispatch_blocked()
 	return require('uc_scheduler_action_state').action_dispatch_blocked(scheduler, now_s, _G)
+end
+
+local function engage_attack_on_action_state_gate(meta)
+	return require('uc_scheduler_action_state').engage_attack_on_action_state_gate(scheduler, now_s, _G, meta)
+end
+
+function scheduler.clear_local_spell_success()
+	return require('uc_scheduler_action_state').clear_local_spell_success(scheduler, now_s)
+end
+
+function scheduler.clear_local_spell_interruption()
+	return require('uc_scheduler_action_state').clear_local_spell_interruption(scheduler, now_s)
+end
+
+function scheduler.clear_local_defensive_spell_success()
+	return require('uc_scheduler_action_state').clear_local_defensive_spell_success(scheduler, now_s)
+end
+
+function scheduler.clear_local_defensive_spell_interruption()
+	return require('uc_scheduler_action_state').clear_local_defensive_spell_interruption(scheduler, now_s)
+end
+
+function scheduler.is_spell_success_message_id(message_id)
+	local mid = tonumber(message_id) or 0
+	return mid == 2 or mid == 230 or mid == 236 or mid == 252
+end
+
+function scheduler.is_spell_initiating_message_id(message_id)
+	local mid = tonumber(message_id) or 0
+	return mid == 3 or mid == 229
+end
+
+function scheduler.p1_clear_tank_spell_wait_state(phase)
+	phase.tank_spell_waiting = false
+	phase.tank_spell_wait_until = 0
+	phase.tank_pending_action = ''
+	phase.tank_pending_target_id = 0
+	phase.tank_pending_sent_at = 0
+end
+
+function scheduler.p1_begin_tank_spell_wait(phase, action_name, target_id, at)
+	local now_value = tonumber(at) or now_s()
+	phase.tank_spell_waiting = true
+	phase.tank_spell_wait_until = now_value + 8.0
+	phase.tank_pending_action = tostring(action_name or '')
+	phase.tank_pending_target_id = tonumber(target_id) or 0
+	phase.tank_pending_sent_at = now_value
+end
+
+function scheduler.p1_refresh_tank_spell_wait_lock(phase, at)
+	if type(phase) ~= 'table' or phase.tank_spell_waiting ~= true then
+		return false, 'inactive'
+	end
+	local now_value = tonumber(at) or now_s()
+	local wait_until = tonumber(phase.tank_spell_wait_until) or 0
+	if now_value >= wait_until then
+		scheduler.p1_clear_tank_spell_wait_state(phase)
+		return false, 'expired'
+	end
+	local ast = action_state()
+	local send_kind = tostring(ast.last_send_kind or '')
+	local cooldown_until = tonumber(ast.cooldown_until) or 0
+	local acting = action_is_acting()
+	if send_kind ~= 'spell' then
+		scheduler.p1_clear_tank_spell_wait_state(phase)
+		return false, 'released_nonspell'
+	end
+	if (not acting) and now_value >= cooldown_until then
+		scheduler.p1_clear_tank_spell_wait_state(phase)
+		return false, 'released_complete'
+	end
+	_G.UC_MOVEMENT_OWNER = 'scheduler'
+	_G.UC_MOVEMENT_LOCK_UNTIL = math.min(wait_until, now_value + 0.6)
+	return true, (acting and 'acting') or 'cooldown'
+end
+
+function scheduler.clear_defensive_spell_wait_state()
+	scheduler.defensive_spell_waiting = false
+	scheduler.defensive_spell_wait_until = 0
+	scheduler.defensive_pending_action = ''
+	scheduler.defensive_pending_target_id = 0
+	scheduler.defensive_pending_sent_at = 0
+end
+
+function scheduler.begin_defensive_spell_wait(action_name, target_id, at)
+	local now_value = tonumber(at) or now_s()
+	scheduler.defensive_spell_waiting = true
+	scheduler.defensive_spell_wait_until = now_value + 8.0
+	scheduler.defensive_pending_action = tostring(action_name or '')
+	scheduler.defensive_pending_target_id = tonumber(target_id) or 0
+	scheduler.defensive_pending_sent_at = now_value
+end
+
+function scheduler.refresh_defensive_spell_wait_lock(at)
+	if scheduler.defensive_spell_waiting ~= true then
+		return false, 'inactive'
+	end
+	local now_value = tonumber(at) or now_s()
+	local wait_until = tonumber(scheduler.defensive_spell_wait_until) or 0
+	if now_value >= wait_until then
+		scheduler.clear_defensive_spell_wait_state()
+		return false, 'expired'
+	end
+	local ast = action_state()
+	local send_kind = tostring(ast.last_send_kind or '')
+	local cooldown_until = tonumber(ast.cooldown_until) or 0
+	local acting = action_is_acting()
+	if send_kind ~= 'spell' then
+		scheduler.clear_defensive_spell_wait_state()
+		return false, 'released_nonspell'
+	end
+	if (not acting) and now_value >= cooldown_until then
+		scheduler.clear_defensive_spell_wait_state()
+		return false, 'released_complete'
+	end
+	_G.UC_MOVEMENT_OWNER = 'scheduler'
+	_G.UC_MOVEMENT_LOCK_UNTIL = math.min(wait_until, now_value + 0.6)
+	return true, (acting and 'acting') or 'cooldown'
+end
+
+function scheduler.p1_pending_engage_state(phase)
+	if type(phase) ~= 'table' then
+		return nil
+	end
+	if type(phase.pending_engage) ~= 'table' then
+		return nil
+	end
+	return phase.pending_engage
+end
+
+function scheduler.p1_pending_engage_live(phase, at)
+	local pending = scheduler.p1_pending_engage_state(phase)
+	if type(pending) ~= 'table' then
+		return false
+	end
+	local now_value = tonumber(at) or now_s()
+	local timeout_at = tonumber(pending.timeout_at) or 0
+	return timeout_at > now_value
+end
+
+function scheduler.p1_clear_pending_engage(phase)
+	if type(phase) ~= 'table' then
+		return
+	end
+	phase.pending_engage = nil
+end
+
+function scheduler.p1_engage_duplicate_state(phase)
+	if type(phase) ~= 'table' then
+		return nil
+	end
+	if type(phase.engage_duplicate) ~= 'table' then
+		return nil
+	end
+	return phase.engage_duplicate
+end
+
+function scheduler.p1_clear_engage_duplicate_state(phase, event_code, at, fields)
+	if type(phase) ~= 'table' then
+		return
+	end
+	local state = scheduler.p1_engage_duplicate_state(phase)
+	if type(state) ~= 'table' then
+		return
+	end
+	phase.engage_duplicate = nil
+	local event_name = tostring(event_code or '')
+	if event_name == '' then
+		return
+	end
+	local now_value = tonumber(at) or now_s()
+	local payload = type(fields) == 'table' and fields or {}
+	if payload.tid == nil then
+		payload.tid = tonumber(state.target_id) or 0
+	end
+	if payload.name == nil then
+		payload.name = tostring(state.target_name or '')
+	end
+	if payload.status == nil then
+		payload.status = tonumber(state.player_status) or 0
+	end
+	if payload.dispatch_method == nil then
+		payload.dispatch_method = tostring(state.dispatch_method or scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON)
+	end
+	if payload.age_s == nil then
+		payload.age_s = ('%.2f'):format(math.max(0, now_value - (tonumber(state.last_attempt_at) or now_value)))
+	end
+	if payload.remaining_s == nil then
+		payload.remaining_s = ('%.2f'):format(math.max(0, (tonumber(state.suppressed_until) or 0) - now_value))
+	end
+	if payload.sent_for_target == nil then
+		payload.sent_for_target = (((tonumber(state.target_id) or 0) > 0) and 1) or 0
+	end
+	scheduler.action_timeline_log(
+		event_name,
+		payload,
+		('engage_dup_reset:%s:%d'):format(event_name:lower(), tonumber(payload.tid) or 0),
+		0.05
+	)
+end
+
+function scheduler.p1_note_engage_duplicate_attempt(phase, target_id, target_name, at, player_status, dispatch_method)
+	if type(phase) ~= 'table' then
+		return
+	end
+	local now_value = tonumber(at) or now_s()
+	phase.engage_duplicate = {
+		target_id = tonumber(target_id) or 0,
+		target_name = tostring(target_name or ''),
+		last_attempt_at = now_value,
+		suppressed_until = now_value + (tonumber(scheduler.ENGAGE_DUPLICATE_RETRY_DEBOUNCE_S) or 0.30),
+		player_status = tonumber(player_status) or 0,
+		dispatch_method = tostring(dispatch_method or scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON),
+	}
+end
+
+function scheduler.p1_validate_engage_duplicate_retry(ctx, proposal)
+	if type(proposal) ~= 'table' then
+		return 'apply_generic', nil
+	end
+	if tostring(proposal.family_id or '') ~= 'combat.engage.primary' or tostring(proposal.action_type or '') ~= 'engage' then
+		return 'apply_generic', nil
+	end
+	local phase = scheduler.phase1 or {}
+	local now_value = tonumber(ctx and ctx.now) or now_s()
+	local target_id = tonumber(proposal.target_id) or 0
+	local player_status = tonumber(ctx and ctx.player_status) or 0
+	local dispatch_method = scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON
+	if player_status == 1 then
+		scheduler.p1_clear_engage_duplicate_state(phase, '', now_value)
+		return 'apply_generic', nil
+	end
+	local state = scheduler.p1_engage_duplicate_state(phase)
+	if type(state) == 'table' and (tonumber(state.target_id) or 0) > 0 and (tonumber(state.target_id) or 0) ~= target_id then
+		scheduler.p1_clear_engage_duplicate_state(phase, 'ENGAGE_DUPLICATE_RESET_TARGET_CHANGE', now_value, {
+			tid = target_id,
+			name = tostring(proposal.target_name or ''),
+			old_target_id = tonumber(state.target_id) or 0,
+			status = player_status,
+			dispatch_method = dispatch_method,
+		})
+		state = nil
+	end
+	local pending = scheduler.p1_pending_engage_state(phase)
+	local pending_live = scheduler.p1_pending_engage_live(phase, now_value)
+	if type(state) == 'table'
+		and pending_live
+		and type(pending) == 'table'
+		and (tonumber(pending.target_id) or 0) == target_id
+		and now_value >= (tonumber(pending.retry_ready_at) or 0)
+		and (tonumber(state.suppressed_until) or 0) > now_value then
+		scheduler.action_timeline_log('ENGAGE_DUPLICATE_ALLOWED_RETRY', {
+			tid = target_id,
+			name = tostring(proposal.target_name or ''),
+			status = player_status,
+			dispatch_method = dispatch_method,
+			age_s = ('%.2f'):format(math.max(0, now_value - (tonumber(state.last_attempt_at) or now_value))),
+			remaining_s = ('%.2f'):format(math.max(0, (tonumber(state.suppressed_until) or 0) - now_value)),
+			pending_engage = 'retry_ready',
+			sent_for_target = 1,
+		}, ('engage_dup_allow_retry:%d'):format(target_id), 0.05)
+		phase.engage_duplicate = nil
+		state = nil
+	end
+	if type(state) == 'table' then
+		local suppressed_until = tonumber(state.suppressed_until) or 0
+		if suppressed_until > now_value then
+			return 'suppressed', {
+				tid = target_id,
+				name = tostring(proposal.target_name or ''),
+				reason = 'BLOCK_DUPLICATE',
+				status = player_status,
+				dispatch_method = dispatch_method,
+				age_s = ('%.2f'):format(math.max(0, now_value - (tonumber(state.last_attempt_at) or now_value))),
+				remaining_s = ('%.2f'):format(math.max(0, suppressed_until - now_value)),
+				pending_engage = pending_live and 'active' or 'inactive',
+				sent_for_target = 1,
+			}
+		end
+	end
+	return 'skip_generic', nil
+end
+
+function scheduler.p1_note_pending_engage_attempt(phase, target_id, target_name, at)
+	if type(phase) ~= 'table' then
+		return
+	end
+	local now_value = tonumber(at) or now_s()
+	local tid = tonumber(target_id) or 0
+	local name = tostring(target_name or '')
+	local pending = scheduler.p1_pending_engage_state(phase)
+	if type(pending) == 'table' and (tonumber(pending.target_id) or 0) == tid and scheduler.p1_pending_engage_live(phase, now_value) then
+		pending.target_name = name
+		pending.last_attempt_at = now_value
+		pending.timeout_at = now_value + scheduler.PENDING_ENGAGE_TIMEOUT_S
+		pending.retry_ready_at = now_value
+		if (tonumber(pending.wait_longer_count) or 0) > 0 then
+			scheduler.action_timeline_log('PENDING_ENGAGE_RETRY_ATTEMPT', {
+				tid = tid,
+				name = name,
+				command = 'attack_on',
+				retry_count = tonumber(pending.retry_count) or 0,
+			}, ('pending_engage_retry_attempt:%d'):format(tid), 0.05)
+		end
+		return
+	end
+	phase.pending_engage = {
+		target_id = tid,
+		target_name = name,
+		started_at = now_value,
+		timeout_at = now_value + scheduler.PENDING_ENGAGE_TIMEOUT_S,
+		retry_ready_at = now_value,
+		last_attempt_at = now_value,
+		retry_count = 0,
+		wait_longer_count = 0,
+	}
+	scheduler.action_timeline_log('PENDING_ENGAGE_START', {
+		tid = tid,
+		name = name,
+		command = 'attack_on',
+	}, ('pending_engage_start:%d'):format(tid), 0.05)
+end
+
+function scheduler.p1_mark_pending_engage_rejected_wait_longer(phase, at, message_id)
+	local pending = scheduler.p1_pending_engage_state(phase)
+	if type(pending) ~= 'table' then
+		return false
+	end
+	local now_value = tonumber(at) or now_s()
+	if not scheduler.p1_pending_engage_live(phase, now_value) then
+		scheduler.p1_clear_pending_engage(phase)
+		return false
+	end
+	pending.wait_longer_count = (tonumber(pending.wait_longer_count) or 0) + 1
+	pending.retry_count = (tonumber(pending.retry_count) or 0) + 1
+	pending.retry_ready_at = math.min(
+		tonumber(pending.timeout_at) or now_value,
+		now_value + scheduler.PENDING_ENGAGE_RETRY_DELAY_S
+	)
+	pending.last_rejection_message_id = tonumber(message_id) or 0
+	scheduler.action_timeline_log('PENDING_ENGAGE_REJECTED_WAIT_LONGER', {
+		tid = tonumber(pending.target_id) or 0,
+		name = tostring(pending.target_name or ''),
+		message_id = tonumber(message_id) or 0,
+	}, ('pending_engage_rejected:%d'):format(tonumber(pending.target_id) or 0), 0.05)
+	scheduler.action_timeline_log('PENDING_ENGAGE_RETRY_READY', {
+		tid = tonumber(pending.target_id) or 0,
+		name = tostring(pending.target_name or ''),
+		retry_in_s = ('%.2f'):format(math.max(0, (tonumber(pending.retry_ready_at) or now_value) - now_value)),
+	}, ('pending_engage_retry_ready:%d'):format(tonumber(pending.target_id) or 0), 0.05)
+	scheduler.p1_clear_engage_duplicate_state(phase, 'ENGAGE_DUPLICATE_RESET_REJECTION', now_value, {
+		tid = tonumber(pending.target_id) or 0,
+		name = tostring(pending.target_name or ''),
+		status = 0,
+		dispatch_method = scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON,
+		pending_engage = 'rejected_wait_longer',
+	})
+	return true
+end
+
+function scheduler.p1_refresh_pending_engage(phase, player_status, at)
+	local pending = scheduler.p1_pending_engage_state(phase)
+	if type(pending) ~= 'table' then
+		return false, 'inactive'
+	end
+	local now_value = tonumber(at) or now_s()
+	if tonumber(player_status) == 1 then
+		scheduler.p1_clear_engage_duplicate_state(phase, '', now_value)
+		scheduler.action_timeline_log('PENDING_ENGAGE_CONFIRMED', {
+			tid = tonumber(pending.target_id) or 0,
+			name = tostring(pending.target_name or ''),
+			status = 1,
+		}, ('pending_engage_confirmed:%d'):format(tonumber(pending.target_id) or 0), 0.05)
+		scheduler.p1_clear_pending_engage(phase)
+		return false, 'confirmed'
+	end
+	local timeout_at = tonumber(pending.timeout_at) or 0
+	if timeout_at > 0 and now_value >= timeout_at then
+		scheduler.p1_clear_engage_duplicate_state(phase, '', now_value)
+		local last_attempt_at = tonumber(pending.last_attempt_at) or tonumber(pending.started_at) or now_value
+		scheduler.action_timeline_log('PENDING_ENGAGE_TIMEOUT', {
+			tid = tonumber(pending.target_id) or 0,
+			name = tostring(pending.target_name or ''),
+			retry_count = tonumber(pending.retry_count) or 0,
+			age_s = ('%.2f'):format(math.max(0, now_value - last_attempt_at)),
+		}, ('pending_engage_timeout:%d'):format(tonumber(pending.target_id) or 0), 0.05)
+		scheduler.p1_clear_pending_engage(phase)
+		return false, 'timeout'
+	end
+	local expected_tid = tonumber(pending.target_id) or 0
+	if expected_tid > 0 then
+		local target = windower.ffxi.get_mob_by_id(expected_tid)
+		if not target or not combat_core.is_live_actionable_combat_target(target, now_value, true) then
+			scheduler.p1_clear_engage_duplicate_state(phase, '', now_value)
+			scheduler.action_timeline_log('PENDING_ENGAGE_CLEARED_INVALID_TARGET', {
+				tid = expected_tid,
+				name = tostring(pending.target_name or ''),
+			}, ('pending_engage_invalid:%d'):format(expected_tid), 0.05)
+			scheduler.p1_clear_pending_engage(phase)
+			return false, 'invalid_target'
+		end
+	end
+	return true, 'active'
+end
+
+function scheduler.p1_is_critical_defensive_proposal(settings, selected)
+	if type(selected) ~= 'table' then
+		return false
+	end
+	local selected_provider = tostring(selected.provider or '')
+	if selected_provider ~= 'defensive_internal' and selected_provider ~= 'defensive_healbot' then
+		return false
+	end
+	local detail = type(selected.detail) == 'table' and selected.detail or {}
+	if tostring(selected.action_type or '') ~= 'spell' or tostring(detail.def_action_type or '') ~= 'cure' then
+		return false
+	end
+	local critical_hpp = tonumber(settings and settings.defensive_critical_hpp) or 35
+	local target_hpp = tonumber(detail.target_hpp) or -1
+	return target_hpp > 0 and target_hpp <= critical_hpp
+end
+
+function scheduler.p1_clear_pending_engage_for_critical_dispatch(phase, action_name, target_id, target_name)
+	local pending = scheduler.p1_pending_engage_state(phase)
+	if type(pending) ~= 'table' then
+		return
+	end
+	scheduler.p1_clear_engage_duplicate_state(phase, '', now_s())
+	scheduler.action_timeline_log('PENDING_ENGAGE_ALLOW_CRITICAL', {
+		tid = tonumber(target_id) or tonumber(pending.target_id) or 0,
+		name = tostring(target_name or pending.target_name or ''),
+		action = tostring(action_name or ''),
+	}, ('pending_engage_allow_critical:%s:%d'):format(tostring(action_name or ''), tonumber(target_id) or 0), 0.05)
+	scheduler.p1_clear_pending_engage(phase)
+end
+
+function scheduler.p1_selected_is_critical_cure(settings, selected)
+	if type(selected) ~= 'table' then
+		return false
+	end
+	local detail = type(selected.detail) == 'table' and selected.detail or {}
+	local target_hpp = tonumber(detail.target_hpp or -1) or -1
+	local critical_hpp = tonumber(settings and settings.defensive_critical_hpp) or 35
+	return tostring(selected.action_type or '') == 'spell'
+		and tostring(detail.def_action_type or '') == 'cure'
+		and target_hpp > 0
+		and target_hpp <= critical_hpp
+end
+
+function scheduler.p1_maybe_clear_pending_engage_for_selected_critical(settings, selected)
+	local phase = scheduler.phase1 or {}
+	if not scheduler.p1_pending_engage_live(phase, now_s()) then
+		return
+	end
+	if not scheduler.p1_selected_is_critical_cure(settings, selected) then
+		return
+	end
+	scheduler.p1_clear_pending_engage_for_critical_dispatch(
+		phase,
+		tostring(selected.action_name or ''),
+		tonumber(selected.target_id) or 0,
+		tostring(selected.target_name or '')
+	)
+end
+
+function scheduler.p1_maybe_release_stale_spell_lock_for_target_transition(selected, at)
+	if type(selected) ~= 'table' then
+		return false
+	end
+	local ast = action_state()
+	if tostring(ast.last_send_kind or '') ~= 'spell' then
+		return false
+	end
+	if tostring(ast.last_action_provider or '') ~= 'combat' then
+		return false
+	end
+	if tostring(ast.last_target_kind or '') ~= 'mob' then
+		return false
+	end
+	local now_value = tonumber(at) or now_s()
+	local stale_age_s = math.max(0, now_value - (tonumber(ast.last_action) or now_value))
+	local old_target_id = tonumber(ast.last_target_id) or 0
+	local new_target_id = tonumber(selected.target_id) or 0
+	if old_target_id <= 0 or new_target_id <= 0 or old_target_id == new_target_id then
+		return false
+	end
+	local old_target = windower.ffxi.get_mob_by_id(old_target_id)
+	local old_target_invalid = not old_target or not combat_core.is_live_actionable_combat_target(old_target, now_value, true)
+	if not old_target_invalid then
+		return false
+	end
+	local player_status_zero = (tonumber((windower.ffxi.get_player() or {}).status) or -1) == 0
+	local cleared = require('uc_scheduler_action_state').clear_stale_combat_spell_lock(scheduler, now_s, {
+		old_target_invalid = old_target_invalid,
+		player_status_zero = player_status_zero,
+		new_target_id = new_target_id,
+	})
+	if not cleared then
+		return false
+	end
+	local reason = 'TARGET_TRANSITION'
+	local immediate = 1
+	if player_status_zero then
+		reason = 'STATUS_ZERO_WITH_NEW_TARGET'
+	elseif old_target_invalid then
+		reason = 'OLD_TARGET_DEAD'
+	end
+	scheduler.action_timeline_log('STALE_SPELL_LOCK_RELEASE', {
+		spell = tostring(ast.last_action_name or ''),
+		provider = tostring(ast.last_action_provider or ''),
+		old_target_id = old_target_id,
+		tid = new_target_id,
+		name = tostring(selected.target_name or ''),
+		reason = reason,
+		age_s = ('%.2f'):format(stale_age_s),
+		immediate = immediate,
+	}, ('stale_spell_release:%d:%d'):format(old_target_id, new_target_id), 0.05)
+	return true
+end
+
+function scheduler.apply_defensive_spell_movement_lock(action_name, target_id, at)
+	local now_value = tonumber(at) or now_s()
+	local intent = {
+		kind = 'run_stop',
+		source = 'unified_scheduler:T3.1f_defensive_spell_lock',
+		meta = {
+			reason = 'DEFENSIVE_SPELL_CAST_LOCK',
+			action_name = tostring(action_name or ''),
+			target_id = tonumber(target_id) or 0,
+		},
+	}
+	local dispatcher = require('uc_scheduler_dispatcher')
+	require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+		dispatcher = dispatcher,
+		direct_run = windower.ffxi.run,
+		run = windower.ffxi.run,
+		ownership_enabled = false,
+		intent = intent,
+	})
+	_G.UC_MOVEMENT_OWNER = 'scheduler'
+	_G.UC_MOVEMENT_LOCK_UNTIL = now_value + 0.6
 end
 
 local function split_pipe(msg)
@@ -928,6 +1489,45 @@ local function build_partner_target_set(settings)
 	}, settings)
 end
 
+function scheduler.sleep_spell_list_from_settings(settings)
+	local out = {}
+	local seen = {}
+	local function append_spell(raw)
+		local spell_name = tostring(raw or ''):match('^%s*(.-)%s*$') or ''
+		if spell_name == '' then
+			return
+		end
+		local key = spell_name:lower()
+		if seen[key] == true then
+			return
+		end
+		seen[key] = true
+		out[#out + 1] = spell_name
+	end
+	local list = settings and settings.sleepspells or nil
+	if type(list) == 'table' then
+		for i = 1, #list do
+			append_spell(list[i])
+		end
+	elseif type(list) == 'string' then
+		append_spell(list)
+	end
+	if #out == 0 then
+		append_spell(settings and settings.sleepspell or '')
+	end
+	return out
+end
+
+scheduler.SLEEP_MAX_TARGET_DISTANCE = 6.0
+scheduler.SLEEP_TARGET_SUPPRESSION_TIMEOUT_S = 45.0
+scheduler.TANK_TARGET_ACQUIRE_PRIORITY = 106
+scheduler.TANK_TARGET_ACQUIRE_URGENCY = 0.80
+scheduler.TANK_ENGAGE_PRIORITY = 107
+scheduler.TANK_ENGAGE_URGENCY = 0.85
+scheduler.DEFAULT_ENGAGE_PRIORITY = 72
+scheduler.DEFAULT_ENGAGE_URGENCY = 0.70
+scheduler.TARGET_ACQUIRE_DEBOUNCE_S = 0.20
+
 local maintenance_blocked_zone_names = {
 	["southern san d'oria"] = true,
 	["northern san d'oria"] = true,
@@ -1025,6 +1625,118 @@ local function log_def_sched(msg)
 		fh:write(('%s	%s\n'):format(os.date('%Y-%m-%d %H:%M:%S'), m))
 		fh:close()
 	end
+end
+
+scheduler.action_timeline_state = scheduler.action_timeline_state or {
+	start_at = 0,
+	initialized = false,
+	last_event_at = {},
+	last_status = nil,
+}
+
+function scheduler.action_timeline_enabled()
+	return rawget(_G, 'UC_DEBUG_ACTION_TIMELINE') == true
+end
+
+function scheduler.action_timeline_player_name()
+	local p = windower.ffxi.get_player()
+	return tostring((p and p.name) or 'unknown')
+end
+
+function scheduler.action_timeline_log_path()
+	local name = scheduler.action_timeline_player_name():lower()
+	return windower.addon_path .. 'data/logs/action_timeline_' .. name .. '.log'
+end
+
+function scheduler.action_timeline_format_fields(fields)
+	if type(fields) ~= 'table' then
+		return ''
+	end
+	local order = {
+		'tid', 'name', 'spell', 'action', 'provider', 'band', 'urgency', 'critical', 'reason',
+		'status', 'from', 'to', 'target', 'target_id', 'old_target_id', 'message_id', 'retry_in_s', 'retry_count', 'age_s', 'remaining_s', 'tail_s', 'kind', 'command', 'dispatch_method', 'pending_engage', 'sent_for_target', 'immediate'
+	}
+	local parts = {}
+	local seen = {}
+	for i = 1, #order do
+		local key = order[i]
+		local val = fields[key]
+		if val ~= nil and val ~= '' then
+			seen[key] = true
+			parts[#parts + 1] = tostring(key) .. '=' .. tostring(val)
+		end
+	end
+	local extra = {}
+	for key, val in pairs(fields) do
+		if not seen[key] and val ~= nil and val ~= '' then
+			extra[#extra + 1] = tostring(key)
+		end
+	end
+	table.sort(extra)
+	for i = 1, #extra do
+		local key = extra[i]
+		parts[#parts + 1] = tostring(key) .. '=' .. tostring(fields[key])
+	end
+	return table.concat(parts, ' ')
+end
+
+function scheduler.action_timeline_write_line(line)
+	local fh = io.open(scheduler.action_timeline_log_path(), 'a')
+	if fh then
+		fh:write(tostring(line or '') .. '\n')
+		fh:close()
+	end
+end
+
+function scheduler.action_timeline_init(now_value)
+	if scheduler.action_timeline_state.initialized == true then
+		return
+	end
+	scheduler.action_timeline_state.initialized = true
+	scheduler.action_timeline_state.start_at = tonumber(now_value) or now_s()
+	scheduler.action_timeline_write_line(('%.3f | %s | SESSION_START | reload=1'):format(
+		0,
+		scheduler.action_timeline_player_name()
+	))
+end
+
+function scheduler.action_timeline_log(event_code, fields, dedupe_key, min_interval)
+	if not scheduler.action_timeline_enabled() then
+		return false
+	end
+	local now_value = now_s()
+	scheduler.action_timeline_init(now_value)
+	local key = tostring(dedupe_key or event_code or '')
+	local interval = tonumber(min_interval) or 0
+	if key ~= '' and interval > 0 then
+		local last_at = tonumber(scheduler.action_timeline_state.last_event_at[key]) or 0
+		if last_at > 0 and (now_value - last_at) < interval then
+			return false
+		end
+		scheduler.action_timeline_state.last_event_at[key] = now_value
+	end
+	local elapsed = (tonumber(now_value) or 0) - (tonumber(scheduler.action_timeline_state.start_at) or 0)
+	local suffix = scheduler.action_timeline_format_fields(fields)
+	local line = ('%.3f | %s | %s'):format(elapsed, scheduler.action_timeline_player_name(), tostring(event_code or 'EVENT'))
+	if suffix ~= '' then
+		line = line .. ' | ' .. suffix
+	end
+	scheduler.action_timeline_write_line(line)
+	return true
+end
+
+function scheduler.log_action_timeline_status_change(status)
+	local st = tonumber(status) or -1
+	local prev = tonumber(scheduler.action_timeline_state.last_status)
+	if prev == st then
+		return
+	end
+	scheduler.action_timeline_state.last_status = st
+	scheduler.action_timeline_log('STATUS_CHANGED', {
+		from = tostring(prev or 'nil'),
+		to = st,
+		status = st,
+	}, ('status:%d'):format(st), 0)
 end
 
 local diag_init = {
@@ -1644,6 +2356,168 @@ local function spell_ready(name)
 	return true, ''
 end
 
+function scheduler.select_sleep_spell_for_target(settings, target)
+	if type(target) ~= 'table' then
+		return nil, 'SLEEP_BAD_TARGET'
+	end
+	local target_id = tonumber(target.id) or 0
+	if target_id <= 0 then
+		return nil, 'SLEEP_BAD_TARGET'
+	end
+	local dist = target.distance and target.distance:sqrt() or 999
+	local sleep_spells = scheduler.sleep_spell_list_from_settings(settings)
+	for index, spell_name in ipairs(sleep_spells) do
+		local sp = get_spell_resource(spell_name)
+		local ok_ready, ready_reason, action_kind = action_ready(spell_name, target_id)
+		if ok_ready and action_kind == 'spell' and sp then
+			local max_range = action_effective_range(sp.range)
+			local effective_max_range = max_range
+			if effective_max_range <= 0 or effective_max_range > scheduler.SLEEP_MAX_TARGET_DISTANCE then
+				effective_max_range = scheduler.SLEEP_MAX_TARGET_DISTANCE
+			end
+			if effective_max_range > 0 and dist <= effective_max_range then
+				return {
+					name = tostring(spell_name),
+					index = index,
+					range_max = effective_max_range,
+					dist = dist,
+				}, ''
+			end
+			ready_reason = 'SLEEP_OUT_OF_RANGE'
+		end
+		if ready_reason == '' or ready_reason == nil then
+			ready_reason = 'SLEEP_NOT_READY'
+		end
+	end
+	return nil, 'SLEEP_NO_AVAILABLE_SPELL'
+end
+
+function scheduler.sleep_target_state_map()
+	local p = scheduler.phase1 or {}
+	p.sleep_targets = p.sleep_targets or {}
+	scheduler.phase1 = p
+	return p.sleep_targets
+end
+
+function scheduler.sleep_spell_effect_id_set_from_settings(settings)
+	local out = {}
+	local sleep_spells = scheduler.sleep_spell_list_from_settings(settings)
+	for i = 1, #sleep_spells do
+		local sp = get_spell_resource(sleep_spells[i])
+		local eid = tonumber(sp and sp.status) or 0
+		if eid > 0 then
+			out[eid] = true
+		end
+	end
+	return out
+end
+
+function scheduler.is_sleep_spell_name(settings, spell_name)
+	local want = tostring(spell_name or ''):lower()
+	if want == '' then
+		return false
+	end
+	local sleep_spells = scheduler.sleep_spell_list_from_settings(settings)
+	for i = 1, #sleep_spells do
+		if tostring(sleep_spells[i] or ''):lower() == want then
+			return true
+		end
+	end
+	return false
+end
+
+function scheduler.clear_sleep_target_suppression(target_id)
+	local tid = tonumber(target_id) or 0
+	if tid <= 0 then
+		return false
+	end
+	local st = scheduler.sleep_target_state_map()
+	local had = st[tid] ~= nil
+	st[tid] = nil
+	return had
+end
+
+function scheduler.mark_sleep_target_suppressed(target_id, spell_name, at)
+	local tid = tonumber(target_id) or 0
+	if tid <= 0 then
+		return false
+	end
+	local now = tonumber(at) or now_s()
+	local timeout_s = tonumber(scheduler.SLEEP_TARGET_SUPPRESSION_TIMEOUT_S) or 45.0
+	local st = scheduler.sleep_target_state_map()
+	st[tid] = {
+		spell_name = tostring(spell_name or ''),
+		seen_at = now,
+		expires_at = now + timeout_s,
+	}
+	return true
+end
+
+function scheduler.target_has_active_sleep_effect(settings, target_id, at)
+	local tid = tonumber(target_id) or 0
+	if tid <= 0 then
+		return false
+	end
+	enemy_effect_state_prune_expired(at)
+	local effects = enemy_effect_state_map()[tid]
+	if type(effects) ~= 'table' then
+		return false
+	end
+	local sleep_effect_ids = scheduler.sleep_spell_effect_id_set_from_settings(settings)
+	for effect_id, _ in pairs(sleep_effect_ids) do
+		if effects[effect_id] ~= nil then
+			return true, effect_id
+		end
+	end
+	return false
+end
+
+function scheduler.prune_sleep_target_state(settings, at)
+	local now = tonumber(at) or now_s()
+	local st = scheduler.sleep_target_state_map()
+	enemy_effect_state_prune_expired(now)
+	for tid, row in pairs(st) do
+		local remove = false
+		if type(row) ~= 'table' then
+			remove = true
+		else
+			local expires_at = tonumber(row.expires_at) or 0
+			if expires_at > 0 and expires_at <= now then
+				remove = true
+			end
+			if not remove then
+				local mob = windower.ffxi.get_mob_by_id(tonumber(tid) or 0)
+				if not mob or tonumber(mob.spawn_type) ~= 16 or (tonumber(mob.hpp) or 0) <= 0 then
+					remove = true
+				end
+			end
+			if not remove and scheduler.target_has_active_sleep_effect(settings, tid, now) then
+				remove = true
+			end
+		end
+		if remove then
+			scheduler.clear_sleep_target_suppression(tid)
+		end
+	end
+end
+
+function scheduler.target_sleep_suppressed(settings, target_id, at)
+	local tid = tonumber(target_id) or 0
+	if tid <= 0 then
+		return false
+	end
+	local now = tonumber(at) or now_s()
+	scheduler.prune_sleep_target_state(settings, now)
+	if scheduler.target_has_active_sleep_effect(settings, tid, now) then
+		return true, 'effect'
+	end
+	local row = scheduler.sleep_target_state_map()[tid]
+	if type(row) == 'table' then
+		return true, 'local'
+	end
+	return false
+end
+
 local cure_by_tier = {
 	[1] = { name = 'Cure', id = 1, potency = 120 },
 	[2] = { name = 'Cure II', id = 2, potency = 260 },
@@ -1871,6 +2745,39 @@ local function family_tokens_for(member_name, buff_id)
 		scheduler.family_tokens[k] = tokens
 	end
 	return tokens
+end
+
+function scheduler.resolve_party_member_name_by_id(target_id)
+	local want = tonumber(target_id) or 0
+	if want == 0 then
+		return ''
+	end
+	for _, member in ipairs(get_party_members() or {}) do
+		if tonumber(member and member.id) == want then
+			return tostring(member.name or '')
+		end
+	end
+	return ''
+end
+
+function scheduler.record_confirmed_bard_song_success(action_name, expected_target_id, message_target_id)
+	if is_bard_song(action_name) ~= true then
+		return
+	end
+	local success_target_id = tonumber(expected_target_id) or 0
+	if success_target_id == 0 then
+		success_target_id = tonumber(message_target_id) or 0
+	end
+	local success_target_name = scheduler.resolve_party_member_name_by_id(success_target_id)
+	if success_target_name == '' then
+		return
+	end
+	local now = now_s()
+	local expires_at = now + action_duration_seconds(
+		action_name,
+		tonumber(get_settings().defensive_overwrite_interval or 150) or 150
+	)
+	hb_buff_maint.mark_bard_song_success(success_target_name, action_name, now, expires_at)
 end
 
 
@@ -2111,18 +3018,17 @@ local function choose_defensive_action(c)
 	elseif is_majesty_action(c.overwrite) then
 		majesty_action = c.overwrite
 	end
-	if majesty_action and (not c.cure or not cure_is_critical(c.cure)) then
+	if c.debuff and c.debuff.spell == 'Paralyna' and c.debuff.target.is_self then
+		return c.debuff, 'BLOCK_DEFENSIVE_NA'
+	end
+	if majesty_action then
 		return majesty_action, 'BLOCK_DEFENSIVE_MAJESTY'
 	end
 	if c.overwrite then
 		return c.overwrite, 'BLOCK_DEFENSIVE_OVERWRITE'
 	elseif c.cure then
-		if c.debuff and c.debuff.spell == 'Paralyna' and c.debuff.target.is_self then
+		if c.debuff and ((c.debuff.prio + 2) < c.cure.prio) then
 			return c.debuff, 'BLOCK_DEFENSIVE_NA'
-		elseif c.debuff and ((c.debuff.prio + 2) < c.cure.prio) then
-			return c.debuff, 'BLOCK_DEFENSIVE_NA'
-		elseif c.buff and ((c.buff.prio + 2) < c.cure.prio) then
-			return c.buff, 'BLOCK_DEFENSIVE_BUFF'
 		end
 		return c.cure, 'BLOCK_DEFENSIVE_CURE'
 	elseif c.debuff then
@@ -2145,6 +3051,23 @@ local function try_delegate_healbot()
 	local action = _G.actions.get_defensive_action()
 	if not action then
 		return false, nil
+	end
+	local phase = scheduler.phase1 or {}
+	if scheduler.p1_pending_engage_live(phase, now_s()) then
+		local atype = tostring(action.type or '')
+		local target_hpp = tonumber(action.target and action.target.hpp) or -1
+		local critical_hpp = tonumber(get_settings().defensive_critical_hpp) or 35
+		local is_critical_cure = (atype == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp)
+		if not is_critical_cure then
+			scheduler.action_timeline_log('PENDING_ENGAGE_BLOCK_NONCRITICAL', {
+				action = tostring(action.action and action.action.en or atype or 'healbot_action'),
+				provider = 'defensive_healbot',
+				target = tostring(action.target and action.target.name or ''),
+				target_id = tonumber(action.target and action.target.id) or 0,
+			}, ('pending_engage_block:healbot:%s'):format(tostring(action.action and action.action.en or atype or 'healbot_action')), 0.25)
+			return false, nil
+		end
+		scheduler.p1_clear_pending_engage_for_critical_dispatch(phase, tostring(action.action and action.action.en or atype or 'healbot_action'), tonumber(action.target and action.target.id) or 0, tostring(action.target and action.target.name or ''))
 	end
 	_G.healer:take_action(action)
 	local reason = 'BLOCK_DEFENSIVE_' .. tostring(action.type or 'ACTION')
@@ -2197,6 +3120,22 @@ local function try_internal_defensive_action()
 	local action, reason = choose_defensive_action(candidates)
 	if action and action.spell and action.target and action.target.name then
 		local _, _, action_kind = action_ready(action.spell)
+		local phase = scheduler.phase1 or {}
+		if scheduler.p1_pending_engage_live(phase, now) then
+			local target_hpp = tonumber(action.target and action.target.hpp) or -1
+			local critical_hpp = tonumber(s.defensive_critical_hpp) or 35
+			local is_critical_cure = (tostring(action.type or '') == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp)
+			if not is_critical_cure then
+				scheduler.action_timeline_log('PENDING_ENGAGE_BLOCK_NONCRITICAL', {
+					action = tostring(action.spell or ''),
+					provider = 'defensive_internal',
+					target = tostring(action.target and action.target.name or ''),
+					target_id = tonumber(action.target and action.target.id) or 0,
+				}, ('pending_engage_block:legacy:%s'):format(tostring(action.spell or '')), 0.25)
+				return false, nil
+			end
+			scheduler.p1_clear_pending_engage_for_critical_dispatch(phase, tostring(action.spell or ''), tonumber(action.target and action.target.id) or 0, tostring(action.target and action.target.name or ''))
+		end
 		local out_of_combat = (tonumber(p and p.status) or 0) ~= 1
 		local now_gate = now_s()
 		local preengage_move_active = (rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true)
@@ -2226,7 +3165,14 @@ local function try_internal_defensive_action()
 			))
 			return false, nil
 		end
+		_G.UC_DEFENSIVE_CHAIN_ACTION = {
+			provider = 'defensive_internal',
+			action_kind = tostring(action_kind or ''),
+			def_action_type = tostring(action.type or ''),
+			action_name = tostring(action.spell or ''),
+		}
 		local blocked, b_reason = action_dispatch_blocked()
+		_G.UC_DEFENSIVE_CHAIN_ACTION = nil
 		if blocked then
 			log_def_sched(('DEF_BLOCK reason=%s action="%s" target="%s" type=%s'):format(
 				tostring(b_reason or 'BLOCKED'),
@@ -2247,6 +3193,15 @@ local function try_internal_defensive_action()
 			return false, nil
 		end
 		local cmd = build_action_command(action.spell, action_kind, action.target)
+		local target_hpp = tonumber(action.target and action.target.hpp) or -1
+		local can_apply_defensive_spell_lock = (
+			action_kind == 'spell'
+			and cmd ~= ''
+			and (tostring(action.type or '') ~= 'cure' or target_hpp > 0)
+		)
+		if can_apply_defensive_spell_lock then
+			scheduler.apply_defensive_spell_movement_lock(tostring(action.spell or ''), tonumber(action.target and action.target.id) or 0, now)
+		end
 		log_def_sched(('DEF_SEND type=%s action="%s" target="%s" cmd=%s'):format(
 			tostring(action_kind or action.type or 'defensive'),
 			tostring(action.spell or ''),
@@ -2288,7 +3243,16 @@ local function try_internal_defensive_action()
 			dispatch_reason = command_ownership_status.dispatch_reason,
 			fallback_used = command_ownership_status.fallback_used,
 		}
-		action_mark_sent(action_kind or action.type or 'defensive')
+		if can_apply_defensive_spell_lock then
+			scheduler.begin_defensive_spell_wait(tostring(action.spell or ''), tonumber(action.target and action.target.id) or 0, now)
+		end
+		action_mark_sent(action_kind or action.type or 'defensive', {
+			action_name = tostring(action.spell or ''),
+			provider = 'defensive_internal',
+			def_action_type = tostring(action.type or ''),
+			target_id = tonumber(action.target and action.target.id) or 0,
+			target_kind = ((tonumber(action.target and action.target.id) or 0) ~= 0 and (tonumber(action.target and action.target.id) or 0) ~= (tonumber(p and p.id) or 0)) and 'ally' or 'self',
+		})
 		scheduler.last_action_at = now
 		_G.UC_LAST_SCHED_ACTION = action.spell .. '->' .. tostring(action.target.name)
 		mark_attempt(action.type or 'defensive', action.target.name, action.spell, now)
@@ -2382,9 +3346,6 @@ local function p1_collect_defensive_internal(ctx, out)
 	end
 	local _, _, action_kind = action_ready(action_name, target_id)
 	local legacy_command = build_action_command(action_name, action_kind, action.target)
-	local tank_mode = bool_setting(ctx.settings and ctx.settings.tank, false)
-	local engage_priority = tank_mode and 109 or 72
-	local engage_urgency = tank_mode and 0.95 or 0.70
 	out[#out + 1] = {
 		proposal_id = ('def.internal.%s.%s.%d'):format(tostring(action.type or 'action'), action_name, math.floor(ctx.now * 1000)),
 		family_id = ('def.internal.%s'):format(tostring(action.type or 'action')),
@@ -2576,6 +3537,148 @@ local function p1_collect_combat_offense(ctx, out)
 	}
 end
 
+local p1_combat_helpers = {}
+
+function p1_combat_helpers.sleep_target_eligible(ctx, mob, current_target_id, claims_set, partner_target_set)
+	if not combat_core.is_live_actionable_combat_target(mob, ctx.now, true) then
+		return false
+	end
+	local tid = tonumber(mob.id) or 0
+	if tid <= 0 then
+		return false
+	end
+	if current_target_id > 0 and tid == current_target_id then
+		return false
+	end
+	if partner_target_set[tid] == true then
+		return false
+	end
+	if claims_set[tonumber(mob.claim_id) or 0] ~= true then
+		return false
+	end
+	if tonumber(mob.status) ~= 1 then
+		return false
+	end
+	if (tonumber(mob.hpp) or 0) <= 99 then
+		return false
+	end
+	local dist = mob.distance and mob.distance:sqrt() or 999
+	if dist > scheduler.SLEEP_MAX_TARGET_DISTANCE then
+		return false
+	end
+	if scheduler.target_sleep_suppressed(ctx.settings, tid, ctx.now) then
+		return false
+	end
+	return true
+end
+
+function p1_combat_helpers.collect_combat_sleep(ctx, out)
+	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+		return
+	end
+	if not bool_setting(ctx.settings.scheduler_dark_launch_combat, false) then
+		return
+	end
+	if not bool_setting(ctx.settings.sleep, false) then
+		return
+	end
+	local configured_sleep_spells = scheduler.sleep_spell_list_from_settings(ctx.settings)
+	if #configured_sleep_spells == 0 then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	if not player then
+		return
+	end
+	local current_target = windower.ffxi.get_mob_by_target('t')
+	local current_target_id = 0
+	if current_target and combat_core.is_live_actionable_combat_target(current_target, ctx.now, true) then
+		current_target_id = tonumber(current_target.id) or 0
+	end
+	local _, claims_set = uc_targeting_common.build_friendly_claims()
+	local partner_target_set = build_partner_target_set(ctx.settings)
+	local best = nil
+	local marray = windower.ffxi.get_mob_array() or {}
+	for _, mob in pairs(marray) do
+		if p1_combat_helpers.sleep_target_eligible(ctx, mob, current_target_id, claims_set, partner_target_set) then
+			local spell_pick = scheduler.select_sleep_spell_for_target(ctx.settings, mob)
+			if spell_pick then
+				local tid = tonumber(mob.id) or 0
+				local dist = tonumber(spell_pick.dist) or 999
+				if not best
+					or dist < best.dist
+					or (dist == best.dist and tid < best.target_id) then
+					best = {
+						target_id = tid,
+						target_name = tostring(mob.name or ''),
+						dist = dist,
+						spell_name = tostring(spell_pick.name or ''),
+						spell_index = tonumber(spell_pick.index) or 0,
+						range_max = tonumber(spell_pick.range_max) or 0,
+						target_hpp = tonumber(mob.hpp) or 0,
+					}
+				end
+			end
+		end
+	end
+	if not best then
+		return
+	end
+	local urgency = 0.55
+	if best.range_max > 0 then
+		urgency = 1.0 - math.min(1.0, best.dist / best.range_max)
+		if urgency < 0.55 then
+			urgency = 0.55
+		end
+	end
+	out[#out + 1] = {
+		proposal_id = ('combat.sleep.%s.%d.%d'):format(
+			tostring(best.spell_name),
+			tonumber(best.target_id) or 0,
+			math.floor(ctx.now * 1000)
+		),
+		family_id = 'combat.sleep.primary',
+		provider = 'combat',
+		action_type = 'spell',
+		action_name = tostring(best.spell_name),
+		target_kind = 'mob',
+		target_id = tonumber(best.target_id) or 0,
+		target_name = tostring(best.target_name or ''),
+		priority_band = 94,
+		urgency = p1_clamp_urgency(urgency),
+		starvation_eligible = true,
+		created_at = ctx.now,
+		expires_at = ctx.now + 0.30,
+		commit_deadline = ctx.now + 0.20,
+		movement_policy = 'must_stop',
+		range_policy = { min = 0.0, max = tonumber(best.range_max) or 0, los_required = true },
+		recast_key = ('sleep:%s'):format(tostring(best.spell_name)),
+		duplicate_suppression_key = ('sleep:%s:%d'):format(
+			tostring(best.spell_name),
+			tonumber(best.target_id) or 0
+		),
+		lock_class = 'offense_action',
+		expected_ack = 'action_start',
+		expected_effect = 'spell_effect',
+		sticky = false,
+		can_preempt_movement = true,
+		can_preempt_same_band = false,
+		reason_code = 'sleep_add_control',
+		detail = {
+			sleep_spell_index = tonumber(best.spell_index) or 0,
+			sleep_target_distance = tonumber(best.dist) or 0,
+			sleep_target_hpp = tonumber(best.target_hpp) or 0,
+			sleep_configured_count = #configured_sleep_spells,
+			allow_target_id_send = true,
+		},
+		legacy_command = ('input /ma \"%s\" %d'):format(
+			tostring(best.spell_name),
+			tonumber(best.target_id) or 0
+		),
+		required_setting = 'sleep',
+	}
+end
+
 local function p1_collect_enemy_buff_removal(ctx, out)
 	enemy_dispel_log(('ENEMY_DISPEL_TICK def_enabled=%s remove_enemy=%s provider=%s dark_def=%s'):format(
 		tostring(bool_setting(ctx.settings.defensive_enabled, false)),
@@ -2752,6 +3855,9 @@ local function p1_collect_combat_engage(ctx, out)
 	if not player then
 		return
 	end
+	local tank_mode = bool_setting(ctx.settings and ctx.settings.tank, false)
+	local engage_priority = tank_mode and scheduler.TANK_ENGAGE_PRIORITY or scheduler.DEFAULT_ENGAGE_PRIORITY
+	local engage_urgency = tank_mode and scheduler.TANK_ENGAGE_URGENCY or scheduler.DEFAULT_ENGAGE_URGENCY
 	local engaged = tonumber(player.status) == 1
 	local fight_leader_force_target_id = 0
 	local fight_leader_on = bool_setting(ctx.settings and ctx.settings.fight_leader, false)
@@ -2823,6 +3929,12 @@ local function p1_collect_combat_engage(ctx, out)
 			)
 		end
 	end
+	scheduler.action_timeline_log('ENGAGE_PROPOSED', {
+		tid = tonumber(t.id) or 0,
+		name = tostring(t.name or ''),
+		band = engage_priority,
+		urgency = ('%.2f'):format(p1_clamp_urgency(engage_urgency)),
+	}, ('engage_proposed:%d'):format(tonumber(t.id) or 0), 0.50)
 	out[#out + 1] = {
 		proposal_id = ('combat.engage.%d.%d'):format(tonumber(t.id) or 0, math.floor(ctx.now * 1000)),
 		family_id = 'combat.engage.primary',
@@ -2881,10 +3993,23 @@ local function p1_collect_target_control(ctx, out)
 	if tid <= 0 then
 		return
 	end
+	local tank_mode = bool_setting(ctx.settings and ctx.settings.tank, false)
+	local priority_band = tank_mode and scheduler.TANK_TARGET_ACQUIRE_PRIORITY or 84
+	local urgency = tank_mode and scheduler.TANK_TARGET_ACQUIRE_URGENCY or 0.55
 	local cur = windower.ffxi.get_mob_by_target('t')
 	if cur and tonumber(cur.id) == tid then
+		scheduler.action_timeline_log('TARGET_SELECT_SKIPPED_ALREADY_TARGETED', {
+			tid = tid,
+			name = tostring(pick.target_name or ''),
+		}, ('target_already:%d'):format(tid), 0.50)
 		return
 	end
+	scheduler.action_timeline_log('TARGET_ACQUIRE_CANDIDATE', {
+		tid = tid,
+		name = tostring(pick.target_name or ''),
+		band = priority_band,
+		urgency = ('%.2f'):format(p1_clamp_urgency(urgency)),
+	}, ('target_candidate:%d'):format(tid), 0.50)
 	out[#out + 1] = {
 		proposal_id = ('target.acquire.%d.%d'):format(tid, math.floor(ctx.now * 1000)),
 		family_id = 'target.acquire.primary',
@@ -2894,8 +4019,8 @@ local function p1_collect_target_control(ctx, out)
 		target_kind = 'mob',
 		target_id = tid,
 		target_name = tostring(pick.target_name or ''),
-		priority_band = 84,
-		urgency = p1_clamp_urgency(0.55),
+		priority_band = priority_band,
+		urgency = p1_clamp_urgency(urgency),
 		starvation_eligible = true,
 		created_at = ctx.now,
 		expires_at = ctx.now + 0.35,
@@ -3360,6 +4485,7 @@ local function p1_collect_proposals(ctx)
 	p1_collect_combat_engage(ctx, out)
 	p1_collect_pull_control(ctx, out)
 	p1_collect_combat_tank_enmity(ctx, out)
+	p1_combat_helpers.collect_combat_sleep(ctx, out)
 	p1_collect_combat_offense(ctx, out)
 	p1_collect_combat_ja(ctx, out)
 	-- 2 Hz defensive
@@ -3372,18 +4498,53 @@ local function p1_collect_proposals(ctx)
 	if ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0) then
 		p1_collect_maintenance(ctx, out)
 	end
+	for i = 1, #out do
+		local proposal = out[i]
+		if type(proposal) == 'table' then
+			local provider = tostring(proposal.provider or '')
+			local action_type = tostring(proposal.action_type or '')
+			local detail = type(proposal.detail) == 'table' and proposal.detail or {}
+			if provider == 'defensive_internal' or provider == 'defensive_healbot' then
+				if action_type == 'spell' and tostring(detail.def_action_type or '') == 'cure' then
+					local critical_hpp = tonumber(ctx.settings and ctx.settings.defensive_critical_hpp) or 35
+					local target_hpp = tonumber(detail.target_hpp or -1) or -1
+					local event_code = (target_hpp > 0 and target_hpp <= critical_hpp) and 'CRITICAL_CURE_PROPOSED' or 'NONCRITICAL_CURE_PROPOSED'
+					scheduler.action_timeline_log(event_code, {
+						spell = tostring(proposal.action_name or ''),
+						target = tostring(proposal.target_name or ''),
+						target_id = tonumber(proposal.target_id) or 0,
+						critical = tostring(event_code == 'CRITICAL_CURE_PROPOSED'),
+						band = tonumber(proposal.priority_band) or 0,
+					}, ('%s:%s:%d'):format(event_code, tostring(proposal.action_name or ''), tonumber(proposal.target_id) or 0), 0.50)
+				end
+			elseif provider == 'maintenance' then
+				scheduler.action_timeline_log('MAINT_BUFF_PROPOSED', {
+					action = tostring(proposal.action_name or ''),
+					provider = provider,
+					band = tonumber(proposal.priority_band) or 0,
+				}, ('maint_proposed:%s'):format(tostring(proposal.action_name or '')), 0.50)
+			elseif tostring(proposal.family_id or '') == 'combat.sleep.primary' then
+				scheduler.action_timeline_log('SLEEP_PROPOSED', {
+					spell = tostring(proposal.action_name or ''),
+					tid = tonumber(proposal.target_id) or 0,
+					name = tostring(proposal.target_name or ''),
+					band = tonumber(proposal.priority_band) or 0,
+				}, ('sleep_proposed:%d:%s'):format(tonumber(proposal.target_id) or 0, tostring(proposal.action_name or '')), 0.50)
+			end
+		end
+	end
 	return out
 end
 
-local function p1_pending_is_live_state(state_name)
+function scheduler.p1_pending_is_live_state(state_name)
 	return scheduler_locks.p1_pending_is_live_state(state_name)
 end
 
-local function p1_update_pending_state(ctx)
-	return scheduler_pending.p1_update_pending_state(scheduler, ctx, p1_pending_is_live_state, p1_number)
+function scheduler.p1_update_pending_state(ctx)
+	return scheduler_pending.p1_update_pending_state(scheduler, ctx, scheduler.p1_pending_is_live_state, p1_number)
 end
 
-local function p1_duplicate_suppressed(ctx, proposal)
+function scheduler.p1_duplicate_suppressed(ctx, proposal)
 	return scheduler_locks.p1_duplicate_suppressed(scheduler, ctx, proposal, p1_number)
 end
 
@@ -3423,11 +4584,11 @@ count_matching_buffs = function(buff_list, id_set)
 	return require('uc_scheduler_maintenance_utils').count_matching_buffs(buff_list, id_set)
 end
 
-local function p1_get_locks(ctx)
+function scheduler.p1_get_locks(ctx)
 	return scheduler_locks.p1_get_locks(scheduler, ctx, p1_number, _G)
 end
 
-local function p1_hard_lock_reject(locks, proposal)
+function scheduler.p1_hard_lock_reject(locks, proposal)
 	return scheduler_locks.p1_hard_lock_reject(locks, proposal)
 end
 
@@ -3446,7 +4607,29 @@ local function p1_validate_proposal(ctx, p)
 		return false, 'stale_snapshot'
 	end
 	local phase = scheduler.phase1
-	if type(phase.pending) == 'table' and p1_pending_is_live_state(tostring(phase.pending.state or '')) then
+	local pending_engage_live = scheduler.p1_pending_engage_live(phase, ctx.now)
+	if pending_engage_live then
+		local provider = tostring(p.provider or '')
+		local action_type = tostring(p.action_type or '')
+		if provider ~= 'target_control' then
+			if action_type == 'engage' then
+				local pending = scheduler.p1_pending_engage_state(phase)
+				local retry_ready_at = tonumber(pending and pending.retry_ready_at) or 0
+				if retry_ready_at > ctx.now then
+					return false, 'pending_engage_retry_wait'
+				end
+			elseif not scheduler.p1_is_critical_defensive_proposal(ctx.settings, p) then
+				scheduler.action_timeline_log('PENDING_ENGAGE_BLOCK_NONCRITICAL', {
+					tid = tonumber(p.target_id) or 0,
+					name = tostring(p.target_name or ''),
+					action = tostring(p.action_name or ''),
+					provider = provider,
+				}, ('pending_engage_block:%s:%s'):format(provider, tostring(p.action_name or '')), 0.25)
+				return false, 'pending_engage_block_noncritical'
+			end
+		end
+	end
+	if type(phase.pending) == 'table' and scheduler.p1_pending_is_live_state(tostring(phase.pending.state or '')) then
 		local pending_lock_class = tostring(phase.pending.lock_class or '')
 		local proposal_lock_class = tostring(p.lock_class or '')
 		if pending_lock_class ~= '' and proposal_lock_class ~= '' and pending_lock_class ~= proposal_lock_class then
@@ -3464,7 +4647,13 @@ local function p1_validate_proposal(ctx, p)
 	p.commit_deadline = p1_number(p.commit_deadline, ctx.now + 0.25)
 	p.priority_band = math.floor(p1_number(p.priority_band, 0))
 	p.urgency = p1_clamp_urgency(p.urgency)
-	if p1_duplicate_suppressed(ctx, p) then
+	local engage_duplicate_mode, engage_duplicate_fields = scheduler.p1_validate_engage_duplicate_retry(ctx, p)
+	if engage_duplicate_mode == 'suppressed' then
+		p._engage_duplicate_log_fields = engage_duplicate_fields
+		return false, 'duplicate_suppressed'
+	end
+	if engage_duplicate_mode ~= 'skip_generic' and scheduler.p1_duplicate_suppressed(ctx, p) then
+		p._engage_duplicate_log_fields = engage_duplicate_fields
 		return false, 'duplicate_suppressed'
 	end
 	return true, ''
@@ -3489,12 +4678,22 @@ local function p1_score(eval)
 end
 
 local function p1_rank(ctx, proposals)
-	local locks = p1_get_locks(ctx)
+	local locks = scheduler.p1_get_locks(ctx)
 	local valid = {}
 	local reject_counts = {}
 	local rejected = {}
 	local function add_reject(proposal, reason)
 		local p = proposal or {}
+		if tostring(p.family_id or '') == 'combat.engage.primary' and tostring(reason or '') == 'duplicate_suppressed' then
+			local fields = type(p._engage_duplicate_log_fields) == 'table' and p._engage_duplicate_log_fields or {
+				tid = tonumber(p.target_id) or 0,
+				name = tostring(p.target_name or ''),
+				reason = 'BLOCK_DUPLICATE',
+				status = tonumber(ctx and ctx.player_status) or 0,
+				dispatch_method = scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON,
+			}
+			scheduler.action_timeline_log('ENGAGE_DUPLICATE_SUPPRESSED', fields, ('engage_dup:%d'):format(tonumber(p.target_id) or 0), 0.50)
+		end
 		rejected[#rejected + 1] = {
 			provider = tostring(p.provider or ''),
 			family = tostring(p.family_id or ''),
@@ -3505,7 +4704,7 @@ local function p1_rank(ctx, proposals)
 	for _, proposal in ipairs(proposals) do
 		local ok, reject_reason = p1_validate_proposal(ctx, proposal)
 		if ok then
-			local lock_reject = p1_hard_lock_reject(locks, proposal)
+			local lock_reject = scheduler.p1_hard_lock_reject(locks, proposal)
 			if lock_reject ~= '' then
 				reject_counts[lock_reject] = (reject_counts[lock_reject] or 0) + 1
 				add_reject(proposal, lock_reject)
@@ -3563,6 +4762,18 @@ local function p1_rank(ctx, proposals)
 			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:rank_lost top=%s/%s/%s score=%.2f'):format(
 				top_provider, top_family, top_action, top_score
 			)
+			local top = valid[1]
+			local block_reason = 'BLOCK_UNKNOWN'
+			if scheduler.p1_is_critical_defensive_proposal(ctx and ctx.settings or nil, top) then
+				block_reason = 'BLOCK_CRITICAL_CURE'
+			end
+			scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
+				tid = tonumber(valid[1] and valid[1].target_id) or 0,
+				name = tostring(valid[1] and valid[1].target_name or ''),
+				reason = block_reason,
+				provider = top_provider,
+				action = top_action,
+			}, ('engage_rank_lost:%s:%s'):format(top_provider, top_action), 0.50)
 		elseif seen_engage and won_engage then
 			_G.UC_LAST_SCHED_ACTION = '[p1]engage:rank_win'
 		end
@@ -3602,28 +4813,69 @@ local function p1_revalidate_plan_commit(ctx, selected, plan)
 	return require('uc_scheduler_dispatch_plan').p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, windower)
 end
 
-local function p1_set_pending_globals()
+function scheduler.p1_set_pending_globals()
 	return scheduler_pending.p1_set_pending_globals(scheduler, _G)
 end
 
-local function p1_build_lock_summary(ctx, locks)
-	return scheduler_locks.p1_build_lock_summary(ctx, locks, p1_get_locks)
+function scheduler.p1_build_lock_summary(ctx, locks)
+	return scheduler_locks.p1_build_lock_summary(ctx, locks, scheduler.p1_get_locks)
 end
 
-local function p1_record_legacy_dispatch(ctx)
+function scheduler.p1_record_legacy_dispatch(ctx)
 	return require('uc_scheduler_pending_record').p1_record_legacy_dispatch(scheduler, ctx, p1_number)
 end
 
-local function p1_pending_mark_complete(now, result_code)
+function scheduler.p1_pending_mark_complete(now, result_code)
 	return scheduler_pending.p1_pending_mark_complete(scheduler, now, result_code)
 end
 
 local function p1_run_dry(settings)
 	local ctx = p1_build_ctx(settings)
-	p1_update_pending_state(ctx)
+	scheduler.p1_update_pending_state(ctx)
 	local proposals = p1_collect_proposals(ctx)
 	local ranked, reject_counts, locks, rejected = p1_rank(ctx, proposals)
 	local selected = ranked[1]
+	if type(selected) == 'table' then
+		local engage_candidate = scheduler.p1_pick_preemptive_engage(ctx, ranked)
+		if type(engage_candidate) == 'table' then
+			selected = engage_candidate
+		end
+	end
+	if type(selected) == 'table' then
+		local selected_provider_for_weave = tostring(selected.provider or '')
+		local detail = type(selected.detail) == 'table' and selected.detail or nil
+		local target_hpp = tonumber(detail and detail.target_hpp or -1) or -1
+		local critical_hpp = tonumber(ctx.settings and ctx.settings.defensive_critical_hpp) or 35
+		local is_defensive_cure_selected = (
+			(selected_provider_for_weave == 'defensive_internal' or selected_provider_for_weave == 'defensive_healbot')
+			and tostring(selected.action_type or '') == 'spell'
+			and tostring(detail and detail.def_action_type or '') == 'cure'
+		)
+		local cure_is_critical = (target_hpp > 0 and target_hpp <= critical_hpp)
+		if is_defensive_cure_selected
+			and not cure_is_critical
+			and require('uc_scheduler_action_state').defensive_cure_weave_ready(scheduler, now_s) then
+			for i = 2, #ranked do
+				local candidate = ranked[i]
+				if type(candidate) == 'table'
+					and tostring(candidate.provider or '') == 'combat'
+					and (tostring(candidate.action_type or '') == 'ja' or tostring(candidate.action_type or '') == 'ws') then
+					local target_kind = tostring(candidate.target_kind or '')
+					local target_id = tonumber(candidate.target_id) or 0
+					if target_kind ~= 'mob' or target_id > 0 then
+						local candidate_plan = p1_build_dispatch_plan(ctx, candidate)
+						local candidate_ok = p1_revalidate_plan_commit(ctx, candidate, candidate_plan)
+						if candidate_ok then
+							candidate._weave_from_provider = tostring(selected.provider or '')
+							candidate._weave_from_action = tostring(selected.action_name or '')
+							selected = candidate
+							break
+						end
+					end
+				end
+			end
+		end
+	end
 	local plan = p1_build_dispatch_plan(ctx, selected)
 	local commit_ok, commit_reason = p1_revalidate_plan_commit(ctx, selected, plan)
 	if selected and not commit_ok then
@@ -3707,8 +4959,121 @@ local function p1_try_target_prep(target_id)
 	return ok
 end
 
-local function p1_target_distance_to_id(target_id)
+function scheduler.p1_apply_target_acquire_debounce(proposal, at)
+	local dkey = tostring(proposal and proposal.duplicate_suppression_key or '')
+	if dkey == '' then
+		return
+	end
+	local now = tonumber(at) or now_s()
+	local debounce_s = tonumber(scheduler.TARGET_ACQUIRE_DEBOUNCE_S) or 0.20
+	scheduler.phase1.recent_duplicate_until[dkey] = now + debounce_s
+end
+
+function scheduler.p1_dispatch_target_control(selected, ctx)
+	if type(selected) ~= 'table' then
+		return false, nil
+	end
+	local tid = tonumber(selected.target_id) or 0
+	if tid <= 0 then
+		return false, nil
+	end
+	local ok = p1_try_target_prep(tid)
+	if not ok then
+		scheduler.action_timeline_log('TARGET_SELECT_BLOCKED', {
+			tid = tid,
+			name = tostring(selected.target_name or ''),
+			reason = 'BLOCK_INVALID_TARGET',
+		}, ('target_blocked:%d:prep'):format(tid), 0.50)
+		return false, nil
+	end
+	scheduler.phase1.last_selected = selected
+	scheduler.phase1.last_plan = p1_build_dispatch_plan(ctx, selected)
+	scheduler.p1_apply_target_acquire_debounce(selected, ctx.now)
+	scheduler.p1_maybe_release_stale_spell_lock_for_target_transition(selected, ctx.now)
+	scheduler.action_timeline_log('TARGET_SELECTED', {
+		tid = tid,
+		name = tostring(selected.target_name or ''),
+	}, ('target_selected:%d'):format(tid), 0.05)
+	scheduler.p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
+	_G.UC_LAST_SCHED_ACTION = ('[p1]target:%d->%s'):format(tid, tostring(selected.target_name or ''))
+	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_TARGET'
+end
+
+function scheduler.p1_try_nonblocking_target_acquire(settings)
+	if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
+		return false, nil
+	end
+	local ctx = p1_build_ctx(settings)
+	scheduler.p1_update_pending_state(ctx)
+	local proposals = {}
+	p1_collect_target_control(ctx, proposals)
+	local selected = proposals[1]
+	if type(selected) ~= 'table' then
+		return false, nil
+	end
+	local ok, reject_reason = p1_validate_proposal(ctx, selected)
+	if not ok then
+		if tostring(reject_reason or '') == 'duplicate_suppressed' then
+			scheduler.action_timeline_log('TARGET_SELECT_DEBOUNCED', {
+				tid = tonumber(selected.target_id) or 0,
+				name = tostring(selected.target_name or ''),
+				reason = 'BLOCK_DEBOUNCE',
+			}, ('target_debounced:%d'):format(tonumber(selected.target_id) or 0), 0.50)
+		else
+			scheduler.action_timeline_log('TARGET_SELECT_BLOCKED', {
+				tid = tonumber(selected.target_id) or 0,
+				name = tostring(selected.target_name or ''),
+				reason = tostring(reject_reason or 'BLOCK_UNKNOWN'),
+			}, ('target_blocked:%d:%s'):format(tonumber(selected.target_id) or 0, tostring(reject_reason or 'BLOCK_UNKNOWN')), 0.50)
+		end
+		return false, reject_reason
+	end
+	local p1_get_locks = scheduler.p1_get_locks
+	local p1_hard_lock_reject = scheduler.p1_hard_lock_reject
+	local lock_reject = p1_hard_lock_reject(p1_get_locks(ctx), selected)
+	if lock_reject ~= '' then
+		scheduler.action_timeline_log('TARGET_SELECT_BLOCKED', {
+			tid = tonumber(selected.target_id) or 0,
+			name = tostring(selected.target_name or ''),
+			reason = tostring(lock_reject),
+		}, ('target_blocked:%d:%s'):format(tonumber(selected.target_id) or 0, tostring(lock_reject)), 0.50)
+		return false, lock_reject
+	end
+	local plan = p1_build_dispatch_plan(ctx, selected)
+	local commit_ok = p1_revalidate_plan_commit(ctx, selected, plan)
+	if not commit_ok then
+		scheduler.action_timeline_log('TARGET_SELECT_BLOCKED', {
+			tid = tonumber(selected.target_id) or 0,
+			name = tostring(selected.target_name or ''),
+			reason = 'commit_invalidated',
+		}, ('target_blocked:%d:commit'):format(tonumber(selected.target_id) or 0), 0.50)
+		return false, 'commit_invalidated'
+	end
+	return scheduler.p1_dispatch_target_control(selected, ctx)
+end
+
+function p1_combat_helpers.target_distance_to_id(target_id)
 	return require('uc_scheduler_target_utils').p1_target_distance_to_id(scheduler, target_id)
+end
+
+function p1_combat_helpers.spell_target_dispatch_ready(selected, expected_tid, tank_enmity)
+	if (tank_enmity or (type(selected.detail) == 'table' and selected.detail.allow_target_id_send == true)) and expected_tid > 0 then
+		local max_range = math.max(0, p1_number(selected.range_policy and selected.range_policy.max, 0))
+		local dist, mob = p1_combat_helpers.target_distance_to_id(expected_tid)
+		if not mob or not combat_core.is_live_actionable_combat_target(mob, now_s(), true) then
+			return false
+		end
+		if max_range > 0 and dist and dist > max_range then
+			return false
+		end
+		return true
+	end
+	local target = windower.ffxi.get_mob_by_target('t')
+	if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
+		return false
+	end
+	return true
 end
 
 p1_apply_face_to_target = function(settings, target_id)
@@ -3825,91 +5190,447 @@ local function p1_move_toward_mob(mob)
 	return true
 end
 
-local function p1_try_dark_launch_dispatch(settings)
-	local phase = scheduler.phase1
-	local selected = phase.last_selected
-	local plan = phase.last_plan
-	if type(selected) ~= 'table' or type(plan) ~= 'table' then
+local function p1_dispatch_combat_engage(selected, settings, phase, expected_tid)
+	local target = windower.ffxi.get_mob_by_target('t')
+	if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
+		local ok_set = p1_try_target_prep(expected_tid)
+		if not ok_set then
+			log_combat_sched(('engage_drop reason=TARGET_PREP_FAIL expected_tid=%d'):format(expected_tid))
+			if bool_setting(settings and settings.debug, false) then
+				_G.UC_LAST_SCHED_ACTION = ('[p1]engage:dispatch_fail:settarget tid=%d'):format(expected_tid)
+			end
+			scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
+				tid = expected_tid,
+				name = tostring(selected.target_name or ''),
+				reason = 'BLOCK_INVALID_TARGET',
+			}, ('engage_dispatch_blocked:%d:settarget'):format(expected_tid), 0.50)
+			return false, nil
+		end
+		target = windower.ffxi.get_mob_by_target('t')
+	end
+	if not combat_core.is_live_actionable_combat_target(target, now_s(), true) then
+		log_combat_sched(('engage_drop reason=TARGET_NOT_ACTIONABLE expected_tid=%d'):format(expected_tid))
+		if bool_setting(settings and settings.debug, false) then
+			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:dispatch_fail:not_actionable tid=%d'):format(expected_tid)
+		end
+		scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
+			tid = expected_tid,
+			name = tostring(selected.target_name or ''),
+			reason = 'BLOCK_INVALID_TARGET',
+		}, ('engage_dispatch_blocked:%d:not_actionable'):format(expected_tid), 0.50)
 		return false, nil
 	end
-	local provider = tostring(selected.provider or '')
-	if provider == 'target_control' then
-		if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
-			return false, nil
+	local player = windower.ffxi.get_player()
+	if player and tonumber(player.status) == 1 then
+		local cur = windower.ffxi.get_mob_by_target('t')
+		if cur and tonumber(cur.id) == expected_tid then
+			log_combat_sched(('engage_drop reason=ALREADY_ENGAGED expected_tid=%d'):format(expected_tid))
+			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:already:%s'):format(tostring(selected.target_name or ''))
+			scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
+				tid = expected_tid,
+				name = tostring(selected.target_name or ''),
+				reason = 'BLOCK_ALREADY_ENGAGED',
+			}, ('engage_dispatch_blocked:%d:already'):format(expected_tid), 0.50)
+			return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_ENGAGED'
 		end
-		local tid = tonumber(selected.target_id) or 0
-		if tid <= 0 then
-			return false, nil
-		end
-		local ok = p1_try_target_prep(tid)
-		if not ok then
-			return false, nil
-		end
-		-- Target prep is a focus-selection operation, not a cast/JA/WS in-flight action.
-		-- Do not enter the global acting lock path here or engage can be delayed by timeout.
-		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-		p1_record_legacy_dispatch(ctx)
-		p1_set_pending_globals()
-		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
-		_G.UC_LAST_SCHED_ACTION = ('[p1]target:%d->%s'):format(tid, tostring(selected.target_name or ''))
-		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_TARGET'
 	end
-
-	if provider == 'pull_control' then
-		if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
-			return false, nil
-		end
-		local blocked, b_reason = action_dispatch_blocked()
-		if blocked then
-			return true, b_reason
-		end
-		if not combat_core or type(combat_core.dispatch_pull_for_scheduler) ~= 'function' then
-			return false, nil
-		end
-		local tid = tonumber(selected.target_id) or 0
-		if tid <= 0 then
-			return false, nil
-		end
-		local ok, reason = combat_core.dispatch_pull_for_scheduler(settings, tid)
-		if not ok then
-			return false, nil
-		end
-		local sent = tostring(reason or '') == 'PULL_ACTION_SENT'
-		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-		if sent then
-			-- Only create/refresh scheduler pending locks when an actual pull action packet
-			-- was sent. Movement/setup states must not enter acting lock bookkeeping.
-			action_mark_sent('pull')
-			p1_record_legacy_dispatch(ctx)
-			p1_set_pending_globals()
-			_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
-		else
-			-- Pull move/setup/no-op outcomes should never keep a live pending lock.
-			p1_pending_mark_complete(ctx.now, ('pull_no_send:%s'):format(tostring(reason or 'BLOCK')))
-			p1_set_pending_globals()
-			_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
-		end
-		_G.UC_LAST_SCHED_ACTION = ('[p1]pull:%s->%s:%s'):format(
-			tostring(selected.action_name or ''),
-			tostring(selected.target_name or ''),
-			tostring(reason or '')
-		)
-		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_PULL'
-	end
-	if provider == 'combat' then
-		_G.UC_TANK_ENMITY_BLOCK = ''
-		if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
-			return false, nil
-		end
-		p1_apply_face_to_target(settings, tonumber(selected.target_id) or 0)
-		log_combat_sched(('dispatch_select type=%s name=\"%s\" target=\"%s\" tid=%d provider=%s family=%s'):format(
+	_G.UC_ACTION_TIMELINE_CURRENT_ACTION = 'engage'
+	scheduler.p1_maybe_release_stale_spell_lock_for_target_transition(selected, now_s())
+	local blocked, block_reason = engage_attack_on_action_state_gate({
+		explicit_attack_on = true,
+		player_status = tonumber(player and player.status) or 0,
+		target_selected = true,
+		target_valid = true,
+		target_id = expected_tid,
+		target_name = tostring(selected.target_name or ''),
+		dispatch_method = scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON,
+	})
+	_G.UC_ACTION_TIMELINE_CURRENT_ACTION = nil
+	if blocked then
+		log_combat_sched(('dispatch_block reason=%s type=%s name=\"%s\" tid=%d'):format(
+			tostring(block_reason or 'BLOCKED'),
 			tostring(selected.action_type or ''),
 			tostring(selected.action_name or ''),
-			tostring(selected.target_name or ''),
-			tonumber(selected.target_id) or 0,
-			tostring(selected.provider or ''),
-			tostring(selected.family_id or '')
+			tonumber(selected.target_id) or 0
 		))
+		scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
+			tid = tonumber(selected.target_id) or 0,
+			name = tostring(selected.target_name or ''),
+			reason = tostring(block_reason or 'BLOCK_ACTION_STATE'),
+		}, ('engage_blocked:%s'):format(tostring(block_reason or 'BLOCK_ACTION_STATE')), 0.50)
+		return true, block_reason
+	end
+	scheduler.action_timeline_log('ENGAGE_DISPATCH_ATTEMPT', {
+		tid = expected_tid,
+		name = tostring(selected.target_name or ''),
+		command = 'attack_on',
+	}, ('engage_attempt:%d'):format(expected_tid), 0.05)
+	if not uc_attack or type(uc_attack.engage_target) ~= 'function' then
+		log_combat_sched('engage_drop reason=NO_UC_ATTACK')
+		if bool_setting(settings and settings.debug, false) then
+			_G.UC_LAST_SCHED_ACTION = '[p1]engage:dispatch_fail:no_uc_attack'
+		end
+		scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
+			tid = expected_tid,
+			name = tostring(selected.target_name or ''),
+			reason = 'BLOCK_UNKNOWN',
+		}, ('engage_dispatch_blocked:%d:no_attack'):format(expected_tid), 0.50)
+		return false, nil
+	end
+	local ok_attack, engage_reason = uc_attack.engage_target(expected_tid)
+	if not ok_attack then
+		if scheduler.p1_pending_engage_live(phase, now_s()) then
+			scheduler.p1_clear_pending_engage(phase)
+		end
+		scheduler.p1_clear_engage_duplicate_state(phase, '', now_s())
+		log_combat_sched(('engage_send_fail tid=%d reason=%s'):format(expected_tid, tostring(engage_reason or 'ENGAGE_FAIL')))
+		if bool_setting(settings and settings.debug, false) then
+			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:dispatch_fail:%s'):format(tostring(engage_reason or 'ENGAGE_FAIL'))
+		end
+		scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
+			tid = expected_tid,
+			name = tostring(selected.target_name or ''),
+			reason = tostring(engage_reason or 'BLOCK_UNKNOWN'),
+		}, ('engage_dispatch_blocked:%d:send'):format(expected_tid), 0.50)
+		return false, nil
+	end
+	scheduler.p1_note_pending_engage_attempt(phase, expected_tid, tostring(selected.target_name or ''), now_s())
+	scheduler.p1_note_engage_duplicate_attempt(
+		phase,
+		expected_tid,
+		tostring(selected.target_name or ''),
+		now_s(),
+		tonumber((windower.ffxi.get_player() or {}).status) or 0,
+		scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON
+	)
+	require('uc_scheduler_action_state').action_mark_engage_sent(scheduler, now_s)
+	log_combat_sched(('engage_send_ok tid=%d target=\"%s\"'):format(expected_tid, tostring(selected.target_name or '')))
+	_G.UC_LAST_SCHED_ACTION = ('[p1]engage:sent:%s'):format(tostring(selected.target_name or ''))
+	scheduler.action_timeline_log('ENGAGE_DISPATCHED', {
+		tid = expected_tid,
+		name = tostring(selected.target_name or ''),
+		command = 'attack_on',
+	}, ('engage_dispatched:%d'):format(expected_tid), 0.05)
+	return true, nil
+end
+
+local function p1_dispatch_pull_control(selected, settings)
+	if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
+		return false, nil
+	end
+	local blocked, block_reason = action_dispatch_blocked()
+	if blocked then
+		return true, block_reason
+	end
+	if not combat_core or type(combat_core.dispatch_pull_for_scheduler) ~= 'function' then
+		return false, nil
+	end
+	local target_id = tonumber(selected.target_id) or 0
+	if target_id <= 0 then
+		return false, nil
+	end
+	local ok, reason = combat_core.dispatch_pull_for_scheduler(settings, target_id)
+	if not ok then
+		return false, nil
+	end
+	local sent = tostring(reason or '') == 'PULL_ACTION_SENT'
+	local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
+	if sent then
+		action_mark_sent('pull')
+		scheduler.p1_record_legacy_dispatch(ctx)
+		scheduler.p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
+	else
+		p1_pending_mark_complete(ctx.now, ('pull_no_send:%s'):format(tostring(reason or 'BLOCK')))
+		scheduler.p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
+	end
+	_G.UC_LAST_SCHED_ACTION = ('[p1]pull:%s->%s:%s'):format(
+		tostring(selected.action_name or ''),
+		tostring(selected.target_name or ''),
+		tostring(reason or '')
+	)
+	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_PULL'
+end
+
+local function p1_dispatch_maintenance_cor(selected, settings, provider)
+	if not bool_setting(settings and settings.scheduler_dark_launch_maintenance, false) then
+		log_def_sched('MAINT_COR_DISPATCH_SKIP reason=TOGGLE_OFF')
+		return false, nil
+	end
+	local blocked, block_reason = action_dispatch_blocked()
+	if blocked then
+		log_def_sched(('MAINT_COR_DISPATCH_BLOCK reason=%s'):format(tostring(block_reason or 'BLOCKED')))
+		return true, block_reason
+	end
+	local ability = tostring(selected.action_name or '')
+	if ability == '' then
+		log_def_sched('MAINT_COR_DISPATCH_SKIP reason=EMPTY_ACTION')
+		return false, nil
+	end
+	local ok_ready, ready_reason, action_kind = action_ready(ability)
+	if action_kind ~= 'ja' or not ok_ready then
+		log_def_sched(('MAINT_COR_DISPATCH_SKIP reason=NOT_READY action=\"%s\" kind=%s ready_kind=%s ready_reason=%s'):format(
+			tostring(ability),
+			'ja',
+			tostring(action_kind or ''),
+			tostring(ready_reason or '')
+		))
+		return false, nil
+	end
+	local maintenance_cor_command = ('input /ja \"%s\" <me>'):format(ability)
+	local intent = {
+		kind = 'send_command',
+		source = 'unified_scheduler:T2.3j_darklaunch',
+		command = maintenance_cor_command,
+		meta = {
+			action_type = tostring(action_kind or 'ja'),
+			action_name = ability,
+			provider = tostring(provider or ''),
+		},
+	}
+	local dispatcher = require('uc_scheduler_dispatcher')
+	local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+	local maintenance_command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+		dispatcher = dispatcher,
+		direct_send_command = windower.send_command,
+		send_command = windower.send_command,
+		ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MAINTENANCE_COR_COMMAND_OWNERSHIP == true),
+		promoted_default_on = true,
+		ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MAINTENANCE_COR_COMMAND_OWNERSHIP == false),
+		promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+		intent = intent,
+		command = maintenance_cor_command,
+	})
+	scheduler.action_timeline_log('MAINT_BUFF_DISPATCHED', {
+		action = tostring(ability or ''),
+		provider = tostring(provider or ''),
+		band = tonumber(selected.priority_band) or 0,
+	}, ('maint_dispatch:%s'):format(tostring(ability or '')), 0.05)
+	_G.UC_SCHED_P1_DARKLAUNCH_MAINTENANCE_COR_COMMAND_VALIDATE = {
+		ok = _darklaunch_ok and true or false,
+		reason = _darklaunch_reason,
+		kind = intent.kind,
+		source = intent.source,
+		ownership_enabled = maintenance_command_ownership_status.ownership_enabled,
+		dispatched = maintenance_command_ownership_status.dispatched,
+		dispatch_ok = maintenance_command_ownership_status.dispatch_ok,
+		dispatch_reason = maintenance_command_ownership_status.dispatch_reason,
+		fallback_used = maintenance_command_ownership_status.fallback_used,
+		command_present = maintenance_command_ownership_status.command_present,
+	}
+	log_def_sched(('MAINT_COR_DISPATCH_SEND action=\"%s\"'):format(tostring(ability)))
+	action_mark_sent(action_kind or 'ja')
+	local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
+	scheduler.p1_record_legacy_dispatch(ctx)
+	scheduler.p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
+	_G.UC_LAST_SCHED_ACTION = ('[p1]cor:%s'):format(ability)
+	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_MAINT_COR'
+end
+
+local function p1_dispatch_defensive_internal(selected, settings)
+	if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
+		return false, nil
+	end
+	_G.UC_DEFENSIVE_CHAIN_ACTION = {
+		provider = 'defensive_internal',
+		action_kind = tostring(selected.action_type or ''),
+		def_action_type = tostring(type(selected.detail) == 'table' and selected.detail.def_action_type or ''),
+		action_name = tostring(selected.action_name or ''),
+	}
+	local blocked, block_reason = action_dispatch_blocked()
+	_G.UC_DEFENSIVE_CHAIN_ACTION = nil
+	if blocked then
+		return true, block_reason
+	end
+	local cmd = tostring(selected.legacy_command or '')
+	if cmd == '' then
+		return false, nil
+	end
+	local ok_ready, _, action_kind = action_ready(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0)
+	if action_kind == 'none' or not ok_ready then
+		return false, nil
+	end
+	local player = windower.ffxi.get_player()
+	local out_of_combat = (tonumber(player and player.status) or 0) ~= 1
+	local now_gate = now_s()
+	local preengage_move_active = (rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true)
+	local follow_run_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE_UNTIL')) or 0
+	local follow_run_active = (rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE') == true) or (now_gate < follow_run_until)
+	local follow_catchup_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL')) or 0
+	local follow_needs_catchup = (rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP') == true) or (now_gate < follow_catchup_until)
+	if action_kind == 'spell' and out_of_combat and preengage_move_active then
+		_G.UC_LAST_SCHED_ACTION = ('[p1]defer_preengage_move:%s->%s'):format(
+			tostring(selected.action_name or ''),
+			tostring(selected.target_name or '')
+		)
+		return true, 'BLOCK_DEFENSIVE_PREENGAGE_MOVE_ACTIVE'
+	end
+	if action_kind == 'spell' and out_of_combat and (follow_run_active or follow_needs_catchup) then
+		_G.UC_LAST_SCHED_ACTION = ('[p1]defer_follow_move:%s->%s'):format(
+			tostring(selected.action_name or ''),
+			tostring(selected.target_name or '')
+		)
+		return true, 'BLOCK_DEFENSIVE_FOLLOW_MOVE_ACTIVE'
+	end
+	local intent = {
+		kind = 'send_command',
+		source = 'unified_scheduler:T2.3i_darklaunch',
+		command = cmd,
+		meta = {
+			action_type = tostring(action_kind or selected.action_type or ''),
+			action_name = tostring(selected.action_name or ''),
+			target_id = tonumber(selected.target_id) or 0,
+		},
+	}
+	local dispatcher = require('uc_scheduler_dispatcher')
+	local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+	local defensive_command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+		dispatcher = dispatcher,
+		direct_send_command = windower.send_command,
+		send_command = windower.send_command,
+		ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_DEFENSIVE_INTERNAL_COMMAND_OWNERSHIP == true),
+		promoted_default_on = true,
+		ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_DEFENSIVE_INTERNAL_COMMAND_OWNERSHIP == false),
+		promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+		intent = intent,
+		command = cmd,
+	})
+	_G.UC_SCHED_P1_DARKLAUNCH_DEFENSIVE_INTERNAL_COMMAND_VALIDATE = {
+		ok = _darklaunch_ok and true or false,
+		reason = _darklaunch_reason,
+		kind = intent.kind,
+		source = intent.source,
+		command_present = defensive_command_ownership_status.command_present,
+		ownership_enabled = defensive_command_ownership_status.ownership_enabled,
+		dispatched = defensive_command_ownership_status.dispatched,
+		dispatch_ok = defensive_command_ownership_status.dispatch_ok,
+		dispatch_reason = defensive_command_ownership_status.dispatch_reason,
+		fallback_used = defensive_command_ownership_status.fallback_used,
+	}
+	local detail = selected.detail
+	local target_hpp = tonumber(type(detail) == 'table' and detail.target_hpp or -1) or -1
+	scheduler.p1_maybe_clear_pending_engage_for_selected_critical(settings, selected)
+	local can_apply_defensive_spell_lock = (
+		action_kind == 'spell'
+		and cmd ~= ''
+		and (tostring(type(detail) == 'table' and detail.def_action_type or '') ~= 'cure' or target_hpp > 0)
+	)
+	if can_apply_defensive_spell_lock then
+		scheduler.apply_defensive_spell_movement_lock(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0, now_gate)
+		scheduler.begin_defensive_spell_wait(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0, now_gate)
+	end
+	action_mark_sent(action_kind or selected.action_type or 'defensive_internal', {
+		action_name = tostring(selected.action_name or ''),
+		provider = 'defensive_internal',
+		def_action_type = tostring(type(selected.detail) == 'table' and selected.detail.def_action_type or ''),
+		target_id = tonumber(selected.target_id) or 0,
+		target_kind = tostring(selected.target_kind or ''),
+	})
+	if action_kind == 'spell' then
+		local is_cure = tostring(type(detail) == 'table' and detail.def_action_type or '') == 'cure'
+		local critical_hpp = tonumber(settings and settings.defensive_critical_hpp) or 35
+		local event_code = 'MAINT_BUFF_DISPATCHED'
+		if is_cure then
+			event_code = (target_hpp > 0 and target_hpp <= critical_hpp) and 'CRITICAL_CURE_DISPATCHED' or 'NONCRITICAL_CURE_DISPATCHED'
+		end
+		scheduler.action_timeline_log(event_code, {
+			spell = tostring(selected.action_name or ''),
+			target = tostring(selected.target_name or ''),
+			target_id = tonumber(selected.target_id) or 0,
+			critical = tostring(event_code == 'CRITICAL_CURE_DISPATCHED'),
+			band = tonumber(selected.priority_band) or 0,
+		}, ('def_dispatch:%s:%d'):format(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0), 0.05)
+		scheduler.action_timeline_log('SPELL_SENT', {
+			spell = tostring(selected.action_name or ''),
+			provider = 'defensive_internal',
+			target = tostring(selected.target_name or ''),
+			target_id = tonumber(selected.target_id) or 0,
+			kind = 'spell',
+		}, ('spell_sent:def:%s:%d'):format(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0), 0.05)
+	end
+	local dispatch_now = now_s()
+	local dispel_detail = selected.detail
+	if type(dispel_detail) == 'table' and tostring(dispel_detail.enemy_dispel_attempt_key or '') ~= '' then
+		mark_enemy_dispel_attempt(tostring(dispel_detail.enemy_dispel_attempt_key), dispatch_now)
+	end
+	local ctx = { now = dispatch_now, tick = p1_number(scheduler.phase1.tick, 0) }
+	scheduler.p1_record_legacy_dispatch(ctx)
+	scheduler.p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
+	_G.UC_LAST_SCHED_ACTION = ('[p1]%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
+	return true, 'BLOCK_SCHED_P1_DARKLAUNCH'
+end
+
+local function p1_dispatch_defensive_healbot(selected, settings)
+	if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
+		return false, nil
+	end
+	local blocked, block_reason = action_dispatch_blocked()
+	if blocked then
+		return true, block_reason
+	end
+	local hb_action = selected.detail and selected.detail.healbot_action or nil
+	if type(hb_action) ~= 'table' then
+		return false, nil
+	end
+	local ok_actions = type(rawget(_G, 'actions')) == 'table' and type(_G.actions.get_defensive_action) == 'function'
+	local ok_healer = type(rawget(_G, 'healer')) == 'table' and type(_G.healer.take_action) == 'function'
+	if not ok_actions or not ok_healer then
+		return false, nil
+	end
+	_G.healer:take_action(hb_action)
+	action_mark_sent('defensive_healbot', {
+		action_name = tostring(selected.action_name or ''),
+		provider = 'defensive_healbot',
+		def_action_type = tostring(type(selected.detail) == 'table' and selected.detail.def_action_type or ''),
+		target_id = tonumber(selected.target_id) or 0,
+		target_kind = tostring(selected.target_kind or ''),
+	})
+	local hb_detail = type(selected.detail) == 'table' and selected.detail or {}
+	scheduler.p1_maybe_clear_pending_engage_for_selected_critical(settings, selected)
+	local hb_target_hpp = tonumber(hb_detail.target_hpp or -1) or -1
+	local hb_critical_hpp = tonumber(settings and settings.defensive_critical_hpp) or 35
+	local hb_event_code = 'MAINT_BUFF_DISPATCHED'
+	if tostring(hb_detail.def_action_type or '') == 'cure' then
+		hb_event_code = (hb_target_hpp > 0 and hb_target_hpp <= hb_critical_hpp) and 'CRITICAL_CURE_DISPATCHED' or 'NONCRITICAL_CURE_DISPATCHED'
+	end
+	scheduler.action_timeline_log(hb_event_code, {
+		spell = tostring(selected.action_name or ''),
+		target = tostring(selected.target_name or ''),
+		target_id = tonumber(selected.target_id) or 0,
+		critical = tostring(hb_event_code == 'CRITICAL_CURE_DISPATCHED'),
+		band = tonumber(selected.priority_band) or 0,
+	}, ('hb_dispatch:%s:%d'):format(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0), 0.05)
+	local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
+	scheduler.p1_record_legacy_dispatch(ctx)
+	scheduler.p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
+	_G.UC_LAST_SCHED_ACTION = ('[p1]hb:%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
+	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_HEALBOT'
+end
+
+local function p1_try_dark_launch_combat_dispatch(selected, settings, phase)
+	_G.UC_TANK_ENMITY_BLOCK = ''
+	if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
+		return false, nil
+	end
+	p1_apply_face_to_target(settings, tonumber(selected.target_id) or 0)
+	log_combat_sched(('dispatch_select type=%s name=\"%s\" target=\"%s\" tid=%d provider=%s family=%s'):format(
+		tostring(selected.action_type or ''),
+		tostring(selected.action_name or ''),
+		tostring(selected.target_name or ''),
+		tonumber(selected.target_id) or 0,
+		tostring(selected.provider or ''),
+		tostring(selected.family_id or '')
+	))
+	local action_type = tostring(selected.action_type or '')
+	local tank_enmity = p1_is_tank_enmity_selected(selected)
+	local expected_tid = tonumber(selected.target_id) or 0
+	local target_kind = tostring(selected.target_kind or 'self')
+	if action_type ~= 'engage' then
+		_G.UC_ACTION_TIMELINE_CURRENT_ACTION = nil
 		local blocked, b_reason = action_dispatch_blocked()
 		if blocked then
 			log_combat_sched(('dispatch_block reason=%s type=%s name=\"%s\" tid=%d'):format(
@@ -3920,51 +5641,329 @@ local function p1_try_dark_launch_dispatch(settings)
 			))
 			return true, b_reason
 		end
-		local action_type = tostring(selected.action_type or '')
-		local tank_enmity = p1_is_tank_enmity_selected(selected)
-		local expected_tid = tonumber(selected.target_id) or 0
-		local target_kind = tostring(selected.target_kind or 'self')
-		if tank_enmity and target_kind == 'mob' and expected_tid > 0 then
-			local max_range = math.max(0, p1_number(selected.range_policy and selected.range_policy.max, 0))
-			local dist, mob = p1_target_distance_to_id(expected_tid)
-			if not mob or not mob.valid_target or (tonumber(mob.hpp) or 0) <= 0 then
-				tank_enmity_diag('TANK_ENMITY_DROP_BAD_TARGET', selected, ('dist=%s max=%.2f'):format(tostring(dist), max_range))
-				log_combat_sched(('dispatch_drop reason=TANK_BAD_TARGET name=\"%s\" tid=%d'):format(
-					tostring(selected.action_name or ''), expected_tid
-				))
-				return false, nil
-			end
-			-- Safety: do not force-move from scheduler for tank intents while parity is stabilizing.
-			-- Let core movement/follow/spacing continue to own locomotion to avoid run-lock behavior.
-			if max_range > 0 and dist and dist > max_range then
-				tank_enmity_diag('TANK_ENMITY_DROP_OUT_OF_RANGE', selected, ('dist=%.2f max=%.2f'):format(tonumber(dist) or -1, max_range))
-				log_combat_sched(('dispatch_drop reason=TANK_OUT_OF_RANGE name=\"%s\" tid=%d dist=%.2f max=%.2f'):format(
-					tostring(selected.action_name or ''), expected_tid, tonumber(dist) or -1, tonumber(max_range) or 0
-				))
-				return false, nil
-			end
-			-- Tank enmity dispatch is by target_id; no prep target-switch required.
+	end
+	if tank_enmity and target_kind == 'mob' and expected_tid > 0 then
+		local max_range = math.max(0, p1_number(selected.range_policy and selected.range_policy.max, 0))
+		local dist, mob = p1_combat_helpers.target_distance_to_id(expected_tid)
+		if not mob or not mob.valid_target or (tonumber(mob.hpp) or 0) <= 0 then
+			tank_enmity_diag('TANK_ENMITY_DROP_BAD_TARGET', selected, ('dist=%s max=%.2f'):format(tostring(dist), max_range))
+			log_combat_sched(('dispatch_drop reason=TANK_BAD_TARGET name=\"%s\" tid=%d'):format(
+				tostring(selected.action_name or ''), expected_tid
+			))
+			return false, nil
 		end
-		if tank_enmity and (action_type == 'ja' or action_type == 'spell') and target_kind == 'mob' and expected_tid > 0 then
-			-- Regression guard: always stop briefly before tank enmity action dispatch so we
-			-- don't issue JA/spell while still carrying a previous run vector.
-			local settle_key = ('%s:%s:%d'):format(action_type, tostring(selected.action_name or ''), expected_tid)
-			local now = now_s()
-			if tostring(phase.tank_action_settle_key or '') ~= settle_key then
-				phase.tank_action_settle_key = settle_key
-				phase.tank_action_settle_until = now + 0.25
+		-- Safety: do not force-move from scheduler for tank intents while parity is stabilizing.
+		-- Let core movement/follow/spacing continue to own locomotion to avoid run-lock behavior.
+		if max_range > 0 and dist and dist > max_range then
+			tank_enmity_diag('TANK_ENMITY_DROP_OUT_OF_RANGE', selected, ('dist=%.2f max=%.2f'):format(tonumber(dist) or -1, max_range))
+			log_combat_sched(('dispatch_drop reason=TANK_OUT_OF_RANGE name=\"%s\" tid=%d dist=%.2f max=%.2f'):format(
+				tostring(selected.action_name or ''), expected_tid, tonumber(dist) or -1, tonumber(max_range) or 0
+			))
+			return false, nil
+		end
+		-- Tank enmity dispatch is by target_id; no prep target-switch required.
+	end
+	if tank_enmity and (action_type == 'ja' or action_type == 'spell') and target_kind == 'mob' and expected_tid > 0 then
+		-- Regression guard: always stop briefly before tank enmity action dispatch so we
+		-- don't issue JA/spell while still carrying a previous run vector.
+		local settle_key = ('%s:%s:%d'):format(action_type, tostring(selected.action_name or ''), expected_tid)
+		local now = now_s()
+		if tostring(phase.tank_action_settle_key or '') ~= settle_key then
+			phase.tank_action_settle_key = settle_key
+			phase.tank_action_settle_until = now + 0.25
+		end
+		local intent = {
+			kind = 'run_stop',
+			source = 'unified_scheduler:T2.4f_darklaunch',
+			meta = {
+				reason = 'TANK_ACTION_SETTLE',
+				action_type = action_type,
+				action_name = selected.action_name,
+				target_id = expected_tid,
+				target_kind = target_kind,
+				settle_key = settle_key,
+				tank_action_settle_until = phase.tank_action_settle_until,
+			},
+		}
+		local dispatcher = require('uc_scheduler_dispatcher')
+		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+		local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+			dispatcher = dispatcher,
+			direct_run = windower.ffxi.run,
+			run = windower.ffxi.run,
+			ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP == true),
+			intent = intent,
+		})
+		_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ACTION_SETTLE_VALIDATE = {
+			ok = _darklaunch_ok and true or false,
+			reason = _darklaunch_reason,
+			kind = intent.kind,
+			source = intent.source,
+			ownership_enabled = run_stop_ownership_status.ownership_enabled,
+			dispatched = run_stop_ownership_status.dispatched,
+			dispatch_ok = run_stop_ownership_status.dispatch_ok,
+			dispatch_reason = run_stop_ownership_status.dispatch_reason,
+			fallback_used = run_stop_ownership_status.fallback_used,
+			stop = run_stop_ownership_status.stop,
+		}
+		if now < p1_number(phase.tank_action_settle_until, 0) then
+			tank_enmity_diag('TANK_ENMITY_WAIT_ACTION_SETTLE', selected, ('remain=%.2f'):format(p1_number(phase.tank_action_settle_until, 0) - now))
+			log_combat_sched(('dispatch_block reason=TANK_ACTION_SETTLE name=\"%s\" tid=%d remain=%.2f'):format(
+				tostring(selected.action_name or ''), expected_tid, p1_number(phase.tank_action_settle_until, 0) - now
+			))
+			_G.UC_LAST_SCHED_ACTION = ('[p1]tank_action_settle:%s->%s'):format(
+				tostring(selected.action_name or ''),
+				tostring(selected.target_name or '')
+			)
+			return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_ACTION_SETTLE'
+		end
+		phase.tank_action_settle_key = ''
+		phase.tank_action_settle_until = 0
+	end
+	if action_type == 'engage' then
+		return p1_dispatch_combat_engage(selected, settings, phase, expected_tid)
+	elseif action_type == 'ws' then
+		local player = windower.ffxi.get_player()
+		if not player or tonumber(player.status) ~= 1 then
+			return false, nil
+		end
+		local tp = tonumber(player.vitals and player.vitals.tp) or 0
+		if tp < 1000 then
+			return false, nil
+		end
+		local target = windower.ffxi.get_mob_by_target('t')
+		if not target or (tonumber(target.id) or 0) ~= expected_tid then
+			return false, nil
+		end
+		if not combat_core.is_live_actionable_combat_target(target, now_s(), true) then
+			return false, nil
+		end
+		local ws = tostring(selected.action_name or '')
+		if ws == '' then
+			return false, nil
+		end
+		if combat_core and type(combat_core.try_dispatch_ws_with_intent) == 'function' then
+			local sent, why = combat_core.try_dispatch_ws_with_intent(ws, expected_tid, settings)
+			if not sent then
+				_G.UC_LAST_SCHED_ACTION = ('[p1]ws_hold:%s:%s'):format(ws, tostring(why or 'BLOCK'))
+				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_WS_INTENT'
 			end
+			action_mark_sent('ws')
+		else
+			local ws_command = ('input /ws \"%s\" <t>'):format(ws)
+			local intent = {
+				kind = 'send_command',
+				source = 'unified_scheduler:T2.3d_darklaunch',
+				command = ws_command,
+				meta = {
+					action_type = tostring(action_type or ''),
+					action_name = ws,
+					target_id = expected_tid,
+				},
+			}
+			local dispatcher = require('uc_scheduler_dispatcher')
+			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+				dispatcher = dispatcher,
+				direct_send_command = windower.send_command,
+				send_command = windower.send_command,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP == true),
+				promoted_default_on = true,
+				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP == false),
+				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+				intent = intent,
+				command = ws_command,
+			})
+			_G.UC_SCHED_P1_DARKLAUNCH_COMBAT_COMMAND_VALIDATE = {
+				ok = _darklaunch_ok and true or false,
+				reason = _darklaunch_reason,
+				kind = intent.kind,
+				source = intent.source,
+				command_present = command_ownership_status.command_present,
+				ownership_enabled = command_ownership_status.ownership_enabled,
+				dispatched = command_ownership_status.dispatched,
+				dispatch_ok = command_ownership_status.dispatch_ok,
+				dispatch_reason = command_ownership_status.dispatch_reason,
+				fallback_used = command_ownership_status.fallback_used,
+			}
+			action_mark_sent('ws')
+		end
+		_G.UC_LAST_SCHED_ACTION = ('[p1]ws:%s->%s'):format(ws, tostring(selected.target_name or ''))
+	elseif action_type == 'ja' then
+		local ability = tostring(selected.action_name or '')
+		if ability == '' then
+			log_combat_sched('dispatch_drop reason=JA_EMPTY')
+			return false, nil
+		end
+		local ok_ready, reason, action_kind = action_ready(ability, expected_tid)
+		if action_kind ~= 'ja' or not ok_ready then
+			if tank_enmity then
+				tank_enmity_diag('TANK_ENMITY_DROP_JA_NOT_READY', selected, ('reason=%s kind=%s'):format(tostring(reason or ''), tostring(action_kind or '')))
+			end
+			log_ja_sched(('dispatch_block name=\"%s\" reason=%s kind=%s status=%s pending=%s'):format(
+				tostring(ability),
+				tostring(reason or 'NOT_READY'),
+				tostring(action_kind or ''),
+				tostring((windower.ffxi.get_player() or {}).status or ''),
+				tostring((scheduler.phase1.pending and scheduler.phase1.pending.action_name) or '')
+			))
+			return false, nil
+		end
+		if target_kind == 'mob' then
+			-- For tank-enmity parity, we dispatch JA by id after scheduler target prep.
+			if not tank_enmity then
+				local target = windower.ffxi.get_mob_by_target('t')
+				if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
+					return false, nil
+				end
+			end
+			local ja_target_command = ('input /ja \"%s\" %d'):format(ability, expected_tid)
+			local intent = {
+				kind = 'send_command',
+				source = 'unified_scheduler:T2.3e_darklaunch',
+				command = ja_target_command,
+				meta = {
+					action_type = tostring(action_type or ''),
+					action_name = ability,
+					target_id = expected_tid,
+					target_kind = tostring(target_kind or ''),
+				},
+			}
+			local dispatcher = require('uc_scheduler_dispatcher')
+			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+				dispatcher = dispatcher,
+				direct_send_command = windower.send_command,
+				send_command = windower.send_command,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP == true),
+				promoted_default_on = true,
+				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP == false),
+				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+				intent = intent,
+				command = ja_target_command,
+			})
+			_G.UC_SCHED_P1_DARKLAUNCH_JA_COMMAND_VALIDATE = {
+				ok = _darklaunch_ok and true or false,
+				reason = _darklaunch_reason,
+				kind = intent.kind,
+				source = intent.source,
+				command_present = command_ownership_status.command_present,
+				ownership_enabled = command_ownership_status.ownership_enabled,
+				dispatched = command_ownership_status.dispatched,
+				dispatch_ok = command_ownership_status.dispatch_ok,
+				dispatch_reason = command_ownership_status.dispatch_reason,
+				fallback_used = command_ownership_status.fallback_used,
+			}
+			action_mark_sent('ja')
+			if tank_enmity then
+				tank_enmity_diag('TANK_ENMITY_SEND_JA', selected, 'mode=target_id')
+			end
+			log_ja_sched(('dispatch_send name=\"%s\" mode=target tid=%d'):format(tostring(ability), tonumber(expected_tid) or 0))
+		else
+			if tank_enmity then
+				local stop_intent = {
+					kind = 'run_stop',
+					source = 'unified_scheduler:T2.4k_darklaunch',
+					meta = {
+						reason = 'TANK_ENMITY_JA_SELF_SEND',
+						action_type = action_type,
+						action_name = ability,
+						target_kind = target_kind,
+						tank_enmity = true,
+					},
+				}
+				local dispatcher = require('uc_scheduler_dispatcher')
+				local _stop_darklaunch_ok, _stop_darklaunch_reason = dispatcher.validate_intent(stop_intent)
+				local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+					dispatcher = dispatcher,
+					direct_run = windower.ffxi.run,
+					run = windower.ffxi.run,
+					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP == true),
+					intent = stop_intent,
+				})
+				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_JA_SELF_SEND_VALIDATE = {
+					ok = _stop_darklaunch_ok and true or false,
+					reason = _stop_darklaunch_reason,
+					kind = stop_intent.kind,
+					source = stop_intent.source,
+					ownership_enabled = run_stop_ownership_status.ownership_enabled,
+					dispatched = run_stop_ownership_status.dispatched,
+					dispatch_ok = run_stop_ownership_status.dispatch_ok,
+					dispatch_reason = run_stop_ownership_status.dispatch_reason,
+					fallback_used = run_stop_ownership_status.fallback_used,
+					stop = run_stop_ownership_status.stop,
+				}
+			end
+			local ja_self_command = ('input /ja \"%s\" <me>'):format(ability)
+			local intent = {
+				kind = 'send_command',
+				source = 'unified_scheduler:T2.3f_darklaunch',
+				command = ja_self_command,
+				meta = {
+					action_type = tostring(action_type or ''),
+					action_name = ability,
+					target_kind = tostring(target_kind or ''),
+				},
+			}
+			local dispatcher = require('uc_scheduler_dispatcher')
+			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+				dispatcher = dispatcher,
+				direct_send_command = windower.send_command,
+				send_command = windower.send_command,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP == true),
+				promoted_default_on = true,
+				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP == false),
+				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+				intent = intent,
+				command = ja_self_command,
+			})
+			_G.UC_SCHED_P1_DARKLAUNCH_JA_SELF_COMMAND_VALIDATE = {
+				ok = _darklaunch_ok and true or false,
+				reason = _darklaunch_reason,
+				kind = intent.kind,
+				source = intent.source,
+				command_present = command_ownership_status.command_present,
+				ownership_enabled = command_ownership_status.ownership_enabled,
+				dispatched = command_ownership_status.dispatched,
+				dispatch_ok = command_ownership_status.dispatch_ok,
+				dispatch_reason = command_ownership_status.dispatch_reason,
+				fallback_used = command_ownership_status.fallback_used,
+			}
+			action_mark_sent('ja')
+			if tank_enmity then
+				tank_enmity_diag('TANK_ENMITY_SEND_JA', selected, 'mode=self')
+			end
+			log_ja_sched(('dispatch_send name=\"%s\" mode=self'):format(tostring(ability)))
+		end
+		_G.UC_LAST_SCHED_ACTION = ('[p1]ja:%s->%s'):format(ability, tostring(selected.target_name or ''))
+elseif action_type == 'spell' then
+		local spell = tostring(selected.action_name or '')
+		if spell == '' then
+			log_combat_sched('dispatch_drop reason=SPELL_EMPTY')
+			if tank_enmity then
+				tank_enmity_diag('TANK_ENMITY_DROP_SPELL_EMPTY', selected, '')
+			end
+			return false, nil
+		end
+		local prep_now = now_s()
+		local prep_key = ('%s:%d'):format(spell, tonumber(selected.target_id) or 0)
+		local active_key = tostring(rawget(_G, 'UC_MOVE_FREEZE_PREP_KEY') or '')
+		local prep_until = tonumber(rawget(_G, 'UC_MOVE_FREEZE_PREP_UNTIL')) or 0
+		if active_key ~= prep_key then
+			_G.UC_MOVE_FREEZE_PREP_KEY = prep_key
+			_G.UC_MOVE_FREEZE_PREP_UNTIL = prep_now + 0.75
 			local intent = {
 				kind = 'run_stop',
-				source = 'unified_scheduler:T2.4f_darklaunch',
+				source = 'unified_scheduler:T2.4l_darklaunch',
 				meta = {
-					reason = 'TANK_ACTION_SETTLE',
+					reason = 'COMBAT_SPELL_SETTLE',
 					action_type = action_type,
-					action_name = selected.action_name,
-					target_id = expected_tid,
+					action_name = spell,
+					target_id = selected.target_id,
 					target_kind = target_kind,
-					settle_key = settle_key,
-					tank_action_settle_until = phase.tank_action_settle_until,
+					prep_key = prep_key,
+					freeze_prep_until = _G.UC_MOVE_FREEZE_PREP_UNTIL,
 				},
 			}
 			local dispatcher = require('uc_scheduler_dispatcher')
@@ -3973,10 +5972,10 @@ local function p1_try_dark_launch_dispatch(settings)
 				dispatcher = dispatcher,
 				direct_run = windower.ffxi.run,
 				run = windower.ffxi.run,
-				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP == true),
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP == true),
 				intent = intent,
 			})
-			_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ACTION_SETTLE_VALIDATE = {
+			_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_COMBAT_SPELL_SETTLE_VALIDATE = {
 				ok = _darklaunch_ok and true or false,
 				reason = _darklaunch_reason,
 				kind = intent.kind,
@@ -3988,403 +5987,125 @@ local function p1_try_dark_launch_dispatch(settings)
 				fallback_used = run_stop_ownership_status.fallback_used,
 				stop = run_stop_ownership_status.stop,
 			}
-			if now < p1_number(phase.tank_action_settle_until, 0) then
-				tank_enmity_diag('TANK_ENMITY_WAIT_ACTION_SETTLE', selected, ('remain=%.2f'):format(p1_number(phase.tank_action_settle_until, 0) - now))
-				log_combat_sched(('dispatch_block reason=TANK_ACTION_SETTLE name=\"%s\" tid=%d remain=%.2f'):format(
-					tostring(selected.action_name or ''), expected_tid, p1_number(phase.tank_action_settle_until, 0) - now
-				))
-				_G.UC_LAST_SCHED_ACTION = ('[p1]tank_action_settle:%s->%s'):format(
-					tostring(selected.action_name or ''),
-					tostring(selected.target_name or '')
-				)
-				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_ACTION_SETTLE'
-			end
-			phase.tank_action_settle_key = ''
-			phase.tank_action_settle_until = 0
+			_G.UC_LAST_SCHED_ACTION = ('[p1]spell_settle:%s->%s'):format(spell, tostring(selected.target_name or ''))
+			return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_SPELL_SETTLE'
 		end
-		if action_type == 'engage' then
-			local target = windower.ffxi.get_mob_by_target('t')
-			if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
-				local ok_set = p1_try_target_prep(expected_tid)
-				if not ok_set then
-					log_combat_sched(('engage_drop reason=TARGET_PREP_FAIL expected_tid=%d'):format(expected_tid))
-					if bool_setting(settings and settings.debug, false) then
-						_G.UC_LAST_SCHED_ACTION = ('[p1]engage:dispatch_fail:settarget tid=%d'):format(expected_tid)
-					end
-					return false, nil
-				end
-				target = windower.ffxi.get_mob_by_target('t')
+		if prep_now < prep_until then
+			local intent = {
+				kind = 'run_stop',
+				source = 'unified_scheduler:T2.4m_darklaunch',
+				meta = {
+					reason = 'COMBAT_SPELL_PREP_WAIT',
+					action_type = action_type,
+					action_name = spell,
+					target_id = selected.target_id,
+					target_kind = target_kind,
+					prep_key = prep_key,
+					freeze_prep_until = prep_until,
+				},
+			}
+			local dispatcher = require('uc_scheduler_dispatcher')
+			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+				dispatcher = dispatcher,
+				direct_run = windower.ffxi.run,
+				run = windower.ffxi.run,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP == true),
+				intent = intent,
+			})
+			_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_COMBAT_SPELL_PREP_WAIT_VALIDATE = {
+				ok = _darklaunch_ok and true or false,
+				reason = _darklaunch_reason,
+				kind = intent.kind,
+				source = intent.source,
+				ownership_enabled = run_stop_ownership_status.ownership_enabled,
+				dispatched = run_stop_ownership_status.dispatched,
+				dispatch_ok = run_stop_ownership_status.dispatch_ok,
+				dispatch_reason = run_stop_ownership_status.dispatch_reason,
+				fallback_used = run_stop_ownership_status.fallback_used,
+				stop = run_stop_ownership_status.stop,
+			}
+			_G.UC_LAST_SCHED_ACTION = ('[p1]spell_prep:%s->%s'):format(spell, tostring(selected.target_name or ''))
+			return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_SPELL_PREP'
+		end
+		_G.UC_MOVE_FREEZE_PREP_KEY = ''
+		_G.UC_MOVE_FREEZE_PREP_UNTIL = 0
+		local ok_ready, ready_reason, action_kind = action_ready(spell)
+		if action_kind ~= 'spell' or not ok_ready then
+			log_combat_sched(('dispatch_drop reason=SPELL_NOT_READY spell=\"%s\" ready_reason=%s kind=%s'):format(
+				tostring(spell), tostring(ready_reason or ''), tostring(action_kind or '')
+			))
+			if tank_enmity then
+				tank_enmity_diag('TANK_ENMITY_DROP_SPELL_NOT_READY', selected, ('reason=%s kind=%s'):format(tostring(ready_reason or ''), tostring(action_kind or '')))
 			end
-			if not combat_core.is_live_actionable_combat_target(target, now_s(), true) then
-				log_combat_sched(('engage_drop reason=TARGET_NOT_ACTIONABLE expected_tid=%d'):format(expected_tid))
-				if bool_setting(settings and settings.debug, false) then
-					_G.UC_LAST_SCHED_ACTION = ('[p1]engage:dispatch_fail:not_actionable tid=%d'):format(expected_tid)
-				end
-				return false, nil
+			return false, nil
+		end
+		if tank_enmity then
+			local settle_key = ('%s:%d'):format(spell, expected_tid)
+			local now = now_s()
+			if tostring(phase.tank_spell_settle_key or '') ~= settle_key then
+				phase.tank_spell_settle_key = settle_key
+				phase.tank_spell_settle_until = now + 0.75
 			end
-			local p = windower.ffxi.get_player()
-			if p and tonumber(p.status) == 1 then
-				local cur = windower.ffxi.get_mob_by_target('t')
-				if cur and tonumber(cur.id) == expected_tid then
-					log_combat_sched(('engage_drop reason=ALREADY_ENGAGED expected_tid=%d'):format(expected_tid))
-					_G.UC_LAST_SCHED_ACTION = ('[p1]engage:already:%s'):format(tostring(selected.target_name or ''))
-					return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_ENGAGED'
-				end
-			end
-			if not uc_attack or type(uc_attack.engage_target) ~= 'function' then
-				log_combat_sched('engage_drop reason=NO_UC_ATTACK')
-				if bool_setting(settings and settings.debug, false) then
-					_G.UC_LAST_SCHED_ACTION = '[p1]engage:dispatch_fail:no_uc_attack'
-				end
-				return false, nil
-			end
-			local ok_attack, engage_reason = uc_attack.engage_target(expected_tid)
-			if not ok_attack then
-				log_combat_sched(('engage_send_fail tid=%d reason=%s'):format(expected_tid, tostring(engage_reason or 'ENGAGE_FAIL')))
-				if bool_setting(settings and settings.debug, false) then
-					_G.UC_LAST_SCHED_ACTION = ('[p1]engage:dispatch_fail:%s'):format(tostring(engage_reason or 'ENGAGE_FAIL'))
-				end
-				return false, nil
-			end
-			action_mark_sent('engage')
-			log_combat_sched(('engage_send_ok tid=%d target=\"%s\"'):format(expected_tid, tostring(selected.target_name or '')))
-			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:sent:%s'):format(tostring(selected.target_name or ''))
-		elseif action_type == 'ws' then
-			local player = windower.ffxi.get_player()
-			if not player or tonumber(player.status) ~= 1 then
-				return false, nil
-			end
-			local tp = tonumber(player.vitals and player.vitals.tp) or 0
-			if tp < 1000 then
-				return false, nil
-			end
-			local target = windower.ffxi.get_mob_by_target('t')
-			if not target or (tonumber(target.id) or 0) ~= expected_tid then
-				return false, nil
-			end
-			if not combat_core.is_live_actionable_combat_target(target, now_s(), true) then
-				return false, nil
-			end
-			local ws = tostring(selected.action_name or '')
-			if ws == '' then
-				return false, nil
-			end
-			if combat_core and type(combat_core.try_dispatch_ws_with_intent) == 'function' then
-				local sent, why = combat_core.try_dispatch_ws_with_intent(ws, expected_tid, settings)
-				if not sent then
-					_G.UC_LAST_SCHED_ACTION = ('[p1]ws_hold:%s:%s'):format(ws, tostring(why or 'BLOCK'))
-					return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_WS_INTENT'
-				end
-				action_mark_sent('ws')
-			else
-				local ws_command = ('input /ws \"%s\" <t>'):format(ws)
-				local intent = {
-					kind = 'send_command',
-					source = 'unified_scheduler:T2.3d_darklaunch',
-					command = ws_command,
-					meta = {
-						action_type = tostring(action_type or ''),
-						action_name = ws,
-						target_id = expected_tid,
-					},
-				}
-				local dispatcher = require('uc_scheduler_dispatcher')
-				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-				local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
-					dispatcher = dispatcher,
-					direct_send_command = windower.send_command,
-					send_command = windower.send_command,
-					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP == true),
-					promoted_default_on = true,
-					ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP == false),
-					promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
-					intent = intent,
-					command = ws_command,
-				})
-				_G.UC_SCHED_P1_DARKLAUNCH_COMBAT_COMMAND_VALIDATE = {
-					ok = _darklaunch_ok and true or false,
-					reason = _darklaunch_reason,
-					kind = intent.kind,
-					source = intent.source,
-					command_present = command_ownership_status.command_present,
-					ownership_enabled = command_ownership_status.ownership_enabled,
-					dispatched = command_ownership_status.dispatched,
-					dispatch_ok = command_ownership_status.dispatch_ok,
-					dispatch_reason = command_ownership_status.dispatch_reason,
-					fallback_used = command_ownership_status.fallback_used,
-				}
-				action_mark_sent('ws')
-			end
-			_G.UC_LAST_SCHED_ACTION = ('[p1]ws:%s->%s'):format(ws, tostring(selected.target_name or ''))
-		elseif action_type == 'ja' then
-			local ability = tostring(selected.action_name or '')
-			if ability == '' then
-				log_combat_sched('dispatch_drop reason=JA_EMPTY')
-				return false, nil
-			end
-			local ok_ready, reason, action_kind = action_ready(ability, expected_tid)
-			if action_kind ~= 'ja' or not ok_ready then
-				if tank_enmity then
-					tank_enmity_diag('TANK_ENMITY_DROP_JA_NOT_READY', selected, ('reason=%s kind=%s'):format(tostring(reason or ''), tostring(action_kind or '')))
-				end
-				log_ja_sched(('dispatch_block name=\"%s\" reason=%s kind=%s status=%s pending=%s'):format(
-					tostring(ability),
-					tostring(reason or 'NOT_READY'),
-					tostring(action_kind or ''),
-					tostring((windower.ffxi.get_player() or {}).status or ''),
-					tostring((scheduler.phase1.pending and scheduler.phase1.pending.action_name) or '')
+			local intent = {
+				kind = 'run_stop',
+				source = 'unified_scheduler:T2.4g_darklaunch',
+				meta = {
+					reason = 'TANK_SPELL_SETTLE',
+					action_type = action_type,
+					action_name = spell,
+					target_id = expected_tid,
+					target_kind = target_kind,
+					settle_key = settle_key,
+					tank_spell_settle_until = phase.tank_spell_settle_until,
+				},
+			}
+			local dispatcher = require('uc_scheduler_dispatcher')
+			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+				dispatcher = dispatcher,
+				direct_run = windower.ffxi.run,
+				run = windower.ffxi.run,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP == true),
+				intent = intent,
+			})
+			_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_SPELL_SETTLE_VALIDATE = {
+				ok = _darklaunch_ok and true or false,
+				reason = _darklaunch_reason,
+				kind = intent.kind,
+				source = intent.source,
+				ownership_enabled = run_stop_ownership_status.ownership_enabled,
+				dispatched = run_stop_ownership_status.dispatched,
+				dispatch_ok = run_stop_ownership_status.dispatch_ok,
+				dispatch_reason = run_stop_ownership_status.dispatch_reason,
+				fallback_used = run_stop_ownership_status.fallback_used,
+				stop = run_stop_ownership_status.stop,
+			}
+			if now < p1_number(phase.tank_spell_settle_until, 0) then
+				tank_enmity_diag('TANK_ENMITY_WAIT_SPELL_SETTLE', selected, ('remain=%.2f'):format(p1_number(phase.tank_spell_settle_until, 0) - now))
+				log_combat_sched(('dispatch_block reason=TANK_SPELL_SETTLE spell=\"%s\" tid=%d remain=%.2f'):format(
+					tostring(spell), expected_tid, p1_number(phase.tank_spell_settle_until, 0) - now
 				))
-				return false, nil
+				_G.UC_LAST_SCHED_ACTION = ('[p1]tank_settle:%s->%s'):format(spell, tostring(selected.target_name or ''))
+				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_SETTLE'
 			end
-			if target_kind == 'mob' then
-				-- For tank-enmity parity, we dispatch JA by id after scheduler target prep.
-				if not tank_enmity then
-					local target = windower.ffxi.get_mob_by_target('t')
-					if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
-						return false, nil
-					end
-				end
-				local ja_target_command = ('input /ja \"%s\" %d'):format(ability, expected_tid)
-				local intent = {
-					kind = 'send_command',
-					source = 'unified_scheduler:T2.3e_darklaunch',
-					command = ja_target_command,
-					meta = {
-						action_type = tostring(action_type or ''),
-						action_name = ability,
-						target_id = expected_tid,
-						target_kind = tostring(target_kind or ''),
-					},
-				}
-				local dispatcher = require('uc_scheduler_dispatcher')
-				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-				local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
-					dispatcher = dispatcher,
-					direct_send_command = windower.send_command,
-					send_command = windower.send_command,
-					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP == true),
-					promoted_default_on = true,
-					ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP == false),
-					promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
-					intent = intent,
-					command = ja_target_command,
-				})
-				_G.UC_SCHED_P1_DARKLAUNCH_JA_COMMAND_VALIDATE = {
-					ok = _darklaunch_ok and true or false,
-					reason = _darklaunch_reason,
-					kind = intent.kind,
-					source = intent.source,
-					command_present = command_ownership_status.command_present,
-					ownership_enabled = command_ownership_status.ownership_enabled,
-					dispatched = command_ownership_status.dispatched,
-					dispatch_ok = command_ownership_status.dispatch_ok,
-					dispatch_reason = command_ownership_status.dispatch_reason,
-					fallback_used = command_ownership_status.fallback_used,
-				}
-				action_mark_sent('ja')
-				if tank_enmity then
-					tank_enmity_diag('TANK_ENMITY_SEND_JA', selected, 'mode=target_id')
-				end
-				log_ja_sched(('dispatch_send name=\"%s\" mode=target tid=%d'):format(tostring(ability), tonumber(expected_tid) or 0))
-			else
-				if tank_enmity then
-					local stop_intent = {
-						kind = 'run_stop',
-						source = 'unified_scheduler:T2.4k_darklaunch',
-						meta = {
-							reason = 'TANK_ENMITY_JA_SELF_SEND',
-							action_type = action_type,
-							action_name = ability,
-							target_kind = target_kind,
-							tank_enmity = true,
-						},
-					}
-					local dispatcher = require('uc_scheduler_dispatcher')
-					local _stop_darklaunch_ok, _stop_darklaunch_reason = dispatcher.validate_intent(stop_intent)
-					local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
-						dispatcher = dispatcher,
-						direct_run = windower.ffxi.run,
-						run = windower.ffxi.run,
-						ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP == true),
-						intent = stop_intent,
-					})
-					_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_JA_SELF_SEND_VALIDATE = {
-						ok = _stop_darklaunch_ok and true or false,
-						reason = _stop_darklaunch_reason,
-						kind = stop_intent.kind,
-						source = stop_intent.source,
-						ownership_enabled = run_stop_ownership_status.ownership_enabled,
-						dispatched = run_stop_ownership_status.dispatched,
-						dispatch_ok = run_stop_ownership_status.dispatch_ok,
-						dispatch_reason = run_stop_ownership_status.dispatch_reason,
-						fallback_used = run_stop_ownership_status.fallback_used,
-						stop = run_stop_ownership_status.stop,
-					}
-				end
-				local ja_self_command = ('input /ja \"%s\" <me>'):format(ability)
-				local intent = {
-					kind = 'send_command',
-					source = 'unified_scheduler:T2.3f_darklaunch',
-					command = ja_self_command,
-					meta = {
-						action_type = tostring(action_type or ''),
-						action_name = ability,
-						target_kind = tostring(target_kind or ''),
-					},
-				}
-				local dispatcher = require('uc_scheduler_dispatcher')
-				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-				local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
-					dispatcher = dispatcher,
-					direct_send_command = windower.send_command,
-					send_command = windower.send_command,
-					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP == true),
-					promoted_default_on = true,
-					ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP == false),
-					promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
-					intent = intent,
-					command = ja_self_command,
-				})
-				_G.UC_SCHED_P1_DARKLAUNCH_JA_SELF_COMMAND_VALIDATE = {
-					ok = _darklaunch_ok and true or false,
-					reason = _darklaunch_reason,
-					kind = intent.kind,
-					source = intent.source,
-					command_present = command_ownership_status.command_present,
-					ownership_enabled = command_ownership_status.ownership_enabled,
-					dispatched = command_ownership_status.dispatched,
-					dispatch_ok = command_ownership_status.dispatch_ok,
-					dispatch_reason = command_ownership_status.dispatch_reason,
-					fallback_used = command_ownership_status.fallback_used,
-				}
-				action_mark_sent('ja')
-				if tank_enmity then
-					tank_enmity_diag('TANK_ENMITY_SEND_JA', selected, 'mode=self')
-				end
-				log_ja_sched(('dispatch_send name=\"%s\" mode=self'):format(tostring(ability)))
-			end
-			_G.UC_LAST_SCHED_ACTION = ('[p1]ja:%s->%s'):format(ability, tostring(selected.target_name or ''))
-	elseif action_type == 'spell' then
-			local spell = tostring(selected.action_name or '')
-			if spell == '' then
-				log_combat_sched('dispatch_drop reason=SPELL_EMPTY')
-				if tank_enmity then
-					tank_enmity_diag('TANK_ENMITY_DROP_SPELL_EMPTY', selected, '')
-				end
-				return false, nil
-			end
-			local prep_now = now_s()
-			local prep_key = ('%s:%d'):format(spell, tonumber(selected.target_id) or 0)
-			local active_key = tostring(rawget(_G, 'UC_MOVE_FREEZE_PREP_KEY') or '')
-			local prep_until = tonumber(rawget(_G, 'UC_MOVE_FREEZE_PREP_UNTIL')) or 0
-			if active_key ~= prep_key then
-				_G.UC_MOVE_FREEZE_PREP_KEY = prep_key
-				_G.UC_MOVE_FREEZE_PREP_UNTIL = prep_now + 0.75
-				local intent = {
-					kind = 'run_stop',
-					source = 'unified_scheduler:T2.4l_darklaunch',
-					meta = {
-						reason = 'COMBAT_SPELL_SETTLE',
-						action_type = action_type,
-						action_name = spell,
-						target_id = selected.target_id,
-						target_kind = target_kind,
-						prep_key = prep_key,
-						freeze_prep_until = _G.UC_MOVE_FREEZE_PREP_UNTIL,
-					},
-				}
-				local dispatcher = require('uc_scheduler_dispatcher')
-				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-				local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
-					dispatcher = dispatcher,
-					direct_run = windower.ffxi.run,
-					run = windower.ffxi.run,
-					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP == true),
-					intent = intent,
-				})
-				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_COMBAT_SPELL_SETTLE_VALIDATE = {
-					ok = _darklaunch_ok and true or false,
-					reason = _darklaunch_reason,
-					kind = intent.kind,
-					source = intent.source,
-					ownership_enabled = run_stop_ownership_status.ownership_enabled,
-					dispatched = run_stop_ownership_status.dispatched,
-					dispatch_ok = run_stop_ownership_status.dispatch_ok,
-					dispatch_reason = run_stop_ownership_status.dispatch_reason,
-					fallback_used = run_stop_ownership_status.fallback_used,
-					stop = run_stop_ownership_status.stop,
-				}
-				_G.UC_LAST_SCHED_ACTION = ('[p1]spell_settle:%s->%s'):format(spell, tostring(selected.target_name or ''))
-				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_SPELL_SETTLE'
-			end
-			if prep_now < prep_until then
-				local intent = {
-					kind = 'run_stop',
-					source = 'unified_scheduler:T2.4m_darklaunch',
-					meta = {
-						reason = 'COMBAT_SPELL_PREP_WAIT',
-						action_type = action_type,
-						action_name = spell,
-						target_id = selected.target_id,
-						target_kind = target_kind,
-						prep_key = prep_key,
-						freeze_prep_until = prep_until,
-					},
-				}
-				local dispatcher = require('uc_scheduler_dispatcher')
-				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-				local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
-					dispatcher = dispatcher,
-					direct_run = windower.ffxi.run,
-					run = windower.ffxi.run,
-					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP == true),
-					intent = intent,
-				})
-				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_COMBAT_SPELL_PREP_WAIT_VALIDATE = {
-					ok = _darklaunch_ok and true or false,
-					reason = _darklaunch_reason,
-					kind = intent.kind,
-					source = intent.source,
-					ownership_enabled = run_stop_ownership_status.ownership_enabled,
-					dispatched = run_stop_ownership_status.dispatched,
-					dispatch_ok = run_stop_ownership_status.dispatch_ok,
-					dispatch_reason = run_stop_ownership_status.dispatch_reason,
-					fallback_used = run_stop_ownership_status.fallback_used,
-					stop = run_stop_ownership_status.stop,
-				}
-				_G.UC_LAST_SCHED_ACTION = ('[p1]spell_prep:%s->%s'):format(spell, tostring(selected.target_name or ''))
-				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_SPELL_PREP'
-			end
-			_G.UC_MOVE_FREEZE_PREP_KEY = ''
-			_G.UC_MOVE_FREEZE_PREP_UNTIL = 0
-			local ok_ready, ready_reason, action_kind = action_ready(spell)
-			if action_kind ~= 'spell' or not ok_ready then
-				log_combat_sched(('dispatch_drop reason=SPELL_NOT_READY spell=\"%s\" ready_reason=%s kind=%s'):format(
-					tostring(spell), tostring(ready_reason or ''), tostring(action_kind or '')
-				))
-				if tank_enmity then
-					tank_enmity_diag('TANK_ENMITY_DROP_SPELL_NOT_READY', selected, ('reason=%s kind=%s'):format(tostring(ready_reason or ''), tostring(action_kind or '')))
-				end
+			phase.tank_spell_settle_key = ''
+			phase.tank_spell_settle_until = 0
+		end
+		if target_kind == 'mob' then
+			if not p1_combat_helpers.spell_target_dispatch_ready(selected, expected_tid, tank_enmity) then
 				return false, nil
 			end
 			if tank_enmity then
-				local settle_key = ('%s:%d'):format(spell, expected_tid)
-				local now = now_s()
-				if tostring(phase.tank_spell_settle_key or '') ~= settle_key then
-					phase.tank_spell_settle_key = settle_key
-					phase.tank_spell_settle_until = now + 0.75
-				end
 				local intent = {
 					kind = 'run_stop',
-					source = 'unified_scheduler:T2.4g_darklaunch',
+					source = 'unified_scheduler:T2.4h_darklaunch',
 					meta = {
-						reason = 'TANK_SPELL_SETTLE',
+						reason = 'TANK_ENMITY_SPELL_TARGET_SEND',
 						action_type = action_type,
 						action_name = spell,
 						target_id = expected_tid,
 						target_kind = target_kind,
-						settle_key = settle_key,
-						tank_spell_settle_until = phase.tank_spell_settle_until,
 					},
 				}
 				local dispatcher = require('uc_scheduler_dispatcher')
@@ -4393,10 +6114,10 @@ local function p1_try_dark_launch_dispatch(settings)
 					dispatcher = dispatcher,
 					direct_run = windower.ffxi.run,
 					run = windower.ffxi.run,
-					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP == true),
+					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP == true),
 					intent = intent,
 				})
-				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_SPELL_SETTLE_VALIDATE = {
+				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_SPELL_SEND_VALIDATE = {
 					ok = _darklaunch_ok and true or false,
 					reason = _darklaunch_reason,
 					kind = intent.kind,
@@ -4408,373 +6129,251 @@ local function p1_try_dark_launch_dispatch(settings)
 					fallback_used = run_stop_ownership_status.fallback_used,
 					stop = run_stop_ownership_status.stop,
 				}
-				if now < p1_number(phase.tank_spell_settle_until, 0) then
-					tank_enmity_diag('TANK_ENMITY_WAIT_SPELL_SETTLE', selected, ('remain=%.2f'):format(p1_number(phase.tank_spell_settle_until, 0) - now))
-					log_combat_sched(('dispatch_block reason=TANK_SPELL_SETTLE spell=\"%s\" tid=%d remain=%.2f'):format(
-						tostring(spell), expected_tid, p1_number(phase.tank_spell_settle_until, 0) - now
-					))
-					_G.UC_LAST_SCHED_ACTION = ('[p1]tank_settle:%s->%s'):format(spell, tostring(selected.target_name or ''))
-					return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_SETTLE'
-				end
-				phase.tank_spell_settle_key = ''
-				phase.tank_spell_settle_until = 0
 			end
-			if target_kind == 'mob' then
-				if not tank_enmity then
-					local target = windower.ffxi.get_mob_by_target('t')
-					if not target or not target.valid_target or (tonumber(target.id) or 0) ~= expected_tid then
-						return false, nil
-					end
-				end
-				if tank_enmity then
-					local intent = {
-						kind = 'run_stop',
-						source = 'unified_scheduler:T2.4h_darklaunch',
-						meta = {
-							reason = 'TANK_ENMITY_SPELL_TARGET_SEND',
-							action_type = action_type,
-							action_name = spell,
-							target_id = expected_tid,
-							target_kind = target_kind,
-						},
-					}
-					local dispatcher = require('uc_scheduler_dispatcher')
-					local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-					local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
-						dispatcher = dispatcher,
-						direct_run = windower.ffxi.run,
-						run = windower.ffxi.run,
-						ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP == true),
-						intent = intent,
-					})
-					_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_SPELL_SEND_VALIDATE = {
-						ok = _darklaunch_ok and true or false,
-						reason = _darklaunch_reason,
-						kind = intent.kind,
-						source = intent.source,
-						ownership_enabled = run_stop_ownership_status.ownership_enabled,
-						dispatched = run_stop_ownership_status.dispatched,
-						dispatch_ok = run_stop_ownership_status.dispatch_ok,
-						dispatch_reason = run_stop_ownership_status.dispatch_reason,
-						fallback_used = run_stop_ownership_status.fallback_used,
-						stop = run_stop_ownership_status.stop,
-					}
-				end
-				local spell_target_command = ('input /ma \"%s\" %d'):format(spell, expected_tid)
-				local intent = {
-					kind = 'send_command',
-					source = 'unified_scheduler:T2.3g_darklaunch',
-					command = spell_target_command,
-					meta = {
-						action_type = tostring(action_type or ''),
-						action_name = spell,
-						target_id = expected_tid,
-						target_kind = tostring(target_kind or ''),
-					},
-				}
-				local dispatcher = require('uc_scheduler_dispatcher')
-				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-				local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
-					dispatcher = dispatcher,
-					direct_send_command = windower.send_command,
-					send_command = windower.send_command,
-					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP == true),
-					promoted_default_on = true,
-					ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP == false),
-					promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
-					intent = intent,
-					command = spell_target_command,
-				})
-				_G.UC_SCHED_P1_DARKLAUNCH_SPELL_TARGET_COMMAND_VALIDATE = {
-					ok = _darklaunch_ok and true or false,
-					reason = _darklaunch_reason,
-					kind = intent.kind,
-					source = intent.source,
-					command_present = command_ownership_status.command_present,
-					ownership_enabled = command_ownership_status.ownership_enabled,
-					dispatched = command_ownership_status.dispatched,
-					dispatch_ok = command_ownership_status.dispatch_ok,
-					dispatch_reason = command_ownership_status.dispatch_reason,
-					fallback_used = command_ownership_status.fallback_used,
-				}
-				action_mark_sent('spell')
-				if tank_enmity then
-					tank_enmity_diag('TANK_ENMITY_SEND_SPELL', selected, 'mode=target_id')
-				end
-			else
-				if tank_enmity then
-					local intent = {
-						kind = 'run_stop',
-						source = 'unified_scheduler:T2.4i_darklaunch',
-						meta = {
-							reason = 'TANK_ENMITY_SPELL_SELF_SEND',
-							action_type = action_type,
-							action_name = spell,
-							target_kind = target_kind,
-						},
-					}
-					local dispatcher = require('uc_scheduler_dispatcher')
-					local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-					local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
-						dispatcher = dispatcher,
-						direct_run = windower.ffxi.run,
-						run = windower.ffxi.run,
-						ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP == true),
-						intent = intent,
-					})
-					_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_SPELL_SELF_SEND_VALIDATE = {
-						ok = _darklaunch_ok and true or false,
-						reason = _darklaunch_reason,
-						kind = intent.kind,
-						source = intent.source,
-						ownership_enabled = run_stop_ownership_status.ownership_enabled,
-						dispatched = run_stop_ownership_status.dispatched,
-						dispatch_ok = run_stop_ownership_status.dispatch_ok,
-						dispatch_reason = run_stop_ownership_status.dispatch_reason,
-						fallback_used = run_stop_ownership_status.fallback_used,
-						stop = run_stop_ownership_status.stop,
-					}
-				end
-				local spell_self_command = ('input /ma \"%s\" <me>'):format(spell)
-				local intent = {
-					kind = 'send_command',
-					source = 'unified_scheduler:T2.3h_darklaunch',
-					command = spell_self_command,
-					meta = {
-						action_type = tostring(action_type or ''),
-						action_name = spell,
-						target_kind = tostring(target_kind or ''),
-					},
-				}
-				local dispatcher = require('uc_scheduler_dispatcher')
-				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-				local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
-					dispatcher = dispatcher,
-					direct_send_command = windower.send_command,
-					send_command = windower.send_command,
-					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP == true),
-					promoted_default_on = true,
-					ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP == false),
-					promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
-					intent = intent,
-					command = spell_self_command,
-				})
-				_G.UC_SCHED_P1_DARKLAUNCH_SPELL_SELF_COMMAND_VALIDATE = {
-					ok = _darklaunch_ok and true or false,
-					reason = _darklaunch_reason,
-					kind = intent.kind,
-					source = intent.source,
-					command_present = command_ownership_status.command_present,
-					ownership_enabled = command_ownership_status.ownership_enabled,
-					dispatched = command_ownership_status.dispatched,
-					dispatch_ok = command_ownership_status.dispatch_ok,
-					dispatch_reason = command_ownership_status.dispatch_reason,
-					fallback_used = command_ownership_status.fallback_used,
-				}
-				action_mark_sent('spell')
-				if tank_enmity then
-					tank_enmity_diag('TANK_ENMITY_SEND_SPELL', selected, 'mode=self')
-				end
+			local spell_target_command = ('input /ma \"%s\" %d'):format(spell, expected_tid)
+			local intent = {
+				kind = 'send_command',
+				source = 'unified_scheduler:T2.3g_darklaunch',
+				command = spell_target_command,
+				meta = {
+					action_type = tostring(action_type or ''),
+					action_name = spell,
+					target_id = expected_tid,
+					target_kind = tostring(target_kind or ''),
+				},
+			}
+			local dispatcher = require('uc_scheduler_dispatcher')
+			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+				dispatcher = dispatcher,
+				direct_send_command = windower.send_command,
+				send_command = windower.send_command,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP == true),
+				promoted_default_on = true,
+				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP == false),
+				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+				intent = intent,
+				command = spell_target_command,
+			})
+			_G.UC_SCHED_P1_DARKLAUNCH_SPELL_TARGET_COMMAND_VALIDATE = {
+				ok = _darklaunch_ok and true or false,
+				reason = _darklaunch_reason,
+				kind = intent.kind,
+				source = intent.source,
+				command_present = command_ownership_status.command_present,
+				ownership_enabled = command_ownership_status.ownership_enabled,
+				dispatched = command_ownership_status.dispatched,
+				dispatch_ok = command_ownership_status.dispatch_ok,
+				dispatch_reason = command_ownership_status.dispatch_reason,
+				fallback_used = command_ownership_status.fallback_used,
+			}
+			action_mark_sent('spell', {
+				action_name = spell,
+				provider = 'combat',
+				target_id = expected_tid,
+				target_kind = tostring(target_kind or ''),
+			})
+			scheduler.action_timeline_log('SPELL_SENT', {
+				spell = tostring(spell or ''),
+				provider = 'combat',
+				tid = expected_tid,
+				name = tostring(selected.target_name or ''),
+				kind = 'spell',
+			}, ('spell_sent:%s:%d'):format(tostring(spell or ''), expected_tid), 0.05)
+			if scheduler.is_sleep_spell_name(settings, spell) then
+				scheduler.action_timeline_log('SLEEP_DISPATCHED', {
+					spell = tostring(spell or ''),
+					tid = expected_tid,
+					name = tostring(selected.target_name or ''),
+				}, ('sleep_dispatched:%d:%s'):format(expected_tid, tostring(spell or '')), 0.05)
 			end
-			_G.UC_LAST_SCHED_ACTION = ('[p1]spell:%s->%s'):format(spell, tostring(selected.target_name or ''))
+			if tank_enmity then
+				scheduler.p1_begin_tank_spell_wait(phase, spell, expected_tid, now_s())
+				tank_enmity_diag('TANK_ENMITY_SEND_SPELL', selected, 'mode=target_id')
+			end
 		else
 			if tank_enmity then
-				tank_enmity_diag('TANK_ENMITY_DROP_UNSUPPORTED_ACTION_TYPE', selected, ('action_type=%s'):format(action_type))
+				local intent = {
+					kind = 'run_stop',
+					source = 'unified_scheduler:T2.4i_darklaunch',
+					meta = {
+						reason = 'TANK_ENMITY_SPELL_SELF_SEND',
+						action_type = action_type,
+						action_name = spell,
+						target_kind = target_kind,
+					},
+				}
+				local dispatcher = require('uc_scheduler_dispatcher')
+				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+				local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+					dispatcher = dispatcher,
+					direct_run = windower.ffxi.run,
+					run = windower.ffxi.run,
+					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP == true),
+					intent = intent,
+				})
+				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_SPELL_SELF_SEND_VALIDATE = {
+					ok = _darklaunch_ok and true or false,
+					reason = _darklaunch_reason,
+					kind = intent.kind,
+					source = intent.source,
+					ownership_enabled = run_stop_ownership_status.ownership_enabled,
+					dispatched = run_stop_ownership_status.dispatched,
+					dispatch_ok = run_stop_ownership_status.dispatch_ok,
+					dispatch_reason = run_stop_ownership_status.dispatch_reason,
+					fallback_used = run_stop_ownership_status.fallback_used,
+					stop = run_stop_ownership_status.stop,
+				}
 			end
+			local spell_self_command = ('input /ma \"%s\" <me>'):format(spell)
+			local intent = {
+				kind = 'send_command',
+				source = 'unified_scheduler:T2.3h_darklaunch',
+				command = spell_self_command,
+				meta = {
+					action_type = tostring(action_type or ''),
+					action_name = spell,
+					target_kind = tostring(target_kind or ''),
+				},
+			}
+			local dispatcher = require('uc_scheduler_dispatcher')
+			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+				dispatcher = dispatcher,
+				direct_send_command = windower.send_command,
+				send_command = windower.send_command,
+				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP == true),
+				promoted_default_on = true,
+				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP == false),
+				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
+				intent = intent,
+				command = spell_self_command,
+			})
+			_G.UC_SCHED_P1_DARKLAUNCH_SPELL_SELF_COMMAND_VALIDATE = {
+				ok = _darklaunch_ok and true or false,
+				reason = _darklaunch_reason,
+				kind = intent.kind,
+				source = intent.source,
+				command_present = command_ownership_status.command_present,
+				ownership_enabled = command_ownership_status.ownership_enabled,
+				dispatched = command_ownership_status.dispatched,
+				dispatch_ok = command_ownership_status.dispatch_ok,
+				dispatch_reason = command_ownership_status.dispatch_reason,
+				fallback_used = command_ownership_status.fallback_used,
+			}
+			action_mark_sent('spell', {
+				action_name = spell,
+				provider = 'combat',
+				target_id = tonumber((windower.ffxi.get_player() or {}).id) or 0,
+				target_kind = tostring(target_kind or ''),
+			})
+			scheduler.action_timeline_log('SPELL_SENT', {
+				spell = tostring(spell or ''),
+				provider = 'combat',
+				kind = 'spell',
+			}, ('spell_sent:%s:self'):format(tostring(spell or '')), 0.05)
+			if tank_enmity then
+				scheduler.p1_begin_tank_spell_wait(phase, spell, 0, now_s())
+				tank_enmity_diag('TANK_ENMITY_SEND_SPELL', selected, 'mode=self')
+			end
+		end
+		_G.UC_LAST_SCHED_ACTION = ('[p1]spell:%s->%s'):format(spell, tostring(selected.target_name or ''))
+	else
+		if tank_enmity then
+			tank_enmity_diag('TANK_ENMITY_DROP_UNSUPPORTED_ACTION_TYPE', selected, ('action_type=%s'):format(action_type))
+		end
+		return false, nil
+	end
+	local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
+	scheduler.p1_record_legacy_dispatch(ctx)
+	scheduler.p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
+	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT'
+end
+
+local function p1_static_command_ownership_shape_defensive()
+	local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+		dispatcher = dispatcher,
+		direct_send_command = windower.send_command,
+		send_command = windower.send_command,
+		ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_DEFENSIVE_INTERNAL_COMMAND_OWNERSHIP == true),
+		intent = intent,
+		command = cmd,
+	})
+	return {
+		ownership_enabled = command_ownership_status.ownership_enabled,
+		dispatched = command_ownership_status.dispatched,
+		dispatch_ok = command_ownership_status.dispatch_ok,
+		dispatch_reason = command_ownership_status.dispatch_reason,
+		command_present = command_ownership_status.command_present,
+		fallback_used = command_ownership_status.fallback_used,
+	}
+end
+
+local function p1_static_command_ownership_shape_maintenance()
+	local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
+		dispatcher = dispatcher,
+		direct_send_command = windower.send_command,
+		send_command = windower.send_command,
+		ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MAINTENANCE_COR_COMMAND_OWNERSHIP == true),
+		intent = intent,
+		command = maintenance_cor_command,
+	})
+	return {
+		ownership_enabled = command_ownership_status.ownership_enabled,
+		dispatched = command_ownership_status.dispatched,
+		dispatch_ok = command_ownership_status.dispatch_ok,
+		dispatch_reason = command_ownership_status.dispatch_reason,
+		fallback_used = command_ownership_status.fallback_used,
+		command_present = command_ownership_status.command_present,
+	}
+end
+
+local function p1_try_dark_launch_dispatch(settings)
+	local phase = scheduler.phase1
+	local selected = phase.last_selected
+	if type(selected) ~= 'table' or type(phase.last_plan) ~= 'table' then
+		return false, nil
+	end
+	local tank_spell_wait_locked = scheduler.p1_refresh_tank_spell_wait_lock(phase, now_s())
+	if tank_spell_wait_locked then
+		_G.UC_LAST_SCHED_ACTION = ('[p1]tank_spell_wait:%s'):format(tostring(phase.tank_pending_action or ''))
+		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_SPELL_WAIT'
+	end
+	local provider = tostring(selected.provider or '')
+	if provider == 'target_control' then
+		if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
 			return false, nil
 		end
 		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-		p1_record_legacy_dispatch(ctx)
-		p1_set_pending_globals()
-		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
-		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT'
+		return scheduler.p1_dispatch_target_control(selected, ctx)
+	end
+
+	if provider == 'pull_control' then
+		return p1_dispatch_pull_control(selected, settings)
+	end
+	if provider == 'combat' then
+		return p1_try_dark_launch_combat_dispatch(selected, settings, phase)
 	end
 	if provider == 'defensive_internal' then
-		if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
-			return false, nil
-		end
+		_G.UC_DEFENSIVE_CHAIN_ACTION = {
+			provider = 'defensive_internal',
+			action_kind = tostring(selected.action_type or ''),
+			def_action_type = tostring(type(selected.detail) == 'table' and selected.detail.def_action_type or ''),
+			action_name = tostring(selected.action_name or ''),
+		}
 		local blocked, b_reason = action_dispatch_blocked()
+		_G.UC_DEFENSIVE_CHAIN_ACTION = nil
 		if blocked then
 			return true, b_reason
 		end
-		local cmd = tostring(selected.legacy_command or '')
-		if cmd == '' then
-			return false, nil
-		end
-		local ok_ready, _, action_kind = action_ready(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0)
-		if action_kind == 'none' then
-			return false, nil
-		end
-		if not ok_ready then
-			return false, nil
-		end
-		local p = windower.ffxi.get_player()
-		local out_of_combat = (tonumber(p and p.status) or 0) ~= 1
-		local now_gate = now_s()
-		local preengage_move_active = (rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true)
-		local follow_run_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE_UNTIL')) or 0
-		local follow_run_active = (rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE') == true) or (now_gate < follow_run_until)
-		local follow_catchup_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL')) or 0
-		local follow_needs_catchup = (rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP') == true) or (now_gate < follow_catchup_until)
-		if action_kind == 'spell' and out_of_combat and preengage_move_active then
-			_G.UC_LAST_SCHED_ACTION = ('[p1]defer_preengage_move:%s->%s'):format(
-				tostring(selected.action_name or ''),
-				tostring(selected.target_name or '')
-			)
-			return true, 'BLOCK_DEFENSIVE_PREENGAGE_MOVE_ACTIVE'
-		end
-		if action_kind == 'spell' and out_of_combat and (follow_run_active or follow_needs_catchup) then
-			_G.UC_LAST_SCHED_ACTION = ('[p1]defer_follow_move:%s->%s'):format(
-				tostring(selected.action_name or ''),
-				tostring(selected.target_name or '')
-			)
-			return true, 'BLOCK_DEFENSIVE_FOLLOW_MOVE_ACTIVE'
-		end
-		local intent = {
-			kind = 'send_command',
-			source = 'unified_scheduler:T2.3i_darklaunch',
-			command = cmd,
-			meta = {
-				action_type = tostring(action_kind or selected.action_type or ''),
-				action_name = tostring(selected.action_name or ''),
-				target_id = tonumber(selected.target_id) or 0,
-			},
-		}
-		local dispatcher = require('uc_scheduler_dispatcher')
-		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
-				dispatcher = dispatcher,
-				direct_send_command = windower.send_command,
-				send_command = windower.send_command,
-				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_DEFENSIVE_INTERNAL_COMMAND_OWNERSHIP == true),
-				promoted_default_on = true,
-				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_DEFENSIVE_INTERNAL_COMMAND_OWNERSHIP == false),
-				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
-				intent = intent,
-				command = cmd,
-			})
-		_G.UC_SCHED_P1_DARKLAUNCH_DEFENSIVE_INTERNAL_COMMAND_VALIDATE = {
-			ok = _darklaunch_ok and true or false,
-			reason = _darklaunch_reason,
-			kind = intent.kind,
-			source = intent.source,
-			command_present = command_ownership_status.command_present,
-			ownership_enabled = command_ownership_status.ownership_enabled,
-			dispatched = command_ownership_status.dispatched,
-			dispatch_ok = command_ownership_status.dispatch_ok,
-			dispatch_reason = command_ownership_status.dispatch_reason,
-			fallback_used = command_ownership_status.fallback_used,
-		}
-		action_mark_sent(action_kind or selected.action_type or 'defensive_internal')
-		local dispatch_now = now_s()
-		local d = selected.detail
-		if type(d) == 'table' and tostring(d.enemy_dispel_attempt_key or '') ~= '' then
-			mark_enemy_dispel_attempt(tostring(d.enemy_dispel_attempt_key), dispatch_now)
-		end
-		local ctx = { now = dispatch_now, tick = p1_number(scheduler.phase1.tick, 0) }
-		p1_record_legacy_dispatch(ctx)
-		p1_set_pending_globals()
-		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
-		_G.UC_LAST_SCHED_ACTION = ('[p1]%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
-		return true, 'BLOCK_SCHED_P1_DARKLAUNCH'
+		return p1_dispatch_defensive_internal(selected, settings)
 	end
 	if provider == 'defensive_healbot' then
-		if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
-			return false, nil
-		end
-		local blocked, b_reason = action_dispatch_blocked()
-		if blocked then
-			return true, b_reason
-		end
-		local hb_action = selected.detail and selected.detail.healbot_action or nil
-		if type(hb_action) ~= 'table' then
-			return false, nil
-		end
-		local ok_actions = type(rawget(_G, 'actions')) == 'table' and type(_G.actions.get_defensive_action) == 'function'
-		local ok_healer = type(rawget(_G, 'healer')) == 'table' and type(_G.healer.take_action) == 'function'
-		if not ok_actions or not ok_healer then
-			return false, nil
-		end
-		_G.healer:take_action(hb_action)
-		action_mark_sent('defensive_healbot')
-		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-		p1_record_legacy_dispatch(ctx)
-		p1_set_pending_globals()
-		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
-		_G.UC_LAST_SCHED_ACTION = ('[p1]hb:%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
-		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_HEALBOT'
+		return p1_dispatch_defensive_healbot(selected, settings)
 	end
-	-- C1 codification:
-	-- mobility provider dispatch removed from ranked proposal execution.
 	if provider == 'maintenance_cor' then
-		if not bool_setting(settings and settings.scheduler_dark_launch_maintenance, false) then
-			log_def_sched('MAINT_COR_DISPATCH_SKIP reason=TOGGLE_OFF')
-			return false, nil
-		end
-		local blocked, b_reason = action_dispatch_blocked()
-		if blocked then
-			log_def_sched(('MAINT_COR_DISPATCH_BLOCK reason=%s'):format(tostring(b_reason or 'BLOCKED')))
-			return true, b_reason
-		end
-		local ability = tostring(selected.action_name or '')
-		if ability == '' then
-			log_def_sched('MAINT_COR_DISPATCH_SKIP reason=EMPTY_ACTION')
-			return false, nil
-		end
-		local ok_ready, ready_reason, action_kind = action_ready(ability)
-		if action_kind ~= 'ja' or not ok_ready then
-			log_def_sched(('MAINT_COR_DISPATCH_SKIP reason=NOT_READY action=\"%s\" kind=%s ready_kind=%s ready_reason=%s'):format(
-				tostring(ability),
-				'ja',
-				tostring(action_kind or ''),
-				tostring(ready_reason or '')
-			))
-			return false, nil
-		end
-		local maintenance_cor_command = ('input /ja \"%s\" <me>'):format(ability)
-		local intent = {
-			kind = 'send_command',
-			source = 'unified_scheduler:T2.3j_darklaunch',
-			command = maintenance_cor_command,
-			meta = {
-				action_type = tostring(action_kind or 'ja'),
-				action_name = ability,
-				provider = tostring(provider or ''),
-			},
-		}
-		local dispatcher = require('uc_scheduler_dispatcher')
-		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
-				dispatcher = dispatcher,
-				direct_send_command = windower.send_command,
-				send_command = windower.send_command,
-				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MAINTENANCE_COR_COMMAND_OWNERSHIP == true),
-				promoted_default_on = true,
-				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_MAINTENANCE_COR_COMMAND_OWNERSHIP == false),
-				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
-				intent = intent,
-				command = maintenance_cor_command,
-			})
-		_G.UC_SCHED_P1_DARKLAUNCH_MAINTENANCE_COR_COMMAND_VALIDATE = {
-			ok = _darklaunch_ok and true or false,
-			reason = _darklaunch_reason,
-			kind = intent.kind,
-			source = intent.source,
-			ownership_enabled = command_ownership_status.ownership_enabled,
-			dispatched = command_ownership_status.dispatched,
-			dispatch_ok = command_ownership_status.dispatch_ok,
-			dispatch_reason = command_ownership_status.dispatch_reason,
-			fallback_used = command_ownership_status.fallback_used,
-			command_present = command_ownership_status.command_present,
-		}
-		log_def_sched(('MAINT_COR_DISPATCH_SEND action=\"%s\"'):format(tostring(ability)))
-		action_mark_sent(action_kind or 'ja')
-		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-		p1_record_legacy_dispatch(ctx)
-		p1_set_pending_globals()
-		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
-		_G.UC_LAST_SCHED_ACTION = ('[p1]cor:%s'):format(ability)
-		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_MAINT_COR'
+		return p1_dispatch_maintenance_cor(selected, settings, provider)
 	end
 	return false, nil
 end
@@ -4796,10 +6395,19 @@ function scheduler.process_tick(cadence)
 	local doom_blocked, doom_reason = try_doom_water_emergency(s)
 	if doom_blocked then
 		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-		p1_record_legacy_dispatch(ctx)
-		p1_set_pending_globals()
-		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		scheduler.p1_record_legacy_dispatch(ctx)
+		scheduler.p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 		return true, doom_reason
+	end
+	local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s)
+	if target_acted then
+		return true, target_reason
+	end
+	local defensive_spell_wait_locked = scheduler.refresh_defensive_spell_wait_lock(now_s())
+	if defensive_spell_wait_locked then
+		_G.UC_LAST_SCHED_ACTION = ('[def]spell_wait:%s'):format(tostring(scheduler.defensive_pending_action or ''))
+		return true, 'BLOCK_DEFENSIVE_SPELL_WAITING'
 	end
 	p1_run_dry(s)
 	local p1_acted, p1_reason = p1_try_dark_launch_dispatch(s)
@@ -4829,9 +6437,9 @@ function scheduler.process_tick(cadence)
 		end
 		if acted then
 			local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-			p1_record_legacy_dispatch(ctx)
-			p1_set_pending_globals()
-			_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+			scheduler.p1_record_legacy_dispatch(ctx)
+			scheduler.p1_set_pending_globals()
+			_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 			return true, reason
 		end
 		return false, nil
@@ -4839,16 +6447,42 @@ function scheduler.process_tick(cadence)
 	acted, reason = try_internal_defensive_action()
 	if acted then
 		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-		p1_record_legacy_dispatch(ctx)
-		p1_set_pending_globals()
-		_G.UC_SCHED_P1_LOCK_SUMMARY = p1_build_lock_summary(ctx, p1_get_locks(ctx))
+		scheduler.p1_record_legacy_dispatch(ctx)
+		scheduler.p1_set_pending_globals()
+		_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 		return true, reason
 	end
 	return false, nil
 end
-
 function scheduler.on_ipc_message(msg)
 	apply_party_state_ipc_message(msg)
+end
+
+function scheduler.p1_pick_preemptive_engage(ctx, ranked)
+	if type(ranked) ~= 'table' or #ranked == 0 then
+		return nil
+	end
+	local top = ranked[1]
+	if scheduler.p1_is_critical_defensive_proposal(ctx and ctx.settings or nil, top) then
+		return top
+	end
+	for i = 1, #ranked do
+		local candidate = ranked[i]
+		if tostring(candidate.provider or '') == 'combat' and tostring(candidate.action_type or '') == 'engage' then
+			if candidate ~= top then
+				scheduler.action_timeline_log('ENGAGE_PREEMPT_SELECTED', {
+					tid = tonumber(candidate.target_id) or 0,
+					name = tostring(candidate.target_name or ''),
+					status = tonumber(ctx and ctx.player_status) or 0,
+					reason = 'NONCRITICAL_ACTION',
+					from = tostring(top and top.provider or ''),
+					to = tostring(candidate.provider or ''),
+				}, ('engage_preempt:%d'):format(tonumber(candidate.target_id) or 0), 0.25)
+			end
+			return candidate
+		end
+	end
+	return top
 end
 
 function scheduler.on_incoming_chunk(id, data)
@@ -4991,7 +6625,6 @@ function scheduler.on_action(act)
 	local category = tostring(act and act.category or '')
 	local start_lock_categories = {
 		spell = true,
-		spell_finish = true,
 		job_ability = true,
 		job_ability_unblinkable = true,
 		weaponskill = true,
@@ -5014,7 +6647,7 @@ function scheduler.on_action(act)
 	end
 	local now = now_s()
 	local state_name = tostring(pending.state or '')
-	if not p1_pending_is_live_state(state_name) then
+	if not scheduler.p1_pending_is_live_state(state_name) then
 		return
 	end
 	if my_id ~= 0 and actor_id == my_id then
@@ -5025,7 +6658,7 @@ function scheduler.on_action(act)
 	if expected_tid ~= 0 and type(act and act.targets) == 'table' then
 		for _, t in ipairs(act.targets) do
 			if tonumber(t and t.id) == expected_tid then
-				p1_pending_mark_complete(now, 'action_target_effect')
+				scheduler.p1_pending_mark_complete(now, 'action_target_effect')
 				break
 			end
 		end
@@ -5107,13 +6740,58 @@ function scheduler.on_action_message(msg)
 	end
 
 	local phase = scheduler.phase1
+	local now = now_s()
+	if my_id ~= 0 and actor_id == my_id and message_id == scheduler.ENGAGE_REJECT_WAIT_LONGER_MESSAGE_ID then
+		scheduler.p1_mark_pending_engage_rejected_wait_longer(phase, now, message_id)
+	end
+	local handled_local_spell_success = false
+	if my_id ~= 0 and actor_id == my_id and message_id ~= 0 then
+		local pending_action_name = tostring(phase.tank_pending_action or scheduler.defensive_pending_action or '')
+		local last_action_name = pending_action_name
+		local expected_tid = tonumber(phase.tank_pending_target_id) or tonumber(scheduler.defensive_pending_target_id) or 0
+		local msg_tid = tonumber(msg and msg.target_id) or 0
+		if scheduler.is_spell_success_message_id(message_id) then
+			local cleared_defensive_success = scheduler.clear_local_defensive_spell_success()
+			if not cleared_defensive_success then
+				cleared_defensive_success = scheduler.clear_local_spell_success()
+			end
+			if cleared_defensive_success then
+				handled_local_spell_success = true
+				scheduler.p1_pending_mark_complete(now, ('spell_success_%d'):format(message_id))
+				local current_lock_until = tonumber(_G.UC_MOVEMENT_LOCK_UNTIL) or 0
+				_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)
+				if scheduler.defensive_spell_waiting == true then
+					scheduler.clear_defensive_spell_wait_state()
+				end
+				if tonumber(phase.tank_pending_target_id) and tonumber(phase.tank_pending_target_id) ~= 0 then
+					scheduler.p1_clear_tank_spell_wait_state(phase)
+				end
+				if msg_tid > 0 and scheduler.is_sleep_spell_name(get_settings(), last_action_name) then
+					scheduler.mark_sleep_target_suppressed(msg_tid, last_action_name, now_s())
+				end
+				scheduler.record_confirmed_bard_song_success(pending_action_name, expected_tid, msg_tid)
+			end
+		elseif scheduler.defensive_spell_waiting == true
+			and not scheduler.is_spell_initiating_message_id(message_id)
+			and not scheduler.is_spell_success_message_id(message_id) then
+			scheduler.clear_local_defensive_spell_interruption()
+			scheduler.clear_defensive_spell_wait_state()
+			local current_lock_until = tonumber(_G.UC_MOVEMENT_LOCK_UNTIL) or 0
+			_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)
+			scheduler.p1_pending_mark_complete(now, ('spell_interrupt_%d'):format(message_id))
+		elseif not scheduler.clear_local_spell_success() then
+			scheduler.clear_local_spell_interruption()
+		end
+		if tonumber(phase.tank_pending_target_id) and tonumber(phase.tank_pending_target_id) ~= 0 then
+			scheduler.p1_clear_tank_spell_wait_state(phase)
+		end
+	end
 	local pending = phase.pending
 	if type(pending) ~= 'table' then
 		return
 	end
-	local now = now_s()
 	local state_name = tostring(pending.state or '')
-	if not p1_pending_is_live_state(state_name) and state_name ~= 'acknowledged' then
+	if not scheduler.p1_pending_is_live_state(state_name) and state_name ~= 'acknowledged' then
 		return
 	end
 	if my_id ~= 0 and actor_id ~= my_id then
@@ -5125,7 +6803,7 @@ function scheduler.on_action_message(msg)
 		return
 	end
 	if message_id ~= 0 then
-		p1_pending_mark_complete(now, ('msg_%d'):format(message_id))
+		scheduler.p1_pending_mark_complete(now, ('msg_%d'):format(message_id))
 	end
 end
 

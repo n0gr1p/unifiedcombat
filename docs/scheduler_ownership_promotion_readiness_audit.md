@@ -262,3 +262,55 @@ The following 11 paths are now accepted as promoted/default-on rather than pendi
 - vector run ownership: dormant / not live-reachable, do not treat as active promotion work.
 
 These remaining default-off paths are now governed by `docs/scheduler_remaining_run_stop_coverage_plan.md`, which assigns replay/mock-first, targeted-field-packet, parked, or future-retirement treatment per path instead of treating them as one promotion bucket.
+
+## T3.1b Coverage Status Update
+
+The following four default-off branches now have focused static+mock replay coverage in `tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`:
+
+- `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`
+
+Interpretation:
+
+- coverage status improved from planning-only to static+mock branch coverage,
+- readiness status is still default-off,
+- and no promotion decision changed in T3.1b.
+
+## T3.1c Readiness Decision Update
+
+### Doom branches
+
+- `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP`: keep default-off.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`: keep default-off.
+
+Readiness interpretation:
+
+- static+mock coverage now exists,
+- live confirmation remains intentionally absent,
+- and promotion readiness is still negative because safe practical Doom field testing is not recommended.
+
+### Combat-spell run-stop branches
+
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`: conditional future promotion candidate, but not ready now.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`: conditional future promotion candidate, but not ready now.
+
+Readiness interpretation:
+
+- static+mock coverage is strong enough to remove pure branch-coverage uncertainty,
+- live reachability is likely,
+- but readiness remains incomplete until targeted live confirmation captures the settle/prep-wait timing behavior in practice.
+
+Current readiness state for the four T3.1b-covered branches:
+
+- Doom command: default-off / not promotion-ready
+- Doom run_stop: default-off / not promotion-ready
+- combat-spell settle run_stop: default-off / targeted live confirmation required
+- combat-spell prep-wait run_stop: default-off / targeted live confirmation required
+
+## T3.1d Packet Readiness Update
+
+- `docs/scheduler_combat_spell_run_stop_field_test_packet.md` is now the active next-step packet for the two combat-spell run-stop branches
+- both combat-spell branches remain pending field-test results
+- Doom branches remain default-off and are not part of the combat-spell packet

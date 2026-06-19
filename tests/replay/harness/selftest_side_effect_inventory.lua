@@ -10,7 +10,7 @@ local INVENTORY_BASELINE = {
         ["uc_settarget.select_by_id("] = { 1919, 2055 },
     },
     ["UnifiedCombat.lua"] = {
-        ["windower.ffxi.run("] = { 354 },
+        ["windower.ffxi.run("] = { 355 },
     },
     ["uc_party_follow.lua"] = {
         ["windower.ffxi.run("] = { 869, 900, 910, 923, 928, 933 },
@@ -22,7 +22,7 @@ local INVENTORY_BASELINE = {
         ["windower.send_command("] = { 433, 474, 476 },
     },
     ["remote_bridge.lua"] = {
-        ["windower.send_command("] = { 1538 },
+        ["windower.send_command("] = { 1572 },
     },
     ["melee_engine.lua"] = {
         ["windower.send_command("] = { 377, 382, 661, 667, 814, 820, 1040, 1042, 1922, 2005, 2029, 2104, 2126, 2131, 2196, 2226, 2346, 2419, 2524, 2591, 2600, 2623, 2640, 2649 },

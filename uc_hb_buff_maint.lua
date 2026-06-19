@@ -10,6 +10,7 @@ end
 local mod = {}
 local state = {
 	last_family_action = {},
+	confirmed_bard_song_identity = {},
 }
 
 local action_buff_map = {}
@@ -250,14 +251,104 @@ local function get_last_family_action(member_name, family)
 	return tostring(v.action or ''), tonumber(v.at) or 0
 end
 
+local function bard_song_identity_member(member_name)
+	local key = tostring(member_name or '')
+	local bucket = state.confirmed_bard_song_identity[key]
+	if type(bucket) ~= 'table' then
+		bucket = {}
+		state.confirmed_bard_song_identity[key] = bucket
+	end
+	return bucket
+end
+
+local function prune_bard_song_identity(member_name, family, now)
+	local member_bucket = bard_song_identity_member(member_name)
+	local family_key = tostring(family or '')
+	local family_bucket = member_bucket[family_key]
+	if type(family_bucket) ~= 'table' then
+		return {}
+	end
+	local active = {}
+	for action_name, entry in pairs(family_bucket) do
+		local expires_at = tonumber(entry and entry.expires_at) or 0
+		if expires_at > now then
+			active[#active + 1] = {
+				action = tostring(action_name or ''),
+				at = tonumber(entry and entry.at) or 0,
+				expires_at = expires_at,
+			}
+		else
+			family_bucket[action_name] = nil
+		end
+	end
+	if next(family_bucket) == nil then
+		member_bucket[family_key] = nil
+	end
+	return active
+end
+
+local function confirmed_bard_song_identity_set(member_name, family, action_name, now, family_count)
+	if (tonumber(family_count) or 0) <= 0 then
+		return false
+	end
+	local active = prune_bard_song_identity(member_name, family, now)
+	if #active == 0 then
+		return false
+	end
+	table.sort(active, function(left, right)
+		local lat = tonumber(left.at) or 0
+		local rat = tonumber(right.at) or 0
+		if lat == rat then
+			return tostring(left.action or '') < tostring(right.action or '')
+		end
+		return lat > rat
+	end)
+	local limit = math.min(tonumber(family_count) or 0, #active)
+	for index = 1, limit do
+		if tostring(active[index].action or '') == tostring(action_name or '') then
+			return true
+		end
+	end
+	return false
+end
+
+function mod.mark_bard_song_success(member_name, action_name, now, expires_at)
+	local normalized_action = normalize_name(action_name)
+	local family = family_for_name(normalized_action)
+	if family == nil or family == '' then
+		return false
+	end
+	local member_bucket = bard_song_identity_member(member_name)
+	local family_key = tostring(family)
+	local family_bucket = member_bucket[family_key]
+	if type(family_bucket) ~= 'table' then
+		family_bucket = {}
+		member_bucket[family_key] = family_bucket
+	end
+	family_bucket[normalized_action] = {
+		at = tonumber(now) or 0,
+		expires_at = tonumber(expires_at) or 0,
+	}
+	return true
+end
+
+function mod._reset_test_state()
+	state.last_family_action = {}
+	state.confirmed_bard_song_identity = {}
+end
+
 function mod.choose(settings, members, helpers)
-	local out = nil
 	local desired = split_actions(settings.defensive_buffs or '')
 	local targeted = parse_targeted_buffs(settings.defensive_targeted_buffs or '')
 	local self_only = helpers.bool_setting(settings.defensive_buff_self_only, true)
 	local overwrite = helpers.bool_setting(settings.defensive_overwrite_enabled, false)
 	local overwrite_interval = tonumber(settings.defensive_overwrite_interval or 150) or 150
 	local now = now_s()
+	local first_eligible_non_majesty = nil
+
+	local function is_majesty_action(action_name)
+		return normalize_name(action_name):lower() == 'majesty'
+	end
 
 	for _, m in ipairs(members or {}) do
 		local in_range = helpers.in_party_cast_range(m)
@@ -317,9 +408,13 @@ function mod.choose(settings, members, helpers)
 						if fam then
 							local have = tonumber(existing_family_counts[fam]) or 0
 							local need = tonumber(desired_family_counts[fam]) or 1
+							local exact_confirmed = confirmed_bard_song_identity_set(m.name, fam, action_name, now, have)
 							-- For BRD families, decide by family coverage (not per-song status id),
 							-- because songs in the same family share buff identity in status data.
 							should_cast = have < need
+							if need > 1 and exact_confirmed then
+								should_cast = false
+							end
 							if should_cast and need > 1 then
 								-- Avoid looping the same family action when a different family mate is needed.
 								local last_name, last_at = get_last_family_action(m.name, fam)
@@ -336,10 +431,7 @@ function mod.choose(settings, members, helpers)
 						should_cast = (now - last) >= overwrite_interval
 					end
 					if should_cast and helpers.attempt_allowed('buff', m.name, action_name, now, 3) then
-						if fam then
-							mark_last_family_action(m.name, fam, action_name, now)
-						end
-						out = {
+						local candidate = {
 							type = overwrite and 'overwrite' or 'buff',
 							spell = action_name,
 							target = m,
@@ -348,7 +440,15 @@ function mod.choose(settings, members, helpers)
 							reason = is_present and 'overwrite' or 'missing',
 							action_kind = action_kind,
 						}
-						return out
+						if is_majesty_action(action_name) then
+							return candidate
+						end
+						if not first_eligible_non_majesty then
+							if fam then
+								mark_last_family_action(m.name, fam, action_name, now)
+							end
+							first_eligible_non_majesty = candidate
+						end
 					elseif helpers.log_debug then
 						helpers.log_debug(('HB_BUFF_SKIP name="%s" target="%s" reason=attempt_gate'):format(
 							tostring(action_name),
@@ -374,7 +474,7 @@ function mod.choose(settings, members, helpers)
 			end
 		end
 	end
-	return out
+	return first_eligible_non_majesty
 end
 
 return mod

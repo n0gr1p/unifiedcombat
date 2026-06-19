@@ -169,6 +169,7 @@ local function uc_new_settings_defaults()
 		tank = false,
 		tank_enmity_actions = {},
 		sleep = false,
+		sleepspells = { 'Horde Lullaby II' },
 		command = false,
 		hunter = false,
 		sleepspell = 'Horde Lullaby II',
@@ -418,7 +419,7 @@ local PROFILE_KEYS = {
 	'tank_enmity_actions',
 	'target1', 'target2', 'target3', 'targets',
 	'targetability', 'targetability_active',
-	'spell', 'spell_active', 'sleepspell',
+	'spell', 'spell_active', 'sleepspell', 'sleepspells',
 	'dd2_spell_slots', 'ignore', 'target_ignore_names',
 }
 
@@ -572,6 +573,58 @@ local function uc_normalize_ws_for_engine(s, eng)
 	s.engine_mode = eng
 end
 
+local function uc_trim_string(v)
+	if type(v) ~= 'string' then
+		return ''
+	end
+	return (v:match('^%s*(.-)%s*$') or '')
+end
+
+local function uc_normalize_sleep_spell_entry(v)
+	local raw = uc_trim_string(v)
+	if raw == '' then
+		return ''
+	end
+	local spell = res.spells:with('en', raw)
+	if spell and spell.en then
+		return tostring(spell.en)
+	end
+	return raw
+end
+
+local function uc_normalize_sleep_spell_list(s)
+	if type(s) ~= 'table' then
+		return
+	end
+	local out = {}
+	local seen = {}
+	local function append_spell(raw)
+		local spell_name = uc_normalize_sleep_spell_entry(raw)
+		if spell_name == '' then
+			return
+		end
+		local key = spell_name:lower()
+		if seen[key] == true then
+			return
+		end
+		seen[key] = true
+		out[#out + 1] = spell_name
+	end
+	if type(s.sleepspells) == 'table' then
+		for _, entry in ipairs(s.sleepspells) do
+			append_spell(entry)
+		end
+	elseif type(s.sleepspells) == 'string' then
+		append_spell(s.sleepspells)
+	end
+	local legacy_sleep = uc_normalize_sleep_spell_entry(s.sleepspell)
+	if #out == 0 and legacy_sleep ~= '' then
+		append_spell(legacy_sleep)
+	end
+	s.sleepspells = out
+	s.sleepspell = out[1] or ''
+end
+
 local function uc_normalize_domain_settings(s)
 	if type(s) ~= 'table' then
 		return
@@ -608,6 +661,7 @@ local function uc_normalize_active_settings()
 	uc_normalize_abilities(s)
 	uc_normalize_targets(s)
 	uc_normalize_ws_for_engine(s, eng)
+	uc_normalize_sleep_spell_list(s)
 	uc_normalize_domain_settings(s)
 	uc_partner_list.migrate_from_legacy(s)
 	uc_partner_list.sync_legacy_partner_fields(s)
@@ -767,6 +821,116 @@ local function uc_reload_active_profile(job_for_defaults)
 	uc_apply_active_profile()
 	return p
 end
+
+local function uc_sleep_spell_list_lines(settings)
+	local arr = type(settings and settings.sleepspells) == 'table' and settings.sleepspells or {}
+	if #arr == 0 then
+		return { 'Sleep spell list: (empty)' }
+	end
+	local lines = { 'Sleep spell list:' }
+	for i, spell_name in ipairs(arr) do
+		lines[#lines + 1] = ('  %d. %s'):format(i, tostring(spell_name))
+	end
+	return lines
+end
+
+local uc_sleep_spell = {}
+
+function uc_sleep_spell.as_ordered_names(settings)
+	local arr = type(settings and settings.sleepspells) == 'table' and settings.sleepspells or {}
+	local out = {}
+	for i = 1, #arr do
+		out[#out + 1] = tostring(arr[i])
+	end
+	return out
+end
+
+local function uc_sleep_spell_validate_names(names)
+	local out = {}
+	local seen = {}
+	for _, raw in ipairs(names or {}) do
+		local spell_name = uc_normalize_sleep_spell_entry(raw)
+		if spell_name == '' then
+			return nil, 'SLEEP_SPELL_EMPTY'
+		end
+		if not res.spells:with('en', spell_name) then
+			return nil, 'SLEEP_SPELL_UNKNOWN'
+		end
+		local key = spell_name:lower()
+		if seen[key] ~= true then
+			seen[key] = true
+			out[#out + 1] = spell_name
+		end
+	end
+	return out, ''
+end
+
+function uc_sleep_spell.replace_names(settings, names)
+	if type(settings) ~= 'table' then
+		return false, 'SLEEP_NO_SETTINGS'
+	end
+	local validated, why = uc_sleep_spell_validate_names(names or {})
+	if not validated then
+		return false, why
+	end
+	settings.sleepspells = validated
+	uc_normalize_sleep_spell_list(settings)
+	return true, ''
+end
+
+function uc_sleep_spell.append_name(settings, name)
+	if type(settings) ~= 'table' then
+		return false, 'SLEEP_NO_SETTINGS'
+	end
+	local spell_name = uc_normalize_sleep_spell_entry(name)
+	if spell_name == '' then
+		return false, 'SLEEP_SPELL_EMPTY'
+	end
+	if not res.spells:with('en', spell_name) then
+		return false, 'SLEEP_SPELL_UNKNOWN'
+	end
+	local arr = uc_sleep_spell.as_ordered_names(settings)
+	for i = 1, #arr do
+		if arr[i]:lower() == spell_name:lower() then
+			return false, 'SLEEP_SPELL_ALREADY'
+		end
+	end
+	arr[#arr + 1] = spell_name
+	return uc_sleep_spell.replace_names(settings, arr)
+end
+
+function uc_sleep_spell.remove_index(settings, idx)
+	if type(settings) ~= 'table' then
+		return false, 'SLEEP_NO_SETTINGS'
+	end
+	idx = tonumber(idx)
+	local arr = uc_sleep_spell.as_ordered_names(settings)
+	if not idx or idx < 1 or idx > #arr then
+		return false, 'SLEEP_SPELL_BAD_INDEX'
+	end
+	table.remove(arr, idx)
+	return uc_sleep_spell.replace_names(settings, arr)
+end
+
+function uc_sleep_spell.move_index(settings, idx, delta)
+	if type(settings) ~= 'table' then
+		return false, 'SLEEP_NO_SETTINGS'
+	end
+	idx = tonumber(idx)
+	delta = tonumber(delta)
+	local arr = uc_sleep_spell.as_ordered_names(settings)
+	if not idx or idx < 1 or idx > #arr or not delta or (delta ~= -1 and delta ~= 1) then
+		return false, 'SLEEP_SPELL_MOVE_BAD_ARGS'
+	end
+	local swap_idx = idx + delta
+	if swap_idx < 1 or swap_idx > #arr then
+		return false, 'SLEEP_SPELL_MOVE_OOB'
+	end
+	arr[idx], arr[swap_idx] = arr[swap_idx], arr[idx]
+	return uc_sleep_spell.replace_names(settings, arr)
+end
+
+_G.UC_SleepSpell = uc_sleep_spell
 
 _G.UC_SaveActiveProfile = uc_save_active_profile
 _G.UC_ReloadActiveProfile = uc_reload_active_profile
@@ -1049,6 +1213,80 @@ windower.register_event('addon command', function(...)
 			return
 		end
 		windower.add_to_chat(207, '//uc add_priority add <mob name>|remove <n>|list|clear')
+		return
+	elseif a == 'sleep' then
+		local s = _G.UC_SETTINGS
+		if not s then
+			return
+		end
+		local sub = args[2] and tostring(args[2]):lower() or ''
+		if sub == 'on' then
+			s.sleep = true
+			windower.add_to_chat(207, 'Sleep: on')
+			return
+		elseif sub == 'off' then
+			s.sleep = false
+			windower.add_to_chat(207, 'Sleep: off')
+			return
+		elseif sub == 'list' or sub == '' then
+			windower.add_to_chat(207, 'Sleep: ' .. (s.sleep and 'on' or 'off'))
+			for _, line in ipairs(uc_sleep_spell_list_lines(s)) do
+				windower.add_to_chat(207, line)
+			end
+			return
+		elseif sub == 'clear' then
+			uc_sleep_spell.replace_names(s, {})
+			windower.add_to_chat(207, 'Sleep spell list cleared')
+			return
+		elseif sub == 'set' or sub == 'spell' then
+			local ok, why = uc_sleep_spell.replace_names(s, { table.concat(args, ' ', 3) })
+			if not ok then
+				if why == 'SLEEP_SPELL_UNKNOWN' then
+					windower.add_to_chat(167, 'Sleep spell set failed: unknown spell')
+				else
+					windower.add_to_chat(167, 'Sleep spell set failed: ' .. tostring(why))
+				end
+				return
+			end
+			windower.add_to_chat(207, 'Sleep spell list set: ' .. tostring(s.sleepspell or ''))
+			return
+		elseif sub == 'add' then
+			local raw = table.concat(args, ' ', 3)
+			local spell_name = uc_normalize_sleep_spell_entry(raw)
+			local ok, why = uc_sleep_spell.append_name(s, raw)
+			if not ok then
+				if why == 'SLEEP_SPELL_UNKNOWN' then
+					windower.add_to_chat(167, 'Sleep spell add failed: unknown spell')
+				elseif why == 'SLEEP_SPELL_ALREADY' then
+					windower.add_to_chat(167, 'Sleep spell add failed: already listed')
+				else
+					windower.add_to_chat(167, 'Sleep spell add failed: ' .. tostring(why))
+				end
+				return
+			end
+			windower.add_to_chat(207, 'Sleep spell appended: ' .. spell_name)
+			return
+		elseif sub == 'remove' then
+			local ok, why = uc_sleep_spell.remove_index(s, args[3])
+			if not ok then
+				windower.add_to_chat(167, 'Sleep spell remove failed: use //uc sleep list')
+				return
+			end
+			windower.add_to_chat(207, 'Sleep spell removed index ' .. tostring(args[3]))
+			return
+		elseif sub == 'move' then
+			local idx = tonumber(args[3])
+			local dir = args[4] and tostring(args[4]):lower() or ''
+			local delta = (dir == 'up') and -1 or ((dir == 'down') and 1 or nil)
+			local ok, why = uc_sleep_spell.move_index(s, idx, delta)
+			if not ok then
+				windower.add_to_chat(167, 'Sleep spell move failed: ' .. tostring(why))
+				return
+			end
+			windower.add_to_chat(207, 'Sleep spell moved index ' .. tostring(idx) .. ' ' .. dir)
+			return
+		end
+		windower.add_to_chat(207, '//uc sleep on|off|list|clear|set <spell>|add <spell>|remove <n>|move <n> up|down')
 		return
 	end
 	windower.add_to_chat(167, 'Unknown command.')

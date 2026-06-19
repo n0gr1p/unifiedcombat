@@ -50,6 +50,8 @@ These paths should not all be treated the same.
 - Recommended next action: add replay/mock test.
 - Promotion risk: high.
 - Rollback / kill-switch recommendation: keep explicit default-off and do not include in any combined live packet.
+- Current T3.1b coverage status: static+mock branch coverage added; no live evidence added.
+- T3.1c decision: remain intentionally default-off. Do not recommend real Doom live testing.
 
 ### `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`
 
@@ -60,26 +62,34 @@ These paths should not all be treated the same.
 - Recommended next action: add replay/mock test.
 - Promotion risk: high.
 - Rollback / kill-switch recommendation: keep explicit default-off and do not promote from live inference alone.
+- Current T3.1b coverage status: static+mock branch coverage added; no live evidence added.
+- T3.1c decision: remain intentionally default-off. Do not recommend real Doom live testing.
 
 ### `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
 
 - Live-reachable: yes, likely reachable whenever a combat spell creates a new `UC_MOVE_FREEZE_PREP_KEY` and starts the settle window.
 - Safe to field test: probably yes, but replay/mock coverage should come first.
 - Replay/mock coverage possible: yes.
+- Current T3.1b coverage status: static scheduler branch verification plus helper-level mock execution now proves explicit true routing, fallback preservation, and default-off semantics.
 - Exact test scenario needed: spell dispatch branch enters a new prep key, sets `UC_MOVE_FREEZE_PREP_UNTIL`, emits `COMBAT_SPELL_SETTLE`, and blocks once before normal spell send continues.
-- Recommended next action: add replay/mock test.
+- Replay/mock confidence level: medium-high for ownership routing and fallback; lower for real live timing parity because the branch has not been directly observed in field results.
+- Practical live-test scenario: targeted combat spell scenario where a new freeze-prep key starts and the scheduler emits the settle block before the spell send continues.
 - Promotion risk: medium.
-- Rollback / kill-switch recommendation: keep explicit default-off until replay/mock coverage exists, then consider a focused live packet only if branch behavior still needs confirmation.
+- T3.1c decision: do not promote now. Require a targeted live field-test packet before any promotion decision.
+- Rollback / kill-switch recommendation if promoted later: keep the temporary global promoted kill switch plus per-flag false opt-out during any first promotion stage.
 
 ### `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`
 
 - Live-reachable: yes, likely reachable during the active freeze-prep window after settle initialization.
 - Safe to field test: probably yes, but replay/mock coverage should come first.
 - Replay/mock coverage possible: yes.
+- Current T3.1b coverage status: static scheduler branch verification plus helper-level mock execution now proves explicit true routing, fallback preservation, and default-off semantics.
 - Exact test scenario needed: existing prep key remains active, current time stays below `UC_MOVE_FREEZE_PREP_UNTIL`, branch emits `COMBAT_SPELL_PREP_WAIT`, and repeated stop behavior preserves the existing prep block timing.
-- Recommended next action: add replay/mock test.
+- Replay/mock confidence level: medium-high for ownership routing and fallback; lower for real live repeated-stop timing because this wait window has not been directly observed in field results.
+- Practical live-test scenario: targeted combat spell scenario where the prep window remains active long enough to emit the prep-wait block before the owned spell send proceeds.
 - Promotion risk: medium.
-- Rollback / kill-switch recommendation: keep explicit default-off until replay/mock timing coverage exists.
+- T3.1c decision: do not promote now. Require the same targeted live field-test packet as the settle branch before any promotion decision.
+- Rollback / kill-switch recommendation if promoted later: keep the temporary global promoted kill switch plus per-flag false opt-out during any first promotion stage.
 
 ### `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP`
 
@@ -195,6 +205,71 @@ Rationale:
 - Doom is too risky for live promotion-first testing.
 - Combat-spell settle/prep-wait looks live-reachable but is primarily a timing/ordering problem, which is a better replay/mock-first fit.
 - Tank paths can then use a narrower field-test packet once the highest-risk emergency branches are removed from the live-testing backlog.
+
+## T3.1b Coverage Applied
+
+T3.1b adds focused static+mock coverage for these four remaining default-off branches:
+
+- `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`
+
+Coverage style used:
+
+- static scheduler branch verification for exact flag gating and helper routing
+- helper-level mock execution for explicit true dispatch and fallback preservation
+- no runtime branch behavior changes
+
+Current post-T3.1b status:
+
+- Doom command and Doom run_stop now have replay/mock-first coverage rather than documentation-only planning.
+- Combat spell settle/prep-wait run_stop now have static+mock ownership coverage for default-off semantics, true-path routing, and fallback presence.
+- No branch was promoted in T3.1b.
+- These four branches remain default-off pending any future promotion decision.
+
+Promotion consideration after T3.1b:
+
+- Doom command / Doom run_stop: still not eligible for promotion without a stronger safety case; keep default-off.
+- Combat spell settle/prep-wait run_stop: now better covered, but still not promoted by this task; any future promotion should be a separate explicit decision.
+
+## T3.1c Promotion Decision
+
+Decision outcome:
+
+- Doom Holy Water command ownership remains intentionally default-off.
+- Doom run_stop ownership remains intentionally default-off.
+- Combat spell settle run_stop is a future promotion candidate only after a targeted live field-test packet.
+- Combat spell prep-wait run_stop is a future promotion candidate only after the same targeted live field-test packet.
+
+Recommended next action:
+
+- create `T3.1d` as a focused combat-spell run_stop field-test packet covering both settle and prep-wait timing windows
+- do not combine Doom with that packet
+- if a practical combat-spell scenario still cannot be reproduced cleanly, leave both combat-spell branches default-off pending natural field coverage rather than promoting from replay/mock evidence alone
+
+## T3.1d Field-Test Packet Status
+
+- created `docs/scheduler_combat_spell_run_stop_field_test_packet.md`
+- packet scope is limited to the combat-spell settle/prep-wait run-stop pair
+- no promotion occurs in T3.1d
+- Doom command/run_stop remains default-off and outside this packet
+
+## T3.1e Tank-Spell Movement-Lock Bugfix
+
+- Field testing uncovered a separate runtime bug in the scheduler tank-spell path: after the existing pre-send `run_stop`, movement could resume while the tank spell was still in flight.
+- Root cause was not ownership promotion state. The scheduler tank-spell send path did not carry forward the bounded cast-wait movement lock model already used by the core tank-spell flow.
+- `unified_scheduler.lua` now records a scheduler-local tank-spell wait state after tank spell send and refreshes a short bounded scheduler movement lock while the in-flight spell action remains active or in immediate post-action cooldown.
+- This is a runtime bugfix only. No tank run-stop ownership flags were promoted or reclassified by T3.1e.
+- Recommended next field test: repeat the Terrasjr tank-enmity spell repro with schedulers enabled and confirm the character stops for the spell, does not run through the mob, and resumes normal movement after the cast window clears.
+
+## T3.1f Defensive Cure Movement-Lock Bugfix
+
+- Run-stop field work also uncovered a separate scheduler defensive Cure/spell runtime bug: Cure could be sent during initial approach without any cast-time stop/lock lifecycle.
+- T3.1f fixes that scheduler runtime bug at the defensive spell send points in `unified_scheduler.lua`.
+- This is a runtime bugfix only.
+- No ownership promotion decision changed.
+- No default-off run-stop flag status changed.
 
 ## Risks and Rollback Policy
 

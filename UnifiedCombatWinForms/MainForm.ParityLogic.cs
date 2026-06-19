@@ -313,6 +313,7 @@ public partial class MainForm
         RenderPartnerList(s);
         RenderTargetIgnoreList(s);
         RenderAddPriorityList(s);
+        RenderSleepSpellList(s);
         RenderPathHunterList(s);
     }
 
@@ -405,6 +406,7 @@ public partial class MainForm
             _ignoreName.Text = "";
             _targetIgnName.Text = "";
             _addPriName.Text = "";
+            _sleepSpellName.Text = "";
             _partnerName.Text = "";
             _abilityList.Items.Clear();
             _abilityPickCombo.Items.Clear();
@@ -412,10 +414,12 @@ public partial class MainForm
             _partnerList.Items.Clear();
             _targetIgnList.Items.Clear();
             _addPriList.Items.Clear();
+            _sleepSpellList.Items.Clear();
             _ignoreRows = [];
             _partnerRows = [];
             _targetIgnoreRows = [];
             _addPriorityRows = [];
+            _sleepSpellRows = [];
             _selectedAbilities.Clear();
             _abilityOptions.Clear();
             _ignoreCurTarget.Enabled = false;
@@ -446,6 +450,7 @@ public partial class MainForm
             _partnerRows = [];
             _targetIgnoreRows = [];
             _addPriorityRows = [];
+            _sleepSpellRows = [];
         }
 
         var eng = SessionStateHelper.GetString(s, "engine", "melee");
@@ -1097,6 +1102,45 @@ public partial class MainForm
                 if (_addPriorityRows[i].Name == preserved)
                 {
                     _addPriList.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    private void RenderSleepSpellList(JsonElement s)
+    {
+        var newRows = SessionStateHelper.ParseIgnoreEntriesFrom(s, "sleep_spell_entries");
+        if (newRows.Count == 0)
+        {
+            var legacyPrimary = SessionStateHelper.GetString(s, "sleepspell");
+            if (!string.IsNullOrWhiteSpace(legacyPrimary))
+            {
+                newRows = [(1, legacyPrimary)];
+            }
+        }
+
+        if (newRows.SequenceEqual(_sleepSpellRows) && _sleepSpellList.Items.Count == newRows.Count)
+        {
+            return;
+        }
+
+        string? preserved = null;
+        if (_sleepSpellList.SelectedIndex >= 0 && _sleepSpellRows.Count > 0 && _sleepSpellList.SelectedIndex < _sleepSpellRows.Count)
+        {
+            preserved = _sleepSpellRows[_sleepSpellList.SelectedIndex].Name;
+        }
+
+        _sleepSpellRows = newRows;
+        RebindSleepSpellListUi();
+
+        if (preserved != null)
+        {
+            for (var i = 0; i < _sleepSpellRows.Count; i++)
+            {
+                if (_sleepSpellRows[i].Name == preserved)
+                {
+                    _sleepSpellList.SelectedIndex = i;
                     break;
                 }
             }
@@ -2888,6 +2932,155 @@ public partial class MainForm
         );
     }
 
+    private void SleepSpellSetOnly()
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var name = _sleepSpellName.Text.Trim();
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        _sleepSpellRows = [(1, name)];
+        RebindSleepSpellListUi();
+        _sleepSpellList.SelectedIndex = 0;
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = name });
+    }
+
+    private void SleepSpellAddByName()
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var name = _sleepSpellName.Text.Trim();
+        if (name.Length == 0)
+        {
+            return;
+        }
+        if (!HasName(_sleepSpellRows, name))
+        {
+            _sleepSpellRows.Add((NextSlot(_sleepSpellRows), name));
+            RebindSleepSpellListUi();
+            _sleepSpellList.SelectedIndex = _sleepSpellRows.Count - 1;
+        }
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_add_spell", ["name"] = name });
+    }
+
+    private void SleepSpellRemove()
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var idx = _sleepSpellList.SelectedIndex;
+        if (idx < 0)
+        {
+            return;
+        }
+
+        var slot = idx < _sleepSpellRows.Count ? _sleepSpellRows[idx].Slot : SessionStateHelper.ParseTrailingBracketId(_sleepSpellList.Items[idx]?.ToString() ?? "");
+        if (!slot.HasValue || slot.Value < 1)
+        {
+            return;
+        }
+        if (idx < _sleepSpellRows.Count)
+        {
+            _sleepSpellRows.RemoveAt(idx);
+            for (var i = 0; i < _sleepSpellRows.Count; i++)
+            {
+                _sleepSpellRows[i] = (i + 1, _sleepSpellRows[i].Name);
+            }
+            RebindSleepSpellListUi();
+        }
+
+        Forward(
+            sid,
+            new Dictionary<string, object?>
+            {
+                ["op"] = "sleep_remove_spell",
+                ["index"] = slot.Value,
+                ["slot"] = slot.Value,
+            }
+        );
+    }
+
+    private void SleepSpellClear()
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        _sleepSpellRows = [];
+        RebindSleepSpellListUi();
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = "" });
+    }
+
+    private void SleepSpellMove(string direction)
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var idx = _sleepSpellList.SelectedIndex;
+        if (idx < 0)
+        {
+            return;
+        }
+        var localSlot = idx + 1;
+        if (idx < _sleepSpellRows.Count)
+        {
+            var next = string.Equals(direction, "up", StringComparison.OrdinalIgnoreCase) ? idx - 1 : idx + 1;
+            if (next >= 0 && next < _sleepSpellRows.Count)
+            {
+                (_sleepSpellRows[next], _sleepSpellRows[idx]) = (_sleepSpellRows[idx], _sleepSpellRows[next]);
+                for (var i = 0; i < _sleepSpellRows.Count; i++)
+                {
+                    _sleepSpellRows[i] = (i + 1, _sleepSpellRows[i].Name);
+                }
+                RebindSleepSpellListUi();
+                _sleepSpellList.SelectedIndex = next;
+                localSlot = idx + 1;
+            }
+        }
+
+        int? slot = localSlot;
+        if (idx >= _sleepSpellRows.Count)
+        {
+            slot = SessionStateHelper.ParseTrailingBracketId(_sleepSpellList.Items[idx]?.ToString() ?? "") ?? 0;
+        }
+        if (!slot.HasValue || slot.Value < 1)
+        {
+            return;
+        }
+
+        Forward(
+            sid,
+            new Dictionary<string, object?>
+            {
+                ["op"] = "sleep_move_spell",
+                ["index"] = slot.Value,
+                ["slot"] = slot.Value,
+                ["direction"] = direction,
+            }
+        );
+    }
+
     private async void SaveRemote()
     {
         var sid = RequireSelectedSid();
@@ -3022,6 +3215,15 @@ public partial class MainForm
         }
     }
 
+    private void RebindSleepSpellListUi()
+    {
+        _sleepSpellList.Items.Clear();
+        foreach (var (slot, name) in _sleepSpellRows)
+        {
+            _sleepSpellList.Items.Add($"{name} [{slot}]");
+        }
+    }
+
     private void RebindPathHunterListUi()
     {
         _pathHunterList.Items.Clear();
@@ -3052,6 +3254,7 @@ public partial class MainForm
         Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "target_ignore_replace_names", ["value"] = string.Join("|", _targetIgnoreRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "add_priority_replace_names", ["value"] = string.Join("|", _addPriorityRows.Select(r => r.Name)) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = string.Join("|", _sleepSpellRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_replace_names", ["value"] = string.Join("|", _pathHunterRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "tank_enmity_replace_actions", ["value"] = string.Join("|", _tankEnmityRows) });
         foreach (var key in HubUiConstants.BoolKeys)

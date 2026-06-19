@@ -1270,6 +1270,14 @@ local function process_line(line)
 			s.add_priority_names = out
 		end
 		last_state_send = 0
+	elseif op == 'sleep_replace_spells' then
+		local s = _G.UC_SETTINGS
+		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
+		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.replace_names) == 'function' then
+			local vals = uc_split_pipe(msg.value)
+			sleep_cfg.replace_names(s, vals)
+		end
+		last_state_send = 0
 	elseif op == 'path_hunter_replace_names' then
 		local s = _G.UC_SETTINGS
 		if s then
@@ -1464,6 +1472,32 @@ local function process_line(line)
 			else
 				_G.UC_LAST_ADD_PRIORITY_OP = tostring(why or 'ADD_PRIORITY_MOVE_FAIL')
 			end
+		end
+		last_state_send = 0
+	elseif op == 'sleep_add_spell' then
+		local s = _G.UC_SETTINGS
+		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
+		local name = uc_trim(msg.name)
+		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.append_name) == 'function' and name ~= '' then
+			sleep_cfg.append_name(s, name)
+		end
+		last_state_send = 0
+	elseif op == 'sleep_remove_spell' then
+		local s = _G.UC_SETTINGS
+		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
+		local idx = uc_remote_list_index(msg, line)
+		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.remove_index) == 'function' and idx then
+			sleep_cfg.remove_index(s, math.floor(idx + 0.5))
+		end
+		last_state_send = 0
+	elseif op == 'sleep_move_spell' then
+		local s = _G.UC_SETTINGS
+		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
+		local idx = uc_remote_list_index(msg, line)
+		local dir = tostring(uc_trim(tostring(msg.direction or msg.Direction or msg.dir or msg.Dir or ''))):lower()
+		local delta = (dir == 'up' or dir == '-1') and -1 or ((dir == 'down' or dir == '1') and 1 or nil)
+		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.move_index) == 'function' and idx and delta then
+			sleep_cfg.move_index(s, math.floor(idx + 0.5), delta)
 		end
 		last_state_send = 0
 	elseif op == 'path_hunter_add' then

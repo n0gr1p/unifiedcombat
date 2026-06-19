@@ -1,0 +1,619 @@
+574.110 | Terrasjr | STATUS_CHANGED | status=0 from=1 to=0
+574.114 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891612 name=Apex Bats band=84 urgency=0.55
+574.115 | Terrasjr | TARGET_SELECTED | tid=17891612 name=Apex Bats
+574.325 | Terrasjr | TARGET_SELECTED | tid=17891612 name=Apex Bats
+574.528 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+574.532 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+574.534 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+574.535 | Terrasjr | PENDING_ENGAGE_START | tid=17891612 name=Apex Bats command=attack_on
+574.536 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+574.748 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+574.749 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+574.750 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+574.870 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891612 name=Apex Bats message_id=94
+574.871 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891612 name=Apex Bats retry_in_s=0.40
+575.169 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+575.173 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+575.386 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+575.387 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+575.388 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891612 name=Apex Bats retry_count=1 command=attack_on
+575.389 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+575.590 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+575.590 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+575.590 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+575.793 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+575.796 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+575.798 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+575.798 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+575.800 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891612 name=Apex Bats retry_count=1 command=attack_on
+575.800 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+576.009 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+576.219 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+576.219 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+576.220 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891612 name=Apex Bats retry_count=1 command=attack_on
+576.221 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+576.428 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+576.432 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+576.433 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+576.434 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+576.434 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+576.503 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891612 name=Apex Bats message_id=94
+576.504 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891612 name=Apex Bats retry_in_s=0.40
+577.043 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+577.046 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+577.048 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+577.048 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+577.049 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891612 name=Apex Bats retry_count=2 command=attack_on
+577.050 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+577.263 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+577.264 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+577.265 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+577.488 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+577.489 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+577.491 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891612 name=Apex Bats retry_count=2 command=attack_on
+577.492 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+577.691 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+577.695 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+577.697 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+577.904 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+577.905 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+577.906 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891612 name=Apex Bats retry_count=2 command=attack_on
+577.907 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+578.122 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+578.122 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+578.123 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+578.342 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+578.348 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+578.349 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+578.349 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+578.350 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891612 name=Apex Bats retry_count=2 command=attack_on
+578.351 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+578.558 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+578.757 | Terrasjr | STATUS_CHANGED | status=1 from=0 to=1
+578.758 | Terrasjr | PENDING_ENGAGE_CONFIRMED | tid=17891612 name=Apex Bats status=1
+593.875 | Terrasjr | STATUS_CHANGED | status=0 from=1 to=0
+593.880 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891611 name=Apex Bats band=84 urgency=0.55
+593.881 | Terrasjr | TARGET_SELECTED | tid=17891611 name=Apex Bats
+594.086 | Terrasjr | TARGET_SELECTED | tid=17891611 name=Apex Bats
+594.292 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+594.299 | Terrasjr | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+594.300 | Terrasjr | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+594.300 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+594.510 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_ACTION_STATE
+594.512 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+594.513 | Terrasjr | PENDING_ENGAGE_START | tid=17891611 name=Apex Bats command=attack_on
+594.514 | Terrasjr | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+594.711 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+594.712 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+594.913 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+594.917 | Terrasjr | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+594.918 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+594.919 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+594.920 | Terrasjr | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+595.007 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891611 name=Apex Bats message_id=94
+595.008 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891611 name=Apex Bats retry_in_s=0.40
+595.008 | Terrasjr | ENGAGE_DUPLICATE_RESET_REJECTION | tid=17891611 name=Apex Bats status=0 age_s=0.09 remaining_s=0.21 dispatch_method=attack_on pending_engage=rejected_wait_longer sent_for_target=1
+595.521 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+595.525 | Terrasjr | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+595.526 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+595.527 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891611 name=Apex Bats retry_count=1 command=attack_on
+595.528 | Terrasjr | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+595.730 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+595.731 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+595.732 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+595.931 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+595.931 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+595.932 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891611 name=Apex Bats retry_count=1 command=attack_on
+595.932 | Terrasjr | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+596.128 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+596.131 | Terrasjr | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+596.132 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+596.337 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+596.338 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+596.339 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891611 name=Apex Bats retry_count=1 command=attack_on
+596.339 | Terrasjr | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+596.548 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+596.549 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+596.549 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+596.657 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891611 name=Apex Bats message_id=94
+596.657 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891611 name=Apex Bats retry_in_s=0.40
+596.762 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+596.765 | Terrasjr | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+597.176 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+597.177 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+597.178 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891611 name=Apex Bats retry_count=2 command=attack_on
+597.179 | Terrasjr | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+597.380 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+597.384 | Terrasjr | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+597.385 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+597.386 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+597.387 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+597.585 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+597.585 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+597.587 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891611 name=Apex Bats retry_count=2 command=attack_on
+597.587 | Terrasjr | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+597.798 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+598.007 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+598.010 | Terrasjr | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+598.011 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+598.012 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+598.013 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891611 name=Apex Bats retry_count=2 command=attack_on
+598.014 | Terrasjr | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+598.220 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+598.222 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+598.222 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+598.426 | Terrasjr | STATUS_CHANGED | status=1 from=0 to=1
+598.426 | Terrasjr | PENDING_ENGAGE_CONFIRMED | tid=17891611 name=Apex Bats status=1
+613.762 | Terrasjr | STATUS_CHANGED | status=0 from=1 to=0
+613.766 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891613 name=Apex Bats band=84 urgency=0.55
+613.766 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+613.973 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+614.179 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+614.381 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891613 name=Apex Bats band=84 urgency=0.55
+614.382 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+614.588 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+614.792 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+614.991 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891613 name=Apex Bats band=84 urgency=0.55
+614.993 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+615.197 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+615.202 | Terrasjr | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+615.204 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+615.205 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+615.207 | Terrasjr | PENDING_ENGAGE_START | tid=17891613 name=Apex Bats command=attack_on
+615.207 | Terrasjr | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+615.426 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.22 remaining_s=0.08 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+615.427 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+615.427 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891613 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+615.564 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891613 name=Apex Bats message_id=94
+615.565 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891613 name=Apex Bats retry_in_s=0.40
+615.851 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+615.854 | Terrasjr | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+616.056 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+616.057 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+616.058 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891613 name=Apex Bats retry_count=1 command=attack_on
+616.059 | Terrasjr | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+616.260 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+616.261 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+616.261 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891613 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+616.457 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+616.462 | Terrasjr | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+616.464 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+616.465 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+616.466 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891613 name=Apex Bats retry_count=1 command=attack_on
+616.466 | Terrasjr | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+616.672 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+616.883 | Terrasjr | STATUS_CHANGED | status=1 from=0 to=1
+616.883 | Terrasjr | PENDING_ENGAGE_CONFIRMED | tid=17891613 name=Apex Bats status=1
+632.080 | Terrasjr | STATUS_CHANGED | status=0 from=1 to=0
+632.083 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891614 name=Apex Bats band=84 urgency=0.55
+632.084 | Terrasjr | TARGET_SELECTED | tid=17891614 name=Apex Bats
+632.288 | Terrasjr | TARGET_SELECTED | tid=17891614 name=Apex Bats
+632.494 | Terrasjr | TARGET_SELECTED | tid=17891614 name=Apex Bats
+632.700 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891614 name=Apex Bats band=84 urgency=0.55
+632.702 | Terrasjr | TARGET_SELECTED | tid=17891614 name=Apex Bats
+632.917 | Terrasjr | TARGET_SELECTED | tid=17891614 name=Apex Bats
+633.114 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+633.117 | Terrasjr | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+633.120 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+633.121 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+633.122 | Terrasjr | PENDING_ENGAGE_START | tid=17891614 name=Apex Bats command=attack_on
+633.123 | Terrasjr | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+633.327 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+633.328 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+633.329 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+633.505 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891614 name=Apex Bats message_id=94
+633.506 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891614 name=Apex Bats retry_in_s=0.40
+633.753 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+633.756 | Terrasjr | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+633.966 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+633.968 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+633.969 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=1 command=attack_on
+633.969 | Terrasjr | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+634.185 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+634.186 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+634.187 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+634.388 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+634.392 | Terrasjr | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+634.395 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+634.395 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+634.396 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=1 command=attack_on
+634.397 | Terrasjr | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+634.408 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891614 name=Apex Bats message_id=94
+634.408 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891614 name=Apex Bats retry_in_s=0.40
+634.409 | Terrasjr | ENGAGE_DUPLICATE_RESET_REJECTION | tid=17891614 name=Apex Bats status=0 age_s=0.01 remaining_s=0.29 dispatch_method=attack_on pending_engage=rejected_wait_longer sent_for_target=1
+634.759 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891614 name=Apex Bats message_id=94
+634.760 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891614 name=Apex Bats retry_in_s=0.40
+635.008 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+635.012 | Terrasjr | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+635.219 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+635.220 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=3 command=attack_on
+635.221 | Terrasjr | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+635.434 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+635.435 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+635.436 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+635.630 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+635.633 | Terrasjr | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+635.634 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+635.634 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+635.635 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=3 command=attack_on
+635.635 | Terrasjr | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+635.841 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+636.047 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+636.047 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+636.048 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=3 command=attack_on
+636.049 | Terrasjr | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+636.252 | Terrasjr | STATUS_CHANGED | status=1 from=0 to=1
+636.253 | Terrasjr | PENDING_ENGAGE_CONFIRMED | tid=17891614 name=Apex Bats status=1
+656.758 | Terrasjr | STATUS_CHANGED | status=0 from=1 to=0
+656.762 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891615 name=Apex Bats band=84 urgency=0.55
+656.763 | Terrasjr | TARGET_SELECTED | tid=17891615 name=Apex Bats
+656.965 | Terrasjr | TARGET_SELECTED | tid=17891615 name=Apex Bats
+657.167 | Terrasjr | TARGET_SELECTED | tid=17891615 name=Apex Bats
+657.366 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891615 name=Apex Bats band=84 urgency=0.55
+657.367 | Terrasjr | TARGET_SELECTED | tid=17891615 name=Apex Bats
+657.571 | Terrasjr | TARGET_SELECTED | tid=17891615 name=Apex Bats
+657.771 | Terrasjr | TARGET_SELECTED | tid=17891615 name=Apex Bats
+657.977 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891615 name=Apex Bats band=84 urgency=0.55
+657.978 | Terrasjr | TARGET_SELECTED | tid=17891615 name=Apex Bats
+658.186 | Terrasjr | TARGET_SELECTED | tid=17891615 name=Apex Bats
+658.385 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891615 name=Apex Bats
+658.389 | Terrasjr | ENGAGE_PROPOSED | tid=17891615 name=Apex Bats band=72 urgency=0.70
+658.392 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891615 name=Apex Bats command=attack_on
+658.394 | Terrasjr | PENDING_ENGAGE_START | tid=17891615 name=Apex Bats command=attack_on
+658.395 | Terrasjr | ENGAGE_DISPATCHED | tid=17891615 name=Apex Bats command=attack_on
+658.602 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891615 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+658.603 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+658.603 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891615 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+658.647 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891615 name=Apex Bats message_id=94
+658.648 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891615 name=Apex Bats retry_in_s=0.40
+659.005 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891615 name=Apex Bats
+659.009 | Terrasjr | ENGAGE_PROPOSED | tid=17891615 name=Apex Bats band=72 urgency=0.70
+659.217 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+659.218 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891615 name=Apex Bats command=attack_on
+659.220 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891615 name=Apex Bats retry_count=1 command=attack_on
+659.223 | Terrasjr | ENGAGE_DISPATCHED | tid=17891615 name=Apex Bats command=attack_on
+659.433 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891615 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+659.434 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+659.434 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891615 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+659.632 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891615 name=Apex Bats
+659.636 | Terrasjr | ENGAGE_PROPOSED | tid=17891615 name=Apex Bats band=72 urgency=0.70
+659.639 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+659.639 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891615 name=Apex Bats command=attack_on
+659.640 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891615 name=Apex Bats retry_count=1 command=attack_on
+659.640 | Terrasjr | ENGAGE_DISPATCHED | tid=17891615 name=Apex Bats command=attack_on
+659.855 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891615 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+660.050 | Terrasjr | STATUS_CHANGED | status=1 from=0 to=1
+660.050 | Terrasjr | PENDING_ENGAGE_CONFIRMED | tid=17891615 name=Apex Bats status=1
+676.597 | Terrasjr | STATUS_CHANGED | status=0 from=1 to=0
+676.601 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891612 name=Apex Bats band=84 urgency=0.55
+676.602 | Terrasjr | TARGET_SELECTED | tid=17891612 name=Apex Bats
+676.804 | Terrasjr | TARGET_SELECTED | tid=17891612 name=Apex Bats
+677.005 | Terrasjr | TARGET_SELECTED | tid=17891612 name=Apex Bats
+677.215 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891612 name=Apex Bats band=84 urgency=0.55
+677.216 | Terrasjr | TARGET_SELECTED | tid=17891612 name=Apex Bats
+677.420 | Terrasjr | TARGET_SELECTED | tid=17891612 name=Apex Bats
+677.617 | Terrasjr | TARGET_SELECT_DEBOUNCED | tid=17891612 name=Apex Bats reason=BLOCK_DEBOUNCE
+677.818 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891612 name=Apex Bats band=84 urgency=0.55
+677.820 | Terrasjr | TARGET_SELECTED | tid=17891612 name=Apex Bats
+678.020 | Terrasjr | TARGET_SELECTED | tid=17891612 name=Apex Bats
+678.227 | Terrasjr | TARGET_SELECTED | tid=17891612 name=Apex Bats
+678.430 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+678.434 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+678.435 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+678.436 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+678.437 | Terrasjr | PENDING_ENGAGE_START | tid=17891612 name=Apex Bats command=attack_on
+678.439 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+678.653 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+678.654 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+678.655 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+678.709 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891612 name=Apex Bats message_id=94
+678.709 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891612 name=Apex Bats retry_in_s=0.40
+679.051 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+679.053 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+679.262 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+679.262 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+679.264 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891612 name=Apex Bats retry_count=1 command=attack_on
+679.266 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+679.480 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+679.482 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+679.483 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+679.688 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+679.693 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+679.696 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+679.697 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+679.697 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891612 name=Apex Bats retry_count=1 command=attack_on
+679.698 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+679.904 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+680.108 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+680.109 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+680.110 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891612 name=Apex Bats retry_count=1 command=attack_on
+680.110 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+680.317 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+680.321 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+680.323 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+680.324 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+680.325 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+680.525 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+680.525 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+680.526 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891612 name=Apex Bats retry_count=1 command=attack_on
+680.527 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+680.735 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+680.943 | Terrasjr | STATUS_CHANGED | status=1 from=0 to=1
+680.944 | Terrasjr | PENDING_ENGAGE_CONFIRMED | tid=17891612 name=Apex Bats status=1
+713.370 | Terrasjr | STATUS_CHANGED | status=0 from=1 to=0
+713.374 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891610 name=Apex Bats band=84 urgency=0.55
+713.375 | Terrasjr | TARGET_SELECTED | tid=17891610 name=Apex Bats
+713.572 | Terrasjr | TARGET_SELECT_DEBOUNCED | tid=17891610 name=Apex Bats reason=BLOCK_DEBOUNCE
+713.578 | Terrasjr | TARGET_SELECTED | tid=17891610 name=Apex Bats
+713.797 | Terrasjr | TARGET_SELECTED | tid=17891610 name=Apex Bats
+714.006 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891610 name=Apex Bats band=84 urgency=0.55
+714.007 | Terrasjr | TARGET_SELECTED | tid=17891610 name=Apex Bats
+714.220 | Terrasjr | TARGET_SELECTED | tid=17891610 name=Apex Bats
+714.430 | Terrasjr | TARGET_SELECTED | tid=17891610 name=Apex Bats
+714.631 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891610 name=Apex Bats
+714.635 | Terrasjr | ENGAGE_PROPOSED | tid=17891610 name=Apex Bats band=72 urgency=0.70
+714.636 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+714.637 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891610 name=Apex Bats command=attack_on
+714.638 | Terrasjr | PENDING_ENGAGE_START | tid=17891610 name=Apex Bats command=attack_on
+714.639 | Terrasjr | ENGAGE_DISPATCHED | tid=17891610 name=Apex Bats command=attack_on
+714.836 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891610 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+714.837 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+714.838 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891610 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+714.911 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891610 name=Apex Bats message_id=94
+714.911 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891610 name=Apex Bats retry_in_s=0.40
+715.243 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891610 name=Apex Bats
+715.247 | Terrasjr | ENGAGE_PROPOSED | tid=17891610 name=Apex Bats band=72 urgency=0.70
+715.455 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+715.455 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891610 name=Apex Bats command=attack_on
+715.457 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891610 name=Apex Bats retry_count=1 command=attack_on
+715.458 | Terrasjr | ENGAGE_DISPATCHED | tid=17891610 name=Apex Bats command=attack_on
+715.668 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891610 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+715.669 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+715.669 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891610 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+715.870 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891610 name=Apex Bats
+715.874 | Terrasjr | ENGAGE_PROPOSED | tid=17891610 name=Apex Bats band=72 urgency=0.70
+715.876 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+715.877 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891610 name=Apex Bats command=attack_on
+715.878 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891610 name=Apex Bats retry_count=1 command=attack_on
+715.880 | Terrasjr | ENGAGE_DISPATCHED | tid=17891610 name=Apex Bats command=attack_on
+716.088 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891610 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+716.292 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+716.293 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891610 name=Apex Bats command=attack_on
+716.294 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891610 name=Apex Bats retry_count=1 command=attack_on
+716.296 | Terrasjr | ENGAGE_DISPATCHED | tid=17891610 name=Apex Bats command=attack_on
+716.498 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891610 name=Apex Bats
+716.501 | Terrasjr | ENGAGE_PROPOSED | tid=17891610 name=Apex Bats band=72 urgency=0.70
+716.503 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891610 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+716.504 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+716.504 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891610 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+716.721 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+716.721 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891610 name=Apex Bats command=attack_on
+716.722 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891610 name=Apex Bats retry_count=1 command=attack_on
+716.723 | Terrasjr | ENGAGE_DISPATCHED | tid=17891610 name=Apex Bats command=attack_on
+716.933 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891610 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+717.139 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891610 name=Apex Bats
+717.146 | Terrasjr | ENGAGE_PROPOSED | tid=17891610 name=Apex Bats band=72 urgency=0.70
+717.149 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+717.149 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891610 name=Apex Bats command=attack_on
+717.150 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891610 name=Apex Bats retry_count=1 command=attack_on
+717.151 | Terrasjr | ENGAGE_DISPATCHED | tid=17891610 name=Apex Bats command=attack_on
+717.365 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891610 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+717.365 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+717.366 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891610 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+717.574 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+717.575 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891610 name=Apex Bats command=attack_on
+717.575 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891610 name=Apex Bats retry_count=1 command=attack_on
+717.576 | Terrasjr | ENGAGE_DISPATCHED | tid=17891610 name=Apex Bats command=attack_on
+717.771 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891610 name=Apex Bats
+717.774 | Terrasjr | ENGAGE_PROPOSED | tid=17891610 name=Apex Bats band=72 urgency=0.70
+717.775 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891610 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+717.972 | Terrasjr | STATUS_CHANGED | status=1 from=0 to=1
+717.973 | Terrasjr | PENDING_ENGAGE_CONFIRMED | tid=17891610 name=Apex Bats status=1
+731.823 | Terrasjr | STATUS_CHANGED | status=0 from=1 to=0
+731.826 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891613 name=Apex Bats band=84 urgency=0.55
+731.827 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+732.024 | Terrasjr | TARGET_SELECT_DEBOUNCED | tid=17891613 name=Apex Bats reason=BLOCK_DEBOUNCE
+732.029 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+732.235 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+732.446 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891613 name=Apex Bats band=84 urgency=0.55
+732.447 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+732.655 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+732.852 | Terrasjr | TARGET_SELECT_DEBOUNCED | tid=17891613 name=Apex Bats reason=BLOCK_DEBOUNCE
+732.857 | Terrasjr | TARGET_SELECTED | tid=17891613 name=Apex Bats
+733.061 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+733.065 | Terrasjr | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+733.067 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+733.067 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+733.068 | Terrasjr | PENDING_ENGAGE_START | tid=17891613 name=Apex Bats command=attack_on
+733.069 | Terrasjr | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+733.278 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+733.279 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+733.280 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891613 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+733.313 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891613 name=Apex Bats message_id=94
+733.314 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891613 name=Apex Bats retry_in_s=0.40
+733.685 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+733.690 | Terrasjr | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+733.902 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+733.903 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+733.904 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891613 name=Apex Bats retry_count=1 command=attack_on
+733.905 | Terrasjr | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+734.106 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+734.106 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+734.107 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891613 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+734.187 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891613 name=Apex Bats message_id=94
+734.188 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891613 name=Apex Bats retry_in_s=0.40
+734.304 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+734.308 | Terrasjr | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+734.728 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+734.728 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+734.730 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891613 name=Apex Bats retry_count=2 command=attack_on
+734.730 | Terrasjr | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+734.930 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+734.934 | Terrasjr | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+734.936 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+734.938 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+734.939 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891613 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+735.151 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+735.153 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+735.154 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891613 name=Apex Bats retry_count=2 command=attack_on
+735.155 | Terrasjr | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+735.364 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+735.568 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+735.573 | Terrasjr | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+735.575 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+735.576 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+735.577 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891613 name=Apex Bats retry_count=2 command=attack_on
+735.578 | Terrasjr | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+735.776 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+735.777 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+735.778 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891613 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+735.985 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+735.985 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+735.986 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891613 name=Apex Bats retry_count=2 command=attack_on
+735.987 | Terrasjr | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+736.203 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+736.208 | Terrasjr | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+736.209 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.22 remaining_s=0.08 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+736.409 | Terrasjr | STATUS_CHANGED | status=1 from=0 to=1
+736.410 | Terrasjr | PENDING_ENGAGE_CONFIRMED | tid=17891613 name=Apex Bats status=1
+754.615 | Terrasjr | STATUS_CHANGED | status=0 from=1 to=0
+754.620 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891614 name=Apex Bats band=84 urgency=0.55
+754.621 | Terrasjr | TARGET_SELECTED | tid=17891614 name=Apex Bats
+754.824 | Terrasjr | TARGET_SELECTED | tid=17891614 name=Apex Bats
+755.019 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+755.024 | Terrasjr | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+755.025 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+755.026 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+755.027 | Terrasjr | PENDING_ENGAGE_START | tid=17891614 name=Apex Bats command=attack_on
+755.027 | Terrasjr | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+755.227 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+755.228 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+755.229 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+755.276 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891614 name=Apex Bats message_id=94
+755.277 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891614 name=Apex Bats retry_in_s=0.40
+755.631 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+755.633 | Terrasjr | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+755.838 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+755.838 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+755.839 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=1 command=attack_on
+755.840 | Terrasjr | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+756.042 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+756.043 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+756.044 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+756.156 | Terrasjr | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891614 name=Apex Bats message_id=94
+756.156 | Terrasjr | PENDING_ENGAGE_RETRY_READY | tid=17891614 name=Apex Bats retry_in_s=0.40
+756.243 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+756.244 | Terrasjr | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+756.651 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+756.651 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+756.653 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=2 command=attack_on
+756.654 | Terrasjr | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+756.851 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+756.855 | Terrasjr | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+756.856 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+756.857 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+756.857 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+757.055 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+757.055 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+757.056 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=2 command=attack_on
+757.057 | Terrasjr | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+757.260 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+757.464 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+757.466 | Terrasjr | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+757.467 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+757.468 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+757.469 | Terrasjr | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=2 command=attack_on
+757.469 | Terrasjr | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+757.664 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.19 remaining_s=0.11 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+757.665 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+757.665 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+757.863 | Terrasjr | STATUS_CHANGED | status=1 from=0 to=1
+757.863 | Terrasjr | PENDING_ENGAGE_CONFIRMED | tid=17891614 name=Apex Bats status=1
+769.531 | Terrasjr | STATUS_CHANGED | status=0 from=1 to=0
+769.534 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891615 name=Apex Bats band=84 urgency=0.55
+769.535 | Terrasjr | TARGET_SELECTED | tid=17891615 name=Apex Bats
+769.751 | Terrasjr | TARGET_SELECTED | tid=17891615 name=Apex Bats
+769.944 | Terrasjr | TARGET_SELECT_DEBOUNCED | tid=17891615 name=Apex Bats reason=BLOCK_DEBOUNCE
+770.157 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891615 name=Apex Bats
+770.161 | Terrasjr | ENGAGE_PROPOSED | tid=17891615 name=Apex Bats band=72 urgency=0.70
+770.163 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+770.163 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891615 name=Apex Bats command=attack_on
+770.164 | Terrasjr | PENDING_ENGAGE_START | tid=17891615 name=Apex Bats command=attack_on
+770.164 | Terrasjr | ENGAGE_DISPATCHED | tid=17891615 name=Apex Bats command=attack_on
+770.369 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891615 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+770.370 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+770.370 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891615 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+770.576 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+770.577 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891615 name=Apex Bats command=attack_on
+770.578 | Terrasjr | ENGAGE_DISPATCHED | tid=17891615 name=Apex Bats command=attack_on
+770.779 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891615 name=Apex Bats
+770.782 | Terrasjr | ENGAGE_PROPOSED | tid=17891615 name=Apex Bats band=72 urgency=0.70
+770.783 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891615 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+771.004 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+771.004 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891615 name=Apex Bats command=attack_on
+771.006 | Terrasjr | ENGAGE_DISPATCHED | tid=17891615 name=Apex Bats command=attack_on
+771.215 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891615 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+771.216 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+771.216 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891615 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+771.420 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891615 name=Apex Bats
+771.421 | Terrasjr | ENGAGE_PROPOSED | tid=17891615 name=Apex Bats band=72 urgency=0.70
+771.423 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+771.424 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891615 name=Apex Bats command=attack_on
+771.425 | Terrasjr | ENGAGE_DISPATCHED | tid=17891615 name=Apex Bats command=attack_on
+771.640 | Terrasjr | STATUS_CHANGED | status=1 from=0 to=1
+771.640 | Terrasjr | PENDING_ENGAGE_CONFIRMED | tid=17891615 name=Apex Bats status=1
+782.441 | Terrasjr | STATUS_CHANGED | status=0 from=1 to=0
+785.708 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891612 name=Apex Bats band=84 urgency=0.55
+785.709 | Terrasjr | TARGET_SELECTED | tid=17891612 name=Apex Bats
+785.913 | Terrasjr | TARGET_SELECTED | tid=17891612 name=Apex Bats
+786.115 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+786.118 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+786.119 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+786.120 | Terrasjr | PENDING_ENGAGE_START | tid=17891612 name=Apex Bats command=attack_on
+786.120 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+786.325 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+786.326 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+786.326 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+786.530 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+786.531 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+786.531 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+786.733 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+786.736 | Terrasjr | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+786.737 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+786.946 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+786.947 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+786.948 | Terrasjr | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+787.154 | Terrasjr | STATUS_CHANGED | status=1 from=0 to=1
+787.154 | Terrasjr | PENDING_ENGAGE_CONFIRMED | tid=17891612 name=Apex Bats status=1
+809.029 | Terrasjr | STATUS_CHANGED | status=0 from=1 to=0
+809.031 | Terrasjr | TARGET_ACQUIRE_CANDIDATE | tid=17891611 name=Apex Bats band=84 urgency=0.55
+809.033 | Terrasjr | TARGET_SELECTED | tid=17891611 name=Apex Bats
+809.225 | Terrasjr | TARGET_SELECT_DEBOUNCED | tid=17891611 name=Apex Bats reason=BLOCK_DEBOUNCE
+809.428 | Terrasjr | TARGET_SELECTED | tid=17891611 name=Apex Bats
+809.643 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+809.646 | Terrasjr | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+809.648 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+809.649 | Terrasjr | PENDING_ENGAGE_START | tid=17891611 name=Apex Bats command=attack_on
+809.650 | Terrasjr | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+809.854 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+809.855 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+809.855 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+810.057 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+810.057 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+810.059 | Terrasjr | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+810.263 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+810.266 | Terrasjr | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+810.267 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+810.472 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+810.473 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+810.474 | Terrasjr | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+810.682 | Terrasjr | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+810.683 | Terrasjr | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+810.683 | Terrasjr | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+810.881 | Terrasjr | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+810.885 | Terrasjr | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+810.887 | Terrasjr | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+810.888 | Terrasjr | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+810.891 | Terrasjr | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+811.091 | Terrasjr | STATUS_CHANGED | status=1 from=0 to=1
+811.091 | Terrasjr | PENDING_ENGAGE_CONFIRMED | tid=17891611 name=Apex Bats status=1

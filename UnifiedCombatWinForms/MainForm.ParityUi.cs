@@ -46,6 +46,15 @@ public partial class MainForm
     private Button _addPriRemove = null!;
     private Button _addPriUp = null!;
     private Button _addPriDown = null!;
+    private GroupBox _grpSleepSpells = null!;
+    private ListBox _sleepSpellList = null!;
+    private TextBox _sleepSpellName = null!;
+    private Button _sleepSpellSetOnly = null!;
+    private Button _sleepSpellAdd = null!;
+    private Button _sleepSpellRemove = null!;
+    private Button _sleepSpellClear = null!;
+    private Button _sleepSpellUp = null!;
+    private Button _sleepSpellDown = null!;
     private GroupBox _grpPartner = null!;
     private ListBox _partnerList = null!;
     private TextBox _partnerName = null!;
@@ -427,6 +436,7 @@ public partial class MainForm
         listsSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
         listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         _grpAddPri = new GroupBox
         {
@@ -548,6 +558,44 @@ public partial class MainForm
         tiFlow.Controls.Add(tigr);
         _grpTargetIgn.Controls.Add(tiFlow);
         listsSplit.Controls.Add(_grpTargetIgn, 1, 1);
+
+        _grpSleepSpells = new GroupBox
+        {
+            Text = "Sleep spells — ordered list used for pre-engage and in-combat Sleep picks.",
+            Dock = DockStyle.Fill,
+            Padding = new Padding(8),
+            AutoSize = true,
+            MinimumSize = new Size(200, 120),
+        };
+        var sleepFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
+        _sleepSpellList = new ListBox { Height = 90, IntegralHeight = false, Dock = DockStyle.Top, Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top };
+        sleepFlow.Controls.Add(_sleepSpellList);
+        var sleepRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0), WrapContents = false };
+        sleepRow.Controls.Add(new Label { Text = "Spell name:", AutoSize = true });
+        _sleepSpellName = new TextBox { Width = 220 };
+        sleepRow.Controls.Add(_sleepSpellName);
+        _sleepSpellSetOnly = new Button { Text = "Set only", AutoSize = true };
+        _sleepSpellSetOnly.Click += (_, _) => SleepSpellSetOnly();
+        sleepRow.Controls.Add(_sleepSpellSetOnly);
+        _sleepSpellAdd = new Button { Text = "Add", AutoSize = true };
+        _sleepSpellAdd.Click += (_, _) => SleepSpellAddByName();
+        sleepRow.Controls.Add(_sleepSpellAdd);
+        _sleepSpellRemove = new Button { Text = "Remove selected", AutoSize = true };
+        _sleepSpellRemove.Click += (_, _) => SleepSpellRemove();
+        sleepRow.Controls.Add(_sleepSpellRemove);
+        _sleepSpellClear = new Button { Text = "Clear list", AutoSize = true };
+        _sleepSpellClear.Click += (_, _) => SleepSpellClear();
+        sleepRow.Controls.Add(_sleepSpellClear);
+        _sleepSpellUp = new Button { Text = "Move up", AutoSize = true };
+        _sleepSpellUp.Click += (_, _) => SleepSpellMove("up");
+        sleepRow.Controls.Add(_sleepSpellUp);
+        _sleepSpellDown = new Button { Text = "Move down", AutoSize = true };
+        _sleepSpellDown.Click += (_, _) => SleepSpellMove("down");
+        sleepRow.Controls.Add(_sleepSpellDown);
+        sleepFlow.Controls.Add(sleepRow);
+        _grpSleepSpells.Controls.Add(sleepFlow);
+        listsSplit.Controls.Add(_grpSleepSpells, 0, 2);
+        listsSplit.SetColumnSpan(_grpSleepSpells, 2);
 
         g.Controls.Add(listsSplit, 0, gRow++);
 

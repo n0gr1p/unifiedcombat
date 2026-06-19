@@ -1,0 +1,499 @@
+574.319 | Ponponponponpon | STATUS_CHANGED | status=0 from=1 to=0
+574.322 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891612 name=Apex Bats band=84 urgency=0.55
+574.324 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+574.528 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+574.721 | Ponponponponpon | TARGET_SELECT_DEBOUNCED | tid=17891612 name=Apex Bats reason=BLOCK_DEBOUNCE
+574.926 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891612 name=Apex Bats band=84 urgency=0.55
+574.927 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+575.136 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+575.340 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+575.533 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+575.535 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+575.537 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+575.537 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+575.539 | Ponponponponpon | PENDING_ENGAGE_START | tid=17891612 name=Apex Bats command=attack_on
+575.540 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+575.748 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+575.749 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+575.749 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+575.963 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+575.964 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+575.966 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+576.158 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+576.161 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+576.163 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.19 remaining_s=0.11 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+576.362 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+576.363 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+576.365 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+576.570 | Ponponponponpon | STATUS_CHANGED | status=1 from=0 to=1
+576.570 | Ponponponponpon | PENDING_ENGAGE_CONFIRMED | tid=17891612 name=Apex Bats status=1
+593.930 | Ponponponponpon | STATUS_CHANGED | status=0 from=1 to=0
+593.934 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891611 name=Apex Bats band=84 urgency=0.55
+593.935 | Ponponponponpon | TARGET_SELECTED | tid=17891611 name=Apex Bats
+594.137 | Ponponponponpon | TARGET_SELECTED | tid=17891611 name=Apex Bats
+594.332 | Ponponponponpon | TARGET_SELECT_DEBOUNCED | tid=17891611 name=Apex Bats reason=BLOCK_DEBOUNCE
+594.534 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891611 name=Apex Bats band=84 urgency=0.55
+594.535 | Ponponponponpon | TARGET_SELECTED | tid=17891611 name=Apex Bats
+594.743 | Ponponponponpon | TARGET_SELECTED | tid=17891611 name=Apex Bats
+594.945 | Ponponponponpon | TARGET_SELECTED | tid=17891611 name=Apex Bats
+595.150 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+595.154 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+595.155 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+595.156 | Ponponponponpon | PENDING_ENGAGE_START | tid=17891611 name=Apex Bats command=attack_on
+595.157 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+595.373 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+595.374 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+595.374 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+595.595 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+595.596 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+595.598 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+595.810 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+595.812 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+595.813 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+596.024 | Ponponponponpon | STATUS_CHANGED | status=1 from=0 to=1
+596.025 | Ponponponponpon | PENDING_ENGAGE_CONFIRMED | tid=17891611 name=Apex Bats status=1
+613.376 | Ponponponponpon | STATUS_CHANGED | status=0 from=1 to=0
+613.379 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891613 name=Apex Bats band=84 urgency=0.55
+613.380 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+613.583 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+613.786 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+613.987 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891613 name=Apex Bats band=84 urgency=0.55
+613.988 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+614.192 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+614.401 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+614.603 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891613 name=Apex Bats band=84 urgency=0.55
+614.604 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+614.803 | Ponponponponpon | TARGET_SELECT_DEBOUNCED | tid=17891613 name=Apex Bats reason=BLOCK_DEBOUNCE
+614.806 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+615.207 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+615.210 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+615.210 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+615.212 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+615.213 | Ponponponponpon | PENDING_ENGAGE_START | tid=17891613 name=Apex Bats command=attack_on
+615.214 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+615.422 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+615.423 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+615.423 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891613 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+615.630 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+615.632 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+615.633 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+615.839 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+615.842 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+615.845 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+616.048 | Ponponponponpon | STATUS_CHANGED | status=1 from=0 to=1
+616.048 | Ponponponponpon | PENDING_ENGAGE_CONFIRMED | tid=17891613 name=Apex Bats status=1
+631.189 | Ponponponponpon | MAINT_BUFF_DISPATCHED | action=Crooked Cards provider=maintenance_cor band=75
+632.000 | Ponponponponpon | STATUS_CHANGED | status=0 from=1 to=0
+632.003 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891614 name=Apex Bats band=84 urgency=0.55
+632.004 | Ponponponponpon | TARGET_SELECTED | tid=17891614 name=Apex Bats
+632.209 | Ponponponponpon | TARGET_SELECTED | tid=17891614 name=Apex Bats
+632.412 | Ponponponponpon | TARGET_SELECTED | tid=17891614 name=Apex Bats
+632.622 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891614 name=Apex Bats band=84 urgency=0.55
+632.623 | Ponponponponpon | TARGET_SELECTED | tid=17891614 name=Apex Bats
+632.818 | Ponponponponpon | TARGET_SELECT_DEBOUNCED | tid=17891614 name=Apex Bats reason=BLOCK_DEBOUNCE
+633.028 | Ponponponponpon | TARGET_SELECTED | tid=17891614 name=Apex Bats
+633.221 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+633.224 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+633.225 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+633.226 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+633.227 | Ponponponponpon | PENDING_ENGAGE_START | tid=17891614 name=Apex Bats command=attack_on
+633.228 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+633.430 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+633.431 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+633.432 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+633.624 | Ponponponponpon | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891614 name=Apex Bats message_id=94
+633.625 | Ponponponponpon | PENDING_ENGAGE_RETRY_READY | tid=17891614 name=Apex Bats retry_in_s=0.40
+633.832 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+633.835 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+634.046 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+634.046 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+634.047 | Ponponponponpon | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=1 command=attack_on
+634.048 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+634.268 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.22 remaining_s=0.08 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+634.269 | Ponponponponpon | PENDING_ENGAGE_BLOCK_NONCRITICAL | tid=0 name=<me> action=Corsair's Roll provider=maintenance_cor
+634.270 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+634.270 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+634.478 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+634.481 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+634.483 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+634.483 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+634.484 | Ponponponponpon | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=1 command=attack_on
+634.485 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+634.519 | Ponponponponpon | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891614 name=Apex Bats message_id=94
+634.520 | Ponponponponpon | PENDING_ENGAGE_RETRY_READY | tid=17891614 name=Apex Bats retry_in_s=0.40
+634.521 | Ponponponponpon | ENGAGE_DUPLICATE_RESET_REJECTION | tid=17891614 name=Apex Bats status=0 age_s=0.03 remaining_s=0.27 dispatch_method=attack_on pending_engage=rejected_wait_longer sent_for_target=1
+635.105 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+635.107 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+635.108 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+635.109 | Ponponponponpon | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=2 command=attack_on
+635.109 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+635.322 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+635.323 | Ponponponponpon | PENDING_ENGAGE_BLOCK_NONCRITICAL | tid=0 name=<me> action=Corsair's Roll provider=maintenance_cor
+635.324 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+635.324 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+635.520 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+635.521 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+635.522 | Ponponponponpon | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=2 command=attack_on
+635.523 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+635.728 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+635.732 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+635.733 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+635.927 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+635.927 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+635.928 | Ponponponponpon | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=2 command=attack_on
+635.929 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+636.138 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+636.139 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+636.139 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+636.330 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+636.332 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+636.334 | Ponponponponpon | PENDING_ENGAGE_BLOCK_NONCRITICAL | tid=0 name=<me> action=Corsair's Roll provider=maintenance_cor
+636.334 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+636.335 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+636.336 | Ponponponponpon | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891614 name=Apex Bats retry_count=2 command=attack_on
+636.337 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+636.537 | Ponponponponpon | STATUS_CHANGED | status=1 from=0 to=1
+636.537 | Ponponponponpon | PENDING_ENGAGE_CONFIRMED | tid=17891614 name=Apex Bats status=1
+649.632 | Ponponponponpon | MAINT_BUFF_DISPATCHED | action=Corsair's Roll provider=maintenance_cor band=75
+656.585 | Ponponponponpon | STATUS_CHANGED | status=0 from=1 to=0
+656.587 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891615 name=Apex Bats band=84 urgency=0.55
+656.589 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+656.785 | Ponponponponpon | TARGET_SELECT_DEBOUNCED | tid=17891615 name=Apex Bats reason=BLOCK_DEBOUNCE
+656.790 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+656.994 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+657.195 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891615 name=Apex Bats band=84 urgency=0.55
+657.196 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+657.397 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+657.599 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+657.801 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891615 name=Apex Bats
+657.803 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891615 name=Apex Bats band=72 urgency=0.70
+657.805 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891615 name=Apex Bats command=attack_on
+657.806 | Ponponponponpon | PENDING_ENGAGE_START | tid=17891615 name=Apex Bats command=attack_on
+657.807 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891615 name=Apex Bats command=attack_on
+658.016 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891615 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+658.017 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+658.017 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891615 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+658.230 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+658.230 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891615 name=Apex Bats command=attack_on
+658.232 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891615 name=Apex Bats command=attack_on
+658.426 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891615 name=Apex Bats
+658.428 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891615 name=Apex Bats band=72 urgency=0.70
+658.429 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891615 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+658.635 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+658.635 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891615 name=Apex Bats command=attack_on
+658.636 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891615 name=Apex Bats command=attack_on
+658.837 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891615 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+658.838 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+658.838 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891615 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+659.032 | Ponponponponpon | STATUS_CHANGED | status=1 from=0 to=1
+659.033 | Ponponponponpon | PENDING_ENGAGE_CONFIRMED | tid=17891615 name=Apex Bats status=1
+676.580 | Ponponponponpon | STATUS_CHANGED | status=0 from=1 to=0
+676.583 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891612 name=Apex Bats band=84 urgency=0.55
+676.584 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+676.797 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+677.014 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+677.219 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891612 name=Apex Bats band=84 urgency=0.55
+677.219 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+677.435 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+677.640 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+677.836 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891612 name=Apex Bats band=84 urgency=0.55
+677.836 | Ponponponponpon | TARGET_SELECT_DEBOUNCED | tid=17891612 name=Apex Bats reason=BLOCK_DEBOUNCE
+678.040 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+678.240 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+678.243 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+678.244 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+678.245 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+678.246 | Ponponponponpon | PENDING_ENGAGE_START | tid=17891612 name=Apex Bats command=attack_on
+678.247 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+678.452 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+678.453 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+678.454 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+678.664 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+678.664 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+678.666 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+678.866 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+678.869 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+678.870 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+679.078 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+679.079 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+679.081 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+679.287 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+679.288 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+679.289 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+679.488 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+679.492 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+679.495 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+679.495 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+679.496 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+679.705 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+679.913 | Ponponponponpon | STATUS_CHANGED | status=1 from=0 to=1
+679.914 | Ponponponponpon | PENDING_ENGAGE_CONFIRMED | tid=17891612 name=Apex Bats status=1
+699.759 | Ponponponponpon | MAINT_BUFF_DISPATCHED | action=Samurai Roll provider=maintenance_cor band=75
+702.813 | Ponponponponpon | MAINT_BUFF_DISPATCHED | action=Double-Up provider=maintenance_cor band=75
+713.631 | Ponponponponpon | STATUS_CHANGED | status=0 from=1 to=0
+713.633 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891610 name=Apex Bats band=84 urgency=0.55
+713.634 | Ponponponponpon | TARGET_SELECTED | tid=17891610 name=Apex Bats
+713.844 | Ponponponponpon | TARGET_SELECTED | tid=17891610 name=Apex Bats
+714.052 | Ponponponponpon | TARGET_SELECTED | tid=17891610 name=Apex Bats
+714.256 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891610 name=Apex Bats band=84 urgency=0.55
+714.257 | Ponponponponpon | TARGET_SELECTED | tid=17891610 name=Apex Bats
+714.457 | Ponponponponpon | TARGET_SELECTED | tid=17891610 name=Apex Bats
+714.661 | Ponponponponpon | TARGET_SELECTED | tid=17891610 name=Apex Bats
+714.864 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891610 name=Apex Bats
+714.868 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891610 name=Apex Bats band=72 urgency=0.70
+714.869 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+714.869 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891610 name=Apex Bats command=attack_on
+714.870 | Ponponponponpon | PENDING_ENGAGE_START | tid=17891610 name=Apex Bats command=attack_on
+714.871 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891610 name=Apex Bats command=attack_on
+715.076 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891610 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+715.077 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+715.078 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891610 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+715.280 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+715.281 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891610 name=Apex Bats command=attack_on
+715.282 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891610 name=Apex Bats command=attack_on
+715.493 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891610 name=Apex Bats
+715.496 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891610 name=Apex Bats band=72 urgency=0.70
+715.497 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891610 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+715.692 | Ponponponponpon | STATUS_CHANGED | status=1 from=0 to=1
+715.694 | Ponponponponpon | PENDING_ENGAGE_CONFIRMED | tid=17891610 name=Apex Bats status=1
+732.051 | Ponponponponpon | STATUS_CHANGED | status=0 from=1 to=0
+732.054 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891613 name=Apex Bats band=84 urgency=0.55
+732.054 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+732.263 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+732.465 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+732.661 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891613 name=Apex Bats band=84 urgency=0.55
+732.661 | Ponponponponpon | TARGET_SELECT_DEBOUNCED | tid=17891613 name=Apex Bats reason=BLOCK_DEBOUNCE
+732.865 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+733.067 | Ponponponponpon | TARGET_SELECTED | tid=17891613 name=Apex Bats
+733.273 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+733.275 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+733.276 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+733.276 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+733.277 | Ponponponponpon | PENDING_ENGAGE_START | tid=17891613 name=Apex Bats command=attack_on
+733.278 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+733.480 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+733.481 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+733.482 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891613 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+733.520 | Ponponponponpon | PENDING_ENGAGE_REJECTED_WAIT_LONGER | tid=17891613 name=Apex Bats message_id=94
+733.521 | Ponponponponpon | PENDING_ENGAGE_RETRY_READY | tid=17891613 name=Apex Bats retry_in_s=0.40
+733.885 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+733.888 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+734.087 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+734.087 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+734.088 | Ponponponponpon | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891613 name=Apex Bats retry_count=1 command=attack_on
+734.089 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+734.293 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+734.295 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+734.296 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891613 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+734.488 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+734.493 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+734.495 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+734.496 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+734.497 | Ponponponponpon | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891613 name=Apex Bats retry_count=1 command=attack_on
+734.498 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+734.696 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.19 remaining_s=0.11 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+734.904 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+734.904 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+734.905 | Ponponponponpon | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891613 name=Apex Bats retry_count=1 command=attack_on
+734.906 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+735.105 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+735.109 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+735.110 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+735.111 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+735.111 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891613 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+735.327 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+735.328 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+735.329 | Ponponponponpon | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891613 name=Apex Bats retry_count=1 command=attack_on
+735.330 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+735.549 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.22 remaining_s=0.08 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+735.766 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891613 name=Apex Bats
+735.768 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891613 name=Apex Bats band=72 urgency=0.70
+735.769 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+735.769 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891613 name=Apex Bats command=attack_on
+735.770 | Ponponponponpon | PENDING_ENGAGE_RETRY_ATTEMPT | tid=17891613 name=Apex Bats retry_count=1 command=attack_on
+735.771 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891613 name=Apex Bats command=attack_on
+735.981 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891613 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+735.982 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+735.982 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891613 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+736.185 | Ponponponponpon | STATUS_CHANGED | status=1 from=0 to=1
+736.186 | Ponponponponpon | PENDING_ENGAGE_CONFIRMED | tid=17891613 name=Apex Bats status=1
+754.551 | Ponponponponpon | STATUS_CHANGED | status=0 from=1 to=0
+754.556 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891614 name=Apex Bats band=84 urgency=0.55
+754.557 | Ponponponponpon | TARGET_SELECTED | tid=17891614 name=Apex Bats
+754.755 | Ponponponponpon | TARGET_SELECT_DEBOUNCED | tid=17891614 name=Apex Bats reason=BLOCK_DEBOUNCE
+754.759 | Ponponponponpon | TARGET_SELECTED | tid=17891614 name=Apex Bats
+754.960 | Ponponponponpon | TARGET_SELECTED | tid=17891614 name=Apex Bats
+755.162 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+755.165 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+755.167 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+755.168 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+755.169 | Ponponponponpon | PENDING_ENGAGE_START | tid=17891614 name=Apex Bats command=attack_on
+755.170 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+755.370 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+755.371 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+755.371 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+755.574 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+755.575 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+755.577 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+755.776 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+755.779 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+755.780 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+755.986 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+755.986 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+755.987 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+756.201 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891614 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+756.202 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+756.203 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891614 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+756.407 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891614 name=Apex Bats
+756.411 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891614 name=Apex Bats band=72 urgency=0.70
+756.414 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+756.414 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891614 name=Apex Bats command=attack_on
+756.415 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891614 name=Apex Bats command=attack_on
+756.623 | Ponponponponpon | STATUS_CHANGED | status=1 from=0 to=1
+756.624 | Ponponponponpon | PENDING_ENGAGE_CONFIRMED | tid=17891614 name=Apex Bats status=1
+769.746 | Ponponponponpon | STATUS_CHANGED | status=0 from=1 to=0
+769.750 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891615 name=Apex Bats band=84 urgency=0.55
+769.751 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+769.952 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+770.149 | Ponponponponpon | TARGET_SELECT_DEBOUNCED | tid=17891615 name=Apex Bats reason=BLOCK_DEBOUNCE
+770.153 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+770.356 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891615 name=Apex Bats band=84 urgency=0.55
+770.357 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+770.563 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+770.759 | Ponponponponpon | TARGET_SELECT_DEBOUNCED | tid=17891615 name=Apex Bats reason=BLOCK_DEBOUNCE
+770.764 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+770.962 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891615 name=Apex Bats band=84 urgency=0.55
+770.967 | Ponponponponpon | TARGET_SELECTED | tid=17891615 name=Apex Bats
+771.165 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891615 name=Apex Bats
+771.168 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891615 name=Apex Bats band=72 urgency=0.70
+771.172 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891615 name=Apex Bats command=attack_on
+771.173 | Ponponponponpon | PENDING_ENGAGE_START | tid=17891615 name=Apex Bats command=attack_on
+771.173 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891615 name=Apex Bats command=attack_on
+771.376 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891615 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+771.376 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+771.377 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891615 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+771.590 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+771.590 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891615 name=Apex Bats command=attack_on
+771.591 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891615 name=Apex Bats command=attack_on
+771.788 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891615 name=Apex Bats
+771.791 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891615 name=Apex Bats band=72 urgency=0.70
+771.793 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891615 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+771.991 | Ponponponponpon | STATUS_CHANGED | status=1 from=0 to=1
+771.993 | Ponponponponpon | PENDING_ENGAGE_CONFIRMED | tid=17891615 name=Apex Bats status=1
+782.843 | Ponponponponpon | STATUS_CHANGED | status=0 from=1 to=0
+785.727 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891612 name=Apex Bats band=84 urgency=0.55
+785.728 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+785.930 | Ponponponponpon | TARGET_SELECTED | tid=17891612 name=Apex Bats
+786.140 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+786.143 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+786.144 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+786.145 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_ACTING
+786.760 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+786.764 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+786.765 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+786.766 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_ACTING
+787.385 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+787.390 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+787.391 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+787.391 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_ACTING
+787.991 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+787.995 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+787.996 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+787.997 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_ACTING
+788.403 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+788.604 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+788.607 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+788.609 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+789.021 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_ACTION_STATE
+789.021 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+789.023 | Ponponponponpon | PENDING_ENGAGE_START | tid=17891612 name=Apex Bats command=attack_on
+789.025 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+789.235 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+789.239 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+789.240 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+789.241 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+789.241 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+789.453 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+789.454 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+789.455 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+789.673 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+789.865 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891612 name=Apex Bats
+789.869 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891612 name=Apex Bats band=72 urgency=0.70
+789.871 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+789.873 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+789.873 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+790.074 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891612 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+790.075 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+790.075 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891612 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+790.283 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+790.284 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891612 name=Apex Bats command=attack_on
+790.286 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891612 name=Apex Bats command=attack_on
+790.490 | Ponponponponpon | STATUS_CHANGED | status=1 from=0 to=1
+790.490 | Ponponponponpon | PENDING_ENGAGE_CONFIRMED | tid=17891612 name=Apex Bats status=1
+809.153 | Ponponponponpon | STATUS_CHANGED | status=0 from=1 to=0
+809.156 | Ponponponponpon | TARGET_ACQUIRE_CANDIDATE | tid=17891611 name=Apex Bats band=84 urgency=0.55
+809.157 | Ponponponponpon | TARGET_SELECTED | tid=17891611 name=Apex Bats
+809.364 | Ponponponponpon | TARGET_SELECTED | tid=17891611 name=Apex Bats
+809.573 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+809.577 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+809.578 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+809.578 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_ACTING
+810.191 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+810.194 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+810.195 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+810.196 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_ACTING
+810.822 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+810.825 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+810.826 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+810.827 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_ACTING
+811.433 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+811.436 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+811.438 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+811.439 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_ACTING
+812.055 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+812.060 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+812.061 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+812.061 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_ACTING
+812.665 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+812.668 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+812.670 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+812.670 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_ACTING
+813.291 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+813.293 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+813.295 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+813.296 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_ACTING
+813.902 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+813.905 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+813.907 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+813.907 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_ACTING
+814.508 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+814.512 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+814.513 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+814.514 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_ACTING
+814.715 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+815.138 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+815.141 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+815.143 | Ponponponponpon | ACTION_STATE_BLOCK_ENGAGE | reason=BLOCK_ACTION_STATE kind=ws
+815.345 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_ACTION_STATE
+815.345 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+815.346 | Ponponponponpon | PENDING_ENGAGE_START | tid=17891611 name=Apex Bats command=attack_on
+815.347 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+815.557 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+815.558 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+815.559 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+815.765 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+815.769 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+815.772 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+815.773 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+815.773 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+815.980 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.20 remaining_s=0.10 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+816.191 | Ponponponponpon | ACTION_STATE_RELEASE | reason=BLOCK_DEBOUNCE
+816.194 | Ponponponponpon | ENGAGE_DISPATCH_ATTEMPT | tid=17891611 name=Apex Bats command=attack_on
+816.195 | Ponponponponpon | ENGAGE_DISPATCHED | tid=17891611 name=Apex Bats command=attack_on
+816.401 | Ponponponponpon | TARGET_SELECT_SKIPPED_ALREADY_TARGETED | tid=17891611 name=Apex Bats
+816.405 | Ponponponponpon | ENGAGE_PROPOSED | tid=17891611 name=Apex Bats band=72 urgency=0.70
+816.406 | Ponponponponpon | ENGAGE_DUPLICATE_ALLOWED_RETRY | tid=17891611 name=Apex Bats status=0 age_s=0.21 remaining_s=0.09 dispatch_method=attack_on pending_engage=retry_ready sent_for_target=1
+816.407 | Ponponponponpon | ENGAGE_DEBOUNCED | reason=BLOCK_DEBOUNCE
+816.407 | Ponponponponpon | ENGAGE_DISPATCH_BLOCKED | tid=17891611 name=Apex Bats reason=BLOCK_ACTION_COOLDOWN
+816.607 | Ponponponponpon | STATUS_CHANGED | status=1 from=0 to=1
+816.607 | Ponponponponpon | PENDING_ENGAGE_CONFIRMED | tid=17891611 name=Apex Bats status=1

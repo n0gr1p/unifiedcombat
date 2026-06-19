@@ -53,6 +53,7 @@ public partial class MainForm : Form
     private List<(int Id, string Name)> _partnerRows = [];
     private List<(int Slot, string Name)> _targetIgnoreRows = [];
     private List<(int Slot, string Name)> _addPriorityRows = [];
+    private List<(int Slot, string Name)> _sleepSpellRows = [];
     private List<(int Id, string Name)> _pathHunterRows = [];
     private List<string> _tankEnmityRows = [];
     private sealed record SessionMeta(string Sid, string CharName, string Job, string SubJob, string Engine);

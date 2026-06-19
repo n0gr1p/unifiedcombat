@@ -288,6 +288,67 @@ Near-term policy from that plan:
 - Tank action/tank spell/tank enmity run_stop paths move to a narrower targeted field-test packet, with replay/mock fallback if realistic live scenarios are unavailable.
 - Vector run stays parked as dormant/unreachable and is not part of run_stop promotion planning.
 
+## T3.1b Coverage Summary
+
+T3.1b adds focused static+mock coverage for:
+
+- `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`
+
+This task does **not** promote any additional ownership flags.
+
+Post-T3.1b policy remains:
+
+- promoted default-on set stays unchanged,
+- these four paths remain explicit default-off `== true` branches,
+- and future promotion consideration must come from a separate follow-up task rather than from coverage alone.
+
+## T3.1c Combat-Spell Run-Stop Promotion Policy
+
+Decision:
+
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` is not promoted yet.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` is not promoted yet.
+
+Reason:
+
+- T3.1b gives strong static+mock confidence for routing, fallback preservation, and default-off gating.
+- Live reachability still looks likely, but live branch timing has not been directly confirmed in field results.
+- Promotion should therefore wait for a targeted field-test packet rather than relying on replay/mock evidence alone.
+
+Recommended next step:
+
+- yes, a `T3.1d` combat-spell field-test packet is recommended
+- scope it only to the settle/prep-wait run_stop pair
+- keep Doom command/run_stop outside that packet and default-off
+
+Current policy:
+
+- Doom Holy Water command ownership remains default-off
+- Doom run_stop ownership remains default-off
+- combat-spell settle/prep-wait run_stop ownership remain default-off pending targeted live confirmation
+
+## T3.1d Packet Status
+
+- `docs/scheduler_combat_spell_run_stop_field_test_packet.md` now exists
+- it is the recommended live-test vehicle for the settle/prep-wait pair
+- no promotion occurred in T3.1d
+
+## T3.1e Tank-Spell Movement-Lock Note
+
+- T3.1e fixes a scheduler runtime bug in the tank-spell path where movement could resume after the existing pre-send `run_stop` but before the spell cast window had safely cleared.
+- The fix is scheduler-local movement-lock bookkeeping after tank spell send; it does not promote any tank run-stop ownership flag and does not change default-off/default-on ownership policy.
+- Promotion policy for the tank run-stop family remains unchanged after this bugfix.
+
+## T3.1f Defensive Cure Movement-Lock Note
+
+- T3.1f fixes a separate scheduler runtime bug in the defensive Cure/spell path where Cure could be sent while approach movement continued because no spell-cast stop/lock lifecycle existed.
+- The fix uses the existing scheduler-safe run-stop seam plus scheduler-local bounded spell wait bookkeeping.
+- No ownership promotion policy changed.
+- No promoted/default-off flag set changed.
+
 ## Field-Test Instructions After Promotion
 
 - Start with no per-flag opt-outs and no kill switch set.
