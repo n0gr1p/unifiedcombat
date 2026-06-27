@@ -6,10 +6,33 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 ## 1) Overall Status Snapshot
 
 - Current phase focus: scheduler runtime parity slices that stay inside existing ownership policy, plus replay/static coverage for those slices.
-- Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6b`.
+- Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6c`.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.6c` Promote combat spell prep-wait run-stop ownership default-on
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_run_stop_ownership_static.lua`
+  - `tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`
+  - `tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`
+  - `docs/scheduler_ownership_resume_baseline.md`
+  - `docs/scheduler_ownership_promotion_plan.md`
+  - `docs/scheduler_ownership_promotion_readiness_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Runtime behavior:
+  - Promoted `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` to default-on semantics.
+  - Preserved explicit `false` opt-out, the shared promoted ownership kill switch, dispatcher fallback, and helper ownership boundaries.
+  - Left Doom, tank-family, and vector run ownership unchanged and deferred.
+- Validation summary:
+  - Updated existing ownership static/runtime coverage to treat combat spell prep-wait as promoted default-on alongside settle.
+  - Confirmed no direct scheduler side-effect callsites were introduced.
+- Field-test instructions:
+  - No new field test is needed beyond the existing combat-spell packet if someone wants a spot check.
+  - Keep Doom, tank-family, and vector run off or deferred in this task.
 
 ### `T3.6b` Promote combat spell settle run-stop ownership default-on
 
@@ -27,13 +50,13 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - Runtime behavior:
   - Promoted only `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` to default-on semantics.
   - Preserved explicit `false` opt-out, the shared promoted ownership kill switch, dispatcher fallback, and helper ownership boundaries.
-  - Left combat spell prep-wait, Doom, tank-family, and vector run ownership unchanged.
+  - Left combat spell prep-wait, Doom, tank-family, and vector run ownership unchanged at the time; prep-wait was promoted later in `T3.6c`.
 - Validation summary:
-  - Updated existing ownership static/runtime coverage to treat combat spell settle as promoted default-on and to keep prep-wait default-off.
+  - Updated existing ownership static/runtime coverage to treat combat spell settle as promoted default-on; prep-wait was promoted later in `T3.6c`.
   - Confirmed no direct scheduler side-effect callsites were introduced.
 - Field-test instructions:
   - No new field test is needed beyond the existing combat-spell spell-settle packet if someone wants a spot check.
-  - Keep prep-wait, Doom, tank-family, and vector run off or deferred in this task.
+  - Keep Doom, tank-family, and vector run off or deferred in this task.
 
 ### `T3.6a` Re-establish scheduler ownership baseline after spell lifecycle cleanup
 

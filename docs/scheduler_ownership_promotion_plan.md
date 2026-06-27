@@ -51,7 +51,7 @@
 | `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_CAST_HOLD_RUN_STOP_OWNERSHIP` | Run-stop ownership | Movement coordinator pull-cast-hold stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise pull cast-hold flow and confirm movement stop/hold parity. | Unset/remove the flag or set it to `false`/`nil`. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_SPELL_WAIT_RUN_STOP_OWNERSHIP` | Run-stop ownership | Movement coordinator pull-spell-wait stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise pull spell wait and confirm movement stop occurs once. | Unset/remove the flag or set it to `false`/`nil`. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | Run-stop ownership | Generic combat spell-settle stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise spell-settle blocking and confirm stop/return timing parity. | Unset/remove the flag or set it to `false`/`nil`. Shared promoted kill switch still disables the path, and explicit `false` remains the local rollback. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | Run-stop ownership | Generic combat spell prep-wait stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise spell prep-wait blocking and confirm one stop plus unchanged prep timing. | Unset/remove the flag or set it to `false`/`nil`. |
+| `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | Run-stop ownership | Generic combat spell prep-wait stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise spell prep-wait blocking and confirm one stop plus unchanged prep timing. | Unset/remove the flag or set it to `false`/`nil`. Shared promoted kill switch still disables the path, and explicit `false` remains the local rollback. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank action settle stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank action settle and confirm one stop before JA/spell dispatch. | Unset/remove the flag or set it to `false`/`nil`. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank-enmity JA self send-adjacent stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank-enmity JA self send and confirm one adjacent stop before send. | Unset/remove the flag or set it to `false`/`nil`. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank spell settle stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank spell settle and confirm stop/wait parity. | Unset/remove the flag or set it to `false`/`nil`. |
@@ -254,9 +254,9 @@ These promoted paths are now accepted as the near-term default-on scheduler owne
 
 ### Combat spell settle/prep-wait run_stop ownership
 
-- Status: keep default-off.
-- Policy: create replay/mock coverage before promotion.
-- Rationale: likely reachable, but practical live confirmation remains incomplete and the remaining risk is timing/order parity rather than ownership reachability.
+- Status: both promoted default-on.
+- Policy: keep explicit false opt-outs and the shared promoted kill switch available for rollback.
+- Rationale: settle and prep-wait are now helper-routed with the same promoted ownership shape, while Doom, tank-family, and vector-run remain deferred.
 
 ### Tank action/tank spell/tank enmity run_stop ownership
 
@@ -284,7 +284,7 @@ The remaining default-off branches are now governed by `docs/scheduler_remaining
 Near-term policy from that plan:
 
 - Doom Holy Water command and Doom run_stop move to replay/mock-first coverage rather than live-testing-first.
-- Combat spell settle/prep-wait run_stop move to replay/mock-first coverage before any new promotion decision.
+- Combat spell settle/prep-wait run_stop are already promoted default-on; the remaining deferred paths are Doom, tank-family, and vector-run.
 - Tank action/tank spell/tank enmity run_stop paths move to a narrower targeted field-test packet, with replay/mock fallback if realistic live scenarios are unavailable.
 - Vector run stays parked as dormant/unreachable and is not part of run_stop promotion planning.
 
@@ -302,7 +302,7 @@ This task does **not** promote any additional ownership flags.
 Post-T3.1b policy remains:
 
 - promoted default-on set stays unchanged,
-- these four paths remain explicit default-off `== true` branches,
+- these four paths were explicit default-off `== true` branches at the time,
 - and future promotion consideration must come from a separate follow-up task rather than from coverage alone.
 
 ## T3.1c Combat-Spell Run-Stop Promotion Policy
@@ -310,7 +310,7 @@ Post-T3.1b policy remains:
 Decision:
 
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit false opt-out and shared kill-switch rollback.
-- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` is not promoted yet.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit false opt-out and shared kill-switch rollback.
 
 Reason:
 
@@ -328,7 +328,7 @@ Current policy:
 
 - Doom Holy Water command ownership remains default-off
 - Doom run_stop ownership remains default-off
-- combat-spell settle/prep-wait run_stop ownership remain default-off pending targeted live confirmation
+- combat-spell settle/prep-wait run_stop ownership are both promoted default-on; the remaining deferred work is Doom, tank-family, and vector-run
 
 ## T3.1d Packet Status
 

@@ -17,12 +17,12 @@ local PROMOTED_FLAGS = {
     "UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_CAST_HOLD_RUN_STOP_OWNERSHIP",
     "UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_SPELL_WAIT_RUN_STOP_OWNERSHIP",
     "UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP",
+    "UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP",
 }
 
 local DEFAULT_OFF_FLAGS = {
     "UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP",
     "UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP",
-    "UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP",
     "UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP",
     "UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP",
     "UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP",
@@ -100,13 +100,13 @@ local function main()
 
     assert_equal(
         count_plain(scheduler_source, "promoted_default_on = true"),
-        14,
-        "expected promoted_default_on marker on the 14 promoted scheduler callsites"
+        15,
+        "expected promoted_default_on marker on the 15 promoted scheduler callsites"
     )
     assert_equal(
         count_plain(scheduler_source, "promoted_kill_switch = promoted_ownership_kill_switch_enabled()"),
-        14,
-        "expected promoted kill-switch marker on the 14 promoted scheduler callsites"
+        15,
+        "expected promoted kill-switch marker on the 15 promoted scheduler callsites"
     )
 
     for _, flag in ipairs(DEFAULT_OFF_FLAGS) do

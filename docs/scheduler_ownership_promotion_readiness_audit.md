@@ -107,7 +107,7 @@ These should remain behind kill-switch flags for now.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP` | `uc_scheduler_command_ownership` | Doom Holy Water command send | Deferred live | Command runtime/static + closure + aggregate | Presumed reachable but not safely field-tested | Keep default-off | Emergency item path; no safe practical field scenario. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | Doom emergency stop | Stage 4 DEFERRED | Run-stop runtime/static + closure + aggregate | Presumed reachable but not safely field-tested | Keep default-off | Emergency stop path should remain conservative without live proof. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | generic combat spell prep-wait stop | Not practically field-confirmed in Stage 6 | Run-stop runtime/static + closure + aggregate | Likely reachable | Keep default-off | Same rationale as spell-settle stop. |
+| `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | generic combat spell prep-wait stop | Stage 6 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on with kill switch retained | Same helper-routed shape as settle, now field-safe enough for default-on promotion. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank action settle stop | Stage 6 PARTIAL PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Keep default-off for one more stage | Strongest tank stop candidate, but Stage 6 overall remained partial and tank family should be promoted together or by explicit follow-up prompt. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank JA self send-adjacent stop | Not covered in practical scenario | Run-stop runtime/static + closure + aggregate | Unconfirmed live | Keep default-off | No direct field confirmation. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank spell settle stop | Not yet confirmed | Run-stop runtime/static + closure + aggregate | Unconfirmed live | Keep default-off | Explicitly unconfirmed in Stage 6 results. |
@@ -123,8 +123,8 @@ These should remain behind kill-switch flags for now.
 ## Ownership Inventory Summary
 
 - Total ownership flags audited: 21
-- Promote default-on candidates: 12
-- Keep default-off candidates: 8
+- Promote default-on candidates: 13
+- Keep default-off candidates: 7
 - Retire / unreachable candidates: 1
 
 Notes:
@@ -257,7 +257,7 @@ The following 11 paths are now accepted as promoted/default-on rather than pendi
 
 - Doom Holy Water command ownership: deferred, keep default-off.
 - Doom run_stop ownership: deferred, keep default-off.
-- combat spell settle/prep-wait run_stop ownership: pending further replay/mock or targeted coverage, keep default-off.
+- combat spell settle/prep-wait run_stop ownership: both promoted default-on; the remaining deferred work is Doom, tank-family, and vector run.
 - tank action/tank spell/tank enmity run_stop ownership: pending further targeted field coverage, keep default-off.
 - vector run ownership: dormant / not live-reachable, do not treat as active promotion work.
 
@@ -275,7 +275,7 @@ The following four default-off branches now have focused static+mock replay cove
 Interpretation:
 
 - coverage status improved from planning-only to static+mock branch coverage,
-- readiness status is still default-off,
+- readiness status was still default-off at that stage,
 - and no promotion decision changed in T3.1b.
 
 ## T3.1c Readiness Decision Update
@@ -294,20 +294,20 @@ Readiness interpretation:
 ### Combat-spell run-stop branches
 
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`: promoted default-on with explicit false opt-out and shared kill switch rollback.
-- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`: conditional future promotion candidate, but not ready now.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`: promoted default-on with explicit false opt-out and shared kill-switch rollback.
 
 Readiness interpretation:
 
 - static+mock coverage is strong enough to remove pure branch-coverage uncertainty for both branches,
 - settle has now crossed the promotion bar and is default-on,
-- prep-wait remains incomplete until targeted live confirmation captures the timing behavior in practice.
+- prep-wait has now crossed the promotion bar and is default-on.
 
 Current readiness state for the four T3.1b-covered branches:
 
 - Doom command: default-off / not promotion-ready
 - Doom run_stop: default-off / not promotion-ready
-- combat-spell settle run_stop: default-off / targeted live confirmation required
-- combat-spell prep-wait run_stop: default-off / targeted live confirmation required
+- combat-spell settle run_stop: default-on / promoted
+- combat-spell prep-wait run_stop: default-on / promoted
 
 ## T3.1d Packet Readiness Update
 
