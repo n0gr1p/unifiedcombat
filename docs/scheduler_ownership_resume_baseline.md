@@ -1,95 +1,102 @@
 # Scheduler Ownership Resume Baseline
 
-## Scope
+## Current invariant
 
-This baseline resumes the scheduler ownership refactor after the T3.4 action-economy work.
+`unified_scheduler.lua` must not directly perform these runtime side effects:
 
-It does **not** change runtime behavior.
+- `windower.send_command(`
+- `windower.ffxi.run(`
+- `windower.ffxi.turn(`
+- `uc_settarget.select_by_id(`
 
-It does **not** promote any ownership flag.
+Those actions should stay behind dispatcher or wrapper seams.
 
-It treats T3.4j through T3.4n engage/action-economy behavior as out of scope for ownership work.
+## Current audit result
 
-## Current Baseline
+- `unified_scheduler.lua` currently has zero direct textual callsites for the four side-effect expressions above.
+- The remaining runtime actions in `unified_scheduler.lua` are routed through ownership helpers for command, run-stop, target, turn, and run-vector seams.
+- `UnifiedCombat.lua` still contains one legacy direct `windower.ffxi.run(false)` in `_G.UC_ResetMovementLocksForFollow`; that lives outside the scheduler ownership surface and is not part of this baseline.
 
-- `unified_scheduler.lua` still has zero direct textual scheduler side-effect call expressions for:
-  - `windower.send_command(`
-  - `windower.ffxi.run(`
-  - `windower.ffxi.turn(`
-  - `uc_settarget.select_by_id(`
-- The promoted/default-on scheduler ownership set remains:
-  - target ownership
-  - turn ownership
-  - defensive/internal/shared command ownership
-  - maintenance COR command ownership
-  - combat WS / JA / spell command ownership
-  - movement-coordinator cast-freeze / pull-cast-hold / pull-spell-wait run-stop ownership
-- The remaining action-economy ownership work is the default-off set plus the parked vector-run path.
+## Dispatcher / wrapper seams
 
-## Remaining Default-Off / Parked Ownership Branches
+- `uc_scheduler_command_ownership.lua` owns command dispatch seams for promoted command paths and keeps direct fallback on dispatcher failure.
+- `uc_scheduler_run_stop_ownership.lua` owns the run-stop seams for promoted and default-off stop paths.
+- `uc_scheduler_target_ownership.lua` owns target selection dispatch.
+- `uc_scheduler_turn_ownership.lua` owns turn dispatch.
+- `uc_scheduler_run_ownership.lua` is the parked vector-run wrapper seam.
 
-| Family bucket | Flag | Current default behavior | Fallback behavior | Existing coverage | Live field testing practical | Recommended next action |
-| --- | --- | --- | --- | --- | --- | --- |
-| Command ownership | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP` | Default-off; direct Doom Holy Water command path remains live unless flag is explicitly `true`. | Dispatcher failure falls back to one direct emergency item command send. | `selftest_command_ownership_static.lua`, `selftest_command_ownership_runtime.lua`, `selftest_scheduler_default_off_ownership_branches.lua`, closure/promotion/runtime-parse/side-effect-inventory coverage. | No. Real Doom live testing is intentionally impractical. | Keep parked default-off; do not choose as the next slice. |
-| Run-stop ownership | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP` | Default-off; direct Doom emergency `run(false)` remains live unless flag is explicitly `true`. | Dispatcher failure falls back to one direct emergency stop. | `selftest_run_stop_ownership_static.lua`, `selftest_run_stop_ownership_runtime.lua`, `selftest_scheduler_default_off_ownership_branches.lua`, closure/promotion/runtime-parse/side-effect-inventory coverage. | No. Real Doom live testing is intentionally impractical. | Keep parked default-off; do not choose as the next slice. |
-| Run-stop ownership | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | Default-off; direct combat spell-settle `run(false)` remains live unless flag is explicitly `true`. | Dispatcher failure falls back to one direct combat spell-settle stop. | `selftest_run_stop_ownership_static.lua`, `selftest_run_stop_ownership_runtime.lua`, `selftest_scheduler_default_off_ownership_branches.lua`, `docs/scheduler_combat_spell_run_stop_field_test_packet.md`, closure/promotion/runtime-parse/side-effect-inventory coverage. | Yes. Targeted live testing is practical and already packetized. | Best next single slice candidate; take this one path alone before the paired prep-wait branch. |
-| Run-stop ownership | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | Default-off; direct combat spell prep-wait `run(false)` remains live unless flag is explicitly `true`. | Dispatcher failure falls back to one direct combat spell prep-wait stop. | `selftest_run_stop_ownership_static.lua`, `selftest_run_stop_ownership_runtime.lua`, `selftest_scheduler_default_off_ownership_branches.lua`, `docs/scheduler_combat_spell_run_stop_field_test_packet.md`, closure/promotion/runtime-parse/side-effect-inventory coverage. | Yes. Targeted live testing is practical and already packetized. | Hold one step behind spell-settle; keep as the immediate follow-on slice if settle passes. |
-| Run-stop ownership | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` | Default-off; direct tank action-settle `run(false)` remains live unless flag is explicitly `true`. | Dispatcher failure falls back to one direct tank settle stop. | `selftest_run_stop_ownership_static.lua`, `selftest_run_stop_ownership_runtime.lua`, closure/promotion/runtime-parse/side-effect-inventory coverage. | Mixed. Field testing is practical, but Stage 6 remained partial and the tank family is still incomplete. | Defer until after the combat-spell settle path; avoid grouped tank promotion. |
-| Run-stop ownership | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | Default-off; direct tank JA self-send-adjacent `run(false)` remains live unless flag is explicitly `true`. | Dispatcher failure falls back to one direct adjacent stop. | `selftest_run_stop_ownership_static.lua`, `selftest_run_stop_ownership_runtime.lua`, closure/promotion/runtime-parse/side-effect-inventory coverage. | Partial at best. Realistic path-specific field proof is weaker than combat-spell settle. | Defer. Not the smallest safe next slice. |
-| Run-stop ownership | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | Default-off; direct tank spell-settle `run(false)` remains live unless flag is explicitly `true`. | Dispatcher failure falls back to one direct tank spell settle stop. | `selftest_run_stop_ownership_static.lua`, `selftest_run_stop_ownership_runtime.lua`, closure/promotion/runtime-parse/side-effect-inventory coverage. | Partial at best. Field proof remains incomplete. | Defer. Not the smallest safe next slice. |
-| Run-stop ownership | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | Default-off; direct tank spell target-send-adjacent `run(false)` remains live unless flag is explicitly `true`. | Dispatcher failure falls back to one direct adjacent stop. | `selftest_run_stop_ownership_static.lua`, `selftest_run_stop_ownership_runtime.lua`, closure/promotion/runtime-parse/side-effect-inventory coverage. | Partial at best. Field proof remains incomplete. | Defer. Not the smallest safe next slice. |
-| Run-stop ownership | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | Default-off; direct tank spell self-send-adjacent `run(false)` remains live unless flag is explicitly `true`. | Dispatcher failure falls back to one direct adjacent stop. | `selftest_run_stop_ownership_static.lua`, `selftest_run_stop_ownership_runtime.lua`, closure/promotion/runtime-parse/side-effect-inventory coverage. | Partial at best. Field proof remains incomplete. | Defer. Not the smallest safe next slice. |
-| Target/turn ownership | none remaining default-off | Target and turn ownership are already in the promoted/default-on set when flags are unset, subject to explicit `false` opt-out and the global promoted-ownership kill switch. | Both still preserve direct fallback on dispatcher failure. | `selftest_target_ownership_static.lua`, `selftest_target_ownership_runtime.lua`, `selftest_turn_ownership_static.lua`, `selftest_turn_ownership_runtime.lua`, promotion/closure/runtime-parse/side-effect-inventory coverage. | Already practical and field-tested; no new default-off slice remains here. | No change in the next task. |
-| Vector/run ownership | `UC_SCHED_P1_ENABLE_DISPATCHER_RUN_VECTOR_OWNERSHIP` | Default-off and effectively parked; direct heading-based run path remains live if the dormant path is ever reconnected. | Dispatcher failure falls back to the same direct heading run call once. | `selftest_run_ownership_static.lua`, `selftest_run_ownership_runtime.lua`, closure/promotion/runtime-parse/side-effect-inventory coverage, plus reachability audit docs. | No. Live reachability is not proven in current runtime flow. | Keep parked; do not choose until a separate reachability/reconnection task exists. |
+## Ownership flags and kill switches
 
-## Recommended Next Single Slice
+### Promoted default-on flags
 
-### Slice
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TARGET_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TURN_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_DEFENSIVE_INTERNAL_COMMAND_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_INTERNAL_DISPATCH_COMMAND_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_MAINTENANCE_COR_COMMAND_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_CAST_FREEZE_PREP_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_CAST_HOLD_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_SPELL_WAIT_RUN_STOP_OWNERSHIP`
 
-`UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
+### Default-off flags
 
-### Why this is next
+- `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP`
 
-- It is the smallest remaining action-economy ownership seam with:
-  - existing ownership helper routing already in place,
-  - focused default-off branch coverage already present,
-  - generic run-stop helper static/runtime coverage already present,
-  - practical live field testing already prepared in the combat-spell packet,
-  - and lower risk than Doom, tank-family grouping, or vector run.
-- It avoids:
-  - Doom emergency behavior,
-  - grouped tank migrations,
-  - and dormant vector-run work.
-- It stays fully out of T3.4j through T3.4n engage behavior.
+### Parked flag
 
-## What Codex Should Change In The Next Task
+- `UC_SCHED_P1_ENABLE_DISPATCHER_RUN_VECTOR_OWNERSHIP`
 
-- If Peter wants a code change next, change exactly one thing:
-  - promote only `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` from explicit default-off to the same promoted-default-on semantics already used by the earlier low-risk promoted seams.
-- Do **not** group in:
-  - combat spell prep-wait,
-  - any tank run-stop path,
-  - Doom,
-  - vector run,
-  - or any engage/action-economy logic.
+### Explicit kill switch
 
-## What Peter Should Field-Test Manually
+- `UC_SCHED_P1_DISABLE_PROMOTED_OWNERSHIP`
 
-- Enable only `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP = true` in `local_ownership_flags.lua`.
-- Use the existing combat-spell run-stop field-test packet.
-- Confirm:
-  - one stop occurs at the spell-settle point,
-  - spell timing/order remains unchanged,
-  - dispatcher success/fallback status looks sane,
-  - and no duplicate or missing stop appears.
-- Do **not** test Doom for this slice.
+### Local flag loading behavior
 
-## Next-Task Validation Commands
+- `UnifiedCombat.lua` loads `local_ownership_flags.lua` with `pcall(require, ...)`.
+- Missing local flags are ignored.
+- Other load failures are surfaced to chat and left visible for debugging.
+- `local_ownership_flags.lua` is intentionally local-only and uncommitted.
 
-- `luac -p unified_scheduler.lua`
-- `lua tests/replay/harness/selftest_runtime_parse.lua`
-- `lua tests/replay/harness/selftest_side_effect_inventory.lua`
-- `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`
-- `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`
-- `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`
-- `lua tests/replay/harness/selftest_run_stop_ownership_static.lua`
+## Side-effect surface classification
+
+| Family | Status | Classification |
+| --- | --- | --- |
+| Target ownership | Already promoted; wrapper seam only in scheduler | `dispatcher_owned` / `wrapper_owned` |
+| Turn ownership | Already promoted; wrapper seam only in scheduler | `dispatcher_owned` / `wrapper_owned` |
+| Promoted command ownership | Already promoted; wrapper seam only in scheduler | `dispatcher_owned` / `wrapper_owned` |
+| Promoted movement stop ownership | Already promoted; wrapper seam only in scheduler | `dispatcher_owned` / `wrapper_owned` |
+| Doom command / run-stop paths | Still default-off and intentionally parked from live field work | `unsafe_to_move_yet` |
+| Combat spell settle run-stop | Default-off, already packetized for field work | `candidate_next_move` |
+| Combat spell prep-wait run-stop | Default-off, but stay one step behind settle | `unsafe_to_move_yet` |
+| Tank-family run-stop paths | Default-off, partial field coverage only | `unsafe_to_move_yet` |
+| Vector run | Default-off and dormant | `unsafe_to_move_yet` |
+| `UnifiedCombat.lua` reset helper run(false) | Legacy direct helper outside scheduler ownership surface | `legacy_intentional` |
+
+## Spell lifecycle cleanup status
+
+- Spell lifecycle release is now resolved and non-blocking from an ownership perspective.
+- It does not add any direct runtime side effects back into `unified_scheduler.lua`.
+- The probe remains debug-only and should not be used as a behavior seam.
+
+## Recommended next seam
+
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
+- Why: it is the smallest remaining action-economy stop path with existing helper routing, current default-off coverage, and practical field-test reachability.
+
+## What must not change next
+
+- Do not reintroduce direct side-effect callsites into `unified_scheduler.lua`.
+- Do not change spell lifecycle behavior in this ownership task.
+- Do not group in Doom, tank-family, or vector-run migrations.
+- Do not touch engage/action-economy ranking rules beyond the specific ownership seam.

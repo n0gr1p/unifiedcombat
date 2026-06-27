@@ -6,10 +6,27 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 ## 1) Overall Status Snapshot
 
 - Current phase focus: scheduler runtime parity slices that stay inside existing ownership policy, plus replay/static coverage for those slices.
-- Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.4b`.
+- Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6a`.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.6a` Re-establish scheduler ownership baseline after spell lifecycle cleanup
+
+- Status: `DONE`
+- Changed files:
+  - `docs/scheduler_ownership_resume_baseline.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Runtime behavior:
+  - No runtime behavior changed.
+  - The spell lifecycle cleanup detour is now treated as resolved and non-blocking for ownership work.
+  - `unified_scheduler.lua` still has zero direct textual side-effect callsites for `windower.send_command(`, `windower.ffxi.run(`, `windower.ffxi.turn(`, and `uc_settarget.select_by_id(`.
+- Validation summary:
+  - Ownership seams remain behind the existing dispatcher/wrapper helpers.
+  - Existing closure/promotion/source-guard coverage remains the right guardrail for this area; no new framework was added.
+- Field-test instructions:
+  - No new runtime field test is needed for this audit-only task.
+  - If the next seam is promoted, use the existing combat-spell spell-settle packet and verify stop timing stays unchanged.
 
 ### `T3.4n` Complete explicit attack-on action-state bypass for WS/JA/spell/post-spell gates
 
