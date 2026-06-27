@@ -87,6 +87,14 @@ local scheduler = {
 		ja_lag_timeout = 1.0,
 		last_send_kind = '',
 	},
+	spell_lifecycle_probe_state = {
+		token = '',
+		local_events = {},
+		recent_events = {},
+		text_events = {},
+		candidate_cast_complete = false,
+		candidate_cast_interrupted = false,
+	},
 	defensive_spell_waiting = false,
 	defensive_spell_wait_until = 0,
 	defensive_pending_action = '',
@@ -378,12 +386,12 @@ local function action_mark_sent(kind, meta)
 	return require('uc_scheduler_action_state').action_mark_sent(scheduler, kind, now_s)
 end
 
-local function action_mark_packet_start()
-	return require('uc_scheduler_action_state').action_mark_packet_start(scheduler, now_s)
+local function action_mark_packet_start(meta)
+	return require('uc_scheduler_action_state').action_mark_packet_start(scheduler, now_s, meta)
 end
 
-local function action_mark_packet_end()
-	return require('uc_scheduler_action_state').action_mark_packet_end(scheduler, now_s)
+local function action_mark_packet_end(meta)
+	return require('uc_scheduler_action_state').action_mark_packet_end(scheduler, now_s, meta)
 end
 
 local function action_is_acting()
@@ -398,30 +406,393 @@ local function engage_attack_on_action_state_gate(meta)
 	return require('uc_scheduler_action_state').engage_attack_on_action_state_gate(scheduler, now_s, _G, meta)
 end
 
-function scheduler.clear_local_spell_success()
-	return require('uc_scheduler_action_state').clear_local_spell_success(scheduler, now_s)
+function scheduler.clear_local_spell_success(meta)
+	return require('uc_scheduler_action_state').clear_local_spell_success(scheduler, now_s, meta)
 end
 
-function scheduler.clear_local_spell_interruption()
-	return require('uc_scheduler_action_state').clear_local_spell_interruption(scheduler, now_s)
+function scheduler.clear_local_spell_interruption(meta)
+	return require('uc_scheduler_action_state').clear_local_spell_interruption(scheduler, now_s, meta)
 end
 
-function scheduler.clear_local_defensive_spell_success()
-	return require('uc_scheduler_action_state').clear_local_defensive_spell_success(scheduler, now_s)
+function scheduler.clear_local_defensive_spell_success(meta)
+	return require('uc_scheduler_action_state').clear_local_defensive_spell_success(scheduler, now_s, meta)
 end
 
-function scheduler.clear_local_defensive_spell_interruption()
-	return require('uc_scheduler_action_state').clear_local_defensive_spell_interruption(scheduler, now_s)
+function scheduler.clear_local_defensive_spell_interruption(meta)
+	return require('uc_scheduler_action_state').clear_local_defensive_spell_interruption(scheduler, now_s, meta)
 end
 
-function scheduler.is_spell_success_message_id(message_id)
+function scheduler.last_completion_ignore_reason()
+	return require('uc_scheduler_action_state').last_completion_ignore_reason(scheduler)
+end
+
+function scheduler.is_spell_cast_complete_message_id(message_id)
 	local mid = tonumber(message_id) or 0
 	return mid == 2 or mid == 230 or mid == 236 or mid == 252
 end
 
-function scheduler.is_spell_initiating_message_id(message_id)
+function scheduler.is_spell_cast_start_message_id(message_id)
 	local mid = tonumber(message_id) or 0
 	return mid == 3 or mid == 229
+end
+
+function scheduler.is_spell_cast_interrupted_message_id(message_id)
+	local mid = tonumber(message_id) or 0
+	return mid == 16
+end
+
+function scheduler.local_spell_cast_token_active(st)
+	st = type(st) == 'table' and st or {}
+	local token = tostring(tonumber(st.action_token) or 0)
+	if tostring(st.last_send_kind or '') ~= 'spell' then
+		return false, 'not_spell'
+	end
+	if token == '0' then
+		return false, 'missing_token'
+	end
+	if (tonumber(st.action_start) or 0) <= 0 then
+		return false, 'missing_start'
+	end
+	if (tonumber(st.action_end) or 0) >= (tonumber(st.action_start) or 0) then
+		return false, 'not_acting'
+	end
+	if tostring(st.terminal_outcome or '') ~= '' and tostring(st.terminal_action_token or '') == token then
+		return false, 'terminal'
+	end
+	return true, 'active'
+end
+
+function scheduler.spell_name_from_cast_message(msg)
+	msg = type(msg) == 'table' and msg or {}
+	local name = tostring(msg.spell_name or msg.action_name or msg.name or '')
+	return name
+end
+
+function scheduler.match_active_spell_token_to_cast_finish(msg, st)
+	msg = type(msg) == 'table' and msg or {}
+	st = type(st) == 'table' and st or {}
+	local active, reason = scheduler.local_spell_cast_token_active(st)
+	if not active then
+		return false, reason
+	end
+	local active_spell = tostring(st.last_action_name or '')
+	local message_spell = scheduler.spell_name_from_cast_message(msg)
+	if active_spell ~= '' and message_spell ~= '' and active_spell ~= message_spell then
+		return false, 'spell_mismatch'
+	end
+	return true, 'active_spell_cast'
+end
+
+function scheduler.spell_lifecycle_probe_enabled()
+	return rawget(_G, 'UC_SPELL_LIFECYCLE_PROBE') ~= false
+end
+
+function scheduler.spell_lifecycle_probe_recent(st, now)
+	st = type(st) == 'table' and st or {}
+	if tostring(st.last_send_kind or '') ~= 'spell' then
+		return false
+	end
+	local sent_at = tonumber(st.last_sent_at) or 0
+	return sent_at > 0 and (now - sent_at) <= 12.0
+end
+
+function scheduler.spell_lifecycle_probe_reset_if_new_token(st)
+	st = type(st) == 'table' and st or {}
+	local probe = scheduler.spell_lifecycle_probe_state
+	local token = tostring(tonumber(st.action_token) or 0)
+	if token ~= tostring(probe.token or '') then
+		probe.token = token
+		probe.local_events = {}
+		probe.recent_events = {}
+		probe.text_events = {}
+		probe.candidate_cast_complete = false
+		probe.candidate_cast_interrupted = false
+	end
+	return probe
+end
+
+function scheduler.spell_lifecycle_probe_append(list, summary)
+	if type(list) ~= 'table' then
+		return
+	end
+	list[#list + 1] = tostring(summary or '')
+	while #list > 5 do
+		table.remove(list, 1)
+	end
+end
+
+function scheduler.spell_lifecycle_probe_join(list)
+	if type(list) ~= 'table' or #list == 0 then
+		return ''
+	end
+	return table.concat(list, ' || ')
+end
+
+function scheduler.spell_lifecycle_probe_mob_name(id)
+	local mob_id = tonumber(id) or 0
+	if mob_id <= 0 then
+		return ''
+	end
+	local mob = windower.ffxi.get_mob_by_id(mob_id)
+	return tostring((mob and mob.name) or '')
+end
+
+function scheduler.spell_lifecycle_probe_actions_summary(act)
+	if type(act) ~= 'table' or type(act.targets) ~= 'table' then
+		return ''
+	end
+	local parts = {}
+	for ti, target in ipairs(act.targets) do
+		if ti > 3 then
+			break
+		end
+		local action_parts = {}
+		if type(target and target.actions) == 'table' then
+			for ai, action in ipairs(target.actions) do
+				if ai > 3 then
+					break
+				end
+				action_parts[#action_parts + 1] = ('m%d:p%d:a%d:s%d'):format(
+					tonumber(action and action.message) or 0,
+					tonumber(action and action.param) or 0,
+					tonumber(action and action.add_effect_param) or 0,
+					tonumber(action and action.spike_effect_param) or 0
+				)
+			end
+		end
+		parts[#parts + 1] = ('t%d[%s]'):format(tonumber(target and target.id) or 0, table.concat(action_parts, ','))
+	end
+	return table.concat(parts, ';')
+end
+
+function scheduler.spell_lifecycle_probe_fields(source, payload, st, now, extra)
+	payload = type(payload) == 'table' and payload or {}
+	st = type(st) == 'table' and st or {}
+	extra = type(extra) == 'table' and extra or {}
+	local sent_at = tonumber(st.last_sent_at) or 0
+	local packet_start_at = tonumber(st.packet_start_at) or 0
+	local terminal_at = tonumber(st.terminal_at) or 0
+	local actor_id = tonumber(payload.actor_id) or 0
+	local target_id = tonumber(payload.target_id) or 0
+	local category = payload.category
+	local action_category = payload.action_category or payload.category
+	local spell_id = tonumber(payload.spell_id) or tonumber(payload.param) or tonumber(payload.param_1) or 0
+	local spell_name = tostring(payload.spell_name or payload.action_name or payload.name or '')
+	return {
+		source = tostring(source or ''),
+		actor_id = actor_id,
+		actor_name = tostring(payload.actor_name or scheduler.spell_lifecycle_probe_mob_name(actor_id)),
+		target_id = target_id,
+		target = tostring(payload.target_name or scheduler.spell_lifecycle_probe_mob_name(target_id)),
+		message_id = tonumber(payload.message_id) or tonumber(payload.message) or 0,
+		param = tonumber(payload.param_1) or tonumber(payload.param) or tonumber(payload.effect_id) or 0,
+		category = tostring(category or ''),
+		action_category = tostring(action_category or ''),
+		spell_id = spell_id,
+		spell_name = spell_name,
+		interrupted = tostring(extra.interrupted or payload.interrupted or ''),
+		raw_text = tostring(extra.raw_text or payload.raw_text or ''),
+		action_param = tonumber(payload.action_param) or tonumber(payload.param) or tonumber(payload.param_1) or 0,
+		targets_summary = tostring(extra.targets_summary or ''),
+		actions_summary = tostring(extra.actions_summary or ''),
+		active_spell = tostring(st.last_action_name or ''),
+		active_target = tostring(st.last_target_name or ''),
+		active_target_id = tonumber(st.last_target_id) or 0,
+		action_token = tostring(tonumber(st.action_token) or 0),
+		since_sent_s = (sent_at > 0) and ('%.2f'):format(math.max(0, now - sent_at)) or '',
+		since_packet_start_s = (packet_start_at > 0) and ('%.2f'):format(math.max(0, now - packet_start_at)) or 'na',
+		packet_start_detected = (packet_start_at > 0) and '1' or '0',
+		action_state = scheduler.action_timeline_action_state_summary(now),
+		terminal_outcome = tostring(st.terminal_outcome or ''),
+		terminal_since_s = (terminal_at > 0) and ('%.2f'):format(math.max(0, now - terminal_at)) or '',
+		matched_pattern = tostring(extra.matched_pattern or ''),
+		parsed_actor = tostring(extra.parsed_actor or ''),
+		parsed_spell = tostring(extra.parsed_spell or ''),
+		parsed_target = tostring(extra.parsed_target or ''),
+	}
+end
+
+function scheduler.spell_lifecycle_probe_emit(source, payload, extra)
+	if not scheduler.spell_lifecycle_probe_enabled() then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	local my_id = tonumber(player and player.id) or 0
+	if my_id <= 0 then
+		return
+	end
+	payload = type(payload) == 'table' and payload or {}
+	local actor_id = tonumber(payload.actor_id) or 0
+	if actor_id ~= my_id then
+		return
+	end
+	local now = now_s()
+	local st = action_state() or {}
+	local recent = scheduler.spell_lifecycle_probe_recent(st, now)
+	local active = scheduler.local_spell_cast_token_active(st)
+	if not active and not recent then
+		return
+	end
+	local probe = scheduler.spell_lifecycle_probe_reset_if_new_token(st)
+	local fields = scheduler.spell_lifecycle_probe_fields(source, payload, st, now, extra)
+	local summary = ('src=%s mid=%s param=%s cat=%s spell=%s token=%s'):format(
+		tostring(fields.source or ''),
+		tostring(fields.message_id or ''),
+		tostring(fields.param or ''),
+		tostring(fields.category or ''),
+		tostring(fields.spell_name or ''),
+		tostring(fields.action_token or '')
+	)
+	local complete_candidate = scheduler.is_spell_cast_complete_message_id(fields.message_id)
+	local interrupt_candidate = scheduler.is_spell_cast_interrupted_message_id(fields.message_id)
+	if complete_candidate then
+		probe.candidate_cast_complete = true
+	end
+	if interrupt_candidate then
+		probe.candidate_cast_interrupted = true
+	end
+	if active then
+		scheduler.spell_lifecycle_probe_append(probe.local_events, summary)
+		scheduler.action_timeline_log('SPELL_LIFECYCLE_PROBE_LOCAL_EVENT', fields, ('spell_lifecycle_probe_local:%s:%s:%s:%s'):format(tostring(fields.action_token or ''), tostring(fields.source or ''), tostring(fields.message_id or ''), tostring(fields.param or '')), 0.02)
+	end
+	if recent then
+		scheduler.spell_lifecycle_probe_append(probe.recent_events, summary)
+		scheduler.action_timeline_log('SPELL_LIFECYCLE_PROBE_RECENT_EVENT', fields, ('spell_lifecycle_probe_recent:%s:%s:%s:%s'):format(tostring(fields.action_token or ''), tostring(fields.source or ''), tostring(fields.message_id or ''), tostring(fields.param or '')), 0.02)
+	end
+end
+
+function scheduler.spell_lifecycle_probe_text_pattern(raw_text)
+	local text = tostring(raw_text or '')
+	local actor, spell = text:match("^([^%s].-) starts casting (.-)%.?$")
+	if actor and spell then
+		return 'starts_casting', actor, spell, ''
+	end
+	actor, spell = text:match("^([^%s].-) casts (.-)%.?$")
+	if actor and spell then
+		return 'casts_spell', actor, spell, ''
+	end
+	actor = text:match("^([^%s].-)'s casting is interrupted%.?$")
+	if actor then
+		return 'casting_interrupted', actor, '', ''
+	end
+	return '', '', '', ''
+end
+
+local function spell_text_begins_with(raw_text, prefix)
+	raw_text = tostring(raw_text or '')
+	prefix = tostring(prefix or '')
+	if prefix == '' then
+		return false
+	end
+	return raw_text:sub(1, #prefix) == prefix
+end
+
+function scheduler.on_incoming_text(original, modified, mode, blocked)
+	if not scheduler.spell_lifecycle_probe_enabled() then
+		return
+	end
+	local player = windower.ffxi.get_player()
+	local player_name = tostring((player and player.name) or '')
+	if player_name == '' then
+		return
+	end
+	local raw_text = tostring(original or modified or '')
+	local matched, actor, spell, target = scheduler.spell_lifecycle_probe_text_pattern(raw_text)
+	if matched == '' or actor ~= player_name then
+		return
+	end
+	local now = now_s()
+	local st = action_state() or {}
+	local recent = scheduler.spell_lifecycle_probe_recent(st, now)
+	local active = scheduler.local_spell_cast_token_active(st)
+	if not active and not recent then
+		return
+	end
+	local probe = scheduler.spell_lifecycle_probe_reset_if_new_token(st)
+	local fields = scheduler.spell_lifecycle_probe_fields('incoming_text', {
+		actor_id = tonumber(player.id) or 0,
+		actor_name = player_name,
+		spell_name = spell,
+		raw_text = raw_text,
+	}, st, now, {
+		raw_text = raw_text,
+		mode = tostring(mode or ''),
+		matched_pattern = matched,
+		parsed_actor = actor,
+		parsed_spell = spell,
+		parsed_target = target,
+		interrupted = (matched == 'casting_interrupted') and '1' or '0',
+	})
+	fields.mode = tostring(mode or '')
+	fields.blocked = tostring(blocked or '')
+	if matched == 'casts_spell' then
+		probe.candidate_cast_complete = true
+	elseif matched == 'casting_interrupted' then
+		probe.candidate_cast_interrupted = true
+	end
+	scheduler.spell_lifecycle_probe_append(probe.text_events, ('text=%s spell=%s token=%s'):format(matched, spell, tostring(fields.action_token or '')))
+	scheduler.action_timeline_log('SPELL_LIFECYCLE_PROBE_TEXT', fields, ('spell_lifecycle_probe_text:%s:%s:%s'):format(tostring(fields.action_token or ''), matched, spell), 0.02)
+	if not active then
+		return
+	end
+	local active_spell = tostring(st.last_action_name or '')
+	local provider = tostring(st.last_action_provider or '')
+	local release_meta = {
+		message_id = tonumber(fields.message_id) or 0,
+		message_param = tonumber(fields.param) or 0,
+		spell_name = active_spell,
+		raw_text = raw_text,
+		release_reason = '',
+		completion_reason = '',
+	}
+	if matched == 'casts_spell' and active_spell ~= '' then
+		local prefix = player_name .. ' casts ' .. active_spell
+		if spell_text_begins_with(raw_text, prefix) then
+			release_meta.release_reason = 'cast_complete_text'
+			release_meta.completion_reason = 'cast_complete_text'
+			if provider == 'defensive_internal' or provider == 'defensive_healbot' then
+				scheduler.clear_local_defensive_spell_success(release_meta)
+			else
+				scheduler.clear_local_spell_success(release_meta)
+			end
+			return
+		end
+	elseif matched == 'casting_interrupted' and actor == player_name then
+		local prefix = player_name .. "'s casting is interrupted"
+		if spell_text_begins_with(raw_text, prefix) then
+			release_meta.release_reason = 'cast_interrupted_text'
+			release_meta.completion_reason = 'cast_interrupted_text'
+			if provider == 'defensive_internal' or provider == 'defensive_healbot' then
+				scheduler.clear_local_defensive_spell_interruption(release_meta)
+			else
+				scheduler.clear_local_spell_interruption(release_meta)
+			end
+			return
+		end
+	end
+end
+
+function scheduler.emit_spell_lifecycle_timeout_candidate_summary(scheduler_obj, now_s_fn, st)
+	if not scheduler.spell_lifecycle_probe_enabled() then
+		return
+	end
+	st = type(st) == 'table' and st or action_state() or {}
+	local now = now_s_fn()
+	local probe = scheduler.spell_lifecycle_probe_reset_if_new_token(st)
+	scheduler.action_timeline_log('SPELL_LIFECYCLE_TIMEOUT_CANDIDATE_SUMMARY', {
+		active_spell = tostring(st.last_action_name or ''),
+		target = tostring(st.last_target_name or ''),
+		target_id = tonumber(st.last_target_id) or 0,
+		action_token = tostring(tonumber(st.action_token) or 0),
+		packet_start_detected = (tonumber(st.packet_start_at) or 0) > 0 and '1' or '0',
+		local_probe_last5 = scheduler.spell_lifecycle_probe_join(probe.local_events),
+		recent_probe_last5 = scheduler.spell_lifecycle_probe_join(probe.recent_events),
+		text_probe_last5 = scheduler.spell_lifecycle_probe_join(probe.text_events),
+		candidate_cast_complete = probe.candidate_cast_complete and '1' or '0',
+		candidate_cast_interrupted = probe.candidate_cast_interrupted and '1' or '0',
+		since_sent_s = (tonumber(st.last_sent_at) or 0) > 0 and ('%.2f'):format(math.max(0, now - (tonumber(st.last_sent_at) or 0))) or '',
+		since_packet_start_s = (tonumber(st.packet_start_at) or 0) > 0 and ('%.2f'):format(math.max(0, now - (tonumber(st.packet_start_at) or 0))) or 'na',
+	}, ('spell_lifecycle_timeout_summary:%s'):format(tostring(tonumber(st.action_token) or 0)), 0.05)
 end
 
 function scheduler.p1_clear_tank_spell_wait_state(phase)
@@ -1654,7 +2025,7 @@ function scheduler.action_timeline_format_fields(fields)
 	end
 	local order = {
 		'tid', 'name', 'role', 'tank', 'spell', 'action', 'provider', 'band', 'urgency', 'critical', 'reason',
-		'status', 'from', 'to', 'target', 'target_id', 'old_target_id', 'message_id', 'retry_in_s', 'retry_count', 'age_s', 'remaining_s', 'tail_s', 'kind', 'command', 'dispatch_method', 'pending_engage', 'sent_for_target', 'pull_owner', 'target_valid', 'range', 'claim_check', 'action_state', 'top_family', 'top_provider', 'top_action', 'immediate'
+		'status', 'from', 'to', 'target', 'target_id', 'old_target_id', 'actor_id', 'actor_name', 'message_id', 'retry_in_s', 'retry_count', 'age_s', 'remaining_s', 'tail_s', 'kind', 'command', 'dispatch_method', 'pending_engage', 'sent_for_target', 'pull_owner', 'target_valid', 'range', 'claim_check', 'action_state', 'top_family', 'top_provider', 'top_action', 'best_action', 'best_provider', 'best_target', 'best_target_id', 'source', 'category', 'action_category', 'spell_id', 'spell_name', 'active_spell', 'active_target', 'active_target_id', 'interrupted', 'raw_text', 'mode', 'blocked', 'action_param', 'targets_summary', 'actions_summary', 'matched_pattern', 'parsed_actor', 'parsed_spell', 'parsed_target', 'since_sent_s', 'since_packet_start_s', 'terminal_since_s', 'release_reason', 'old_kind', 'cooldown_s', 'cast_type', 'action_token', 'completion_reason', 'terminal_outcome', 'param', 'active_song_count', 'expected_song_count', 'song_names', 'song_lowest_remaining_s', 'high_level_spell_sent', 'first_lifecycle_event', 'estimated_sent_at', 'packet_start_detected', 'last_local_message_id', 'last_local_message_param', 'last_ignored_message_id', 'last_ignored_message_param', 'accepted_completion_after_timeout', 'original_outcome', 'original_terminal_at', 'original_since_sent_s', 'late_message_id', 'late_message_param', 'late_completion', 'local_probe_last5', 'recent_probe_last5', 'text_probe_last5', 'candidate_cast_complete', 'candidate_cast_interrupted', 'throttle_key', 'now_value', 'next_allowed_at', 'proposal_emitted', 'last_maintenance_action', 'last_maintenance_token', 'immediate'
 	}
 	local parts = {}
 	local seen = {}
@@ -1725,6 +2096,10 @@ function scheduler.action_timeline_log(event_code, fields, dedupe_key, min_inter
 	return true
 end
 
+_G.UC_ACTION_TIMELINE_LOG = function(event_code, fields, dedupe_key, min_interval)
+	return scheduler.action_timeline_log(event_code, fields, dedupe_key, min_interval)
+end
+
 function scheduler.log_action_timeline_status_change(status)
 	local st = tonumber(status) or -1
 	local prev = tonumber(scheduler.action_timeline_state.last_status)
@@ -1737,6 +2112,124 @@ function scheduler.log_action_timeline_status_change(status)
 		to = st,
 		status = st,
 	}, ('status:%d'):format(st), 0)
+end
+
+function scheduler.action_timeline_action_state_summary(now_value)
+	local st = action_state() or {}
+	local now = tonumber(now_value) or now_s()
+	local cooldown_until = tonumber(st.cooldown_until) or 0
+	local tail_until = tonumber(st.post_spell_tail_until) or 0
+	local packet_start_at = tonumber(st.packet_start_at) or 0
+	local send_at = tonumber(st.last_sent_at) or 0
+	local acting = (tonumber(st.action_end) or 0) < (tonumber(st.action_start) or 0)
+	return table.concat({
+		('kind=%s'):format(tostring(st.last_send_kind or '')),
+		('acting=%s'):format(acting and '1' or '0'),
+		('cooldown=%.2f'):format(math.max(0, cooldown_until - now)),
+		('tail=%.2f'):format(math.max(0, tail_until - now)),
+		('since_sent=%.2f'):format((send_at > 0) and math.max(0, now - send_at) or 0),
+		(packet_start_at > 0)
+			and ('since_packet=%.2f'):format(math.max(0, now - packet_start_at))
+			or 'since_packet=na'
+	}, ',')
+end
+
+function scheduler.action_timeline_note_spell_sent(fields)
+	scheduler.action_timeline_state.last_spell_sent_at = now_s()
+	fields = type(fields) == 'table' and fields or {}
+	require('uc_scheduler_action_state').note_high_level_spell_sent(scheduler, now_s, fields)
+	if tostring(fields.provider or '') ~= '' and tostring(fields.provider or '') ~= 'combat' then
+		scheduler.action_timeline_state.last_maintenance_spell_dispatch_at = now_s()
+		scheduler.action_timeline_state.last_maintenance_dispatch_action = tostring(fields.spell or fields.action_name or '')
+		scheduler.action_timeline_state.last_maintenance_dispatch_token = tostring(tonumber(fields.action_token) or tonumber((action_state() or {}).action_token) or 0)
+	end
+end
+
+function scheduler.handle_local_spell_action_message(phase, now, player, msg, st, message_id, message_param)
+	local matched, match_reason = scheduler.match_active_spell_token_to_cast_finish(msg, st)
+	if not matched then
+		return false, match_reason
+	end
+	if scheduler.is_spell_cast_start_message_id(message_id) then
+		return false, 'cast_start_message'
+	end
+	if scheduler.is_spell_cast_complete_message_id(message_id) then
+		action_mark_packet_end({
+			message_id = message_id,
+			message_param = message_param,
+		})
+		local cleared = scheduler.clear_local_defensive_spell_success({
+			message_id = message_id,
+			message_param = message_param,
+			completion_reason = 'cast_complete',
+			release_reason = 'cast_complete',
+		})
+		if not cleared then
+			cleared = scheduler.clear_local_spell_success({
+				message_id = message_id,
+				message_param = message_param,
+				completion_reason = 'cast_complete',
+				release_reason = 'cast_complete',
+			})
+		end
+		if cleared then
+			scheduler.p1_pending_mark_complete(now, ('spell_cast_complete_%d'):format(message_id))
+			local current_lock_until = tonumber(_G.UC_MOVEMENT_LOCK_UNTIL) or 0
+			_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)
+			if scheduler.defensive_spell_waiting == true then
+				scheduler.clear_defensive_spell_wait_state()
+			end
+			if tonumber(phase.tank_pending_target_id) and tonumber(phase.tank_pending_target_id) ~= 0 then
+				scheduler.p1_clear_tank_spell_wait_state(phase)
+			end
+		end
+		return cleared == true, cleared and 'cast_complete' or require('uc_scheduler_action_state').last_completion_ignore_reason(scheduler)
+	end
+	if scheduler.is_spell_cast_interrupted_message_id(message_id) then
+		action_mark_packet_end({
+			message_id = message_id,
+			message_param = message_param,
+		})
+		local cleared = scheduler.clear_local_defensive_spell_interruption({
+			message_id = message_id,
+			message_param = message_param,
+			completion_reason = 'cast_interrupted',
+			release_reason = 'cast_interrupted',
+		})
+		if not cleared then
+			cleared = scheduler.clear_local_spell_interruption({
+				message_id = message_id,
+				message_param = message_param,
+				completion_reason = 'cast_interrupted',
+				release_reason = 'cast_interrupted',
+			})
+		end
+		if cleared then
+			if scheduler.defensive_spell_waiting == true then
+				scheduler.clear_defensive_spell_wait_state()
+			end
+			local current_lock_until = tonumber(_G.UC_MOVEMENT_LOCK_UNTIL) or 0
+			_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)
+			scheduler.p1_pending_mark_complete(now, ('spell_cast_interrupted_%d'):format(message_id))
+		end
+		return cleared == true, cleared and 'cast_interrupted' or require('uc_scheduler_action_state').last_completion_ignore_reason(scheduler)
+	end
+	return false, 'not_cast_terminal'
+end
+
+function scheduler.handle_local_spell_effect_observation(phase, now, msg, st, message_id, message_param)
+	phase = type(phase) == 'table' and phase or {}
+	st = type(st) == 'table' and st or {}
+	local pending_action_name = tostring(phase.tank_pending_action or scheduler.defensive_pending_action or '')
+	local last_action_name = tostring(st.last_action_name or pending_action_name or '')
+	local expected_tid = tonumber(phase.tank_pending_target_id) or tonumber(scheduler.defensive_pending_target_id) or 0
+	local msg_tid = tonumber(msg and msg.target_id) or 0
+	if msg_tid > 0 and message_id == 204 and message_param == 2 and scheduler.is_sleep_spell_name(get_settings(), last_action_name) then
+		scheduler.mark_sleep_target_suppressed(msg_tid, last_action_name, now)
+	end
+	if message_id == 17 and message_param == 0 then
+		scheduler.record_confirmed_bard_song_success(pending_action_name, expected_tid, msg_tid)
+	end
 end
 
 local diag_init = {
@@ -2326,7 +2819,7 @@ local function get_ja_resource(name)
 	return nil
 end
 
-local function action_status_id(name)
+function scheduler.action_status_id(name)
 	return require('uc_scheduler_action_metadata').action_status_id({
 		get_spell_resource = get_spell_resource,
 		get_ja_resource = get_ja_resource,
@@ -4421,7 +4914,35 @@ local function p1_collect_maintenance(ctx, out)
 	local now = ctx.now
 	ensure_maintenance_buff_cache()
 	local buff_list = player.buffs or {}
+	local function log_maint_candidate(event_code, key, action_name, provider, reason, urgency, detail, interval)
+		detail = type(detail) == 'table' and detail or {}
+		local fields = {
+			spell = (tostring(detail.cast_type or '') == 'spell' or tostring(detail.action_type or '') == 'spell') and tostring(action_name or '') or '',
+			action = tostring(action_name or ''),
+			target = tostring(detail.target_name or player.name or ''),
+			target_id = tonumber(detail.target_id) or tonumber(player.id) or 0,
+			provider = tostring(provider or ''),
+			band = 75,
+			urgency = (urgency ~= nil) and ('%.2f'):format(p1_clamp_urgency(urgency)) or '',
+			reason = tostring(reason or ''),
+			status = tonumber(player.status) or 0,
+			action_state = scheduler.action_timeline_action_state_summary(now),
+			range = detail.range or '',
+			target_valid = detail.target_valid,
+		}
+		for extra_key, extra_value in pairs(detail) do
+			if fields[extra_key] == nil or fields[extra_key] == '' then
+				fields[extra_key] = extra_value
+			end
+		end
+		scheduler.action_timeline_log(event_code, fields, ('maint_candidate:%s:%s:%s'):format(tostring(event_code or ''), tostring(key or ''), tostring(reason or '')), interval or 2.0)
+	end
 	local function maybe_emit(key, provider, action_type, action_name, reason_code, urgency, detail)
+		detail = type(detail) == 'table' and detail or {}
+		detail.cast_type = action_type
+		detail.action_type = action_type
+		detail.target_name = tostring(player.name or '')
+		detail.target_id = tonumber(player.id) or 0
 		if action_type == 'spell' then
 			local p = windower.ffxi.get_player() or {}
 			local out_of_combat = tonumber(p.status) ~= 1
@@ -4439,15 +4960,27 @@ local function p1_collect_maintenance(ctx, out)
 					end
 				end
 				if moving then
-					return
+					detail.proposal_emitted = '0'
+					log_maint_candidate('MAINT_BUFF_CANDIDATE_HELD', key, action_name, provider, 'player_moving', urgency, detail, 2.0)
+					return false, 'player_moving', 0
 				end
 			end
 		end
 		local next_at = p1_number(gate[key], 0)
 		if now < next_at then
-			return
+			detail.throttle_key = tostring(key or '')
+			detail.now_value = ('%.2f'):format(now)
+			detail.next_allowed_at = ('%.2f'):format(next_at)
+			detail.remaining_s = ('%.2f'):format(math.max(0, next_at - now))
+			detail.last_maintenance_action = tostring(scheduler.action_timeline_state.last_maintenance_dispatch_action or '')
+			detail.last_maintenance_token = tostring(scheduler.action_timeline_state.last_maintenance_dispatch_token or '')
+			detail.proposal_emitted = '0'
+			log_maint_candidate('MAINT_BUFF_CANDIDATE_HELD', key, action_name, provider, 'throttle', urgency, detail, 2.0)
+			return false, 'throttle', math.max(0, next_at - now)
 		end
 		gate[key] = now + 2.0
+		detail.proposal_emitted = '1'
+		log_maint_candidate('MAINT_BUFF_CANDIDATE_READY', key, action_name, provider, reason_code, urgency, detail, 0.50)
 		out[#out + 1] = {
 			proposal_id = ('maint.%s.%d'):format(key, math.floor(now * 1000)),
 			family_id = ('maintenance.%s'):format(key),
@@ -4477,6 +5010,7 @@ local function p1_collect_maintenance(ctx, out)
 			detail = detail or { job = job },
 			legacy_command = '',
 		}
+		return true, nil, 0
 	end
 	if job == 'COR' then
 		local action = cor_maintenance and cor_maintenance.propose and cor_maintenance.propose(ctx.settings) or nil
@@ -4518,20 +5052,57 @@ local function p1_collect_maintenance(ctx, out)
 					reason_code = tostring(action.reason_code or 'cor_roll_maint'),
 					detail = action.detail or { job = job },
 				}
+				log_maint_candidate('MAINT_BUFF_CANDIDATE_READY', key, action_name, 'maintenance_cor', tostring(action.reason_code or 'cor_roll_maint'), urgency, {
+					target_name = target_name,
+					target_id = target_id,
+					action_type = 'ja',
+				}, 0.50)
+			else
+				log_maint_candidate('MAINT_BUFF_CANDIDATE_HELD', key, tostring(action.action_name or ''), 'maintenance_cor', 'throttle', tonumber(action.urgency) or 0.65, {
+					target_name = tostring(action.target_name or '<me>'),
+					target_id = tonumber(action.target_id) or 0,
+					action_type = 'ja',
+				}, 2.0)
 			end
 		else
 			log_def_sched('MAINT_COR_SKIP reason=PROPOSE_NIL')
+			log_maint_candidate('MAINT_BUFF_CANDIDATE_SKIPPED', 'cor_rolls', '', 'maintenance_cor', 'propose_nil', 0.65, {
+				action_type = 'ja',
+			}, 2.0)
 			gate.cor_rolls = 0
 		end
 	elseif job == 'BRD' then
 		local song_count = count_matching_buffs(buff_list, maintenance_buff_cache.song_ids)
 		if song_count < 2 then
-			maybe_emit('brd_songs', 'brd', 'spell', 'maintenance_songs', 'songs_missing', (song_count == 0) and 0.80 or 0.50, {
+			local emitted, blocker_reason, throttle_remaining = maybe_emit('brd_songs', 'brd', 'spell', 'maintenance_songs', 'songs_missing', (song_count == 0) and 0.80 or 0.50, {
 				job = job,
 				song_count = song_count,
 				expected = 2,
 			})
+			if emitted ~= true then
+				scheduler.action_timeline_log('MAINT_SONG_READY_NO_DISPATCH', {
+					action = 'maintenance_songs',
+					provider = 'brd',
+					reason = tostring(blocker_reason or 'unknown'),
+					song_count = tostring(song_count),
+					expected = '2',
+					best_action = 'maintenance_songs',
+					top_provider = '',
+					top_action = '',
+					remaining_s = (tonumber(throttle_remaining) or 0) > 0 and ('%.2f'):format(tonumber(throttle_remaining) or 0) or '',
+				}, ('maint_song_ready_no_dispatch:%s'):format(tostring(blocker_reason or 'unknown')), 2.0)
+			end
 		else
+			local song_snapshot = scheduler.active_song_snapshot(buff_list, maintenance_buff_cache.song_ids)
+			log_maint_candidate('MAINT_BUFF_CANDIDATE_SKIPPED', 'brd_songs', 'maintenance_songs', 'brd', 'songs_satisfied', 0.50, {
+				action_type = 'spell',
+				expected = 2,
+				song_count = song_count,
+				active_song_count = song_snapshot.active_song_count,
+				expected_song_count = song_snapshot.expected_song_count,
+				song_names = song_snapshot.song_names,
+				song_lowest_remaining_s = song_snapshot.song_lowest_remaining_s,
+			}, 2.0)
 			gate.brd_songs = 0
 		end
 	elseif job == 'GEO' then
@@ -4554,6 +5125,9 @@ local function p1_collect_maintenance(ctx, out)
 				expected_geo = 1,
 			})
 		else
+			log_maint_candidate('MAINT_BUFF_CANDIDATE_SKIPPED', 'geo_buffs', 'maintenance_geo', 'geo', 'geo_satisfied', 0.45, {
+				action_type = 'spell',
+			}, 2.0)
 			gate.geo_buffs = 0
 		end
 	end
@@ -4664,6 +5238,27 @@ end
 
 count_matching_buffs = function(buff_list, id_set)
 	return require('uc_scheduler_maintenance_utils').count_matching_buffs(buff_list, id_set)
+end
+
+function scheduler.active_song_snapshot(buff_list, song_id_set)
+	local names = {}
+	for _, buff_id in ipairs(buff_list or {}) do
+		local bid = tonumber(buff_id) or 0
+		if bid > 0 and song_id_set[bid] == true then
+			local buff = res.buffs and res.buffs[bid] or nil
+			local name = tostring((buff and buff.en) or '')
+			if name ~= '' then
+				names[#names + 1] = name
+			end
+		end
+	end
+	table.sort(names)
+	return {
+		active_song_count = tostring(#names),
+		expected_song_count = '2',
+		song_names = (#names > 0) and table.concat(names, ', ') or '',
+		song_lowest_remaining_s = 'na',
+	}
 end
 
 function scheduler.p1_get_locks(ctx)
@@ -4925,6 +5520,25 @@ local function p1_run_dry(settings)
 	scheduler.p1_update_pending_state(ctx)
 	local proposals = p1_collect_proposals(ctx)
 	local ranked, reject_counts, locks, rejected = p1_rank(ctx, proposals)
+	local function is_maint_spell_candidate(proposal)
+		if type(proposal) ~= 'table' then
+			return false
+		end
+		local provider = tostring(proposal.provider or '')
+		local action_type = tostring(proposal.action_type or '')
+		return action_type == 'spell' and (provider == 'maintenance' or provider == 'brd' or provider == 'geo' or provider == 'defensive_internal' or provider == 'defensive_healbot')
+	end
+	local function best_maint_candidate(list)
+		if type(list) ~= 'table' then
+			return nil
+		end
+		for i = 1, #list do
+			if is_maint_spell_candidate(list[i]) then
+				return list[i]
+			end
+		end
+		return nil
+	end
 	local selected = ranked[1]
 	if type(selected) == 'table' then
 		local engage_candidate = scheduler.p1_pick_preemptive_engage(ctx, ranked)
@@ -4972,6 +5586,45 @@ local function p1_run_dry(settings)
 	if selected and not commit_ok then
 		selected = nil
 		plan = nil
+	end
+	do
+		local best_maint = best_maint_candidate(ranked)
+		local top = type(selected) == 'table' and selected or ranked[1]
+		if best_maint and top and best_maint ~= top then
+			scheduler.action_timeline_log('MAINT_BUFF_CANDIDATE_LOST_RANKING', {
+				spell = tostring(best_maint.action_name or ''),
+				target = tostring(best_maint.target_name or ''),
+				target_id = tonumber(best_maint.target_id) or 0,
+				provider = tostring(best_maint.provider or ''),
+				band = tonumber(best_maint.priority_band) or 0,
+				urgency = ('%.2f'):format(p1_clamp_urgency(best_maint.urgency)),
+				reason = 'top_other_selected',
+				action_state = scheduler.action_timeline_action_state_summary(ctx.now),
+				top_family = tostring(top.family_id or ''),
+				top_provider = tostring(top.provider or ''),
+				top_action = tostring(top.action_name or ''),
+			}, ('maint_lost:%s:%s'):format(tostring(best_maint.action_name or ''), tostring(top.action_name or '')), 1.00)
+		end
+		local st = action_state() or {}
+		local acting = action_is_acting()
+		local tail_until = tonumber(st.post_spell_tail_until) or 0
+		local sent_at = tonumber(scheduler.action_timeline_state.last_spell_sent_at) or 0
+		local maint_at = tonumber(scheduler.action_timeline_state.last_maintenance_spell_dispatch_at) or 0
+		if best_maint and not acting and ctx.now >= tail_until and (not selected or selected ~= best_maint) then
+			scheduler.action_timeline_log('MAINT_BUFF_IDLE_GAP', {
+				since_sent_s = (sent_at > 0) and ('%.2f'):format(math.max(0, ctx.now - sent_at)) or '',
+				age_s = (maint_at > 0) and ('%.2f'):format(math.max(0, ctx.now - maint_at)) or '',
+				top_family = tostring(top and top.family_id or ''),
+				top_provider = tostring(top and top.provider or ''),
+				top_action = tostring(top and top.action_name or ''),
+				best_action = tostring(best_maint.action_name or ''),
+				best_provider = tostring(best_maint.provider or ''),
+				best_target = tostring(best_maint.target_name or ''),
+				best_target_id = tonumber(best_maint.target_id) or 0,
+				reason = top and 'different_top_selected' or 'no_selected_dispatch',
+				action_state = scheduler.action_timeline_action_state_summary(ctx.now),
+			}, ('maint_idle_gap:%s'):format(tostring(best_maint.action_name or '')), 2.00)
+		end
 	end
 	require('uc_scheduler_dryrun_publish').publish(
 		scheduler,
@@ -5639,6 +6292,7 @@ local function p1_dispatch_defensive_internal(selected, settings)
 		provider = 'defensive_internal',
 		def_action_type = tostring(type(selected.detail) == 'table' and selected.detail.def_action_type or ''),
 		target_id = tonumber(selected.target_id) or 0,
+		target_name = tostring(selected.target_name or ''),
 		target_kind = tostring(selected.target_kind or ''),
 	})
 	if action_kind == 'spell' then
@@ -5661,7 +6315,14 @@ local function p1_dispatch_defensive_internal(selected, settings)
 			target = tostring(selected.target_name or ''),
 			target_id = tonumber(selected.target_id) or 0,
 			kind = 'spell',
+			cast_type = tostring(type(detail) == 'table' and detail.def_action_type or ''),
+			action_token = tostring(tonumber((action_state() or {}).action_token) or 0),
 		}, ('spell_sent:def:%s:%d'):format(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0), 0.05)
+		scheduler.action_timeline_note_spell_sent({
+			provider = 'defensive_internal',
+			spell = tostring(selected.action_name or ''),
+			action_token = tostring(tonumber((action_state() or {}).action_token) or 0),
+		})
 	end
 	local dispatch_now = now_s()
 	local dispel_detail = selected.detail
@@ -6284,6 +6945,7 @@ elseif action_type == 'spell' then
 				action_name = spell,
 				provider = 'combat',
 				target_id = expected_tid,
+				target_name = tostring(selected.target_name or ''),
 				target_kind = tostring(target_kind or ''),
 			})
 			scheduler.action_timeline_log('SPELL_SENT', {
@@ -6292,7 +6954,16 @@ elseif action_type == 'spell' then
 				tid = expected_tid,
 				name = tostring(selected.target_name or ''),
 				kind = 'spell',
+				target = tostring(selected.target_name or ''),
+				target_id = expected_tid,
+				cast_type = tostring(action_type or ''),
+				action_token = tostring(tonumber((action_state() or {}).action_token) or 0),
 			}, ('spell_sent:%s:%d'):format(tostring(spell or ''), expected_tid), 0.05)
+			scheduler.action_timeline_note_spell_sent({
+				provider = 'combat',
+				spell = tostring(spell or ''),
+				action_token = tostring(tonumber((action_state() or {}).action_token) or 0),
+			})
 			if scheduler.is_sleep_spell_name(settings, spell) then
 				scheduler.action_timeline_log('SLEEP_DISPATCHED', {
 					spell = tostring(spell or ''),
@@ -6378,13 +7049,23 @@ elseif action_type == 'spell' then
 				action_name = spell,
 				provider = 'combat',
 				target_id = tonumber((windower.ffxi.get_player() or {}).id) or 0,
+				target_name = tostring(selected.target_name or ''),
 				target_kind = tostring(target_kind or ''),
 			})
 			scheduler.action_timeline_log('SPELL_SENT', {
 				spell = tostring(spell or ''),
 				provider = 'combat',
 				kind = 'spell',
+				target = tostring(selected.target_name or ''),
+				target_id = tonumber((windower.ffxi.get_player() or {}).id) or 0,
+				cast_type = tostring(action_type or ''),
+				action_token = tostring(tonumber((action_state() or {}).action_token) or 0),
 			}, ('spell_sent:%s:self'):format(tostring(spell or '')), 0.05)
+			scheduler.action_timeline_note_spell_sent({
+				provider = 'combat',
+				spell = tostring(spell or ''),
+				action_token = tostring(tonumber((action_state() or {}).action_token) or 0),
+			})
 			if tank_enmity then
 				scheduler.p1_begin_tank_spell_wait(phase, spell, 0, now_s())
 				tank_enmity_diag('TANK_ENMITY_SEND_SPELL', selected, 'mode=self')
@@ -6735,8 +7416,16 @@ function scheduler.on_action(act)
 	local player = windower.ffxi.get_player()
 	local my_id = tonumber(player and player.id) or 0
 	local actor_id = tonumber(act and act.actor_id) or 0
+	local category_value = tonumber(act and act.category)
 	local category = tostring(act and act.category or '')
 	local start_lock_categories = {
+		[4] = true,
+		[6] = true,
+		[13] = true,
+		[14] = true,
+		[15] = true,
+		[3] = true,
+		[11] = true,
 		spell = true,
 		job_ability = true,
 		job_ability_unblinkable = true,
@@ -6746,10 +7435,20 @@ function scheduler.on_action(act)
 		item = true,
 	}
 	if my_id ~= 0 and actor_id == my_id then
+		scheduler.spell_lifecycle_probe_emit('action_packet', act, {
+			targets_summary = scheduler.spell_lifecycle_probe_actions_summary(act),
+			actions_summary = scheduler.spell_lifecycle_probe_actions_summary(act),
+		})
 		-- HealBot-style actor-centric start lock, but scoped to real cast/action categories.
 		-- Do not treat generic/melee action traffic as lock-start signals.
-		if start_lock_categories[category] then
-			action_mark_packet_start()
+		if start_lock_categories[category_value] then
+			require('uc_scheduler_action_state').note_local_spell_packet_start(scheduler, now_s, {
+				message_id = category_value or 0,
+			})
+		elseif start_lock_categories[category] then
+			action_mark_packet_start({
+				message_id = category_value or 0,
+			})
 		end
 	end
 
@@ -6845,59 +7544,35 @@ function scheduler.on_action_message(msg)
 	local my_id = tonumber(player and player.id) or 0
 	local actor_id = tonumber(msg and msg.actor_id) or 0
 	local message_id = tonumber(msg and msg.message_id) or 0
-	-- No inference-based fallback here; enemy effect state is maintained from raw 0x028/0x029 packets.
+	local message_param = tonumber(msg and msg.param_1) or tonumber(msg and msg.param) or 0
+	local now = now_s()
+	local st = action_state() or {}
+	if message_id ~= 0 then
+		st.last_action_message_id = message_id
+	end
 	if my_id ~= 0 and actor_id == my_id and message_id ~= 0 then
+		st.last_action_message_param = message_param
+		scheduler.spell_lifecycle_probe_emit(tostring(msg and msg._uc_source or 'action_message'), msg, {})
+	elseif actor_id ~= 0 and message_id ~= 0 then
+		st.last_ignored_action_message_id = message_id
+		st.last_ignored_action_message_param = message_param
+	end
+	-- No inference-based fallback here; enemy effect state is maintained from raw 0x028/0x029 packets.
+	if my_id ~= 0 and actor_id == my_id and message_id ~= 0 and tostring(st.last_send_kind or '') ~= 'spell' then
 		-- Actor-centric lock state (HealBot-style): always honor self action-complete messages,
 		-- independent of scheduler pending bookkeeping.
-		action_mark_packet_end()
+		action_mark_packet_end({
+			message_id = message_id,
+		})
 	end
 
 	local phase = scheduler.phase1
-	local now = now_s()
 	if my_id ~= 0 and actor_id == my_id and message_id == scheduler.ENGAGE_REJECT_WAIT_LONGER_MESSAGE_ID then
 		scheduler.p1_mark_pending_engage_rejected_wait_longer(phase, now, message_id)
 	end
-	local handled_local_spell_success = false
 	if my_id ~= 0 and actor_id == my_id and message_id ~= 0 then
-		local pending_action_name = tostring(phase.tank_pending_action or scheduler.defensive_pending_action or '')
-		local last_action_name = pending_action_name
-		local expected_tid = tonumber(phase.tank_pending_target_id) or tonumber(scheduler.defensive_pending_target_id) or 0
-		local msg_tid = tonumber(msg and msg.target_id) or 0
-		if scheduler.is_spell_success_message_id(message_id) then
-			local cleared_defensive_success = scheduler.clear_local_defensive_spell_success()
-			if not cleared_defensive_success then
-				cleared_defensive_success = scheduler.clear_local_spell_success()
-			end
-			if cleared_defensive_success then
-				handled_local_spell_success = true
-				scheduler.p1_pending_mark_complete(now, ('spell_success_%d'):format(message_id))
-				local current_lock_until = tonumber(_G.UC_MOVEMENT_LOCK_UNTIL) or 0
-				_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)
-				if scheduler.defensive_spell_waiting == true then
-					scheduler.clear_defensive_spell_wait_state()
-				end
-				if tonumber(phase.tank_pending_target_id) and tonumber(phase.tank_pending_target_id) ~= 0 then
-					scheduler.p1_clear_tank_spell_wait_state(phase)
-				end
-				if msg_tid > 0 and scheduler.is_sleep_spell_name(get_settings(), last_action_name) then
-					scheduler.mark_sleep_target_suppressed(msg_tid, last_action_name, now_s())
-				end
-				scheduler.record_confirmed_bard_song_success(pending_action_name, expected_tid, msg_tid)
-			end
-		elseif scheduler.defensive_spell_waiting == true
-			and not scheduler.is_spell_initiating_message_id(message_id)
-			and not scheduler.is_spell_success_message_id(message_id) then
-			scheduler.clear_local_defensive_spell_interruption()
-			scheduler.clear_defensive_spell_wait_state()
-			local current_lock_until = tonumber(_G.UC_MOVEMENT_LOCK_UNTIL) or 0
-			_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)
-			scheduler.p1_pending_mark_complete(now, ('spell_interrupt_%d'):format(message_id))
-		elseif not scheduler.clear_local_spell_success() then
-			scheduler.clear_local_spell_interruption()
-		end
-		if tonumber(phase.tank_pending_target_id) and tonumber(phase.tank_pending_target_id) ~= 0 then
-			scheduler.p1_clear_tank_spell_wait_state(phase)
-		end
+		scheduler.handle_local_spell_action_message(phase, now, player, msg, st, message_id, message_param)
+		scheduler.handle_local_spell_effect_observation(phase, now, msg, st, message_id, message_param)
 	end
 	local pending = phase.pending
 	if type(pending) ~= 'table' then
@@ -6943,6 +7618,13 @@ end
 
 _G.UC_SCHED_OnIncomingChunk = function(id, data)
 	local ok = pcall(scheduler.on_incoming_chunk, id, data)
+	if not ok then
+		-- scheduler hooks are best-effort; never destabilize combat tick.
+	end
+end
+
+_G.UC_SCHED_OnIncomingText = function(original, modified, mode, blocked)
+	local ok = pcall(scheduler.on_incoming_text, original, modified, mode, blocked)
 	if not ok then
 		-- scheduler hooks are best-effort; never destabilize combat tick.
 	end

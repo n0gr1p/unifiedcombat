@@ -14,7 +14,7 @@ end
 
 local mod = {}
 
-local default_roll_pair = { "Ninja Roll", "Corsair's Roll" }
+local default_roll_pair = { "Corsair's Roll", "Samurai Roll" }
 
 local rolls = {
 	[98] = { id = 98, buff = 310, en = "Fighter's Roll", lucky = 5, unlucky = 9 },

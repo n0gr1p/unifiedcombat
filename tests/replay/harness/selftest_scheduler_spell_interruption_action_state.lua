@@ -40,14 +40,13 @@ local function main()
     assert_contains(action_state_source, "if last_send_kind ~= 'spell' then", "interruption clear must not clear JA/WS state")
     assert_contains(action_state_source, "if last_provider ~= 'defensive_internal' and last_provider ~= 'defensive_healbot' then", "interruption clear must stay scoped to defensive spell providers")
 
-    assert_contains(scheduler_source, "function scheduler.is_spell_success_message_id(message_id)", "scheduler must classify spell success message ids")
-    assert_contains(scheduler_source, "function scheduler.is_spell_initiating_message_id(message_id)", "scheduler must classify spell initiating message ids")
+    assert_contains(scheduler_source, "function scheduler.is_spell_cast_complete_message_id(message_id)", "scheduler must classify spell cast-complete message ids")
+    assert_contains(scheduler_source, "function scheduler.is_spell_cast_interrupted_message_id(message_id)", "scheduler must classify spell interruption message ids")
     assert_contains(scheduler_source, "scheduler.defensive_spell_waiting == true", "scheduler interruption branch must require defensive spell wait to be active")
-    assert_contains(scheduler_source, "not scheduler.is_spell_initiating_message_id(message_id)", "scheduler interruption branch must ignore initiating messages")
-    assert_contains(scheduler_source, "not scheduler.is_spell_success_message_id(message_id)", "scheduler interruption branch must ignore success messages")
+    assert_contains(scheduler_source, "scheduler.is_spell_cast_interrupted_message_id(message_id)", "scheduler interruption branch must require an explicit cast-interrupted message")
     assert_contains(scheduler_source, "scheduler.clear_defensive_spell_wait_state()", "scheduler interruption branch must clear defensive spell wait")
     assert_contains(scheduler_source, "_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)", "scheduler interruption branch must only shorten scheduler-owned movement lock")
-    assert_contains(scheduler_source, "p1_pending_mark_complete(now, ('spell_interrupt_%d'):format(message_id))", "scheduler interruption branch must complete pending state with explicit interruption code")
+    assert_contains(scheduler_source, "p1_pending_mark_complete(now, ('spell_cast_interrupted_%d'):format(message_id))", "scheduler interruption branch must complete pending state with explicit interruption code")
 
     local scheduler = {}
 
@@ -62,6 +61,7 @@ local function main()
     local cleared = action_state.clear_local_defensive_spell_interruption(scheduler, now_s)
     assert_equal(cleared, true, "local defensive spell interruption must clear defensive spell action state")
     assert_equal(action_state.action_is_acting(scheduler, now_s), false, "defensive spell interruption must end acting state immediately")
+    assert_equal(action_state.action_state(scheduler).terminal_outcome, "cast_interrupted", "interruption helper must record cast_interrupted terminal outcome")
 
     now_value = 20
     local ja_scheduler = {}

@@ -994,6 +994,14 @@ windower.register_event('incoming chunk', function(id, data)
 	end
 end)
 
+windower.register_event('incoming text', function(original, modified, mode, blocked)
+	if type(_G.UC_SCHED_OnIncomingText) == 'function' then
+		pcall(function()
+			_G.UC_SCHED_OnIncomingText(original, modified, mode, blocked)
+		end)
+	end
+end)
+
 windower.register_event('ipc message', function(msg)
 	if UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_ipc_message) == 'function' then
 		pcall(function()

@@ -128,6 +128,13 @@ end) ]]
 
 -- T2.8b movement priority arbitration test.
 _G.UC_ENABLE_COMBAT_TRANSITION_MOVEMENT_ARBITRATION = true
+
 -- T3.2b alliance target-scope field test.
+
 _G.UC_ENABLE_ALLIANCE_TARGET_SCOPE = true
---_G.UC_DEBUG_ACTION_TIMELINE = true
+
+_G.UC_DEBUG_ACTION_TIMELINE = false
+
+UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP = true
+
+_G.UC_SPELL_LIFECYCLE_PROBE = false
