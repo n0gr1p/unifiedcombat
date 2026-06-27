@@ -163,7 +163,22 @@ local function main()
     assert_contains(
         combat_spell_settle_run_stop_block,
         "ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP == true)",
-        "combat-spell-settle run_stop ownership flag must use explicit default-off true comparison"
+        "combat-spell-settle run_stop ownership flag must use explicit true comparison"
+    )
+    assert_contains(
+        combat_spell_settle_run_stop_block,
+        "promoted_default_on = true",
+        "combat-spell-settle run_stop ownership flag must be promoted default-on"
+    )
+    assert_contains(
+        combat_spell_settle_run_stop_block,
+        "ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP == false)",
+        "combat-spell-settle run_stop ownership flag must preserve explicit false opt-out"
+    )
+    assert_contains(
+        combat_spell_settle_run_stop_block,
+        "promoted_kill_switch = promoted_ownership_kill_switch_enabled()",
+        "combat-spell-settle run_stop ownership flag must use shared promoted kill switch"
     )
     assert_contains(
         combat_spell_prep_wait_run_stop_block,

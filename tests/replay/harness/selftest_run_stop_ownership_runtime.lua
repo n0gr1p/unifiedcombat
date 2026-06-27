@@ -53,6 +53,106 @@ local function test_default_off_direct_path()
     assert_equal(status.stop, true, "default-off stop status")
 end
 
+local function test_promoted_default_on_path()
+    local direct_run, direct_calls = make_run_recorder()
+    local injected_run, injected_calls = make_run_recorder()
+    local dispatch_calls = {}
+    local dispatcher = {
+        dispatch_intent = function(intent, deps)
+            dispatch_calls[#dispatch_calls + 1] = {
+                intent = intent,
+                deps = deps,
+            }
+            assert_equal(deps.execute, true, "promoted dispatch execute flag")
+            assert_true(deps.run == injected_run, "promoted dispatch run dependency mismatch")
+            deps.run(false)
+            return { ok = true, executed = true, reason = "executed" }
+        end,
+    }
+
+    local status = run_stop_ownership.apply_run_stop_ownership({
+        dispatcher = dispatcher,
+        direct_run = direct_run,
+        run = injected_run,
+        ownership_enabled = false,
+        promoted_default_on = true,
+        ownership_disabled = false,
+        promoted_kill_switch = false,
+        intent = {
+            kind = "run_stop",
+        },
+    })
+
+    assert_equal(#dispatch_calls, 1, "promoted default-on dispatcher call count")
+    assert_equal(#injected_calls, 1, "promoted default-on injected run call count")
+    assert_equal(injected_calls[1][1], false, "promoted default-on injected run argument")
+    assert_equal(#direct_calls, 0, "promoted default-on direct fallback count")
+    assert_equal(status.ownership_enabled, true, "promoted default-on ownership status")
+    assert_equal(status.dispatched, true, "promoted default-on dispatched status")
+    assert_equal(status.dispatch_ok, true, "promoted default-on dispatch_ok status")
+    assert_equal(status.dispatch_reason, "executed", "promoted default-on dispatch_reason status")
+    assert_equal(status.fallback_used, false, "promoted default-on fallback status")
+    assert_equal(status.stop, true, "promoted default-on stop status")
+end
+
+local function test_promoted_false_opt_out_and_kill_switch()
+    local direct_run, direct_calls = make_run_recorder()
+    local injected_run, injected_calls = make_run_recorder()
+    local dispatch_calls = 0
+    local dispatcher = {
+        dispatch_intent = function()
+            dispatch_calls = dispatch_calls + 1
+            return { ok = true, executed = true, reason = "executed" }
+        end,
+    }
+
+    local false_opt_out_status = run_stop_ownership.apply_run_stop_ownership({
+        dispatcher = dispatcher,
+        direct_run = direct_run,
+        run = injected_run,
+        ownership_enabled = false,
+        promoted_default_on = true,
+        ownership_disabled = true,
+        promoted_kill_switch = false,
+        intent = {
+            kind = "run_stop",
+        },
+    })
+
+    assert_equal(#direct_calls, 1, "promoted false opt-out direct run call count")
+    assert_equal(direct_calls[1][1], false, "promoted false opt-out direct run argument")
+    assert_equal(dispatch_calls, 0, "promoted false opt-out dispatcher call count")
+    assert_equal(#injected_calls, 0, "promoted false opt-out injected run call count")
+    assert_equal(false_opt_out_status.ownership_enabled, false, "promoted false opt-out ownership status")
+
+    local kill_switch_direct_run, kill_switch_direct_calls = make_run_recorder()
+    local kill_switch_injected_run, kill_switch_injected_calls = make_run_recorder()
+    local kill_switch_dispatch_calls = 0
+    local kill_switch_status = run_stop_ownership.apply_run_stop_ownership({
+        dispatcher = {
+            dispatch_intent = function()
+                kill_switch_dispatch_calls = kill_switch_dispatch_calls + 1
+                return { ok = true, executed = true, reason = "executed" }
+            end,
+        },
+        direct_run = kill_switch_direct_run,
+        run = kill_switch_injected_run,
+        ownership_enabled = false,
+        promoted_default_on = true,
+        ownership_disabled = false,
+        promoted_kill_switch = true,
+        intent = {
+            kind = "run_stop",
+        },
+    })
+
+    assert_equal(#kill_switch_direct_calls, 1, "promoted kill-switch direct run call count")
+    assert_equal(kill_switch_direct_calls[1][1], false, "promoted kill-switch direct run argument")
+    assert_equal(kill_switch_dispatch_calls, 0, "promoted kill-switch dispatcher call count")
+    assert_equal(#kill_switch_injected_calls, 0, "promoted kill-switch injected run call count")
+    assert_equal(kill_switch_status.ownership_enabled, false, "promoted kill-switch ownership status")
+end
+
 local function test_flag_on_dispatch_success()
     local direct_run, direct_calls = make_run_recorder()
     local injected_run, injected_calls = make_run_recorder()
@@ -132,6 +232,8 @@ end
 
 local function main()
     test_default_off_direct_path()
+    test_promoted_default_on_path()
+    test_promoted_false_opt_out_and_kill_switch()
     test_flag_on_dispatch_success()
     test_flag_on_dispatch_failure_fallback()
     io.stdout:write("selftest_run_stop_ownership_runtime: OK\n")

@@ -94,6 +94,7 @@ These are the strongest low-risk candidates for T3.0b promotion with a temporary
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP` | `uc_scheduler_command_ownership` | combat WS command send | Stage 3 PASS | Command runtime/static + closure + aggregate | Confirmed live | Promote default-on | Practical live pass plus later zero-HP cleanup on surrounding core behavior reduced baseline churn risk. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP` | `uc_scheduler_command_ownership` | combat JA target/self sends | Stage 3 PASS | Command runtime/static + closure + aggregate | Confirmed live | Promote default-on | Practical live target/self coverage passed and path is clearly scheduler-owned. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP` | `uc_scheduler_command_ownership` | combat spell target/self sends | Stage 3 PASS for practical live paths | Command runtime/static + closure + aggregate | Confirmed live for target/tank spell path | Promote default-on with kill switch retained | Field coverage is slightly narrower than JA/WS, but replay/static coverage plus practical live pass are strong enough for cautious promotion. |
+| `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | generic combat spell settle stop | Stage 6 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on with kill switch retained | Smallest remaining action-economy stop seam, already helper-routed and now field-safe enough for default-on promotion. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_CAST_FREEZE_PREP_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | cast-freeze prep stop | Stage 5 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on | Dispatcher ownership confirmed live with `ownership=true dispatched=true ok=true fallback=false`. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_CAST_HOLD_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | pull cast-hold stop | Stage 5 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on | Same as above; direct live dispatcher confirmation exists. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_SPELL_WAIT_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | pull spell-wait stop | Stage 5 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on | Same as above; direct live dispatcher confirmation exists. |
@@ -106,7 +107,6 @@ These should remain behind kill-switch flags for now.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP` | `uc_scheduler_command_ownership` | Doom Holy Water command send | Deferred live | Command runtime/static + closure + aggregate | Presumed reachable but not safely field-tested | Keep default-off | Emergency item path; no safe practical field scenario. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | Doom emergency stop | Stage 4 DEFERRED | Run-stop runtime/static + closure + aggregate | Presumed reachable but not safely field-tested | Keep default-off | Emergency stop path should remain conservative without live proof. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | generic combat spell settle stop | Not practically field-confirmed in Stage 6 | Run-stop runtime/static + closure + aggregate | Likely reachable | Keep default-off | No practical live confirmation called out in results; conservative hold. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | generic combat spell prep-wait stop | Not practically field-confirmed in Stage 6 | Run-stop runtime/static + closure + aggregate | Likely reachable | Keep default-off | Same rationale as spell-settle stop. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank action settle stop | Stage 6 PARTIAL PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Keep default-off for one more stage | Strongest tank stop candidate, but Stage 6 overall remained partial and tank family should be promoted together or by explicit follow-up prompt. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank JA self send-adjacent stop | Not covered in practical scenario | Run-stop runtime/static + closure + aggregate | Unconfirmed live | Keep default-off | No direct field confirmation. |
@@ -123,8 +123,8 @@ These should remain behind kill-switch flags for now.
 ## Ownership Inventory Summary
 
 - Total ownership flags audited: 21
-- Promote default-on candidates: 11
-- Keep default-off candidates: 9
+- Promote default-on candidates: 12
+- Keep default-off candidates: 8
 - Retire / unreachable candidates: 1
 
 Notes:
@@ -293,14 +293,14 @@ Readiness interpretation:
 
 ### Combat-spell run-stop branches
 
-- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`: conditional future promotion candidate, but not ready now.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`: promoted default-on with explicit false opt-out and shared kill switch rollback.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`: conditional future promotion candidate, but not ready now.
 
 Readiness interpretation:
 
-- static+mock coverage is strong enough to remove pure branch-coverage uncertainty,
-- live reachability is likely,
-- but readiness remains incomplete until targeted live confirmation captures the settle/prep-wait timing behavior in practice.
+- static+mock coverage is strong enough to remove pure branch-coverage uncertainty for both branches,
+- settle has now crossed the promotion bar and is default-on,
+- prep-wait remains incomplete until targeted live confirmation captures the timing behavior in practice.
 
 Current readiness state for the four T3.1b-covered branches:
 

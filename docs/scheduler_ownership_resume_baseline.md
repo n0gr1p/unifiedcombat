@@ -16,6 +16,7 @@ Those actions should stay behind dispatcher or wrapper seams.
 - `unified_scheduler.lua` currently has zero direct textual callsites for the four side-effect expressions above.
 - The remaining runtime actions in `unified_scheduler.lua` are routed through ownership helpers for command, run-stop, target, turn, and run-vector seams.
 - `UnifiedCombat.lua` still contains one legacy direct `windower.ffxi.run(false)` in `_G.UC_ResetMovementLocksForFollow`; that lives outside the scheduler ownership surface and is not part of this baseline.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
 
 ## Dispatcher / wrapper seams
 
@@ -37,6 +38,7 @@ Those actions should stay behind dispatcher or wrapper seams.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_CAST_FREEZE_PREP_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_CAST_HOLD_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_SPELL_WAIT_RUN_STOP_OWNERSHIP`
@@ -45,7 +47,6 @@ Those actions should stay behind dispatcher or wrapper seams.
 
 - `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`
-- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP`
@@ -76,8 +77,8 @@ Those actions should stay behind dispatcher or wrapper seams.
 | Turn ownership | Already promoted; wrapper seam only in scheduler | `dispatcher_owned` / `wrapper_owned` |
 | Promoted command ownership | Already promoted; wrapper seam only in scheduler | `dispatcher_owned` / `wrapper_owned` |
 | Promoted movement stop ownership | Already promoted; wrapper seam only in scheduler | `dispatcher_owned` / `wrapper_owned` |
+| Combat spell settle run-stop | Now promoted default-on with explicit false opt-out and shared kill switch | `dispatcher_owned` / `wrapper_owned` |
 | Doom command / run-stop paths | Still default-off and intentionally parked from live field work | `unsafe_to_move_yet` |
-| Combat spell settle run-stop | Default-off, already packetized for field work | `candidate_next_move` |
 | Combat spell prep-wait run-stop | Default-off, but stay one step behind settle | `unsafe_to_move_yet` |
 | Tank-family run-stop paths | Default-off, partial field coverage only | `unsafe_to_move_yet` |
 | Vector run | Default-off and dormant | `unsafe_to_move_yet` |
@@ -91,12 +92,13 @@ Those actions should stay behind dispatcher or wrapper seams.
 
 ## Recommended next seam
 
-- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
-- Why: it is the smallest remaining action-economy stop path with existing helper routing, current default-off coverage, and practical field-test reachability.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`
+- Why: it is the closest remaining combat-spell stop seam, stays default-off for now, and can follow settle without widening the ownership surface.
 
 ## What must not change next
 
 - Do not reintroduce direct side-effect callsites into `unified_scheduler.lua`.
 - Do not change spell lifecycle behavior in this ownership task.
+- Do not promote prep-wait, Doom, tank-family, or vector-run seams in the same task.
 - Do not group in Doom, tank-family, or vector-run migrations.
 - Do not touch engage/action-economy ranking rules beyond the specific ownership seam.

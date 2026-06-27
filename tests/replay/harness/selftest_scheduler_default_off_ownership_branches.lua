@@ -176,19 +176,6 @@ local function main()
     )
 
     assert_default_off_gate(
-        combat_spell_settle_run_stop_block,
-        "UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP",
-        "require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({",
-        "run = windower.ffxi.run",
-        "run_stop_ownership_status"
-    )
-    assert_contains(
-        combat_spell_settle_run_stop_block,
-        "stop = run_stop_ownership_status.stop",
-        "combat spell settle branch must preserve stop status field"
-    )
-
-    assert_default_off_gate(
         combat_spell_prep_wait_run_stop_block,
         "UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP",
         "require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({",

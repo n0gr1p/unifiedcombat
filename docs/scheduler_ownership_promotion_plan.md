@@ -50,7 +50,7 @@
 | `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_CAST_FREEZE_PREP_RUN_STOP_OWNERSHIP` | Run-stop ownership | Movement coordinator cast-freeze prep stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise cast-freeze prep and confirm movement freeze happens once. | Unset/remove the flag or set it to `false`/`nil`. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_CAST_HOLD_RUN_STOP_OWNERSHIP` | Run-stop ownership | Movement coordinator pull-cast-hold stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise pull cast-hold flow and confirm movement stop/hold parity. | Unset/remove the flag or set it to `false`/`nil`. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_SPELL_WAIT_RUN_STOP_OWNERSHIP` | Run-stop ownership | Movement coordinator pull-spell-wait stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise pull spell wait and confirm movement stop occurs once. | Unset/remove the flag or set it to `false`/`nil`. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | Run-stop ownership | Generic combat spell-settle stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise spell-settle blocking and confirm stop/return timing parity. | Unset/remove the flag or set it to `false`/`nil`. |
+| `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | Run-stop ownership | Generic combat spell-settle stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise spell-settle blocking and confirm stop/return timing parity. | Unset/remove the flag or set it to `false`/`nil`. Shared promoted kill switch still disables the path, and explicit `false` remains the local rollback. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | Run-stop ownership | Generic combat spell prep-wait stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise spell prep-wait blocking and confirm one stop plus unchanged prep timing. | Unset/remove the flag or set it to `false`/`nil`. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank action settle stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank action settle and confirm one stop before JA/spell dispatch. | Unset/remove the flag or set it to `false`/`nil`. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank-enmity JA self send-adjacent stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank-enmity JA self send and confirm one adjacent stop before send. | Unset/remove the flag or set it to `false`/`nil`. |
@@ -309,7 +309,7 @@ Post-T3.1b policy remains:
 
 Decision:
 
-- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` is not promoted yet.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit false opt-out and shared kill-switch rollback.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` is not promoted yet.
 
 Reason:
