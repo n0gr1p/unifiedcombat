@@ -6,10 +6,29 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 ## 1) Overall Status Snapshot
 
 - Current phase focus: scheduler runtime parity slices that stay inside existing ownership policy, plus replay/static coverage for those slices.
-- Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6c`.
+- Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6e`.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.6e` Refresh stale replay fixture expectations only
+
+- Status: `DONE`
+- Changed files:
+  - `tests/replay/harness/selftest_engage_dispatch_priority.lua`
+  - `tests/replay/harness/selftest_sleep_target_state_suppression.lua`
+  - `tests/replay/fixtures/action_state/action_state_fixtures.lua`
+  - `docs/aggregate_replay_failure_baseline.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Refreshed the stale spell-release, Sleep suppression, and action-state fixture expectations without touching runtime code.
+  - Reconfirmed the three stale suites now pass individually.
+  - Aggregate replay still fails only on `selftest_action_economy_timeline_logging`, which now looks like harness isolation/order leakage rather than a runtime regression.
+- Validation:
+  - Required parser and ownership validations passed.
+  - The aggregate replay suite still fails, as expected from the remaining harness issue.
+- Next step:
+  - Inspect aggregate-suite isolation/order leakage before the next ownership promotion.
 
 ### `T3.6d` Classify aggregate replay fixture failures
 
