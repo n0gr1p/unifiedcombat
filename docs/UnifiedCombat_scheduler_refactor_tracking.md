@@ -11,6 +11,20 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 
 ## Latest Task Notes
 
+### `T3.6d` Classify aggregate replay fixture failures
+
+- Status: `DONE`
+- Changed files:
+  - `docs/aggregate_replay_failure_baseline.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Classified the current aggregate replay failures as mostly stale expectations and aggregate harness contamination rather than a T3.6b/T3.6c regression.
+  - Confirmed the combat spell settle/prep-wait promotions do not appear implicated.
+- Validation:
+  - Aggregate replay still fails on the six named suites, but the required ownership/parser validation set remains green.
+- Next step:
+  - Refresh the stale fixture pins first, then inspect aggregate-suite isolation before the next ownership promotion.
+
 ### `T3.6c` Promote combat spell prep-wait run-stop ownership default-on
 
 - Status: `DONE`
