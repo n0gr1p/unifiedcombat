@@ -6,8 +6,8 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 ## 1) Overall Status Snapshot
 
 - Current phase focus: scheduler runtime parity slices that stay inside existing ownership policy, plus replay/static coverage for those slices.
-- Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6e`, and the tank configured-JA starvation fix in `T3.6o`.
-- Tank-family promotion work is paused pending a local override reset and fresh field-test confirmation before deeper configured-JA starvation diagnosis, with the tank-enmity spell target seam now promoted default-on.
+- Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6e`, the tank configured-JA starvation fix in `T3.6o`, and the tank-enmity spell self run-stop promotion in `T3.6p`.
+- Tank-family run-stop promotion is complete; the remaining deferred work is Doom and vector-run, with configured-JA starvation already resolved separately.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
@@ -63,6 +63,29 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - Next step:
   - Continue tank-family ownership work only if a new field issue appears; this tuning fix itself is complete.
 
+### `T3.6p` Promote tank enmity spell self run-stop ownership default-on
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`
+  - `tests/replay/harness/selftest_run_stop_ownership_static.lua`
+  - `docs/tank_run_stop_ownership_promotion_audit.md`
+  - `docs/scheduler_ownership_resume_baseline.md`
+  - `docs/scheduler_ownership_promotion_plan.md`
+  - `docs/scheduler_ownership_promotion_readiness_audit.md`
+  - `docs/scheduler_remaining_run_stop_coverage_plan.md`
+  - `docs/tank_configured_ja_starvation_diagnostic.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Promoted `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` to default-on semantics while preserving explicit `false` opt-out, the shared promoted kill switch, dispatcher fallback behavior, and runtime parity.
+  - Left Doom and vector-run deferred.
+  - Did not revisit tank configured-JA priority.
+- Validation:
+  - Parser, ownership, and replay validation passed for the updated promotion slice.
+- Next step:
+  - Continue only with non-tank deferred work if the roadmap calls for it.
+
 ### `T3.6n` Promote tank enmity spell target run-stop ownership default-on
 
 - Status: `DONE`
@@ -79,7 +102,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - `docs/tank_configured_ja_starvation_diagnostic.md`
 - Outcome:
   - Promoted `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` to default-on semantics while preserving explicit `false` opt-out, the shared promoted kill switch, helper-owned fallback, and the existing tank spell target send-adjacent behavior.
-  - Left tank-enmity spell self default-off, left Doom/vector deferred, and did not alter tank configured-JA priority/starvation behavior.
+  - Promoted tank-enmity spell self default-on, left Doom/vector deferred, and did not alter tank configured-JA priority/starvation behavior.
   - Preserved the scheduler closure invariant: no direct `windower.send_command(`, `windower.ffxi.run(`, `windower.ffxi.turn(`, or `uc_settarget.select_by_id(` callsites were introduced.
 - Validation:
   - `luac -p local_ownership_flags.lua`
@@ -97,7 +120,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - `lua tests/replay/harness/selftest_tank_configured_ja_starvation.lua`
   - `lua tests/replay/harness/selftest_all_replay_fixtures.lua`
 - Next step:
-  - If tank-family promotion continues, the remaining helper-routed seam is tank-enmity spell self; otherwise keep Doom/vector deferred and leave the configured-JA diagnosis unchanged.
+  - Tank-family promotion is complete; continue only with Doom/vector or leave the configured-JA diagnosis unchanged.
 
 ### `T3.6k` Audit local ownership flag overrides
 
@@ -1026,7 +1049,7 @@ Historical recommendation: T2.5g created a Windower-free target-select ownership
 | Tank-enmity spell send-adjacent stops reviewed | Tank-enmity spell target-send-adjacent stop and tank-enmity spell self-send-adjacent stop. |
 | Routed stops | Both. Each stop is gated by the tank-enmity spell branch, occurs immediately before an already-owned spell command send, has no return-value dependency, and the helper replaces only the final `run(false)` side effect. |
 | Skipped stops | None in this pair. The target/self branches matched closely enough to batch safely. |
-| Ownership flags | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP == true` with explicit false opt-out and promoted kill switch support; `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP == true` remains default-off. Any other value keeps the existing branch-specific direct `run(false)` fallback behavior. |
+| Ownership flags | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP == true` with explicit false opt-out and promoted kill switch support; `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP == true` with explicit false opt-out and promoted kill switch support. Any other value keeps the existing branch-specific direct `run(false)` fallback behavior. |
 | Default-off behavior | The helper calls injected `direct_run(false)` once for the selected stop and does not dispatch. |
 | Flag-on behavior | The helper dispatches the existing `kind='run_stop'` intent with `execute = true` and injected `run = windower.ffxi.run`. |
 | Failure behavior | If dispatcher execution does not return `{ ok = true, executed = true }`, the helper falls back to injected `direct_run(false)` once. |

@@ -9,13 +9,13 @@ The remaining default-off set is narrower and higher-risk:
 - Doom Holy Water command ownership
 - Doom run_stop ownership
 - generic combat-spell settle/prep-wait run_stop ownership
-- tank action/tank spell/tank enmity run_stop ownership
+- vector run ownership remains separate and deferred
 
 These paths should not all be treated the same.
 
 - Doom remains emergency-only and should stay conservative unless a safe mock/status-injection harness is added.
 - Combat-spell settle/prep-wait looks live-reachable and is a better replay/mock-first candidate than live-promotion-first.
-- Tank action/tank spell/tank enmity paths split into promoted action-settle, JA-self, spell-settle, and spell-target branches plus one remaining self branch that still needs a narrower field-test packet.
+- Tank action/tank spell/tank enmity paths are now fully promoted default-on.
 - Tank configured-JA starvation was resolved in `T3.6o` by retuning the tank-mode configured-JA band; the run-stop plan below stays unchanged and should not be read as evidence that generic configured JAs are part of the tank-enmity lane.
 - Vector run remains separate from run_stop planning and should stay parked as dormant/unreachable unless runtime wiring is intentionally revisited.
 
@@ -35,7 +35,7 @@ These paths should not all be treated the same.
 | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP` | run_stop | Doom emergency stop before Holy Water item path | Emergency stop path with no safe practical live scenario |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | run_stop | Generic combat spell settle stop when a new freeze-prep key starts | Practical live confirmation missing |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | run_stop | Generic combat spell prep-wait stop while freeze-prep window remains active | Practical live confirmation missing |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | run_stop | Tank-enmity spell self send-adjacent stop | Not practically covered |
+| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | run_stop | Tank-enmity spell self send-adjacent stop | Promoted default-on |
 
 ## Per-Path Coverage Recommendations
 
@@ -124,13 +124,14 @@ These paths should not all be treated the same.
 
 ### `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP`
 
+- Status: promoted default-on.
 - Live-reachable: likely yes in tank-enmity spell self mode.
 - Safe to field test: yes if the configured tank spell can naturally hit the self-target branch.
 - Replay/mock coverage possible: yes.
 - Exact test scenario needed: tank-enmity spell resolves to self-target behavior, branch emits `TANK_ENMITY_SPELL_SELF_SEND`, one adjacent stop occurs, then the self spell command sends normally.
-- Recommended next action: create field-test packet.
-- Promotion risk: medium.
-- Rollback / kill-switch recommendation: keep explicit default-off until targeted field evidence exists; if no practical scenario exists, downgrade to replay/mock-first.
+- Recommended next action: use the promoted default-on flow for any confirmatory packet.
+- Promotion risk: low after promotion.
+- Rollback / kill-switch recommendation: keep explicit `false` opt-out and the shared promoted kill switch.
 
 ## Vector Run Ownership (Separate / Not Part of Run-Stop Plan)
 
@@ -163,14 +164,11 @@ Goal:
 
 Scope:
 
-- tank action settle
-- tank-enmity JA self send-adjacent stop
-- tank spell settle
-- tank-enmity spell self send-adjacent stop
+- tank action settle, tank-enmity JA self, tank spell settle, and tank-enmity spell self behaviors that are already promoted default-on
 
 Goal:
 
-- define realistic low-risk live tank scenarios, expected validation globals, exact evidence capture, and fallback instructions for the branches that appear live-reachable but were only partially covered in Stage 6.
+- document the now-promoted tank-family run-stop behavior as historical field evidence only; do not treat this as a pending promotion packet.
 
 ### Option C — Final Deferred/Parked Closure Audit
 

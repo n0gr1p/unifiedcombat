@@ -56,9 +56,9 @@
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank-enmity JA self send-adjacent stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank-enmity JA self send and confirm one adjacent stop before send. | Unset/remove the flag or set it to `false`/`nil`. Promoted default-on with explicit false opt-out and shared kill switch rollback. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank spell settle stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank spell settle and confirm stop/wait parity. | Unset/remove the flag or set it to `false`/`nil`. Promoted default-on with explicit false opt-out and shared kill switch rollback. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank-enmity spell target send-adjacent stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank-enmity spell target send and confirm one adjacent stop before send. | Unset/remove the flag or set it to `false`/`nil`. Promoted default-on with explicit false opt-out and shared kill switch rollback. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank-enmity spell self send-adjacent stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank-enmity spell self send and confirm one adjacent stop before send. | Unset/remove the flag or set it to `false`/`nil`. |
+| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank-enmity spell self send-adjacent stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank-enmity spell self send and confirm one adjacent stop before send. | Unset/remove the flag or set it to `false`/`nil`. Promoted default-on with explicit false opt-out and shared kill switch rollback. |
 
-- Next audit candidate: `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` because tank action-settle, tank-enmity JA self, tank spell-settle, and tank-enmity spell target have already been promoted, leaving the tank-enmity spell self branch as the next smallest helper-routed seam.
+- Next audit candidate: Doom or vector; the tank-family run-stop seams are now fully promoted default-on.
 
 ### Vector Run Ownership
 
@@ -250,13 +250,13 @@ These promoted paths are now accepted as the near-term default-on scheduler owne
 
 - Status: both promoted default-on.
 - Policy: keep explicit false opt-outs and the shared promoted kill switch available for rollback.
-- Rationale: settle and prep-wait are now helper-routed with the same promoted ownership shape, while Doom, tank-family, and vector-run remain deferred.
+- Rationale: settle and prep-wait are now helper-routed with the same promoted ownership shape, while Doom and vector-run remain deferred.
 
 ### Tank action/tank spell/tank enmity run_stop ownership
 
-- Status: mixed; target is promoted default-on and self remains default-off.
-- Policy: keep the remaining self branch on a targeted field-test packet.
-- Rationale: Stage 6 remained partial for the self branch, while `TANK_ACTION_SETTLE`, `TANK_ENMITY_JA_SELF`, `TANK_SPELL_SETTLE`, and the tank-enmity spell target branch are now promoted default-on.
+- Status: all promoted default-on.
+- Policy: tank-family run-stop promotion is complete; keep any future promotion work outside tank scope.
+- Rationale: Stage 6 confirmed the full tank-family run-stop set, including tank-enmity spell self.
 
 ### Vector run ownership
 
@@ -278,7 +278,7 @@ The remaining default-off branches are now governed by `docs/scheduler_remaining
 Near-term policy from that plan:
 
 - Doom Holy Water command and Doom run_stop move to replay/mock-first coverage rather than live-testing-first.
-- Combat spell settle/prep-wait run_stop are already promoted default-on; the remaining deferred paths are Doom, tank-family, and vector-run.
+- Combat spell settle/prep-wait run_stop are already promoted default-on; the remaining deferred paths are Doom and vector-run.
 - Tank action/tank spell/tank enmity run_stop paths move to a narrower targeted field-test packet, with replay/mock fallback if realistic live scenarios are unavailable.
 - Vector run stays parked as dormant/unreachable and is not part of run_stop promotion planning.
 
@@ -322,7 +322,7 @@ Current policy:
 
 - Doom Holy Water command ownership remains default-off
 - Doom run_stop ownership remains default-off
-- combat-spell settle/prep-wait run_stop ownership are both promoted default-on; the remaining deferred work is Doom, tank-family, and vector-run
+- combat-spell settle/prep-wait run_stop ownership are both promoted default-on; the remaining deferred work is Doom and vector-run
 
 ## T3.1d Packet Status
 
