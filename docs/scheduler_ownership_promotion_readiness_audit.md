@@ -99,7 +99,7 @@ These are the strongest low-risk candidates for T3.0b promotion with a temporary
 | `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_CAST_HOLD_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | pull cast-hold stop | Stage 5 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on | Same as above; direct live dispatcher confirmation exists. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_SPELL_WAIT_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | pull spell-wait stop | Stage 5 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on | Same as above; direct live dispatcher confirmation exists. |
 
-### Keep Default-Off Candidates
+### Remaining Default-Off Candidates
 
 These should remain behind kill-switch flags for now.
 
@@ -107,12 +107,8 @@ These should remain behind kill-switch flags for now.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP` | `uc_scheduler_command_ownership` | Doom Holy Water command send | Deferred live | Command runtime/static + closure + aggregate | Presumed reachable but not safely field-tested | Keep default-off | Emergency item path; no safe practical field scenario. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | Doom emergency stop | Stage 4 DEFERRED | Run-stop runtime/static + closure + aggregate | Presumed reachable but not safely field-tested | Keep default-off | Emergency stop path should remain conservative without live proof. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | generic combat spell prep-wait stop | Stage 6 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on with kill switch retained | Same helper-routed shape as settle, now field-safe enough for default-on promotion. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank action settle stop | Stage 6 PARTIAL PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on | Smallest tank-family seam with field-safe coverage and no dependency on the bounded tank spell-wait lock. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank JA self send-adjacent stop | Stage 6 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on with kill switch retained | Field confirmation now exists and the seam is smaller than the remaining tank spell-stop branches. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank spell settle stop | Stage 6 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on with kill switch retained | Field confirmation now exists and the seam remains bounded by the tank spell wait lifecycle and movement-lock refresh behavior. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank spell target send-adjacent stop | Stage 6 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on with kill switch retained | Explicitly confirmed in the target-send-adjacent field packet. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank spell self send-adjacent stop | Stage 6 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on with kill switch retained | The final tank-family run-stop seam is now promoted default-on with explicit false opt-out and shared kill switch support. |
+
+All tank-family run-stop seams are now promoted default-on and are summarized in `docs/tank_run_stop_ownership_promotion_audit.md` and `docs/tank_run_stop_ownership_phase_closure.md`.
 
 ### Retire / Unreachable Candidates
 
@@ -123,14 +119,14 @@ These should remain behind kill-switch flags for now.
 ## Ownership Inventory Summary
 
 - Total ownership flags audited: 21
-- Promote default-on candidates: 14
-- Keep default-off candidates: 6
+- Promote default-on candidates: 18
+- Keep default-off candidates: 2
 - Retire / unreachable candidates: 1
 
 Notes:
 
 - The single unreachable candidate is the vector run flag.
-- The conservative hold set is dominated by emergency Doom and the remaining unconfirmed tank/combat-spell run-stop paths.
+- The conservative hold set is now only the emergency Doom paths.
 - No broad movement ownership promotion is recommended.
 
 ## Temporary Kill Switch Recommendation

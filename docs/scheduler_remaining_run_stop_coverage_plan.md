@@ -4,17 +4,15 @@
 
 T3.0b promoted 11 low-risk scheduler ownership paths to default-on.
 
-The remaining default-off set is narrower and higher-risk:
+The remaining default-off set is now narrow:
 
 - Doom Holy Water command ownership
 - Doom run_stop ownership
-- generic combat-spell settle/prep-wait run_stop ownership
 - vector run ownership remains separate and deferred
 
 These paths should not all be treated the same.
 
 - Doom remains emergency-only and should stay conservative unless a safe mock/status-injection harness is added.
-- Combat-spell settle/prep-wait looks live-reachable and is a better replay/mock-first candidate than live-promotion-first.
 - Tank action/tank spell/tank enmity paths are now fully promoted default-on.
 - Tank configured-JA starvation was resolved in `T3.6o` by retuning the tank-mode configured-JA band; the run-stop plan below stays unchanged and should not be read as evidence that generic configured JAs are part of the tank-enmity lane.
 - Vector run remains separate from run_stop planning and should stay parked as dormant/unreachable unless runtime wiring is intentionally revisited.
@@ -22,7 +20,7 @@ These paths should not all be treated the same.
 ## Current Ownership Status
 
 - 11 scheduler ownership paths are accepted as default-on after T3.0b field testing.
-- Remaining default-off paths still require explicit `== true` enablement.
+- Remaining default-off paths still require explicit `== true` enablement for Doom only.
 - Static closure, promotion, parse, side-effect, and aggregate replay validation are already in place.
 - Existing helper/runtime coverage proves helper-level dispatcher execution and fallback behavior, but not every remaining branch-specific live scheduler scenario.
 - The tank configured-JA question was handled as a separate tuning fix and remains orthogonal to this run-stop inventory.

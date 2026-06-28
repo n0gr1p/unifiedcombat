@@ -30,7 +30,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 
 ### `T3.6m` Diagnose tank configured job ability starvation
 
-- Status: `IN PROGRESS`
+- Status: `DONE`
 - Planned / changed files:
   - `docs/tank_configured_ja_starvation_diagnostic.md`
   - `docs/tank_run_stop_ownership_promotion_audit.md`
@@ -40,9 +40,9 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - Working diagnosis:
   - The scheduler still has two distinct JA lanes: generic configured JAs gated by `ability_active`, and tank-enmity JAs/spells gated by `tank` + `autotarget` through `tank_enmity_actions`.
   - The tank-enmity lane is evaluated before the generic configured-JA lane and carries the higher band, so a clean baseline can make normal configured JAs look starved even when the tank lane is healthy.
-  - No runtime behavior change is intended for this task.
+  - No runtime behavior change was intended, and the diagnosis was resolved by the `T3.6o` priority-band fix.
 - Next step:
-  - Finish the diagnostic doc/test pass, then decide whether the next task should clarify tank JA expectations or stay on the run-stop ownership track.
+  - No further tank configured-JA work is expected unless a new regression appears.
 
 ### `T3.6o` Fix tank configured job ability starvation
 
@@ -85,6 +85,28 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - Parser, ownership, and replay validation passed for the updated promotion slice.
 - Next step:
   - Continue only with non-tank deferred work if the roadmap calls for it.
+
+### `T3.6q` Close tank run-stop ownership phase and audit remaining ownership surface
+
+- Status: `DONE`
+- Changed files:
+  - `docs/tank_run_stop_ownership_phase_closure.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+  - `docs/tank_run_stop_ownership_promotion_audit.md`
+  - `docs/scheduler_ownership_resume_baseline.md`
+  - `docs/scheduler_ownership_promotion_plan.md`
+  - `docs/scheduler_ownership_promotion_readiness_audit.md`
+  - `docs/scheduler_remaining_run_stop_coverage_plan.md`
+  - `docs/local_ownership_flags_audit.md`
+  - `docs/tank_configured_ja_starvation_diagnostic.md`
+- Outcome:
+  - Captured the completed tank-family run-stop promotion phase in a dedicated closure document.
+  - Confirmed the remaining default-off surface is Doom plus vector/dormant paths, with no tank-family run-stop seam left to promote.
+  - Left runtime behavior unchanged.
+- Validation:
+  - Parser, ownership, and replay validation passed for the closure audit baseline.
+- Next step:
+  - Audit Doom/vector separately only if a future task explicitly asks for it.
 
 ### `T3.6n` Promote tank enmity spell target run-stop ownership default-on
 
