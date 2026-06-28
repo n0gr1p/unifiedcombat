@@ -4794,6 +4794,7 @@ local function p1_collect_combat_ja(ctx, out)
 	if not player or tonumber(player.status) ~= 1 then
 		return
 	end
+	local tank_mode = bool_setting(ctx.settings and ctx.settings.tank, false)
 	local ordered = ability_pipeline.collect_ordered(ctx.settings, 6)
 	if #ordered == 0 then
 		return
@@ -4833,6 +4834,7 @@ local function p1_collect_combat_ja(ctx, out)
 					end
 				end
 				if ja_target_ok then
+					local priority_band = tank_mode and 99 or 70
 					out[#out + 1] = {
 						proposal_id = ('combat.ja.%s.%d.%d'):format(tostring(name), target_id, math.floor(ctx.now * 1000)),
 						family_id = 'combat.ja.primary',
@@ -4842,7 +4844,7 @@ local function p1_collect_combat_ja(ctx, out)
 						target_kind = target_kind,
 						target_id = target_id,
 						target_name = target_name,
-						priority_band = 70,
+						priority_band = priority_band,
 						urgency = 0.35,
 						starvation_eligible = true,
 						created_at = ctx.now,

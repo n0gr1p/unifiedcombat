@@ -6,7 +6,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 ## 1) Overall Status Snapshot
 
 - Current phase focus: scheduler runtime parity slices that stay inside existing ownership policy, plus replay/static coverage for those slices.
-- Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6e`.
+- Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6e`, and the tank configured-JA starvation fix in `T3.6o`.
 - Tank-family promotion work is paused pending a local override reset and fresh field-test confirmation before deeper configured-JA starvation diagnosis, with the tank-enmity spell target seam now promoted default-on.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
@@ -43,6 +43,25 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - No runtime behavior change is intended for this task.
 - Next step:
   - Finish the diagnostic doc/test pass, then decide whether the next task should clarify tank JA expectations or stay on the run-stop ownership track.
+
+### `T3.6o` Fix tank configured job ability starvation
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_tank_configured_ja_starvation.lua`
+  - `docs/tank_configured_ja_starvation_diagnostic.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+  - `docs/tank_run_stop_ownership_promotion_audit.md`
+  - `docs/scheduler_remaining_run_stop_coverage_plan.md`
+- Outcome:
+  - Raised the tank-mode configured-JA band from the generic `70` baseline to `99` while keeping the non-tank baseline unchanged.
+  - Preserved the separate tank-enmity lane, the `ability_active` gate, and the existing ownership policy.
+  - Addressed the observed starvation window without broad scheduler refactoring.
+- Validation:
+  - Parser, ownership, and replay validation passed for the updated regression slice.
+- Next step:
+  - Continue tank-family ownership work only if a new field issue appears; this tuning fix itself is complete.
 
 ### `T3.6n` Promote tank enmity spell target run-stop ownership default-on
 

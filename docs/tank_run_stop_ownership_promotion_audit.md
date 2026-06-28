@@ -45,6 +45,7 @@
 - `TANK_SPELL_SETTLE` is coupled to the scheduler-local tank spell wait lifecycle and movement-lock refresh behavior, and it is now promoted default-on with explicit `false` opt-out and shared kill switch support.
 - `TANK_ENMITY_SPELL_TARGET` is now promoted default-on with explicit `false` opt-out and shared kill switch support.
 - `TANK_ENMITY_SPELL_SELF` remains the more coupled send-adjacent branch and stays default-off until a practical field packet exists.
+- `T3.6o` resolved the separate tank configured-JA starvation issue by retuning the configured-JA band; that was a behavior fix, not an ownership promotion.
 
 ## Field-test notes
 
@@ -55,6 +56,7 @@
 - Verify the validate global reports `ownership_enabled=true`, `dispatched=true`, `ok=true`, and `fallback_used=false`.
 - Verify rollback by setting the flag back to `false`/`nil`.
 - Pause any further tank-family promotion until the configured-JA diagnosis confirms whether normal configured JAs are intended to run for tank mode alongside the tank-enmity list.
+- Do not treat the configured-JA starvation fix as a signal to alter the run-stop ownership matrix.
 
 ## Rollback / opt-out
 

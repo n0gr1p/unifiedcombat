@@ -16,7 +16,7 @@ These paths should not all be treated the same.
 - Doom remains emergency-only and should stay conservative unless a safe mock/status-injection harness is added.
 - Combat-spell settle/prep-wait looks live-reachable and is a better replay/mock-first candidate than live-promotion-first.
 - Tank action/tank spell/tank enmity paths split into promoted action-settle, JA-self, spell-settle, and spell-target branches plus one remaining self branch that still needs a narrower field-test packet.
-- Tank configured-JA starvation is a separate diagnosis: the run-stop plan below stays unchanged and should not be read as evidence that generic configured JAs are part of the tank-enmity lane.
+- Tank configured-JA starvation was resolved in `T3.6o` by retuning the tank-mode configured-JA band; the run-stop plan below stays unchanged and should not be read as evidence that generic configured JAs are part of the tank-enmity lane.
 - Vector run remains separate from run_stop planning and should stay parked as dormant/unreachable unless runtime wiring is intentionally revisited.
 
 ## Current Ownership Status
@@ -25,7 +25,7 @@ These paths should not all be treated the same.
 - Remaining default-off paths still require explicit `== true` enablement.
 - Static closure, promotion, parse, side-effect, and aggregate replay validation are already in place.
 - Existing helper/runtime coverage proves helper-level dispatcher execution and fallback behavior, but not every remaining branch-specific live scheduler scenario.
-- The tank configured-JA question is orthogonal to this run-stop inventory and remains unresolved pending the new diagnostic pass.
+- The tank configured-JA question was handled as a separate tuning fix and remains orthogonal to this run-stop inventory.
 
 ## Remaining Default-Off Inventory
 
