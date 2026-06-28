@@ -17,6 +17,8 @@ Those actions should stay behind dispatcher or wrapper seams.
 - The remaining runtime actions in `unified_scheduler.lua` are routed through ownership helpers for command, run-stop, target, turn, and run-vector seams.
 - `UnifiedCombat.lua` still contains one legacy direct `windower.ffxi.run(false)` in `_G.UC_ResetMovementLocksForFollow`; that lives outside the scheduler ownership surface and is not part of this baseline.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
 
 ## Dispatcher / wrapper seams
 
@@ -43,12 +45,12 @@ Those actions should stay behind dispatcher or wrapper seams.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_CAST_FREEZE_PREP_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_CAST_HOLD_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_SPELL_WAIT_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP`
 
 ### Default-off flags
 
 - `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`
-- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP`
@@ -92,9 +94,9 @@ Those actions should stay behind dispatcher or wrapper seams.
 
 ## Recommended next seam
 
-- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP`
-- Why: it is the smallest remaining tank-family stop seam with partial live coverage, no dependency on the bounded tank spell-wait lock, and a clean helper-routed fallback path.
-- Status: `candidate_next` for the next tank-family promotion task.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP`
+- Why: it is now the smallest remaining tank-family stop seam with helper routing, while the action-settle seam has already been promoted default-on.
+- Status: `candidate_next` if the next tank-family promotion task chooses to continue the sequence.
 
 ## What must not change next
 

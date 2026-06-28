@@ -6466,6 +6466,9 @@ local function p1_try_dark_launch_combat_dispatch(selected, settings, phase)
 			direct_run = windower.ffxi.run,
 			run = windower.ffxi.run,
 			ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP == true),
+			promoted_default_on = true,
+			ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP == false),
+			promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
 			intent = intent,
 		})
 		_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ACTION_SETTLE_VALIDATE = {

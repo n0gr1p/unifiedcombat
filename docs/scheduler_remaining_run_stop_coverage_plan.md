@@ -33,7 +33,6 @@ These paths should not all be treated the same.
 | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP` | run_stop | Doom emergency stop before Holy Water item path | Emergency stop path with no safe practical live scenario |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | run_stop | Generic combat spell settle stop when a new freeze-prep key starts | Practical live confirmation missing |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | run_stop | Generic combat spell prep-wait stop while freeze-prep window remains active | Practical live confirmation missing |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` | run_stop | Tank action settle stop before tank JA/spell dispatch | Live-confirmed once, but family promotion remained partial |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | run_stop | Tank-enmity JA self send-adjacent stop | Not practically covered |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | run_stop | Tank spell settle stop before tank spell dispatch | Not practically covered |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | run_stop | Tank-enmity spell target send-adjacent stop | Not practically covered |
@@ -93,13 +92,14 @@ These paths should not all be treated the same.
 
 ### `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP`
 
+- Status: promoted default-on.
 - Live-reachable: yes.
 - Safe to field test: yes.
-- Replay/mock coverage possible: yes, but field evidence already exists.
+- Replay/mock coverage possible: yes, and field evidence already exists.
 - Exact test scenario needed: tank-enmity JA or spell branch initializes `tank_action_settle_key`, produces `TANK_ACTION_SETTLE`, and shows one stop before the settle window clears; Stage 6 Provoke already demonstrated this path.
-- Recommended next action: create field-test packet.
-- Promotion risk: medium.
-- Rollback / kill-switch recommendation: keep explicit default-off until a tank-family packet defines whether this branch may be promoted independently or only with the rest of the tank family.
+- Recommended next action: no longer a default-off candidate; use the promoted default-on flow for any confirmatory packet.
+- Promotion risk: low after promotion.
+- Rollback / kill-switch recommendation: use explicit `false` opt-out or the shared promoted kill switch.
 
 ### `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP`
 

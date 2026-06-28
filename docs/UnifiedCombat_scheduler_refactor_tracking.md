@@ -11,6 +11,28 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 
 ## Latest Task Notes
 
+### `T3.6h` Promote tank action-settle run-stop ownership default-on
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`
+  - `tests/replay/harness/selftest_run_stop_ownership_static.lua`
+  - `docs/tank_run_stop_ownership_promotion_audit.md`
+  - `docs/scheduler_ownership_resume_baseline.md`
+  - `docs/scheduler_ownership_promotion_plan.md`
+  - `docs/scheduler_ownership_promotion_readiness_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Promoted `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` to default-on semantics while preserving explicit `false` opt-out and the shared promoted kill switch.
+  - Left the other tank-family run-stop seams default-off, with Doom and vector run still outside the promotion path.
+  - Preserved helper-routed fallback behavior and did not add any direct scheduler side-effect callsites.
+- Validation:
+  - Ownership static/runtime coverage now treats the tank action-settle seam as promoted and still confirms the remaining tank-family branches stay explicit `== true` default-off checks.
+  - Full aggregate replay remains green.
+- Next step:
+  - If tank-family promotion continues, the next audit candidate is the tank-enmity JA self-send-adjacent seam.
+
 ### `T3.6g` Select safest tank-family run-stop ownership promotion candidate
 
 - Status: `DONE`
@@ -874,8 +896,8 @@ Historical recommendation: T2.5g created a Windower-free target-select ownership
 | Tank stops reviewed | Tank-enmity action settle stop, tank-enmity spell settle stop, and tank-enmity JA self-send-adjacent stop. |
 | Routed stops | All three. Each branch already had explicit settle or self-send-adjacent stop semantics, no return-value dependency, and all gating/state updates occur before the final stop side effect. |
 | Skipped stops | The vector run path was intentionally not touched; it remains the only direct scheduler `windower.ffxi.run(` callsite because heading-based live semantics still need explicit parity proof before ownership routing. |
-| Ownership flags | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP == true`; `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP == true`; `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP == true`. Any other value keeps default-off direct `run(false)` behavior per branch. |
-| Default-off behavior | The helper calls injected `direct_run(false)` once for the selected stop and does not dispatch. |
+| Ownership flags | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` now uses promoted default-on semantics with explicit `false` opt-out and shared kill switch support; `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP == true`; `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP == true`. |
+| Default-off behavior | The helper still calls injected `direct_run(false)` once for the selected stop and does not dispatch for the remaining default-off tank branches. |
 | Flag-on behavior | The helper dispatches the existing `kind='run_stop'` intent with `execute = true` and injected `run = windower.ffxi.run`. |
 | Failure behavior | If dispatcher execution does not return `{ ok = true, executed = true }`, the helper falls back to injected `direct_run(false)` once. |
 | Status payloads | `_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ACTION_SETTLE_VALIDATE`, `_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_SPELL_SETTLE_VALIDATE`, and `_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_JA_SELF_SEND_VALIDATE` now include `ok`, `reason`, `kind`, `source`, `ownership_enabled`, `dispatched`, `dispatch_ok`, `dispatch_reason`, `fallback_used`, and `stop`. |

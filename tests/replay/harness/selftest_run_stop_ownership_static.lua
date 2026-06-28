@@ -213,7 +213,22 @@ local function main()
     assert_contains(
         tank_action_settle_run_stop_block,
         "ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP == true)",
-        "tank-action-settle run_stop ownership flag must use explicit default-off true comparison"
+        "tank-action-settle run_stop ownership flag must preserve explicit true check marker"
+    )
+    assert_contains(
+        tank_action_settle_run_stop_block,
+        "promoted_default_on = true",
+        "tank-action-settle run_stop ownership flag must be promoted default-on"
+    )
+    assert_contains(
+        tank_action_settle_run_stop_block,
+        "ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP == false)",
+        "tank-action-settle run_stop ownership flag must preserve explicit false opt-out"
+    )
+    assert_contains(
+        tank_action_settle_run_stop_block,
+        "promoted_kill_switch = promoted_ownership_kill_switch_enabled()",
+        "tank-action-settle run_stop ownership flag must use shared promoted kill switch"
     )
     assert_contains(
         tank_enmity_ja_self_run_stop_block,
