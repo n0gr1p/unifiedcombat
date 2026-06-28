@@ -223,8 +223,11 @@ end
 local function run_scheduler_lifecycle_tests()
     local stub_names, old_loaded = install_scheduler_stubs()
     local old_windower = rawget(_G, "windower")
+    local old_socket = rawget(_G, "socket")
     local old_settings = rawget(_G, "UC_SETTINGS")
     local old_sink = rawget(_G, "UC_ACTION_TIMELINE_LOG")
+    local old_probe = rawget(_G, "UC_SPELL_LIFECYCLE_PROBE")
+    local old_test_now = rawget(_G, "__TEST_NOW")
     local mobs = {
         [123] = { id = 123, name = "Redrogue" },
         [888] = { id = 888, name = "Tank" },
@@ -261,7 +264,13 @@ local function run_scheduler_lifecycle_tests()
             end,
         },
     }
+    _G.socket = {
+        gettime = function()
+            return _G.__TEST_NOW or 0
+        end,
+    }
     _G.UC_SETTINGS = {}
+    _G.UC_SPELL_LIFECYCLE_PROBE = true
     package.loaded["unified_scheduler"] = nil
     package.loaded["uc_scheduler_action_state"] = nil
     local scheduler = require("unified_scheduler")
@@ -280,14 +289,8 @@ local function run_scheduler_lifecycle_tests()
     _G.UC_ACTION_TIMELINE_LOG = capture_timeline
     local clock = 100
     local function now_s()
+        _G.__TEST_NOW = clock
         return clock
-    end
-    local function scheduler_clock_now()
-        local ok, socket_mod = pcall(require, "socket")
-        if ok and type(socket_mod) == "table" and type(socket_mod.gettime) == "function" then
-            return socket_mod.gettime()
-        end
-        return os.clock()
     end
 
     action_state.action_mark_sent_with_meta(scheduler, "spell", now_s, {
@@ -499,7 +502,10 @@ local function run_scheduler_lifecycle_tests()
 
     _G.UC_ACTION_TIMELINE_LOG = old_sink
     _G.windower = old_windower
+    _G.socket = old_socket
     _G.UC_SETTINGS = old_settings
+    _G.UC_SPELL_LIFECYCLE_PROBE = old_probe
+    _G.__TEST_NOW = old_test_now
     restore_scheduler_stubs(stub_names, old_loaded)
 end
 

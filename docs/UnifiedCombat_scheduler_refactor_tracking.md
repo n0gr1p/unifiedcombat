@@ -11,6 +11,23 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 
 ## Latest Task Notes
 
+### `T3.6f` Fix aggregate-only action economy timeline logging harness leakage
+
+- Status: `DONE`
+- Changed files:
+  - `tests/replay/harness/selftest_action_economy_timeline_logging.lua`
+  - `docs/aggregate_replay_failure_baseline.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Fixed the aggregate-only `selftest_action_economy_timeline_logging` failure by isolating the suite's fake clock from the scheduler's socket-backed clock source.
+  - The suite now snapshots/restores the socket stub and drives both clocks from the same harness-controlled value, so the cast-complete release path no longer leaks across aggregate ordering.
+  - Runtime files were untouched.
+- Validation:
+  - The standalone timeline suite passes.
+  - `lua tests/replay/harness/selftest_all_replay_fixtures.lua` now passes in full.
+- Next step:
+  - The next ownership promotion slice is unblocked again; continue with the smallest safe ownership step.
+
 ### `T3.6e` Refresh stale replay fixture expectations only
 
 - Status: `DONE`
