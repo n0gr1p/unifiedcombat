@@ -6904,6 +6904,9 @@ elseif action_type == 'spell' then
 					direct_run = windower.ffxi.run,
 					run = windower.ffxi.run,
 					ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP == true),
+					ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP == false),
+					promoted_default_on = true,
+					promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
 					intent = intent,
 				})
 				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_SPELL_SEND_VALIDATE = {

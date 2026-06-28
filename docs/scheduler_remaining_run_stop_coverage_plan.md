@@ -15,7 +15,7 @@ These paths should not all be treated the same.
 
 - Doom remains emergency-only and should stay conservative unless a safe mock/status-injection harness is added.
 - Combat-spell settle/prep-wait looks live-reachable and is a better replay/mock-first candidate than live-promotion-first.
-- Tank action/tank spell/tank enmity paths split into three promoted branches plus several realistic-but-unconfirmed branches that still need a narrower field-test packet.
+- Tank action/tank spell/tank enmity paths split into promoted action-settle, JA-self, spell-settle, and spell-target branches plus one remaining self branch that still needs a narrower field-test packet.
 - Tank configured-JA starvation is a separate diagnosis: the run-stop plan below stays unchanged and should not be read as evidence that generic configured JAs are part of the tank-enmity lane.
 - Vector run remains separate from run_stop planning and should stay parked as dormant/unreachable unless runtime wiring is intentionally revisited.
 
@@ -35,7 +35,6 @@ These paths should not all be treated the same.
 | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP` | run_stop | Doom emergency stop before Holy Water item path | Emergency stop path with no safe practical live scenario |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | run_stop | Generic combat spell settle stop when a new freeze-prep key starts | Practical live confirmation missing |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | run_stop | Generic combat spell prep-wait stop while freeze-prep window remains active | Practical live confirmation missing |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | run_stop | Tank-enmity spell target send-adjacent stop | Not practically covered |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | run_stop | Tank-enmity spell self send-adjacent stop | Not practically covered |
 
 ## Per-Path Coverage Recommendations
@@ -123,16 +122,6 @@ These paths should not all be treated the same.
 - Promotion risk: low after promotion.
 - Rollback / kill-switch recommendation: use explicit `false` opt-out or the shared promoted kill switch.
 
-### `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP`
-
-- Live-reachable: likely yes in tank-enmity spell target mode.
-- Safe to field test: yes if the tank spell target scenario is practical.
-- Replay/mock coverage possible: yes.
-- Exact test scenario needed: tank-enmity spell targets a mob by id, branch emits `TANK_ENMITY_SPELL_TARGET_SEND`, one adjacent stop occurs, then the spell target command sends normally.
-- Recommended next action: create field-test packet.
-- Promotion risk: medium.
-- Rollback / kill-switch recommendation: keep explicit default-off until targeted field evidence exists; if no practical scenario exists, downgrade to replay/mock-first.
-
 ### `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP`
 
 - Live-reachable: likely yes in tank-enmity spell self mode.
@@ -177,7 +166,6 @@ Scope:
 - tank action settle
 - tank-enmity JA self send-adjacent stop
 - tank spell settle
-- tank-enmity spell target send-adjacent stop
 - tank-enmity spell self send-adjacent stop
 
 Goal:

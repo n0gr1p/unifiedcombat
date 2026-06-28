@@ -29,11 +29,13 @@
 
 - Normal configured JAs are not starved by a broken scheduler-owned runtime seam.
 - They are simply behind a separate, higher-priority tank-enmity lane and can also be disabled entirely by the clean `ability_active = false` baseline.
+- The observed sporadic tank configured-JA behavior now looks like a priority/weighting issue, and that tuning remains intentionally deferred.
 
 ## Recommended next step
 
 - Pause any tank-family ownership promotion until we confirm whether the user wants generic configured JAs enabled for tank mode, or whether the tank-enmity list is meant to be the only tank JA source.
 - If we continue diagnosis, add a narrow replay/static test that proves the generic JA lane still exists and only runs when `ability_active` is on.
+- Do not use this diagnosis to change tank JA priority or weighting in the current task.
 
 ## No runtime change
 

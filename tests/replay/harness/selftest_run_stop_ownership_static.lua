@@ -203,7 +203,22 @@ local function main()
     assert_contains(
         tank_enmity_spell_target_run_stop_block,
         "ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP == true)",
-        "tank-enmity-spell-target run_stop ownership flag must use explicit default-off true comparison"
+        "tank-enmity-spell-target run_stop ownership flag must preserve explicit true comparison marker"
+    )
+    assert_contains(
+        tank_enmity_spell_target_run_stop_block,
+        "ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP == false)",
+        "tank-enmity-spell-target run_stop ownership flag must preserve explicit false opt-out"
+    )
+    assert_contains(
+        tank_enmity_spell_target_run_stop_block,
+        "promoted_default_on = true",
+        "tank-enmity-spell-target run_stop ownership flag must be promoted default-on"
+    )
+    assert_contains(
+        tank_enmity_spell_target_run_stop_block,
+        "promoted_kill_switch = promoted_ownership_kill_switch_enabled()",
+        "tank-enmity-spell-target run_stop ownership flag must use shared promoted kill switch"
     )
     assert_contains(
         tank_enmity_spell_self_run_stop_block,

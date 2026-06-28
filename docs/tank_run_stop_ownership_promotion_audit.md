@@ -13,6 +13,9 @@
 - `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_CAST_HOLD_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_SPELL_WAIT_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP`
 
 ## Remaining tank-family seams
 
@@ -21,12 +24,12 @@
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` | Tank JA/spell dispatch block just before send | One bounded stop before tank JA/spell dispatch while the action settles | Before JA / before spell | Yes | Yes | No | No direct interaction | Yes | Static, runtime, aggregate, and field packet coverage exist | Low | `promoted_default_on` |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | Tank-enmity JA self-send-adjacent path | One stop before self JA send | Send-adjacent | No target send payload, but tank context still applies | Yes | No | No direct interaction | Yes | Static, aggregate, and field confirmation now exist | Medium | `promoted_default_on` |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | Tank spell-settle path | One stop before tank spell settle / wait window | Before spell settle | Yes | Yes | Yes | Indirectly via the spell wait path | Yes | Static, runtime, aggregate, and field packet coverage now exist | Medium | `promoted_default_on` |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | Tank-enmity spell target send-adjacent path | One stop before target spell send | Send-adjacent | Yes | Yes | Yes | Indirectly through tank spell wait | Yes | Static and aggregate coverage only; live confirmation still missing | Medium | `keep_default_off` |
+| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | Tank-enmity spell target send-adjacent path | One stop before target spell send | Send-adjacent | Yes | Yes | Yes | Indirectly through tank spell wait | Yes | Static and aggregate coverage only; live confirmation now accepted | Medium | `promoted_default_on` |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | Tank-enmity spell self-send-adjacent path | One stop before self spell send | Send-adjacent | No target send payload | Yes | Yes | Indirectly through tank spell wait | Yes | Static and aggregate coverage only; live confirmation still missing | Medium | `keep_default_off` |
 
 ## Selected next candidate
 
-- No new next candidate is selected here; the audited candidate has been promoted.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP`
 - Tank configured-JA starvation is now being diagnosed separately and should not be treated as a run-stop promotion signal.
 
 ## Why this was safest
@@ -40,11 +43,13 @@
 
 - `TANK_ENMITY_JA_SELF` is send-adjacent and now has field confirmation, so it can follow the same promoted default-on ownership shape as action-settle.
 - `TANK_SPELL_SETTLE` is coupled to the scheduler-local tank spell wait lifecycle and movement-lock refresh behavior, and it is now promoted default-on with explicit `false` opt-out and shared kill switch support.
-- `TANK_ENMITY_SPELL_TARGET` and `TANK_ENMITY_SPELL_SELF` are even more send-adjacent and remain unconfirmed live.
+- `TANK_ENMITY_SPELL_TARGET` is now promoted default-on with explicit `false` opt-out and shared kill switch support.
+- `TANK_ENMITY_SPELL_SELF` remains the more coupled send-adjacent branch and stays default-off until a practical field packet exists.
 
 ## Field-test notes
 
 - Allow the flag to remain unset for default-on behavior, or set `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP = true` explicitly to confirm the positive path.
+- Allow `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` to remain unset for default-on behavior, or set it to `true` explicitly to confirm the positive path.
 - Keep the promoted kill switch disabled.
 - Verify one `TANK_ACTION_SETTLE` stop occurs before tank JA/spell dispatch.
 - Verify the validate global reports `ownership_enabled=true`, `dispatched=true`, `ok=true`, and `fallback_used=false`.

@@ -55,10 +55,10 @@
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank action settle stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank action settle and confirm one stop before JA/spell dispatch. | Unset/remove the flag or set it to `false`/`nil`. Promoted default-on with explicit false opt-out and shared kill switch rollback. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank-enmity JA self send-adjacent stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank-enmity JA self send and confirm one adjacent stop before send. | Unset/remove the flag or set it to `false`/`nil`. Promoted default-on with explicit false opt-out and shared kill switch rollback. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank spell settle stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank spell settle and confirm stop/wait parity. | Unset/remove the flag or set it to `false`/`nil`. Promoted default-on with explicit false opt-out and shared kill switch rollback. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank-enmity spell target send-adjacent stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank-enmity spell target send and confirm one adjacent stop before send. | Unset/remove the flag or set it to `false`/`nil`. |
+| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank-enmity spell target send-adjacent stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank-enmity spell target send and confirm one adjacent stop before send. | Unset/remove the flag or set it to `false`/`nil`. Promoted default-on with explicit false opt-out and shared kill switch rollback. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank-enmity spell self send-adjacent stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank-enmity spell self send and confirm one adjacent stop before send. | Unset/remove the flag or set it to `false`/`nil`. |
 
-- Next audit candidate: `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` because tank action-settle, tank-enmity JA self, and tank spell-settle have already been promoted, leaving the tank-enmity spell target branch as the next smallest helper-routed seam.
+- Next audit candidate: `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` because tank action-settle, tank-enmity JA self, tank spell-settle, and tank-enmity spell target have already been promoted, leaving the tank-enmity spell self branch as the next smallest helper-routed seam.
 
 ### Vector Run Ownership
 
@@ -146,7 +146,6 @@ Keep these behind manual kill-switch flags:
 - `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`
-- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP`
 
 ### T3.0d
@@ -214,7 +213,6 @@ These still require explicit `== true`:
 - `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP`
-- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP`
 
 ### Not Promoted
@@ -256,9 +254,9 @@ These promoted paths are now accepted as the near-term default-on scheduler owne
 
 ### Tank action/tank spell/tank enmity run_stop ownership
 
-- Status: keep default-off.
-- Policy: create targeted field-test packet.
-- Rationale: Stage 6 remained partial, `TANK_ACTION_SETTLE` is live but the full family was not practically covered, and promotion should be based on explicit tank-path evidence rather than partial inference.
+- Status: mixed; target is promoted default-on and self remains default-off.
+- Policy: keep the remaining self branch on a targeted field-test packet.
+- Rationale: Stage 6 remained partial for the self branch, while `TANK_ACTION_SETTLE`, `TANK_ENMITY_JA_SELF`, `TANK_SPELL_SETTLE`, and the tank-enmity spell target branch are now promoted default-on.
 
 ### Vector run ownership
 

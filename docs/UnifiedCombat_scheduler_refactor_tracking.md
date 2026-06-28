@@ -7,7 +7,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 
 - Current phase focus: scheduler runtime parity slices that stay inside existing ownership policy, plus replay/static coverage for those slices.
 - Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6e`.
-- Tank-family promotion work is paused pending a local override reset and fresh field-test confirmation before deeper configured-JA starvation diagnosis.
+- Tank-family promotion work is paused pending a local override reset and fresh field-test confirmation before deeper configured-JA starvation diagnosis, with the tank-enmity spell target seam now promoted default-on.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
@@ -43,6 +43,42 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - No runtime behavior change is intended for this task.
 - Next step:
   - Finish the diagnostic doc/test pass, then decide whether the next task should clarify tank JA expectations or stay on the run-stop ownership track.
+
+### `T3.6n` Promote tank enmity spell target run-stop ownership default-on
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_run_stop_ownership_static.lua`
+  - `tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`
+  - `docs/tank_run_stop_ownership_promotion_audit.md`
+  - `docs/scheduler_ownership_resume_baseline.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+  - `docs/scheduler_ownership_promotion_plan.md`
+  - `docs/scheduler_ownership_promotion_readiness_audit.md`
+  - `docs/scheduler_remaining_run_stop_coverage_plan.md`
+  - `docs/tank_configured_ja_starvation_diagnostic.md`
+- Outcome:
+  - Promoted `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` to default-on semantics while preserving explicit `false` opt-out, the shared promoted kill switch, helper-owned fallback, and the existing tank spell target send-adjacent behavior.
+  - Left tank-enmity spell self default-off, left Doom/vector deferred, and did not alter tank configured-JA priority/starvation behavior.
+  - Preserved the scheduler closure invariant: no direct `windower.send_command(`, `windower.ffxi.run(`, `windower.ffxi.turn(`, or `uc_settarget.select_by_id(` callsites were introduced.
+- Validation:
+  - `luac -p local_ownership_flags.lua`
+  - `luac -p UnifiedCombat.lua`
+  - `luac -p unified_scheduler.lua`
+  - `luac -p uc_scheduler_run_stop_ownership.lua`
+  - `luac -p uc_scheduler_action_state.lua`
+  - `lua tests/replay/harness/selftest_runtime_parse.lua`
+  - `lua tests/replay/harness/selftest_side_effect_inventory.lua`
+  - `lua tests/replay/harness/selftest_scheduler_ownership_closure_static.lua`
+  - `lua tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`
+  - `lua tests/replay/harness/selftest_run_stop_ownership_static.lua`
+  - `lua tests/replay/harness/selftest_run_stop_ownership_runtime.lua`
+  - `lua tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua`
+  - `lua tests/replay/harness/selftest_tank_configured_ja_starvation.lua`
+  - `lua tests/replay/harness/selftest_all_replay_fixtures.lua`
+- Next step:
+  - If tank-family promotion continues, the remaining helper-routed seam is tank-enmity spell self; otherwise keep Doom/vector deferred and leave the configured-JA diagnosis unchanged.
 
 ### `T3.6k` Audit local ownership flag overrides
 
@@ -971,7 +1007,7 @@ Historical recommendation: T2.5g created a Windower-free target-select ownership
 | Tank-enmity spell send-adjacent stops reviewed | Tank-enmity spell target-send-adjacent stop and tank-enmity spell self-send-adjacent stop. |
 | Routed stops | Both. Each stop is gated by the tank-enmity spell branch, occurs immediately before an already-owned spell command send, has no return-value dependency, and the helper replaces only the final `run(false)` side effect. |
 | Skipped stops | None in this pair. The target/self branches matched closely enough to batch safely. |
-| Ownership flags | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP == true`; `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP == true`. Any other value keeps default-off direct `run(false)` behavior per branch. |
+| Ownership flags | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP == true` with explicit false opt-out and promoted kill switch support; `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP == true` remains default-off. Any other value keeps the existing branch-specific direct `run(false)` fallback behavior. |
 | Default-off behavior | The helper calls injected `direct_run(false)` once for the selected stop and does not dispatch. |
 | Flag-on behavior | The helper dispatches the existing `kind='run_stop'` intent with `execute = true` and injected `run = windower.ffxi.run`. |
 | Failure behavior | If dispatcher execution does not return `{ ok = true, executed = true }`, the helper falls back to injected `direct_run(false)` once. |
