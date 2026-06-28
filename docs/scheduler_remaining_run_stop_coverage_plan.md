@@ -15,7 +15,7 @@ These paths should not all be treated the same.
 
 - Doom remains emergency-only and should stay conservative unless a safe mock/status-injection harness is added.
 - Combat-spell settle/prep-wait looks live-reachable and is a better replay/mock-first candidate than live-promotion-first.
-- Tank action/tank spell/tank enmity paths split into one promoted JA self branch plus several realistic-but-unconfirmed branches that still need a narrower field-test packet.
+- Tank action/tank spell/tank enmity paths split into three promoted branches plus several realistic-but-unconfirmed branches that still need a narrower field-test packet.
 - Vector run remains separate from run_stop planning and should stay parked as dormant/unreachable unless runtime wiring is intentionally revisited.
 
 ## Current Ownership Status
@@ -33,7 +33,6 @@ These paths should not all be treated the same.
 | `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP` | run_stop | Doom emergency stop before Holy Water item path | Emergency stop path with no safe practical live scenario |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | run_stop | Generic combat spell settle stop when a new freeze-prep key starts | Practical live confirmation missing |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | run_stop | Generic combat spell prep-wait stop while freeze-prep window remains active | Practical live confirmation missing |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | run_stop | Tank spell settle stop before tank spell dispatch | Not practically covered |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | run_stop | Tank-enmity spell target send-adjacent stop | Not practically covered |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | run_stop | Tank-enmity spell self send-adjacent stop | Not practically covered |
 
@@ -113,13 +112,14 @@ These paths should not all be treated the same.
 
 ### `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
 
-- Live-reachable: likely yes.
-- Safe to field test: yes if a practical tank spell scenario can be reproduced without risky setup.
-- Replay/mock coverage possible: yes.
+- Status: promoted default-on.
+- Live-reachable: yes.
+- Safe to field test: yes.
+- Replay/mock coverage possible: yes, and field evidence already exists.
 - Exact test scenario needed: tank-enmity spell branch selects a mob target, initializes `tank_spell_settle_key`, emits `TANK_SPELL_SETTLE`, and blocks once before the settle window clears.
-- Recommended next action: create field-test packet.
-- Promotion risk: medium.
-- Rollback / kill-switch recommendation: keep explicit default-off until either targeted field evidence or replay/mock branch coverage proves timing parity.
+- Recommended next action: use the promoted default-on flow for any confirmatory packet.
+- Promotion risk: low after promotion.
+- Rollback / kill-switch recommendation: use explicit `false` opt-out or the shared promoted kill switch.
 
 ### `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP`
 

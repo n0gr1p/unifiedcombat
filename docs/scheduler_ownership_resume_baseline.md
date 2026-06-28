@@ -20,6 +20,7 @@ Those actions should stay behind dispatcher or wrapper seams.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
 
 ## Dispatcher / wrapper seams
 
@@ -52,7 +53,6 @@ Those actions should stay behind dispatcher or wrapper seams.
 
 - `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`
-- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP`
 
@@ -81,6 +81,7 @@ Those actions should stay behind dispatcher or wrapper seams.
 | Promoted movement stop ownership | Already promoted; wrapper seam only in scheduler | `dispatcher_owned` / `wrapper_owned` |
 | Combat spell settle run-stop | Now promoted default-on with explicit false opt-out and shared kill switch | `dispatcher_owned` / `wrapper_owned` |
 | Tank-enmity JA self run-stop | Now promoted default-on with explicit false opt-out and shared kill switch | `dispatcher_owned` / `wrapper_owned` |
+| Tank spell-settle run-stop | Now promoted default-on with explicit false opt-out and shared kill switch | `dispatcher_owned` / `wrapper_owned` |
 | Doom command / run-stop paths | Still default-off and intentionally parked from live field work | `unsafe_to_move_yet` |
 | Combat spell prep-wait run-stop | Now promoted default-on with explicit false opt-out and shared kill switch | `dispatcher_owned` / `wrapper_owned` |
 | Remaining tank-family run-stop paths | Default-off, partial field coverage only | `unsafe_to_move_yet` |
@@ -95,8 +96,8 @@ Those actions should stay behind dispatcher or wrapper seams.
 
 ## Recommended next seam
 
-- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP`
-- Why: the enmity JA self seam is now promoted default-on, so the next smallest remaining tank-family stop seam is the tank spell-settle branch.
+- `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP`
+- Why: tank action-settle, tank-enmity JA self, and tank spell-settle are now promoted default-on, so the next smallest remaining tank-family stop seam is the tank-enmity spell target branch.
 - Status: `candidate_next` if the next tank-family promotion task chooses to continue the sequence.
 
 ## What must not change next

@@ -110,7 +110,7 @@ These should remain behind kill-switch flags for now.
 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | generic combat spell prep-wait stop | Stage 6 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on with kill switch retained | Same helper-routed shape as settle, now field-safe enough for default-on promotion. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank action settle stop | Stage 6 PARTIAL PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on | Smallest tank-family seam with field-safe coverage and no dependency on the bounded tank spell-wait lock. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank JA self send-adjacent stop | Stage 6 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on with kill switch retained | Field confirmation now exists and the seam is smaller than the remaining tank spell-stop branches. |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank spell settle stop | Not yet confirmed | Run-stop runtime/static + closure + aggregate | Unconfirmed live | Keep default-off | Coupled to the scheduler-local tank spell wait lifecycle and movement-lock refresh behavior. |
+| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank spell settle stop | Stage 6 PASS | Run-stop runtime/static + closure + aggregate | Confirmed live | Promote default-on with kill switch retained | Field confirmation now exists and the seam remains bounded by the tank spell wait lifecycle and movement-lock refresh behavior. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank spell target send-adjacent stop | Not yet confirmed | Run-stop runtime/static + closure + aggregate | Unconfirmed live | Keep default-off | Explicitly unconfirmed in Stage 6 results. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | `uc_scheduler_run_stop_ownership` | tank spell self send-adjacent stop | Not covered | Run-stop runtime/static + closure + aggregate | Unconfirmed live | Keep default-off | No practical live confirmation and the most send-adjacent / coupled branch. |
 
@@ -123,14 +123,14 @@ These should remain behind kill-switch flags for now.
 ## Ownership Inventory Summary
 
 - Total ownership flags audited: 21
-- Promote default-on candidates: 13
-- Keep default-off candidates: 7
+- Promote default-on candidates: 14
+- Keep default-off candidates: 6
 - Retire / unreachable candidates: 1
 
 Notes:
 
 - The single unreachable candidate is the vector run flag.
-- The conservative hold set is dominated by emergency Doom and partially/unconfirmed tank/combat-spell run-stop paths.
+- The conservative hold set is dominated by emergency Doom and the remaining unconfirmed tank/combat-spell run-stop paths.
 - No broad movement ownership promotion is recommended.
 
 ## Temporary Kill Switch Recommendation
@@ -257,8 +257,8 @@ The following 11 paths are now accepted as promoted/default-on rather than pendi
 
 - Doom Holy Water command ownership: deferred, keep default-off.
 - Doom run_stop ownership: deferred, keep default-off.
-- combat spell settle/prep-wait run_stop ownership: both promoted default-on; the remaining deferred work is Doom, tank spell-settle, tank enmity spell target/self, and vector run.
-- tank action settle and tank-enmity JA self run_stop ownership: both promoted default-on; the remaining tank-family work is tank spell-settle plus the two tank-enmity spell send-adjacent branches.
+- combat spell settle/prep-wait run_stop ownership: both promoted default-on; the remaining deferred work is Doom, tank-enmity spell target/self, and vector run.
+- tank action settle, tank-enmity JA self, and tank spell-settle run_stop ownership: all promoted default-on; the remaining tank-family work is the two tank-enmity spell send-adjacent branches.
 - vector run ownership: dormant / not live-reachable, do not treat as active promotion work.
 
 These remaining default-off paths are now governed by `docs/scheduler_remaining_run_stop_coverage_plan.md`, which assigns replay/mock-first, targeted-field-packet, parked, or future-retirement treatment per path instead of treating them as one promotion bucket.
