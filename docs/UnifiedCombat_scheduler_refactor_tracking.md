@@ -7,9 +7,24 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 
 - Current phase focus: scheduler runtime parity slices that stay inside existing ownership policy, plus replay/static coverage for those slices.
 - Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6e`.
+- Tank-family promotion work is paused pending a local override audit before deeper starvation diagnosis.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.6k` Audit local ownership flag overrides
+
+- Status: `DONE`
+- Changed files:
+  - `docs/local_ownership_flags_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Audited `local_ownership_flags.lua`, confirmed it is tracked and loaded via protected `pcall(require, 'local_ownership_flags')` during addon bootstrap, and found multiple stale tank/ownership opt-outs that can plausibly explain the reported tank starvation.
+  - Did not change scheduler runtime behavior or rewrite the local file.
+- Validation:
+  - Runtime and replay validation remained green for the existing scheduler/tank ownership harnesses.
+- Next step:
+  - Remove the stale promoted-default-on false overrides from the local file before deeper tank runtime diagnosis.
 
 ### `T3.6j` Promote tank spell-settle run-stop ownership default-on
 
