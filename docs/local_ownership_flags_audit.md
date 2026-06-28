@@ -9,90 +9,68 @@
 ## How the file is loaded
 
 - `UnifiedCombat.lua` loads the file with `pcall(require, 'local_ownership_flags')`.
-- The load happens during addon bootstrap, after `unified_engine.lua` has already required `unified_scheduler.lua`, but before the runtime loop starts using scheduler globals.
-- The loader mutates `_G` through the module body.
+- The load happens during addon bootstrap before the runtime loop starts using scheduler globals.
+- The module body mutates `_G`.
 - Missing-file errors are ignored.
 - Other load failures are reported through `windower.add_to_chat(...)`.
-- The module is cached by `require`, so the overrides persist until Windower reloads the addon or the file is reloaded by a fresh session.
+- The module remains active until Windower reloads the addon or a fresh session starts.
+
+## Current baseline
+
+- `local_ownership_flags.lua` is now reset to a clean baseline.
+- No active ownership overrides remain.
+- Source defaults are now the active behavior.
+- This file should stay mostly empty unless you are deliberately bisecting or collecting diagnostics.
 
 ## Current local flag inventory
 
 | Line | Setting | Current value | Category | Recommended action | Reason |
 | --- | --- | --- | --- | --- | --- |
-| 4 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TARGET_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Target ownership is promoted default-on; explicit `false` is an active opt-out and can disable expected routing. |
-| 5 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TURN_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Turn ownership is promoted default-on; explicit `false` is an active opt-out. |
-| 10 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_MAINTENANCE_COR_COMMAND_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Maintenance COR command ownership is promoted default-on. |
-| 11 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_DEFENSIVE_INTERNAL_COMMAND_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Defensive internal command ownership is promoted default-on. |
-| 12 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_INTERNAL_DISPATCH_COMMAND_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Internal dispatch command ownership is promoted default-on. |
-| 16 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Combat WS command ownership is promoted default-on. |
-| 17 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_JA_COMMAND_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Combat JA command ownership is promoted default-on. |
-| 18 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_COMMAND_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Combat spell command ownership is promoted default-on. |
-| 22 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_CAST_FREEZE_PREP_RUN_STOP_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Movement-coordinator cast-freeze stop ownership is promoted default-on. |
-| 23 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_CAST_HOLD_RUN_STOP_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Movement-coordinator pull cast-hold stop ownership is promoted default-on. |
-| 24 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_MOVE_COORD_PULL_SPELL_WAIT_RUN_STOP_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Movement-coordinator pull spell-wait stop ownership is promoted default-on. |
-| 58 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Tank action-settle is promoted default-on; explicit `false` can suppress it. |
-| 59 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Tank spell-settle is promoted default-on as of `T3.6j`; explicit `false` can suppress it. |
-| 60 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | `false` | `promoted_default_on` | remove/comment out | Tank enmity JA self is promoted default-on as of `T3.6i`; explicit `false` can suppress it. |
-| 61 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | `false` | `still_default_off` | remove/comment out | This seam is still default-off; explicit `false` is redundant and can be removed. |
-| 62 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | `false` | `still_default_off` | remove/comment out | This seam is still default-off; explicit `false` is redundant and can be removed. |
-| 97 | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_RUN_VECTOR_OWNERSHIP` | `false` | `deferred_or_parked` | remove/comment out | Vector run is still parked/dormant; explicit `false` is redundant unless you want a local note. |
-| 130 | `_G.UC_ENABLE_COMBAT_TRANSITION_MOVEMENT_ARBITRATION` | `true` | `unrelated` | keep only if you are intentionally testing movement arbitration | Not part of ownership auditing; unrelated to the tank starvation report. |
-| 134 | `_G.UC_ENABLE_ALLIANCE_TARGET_SCOPE` | `true` | `unrelated` | keep only if you are intentionally testing alliance scope | Not part of ownership auditing; unrelated to the tank starvation report. |
-| 136 | `_G.UC_DEBUG_ACTION_TIMELINE` | `false` | `debug_logging` | remove/comment out | Debug logging should stay off unless you are actively collecting traces. |
-| 138 | `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP = true` | `true` | `promoted_default_on` but malformed | remove/comment out | This is a bare global assignment with no `_G.` prefix; it is redundant now that the seam is promoted default-on and should not stay as a stray local override. |
-| 140 | `_G.UC_SPELL_LIFECYCLE_PROBE` | `false` | `debug_logging` | remove/comment out | Probe should stay off unless you are actively debugging spell lifecycle behavior. |
+| 4-16 | commented examples only | none | `promoted_default_on` / `debug_logging` examples | keep commented | Examples only; no active override remains. |
+| 18-24 | commented examples only | none | `deferred_or_parked` / tank-bisect examples | keep commented | Examples only; no active override remains. |
+| 26-27 | commented diagnostics only | none | `debug_logging` example | keep commented | Example-only diagnostics. |
 
 ## Suspicious or stale settings
 
-- The file contains many explicit `false` overrides for promoted default-on ownership flags.
-- The most suspicious lines are the promoted tank/target/turn/command/movement-stop overrides at lines 4-24 and 58-60.
-- The bare assignment at line 138 is stale and malformed relative to the rest of the file.
-- `UC_SCHED_P1_DISABLE_PROMOTED_OWNERSHIP` is not present, which is good; a global kill switch should not be a normal local config value.
-- No `true` overrides were found for the still-default-off tank enmity spell target/self seams, Doom ownership, or vector ownership.
+- None active in the file now.
+- The prior stale promoted-default-on false overrides were removed.
+- The prior malformed bare assignment was removed.
+- The file no longer contains a global promoted kill switch, tank experimental flag, Doom flag, vector flag, or debug probe assignment.
 
 ## Recommended normal config
 
-Normal clean config should be close to empty:
+Normal clean config is effectively empty:
 
 ```lua
--- Local-only ownership field-test flags.
--- Leave ownership unset unless you are deliberately bisecting.
-```
-
-If you want to keep only diagnostics:
-
-```lua
-_G.UC_DEBUG_ACTION_TIMELINE = true
-_G.UC_SPELL_LIFECYCLE_PROBE = true
+-- Local-only ownership and diagnostic flags.
+-- Leave this file mostly empty so source defaults are the normal behavior.
+-- Use this file only for temporary local opt-outs, one-off experiments, or
+-- diagnostic toggles while field testing.
 ```
 
 ## Recommended temporary tank bisect config
 
-Use this only if you are actively bisecting tank behavior after cleaning out stale opt-outs:
+Use commented examples only until you intentionally need a live override:
 
 ```lua
--- Start from a clean file.
--- Do not set any promoted default-on ownership flags to false.
--- Do not set the promoted ownership kill switch.
-
--- If you need a one-at-a-time experiment, enable exactly one default-off seam.
--- Example:
+-- _G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP = false
+-- _G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP = false
 -- _G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP = true
--- or
 -- _G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP = true
+-- _G.UC_DEBUG_ACTION_TIMELINE = true
+-- _G.UC_SPELL_LIFECYCLE_PROBE = true
 ```
 
-## Could the current local flags explain the tank behavior?
+## Could the prior local flags explain the tank behavior?
 
 Yes, plausibly.
 
-- The file explicitly disables several promoted default-on ownership paths that tank behavior depends on, including target/turn, combat spell command, movement-stop, tank action-settle, tank spell-settle, and tank enmity JA self.
-- That can suppress the promoted routing path and leave the scheduler on older fallback behavior.
-- The file does **not** directly change Cure runtime logic, so it cannot by itself prove why Cure is being chosen too often; it can, however, explain why tank JAs and spell-settle ownership routes are not behaving as expected.
+- The previous file version disabled several promoted default-on ownership paths that tank behavior depends on.
+- Resetting the file removes those stale opt-outs, so the scheduler’s source defaults should now be the active baseline.
+- If tank starvation persists after this reset, the next step is to field-test again before deeper action-economy diagnosis.
 
 ## Next recommended step
 
-1. Clear the stale explicit `false` overrides for promoted default-on flags.
-2. Remove the redundant bare line at 138.
-3. Leave default-off seams unset unless you are deliberately testing them one at a time.
-4. If the tank starvation persists after that cleanup, bisect with one default-off tank seam enabled at a time.
+1. Reload the addon so the clean baseline takes effect.
+2. Field-test tank behavior again with the local file left empty.
+3. Only add temporary overrides if you are bisecting a specific tank seam or collecting diagnostics.
