@@ -7,7 +7,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 
 - Current phase focus: scheduler runtime parity slices that stay inside existing ownership policy, plus replay/static coverage for those slices.
 - Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6e`.
-- Tank-family promotion work is paused pending a local override reset and fresh field-test confirmation before deeper starvation diagnosis.
+- Tank-family promotion work is paused pending a local override reset and fresh field-test confirmation before deeper configured-JA starvation diagnosis.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
@@ -27,6 +27,22 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - Parse/replay validation remains green.
 - Next step:
   - Reload the addon and re-test tank behavior with a clean local override file before further diagnosis.
+
+### `T3.6m` Diagnose tank configured job ability starvation
+
+- Status: `IN PROGRESS`
+- Planned / changed files:
+  - `docs/tank_configured_ja_starvation_diagnostic.md`
+  - `docs/tank_run_stop_ownership_promotion_audit.md`
+  - `docs/scheduler_remaining_run_stop_coverage_plan.md`
+  - `tests/replay/harness/selftest_tank_configured_ja_starvation.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+- Working diagnosis:
+  - The scheduler still has two distinct JA lanes: generic configured JAs gated by `ability_active`, and tank-enmity JAs/spells gated by `tank` + `autotarget` through `tank_enmity_actions`.
+  - The tank-enmity lane is evaluated before the generic configured-JA lane and carries the higher band, so a clean baseline can make normal configured JAs look starved even when the tank lane is healthy.
+  - No runtime behavior change is intended for this task.
+- Next step:
+  - Finish the diagnostic doc/test pass, then decide whether the next task should clarify tank JA expectations or stay on the run-stop ownership track.
 
 ### `T3.6k` Audit local ownership flag overrides
 

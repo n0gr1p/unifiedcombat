@@ -27,6 +27,7 @@
 ## Selected next candidate
 
 - No new next candidate is selected here; the audited candidate has been promoted.
+- Tank configured-JA starvation is now being diagnosed separately and should not be treated as a run-stop promotion signal.
 
 ## Why this was safest
 
@@ -48,6 +49,7 @@
 - Verify one `TANK_ACTION_SETTLE` stop occurs before tank JA/spell dispatch.
 - Verify the validate global reports `ownership_enabled=true`, `dispatched=true`, `ok=true`, and `fallback_used=false`.
 - Verify rollback by setting the flag back to `false`/`nil`.
+- Pause any further tank-family promotion until the configured-JA diagnosis confirms whether normal configured JAs are intended to run for tank mode alongside the tank-enmity list.
 
 ## Rollback / opt-out
 

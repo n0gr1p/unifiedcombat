@@ -12,6 +12,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_hb_buff_maint_majesty_priority.lua",
     "tests/replay/harness/selftest_defensive_cure_priority.lua",
     "tests/replay/harness/selftest_tank_engage_priority.lua",
+    "tests/replay/harness/selftest_tank_configured_ja_starvation.lua",
     "tests/replay/harness/selftest_engage_dispatch_priority.lua",
     "tests/replay/harness/selftest_engage_duplicate_suppression.lua",
     "tests/replay/harness/selftest_engage_action_state_bypass.lua",
