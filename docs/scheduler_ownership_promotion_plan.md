@@ -58,6 +58,8 @@
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank-enmity spell target send-adjacent stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank-enmity spell target send and confirm one adjacent stop before send. | Unset/remove the flag or set it to `false`/`nil`. |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | Run-stop ownership | Tank-enmity spell self send-adjacent stop routes through `uc_scheduler_run_stop_ownership`. | Dispatcher failure falls back to one direct `run(false)`. | Exercise tank-enmity spell self send and confirm one adjacent stop before send. | Unset/remove the flag or set it to `false`/`nil`. |
 
+- Next audit candidate: `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` because it is the smallest field-tested tank seam and does not depend on the bounded tank spell-wait lock.
+
 ### Vector Run Ownership
 
 | Flag | Family | Routed Behavior | Existing Fallback Behavior | Recommended Smoke-Test Scenario | Rollback |

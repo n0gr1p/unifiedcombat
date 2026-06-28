@@ -11,6 +11,24 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 
 ## Latest Task Notes
 
+### `T3.6g` Select safest tank-family run-stop ownership promotion candidate
+
+- Status: `DONE`
+- Changed files:
+  - `docs/tank_run_stop_ownership_promotion_audit.md`
+  - `docs/scheduler_ownership_resume_baseline.md`
+  - `docs/scheduler_ownership_promotion_readiness_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Audited the remaining tank-family run-stop seams and selected `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` as the next safest promotion candidate.
+  - Kept Doom and vector run out of scope and left the other tank seams default-off.
+  - No runtime behavior changed.
+- Validation:
+  - Existing ownership static/runtime coverage already tracks all five tank-family branches, so no test updates were needed for this audit-only slice.
+  - Full aggregate replay remains green after T3.6f.
+- Next step:
+  - Promote only the selected tank action-settle seam in the next task if field rollout is desired.
+
 ### `T3.6f` Fix aggregate-only action economy timeline logging harness leakage
 
 - Status: `DONE`

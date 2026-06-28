@@ -93,7 +93,8 @@ Those actions should stay behind dispatcher or wrapper seams.
 ## Recommended next seam
 
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP`
-- Why: it is the smallest remaining action-economy stop seam with partial live coverage, and it stays safely deferred behind the existing helper seam without changing current behavior.
+- Why: it is the smallest remaining tank-family stop seam with partial live coverage, no dependency on the bounded tank spell-wait lock, and a clean helper-routed fallback path.
+- Status: `candidate_next` for the next tank-family promotion task.
 
 ## What must not change next
 
