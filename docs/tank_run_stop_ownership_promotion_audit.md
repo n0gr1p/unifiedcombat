@@ -19,7 +19,7 @@
 | Flag | Runtime context | Stop purpose | Timing | Target id dependency | Tank enmity dependency | Tank spell wait lock | Movement lock | Dispatcher fallback parity | Existing coverage | Risk | Recommended status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` | Tank JA/spell dispatch block just before send | One bounded stop before tank JA/spell dispatch while the action settles | Before JA / before spell | Yes | Yes | No | No direct interaction | Yes | Static, runtime, aggregate, and field packet coverage exist | Low | `promoted_default_on` |
-| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | Tank-enmity JA self-send-adjacent path | One stop before self JA send | Send-adjacent | No target send payload, but tank context still applies | Yes | No | No direct interaction | Yes | Static and aggregate coverage only; no practical field proof yet | Medium | `keep_default_off` |
+| `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` | Tank-enmity JA self-send-adjacent path | One stop before self JA send | Send-adjacent | No target send payload, but tank context still applies | Yes | No | No direct interaction | Yes | Static, aggregate, and field confirmation now exist | Medium | `promoted_default_on` |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` | Tank spell-settle path | One stop before tank spell settle / wait window | Before spell settle | Yes | Yes | Yes | Indirectly via the spell wait path | Yes | Static and runtime helper coverage exist; field proof still incomplete | Medium | `needs_more_coverage` |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` | Tank-enmity spell target send-adjacent path | One stop before target spell send | Send-adjacent | Yes | Yes | Yes | Indirectly through tank spell wait | Yes | Static and aggregate coverage only; live confirmation still missing | Medium | `keep_default_off` |
 | `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` | Tank-enmity spell self-send-adjacent path | One stop before self spell send | Send-adjacent | No target send payload | Yes | Yes | Indirectly through tank spell wait | Yes | Static and aggregate coverage only; live confirmation still missing | Medium | `keep_default_off` |
@@ -37,7 +37,7 @@
 
 ## Why the others stay default-off
 
-- `TANK_ENMITY_JA_SELF` is send-adjacent and still lacks practical field proof.
+- `TANK_ENMITY_JA_SELF` is send-adjacent and now has field confirmation, so it can follow the same promoted default-on ownership shape as action-settle.
 - `TANK_SPELL_SETTLE` is coupled to the scheduler-local tank spell wait lifecycle and movement-lock refresh behavior, so it needs one more coverage/field pass before promotion.
 - `TANK_ENMITY_SPELL_TARGET` and `TANK_ENMITY_SPELL_SELF` are even more send-adjacent and remain unconfirmed live.
 

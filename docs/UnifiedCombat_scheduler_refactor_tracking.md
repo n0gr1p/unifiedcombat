@@ -11,6 +11,29 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 
 ## Latest Task Notes
 
+### `T3.6i` Promote tank enmity JA self run-stop ownership default-on
+
+- Status: `DONE`
+- Changed files:
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua`
+  - `tests/replay/harness/selftest_run_stop_ownership_static.lua`
+  - `docs/tank_run_stop_ownership_promotion_audit.md`
+  - `docs/scheduler_ownership_resume_baseline.md`
+  - `docs/scheduler_ownership_promotion_plan.md`
+  - `docs/scheduler_ownership_promotion_readiness_audit.md`
+  - `docs/scheduler_remaining_run_stop_coverage_plan.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Promoted `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` to default-on semantics while preserving explicit `false` opt-out and the shared promoted kill switch.
+  - Kept tank action-settle promoted default-on, left tank spell-settle and tank enmity spell target/self default-off, and left Doom/vector unchanged.
+  - Preserved helper-routed fallback behavior and did not add any direct scheduler side-effect callsites.
+- Validation:
+  - Ownership static/runtime coverage now treats the tank-enmity JA self seam as promoted and still confirms the remaining tank-family branches stay explicit `== true` default-off checks.
+  - Full aggregate replay remains green.
+- Next step:
+  - Continue tank-family promotion only with the remaining helper-routed default-off seams, starting from tank spell-settle if the next task wants the narrowest remaining branch.
+
 ### `T3.6h` Promote tank action-settle run-stop ownership default-on
 
 - Status: `DONE`
@@ -31,7 +54,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - Ownership static/runtime coverage now treats the tank action-settle seam as promoted and still confirms the remaining tank-family branches stay explicit `== true` default-off checks.
   - Full aggregate replay remains green.
 - Next step:
-  - If tank-family promotion continues, the next audit candidate is the tank-enmity JA self-send-adjacent seam.
+  - If tank-family promotion continues, the next audit candidate is the tank spell-settle seam.
 
 ### `T3.6g` Select safest tank-family run-stop ownership promotion candidate
 
@@ -896,7 +919,7 @@ Historical recommendation: T2.5g created a Windower-free target-select ownership
 | Tank stops reviewed | Tank-enmity action settle stop, tank-enmity spell settle stop, and tank-enmity JA self-send-adjacent stop. |
 | Routed stops | All three. Each branch already had explicit settle or self-send-adjacent stop semantics, no return-value dependency, and all gating/state updates occur before the final stop side effect. |
 | Skipped stops | The vector run path was intentionally not touched; it remains the only direct scheduler `windower.ffxi.run(` callsite because heading-based live semantics still need explicit parity proof before ownership routing. |
-| Ownership flags | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` now uses promoted default-on semantics with explicit `false` opt-out and shared kill switch support; `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP == true`; `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP == true`. |
+| Ownership flags | `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` now uses promoted default-on semantics with explicit `false` opt-out and shared kill switch support; `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_JA_SELF_RUN_STOP_OWNERSHIP` now uses promoted default-on semantics with explicit `false` opt-out and shared kill switch support; `_G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP == true`. |
 | Default-off behavior | The helper still calls injected `direct_run(false)` once for the selected stop and does not dispatch for the remaining default-off tank branches. |
 | Flag-on behavior | The helper dispatches the existing `kind='run_stop'` intent with `execute = true` and injected `run = windower.ffxi.run`. |
 | Failure behavior | If dispatcher execution does not return `{ ok = true, executed = true }`, the helper falls back to injected `direct_run(false)` once. |
