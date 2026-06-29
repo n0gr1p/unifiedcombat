@@ -4,9 +4,11 @@
 
 - `T3.7b` added a pure profile validation module and a status contract snapshot helper.
 - `T3.7c` wires validation into the existing profile load / reload path and publishes a read-only status snapshot back through the bridge.
+- `T3.7d` starts canonical config object planning as a docs/static audit only.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
+- No profile file migration, bridge protocol migration, or runtime config object has been implemented yet.
 
 ## Current profile/settings model
 
@@ -56,6 +58,7 @@
 - The editable profile should remain the source of truth for long-lived settings.
 - External UI should write the file atomically.
 - The addon should read and validate the file.
+- A future canonical config object should be built from the validated profile/settings shape, but compatibility with the current flat keys should be preserved until read compatibility is proven.
 
 ### Addon status output
 
@@ -89,11 +92,13 @@
 2. Add profile contract docs.
 3. Add read-only status output contract.
 4. Add profile validation layer.
-5. Define atomic profile writer expectations for the UI.
-6. Add low-rate change detection.
-7. Define safe live-apply rules.
-8. Migrate external UI to file source of truth.
-9. Reduce bridge write responsibility to runtime commands and acknowledgements.
+5. Audit canonical config object shape and migration plan.
+6. Add a pure config normalizer module with no runtime caller migration.
+7. Define atomic profile writer expectations for the UI.
+8. Add low-rate change detection.
+9. Define safe live-apply rules.
+10. Migrate external UI to file source of truth.
+11. Reduce bridge write responsibility to runtime commands and acknowledgements.
 
 ## Risks
 
@@ -101,7 +106,8 @@
 - `engine_enabled` is persisted today, so separating runtime control from profile defaults will need careful contract wording.
 - The current bridge is still the only live runtime edit path, so migration must avoid breaking the existing UI until file validation is proven.
 - `local_ownership_flags.lua` must remain separate from editable profiles.
+- A canonical config object can reduce Lua 5.1 local/register pressure only if callers keep configuration grouped by domain rather than unpacking the entire object into locals.
 
 ## Recommended next implementation task
 
-- Next step after this scaffolding: wire read-only status output or integrate validation into the load path, depending on soak results, before moving any external UI write path off the bridge.
+- Next step after `T3.7d`: add a pure `uc_config_normalizer.lua` that accepts the current flat settings/profile table and returns a grouped canonical config table, with no `_G` mutation and no runtime caller migration.
