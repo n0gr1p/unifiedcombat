@@ -106,6 +106,7 @@ require('actions')
 local uc_partner_list = require('uc_partner_list')
 local uc_add_priority = require('uc_add_priority')
 local uc_config_status_export = require('uc_config_status_export')
+local uc_profile_v2_export = require('uc_profile_v2_export')
 local UC_PROFILE_CONTRACT = nil
 local UC_PROFILE_CONTRACT_LOAD_ERROR = nil
 local UC_CONFIG_NORMALIZER = nil
@@ -579,6 +580,13 @@ local function uc_validate_profile_tree(profile_tree)
 	return UC_PROFILE_CONTRACT.validate_profile_tree(profile_tree)
 end
 
+local function uc_validate_structured_profile_export(profile)
+	if not uc_profile_contract_available() or type(UC_PROFILE_CONTRACT.validate_structured_profile_config) ~= 'function' then
+		return nil
+	end
+	return UC_PROFILE_CONTRACT.validate_structured_profile_config(profile)
+end
+
 local function uc_update_profile_contract_status(context)
 	context = type(context) == 'table' and context or {}
 	local status
@@ -626,6 +634,10 @@ end
 
 local function uc_config_status_file_path(char_name)
 	return 'data/status/' .. uc_safe_filename(char_name) .. '_config_contract_status.lua'
+end
+
+local function uc_profile_v2_file_path(meta)
+	return uc_profile_v2_export.default_export_path(meta)
 end
 
 local uc_normalize_profiles_tree
@@ -688,6 +700,26 @@ local function uc_write_config_status_export(status, meta)
 	local ok_render, content = pcall(uc_config_status_export.render_config_status_export, status, {
 		exported_at = meta.exported_at,
 	})
+	if not ok_render then
+		return false, path, tostring(content)
+	end
+	local ok_write, result = pcall(function()
+		local fobj = files.new(path, true)
+		return files.write(fobj, content)
+	end)
+	if not ok_write then
+		return false, path, tostring(result)
+	end
+	if result == nil then
+		return false, path, 'files.write returned nil'
+	end
+	return true, path, nil
+end
+
+local function uc_write_profile_v2_export(profile, meta)
+	meta = type(meta) == 'table' and meta or {}
+	local path = uc_profile_v2_file_path(meta)
+	local ok_render, content = pcall(uc_profile_v2_export.serialize_structured_profile, profile)
 	if not ok_render then
 		return false, path, tostring(content)
 	end
@@ -1480,6 +1512,47 @@ windower.register_event('addon command', function(...)
 			return
 		end
 		windower.add_to_chat(207, '//uc configstatus export')
+		return
+	elseif a == 'profilev2' then
+		local sub = args[2] and tostring(args[2]):lower() or ''
+		if sub == 'export' then
+			local p = windower.ffxi.get_player()
+			if not p or not p.name or not _G.UC_SETTINGS then
+				windower.add_to_chat(167, 'UC profile v2 export failed')
+				return
+			end
+			local ok_build, profile = pcall(uc_profile_v2_export.build_structured_profile, _G.UC_SETTINGS, {
+				character = p.name,
+				main_job = p.main_job,
+				sub_job = p.sub_job,
+				source = 'UC_SETTINGS',
+				profile_key = tostring(p.name or '') .. '|' .. tostring(p.main_job or '') .. '|' .. tostring(p.sub_job or ''),
+				exported_at = os.date('!%Y-%m-%dT%H:%M:%SZ'),
+			})
+			if not ok_build or type(profile) ~= 'table' then
+				windower.add_to_chat(167, 'UC profile v2 export failed')
+				return
+			end
+			local validation = uc_validate_structured_profile_export(profile)
+			if not validation or validation.ok ~= true then
+				windower.add_to_chat(167, 'UC profile v2 export failed')
+				return
+			end
+			local ok_write, path = uc_write_profile_v2_export(profile, {
+				character = p.name,
+				main_job = p.main_job,
+				sub_job = p.sub_job,
+				profile_key = profile.profile and profile.profile.profile_key or nil,
+				exported_at = profile.profile and profile.profile.exported_at or os.date('!%Y-%m-%dT%H:%M:%SZ'),
+			})
+			if ok_write then
+				windower.add_to_chat(207, 'UC profile v2 exported: ' .. tostring(path))
+			else
+				windower.add_to_chat(167, 'UC profile v2 export failed')
+			end
+			return
+		end
+		windower.add_to_chat(207, '//uc configstatus export | //uc profilev2 export')
 		return
 	elseif a == 'host' and args[2] then
 		_G.UC_REMOTE_HOST = tostring(args[2])

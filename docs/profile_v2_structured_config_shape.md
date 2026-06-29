@@ -54,6 +54,17 @@ return {
 
 The normalizer also accepts direct canonical-domain input, such as `{ combat = ..., defensive = ... }`, for focused tests and future bridge/file adapters.
 
+## Explicit Export
+
+`T3.8b` adds an explicit command-only export path that writes this structured payload for inspection:
+
+- Command: `//uc profilev2 export`
+- Output path: `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua`
+- Shape: `return { version = 2, profile = {...}, config = {...} }`
+- The `profile` metadata includes `character`, `main_job`, `sub_job`, `source`, `exported_at`, and an optional `profile_key` when available.
+
+The export helper builds the structured payload from the current loaded settings/profile state and canonical normalized config, but it does not change live profile loading, live profile saving, or bridge write behavior.
+
 ## Compatibility Boundary
 
 - Structured profile/config read compatibility exists in `uc_config_normalizer.lua` and direct contract tests only.
@@ -61,6 +72,7 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - Current live profile load/save behavior is unchanged.
 - Current profile save format remains `return { version = 1, profiles = { UC = ... } }`.
 - `remote_bridge.lua` remains the live UI write path.
+- `//uc profilev2 export` is explicit-command-only and writes the new structured v2 artifact to `data/profiles_v2/`.
 - No profile polling or live apply behavior exists.
 - Scheduler/provider/action-decision reads still use current runtime settings, not structured profile files.
 

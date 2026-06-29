@@ -13,6 +13,7 @@
 - `T3.7j` migrates the active bridge read-only `config_contract_status` publication to `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)`, making it the first active runtime read-path migration.
 - `T3.7k` audits remaining active bridge read-only settings consumers and recommends pausing bridge migration for now because the remaining bridge setting-touching paths are edit/write protocol, command state, or derived option/status data. No runtime behavior or bridge behavior changed, and `T3.7j` live sanity passed before the audit.
 - `T3.8a` adds pure read compatibility for a future structured v2 profile/config payload through `uc_config_normalizer.lua` and a direct contract helper. The supported shape is documented in `docs/profile_v2_structured_config_shape.md`.
+- `T3.8b` adds `//uc profilev2 export`, an explicit command-only structured export path that writes `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` without changing the live v1 profile file contract.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
@@ -22,6 +23,8 @@
 
 - Profile files live at `data/profiles/<safe character name>.lua`.
 - The file payload is a Lua table returned as `return { version = 1, profiles = { UC = { [MAIN_JOB] = ... } } }`.
+- The explicit structured export writes `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` as `return { version = 2, profile = {...}, config = {...} }`.
+- The export metadata may also include `profile_key` when the current character/job identity is available.
 - Structured v2 payloads are read-compatible at the pure normalizer/contract-test layer only; the live file reader still extracts v1 `profiles` trees and does not apply v2 payloads.
 - Profiles are keyed by character plus main job; subjob is runtime metadata, not part of the on-disk profile key.
 - `UnifiedCombat.lua` loads the profile file on addon load and again on job change / explicit reload.
@@ -39,9 +42,12 @@
 - It accepts `set` messages and writes them into `_G.UC_SETTINGS` through `apply_set(...)`.
 - It accepts one-shot runtime commands: `start_engine`, `stop_engine`, `save`, `reload`, `addon_reload`, `request_state`, and `request_options`.
 - The addon command `//uc configstatus export` writes the compact normalized config status to `data/status/<safe_character>_config_contract_status.lua` as a Lua-table diagnostic file.
+- The addon command `//uc profilev2 export` writes the structured v2 profile artifact to `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` as a Lua-table diagnostic file.
 - The config status export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
+- The structured v2 profile export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
 - The config status export excludes the full normalized config table, `_G.UC_SETTINGS`, scheduler state, pending/lock state, target data, party data, and mob snapshots.
 - The config status export uses the existing `files.new(path, true)` / `files.write(...)` helper style and is best-effort diagnostic output, not an atomic profile-write contract.
+- The structured v2 profile export uses the same direct write style for now and does not change the live v1 save contract.
 - Legacy in-game overlay visibility now reads `config.ui.show_ingame_ui` for display only; it does not change bridge write behavior, profile save behavior, or scheduler/provider action decisions.
 - The active bridge config-status consumer now uses the config runtime accessor with no bridge write or profile file behavior changes.
 - `T3.7k` found no further safe active bridge read-only settings publication to migrate next; bridge write/edit protocol fields, `set`, `apply_set(...)`, `cfg_version`, runtime commands, and profile load/save triggers remain protected.

@@ -14,6 +14,7 @@ __pycache__/
 # Runtime/local character data
 data/settings.xml
 data/profiles/*.lua
+data/profiles_v2/
 data/profiles_uc_v3/*.lua
 data/ui_profiles/
 data/ui_profiles/*.json

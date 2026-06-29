@@ -9,6 +9,7 @@ This is a docs/static audit only. No runtime behavior, bridge behavior, profile 
 `T3.7j` live sanity passed before this audit: addon reload succeeded, no Lua errors were reported, the external UI still connected/loaded, `//uc configstatus export` succeeded, the exported status looked sane, and a short combat loop showed no weirdness.
 
 `T3.8a` adds structured profile/config read compatibility in `uc_config_normalizer.lua` and contract tests only. It does not change bridge state/options payload fields, `set`, `apply_set(...)`, `cfg_version`, bridge commands, profile save/reload triggers, or any live UI write behavior.
+`T3.8b` adds `//uc profilev2 export` as an explicit structured export command outside the bridge. It does not change bridge state/options payload fields, `set`, `apply_set(...)`, `cfg_version`, bridge commands, profile save/reload triggers, or any live UI write behavior.
 
 ## Bridge Read/Write Surface Summary
 

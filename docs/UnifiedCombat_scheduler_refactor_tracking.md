@@ -21,9 +21,34 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.7j` migrates that active bridge read-only `config_contract_status` consumer to `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)`; this is the first active runtime read-path config migration and remains compact/read-only.
 - `T3.7k` audits remaining active bridge read-only settings consumers, keeps runtime and bridge behavior unchanged, confirms `T3.7j` live sanity passed, and recommends pausing bridge migration unless a future task is limited to a newly proven read-only/status-only bridge field.
 - `T3.8a` adds structured profile/config read compatibility at the pure normalizer/contract-test layer. Live v1 profile load/save, bridge writes, and scheduler/provider action-decision reads remain unchanged.
+- `T3.8b` adds an explicit `//uc profilev2 export` command that writes a separate structured v2 profile artifact for inspection. Live v1 profile load/save, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.8b` Add structured v2 profile export command
+
+- Status: `DONE`
+- Changed files:
+  - `UnifiedCombat.lua`
+  - `uc_profile_v2_export.lua`
+  - `tests/replay/harness/selftest_profile_v2_export.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `tests/replay/harness/selftest_runtime_parse.lua`
+  - `.gitignore`
+  - `docs/profile_v2_structured_config_shape.md`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/active_config_consumer_migration_audit.md`
+  - `docs/bridge_readonly_config_consumer_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Added `//uc profilev2 export` to write `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua`.
+  - Export content is a structured `return { version = 2, profile = {...}, config = {...} }` Lua table for inspection.
+  - Kept live v1 profile load/save behavior unchanged and kept the bridge as the live UI write path.
+  - Kept scheduler/provider action-decision reads on `_G.UC_SETTINGS`; no runtime consumer migration was added.
+- Next step:
+  - Field-test the explicit export against real loaded profiles, then decide whether to add opt-in v2 load/dry-run support later.
 
 ### `T3.8a` Add structured profile config read compatibility
 

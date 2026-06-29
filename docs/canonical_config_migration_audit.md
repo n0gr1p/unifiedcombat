@@ -238,6 +238,7 @@ Ambiguous current fields:
 - `T3.7j` completes that first active runtime read-path migration: active bridge `config_contract_status` publication now uses `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)` while remaining compact/read-only and without exposing the full normalized config.
 - `T3.7k` audits the remaining active bridge read-only settings consumers and recommends pausing bridge migration for now: remaining bridge setting-touching paths are tied to the UI edit/write protocol, command state, or derived option/status data. No runtime behavior or bridge behavior changed. `T3.7j` live sanity passed before this audit.
 - `T3.8a` adds pure structured profile/config read compatibility to `uc_config_normalizer.lua`: callers may pass the future `version = 2`, `profile = {...}`, `config = {...}` shape documented in `docs/profile_v2_structured_config_shape.md`, or a direct canonical-domain table. Live v1 profile loading/saving, bridge writes, and scheduler/provider action-decision reads remain unchanged.
+- `T3.8b` adds the explicit `//uc profilev2 export` command, which writes `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` as a structured v2 artifact for inspection and future UI migration work. Live v1 profile loading/saving, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - Runtime action decisions still use `_G.UC_SETTINGS`; scheduler/provider reads are not migrated.
 - Profile load/save behavior and bridge write behavior remain unchanged.
 - Migrate runtime readers one domain at a time through `ctx.config`, with fixture coverage for each migrated domain.
@@ -283,10 +284,12 @@ Ambiguous current fields:
 Requirements for the next task:
 
 - Use `//uc configstatus export` during field testing when chat is too noisy; inspect `data/status/<safe_character>_config_contract_status.lua`.
+- Use `//uc profilev2 export` during field testing to inspect the structured v2 profile artifact under `data/profiles_v2/`.
 - Pause bridge migration unless the task is limited to a newly proven read-only/status-only bridge field. The remaining active bridge setting-touching paths are edit/write protocol or command state.
 - If continuing active read migration, prefer the narrow diagnostic candidate from `T3.7k`: `unified_scheduler.lua` `enemy_dispel_diag(msg)` / `enemy_dispel_log(msg)` debug gates through focused `uc_config_runtime` parity helper(s).
 - Keep the full normalized config out of bridge payloads.
 - Keep the full normalized config and `_G.UC_SETTINGS` out of diagnostic export files.
+- Keep the structured v2 profile export explicit-command-only; it is a separate artifact from the live v1 profile file and does not change live save/load behavior.
 - Keep export explicit-command-only; do not add polling or automatic per-tick writes.
 - Keep runtime action decisions on `_G.UC_SETTINGS`; do not migrate scheduler/provider reads yet.
 - Keep profile load/save behavior unchanged; `T3.8a` did not wire structured v2 payloads into the live load path.
