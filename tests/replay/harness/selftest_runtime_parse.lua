@@ -18,6 +18,7 @@ local RUNTIME_LUA_FILES = {
     "uc_path_hunter.lua",
     "uc_pathing.lua",
     "uc_config_normalizer.lua",
+    "uc_config_runtime.lua",
     "uc_config_status_export.lua",
     "uc_profile_contract.lua",
     "uc_scheduler_action_metadata.lua",

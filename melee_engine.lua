@@ -969,7 +969,7 @@ local display_box2 = function()
 end
 
 local function uc_ingame_ui_enabled()
-	return settings.show_ingame_ui ~= false
+	return require('uc_config_runtime').ingame_ui_enabled(_G.UC_SETTINGS)
 end
 
 local _status = texts.new(display_box(), settings.default_text_settings)

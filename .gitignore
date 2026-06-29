@@ -19,4 +19,5 @@ data/ui_profiles/
 data/ui_profiles/*.json
 data/paths/*.lua
 !data/paths/.gitkeep
+data/status/
 data/logs/*.log

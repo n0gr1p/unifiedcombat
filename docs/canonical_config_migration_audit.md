@@ -232,6 +232,9 @@ Ambiguous current fields:
 - Add an explicit file export for the compact config status. Complete in `T3.7g`: `//uc configstatus export` writes `data/status/<safe_character>_config_contract_status.lua` as a Lua-table diagnostic file.
 - Do not expose the full normalized config as a bridge payload; the bridge only publishes the compact status snapshot.
 - Do not export the full normalized config object or `_G.UC_SETTINGS`; the file export contains only compact status fields.
+- First low-risk consumer migration is complete in `T3.7h`: legacy in-game overlay visibility reads in `melee_engine.lua` and `dd2_module.lua` now read `config.ui.show_ingame_ui` through `uc_config_runtime.lua`, while preserving the old missing-value behavior for those display helpers.
+- Runtime action decisions still use `_G.UC_SETTINGS`; scheduler/provider reads are not migrated.
+- Profile load/save behavior and bridge write behavior remain unchanged.
 - Migrate runtime readers one domain at a time through `ctx.config`, with fixture coverage for each migrated domain.
 - Version the profile file format only after the adapter has read compatibility for old flat profiles and new structured profiles.
 
@@ -252,8 +255,8 @@ Ambiguous current fields:
 4. Build a compact read-only normalized config status from current `_G.UC_SETTINGS` during existing load/reload paths, while keeping all runtime callers on `_G.UC_SETTINGS`. Complete in `T3.7f`.
 5. Expose a read-only config debug/status snapshot through bridge `state` and `options`. Complete in `T3.7f`.
 6. Add an explicit command-only diagnostic export for compact normalized config status. Complete in `T3.7g`.
-7. Migrate one low-risk domain to consume `ctx.config`, preferably debug or sleep selection after parity tests are pinned.
-8. Migrate additional domains one at a time.
+7. Migrate one low-risk read-only UI consumer to canonical config. Complete in `T3.7h`: `ui.show_ingame_ui` for legacy in-game overlay visibility now uses a normalized config accessor.
+8. Field-test the low-risk UI migration, then migrate additional read-only domains one at a time.
 9. Reduce direct `_G.UC_SETTINGS` reads in scheduler/provider paths once each domain has coverage.
 10. Consider versioned profile migration only after compatibility reads are field-proven.
 
@@ -267,16 +270,16 @@ Ambiguous current fields:
 
 ## Recommended next implementation task
 
-`UC_CONFIG_CONTRACT_STATUS` now exposes normalized config readiness without making canonical config authoritative.
+`T3.7h` migrated the first low-risk read-only consumer group: legacy in-game overlay visibility now reads `config.ui.show_ingame_ui` through `uc_config_runtime.lua`.
 
 Requirements for the next task:
 
-- Field-test status parity against real loaded settings and bridge snapshots.
+- Field-test the low-risk `ui.show_ingame_ui` migration against real loaded settings and bridge snapshots.
 - Use `//uc configstatus export` during field testing when chat is too noisy; inspect `data/status/<safe_character>_config_contract_status.lua`.
 - Keep the full normalized config out of bridge payloads.
 - Keep the full normalized config and `_G.UC_SETTINGS` out of diagnostic export files.
 - Keep export explicit-command-only; do not add polling or automatic per-tick writes.
-- Keep runtime callers on `_G.UC_SETTINGS` until parity is proven.
+- Keep runtime action decisions on `_G.UC_SETTINGS`; do not migrate scheduler/provider reads yet.
 - Keep profile load/save behavior unchanged.
 - Keep bridge write behavior unchanged.
-- Then migrate one low-risk domain to `ctx.config` with fixture coverage.
+- Then migrate the next low-risk read-only domain with fixture coverage.

@@ -8,10 +8,11 @@
 - `T3.7e` adds a pure canonical config normalizer over the current flat settings/profile table.
 - `T3.7f` exposes a compact read-only normalized config status snapshot through the addon and bridge.
 - `T3.7g` adds a manual diagnostic export command for the compact normalized config status.
+- `T3.7h` migrates the first low-risk read-only UI consumer: legacy in-game overlay visibility now reads canonical `config.ui.show_ingame_ui` through a runtime accessor.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
-- No profile file migration, bridge write migration, or runtime config object authority has been implemented yet.
+- No profile file migration, bridge write migration, scheduler/provider config migration, or runtime action-decision config authority has been implemented yet.
 
 ## Current profile/settings model
 
@@ -36,6 +37,7 @@
 - The config status export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
 - The config status export excludes the full normalized config table, `_G.UC_SETTINGS`, scheduler state, pending/lock state, target data, party data, and mob snapshots.
 - The config status export uses the existing `files.new(path, true)` / `files.write(...)` helper style and is best-effort diagnostic output, not an atomic profile-write contract.
+- Legacy in-game overlay visibility now reads `config.ui.show_ingame_ui` for display only; it does not change bridge write behavior, profile save behavior, or scheduler/provider action decisions.
 - It uses `cfg_version` monotonic gating for incoming config messages, but it does not do file hashing, file mtime polling, or profile-file change detection.
 
 ## Ownership classification
@@ -66,7 +68,7 @@
 - The editable profile should remain the source of truth for long-lived settings.
 - External UI should write the file atomically.
 - The addon should read and validate the file.
-- A future canonical config object should be built from the validated profile/settings shape, but compatibility with the current flat keys should be preserved until read compatibility is proven. `T3.7f` only reports normalized config status; runtime readers still use `_G.UC_SETTINGS`.
+- A future canonical config object should be built from the validated profile/settings shape, but compatibility with the current flat keys should be preserved until read compatibility is proven. `T3.7h` only migrates read-only legacy overlay visibility to `config.ui.show_ingame_ui`; runtime action decisions still use `_G.UC_SETTINGS`.
 
 ### Addon status output
 
@@ -118,4 +120,4 @@
 
 ## Recommended next implementation task
 
-- Next step after `T3.7g`: field-test normalized config status parity against real loaded settings using bridge snapshots or `//uc configstatus export`, then migrate one low-risk domain to `ctx.config` after confidence is high. Profile load/save behavior stays unchanged, bridge write behavior stays unchanged, and `_G.UC_SETTINGS` remains the compatibility source object until later migration work is proven.
+- Next step after `T3.7h`: field-test the read-only `config.ui.show_ingame_ui` overlay migration against real loaded settings, or migrate the next low-risk read-only domain after this slice is stable. Profile load/save behavior stays unchanged, bridge write behavior stays unchanged, scheduler/provider reads are not migrated, and `_G.UC_SETTINGS` remains the action-decision source object until later migration work is proven.

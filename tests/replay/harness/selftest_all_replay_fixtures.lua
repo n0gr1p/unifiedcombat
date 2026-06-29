@@ -7,6 +7,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_config_normalizer.lua",
     "tests/replay/harness/selftest_config_status.lua",
     "tests/replay/harness/selftest_config_status_export.lua",
+    "tests/replay/harness/selftest_config_first_consumer.lua",
     "tests/replay/harness/selftest_side_effect_inventory.lua",
     "tests/replay/harness/selftest_dispatcher_fixtures.lua",
     "tests/replay/harness/selftest_movement_priority_arbitration.lua",

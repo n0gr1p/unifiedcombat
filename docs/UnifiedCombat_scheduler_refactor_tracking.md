@@ -16,6 +16,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.7e` adds a pure canonical config normalizer and focused replay coverage; no runtime callers have migrated yet.
 - `T3.7f` exposes compact read-only normalized config status through addon and bridge snapshots; runtime callers still use `_G.UC_SETTINGS`.
 - `T3.7g` adds an explicit `//uc configstatus export` diagnostic file export for that compact status; it does not export full config or change runtime readers.
+- `T3.7h` migrates the first low-risk config consumer group: legacy in-game overlay visibility reads `config.ui.show_ingame_ui`; scheduler/provider action-decision reads still use `_G.UC_SETTINGS`.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
@@ -95,6 +96,28 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - Kept runtime readers on `_G.UC_SETTINGS`; profile load/save behavior and bridge write behavior are unchanged.
 - Next step:
   - Field-test exported status parity, then migrate one low-risk config domain to `ctx.config` with focused replay coverage.
+
+### `T3.7h` Migrate first low-risk config consumer
+
+- Status: `DONE`
+- Changed files:
+  - `.gitignore`
+  - `uc_config_runtime.lua`
+  - `melee_engine.lua`
+  - `dd2_module.lua`
+  - `tests/replay/harness/selftest_config_first_consumer.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Added a small runtime config accessor that builds canonical config from current `_G.UC_SETTINGS` and reads `config.ui.show_ingame_ui`.
+  - Migrated only the legacy in-game overlay visibility helpers in `melee_engine.lua` and `dd2_module.lua`.
+  - Preserved the previous display fallback for nil/missing `show_ingame_ui`; normalizer unavailable or failure keeps the old display behavior.
+  - Kept combat, tank, defensive, movement, targeting, scheduler/provider, profile load/save, and bridge write behavior unchanged.
+  - Kept the full normalized config out of bridge snapshots and export files.
+- Next step:
+  - Field-test this low-risk UI migration, then either keep soaking or migrate the next low-risk read-only domain with focused parity coverage.
 
 ### `T3.7c` Wire profile validation into existing load path
 
