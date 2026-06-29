@@ -1,5 +1,12 @@
 # Profile / UI File Contract Audit
 
+## Scaffolding status
+
+- `T3.7b` added a pure profile validation module and a status contract snapshot helper.
+- The new scaffolding is not wired into live profile loading, saving, or the remote bridge yet.
+- No profile polling or live apply behavior has been implemented.
+- The bridge remains the live UI write path for now.
+
 ## Current profile/settings model
 
 - Profile files live at `data/profiles/<safe character name>.lua`.
@@ -95,4 +102,4 @@
 
 ## Recommended next implementation task
 
-- Add a validation-and-status contract layer first: define the addon status snapshot shape and a read-only profile validator before moving any external UI write path off the bridge.
+- Next step after this scaffolding: wire read-only status output or integrate validation into the load path, depending on soak results, before moving any external UI write path off the bridge.

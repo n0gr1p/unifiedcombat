@@ -26,6 +26,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_scheduler_engage_action_state_release.lua",
     "tests/replay/harness/selftest_scheduler_spell_success_action_state.lua",
     "tests/replay/harness/selftest_scheduler_spell_interruption_action_state.lua",
+    "tests/replay/harness/selftest_profile_contract.lua",
     "tests/replay/harness/selftest_sleep_spell_selection.lua",
     "tests/replay/harness/selftest_scheduler_sleep_toggle.lua",
     "tests/replay/harness/selftest_sleep_target_state_suppression.lua",

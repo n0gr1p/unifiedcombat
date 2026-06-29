@@ -10,9 +10,30 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - Tank-family run-stop promotion is complete; Doom command/run-stop remain default-off after the T3.6r audit, and vector-run remains deferred.
 - `T3.6s` finalized the scheduler ownership baseline docs; there is no active ownership promotion task recommended now.
 - `T3.7a` started a parallel profile/UI file contract audit during scheduler soak; no runtime changes were made.
+- `T3.7b` added pure profile validation/status scaffolding without wiring live runtime behavior yet.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.7b` Add profile validation and status contract scaffolding
+
+- Status: `DONE`
+- Changed files:
+  - `uc_profile_contract.lua`
+  - `tests/replay/harness/selftest_profile_contract.lua`
+  - `tests/replay/harness/selftest_runtime_parse.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Added a pure profile validation module with conservative structural checks.
+  - Added ownership classification helpers and a status contract snapshot helper.
+  - Added focused replay coverage and aggregate registration.
+  - Kept live profile load/save and remote bridge behavior unchanged.
+- Validation:
+  - Parser and replay validation passed.
+- Next step:
+  - Decide whether to wire read-only status output or integrate validation into the load path after soak.
 
 ### `T3.6l` Reset local ownership flags baseline
 
