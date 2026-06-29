@@ -52,7 +52,7 @@ local function main()
     assert_not_contains(addon_source, "_G.UC_CONFIG =", "full normalized config must not be stored globally")
     assert_not_contains(addon_source, "_G.UC_NORMALIZED_CONFIG", "full normalized config must not be stored globally")
 
-    assert_contains(bridge_source, "config_contract_status = _G.UC_CONFIG_CONTRACT_STATUS", "bridge snapshots must include config status")
+    assert_contains(bridge_source, "config_contract_status = uc_config_runtime.config_contract_status(_G.UC_SETTINGS)", "bridge snapshots must include config status through runtime accessor")
     assert_contains(bridge_source, "profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS", "bridge must keep profile status")
     assert_contains(bridge_source, "local cfg_ver = tonumber(uc_msg_get(msg, 'cfg_version')) or 0", "bridge write cfg_version gate must remain")
     assert_contains(bridge_source, "apply_set(set_path, set_value)", "bridge set handling must remain apply_set based")

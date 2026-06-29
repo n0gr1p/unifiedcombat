@@ -1,5 +1,21 @@
 local M = {}
 
+local STATUS_FIELDS = {
+    'schema_version',
+    'ok',
+    'available',
+    'normalizer_version',
+    'source',
+    'character',
+    'main_job',
+    'sub_job',
+    'profile_key',
+    'domains',
+    'warnings',
+    'errors',
+    'updated_at',
+}
+
 local function legacy_ingame_ui_enabled(settings)
     if type(settings) ~= 'table' then
         return true
@@ -14,6 +30,63 @@ local function clone_shallow(source)
     end
     for key, value in pairs(source) do
         out[key] = value
+    end
+    return out
+end
+
+local function clone_array(source)
+    local out = {}
+    if type(source) ~= 'table' then
+        return out
+    end
+    for i, value in ipairs(source) do
+        out[i] = value
+    end
+    return out
+end
+
+local function clone_status(status)
+    if type(status) ~= 'table' then
+        return nil
+    end
+    local out = {}
+    for _, key in ipairs(STATUS_FIELDS) do
+        local value = status[key]
+        if type(value) == 'table' then
+            out[key] = clone_array(value)
+        elseif value ~= nil then
+            out[key] = value
+        end
+    end
+    return out
+end
+
+local function config_domain_names(config)
+    local out = {}
+    if type(config) ~= 'table' then
+        return out
+    end
+    for _, domain in ipairs({
+        'profile',
+        'ui',
+        'command',
+        'combat',
+        'abilities',
+        'defensive',
+        'movement',
+        'follow',
+        'targeting',
+        'tank',
+        'sleep',
+        'spells',
+        'maintenance',
+        'debug',
+        'ownership',
+        'legacy',
+    }) do
+        if type(config[domain]) == 'table' then
+            out[#out + 1] = domain
+        end
     end
     return out
 end
@@ -80,6 +153,56 @@ function M.normalize_current_config(settings, meta, normalizer)
         return config
     end
     return nil
+end
+
+function M.config_contract_status(settings, meta, normalizer, current_status)
+    local status = clone_status(current_status)
+    if status then
+        return status
+    end
+    status = clone_status(rawget(_G, 'UC_CONFIG_CONTRACT_STATUS'))
+    if status then
+        return status
+    end
+
+    local resolved = normalizer_from_arg(normalizer)
+    local out = {
+        schema_version = 1,
+        ok = false,
+        available = resolved ~= nil,
+        normalizer_version = type(resolved) == 'table' and type(resolved.version) == 'function' and resolved.version() or nil,
+        source = 'UC_SETTINGS',
+        domains = {},
+        warnings = {},
+        errors = {},
+    }
+    local resolved_meta = meta or current_meta()
+    if type(resolved_meta) == 'table' then
+        out.source = resolved_meta.source or out.source
+        out.character = resolved_meta.character
+        out.main_job = resolved_meta.main_job
+        out.sub_job = resolved_meta.sub_job
+        out.profile_key = resolved_meta.profile_key
+    end
+    if not resolved then
+        out.warnings[#out.warnings + 1] = 'config normalizer unavailable'
+        out.errors[#out.errors + 1] = 'config normalizer unavailable'
+        return out
+    end
+    local ok, config = pcall(resolved.normalize, settings, resolved_meta)
+    if ok and type(config) == 'table' then
+        out.ok = true
+        out.domains = config_domain_names(config)
+        if type(config.profile) == 'table' then
+            out.character = out.character or config.profile.character
+            out.main_job = out.main_job or config.profile.main_job
+            out.sub_job = out.sub_job or config.profile.sub_job
+            out.source = config.profile.source or out.source
+        end
+    else
+        out.errors[#out.errors + 1] = tostring(config)
+    end
+    return out
 end
 
 function M.ingame_ui_enabled(settings, meta, normalizer)

@@ -21,7 +21,7 @@ Active load path inspected:
 | `uc_party_follow.lua` | Active follow/movement support loaded by `UnifiedCombat.lua` | Reads follow/debug settings for follow state |
 | `uc_pathing.lua` | Active pathing support loaded by `UnifiedCombat.lua` | Reads path/follow/debug settings |
 | `unified_combat_core.lua` | Active shared combat helpers used by engine and scheduler | Reads active settings through a local getter |
-| `uc_config_runtime.lua` | Runtime accessor introduced by `T3.7h` | Used only by legacy `melee_engine.lua` and `dd2_module.lua` consumers today |
+| `uc_config_runtime.lua` | Runtime accessor introduced by `T3.7h` and extended by `T3.7j` | Used by legacy `melee_engine.lua` / `dd2_module.lua` UI consumers and active bridge config status publication |
 | `uc_config_normalizer.lua` | Pure canonical config normalizer | Used by status building and `uc_config_runtime.lua` |
 | `uc_config_status_export.lua` | Pure status export renderer | Used by `UnifiedCombat.lua` explicit `//uc configstatus export` command |
 
@@ -74,14 +74,14 @@ Assessment:
 
 ## Recommended next migration candidate
 
-Migrate only the active bridge read-only `config_contract_status` publication in `remote_bridge.lua`.
+Complete in `T3.7j`: the active bridge read-only `config_contract_status` publication in `remote_bridge.lua` now uses `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)`.
 
-Follow-up shape:
+Implemented shape:
 
-- Keep `_G.UC_CONFIG_CONTRACT_STATUS` as the published field name and payload source until the migration task proves parity.
-- Add a small read-only accessor in `uc_config_runtime.lua` or a sibling pure helper that returns the compact config status shape without exposing full normalized config or `_G.UC_SETTINGS`.
-- Use that accessor only from `remote_bridge.lua` `send_options_snapshot` and `send_state_snapshot`.
-- Do not change `apply_set(...)`, bridge write semantics, profile load/save behavior, scheduler reads, or export file content.
+- The field name remains `config_contract_status`.
+- The bridge gets this field through `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)` in both `send_options_snapshot` and `send_state_snapshot`.
+- The accessor returns only the compact status shape and never returns the full normalized config or `_G.UC_SETTINGS`.
+- `apply_set(...)`, bridge write semantics, profile load/save behavior, scheduler reads, and export file content remain unchanged.
 
 Why this is active:
 
@@ -98,23 +98,26 @@ Why this is low-risk:
 
 ## Follow-up files and functions
 
-Likely touched by the next migration only:
+Touched by `T3.7j`:
 
-- `uc_config_runtime.lua`: add a compact status accessor if needed.
-- `remote_bridge.lua`: `send_options_snapshot`, `send_state_snapshot`.
-- `tests/replay/harness/selftest_config_status.lua` or a new focused bridge-status selftest.
-- `tests/replay/harness/selftest_all_replay_fixtures.lua`: register new focused selftest only if a new file is added.
-- Docs tracking files for the follow-up task.
+- `uc_config_runtime.lua`: added compact status accessor.
+- `remote_bridge.lua`: migrated `send_options_snapshot` and `send_state_snapshot`.
+- `tests/replay/harness/selftest_bridge_config_status_consumer.lua`: added focused parity coverage.
+- `tests/replay/harness/selftest_config_status.lua`: updated bridge source assertion.
+- `tests/replay/harness/selftest_all_replay_fixtures.lua`: registered focused selftest.
 
 ## Proposed parity tests
 
-- Assert bridge options snapshot still includes `config_contract_status`.
-- Assert bridge state snapshot still includes `config_contract_status`.
-- Assert `config_contract_status` contains only compact status fields such as `ok`, `available`, `normalizer_version`, `source`, `domains`, `warnings`, and `errors`.
-- Assert bridge snapshots do not include full normalized `config`.
-- Assert bridge snapshots do not include `_G.UC_SETTINGS`.
-- Assert the accessor returns the exact existing `_G.UC_CONFIG_CONTRACT_STATUS` table or an equivalent compact clone, depending on the chosen implementation.
-- Keep existing `selftest_config_status.lua`, `selftest_config_status_export.lua`, and aggregate replay coverage green.
+Implemented in `T3.7j`:
+
+- Assert bridge publication uses `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)`.
+- Assert bridge no longer publishes the field through direct `_G.UC_CONFIG_CONTRACT_STATUS` coupling.
+- Assert compact status fields and representative values are preserved.
+- Assert status arrays are cloned.
+- Assert missing/unavailable normalizer status remains compact and reports unavailable.
+- Assert bridge source still preserves `cfg_version` and `apply_set(...)` write behavior.
+- Assert bridge/export do not expose full normalized config or `_G.UC_SETTINGS`.
+- Assert scheduler/provider code does not require `uc_config_runtime`.
 
 ## Domains not recommended yet
 
@@ -131,4 +134,3 @@ Do not select these domains for the next migration:
 - scheduler/provider action-decision reads
 - bridge write behavior
 - profile load/save behavior
-

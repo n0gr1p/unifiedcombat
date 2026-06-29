@@ -18,6 +18,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.7g` adds an explicit `//uc configstatus export` diagnostic file export for that compact status; it does not export full config or change runtime readers.
 - `T3.7h` migrates the first low-risk config consumer group: legacy in-game overlay visibility reads `config.ui.show_ingame_ui`; scheduler/provider action-decision reads still use `_G.UC_SETTINGS`.
 - `T3.7i` audits active config consumers, finds the `T3.7h` files are likely legacy/orphaned in the current runtime, and selects active bridge read-only `config_contract_status` publication as the next low-risk migration candidate.
+- `T3.7j` migrates that active bridge read-only `config_contract_status` consumer to `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)`; this is the first active runtime read-path config migration and remains compact/read-only.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
@@ -136,6 +137,28 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - Confirmed no runtime behavior, profile load/save behavior, bridge write behavior, or scheduler/action behavior changed.
 - Next step:
   - Migrate only the selected active read-only bridge status consumer with focused parity coverage; do not migrate scheduler/provider action-decision reads or combat/tank/defensive/movement/targeting domains.
+
+### `T3.7j` Migrate bridge config status consumer
+
+- Status: `DONE`
+- Changed files:
+  - `uc_config_runtime.lua`
+  - `remote_bridge.lua`
+  - `tests/replay/harness/selftest_bridge_config_status_consumer.lua`
+  - `tests/replay/harness/selftest_config_status.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `docs/active_config_consumer_migration_audit.md`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Added `uc_config_runtime.config_contract_status(...)` for compact read-only status access.
+  - Migrated active bridge `state` and `options` `config_contract_status` publication away from direct `_G.UC_CONFIG_CONTRACT_STATUS` coupling and onto the runtime accessor.
+  - Kept the bridge field compact/read-only and did not expose full normalized config or `_G.UC_SETTINGS`.
+  - Kept profile load/save behavior, bridge write behavior, `apply_set(...)`, `cfg_version`, scheduler/provider action-decision reads, and combat/tank/defensive/movement/targeting consumers unchanged.
+  - Added focused parity coverage for compact fields, unavailable-normalizer status, no full-config/settings exposure, and unchanged bridge write shape.
+- Next step:
+  - Soak this first active runtime read-path migration, then choose only another status/debug/UI active consumer if the next config migration is needed.
 
 ### `T3.7c` Wire profile validation into existing load path
 

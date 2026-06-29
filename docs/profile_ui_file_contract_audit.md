@@ -10,6 +10,7 @@
 - `T3.7g` adds a manual diagnostic export command for the compact normalized config status.
 - `T3.7h` migrates the first low-risk read-only UI consumer: legacy in-game overlay visibility now reads canonical `config.ui.show_ingame_ui` through a runtime accessor.
 - `T3.7i` audits active config consumers and finds the `T3.7h` files are likely legacy/orphaned in the current UnifiedCombat runtime, so that slice proves the migration pattern more than active runtime behavior.
+- `T3.7j` migrates the active bridge read-only `config_contract_status` publication to `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)`, making it the first active runtime read-path migration.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
@@ -30,8 +31,8 @@
 
 - `remote_bridge.lua` is the live external UI bridge.
 - It sends status snapshots with `op = 'state'` containing `engine`, `Start_Engine`, `char`, `job`, `sub_job`, zone-suspend state, and the read-only `profile_contract_status` snapshot.
-- It sends status snapshots with the read-only `config_contract_status` snapshot. This is a compact normalized config summary and does not include the full normalized config table.
-- It sends option snapshots with `op = 'options'` containing job-dependent option lists for the external UI plus the same read-only `profile_contract_status` and `config_contract_status` snapshots.
+- It sends status snapshots with the read-only `config_contract_status` snapshot through the config runtime accessor. This is a compact normalized config summary and does not include the full normalized config table.
+- It sends option snapshots with `op = 'options'` containing job-dependent option lists for the external UI plus the same read-only `profile_contract_status` and accessor-backed `config_contract_status` snapshots.
 - It accepts `set` messages and writes them into `_G.UC_SETTINGS` through `apply_set(...)`.
 - It accepts one-shot runtime commands: `start_engine`, `stop_engine`, `save`, `reload`, `addon_reload`, `request_state`, and `request_options`.
 - The addon command `//uc configstatus export` writes the compact normalized config status to `data/status/<safe_character>_config_contract_status.lua` as a Lua-table diagnostic file.
@@ -39,7 +40,7 @@
 - The config status export excludes the full normalized config table, `_G.UC_SETTINGS`, scheduler state, pending/lock state, target data, party data, and mob snapshots.
 - The config status export uses the existing `files.new(path, true)` / `files.write(...)` helper style and is best-effort diagnostic output, not an atomic profile-write contract.
 - Legacy in-game overlay visibility now reads `config.ui.show_ingame_ui` for display only; it does not change bridge write behavior, profile save behavior, or scheduler/provider action decisions.
-- The active-consumer audit recommends the next migration should touch only read-only `config_contract_status` publication in active bridge state/options snapshots, with no bridge write or profile file behavior changes.
+- The active bridge config-status consumer now uses the config runtime accessor with no bridge write or profile file behavior changes.
 - It uses `cfg_version` monotonic gating for incoming config messages, but it does not do file hashing, file mtime polling, or profile-file change detection.
 
 ## Ownership classification
@@ -122,4 +123,4 @@
 
 ## Recommended next implementation task
 
-- Next step after `T3.7i`: migrate only the selected active low-risk consumer, the read-only bridge `config_contract_status` publication in `remote_bridge.lua` state/options snapshots. Profile load/save behavior stays unchanged, bridge write behavior stays unchanged, scheduler/provider reads are not migrated, and `_G.UC_SETTINGS` remains the action-decision source object until later migration work is proven.
+- Next step after `T3.7j`: keep soaking the active bridge read-only migration or select another status/debug-only active consumer with focused parity coverage. Profile load/save behavior stays unchanged, bridge write behavior stays unchanged, scheduler/provider reads are not migrated, and `_G.UC_SETTINGS` remains the action-decision source object until later migration work is proven.

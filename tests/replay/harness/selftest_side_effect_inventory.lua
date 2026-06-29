@@ -22,7 +22,7 @@ local INVENTORY_BASELINE = {
         ["windower.send_command("] = { 433, 474, 476 },
     },
     ["remote_bridge.lua"] = {
-        ["windower.send_command("] = { 1574 },
+        ["windower.send_command("] = { 1575 },
     },
     ["melee_engine.lua"] = {
         ["windower.send_command("] = { 377, 382, 661, 667, 814, 820, 1040, 1042, 1922, 2005, 2029, 2104, 2126, 2131, 2196, 2226, 2346, 2419, 2524, 2591, 2600, 2623, 2640, 2649 },
