@@ -23,6 +23,7 @@ Those actions should stay behind dispatcher or wrapper seams.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_SELF_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
+- Doom Holy Water command and Doom run-stop remain default-off after the T3.6r readiness audit; no promotion is recommended yet.
 
 ## Dispatcher / wrapper seams
 
@@ -99,9 +100,9 @@ Those actions should stay behind dispatcher or wrapper seams.
 
 ## Recommended next seam
 
-- `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP`
-- Why: the tank-family run-stop seams are now fully promoted default-on, so the next remaining run-stop work is outside tank scope and Doom remains the safest deferred branch.
-- Status: `candidate_next` for future non-tank run-stop work.
+- No Doom promotion seam yet.
+- Why: Doom is an emergency path with no safe practical live test, so it should stay default-off until a separate replay/mock coverage plan justifies revisiting it.
+- Status: `keep_default_off` for both Doom seams; vector run remains parked separately.
 
 ## What must not change next
 

@@ -7,7 +7,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 
 - Current phase focus: scheduler runtime parity slices that stay inside existing ownership policy, plus replay/static coverage for those slices.
 - Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6e`, the tank configured-JA starvation fix in `T3.6o`, and the tank-enmity spell self run-stop promotion in `T3.6p`.
-- Tank-family run-stop promotion is complete; the remaining deferred work is Doom and vector-run, with configured-JA starvation already resolved separately.
+- Tank-family run-stop promotion is complete; Doom command/run-stop remain default-off after the T3.6r audit, and vector-run remains deferred.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
@@ -107,6 +107,26 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - Parser, ownership, and replay validation passed for the closure audit baseline.
 - Next step:
   - Audit Doom/vector separately only if a future task explicitly asks for it.
+
+### `T3.6r` Audit Doom ownership promotion readiness
+
+- Status: `DONE`
+- Changed files:
+  - `docs/doom_ownership_promotion_readiness_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+  - `docs/scheduler_ownership_resume_baseline.md`
+  - `docs/scheduler_ownership_promotion_plan.md`
+  - `docs/scheduler_ownership_promotion_readiness_audit.md`
+  - `docs/scheduler_remaining_run_stop_coverage_plan.md`
+  - `docs/tank_run_stop_ownership_phase_closure.md`
+- Outcome:
+  - Confirmed both Doom ownership seams remain default-off and should stay conservative for now.
+  - Documented the emergency-path risk, existing replay/static coverage, and the gap in safe live Doom field testing.
+  - Left vector run deferred separately.
+- Validation:
+  - Validation passes are recorded for the audit baseline.
+- Next step:
+  - Keep Doom default-off unless a future task adds a safe replay/mock coverage plan.
 
 ### `T3.6n` Promote tank enmity spell target run-stop ownership default-on
 

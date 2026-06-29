@@ -126,7 +126,7 @@ All tank-family run-stop seams are now promoted default-on and are summarized in
 Notes:
 
 - The single unreachable candidate is the vector run flag.
-- The conservative hold set is now only the emergency Doom paths.
+- The conservative hold set is still the emergency Doom paths; T3.6r kept them default-off.
 - No broad movement ownership promotion is recommended.
 
 ## Temporary Kill Switch Recommendation
@@ -254,6 +254,7 @@ The following 11 paths are now accepted as promoted/default-on rather than pendi
 - Doom Holy Water command ownership: deferred, keep default-off.
 - Doom run_stop ownership: deferred, keep default-off.
 - combat spell settle/prep-wait run_stop ownership: both promoted default-on; the remaining deferred work is Doom and vector run.
+- Vector run remains separately deferred.
 - tank action settle, tank-enmity JA self, tank spell-settle, tank-enmity spell target, and tank-enmity spell self run_stop ownership: all promoted default-on; tank-family run-stop promotion is complete.
 - vector run ownership: dormant / not live-reachable, do not treat as active promotion work.
 

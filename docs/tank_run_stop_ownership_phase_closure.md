@@ -34,6 +34,7 @@
 ## Remaining risks
 
 - Doom still needs a separate explicit promotion plan if it is ever reconsidered.
+- T3.6r confirmed Doom remains default-off, and its audit stays separate from tank closure.
 - Vector run remains parked until runtime reachability is intentionally revisited.
 - No tank-family run-stop seam remains on the default-off path.
 
