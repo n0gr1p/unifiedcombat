@@ -7,6 +7,7 @@
 - `T3.7d` starts canonical config object planning as a docs/static audit only.
 - `T3.7e` adds a pure canonical config normalizer over the current flat settings/profile table.
 - `T3.7f` exposes a compact read-only normalized config status snapshot through the addon and bridge.
+- `T3.7g` adds a manual diagnostic export command for the compact normalized config status.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
@@ -31,6 +32,10 @@
 - It sends option snapshots with `op = 'options'` containing job-dependent option lists for the external UI plus the same read-only `profile_contract_status` and `config_contract_status` snapshots.
 - It accepts `set` messages and writes them into `_G.UC_SETTINGS` through `apply_set(...)`.
 - It accepts one-shot runtime commands: `start_engine`, `stop_engine`, `save`, `reload`, `addon_reload`, `request_state`, and `request_options`.
+- The addon command `//uc configstatus export` writes the compact normalized config status to `data/status/<safe_character>_config_contract_status.lua` as a Lua-table diagnostic file.
+- The config status export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
+- The config status export excludes the full normalized config table, `_G.UC_SETTINGS`, scheduler state, pending/lock state, target data, party data, and mob snapshots.
+- The config status export uses the existing `files.new(path, true)` / `files.write(...)` helper style and is best-effort diagnostic output, not an atomic profile-write contract.
 - It uses `cfg_version` monotonic gating for incoming config messages, but it does not do file hashing, file mtime polling, or profile-file change detection.
 
 ## Ownership classification
@@ -113,4 +118,4 @@
 
 ## Recommended next implementation task
 
-- Next step after `T3.7f`: field-test normalized config status parity against real loaded settings, then migrate one low-risk domain to `ctx.config` after confidence is high. Profile load/save behavior stays unchanged, bridge write behavior stays unchanged, and `_G.UC_SETTINGS` remains the compatibility source object until later migration work is proven.
+- Next step after `T3.7g`: field-test normalized config status parity against real loaded settings using bridge snapshots or `//uc configstatus export`, then migrate one low-risk domain to `ctx.config` after confidence is high. Profile load/save behavior stays unchanged, bridge write behavior stays unchanged, and `_G.UC_SETTINGS` remains the compatibility source object until later migration work is proven.

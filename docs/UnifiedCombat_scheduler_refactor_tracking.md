@@ -15,6 +15,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.7d` audits a future canonical config object for lower Lua 5.1 local/register pressure and profile/UI contract alignment; no runtime behavior or bridge/profile migration changed.
 - `T3.7e` adds a pure canonical config normalizer and focused replay coverage; no runtime callers have migrated yet.
 - `T3.7f` exposes compact read-only normalized config status through addon and bridge snapshots; runtime callers still use `_G.UC_SETTINGS`.
+- `T3.7g` adds an explicit `//uc configstatus export` diagnostic file export for that compact status; it does not export full config or change runtime readers.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
@@ -72,6 +73,28 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - Kept profile load/save behavior and bridge write behavior unchanged.
 - Next step:
   - Field-test status parity against real loaded settings, then migrate one low-risk domain to `ctx.config` with focused replay coverage.
+
+### `T3.7g` Export config status diagnostic
+
+- Status: `DONE`
+- Changed files:
+  - `UnifiedCombat.lua`
+  - `uc_config_status_export.lua`
+  - `tests/replay/harness/selftest_config_status_export.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `tests/replay/harness/selftest_runtime_parse.lua`
+  - `tests/replay/harness/selftest_side_effect_inventory.lua`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Added `//uc configstatus export` to write `data/status/<safe_character>_config_contract_status.lua`.
+  - Export content is a compact `return { ... }` Lua-table diagnostic containing only status fields.
+  - Kept the full normalized config, `_G.UC_SETTINGS`, scheduler state, pending/lock state, target data, party data, and mob snapshots out of the export.
+  - Kept export explicit-command-only; no automatic tick, bridge, scheduler, polling, or combat writes were added.
+  - Kept runtime readers on `_G.UC_SETTINGS`; profile load/save behavior and bridge write behavior are unchanged.
+- Next step:
+  - Field-test exported status parity, then migrate one low-risk config domain to `ctx.config` with focused replay coverage.
 
 ### `T3.7c` Wire profile validation into existing load path
 

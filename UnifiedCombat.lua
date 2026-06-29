@@ -105,6 +105,7 @@ require('actions')
 
 local uc_partner_list = require('uc_partner_list')
 local uc_add_priority = require('uc_add_priority')
+local uc_config_status_export = require('uc_config_status_export')
 local UC_PROFILE_CONTRACT = nil
 local UC_PROFILE_CONTRACT_LOAD_ERROR = nil
 local UC_CONFIG_NORMALIZER = nil
@@ -623,6 +624,10 @@ local function uc_profiles_file_path(char_name)
 	return 'data/profiles/' .. uc_safe_filename(char_name) .. '.lua'
 end
 
+local function uc_config_status_file_path(char_name)
+	return 'data/status/' .. uc_safe_filename(char_name) .. '_config_contract_status.lua'
+end
+
 local uc_normalize_profiles_tree
 
 local function uc_serialize_lua(v, indent)
@@ -668,6 +673,35 @@ local function uc_write_profiles_file(char_name, profiles_tbl)
 	local fobj = files.new(path, true)
 	local ok = files.write(fobj, content)
 	return ok ~= nil
+end
+
+local function uc_write_config_status_export(status, meta)
+	meta = type(meta) == 'table' and meta or {}
+	local char_name = meta.character
+	if char_name == nil or char_name == '' then
+		char_name = type(status) == 'table' and status.character or nil
+	end
+	if char_name == nil or char_name == '' then
+		return false, nil, 'missing character for config status export'
+	end
+	local path = uc_config_status_file_path(char_name)
+	local ok_render, content = pcall(uc_config_status_export.render_config_status_export, status, {
+		exported_at = meta.exported_at,
+	})
+	if not ok_render then
+		return false, path, tostring(content)
+	end
+	local ok_write, result = pcall(function()
+		local fobj = files.new(path, true)
+		return files.write(fobj, content)
+	end)
+	if not ok_write then
+		return false, path, tostring(result)
+	end
+	if result == nil then
+		return false, path, 'files.write returned nil'
+	end
+	return true, path, nil
 end
 
 local function uc_read_profiles_file(char_name)
@@ -1413,6 +1447,39 @@ windower.register_event('addon command', function(...)
 			_G.UC_ReloadActiveProfile()
 		end
 		windower.add_to_chat(207, 'UnifiedCombat: profile reloaded')
+		return
+	elseif a == 'configstatus' then
+		local sub = args[2] and tostring(args[2]):lower() or ''
+		if sub == 'export' then
+			local p = windower.ffxi.get_player()
+			local status = _G.UC_CONFIG_CONTRACT_STATUS
+			if p and _G.UC_SETTINGS then
+				local profile_key = tostring(p.name or '')
+				if p.main_job ~= nil or p.sub_job ~= nil then
+					profile_key = tostring(p.name or '') .. '|' .. tostring(p.main_job or '') .. '|' .. tostring(p.sub_job or '')
+				end
+				status = uc_update_config_contract_status({
+					settings = _G.UC_SETTINGS,
+					source = 'UC_SETTINGS',
+					character = p.name,
+					main_job = p.main_job,
+					sub_job = p.sub_job,
+					profile_key = profile_key,
+					updated_at = uc_now_s(),
+				})
+			end
+			local ok, path = uc_write_config_status_export(status, {
+				character = p and p.name or nil,
+				exported_at = uc_now_s(),
+			})
+			if ok then
+				windower.add_to_chat(207, 'UC config status exported: ' .. tostring(path))
+			else
+				windower.add_to_chat(167, 'UC config status export failed')
+			end
+			return
+		end
+		windower.add_to_chat(207, '//uc configstatus export')
 		return
 	elseif a == 'host' and args[2] then
 		_G.UC_REMOTE_HOST = tostring(args[2])
