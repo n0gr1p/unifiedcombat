@@ -1,12 +1,14 @@
 # Bridge Read-Only Config Consumer Audit
 
-Task: `T3.7k`
+Task: `T3.7k`, updated by `T3.8a`
 
 ## Scope
 
 This is a docs/static audit only. No runtime behavior, bridge behavior, profile load/save behavior, scheduler behavior, action selection, movement, targeting, cure, tank, defensive, maintenance, sleep, WS, JA, or spell dispatch behavior changed.
 
 `T3.7j` live sanity passed before this audit: addon reload succeeded, no Lua errors were reported, the external UI still connected/loaded, `//uc configstatus export` succeeded, the exported status looked sane, and a short combat loop showed no weirdness.
+
+`T3.8a` adds structured profile/config read compatibility in `uc_config_normalizer.lua` and contract tests only. It does not change bridge state/options payload fields, `set`, `apply_set(...)`, `cfg_version`, bridge commands, profile save/reload triggers, or any live UI write behavior.
 
 ## Bridge Read/Write Surface Summary
 
@@ -125,6 +127,8 @@ No additional active bridge read-only settings consumer is recommended for migra
 ## Recommendation
 
 Pause bridge read migration after `T3.7j`. The active bridge has no remaining low-risk read-only settings publication that is both independent of the UI edit/write protocol and a good canonical config parity target.
+
+`T3.8a` does not change this recommendation. Structured profile/config compatibility is available below the bridge at the pure normalizer layer, but the bridge remains the live UI write path until a separate file-owned profile task changes that contract.
 
 Recommended next migration candidate outside the bridge:
 

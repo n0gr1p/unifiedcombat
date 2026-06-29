@@ -12,6 +12,7 @@
 - `T3.7i` audits active config consumers and finds the `T3.7h` files are likely legacy/orphaned in the current UnifiedCombat runtime, so that slice proves the migration pattern more than active runtime behavior.
 - `T3.7j` migrates the active bridge read-only `config_contract_status` publication to `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)`, making it the first active runtime read-path migration.
 - `T3.7k` audits remaining active bridge read-only settings consumers and recommends pausing bridge migration for now because the remaining bridge setting-touching paths are edit/write protocol, command state, or derived option/status data. No runtime behavior or bridge behavior changed, and `T3.7j` live sanity passed before the audit.
+- `T3.8a` adds pure read compatibility for a future structured v2 profile/config payload through `uc_config_normalizer.lua` and a direct contract helper. The supported shape is documented in `docs/profile_v2_structured_config_shape.md`.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
@@ -21,6 +22,7 @@
 
 - Profile files live at `data/profiles/<safe character name>.lua`.
 - The file payload is a Lua table returned as `return { version = 1, profiles = { UC = { [MAIN_JOB] = ... } } }`.
+- Structured v2 payloads are read-compatible at the pure normalizer/contract-test layer only; the live file reader still extracts v1 `profiles` trees and does not apply v2 payloads.
 - Profiles are keyed by character plus main job; subjob is runtime metadata, not part of the on-disk profile key.
 - `UnifiedCombat.lua` loads the profile file on addon load and again on job change / explicit reload.
 - `UnifiedCombat.lua` now validates the loaded profile tree before applying it and records the validation outcome in `UC_PROFILE_CONTRACT_STATUS`.
@@ -125,4 +127,4 @@
 
 ## Recommended next implementation task
 
-- Next step after `T3.7k`: either pause bridge migration, or migrate only the selected non-bridge diagnostic candidate from `docs/bridge_readonly_config_consumer_audit.md`: `unified_scheduler.lua` `enemy_dispel_diag(msg)` / `enemy_dispel_log(msg)` debug gates through focused `uc_config_runtime` parity helper(s). Profile load/save behavior stays unchanged, bridge write behavior stays unchanged, bridge payload shape stays unchanged, scheduler/provider action-decision reads are not migrated, and `_G.UC_SETTINGS` remains the action-decision source object until later migration work is proven.
+- Next step after `T3.8a`: wire structured read compatibility into the live profile load path in fail-safe/read-only mode, or add a sample/generated v2 profile fixture first. Profile save format stays unchanged, bridge write behavior stays unchanged, bridge payload shape stays unchanged, scheduler/provider action-decision reads are not migrated, and `_G.UC_SETTINGS` remains the action-decision source object until later migration work is proven.

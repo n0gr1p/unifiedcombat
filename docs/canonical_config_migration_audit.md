@@ -237,6 +237,7 @@ Ambiguous current fields:
 - `T3.7i` recommends the next active low-risk migration should be only the read-only bridge `config_contract_status` publication in `remote_bridge.lua` state/options snapshots. No runtime behavior changed in `T3.7i`.
 - `T3.7j` completes that first active runtime read-path migration: active bridge `config_contract_status` publication now uses `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)` while remaining compact/read-only and without exposing the full normalized config.
 - `T3.7k` audits the remaining active bridge read-only settings consumers and recommends pausing bridge migration for now: remaining bridge setting-touching paths are tied to the UI edit/write protocol, command state, or derived option/status data. No runtime behavior or bridge behavior changed. `T3.7j` live sanity passed before this audit.
+- `T3.8a` adds pure structured profile/config read compatibility to `uc_config_normalizer.lua`: callers may pass the future `version = 2`, `profile = {...}`, `config = {...}` shape documented in `docs/profile_v2_structured_config_shape.md`, or a direct canonical-domain table. Live v1 profile loading/saving, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - Runtime action decisions still use `_G.UC_SETTINGS`; scheduler/provider reads are not migrated.
 - Profile load/save behavior and bridge write behavior remain unchanged.
 - Migrate runtime readers one domain at a time through `ctx.config`, with fixture coverage for each migrated domain.
@@ -263,8 +264,9 @@ Ambiguous current fields:
 8. Audit active consumers before the next migration. Complete in `T3.7i`: `melee_engine.lua` and `dd2_module.lua` appear legacy/inactive, and the selected next active low-risk candidate is bridge read-only `config_contract_status` publication.
 9. Migrate only the selected active read-only bridge status consumer with focused parity coverage. Complete in `T3.7j`.
 10. Audit remaining active bridge read-only settings consumers. Complete in `T3.7k`: no additional safe bridge read migration candidate was selected; pause bridge migration unless a new read-only status field is added.
-11. Reduce direct `_G.UC_SETTINGS` reads in scheduler/provider paths once each domain has coverage.
-12. Consider versioned profile migration only after compatibility reads are field-proven.
+11. Add structured profile/config read compatibility in the pure normalizer and contract tests. Complete in `T3.8a`: `settings.config` is accepted as durable grouped config, wrapper `profile` metadata maps to `config.profile`, direct canonical-domain input remains supported, and malformed structured input does not throw.
+12. Reduce direct `_G.UC_SETTINGS` reads in scheduler/provider paths once each domain has coverage.
+13. Consider versioned profile migration only after compatibility reads are field-proven.
 
 ## Risks
 
@@ -287,6 +289,6 @@ Requirements for the next task:
 - Keep the full normalized config and `_G.UC_SETTINGS` out of diagnostic export files.
 - Keep export explicit-command-only; do not add polling or automatic per-tick writes.
 - Keep runtime action decisions on `_G.UC_SETTINGS`; do not migrate scheduler/provider reads yet.
-- Keep profile load/save behavior unchanged.
+- Keep profile load/save behavior unchanged; `T3.8a` did not wire structured v2 payloads into the live load path.
 - Keep bridge write behavior unchanged.
 - Do not migrate scheduler/provider action-decision reads, combat/tank/defensive/movement/targeting domains, or bridge write behavior in the next task.

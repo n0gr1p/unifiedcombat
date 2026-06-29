@@ -1,12 +1,14 @@
 # Active Config Consumer Migration Audit
 
-Task: `T3.7i`, updated by `T3.7k`
+Task: `T3.7i`, updated by `T3.7k` and `T3.8a`
 
 ## Scope
 
 This is a docs/static audit only. No runtime behavior, profile load/save behavior, bridge write behavior, scheduler behavior, action selection, movement, targeting, cure, tank, or combat decision code changed.
 
 `T3.7k` audited the active bridge read-only settings consumers after the `T3.7j` migration. It also made no runtime behavior changes and no bridge behavior changes. `T3.7j` live sanity passed before `T3.7k`: addon reload succeeded, no Lua errors were reported, the external UI still connected/loaded, `//uc configstatus export` succeeded, the exported file looked sane, and a short combat loop showed no weirdness.
+
+`T3.8a` adds structured profile/config read compatibility to the pure config normalizer and contract tests only. It does not migrate an active runtime consumer, live profile loading, live profile saving, bridge writes, or scheduler/provider action-decision reads.
 
 ## Active runtime entry points
 
@@ -24,7 +26,7 @@ Active load path inspected:
 | `uc_pathing.lua` | Active pathing support loaded by `UnifiedCombat.lua` | Reads path/follow/debug settings |
 | `unified_combat_core.lua` | Active shared combat helpers used by engine and scheduler | Reads active settings through a local getter |
 | `uc_config_runtime.lua` | Runtime accessor introduced by `T3.7h` and extended by `T3.7j` | Used by legacy `melee_engine.lua` / `dd2_module.lua` UI consumers and active bridge config status publication |
-| `uc_config_normalizer.lua` | Pure canonical config normalizer | Used by status building and `uc_config_runtime.lua` |
+| `uc_config_normalizer.lua` | Pure canonical config normalizer | Used by status building and `uc_config_runtime.lua`; `T3.8a` also accepts structured `settings.config` and direct canonical-domain input |
 | `uc_config_status_export.lua` | Pure status export renderer | Used by `UnifiedCombat.lua` explicit `//uc configstatus export` command |
 
 ## T3.7h active-path assessment
@@ -112,6 +114,8 @@ Result:
 - `set`, `apply_set(...)`, `cfg_version`, runtime commands, profile load/save triggers, and all current flat-key edit/echo paths must not migrate yet.
 
 Recommended next step after `T3.7k`: pause bridge migration for now. If another active config read migration is desired, use a narrow non-bridge diagnostic candidate such as `unified_scheduler.lua` `enemy_dispel_diag(msg)` / `enemy_dispel_log(msg)`, migrating only their `debug` / `log_def_sched` diagnostic gates through focused `uc_config_runtime` parity helpers. Do not migrate scheduler/provider action-decision reads.
+
+After `T3.8a`, another safe profile/config migration path is to wire structured v2 read compatibility into the live profile load path in fail-safe/read-only mode, or add a generated v2 fixture before live wiring. Bridge write behavior and scheduler/provider action-decision reads should remain unchanged.
 
 ## Follow-up files and functions
 

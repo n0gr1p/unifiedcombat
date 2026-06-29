@@ -443,6 +443,65 @@ function M.validate_profile_payload(payload)
     }
 end
 
+function M.validate_structured_profile_config(payload)
+    local errors = {}
+    local warnings = {}
+
+    if type(payload) ~= "table" then
+        add_error(errors, "payload", "payload must be a table")
+        return {
+            ok = false,
+            version = 2,
+            warnings = warnings,
+            errors = errors,
+        }
+    end
+
+    validate_structure(payload, "payload", errors, {})
+
+    local version = payload.version
+    if version == nil then
+        warnings[#warnings + 1] = "payload.version missing; treating as structured config candidate"
+        version = 2
+    elseif type(version) ~= "number" or version % 1 ~= 0 then
+        add_error(errors, "payload.version", "version must be an integer")
+    elseif version ~= 2 then
+        add_error(errors, "payload.version", "structured profile config version must be 2")
+    end
+
+    local profile = payload.profile
+    if type(profile) ~= "table" then
+        add_error(errors, "payload.profile", "profile metadata must be a table")
+    else
+        if profile.schema_version ~= nil and (type(profile.schema_version) ~= "number" or profile.schema_version % 1 ~= 0) then
+            add_error(errors, "payload.profile.schema_version", "schema_version must be an integer")
+        end
+        if profile.engine ~= nil and type(profile.engine) ~= "string" then
+            add_error(errors, "payload.profile.engine", "engine must be a string")
+        end
+        if profile.character ~= nil and type(profile.character) ~= "string" then
+            add_error(errors, "payload.profile.character", "character must be a string")
+        end
+        if profile.main_job ~= nil and type(profile.main_job) ~= "string" then
+            add_error(errors, "payload.profile.main_job", "main_job must be a string")
+        end
+        if profile.sub_job ~= nil and type(profile.sub_job) ~= "string" then
+            add_error(errors, "payload.profile.sub_job", "sub_job must be a string")
+        end
+    end
+
+    if type(payload.config) ~= "table" then
+        add_error(errors, "payload.config", "config must be a table")
+    end
+
+    return {
+        ok = #errors == 0,
+        version = version,
+        warnings = warnings,
+        errors = errors,
+    }
+end
+
 function M.build_status_contract_snapshot(input)
     input = type(input) == "table" and input or {}
     local character = input.character

@@ -155,6 +155,16 @@ local function table_has_any(value, keys)
     return false
 end
 
+local function normalize_source(settings)
+    if not is_table(settings) then
+        return {}, {}
+    end
+    if is_table(settings.config) then
+        return settings.config, settings
+    end
+    return settings, settings
+end
+
 local function default_profile(meta)
     local meta_table = is_table(meta) and meta or {}
     return {
@@ -768,14 +778,26 @@ end
 
 local function normalize_legacy(source, config)
     local legacy = config.legacy
-    legacy.sub = normalize_boolean(first_path(source, { path('sub') }), legacy.sub)
-    legacy.sub2 = normalize_boolean(first_path(source, { path('sub2') }), legacy.sub2)
-    legacy.solo = normalize_boolean(first_path(source, { path('solo') }), legacy.solo)
-    legacy.aeonic = normalize_boolean(first_path(source, { path('aeonic') }), legacy.aeonic)
-    legacy.color = normalize_boolean(first_path(source, { path('color') }), legacy.color)
-    legacy.command = normalize_boolean(first_path(source, { path('command') }), legacy.command)
-    legacy.hunter = normalize_boolean(first_path(source, { path('hunter') }), legacy.hunter)
-    legacy.profiles = normalize_list(first_path(source, { path('profiles') }), legacy.profiles)
+    local nested = get_path(source, { 'legacy' })
+    if is_table(nested) and table_has_any(nested, { 'sub', 'sub2', 'solo', 'aeonic', 'color', 'command', 'hunter', 'profiles' }) then
+        legacy.sub = normalize_boolean(nested.sub, legacy.sub)
+        legacy.sub2 = normalize_boolean(nested.sub2, legacy.sub2)
+        legacy.solo = normalize_boolean(nested.solo, legacy.solo)
+        legacy.aeonic = normalize_boolean(nested.aeonic, legacy.aeonic)
+        legacy.color = normalize_boolean(nested.color, legacy.color)
+        legacy.command = normalize_boolean(nested.command, legacy.command)
+        legacy.hunter = normalize_boolean(nested.hunter, legacy.hunter)
+        legacy.profiles = normalize_list(nested.profiles or first_path(source, { path('profiles') }), legacy.profiles)
+    else
+        legacy.sub = normalize_boolean(first_path(source, { path('sub') }), legacy.sub)
+        legacy.sub2 = normalize_boolean(first_path(source, { path('sub2') }), legacy.sub2)
+        legacy.solo = normalize_boolean(first_path(source, { path('solo') }), legacy.solo)
+        legacy.aeonic = normalize_boolean(first_path(source, { path('aeonic') }), legacy.aeonic)
+        legacy.color = normalize_boolean(first_path(source, { path('color') }), legacy.color)
+        legacy.command = normalize_boolean(first_path(source, { path('command') }), legacy.command)
+        legacy.hunter = normalize_boolean(first_path(source, { path('hunter') }), legacy.hunter)
+        legacy.profiles = normalize_list(first_path(source, { path('profiles') }), legacy.profiles)
+    end
 end
 
 function M.default_config(meta)
@@ -783,12 +805,12 @@ function M.default_config(meta)
 end
 
 function M.normalize(settings, meta)
-    local source = is_table(settings) and settings or {}
+    local source, profile_source = normalize_source(settings)
     local config = default_config(meta)
 
-    normalize_profile(source, meta, config)
-    config.ui.show_ingame_ui = normalize_boolean(first_path(source, { path('show_ingame_ui') }), config.ui.show_ingame_ui)
-    config.command.engine_enabled_default = normalize_boolean(first_path(source, { path('engine_enabled') }), config.command.engine_enabled_default)
+    normalize_profile(profile_source, meta, config)
+    config.ui.show_ingame_ui = normalize_boolean(first_path(source, { path('show_ingame_ui'), path('ui', 'show_ingame_ui') }), config.ui.show_ingame_ui)
+    config.command.engine_enabled_default = normalize_boolean(first_path(source, { path('engine_enabled'), path('command', 'engine_enabled_default') }), config.command.engine_enabled_default)
     normalize_combat(source, config)
     normalize_list_domain(source, config)
     normalize_defensive(source, config)
