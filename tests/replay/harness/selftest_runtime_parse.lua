@@ -17,6 +17,7 @@ local RUNTIME_LUA_FILES = {
     "uc_party_follow.lua",
     "uc_path_hunter.lua",
     "uc_pathing.lua",
+    "uc_config_normalizer.lua",
     "uc_profile_contract.lua",
     "uc_scheduler_action_metadata.lua",
     "uc_scheduler_action_predicates.lua",

@@ -13,6 +13,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.7b` added pure profile validation/status scaffolding without wiring live runtime behavior yet.
 - `T3.7c` wires that validation into the existing profile load/reload path and exposes read-only contract status through the bridge.
 - `T3.7d` audits a future canonical config object for lower Lua 5.1 local/register pressure and profile/UI contract alignment; no runtime behavior or bridge/profile migration changed.
+- `T3.7e` adds a pure canonical config normalizer and focused replay coverage; no runtime callers have migrated yet.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
@@ -30,6 +31,26 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - Confirmed no profile load/save behavior, bridge write behavior, scheduler ownership defaults, or runtime action behavior changed.
 - Next step:
   - Add pure `uc_config_normalizer.lua` with tests for canonical shape, default normalization, and compatibility with current flat profile/settings data.
+
+### `T3.7e` Add pure canonical config normalizer
+
+- Status: `DONE`
+- Changed files:
+  - `uc_config_normalizer.lua`
+  - `tests/replay/harness/selftest_config_normalizer.lua`
+  - `tests/replay/harness/selftest_runtime_parse.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Added a pure `uc_config_normalizer.lua` adapter that groups the current flat `_G.UC_SETTINGS` / profile data into canonical `profile`, `ui`, `command`, `combat`, `abilities`, `defensive`, `movement`, `follow`, `targeting`, `tank`, `sleep`, `spells`, `maintenance`, `debug`, `ownership`, and `legacy` domains.
+  - Preserved compatibility with current flat keys while tolerating nested bridge-shaped input and copying list/table values so the normalized config can be used without mutating source tables.
+  - Kept runtime callers on `_G.UC_SETTINGS`; no profile load/save behavior or bridge write behavior changed.
+- Validation:
+  - Parser and replay validation passed.
+- Next step:
+  - Build a read-only status or config consumer around the normalized object, or migrate one low-risk domain to `ctx.config` after field-test confidence is high.
 
 ### `T3.7c` Wire profile validation into existing load path
 

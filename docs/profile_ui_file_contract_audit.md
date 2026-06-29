@@ -5,6 +5,7 @@
 - `T3.7b` added a pure profile validation module and a status contract snapshot helper.
 - `T3.7c` wires validation into the existing profile load / reload path and publishes a read-only status snapshot back through the bridge.
 - `T3.7d` starts canonical config object planning as a docs/static audit only.
+- `T3.7e` adds a pure canonical config normalizer over the current flat settings/profile table.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
@@ -110,4 +111,4 @@
 
 ## Recommended next implementation task
 
-- Next step after `T3.7d`: add a pure `uc_config_normalizer.lua` that accepts the current flat settings/profile table and returns a grouped canonical config table, with no `_G` mutation and no runtime caller migration.
+- Next step after `T3.7e`: build a read-only config/status surface around normalized config, or migrate one low-risk domain to `ctx.config` after field-test confidence is high. Profile load/save behavior stays unchanged, bridge behavior stays unchanged, and `_G.UC_SETTINGS` remains the compatibility source object until later migration work is proven.

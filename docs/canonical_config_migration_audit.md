@@ -4,7 +4,7 @@ Task: `T3.7d`
 
 ## Current conclusion
 
-A canonical validated `config` object is worth adding, but it should start as a pure adapter over the current flat `_G.UC_SETTINGS` shape. The current runtime has enough large scheduler and bridge functions that grouped domain subtables would reduce Lua 5.1 local/register pressure and make profile/UI ownership easier to reason about. It should not replace existing profile keys, bridge message paths, or save/load behavior yet.
+A canonical validated `config` object is worth adding, and `T3.7e` now adds the first pure adapter over the current flat `_G.UC_SETTINGS` shape. The current runtime has enough large scheduler and bridge functions that grouped domain subtables would reduce Lua 5.1 local/register pressure and make profile/UI ownership easier to reason about. It should not replace existing profile keys, bridge message paths, or save/load behavior yet.
 
 ## Current settings and config surface
 
@@ -244,7 +244,7 @@ Ambiguous current fields:
 ## Implementation phases
 
 1. Audit only. Complete in `T3.7d`.
-2. Add pure `uc_config_normalizer.lua` with no `_G` mutation and no runtime caller migration.
+2. Add pure `uc_config_normalizer.lua` with no `_G` mutation and no runtime caller migration. Complete in `T3.7e`.
 3. Add focused tests for normalized default shape, representative profile shape, bridge-style nested input, and legacy slot normalization.
 4. Build config from validated profile/settings during load or tick setup, but keep all runtime callers on `_G.UC_SETTINGS`.
 5. Expose a read-only config debug/status snapshot.
@@ -263,7 +263,7 @@ Ambiguous current fields:
 
 ## Recommended next implementation task
 
-Create `uc_config_normalizer.lua`.
+`uc_config_normalizer.lua` now exists as a pure adapter over the current flat settings/profile table.
 
 Requirements for the next task:
 
@@ -274,3 +274,4 @@ Requirements for the next task:
 - No caller migration.
 - No profile save/load behavior changes.
 - Tests only assert shape, default normalization, legacy slot handling, and representative field placement.
+- Next step after the normalizer is proven: either add a read-only config/status surface around `ctx.config` or migrate one low-risk domain to `ctx.config`, depending on field-test confidence.
