@@ -998,6 +998,7 @@ local function process_line(line)
 			job = p.main_job,
 			sub_job = p.sub_job,
 			engine = _G.UC_ENGINE,
+			profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS,
 			ability_options = uc_get_cached_ability_options(),
 			weaponskill_options = uc_join_pipe(uc_get_weaponskill_names()),
 			path_pull_ja_options = select(1, uc_get_cached_pull_action_options()),
@@ -1622,6 +1623,7 @@ function uc_remote_tick()
 		engine = _G.UC_ENGINE,
 		Start_Engine = Start_Engine,
 		zone_suspend_active = zone_suspend_active,
+		profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS,
 	}
 	if not safe_send_line(json_encode_simple(st)) then
 		return

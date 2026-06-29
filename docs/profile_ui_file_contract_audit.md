@@ -3,7 +3,8 @@
 ## Scaffolding status
 
 - `T3.7b` added a pure profile validation module and a status contract snapshot helper.
-- The new scaffolding is not wired into live profile loading, saving, or the remote bridge yet.
+- `T3.7c` wires validation into the existing profile load / reload path and publishes a read-only status snapshot back through the bridge.
+- The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
 
@@ -13,6 +14,7 @@
 - The file payload is a Lua table returned as `return { version = 1, profiles = { UC = { [MAIN_JOB] = ... } } }`.
 - Profiles are keyed by character plus main job; subjob is runtime metadata, not part of the on-disk profile key.
 - `UnifiedCombat.lua` loads the profile file on addon load and again on job change / explicit reload.
+- `UnifiedCombat.lua` now validates the loaded profile tree before applying it and records the validation outcome in `UC_PROFILE_CONTRACT_STATUS`.
 - `UnifiedCombat.lua` writes the profile file through `files.new(path, true)` and `files.write(...)`.
 - Write behavior is a direct overwrite; no temp-file rename, no backup file, and no atomic write contract is present today.
 - Profile reads are fail-safe: `loadstring/load` is wrapped in `pcall`, and malformed content returns `nil` rather than crashing the addon.
@@ -20,8 +22,8 @@
 ## Current UI / bridge interaction
 
 - `remote_bridge.lua` is the live external UI bridge.
-- It sends status snapshots with `op = 'state'` containing `engine`, `Start_Engine`, `char`, `job`, `sub_job`, and zone-suspend state.
-- It sends option snapshots with `op = 'options'` containing job-dependent option lists for the external UI.
+- It sends status snapshots with `op = 'state'` containing `engine`, `Start_Engine`, `char`, `job`, `sub_job`, zone-suspend state, and the read-only `profile_contract_status` snapshot.
+- It sends option snapshots with `op = 'options'` containing job-dependent option lists for the external UI plus the same read-only `profile_contract_status` snapshot.
 - It accepts `set` messages and writes them into `_G.UC_SETTINGS` through `apply_set(...)`.
 - It accepts one-shot runtime commands: `start_engine`, `stop_engine`, `save`, `reload`, `addon_reload`, `request_state`, and `request_options`.
 - It uses `cfg_version` monotonic gating for incoming config messages, but it does not do file hashing, file mtime polling, or profile-file change detection.

@@ -62,11 +62,14 @@ local function main()
 
     local valid_uc_result = contract.validate_uc_profile_table(valid_payload.profiles.UC.WAR)
     assert_true(valid_uc_result.ok == true, "valid UC profile table should pass")
+    local valid_tree_result = contract.validate_profile_tree(valid_payload.profiles)
+    assert_true(valid_tree_result.ok == true, "valid profile tree should pass")
 
     assert_error_entries(contract.validate_profile_payload("bad"), "string payload")
     assert_error_entries(contract.validate_profile_payload({ version = 1 }), "missing profiles payload")
     assert_error_entries(contract.validate_profile_payload({ version = 1, profiles = "bad" }), "non-table profiles payload")
     assert_error_entries(contract.validate_uc_profile_table("bad"), "non-table UC profile table")
+    assert_error_entries(contract.validate_profile_tree("bad"), "non-table profile tree")
 
     local shape_result = contract.validate_profile_payload({
         version = 1,
@@ -130,6 +133,16 @@ local function main()
     assert_equal(snapshot.updated_at, 123.5, "updated_at mismatch")
     assert_true(type(snapshot.warnings) == "table" and #snapshot.warnings == 1, "warnings shape mismatch")
     assert_true(type(snapshot.errors) == "table" and #snapshot.errors == 1, "errors shape mismatch")
+
+    local profile_tree_result = contract.validate_profile_tree({
+        UC = {
+            WAR = {
+                ability_active = true,
+                tank = true,
+            },
+        },
+    })
+    assert_true(profile_tree_result.ok == true, "profile tree with UC job profile should pass")
 
     io.stdout:write("selftest_profile_contract: OK\n")
 end

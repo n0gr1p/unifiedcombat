@@ -105,6 +105,25 @@ require('actions')
 
 local uc_partner_list = require('uc_partner_list')
 local uc_add_priority = require('uc_add_priority')
+local UC_PROFILE_CONTRACT = nil
+local UC_PROFILE_CONTRACT_LOAD_ERROR = nil
+do
+	local ok, contract = pcall(require, 'uc_profile_contract')
+	if ok and type(contract) == 'table' then
+		UC_PROFILE_CONTRACT = contract
+	else
+		UC_PROFILE_CONTRACT_LOAD_ERROR = tostring(contract)
+	end
+end
+_G.UC_PROFILE_CONTRACT_STATUS = {
+	schema_version = 1,
+	contract_loaded = UC_PROFILE_CONTRACT ~= nil,
+	contract_load_error = UC_PROFILE_CONTRACT_LOAD_ERROR,
+	validation_state = 'not_checked',
+	load_state = 'idle',
+	warnings = {},
+	errors = {},
+}
 
 local function uc_new_settings_defaults()
 	return {
@@ -434,6 +453,49 @@ local function uc_clone_value(v)
 	return out
 end
 
+local function uc_profile_contract_available()
+	return type(UC_PROFILE_CONTRACT) == 'table'
+end
+
+local function uc_validate_profile_tree(profile_tree)
+	if not uc_profile_contract_available() or type(UC_PROFILE_CONTRACT.validate_profile_tree) ~= 'function' then
+		return nil
+	end
+	return UC_PROFILE_CONTRACT.validate_profile_tree(profile_tree)
+end
+
+local function uc_update_profile_contract_status(context)
+	context = type(context) == 'table' and context or {}
+	local status
+	if uc_profile_contract_available() and type(UC_PROFILE_CONTRACT.build_status_contract_snapshot) == 'function' then
+		status = UC_PROFILE_CONTRACT.build_status_contract_snapshot(context)
+	else
+		status = {
+			schema_version = 1,
+			character = context.character,
+			main_job = context.main_job,
+			sub_job = context.sub_job,
+			profile_key = context.profile_key,
+			engine_state = uc_clone_value(context.engine_state or {}),
+			zone_suspended = context.zone_suspended == true,
+			scheduler_summary = uc_clone_value(context.scheduler_summary or {}),
+			current_action = uc_clone_value(context.current_action or {}),
+			warnings = uc_clone_value(context.warnings or {}),
+			errors = uc_clone_value(context.errors or {}),
+			updated_at = context.updated_at,
+		}
+	end
+	status.contract_loaded = uc_profile_contract_available()
+	status.contract_load_error = UC_PROFILE_CONTRACT_LOAD_ERROR
+	status.validation_state = context.validation_state or status.validation_state
+	status.load_state = context.load_state or status.load_state
+	status.validation_source = context.validation_source
+	status.file_present = context.file_present == true
+	status.profile_tree_valid = context.profile_tree_valid
+	_G.UC_PROFILE_CONTRACT_STATUS = status
+	return status
+end
+
 local function uc_safe_filename(name)
 	local n = tostring(name or 'unknown'):lower()
 	n = n:gsub('[^%w%-_]+', '_')
@@ -740,13 +802,97 @@ end
 
 local function uc_load_profiles_for_character(char_name)
 	if not _G.UC_SETTINGS or not char_name or char_name == '' then
+		uc_update_profile_contract_status({
+			validation_state = 'skipped',
+			load_state = 'missing_settings_or_character',
+			validation_source = 'load_path',
+			file_present = false,
+			warnings = { 'profile load skipped: missing settings or character' },
+			errors = { 'profile load skipped: missing settings or character' },
+			updated_at = uc_now_s(),
+		})
 		return false
 	end
 	local file_profiles = uc_read_profiles_file(char_name)
 	if type(file_profiles) ~= 'table' then
+		uc_update_profile_contract_status({
+			character = char_name,
+			main_job = nil,
+			sub_job = nil,
+			profile_key = nil,
+			validation_state = 'missing_or_invalid',
+			load_state = 'missing_or_invalid',
+			validation_source = 'load_path',
+			file_present = false,
+			warnings = { 'profile file missing or invalid' },
+			errors = { 'profile file missing or invalid' },
+			updated_at = uc_now_s(),
+		})
 		return false
 	end
+	local validation_result = uc_validate_profile_tree(file_profiles)
+	local validation_state = 'unavailable'
+	local load_state = 'loaded_without_validation'
+	local validation_warnings = { 'profile validation module unavailable' }
+	local validation_errors = {}
+	local profile_tree_valid = nil
+	if validation_result ~= nil then
+		profile_tree_valid = validation_result.ok == true
+		validation_state = validation_result.ok and 'valid' or 'invalid'
+		load_state = validation_result.ok and 'loaded' or 'validation_failed'
+		validation_warnings = validation_result.warnings or {}
+		validation_errors = validation_result.errors or {}
+		if not validation_result.ok then
+			uc_update_profile_contract_status({
+				character = char_name,
+				main_job = nil,
+				sub_job = nil,
+				profile_key = nil,
+				validation_state = validation_state,
+				load_state = load_state,
+				validation_source = 'load_path',
+				file_present = true,
+				warnings = validation_warnings,
+				errors = validation_errors,
+				updated_at = uc_now_s(),
+			})
+			return false
+		end
+	end
 	_G.UC_SETTINGS.profiles = uc_normalize_profiles_tree(uc_clone_value(file_profiles))
+	local p = windower.ffxi.get_player()
+	local profile_character = p and p.name or char_name
+	local profile_main_job = p and p.main_job or nil
+	local profile_sub_job = p and p.sub_job or nil
+	local profile_key = profile_character
+	if profile_main_job ~= nil or profile_sub_job ~= nil then
+		profile_key = tostring(profile_character or '') .. '|' .. tostring(profile_main_job or '') .. '|' .. tostring(profile_sub_job or '')
+	end
+	uc_update_profile_contract_status({
+		character = profile_character,
+		main_job = profile_main_job,
+		sub_job = profile_sub_job,
+		profile_key = profile_key,
+		validation_state = validation_state,
+		load_state = load_state,
+		validation_source = 'load_path',
+		file_present = true,
+		profile_tree_valid = profile_tree_valid,
+		warnings = validation_warnings,
+		errors = validation_errors,
+		engine_state = {
+			engine_enabled = _G.UC_SETTINGS and _G.UC_SETTINGS.engine_enabled or nil,
+		},
+		scheduler_summary = {
+			profile_character = profile_character,
+			profile_main_job = profile_main_job,
+		},
+		current_action = {
+			kind = 'profile_load',
+			name = 'reload_active_profile',
+		},
+		updated_at = uc_now_s(),
+	})
 	uc_get_profiles_root()
 	return true
 end

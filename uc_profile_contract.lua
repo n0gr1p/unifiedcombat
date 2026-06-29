@@ -333,6 +333,48 @@ function M.validate_uc_profile_table(profile_table)
     }
 end
 
+function M.validate_profile_tree(profile_tree)
+    local errors = {}
+    local warnings = {}
+
+    if type(profile_tree) ~= "table" then
+        add_error(errors, "profile_tree", "profile tree must be a table")
+        return {
+            ok = false,
+            version = CURRENT_PROFILE_SCHEMA_VERSION,
+            warnings = warnings,
+            errors = errors,
+        }
+    end
+
+    validate_structure(profile_tree, "profile_tree", errors, {})
+
+    for branch_name, branch_value in pairs(profile_tree) do
+        if type(branch_value) ~= "table" then
+            add_error(errors, "profile_tree." .. tostring(branch_name), "profile branch must be a table")
+        else
+            for job_name, job_profile in pairs(branch_value) do
+                local job_result = M.validate_uc_profile_table(job_profile)
+                if not job_result.ok then
+                    for _, entry in ipairs(job_result.errors) do
+                        errors[#errors + 1] = {
+                            path = "profile_tree." .. tostring(branch_name) .. "." .. tostring(job_name) .. "." .. entry.path,
+                            message = entry.message,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    return {
+        ok = #errors == 0,
+        version = CURRENT_PROFILE_SCHEMA_VERSION,
+        warnings = warnings,
+        errors = errors,
+    }
+end
+
 function M.validate_profile_payload(payload)
     local errors = {}
     local warnings = {}

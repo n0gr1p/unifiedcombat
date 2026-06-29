@@ -11,9 +11,29 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.6s` finalized the scheduler ownership baseline docs; there is no active ownership promotion task recommended now.
 - `T3.7a` started a parallel profile/UI file contract audit during scheduler soak; no runtime changes were made.
 - `T3.7b` added pure profile validation/status scaffolding without wiring live runtime behavior yet.
+- `T3.7c` wires that validation into the existing profile load/reload path and exposes read-only contract status through the bridge.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.7c` Wire profile validation into existing load path
+
+- Status: `DONE`
+- Changed files:
+  - `UnifiedCombat.lua`
+  - `remote_bridge.lua`
+  - `uc_profile_contract.lua`
+  - `tests/replay/harness/selftest_profile_contract.lua`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Wired validation into the existing profile load/reload path without changing save behavior, naming/keying, or bridge write commands.
+  - Added a read-only `UC_PROFILE_CONTRACT_STATUS` snapshot that the bridge can include in `state` and `options` messages.
+  - Kept profile load fail-safe: invalid trees are rejected, and validation availability is reported without introducing live apply or polling.
+- Validation:
+  - Parser and replay validation passed.
+- Next step:
+  - No further profile contract wiring is needed before soak unless the field snapshot reveals a missing status field.
 
 ### `T3.7b` Add profile validation and status contract scaffolding
 
