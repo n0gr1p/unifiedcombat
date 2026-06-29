@@ -6,10 +6,11 @@
 - `T3.7c` wires validation into the existing profile load / reload path and publishes a read-only status snapshot back through the bridge.
 - `T3.7d` starts canonical config object planning as a docs/static audit only.
 - `T3.7e` adds a pure canonical config normalizer over the current flat settings/profile table.
+- `T3.7f` exposes a compact read-only normalized config status snapshot through the addon and bridge.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
-- No profile file migration, bridge protocol migration, or runtime config object has been implemented yet.
+- No profile file migration, bridge write migration, or runtime config object authority has been implemented yet.
 
 ## Current profile/settings model
 
@@ -26,7 +27,8 @@
 
 - `remote_bridge.lua` is the live external UI bridge.
 - It sends status snapshots with `op = 'state'` containing `engine`, `Start_Engine`, `char`, `job`, `sub_job`, zone-suspend state, and the read-only `profile_contract_status` snapshot.
-- It sends option snapshots with `op = 'options'` containing job-dependent option lists for the external UI plus the same read-only `profile_contract_status` snapshot.
+- It sends status snapshots with the read-only `config_contract_status` snapshot. This is a compact normalized config summary and does not include the full normalized config table.
+- It sends option snapshots with `op = 'options'` containing job-dependent option lists for the external UI plus the same read-only `profile_contract_status` and `config_contract_status` snapshots.
 - It accepts `set` messages and writes them into `_G.UC_SETTINGS` through `apply_set(...)`.
 - It accepts one-shot runtime commands: `start_engine`, `stop_engine`, `save`, `reload`, `addon_reload`, `request_state`, and `request_options`.
 - It uses `cfg_version` monotonic gating for incoming config messages, but it does not do file hashing, file mtime polling, or profile-file change detection.
@@ -59,7 +61,7 @@
 - The editable profile should remain the source of truth for long-lived settings.
 - External UI should write the file atomically.
 - The addon should read and validate the file.
-- A future canonical config object should be built from the validated profile/settings shape, but compatibility with the current flat keys should be preserved until read compatibility is proven.
+- A future canonical config object should be built from the validated profile/settings shape, but compatibility with the current flat keys should be preserved until read compatibility is proven. `T3.7f` only reports normalized config status; runtime readers still use `_G.UC_SETTINGS`.
 
 ### Addon status output
 
@@ -111,4 +113,4 @@
 
 ## Recommended next implementation task
 
-- Next step after `T3.7e`: build a read-only config/status surface around normalized config, or migrate one low-risk domain to `ctx.config` after field-test confidence is high. Profile load/save behavior stays unchanged, bridge behavior stays unchanged, and `_G.UC_SETTINGS` remains the compatibility source object until later migration work is proven.
+- Next step after `T3.7f`: field-test normalized config status parity against real loaded settings, then migrate one low-risk domain to `ctx.config` after confidence is high. Profile load/save behavior stays unchanged, bridge write behavior stays unchanged, and `_G.UC_SETTINGS` remains the compatibility source object until later migration work is proven.

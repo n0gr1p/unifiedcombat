@@ -107,12 +107,22 @@ local uc_partner_list = require('uc_partner_list')
 local uc_add_priority = require('uc_add_priority')
 local UC_PROFILE_CONTRACT = nil
 local UC_PROFILE_CONTRACT_LOAD_ERROR = nil
+local UC_CONFIG_NORMALIZER = nil
+local UC_CONFIG_NORMALIZER_LOAD_ERROR = nil
 do
 	local ok, contract = pcall(require, 'uc_profile_contract')
 	if ok and type(contract) == 'table' then
 		UC_PROFILE_CONTRACT = contract
 	else
 		UC_PROFILE_CONTRACT_LOAD_ERROR = tostring(contract)
+	end
+end
+do
+	local ok, normalizer = pcall(require, 'uc_config_normalizer')
+	if ok and type(normalizer) == 'table' then
+		UC_CONFIG_NORMALIZER = normalizer
+	else
+		UC_CONFIG_NORMALIZER_LOAD_ERROR = tostring(normalizer)
 	end
 end
 _G.UC_PROFILE_CONTRACT_STATUS = {
@@ -123,6 +133,17 @@ _G.UC_PROFILE_CONTRACT_STATUS = {
 	load_state = 'idle',
 	warnings = {},
 	errors = {},
+}
+_G.UC_CONFIG_CONTRACT_STATUS = {
+	schema_version = 1,
+	ok = false,
+	available = UC_CONFIG_NORMALIZER ~= nil,
+	normalizer_version = nil,
+	source = 'UC_SETTINGS',
+	domains = {},
+	warnings = UC_CONFIG_NORMALIZER_LOAD_ERROR and { 'config normalizer unavailable' } or {},
+	errors = UC_CONFIG_NORMALIZER_LOAD_ERROR and { UC_CONFIG_NORMALIZER_LOAD_ERROR } or {},
+	updated_at = uc_now_s(),
 }
 
 local function uc_new_settings_defaults()
@@ -455,6 +476,99 @@ end
 
 local function uc_profile_contract_available()
 	return type(UC_PROFILE_CONTRACT) == 'table'
+end
+
+local function uc_config_normalizer_available()
+	return type(UC_CONFIG_NORMALIZER) == 'table'
+		and type(UC_CONFIG_NORMALIZER.normalize) == 'function'
+end
+
+local function uc_config_normalizer_version()
+	if type(UC_CONFIG_NORMALIZER) == 'table' and type(UC_CONFIG_NORMALIZER.version) == 'function' then
+		local ok, version = pcall(UC_CONFIG_NORMALIZER.version)
+		if ok then
+			return version
+		end
+	end
+	return nil
+end
+
+local function uc_config_domain_names(config)
+	local out = {}
+	if type(config) ~= 'table' then
+		return out
+	end
+	for _, domain in ipairs({
+		'profile',
+		'ui',
+		'command',
+		'combat',
+		'abilities',
+		'defensive',
+		'movement',
+		'follow',
+		'targeting',
+		'tank',
+		'sleep',
+		'spells',
+		'maintenance',
+		'debug',
+		'ownership',
+		'legacy',
+	}) do
+		if type(config[domain]) == 'table' then
+			out[#out + 1] = domain
+		end
+	end
+	return out
+end
+
+local function uc_update_config_contract_status(context)
+	context = type(context) == 'table' and context or {}
+	local status = {
+		schema_version = 1,
+		ok = false,
+		available = uc_config_normalizer_available(),
+		normalizer_version = uc_config_normalizer_version(),
+		source = context.source or 'UC_SETTINGS',
+		character = context.character,
+		main_job = context.main_job,
+		sub_job = context.sub_job,
+		profile_key = context.profile_key,
+		domains = {},
+		warnings = uc_clone_value(context.warnings or {}),
+		errors = {},
+		updated_at = context.updated_at or uc_now_s(),
+	}
+	if not status.available then
+		status.warnings[#status.warnings + 1] = 'config normalizer unavailable'
+		status.errors[#status.errors + 1] = UC_CONFIG_NORMALIZER_LOAD_ERROR or 'config normalizer unavailable'
+		_G.UC_CONFIG_CONTRACT_STATUS = status
+		return status
+	end
+
+	local settings = context.settings or _G.UC_SETTINGS
+	local meta = {
+		character = context.character,
+		main_job = context.main_job,
+		sub_job = context.sub_job,
+		source = status.source,
+	}
+	local ok, config = pcall(UC_CONFIG_NORMALIZER.normalize, settings, meta)
+	if ok and type(config) == 'table' then
+		status.ok = true
+		status.domains = uc_config_domain_names(config)
+		if type(config.profile) == 'table' then
+			status.character = status.character or config.profile.character
+			status.main_job = status.main_job or config.profile.main_job
+			status.sub_job = status.sub_job or config.profile.sub_job
+			status.source = config.profile.source or status.source
+		end
+	else
+		status.errors[#status.errors + 1] = tostring(config)
+	end
+	_G.UC_CONFIG_CONTRACT_STATUS = status
+	return status
 end
 
 local function uc_validate_profile_tree(profile_tree)
@@ -811,6 +925,11 @@ local function uc_load_profiles_for_character(char_name)
 			errors = { 'profile load skipped: missing settings or character' },
 			updated_at = uc_now_s(),
 		})
+		uc_update_config_contract_status({
+			source = 'UC_SETTINGS',
+			warnings = { 'config status skipped: missing settings or character' },
+			updated_at = uc_now_s(),
+		})
 		return false
 	end
 	local file_profiles = uc_read_profiles_file(char_name)
@@ -893,6 +1012,15 @@ local function uc_load_profiles_for_character(char_name)
 		},
 		updated_at = uc_now_s(),
 	})
+	uc_update_config_contract_status({
+		settings = _G.UC_SETTINGS,
+		source = 'UC_SETTINGS',
+		character = profile_character,
+		main_job = profile_main_job,
+		sub_job = profile_sub_job,
+		profile_key = profile_key,
+		updated_at = uc_now_s(),
+	})
 	uc_get_profiles_root()
 	return true
 end
@@ -965,6 +1093,20 @@ local function uc_reload_active_profile(job_for_defaults)
 		uc_apply_job_defaults(p.main_job)
 	end
 	uc_apply_active_profile()
+	local main_job = job_for_defaults or p.main_job
+	local profile_key = tostring(p.name or '')
+	if main_job ~= nil or p.sub_job ~= nil then
+		profile_key = tostring(p.name or '') .. '|' .. tostring(main_job or '') .. '|' .. tostring(p.sub_job or '')
+	end
+	uc_update_config_contract_status({
+		settings = _G.UC_SETTINGS,
+		source = 'UC_SETTINGS',
+		character = p.name,
+		main_job = main_job,
+		sub_job = p.sub_job,
+		profile_key = profile_key,
+		updated_at = uc_now_s(),
+	})
 	return p
 end
 

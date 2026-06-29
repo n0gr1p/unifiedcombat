@@ -228,7 +228,8 @@ Ambiguous current fields:
 - Do not change `remote_bridge.lua` set/apply behavior; continue writing `_G.UC_SETTINGS`.
 - Do not change `UnifiedCombat.lua` profile load/save behavior; build config from the already-loaded settings/profile object.
 - Add tests that compare the canonical output shape against current defaults and representative profile settings.
-- Expose a read-only config status/debug snapshot only after the normalizer is proven.
+- Expose a read-only config status/debug snapshot only after the normalizer is proven. Complete in `T3.7f`: `UC_CONFIG_CONTRACT_STATUS` now reports availability, normalizer version, profile metadata, canonical domain names, warnings, and errors.
+- Do not expose the full normalized config as a bridge payload; the bridge only publishes the compact status snapshot.
 - Migrate runtime readers one domain at a time through `ctx.config`, with fixture coverage for each migrated domain.
 - Version the profile file format only after the adapter has read compatibility for old flat profiles and new structured profiles.
 
@@ -246,8 +247,8 @@ Ambiguous current fields:
 1. Audit only. Complete in `T3.7d`.
 2. Add pure `uc_config_normalizer.lua` with no `_G` mutation and no runtime caller migration. Complete in `T3.7e`.
 3. Add focused tests for normalized default shape, representative profile shape, bridge-style nested input, and legacy slot normalization.
-4. Build config from validated profile/settings during load or tick setup, but keep all runtime callers on `_G.UC_SETTINGS`.
-5. Expose a read-only config debug/status snapshot.
+4. Build a compact read-only normalized config status from current `_G.UC_SETTINGS` during existing load/reload paths, while keeping all runtime callers on `_G.UC_SETTINGS`. Complete in `T3.7f`.
+5. Expose a read-only config debug/status snapshot through bridge `state` and `options`. Complete in `T3.7f`.
 6. Migrate one low-risk domain to consume `ctx.config`, preferably debug or sleep selection after parity tests are pinned.
 7. Migrate additional domains one at a time.
 8. Reduce direct `_G.UC_SETTINGS` reads in scheduler/provider paths once each domain has coverage.
@@ -263,15 +264,13 @@ Ambiguous current fields:
 
 ## Recommended next implementation task
 
-`uc_config_normalizer.lua` now exists as a pure adapter over the current flat settings/profile table.
+`UC_CONFIG_CONTRACT_STATUS` now exposes normalized config readiness without making canonical config authoritative.
 
 Requirements for the next task:
 
-- Input: existing flat `_G.UC_SETTINGS` / profile table.
-- Output: canonical config table matching this audit.
-- No `_G` mutation.
-- No runtime behavior changes.
-- No caller migration.
-- No profile save/load behavior changes.
-- Tests only assert shape, default normalization, legacy slot handling, and representative field placement.
-- Next step after the normalizer is proven: either add a read-only config/status surface around `ctx.config` or migrate one low-risk domain to `ctx.config`, depending on field-test confidence.
+- Field-test status parity against real loaded settings and bridge snapshots.
+- Keep the full normalized config out of bridge payloads.
+- Keep runtime callers on `_G.UC_SETTINGS` until parity is proven.
+- Keep profile load/save behavior unchanged.
+- Keep bridge write behavior unchanged.
+- Then migrate one low-risk domain to `ctx.config` with fixture coverage.

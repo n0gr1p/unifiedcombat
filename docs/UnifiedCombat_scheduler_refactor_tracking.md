@@ -14,6 +14,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.7c` wires that validation into the existing profile load/reload path and exposes read-only contract status through the bridge.
 - `T3.7d` audits a future canonical config object for lower Lua 5.1 local/register pressure and profile/UI contract alignment; no runtime behavior or bridge/profile migration changed.
 - `T3.7e` adds a pure canonical config normalizer and focused replay coverage; no runtime callers have migrated yet.
+- `T3.7f` exposes compact read-only normalized config status through addon and bridge snapshots; runtime callers still use `_G.UC_SETTINGS`.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
@@ -51,6 +52,26 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - Parser and replay validation passed.
 - Next step:
   - Build a read-only status or config consumer around the normalized object, or migrate one low-risk domain to `ctx.config` after field-test confidence is high.
+
+### `T3.7f` Expose normalized config read-only status
+
+- Status: `DONE`
+- Changed files:
+  - `UnifiedCombat.lua`
+  - `remote_bridge.lua`
+  - `tests/replay/harness/selftest_config_status.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `tests/replay/harness/selftest_side_effect_inventory.lua`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Added `UC_CONFIG_CONTRACT_STATUS` as a compact read-only summary built from current `_G.UC_SETTINGS` during existing load/reload paths.
+  - Published `config_contract_status` in bridge `state` and `options` snapshots without exporting the full normalized config table.
+  - Kept runtime readers on `_G.UC_SETTINGS`; no scheduler/provider reads migrated to `ctx.config`.
+  - Kept profile load/save behavior and bridge write behavior unchanged.
+- Next step:
+  - Field-test status parity against real loaded settings, then migrate one low-risk domain to `ctx.config` with focused replay coverage.
 
 ### `T3.7c` Wire profile validation into existing load path
 
