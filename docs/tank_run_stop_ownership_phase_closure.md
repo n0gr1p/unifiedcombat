@@ -11,6 +11,7 @@
 - `T3.6o` fixed tank configured JA starvation by raising tank-mode configured JA priority to `99`.
 - `T3.6p` promoted tank enmity spell self run-stop ownership default-on.
 - `T3.6q` closed the tank run-stop promotion phase and audited the remaining ownership surface.
+- `T3.6s` finalized the scheduler ownership baseline docs after the tank-family closure.
 
 ## Field-test summary
 

@@ -12,6 +12,7 @@
 - `T3.6o` raised tank-mode configured JAs to `priority_band = 99` while leaving the non-tank baseline at `70`, so the tank lane now has a fairer scheduling window without changing the DPS baseline.
 - `T3.6p` promoted the remaining tank-enmity spell self run-stop seam default-on; that ownership change is separate from the configured-JA tuning.
 - `T3.6q` closed the tank run-stop promotion phase without changing the configured-JA tuning.
+- `T3.6s` keeps that tuning as part of the final scheduler ownership baseline.
 
 ## What that means
 

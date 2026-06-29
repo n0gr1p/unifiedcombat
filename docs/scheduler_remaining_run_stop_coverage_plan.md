@@ -17,6 +17,7 @@ These paths should not all be treated the same.
 - Tank action/tank spell/tank enmity paths are now fully promoted default-on.
 - Tank configured-JA starvation was resolved in `T3.6o` by retuning the tank-mode configured-JA band; the run-stop plan below stays unchanged and should not be read as evidence that generic configured JAs are part of the tank-enmity lane.
 - Vector run remains separate from run_stop planning and should stay parked as dormant/unreachable unless runtime wiring is intentionally revisited.
+- `T3.6s` closed the baseline cleanup; there is no active run-stop promotion task to take next.
 
 ## Current Ownership Status
 

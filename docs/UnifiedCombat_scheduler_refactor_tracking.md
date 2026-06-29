@@ -8,6 +8,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - Current phase focus: scheduler runtime parity slices that stay inside existing ownership policy, plus replay/static coverage for those slices.
 - Completed in this phase: core harness foundation plus fixture suites for extracted modules, plus targeted runtime parity fixes through `T3.6e`, the tank configured-JA starvation fix in `T3.6o`, and the tank-enmity spell self run-stop promotion in `T3.6p`.
 - Tank-family run-stop promotion is complete; Doom command/run-stop remain default-off after the T3.6r audit, and vector-run remains deferred.
+- `T3.6s` finalized the scheduler ownership baseline docs; there is no active ownership promotion task recommended now.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
@@ -127,6 +128,30 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - Validation passes are recorded for the audit baseline.
 - Next step:
   - Keep Doom default-off unless a future task adds a safe replay/mock coverage plan.
+
+### `T3.6s` Finalize scheduler ownership promotion baseline
+
+- Status: `DONE`
+- Changed files:
+  - `docs/scheduler_ownership_final_baseline.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+  - `docs/scheduler_ownership_resume_baseline.md`
+  - `docs/scheduler_ownership_promotion_plan.md`
+  - `docs/scheduler_ownership_promotion_readiness_audit.md`
+  - `docs/scheduler_remaining_run_stop_coverage_plan.md`
+  - `docs/tank_run_stop_ownership_phase_closure.md`
+  - `docs/doom_ownership_promotion_readiness_audit.md`
+  - `docs/local_ownership_flags_audit.md`
+  - `docs/tank_configured_ja_starvation_diagnostic.md`
+  - `docs/aggregate_replay_failure_baseline.md`
+- Outcome:
+  - Collapsed the remaining stale promotion language into a final baseline summary.
+  - Confirmed the promoted surfaces are stable, local ownership overrides are clean, and Doom/vector stay parked.
+  - Left runtime behavior unchanged.
+- Validation:
+  - Full parse/replay validation passed.
+- Next step:
+  - No ownership promotion is recommended now; future work should begin with a separate readiness plan if needed.
 
 ### `T3.6n` Promote tank enmity spell target run-stop ownership default-on
 
@@ -279,7 +304,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
   - The standalone timeline suite passes.
   - `lua tests/replay/harness/selftest_all_replay_fixtures.lua` now passes in full.
 - Next step:
-  - The next ownership promotion slice is unblocked again; continue with the smallest safe ownership step.
+  - `T3.6s` finalized the ownership baseline; no active ownership promotion slice is recommended now.
 
 ### `T3.6e` Refresh stale replay fixture expectations only
 

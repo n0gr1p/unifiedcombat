@@ -28,6 +28,7 @@ It separates:
   - target
   - turn
 - Movement arbitration and zero-HP death-animation cleanup were completed after field testing exposed non-ownership baseline movement issues.
+- `T3.6s` finalized the ownership baseline; no new promotion is recommended now.
 
 ## Promotion Principles
 

@@ -8,6 +8,7 @@
 - Deferred/default-off paths still require explicit `_G.UC_SCHED_P1_ENABLE_DISPATCHER_*_OWNERSHIP == true` checks.
 - This T3.0c update is documentation-only and does not change runtime behavior.
 - T3.6r keeps Doom command/run-stop in the deferred bucket; no Doom promotion task is recommended yet.
+- T3.6s finalizes the baseline; no active ownership promotion task is recommended now.
 
 ## Ownership Families
 
@@ -325,6 +326,7 @@ Current policy:
 - Doom run_stop ownership remains default-off
 - combat-spell settle/prep-wait run_stop ownership are both promoted default-on; the remaining deferred work is Doom and vector-run
 - Doom remains emergency-only, and vector-run remains parked separately.
+- The baseline is complete; future promotion work should start from a separate readiness plan if needed.
 
 ## T3.1d Packet Status
 

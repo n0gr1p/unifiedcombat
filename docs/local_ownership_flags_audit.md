@@ -21,6 +21,7 @@
 - No active ownership overrides remain.
 - Source defaults are now the active behavior.
 - The clean baseline still holds after the tank run-stop phase closure in `T3.6q`.
+- `T3.6s` confirms the clean baseline remains the final scheduler ownership baseline.
 - This file should stay mostly empty unless you are deliberately bisecting or collecting diagnostics.
 
 ## Current local flag inventory

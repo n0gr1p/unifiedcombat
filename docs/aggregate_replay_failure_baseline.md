@@ -28,11 +28,11 @@
 
 ## Implication Check
 
-- `T3.6b` combat spell settle run-stop promotion does not appear implicated.
-- `T3.6c` combat spell prep-wait run-stop promotion does not appear implicated.
-- The remaining aggregate failure has been cleared; the prior leak was harness isolation/order leakage around `selftest_action_economy_timeline_logging`, not the promoted combat-spell run-stop ownership paths.
+- `T3.6b` combat spell settle run-stop promotion does not appear implicated; that was a historical false lead.
+- `T3.6c` combat spell prep-wait run-stop promotion does not appear implicated; that was a historical false lead.
+- The aggregate suite is green, so this doc now serves as a historical failure-baseline note rather than an active blocker list.
 
 ## Recommended Next Task
 
-- Proceed with the next ownership promotion slice.
-- Do not promote tank-family ownership until the next slice is explicitly selected.
+- Keep the scheduler ownership baseline stable.
+- Use a separate readiness plan if new ownership work is ever reopened.

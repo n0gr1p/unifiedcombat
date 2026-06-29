@@ -5,6 +5,7 @@
 - `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_RUN_STOP_OWNERSHIP`
 - `UC_SCHED_P1_ENABLE_DISPATCHER_RUN_VECTOR_OWNERSHIP` remains deferred and dormant outside Doom.
+- `T3.6s` leaves Doom parked; no promotion is recommended now.
 
 ## Doom seam classification
 

@@ -16,6 +16,7 @@ Those actions should stay behind dispatcher or wrapper seams.
 - `unified_scheduler.lua` currently has zero direct textual callsites for the four side-effect expressions above.
 - The remaining runtime actions in `unified_scheduler.lua` are routed through ownership helpers for command, run-stop, target, turn, and run-vector seams.
 - `UnifiedCombat.lua` still contains one legacy direct `windower.ffxi.run(false)` in `_G.UC_ResetMovementLocksForFollow`; that lives outside the scheduler ownership surface and is not part of this baseline.
+- `T3.6s` finalized this as the stable scheduler ownership baseline.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_SETTLE_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_SPELL_PREP_WAIT_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
 - `UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP` is now promoted default-on with explicit `false` opt-out and shared promoted kill-switch support.
@@ -100,9 +101,9 @@ Those actions should stay behind dispatcher or wrapper seams.
 
 ## Recommended next seam
 
-- No Doom promotion seam yet.
-- Why: Doom is an emergency path with no safe practical live test, so it should stay default-off until a separate replay/mock coverage plan justifies revisiting it.
-- Status: `keep_default_off` for both Doom seams; vector run remains parked separately.
+- No ownership promotion seam is recommended now.
+- Why: the baseline is complete, Doom stays default-off, and vector run remains parked separately.
+- Status: `baseline_finalized`; keep future work in a separate readiness plan if a new gap appears.
 
 ## What must not change next
 
