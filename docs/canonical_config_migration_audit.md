@@ -233,6 +233,8 @@ Ambiguous current fields:
 - Do not expose the full normalized config as a bridge payload; the bridge only publishes the compact status snapshot.
 - Do not export the full normalized config object or `_G.UC_SETTINGS`; the file export contains only compact status fields.
 - First low-risk consumer migration is complete in `T3.7h`: legacy in-game overlay visibility reads in `melee_engine.lua` and `dd2_module.lua` now read `config.ui.show_ingame_ui` through `uc_config_runtime.lua`, while preserving the old missing-value behavior for those display helpers.
+- `T3.7i` audits active config consumers and finds `melee_engine.lua` and `dd2_module.lua` are likely legacy/orphaned in the current UnifiedCombat runtime, so `T3.7h` proved the migration pattern more than active runtime behavior.
+- `T3.7i` recommends the next active low-risk migration should be only the read-only bridge `config_contract_status` publication in `remote_bridge.lua` state/options snapshots. No runtime behavior changed in `T3.7i`.
 - Runtime action decisions still use `_G.UC_SETTINGS`; scheduler/provider reads are not migrated.
 - Profile load/save behavior and bridge write behavior remain unchanged.
 - Migrate runtime readers one domain at a time through `ctx.config`, with fixture coverage for each migrated domain.
@@ -256,9 +258,10 @@ Ambiguous current fields:
 5. Expose a read-only config debug/status snapshot through bridge `state` and `options`. Complete in `T3.7f`.
 6. Add an explicit command-only diagnostic export for compact normalized config status. Complete in `T3.7g`.
 7. Migrate one low-risk read-only UI consumer to canonical config. Complete in `T3.7h`: `ui.show_ingame_ui` for legacy in-game overlay visibility now uses a normalized config accessor.
-8. Field-test the low-risk UI migration, then migrate additional read-only domains one at a time.
-9. Reduce direct `_G.UC_SETTINGS` reads in scheduler/provider paths once each domain has coverage.
-10. Consider versioned profile migration only after compatibility reads are field-proven.
+8. Audit active consumers before the next migration. Complete in `T3.7i`: `melee_engine.lua` and `dd2_module.lua` appear legacy/inactive, and the selected next active low-risk candidate is bridge read-only `config_contract_status` publication.
+9. Migrate only the selected active read-only bridge status consumer with focused parity coverage.
+10. Reduce direct `_G.UC_SETTINGS` reads in scheduler/provider paths once each domain has coverage.
+11. Consider versioned profile migration only after compatibility reads are field-proven.
 
 ## Risks
 
@@ -270,11 +273,12 @@ Ambiguous current fields:
 
 ## Recommended next implementation task
 
-`T3.7h` migrated the first low-risk read-only consumer group: legacy in-game overlay visibility now reads `config.ui.show_ingame_ui` through `uc_config_runtime.lua`.
+`T3.7i` audited active config consumers after `T3.7h`. The `T3.7h` overlay migration likely touched legacy/orphaned paths, so it should be treated as migration-pattern proof rather than strong active-runtime proof.
 
 Requirements for the next task:
 
-- Field-test the low-risk `ui.show_ingame_ui` migration against real loaded settings and bridge snapshots.
+- Migrate only the selected active low-risk consumer: read-only `config_contract_status` publication in `remote_bridge.lua` state/options snapshots.
+- Add focused parity coverage that proves the bridge still publishes compact status and still excludes full normalized config and `_G.UC_SETTINGS`.
 - Use `//uc configstatus export` during field testing when chat is too noisy; inspect `data/status/<safe_character>_config_contract_status.lua`.
 - Keep the full normalized config out of bridge payloads.
 - Keep the full normalized config and `_G.UC_SETTINGS` out of diagnostic export files.
@@ -282,4 +286,4 @@ Requirements for the next task:
 - Keep runtime action decisions on `_G.UC_SETTINGS`; do not migrate scheduler/provider reads yet.
 - Keep profile load/save behavior unchanged.
 - Keep bridge write behavior unchanged.
-- Then migrate the next low-risk read-only domain with fixture coverage.
+- Do not migrate scheduler/provider action-decision reads, combat/tank/defensive/movement/targeting domains, or bridge write behavior in the next task.
