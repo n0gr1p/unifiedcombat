@@ -19,9 +19,28 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.7h` migrates the first low-risk config consumer group: legacy in-game overlay visibility reads `config.ui.show_ingame_ui`; scheduler/provider action-decision reads still use `_G.UC_SETTINGS`.
 - `T3.7i` audits active config consumers, finds the `T3.7h` files are likely legacy/orphaned in the current runtime, and selects active bridge read-only `config_contract_status` publication as the next low-risk migration candidate.
 - `T3.7j` migrates that active bridge read-only `config_contract_status` consumer to `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)`; this is the first active runtime read-path config migration and remains compact/read-only.
+- `T3.7k` audits remaining active bridge read-only settings consumers, keeps runtime and bridge behavior unchanged, confirms `T3.7j` live sanity passed, and recommends pausing bridge migration unless a future task is limited to a newly proven read-only/status-only bridge field.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.7k` Audit active bridge read-only settings consumers
+
+- Status: `DONE`
+- Changed files:
+  - `docs/bridge_readonly_config_consumer_audit.md`
+  - `docs/active_config_consumer_migration_audit.md`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Audited `remote_bridge.lua` state/options/hello snapshots and live command/edit handlers.
+  - Confirmed the only safe active bridge read-only config publication, `config_contract_status`, was already migrated in `T3.7j`.
+  - Classified remaining bridge option fields as derived UI edit choices, `Start_Engine` as command state, profile/config contract fields as addon-owned status, and all `set`/`apply_set(...)`/`cfg_version` paths as protected write protocol.
+  - Confirmed no runtime behavior, bridge behavior, profile load/save behavior, or scheduler/action behavior changed.
+  - Recorded that `T3.7j` live sanity passed before this audit.
+- Next step:
+  - Pause bridge migration for now, or migrate only the narrow non-bridge diagnostic candidate: `unified_scheduler.lua` `enemy_dispel_diag(msg)` / `enemy_dispel_log(msg)` debug gates through focused `uc_config_runtime` parity helper(s). Do not migrate scheduler/provider action-decision reads.
 
 ### `T3.7d` Audit canonical config migration
 

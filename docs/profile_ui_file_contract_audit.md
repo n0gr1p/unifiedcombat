@@ -11,6 +11,7 @@
 - `T3.7h` migrates the first low-risk read-only UI consumer: legacy in-game overlay visibility now reads canonical `config.ui.show_ingame_ui` through a runtime accessor.
 - `T3.7i` audits active config consumers and finds the `T3.7h` files are likely legacy/orphaned in the current UnifiedCombat runtime, so that slice proves the migration pattern more than active runtime behavior.
 - `T3.7j` migrates the active bridge read-only `config_contract_status` publication to `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)`, making it the first active runtime read-path migration.
+- `T3.7k` audits remaining active bridge read-only settings consumers and recommends pausing bridge migration for now because the remaining bridge setting-touching paths are edit/write protocol, command state, or derived option/status data. No runtime behavior or bridge behavior changed, and `T3.7j` live sanity passed before the audit.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
@@ -41,6 +42,7 @@
 - The config status export uses the existing `files.new(path, true)` / `files.write(...)` helper style and is best-effort diagnostic output, not an atomic profile-write contract.
 - Legacy in-game overlay visibility now reads `config.ui.show_ingame_ui` for display only; it does not change bridge write behavior, profile save behavior, or scheduler/provider action decisions.
 - The active bridge config-status consumer now uses the config runtime accessor with no bridge write or profile file behavior changes.
+- `T3.7k` found no further safe active bridge read-only settings publication to migrate next; bridge write/edit protocol fields, `set`, `apply_set(...)`, `cfg_version`, runtime commands, and profile load/save triggers remain protected.
 - It uses `cfg_version` monotonic gating for incoming config messages, but it does not do file hashing, file mtime polling, or profile-file change detection.
 
 ## Ownership classification
@@ -123,4 +125,4 @@
 
 ## Recommended next implementation task
 
-- Next step after `T3.7j`: keep soaking the active bridge read-only migration or select another status/debug-only active consumer with focused parity coverage. Profile load/save behavior stays unchanged, bridge write behavior stays unchanged, scheduler/provider reads are not migrated, and `_G.UC_SETTINGS` remains the action-decision source object until later migration work is proven.
+- Next step after `T3.7k`: either pause bridge migration, or migrate only the selected non-bridge diagnostic candidate from `docs/bridge_readonly_config_consumer_audit.md`: `unified_scheduler.lua` `enemy_dispel_diag(msg)` / `enemy_dispel_log(msg)` debug gates through focused `uc_config_runtime` parity helper(s). Profile load/save behavior stays unchanged, bridge write behavior stays unchanged, bridge payload shape stays unchanged, scheduler/provider action-decision reads are not migrated, and `_G.UC_SETTINGS` remains the action-decision source object until later migration work is proven.

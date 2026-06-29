@@ -1,10 +1,12 @@
 # Active Config Consumer Migration Audit
 
-Task: `T3.7i`
+Task: `T3.7i`, updated by `T3.7k`
 
 ## Scope
 
 This is a docs/static audit only. No runtime behavior, profile load/save behavior, bridge write behavior, scheduler behavior, action selection, movement, targeting, cure, tank, or combat decision code changed.
+
+`T3.7k` audited the active bridge read-only settings consumers after the `T3.7j` migration. It also made no runtime behavior changes and no bridge behavior changes. `T3.7j` live sanity passed before `T3.7k`: addon reload succeeded, no Lua errors were reported, the external UI still connected/loaded, `//uc configstatus export` succeeded, the exported file looked sane, and a short combat loop showed no weirdness.
 
 ## Active runtime entry points
 
@@ -95,6 +97,21 @@ Why this is low-risk:
 - It does not participate in action selection, ranking, movement, targeting, cure/tank/combat decisions, or dispatch.
 - It does not expose the full normalized config or `_G.UC_SETTINGS`.
 - It can be tested by asserting the bridge snapshot still includes the same compact status table fields and excludes full config/settings.
+
+## T3.7k bridge read-only follow-up audit
+
+`T3.7k` added `docs/bridge_readonly_config_consumer_audit.md` and classified the active bridge read surface.
+
+Result:
+
+- The bridge `state` and `options` snapshots have no remaining low-risk read-only settings publication comparable to `config_contract_status`.
+- Remaining bridge option fields are derived player/job/party option lists used by the UI edit protocol, not durable config values.
+- `Start_Engine` is command state, not canonical config.
+- `profile_contract_status` remains addon-owned profile status.
+- `config_contract_status` is already migrated and should remain compact/read-only.
+- `set`, `apply_set(...)`, `cfg_version`, runtime commands, profile load/save triggers, and all current flat-key edit/echo paths must not migrate yet.
+
+Recommended next step after `T3.7k`: pause bridge migration for now. If another active config read migration is desired, use a narrow non-bridge diagnostic candidate such as `unified_scheduler.lua` `enemy_dispel_diag(msg)` / `enemy_dispel_log(msg)`, migrating only their `debug` / `log_def_sched` diagnostic gates through focused `uc_config_runtime` parity helpers. Do not migrate scheduler/provider action-decision reads.
 
 ## Follow-up files and functions
 

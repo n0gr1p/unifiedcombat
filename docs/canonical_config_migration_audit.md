@@ -236,6 +236,7 @@ Ambiguous current fields:
 - `T3.7i` audits active config consumers and finds `melee_engine.lua` and `dd2_module.lua` are likely legacy/orphaned in the current UnifiedCombat runtime, so `T3.7h` proved the migration pattern more than active runtime behavior.
 - `T3.7i` recommends the next active low-risk migration should be only the read-only bridge `config_contract_status` publication in `remote_bridge.lua` state/options snapshots. No runtime behavior changed in `T3.7i`.
 - `T3.7j` completes that first active runtime read-path migration: active bridge `config_contract_status` publication now uses `uc_config_runtime.config_contract_status(_G.UC_SETTINGS)` while remaining compact/read-only and without exposing the full normalized config.
+- `T3.7k` audits the remaining active bridge read-only settings consumers and recommends pausing bridge migration for now: remaining bridge setting-touching paths are tied to the UI edit/write protocol, command state, or derived option/status data. No runtime behavior or bridge behavior changed. `T3.7j` live sanity passed before this audit.
 - Runtime action decisions still use `_G.UC_SETTINGS`; scheduler/provider reads are not migrated.
 - Profile load/save behavior and bridge write behavior remain unchanged.
 - Migrate runtime readers one domain at a time through `ctx.config`, with fixture coverage for each migrated domain.
@@ -261,8 +262,9 @@ Ambiguous current fields:
 7. Migrate one low-risk read-only UI consumer to canonical config. Complete in `T3.7h`: `ui.show_ingame_ui` for legacy in-game overlay visibility now uses a normalized config accessor.
 8. Audit active consumers before the next migration. Complete in `T3.7i`: `melee_engine.lua` and `dd2_module.lua` appear legacy/inactive, and the selected next active low-risk candidate is bridge read-only `config_contract_status` publication.
 9. Migrate only the selected active read-only bridge status consumer with focused parity coverage. Complete in `T3.7j`.
-10. Reduce direct `_G.UC_SETTINGS` reads in scheduler/provider paths once each domain has coverage.
-11. Consider versioned profile migration only after compatibility reads are field-proven.
+10. Audit remaining active bridge read-only settings consumers. Complete in `T3.7k`: no additional safe bridge read migration candidate was selected; pause bridge migration unless a new read-only status field is added.
+11. Reduce direct `_G.UC_SETTINGS` reads in scheduler/provider paths once each domain has coverage.
+12. Consider versioned profile migration only after compatibility reads are field-proven.
 
 ## Risks
 
@@ -279,6 +281,8 @@ Ambiguous current fields:
 Requirements for the next task:
 
 - Use `//uc configstatus export` during field testing when chat is too noisy; inspect `data/status/<safe_character>_config_contract_status.lua`.
+- Pause bridge migration unless the task is limited to a newly proven read-only/status-only bridge field. The remaining active bridge setting-touching paths are edit/write protocol or command state.
+- If continuing active read migration, prefer the narrow diagnostic candidate from `T3.7k`: `unified_scheduler.lua` `enemy_dispel_diag(msg)` / `enemy_dispel_log(msg)` debug gates through focused `uc_config_runtime` parity helper(s).
 - Keep the full normalized config out of bridge payloads.
 - Keep the full normalized config and `_G.UC_SETTINGS` out of diagnostic export files.
 - Keep export explicit-command-only; do not add polling or automatic per-tick writes.
