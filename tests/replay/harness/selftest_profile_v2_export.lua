@@ -141,7 +141,7 @@ local function load_profile_v2_apply_from_addon(addon_source, exporter_stub, val
 			sync_legacy_partner_fields = function()
 			end,
 		},
-		uc_profile_v2_export = {
+		uc_profile_v2 = {
 			apply_structured_profile_file_to_settings = exporter_stub,
 		},
 		uc_profile_v2_file_path = function()
@@ -587,16 +587,20 @@ local function build_expected_config()
 end
 
 local function main()
+	package.loaded['uc_profile_v2'] = nil
 	package.loaded['uc_profile_v2_export'] = nil
 	package.loaded['uc_config_normalizer'] = nil
 	package.loaded['uc_profile_contract'] = nil
+	local profile_v2 = require('uc_profile_v2')
 	local exporter = require('uc_profile_v2_export')
 	local normalizer = require('uc_config_normalizer')
 	local contract = require('uc_profile_contract')
+	assert_true(type(profile_v2) == 'table', 'neutral profile v2 helper must load')
+	assert_true(exporter == profile_v2, 'compatibility shim must return the canonical profile v2 helper module')
 
 	local flat = build_flat_settings()
 	local flat_snapshot = deep_clone(flat)
-	local profile = exporter.build_structured_profile(flat, {
+	local profile = profile_v2.build_structured_profile(flat, {
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
@@ -658,29 +662,29 @@ local function main()
 	assert_equal(defaults.config.combat.enabled, true, 'nil settings combat default mismatch')
 	assert_equal(defaults.config.debug.enabled, false, 'nil settings debug default mismatch')
 
-	local path = exporter.default_export_path({
+	local path = profile_v2.default_export_path({
 		character = ' Red Rogue! ',
 		main_job = 'pld',
 		sub_job = 'war',
 	})
 	assert_equal(path, 'data/profiles_v2/red_rogue_PLD_WAR.lua', 'export path mismatch')
-	assert_equal(exporter.default_export_path(nil), 'data/profiles_v2/unknown_UNKNOWN_UNKNOWN.lua', 'nil export path mismatch')
-	local addon_local_path = exporter.default_export_path({
+	assert_equal(profile_v2.default_export_path(nil), 'data/profiles_v2/unknown_UNKNOWN_UNKNOWN.lua', 'nil export path mismatch')
+	local addon_local_path = profile_v2.default_export_path({
 		character = ' Red Rogue! ',
 		main_job = 'pld',
 		sub_job = 'war',
 		addon_path = 'C:\\Program Files (x86)\\Windower\\addons\\UnifiedCombat\\',
 	})
 	assert_equal(addon_local_path, 'C:\\Program Files (x86)\\Windower\\addons\\UnifiedCombat\\data\\profiles_v2\\red_rogue_PLD_WAR.lua', 'addon-local export path mismatch')
-	local durable_path = exporter.default_export_path({
+	local durable_path = profile_v2.default_export_path({
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
 	})
 
-	local expected_serialized = exporter.serialize_structured_profile(profile)
+	local expected_serialized = profile_v2.serialize_structured_profile(profile)
 	local durable_deps, durable_state = make_fake_fs()
-	local durable_result = exporter.write_structured_profile_export(profile, {
+	local durable_result = profile_v2.write_structured_profile_export(profile, {
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
@@ -691,13 +695,13 @@ local function main()
 	assert_nil(durable_state.files[durable_path .. '.tmp'], 'temp file should not remain after successful promote')
 	assert_nil(durable_state.files[durable_path .. '.bak'], 'backup file should not remain after successful promote')
 
-	local created_dir_path = exporter.default_export_path({
+	local created_dir_path = profile_v2.default_export_path({
 		character = 'Created',
 		main_job = 'BRD',
 		sub_job = 'WHM',
 	})
 	local create_dir_deps, create_dir_state = make_fake_fs(nil, nil, {})
-	local create_dir_result = exporter.write_structured_profile_export(profile, {
+	local create_dir_result = profile_v2.write_structured_profile_export(profile, {
 		character = 'Created',
 		main_job = 'BRD',
 		sub_job = 'WHM',
@@ -1052,7 +1056,7 @@ local function main()
 	local scalar_apply_payload = deep_clone(profile)
 	scalar_apply_payload.config.combat.face = false
 	local scalar_apply_deps, scalar_apply_state = make_fake_fs({
-		[durable_path] = exporter.serialize_structured_profile(scalar_apply_payload),
+		[durable_path] = profile_v2.serialize_structured_profile(scalar_apply_payload),
 	})
 	local scalar_apply_settings = deep_clone(flat)
 	local scalar_apply_identity = scalar_apply_settings
@@ -1072,7 +1076,7 @@ local function main()
 	nested_apply_payload.config.movement.path.file_name = 'route-b'
 	nested_apply_payload.config.follow.partner.ids = { 99, 100 }
 	local nested_apply_deps = make_fake_fs({
-		[durable_path] = exporter.serialize_structured_profile(nested_apply_payload),
+		[durable_path] = profile_v2.serialize_structured_profile(nested_apply_payload),
 	})
 	local nested_apply_settings = deep_clone(flat)
 	local nested_apply_result = exporter.apply_structured_profile_file_to_settings(nested_apply_settings, {
@@ -1091,7 +1095,7 @@ local function main()
 	metadata_apply_payload.profile.main_job = 'THF'
 	metadata_apply_payload.profile.exported_at = '2101-01-01T00:00:00Z'
 	local metadata_apply_deps = make_fake_fs({
-		[durable_path] = exporter.serialize_structured_profile(metadata_apply_payload),
+		[durable_path] = profile_v2.serialize_structured_profile(metadata_apply_payload),
 	})
 	local metadata_apply_settings = deep_clone(flat)
 	local metadata_apply_result = exporter.apply_structured_profile_file_to_settings(metadata_apply_settings, {
@@ -1101,7 +1105,7 @@ local function main()
 	}, contract.validate_structured_profile_config, metadata_apply_deps)
 	assert_true(metadata_apply_result.ok == true, 'structured profile apply should succeed for metadata-only differences')
 	assert_equal(metadata_apply_result.count, 0, 'structured profile apply should ignore profile metadata differences')
-	assert_equal(exporter.diff_durable_config(exporter.build_durable_config(metadata_apply_result.candidate, {
+	assert_equal(profile_v2.diff_durable_config(profile_v2.build_durable_config(metadata_apply_result.candidate, {
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
@@ -1134,10 +1138,11 @@ local function main()
 	assert_contains(addon, "//uc profilev2 validate", 'addon must advertise profilev2 validate help')
 	assert_contains(addon, "//uc profilev2 diff", 'addon must advertise profilev2 diff help')
 	assert_contains(addon, "//uc profilev2 apply", 'addon must advertise profilev2 apply help')
-	assert_contains(addon, "uc_profile_v2_export.write_structured_profile_export(profile, meta)", 'addon must use structured profile export helper')
-	assert_contains(addon, "uc_profile_v2_export.validate_structured_profile_file(meta, function(payload)", 'addon must use structured profile validate helper')
-	assert_contains(addon, "uc_profile_v2_export.diff_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile diff helper')
-	assert_contains(addon, "uc_profile_v2_export.apply_structured_profile_file_to_settings(settings, meta, function(payload)", 'addon must use structured profile apply helper')
+	assert_contains(addon, "local uc_profile_v2 = require('uc_profile_v2')", 'addon must require the canonical profile v2 helper')
+	assert_contains(addon, "uc_profile_v2.write_structured_profile_export(profile, meta)", 'addon must use structured profile export helper')
+	assert_contains(addon, "uc_profile_v2.validate_structured_profile_file(meta, function(payload)", 'addon must use structured profile validate helper')
+	assert_contains(addon, "uc_profile_v2.diff_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile diff helper')
+	assert_contains(addon, "uc_profile_v2.apply_structured_profile_file_to_settings(settings, meta, function(payload)", 'addon must use structured profile apply helper')
 	assert_contains(addon, "local uc_sync_table_in_place", 'addon apply helper must keep sync helper scoped locally')
 	assert_contains(addon, "local uc_normalize_settings_table", 'addon apply helper must keep normalize helper scoped locally')
 	assert_contains(addon, "uc_sync_table_in_place = function(dst, src)", 'addon apply helper must bind sync helper before use')
@@ -1145,7 +1150,7 @@ local function main()
 	assert_contains(addon, "UC profile v2 export failed: ", 'addon export failure chat must include reason')
 	assert_contains(addon, "addon_path = uc_addon_path()", 'addon must resolve v2 profile files under the addon path')
 	assert_not_contains(addon, 'UC profile v2 apply: ' .. "profile saved", 'structured profile apply path must not report v1 save behavior')
-	assert_not_contains(addon, 'windower.add_to_chat(207, uc_profile_v2_export.serialize_structured_profile', 'addon must not dump structured profile contents to chat')
+	assert_not_contains(addon, 'windower.add_to_chat(207, uc_profile_v2.serialize_structured_profile', 'addon must not dump structured profile contents to chat')
 
 	local previous_global_uc_normalize_settings_table = rawget(_G, 'UC_normalize_settings_table')
 	local previous_global_uc_normalize_settings_table_lower = rawget(_G, 'uc_normalize_settings_table')
@@ -1158,12 +1163,12 @@ local function main()
 	live_apply_payload.config.combat.face = false
 	live_apply_payload.config.follow.partner.ids = { 99, 100 }
 	local live_apply_deps = make_fake_fs({
-		[durable_path] = exporter.serialize_structured_profile(live_apply_payload),
+		[durable_path] = profile_v2.serialize_structured_profile(live_apply_payload),
 	})
 	local live_apply = load_profile_v2_apply_from_addon(
 		addon,
 		function(settings, meta, validator)
-			return exporter.apply_structured_profile_file_to_settings(settings, meta, validator, live_apply_deps)
+			return profile_v2.apply_structured_profile_file_to_settings(settings, meta, validator, live_apply_deps)
 		end,
 		contract.validate_structured_profile_config
 	)

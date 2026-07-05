@@ -19,7 +19,7 @@ Active load path inspected:
 
 | Entry point | Active role | Required active modules inspected |
 | --- | --- | --- |
-| `UnifiedCombat.lua` | Addon bootstrap, defaults, profile load/save, contract status, addon commands | `remote_bridge`, `unified_combat_core`, `unified_engine`, `uc_party_follow`, `uc_pathing`, `uc_config_status_export`, `uc_profile_v2_export`, `uc_config_normalizer`, `uc_profile_contract` |
+| `UnifiedCombat.lua` | Addon bootstrap, defaults, profile load/save, contract status, addon commands | `remote_bridge`, `unified_combat_core`, `unified_engine`, `uc_party_follow`, `uc_pathing`, `uc_config_status_export`, `uc_profile_v2`, `uc_config_normalizer`, `uc_profile_contract` |
 | `unified_engine.lua` | Active tick engine and overlay coordinator | `unified_scheduler`, `unified_combat_core` |
 | `unified_scheduler.lua` | Active scheduler/provider/action runtime | `unified_combat_core`, `uc_ability_pipeline`, `uc_cor_maintenance`, `uc_settarget`, `uc_attack`, `uc_partner_list`, `uc_fight_leader`, `uc_hb_buff_maint`, `uc_enemy_effect_tracker`, scheduler helper modules |
 | `remote_bridge.lua` | Active external UI bridge, read-only state/options snapshots, live bridge writes | `uc_ws_memory`, `uc_ignore`, `uc_partner_list`, `uc_target_ignore`, `uc_add_priority`, `uc_path_hunter` |
@@ -28,7 +28,8 @@ Active load path inspected:
 | `unified_combat_core.lua` | Active shared combat helpers used by engine and scheduler | Reads active settings through a local getter |
 | `uc_config_runtime.lua` | Runtime accessor introduced by `T3.7h` and extended by `T3.7j` | Used by legacy `melee_engine.lua` / `dd2_module.lua` UI consumers and active bridge config status publication |
 | `uc_config_normalizer.lua` | Pure canonical config normalizer | Used by status building and `uc_config_runtime.lua`; `T3.8a` also accepts structured `settings.config` and direct canonical-domain input |
-| `uc_profile_v2_export.lua` | Pure structured v2 export helper | Used by `UnifiedCombat.lua` explicit `//uc profilev2 export` command |
+| `uc_profile_v2.lua` | Pure structured v2 profile helper for export, validate, diff, and apply | Used by `UnifiedCombat.lua` explicit `//uc profilev2 export`, `validate`, `diff`, and `apply` commands |
+| `uc_profile_v2_export.lua` | Compatibility shim returning `uc_profile_v2.lua` | Preserves existing `require('uc_profile_v2_export')` callers |
 | `uc_config_status_export.lua` | Pure status export renderer | Used by `UnifiedCombat.lua` explicit `//uc configstatus export` command |
 
 ## T3.7h active-path assessment

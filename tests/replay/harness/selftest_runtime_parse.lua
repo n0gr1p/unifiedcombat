@@ -20,6 +20,7 @@ local RUNTIME_LUA_FILES = {
     "uc_config_normalizer.lua",
     "uc_config_runtime.lua",
     "uc_config_status_export.lua",
+    "uc_profile_v2.lua",
     "uc_profile_v2_export.lua",
     "uc_profile_contract.lua",
     "uc_scheduler_action_metadata.lua",

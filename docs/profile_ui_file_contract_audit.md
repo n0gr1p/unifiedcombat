@@ -15,6 +15,7 @@
 - `T3.8a` adds pure read compatibility for a future structured v2 profile/config payload through `uc_config_normalizer.lua` and a direct contract helper. The supported shape is documented in `docs/profile_v2_structured_config_shape.md`.
 - `T3.8b` adds `//uc profilev2 export`, an explicit command-only structured export path that writes `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` without changing the live v1 profile file contract.
 - `T3.8g` keeps that export path manual-only as a migration/bootstrap seed utility, resolves it under `windower.addon_path` in live Windower, and reports terse failure reasons in chat.
+- `T3.8i` renames the structured v2 helper implementation to `uc_profile_v2.lua` and keeps `uc_profile_v2_export.lua` as a compatibility shim, without changing any profile command behavior or file ownership.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.

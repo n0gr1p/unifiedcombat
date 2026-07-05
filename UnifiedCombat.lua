@@ -106,7 +106,7 @@ require('actions')
 local uc_partner_list = require('uc_partner_list')
 local uc_add_priority = require('uc_add_priority')
 local uc_config_status_export = require('uc_config_status_export')
-local uc_profile_v2_export = require('uc_profile_v2_export')
+local uc_profile_v2 = require('uc_profile_v2')
 local UC_PROFILE_CONTRACT = nil
 local UC_PROFILE_CONTRACT_LOAD_ERROR = nil
 local UC_CONFIG_NORMALIZER = nil
@@ -637,7 +637,7 @@ local function uc_config_status_file_path(char_name)
 end
 
 local function uc_profile_v2_file_path(meta)
-	return uc_profile_v2_export.default_export_path(meta)
+	return uc_profile_v2.default_export_path(meta)
 end
 
 local function uc_addon_path()
@@ -742,7 +742,7 @@ local function uc_write_config_status_export(status, meta)
 end
 
 local function uc_write_profile_v2_export(profile, meta)
-	local result = uc_profile_v2_export.write_structured_profile_export(profile, meta)
+	local result = uc_profile_v2.write_structured_profile_export(profile, meta)
 	if type(result) ~= 'table' then
 		return false, uc_profile_v2_file_path(meta), 'profile v2 export writer returned invalid result', nil
 	end
@@ -750,7 +750,7 @@ local function uc_write_profile_v2_export(profile, meta)
 end
 
 local function uc_validate_profile_v2_file(meta)
-	local result = uc_profile_v2_export.validate_structured_profile_file(meta, function(payload)
+	local result = uc_profile_v2.validate_structured_profile_file(meta, function(payload)
 		return uc_validate_structured_profile_export(payload)
 	end)
 	if type(result) ~= 'table' then
@@ -760,7 +760,7 @@ local function uc_validate_profile_v2_file(meta)
 end
 
 local function uc_diff_profile_v2_file(meta, settings)
-	local result = uc_profile_v2_export.diff_structured_profile_file_against_settings(settings, meta, function(payload)
+	local result = uc_profile_v2.diff_structured_profile_file_against_settings(settings, meta, function(payload)
 		return uc_validate_structured_profile_export(payload)
 	end)
 	if type(result) ~= 'table' then
@@ -773,7 +773,7 @@ local uc_sync_table_in_place
 local uc_normalize_settings_table
 
 local function uc_apply_profile_v2_file(meta, settings)
-	local result = uc_profile_v2_export.apply_structured_profile_file_to_settings(settings, meta, function(payload)
+	local result = uc_profile_v2.apply_structured_profile_file_to_settings(settings, meta, function(payload)
 		return uc_validate_structured_profile_export(payload)
 	end)
 	if type(result) ~= 'table' then
@@ -1618,7 +1618,7 @@ windower.register_event('addon command', function(...)
 			end
 			local meta = uc_profile_v2_meta(p, os.date('!%Y-%m-%dT%H:%M:%SZ'))
 			meta.source = 'UC_SETTINGS'
-			local ok_build, profile = pcall(uc_profile_v2_export.build_structured_profile, _G.UC_SETTINGS, meta)
+			local ok_build, profile = pcall(uc_profile_v2.build_structured_profile, _G.UC_SETTINGS, meta)
 			if not ok_build or type(profile) ~= 'table' then
 				uc_profile_v2_export_failure('profile build failed')
 				return

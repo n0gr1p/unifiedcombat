@@ -78,7 +78,7 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - The apply command reads and validates that same file, compares it against the current durable canonical config, then applies only durable `payload.config` domains back onto the flat runtime compatibility surface when a full candidate settings table can be built and verified first.
 - The apply command is explicit-command-only and runtime-only: it does not write v1 or v2 profile files back to disk.
 
-The export helper builds the structured payload from the current loaded settings/profile state and canonical normalized config, but it does not change live profile loading, live profile saving, or bridge write behavior.
+The canonical helper module `uc_profile_v2.lua` builds and consumes the structured payload for export, validate, diff, and apply behavior, while the compatibility shim `uc_profile_v2_export.lua` simply returns that same module. This does not change live profile loading, live profile saving, or bridge write behavior.
 
 ## Compatibility Boundary
 

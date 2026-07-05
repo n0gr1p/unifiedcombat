@@ -27,9 +27,33 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.8e` adds an explicit read-only `//uc profilev2 diff` preview comparison command for the structured v2 artifact. Live v1 profile load/save, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - `T3.8f` adds an explicit command-only `//uc profilev2 apply` path for the structured v2 artifact. Live v1 profile load/save, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - `T3.8g` diagnoses and hardens live `//uc profilev2 export` failure reporting. Export now resolves under `windower.addon_path`, creates only the expected v2 output directory when missing, and reports short chat reasons while remaining a manual migration/bootstrap seed command only.
+- `T3.8h` fixes the live `//uc profilev2 apply` normalizer scope failure by binding the apply-path helpers locally instead of depending on missing globals.
+- `T3.8i` renames the structured v2 helper implementation to the neutral `uc_profile_v2.lua` module while keeping `uc_profile_v2_export.lua` as a compatibility shim.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.8i` Rename structured v2 profile helper module
+
+- Status: `DONE`
+- Changed files:
+  - `UnifiedCombat.lua`
+  - `uc_profile_v2.lua`
+  - `uc_profile_v2_export.lua`
+  - `tests/replay/harness/selftest_profile_v2_export.lua`
+  - `tests/replay/harness/selftest_runtime_parse.lua`
+  - `docs/profile_v2_structured_config_shape.md`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/active_config_consumer_migration_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Moved the structured v2 export/validate/diff/apply implementation into the neutral canonical module `uc_profile_v2.lua`.
+  - Kept `uc_profile_v2_export.lua` as a compatibility shim that simply returns the canonical module, so existing requires continue to work.
+  - Updated addon code and focused tests to use the neutral helper name where appropriate without changing any `profilev2` command behavior or chat output.
+  - Kept `//uc profilev2 export` documented as a manual migration/bootstrap seed command only; normal v2 profile editing and writes remain owned by external UI/tooling.
+- Next step:
+  - Keep future structured-profile lifecycle work on `uc_profile_v2.lua` and retain the compatibility shim until callers can be intentionally migrated.
 
 ### `T3.8g` Diagnose v2 export failure reporting
 
