@@ -769,6 +769,9 @@ local function uc_diff_profile_v2_file(meta, settings)
 	return result.ok == true, result.path, result.error, result.count
 end
 
+local uc_sync_table_in_place
+local uc_normalize_settings_table
+
 local function uc_apply_profile_v2_file(meta, settings)
 	local result = uc_profile_v2_export.apply_structured_profile_file_to_settings(settings, meta, function(payload)
 		return uc_validate_structured_profile_export(payload)
@@ -785,7 +788,7 @@ local function uc_apply_profile_v2_file(meta, settings)
 	return true, result.path, nil, result.count
 end
 
-local function uc_sync_table_in_place(dst, src)
+uc_sync_table_in_place = function(dst, src)
 	if type(dst) ~= 'table' or type(src) ~= 'table' then
 		return
 	end
@@ -964,7 +967,7 @@ local function uc_normalize_domain_settings(s)
 	end
 end
 
-local function uc_normalize_settings_table(s)
+uc_normalize_settings_table = function(s)
 	if type(s) ~= 'table' then
 		return
 	end

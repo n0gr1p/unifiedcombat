@@ -80,6 +80,98 @@ local function assert_deep_equal(actual, expected, message)
 	end
 end
 
+local function read_file(path)
+	local file, err = io.open(path, 'r')
+	if not file then
+		error('unable to read ' .. tostring(path) .. ': ' .. tostring(err))
+	end
+	local content = file:read('*a')
+	file:close()
+	return content
+end
+
+local function extract_source_block(source, start_marker, end_marker)
+	local start_pos = source:find(start_marker, 1, true)
+	assert_true(start_pos ~= nil, 'missing source block start: ' .. tostring(start_marker))
+	local end_pos = source:find(end_marker, start_pos + #start_marker, true)
+	assert_true(end_pos ~= nil, 'missing source block end: ' .. tostring(end_marker))
+	return source:sub(start_pos, end_pos - 1)
+end
+
+local function load_profile_v2_apply_from_addon(addon_source, exporter_stub, validator_stub)
+	local apply_block = extract_source_block(
+		addon_source,
+		"local uc_sync_table_in_place\nlocal uc_normalize_settings_table",
+		"\n\nlocal function uc_read_profiles_file"
+	)
+	local normalize_block = extract_source_block(
+		addon_source,
+		"uc_normalize_settings_table = function(s)",
+		"\n\nlocal function uc_normalize_active_settings"
+	)
+	local chunk_source = table.concat({
+		apply_block,
+		'',
+		normalize_block,
+		'',
+		'return uc_apply_profile_v2_file',
+	}, '\n')
+	local env = {
+		_G = _G,
+		res = {
+			jobs = {
+				with = function()
+					return { english_short = 'PLD' }
+				end,
+			},
+		},
+		uc_normalize_abilities = function()
+		end,
+		uc_normalize_targets = function()
+		end,
+		uc_normalize_ws_for_engine = function()
+		end,
+		uc_normalize_sleep_spell_list = function()
+		end,
+		uc_normalize_domain_settings = function()
+		end,
+		uc_partner_list = {
+			migrate_from_legacy = function()
+			end,
+			sync_legacy_partner_fields = function()
+			end,
+		},
+		uc_profile_v2_export = {
+			apply_structured_profile_file_to_settings = exporter_stub,
+		},
+		uc_profile_v2_file_path = function()
+			return 'data/profiles_v2/test.lua'
+		end,
+		uc_validate_structured_profile_export = function(payload)
+			if type(validator_stub) == 'function' then
+				return validator_stub(payload)
+			end
+			return {
+				ok = true,
+			}
+		end,
+		windower = {
+			ffxi = {
+				get_player = function()
+					return { main_job = 'PLD' }
+				end,
+			},
+		},
+	}
+	setmetatable(env, { __index = _G })
+	local chunk, load_err = loadstring(chunk_source, '@selftest_profile_v2_apply_scope.lua')
+	assert_true(type(chunk) == 'function', 'unable to load extracted profilev2 apply helper: ' .. tostring(load_err))
+	setfenv(chunk, env)
+	local apply_fn = chunk()
+	assert_true(type(apply_fn) == 'function', 'extracted profilev2 apply helper must be callable')
+	return apply_fn
+end
+
 local function make_fake_fs(initial_files, failures, initial_dirs)
 	local dirs = {}
 	if initial_dirs == nil then
@@ -1036,10 +1128,7 @@ local function main()
 	assert_equal(conversion_fail_result.stage, 'convert', 'structured profile apply conversion failure stage mismatch')
 	assert_deep_equal(conversion_fail_snapshot, flat, 'structured profile apply conversion failure must not mutate settings')
 
-	local file = io.open('UnifiedCombat.lua', 'r')
-	assert_true(file ~= nil, 'unable to read UnifiedCombat.lua')
-	local addon = file:read('*a')
-	file:close()
+	local addon = read_file('UnifiedCombat.lua')
 	assert_contains(addon, "elseif a == 'profilev2' then", 'addon must route profilev2 command')
 	assert_contains(addon, "//uc profilev2 export", 'addon must advertise profilev2 export help')
 	assert_contains(addon, "//uc profilev2 validate", 'addon must advertise profilev2 validate help')
@@ -1049,10 +1138,91 @@ local function main()
 	assert_contains(addon, "uc_profile_v2_export.validate_structured_profile_file(meta, function(payload)", 'addon must use structured profile validate helper')
 	assert_contains(addon, "uc_profile_v2_export.diff_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile diff helper')
 	assert_contains(addon, "uc_profile_v2_export.apply_structured_profile_file_to_settings(settings, meta, function(payload)", 'addon must use structured profile apply helper')
+	assert_contains(addon, "local uc_sync_table_in_place", 'addon apply helper must keep sync helper scoped locally')
+	assert_contains(addon, "local uc_normalize_settings_table", 'addon apply helper must keep normalize helper scoped locally')
+	assert_contains(addon, "uc_sync_table_in_place = function(dst, src)", 'addon apply helper must bind sync helper before use')
+	assert_contains(addon, "uc_normalize_settings_table = function(s)", 'addon apply helper must bind normalize helper before use')
 	assert_contains(addon, "UC profile v2 export failed: ", 'addon export failure chat must include reason')
 	assert_contains(addon, "addon_path = uc_addon_path()", 'addon must resolve v2 profile files under the addon path')
 	assert_not_contains(addon, 'UC profile v2 apply: ' .. "profile saved", 'structured profile apply path must not report v1 save behavior')
 	assert_not_contains(addon, 'windower.add_to_chat(207, uc_profile_v2_export.serialize_structured_profile', 'addon must not dump structured profile contents to chat')
+
+	local previous_global_uc_normalize_settings_table = rawget(_G, 'UC_normalize_settings_table')
+	local previous_global_uc_normalize_settings_table_lower = rawget(_G, 'uc_normalize_settings_table')
+	local previous_global_uc_sync_table_in_place = rawget(_G, 'uc_sync_table_in_place')
+	_G.UC_normalize_settings_table = nil
+	_G.uc_normalize_settings_table = nil
+	_G.uc_sync_table_in_place = nil
+
+	local live_apply_payload = deep_clone(profile)
+	live_apply_payload.config.combat.face = false
+	live_apply_payload.config.follow.partner.ids = { 99, 100 }
+	local live_apply_deps = make_fake_fs({
+		[durable_path] = exporter.serialize_structured_profile(live_apply_payload),
+	})
+	local live_apply = load_profile_v2_apply_from_addon(
+		addon,
+		function(settings, meta, validator)
+			return exporter.apply_structured_profile_file_to_settings(settings, meta, validator, live_apply_deps)
+		end,
+		contract.validate_structured_profile_config
+	)
+	local live_apply_settings = deep_clone(flat)
+	local live_apply_identity = live_apply_settings
+	local ok_live_apply, live_apply_path, live_apply_err, live_apply_count = live_apply({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, live_apply_settings)
+	assert_true(ok_live_apply == true, 'live profilev2 apply should succeed without global normalizer helpers')
+	assert_equal(live_apply_path, durable_path, 'live profilev2 apply path mismatch')
+	assert_nil(live_apply_err, 'live profilev2 apply should not report an error')
+	assert_true(type(live_apply_count) == 'number' and live_apply_count > 0, 'live profilev2 apply should report applied differences')
+	assert_true(live_apply_settings == live_apply_identity, 'live profilev2 apply must preserve settings table identity')
+	assert_false(live_apply_settings.face, 'live profilev2 apply should update runtime scalar values')
+	assert_equal(live_apply_settings.partner_ids[1], 99, 'live profilev2 apply should update partner id list')
+	assert_equal(live_apply_settings.partner_id, 99, 'live profilev2 apply should sync primary partner legacy field')
+	assert_equal(live_apply_settings.partner_id2, 100, 'live profilev2 apply should sync secondary partner legacy field')
+
+	local live_validation_failure_apply = load_profile_v2_apply_from_addon(addon, function()
+		return {
+			ok = false,
+			path = durable_path,
+			error = 'missing config',
+		}
+	end)
+	local live_validation_failure_settings = deep_clone(flat)
+	local live_validation_failure_snapshot = deep_clone(live_validation_failure_settings)
+	local ok_validation_failure, _, validation_failure_err = live_validation_failure_apply({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, live_validation_failure_settings)
+	assert_true(ok_validation_failure == false, 'live profilev2 apply should fail cleanly on validation failure')
+	assert_equal(validation_failure_err, 'missing config', 'live profilev2 apply validation failure reason mismatch')
+	assert_deep_equal(live_validation_failure_settings, live_validation_failure_snapshot, 'live profilev2 apply validation failure must not mutate settings')
+
+	local live_conversion_failure_apply = load_profile_v2_apply_from_addon(addon, function()
+		return {
+			ok = false,
+			path = durable_path,
+			error = 'forced normalize failure',
+		}
+	end)
+	local live_conversion_failure_settings = deep_clone(flat)
+	local live_conversion_failure_snapshot = deep_clone(live_conversion_failure_settings)
+	local ok_conversion_failure, _, conversion_failure_err = live_conversion_failure_apply({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, live_conversion_failure_settings)
+	assert_true(ok_conversion_failure == false, 'live profilev2 apply should fail cleanly on conversion failure')
+	assert_equal(conversion_failure_err, 'forced normalize failure', 'live profilev2 apply conversion failure reason mismatch')
+	assert_deep_equal(live_conversion_failure_settings, live_conversion_failure_snapshot, 'live profilev2 apply conversion failure must not mutate settings')
+
+	_G.UC_normalize_settings_table = previous_global_uc_normalize_settings_table
+	_G.uc_normalize_settings_table = previous_global_uc_normalize_settings_table_lower
+	_G.uc_sync_table_in_place = previous_global_uc_sync_table_in_place
 
 	local expected_config = build_expected_config()
 	assert_true(deep_equal(profile.config, expected_config), 'exported config mismatch against expected durable domains')
