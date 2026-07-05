@@ -228,6 +228,24 @@ local function default_fs_deps()
 		remove = function(path)
 			return os.remove(path)
 		end,
+		read_all = function(path)
+			local handle, open_err = io.open(path, 'rb')
+			if not handle then
+				return nil, open_err
+			end
+			local content = handle:read('*a')
+			handle:close()
+			if type(content) ~= 'string' or content == '' then
+				return nil, 'empty file'
+			end
+			return content
+		end,
+		load_chunk = function(content, chunk_name)
+			return loadstring(content, chunk_name)
+		end,
+		execute_chunk = function(chunk)
+			return chunk()
+		end,
 	}
 end
 
@@ -486,6 +504,141 @@ function M.write_structured_profile_export(profile, meta, deps)
 		}
 	end
 	return durable_write_file(path, content, deps)
+end
+
+function M.validate_structured_profile_file(meta, validator, deps)
+	local path = M.default_export_path(meta)
+	deps = resolve_fs_deps(deps)
+
+	local ok_read, content_or_err = pcall(deps.read_all, path)
+	if not ok_read then
+		return {
+			ok = false,
+			path = path,
+			stage = 'read',
+			error = tostring(content_or_err),
+			reason = 'read failed',
+		}
+	end
+	if type(content_or_err) ~= 'string' or content_or_err == '' then
+		return {
+			ok = false,
+			path = path,
+			stage = 'read',
+			error = tostring(content_or_err or 'empty file'),
+			reason = 'read failed',
+		}
+	end
+
+	local ok_load, chunk_or_err, load_detail = pcall(deps.load_chunk, content_or_err, '@' .. path)
+	if not ok_load then
+		return {
+			ok = false,
+			path = path,
+			stage = 'load',
+			error = tostring(chunk_or_err),
+			reason = 'parse failed',
+		}
+	end
+	if type(chunk_or_err) ~= 'function' then
+		return {
+			ok = false,
+			path = path,
+			stage = 'load',
+			error = tostring(load_detail or 'chunk load returned nil'),
+			reason = 'parse failed',
+		}
+	end
+
+	local ok_exec, payload_or_err = pcall(deps.execute_chunk, chunk_or_err)
+	if not ok_exec then
+		return {
+			ok = false,
+			path = path,
+			stage = 'execute',
+			error = tostring(payload_or_err),
+			reason = 'load failed',
+		}
+	end
+	if type(payload_or_err) ~= 'table' then
+		return {
+			ok = false,
+			path = path,
+			stage = 'shape',
+			error = 'structured profile file must return a table',
+			reason = 'invalid payload',
+		}
+	end
+	if payload_or_err.version ~= 2 then
+		return {
+			ok = false,
+			path = path,
+			stage = 'shape',
+			error = 'structured profile version must be 2',
+			reason = 'invalid version',
+		}
+	end
+	if type(payload_or_err.profile) ~= 'table' then
+		return {
+			ok = false,
+			path = path,
+			stage = 'shape',
+			error = 'structured profile metadata missing',
+			reason = 'missing profile',
+		}
+	end
+	if type(payload_or_err.config) ~= 'table' then
+		return {
+			ok = false,
+			path = path,
+			stage = 'shape',
+			error = 'structured profile config missing',
+			reason = 'missing config',
+		}
+	end
+
+	if type(validator) == 'function' then
+		local ok_validate, validation = pcall(validator, payload_or_err)
+		if not ok_validate then
+			return {
+				ok = false,
+				path = path,
+				stage = 'contract',
+				error = tostring(validation),
+				reason = 'contract failed',
+				payload = payload_or_err,
+			}
+		end
+		if type(validation) ~= 'table' or validation.ok ~= true then
+			local error_message = nil
+			if type(validation) == 'table' and type(validation.errors) == 'table' and type(validation.errors[1]) == 'string' then
+				error_message = validation.errors[1]
+			end
+			return {
+				ok = false,
+				path = path,
+				stage = 'contract',
+				error = tostring(error_message or 'structured profile contract validation failed'),
+				reason = 'contract failed',
+				payload = payload_or_err,
+				validation = validation,
+			}
+		end
+		return {
+			ok = true,
+			path = path,
+			stage = 'done',
+			payload = payload_or_err,
+			validation = validation,
+		}
+	end
+
+	return {
+		ok = true,
+		path = path,
+		stage = 'done',
+		payload = payload_or_err,
+	}
 end
 
 return M

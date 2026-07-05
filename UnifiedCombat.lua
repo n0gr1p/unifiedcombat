@@ -724,6 +724,16 @@ local function uc_write_profile_v2_export(profile, meta)
 	return result.ok == true, result.path, result.error
 end
 
+local function uc_validate_profile_v2_file(meta)
+	local result = uc_profile_v2_export.validate_structured_profile_file(meta, function(payload)
+		return uc_validate_structured_profile_export(payload)
+	end)
+	if type(result) ~= 'table' then
+		return false, uc_profile_v2_file_path(meta), 'profile v2 validator returned invalid result'
+	end
+	return result.ok == true, result.path, result.error
+end
+
 local function uc_read_profiles_file(char_name)
 	local path = uc_profiles_file_path(char_name)
 	if not files.exists(path) then
@@ -1539,8 +1549,25 @@ windower.register_event('addon command', function(...)
 				windower.add_to_chat(167, 'UC profile v2 export failed')
 			end
 			return
+		elseif sub == 'validate' then
+			local p = windower.ffxi.get_player()
+			if not p or not p.name then
+				windower.add_to_chat(167, 'UC profile v2 validation failed: missing player')
+				return
+			end
+			local ok_validate, _, validate_err = uc_validate_profile_v2_file({
+				character = p.name,
+				main_job = p.main_job,
+				sub_job = p.sub_job,
+			})
+			if ok_validate then
+				windower.add_to_chat(207, 'UC profile v2 valid')
+			else
+				windower.add_to_chat(167, 'UC profile v2 validation failed: ' .. tostring(validate_err or 'unknown error'))
+			end
+			return
 		end
-		windower.add_to_chat(207, '//uc configstatus export | //uc profilev2 export')
+		windower.add_to_chat(207, '//uc configstatus export | //uc profilev2 export | //uc profilev2 validate')
 		return
 	elseif a == 'host' and args[2] then
 		_G.UC_REMOTE_HOST = tostring(args[2])

@@ -81,6 +81,9 @@ local function make_fake_fs(initial_files, failures)
 		rename_calls = {},
 		remove_calls = {},
 		open_calls = {},
+		read_calls = {},
+		load_calls = {},
+		execute_calls = 0,
 	}
 
 	local deps = {}
@@ -152,6 +155,33 @@ local function make_fake_fs(initial_files, failures)
 		end
 		state.files[path] = nil
 		return true
+	end
+
+	function deps.read_all(path)
+		state.read_calls[#state.read_calls + 1] = path
+		local err = state.failures.read and state.failures.read[path]
+		if err ~= nil then
+			return nil, err
+		end
+		local content = state.files[path]
+		if type(content) ~= 'string' or content == '' then
+			return nil, 'missing'
+		end
+		return content
+	end
+
+	function deps.load_chunk(content, chunk_name)
+		state.load_calls[#state.load_calls + 1] = { content = content, chunk_name = chunk_name }
+		local err = state.failures.load and state.failures.load[content]
+		if err ~= nil then
+			return nil, err
+		end
+		return loadstring(content, chunk_name)
+	end
+
+	function deps.execute_chunk(chunk)
+		state.execute_calls = state.execute_calls + 1
+		return chunk()
 	end
 
 	return deps, state
@@ -566,13 +596,92 @@ local function main()
 	assert_nil(promote_fail_state.files[durable_path .. '.tmp'], 'promotion failure should clean temp file')
 	assert_nil(promote_fail_state.files[durable_path .. '.bak'], 'promotion failure should clean backup file after restore')
 
+	local validate_settings_snapshot = {
+		engine_enabled = true,
+		weaponskill = 'Savage Blade',
+	}
+	_G.UC_SETTINGS = deep_clone(validate_settings_snapshot)
+
+	local validate_ok_deps, validate_ok_state = make_fake_fs({
+		[durable_path] = expected_serialized,
+	})
+	local validate_ok_result = exporter.validate_structured_profile_file({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, validate_ok_deps)
+	assert_true(validate_ok_result.ok == true, 'structured profile validation should succeed for well-formed export')
+	assert_equal(validate_ok_result.path, durable_path, 'structured profile validation path mismatch')
+	assert_equal(#validate_ok_state.read_calls, 1, 'structured profile validation should read one file')
+	assert_deep_equal(_G.UC_SETTINGS, validate_settings_snapshot, 'structured profile validation must not mutate UC_SETTINGS')
+
+	local validate_read_fail_deps = make_fake_fs(nil, {
+		read = {
+			[durable_path] = 'missing',
+		},
+	})
+	local validate_read_fail_result = exporter.validate_structured_profile_file({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, validate_read_fail_deps)
+	assert_true(validate_read_fail_result.ok == false, 'structured profile validation should fail when file cannot be read')
+	assert_equal(validate_read_fail_result.stage, 'read', 'structured profile read failure stage mismatch')
+
+	local validate_not_table_deps = make_fake_fs({
+		[durable_path] = 'return "not a table"\n',
+	})
+	local validate_not_table_result = exporter.validate_structured_profile_file({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, validate_not_table_deps)
+	assert_true(validate_not_table_result.ok == false, 'structured profile validation should fail when file does not return a table')
+	assert_equal(validate_not_table_result.stage, 'shape', 'structured profile non-table failure stage mismatch')
+
+	local validate_bad_version_deps = make_fake_fs({
+		[durable_path] = 'return { version = 1, profile = {}, config = {} }\n',
+	})
+	local validate_bad_version_result = exporter.validate_structured_profile_file({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, validate_bad_version_deps)
+	assert_true(validate_bad_version_result.ok == false, 'structured profile validation should fail when version is not 2')
+	assert_equal(validate_bad_version_result.reason, 'invalid version', 'structured profile invalid version reason mismatch')
+
+	local validate_missing_profile_deps = make_fake_fs({
+		[durable_path] = 'return { version = 2, config = {} }\n',
+	})
+	local validate_missing_profile_result = exporter.validate_structured_profile_file({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, validate_missing_profile_deps)
+	assert_true(validate_missing_profile_result.ok == false, 'structured profile validation should fail when profile is missing')
+	assert_equal(validate_missing_profile_result.reason, 'missing profile', 'structured profile missing profile reason mismatch')
+
+	local validate_missing_config_deps = make_fake_fs({
+		[durable_path] = 'return { version = 2, profile = {} }\n',
+	})
+	local validate_missing_config_result = exporter.validate_structured_profile_file({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, validate_missing_config_deps)
+	assert_true(validate_missing_config_result.ok == false, 'structured profile validation should fail when config is missing')
+	assert_equal(validate_missing_config_result.reason, 'missing config', 'structured profile missing config reason mismatch')
+	assert_deep_equal(_G.UC_SETTINGS, validate_settings_snapshot, 'structured profile validation failures must not mutate UC_SETTINGS')
+
 	local file = io.open('UnifiedCombat.lua', 'r')
 	assert_true(file ~= nil, 'unable to read UnifiedCombat.lua')
 	local addon = file:read('*a')
 	file:close()
 	assert_contains(addon, "elseif a == 'profilev2' then", 'addon must route profilev2 command')
 	assert_contains(addon, "//uc profilev2 export", 'addon must advertise profilev2 export help')
+	assert_contains(addon, "//uc profilev2 validate", 'addon must advertise profilev2 validate help')
 	assert_contains(addon, "uc_profile_v2_export.write_structured_profile_export(profile, meta)", 'addon must use structured profile export helper')
+	assert_contains(addon, "uc_profile_v2_export.validate_structured_profile_file(meta, function(payload)", 'addon must use structured profile validate helper')
 	assert_not_contains(addon, 'windower.add_to_chat(207, uc_profile_v2_export.serialize_structured_profile', 'addon must not dump structured profile contents to chat')
 
 	local expected_config = build_expected_config()

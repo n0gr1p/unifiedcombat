@@ -240,6 +240,7 @@ Ambiguous current fields:
 - `T3.8a` adds pure structured profile/config read compatibility to `uc_config_normalizer.lua`: callers may pass the future `version = 2`, `profile = {...}`, `config = {...}` shape documented in `docs/profile_v2_structured_config_shape.md`, or a direct canonical-domain table. Live v1 profile loading/saving, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - `T3.8b` adds the explicit `//uc profilev2 export` command, which writes `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` as a structured v2 artifact for inspection and future UI migration work.
 - `T3.8c` hardens only that explicit export write path with a best-effort temp-write-in-place and promote flow. It preserves an existing final file when the temp write fails, cleans temp files on failure when possible, and does not claim atomic replacement on Windows when the target already exists.
+- `T3.8d` adds explicit read-only `//uc profilev2 validate` dry-run validation for that structured v2 artifact. It resolves the same path as export, reads/parses only that file, validates top-level structure plus contract shape when available, and does not apply the payload to runtime settings.
 - Live v1 profile loading/saving, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - Runtime action decisions still use `_G.UC_SETTINGS`; scheduler/provider reads are not migrated.
 - Profile load/save behavior and bridge write behavior remain unchanged.
