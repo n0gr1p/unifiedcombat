@@ -65,6 +65,9 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - Output path: `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua`
 - Shape: `return { version = 2, profile = {...}, config = {...} }`
 - The `profile` metadata includes `character`, `main_job`, `sub_job`, `source`, `exported_at`, and an optional `profile_key` when available.
+- The export command is a manual migration/bootstrap seed utility only. The addon is not the normal v2 profile writer/editor; external UI/tooling owns profile editing and writes.
+- In live Windower, the command resolves this path under `windower.addon_path` and creates only the expected `data/profiles_v2` directory when it is missing.
+- Export failures are reported in chat as `UC profile v2 export failed: <short reason>`, with detailed helper failure data kept in result tables for tests.
 - The write path now uses a best-effort temp-file write in the same directory followed by promotion to the final path only after the temp write closes successfully.
 - Existing final files are preserved when the temp write fails.
 - On Windows, replacement is not claimed to be atomic; when the final file already exists, the helper uses a best-effort backup/promote/restore flow so the final path is not overwritten by a partial write.
@@ -84,7 +87,8 @@ The export helper builds the structured payload from the current loaded settings
 - Current live profile load/save behavior is unchanged.
 - Current profile save format remains `return { version = 1, profiles = { UC = ... } }`.
 - `remote_bridge.lua` remains the live UI write path.
-- `//uc profilev2 export` is explicit-command-only and writes the new structured v2 artifact to `data/profiles_v2/`.
+- `//uc profilev2 export` is explicit-command-only and writes the new structured v2 artifact to `data/profiles_v2/` only when a user manually asks for a migration/bootstrap seed.
+- Normal v2 profile editing and saving remain owned by external UI/tooling, not by the addon export command.
 - No profile polling or live apply behavior exists.
 - Scheduler/provider/action-decision reads still use current runtime settings, not structured profile files.
 

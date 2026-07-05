@@ -14,6 +14,7 @@
 - `T3.7k` audits remaining active bridge read-only settings consumers and recommends pausing bridge migration for now because the remaining bridge setting-touching paths are edit/write protocol, command state, or derived option/status data. No runtime behavior or bridge behavior changed, and `T3.7j` live sanity passed before the audit.
 - `T3.8a` adds pure read compatibility for a future structured v2 profile/config payload through `uc_config_normalizer.lua` and a direct contract helper. The supported shape is documented in `docs/profile_v2_structured_config_shape.md`.
 - `T3.8b` adds `//uc profilev2 export`, an explicit command-only structured export path that writes `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` without changing the live v1 profile file contract.
+- `T3.8g` keeps that export path manual-only as a migration/bootstrap seed utility, resolves it under `windower.addon_path` in live Windower, and reports terse failure reasons in chat.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
@@ -42,18 +43,20 @@
 - It accepts `set` messages and writes them into `_G.UC_SETTINGS` through `apply_set(...)`.
 - It accepts one-shot runtime commands: `start_engine`, `stop_engine`, `save`, `reload`, `addon_reload`, `request_state`, and `request_options`.
 - The addon command `//uc configstatus export` writes the compact normalized config status to `data/status/<safe_character>_config_contract_status.lua` as a Lua-table diagnostic file.
-- The addon command `//uc profilev2 export` writes the structured v2 profile artifact to `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` as a Lua-table diagnostic file.
+- The addon command `//uc profilev2 export` writes the structured v2 profile artifact to `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` as a Lua-table manual migration/bootstrap seed file.
 - The addon command `//uc profilev2 validate` reads that same structured v2 profile artifact and validates it in dry-run mode only.
 - The addon command `//uc profilev2 diff` reads and validates that same structured v2 profile artifact, then compares only its durable `config` domains against the current normalized runtime config in dry-run mode.
 - The addon command `//uc profilev2 apply` reads and validates that same structured v2 profile artifact, builds a verified candidate flat runtime settings table from its durable `config` domains, and then applies that candidate to `_G.UC_SETTINGS` in place without saving to disk.
 - The config status export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
 - The structured v2 profile export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
+- The structured v2 profile export is not the normal v2 profile save/edit path. External UI/tooling owns normal v2 profile writes; the addon consumes v2 files through validate/diff/apply/reload-style commands.
 - The structured v2 profile validation is explicit-command-only; it does not apply config to runtime, does not mutate `_G.UC_SETTINGS`, and does not write anything back to disk.
 - The structured v2 profile diff is explicit-command-only; it does not apply config to runtime, does not mutate `_G.UC_SETTINGS`, and does not write anything back to disk.
 - The structured v2 profile apply is explicit-command-only; it does not save v1 profiles, does not write v2 files, and does not change bridge write behavior.
 - The config status export excludes the full normalized config table, `_G.UC_SETTINGS`, scheduler state, pending/lock state, target data, party data, and mob snapshots.
 - The config status export uses the existing `files.new(path, true)` / `files.write(...)` helper style and is best-effort diagnostic output, not an atomic profile-write contract.
 - The structured v2 profile export now uses a best-effort temp-write in the target directory and promotes the temp file only after a successful close.
+- The structured v2 profile export now resolves through `windower.addon_path` in live Windower, creates only `data/profiles_v2` when missing, and reports failures as `UC profile v2 export failed: <short reason>`.
 - When the final v2 file already exists, the export helper uses a best-effort backup/promote/restore flow because plain Windows/Lua rename does not guarantee overwrite of an existing target.
 - The structured v2 profile export still does not change the live v1 save contract.
 - Legacy in-game overlay visibility now reads `config.ui.show_ingame_ui` for display only; it does not change bridge write behavior, profile save behavior, or scheduler/provider action decisions.

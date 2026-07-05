@@ -34,6 +34,26 @@ local function trim_string(value)
 	return (value:match('^%s*(.-)%s*$') or '')
 end
 
+local function path_separator(path)
+	if type(path) == 'string' and path:find('\\', 1, true) then
+		return '\\'
+	end
+	return '/'
+end
+
+local function join_path(left, right)
+	if type(left) ~= 'string' or left == '' then
+		return right
+	end
+	if type(right) ~= 'string' or right == '' then
+		return left
+	end
+	if left:sub(-1) == '/' or left:sub(-1) == '\\' then
+		return left .. right
+	end
+	return left .. path_separator(left) .. right
+end
+
 local function normalize_optional_string(value, default_value)
 	local trimmed = trim_string(value)
 	if trimmed == '' then
@@ -284,7 +304,15 @@ end
 
 function M.default_export_path(meta)
 	local resolved_meta = normalized_meta(meta)
-	return 'data/profiles_v2/' .. safe_character_component(resolved_meta.character) .. '_' .. safe_job_component(resolved_meta.main_job) .. '_' .. safe_job_component(resolved_meta.sub_job) .. '.lua'
+	local meta_table = type(meta) == 'table' and meta or {}
+	local base_path = trim_string(meta_table.addon_path or meta_table.base_path)
+	local dir_path
+	if base_path ~= '' then
+		dir_path = join_path(join_path(base_path, 'data'), 'profiles_v2')
+	else
+		dir_path = 'data/profiles_v2'
+	end
+	return join_path(dir_path, safe_character_component(resolved_meta.character) .. '_' .. safe_job_component(resolved_meta.main_job) .. '_' .. safe_job_component(resolved_meta.sub_job) .. '.lua')
 end
 
 local function default_fs_deps()
@@ -305,6 +333,20 @@ local function default_fs_deps()
 		end,
 		remove = function(path)
 			return os.remove(path)
+		end,
+		dir_exists = function(path)
+			local w = rawget(_G, 'windower')
+			if type(w) ~= 'table' or type(w.dir_exists) ~= 'function' then
+				return nil, 'windower.dir_exists unavailable'
+			end
+			return w.dir_exists(path)
+		end,
+		create_dir = function(path)
+			local w = rawget(_G, 'windower')
+			if type(w) ~= 'table' or type(w.create_dir) ~= 'function' then
+				return nil, 'windower.create_dir unavailable'
+			end
+			return w.create_dir(path)
 		end,
 		read_all = function(path)
 			local handle, open_err = io.open(path, 'rb')
@@ -352,14 +394,6 @@ local function base_name(path)
 	return path:match('([^/\\]+)$')
 end
 
-local function join_path(dir_path, leaf)
-	if type(dir_path) ~= 'string' or dir_path == '' then
-		return leaf
-	end
-	local sep = dir_path:find('\\', 1, true) and '\\' or '/'
-	return dir_path .. sep .. leaf
-end
-
 local function candidate_sidecar_path(path, suffix, attempt)
 	local dir_path = parent_path(path)
 	local leaf = base_name(path) or path
@@ -400,6 +434,55 @@ local function pick_available_sidecar_path(path, suffix, deps)
 	return nil, 'no available sidecar path'
 end
 
+local function dep_dir_exists(deps, path)
+	if type(deps.dir_exists) ~= 'function' then
+		return false, 'directory check unavailable'
+	end
+	local ok, exists_or_err, detail = pcall(deps.dir_exists, path)
+	if not ok then
+		return false, tostring(exists_or_err)
+	end
+	if exists_or_err == true then
+		return true, nil
+	end
+	if exists_or_err == false then
+		return false, nil
+	end
+	return false, tostring(detail or exists_or_err or 'directory check returned nil')
+end
+
+local function ensure_output_dir(path, deps)
+	local dir_path = parent_path(path)
+	if type(dir_path) ~= 'string' or dir_path == '' then
+		return false, nil, 'path resolution failed'
+	end
+
+	local exists, exists_err = dep_dir_exists(deps, dir_path)
+	if exists_err ~= nil then
+		return false, dir_path, exists_err
+	end
+	if exists then
+		return true, dir_path, nil
+	end
+	if type(deps.create_dir) ~= 'function' then
+		return false, dir_path, 'directory create unavailable'
+	end
+
+	local ok_create, create_result, create_detail = pcall(deps.create_dir, dir_path)
+	if not ok_create then
+		return false, dir_path, tostring(create_result)
+	end
+
+	local exists_after, exists_after_err = dep_dir_exists(deps, dir_path)
+	if exists_after_err ~= nil then
+		return false, dir_path, exists_after_err
+	end
+	if not exists_after then
+		return false, dir_path, tostring(create_detail or create_result or 'directory still missing after create')
+	end
+	return true, dir_path, nil
+end
+
 local function cleanup_path(deps, path)
 	local exists, exists_err = dep_exists(deps, path)
 	if exists_err ~= nil then
@@ -411,44 +494,49 @@ local function cleanup_path(deps, path)
 	return call_dep(deps.remove, path)
 end
 
+local function fail_result(path, stage, reason, detail, extra)
+	local result = {
+		ok = false,
+		path = path,
+		stage = stage,
+		reason = reason,
+		error = detail,
+		detail = detail,
+	}
+	if type(extra) == 'table' then
+		for key, value in pairs(extra) do
+			result[key] = value
+		end
+	end
+	return result
+end
+
 local function durable_write_file(path, content, deps)
 	deps = resolve_fs_deps(deps)
 	if type(path) ~= 'string' or path == '' then
-		return {
-			ok = false,
-			path = path,
-			stage = 'validate',
-			error = 'missing export path',
-		}
+		return fail_result(path, 'validate', 'missing export path', 'missing export path')
 	end
 	if type(content) ~= 'string' then
-		return {
-			ok = false,
-			path = path,
-			stage = 'validate',
-			error = 'missing export content',
-		}
+		return fail_result(path, 'validate', 'serialization failed', 'missing export content')
+	end
+
+	local dir_ok, dir_path, dir_err = ensure_output_dir(path, deps)
+	if not dir_ok then
+		return fail_result(path, 'prepare_dir', 'output directory unavailable', dir_err, {
+			dir_path = dir_path,
+		})
 	end
 
 	local temp_path, temp_err = pick_available_sidecar_path(path, '.tmp', deps)
 	if not temp_path then
-		return {
-			ok = false,
-			path = path,
-			stage = 'prepare_temp',
-			error = temp_err,
-		}
+		return fail_result(path, 'prepare_temp', 'temp path unavailable', temp_err)
 	end
 
 	local temp_handle, open_err = deps.open(temp_path, 'wb')
 	if not temp_handle then
-		return {
-			ok = false,
-			path = path,
+		return fail_result(path, 'open_temp', 'temp open failed', tostring(open_err), {
 			temp_path = temp_path,
-			stage = 'open_temp',
-			error = tostring(open_err),
-		}
+		})
 	end
 
 	local write_ok, write_result, write_detail = pcall(function()
@@ -459,45 +547,33 @@ local function durable_write_file(path, content, deps)
 			temp_handle:close()
 		end)
 		local cleanup_ok, cleanup_err = cleanup_path(deps, temp_path)
-		return {
-			ok = false,
-			path = path,
+		return fail_result(path, 'write_temp', 'temp write failed', not write_ok and tostring(write_result) or tostring(write_detail or 'temp write returned nil'), {
 			temp_path = temp_path,
-			stage = 'write_temp',
-			error = not write_ok and tostring(write_result) or tostring(write_detail or 'temp write returned nil'),
 			temp_cleanup_ok = cleanup_ok,
 			temp_cleanup_error = cleanup_err,
-		}
+		})
 	end
 
-	local close_ok, close_result = pcall(function()
+	local close_ok, close_result, close_detail = pcall(function()
 		return temp_handle:close()
 	end)
 	if not close_ok or close_result == nil then
 		local cleanup_ok, cleanup_err = cleanup_path(deps, temp_path)
-		return {
-			ok = false,
-			path = path,
+		return fail_result(path, 'close_temp', 'temp close failed', not close_ok and tostring(close_result) or tostring(close_detail or 'temp close returned nil'), {
 			temp_path = temp_path,
-			stage = 'close_temp',
-			error = not close_ok and tostring(close_result) or 'temp close returned nil',
 			temp_cleanup_ok = cleanup_ok,
 			temp_cleanup_error = cleanup_err,
-		}
+		})
 	end
 
 	local final_exists, exists_err = dep_exists(deps, path)
 	if exists_err ~= nil then
 		local cleanup_ok, cleanup_err = cleanup_path(deps, temp_path)
-		return {
-			ok = false,
-			path = path,
+		return fail_result(path, 'check_final', 'final path check failed', exists_err, {
 			temp_path = temp_path,
-			stage = 'check_final',
-			error = exists_err,
 			temp_cleanup_ok = cleanup_ok,
 			temp_cleanup_error = cleanup_err,
-		}
+		})
 	end
 
 	local backup_path = nil
@@ -505,29 +581,21 @@ local function durable_write_file(path, content, deps)
 		backup_path, temp_err = pick_available_sidecar_path(path, '.bak', deps)
 		if not backup_path then
 			local cleanup_ok, cleanup_err = cleanup_path(deps, temp_path)
-			return {
-				ok = false,
-				path = path,
+			return fail_result(path, 'prepare_backup', 'backup path unavailable', temp_err, {
 				temp_path = temp_path,
-				stage = 'prepare_backup',
-				error = temp_err,
 				temp_cleanup_ok = cleanup_ok,
 				temp_cleanup_error = cleanup_err,
-			}
+			})
 		end
 		local move_old_ok, move_old_err = call_dep(deps.rename, path, backup_path)
 		if not move_old_ok then
 			local cleanup_ok, cleanup_err = cleanup_path(deps, temp_path)
-			return {
-				ok = false,
-				path = path,
+			return fail_result(path, 'backup_final', 'backup failed', move_old_err, {
 				temp_path = temp_path,
 				backup_path = backup_path,
-				stage = 'backup_final',
-				error = move_old_err,
 				temp_cleanup_ok = cleanup_ok,
 				temp_cleanup_error = cleanup_err,
-			}
+			})
 		end
 	end
 
@@ -539,18 +607,14 @@ local function durable_write_file(path, content, deps)
 			restore_ok, restore_err = call_dep(deps.rename, backup_path, path)
 		end
 		local cleanup_ok, cleanup_err = cleanup_path(deps, temp_path)
-		return {
-			ok = false,
-			path = path,
+		return fail_result(path, 'promote', 'temp promote failed', promote_err, {
 			temp_path = temp_path,
 			backup_path = backup_path,
-			stage = 'promote',
-			error = promote_err,
 			restore_ok = restore_ok,
 			restore_error = restore_err,
 			temp_cleanup_ok = cleanup_ok,
 			temp_cleanup_error = cleanup_err,
-		}
+		})
 	end
 
 	local backup_cleanup_ok = true
@@ -574,12 +638,7 @@ function M.write_structured_profile_export(profile, meta, deps)
 	local path = M.default_export_path(meta)
 	local ok_render, content = pcall(M.serialize_structured_profile, profile)
 	if not ok_render then
-		return {
-			ok = false,
-			path = path,
-			stage = 'render',
-			error = tostring(content),
-		}
+		return fail_result(path, 'render', 'serialization failed', tostring(content))
 	end
 	return durable_write_file(path, content, deps)
 end
@@ -595,15 +654,18 @@ function M.validate_structured_profile_file(meta, validator, deps)
 			path = path,
 			stage = 'read',
 			error = tostring(content_or_err),
+			detail = tostring(content_or_err),
 			reason = 'read failed',
 		}
 	end
 	if type(content_or_err) ~= 'string' or content_or_err == '' then
+		local detail = tostring(content_or_err or 'empty file')
 		return {
 			ok = false,
 			path = path,
 			stage = 'read',
-			error = tostring(content_or_err or 'empty file'),
+			error = detail,
+			detail = detail,
 			reason = 'read failed',
 		}
 	end
@@ -615,15 +677,18 @@ function M.validate_structured_profile_file(meta, validator, deps)
 			path = path,
 			stage = 'load',
 			error = tostring(chunk_or_err),
+			detail = tostring(chunk_or_err),
 			reason = 'parse failed',
 		}
 	end
 	if type(chunk_or_err) ~= 'function' then
+		local detail = tostring(load_detail or 'chunk load returned nil')
 		return {
 			ok = false,
 			path = path,
 			stage = 'load',
-			error = tostring(load_detail or 'chunk load returned nil'),
+			error = detail,
+			detail = detail,
 			reason = 'parse failed',
 		}
 	end
@@ -635,6 +700,7 @@ function M.validate_structured_profile_file(meta, validator, deps)
 			path = path,
 			stage = 'execute',
 			error = tostring(payload_or_err),
+			detail = tostring(payload_or_err),
 			reason = 'load failed',
 		}
 	end
@@ -644,6 +710,7 @@ function M.validate_structured_profile_file(meta, validator, deps)
 			path = path,
 			stage = 'shape',
 			error = 'structured profile file must return a table',
+			detail = 'structured profile file must return a table',
 			reason = 'invalid payload',
 		}
 	end
@@ -653,6 +720,7 @@ function M.validate_structured_profile_file(meta, validator, deps)
 			path = path,
 			stage = 'shape',
 			error = 'structured profile version must be 2',
+			detail = 'structured profile version must be 2',
 			reason = 'invalid version',
 		}
 	end
@@ -662,6 +730,7 @@ function M.validate_structured_profile_file(meta, validator, deps)
 			path = path,
 			stage = 'shape',
 			error = 'structured profile metadata missing',
+			detail = 'structured profile metadata missing',
 			reason = 'missing profile',
 		}
 	end
@@ -671,6 +740,7 @@ function M.validate_structured_profile_file(meta, validator, deps)
 			path = path,
 			stage = 'shape',
 			error = 'structured profile config missing',
+			detail = 'structured profile config missing',
 			reason = 'missing config',
 		}
 	end
@@ -683,6 +753,7 @@ function M.validate_structured_profile_file(meta, validator, deps)
 				path = path,
 				stage = 'contract',
 				error = tostring(validation),
+				detail = tostring(validation),
 				reason = 'contract failed',
 				payload = payload_or_err,
 			}
@@ -697,6 +768,7 @@ function M.validate_structured_profile_file(meta, validator, deps)
 				path = path,
 				stage = 'contract',
 				error = tostring(error_message or 'structured profile contract validation failed'),
+				detail = tostring(error_message or 'structured profile contract validation failed'),
 				reason = 'contract failed',
 				payload = payload_or_err,
 				validation = validation,

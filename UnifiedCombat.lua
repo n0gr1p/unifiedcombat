@@ -640,6 +640,31 @@ local function uc_profile_v2_file_path(meta)
 	return uc_profile_v2_export.default_export_path(meta)
 end
 
+local function uc_addon_path()
+	if type(windower) == 'table' and type(windower.addon_path) == 'string' and windower.addon_path ~= '' then
+		return windower.addon_path
+	end
+	return nil
+end
+
+local function uc_profile_v2_meta(player, exported_at)
+	return {
+		character = player and player.name or nil,
+		main_job = player and player.main_job or nil,
+		sub_job = player and player.sub_job or nil,
+		profile_key = player and (tostring(player.name or '') .. '|' .. tostring(player.main_job or '') .. '|' .. tostring(player.sub_job or '')) or nil,
+		exported_at = exported_at,
+		addon_path = uc_addon_path(),
+	}
+end
+
+local function uc_profile_v2_export_failure(reason)
+	if type(reason) ~= 'string' or reason == '' then
+		reason = 'export failed without reason'
+	end
+	windower.add_to_chat(167, 'UC profile v2 export failed: ' .. reason)
+end
+
 local uc_normalize_profiles_tree
 
 local function uc_serialize_lua(v, indent)
@@ -719,9 +744,9 @@ end
 local function uc_write_profile_v2_export(profile, meta)
 	local result = uc_profile_v2_export.write_structured_profile_export(profile, meta)
 	if type(result) ~= 'table' then
-		return false, uc_profile_v2_file_path(meta), 'profile v2 export writer returned invalid result'
+		return false, uc_profile_v2_file_path(meta), 'profile v2 export writer returned invalid result', nil
 	end
-	return result.ok == true, result.path, result.error
+	return result.ok == true, result.path, result.reason, result.detail or result.error
 end
 
 local function uc_validate_profile_v2_file(meta)
@@ -1580,38 +1605,37 @@ windower.register_event('addon command', function(...)
 		local sub = args[2] and tostring(args[2]):lower() or ''
 		if sub == 'export' then
 			local p = windower.ffxi.get_player()
-			if not p or not p.name or not _G.UC_SETTINGS then
-				windower.add_to_chat(167, 'UC profile v2 export failed')
+			if not p or not p.name then
+				uc_profile_v2_export_failure('missing player')
 				return
 			end
-			local ok_build, profile = pcall(uc_profile_v2_export.build_structured_profile, _G.UC_SETTINGS, {
-				character = p.name,
-				main_job = p.main_job,
-				sub_job = p.sub_job,
-				source = 'UC_SETTINGS',
-				profile_key = tostring(p.name or '') .. '|' .. tostring(p.main_job or '') .. '|' .. tostring(p.sub_job or ''),
-				exported_at = os.date('!%Y-%m-%dT%H:%M:%SZ'),
-			})
+			if not _G.UC_SETTINGS then
+				uc_profile_v2_export_failure('missing settings')
+				return
+			end
+			local meta = uc_profile_v2_meta(p, os.date('!%Y-%m-%dT%H:%M:%SZ'))
+			meta.source = 'UC_SETTINGS'
+			local ok_build, profile = pcall(uc_profile_v2_export.build_structured_profile, _G.UC_SETTINGS, meta)
 			if not ok_build or type(profile) ~= 'table' then
-				windower.add_to_chat(167, 'UC profile v2 export failed')
+				uc_profile_v2_export_failure('profile build failed')
 				return
 			end
 			local validation = uc_validate_structured_profile_export(profile)
-			if not validation or validation.ok ~= true then
-				windower.add_to_chat(167, 'UC profile v2 export failed')
+			if validation == nil then
+				uc_profile_v2_export_failure('contract unavailable')
 				return
 			end
-			local ok_write, path = uc_write_profile_v2_export(profile, {
-				character = p.name,
-				main_job = p.main_job,
-				sub_job = p.sub_job,
-				profile_key = profile.profile and profile.profile.profile_key or nil,
-				exported_at = profile.profile and profile.profile.exported_at or os.date('!%Y-%m-%dT%H:%M:%SZ'),
-			})
+			if validation.ok ~= true then
+				uc_profile_v2_export_failure('contract validation failed')
+				return
+			end
+			meta.profile_key = profile.profile and profile.profile.profile_key or nil
+			meta.exported_at = profile.profile and profile.profile.exported_at or meta.exported_at
+			local ok_write, path, write_reason = uc_write_profile_v2_export(profile, meta)
 			if ok_write then
 				windower.add_to_chat(207, 'UC profile v2 exported: ' .. tostring(path))
 			else
-				windower.add_to_chat(167, 'UC profile v2 export failed')
+				uc_profile_v2_export_failure(write_reason)
 			end
 			return
 		elseif sub == 'validate' then
@@ -1624,6 +1648,7 @@ windower.register_event('addon command', function(...)
 				character = p.name,
 				main_job = p.main_job,
 				sub_job = p.sub_job,
+				addon_path = uc_addon_path(),
 			})
 			if ok_validate then
 				windower.add_to_chat(207, 'UC profile v2 valid')
@@ -1641,6 +1666,7 @@ windower.register_event('addon command', function(...)
 				character = p.name,
 				main_job = p.main_job,
 				sub_job = p.sub_job,
+				addon_path = uc_addon_path(),
 			}, _G.UC_SETTINGS)
 			if not ok_diff then
 				windower.add_to_chat(167, 'UC profile v2 diff failed: ' .. tostring(diff_err or 'unknown error'))
@@ -1660,6 +1686,7 @@ windower.register_event('addon command', function(...)
 				character = p.name,
 				main_job = p.main_job,
 				sub_job = p.sub_job,
+				addon_path = uc_addon_path(),
 			}, _G.UC_SETTINGS)
 			if not ok_apply then
 				windower.add_to_chat(167, 'UC profile v2 apply failed: ' .. tostring(apply_err or 'unknown error'))

@@ -80,15 +80,23 @@ local function assert_deep_equal(actual, expected, message)
 	end
 end
 
-local function make_fake_fs(initial_files, failures)
+local function make_fake_fs(initial_files, failures, initial_dirs)
+	local dirs = {}
+	if initial_dirs == nil then
+		dirs['data/profiles_v2'] = true
+	else
+		dirs = deep_clone(initial_dirs)
+	end
 	local state = {
 		files = deep_clone(initial_files or {}),
+		dirs = dirs,
 		failures = failures or {},
 		rename_calls = {},
 		remove_calls = {},
 		open_calls = {},
 		read_calls = {},
 		load_calls = {},
+		create_dir_calls = {},
 		execute_calls = 0,
 	}
 
@@ -130,6 +138,24 @@ local function make_fake_fs(initial_files, failures)
 			error(err)
 		end
 		return state.files[path] ~= nil
+	end
+
+	function deps.dir_exists(path)
+		local err = state.failures.dir_exists and state.failures.dir_exists[path]
+		if err ~= nil then
+			error(err)
+		end
+		return state.dirs[path] == true
+	end
+
+	function deps.create_dir(path)
+		state.create_dir_calls[#state.create_dir_calls + 1] = path
+		local err = state.failures.create_dir and state.failures.create_dir[path]
+		if err ~= nil then
+			return nil, err
+		end
+		state.dirs[path] = true
+		return true
 	end
 
 	function deps.rename(from_path, to_path)
@@ -547,6 +573,13 @@ local function main()
 	})
 	assert_equal(path, 'data/profiles_v2/red_rogue_PLD_WAR.lua', 'export path mismatch')
 	assert_equal(exporter.default_export_path(nil), 'data/profiles_v2/unknown_UNKNOWN_UNKNOWN.lua', 'nil export path mismatch')
+	local addon_local_path = exporter.default_export_path({
+		character = ' Red Rogue! ',
+		main_job = 'pld',
+		sub_job = 'war',
+		addon_path = 'C:\\Program Files (x86)\\Windower\\addons\\UnifiedCombat\\',
+	})
+	assert_equal(addon_local_path, 'C:\\Program Files (x86)\\Windower\\addons\\UnifiedCombat\\data\\profiles_v2\\red_rogue_PLD_WAR.lua', 'addon-local export path mismatch')
 	local durable_path = exporter.default_export_path({
 		character = 'Redrogue',
 		main_job = 'PLD',
@@ -566,6 +599,51 @@ local function main()
 	assert_nil(durable_state.files[durable_path .. '.tmp'], 'temp file should not remain after successful promote')
 	assert_nil(durable_state.files[durable_path .. '.bak'], 'backup file should not remain after successful promote')
 
+	local created_dir_path = exporter.default_export_path({
+		character = 'Created',
+		main_job = 'BRD',
+		sub_job = 'WHM',
+	})
+	local create_dir_deps, create_dir_state = make_fake_fs(nil, nil, {})
+	local create_dir_result = exporter.write_structured_profile_export(profile, {
+		character = 'Created',
+		main_job = 'BRD',
+		sub_job = 'WHM',
+	}, create_dir_deps)
+	assert_true(create_dir_result.ok == true, 'missing output directory should be created for explicit export')
+	assert_equal(create_dir_state.create_dir_calls[1], 'data/profiles_v2', 'export should create only the v2 profile directory')
+	assert_equal(create_dir_state.files[created_dir_path], expected_serialized, 'export should write after creating the v2 profile directory')
+
+	local dir_fail_deps = make_fake_fs(nil, {
+		create_dir = {
+			['data/profiles_v2'] = 'access denied',
+		},
+	}, {})
+	local dir_fail_result = exporter.write_structured_profile_export(profile, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, dir_fail_deps)
+	assert_true(dir_fail_result.ok == false, 'directory create failure should report failure')
+	assert_equal(dir_fail_result.stage, 'prepare_dir', 'directory failure stage mismatch')
+	assert_equal(dir_fail_result.reason, 'output directory unavailable', 'directory failure reason mismatch')
+	assert_equal(dir_fail_result.detail, 'access denied', 'directory failure detail mismatch')
+
+	local open_fail_deps = make_fake_fs(nil, {
+		open = {
+			[durable_path .. '.tmp'] = 'permission denied',
+		},
+	})
+	local open_fail_result = exporter.write_structured_profile_export(profile, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, open_fail_deps)
+	assert_true(open_fail_result.ok == false, 'temp open failure should report failure')
+	assert_equal(open_fail_result.stage, 'open_temp', 'temp open failure stage mismatch')
+	assert_equal(open_fail_result.reason, 'temp open failed', 'temp open failure reason mismatch')
+	assert_equal(open_fail_result.detail, 'permission denied', 'temp open failure detail mismatch')
+
 	local write_fail_deps, write_fail_state = make_fake_fs({
 		[durable_path] = 'return { version = 2, preserved = true }\n',
 	}, {
@@ -580,8 +658,28 @@ local function main()
 	}, write_fail_deps)
 	assert_true(write_fail_result.ok == false, 'temp write failure should report failure')
 	assert_equal(write_fail_result.stage, 'write_temp', 'temp write failure stage mismatch')
+	assert_equal(write_fail_result.reason, 'temp write failed', 'temp write failure reason mismatch')
+	assert_equal(write_fail_result.detail, 'disk full', 'temp write failure detail mismatch')
 	assert_equal(write_fail_state.files[durable_path], 'return { version = 2, preserved = true }\n', 'temp write failure must preserve existing final file')
 	assert_nil(write_fail_state.files[durable_path .. '.tmp'], 'temp write failure should clean temp file')
+
+	local close_fail_deps, close_fail_state = make_fake_fs({
+		[durable_path] = 'return { version = 2, preserved = true }\n',
+	}, {
+		close = {
+			[durable_path .. '.tmp'] = 'close denied',
+		},
+	})
+	local close_fail_result = exporter.write_structured_profile_export(profile, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, close_fail_deps)
+	assert_true(close_fail_result.ok == false, 'temp close failure should report failure')
+	assert_equal(close_fail_result.stage, 'close_temp', 'temp close failure stage mismatch')
+	assert_equal(close_fail_result.reason, 'temp close failed', 'temp close failure reason mismatch')
+	assert_equal(close_fail_result.detail, 'close denied', 'temp close failure detail mismatch')
+	assert_equal(close_fail_state.files[durable_path], 'return { version = 2, preserved = true }\n', 'temp close failure must preserve existing final file')
 
 	local promote_fail_deps, promote_fail_state = make_fake_fs({
 		[durable_path] = 'return { version = 2, preserved = true }\n',
@@ -597,10 +695,23 @@ local function main()
 	}, promote_fail_deps)
 	assert_true(promote_fail_result.ok == false, 'promotion failure should report failure')
 	assert_equal(promote_fail_result.stage, 'promote', 'promotion failure stage mismatch')
+	assert_equal(promote_fail_result.reason, 'temp promote failed', 'promotion failure reason mismatch')
+	assert_equal(promote_fail_result.detail, 'rename blocked', 'promotion failure detail mismatch')
 	assert_true(promote_fail_result.restore_ok == true, 'promotion failure should restore existing final file when possible')
 	assert_equal(promote_fail_state.files[durable_path], 'return { version = 2, preserved = true }\n', 'promotion failure should restore preserved final file')
 	assert_nil(promote_fail_state.files[durable_path .. '.tmp'], 'promotion failure should clean temp file')
 	assert_nil(promote_fail_state.files[durable_path .. '.bak'], 'promotion failure should clean backup file after restore')
+
+	profile.self = profile
+	local render_fail_result = exporter.write_structured_profile_export(profile, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, durable_deps)
+	profile.self = nil
+	assert_true(render_fail_result.ok == false, 'serialization failure should report failure')
+	assert_equal(render_fail_result.stage, 'render', 'serialization failure stage mismatch')
+	assert_equal(render_fail_result.reason, 'serialization failed', 'serialization failure reason mismatch')
 
 	local validate_settings_snapshot = {
 		engine_enabled = true,
@@ -678,6 +789,24 @@ local function main()
 	assert_true(validate_missing_config_result.ok == false, 'structured profile validation should fail when config is missing')
 	assert_equal(validate_missing_config_result.reason, 'missing config', 'structured profile missing config reason mismatch')
 	assert_deep_equal(_G.UC_SETTINGS, validate_settings_snapshot, 'structured profile validation failures must not mutate UC_SETTINGS')
+
+	local contract_fail_deps = make_fake_fs({
+		[durable_path] = expected_serialized,
+	})
+	local contract_fail_result = exporter.validate_structured_profile_file({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, function()
+		return {
+			ok = false,
+			errors = { 'forced contract failure' },
+		}
+	end, contract_fail_deps)
+	assert_true(contract_fail_result.ok == false, 'structured profile validation should report contract validation failure')
+	assert_equal(contract_fail_result.stage, 'contract', 'contract validation failure stage mismatch')
+	assert_equal(contract_fail_result.reason, 'contract failed', 'contract validation failure reason mismatch')
+	assert_equal(contract_fail_result.error, 'forced contract failure', 'contract validation failure detail mismatch')
 
 	local diff_ok_deps = make_fake_fs({
 		[durable_path] = expected_serialized,
@@ -920,6 +1049,8 @@ local function main()
 	assert_contains(addon, "uc_profile_v2_export.validate_structured_profile_file(meta, function(payload)", 'addon must use structured profile validate helper')
 	assert_contains(addon, "uc_profile_v2_export.diff_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile diff helper')
 	assert_contains(addon, "uc_profile_v2_export.apply_structured_profile_file_to_settings(settings, meta, function(payload)", 'addon must use structured profile apply helper')
+	assert_contains(addon, "UC profile v2 export failed: ", 'addon export failure chat must include reason')
+	assert_contains(addon, "addon_path = uc_addon_path()", 'addon must resolve v2 profile files under the addon path')
 	assert_not_contains(addon, 'UC profile v2 apply: ' .. "profile saved", 'structured profile apply path must not report v1 save behavior')
 	assert_not_contains(addon, 'windower.add_to_chat(207, uc_profile_v2_export.serialize_structured_profile', 'addon must not dump structured profile contents to chat')
 
