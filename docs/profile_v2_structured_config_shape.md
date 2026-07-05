@@ -62,6 +62,9 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - Output path: `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua`
 - Shape: `return { version = 2, profile = {...}, config = {...} }`
 - The `profile` metadata includes `character`, `main_job`, `sub_job`, `source`, `exported_at`, and an optional `profile_key` when available.
+- The write path now uses a best-effort temp-file write in the same directory followed by promotion to the final path only after the temp write closes successfully.
+- Existing final files are preserved when the temp write fails.
+- On Windows, replacement is not claimed to be atomic; when the final file already exists, the helper uses a best-effort backup/promote/restore flow so the final path is not overwritten by a partial write.
 
 The export helper builds the structured payload from the current loaded settings/profile state and canonical normalized config, but it does not change live profile loading, live profile saving, or bridge write behavior.
 

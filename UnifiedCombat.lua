@@ -717,23 +717,11 @@ local function uc_write_config_status_export(status, meta)
 end
 
 local function uc_write_profile_v2_export(profile, meta)
-	meta = type(meta) == 'table' and meta or {}
-	local path = uc_profile_v2_file_path(meta)
-	local ok_render, content = pcall(uc_profile_v2_export.serialize_structured_profile, profile)
-	if not ok_render then
-		return false, path, tostring(content)
+	local result = uc_profile_v2_export.write_structured_profile_export(profile, meta)
+	if type(result) ~= 'table' then
+		return false, uc_profile_v2_file_path(meta), 'profile v2 export writer returned invalid result'
 	end
-	local ok_write, result = pcall(function()
-		local fobj = files.new(path, true)
-		return files.write(fobj, content)
-	end)
-	if not ok_write then
-		return false, path, tostring(result)
-	end
-	if result == nil then
-		return false, path, 'files.write returned nil'
-	end
-	return true, path, nil
+	return result.ok == true, result.path, result.error
 end
 
 local function uc_read_profiles_file(char_name)

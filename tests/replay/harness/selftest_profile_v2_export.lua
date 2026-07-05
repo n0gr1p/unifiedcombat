@@ -18,6 +18,12 @@ local function assert_not_contains(haystack, needle, message)
 	assert_true(type(haystack) == 'string' and haystack:find(needle, 1, true) == nil, message or ('unexpected substring: ' .. tostring(needle)))
 end
 
+local function assert_nil(value, message)
+	if value ~= nil then
+		error((message or 'value should be nil') .. ': actual=' .. tostring(value))
+	end
+end
+
 local function deep_clone(value)
 	if type(value) ~= 'table' then
 		return value
@@ -66,6 +72,89 @@ local function assert_deep_equal(actual, expected, message)
 	if not deep_equal(actual, expected) then
 		error(message or 'tables are not deeply equal')
 	end
+end
+
+local function make_fake_fs(initial_files, failures)
+	local state = {
+		files = deep_clone(initial_files or {}),
+		failures = failures or {},
+		rename_calls = {},
+		remove_calls = {},
+		open_calls = {},
+	}
+
+	local deps = {}
+
+	function deps.open(path, mode)
+		state.open_calls[#state.open_calls + 1] = { path = path, mode = mode }
+		local err = state.failures.open and state.failures.open[path]
+		if err ~= nil then
+			return nil, err
+		end
+		local handle = {
+			closed = false,
+			buffer = '',
+		}
+		function handle:write(content)
+			local write_err = state.failures.write and state.failures.write[path]
+			if write_err ~= nil then
+				return nil, write_err
+			end
+			self.buffer = self.buffer .. tostring(content or '')
+			return true
+		end
+		function handle:close()
+			local close_err = state.failures.close and state.failures.close[path]
+			if close_err ~= nil then
+				return nil, close_err
+			end
+			self.closed = true
+			state.files[path] = self.buffer
+			return true
+		end
+		return handle
+	end
+
+	function deps.exists(path)
+		local err = state.failures.exists and state.failures.exists[path]
+		if err ~= nil then
+			error(err)
+		end
+		return state.files[path] ~= nil
+	end
+
+	function deps.rename(from_path, to_path)
+		state.rename_calls[#state.rename_calls + 1] = { from_path = from_path, to_path = to_path }
+		local key = from_path .. '->' .. to_path
+		local err = state.failures.rename and state.failures.rename[key]
+		if err ~= nil then
+			return nil, err
+		end
+		if state.files[from_path] == nil then
+			return nil, 'source missing'
+		end
+		if state.files[to_path] ~= nil then
+			return nil, 'target exists'
+		end
+		state.files[to_path] = state.files[from_path]
+		state.files[from_path] = nil
+		return true
+	end
+
+	function deps.remove(path)
+		state.remove_calls[#state.remove_calls + 1] = path
+		local err = state.failures.remove and state.failures.remove[path]
+		if err ~= nil then
+			return nil, err
+		end
+		if state.files[path] == nil then
+			return nil, 'missing'
+		end
+		state.files[path] = nil
+		return true
+	end
+
+	return deps, state
 end
 
 local function build_flat_settings()
@@ -422,6 +511,60 @@ local function main()
 	})
 	assert_equal(path, 'data/profiles_v2/red_rogue_PLD_WAR.lua', 'export path mismatch')
 	assert_equal(exporter.default_export_path(nil), 'data/profiles_v2/unknown_UNKNOWN_UNKNOWN.lua', 'nil export path mismatch')
+	local durable_path = exporter.default_export_path({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	})
+
+	local expected_serialized = exporter.serialize_structured_profile(profile)
+	local durable_deps, durable_state = make_fake_fs()
+	local durable_result = exporter.write_structured_profile_export(profile, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, durable_deps)
+	assert_true(durable_result.ok == true, 'durable export helper should report success')
+	assert_equal(durable_result.path, durable_path, 'durable export helper path mismatch')
+	assert_equal(durable_state.files[durable_path], expected_serialized, 'durable export helper should write serialized profile content')
+	assert_nil(durable_state.files[durable_path .. '.tmp'], 'temp file should not remain after successful promote')
+	assert_nil(durable_state.files[durable_path .. '.bak'], 'backup file should not remain after successful promote')
+
+	local write_fail_deps, write_fail_state = make_fake_fs({
+		[durable_path] = 'return { version = 2, preserved = true }\n',
+	}, {
+		write = {
+			[durable_path .. '.tmp'] = 'disk full',
+		},
+	})
+	local write_fail_result = exporter.write_structured_profile_export(profile, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, write_fail_deps)
+	assert_true(write_fail_result.ok == false, 'temp write failure should report failure')
+	assert_equal(write_fail_result.stage, 'write_temp', 'temp write failure stage mismatch')
+	assert_equal(write_fail_state.files[durable_path], 'return { version = 2, preserved = true }\n', 'temp write failure must preserve existing final file')
+	assert_nil(write_fail_state.files[durable_path .. '.tmp'], 'temp write failure should clean temp file')
+
+	local promote_fail_deps, promote_fail_state = make_fake_fs({
+		[durable_path] = 'return { version = 2, preserved = true }\n',
+	}, {
+		rename = {
+			[durable_path .. '.tmp->' .. durable_path] = 'rename blocked',
+		},
+	})
+	local promote_fail_result = exporter.write_structured_profile_export(profile, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, promote_fail_deps)
+	assert_true(promote_fail_result.ok == false, 'promotion failure should report failure')
+	assert_equal(promote_fail_result.stage, 'promote', 'promotion failure stage mismatch')
+	assert_true(promote_fail_result.restore_ok == true, 'promotion failure should restore existing final file when possible')
+	assert_equal(promote_fail_state.files[durable_path], 'return { version = 2, preserved = true }\n', 'promotion failure should restore preserved final file')
+	assert_nil(promote_fail_state.files[durable_path .. '.tmp'], 'promotion failure should clean temp file')
+	assert_nil(promote_fail_state.files[durable_path .. '.bak'], 'promotion failure should clean backup file after restore')
 
 	local file = io.open('UnifiedCombat.lua', 'r')
 	assert_true(file ~= nil, 'unable to read UnifiedCombat.lua')
@@ -429,6 +572,7 @@ local function main()
 	file:close()
 	assert_contains(addon, "elseif a == 'profilev2' then", 'addon must route profilev2 command')
 	assert_contains(addon, "//uc profilev2 export", 'addon must advertise profilev2 export help')
+	assert_contains(addon, "uc_profile_v2_export.write_structured_profile_export(profile, meta)", 'addon must use structured profile export helper')
 	assert_not_contains(addon, 'windower.add_to_chat(207, uc_profile_v2_export.serialize_structured_profile', 'addon must not dump structured profile contents to chat')
 
 	local expected_config = build_expected_config()

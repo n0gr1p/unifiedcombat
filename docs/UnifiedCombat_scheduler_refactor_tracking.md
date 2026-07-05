@@ -22,9 +22,29 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.7k` audits remaining active bridge read-only settings consumers, keeps runtime and bridge behavior unchanged, confirms `T3.7j` live sanity passed, and recommends pausing bridge migration unless a future task is limited to a newly proven read-only/status-only bridge field.
 - `T3.8a` adds structured profile/config read compatibility at the pure normalizer/contract-test layer. Live v1 profile load/save, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - `T3.8b` adds an explicit `//uc profilev2 export` command that writes a separate structured v2 profile artifact for inspection. Live v1 profile load/save, bridge writes, and scheduler/provider action-decision reads remain unchanged.
+- `T3.8c` hardens only the structured v2 export write path with a best-effort temp-write/promote flow. Live v1 profile load/save, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.8c` Harden structured v2 profile export writes
+
+- Status: `DONE`
+- Changed files:
+  - `UnifiedCombat.lua`
+  - `uc_profile_v2_export.lua`
+  - `tests/replay/harness/selftest_profile_v2_export.lua`
+  - `docs/profile_v2_structured_config_shape.md`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Replaced the direct final-path write for `//uc profilev2 export` with a best-effort temp-write in the same directory plus promote-after-close helper.
+  - Preserved existing final v2 files when the temp write fails.
+  - Added best-effort backup/promote/restore handling for existing targets so Windows rename limitations do not produce partial final files, while avoiding any claim of guaranteed atomic replacement.
+  - Kept live v1 profile load/save behavior, bridge writes, and scheduler/provider action-decision reads unchanged.
+- Next step:
+  - Field-test the explicit export under real Windower file semantics, especially permission or rename-error cases, before considering any similar durability contract for other diagnostic/profile writers.
 
 ### `T3.8b` Add structured v2 profile export command
 

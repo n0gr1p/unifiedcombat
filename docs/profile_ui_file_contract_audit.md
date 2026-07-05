@@ -47,7 +47,9 @@
 - The structured v2 profile export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
 - The config status export excludes the full normalized config table, `_G.UC_SETTINGS`, scheduler state, pending/lock state, target data, party data, and mob snapshots.
 - The config status export uses the existing `files.new(path, true)` / `files.write(...)` helper style and is best-effort diagnostic output, not an atomic profile-write contract.
-- The structured v2 profile export uses the same direct write style for now and does not change the live v1 save contract.
+- The structured v2 profile export now uses a best-effort temp-write in the target directory and promotes the temp file only after a successful close.
+- When the final v2 file already exists, the export helper uses a best-effort backup/promote/restore flow because plain Windows/Lua rename does not guarantee overwrite of an existing target.
+- The structured v2 profile export still does not change the live v1 save contract.
 - Legacy in-game overlay visibility now reads `config.ui.show_ingame_ui` for display only; it does not change bridge write behavior, profile save behavior, or scheduler/provider action decisions.
 - The active bridge config-status consumer now uses the config runtime accessor with no bridge write or profile file behavior changes.
 - `T3.7k` found no further safe active bridge read-only settings publication to migrate next; bridge write/edit protocol fields, `set`, `apply_set(...)`, `cfg_version`, runtime commands, and profile load/save triggers remain protected.
