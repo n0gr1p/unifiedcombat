@@ -242,6 +242,7 @@ Ambiguous current fields:
 - `T3.8c` hardens only that explicit export write path with a best-effort temp-write-in-place and promote flow. It preserves an existing final file when the temp write fails, cleans temp files on failure when possible, and does not claim atomic replacement on Windows when the target already exists.
 - `T3.8d` adds explicit read-only `//uc profilev2 validate` dry-run validation for that structured v2 artifact. It resolves the same path as export, reads/parses only that file, validates top-level structure plus contract shape when available, and does not apply the payload to runtime settings.
 - `T3.8e` adds explicit read-only `//uc profilev2 diff` preview comparison for that structured v2 artifact. It compares only durable config domains from the file against the current normalized runtime config and reports a deterministic difference count without applying anything.
+- `T3.8f` adds explicit command-only `//uc profilev2 apply` for that structured v2 artifact. It builds a full candidate flat runtime settings table from durable `payload.config`, verifies the candidate round-trips back to the file config with zero durable diff, and only then mutates `_G.UC_SETTINGS` in place.
 - Live v1 profile loading/saving, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - Runtime action decisions still use `_G.UC_SETTINGS`; scheduler/provider reads are not migrated.
 - Profile load/save behavior and bridge write behavior remain unchanged.

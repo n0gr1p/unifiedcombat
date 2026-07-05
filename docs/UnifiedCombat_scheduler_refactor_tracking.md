@@ -25,9 +25,28 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.8c` hardens only the structured v2 export write path with a best-effort temp-write/promote flow. Live v1 profile load/save, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - `T3.8d` adds an explicit read-only `//uc profilev2 validate` dry-run validation command for the structured v2 artifact. Live v1 profile load/save, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - `T3.8e` adds an explicit read-only `//uc profilev2 diff` preview comparison command for the structured v2 artifact. Live v1 profile load/save, bridge writes, and scheduler/provider action-decision reads remain unchanged.
+- `T3.8f` adds an explicit command-only `//uc profilev2 apply` path for the structured v2 artifact. Live v1 profile load/save, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.8f` Add explicit structured v2 profile apply command
+
+- Status: `DONE`
+- Changed files:
+  - `UnifiedCombat.lua`
+  - `uc_profile_v2_export.lua`
+  - `tests/replay/harness/selftest_profile_v2_export.lua`
+  - `docs/profile_v2_structured_config_shape.md`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Added `//uc profilev2 apply` as an explicit command-only structured v2 apply path.
+  - Reused the existing validate and diff helpers, built a full candidate flat settings table from durable `payload.config`, verified the candidate round-trips back to zero durable diff, and only then applied it to `_G.UC_SETTINGS` in place.
+  - Kept the command runtime-only: no v1 save, no v2 write, no bridge write change, and no scheduler/pending/lock/current-action mutation path added.
+- Next step:
+  - Field-test apply against real exported files and a few representative manual v2 edits before considering any automatic v2 source-of-truth workflow.
 
 ### `T3.8e` Add structured v2 profile import preview diff
 

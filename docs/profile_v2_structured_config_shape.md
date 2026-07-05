@@ -61,6 +61,7 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - Command: `//uc profilev2 export`
 - Validation command: `//uc profilev2 validate`
 - Diff command: `//uc profilev2 diff`
+- Apply command: `//uc profilev2 apply`
 - Output path: `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua`
 - Shape: `return { version = 2, profile = {...}, config = {...} }`
 - The `profile` metadata includes `character`, `main_job`, `sub_job`, `source`, `exported_at`, and an optional `profile_key` when available.
@@ -71,6 +72,8 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - The validation command is dry-run only: it does not apply the file to runtime settings, does not mutate `_G.UC_SETTINGS`, and does not write anything back to disk.
 - The diff command reads and validates that same file, builds the current durable canonical config from loaded runtime settings, and compares only `payload.config` durable domains.
 - The diff command ignores `profile` metadata such as `exported_at`, `source`, `character`, `main_job`, `sub_job`, and `profile_key`, and reports only a terse difference count in chat.
+- The apply command reads and validates that same file, compares it against the current durable canonical config, then applies only durable `payload.config` domains back onto the flat runtime compatibility surface when a full candidate settings table can be built and verified first.
+- The apply command is explicit-command-only and runtime-only: it does not write v1 or v2 profile files back to disk.
 
 The export helper builds the structured payload from the current loaded settings/profile state and canonical normalized config, but it does not change live profile loading, live profile saving, or bridge write behavior.
 

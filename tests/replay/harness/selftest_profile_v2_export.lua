@@ -24,6 +24,12 @@ local function assert_nil(value, message)
 	end
 end
 
+local function assert_false(value, message)
+	if value ~= false then
+		error((message or 'value should be false') .. ': actual=' .. tostring(value))
+	end
+end
+
 local function deep_clone(value)
 	if type(value) ~= 'table' then
 		return value
@@ -792,6 +798,115 @@ local function main()
 	assert_equal(diff_fail_result.reason, 'missing config', 'structured profile diff failure reason mismatch')
 	assert_deep_equal(_G.UC_SETTINGS, validate_settings_snapshot, 'structured profile diff must not mutate UC_SETTINGS')
 
+	local apply_fail_snapshot = deep_clone(validate_settings_snapshot)
+	local apply_fail_deps = make_fake_fs({
+		[durable_path] = 'return { version = 2, profile = {} }\n',
+	})
+	local apply_fail_result = exporter.apply_structured_profile_file_to_settings(_G.UC_SETTINGS, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, apply_fail_deps)
+	assert_true(apply_fail_result.ok == false, 'structured profile apply should fail cleanly when validation fails')
+	assert_equal(apply_fail_result.reason, 'missing config', 'structured profile apply validation failure reason mismatch')
+	assert_deep_equal(_G.UC_SETTINGS, apply_fail_snapshot, 'structured profile apply validation failure must not mutate UC_SETTINGS')
+
+	local no_diff_settings = deep_clone(flat)
+	local no_diff_identity = no_diff_settings
+	local no_diff_deps, no_diff_state = make_fake_fs({
+		[durable_path] = expected_serialized,
+	})
+	local no_diff_apply_result = exporter.apply_structured_profile_file_to_settings(no_diff_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, no_diff_deps)
+	assert_true(no_diff_apply_result.ok == true, 'structured profile apply should succeed for matching config')
+	assert_equal(no_diff_apply_result.count, 0, 'structured profile apply should report zero differences for matching config')
+	assert_true(no_diff_settings == no_diff_identity, 'structured profile apply helper must not replace settings table identity')
+	assert_deep_equal(no_diff_settings, flat, 'structured profile apply helper should leave matching settings unchanged')
+	assert_equal(#no_diff_state.open_calls, 0, 'structured profile apply should not write to disk on no-diff apply')
+	assert_equal(#no_diff_state.rename_calls, 0, 'structured profile apply should not rename files on no-diff apply')
+
+	local scalar_apply_payload = deep_clone(profile)
+	scalar_apply_payload.config.combat.face = false
+	local scalar_apply_deps, scalar_apply_state = make_fake_fs({
+		[durable_path] = exporter.serialize_structured_profile(scalar_apply_payload),
+	})
+	local scalar_apply_settings = deep_clone(flat)
+	local scalar_apply_identity = scalar_apply_settings
+	local scalar_apply_result = exporter.apply_structured_profile_file_to_settings(scalar_apply_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, scalar_apply_deps)
+	assert_true(scalar_apply_result.ok == true, 'structured profile apply should succeed for scalar change')
+	assert_equal(scalar_apply_result.count, 1, 'structured profile apply should report one scalar change')
+	assert_true(scalar_apply_settings == scalar_apply_identity, 'structured profile apply should preserve settings table identity')
+	assert_false(scalar_apply_result.candidate.face, 'structured profile apply candidate should update scalar runtime setting')
+	assert_equal(scalar_apply_result.candidate.weaponskill, 'Savage Blade', 'structured profile apply candidate should preserve unrelated runtime setting values')
+	assert_equal(#scalar_apply_state.open_calls, 0, 'structured profile apply should not write files on scalar apply')
+
+	local nested_apply_payload = deep_clone(profile)
+	nested_apply_payload.config.movement.path.file_name = 'route-b'
+	nested_apply_payload.config.follow.partner.ids = { 99, 100 }
+	local nested_apply_deps = make_fake_fs({
+		[durable_path] = exporter.serialize_structured_profile(nested_apply_payload),
+	})
+	local nested_apply_settings = deep_clone(flat)
+	local nested_apply_result = exporter.apply_structured_profile_file_to_settings(nested_apply_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, nested_apply_deps)
+	assert_true(nested_apply_result.ok == true, 'structured profile apply should succeed for nested change')
+	assert_equal(nested_apply_result.candidate.path_file_name, 'route-b', 'structured profile apply should update nested movement runtime field')
+	assert_equal(nested_apply_result.candidate.partner_ids[1], 99, 'structured profile apply should update nested partner id list')
+	assert_equal(nested_apply_result.candidate.partner_id, 99, 'structured profile apply should sync primary partner legacy field')
+	assert_equal(nested_apply_result.candidate.partner_id2, 100, 'structured profile apply should sync secondary partner legacy field')
+
+	local metadata_apply_payload = deep_clone(profile)
+	metadata_apply_payload.profile.character = 'SomeoneElse'
+	metadata_apply_payload.profile.main_job = 'THF'
+	metadata_apply_payload.profile.exported_at = '2101-01-01T00:00:00Z'
+	local metadata_apply_deps = make_fake_fs({
+		[durable_path] = exporter.serialize_structured_profile(metadata_apply_payload),
+	})
+	local metadata_apply_settings = deep_clone(flat)
+	local metadata_apply_result = exporter.apply_structured_profile_file_to_settings(metadata_apply_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, metadata_apply_deps)
+	assert_true(metadata_apply_result.ok == true, 'structured profile apply should succeed for metadata-only differences')
+	assert_equal(metadata_apply_result.count, 0, 'structured profile apply should ignore profile metadata differences')
+	assert_equal(exporter.diff_durable_config(exporter.build_durable_config(metadata_apply_result.candidate, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}), profile.config).count, 0, 'structured profile apply should ignore profile metadata changes')
+
+	local conversion_fail_snapshot = deep_clone(flat)
+	local conversion_fail_deps = make_fake_fs({
+		[durable_path] = expected_serialized,
+	})
+	local conversion_fail_result = exporter.apply_structured_profile_file_to_settings(conversion_fail_snapshot, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, {
+		read_all = conversion_fail_deps.read_all,
+		load_chunk = conversion_fail_deps.load_chunk,
+		execute_chunk = conversion_fail_deps.execute_chunk,
+		build_durable_config = function()
+			error('forced normalize failure')
+		end,
+		diff_durable_config = exporter.diff_durable_config,
+	})
+	assert_true(conversion_fail_result.ok == false, 'structured profile apply should fail on conversion helper failure')
+	assert_equal(conversion_fail_result.stage, 'convert', 'structured profile apply conversion failure stage mismatch')
+	assert_deep_equal(conversion_fail_snapshot, flat, 'structured profile apply conversion failure must not mutate settings')
+
 	local file = io.open('UnifiedCombat.lua', 'r')
 	assert_true(file ~= nil, 'unable to read UnifiedCombat.lua')
 	local addon = file:read('*a')
@@ -800,9 +915,12 @@ local function main()
 	assert_contains(addon, "//uc profilev2 export", 'addon must advertise profilev2 export help')
 	assert_contains(addon, "//uc profilev2 validate", 'addon must advertise profilev2 validate help')
 	assert_contains(addon, "//uc profilev2 diff", 'addon must advertise profilev2 diff help')
+	assert_contains(addon, "//uc profilev2 apply", 'addon must advertise profilev2 apply help')
 	assert_contains(addon, "uc_profile_v2_export.write_structured_profile_export(profile, meta)", 'addon must use structured profile export helper')
 	assert_contains(addon, "uc_profile_v2_export.validate_structured_profile_file(meta, function(payload)", 'addon must use structured profile validate helper')
 	assert_contains(addon, "uc_profile_v2_export.diff_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile diff helper')
+	assert_contains(addon, "uc_profile_v2_export.apply_structured_profile_file_to_settings(settings, meta, function(payload)", 'addon must use structured profile apply helper')
+	assert_not_contains(addon, 'UC profile v2 apply: ' .. "profile saved", 'structured profile apply path must not report v1 save behavior')
 	assert_not_contains(addon, 'windower.add_to_chat(207, uc_profile_v2_export.serialize_structured_profile', 'addon must not dump structured profile contents to chat')
 
 	local expected_config = build_expected_config()

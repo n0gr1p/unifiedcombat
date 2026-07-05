@@ -752,4 +752,327 @@ function M.diff_structured_profile_file_against_settings(settings, meta, validat
 	}
 end
 
+local function copy_list(value)
+	if type(value) ~= 'table' then
+		return {}
+	end
+	return clone_value(value)
+end
+
+local function apply_durable_config_to_candidate(candidate, config)
+	if type(candidate) ~= 'table' or type(config) ~= 'table' then
+		return
+	end
+
+	if type(config.ui) == 'table' then
+		candidate.show_ingame_ui = config.ui.show_ingame_ui
+	end
+
+	if type(config.command) == 'table' then
+		candidate.engine_enabled = config.command.engine_enabled_default
+	end
+
+	if type(config.combat) == 'table' then
+		candidate.domain_combat_enabled = config.combat.enabled
+		candidate.autotarget = config.combat.autotarget
+		candidate.spam = config.combat.spam
+		candidate.closer = config.combat.closer
+		candidate.manual = config.combat.manual
+		candidate.prime = config.combat.prime
+		candidate.static = config.combat.static
+		candidate.face = config.combat.face
+		if type(config.combat.weaponskill) == 'table' then
+			candidate.weaponskill_active = config.combat.weaponskill.enabled
+			candidate.weaponskill = config.combat.weaponskill.primary
+			candidate.ws1 = config.combat.weaponskill.primary
+			candidate.ws_mode = config.combat.weaponskill.mode
+			candidate.aftermath_enabled = config.combat.weaponskill.aftermath_enabled
+			candidate.aftermath_ws = config.combat.weaponskill.aftermath_ws
+		end
+	end
+
+	if type(config.abilities) == 'table' then
+		candidate.ability_active = config.abilities.enabled
+		candidate.abilities = copy_list(config.abilities.configured)
+		candidate.wsabilities = copy_list(config.abilities.wsabilities)
+		local legacy_slots = type(config.abilities.legacy_slots) == 'table' and config.abilities.legacy_slots or {}
+		for i = 1, 6 do
+			candidate['ability' .. tostring(i)] = legacy_slots[i]
+		end
+	end
+
+	if type(config.defensive) == 'table' then
+		candidate.defensive_enabled = config.defensive.enabled
+		candidate.defensive_provider = config.defensive.provider
+		if type(config.defensive.cure) == 'table' then
+			candidate.defensive_cure_enabled = config.defensive.cure.enabled
+			candidate.def_heal_min_tier_cure = config.defensive.cure.min_tier
+			candidate.def_heal_max_tier_cure = config.defensive.cure.max_tier
+			candidate.def_heal_min_missing_hp = config.defensive.cure.min_missing_hp
+			candidate.def_heal_ignore_trusts = config.defensive.cure.ignore_trusts
+		end
+		if type(config.defensive.doom) == 'table' then
+			candidate.defensive_doom_water = config.defensive.doom.holy_water_enabled
+		end
+		if type(config.defensive.na) == 'table' then
+			candidate.defensive_na_enabled = config.defensive.na.enabled
+		end
+		if type(config.defensive.enemy_buffs) == 'table' then
+			candidate.def_remove_enemy_buffs = config.defensive.enemy_buffs.remove
+		end
+		if type(config.defensive.buffs) == 'table' then
+			candidate.defensive_buff_enabled = config.defensive.buffs.enabled
+			candidate.defensive_buff_self_only = config.defensive.buffs.self_only
+			candidate.defensive_buffs = config.defensive.buffs.list
+			candidate.defensive_overwrite_enabled = config.defensive.buffs.overwrite_enabled
+			candidate.defensive_overwrite_interval = config.defensive.buffs.overwrite_interval
+		end
+		if type(config.defensive.thresholds) == 'table' then
+			candidate.defensive_critical_hpp = config.defensive.thresholds.critical_hpp
+			candidate.defensive_medium_hpp = config.defensive.thresholds.medium_hpp
+		end
+	end
+
+	if type(config.movement) == 'table' then
+		candidate.domain_movement_enabled = config.movement.enabled
+		candidate.move = config.movement.move
+		if type(config.movement.spacing) == 'table' then
+			candidate.spacing = config.movement.spacing.enabled
+			candidate.spacing_band_min = config.movement.spacing.band_min
+			candidate.spacing_band_max = config.movement.spacing.band_max
+			candidate.spacing_model_size_floor = config.movement.spacing.model_size_floor
+			candidate.spacing_use_prediction = config.movement.spacing.use_prediction
+			candidate.spacing_lookahead_s = config.movement.spacing.lookahead_s
+			candidate.spacing_repel_hold_ticks = config.movement.spacing.repel_hold_ticks
+			candidate.spacing_overlap_deadband = config.movement.spacing.overlap_deadband
+			candidate.spacing_repel_weight = config.movement.spacing.repel_weight
+			candidate.spacing_band_deadband = config.movement.spacing.band_deadband
+		end
+		if type(config.movement.path) == 'table' then
+			candidate.path_recording = config.movement.path.recording
+			candidate.path_follow_enabled = config.movement.path.follow_enabled
+			candidate.path_file_name = config.movement.path.file_name
+			candidate.path_route_type = config.movement.path.route_type
+			candidate.path_distance_to_start = config.movement.path.distance_to_start
+			candidate.path_points = copy_list(config.movement.path.points)
+			candidate.path_party_gate_yalms = config.movement.path.party_gate_yalms
+			candidate.path_resume_index_window = config.movement.path.resume_index_window
+			candidate.path_hunter_targets = copy_list(config.movement.path.hunter_targets)
+			candidate.path_hunter_max_z_delta = config.movement.path.hunter_max_z_delta
+			candidate.path_hunter_max_target_range = config.movement.path.hunter_max_target_range
+			candidate.path_hunter_claim_timeout_s = config.movement.path.hunter_claim_timeout_s
+			candidate.path_hunter_ignore_cooldown_s = config.movement.path.hunter_ignore_cooldown_s
+			candidate.path_pull_action_type = config.movement.path.pull_action_type
+			candidate.path_pull_action_name = config.movement.path.pull_action_name
+		end
+	end
+
+	if type(config.follow) == 'table' then
+		candidate.domain_follow_enabled = config.follow.enabled
+		if type(config.follow.party) == 'table' then
+			candidate.party_follow = config.follow.party.enabled
+			candidate.party_follow_id = config.follow.party.leader_id
+			candidate.party_follow_leader_name = config.follow.party.leader_name
+			candidate.party_follow_min = config.follow.party.min
+			candidate.party_follow_max = config.follow.party.max
+		end
+		if type(config.follow.fight) == 'table' then
+			candidate.fight_leader = config.follow.fight.leader
+			candidate.fight_leader_id = config.follow.fight.leader_id
+			candidate.fight_follow_min = config.follow.fight.min
+			candidate.fight_follow_hold_s = config.follow.fight.hold_s
+		end
+		if type(config.follow.partner) == 'table' then
+			candidate.partner = config.follow.partner.enabled
+			candidate.partner2 = config.follow.partner.secondary_enabled
+			candidate.partner_ids = copy_list(config.follow.partner.ids)
+			candidate.partner_id = candidate.partner_ids[1] or 0
+			candidate.partner_id2 = candidate.partner_ids[2] or 0
+			candidate.puller = config.follow.partner.puller
+			candidate.puller_id = config.follow.partner.puller_id
+			candidate.puller_distance_only = config.follow.partner.puller_distance_only
+		end
+	end
+
+	if type(config.targeting) == 'table' then
+		candidate.add_control = config.targeting.add_control
+		candidate.add_priority_names = copy_list(config.targeting.add_priority_names)
+		candidate.targets = copy_list(config.targeting.targets)
+		if type(config.targeting.targetability) == 'table' then
+			candidate.targetability_active = config.targeting.targetability.enabled
+			candidate.targetability = config.targeting.targetability.action
+		end
+		candidate.ignore = copy_list(config.targeting.ignore)
+		candidate.target_ignore_names = copy_list(config.targeting.target_ignore_names)
+		local legacy_targets = type(config.targeting.legacy_slots) == 'table' and config.targeting.legacy_slots or {}
+		for i = 1, 3 do
+			candidate['target' .. tostring(i)] = legacy_targets[i]
+		end
+	end
+
+	if type(config.tank) == 'table' then
+		candidate.tank = config.tank.enabled
+		if type(config.tank.enmity) == 'table' then
+			candidate.tank_enmity_actions = copy_list(config.tank.enmity.actions)
+		end
+	end
+
+	if type(config.sleep) == 'table' then
+		candidate.sleep = config.sleep.enabled
+		candidate.sleepspells = copy_list(config.sleep.order)
+		candidate.sleepspell = config.sleep.legacy_primary
+	end
+
+	if type(config.spells) == 'table' then
+		candidate.spell_active = config.spells.enabled
+		candidate.spell = config.spells.configured
+		candidate.dd2_spell_slots = copy_list(config.spells.dd2_slots)
+	end
+
+	if type(config.maintenance) == 'table' then
+		candidate.domain_maintenance_enabled = config.maintenance.enabled
+		if type(config.maintenance.cor) == 'table' then
+			candidate.cor_roll_1 = config.maintenance.cor.roll_1
+			candidate.cor_roll_2 = config.maintenance.cor.roll_2
+			candidate.cor_crooked_roll_slot = config.maintenance.cor.crooked_roll_slot
+			candidate.cor_elevens = config.maintenance.cor.elevens
+			candidate.cor_luzaf_range_override = config.maintenance.cor.luzaf_range_override
+			candidate.cor_roll_range_selected = config.maintenance.cor.range_selected
+			candidate.cor_roll_range_require_ids = copy_list(config.maintenance.cor.range_require_ids)
+		end
+		candidate.maintenance_brd = copy_list(config.maintenance.brd)
+		candidate.maintenance_geo = copy_list(config.maintenance.geo)
+	end
+
+	if type(config.debug) == 'table' then
+		candidate.debug = config.debug.enabled
+		candidate.log_combat_sched = config.debug.combat_sched
+		candidate.log_ja_sched = config.debug.ja_sched
+		candidate.log_ja_debug = config.debug.ja_debug
+		candidate.log_def_sched = config.debug.def_sched
+		candidate.log_tank_sched = config.debug.tank_sched
+	end
+
+	if type(config.ownership) == 'table' then
+		candidate.domain_combat_enabled = config.ownership.domain_combat_enabled
+		candidate.domain_defensive_enabled = config.ownership.domain_defensive_enabled
+		candidate.domain_movement_enabled = config.ownership.domain_movement_enabled
+		candidate.domain_maintenance_enabled = config.ownership.domain_maintenance_enabled
+		candidate.domain_follow_enabled = config.ownership.domain_follow_enabled
+		candidate.scheduler_dark_launch_combat = config.ownership.scheduler_dark_launch_combat
+		candidate.scheduler_dark_launch_defensive = config.ownership.scheduler_dark_launch_defensive
+		candidate.scheduler_dark_launch_movement = config.ownership.scheduler_dark_launch_movement
+		candidate.scheduler_dark_launch_maintenance = config.ownership.scheduler_dark_launch_maintenance
+	end
+
+	if type(config.legacy) == 'table' then
+		candidate.sub = config.legacy.sub
+		candidate.sub2 = config.legacy.sub2
+		candidate.solo = config.legacy.solo
+		candidate.aeonic = config.legacy.aeonic
+		candidate.color = config.legacy.color
+		candidate.command = config.legacy.command
+		candidate.hunter = config.legacy.hunter
+		candidate.profiles = clone_value(config.legacy.profiles)
+	end
+end
+
+function M.build_settings_candidate_from_structured_profile(current_settings, payload, meta, deps)
+	deps = type(deps) == 'table' and deps or {}
+	local build_durable_config = deps.build_durable_config or M.build_durable_config
+	local diff_durable_config = deps.diff_durable_config or M.diff_durable_config
+	if type(build_durable_config) ~= 'function' or type(diff_durable_config) ~= 'function' then
+		return {
+			ok = false,
+			stage = 'convert',
+			error = 'structured profile apply helpers unavailable',
+		}
+	end
+	if type(payload) ~= 'table' or type(payload.config) ~= 'table' then
+		return {
+			ok = false,
+			stage = 'convert',
+			error = 'structured profile config missing',
+		}
+	end
+
+	local candidate = clone_value(current_settings or {})
+	apply_durable_config_to_candidate(candidate, payload.config)
+
+	local ok_current, candidate_config = pcall(build_durable_config, candidate, meta)
+	if not ok_current or type(candidate_config) ~= 'table' then
+		return {
+			ok = false,
+			stage = 'convert',
+			error = tostring(candidate_config),
+		}
+	end
+
+	local diff = diff_durable_config(candidate_config, payload.config)
+	if type(diff) ~= 'table' then
+		return {
+			ok = false,
+			stage = 'convert',
+			error = 'structured profile diff helper returned invalid result',
+		}
+	end
+	if diff.count ~= 0 then
+		return {
+			ok = false,
+			stage = 'convert',
+			error = 'structured profile conversion mismatch',
+			count = diff.count,
+			differences = diff.differences or {},
+			candidate = candidate,
+			candidate_config = candidate_config,
+		}
+	end
+
+	return {
+		ok = true,
+		stage = 'done',
+		candidate = candidate,
+		candidate_config = candidate_config,
+		count = diff.count,
+		differences = diff.differences or {},
+	}
+end
+
+function M.apply_structured_profile_file_to_settings(current_settings, meta, validator, deps)
+	local validation = M.validate_structured_profile_file(meta, validator, deps)
+	if type(validation) ~= 'table' or validation.ok ~= true or type(validation.payload) ~= 'table' then
+		return validation
+	end
+
+	local apply_result = M.build_settings_candidate_from_structured_profile(current_settings, validation.payload, meta, deps)
+	if type(apply_result) ~= 'table' then
+		return {
+			ok = false,
+			path = validation.path,
+			stage = 'convert',
+			error = 'structured profile apply helper returned invalid result',
+		}
+	end
+	if apply_result.ok ~= true then
+		apply_result.path = validation.path
+		return apply_result
+	end
+
+	local current_config = M.build_durable_config(current_settings, meta)
+	local diff = M.diff_durable_config(current_config, validation.payload.config)
+
+	return {
+		ok = true,
+		path = validation.path,
+		stage = 'done',
+		payload = validation.payload,
+		validation = validation.validation,
+		candidate = apply_result.candidate,
+		candidate_config = apply_result.candidate_config,
+		count = diff.count,
+		differences = diff.differences,
+		current_config = current_config,
+	}
+end
+
 return M

@@ -744,6 +744,43 @@ local function uc_diff_profile_v2_file(meta, settings)
 	return result.ok == true, result.path, result.error, result.count
 end
 
+local function uc_apply_profile_v2_file(meta, settings)
+	local result = uc_profile_v2_export.apply_structured_profile_file_to_settings(settings, meta, function(payload)
+		return uc_validate_structured_profile_export(payload)
+	end)
+	if type(result) ~= 'table' then
+		return false, uc_profile_v2_file_path(meta), 'profile v2 apply returned invalid result', nil
+	end
+	if result.ok ~= true or type(result.candidate) ~= 'table' then
+		return false, result.path or uc_profile_v2_file_path(meta), result.error, nil
+	end
+	uc_normalize_settings_table(result.candidate)
+	uc_sync_table_in_place(settings, result.candidate)
+	uc_normalize_settings_table(settings)
+	return true, result.path, nil, result.count
+end
+
+local function uc_sync_table_in_place(dst, src)
+	if type(dst) ~= 'table' or type(src) ~= 'table' then
+		return
+	end
+	for key in pairs(dst) do
+		if src[key] == nil then
+			dst[key] = nil
+		end
+	end
+	for key, value in pairs(src) do
+		if type(value) == 'table' then
+			if type(dst[key]) ~= 'table' then
+				dst[key] = {}
+			end
+			uc_sync_table_in_place(dst[key], value)
+		else
+			dst[key] = value
+		end
+	end
+end
+
 local function uc_read_profiles_file(char_name)
 	local path = uc_profiles_file_path(char_name)
 	if not files.exists(path) then
@@ -902,12 +939,22 @@ local function uc_normalize_domain_settings(s)
 	end
 end
 
-local function uc_normalize_active_settings()
-	local s = _G.UC_SETTINGS
-	if not s then
+local function uc_normalize_settings_table(s)
+	if type(s) ~= 'table' then
 		return
 	end
-	local eng, _ = uc_get_active_profile_coords()
+	local eng = nil
+	if type(s.main_job) == 'string' and s.main_job ~= '' then
+		eng = tostring(s.main_job):upper()
+	else
+		local p = windower.ffxi.get_player()
+		local job = p and p.main_job or 'UNKNOWN'
+		if type(job) ~= 'string' then
+			local rj = res.jobs:with('id', job)
+			job = (rj and rj.english_short) or tostring(job)
+		end
+		eng = tostring(job):upper()
+	end
 	uc_normalize_abilities(s)
 	uc_normalize_targets(s)
 	uc_normalize_ws_for_engine(s, eng)
@@ -915,6 +962,14 @@ local function uc_normalize_active_settings()
 	uc_normalize_domain_settings(s)
 	uc_partner_list.migrate_from_legacy(s)
 	uc_partner_list.sync_legacy_partner_fields(s)
+end
+
+local function uc_normalize_active_settings()
+	local s = _G.UC_SETTINGS
+	if not s then
+		return
+	end
+	uc_normalize_settings_table(s)
 end
 
 uc_get_active_profile_coords = function()
@@ -1595,8 +1650,27 @@ windower.register_event('addon command', function(...)
 				windower.add_to_chat(207, 'UC profile v2 diff: ' .. tostring(diff_count) .. ' config differences')
 			end
 			return
+		elseif sub == 'apply' then
+			local p = windower.ffxi.get_player()
+			if not p or not p.name or not _G.UC_SETTINGS then
+				windower.add_to_chat(167, 'UC profile v2 apply failed: missing player')
+				return
+			end
+			local ok_apply, _, apply_err, apply_count = uc_apply_profile_v2_file({
+				character = p.name,
+				main_job = p.main_job,
+				sub_job = p.sub_job,
+			}, _G.UC_SETTINGS)
+			if not ok_apply then
+				windower.add_to_chat(167, 'UC profile v2 apply failed: ' .. tostring(apply_err or 'unknown error'))
+			elseif apply_count == 0 then
+				windower.add_to_chat(207, 'UC profile v2 apply: no config differences')
+			else
+				windower.add_to_chat(207, 'UC profile v2 apply: ' .. tostring(apply_count) .. ' config differences applied')
+			end
+			return
 		end
-		windower.add_to_chat(207, '//uc configstatus export | //uc profilev2 export | //uc profilev2 validate | //uc profilev2 diff')
+		windower.add_to_chat(207, '//uc configstatus export | //uc profilev2 export | //uc profilev2 validate | //uc profilev2 diff | //uc profilev2 apply')
 		return
 	elseif a == 'host' and args[2] then
 		_G.UC_REMOTE_HOST = tostring(args[2])
