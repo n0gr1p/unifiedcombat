@@ -154,6 +154,79 @@ local function pick_durable_config_domains(config)
 	return out
 end
 
+local function append_path(prefix, key)
+	local key_string = tostring(key)
+	if prefix == nil or prefix == '' then
+		return key_string
+	end
+	if type(key) == 'string' and key:match('^[_%a][_%w]*$') ~= nil then
+		return prefix .. '.' .. key_string
+	end
+	return prefix .. '[' .. key_string .. ']'
+end
+
+local function collect_union_keys(left, right)
+	local seen = {}
+	local keys = {}
+	if type(left) == 'table' then
+		for key in pairs(left) do
+			if not seen[key] then
+				seen[key] = true
+				keys[#keys + 1] = key
+			end
+		end
+	end
+	if type(right) == 'table' then
+		for key in pairs(right) do
+			if not seen[key] then
+				seen[key] = true
+				keys[#keys + 1] = key
+			end
+		end
+	end
+	table.sort(keys, function(left_key, right_key)
+		local left_type = type(left_key)
+		local right_type = type(right_key)
+		if left_type ~= right_type then
+			return (KEY_TYPE_ORDER[left_type] or 99) < (KEY_TYPE_ORDER[right_type] or 99)
+		end
+		if left_type == 'number' then
+			return left_key < right_key
+		end
+		return tostring(left_key) < tostring(right_key)
+	end)
+	return keys
+end
+
+local function diff_values(left, right, path, differences)
+	if left == right then
+		return
+	end
+	if type(left) ~= type(right) then
+		differences[#differences + 1] = path
+		return
+	end
+	if type(left) ~= 'table' then
+		differences[#differences + 1] = path
+		return
+	end
+
+	local keys = collect_union_keys(left, right)
+	for i = 1, #keys do
+		local key = keys[i]
+		local next_path = append_path(path, key)
+		local left_value = left[key]
+		local right_value = right[key]
+		if left_value == nil and right_value == nil then
+			-- no-op
+		elseif left_value == nil or right_value == nil then
+			differences[#differences + 1] = next_path
+		else
+			diff_values(left_value, right_value, next_path, differences)
+		end
+	end
+end
+
 local function normalized_meta(meta)
 	local meta_table = type(meta) == 'table' and meta or {}
 	return {
@@ -197,6 +270,11 @@ function M.build_structured_profile(settings, meta)
 		},
 		config = pick_durable_config_domains(normalized),
 	}
+end
+
+function M.build_durable_config(settings, meta)
+	local normalized = uc_config_normalizer.normalize(settings, meta)
+	return pick_durable_config_domains(normalized)
 end
 
 function M.serialize_structured_profile(profile)
@@ -638,6 +716,39 @@ function M.validate_structured_profile_file(meta, validator, deps)
 		path = path,
 		stage = 'done',
 		payload = payload_or_err,
+	}
+end
+
+function M.diff_durable_config(current_config, target_config)
+	local differences = {}
+	diff_values(current_config, target_config, 'config', differences)
+	return {
+		count = #differences,
+		differences = differences,
+	}
+end
+
+function M.diff_structured_profile_file_against_settings(settings, meta, validator, deps)
+	local validation = M.validate_structured_profile_file(meta, validator, deps)
+	if type(validation) ~= 'table' or validation.ok ~= true or type(validation.payload) ~= 'table' then
+		if type(validation) == 'table' then
+			validation.count = 0
+			validation.differences = {}
+		end
+		return validation
+	end
+
+	local current_config = M.build_durable_config(settings, meta)
+	local diff = M.diff_durable_config(current_config, validation.payload.config)
+	return {
+		ok = true,
+		path = validation.path,
+		stage = 'done',
+		payload = validation.payload,
+		validation = validation.validation,
+		count = diff.count,
+		differences = diff.differences,
+		current_config = current_config,
 	}
 end
 

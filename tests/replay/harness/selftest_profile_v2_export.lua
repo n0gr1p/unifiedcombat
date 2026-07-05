@@ -673,6 +673,125 @@ local function main()
 	assert_equal(validate_missing_config_result.reason, 'missing config', 'structured profile missing config reason mismatch')
 	assert_deep_equal(_G.UC_SETTINGS, validate_settings_snapshot, 'structured profile validation failures must not mutate UC_SETTINGS')
 
+	local diff_ok_deps = make_fake_fs({
+		[durable_path] = expected_serialized,
+	})
+	local diff_ok_result = exporter.diff_structured_profile_file_against_settings(flat, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, diff_ok_deps)
+	assert_true(diff_ok_result.ok == true, 'structured profile diff should succeed for matching config')
+	assert_equal(diff_ok_result.count, 0, 'structured profile diff should report zero differences for matching config')
+	assert_equal(#diff_ok_result.differences, 0, 'structured profile diff details should be empty for matching config')
+
+	local scalar_diff_payload = deep_clone(profile)
+	scalar_diff_payload.profile.exported_at = '2099-01-01T00:00:00Z'
+	scalar_diff_payload.config.combat.face = false
+	local scalar_diff_deps = make_fake_fs({
+		[durable_path] = exporter.serialize_structured_profile(scalar_diff_payload),
+	})
+	local scalar_diff_result = exporter.diff_structured_profile_file_against_settings(flat, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, scalar_diff_deps)
+	assert_true(scalar_diff_result.ok == true, 'structured profile diff should succeed for scalar difference payload')
+	assert_equal(scalar_diff_result.count, 1, 'structured profile diff should report one changed scalar value')
+	assert_equal(scalar_diff_result.differences[1], 'config.combat.face', 'structured profile diff scalar path mismatch')
+
+	local nested_diff_payload = deep_clone(profile)
+	nested_diff_payload.config.movement.spacing.band_max = 0.9
+	local nested_diff_deps = make_fake_fs({
+		[durable_path] = exporter.serialize_structured_profile(nested_diff_payload),
+	})
+	local nested_diff_result = exporter.diff_structured_profile_file_against_settings(flat, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, nested_diff_deps)
+	assert_true(nested_diff_result.ok == true, 'structured profile diff should succeed for nested difference payload')
+	assert_equal(nested_diff_result.count, 1, 'structured profile diff should report one nested table difference')
+	assert_equal(nested_diff_result.differences[1], 'config.movement.spacing.band_max', 'structured profile diff nested path mismatch')
+
+	local missing_key_payload = deep_clone(profile)
+	missing_key_payload.config.sleep.order = nil
+	local missing_key_deps = make_fake_fs({
+		[durable_path] = exporter.serialize_structured_profile(missing_key_payload),
+	})
+	local missing_key_result = exporter.diff_structured_profile_file_against_settings(flat, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, missing_key_deps)
+	assert_true(missing_key_result.ok == true, 'structured profile diff should succeed for missing key payload')
+	assert_equal(missing_key_result.count, 1, 'structured profile diff should report one missing key difference')
+	assert_equal(missing_key_result.differences[1], 'config.sleep.order', 'structured profile diff missing key path mismatch')
+
+	local metadata_only_payload = deep_clone(profile)
+	metadata_only_payload.profile.exported_at = '2100-12-31T23:59:59Z'
+	metadata_only_payload.profile.profile_key = 'Other|Job|Pair'
+	local metadata_only_deps = make_fake_fs({
+		[durable_path] = exporter.serialize_structured_profile(metadata_only_payload),
+	})
+	local metadata_only_result = exporter.diff_structured_profile_file_against_settings(flat, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, metadata_only_deps)
+	assert_true(metadata_only_result.ok == true, 'structured profile diff should succeed for metadata-only payload')
+	assert_equal(metadata_only_result.count, 0, 'structured profile diff should ignore profile metadata differences')
+
+	local order_diff_left = {
+		alpha = {
+			x = 1,
+			y = 2,
+		},
+		beta = true,
+	}
+	local order_diff_right = {
+		beta = true,
+		alpha = {
+			y = 2,
+			x = 1,
+		},
+	}
+	local order_diff_result = exporter.diff_durable_config(order_diff_left, order_diff_right)
+	assert_equal(order_diff_result.count, 0, 'structured profile diff should ignore table key order')
+
+	local deterministic_left = {
+		beta = {
+			inner_b = 2,
+			inner_a = 1,
+		},
+		alpha = true,
+	}
+	local deterministic_right = {
+		beta = {
+			inner_b = 3,
+			inner_a = 0,
+		},
+		alpha = false,
+	}
+	local deterministic_first = exporter.diff_durable_config(deterministic_left, deterministic_right)
+	local deterministic_second = exporter.diff_durable_config(deterministic_left, deterministic_right)
+	assert_equal(deterministic_first.count, 3, 'structured profile diff deterministic count mismatch')
+	assert_deep_equal(deterministic_first.differences, {
+		'config.alpha',
+		'config.beta.inner_a',
+		'config.beta.inner_b',
+	}, 'structured profile diff deterministic order mismatch')
+	assert_deep_equal(deterministic_first.differences, deterministic_second.differences, 'structured profile diff should be deterministic')
+
+	local diff_fail_result = exporter.diff_structured_profile_file_against_settings(flat, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, validate_missing_config_deps)
+	assert_true(diff_fail_result.ok == false, 'structured profile diff should fail cleanly when validation fails')
+	assert_equal(diff_fail_result.reason, 'missing config', 'structured profile diff failure reason mismatch')
+	assert_deep_equal(_G.UC_SETTINGS, validate_settings_snapshot, 'structured profile diff must not mutate UC_SETTINGS')
+
 	local file = io.open('UnifiedCombat.lua', 'r')
 	assert_true(file ~= nil, 'unable to read UnifiedCombat.lua')
 	local addon = file:read('*a')
@@ -680,8 +799,10 @@ local function main()
 	assert_contains(addon, "elseif a == 'profilev2' then", 'addon must route profilev2 command')
 	assert_contains(addon, "//uc profilev2 export", 'addon must advertise profilev2 export help')
 	assert_contains(addon, "//uc profilev2 validate", 'addon must advertise profilev2 validate help')
+	assert_contains(addon, "//uc profilev2 diff", 'addon must advertise profilev2 diff help')
 	assert_contains(addon, "uc_profile_v2_export.write_structured_profile_export(profile, meta)", 'addon must use structured profile export helper')
 	assert_contains(addon, "uc_profile_v2_export.validate_structured_profile_file(meta, function(payload)", 'addon must use structured profile validate helper')
+	assert_contains(addon, "uc_profile_v2_export.diff_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile diff helper')
 	assert_not_contains(addon, 'windower.add_to_chat(207, uc_profile_v2_export.serialize_structured_profile', 'addon must not dump structured profile contents to chat')
 
 	local expected_config = build_expected_config()

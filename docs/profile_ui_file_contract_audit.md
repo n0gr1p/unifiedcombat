@@ -44,9 +44,11 @@
 - The addon command `//uc configstatus export` writes the compact normalized config status to `data/status/<safe_character>_config_contract_status.lua` as a Lua-table diagnostic file.
 - The addon command `//uc profilev2 export` writes the structured v2 profile artifact to `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` as a Lua-table diagnostic file.
 - The addon command `//uc profilev2 validate` reads that same structured v2 profile artifact and validates it in dry-run mode only.
+- The addon command `//uc profilev2 diff` reads and validates that same structured v2 profile artifact, then compares only its durable `config` domains against the current normalized runtime config in dry-run mode.
 - The config status export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
 - The structured v2 profile export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
 - The structured v2 profile validation is explicit-command-only; it does not apply config to runtime, does not mutate `_G.UC_SETTINGS`, and does not write anything back to disk.
+- The structured v2 profile diff is explicit-command-only; it does not apply config to runtime, does not mutate `_G.UC_SETTINGS`, and does not write anything back to disk.
 - The config status export excludes the full normalized config table, `_G.UC_SETTINGS`, scheduler state, pending/lock state, target data, party data, and mob snapshots.
 - The config status export uses the existing `files.new(path, true)` / `files.write(...)` helper style and is best-effort diagnostic output, not an atomic profile-write contract.
 - The structured v2 profile export now uses a best-effort temp-write in the target directory and promotes the temp file only after a successful close.

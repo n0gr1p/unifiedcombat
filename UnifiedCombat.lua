@@ -734,6 +734,16 @@ local function uc_validate_profile_v2_file(meta)
 	return result.ok == true, result.path, result.error
 end
 
+local function uc_diff_profile_v2_file(meta, settings)
+	local result = uc_profile_v2_export.diff_structured_profile_file_against_settings(settings, meta, function(payload)
+		return uc_validate_structured_profile_export(payload)
+	end)
+	if type(result) ~= 'table' then
+		return false, uc_profile_v2_file_path(meta), 'profile v2 diff returned invalid result', nil
+	end
+	return result.ok == true, result.path, result.error, result.count
+end
+
 local function uc_read_profiles_file(char_name)
 	local path = uc_profiles_file_path(char_name)
 	if not files.exists(path) then
@@ -1566,8 +1576,27 @@ windower.register_event('addon command', function(...)
 				windower.add_to_chat(167, 'UC profile v2 validation failed: ' .. tostring(validate_err or 'unknown error'))
 			end
 			return
+		elseif sub == 'diff' then
+			local p = windower.ffxi.get_player()
+			if not p or not p.name or not _G.UC_SETTINGS then
+				windower.add_to_chat(167, 'UC profile v2 diff failed: missing player')
+				return
+			end
+			local ok_diff, _, diff_err, diff_count = uc_diff_profile_v2_file({
+				character = p.name,
+				main_job = p.main_job,
+				sub_job = p.sub_job,
+			}, _G.UC_SETTINGS)
+			if not ok_diff then
+				windower.add_to_chat(167, 'UC profile v2 diff failed: ' .. tostring(diff_err or 'unknown error'))
+			elseif diff_count == 0 then
+				windower.add_to_chat(207, 'UC profile v2 diff: no config differences')
+			else
+				windower.add_to_chat(207, 'UC profile v2 diff: ' .. tostring(diff_count) .. ' config differences')
+			end
+			return
 		end
-		windower.add_to_chat(207, '//uc configstatus export | //uc profilev2 export | //uc profilev2 validate')
+		windower.add_to_chat(207, '//uc configstatus export | //uc profilev2 export | //uc profilev2 validate | //uc profilev2 diff')
 		return
 	elseif a == 'host' and args[2] then
 		_G.UC_REMOTE_HOST = tostring(args[2])
