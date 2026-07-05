@@ -647,7 +647,7 @@ function M.validate_structured_profile_file(meta, validator, deps)
 	local path = M.default_export_path(meta)
 	deps = resolve_fs_deps(deps)
 
-	local ok_read, content_or_err = pcall(deps.read_all, path)
+	local ok_read, content_or_err, read_detail = pcall(deps.read_all, path)
 	if not ok_read then
 		return {
 			ok = false,
@@ -659,7 +659,7 @@ function M.validate_structured_profile_file(meta, validator, deps)
 		}
 	end
 	if type(content_or_err) ~= 'string' or content_or_err == '' then
-		local detail = tostring(content_or_err or 'empty file')
+		local detail = tostring(read_detail or content_or_err or 'empty file')
 		return {
 			ok = false,
 			path = path,
@@ -822,6 +822,20 @@ function M.diff_structured_profile_file_against_settings(settings, meta, validat
 		differences = diff.differences,
 		current_config = current_config,
 	}
+end
+
+function M.inspect_structured_profile_file_against_settings(settings, meta, validator, deps)
+	local diff = M.diff_structured_profile_file_against_settings(settings, meta, validator, deps)
+	if type(diff) ~= 'table' then
+		return {
+			ok = false,
+			path = M.default_export_path(meta),
+			stage = 'inspect',
+			error = 'structured profile status helper returned invalid result',
+			reason = 'inspect failed',
+		}
+	end
+	return diff
 end
 
 local function copy_list(value)

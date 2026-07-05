@@ -840,6 +840,7 @@ local function main()
 	}, contract.validate_structured_profile_config, validate_read_fail_deps)
 	assert_true(validate_read_fail_result.ok == false, 'structured profile validation should fail when file cannot be read')
 	assert_equal(validate_read_fail_result.stage, 'read', 'structured profile read failure stage mismatch')
+	assert_equal(validate_read_fail_result.error, 'missing', 'structured profile read failure error mismatch')
 
 	local validate_not_table_deps = make_fake_fs({
 		[durable_path] = 'return "not a table"\n',
@@ -1023,6 +1024,63 @@ local function main()
 	assert_equal(diff_fail_result.reason, 'missing config', 'structured profile diff failure reason mismatch')
 	assert_deep_equal(_G.UC_SETTINGS, validate_settings_snapshot, 'structured profile diff must not mutate UC_SETTINGS')
 
+	local status_read_fail_snapshot = deep_clone(flat)
+	local status_read_fail_result = exporter.inspect_structured_profile_file_against_settings(status_read_fail_snapshot, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, make_fake_fs({
+	}, {
+		read = {
+			[durable_path] = 'missing',
+		},
+	}))
+	assert_true(status_read_fail_result.ok == false, 'structured profile status should fail cleanly when the file cannot be read')
+	assert_equal(status_read_fail_result.stage, 'read', 'structured profile status read failure stage mismatch')
+	assert_equal(status_read_fail_result.error, 'missing', 'structured profile status read failure error mismatch')
+	assert_deep_equal(status_read_fail_snapshot, flat, 'structured profile status read failure must not mutate settings')
+
+	local status_invalid_snapshot = deep_clone(flat)
+	local status_invalid_result = exporter.inspect_structured_profile_file_against_settings(status_invalid_snapshot, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, validate_bad_version_deps)
+	assert_true(status_invalid_result.ok == false, 'structured profile status should fail cleanly on invalid file content')
+	assert_equal(status_invalid_result.stage, 'shape', 'structured profile status invalid-file stage mismatch')
+	assert_equal(status_invalid_result.error, 'structured profile version must be 2', 'structured profile status invalid-file error mismatch')
+	assert_deep_equal(status_invalid_snapshot, flat, 'structured profile status invalid-file failure must not mutate settings')
+
+	local status_match_settings = deep_clone(flat)
+	local status_match_snapshot = deep_clone(status_match_settings)
+	local status_match_deps = make_fake_fs({
+		[durable_path] = expected_serialized,
+	})
+	local status_match_result = exporter.inspect_structured_profile_file_against_settings(status_match_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, status_match_deps)
+	assert_true(status_match_result.ok == true, 'structured profile status should succeed for matching config')
+	assert_equal(status_match_result.count, 0, 'structured profile status should report zero differences for matching config')
+	assert_deep_equal(status_match_settings, status_match_snapshot, 'structured profile status matching config must not mutate settings')
+
+	local status_diff_payload = deep_clone(profile)
+	status_diff_payload.config.combat.face = false
+	local status_diff_settings = deep_clone(flat)
+	local status_diff_snapshot = deep_clone(status_diff_settings)
+	local status_diff_deps = make_fake_fs({
+		[durable_path] = profile_v2.serialize_structured_profile(status_diff_payload),
+	})
+	local status_diff_result = exporter.inspect_structured_profile_file_against_settings(status_diff_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, status_diff_deps)
+	assert_true(status_diff_result.ok == true, 'structured profile status should succeed for diffable valid config')
+	assert_equal(status_diff_result.count, 1, 'structured profile status should report one config difference')
+	assert_deep_equal(status_diff_settings, status_diff_snapshot, 'structured profile status diff inspection must not mutate settings')
+
 	local apply_fail_snapshot = deep_clone(validate_settings_snapshot)
 	local apply_fail_deps = make_fake_fs({
 		[durable_path] = 'return { version = 2, profile = {} }\n',
@@ -1137,12 +1195,22 @@ local function main()
 	assert_contains(addon, "//uc profilev2 export", 'addon must advertise profilev2 export help')
 	assert_contains(addon, "//uc profilev2 validate", 'addon must advertise profilev2 validate help')
 	assert_contains(addon, "//uc profilev2 diff", 'addon must advertise profilev2 diff help')
+	assert_contains(addon, "//uc profilev2 status", 'addon must advertise profilev2 status help')
 	assert_contains(addon, "//uc profilev2 apply", 'addon must advertise profilev2 apply help')
+	assert_contains(addon, "//uc profilev2 reload", 'addon must advertise profilev2 reload help')
 	assert_contains(addon, "local uc_profile_v2 = require('uc_profile_v2')", 'addon must require the canonical profile v2 helper')
 	assert_contains(addon, "uc_profile_v2.write_structured_profile_export(profile, meta)", 'addon must use structured profile export helper')
 	assert_contains(addon, "uc_profile_v2.validate_structured_profile_file(meta, function(payload)", 'addon must use structured profile validate helper')
 	assert_contains(addon, "uc_profile_v2.diff_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile diff helper')
+	assert_contains(addon, "uc_profile_v2.inspect_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile status helper')
 	assert_contains(addon, "uc_profile_v2.apply_structured_profile_file_to_settings(settings, meta, function(payload)", 'addon must use structured profile apply helper')
+	assert_contains(addon, "UC profile v2 status: valid, runtime matches file", 'addon must report matching status tersely')
+	assert_contains(addon, "UC profile v2 status: valid, ", 'addon must report differing status tersely')
+	assert_contains(addon, "UC profile v2 status: invalid: ", 'addon must report invalid status tersely')
+	assert_contains(addon, "UC profile v2 reload failed: ", 'addon must report reload failures tersely')
+	assert_contains(addon, "UC profile v2 reload: no config differences", 'addon must report no-diff reload tersely')
+	assert_contains(addon, "UC profile v2 reload: ", 'addon must report applied reload tersely')
+	assert_contains(addon, "local ok_reload, _, reload_err, reload_count = uc_apply_profile_v2_file(", 'addon reload command must use the shared apply path')
 	assert_contains(addon, "local uc_sync_table_in_place", 'addon apply helper must keep sync helper scoped locally')
 	assert_contains(addon, "local uc_normalize_settings_table", 'addon apply helper must keep normalize helper scoped locally')
 	assert_contains(addon, "uc_sync_table_in_place = function(dst, src)", 'addon apply helper must bind sync helper before use')

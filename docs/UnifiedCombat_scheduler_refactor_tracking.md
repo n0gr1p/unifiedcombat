@@ -29,9 +29,29 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.8g` diagnoses and hardens live `//uc profilev2 export` failure reporting. Export now resolves under `windower.addon_path`, creates only the expected v2 output directory when missing, and reports short chat reasons while remaining a manual migration/bootstrap seed command only.
 - `T3.8h` fixes the live `//uc profilev2 apply` normalizer scope failure by binding the apply-path helpers locally instead of depending on missing globals.
 - `T3.8i` renames the structured v2 helper implementation to the neutral `uc_profile_v2.lua` module while keeping `uc_profile_v2_export.lua` as a compatibility shim.
+- `T3.8j` adds read-only `//uc profilev2 status` plus reload-oriented `//uc profilev2 reload` command semantics while keeping the addon a consumer of UI-owned v2 files.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.8j` Add profilev2 status and reload command semantics
+
+- Status: `DONE`
+- Changed files:
+  - `UnifiedCombat.lua`
+  - `uc_profile_v2.lua`
+  - `tests/replay/harness/selftest_profile_v2_export.lua`
+  - `docs/profile_v2_structured_config_shape.md`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/active_config_consumer_migration_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Added read-only `//uc profilev2 status` to resolve the expected file, validate it when readable, compare durable config domains against runtime, and report terse status chat.
+  - Added `//uc profilev2 reload` as a reload-oriented compatibility command that reuses the same safe verified apply path as `//uc profilev2 apply`.
+  - Kept export as a manual migration/bootstrap seed command only, and kept v1 profile load/save behavior, bridge writes, and scheduler/provider reads unchanged.
+- Next step:
+  - Field-test `status` and `reload` against real UI-written v2 files, especially missing-file and invalid-file cases, before considering any broader v2 file consumption workflow.
 
 ### `T3.8i` Rename structured v2 profile helper module
 

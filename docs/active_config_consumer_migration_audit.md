@@ -28,7 +28,7 @@ Active load path inspected:
 | `unified_combat_core.lua` | Active shared combat helpers used by engine and scheduler | Reads active settings through a local getter |
 | `uc_config_runtime.lua` | Runtime accessor introduced by `T3.7h` and extended by `T3.7j` | Used by legacy `melee_engine.lua` / `dd2_module.lua` UI consumers and active bridge config status publication |
 | `uc_config_normalizer.lua` | Pure canonical config normalizer | Used by status building and `uc_config_runtime.lua`; `T3.8a` also accepts structured `settings.config` and direct canonical-domain input |
-| `uc_profile_v2.lua` | Pure structured v2 profile helper for export, validate, diff, and apply | Used by `UnifiedCombat.lua` explicit `//uc profilev2 export`, `validate`, `diff`, and `apply` commands |
+| `uc_profile_v2.lua` | Pure structured v2 profile helper for export, validate, diff, status inspection, and apply | Used by `UnifiedCombat.lua` explicit `//uc profilev2 export`, `validate`, `diff`, `status`, `apply`, and `reload` commands |
 | `uc_profile_v2_export.lua` | Compatibility shim returning `uc_profile_v2.lua` | Preserves existing `require('uc_profile_v2_export')` callers |
 | `uc_config_status_export.lua` | Pure status export renderer | Used by `UnifiedCombat.lua` explicit `//uc configstatus export` command |
 

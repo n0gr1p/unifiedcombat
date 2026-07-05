@@ -245,6 +245,7 @@ Ambiguous current fields:
 - `T3.8f` adds explicit command-only `//uc profilev2 apply` for that structured v2 artifact. It builds a full candidate flat runtime settings table from durable `payload.config`, verifies the candidate round-trips back to the file config with zero durable diff, and only then mutates `_G.UC_SETTINGS` in place.
 - `T3.8g` diagnoses the live export failure path: command writes now resolve under `windower.addon_path`, create only the expected `data/profiles_v2` output directory when missing, and report export failures as `UC profile v2 export failed: <short reason>` while preserving detailed helper errors for tests.
 - `T3.8i` renames the structured v2 helper implementation to the neutral `uc_profile_v2.lua` module while keeping `uc_profile_v2_export.lua` as a compatibility shim. Export remains a manual migration/bootstrap seed command only; validate/diff/apply behavior is unchanged.
+- `T3.8j` adds read-only `//uc profilev2 status` and reload-oriented `//uc profilev2 reload` command semantics. Status validates and compares the UI-owned v2 file without mutating runtime state; reload reuses the existing safe apply path and keeps export a manual migration/bootstrap seed only.
 - Live v1 profile loading/saving, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - Runtime action decisions still use `_G.UC_SETTINGS`; scheduler/provider reads are not migrated.
 - Profile load/save behavior and bridge write behavior remain unchanged.
