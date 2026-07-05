@@ -30,9 +30,29 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.8h` fixes the live `//uc profilev2 apply` normalizer scope failure by binding the apply-path helpers locally instead of depending on missing globals.
 - `T3.8i` renames the structured v2 helper implementation to the neutral `uc_profile_v2.lua` module while keeping `uc_profile_v2_export.lua` as a compatibility shim.
 - `T3.8j` adds read-only `//uc profilev2 status` plus reload-oriented `//uc profilev2 reload` command semantics while keeping the addon a consumer of UI-owned v2 files.
+- `T3.8k` adds a hand-authored UI v2 fixture and consumer-contract tests proving validate/status/diff/reload helpers accept UI-owned files without relying on addon-export metadata.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T3.8k` Add UI-authored v2 profile consumer contract fixture
+
+- Status: `DONE`
+- Changed files:
+  - `tests/replay/fixtures/shared/ui_authored_profile_v2_fixture.lua`
+  - `tests/replay/harness/selftest_profile_v2_export.lua`
+  - `tests/replay/harness/selftest_structured_profile_config.lua`
+  - `docs/profile_v2_structured_config_shape.md`
+  - `docs/profile_ui_file_contract_audit.md`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/active_config_consumer_migration_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Added a real hand-authored structured v2 fixture file representing a plausible UI-owned profile with `source = "ui"` and no addon-export-only metadata.
+  - Added consumer-contract coverage proving validate/status/diff/reload/apply helper seams accept that fixture without requiring `exported_at` or `profile_key`.
+  - Confirmed no schema change was needed: existing validation already treats those metadata fields as optional while preserving compatibility with addon-exported bootstrap files.
+- Next step:
+  - Field-test the current consumer commands against a real UI-written v2 file after the external tooling side is ready, especially to confirm metadata conventions remain aligned.
 
 ### `T3.8j` Add profilev2 status and reload command semantics
 

@@ -17,6 +17,7 @@
 - `T3.8g` keeps that export path manual-only as a migration/bootstrap seed utility, resolves it under `windower.addon_path` in live Windower, and reports terse failure reasons in chat.
 - `T3.8i` renames the structured v2 helper implementation to `uc_profile_v2.lua` and keeps `uc_profile_v2_export.lua` as a compatibility shim, without changing any profile command behavior or file ownership.
 - `T3.8j` adds read-only `//uc profilev2 status` plus reload-oriented `//uc profilev2 reload` semantics while keeping the addon in a consumer role for the UI-owned v2 file.
+- `T3.8k` adds a hand-authored UI v2 fixture and consumer-contract tests proving validate/status/diff/reload helpers accept UI-owned files without requiring addon-export-only metadata.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
@@ -28,6 +29,7 @@
 - The file payload is a Lua table returned as `return { version = 1, profiles = { UC = { [MAIN_JOB] = ... } } }`.
 - The explicit structured export writes `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` as `return { version = 2, profile = {...}, config = {...} }`.
 - The export metadata may also include `profile_key` when the current character/job identity is available.
+- UI-authored v2 files may use generic metadata such as `profile.source = "ui"` and may omit addon-export-specific metadata like `exported_at` and `profile_key`.
 - Structured v2 payloads are read-compatible at the pure normalizer/contract-test layer only; the live file reader still extracts v1 `profiles` trees and does not apply v2 payloads.
 - Profiles are keyed by character plus main job; subjob is runtime metadata, not part of the on-disk profile key.
 - `UnifiedCombat.lua` loads the profile file on addon load and again on job change / explicit reload.
@@ -51,6 +53,7 @@
 - The addon command `//uc profilev2 status` reads and validates that same structured v2 profile artifact when possible, compares only its durable `config` domains against the current runtime config, and reports a terse read-only summary.
 - The addon command `//uc profilev2 apply` reads and validates that same structured v2 profile artifact, builds a verified candidate flat runtime settings table from its durable `config` domains, and then applies that candidate to `_G.UC_SETTINGS` in place without saving to disk.
 - The addon command `//uc profilev2 reload` reuses that same verified apply path and safe in-place mutation behavior, but reports reload-oriented chat.
+- Consumer-contract tests now cover a hand-authored UI fixture file, not just addon-exported bootstrap files.
 - The config status export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
 - The structured v2 profile export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
 - The structured v2 profile export is not the normal v2 profile save/edit path. External UI/tooling owns normal v2 profile writes; the addon consumes v2 files through validate/diff/apply/reload-style commands.

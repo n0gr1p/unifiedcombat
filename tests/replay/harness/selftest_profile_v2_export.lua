@@ -90,6 +90,15 @@ local function read_file(path)
 	return content
 end
 
+local function load_lua_fixture(path)
+	local chunk, err = loadstring(read_file(path), '@' .. path)
+	assert_true(type(chunk) == 'function', 'fixture must load as Lua: ' .. tostring(err))
+	local ok, payload = pcall(chunk)
+	assert_true(ok == true, 'fixture chunk should execute')
+	assert_true(type(payload) == 'table', 'fixture must return a table')
+	return payload
+end
+
 local function extract_source_block(source, start_marker, end_marker)
 	local start_pos = source:find(start_marker, 1, true)
 	assert_true(start_pos ~= nil, 'missing source block start: ' .. tostring(start_marker))
@@ -683,6 +692,12 @@ local function main()
 	})
 
 	local expected_serialized = profile_v2.serialize_structured_profile(profile)
+	local ui_fixture_path = 'tests/replay/fixtures/shared/ui_authored_profile_v2_fixture.lua'
+	local ui_fixture_content = read_file(ui_fixture_path)
+	local ui_fixture_payload = load_lua_fixture(ui_fixture_path)
+	assert_equal(ui_fixture_payload.profile.source, 'ui', 'UI-authored fixture source metadata mismatch')
+	assert_nil(ui_fixture_payload.profile.exported_at, 'UI-authored fixture should omit exported_at metadata')
+	assert_nil(ui_fixture_payload.profile.profile_key, 'UI-authored fixture should omit profile_key metadata')
 	local durable_deps, durable_state = make_fake_fs()
 	local durable_result = profile_v2.write_structured_profile_export(profile, {
 		character = 'Redrogue',
@@ -828,6 +843,18 @@ local function main()
 	assert_equal(#validate_ok_state.read_calls, 1, 'structured profile validation should read one file')
 	assert_deep_equal(_G.UC_SETTINGS, validate_settings_snapshot, 'structured profile validation must not mutate UC_SETTINGS')
 
+	local ui_fixture_validate_result = exporter.validate_structured_profile_file({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, make_fake_fs({
+		[durable_path] = ui_fixture_content,
+	}))
+	assert_true(ui_fixture_validate_result.ok == true, 'UI-authored structured profile fixture should validate successfully')
+	assert_equal(ui_fixture_validate_result.payload.profile.source, 'ui', 'UI-authored structured profile validation must preserve source metadata')
+	assert_nil(ui_fixture_validate_result.payload.profile.exported_at, 'UI-authored structured profile validation must not require exported_at metadata')
+	assert_nil(ui_fixture_validate_result.payload.profile.profile_key, 'UI-authored structured profile validation must not require profile_key metadata')
+
 	local validate_read_fail_deps = make_fake_fs(nil, {
 		read = {
 			[durable_path] = 'missing',
@@ -917,6 +944,17 @@ local function main()
 	assert_equal(diff_ok_result.count, 0, 'structured profile diff should report zero differences for matching config')
 	assert_equal(#diff_ok_result.differences, 0, 'structured profile diff details should be empty for matching config')
 
+	local ui_fixture_diff_ok_result = exporter.diff_structured_profile_file_against_settings(flat, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, make_fake_fs({
+		[durable_path] = ui_fixture_content,
+	}))
+	assert_true(ui_fixture_diff_ok_result.ok == true, 'UI-authored structured profile fixture should diff successfully against matching runtime settings')
+	assert_equal(ui_fixture_diff_ok_result.count, 0, 'UI-authored structured profile fixture should report zero differences for matching runtime settings')
+	assert_equal(ui_fixture_diff_ok_result.payload.profile.source, 'ui', 'UI-authored structured profile diff must preserve source metadata')
+
 	local scalar_diff_payload = deep_clone(profile)
 	scalar_diff_payload.profile.exported_at = '2099-01-01T00:00:00Z'
 	scalar_diff_payload.config.combat.face = false
@@ -931,6 +969,21 @@ local function main()
 	assert_true(scalar_diff_result.ok == true, 'structured profile diff should succeed for scalar difference payload')
 	assert_equal(scalar_diff_result.count, 1, 'structured profile diff should report one changed scalar value')
 	assert_equal(scalar_diff_result.differences[1], 'config.combat.face', 'structured profile diff scalar path mismatch')
+
+	local ui_fixture_diff_settings = deep_clone(flat)
+	ui_fixture_diff_settings.face = false
+	local ui_fixture_diff_snapshot = deep_clone(ui_fixture_diff_settings)
+	local ui_fixture_scalar_diff_result = exporter.diff_structured_profile_file_against_settings(ui_fixture_diff_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, make_fake_fs({
+		[durable_path] = ui_fixture_content,
+	}))
+	assert_true(ui_fixture_scalar_diff_result.ok == true, 'UI-authored structured profile fixture should diff successfully against mismatching runtime settings')
+	assert_equal(ui_fixture_scalar_diff_result.count, 1, 'UI-authored structured profile fixture should report one deterministic difference')
+	assert_equal(ui_fixture_scalar_diff_result.differences[1], 'config.combat.face', 'UI-authored structured profile fixture diff path mismatch')
+	assert_deep_equal(ui_fixture_diff_settings, ui_fixture_diff_snapshot, 'UI-authored structured profile diff must not mutate runtime settings')
 
 	local nested_diff_payload = deep_clone(profile)
 	nested_diff_payload.config.movement.spacing.band_max = 0.9
@@ -1065,6 +1118,20 @@ local function main()
 	assert_equal(status_match_result.count, 0, 'structured profile status should report zero differences for matching config')
 	assert_deep_equal(status_match_settings, status_match_snapshot, 'structured profile status matching config must not mutate settings')
 
+	local ui_fixture_status_settings = deep_clone(flat)
+	local ui_fixture_status_snapshot = deep_clone(ui_fixture_status_settings)
+	local ui_fixture_status_result = exporter.inspect_structured_profile_file_against_settings(ui_fixture_status_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, make_fake_fs({
+		[durable_path] = ui_fixture_content,
+	}))
+	assert_true(ui_fixture_status_result.ok == true, 'UI-authored structured profile fixture should be inspectable by the status helper')
+	assert_equal(ui_fixture_status_result.count, 0, 'UI-authored structured profile fixture status should report zero differences for matching runtime settings')
+	assert_equal(ui_fixture_status_result.payload.profile.source, 'ui', 'UI-authored structured profile status must preserve source metadata')
+	assert_deep_equal(ui_fixture_status_settings, ui_fixture_status_snapshot, 'UI-authored structured profile status must not mutate runtime settings')
+
 	local status_diff_payload = deep_clone(profile)
 	status_diff_payload.config.combat.face = false
 	local status_diff_settings = deep_clone(flat)
@@ -1110,6 +1177,27 @@ local function main()
 	assert_deep_equal(no_diff_settings, flat, 'structured profile apply helper should leave matching settings unchanged')
 	assert_equal(#no_diff_state.open_calls, 0, 'structured profile apply should not write to disk on no-diff apply')
 	assert_equal(#no_diff_state.rename_calls, 0, 'structured profile apply should not rename files on no-diff apply')
+
+	local ui_fixture_reload_settings = deep_clone(flat)
+	ui_fixture_reload_settings.face = false
+	local ui_fixture_reload_identity = ui_fixture_reload_settings
+	local ui_fixture_reload_deps, ui_fixture_reload_state = make_fake_fs({
+		[durable_path] = ui_fixture_content,
+	})
+	local ui_fixture_reload_result = exporter.apply_structured_profile_file_to_settings(ui_fixture_reload_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, ui_fixture_reload_deps)
+	assert_true(ui_fixture_reload_result.ok == true, 'UI-authored structured profile fixture should be consumable by the reload/apply helper')
+	assert_equal(ui_fixture_reload_result.count, 1, 'UI-authored structured profile reload/apply helper should report one config difference')
+	assert_true(ui_fixture_reload_settings == ui_fixture_reload_identity, 'UI-authored structured profile reload/apply helper must preserve settings table identity')
+	assert_true(ui_fixture_reload_result.candidate.face, 'UI-authored structured profile reload/apply helper should restore runtime values without addon-export metadata')
+	assert_equal(ui_fixture_reload_result.payload.profile.source, 'ui', 'UI-authored structured profile reload/apply helper must preserve source metadata')
+	assert_nil(ui_fixture_reload_result.payload.profile.exported_at, 'UI-authored structured profile reload/apply helper must not require exported_at metadata')
+	assert_nil(ui_fixture_reload_result.payload.profile.profile_key, 'UI-authored structured profile reload/apply helper must not require profile_key metadata')
+	assert_equal(#ui_fixture_reload_state.open_calls, 0, 'UI-authored structured profile reload/apply helper should not write files')
+	assert_equal(#ui_fixture_reload_state.rename_calls, 0, 'UI-authored structured profile reload/apply helper should not rename files')
 
 	local scalar_apply_payload = deep_clone(profile)
 	scalar_apply_payload.config.combat.face = false

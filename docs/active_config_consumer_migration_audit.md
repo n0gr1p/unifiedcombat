@@ -10,6 +10,7 @@ This is a docs/static audit only. No runtime behavior, profile load/save behavio
 
 `T3.8a` adds structured profile/config read compatibility to the pure config normalizer and contract tests only. It does not migrate an active runtime consumer, live profile loading, live profile saving, bridge writes, or scheduler/provider action-decision reads.
 `T3.8b` adds an explicit structured export command (`//uc profilev2 export`) that writes a separate v2 artifact for inspection. It does not migrate live profile loading, live profile saving, bridge writes, or scheduler/provider action-decision reads.
+`T3.8k` adds a hand-authored UI v2 fixture and consumer-contract tests only. It does not add runtime loading, writing, bridge behavior changes, or scheduler/provider consumer changes.
 
 ## Active runtime entry points
 

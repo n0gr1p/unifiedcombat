@@ -60,6 +60,25 @@ local function assert_deep_equal(actual, expected, message)
     end
 end
 
+local function read_file(path)
+    local file, err = io.open(path, "r")
+    if not file then
+        error("unable to read " .. tostring(path) .. ": " .. tostring(err))
+    end
+    local content = file:read("*a")
+    file:close()
+    return content
+end
+
+local function load_lua_fixture(path)
+    local chunk, err = loadstring(read_file(path), "@" .. path)
+    assert_true(type(chunk) == "function", "fixture must load as Lua: " .. tostring(err))
+    local ok, payload = pcall(chunk)
+    assert_true(ok == true, "fixture chunk should execute")
+    assert_true(type(payload) == "table", "fixture must return a table")
+    return payload
+end
+
 local function build_flat_settings()
     return {
         character = "Redrogue",
@@ -305,6 +324,24 @@ local function main()
         assert_equal(malformed.profile.source, "UC_SETTINGS", "malformed source should use default")
     end), "malformed structured input should not throw")
 
+    local ui_fixture = load_lua_fixture("tests/replay/fixtures/shared/ui_authored_profile_v2_fixture.lua")
+    local ui_fixture_snapshot = deep_clone(ui_fixture)
+    local ui_fixture_config = normalizer.normalize(ui_fixture, { source = "meta-source" })
+    assert_deep_equal(ui_fixture, ui_fixture_snapshot, "UI-authored fixture input should not be mutated")
+    assert_equal(ui_fixture_config.profile.source, "meta-source", "UI-authored fixture source mismatch")
+    assert_equal(ui_fixture_config.profile.character, "Redrogue", "UI-authored fixture profile character mismatch")
+    assert_equal(ui_fixture_config.profile.main_job, "PLD", "UI-authored fixture profile main job mismatch")
+    assert_equal(ui_fixture_config.profile.sub_job, "WAR", "UI-authored fixture profile sub job mismatch")
+    assert_equal(ui_fixture_config.combat.weaponskill.primary, "Savage Blade", "UI-authored fixture combat mismatch")
+    assert_equal(ui_fixture_config.movement.path.file_name, "route-a", "UI-authored fixture path file mismatch")
+    assert_equal(#ui_fixture_config.movement.path.hunter_targets, 0, "UI-authored fixture path hunter list mismatch")
+    assert_equal(ui_fixture_config.follow.party.leader_name, "Leader", "UI-authored fixture party leader mismatch")
+    assert_equal(ui_fixture_config.targeting.add_priority_names[1], "Apex Bat", "UI-authored fixture priority mismatch")
+    assert_equal(ui_fixture_config.legacy.profiles.UC.PLD.marker, true, "UI-authored fixture legacy marker mismatch")
+    assert_equal(ui_fixture.profile.source, "ui", "UI-authored fixture metadata source mismatch")
+    assert_true(ui_fixture.profile.exported_at == nil, "UI-authored fixture should not require exported_at metadata")
+    assert_true(ui_fixture.profile.profile_key == nil, "UI-authored fixture should not require profile_key metadata")
+
     assert_equal(runtime.ingame_ui_enabled(structured, { source = "profile-v2" }, normalizer), true, "runtime structured UI enabled mismatch")
     local structured_disabled = build_structured_payload()
     structured_disabled.config.ui.show_ingame_ui = false
@@ -314,6 +351,8 @@ local function main()
     local contract_result = contract.validate_structured_profile_config(structured)
     assert_true(contract_result.ok == true, "structured profile contract should pass")
     assert_equal(contract_result.version, 2, "structured profile contract version mismatch")
+    local ui_fixture_contract = contract.validate_structured_profile_config(ui_fixture)
+    assert_true(ui_fixture_contract.ok == true, "UI-authored fixture contract should pass")
     local bad_contract = contract.validate_structured_profile_config({ version = 2, profile = "bad", config = {} })
     assert_true(bad_contract.ok == false, "bad structured profile contract should fail safely")
     assert_true(#bad_contract.errors > 0, "bad structured profile contract should report errors")

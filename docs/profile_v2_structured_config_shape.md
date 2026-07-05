@@ -66,7 +66,8 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - Reload command: `//uc profilev2 reload`
 - Output path: `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua`
 - Shape: `return { version = 2, profile = {...}, config = {...} }`
-- The `profile` metadata includes `character`, `main_job`, `sub_job`, `source`, `exported_at`, and an optional `profile_key` when available.
+- The `profile` metadata includes `character`, `main_job`, `sub_job`, and `source`. UI-authored files may use `source = "ui"`; addon-exported bootstrap files may use `source = "exported_from_v1_settings"`.
+- `profile.exported_at` and `profile.profile_key` are optional metadata. They may be present on addon-exported bootstrap files, but the consumer contract does not require them for UI-authored v2 files.
 - The export command is a manual migration/bootstrap seed utility only. The addon is not the normal v2 profile writer/editor; external UI/tooling owns profile editing and writes.
 - In live Windower, the command resolves this path under `windower.addon_path` and creates only the expected `data/profiles_v2` directory when it is missing.
 - Export failures are reported in chat as `UC profile v2 export failed: <short reason>`, with detailed helper failure data kept in result tables for tests.
@@ -82,7 +83,7 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - The apply command is explicit-command-only and runtime-only: it does not write v1 or v2 profile files back to disk.
 - The reload command reuses that same safe apply path and mutations, but reports reload-oriented chat so the addon remains a consumer of the UI-owned v2 file instead of becoming a general writer/editor.
 
-The canonical helper module `uc_profile_v2.lua` builds and consumes the structured payload for export, validate, diff, and apply behavior, while the compatibility shim `uc_profile_v2_export.lua` simply returns that same module. This does not change live profile loading, live profile saving, or bridge write behavior.
+The canonical helper module `uc_profile_v2.lua` builds and consumes the structured payload for export, validate, diff, status inspection, and apply behavior, while the compatibility shim `uc_profile_v2_export.lua` simply returns that same module. This does not change live profile loading, live profile saving, or bridge write behavior.
 
 ## Compatibility Boundary
 
