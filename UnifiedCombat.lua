@@ -18,6 +18,7 @@ uc_prefer_addon_local_libs()
 
 require('lor/lor_utils')
 require('tables')
+local uc_runtime_overrides = require('uc_runtime_overrides')
 
 local function uc_now_s()
 	local s = rawget(_G, 'socket')
@@ -1339,7 +1340,7 @@ local function uc_reload_active_profile(job_for_defaults)
 end
 
 local function uc_sleep_spell_list_lines(settings)
-	local arr = type(settings and settings.sleepspells) == 'table' and settings.sleepspells or {}
+	local arr = uc_runtime_overrides.sleep_spell_names(settings)
 	if #arr == 0 then
 		return { 'Sleep spell list: (empty)' }
 	end
@@ -1937,7 +1938,7 @@ windower.register_event('addon command', function(...)
 			windower.add_to_chat(207, 'Sleep: off')
 			return
 		elseif sub == 'list' or sub == '' then
-			windower.add_to_chat(207, 'Sleep: ' .. (s.sleep and 'on' or 'off'))
+			windower.add_to_chat(207, 'Sleep: ' .. (uc_runtime_overrides.sleep_enabled(s) and 'on' or 'off'))
 			for _, line in ipairs(uc_sleep_spell_list_lines(s)) do
 				windower.add_to_chat(207, line)
 			end

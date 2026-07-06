@@ -141,6 +141,9 @@ local function main()
     assert_contains(fight_leader, "local uc_runtime_overrides = require('uc_runtime_overrides')", "fight leader helper must require runtime overrides")
     assert_contains(fight_leader, "uc_runtime_overrides.fight_leader_enabled(settings)", "fight leader helper must consult runtime override enablement")
     assert_contains(fight_leader, "uc_runtime_overrides.fight_leader_id(settings)", "fight leader helper must consult runtime override leader id")
+    assert_contains(addon, "local uc_runtime_overrides = require('uc_runtime_overrides')", "addon command helpers must require runtime overrides")
+    assert_contains(addon, "uc_runtime_overrides.sleep_enabled(s)", "addon sleep command status must consult runtime override enablement")
+    assert_contains(addon, "uc_runtime_overrides.sleep_spell_names(settings)", "addon sleep spell list helper must consult runtime override spell names")
 
     local addon_command_block = slice_between(
         addon,
