@@ -190,7 +190,6 @@ internal static class StructuredProfileV2Writer
     {
         var config = new StructuredProfileNode();
         config.Add("ui", BuildUi(flatProfile));
-        config.Add("command", BuildCommand(flatProfile));
         config.Add("combat", BuildCombat(flatProfile));
         config.Add("abilities", BuildAbilities(flatProfile));
         config.Add("defensive", BuildDefensive(flatProfile));
@@ -211,13 +210,6 @@ internal static class StructuredProfileV2Writer
     {
         return new StructuredProfileNode()
             .Add("show_ingame_ui", ReadBool(flatProfile, "show_ingame_ui", false));
-    }
-
-    private static StructuredProfileNode BuildCommand(JsonObject flatProfile)
-    {
-        _ = flatProfile;
-        return new StructuredProfileNode()
-            .Add("engine_enabled_default", false);
     }
 
     private static StructuredProfileNode BuildCombat(JsonObject flatProfile)

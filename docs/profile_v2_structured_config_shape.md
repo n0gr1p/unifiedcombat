@@ -78,6 +78,7 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - The validation command is dry-run only: it does not apply the file to runtime settings, does not mutate `_G.UC_SETTINGS`, and does not write anything back to disk.
 - The diff command reads and validates that same file, builds the current durable canonical config from loaded runtime settings, and compares only `payload.config` durable domains.
 - The durable comparison intentionally ignores the legacy compatibility mirrors that the live normalizer rebuilds after reload: `abilities.legacy_slots`, `follow.party.leader_id`, `follow.fight.leader_id`, `targeting.legacy_slots`, `targeting.add_priority_names`, and the legacy `sleep` mirrors (`sleep`, `sleepspells`, `sleepspell`) because those fields stay outside the UI-owned durable contract.
+- The durable comparison also ignores the runtime engine mirror exposed through `command.engine_enabled_default`, because engine running state is addon runtime state, not durable profile config.
 - The diff command ignores `profile` metadata such as `exported_at`, `source`, `character`, `main_job`, `sub_job`, and `profile_key`, and reports only a terse difference count in chat.
 - The status command is read-only: it resolves the same expected file path, validates the file when it can be read, compares only durable `config` domains against the current runtime config, and reports a terse summary.
 - The apply command reads and validates that same file, compares it against the current durable canonical config, then applies only durable `payload.config` domains back onto the flat runtime compatibility surface when a full candidate settings table can be built and verified first.
@@ -96,7 +97,7 @@ The canonical helper module `uc_profile_v2.lua` builds and consumes the structur
 - `remote_bridge.lua` remains the live UI write path.
 - `//uc profilev2 export` is explicit-command-only and writes the new structured v2 artifact to `data/profiles_v2/` only when a user manually asks for a migration/bootstrap seed.
 - The WinForms UI save path now writes the same structured v2 artifact shape to `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` as the durable UI-owned profile file.
-- The UI writer intentionally leaves runtime/session-only or legacy command-mutated fields out of the durable v2 file, including `fight_leader`, `fight_leader_id`, `add_priority_names`, `sleep`, `sleepspells`, and `sleepspell`.
+- The UI writer intentionally leaves runtime/session-only or legacy command-mutated fields out of the durable v2 file, including `fight_leader`, `fight_leader_id`, `add_priority_names`, `sleep`, `sleepspells`, `sleepspell`, and the engine runtime mirror `command.engine_enabled_default`.
 - Normal v2 profile editing and saving remain owned by external UI/tooling, not by the addon export command.
 - No profile polling or live apply behavior exists.
 - Scheduler/provider/action-decision reads still use current runtime settings, not structured profile files.

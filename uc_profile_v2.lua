@@ -5,7 +5,6 @@ local M = {}
 
 local DURABLE_CONFIG_DOMAINS = {
 	'ui',
-	'command',
 	'combat',
 	'abilities',
 	'defensive',
@@ -185,6 +184,9 @@ local function strip_durable_profile_overrides(config)
 	if type(config) ~= 'table' then
 		return config
 	end
+	-- Runtime engine state and other compatibility mirrors stay out of the
+	-- durable profile comparison even when legacy payloads still carry them.
+	config.command = nil
 	if type(config.abilities) == 'table' then
 		config.abilities.legacy_slots = nil
 	end

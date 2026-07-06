@@ -174,10 +174,6 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.show_ingame_ui = config.ui.show_ingame_ui
 	end
 
-	if type(config.command) == 'table' then
-		candidate.engine_enabled = config.command.engine_enabled_default
-	end
-
 	if type(config.combat) == 'table' then
 		candidate.domain_combat_enabled = config.combat.enabled
 		candidate.autotarget = config.combat.autotarget

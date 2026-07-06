@@ -402,9 +402,6 @@ local function build_expected_config()
 		ui = {
 			show_ingame_ui = true,
 		},
-		command = {
-			engine_enabled_default = true,
-		},
 		combat = {
 			enabled = true,
 			autotarget = true,
@@ -625,11 +622,11 @@ local function main()
 	assert_equal(profile.profile.exported_at, '2026-06-29T18:00:00Z', 'structured profile export time mismatch')
 	assert_equal(profile.profile.profile_key, 'Redrogue|PLD|WAR', 'structured profile key mismatch')
 	assert_equal(profile.config.ui.show_ingame_ui, true, 'ui domain mismatch')
-	assert_equal(profile.config.command.engine_enabled_default, true, 'command domain mismatch')
 	assert_equal(profile.config.combat.weaponskill.primary, 'Savage Blade', 'combat domain mismatch')
 	assert_equal(profile.config.maintenance.cor.roll_1, 'Chaos Roll', 'maintenance domain mismatch')
 	assert_equal(profile.config.legacy.hunter, true, 'legacy domain mismatch')
 	assert_true(profile.config.targeting.add_priority_names == nil, 'exported config must not include durable add priority names')
+	assert_true(profile.config.command == nil, 'exported config must not include engine runtime state')
 	assert_true(profile.config.sleep == nil, 'exported config must not include sleep domain')
 	assert_true(profile.config.profile == nil, 'exported config must not include profile metadata')
 	assert_true(profile.config.scheduler_action_state == nil, 'exported config must not include runtime scheduler state')
@@ -1269,6 +1266,13 @@ local function main()
 	local legacy_mirror_diff = profile_v2.diff_durable_config(legacy_mirror_current, profile.config)
 	assert_equal(legacy_mirror_diff.count, 0, 'durable diff should ignore legacy ability, follow id, and targeting slot mirrors')
 
+	local runtime_engine_current = deep_clone(profile.config)
+	local runtime_engine_target = deep_clone(profile.config)
+	runtime_engine_current.command = { engine_enabled_default = false }
+	runtime_engine_target.command = { engine_enabled_default = true }
+	local runtime_engine_diff = profile_v2.diff_durable_config(runtime_engine_current, runtime_engine_target)
+	assert_equal(runtime_engine_diff.count, 0, 'durable diff should ignore engine runtime mirrors')
+
 	local ui_fixture_reload_settings = deep_clone(flat)
 	ui_fixture_reload_settings.face = false
 	local ui_fixture_reload_identity = ui_fixture_reload_settings
@@ -1292,18 +1296,22 @@ local function main()
 
 	local live_ui_fixture_path = 'data/profiles_v2/nyoourke_SAM_DRG.lua'
 	local live_ui_fixture_content = read_file(live_ui_fixture_path)
-	local live_ui_reload_settings = {
-		add_priority_names = { 'Apex Bat' },
-		sleep = true,
-		sleepspells = { 'Horde Lullaby II' },
-		sleepspell = 'Horde Lullaby II',
-	}
-	local live_ui_reload_identity = live_ui_reload_settings
+	local live_ui_fixture_payload = load_lua_fixture(live_ui_fixture_path)
 	local live_ui_reload_meta = {
 		character = 'Nyoourke',
 		main_job = 'SAM',
 		sub_job = 'DRG',
 	}
+	local live_ui_reload_active_profile = active_config.build_active_profile_from_v2_payload(live_ui_fixture_payload, {
+		character = 'Nyoourke',
+		main_job = 'SAM',
+		sub_job = 'DRG',
+		source = 'UC_PROFILE_V2',
+	})
+	local live_ui_reload_settings = active_config.project_flat_settings(live_ui_reload_active_profile, {})
+	local live_ui_reload_identity = live_ui_reload_settings
+	live_ui_reload_settings.face = false
+	live_ui_reload_settings.engine_enabled = false
 	local live_ui_reload_deps, live_ui_reload_state = make_fake_fs({
 		[profile_v2.default_export_path(live_ui_reload_meta)] = live_ui_fixture_content,
 	})
@@ -1312,6 +1320,12 @@ local function main()
 	assert_equal(live_ui_reload_result.stage, 'done', 'real UI-authored structured profile should finish cleanly')
 	assert_nil(live_ui_reload_result.error, 'real UI-authored structured profile should not report a conversion mismatch')
 	assert_nil(live_ui_reload_result.detail, 'real UI-authored structured profile should not report a conversion detail')
+	assert_equal(live_ui_reload_result.count, 1, 'real UI-authored structured profile should report only the injected durable diff')
+	assert_equal(live_ui_reload_result.differences[1], 'config.combat.face', 'real UI-authored structured profile diff path mismatch')
+	assert_equal(live_ui_reload_result.candidate_config.combat.face, true, 'real UI-authored structured profile reload should restore durable config')
+	assert_equal(live_ui_reload_result.candidate.engine_enabled, false, 'real UI-authored structured profile reload should preserve runtime engine state')
+	local live_ui_reload_post_diff = profile_v2.diff_durable_config(live_ui_reload_result.candidate_config, live_ui_fixture_payload.config)
+	assert_equal(live_ui_reload_post_diff.count, 0, 'real UI-authored structured profile should round-trip cleanly after apply')
 	assert_true(live_ui_reload_settings == live_ui_reload_identity, 'real UI-authored structured profile reload/apply helper must preserve settings table identity')
 	assert_equal(#live_ui_reload_state.open_calls, 0, 'real UI-authored structured profile reload/apply helper should not write files')
 	assert_equal(#live_ui_reload_state.rename_calls, 0, 'real UI-authored structured profile reload/apply helper should not rename files')

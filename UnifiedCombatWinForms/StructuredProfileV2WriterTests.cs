@@ -55,7 +55,6 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "main_job = \"PLD\"", "profile main job missing");
         AssertContains(content, "sub_job = \"WAR\"", "profile sub job missing");
         AssertContains(content, "show_ingame_ui = true", "ui domain missing");
-        AssertContains(content, "engine_enabled_default = false", "command domain missing");
         AssertContains(content, "autotarget = true", "combat domain missing");
         AssertContains(content, "configured = {", "abilities domain missing");
         AssertContains(content, "list = \"Bar\\\"Spell\\\\Line\\nNext\"", "string escaping mismatch");
@@ -64,7 +63,6 @@ internal static class StructuredProfileV2WriterTests
         AssertOrder(
             content,
             "ui = {",
-            "command = {",
             "combat = {",
             "abilities = {",
             "defensive = {",
@@ -81,6 +79,8 @@ internal static class StructuredProfileV2WriterTests
         );
 
         AssertNotContains(content, "Start_Engine", "runtime engine state must not be serialized");
+        AssertNotContains(content, "command = {", "command runtime state must not be serialized");
+        AssertNotContains(content, "engine_enabled_default =", "engine runtime state must not be serialized");
         AssertNotContains(content, "fight_leader =", "fight leader runtime state must not be serialized");
         AssertNotContains(content, "fight_leader_id", "fight leader runtime id must not be serialized");
         AssertNotContains(content, "add_priority_entries", "legacy add priority entries must not be serialized");
