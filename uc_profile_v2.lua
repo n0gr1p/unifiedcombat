@@ -172,7 +172,24 @@ local function pick_durable_config_domains(config)
 			out[domain] = clone_value(value)
 		end
 	end
+	-- Keep legacy mirrors in runtime state, but do not carry them through the
+	-- durable v2 round-trip check. UI-authored files are allowed to omit them.
+	if type(out.targeting) == 'table' then
+		out.targeting.add_priority_names = nil
+	end
+	out.sleep = nil
 	return out
+end
+
+local function strip_durable_profile_overrides(config)
+	if type(config) ~= 'table' then
+		return config
+	end
+	if type(config.targeting) == 'table' then
+		config.targeting.add_priority_names = nil
+	end
+	config.sleep = nil
+	return config
 end
 
 local function append_path(prefix, key)
@@ -794,7 +811,7 @@ end
 
 function M.diff_durable_config(current_config, target_config)
 	local differences = {}
-	diff_values(current_config, target_config, 'config', differences)
+	diff_values(strip_durable_profile_overrides(clone_value(current_config)), strip_durable_profile_overrides(clone_value(target_config)), 'config', differences)
 	return {
 		count = #differences,
 		differences = differences,
@@ -956,6 +973,8 @@ local function apply_result_to_active_profile(current_settings, payload, meta, d
 			ok = false,
 			stage = 'convert',
 			error = 'structured profile conversion mismatch',
+			detail = diff.differences and diff.differences[1] or nil,
+			first_difference = diff.differences and diff.differences[1] or nil,
 			count = diff.count,
 			differences = diff.differences or {},
 			active_profile = active_profile,

@@ -77,6 +77,7 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - The validation command reads only the expected v2 file for the current character/main/sub, parses the returned Lua table, checks `version`, `profile`, and `config`, and runs contract validation when available.
 - The validation command is dry-run only: it does not apply the file to runtime settings, does not mutate `_G.UC_SETTINGS`, and does not write anything back to disk.
 - The diff command reads and validates that same file, builds the current durable canonical config from loaded runtime settings, and compares only `payload.config` durable domains.
+- The durable comparison intentionally ignores `targeting.add_priority_names` and the legacy `sleep` mirrors (`sleep`, `sleepspells`, `sleepspell`) because those fields stay outside the UI-owned durable contract.
 - The diff command ignores `profile` metadata such as `exported_at`, `source`, `character`, `main_job`, `sub_job`, and `profile_key`, and reports only a terse difference count in chat.
 - The status command is read-only: it resolves the same expected file path, validates the file when it can be read, compares only durable `config` domains against the current runtime config, and reports a terse summary.
 - The apply command reads and validates that same file, compares it against the current durable canonical config, then applies only durable `payload.config` domains back onto the flat runtime compatibility surface when a full candidate settings table can be built and verified first.

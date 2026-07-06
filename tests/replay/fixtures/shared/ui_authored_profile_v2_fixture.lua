@@ -128,7 +128,6 @@ return {
         },
         targeting = {
             add_control = true,
-            add_priority_names = { "Apex Bat" },
             legacy_slots = {},
             targets = {},
             targetability = {
@@ -143,11 +142,6 @@ return {
             enmity = {
                 actions = { "Provoke", "Flash" },
             },
-        },
-        sleep = {
-            enabled = true,
-            order = { "Horde Lullaby II" },
-            legacy_primary = "Horde Lullaby II",
         },
         spells = {
             enabled = true,

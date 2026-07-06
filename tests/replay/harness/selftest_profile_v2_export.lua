@@ -518,7 +518,6 @@ local function build_expected_config()
 		},
 		targeting = {
 			add_control = true,
-			add_priority_names = { 'Apex Bat' },
 			legacy_slots = {},
 			targets = {},
 			targetability = {
@@ -533,11 +532,6 @@ local function build_expected_config()
 			enmity = {
 				actions = { 'Provoke', 'Flash' },
 			},
-		},
-		sleep = {
-			enabled = true,
-			order = { 'Horde Lullaby II' },
-			legacy_primary = 'Horde Lullaby II',
 		},
 		spells = {
 			enabled = true,
@@ -635,6 +629,8 @@ local function main()
 	assert_equal(profile.config.combat.weaponskill.primary, 'Savage Blade', 'combat domain mismatch')
 	assert_equal(profile.config.maintenance.cor.roll_1, 'Chaos Roll', 'maintenance domain mismatch')
 	assert_equal(profile.config.legacy.hunter, true, 'legacy domain mismatch')
+	assert_true(profile.config.targeting.add_priority_names == nil, 'exported config must not include durable add priority names')
+	assert_true(profile.config.sleep == nil, 'exported config must not include sleep domain')
 	assert_true(profile.config.profile == nil, 'exported config must not include profile metadata')
 	assert_true(profile.config.scheduler_action_state == nil, 'exported config must not include runtime scheduler state')
 	assert_true(profile.config.pending_state == nil, 'exported config must not include pending state')
@@ -1004,7 +1000,7 @@ local function main()
 	assert_equal(nested_diff_result.differences[1], 'config.movement.spacing.band_max', 'structured profile diff nested path mismatch')
 
 	local missing_key_payload = deep_clone(profile)
-	missing_key_payload.config.sleep.order = nil
+	missing_key_payload.config.targeting.targets = nil
 	local missing_key_deps = make_fake_fs({
 		[durable_path] = exporter.serialize_structured_profile(missing_key_payload),
 	})
@@ -1015,7 +1011,7 @@ local function main()
 	}, contract.validate_structured_profile_config, missing_key_deps)
 	assert_true(missing_key_result.ok == true, 'structured profile diff should succeed for missing key payload')
 	assert_equal(missing_key_result.count, 1, 'structured profile diff should report one missing key difference')
-	assert_equal(missing_key_result.differences[1], 'config.sleep.order', 'structured profile diff missing key path mismatch')
+	assert_equal(missing_key_result.differences[1], 'config.targeting.targets', 'structured profile diff missing key path mismatch')
 
 	local metadata_only_payload = deep_clone(profile)
 	metadata_only_payload.profile.exported_at = '2100-12-31T23:59:59Z'
@@ -1285,6 +1281,32 @@ local function main()
 	assert_nil(ui_fixture_reload_result.payload.profile.profile_key, 'UI-authored structured profile reload/apply helper must not require profile_key metadata')
 	assert_equal(#ui_fixture_reload_state.open_calls, 0, 'UI-authored structured profile reload/apply helper should not write files')
 	assert_equal(#ui_fixture_reload_state.rename_calls, 0, 'UI-authored structured profile reload/apply helper should not rename files')
+
+	local live_ui_fixture_path = 'data/profiles_v2/nyoourke_SAM_DRG.lua'
+	local live_ui_fixture_content = read_file(live_ui_fixture_path)
+	local live_ui_reload_settings = {
+		add_priority_names = { 'Apex Bat' },
+		sleep = true,
+		sleepspells = { 'Horde Lullaby II' },
+		sleepspell = 'Horde Lullaby II',
+	}
+	local live_ui_reload_identity = live_ui_reload_settings
+	local live_ui_reload_meta = {
+		character = 'Nyoourke',
+		main_job = 'SAM',
+		sub_job = 'DRG',
+	}
+	local live_ui_reload_deps, live_ui_reload_state = make_fake_fs({
+		[profile_v2.default_export_path(live_ui_reload_meta)] = live_ui_fixture_content,
+	})
+	local live_ui_reload_result = exporter.apply_structured_profile_file_to_settings(live_ui_reload_settings, live_ui_reload_meta, contract.validate_structured_profile_config, live_ui_reload_deps)
+	assert_true(live_ui_reload_result.ok == true, 'real UI-authored structured profile should be consumable by the reload/apply helper')
+	assert_equal(live_ui_reload_result.stage, 'done', 'real UI-authored structured profile should finish cleanly')
+	assert_nil(live_ui_reload_result.error, 'real UI-authored structured profile should not report a conversion mismatch')
+	assert_nil(live_ui_reload_result.detail, 'real UI-authored structured profile should not report a conversion detail')
+	assert_true(live_ui_reload_settings == live_ui_reload_identity, 'real UI-authored structured profile reload/apply helper must preserve settings table identity')
+	assert_equal(#live_ui_reload_state.open_calls, 0, 'real UI-authored structured profile reload/apply helper should not write files')
+	assert_equal(#live_ui_reload_state.rename_calls, 0, 'real UI-authored structured profile reload/apply helper should not rename files')
 
 	local scalar_apply_payload = deep_clone(profile)
 	scalar_apply_payload.config.combat.face = false

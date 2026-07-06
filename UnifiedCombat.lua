@@ -847,7 +847,11 @@ local function uc_apply_profile_v2_file(meta, settings)
 		return false, uc_profile_v2_file_path(meta), 'profile v2 apply returned invalid result', nil
 	end
 	if result.ok ~= true or type(result.active_profile) ~= 'table' or type(result.candidate) ~= 'table' then
-		return false, result.path or uc_profile_v2_file_path(meta), result.error, nil
+		local failure_error = result.error
+		if result.stage == 'convert' and type(result.detail) == 'string' and result.detail ~= '' then
+			failure_error = tostring(failure_error or 'unknown error') .. ': ' .. result.detail
+		end
+		return false, result.path or uc_profile_v2_file_path(meta), failure_error, nil
 	end
 	local active_ok, active_err = uc_active_config.set_active_profile(result.active_profile)
 	if active_ok ~= true then
