@@ -58,6 +58,25 @@ local function normalize_boolean(value, default_value)
     return default_value
 end
 
+local function normalize_optional_true_boolean(value)
+    if value == true then
+        return true
+    end
+    if type(value) == 'number' then
+        if value == 1 then
+            return true
+        end
+        return nil
+    end
+    if type(value) == 'string' then
+        local lowered = trim_string(value):lower()
+        if lowered == 'true' or lowered == 'on' or lowered == 'yes' or lowered == '1' then
+            return true
+        end
+    end
+    return nil
+end
+
 local function normalize_number(value, default_value, options)
     local n = nil
     if type(value) == 'number' then
@@ -753,7 +772,7 @@ end
 local function normalize_ownership(source, config)
     local ownership = config.ownership
     local nested = get_path(source, { 'ownership' })
-    if is_table(nested) and table_has_any(nested, { 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled', 'scheduler_dark_launch_combat', 'scheduler_dark_launch_defensive', 'scheduler_dark_launch_movement', 'scheduler_dark_launch_maintenance' }) then
+    if is_table(nested) and table_has_any(nested, { 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled', 'scheduler_dark_launch_combat', 'scheduler_dark_launch_defensive', 'scheduler_dark_launch_movement', 'scheduler_dark_launch_maintenance', 'profile_v2_autoload' }) then
         ownership.domain_combat_enabled = normalize_boolean(nested.domain_combat_enabled, ownership.domain_combat_enabled)
         ownership.domain_defensive_enabled = normalize_boolean(nested.domain_defensive_enabled, ownership.domain_defensive_enabled)
         ownership.domain_movement_enabled = normalize_boolean(nested.domain_movement_enabled, ownership.domain_movement_enabled)
@@ -763,6 +782,7 @@ local function normalize_ownership(source, config)
         ownership.scheduler_dark_launch_defensive = normalize_boolean(nested.scheduler_dark_launch_defensive, ownership.scheduler_dark_launch_defensive)
         ownership.scheduler_dark_launch_movement = normalize_boolean(nested.scheduler_dark_launch_movement, ownership.scheduler_dark_launch_movement)
         ownership.scheduler_dark_launch_maintenance = normalize_boolean(nested.scheduler_dark_launch_maintenance, ownership.scheduler_dark_launch_maintenance)
+        ownership.profile_v2_autoload = normalize_optional_true_boolean(nested.profile_v2_autoload)
     else
         ownership.domain_combat_enabled = normalize_boolean(first_path(source, { path('domain_combat_enabled') }), ownership.domain_combat_enabled)
         ownership.domain_defensive_enabled = normalize_boolean(first_path(source, { path('domain_defensive_enabled') }), ownership.domain_defensive_enabled)
@@ -773,6 +793,7 @@ local function normalize_ownership(source, config)
         ownership.scheduler_dark_launch_defensive = normalize_boolean(first_path(source, { path('scheduler_dark_launch_defensive') }), ownership.scheduler_dark_launch_defensive)
         ownership.scheduler_dark_launch_movement = normalize_boolean(first_path(source, { path('scheduler_dark_launch_movement') }), ownership.scheduler_dark_launch_movement)
         ownership.scheduler_dark_launch_maintenance = normalize_boolean(first_path(source, { path('scheduler_dark_launch_maintenance') }), ownership.scheduler_dark_launch_maintenance)
+        ownership.profile_v2_autoload = normalize_optional_true_boolean(first_path(source, { path('profile_v2_autoload') }))
     end
 end
 

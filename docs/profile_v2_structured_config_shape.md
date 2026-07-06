@@ -86,6 +86,7 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - The apply command reads and validates that same file, compares it against the current durable canonical config, then applies only durable `payload.config` domains back onto the flat runtime compatibility surface when a full candidate settings table can be built and verified first.
 - The apply command is explicit-command-only and runtime-only: it does not write v1 or v2 profile files back to disk.
 - The reload command reuses that same safe apply path and mutations, but reports reload-oriented chat so the addon remains a consumer of the UI-owned v2 file instead of becoming a general writer/editor.
+- `config.ownership.profile_v2_autoload` is an opt-in startup-consumer flag. When true, the addon may consume the v2 profile file automatically on load; when missing or false, startup autoload stays disabled. It is not engine autostart.
 - `T3.8l` exposes the read-only v2 file status inside the compact config status export payload as `profile_v2`, so UI consumers can see `missing`, `invalid`, `valid_match`, `valid_diff`, or `error` without applying, writing, or mutating settings.
 
 The canonical helper module `uc_profile_v2.lua` builds and consumes the structured payload for export, validate, diff, status inspection, and apply behavior, while the compatibility shim `uc_profile_v2_export.lua` simply returns that same module. This does not change live profile loading, live profile saving, or bridge write behavior.
@@ -99,7 +100,7 @@ The canonical helper module `uc_profile_v2.lua` builds and consumes the structur
 - `remote_bridge.lua` remains the live UI write path.
 - `//uc profilev2 export` is explicit-command-only and writes the new structured v2 artifact to `data/profiles_v2/` only when a user manually asks for a migration/bootstrap seed.
 - The WinForms UI save path now writes the same structured v2 artifact shape to `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` as the durable UI-owned profile file.
-- The UI writer intentionally leaves runtime/session-only or legacy command-mutated fields out of the durable v2 file, including `fight_leader`, `fight_leader_id`, `add_priority_names`, `sleep`, `sleepspells`, `sleepspell`, and the engine runtime mirror `command.engine_enabled_default`.
+- The UI writer intentionally leaves runtime/session-only or legacy command-mutated fields out of the durable v2 file, including `fight_leader`, `fight_leader_id`, `add_priority_names`, `sleep`, `sleepspells`, `sleepspell`, and the engine runtime mirror `command.engine_enabled_default`. The optional startup flag `config.ownership.profile_v2_autoload` is only emitted when explicitly enabled.
 - Normal v2 profile editing and saving remain owned by external UI/tooling, not by the addon export command.
 - No profile polling or live apply behavior exists.
 - Scheduler/provider/action-decision reads still use current runtime settings, not structured profile files.

@@ -180,6 +180,7 @@ return {
             scheduler_dark_launch_defensive = false,
             scheduler_dark_launch_movement = false,
             scheduler_dark_launch_maintenance = false,
+            profile_v2_autoload = true,
         },
         legacy = {
             sub = true,

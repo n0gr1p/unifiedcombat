@@ -190,6 +190,14 @@ public partial class MainForm
             profile[key] = _boolChecks.TryGetValue(key, out var cb) && cb.Checked;
         }
 
+        if (profile.TryGetPropertyValue("profile_v2_autoload", out var autoloadValue)
+            && autoloadValue is JsonValue autoloadJson
+            && autoloadJson.TryGetValue<bool>(out var autoloadEnabled)
+            && autoloadEnabled == false)
+        {
+            profile.Remove("profile_v2_autoload");
+        }
+
         return profile;
     }
 

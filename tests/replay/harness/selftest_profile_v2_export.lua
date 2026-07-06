@@ -321,6 +321,145 @@ local function make_fake_fs(initial_files, failures, initial_dirs)
 	return deps, state
 end
 
+local function run_profile_v2_autoload_selftest(profile_v2, active_config, contract, flat, durable_path)
+	local previous_start_engine = rawget(_G, 'Start_Engine')
+	_G.Start_Engine = false
+
+	local profile_meta = {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		profile_key = 'Redrogue|PLD|WAR',
+		exported_at = '2026-06-29T18:00:00Z',
+	}
+
+	local disabled_payload = profile_v2.build_structured_profile(flat, profile_meta)
+	disabled_payload.config.ownership.profile_v2_autoload = nil
+	local disabled_deps, disabled_state = make_fake_fs({
+		[durable_path] = profile_v2.serialize_structured_profile(disabled_payload),
+	})
+	local disabled_settings = deep_clone(flat)
+	local disabled_snapshot = deep_clone(disabled_settings)
+	local disabled_active = active_config.build_active_profile_from_settings(disabled_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		source = 'UC_SETTINGS',
+	})
+	_G.UC_ACTIVE_PROFILE = disabled_active
+	local disabled_active_identity = rawget(_G, 'UC_ACTIVE_PROFILE')
+	local disabled_active_snapshot = deep_clone(rawget(_G, 'UC_ACTIVE_PROFILE'))
+	local disabled_settings_identity = disabled_settings
+	local disabled_result = profile_v2.autoload_structured_profile_file_to_settings(
+		disabled_settings,
+		{
+			character = 'Redrogue',
+			main_job = 'PLD',
+			sub_job = 'WAR',
+		},
+		contract.validate_structured_profile_config,
+		disabled_deps
+	)
+	assert_true(disabled_result == nil, 'autoload should stay disabled when the flag is missing')
+	assert_true(disabled_settings == disabled_settings_identity, 'disabled autoload must preserve settings table identity')
+	assert_deep_equal(disabled_settings, disabled_snapshot, 'disabled autoload must not mutate settings')
+	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE') == disabled_active_identity, 'disabled autoload must not mutate active profile identity')
+	assert_deep_equal(rawget(_G, 'UC_ACTIVE_PROFILE'), disabled_active_snapshot, 'disabled autoload must not mutate active profile values')
+	assert_equal(#disabled_state.read_calls, 1, 'disabled autoload should only inspect the file')
+	assert_equal(#disabled_state.open_calls, 0, 'disabled autoload must not write files')
+	assert_true(_G.Start_Engine == false, 'disabled autoload must not start the engine')
+
+	local enabled_payload = profile_v2.build_structured_profile(flat, profile_meta)
+	enabled_payload.config.ownership.profile_v2_autoload = true
+	local enabled_deps, enabled_state = make_fake_fs({
+		[durable_path] = profile_v2.serialize_structured_profile(enabled_payload),
+	})
+	local enabled_settings = deep_clone(flat)
+	local enabled_snapshot = deep_clone(enabled_settings)
+	local enabled_expected = deep_clone(enabled_snapshot)
+	enabled_expected.profile_v2_autoload = true
+	local enabled_active = active_config.build_active_profile_from_settings(enabled_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		source = 'UC_SETTINGS',
+	})
+	_G.UC_ACTIVE_PROFILE = enabled_active
+	local enabled_active_identity = rawget(_G, 'UC_ACTIVE_PROFILE')
+	local enabled_settings_identity = enabled_settings
+	local enabled_result = profile_v2.autoload_structured_profile_file_to_settings(
+		enabled_settings,
+		{
+			character = 'Redrogue',
+			main_job = 'PLD',
+			sub_job = 'WAR',
+		},
+		contract.validate_structured_profile_config,
+		enabled_deps
+	)
+	assert_true(type(enabled_result) == 'table', 'enabled autoload should return a result')
+	assert_true(enabled_result.ok == true, 'enabled autoload should apply successfully')
+	assert_true(enabled_result.autoload == true, 'enabled autoload should mark the result as autoload')
+	assert_equal(enabled_result.count, 0, 'enabled autoload should report no config differences for matching files')
+	assert_true(enabled_settings == enabled_settings_identity, 'enabled autoload must preserve settings table identity')
+	assert_deep_equal(enabled_settings, enabled_expected, 'enabled autoload must update settings values in place')
+	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE') == enabled_active_identity, 'enabled autoload must preserve active profile table identity')
+	assert_true(type(enabled_result.active_profile) == 'table', 'enabled autoload must return an active profile')
+	assert_true(_G.UC_ACTIVE_PROFILE.config.ownership.profile_v2_autoload == true, 'enabled autoload must update the active profile')
+	assert_true(enabled_settings.profile_v2_autoload == true, 'enabled autoload must project the flag into flat settings')
+	assert_true(enabled_result.candidate.profile_v2_autoload == true, 'enabled autoload must build a candidate with the flag projected')
+	assert_equal(#enabled_state.read_calls, 2, 'enabled autoload should inspect and then apply the file')
+	assert_equal(#enabled_state.open_calls, 0, 'enabled autoload must not write files')
+	assert_true(_G.Start_Engine == false, 'enabled autoload must not start the engine')
+
+	local invalid_deps, invalid_state = make_fake_fs({
+		[durable_path] = profile_v2.serialize_structured_profile(enabled_payload),
+	})
+	local invalid_settings = deep_clone(flat)
+	local invalid_snapshot = deep_clone(invalid_settings)
+	local invalid_settings_identity = invalid_settings
+	local invalid_active = active_config.build_active_profile_from_settings(invalid_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		source = 'UC_SETTINGS',
+	})
+	_G.UC_ACTIVE_PROFILE = invalid_active
+	local invalid_active_identity = rawget(_G, 'UC_ACTIVE_PROFILE')
+	local invalid_active_snapshot = deep_clone(rawget(_G, 'UC_ACTIVE_PROFILE'))
+	local invalid_result = profile_v2.autoload_structured_profile_file_to_settings(
+		invalid_settings,
+		{
+			character = 'Redrogue',
+			main_job = 'PLD',
+			sub_job = 'WAR',
+		},
+		function()
+			return {
+				ok = false,
+				errors = { 'forced validation failure' },
+			}
+		end,
+		invalid_deps
+	)
+	assert_true(type(invalid_result) == 'table', 'invalid autoload should return a failure result')
+	assert_true(invalid_result.ok == false, 'invalid autoload should fail cleanly')
+	assert_equal(invalid_result.error, 'forced validation failure', 'invalid autoload failure reason mismatch')
+	assert_true(invalid_settings == invalid_settings_identity, 'invalid autoload must preserve settings identity')
+	assert_deep_equal(invalid_settings, invalid_snapshot, 'invalid autoload must not mutate settings')
+	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE') == invalid_active_identity, 'invalid autoload must preserve active profile identity')
+	assert_deep_equal(rawget(_G, 'UC_ACTIVE_PROFILE'), invalid_active_snapshot, 'invalid autoload must not mutate active profile values')
+	assert_equal(#invalid_state.read_calls, 2, 'invalid autoload should inspect and then attempt apply')
+	assert_equal(#invalid_state.open_calls, 0, 'invalid autoload must not write files')
+	assert_true(_G.Start_Engine == false, 'invalid autoload must not start the engine')
+
+	if previous_start_engine == nil then
+		_G.Start_Engine = nil
+	else
+		_G.Start_Engine = previous_start_engine
+	end
+end
+
 local function build_flat_settings()
 	return {
 		character = 'Redrogue',
@@ -382,6 +521,7 @@ local function build_flat_settings()
 		domain_maintenance_enabled = true,
 		domain_follow_enabled = true,
 		scheduler_dark_launch_combat = true,
+		profile_v2_autoload = true,
 		cor_roll_1 = 'Chaos Roll',
 		cor_roll_2 = 'Samurai Roll',
 		sub = true,
@@ -567,6 +707,7 @@ local function build_expected_config()
 			scheduler_dark_launch_defensive = false,
 			scheduler_dark_launch_movement = false,
 			scheduler_dark_launch_maintenance = false,
+			profile_v2_autoload = true,
 		},
 		legacy = {
 			sub = true,
@@ -1456,6 +1597,11 @@ local function main()
 	assert_contains(addon, "UC profile v2 reload failed: ", 'addon must report reload failures tersely')
 	assert_contains(addon, "UC profile v2 reload: no config differences", 'addon must report no-diff reload tersely')
 	assert_contains(addon, "UC profile v2 reload: ", 'addon must report applied reload tersely')
+	assert_contains(addon, "UC profile v2 autoload: applied", 'addon must report autoload success tersely')
+	assert_contains(addon, "UC profile v2 autoload: no config differences", 'addon must report no-diff autoload tersely')
+	assert_contains(addon, "UC profile v2 autoload failed: ", 'addon must report autoload failures tersely')
+	assert_contains(addon, "uc_autoload_profile_v2_file()", 'addon must wire the autoload helper into startup events')
+	assert_contains(addon, "uc_profile_v2.autoload_structured_profile_file_to_settings(", 'addon must use the shared autoload helper')
 	assert_contains(addon, "local detail_mode = args[3] and tostring(args[3]):lower() == 'detail'", 'addon must recognize the diff detail command')
 	assert_contains(addon, "local ok_reload, _, reload_err, reload_count = uc_apply_profile_v2_file(", 'addon reload command must use the shared apply path')
 	assert_contains(addon, "local uc_sync_table_in_place", 'addon apply helper must keep sync helper scoped locally')
@@ -1567,6 +1713,8 @@ local function main()
 	assert_equal(conversion_failure_err, 'forced normalize failure', 'live profilev2 apply conversion failure reason mismatch')
 	assert_deep_equal(live_conversion_failure_settings, live_conversion_failure_snapshot, 'live profilev2 apply conversion failure must not mutate settings')
 	assert_deep_equal(rawget(_G, 'UC_ACTIVE_PROFILE'), live_conversion_failure_active_snapshot, 'live profilev2 apply conversion failure must not mutate active profile')
+
+	run_profile_v2_autoload_selftest(profile_v2, active_config, contract, flat, durable_path)
 
 	_G.UC_normalize_settings_table = previous_global_uc_normalize_settings_table
 	_G.uc_normalize_settings_table = previous_global_uc_normalize_settings_table_lower

@@ -355,17 +355,22 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.log_tank_sched = config.debug.tank_sched
 	end
 
-	if type(config.ownership) == 'table' then
-		candidate.domain_combat_enabled = config.ownership.domain_combat_enabled
-		candidate.domain_defensive_enabled = config.ownership.domain_defensive_enabled
-		candidate.domain_movement_enabled = config.ownership.domain_movement_enabled
-		candidate.domain_maintenance_enabled = config.ownership.domain_maintenance_enabled
-		candidate.domain_follow_enabled = config.ownership.domain_follow_enabled
-		candidate.scheduler_dark_launch_combat = config.ownership.scheduler_dark_launch_combat
-		candidate.scheduler_dark_launch_defensive = config.ownership.scheduler_dark_launch_defensive
-		candidate.scheduler_dark_launch_movement = config.ownership.scheduler_dark_launch_movement
-		candidate.scheduler_dark_launch_maintenance = config.ownership.scheduler_dark_launch_maintenance
-	end
+    if type(config.ownership) == 'table' then
+        candidate.domain_combat_enabled = config.ownership.domain_combat_enabled
+        candidate.domain_defensive_enabled = config.ownership.domain_defensive_enabled
+        candidate.domain_movement_enabled = config.ownership.domain_movement_enabled
+        candidate.domain_maintenance_enabled = config.ownership.domain_maintenance_enabled
+        candidate.domain_follow_enabled = config.ownership.domain_follow_enabled
+        candidate.scheduler_dark_launch_combat = config.ownership.scheduler_dark_launch_combat
+        candidate.scheduler_dark_launch_defensive = config.ownership.scheduler_dark_launch_defensive
+        candidate.scheduler_dark_launch_movement = config.ownership.scheduler_dark_launch_movement
+        candidate.scheduler_dark_launch_maintenance = config.ownership.scheduler_dark_launch_maintenance
+        if config.ownership.profile_v2_autoload == true then
+            candidate.profile_v2_autoload = true
+        else
+            candidate.profile_v2_autoload = nil
+        end
+    end
 
 	if type(config.legacy) == 'table' then
 		candidate.sub = config.legacy.sub

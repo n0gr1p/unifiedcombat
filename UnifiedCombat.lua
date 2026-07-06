@@ -875,6 +875,38 @@ local function uc_apply_profile_v2_file(meta, settings)
 	return true, result.path, nil, result.count
 end
 
+local function uc_autoload_profile_v2_file()
+	local p = windower.ffxi.get_player()
+	if not p or not p.name or not _G.UC_SETTINGS then
+		return nil
+	end
+
+	local result = uc_profile_v2.autoload_structured_profile_file_to_settings(_G.UC_SETTINGS, {
+		character = p.name,
+		main_job = p.main_job,
+		sub_job = p.sub_job,
+		addon_path = uc_addon_path(),
+	}, function(payload)
+		return uc_validate_structured_profile_export(payload)
+	end)
+	if type(result) ~= 'table' then
+		return nil
+	end
+
+	if result.ok == true then
+		if tonumber(result.count) == 0 then
+			windower.add_to_chat(207, 'UC profile v2 autoload: no config differences')
+		else
+			windower.add_to_chat(207, 'UC profile v2 autoload: applied')
+		end
+	else
+		local reason = result.error or result.reason or 'unknown error'
+		windower.add_to_chat(167, 'UC profile v2 autoload failed: ' .. tostring(reason))
+	end
+
+	return result
+end
+
 uc_sync_table_in_place = function(dst, src)
 	return uc_active_config.sync_flat_settings_in_place(dst, src)
 end
@@ -1489,6 +1521,7 @@ windower.register_event('load', function()
 	if windower.ffxi.get_info().logged_in then
 		uc_update_engine()
 		uc_reload_active_profile()
+		uc_autoload_profile_v2_file()
 	end
 end)
 
@@ -2040,6 +2073,7 @@ end)
 windower.register_event('login', function()
 	uc_update_engine()
 	uc_reload_active_profile()
+	uc_autoload_profile_v2_file()
 	uc_start_active_engine_if_running()
 	uc_register_action_listener()
 end)

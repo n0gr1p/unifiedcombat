@@ -1195,4 +1195,31 @@ function M.apply_structured_profile_file_to_settings(current_settings, meta, val
 	}
 end
 
+function M.autoload_structured_profile_file_to_settings(current_settings, meta, validator, deps)
+	local inspection = M.validate_structured_profile_file(meta, nil, deps)
+	if type(inspection) ~= 'table' or inspection.ok ~= true or type(inspection.payload) ~= 'table' then
+		return nil
+	end
+
+	local config = inspection.payload.config
+	if type(config) ~= 'table' then
+		return nil
+	end
+
+	local ownership = config.ownership
+	if type(ownership) ~= 'table' then
+		return nil
+	end
+	if ownership.profile_v2_autoload ~= true then
+		return nil
+	end
+
+	local apply_result = M.apply_structured_profile_file_to_settings(current_settings, meta, validator, deps)
+	if type(apply_result) ~= 'table' then
+		return nil
+	end
+	apply_result.autoload = true
+	return apply_result
+end
+
 return M

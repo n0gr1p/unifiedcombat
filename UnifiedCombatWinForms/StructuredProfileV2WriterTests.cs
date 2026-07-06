@@ -11,6 +11,8 @@ internal static class StructuredProfileV2WriterTests
         {
             TestBuildFinalPath();
             TestSerializeShapeAndEscaping();
+            TestSerializeOmitsProfileV2AutoloadWhenDisabled();
+            TestSerializeIncludesProfileV2AutoloadWhenEnabled();
             TestWriteCreatesProfilesDirectory();
             TestWritePreservesExistingFinalOnTempWriteFailure();
             TestWritePreservesExistingFinalOnPromotionFailure();
@@ -89,6 +91,30 @@ internal static class StructuredProfileV2WriterTests
         AssertNotContains(content, "sleep_spell_entries", "legacy sleep spell entries must not be serialized");
         AssertNotContains(content, "sleepspells", "legacy sleep list must not be serialized");
         AssertNotContains(content, "sleepspell", "legacy sleep singleton must not be serialized");
+        AssertNotContains(content, "profile_v2_autoload", "autoload must be omitted unless explicitly enabled");
+    }
+
+    private static void TestSerializeOmitsProfileV2AutoloadWhenDisabled()
+    {
+        var flat = BuildSampleFlatProfile();
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+
+        AssertNotContains(content, "profile_v2_autoload", "autoload must stay missing when disabled");
+    }
+
+    private static void TestSerializeIncludesProfileV2AutoloadWhenEnabled()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["profile_v2_autoload"] = true;
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+
+        AssertContains(content, "profile_v2_autoload = true", "autoload flag missing when explicitly enabled");
     }
 
     private static void TestWriteCreatesProfilesDirectory()

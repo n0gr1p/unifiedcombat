@@ -109,6 +109,8 @@ Durable config should be compared by `profilev2 status` and `profilev2 diff`.
 
 Durable config may be applied by `profilev2 reload`.
 
+The UI-owned `config.ownership.profile_v2_autoload` flag is a startup-consumer setting, not engine running state. It controls whether the addon should consume the v2 profile file on load; it must not start the combat engine.
+
 ### 2. Runtime / Session State
 
 Runtime/session state is addon-owned and not durable profile config.

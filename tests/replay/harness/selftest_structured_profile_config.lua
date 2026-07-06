@@ -120,6 +120,7 @@ local function build_flat_settings()
         domain_maintenance_enabled = true,
         domain_follow_enabled = true,
         scheduler_dark_launch_combat = true,
+        profile_v2_autoload = true,
         sub = true,
         hunter = true,
         profiles = {
@@ -219,6 +220,7 @@ local function build_structured_payload()
                 domain_maintenance_enabled = true,
                 domain_follow_enabled = true,
                 scheduler_dark_launch_combat = true,
+                profile_v2_autoload = true,
             },
             legacy = {
                 sub = true,
@@ -270,6 +272,7 @@ local function assert_common_config(config, source)
     assert_equal(config.debug.enabled, true, source .. " debug enabled mismatch")
     assert_equal(config.debug.def_sched, true, source .. " debug defensive scheduler mismatch")
     assert_equal(config.ownership.scheduler_dark_launch_combat, true, source .. " ownership dark launch mismatch")
+    assert_equal(config.ownership.profile_v2_autoload, true, source .. " ownership autoload mismatch")
     assert_equal(config.legacy.sub, true, source .. " legacy sub mismatch")
     assert_equal(config.legacy.hunter, true, source .. " legacy hunter mismatch")
     assert_equal(config.legacy.profiles.UC.PLD.marker, true, source .. " legacy profiles mismatch")
