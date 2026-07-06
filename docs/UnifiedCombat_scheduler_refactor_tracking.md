@@ -33,10 +33,33 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.8k` adds a hand-authored UI v2 fixture and consumer-contract tests proving validate/status/diff/reload helpers accept UI-owned files without relying on addon-export metadata.
 - `T3.8l` adds the read-only `profile_v2` status summary to the compact config status export payload, so the UI can inspect the v2 file state without changing bridge writes or scheduler/provider reads.
 - `T4.1` migrates only debug-only active config readers in `unified_scheduler.lua`, `uc_party_follow.lua`, and `uc_pathing.lua`, while explicitly deferring scheduler action-decision reads, movement/follow control reads, and arbitrary slash-command durable-write syncing.
+- `T4.4` adds a scheduler config reader facade and migrates a bounded combat/target/tank scheduler slice plus scheduler-facing tank provider readers to active config, while still deferring `fight_leader`, `add_priority`, `sleep`, and broader core tick ownership reads.
 - `T4.3` migrates a bounded defensive/maintenance/spell-related durable-reader batch in `uc_hb_buff_maint.lua`, `uc_cor_maintenance.lua`, and `unified_scheduler.lua`, while preserving flat/default fallback and still deferring command-owned legacy settings plus broader scheduler/provider action-decision migration.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T4.4` Add scheduler config reader facade and migrate targeting/tank readers
+
+- Status: `DONE`
+- Changed files:
+  - `uc_scheduler_config.lua`
+  - `unified_scheduler.lua`
+  - `unified_combat_core.lua`
+  - `tests/replay/harness/selftest_scheduler_config_readers.lua`
+  - `tests/replay/harness/selftest_active_config_consumer_migration.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `tests/replay/harness/selftest_runtime_parse.lua`
+  - `docs/active_config_consumer_migration_audit.md`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Added `uc_scheduler_config.lua` as a small scheduler/provider-facing facade over `uc_active_config` with legacy flat/default fallback behavior.
+  - Migrated scheduler combat dark-launch ownership gates, autotarget/prime/tank-mode reads, tank/debug log gates, and enemy-buff diagnostic readers to that facade without adding new top-level local pressure in `unified_scheduler.lua`.
+  - Added a scheduler-only settings view in `unified_combat_core.lua` so the scheduler-facing target and tank providers consume active-config-first combat/tank values while broader core tick ownership paths remain unchanged.
+  - Added focused dynamic and static coverage for facade parity, migrated call sites, and the deferred `fight_leader` / `add_priority` / `sleep` boundaries.
+- Next step:
+  - Keep broader core tick ownership reads and command-owned legacy settings deferred unless a future task explicitly widens the migration scope.
 
 ### `T4.3` Migrate defensive maintenance config readers to active config
 

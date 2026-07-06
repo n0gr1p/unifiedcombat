@@ -51,7 +51,7 @@ local function main()
 
     assert_contains(generic_slice, "if not bool_setting(ctx.settings.ability_active, false) then", 'generic configured JAs must stay gated by ability_active')
     assert_contains(generic_slice, "local ordered = ability_pipeline.collect_ordered(ctx.settings, 6)", 'generic configured JAs must still come from the configured ability list')
-    assert_contains(generic_slice, "local tank_mode = bool_setting(ctx.settings and ctx.settings.tank, false)", 'generic configured JAs must read the tank flag for tank-mode weighting')
+    assert_contains(generic_slice, "local tank_mode = bool_setting(uc_scheduler_config.tank_enabled(ctx.settings), false)", 'generic configured JAs must read the tank flag for tank-mode weighting')
     assert_contains(generic_slice, "local priority_band = tank_mode and 99 or 70", 'tank-mode configured JAs must use the safer higher band without changing DPS baseline')
     assert_contains(generic_slice, "required_setting = 'ability_active'", 'generic configured JAs must keep the explicit setting dependency')
 

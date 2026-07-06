@@ -24,6 +24,7 @@ local RUNTIME_LUA_FILES = {
     "uc_profile_v2.lua",
     "uc_profile_v2_export.lua",
     "uc_profile_contract.lua",
+    "uc_scheduler_config.lua",
     "uc_scheduler_action_metadata.lua",
     "uc_scheduler_action_predicates.lua",
     "uc_scheduler_action_state.lua",

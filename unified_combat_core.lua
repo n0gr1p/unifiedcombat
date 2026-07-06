@@ -3643,8 +3643,22 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings)
 	return true, 'WS_INTENT_SENT'
 end
 
+local function scheduler_settings_view(settings)
+	local base = settings or get_settings() or {}
+	local view = {}
+	for key, value in pairs(base) do
+		view[key] = value
+	end
+	local scheduler_config = require('uc_scheduler_config')
+	view.autotarget = scheduler_config.combat_autotarget(base)
+	view.prime = scheduler_config.combat_prime(base)
+	view.tank = scheduler_config.tank_enabled(base)
+	view.tank_enmity_actions = scheduler_config.tank_enmity_actions(base)
+	return view
+end
+
 function core.select_tank_enmity_for_scheduler(settings)
-	local s = settings or get_settings() or {}
+	local s = scheduler_settings_view(settings)
 	if not setting_enabled(s.tank) or not setting_enabled(s.autotarget) then
 		return nil
 	end
@@ -3699,7 +3713,7 @@ function core.select_tank_enmity_for_scheduler(settings)
 end
 
 function core.select_target_for_scheduler(settings)
-	local s = settings or get_settings() or {}
+	local s = scheduler_settings_view(settings)
 	if not setting_enabled(s.autotarget) then
 		return nil
 	end

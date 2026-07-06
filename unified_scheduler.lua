@@ -14,7 +14,7 @@ local json = require('json')
 local tb_effect_table = require('uc_tb_effect_table')
 local scheduler_locks = require('uc_scheduler_locks')
 local scheduler_pending = require('uc_scheduler_pending')
-local uc_active_config = require('uc_active_config')
+local uc_scheduler_config = require('uc_scheduler_config')
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
 	or nil
@@ -1320,28 +1320,14 @@ local function current_zone_id()
 end
 
 local function enemy_dispel_diag(msg)
-	local s = rawget(_G, 'UC_SETTINGS') or {}
-	local dbg = uc_active_config.get_path('config.debug.enabled')
-	if dbg == nil then
-		dbg = s.debug == true or s.debug == 1 or tostring(s.debug or ''):lower() == 'true'
-	else
-		dbg = dbg == true
-	end
-	if not dbg then
+	if not uc_scheduler_config.debug_enabled() then
 		return
 	end
 	_G.UC_LAST_SCHED_ACTION = tostring(msg or '')
 end
 
 local function enemy_dispel_log(msg)
-	local s = rawget(_G, 'UC_SETTINGS') or {}
-	local log_on = uc_active_config.get_path('config.debug.def_sched')
-	if log_on == nil then
-		log_on = s.log_def_sched == true or s.log_def_sched == 1 or tostring(s.log_def_sched or ''):lower() == 'true'
-	else
-		log_on = log_on == true
-	end
-	if not log_on then
+	if not uc_scheduler_config.debug_log_def_sched() then
 		return
 	end
 	local diag = rawget(_G, 'UC_LOG_DIAG')
@@ -1766,11 +1752,7 @@ local function get_settings()
 end
 
 function scheduler.active_value_or_flat(path, flat_value)
-	local active_value = uc_active_config.get_path(path)
-	if active_value ~= nil then
-		return active_value
-	end
-	return flat_value
+	return uc_scheduler_config.active_value_or_flat(path, flat_value)
 end
 
 local function bool_setting(v, default_value)
@@ -1987,7 +1969,7 @@ local function log_def_sched(msg)
 		pcall(_G.UC_LOG_DIAG, 'def_sched', msg)
 	end
 	local s = get_settings()
-	if not bool_setting(s and s.debug, false) then
+	if not uc_scheduler_config.debug_enabled(s) then
 		return
 	end
 	local m = tostring(msg or '')
@@ -2262,7 +2244,7 @@ local p1_apply_face_to_target
 
 local function ensure_diag_logs_initialized()
 	local s = get_settings()
-	if not bool_setting(s and s.debug, false) then
+	if not uc_scheduler_config.debug_enabled(s) then
 		return
 	end
 	if type(rawget(_G, 'UC_LOG_DIAG')) ~= 'function' then
@@ -2637,7 +2619,7 @@ local function p1_build_party_id_set()
 end
 
 local function p1_prime_unclaimed_party_aggressive_ok(settings, mob, party_ids)
-	if not bool_setting(settings and settings.prime, false) then
+	if not bool_setting(uc_scheduler_config.combat_prime(settings), false) then
 		return false
 	end
 	if not mob or (tonumber(mob.claim_id) or 0) ~= 0 then
@@ -4088,7 +4070,7 @@ function p1_combat_helpers.collect_combat_sleep(ctx, out)
 	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 		return
 	end
-	if not bool_setting(ctx.settings.scheduler_dark_launch_combat, false) then
+	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(ctx.settings), false) then
 		return
 	end
 	if not bool_setting(ctx.settings.sleep, false) then
@@ -4357,17 +4339,17 @@ local function p1_collect_combat_engage(ctx, out)
 	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 		return
 	end
-	if not bool_setting(ctx.settings.scheduler_dark_launch_combat, false) then
+	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(ctx.settings), false) then
 		return
 	end
-	if not bool_setting(ctx.settings.autotarget, false) then
+	if not bool_setting(uc_scheduler_config.combat_autotarget(ctx.settings), false) then
 		return
 	end
 	local player = windower.ffxi.get_player()
 	if not player then
 		return
 	end
-	local tank_mode = bool_setting(ctx.settings and ctx.settings.tank, false)
+	local tank_mode = bool_setting(uc_scheduler_config.tank_enabled(ctx.settings), false)
 	local engage_priority = tank_mode and scheduler.TANK_ENGAGE_PRIORITY or scheduler.DEFAULT_ENGAGE_PRIORITY
 	local engage_urgency = tank_mode and scheduler.TANK_ENGAGE_URGENCY or scheduler.DEFAULT_ENGAGE_URGENCY
 	local engaged = tonumber(player.status) == 1
@@ -4452,7 +4434,7 @@ local function p1_collect_combat_engage(ctx, out)
 		t = windower.ffxi.get_mob_by_target('t')
 	end
 	if not t or not t.valid_target or tonumber(t.spawn_type) ~= 16 or (tonumber(t.hpp) or 0) <= 0 then
-		if bool_setting(ctx.settings and ctx.settings.debug, false) then
+		if uc_scheduler_config.debug_enabled(ctx.settings) then
 			_G.UC_LAST_SCHED_ACTION = '[p1]engage:collect_skip:no_valid_target'
 		end
 		if t then
@@ -4474,7 +4456,7 @@ local function p1_collect_combat_engage(ctx, out)
 				pull_tid
 			)
 			if pull_tid > 0 and this_tid > 0 and pull_tid == this_tid then
-				if bool_setting(ctx.settings and ctx.settings.debug, false) then
+				if uc_scheduler_config.debug_enabled(ctx.settings) then
 					_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:pull_owner tid=%d action=%s:%s'):format(
 						this_tid,
 						tostring(pull_pick.action_type or ''),
@@ -4499,17 +4481,17 @@ local function p1_collect_combat_engage(ctx, out)
 		claim_id
 	)
 	if not party_claimed_ok and not prime_unclaimed_ok and not force_leader_engage then
-		if bool_setting(ctx.settings and ctx.settings.debug, false) then
+		if uc_scheduler_config.debug_enabled(ctx.settings) then
 			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:policy claim=%d st=%d prime=%s'):format(
 				claim_id,
 				tonumber(t.status) or 0,
-				tostring(bool_setting(ctx.settings and ctx.settings.prime, false))
+				tostring(bool_setting(uc_scheduler_config.combat_prime(ctx.settings), false))
 			)
 		end
 		p1_log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', t, 'claim_policy', pull_owner_state, claim_check)
 		return
 	end
-	if bool_setting(ctx.settings and ctx.settings.debug, false) then
+	if uc_scheduler_config.debug_enabled(ctx.settings) then
 		if force_leader_engage then
 			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_emit_force_leader tid=%d name=%s'):format(
 				tonumber(t.id) or 0,
@@ -4564,7 +4546,7 @@ local function p1_collect_target_control(ctx, out)
 	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 		return
 	end
-	if not bool_setting(ctx.settings.autotarget, false) then
+	if not bool_setting(uc_scheduler_config.combat_autotarget(ctx.settings), false) then
 		return
 	end
 	if not combat_core or type(combat_core.select_target_for_scheduler) ~= 'function' then
@@ -4587,7 +4569,7 @@ local function p1_collect_target_control(ctx, out)
 	if tid <= 0 then
 		return
 	end
-	local tank_mode = bool_setting(ctx.settings and ctx.settings.tank, false)
+	local tank_mode = bool_setting(uc_scheduler_config.tank_enabled(ctx.settings), false)
 	local priority_band = tank_mode and scheduler.TANK_TARGET_ACQUIRE_PRIORITY or 84
 	local urgency = tank_mode and scheduler.TANK_TARGET_ACQUIRE_URGENCY or 0.55
 	local cur = windower.ffxi.get_mob_by_target('t')
@@ -4641,10 +4623,10 @@ local function p1_collect_pull_control(ctx, out)
 	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 		return
 	end
-	if not bool_setting(ctx.settings.scheduler_dark_launch_combat, false) then
+	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(ctx.settings), false) then
 		return
 	end
-	if not bool_setting(ctx.settings.autotarget, false) then
+	if not bool_setting(uc_scheduler_config.combat_autotarget(ctx.settings), false) then
 		return
 	end
 	if not combat_core or type(combat_core.select_pull_for_scheduler) ~= 'function' then
@@ -4813,7 +4795,7 @@ local function p1_collect_combat_ja(ctx, out)
 	if not player or tonumber(player.status) ~= 1 then
 		return
 	end
-	local tank_mode = bool_setting(ctx.settings and ctx.settings.tank, false)
+	local tank_mode = bool_setting(uc_scheduler_config.tank_enabled(ctx.settings), false)
 	local ordered = ability_pipeline.collect_ordered(ctx.settings, 6)
 	if #ordered == 0 then
 		return
@@ -5443,7 +5425,7 @@ local function p1_rank(ctx, proposals)
 		end
 		return tostring(a.proposal_id or '') < tostring(b.proposal_id or '')
 	end)
-	if bool_setting(ctx and ctx.settings and ctx.settings.debug, false) then
+	if uc_scheduler_config.debug_enabled(ctx and ctx.settings) then
 		local seen_engage = false
 		local won_engage = false
 		local top_provider = ''
@@ -5766,7 +5748,7 @@ function scheduler.p1_dispatch_target_control(selected, ctx)
 end
 
 function scheduler.p1_try_nonblocking_target_acquire(settings)
-	if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
+	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(settings), false) then
 		return false, nil
 	end
 	local ctx = p1_build_ctx(settings)
@@ -5961,7 +5943,7 @@ local function p1_dispatch_combat_engage(selected, settings, phase, expected_tid
 		local ok_set = p1_try_target_prep(expected_tid)
 		if not ok_set then
 			log_combat_sched(('engage_drop reason=TARGET_PREP_FAIL expected_tid=%d'):format(expected_tid))
-			if bool_setting(settings and settings.debug, false) then
+			if uc_scheduler_config.debug_enabled(settings) then
 				_G.UC_LAST_SCHED_ACTION = ('[p1]engage:dispatch_fail:settarget tid=%d'):format(expected_tid)
 			end
 			scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
@@ -5975,7 +5957,7 @@ local function p1_dispatch_combat_engage(selected, settings, phase, expected_tid
 	end
 	if not combat_core.is_live_actionable_combat_target(target, now_s(), true) then
 		log_combat_sched(('engage_drop reason=TARGET_NOT_ACTIONABLE expected_tid=%d'):format(expected_tid))
-		if bool_setting(settings and settings.debug, false) then
+		if uc_scheduler_config.debug_enabled(settings) then
 			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:dispatch_fail:not_actionable tid=%d'):format(expected_tid)
 		end
 		scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
@@ -6054,7 +6036,7 @@ local function p1_dispatch_combat_engage(selected, settings, phase, expected_tid
 	}, ('engage_attempt:%d'):format(expected_tid), 0.05)
 	if not uc_attack or type(uc_attack.engage_target) ~= 'function' then
 		log_combat_sched('engage_drop reason=NO_UC_ATTACK')
-		if bool_setting(settings and settings.debug, false) then
+		if uc_scheduler_config.debug_enabled(settings) then
 			_G.UC_LAST_SCHED_ACTION = '[p1]engage:dispatch_fail:no_uc_attack'
 		end
 		scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
@@ -6071,7 +6053,7 @@ local function p1_dispatch_combat_engage(selected, settings, phase, expected_tid
 		end
 		scheduler.p1_clear_engage_duplicate_state(phase, '', now_s())
 		log_combat_sched(('engage_send_fail tid=%d reason=%s'):format(expected_tid, tostring(engage_reason or 'ENGAGE_FAIL')))
-		if bool_setting(settings and settings.debug, false) then
+		if uc_scheduler_config.debug_enabled(settings) then
 			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:dispatch_fail:%s'):format(tostring(engage_reason or 'ENGAGE_FAIL'))
 		end
 		scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
@@ -6102,7 +6084,7 @@ local function p1_dispatch_combat_engage(selected, settings, phase, expected_tid
 end
 
 local function p1_dispatch_pull_control(selected, settings)
-	if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
+	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(settings), false) then
 		return false, nil
 	end
 	local blocked, block_reason = action_dispatch_blocked()
@@ -6408,7 +6390,7 @@ end
 
 local function p1_try_dark_launch_combat_dispatch(selected, settings, phase)
 	_G.UC_TANK_ENMITY_BLOCK = ''
-	if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
+	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(settings), false) then
 		return false, nil
 	end
 	p1_apply_face_to_target(settings, tonumber(selected.target_id) or 0)
@@ -7178,7 +7160,7 @@ function scheduler.p1_try_dark_launch_dispatch(settings)
 	end
 	local provider = tostring(selected.provider or '')
 	if provider == 'target_control' then
-		if not bool_setting(settings and settings.scheduler_dark_launch_combat, false) then
+		if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(settings), false) then
 			return false, nil
 		end
 		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
@@ -7221,11 +7203,11 @@ function scheduler.process_tick(cadence)
 		s._sched_next_defensive_at = tonumber(cadence.next_defensive_at) or 0
 		s._sched_next_maintenance_at = tonumber(cadence.next_maintenance_at) or 0
 	end
-	_G.UC_LOG_COMBAT_SCHED = bool_setting(s and s.log_combat_sched, false)
-	_G.UC_LOG_JA_SCHED = bool_setting(s and s.log_ja_sched, false)
-	_G.UC_LOG_JA_DEBUG = bool_setting(s and s.log_ja_debug, false)
-	_G.UC_LOG_DEF_SCHED = bool_setting(s and s.log_def_sched, false)
-	_G.UC_LOG_TANK_SCHED = bool_setting(s and s.log_tank_sched, false)
+	_G.UC_LOG_COMBAT_SCHED = uc_scheduler_config.debug_log_combat_sched(s)
+	_G.UC_LOG_JA_SCHED = uc_scheduler_config.debug_log_ja_sched(s)
+	_G.UC_LOG_JA_DEBUG = uc_scheduler_config.debug_log_ja_debug(s)
+	_G.UC_LOG_DEF_SCHED = uc_scheduler_config.debug_log_def_sched(s)
+	_G.UC_LOG_TANK_SCHED = uc_scheduler_config.debug_log_tank_sched(s)
 	ensure_diag_logs_initialized()
 	maybe_broadcast_party_state_ipc()
 	local doom_blocked, doom_reason = try_doom_water_emergency(s)
@@ -7390,13 +7372,7 @@ function scheduler.on_action(act)
 			now_s()
 		)
 	end
-	local cfg = rawget(_G, 'UC_SETTINGS') or {}
-	local enemy_buff_remove = uc_active_config.get_path('config.defensive.enemy_buffs.remove')
-	if enemy_buff_remove == nil then
-		enemy_buff_remove = bool_setting(cfg.def_remove_enemy_buffs, false)
-	else
-		enemy_buff_remove = enemy_buff_remove == true
-	end
+	local enemy_buff_remove = bool_setting(uc_scheduler_config.defensive_enemy_buffs_remove(), false)
 	local dbg_enemy_raw = _G.UC_LOG_DEF_SCHED and enemy_buff_remove
 	local raw_actor_id = tonumber(act and act.actor_id) or 0
 	local raw_actor = raw_actor_id > 0 and windower.ffxi.get_mob_by_id(raw_actor_id) or nil
@@ -7541,13 +7517,7 @@ function scheduler.on_action_message(msg)
 			return
 		end
 	end
-	local cfg = rawget(_G, 'UC_SETTINGS') or {}
-	local enemy_buff_remove = uc_active_config.get_path('config.defensive.enemy_buffs.remove')
-	if enemy_buff_remove == nil then
-		enemy_buff_remove = bool_setting(cfg.def_remove_enemy_buffs, false)
-	else
-		enemy_buff_remove = enemy_buff_remove == true
-	end
+	local enemy_buff_remove = bool_setting(uc_scheduler_config.defensive_enemy_buffs_remove(), false)
 	local dbg_enemy_raw = _G.UC_LOG_DEF_SCHED and enemy_buff_remove
 	if dbg_enemy_raw then
 		local ra = tonumber(msg and msg.actor_id) or 0
@@ -7807,7 +7777,7 @@ function scheduler.get_debug_overlay()
 	local function enabled_for_provider(provider)
 		local p = tostring(provider or '')
 		if p == 'combat' then
-			return bool_setting(s.scheduler_dark_launch_combat, false)
+			return bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(s), false)
 		elseif p == 'defensive_internal' then
 			return bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_defensive', s.scheduler_dark_launch_defensive), false)
 		elseif p == 'defensive_healbot' then

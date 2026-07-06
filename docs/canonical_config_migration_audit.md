@@ -1,10 +1,12 @@
 # Canonical Config Migration Audit
 
-Task: `T3.7d`, updated by `T4.1`, `T4.2`, and `T4.3`
+Task: `T3.7d`, updated by `T4.1`, `T4.2`, `T4.3`, and `T4.4`
 
 ## Current conclusion
 
 A canonical validated `config` object is worth adding, and `T3.7e` now adds the first pure adapter over the current flat `_G.UC_SETTINGS` shape. The current runtime has enough large scheduler and bridge functions that grouped domain subtables would reduce Lua 5.1 local/register pressure and make profile/UI ownership easier to reason about. It should not replace existing profile keys, bridge message paths, or save/load behavior yet.
+
+`T4.4` adds a small concrete proof point for that conclusion: `uc_scheduler_config.lua` now groups a bounded scheduler/provider combat/tank/debug reader slice behind named accessors, which lets `unified_scheduler.lua` consume more active-config-first durable reads without spending extra top-level locals in the scheduler file.
 
 ## Current settings and config surface
 
@@ -53,7 +55,7 @@ Recommendation: the compatibility adapter should preserve all of these fields as
 | `remote_bridge.lua` / `process_line` | about 648 lines, 144 `local` tokens, many settings refs | Owns live UI commands, list edits, engine commands, and snapshot requests | Partly, but the main gain is moving path-specific validation into a pure schema/adapter | Decompose command handlers after bridge/file contract migration |
 | `remote_bridge.lua` / `apply_set` | about 419 lines | Generic dotted-path mutation plus many numeric/boolean special cases | Yes, a config schema can centralize coercion rules later | Keep current bridge behavior until compatibility tests exist |
 | `unified_scheduler.lua` / `p1_collect_maintenance` | about 247 lines | Mixes COR, BRD, GEO, throttle diagnostics, and top-proposal details | Yes, `config.maintenance` would reduce repeated settings interpretation | Split provider collectors by domain |
-| `unified_scheduler.lua` / `p1_collect_combat_engage` | about 207 lines | Reads targeting, tank, fight-leader, debug, claim policy, and pull-owner state | Yes, `config.targeting`, `config.tank`, and `config.debug` help | Keep behavior stable; decompose only after config parity |
+| `unified_scheduler.lua` / `p1_collect_combat_engage` | about 207 lines | Reads targeting, tank, fight-leader, debug, claim policy, and pull-owner state | Yes, `T4.4` now proves a facade pattern for `config.combat`, `config.tank`, `config.debug`, and combat ownership toggles without increasing scheduler top-level local pressure | Keep behavior stable; decompose only after command-owned fight-leader and add-control reads are intentionally addressed |
 | `unified_scheduler.lua` / `build_defensive_candidates` | about 198 lines | Builds cures, debuffs, buffs, overwrite candidates from many defensive fields | Yes, `config.defensive` gives a narrower input surface | Provider split is likely worthwhile |
 | `unified_scheduler.lua` / `try_internal_defensive_action` | about 182 lines | Duplicates defensive checks and dispatch preparation | Yes, but function decomposition is still needed | Eventually route through proposal path only |
 | `UnifiedCombat.lua` / profile load/apply helpers | about 97 lines in `uc_load_profiles_for_character` plus profile key loops | Owns defaults, validation status, normalization, save/apply compatibility | A config normalizer should live beside this, not inside it | Keep load/save unchanged until normalizer is proven |

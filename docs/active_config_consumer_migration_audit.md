@@ -1,6 +1,6 @@
 # Active Config Consumer Migration Audit
 
-Task: `T3.7i`, updated by `T3.7k`, `T3.8a`, `T4.1`, `T4.2`, and `T4.3`
+Task: `T3.7i`, updated by `T3.7k`, `T3.8a`, `T4.1`, `T4.2`, `T4.3`, and `T4.4`
 
 ## Scope
 
@@ -10,6 +10,7 @@ This audit tracks the staged active-config consumer migration.
 - `T4.1` changed only a conservative debug-reader batch.
 - `T4.2` changes runtime follow/path reader code in `uc_party_follow.lua` and `uc_pathing.lua`, but does not change profile load/save behavior, bridge write behavior, scheduler/provider action-decision behavior, addon command behavior, or any generic sync-after-mutation path.
 - `T4.3` changes a bounded defensive/maintenance/spell-related durable-reader batch in `uc_hb_buff_maint.lua`, `uc_cor_maintenance.lua`, and `unified_scheduler.lua`, while preserving flat/default fallback when active paths are missing and still deferring command-owned legacy settings such as `sleep`, `fight_leader`, and `add_priority`.
+- `T4.4` adds a small scheduler-facing active-config reader facade in `uc_scheduler_config.lua` and routes a bounded combat/target/tank scheduler slice through it, while preserving flat/default fallback when active paths are missing and still deferring command-owned legacy settings such as `sleep`, `fight_leader`, and `add_priority`.
 
 `T3.7k` audited the active bridge read-only settings consumers after the `T3.7j` migration. It also made no runtime behavior changes and no bridge behavior changes. `T3.7j` live sanity passed before `T3.7k`: addon reload succeeded, no Lua errors were reported, the external UI still connected/loaded, `//uc configstatus export` succeeded, the exported file looked sane, and a short combat loop showed no weirdness.
 
@@ -20,6 +21,7 @@ This audit tracks the staged active-config consumer migration.
 `T4.1` keeps active-profile refresh on startup, the existing v1 load/reload path, and explicit `profilev2 apply/reload`, while avoiding any new generic sync-after-command-mutation behavior. It migrates only a narrow debug-only batch of active runtime readers and documents slash-command durable-write caveats instead of promoting them to active-profile ownership.
 `T4.2` migrates a second runtime batch of durable follow/path readers. Those readers now prefer `uc_active_config` accessors and preserve the prior flat/default behavior only when the active path is missing. `T4.2` does not add startup v2 autoload, file watching/polling, addon-driven durable writes, generic active-profile sync after arbitrary mutation, or scheduler/provider action-decision migration.
 `T4.3` migrates a third active runtime batch: defensive buff maintenance readers in `uc_hb_buff_maint.lua`, COR maintenance readers in `uc_cor_maintenance.lua`, and a bounded set of defensive/maintenance/spell-related durable readers in `unified_scheduler.lua`. Those readers now prefer structured `config.defensive.*` / `config.maintenance.cor.*` / `config.ownership.*` values and preserve the prior flat/default behavior only when the active path is missing. `T4.3` does not add startup v2 autoload, file watching/polling, addon-driven durable writes, or generic active-profile sync after arbitrary command mutation.
+`T4.4` adds `uc_scheduler_config.lua` so `unified_scheduler.lua` can keep consuming active-config-first durable readers without pushing more top-level locals into the scheduler file. It migrates a bounded scheduler/provider-adjacent combat/target/tank slice: combat dark-launch ownership gates, autotarget/prime/tank-mode reads, tank enmity action reads, and nearby scheduler debug-log gates now prefer structured `config.debug.*`, `config.combat.*`, `config.ownership.scheduler_dark_launch_combat`, and `config.tank.*` values while preserving the prior flat/default behavior only when the active path is missing.
 
 ## Active runtime entry points
 
@@ -69,7 +71,8 @@ Assessment:
 | `unified_scheduler.lua` / `enemy_dispel_diag`, `enemy_dispel_log` | Reads `debug`, `log_def_sched` for diagnostic logging | `safe_debug_or_ui` | `T4.1` migrated these debug-only gates to `uc_active_config` accessors with flat-value fallback only when the active path is missing. |
 | `unified_scheduler.lua` / raw enemy action/message logging | Reads `def_remove_enemy_buffs` with log flag for diagnostic raw enemy logs | `safe_debug_or_ui` | `T4.1` migrated only this diagnostic gate; no scheduler action-decision reads moved. |
 | `unified_scheduler.lua` / defensive and maintenance durable reader slice | Reads bounded defensive cure thresholds/toggles, provider selection, overwrite interval, enemy-buff removal toggle, and defensive/maintenance dark-launch toggles | `migrated_active_config_reader` | `T4.3` now prefers `config.defensive.*` and `config.ownership.*` for this bounded batch, with flat/default fallback when the active path is missing. Sleep, fight-leader, broader combat/tank/targeting reads, and live runtime state remain deferred. |
-| `unified_scheduler.lua` / broader provider and dispatch paths via context settings | Reads many combat/tank/targeting/sleep and other runtime-sensitive fields | `high_action_selection_risk` | Still avoid until domain parity is broader and command-owned legacy settings are retired. |
+| `unified_scheduler.lua` / bounded combat target tank scheduler slice | Reads combat dark-launch ownership gates, autotarget/prime/tank-mode reads, and nearby scheduler debug-log gates | `migrated_active_config_reader` | `T4.4` routes these reads through `uc_scheduler_config.lua`, so the scheduler now prefers structured `config.debug.*`, `config.combat.*`, `config.ownership.scheduler_dark_launch_combat`, and `config.tank.*` values with flat/default fallback when the active path is missing. |
+| `unified_scheduler.lua` / remaining broader provider and dispatch paths via context settings | Reads command-owned `sleep`, `fight_leader`, and other runtime-sensitive fields | `high_action_selection_risk` | Still avoid until command-owned legacy settings are retired; `T4.4` leaves those reads deferred on purpose. |
 | `uc_hb_buff_maint.lua` / defensive buff chooser | Reads defensive buff list, self-only gate, and overwrite settings | `migrated_active_config_reader` | `T4.3` now prefers `config.defensive.buffs.list`, `self_only`, `overwrite_enabled`, and `overwrite_interval`, with flat/default fallback when the active path is missing. `defensive_targeted_buffs` remains flat because no structured path exists yet. |
 | `uc_cor_maintenance.lua` / COR roll maintenance chooser | Reads configured rolls, crooked-roll slot, elevens mode, Luzaf range override, and range requirement ids | `migrated_active_config_reader` | `T4.3` now prefers `config.maintenance.cor.*` for these durable readers, with flat/default fallback when the active path is missing. Ability-list fallback remains flat compatibility behavior. |
 | `uc_party_follow.lua` / debug logging gate | Reads only `debug` for file logging enablement | `safe_debug_or_ui` | `T4.1` migrated the debug gate to `uc_active_config`. |
@@ -77,7 +80,8 @@ Assessment:
 | `uc_party_follow.lua` / follow tick and packet handling | Reads `party_follow`, leader ids, leader name, follow ranges, and fight-follow minimum | `migrated_active_config_reader` | `T4.2` now prefers `config.follow.party.*` and `config.follow.fight.min`, with flat/default fallback only when the active path is missing. |
 | `uc_pathing.lua` / debug overlay gate | Reads only `debug` for overlay visibility | `safe_debug_or_ui` | `T4.1` migrated only the overlay debug gate; path/follow reads remain on `_G.UC_SETTINGS`. |
 | `uc_pathing.lua` / path binding, gating, and follow control | Reads `path_recording`, `path_follow_enabled`, `path_file_name`, `path_route_type`, `path_party_gate_yalms`, `path_resume_index_window`, and party-follow gating fields | `migrated_active_config_reader` | `T4.2` now prefers `config.movement.path.*` and `config.follow.party.*` for these durable readers, with flat/default fallback only when the active path is missing. Runtime-mutated path points/state remain flat/runtime-owned. |
-| `unified_combat_core.lua` / `get_settings` | Reads active settings for shared combat helpers | `high_action_selection_risk` | Avoid. |
+| `unified_combat_core.lua` / scheduler-facing target/tank provider selectors | Builds scheduler-only settings views for target acquisition and tank enmity selection | `migrated_active_config_reader` | `T4.4` now prefers structured combat/tank values for `select_target_for_scheduler(...)` and `select_tank_enmity_for_scheduler(...)`, while leaving broader core tick/runtime ownership reads unchanged. |
+| `unified_combat_core.lua` / broader core tick ownership/runtime helpers | Reads active settings for shared combat helpers | `high_action_selection_risk` | Still avoid beyond the bounded scheduler-facing view. |
 | `melee_engine.lua`, `dd2_module.lua` | Legacy overlay, ignore, reload/save reads | `legacy_or_inactive` | Not valid next active-runtime candidate. |
 
 ## Candidate risk table
@@ -132,6 +136,7 @@ Result:
 - `set`, `apply_set(...)`, `cfg_version`, runtime commands, profile load/save triggers, and all current flat-key edit/echo paths must not migrate yet.
 
 Recommended next step after `T4.3`: keep broader scheduler/provider action-decision reads deferred. Any next migration should stay outside command-owned compatibility settings and avoid movement-owner state, locks, pending actions, current-action state, and live target-selection logic.
+After `T4.4`, the same caution still applies to any remaining broader target-selection or runtime combat ownership reads: keep `fight_leader`, `add_priority`, `sleep`, add-control/fight-leader arbitration, and wider core tick ownership decisions deferred until those command-owned compatibility settings are intentionally retired or reclassified.
 
 After `T3.8a`, another safe profile/config migration path is to wire structured v2 read compatibility into the live profile load path in fail-safe/read-only mode, or add a generated v2 fixture before live wiring. Bridge write behavior and scheduler/provider action-decision reads should remain unchanged.
 
@@ -167,6 +172,14 @@ Touched by `T4.3`:
 - `unified_scheduler.lua`: migrated a bounded defensive/maintenance/spell-related durable-reader batch including defensive enabled/provider gating, cure thresholds, enemy-buff removal gating, overwrite interval readers, and defensive/maintenance dark-launch toggles to active-config-first accessors with flat/default fallback when the active path is missing.
 - `tests/replay/harness/selftest_active_config_defensive_maintenance_readers.lua`: added focused dynamic coverage for active-vs-flat and missing-active-path fallback behavior in the migrated defensive and COR maintenance readers.
 - `tests/replay/harness/selftest_active_config_consumer_migration.lua`: expanded focused static assertions for the newly migrated defensive/maintenance reader paths.
+
+Touched by `T4.4`:
+
+- `uc_scheduler_config.lua`: added a small scheduler/provider-facing active-config reader facade for combat/tank/debug ownership reads with flat/default fallback when the active path is missing.
+- `unified_scheduler.lua`: replaced scattered scheduler-facing flat/config reads for combat dark-launch ownership, autotarget, prime, tank-mode, enemy-buff diagnostic gating, and scheduler debug-log flags with facade reads.
+- `unified_combat_core.lua`: added a scheduler-only settings view so `select_target_for_scheduler(...)` and `select_tank_enmity_for_scheduler(...)` can consume active-config-first combat/tank values without changing the broader core tick ownership path.
+- `tests/replay/harness/selftest_scheduler_config_readers.lua`: added focused dynamic coverage for facade active-vs-flat parity and missing-active-path fallback behavior.
+- `tests/replay/harness/selftest_active_config_consumer_migration.lua`: expanded focused static assertions for the new facade, the migrated scheduler/core call sites, and the deferred `fight_leader` / `add_priority` / `sleep` boundaries.
 
 ## Proposed parity tests
 
@@ -239,3 +252,11 @@ Still explicitly deferred after `T4.3`:
 - `sleep` command-owned readers because addon commands still mutate the flat compatibility settings directly.
 - `defensive_targeted_buffs` readers because no structured `config.defensive.buffs.targeted_*` path exists yet and `T4.3` does not change the v2 schema.
 - scheduler/provider action-decision reads, live movement-owner state, pending/lock/current-action state, and runtime path point mutation semantics.
+
+Still explicitly deferred after `T4.4`:
+
+- `fight_leader` / `fight_leader_id` readers and adjacent add-control/follow ownership behavior because addon slash commands still mutate those flat keys directly.
+- `add_priority` / targeting command-owned readers because addon commands still own flat compatibility mutation there.
+- `sleep` command-owned readers because addon commands still mutate the flat compatibility settings directly.
+- broader core tick ownership reads in `unified_combat_core.lua` outside the scheduler-only settings view.
+- scheduler/provider action-decision reads tied to live runtime state, movement-owner state, pending/lock/current-action state, and runtime path point mutation semantics.
