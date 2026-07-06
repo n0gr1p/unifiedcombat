@@ -33,9 +33,31 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.8k` adds a hand-authored UI v2 fixture and consumer-contract tests proving validate/status/diff/reload helpers accept UI-owned files without relying on addon-export metadata.
 - `T3.8l` adds the read-only `profile_v2` status summary to the compact config status export payload, so the UI can inspect the v2 file state without changing bridge writes or scheduler/provider reads.
 - `T4.1` migrates only debug-only active config readers in `unified_scheduler.lua`, `uc_party_follow.lua`, and `uc_pathing.lua`, while explicitly deferring scheduler action-decision reads, movement/follow control reads, and arbitrary slash-command durable-write syncing.
+- `T4.3` migrates a bounded defensive/maintenance/spell-related durable-reader batch in `uc_hb_buff_maint.lua`, `uc_cor_maintenance.lua`, and `unified_scheduler.lua`, while preserving flat/default fallback and still deferring command-owned legacy settings plus broader scheduler/provider action-decision migration.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `T4.3` Migrate defensive maintenance config readers to active config
+
+- Status: `DONE`
+- Changed files:
+  - `uc_hb_buff_maint.lua`
+  - `uc_cor_maintenance.lua`
+  - `unified_scheduler.lua`
+  - `tests/replay/harness/selftest_active_config_consumer_migration.lua`
+  - `tests/replay/harness/selftest_active_config_defensive_maintenance_readers.lua`
+  - `tests/replay/harness/selftest_all_replay_fixtures.lua`
+  - `docs/active_config_consumer_migration_audit.md`
+  - `docs/canonical_config_migration_audit.md`
+  - `docs/UnifiedCombat_scheduler_refactor_tracking.md`
+- Outcome:
+  - Migrated defensive buff maintenance readers in `uc_hb_buff_maint.lua` to active-config-first accessors for buff list, self-only gating, overwrite enablement, and overwrite interval.
+  - Migrated COR maintenance readers in `uc_cor_maintenance.lua` to active-config-first accessors for configured rolls, crooked-roll slot, elevens mode, Luzaf range override, and range requirement ids.
+  - Migrated a bounded scheduler reader batch for defensive enabled/provider gates, cure thresholds, overwrite interval, enemy-buff removal toggles, and defensive/maintenance dark-launch toggles without changing scheduler state ownership or command mutation behavior.
+  - Added focused dynamic and static coverage for active-vs-flat parity and missing-active-path fallback behavior.
+- Next step:
+  - Keep command-owned legacy settings such as `sleep`, `fight_leader`, and `add_priority` deferred, and continue only with similarly bounded active-reader slices unless broader scheduler/provider migration is explicitly requested.
 
 ### `T3.8k` Add UI-authored v2 profile consumer contract fixture
 

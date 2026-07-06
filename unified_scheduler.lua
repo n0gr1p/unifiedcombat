@@ -1181,7 +1181,7 @@ function scheduler.p1_is_critical_defensive_proposal(settings, selected)
 	if tostring(selected.action_type or '') ~= 'spell' or tostring(detail.def_action_type or '') ~= 'cure' then
 		return false
 	end
-	local critical_hpp = tonumber(settings and settings.defensive_critical_hpp) or 35
+	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', settings and settings.defensive_critical_hpp)) or 35
 	local target_hpp = tonumber(detail.target_hpp) or -1
 	return target_hpp > 0 and target_hpp <= critical_hpp
 end
@@ -1206,7 +1206,7 @@ function scheduler.p1_selected_is_critical_cure(settings, selected)
 	end
 	local detail = type(selected.detail) == 'table' and selected.detail or {}
 	local target_hpp = tonumber(detail.target_hpp or -1) or -1
-	local critical_hpp = tonumber(settings and settings.defensive_critical_hpp) or 35
+	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', settings and settings.defensive_critical_hpp)) or 35
 	return tostring(selected.action_type or '') == 'spell'
 		and tostring(detail.def_action_type or '') == 'cure'
 		and target_hpp > 0
@@ -1765,6 +1765,14 @@ local function get_settings()
 	return require('uc_scheduler_context_utils').get_settings()
 end
 
+function scheduler.active_value_or_flat(path, flat_value)
+	local active_value = uc_active_config.get_path(path)
+	if active_value ~= nil then
+		return active_value
+	end
+	return flat_value
+end
+
 local function bool_setting(v, default_value)
 	return require('uc_scheduler_numeric_utils').bool_setting(v, default_value)
 end
@@ -1779,10 +1787,10 @@ local function player_has_doom(player)
 end
 
 local function try_doom_water_emergency(settings)
-	if not bool_setting(settings and settings.defensive_enabled, false) then
+	if not bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', settings and settings.defensive_enabled), false) then
 		return false, nil
 	end
-	if not bool_setting(settings and settings.defensive_doom_water, false) then
+	if not bool_setting(scheduler.active_value_or_flat('config.defensive.doom.holy_water_enabled', settings and settings.defensive_doom_water), false) then
 		return false, nil
 	end
 	local p = windower.ffxi.get_player()
@@ -3279,7 +3287,7 @@ function scheduler.record_confirmed_bard_song_success(action_name, expected_targ
 	local now = now_s()
 	local expires_at = now + action_duration_seconds(
 		action_name,
-		tonumber(get_settings().defensive_overwrite_interval or 150) or 150
+		tonumber(scheduler.active_value_or_flat('config.defensive.buffs.overwrite_interval', get_settings().defensive_overwrite_interval) or 150) or 150
 	)
 	hb_buff_maint.mark_bard_song_success(success_target_name, action_name, now, expires_at)
 end
@@ -3295,12 +3303,12 @@ local function build_defensive_candidates()
 		overwrite = nil,
 	}
 	local now = now_s()
-	local ignore_trusts = bool_setting(s.def_heal_ignore_trusts, true)
+	local ignore_trusts = bool_setting(scheduler.active_value_or_flat('config.defensive.cure.ignore_trusts', s.def_heal_ignore_trusts), true)
 
-	if bool_setting(s.defensive_buff_enabled, true) then
+	if bool_setting(scheduler.active_value_or_flat('config.defensive.buffs.enabled', s.defensive_buff_enabled), true) then
 		log_def_sched(('BUFF_SCAN mode=%s buffs="%s" targeted="%s" members=%d'):format(
-			bool_setting(s.defensive_buff_self_only, true) and 'self_only' or 'party',
-			tostring(s.defensive_buffs or ''),
+			bool_setting(scheduler.active_value_or_flat('config.defensive.buffs.self_only', s.defensive_buff_self_only), true) and 'self_only' or 'party',
+			tostring(scheduler.active_value_or_flat('config.defensive.buffs.list', s.defensive_buffs) or ''),
 			tostring(s.defensive_targeted_buffs or ''),
 			#members
 		))
@@ -3367,9 +3375,9 @@ local function build_defensive_candidates()
 	for _, m in ipairs(members) do
 		if not (ignore_trusts and tonumber(m.spawn_type) == 14) then
 			local active_counts = count_buff_occurrences(m.buffs or {})
-			if m.hpp > 0 and m.hpp < 95 and bool_setting(s.defensive_cure_enabled, true) and in_party_cast_range(m) then
+			if m.hpp > 0 and m.hpp < 95 and bool_setting(scheduler.active_value_or_flat('config.defensive.cure.enabled', s.defensive_cure_enabled), true) and in_party_cast_range(m) then
 			local missing_hp = estimate_missing_hp(m)
-			local missing_gate = tonumber(s.def_heal_min_missing_hp) or 250
+			local missing_gate = tonumber(scheduler.active_value_or_flat('config.defensive.cure.min_missing_hp', s.def_heal_min_missing_hp)) or 250
 			missing_gate = math.max(0, missing_gate)
 			log_def_sched(('CURE_CANDIDATE target="%s" hp=%d hpp=%d missing=%d gate=%d in_range=1'):format(
 				tostring(m.name or '?'),
@@ -3443,7 +3451,7 @@ local function build_defensive_candidates()
 				))
 			end
 			end
-			if bool_setting(s.defensive_na_enabled, true) and in_party_cast_range(m) then
+			if bool_setting(scheduler.active_value_or_flat('config.defensive.na.enabled', s.defensive_na_enabled), true) and in_party_cast_range(m) then
 			local best = nil
 			for _, buff_id in ipairs(m.buffs or {}) do
 				local debuff = res.buffs[buff_id]
@@ -3513,7 +3521,7 @@ local function choose_defensive_action(c)
 		if target_hpp <= 0 then
 			return false
 		end
-		local critical_hpp = tonumber(get_settings().defensive_critical_hpp) or 35
+		local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', get_settings().defensive_critical_hpp)) or 35
 		return target_hpp <= critical_hpp
 	end
 	local majesty_action = nil
@@ -3560,7 +3568,7 @@ local function try_delegate_healbot()
 	if scheduler.p1_pending_engage_live(phase, now_s()) then
 		local atype = tostring(action.type or '')
 		local target_hpp = tonumber(action.target and action.target.hpp) or -1
-		local critical_hpp = tonumber(get_settings().defensive_critical_hpp) or 35
+		local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', get_settings().defensive_critical_hpp)) or 35
 		local is_critical_cure = (atype == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp)
 		if not is_critical_cure then
 			scheduler.action_timeline_log('PENDING_ENGAGE_BLOCK_NONCRITICAL', {
@@ -3585,8 +3593,8 @@ choose_cure_spell = function(member)
 	if max_available <= 0 then
 		return nil
 	end
-	local min_tier = tonumber(s.def_heal_min_tier_cure) or 2
-	local max_tier_cfg = tonumber(s.def_heal_max_tier_cure) or 4
+	local min_tier = tonumber(scheduler.active_value_or_flat('config.defensive.cure.min_tier', s.def_heal_min_tier_cure)) or 2
+	local max_tier_cfg = tonumber(scheduler.active_value_or_flat('config.defensive.cure.max_tier', s.def_heal_max_tier_cure)) or 4
 	local max_tier = math.max(1, math.min(max_available, max_tier_cfg, 6))
 	min_tier = math.max(1, math.min(min_tier, max_tier, 6))
 	local missing = estimate_missing_hp(member)
@@ -3597,7 +3605,7 @@ choose_cure_spell = function(member)
 	end
 	-- Last-resort fallback for very low HP if configured floor blocked all options.
 	local hpp = tonumber(member and member.hpp) or 100
-	if hpp <= (tonumber(s.defensive_critical_hpp) or 35) then
+	if hpp <= (tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', s.defensive_critical_hpp)) or 35) then
 		return get_usable_cure_from_tier(max_tier, 1)
 	end
 	return nil
@@ -3605,7 +3613,7 @@ end
 
 local function try_internal_defensive_action()
 	local s = get_settings()
-	if not bool_setting(s.defensive_enabled, false) then
+	if not bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', s.defensive_enabled), false) then
 		log_def_sched('DEF_SKIP reason=DEFENSIVE_DISABLED')
 		return false, nil
 	end
@@ -3627,7 +3635,7 @@ local function try_internal_defensive_action()
 		local phase = scheduler.phase1 or {}
 		if scheduler.p1_pending_engage_live(phase, now) then
 			local target_hpp = tonumber(action.target and action.target.hpp) or -1
-			local critical_hpp = tonumber(s.defensive_critical_hpp) or 35
+			local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', s.defensive_critical_hpp)) or 35
 			local is_critical_cure = (tostring(action.type or '') == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp)
 			if not is_critical_cure then
 				scheduler.action_timeline_log('PENDING_ENGAGE_BLOCK_NONCRITICAL', {
@@ -3767,7 +3775,7 @@ local function try_internal_defensive_action()
 			e.last_attempt_reason = tostring(action.reason or action.type or '')
 			e.last_seen_at = now
 			if action.type == 'buff' or action.type == 'overwrite' then
-				e.landed = now + action_duration_seconds(action.spell, tonumber(get_settings().defensive_overwrite_interval or 150) or 150)
+				e.landed = now + action_duration_seconds(action.spell, tonumber(scheduler.active_value_or_flat('config.defensive.buffs.overwrite_interval', get_settings().defensive_overwrite_interval) or 150) or 150)
 			end
 			st.buffs[action.entry_key] = e
 		end
@@ -3777,7 +3785,7 @@ local function try_internal_defensive_action()
 		if (action.type == 'buff' or action.type == 'overwrite') and action.buff_id then
 			set_recent_gain(action.target.name, action.buff_id, action.spell, now)
 			local tokens = family_tokens_for(action.target.name, action.buff_id)
-			tokens[action.spell] = now + action_duration_seconds(action.spell, tonumber(get_settings().defensive_overwrite_interval or 150) or 150)
+			tokens[action.spell] = now + action_duration_seconds(action.spell, tonumber(scheduler.active_value_or_flat('config.defensive.buffs.overwrite_interval', get_settings().defensive_overwrite_interval) or 150) or 150)
 		end
 		return true, reason
 	end
@@ -3817,10 +3825,10 @@ local function p1_build_ctx(settings)
 end
 
 local function p1_collect_defensive_internal(ctx, out)
-	if not bool_setting(ctx.settings.defensive_enabled, false) then
+	if not bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', ctx.settings.defensive_enabled), false) then
 		return
 	end
-	if tostring(ctx.settings.defensive_provider or 'internal') ~= 'internal' then
+	if tostring(scheduler.active_value_or_flat('config.defensive.provider', ctx.settings.defensive_provider) or 'internal') ~= 'internal' then
 		return
 	end
 	local candidates = build_defensive_candidates()
@@ -3843,7 +3851,7 @@ local function p1_collect_defensive_internal(ctx, out)
 	local target_name = tostring(action.target.name or '')
 	local action_name = tostring(action.spell or '')
 	local target_hpp = tonumber(action.target.hpp) or -1
-	local critical_hpp = tonumber(ctx.settings.defensive_critical_hpp) or 35
+	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings.defensive_critical_hpp)) or 35
 	local priority_band = 100
 	if tostring(action.type or '') == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp then
 		priority_band = 110
@@ -3885,10 +3893,10 @@ local function p1_collect_defensive_internal(ctx, out)
 end
 
 local function p1_collect_defensive_healbot(ctx, out)
-	if not bool_setting(ctx.settings.defensive_enabled, false) then
+	if not bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', ctx.settings.defensive_enabled), false) then
 		return
 	end
-	if tostring(ctx.settings.defensive_provider or 'internal') ~= 'healbot' then
+	if tostring(scheduler.active_value_or_flat('config.defensive.provider', ctx.settings.defensive_provider) or 'internal') ~= 'healbot' then
 		return
 	end
 	local ok_actions = type(rawget(_G, 'actions')) == 'table' and type(_G.actions.get_defensive_action) == 'function'
@@ -3910,7 +3918,7 @@ local function p1_collect_defensive_healbot(ctx, out)
 	end
 	local target_kind = (target_id ~= 0 and target_id ~= tonumber(ctx.player_id or 0)) and 'ally' or 'self'
 	local target_hpp = tonumber(target_obj.hpp) or -1
-	local critical_hpp = tonumber(ctx.settings.defensive_critical_hpp) or 35
+	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings.defensive_critical_hpp)) or 35
 	local priority_band = 100
 	if atype == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp then
 		priority_band = 110
@@ -4185,16 +4193,16 @@ end
 
 local function p1_collect_enemy_buff_removal(ctx, out)
 	enemy_dispel_log(('ENEMY_DISPEL_TICK def_enabled=%s remove_enemy=%s provider=%s dark_def=%s'):format(
-		tostring(bool_setting(ctx.settings.defensive_enabled, false)),
-		tostring(bool_setting(ctx.settings.def_remove_enemy_buffs, false)),
-		tostring(ctx.settings.defensive_provider or ''),
-		tostring(bool_setting(ctx.settings.scheduler_dark_launch_defensive, false))
+		tostring(bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', ctx.settings.defensive_enabled), false)),
+		tostring(bool_setting(scheduler.active_value_or_flat('config.defensive.enemy_buffs.remove', ctx.settings.def_remove_enemy_buffs), false)),
+		tostring(scheduler.active_value_or_flat('config.defensive.provider', ctx.settings.defensive_provider) or ''),
+		tostring(bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_defensive', ctx.settings.scheduler_dark_launch_defensive), false))
 	))
-	if not bool_setting(ctx.settings.defensive_enabled, false) then
+	if not bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', ctx.settings.defensive_enabled), false) then
 		enemy_dispel_log('ENEMY_DISPEL_SKIP reason=DEFENSIVE_DISABLED')
 		return
 	end
-	if not bool_setting(ctx.settings.def_remove_enemy_buffs, false) then
+	if not bool_setting(scheduler.active_value_or_flat('config.defensive.enemy_buffs.remove', ctx.settings.def_remove_enemy_buffs), false) then
 		enemy_dispel_log('ENEMY_DISPEL_SKIP reason=TOGGLE_OFF')
 		return
 	end
@@ -5175,7 +5183,7 @@ local function p1_collect_proposals(ctx)
 			local detail = type(proposal.detail) == 'table' and proposal.detail or {}
 			if provider == 'defensive_internal' or provider == 'defensive_healbot' then
 				if action_type == 'spell' and tostring(detail.def_action_type or '') == 'cure' then
-					local critical_hpp = tonumber(ctx.settings and ctx.settings.defensive_critical_hpp) or 35
+					local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings and ctx.settings.defensive_critical_hpp)) or 35
 					local target_hpp = tonumber(detail.target_hpp or -1) or -1
 					local event_code = (target_hpp > 0 and target_hpp <= critical_hpp) and 'CRITICAL_CURE_PROPOSED' or 'NONCRITICAL_CURE_PROPOSED'
 					scheduler.action_timeline_log(event_code, {
@@ -5563,7 +5571,7 @@ local function p1_run_dry(settings)
 		local selected_provider_for_weave = tostring(selected.provider or '')
 		local detail = type(selected.detail) == 'table' and selected.detail or nil
 		local target_hpp = tonumber(detail and detail.target_hpp or -1) or -1
-		local critical_hpp = tonumber(ctx.settings and ctx.settings.defensive_critical_hpp) or 35
+		local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings and ctx.settings.defensive_critical_hpp)) or 35
 		local is_defensive_cure_selected = (
 			(selected_provider_for_weave == 'defensive_internal' or selected_provider_for_weave == 'defensive_healbot')
 			and tostring(selected.action_type or '') == 'spell'
@@ -6133,7 +6141,7 @@ local function p1_dispatch_pull_control(selected, settings)
 end
 
 local function p1_dispatch_maintenance_cor(selected, settings, provider)
-	if not bool_setting(settings and settings.scheduler_dark_launch_maintenance, false) then
+	if not bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_maintenance', settings and settings.scheduler_dark_launch_maintenance), false) then
 		log_def_sched('MAINT_COR_DISPATCH_SKIP reason=TOGGLE_OFF')
 		return false, nil
 	end
@@ -6209,7 +6217,7 @@ local function p1_dispatch_maintenance_cor(selected, settings, provider)
 end
 
 local function p1_dispatch_defensive_internal(selected, settings)
-	if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
+	if not bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_defensive', settings and settings.scheduler_dark_launch_defensive), false) then
 		return false, nil
 	end
 	_G.UC_DEFENSIVE_CHAIN_ACTION = {
@@ -6310,7 +6318,7 @@ local function p1_dispatch_defensive_internal(selected, settings)
 	})
 	if action_kind == 'spell' then
 		local is_cure = tostring(type(detail) == 'table' and detail.def_action_type or '') == 'cure'
-		local critical_hpp = tonumber(settings and settings.defensive_critical_hpp) or 35
+		local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', settings and settings.defensive_critical_hpp)) or 35
 		local event_code = 'MAINT_BUFF_DISPATCHED'
 		if is_cure then
 			event_code = (target_hpp > 0 and target_hpp <= critical_hpp) and 'CRITICAL_CURE_DISPATCHED' or 'NONCRITICAL_CURE_DISPATCHED'
@@ -6351,7 +6359,7 @@ local function p1_dispatch_defensive_internal(selected, settings)
 end
 
 local function p1_dispatch_defensive_healbot(selected, settings)
-	if not bool_setting(settings and settings.scheduler_dark_launch_defensive, false) then
+	if not bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_defensive', settings and settings.scheduler_dark_launch_defensive), false) then
 		return false, nil
 	end
 	local blocked, block_reason = action_dispatch_blocked()
@@ -6378,7 +6386,7 @@ local function p1_dispatch_defensive_healbot(selected, settings)
 	local hb_detail = type(selected.detail) == 'table' and selected.detail or {}
 	scheduler.p1_maybe_clear_pending_engage_for_selected_critical(settings, selected)
 	local hb_target_hpp = tonumber(hb_detail.target_hpp or -1) or -1
-	local hb_critical_hpp = tonumber(settings and settings.defensive_critical_hpp) or 35
+	local hb_critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', settings and settings.defensive_critical_hpp)) or 35
 	local hb_event_code = 'MAINT_BUFF_DISPATCHED'
 	if tostring(hb_detail.def_action_type or '') == 'cure' then
 		hb_event_code = (hb_target_hpp > 0 and hb_target_hpp <= hb_critical_hpp) and 'CRITICAL_CURE_DISPATCHED' or 'NONCRITICAL_CURE_DISPATCHED'
@@ -7251,10 +7259,10 @@ function scheduler.process_tick(cadence)
 	if move_acted then
 		_G.UC_LAST_SCHED_ACTION = '[move]coordinator_tick'
 	end
-	if not bool_setting(s.defensive_enabled, false) then
+	if not bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', s.defensive_enabled), false) then
 		return false, nil
 	end
-	local provider = tostring(s.defensive_provider or 'internal')
+	local provider = tostring(scheduler.active_value_or_flat('config.defensive.provider', s.defensive_provider) or 'internal')
 	_G.UC_SCHED_PROVIDER = provider
 	local acted, reason
 	if provider == 'healbot' then
@@ -7411,7 +7419,7 @@ function scheduler.on_action(act)
 	end
 	-- Debug-only visibility into enemy self-buff params we do not currently classify as dispellable.
 	-- Helps map cases like Scissor Guard when packet effect ids differ from assumptions.
-	if _G.UC_LOG_DEF_SCHED and bool_setting(cfg.def_remove_enemy_buffs, false) then
+	if _G.UC_LOG_DEF_SCHED and enemy_buff_remove then
 		local actor_id = tonumber(act and act.actor_id) or 0
 		local actor = actor_id > 0 and windower.ffxi.get_mob_by_id(actor_id) or nil
 		if actor and tonumber(actor.spawn_type) == 16 and type(act and act.targets) == 'table' then
@@ -7570,7 +7578,7 @@ function scheduler.on_action_message(msg)
 			tonumber(ev.effect_id) or 0
 		))
 	end
-	if _G.UC_LOG_DEF_SCHED and bool_setting(cfg.def_remove_enemy_buffs, false) then
+	if _G.UC_LOG_DEF_SCHED and enemy_buff_remove then
 		local actor_id = tonumber(msg and msg.actor_id) or 0
 		local target_id = tonumber(msg and msg.target_id) or 0
 		local effect_id = tonumber(msg and msg.param_1) or 0
@@ -7801,11 +7809,11 @@ function scheduler.get_debug_overlay()
 		if p == 'combat' then
 			return bool_setting(s.scheduler_dark_launch_combat, false)
 		elseif p == 'defensive_internal' then
-			return bool_setting(s.scheduler_dark_launch_defensive, false)
+			return bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_defensive', s.scheduler_dark_launch_defensive), false)
 		elseif p == 'defensive_healbot' then
-			return bool_setting(s.scheduler_dark_launch_defensive, false)
+			return bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_defensive', s.scheduler_dark_launch_defensive), false)
 		elseif p == 'maintenance_cor' then
-			return bool_setting(s.scheduler_dark_launch_maintenance, false)
+			return bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_maintenance', s.scheduler_dark_launch_maintenance), false)
 		end
 		return false
 	end

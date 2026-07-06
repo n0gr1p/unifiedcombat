@@ -1,6 +1,6 @@
 # Canonical Config Migration Audit
 
-Task: `T3.7d`, updated by `T4.1`
+Task: `T3.7d`, updated by `T4.1`, `T4.2`, and `T4.3`
 
 ## Current conclusion
 
@@ -249,8 +249,10 @@ Ambiguous current fields:
 - `T3.8k` adds a hand-authored UI v2 fixture and regression coverage proving the addon consumer path accepts UI-owned files without requiring addon-export-only metadata such as `exported_at` or `profile_key`.
 - `T3.8l` adds `profile_v2` to the compact config status export payload so the UI can read the addon’s v2 file view without changing bridge writes, runtime settings, or scheduler/provider reads.
 - `T4.1` keeps `_G.UC_ACTIVE_PROFILE` refresh limited to startup/load/reload and explicit `profilev2 apply/reload`, classifies slash-command durable writes as legacy compatibility behavior, and migrates only a debug-only active reader batch (`config.debug.*` plus scheduler raw-enemy diagnostic gating) through `uc_active_config` accessors.
+- `T4.2` migrates follow/path durable readers in `uc_party_follow.lua` and `uc_pathing.lua` to active-config-first accessors while preserving flat/default fallback and leaving runtime-owned path state flat.
+- `T4.3` migrates a bounded defensive/maintenance/spell-related durable-reader batch in `uc_hb_buff_maint.lua`, `uc_cor_maintenance.lua`, and `unified_scheduler.lua` to active-config-first accessors while preserving flat/default fallback and leaving command-owned legacy settings deferred.
 - Live v1 profile loading/saving, bridge writes, and scheduler/provider action-decision reads remain unchanged.
-- Runtime action decisions still use `_G.UC_SETTINGS`; scheduler/provider reads are not migrated.
+- Most runtime action decisions still use `_G.UC_SETTINGS`; `T4.1` through `T4.3` migrate only bounded active-reader slices with explicit flat/default fallback, not a broad scheduler/provider cutover.
 - Profile load/save behavior and bridge write behavior remain unchanged.
 - Migrate runtime readers one domain at a time through `ctx.config`, with fixture coverage for each migrated domain.
 - Version the profile file format only after the adapter has read compatibility for old flat profiles and new structured profiles.
@@ -304,7 +306,7 @@ Requirements for the next task:
 - Keep the structured v2 profile export explicit-command-only; it is a separate artifact from the live v1 profile file and does not change live save/load behavior.
 - Keep normal v2 profile editing and saving owned by external UI/tooling. The addon should consume v2 files through explicit validate/diff/apply/reload behavior, not become the regular v2 writer.
 - Keep export explicit-command-only; do not add polling or automatic per-tick writes.
-- Keep runtime action decisions on `_G.UC_SETTINGS`; do not migrate scheduler/provider reads yet.
+- Keep broader scheduler/provider action-decision migration deferred; only bounded active-reader slices with focused coverage should continue until command-owned legacy settings and runtime-state boundaries are clearer.
 - Keep profile load/save behavior unchanged; `T3.8a` did not wire structured v2 payloads into the live load path.
 - Keep bridge write behavior unchanged.
 - Do not migrate scheduler/provider action-decision reads, combat/tank/defensive/movement/targeting domains, or bridge write behavior in the next task.

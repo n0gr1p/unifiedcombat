@@ -1,10 +1,19 @@
 local res = require('resources')
+local uc_active_config = require('uc_active_config')
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
 	or nil
 
 local function now_s()
 	return socket_gettime()
+end
+
+local function active_value_or_flat(path, flat_value)
+	local active_value = uc_active_config.get_path(path)
+	if active_value ~= nil then
+		return active_value
+	end
+	return flat_value
 end
 
 local mod = {}
@@ -338,11 +347,11 @@ function mod._reset_test_state()
 end
 
 function mod.choose(settings, members, helpers)
-	local desired = split_actions(settings.defensive_buffs or '')
+	local desired = split_actions(active_value_or_flat('config.defensive.buffs.list', settings.defensive_buffs) or '')
 	local targeted = parse_targeted_buffs(settings.defensive_targeted_buffs or '')
-	local self_only = helpers.bool_setting(settings.defensive_buff_self_only, true)
-	local overwrite = helpers.bool_setting(settings.defensive_overwrite_enabled, false)
-	local overwrite_interval = tonumber(settings.defensive_overwrite_interval or 150) or 150
+	local self_only = helpers.bool_setting(active_value_or_flat('config.defensive.buffs.self_only', settings.defensive_buff_self_only), true)
+	local overwrite = helpers.bool_setting(active_value_or_flat('config.defensive.buffs.overwrite_enabled', settings.defensive_overwrite_enabled), false)
+	local overwrite_interval = tonumber(active_value_or_flat('config.defensive.buffs.overwrite_interval', settings.defensive_overwrite_interval) or 150) or 150
 	local now = now_s()
 	local first_eligible_non_majesty = nil
 
