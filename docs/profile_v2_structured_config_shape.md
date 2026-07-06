@@ -94,6 +94,8 @@ The canonical helper module `uc_profile_v2.lua` builds and consumes the structur
 - Current profile save format remains `return { version = 1, profiles = { UC = ... } }`.
 - `remote_bridge.lua` remains the live UI write path.
 - `//uc profilev2 export` is explicit-command-only and writes the new structured v2 artifact to `data/profiles_v2/` only when a user manually asks for a migration/bootstrap seed.
+- The WinForms UI save path now writes the same structured v2 artifact shape to `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` as the durable UI-owned profile file.
+- The UI writer intentionally leaves runtime/session-only or legacy command-mutated fields out of the durable v2 file, including `fight_leader`, `fight_leader_id`, `add_priority_names`, `sleep`, `sleepspells`, and `sleepspell`.
 - Normal v2 profile editing and saving remain owned by external UI/tooling, not by the addon export command.
 - No profile polling or live apply behavior exists.
 - Scheduler/provider/action-decision reads still use current runtime settings, not structured profile files.

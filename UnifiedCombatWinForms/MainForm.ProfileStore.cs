@@ -369,6 +369,62 @@ public partial class MainForm
         }
     }
 
+    private bool TryResolveStructuredProfileV2Root(out string addonRoot, out string error)
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var resolved = StructuredProfileV2Writer.FindAddonRootFrom(baseDir);
+        if (resolved is null)
+        {
+            addonRoot = "";
+            error = "addon root unavailable";
+            return false;
+        }
+
+        addonRoot = resolved;
+        error = "";
+        return true;
+    }
+
+    private bool TrySaveStructuredProfileV2FromUi(string sid)
+    {
+        try
+        {
+            if (!_sessionMetaBySid.TryGetValue(sid, out var meta))
+            {
+                return false;
+            }
+
+            var charName = (meta.CharName ?? "").Trim();
+            var mainJob = (meta.Job ?? "").Trim();
+            var subJob = (meta.SubJob ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(charName) || string.IsNullOrWhiteSpace(mainJob) || string.IsNullOrWhiteSpace(subJob))
+            {
+                return false;
+            }
+
+            if (!TryResolveStructuredProfileV2Root(out var addonRoot, out var rootErr))
+            {
+                statusConnection.Text = $"Mirror: v2 save failed ({rootErr})";
+                return false;
+            }
+
+            var flatProfile = BuildProfileFromUi(sid);
+            var identity = new StructuredProfileV2Identity(charName, mainJob, subJob);
+            var result = StructuredProfileV2Writer.TryWriteStructuredProfile(addonRoot, flatProfile, identity);
+            if (!result.Ok)
+            {
+                statusConnection.Text = $"Mirror: v2 save failed ({result.Error}: {result.Detail})";
+                return false;
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool MigrateProfileInPlace(JsonObject root)
     {
         var changed = false;

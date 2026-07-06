@@ -3090,6 +3090,7 @@ public partial class MainForm
         }
 
         TrySaveProfileFromUi(sid);
+        TrySaveStructuredProfileV2FromUi(sid);
         // Force a full config reapply on explicit Save so addon runtime
         // cannot stay stale behind UI-side set dedupe.
         _lastSentSetBySidPath.Remove(sid);
