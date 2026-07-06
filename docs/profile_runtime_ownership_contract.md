@@ -122,6 +122,7 @@ Examples:
 - scheduler locks
 - movement-owner state
 - live path points being recorded or mutated
+- current selected path/route filename (`movement.path.file_name`)
 - target snapshots
 - party/mob snapshots
 - bridge protocol state
@@ -269,6 +270,8 @@ The UI must not call addon commands as the primary durable save mechanism.
 
 The UI must not write runtime-only addon state into the durable profile.
 
+The structured v2 writer omits the current selected path/route filename because that value is runtime/session state, not durable profile config.
+
 The UI should emit stable, deterministic Lua output.
 
 The UI should use safe temp-write/promote behavior where practical.
@@ -310,6 +313,8 @@ Reporting runtime state does not make it durable profile config.
 `profilev2 status` and `profilev2 diff` compare durable profile config only.
 
 They should ignore runtime/session state and compatibility mirrors.
+
+The current selected path/route filename is runtime/session state, so `config.movement.path.file_name` does not participate in durable v2 diff/status even when the UI shows an empty placeholder and the runtime pathing code has rebound a live filename.
 
 After a successful `profilev2 reload`, the expected happy path is:
 

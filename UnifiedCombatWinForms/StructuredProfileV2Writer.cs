@@ -302,7 +302,6 @@ internal static class StructuredProfileV2Writer
                 new StructuredProfileNode()
                     .Add("recording", ReadBool(flatProfile, "path_recording", false))
                     .Add("follow_enabled", ReadBool(flatProfile, "path_follow_enabled", false))
-                    .Add("file_name", ReadString(flatProfile, "path_file_name", ""))
                     .Add("route_type", ReadString(flatProfile, "path_route_type", "unknown"))
                     .Add("distance_to_start", 0)
                     .Add("points", EmptyList())

@@ -59,6 +59,7 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "configured = {", "abilities domain missing");
         AssertContains(content, "list = \"Bar\\\"Spell\\\\Line\\nNext\"", "string escaping mismatch");
         AssertContains(content, "range_selected = \"Front\\\"Line\"", "range selection escaping mismatch");
+        AssertNotContains(content, "file_name =", "path file name must not be serialized as durable profile data");
 
         AssertOrder(
             content,

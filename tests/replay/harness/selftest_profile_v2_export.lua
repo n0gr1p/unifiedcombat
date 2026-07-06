@@ -1302,6 +1302,20 @@ local function main()
 	local runtime_engine_diff = profile_v2.diff_durable_config(runtime_engine_current, runtime_engine_target)
 	assert_equal(runtime_engine_diff.count, 0, 'durable diff should ignore engine runtime mirrors')
 
+	local path_file_runtime_current = deep_clone(ui_fixture_payload.config)
+	local path_file_runtime_target = deep_clone(ui_fixture_payload.config)
+	path_file_runtime_current.movement.path.file_name = 'runtime-selected-route.lua'
+	path_file_runtime_target.movement.path.file_name = ''
+	local path_file_runtime_diff = profile_v2.diff_durable_config(path_file_runtime_current, path_file_runtime_target)
+	assert_equal(path_file_runtime_diff.count, 0, 'durable diff should ignore movement path filename runtime mirrors')
+
+	local path_gate_current = deep_clone(ui_fixture_payload.config)
+	local path_gate_target = deep_clone(ui_fixture_payload.config)
+	path_gate_target.movement.path.party_gate_yalms = path_gate_target.movement.path.party_gate_yalms + 1
+	local path_gate_diff = profile_v2.diff_durable_config(path_gate_current, path_gate_target)
+	assert_equal(path_gate_diff.count, 1, 'durable diff should still detect durable movement path changes')
+	assert_equal(path_gate_diff.first_difference.path, 'config.movement.path.party_gate_yalms', 'durable diff should report the durable movement path field path')
+
 	local ui_fixture_reload_settings = deep_clone(flat)
 	ui_fixture_reload_settings.face = false
 	local ui_fixture_reload_identity = ui_fixture_reload_settings

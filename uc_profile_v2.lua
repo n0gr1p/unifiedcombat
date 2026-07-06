@@ -202,6 +202,10 @@ local function strip_durable_profile_overrides(config)
 		config.targeting.legacy_slots = nil
 		config.targeting.add_priority_names = nil
 	end
+	if type(config.movement) == 'table' and type(config.movement.path) == 'table' then
+		-- The selected path filename is addon/session state, not durable profile config.
+		config.movement.path.file_name = nil
+	end
 	config.sleep = nil
 	return config
 end

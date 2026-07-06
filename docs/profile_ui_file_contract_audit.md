@@ -72,7 +72,7 @@
 - The structured v2 profile export now uses a best-effort temp-write in the target directory and promotes the temp file only after a successful close.
 - The structured v2 profile export now resolves through `windower.addon_path` in live Windower, creates only `data/profiles_v2` when missing, and reports failures as `UC profile v2 export failed: <short reason>`.
 - The WinForms UI save action now writes the durable structured v2 profile artifact directly to `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` without depending on addon export.
-- The UI writer keeps runtime/session-only and legacy command-mutated fields out of the durable file, including `fight_leader`, `fight_leader_id`, `add_priority_names`, `sleep`, `sleepspells`, `sleepspell`, and the engine runtime mirror `command.engine_enabled_default`.
+- The UI writer keeps runtime/session-only and legacy command-mutated fields out of the durable file, including `fight_leader`, `fight_leader_id`, `add_priority_names`, `sleep`, `sleepspells`, `sleepspell`, the pathing runtime mirror `path_file_name`, and the engine runtime mirror `command.engine_enabled_default`.
 - When the final v2 file already exists, the export helper uses a best-effort backup/promote/restore flow because plain Windows/Lua rename does not guarantee overwrite of an existing target.
 - The structured v2 profile export still does not change the live v1 save contract.
 - Legacy in-game overlay visibility now reads `config.ui.show_ingame_ui` for display only; it does not change bridge write behavior, profile save behavior, or scheduler/provider action decisions.
@@ -96,7 +96,7 @@
 | Spell lists | `profile_owned_by_ui` | Long-lived editable settings. |
 | Sleep spell order | `profile_owned_by_ui` | UI-owned ordered profile data. |
 | COR / GEO / BRD maintenance settings | `profile_owned_by_ui` | Long-lived editable settings. |
-| Target / follow / pathing settings | `profile_owned_by_ui` | Long-lived editable settings. |
+| Target / follow / pathing settings | `profile_owned_by_ui` | Long-lived editable settings, except the current selected path filename (`path_file_name`) which is runtime/session state. |
 | Debug flags | `profile_owned_by_ui` | Persisted config/debug toggles; not runtime state. |
 | Slash-command durable edits such as `fight_leader`, `sleep`, `add_priority` | `legacy_compat_durable_write` | Still mutate `_G.UC_SETTINGS` today for compatibility, but are not the long-term profile ownership model. |
 | Local ownership flags | `legacy_or_ambiguous` | Local-only manual override file; not part of the editable profile contract. |
