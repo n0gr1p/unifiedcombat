@@ -56,6 +56,17 @@ local function main()
         domains = { "profile", "sleep", "legacy" },
         warnings = { "diagnostic warning" },
         errors = {},
+        profile_v2 = {
+            path = "data/profiles_v2/redrogue_PLD_WAR.lua",
+            state = "valid_match",
+            valid = true,
+            diff_count = 0,
+            reason = "runtime matches file",
+            source = "ui",
+            character = "Redrogue",
+            main_job = "PLD",
+            sub_job = "WAR",
+        },
         config = { profile = { character = "must not export" } },
         settings = { engine_enabled = true },
         scheduler_summary = { action = "must not export" },
@@ -70,26 +81,36 @@ local function main()
     assert_equal(payload.main_job, "BRD", "main_job mismatch")
     assert_equal(payload.sub_job, "WHM", "sub_job mismatch")
     assert_equal(payload.profile_key, "Peter|BRD|WHM", "profile_key mismatch")
+    assert_true(type(payload.profile_v2) == "table", "profile v2 status must be included")
+    assert_equal(payload.profile_v2.path, "data/profiles_v2/redrogue_PLD_WAR.lua", "profile v2 path mismatch")
+    assert_equal(payload.profile_v2.state, "valid_match", "profile v2 state mismatch")
+    assert_equal(payload.profile_v2.valid, true, "profile v2 validity mismatch")
+    assert_equal(payload.profile_v2.diff_count, 0, "profile v2 diff count mismatch")
+    assert_equal(payload.profile_v2.reason, "runtime matches file", "profile v2 reason mismatch")
     assert_equal(#payload.domains, 3, "domains count mismatch")
     assert_true(payload.config == nil, "full config must not be in payload")
     assert_true(payload.settings == nil, "settings must not be in payload")
     assert_true(payload.scheduler_summary == nil, "scheduler state must not be in payload")
+    assert_true(payload.profile_v2.config == nil, "profile v2 payload must not include nested config internals")
 
     local content = exporter.render_config_status_export(status, { exported_at = 42.5 })
     assert_contains(content, "return {", "export must be Lua table content")
     assert_contains(content, "exported_at = 42.5", "export must include exported_at")
     assert_contains(content, "domains = {", "export must include domains")
+    assert_contains(content, "profile_v2 = {", "export must include profile v2 status")
     assert_not_contains(content, "must not export", "export must omit non-status internals")
     assert_not_contains(content, "engine_enabled", "export must omit UC_SETTINGS")
     local loaded = load_export(content)
     assert_equal(loaded.character, "Peter", "loaded character mismatch")
     assert_equal(loaded.domains[2], "sleep", "loaded domains mismatch")
+    assert_equal(loaded.profile_v2.state, "valid_match", "loaded profile v2 state mismatch")
 
     local missing_content = exporter.render_config_status_export(nil, { exported_at = 100 })
     local missing = load_export(missing_content)
     assert_equal(missing.ok, false, "missing status must export ok=false")
     assert_equal(missing.available, false, "missing status must export available=false")
     assert_equal(#missing.domains, 0, "missing status domains should be empty")
+    assert_true(missing.profile_v2 == nil, "missing status should not synthesize profile v2 data")
 
     local addon_source = read_file("UnifiedCombat.lua")
     assert_contains(addon_source, "local uc_config_status_export = require('uc_config_status_export')", "addon must require export helper")

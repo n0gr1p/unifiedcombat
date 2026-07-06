@@ -247,6 +247,7 @@ Ambiguous current fields:
 - `T3.8i` renames the structured v2 helper implementation to the neutral `uc_profile_v2.lua` module while keeping `uc_profile_v2_export.lua` as a compatibility shim. Export remains a manual migration/bootstrap seed command only; validate/diff/apply behavior is unchanged.
 - `T3.8j` adds read-only `//uc profilev2 status` and reload-oriented `//uc profilev2 reload` command semantics. Status validates and compares the UI-owned v2 file without mutating runtime state; reload reuses the existing safe apply path and keeps export a manual migration/bootstrap seed only.
 - `T3.8k` adds a hand-authored UI v2 fixture and regression coverage proving the addon consumer path accepts UI-owned files without requiring addon-export-only metadata such as `exported_at` or `profile_key`.
+- `T3.8l` adds `profile_v2` to the compact config status export payload so the UI can read the addon’s v2 file view without changing bridge writes, runtime settings, or scheduler/provider reads.
 - Live v1 profile loading/saving, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - Runtime action decisions still use `_G.UC_SETTINGS`; scheduler/provider reads are not migrated.
 - Profile load/save behavior and bridge write behavior remain unchanged.

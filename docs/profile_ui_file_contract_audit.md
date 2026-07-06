@@ -18,6 +18,7 @@
 - `T3.8i` renames the structured v2 helper implementation to `uc_profile_v2.lua` and keeps `uc_profile_v2_export.lua` as a compatibility shim, without changing any profile command behavior or file ownership.
 - `T3.8j` adds read-only `//uc profilev2 status` plus reload-oriented `//uc profilev2 reload` semantics while keeping the addon in a consumer role for the UI-owned v2 file.
 - `T3.8k` adds a hand-authored UI v2 fixture and consumer-contract tests proving validate/status/diff/reload helpers accept UI-owned files without requiring addon-export-only metadata.
+- `T3.8l` publishes the read-only v2 file status through the compact config status export payload as `profile_v2`, without changing bridge write behavior or any scheduler/provider action-decision reads.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
@@ -54,6 +55,7 @@
 - The addon command `//uc profilev2 apply` reads and validates that same structured v2 profile artifact, builds a verified candidate flat runtime settings table from its durable `config` domains, and then applies that candidate to `_G.UC_SETTINGS` in place without saving to disk.
 - The addon command `//uc profilev2 reload` reuses that same verified apply path and safe in-place mutation behavior, but reports reload-oriented chat.
 - Consumer-contract tests now cover a hand-authored UI fixture file, not just addon-exported bootstrap files.
+- The config status export now carries `profile_v2` with the v2 file state summary so the UI can distinguish missing, invalid, valid-match, valid-diff, and error outcomes from the existing read-only status surface.
 - The config status export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
 - The structured v2 profile export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.
 - The structured v2 profile export is not the normal v2 profile save/edit path. External UI/tooling owns normal v2 profile writes; the addon consumes v2 files through validate/diff/apply/reload-style commands.

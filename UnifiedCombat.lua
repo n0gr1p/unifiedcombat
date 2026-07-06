@@ -525,6 +525,52 @@ local function uc_config_domain_names(config)
 	return out
 end
 
+local function uc_profile_v2_contract_validator(payload)
+	if not uc_profile_contract_available() or type(UC_PROFILE_CONTRACT.validate_structured_profile_config) ~= 'function' then
+		return nil
+	end
+	return UC_PROFILE_CONTRACT.validate_structured_profile_config(payload)
+end
+
+local function uc_update_profile_v2_contract_status(context)
+	context = type(context) == 'table' and context or {}
+	local settings = context.settings or _G.UC_SETTINGS
+	local meta = {
+		character = context.character,
+		main_job = context.main_job,
+		sub_job = context.sub_job,
+		source = context.source or 'UC_SETTINGS',
+	}
+	if not settings or meta.character == nil or meta.character == '' or meta.main_job == nil or meta.main_job == '' or meta.sub_job == nil or meta.sub_job == '' then
+		return {
+			path = uc_profile_v2.default_export_path(meta),
+			state = 'error',
+			valid = false,
+			diff_count = 0,
+			reason = 'missing settings or profile identity',
+			source = meta.source,
+			character = meta.character,
+			main_job = meta.main_job,
+			sub_job = meta.sub_job,
+		}
+	end
+	local status = uc_profile_v2.inspect_structured_profile_status(settings, meta, uc_profile_v2_contract_validator)
+	if type(status) ~= 'table' then
+		return {
+			path = uc_profile_v2.default_export_path(meta),
+			state = 'error',
+			valid = false,
+			diff_count = 0,
+			reason = 'profile v2 status helper returned invalid result',
+			source = meta.source,
+			character = meta.character,
+			main_job = meta.main_job,
+			sub_job = meta.sub_job,
+		}
+	end
+	return status
+end
+
 local function uc_update_config_contract_status(context)
 	context = type(context) == 'table' and context or {}
 	local status = {
@@ -537,6 +583,7 @@ local function uc_update_config_contract_status(context)
 		main_job = context.main_job,
 		sub_job = context.sub_job,
 		profile_key = context.profile_key,
+		profile_v2 = uc_update_profile_v2_contract_status(context),
 		domains = {},
 		warnings = uc_clone_value(context.warnings or {}),
 		errors = {},

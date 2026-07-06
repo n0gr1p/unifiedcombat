@@ -82,6 +82,7 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - The apply command reads and validates that same file, compares it against the current durable canonical config, then applies only durable `payload.config` domains back onto the flat runtime compatibility surface when a full candidate settings table can be built and verified first.
 - The apply command is explicit-command-only and runtime-only: it does not write v1 or v2 profile files back to disk.
 - The reload command reuses that same safe apply path and mutations, but reports reload-oriented chat so the addon remains a consumer of the UI-owned v2 file instead of becoming a general writer/editor.
+- `T3.8l` exposes the read-only v2 file status inside the compact config status export payload as `profile_v2`, so UI consumers can see `missing`, `invalid`, `valid_match`, `valid_diff`, or `error` without applying, writing, or mutating settings.
 
 The canonical helper module `uc_profile_v2.lua` builds and consumes the structured payload for export, validate, diff, status inspection, and apply behavior, while the compatibility shim `uc_profile_v2_export.lua` simply returns that same module. This does not change live profile loading, live profile saving, or bridge write behavior.
 

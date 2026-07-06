@@ -838,6 +838,54 @@ function M.inspect_structured_profile_file_against_settings(settings, meta, vali
 	return diff
 end
 
+local function structured_profile_status_result(path, state, valid, reason, diff_count, meta, payload)
+	local resolved_meta = type(meta) == 'table' and meta or {}
+	local resolved_profile = type(payload) == 'table' and type(payload.profile) == 'table' and payload.profile or nil
+	return {
+		path = path,
+		state = state,
+		valid = valid == true,
+		diff_count = tonumber(diff_count) or 0,
+		reason = reason,
+		source = resolved_profile and resolved_profile.source or resolved_meta.source,
+		character = resolved_profile and resolved_profile.character or resolved_meta.character,
+		main_job = resolved_profile and resolved_profile.main_job or resolved_meta.main_job,
+		sub_job = resolved_profile and resolved_profile.sub_job or resolved_meta.sub_job,
+	}
+end
+
+function M.inspect_structured_profile_status(settings, meta, validator, deps)
+	deps = resolve_fs_deps(deps)
+	local path = M.default_export_path(meta)
+
+	local exists, exists_err = dep_exists(deps, path)
+	if exists_err ~= nil then
+		return structured_profile_status_result(path, 'error', false, tostring(exists_err), 0, meta)
+	end
+	if not exists then
+		return structured_profile_status_result(path, 'missing', false, 'missing file', 0, meta)
+	end
+
+	local validation = M.validate_structured_profile_file(meta, validator, deps)
+	if type(validation) ~= 'table' then
+		return structured_profile_status_result(path, 'error', false, 'structured profile status helper returned invalid result', 0, meta)
+	end
+	if validation.ok ~= true or type(validation.payload) ~= 'table' then
+		local state = validation.stage == 'read' and 'error' or 'invalid'
+		local reason = validation.error or validation.reason or 'structured profile invalid'
+		return structured_profile_status_result(validation.path or path, state, false, tostring(reason), 0, meta, validation.payload)
+	end
+
+	local ok_current_config, current_config = pcall(M.build_durable_config, settings, meta)
+	if not ok_current_config or type(current_config) ~= 'table' then
+		return structured_profile_status_result(validation.path or path, 'error', false, tostring(current_config or 'runtime config normalization failed'), 0, meta, validation.payload)
+	end
+	local diff = M.diff_durable_config(current_config, validation.payload.config)
+	local state = diff.count == 0 and 'valid_match' or 'valid_diff'
+	local reason = diff.count == 0 and 'runtime matches file' or 'runtime differs from file'
+	return structured_profile_status_result(validation.path or path, state, true, reason, diff.count, meta, validation.payload)
+end
+
 local function copy_list(value)
 	if type(value) ~= 'table' then
 		return {}

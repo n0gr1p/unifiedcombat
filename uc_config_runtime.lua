@@ -14,6 +14,7 @@ local STATUS_FIELDS = {
     'warnings',
     'errors',
     'updated_at',
+    'profile_v2',
 }
 
 local function legacy_ingame_ui_enabled(settings)
@@ -31,6 +32,23 @@ local function clone_shallow(source)
     for key, value in pairs(source) do
         out[key] = value
     end
+    return out
+end
+
+local function clone_value(source, seen)
+    if type(source) ~= 'table' then
+        return source
+    end
+    local visited = seen or {}
+    if visited[source] then
+        return {}
+    end
+    visited[source] = true
+    local out = {}
+    for key, value in pairs(source) do
+        out[clone_value(key, visited)] = clone_value(value, visited)
+    end
+    visited[source] = nil
     return out
 end
 
@@ -53,7 +71,7 @@ local function clone_status(status)
     for _, key in ipairs(STATUS_FIELDS) do
         local value = status[key]
         if type(value) == 'table' then
-            out[key] = clone_array(value)
+            out[key] = clone_value(value)
         elseif value ~= nil then
             out[key] = value
         end

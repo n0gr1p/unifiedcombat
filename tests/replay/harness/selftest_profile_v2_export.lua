@@ -1148,6 +1148,89 @@ local function main()
 	assert_equal(status_diff_result.count, 1, 'structured profile status should report one config difference')
 	assert_deep_equal(status_diff_settings, status_diff_snapshot, 'structured profile status diff inspection must not mutate settings')
 
+	local v2_status_missing = profile_v2.inspect_structured_profile_status(status_diff_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, make_fake_fs({}))
+	assert_equal(v2_status_missing.state, 'missing', 'structured profile v2 status missing state mismatch')
+	assert_equal(v2_status_missing.valid, false, 'structured profile v2 status missing validity mismatch')
+	assert_equal(v2_status_missing.diff_count, 0, 'structured profile v2 status missing diff count mismatch')
+	assert_equal(v2_status_missing.reason, 'missing file', 'structured profile v2 status missing reason mismatch')
+	assert_equal(v2_status_missing.path, durable_path, 'structured profile v2 status missing path mismatch')
+
+	local v2_status_invalid = profile_v2.inspect_structured_profile_status(status_diff_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, validate_bad_version_deps)
+	assert_equal(v2_status_invalid.state, 'invalid', 'structured profile v2 status invalid state mismatch')
+	assert_equal(v2_status_invalid.valid, false, 'structured profile v2 status invalid validity mismatch')
+	assert_equal(v2_status_invalid.diff_count, 0, 'structured profile v2 status invalid diff count mismatch')
+	assert_equal(v2_status_invalid.reason, 'structured profile version must be 2', 'structured profile v2 status invalid reason mismatch')
+	assert_equal(v2_status_invalid.path, durable_path, 'structured profile v2 status invalid path mismatch')
+
+	local v2_status_match_settings = deep_clone(flat)
+	local v2_status_match_snapshot = deep_clone(v2_status_match_settings)
+	local v2_status_match_deps, v2_status_match_state = make_fake_fs({
+		[durable_path] = expected_serialized,
+	})
+	local v2_status_match = profile_v2.inspect_structured_profile_status(v2_status_match_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, v2_status_match_deps)
+	assert_equal(v2_status_match.state, 'valid_match', 'structured profile v2 status matching state mismatch')
+	assert_equal(v2_status_match.valid, true, 'structured profile v2 status matching validity mismatch')
+	assert_equal(v2_status_match.diff_count, 0, 'structured profile v2 status matching diff count mismatch')
+	assert_equal(v2_status_match.reason, 'runtime matches file', 'structured profile v2 status matching reason mismatch')
+	assert_equal(v2_status_match.path, durable_path, 'structured profile v2 status matching path mismatch')
+	assert_equal(v2_status_match.character, 'Redrogue', 'structured profile v2 status matching character mismatch')
+	assert_equal(v2_status_match.main_job, 'PLD', 'structured profile v2 status matching main job mismatch')
+	assert_equal(v2_status_match.sub_job, 'WAR', 'structured profile v2 status matching sub job mismatch')
+	assert_deep_equal(v2_status_match_settings, v2_status_match_snapshot, 'structured profile v2 status matching must not mutate settings')
+	assert_equal(#v2_status_match_state.rename_calls, 0, 'structured profile v2 status must not write to disk')
+	assert_equal(#v2_status_match_state.create_dir_calls, 0, 'structured profile v2 status must not create directories')
+
+	local v2_status_diff_settings = deep_clone(flat)
+	local v2_status_diff_snapshot = deep_clone(v2_status_diff_settings)
+	local v2_status_diff_payload = deep_clone(profile)
+	v2_status_diff_payload.config.combat.face = false
+	local v2_status_diff_deps = make_fake_fs({
+		[durable_path] = profile_v2.serialize_structured_profile(v2_status_diff_payload),
+	})
+	local v2_status_diff = profile_v2.inspect_structured_profile_status(v2_status_diff_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, v2_status_diff_deps)
+	assert_equal(v2_status_diff.state, 'valid_diff', 'structured profile v2 status differing state mismatch')
+	assert_equal(v2_status_diff.valid, true, 'structured profile v2 status differing validity mismatch')
+	assert_equal(v2_status_diff.diff_count, 1, 'structured profile v2 status differing diff count mismatch')
+	assert_equal(v2_status_diff.reason, 'runtime differs from file', 'structured profile v2 status differing reason mismatch')
+	assert_equal(v2_status_diff.path, durable_path, 'structured profile v2 status differing path mismatch')
+	assert_deep_equal(v2_status_diff_settings, v2_status_diff_snapshot, 'structured profile v2 status differing must not mutate settings')
+
+	local v2_fixture_status_settings = deep_clone(flat)
+	local v2_fixture_status_snapshot = deep_clone(v2_fixture_status_settings)
+	local v2_fixture_status = profile_v2.inspect_structured_profile_status(v2_fixture_status_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, make_fake_fs({
+		[durable_path] = ui_fixture_content,
+	}))
+	assert_equal(v2_fixture_status.state, 'valid_match', 'UI-authored structured profile status state mismatch')
+	assert_equal(v2_fixture_status.valid, true, 'UI-authored structured profile status validity mismatch')
+	assert_equal(v2_fixture_status.diff_count, 0, 'UI-authored structured profile status diff count mismatch')
+	assert_equal(v2_fixture_status.reason, 'runtime matches file', 'UI-authored structured profile status reason mismatch')
+	assert_equal(v2_fixture_status.path, durable_path, 'UI-authored structured profile status path mismatch')
+	assert_equal(v2_fixture_status.source, 'ui', 'UI-authored structured profile status source mismatch')
+	assert_equal(v2_fixture_status.character, 'Redrogue', 'UI-authored structured profile status character mismatch')
+	assert_equal(v2_fixture_status.main_job, 'PLD', 'UI-authored structured profile status main job mismatch')
+	assert_equal(v2_fixture_status.sub_job, 'WAR', 'UI-authored structured profile status sub job mismatch')
+	assert_deep_equal(v2_fixture_status_settings, v2_fixture_status_snapshot, 'UI-authored structured profile status must not mutate settings')
+
 	local apply_fail_snapshot = deep_clone(validate_settings_snapshot)
 	local apply_fail_deps = make_fake_fs({
 		[durable_path] = 'return { version = 2, profile = {} }\n',
@@ -1291,6 +1374,8 @@ local function main()
 	assert_contains(addon, "uc_profile_v2.validate_structured_profile_file(meta, function(payload)", 'addon must use structured profile validate helper')
 	assert_contains(addon, "uc_profile_v2.diff_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile diff helper')
 	assert_contains(addon, "uc_profile_v2.inspect_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile status helper')
+	assert_contains(addon, "uc_update_profile_v2_contract_status(context)", 'addon must build profile v2 status snapshots')
+	assert_contains(addon, "profile_v2 = uc_update_profile_v2_contract_status(context)", 'addon config status snapshot must include profile v2 status')
 	assert_contains(addon, "uc_profile_v2.apply_structured_profile_file_to_settings(settings, meta, function(payload)", 'addon must use structured profile apply helper')
 	assert_contains(addon, "UC profile v2 status: valid, runtime matches file", 'addon must report matching status tersely')
 	assert_contains(addon, "UC profile v2 status: valid, ", 'addon must report differing status tersely')

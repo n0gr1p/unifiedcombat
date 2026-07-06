@@ -60,6 +60,17 @@ local function main()
         warnings = { "sample warning" },
         errors = {},
         updated_at = 123.5,
+        profile_v2 = {
+            path = "data/profiles_v2/test.lua",
+            state = "valid_diff",
+            valid = true,
+            diff_count = 2,
+            reason = "runtime differs from file",
+            source = "ui",
+            character = "Tester",
+            main_job = "BRD",
+            sub_job = "WHM",
+        },
         config = { should_not_escape = true },
         settings = { should_not_escape = true },
     }
@@ -75,6 +86,11 @@ local function main()
     assert_equal(cloned.sub_job, "WHM", "status sub job mismatch")
     assert_equal(cloned.profile_key, "Tester|BRD|WHM", "status profile key mismatch")
     assert_equal(cloned.updated_at, 123.5, "status updated_at mismatch")
+    assert_true(type(cloned.profile_v2) == "table", "status accessor must preserve profile_v2")
+    assert_equal(cloned.profile_v2.path, "data/profiles_v2/test.lua", "status profile_v2 path mismatch")
+    assert_equal(cloned.profile_v2.state, "valid_diff", "status profile_v2 state mismatch")
+    assert_equal(cloned.profile_v2.diff_count, 2, "status profile_v2 diff count mismatch")
+    assert_equal(cloned.profile_v2.reason, "runtime differs from file", "status profile_v2 reason mismatch")
     assert_true(list_has(cloned.domains, "profile"), "status domains must be preserved")
     assert_true(list_has(cloned.domains, "ui"), "status domains must be preserved")
     assert_equal(cloned.config, nil, "status accessor must not return full config")
@@ -121,6 +137,7 @@ local function main()
 
     assert_contains(runtime_source, "function M.config_contract_status(settings, meta, normalizer, current_status)", "runtime helper must expose compact status accessor")
     assert_not_contains(runtime_source, "M.config_contract_status = M.normalize_current_config", "status accessor must not return full normalized config")
+    assert_contains(runtime_source, "'profile_v2'", "runtime helper must preserve nested profile v2 status")
     assert_not_contains(export_source, "config = ", "export must not include full normalized config")
     assert_not_contains(export_source, "settings", "export must not include UC_SETTINGS")
     assert_not_contains(scheduler_source, "uc_config_runtime", "scheduler/provider code must not use config runtime helper")
