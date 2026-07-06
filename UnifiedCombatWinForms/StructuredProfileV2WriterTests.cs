@@ -13,6 +13,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeShapeAndEscaping();
             TestSerializeOmitsProfileV2AutoloadWhenDisabled();
             TestSerializeIncludesProfileV2AutoloadWhenEnabled();
+            TestProfileV2AutoloadIsPartOfPersistedBoolSet();
             TestWriteCreatesProfilesDirectory();
             TestWritePreservesExistingFinalOnTempWriteFailure();
             TestWritePreservesExistingFinalOnPromotionFailure();
@@ -115,6 +116,14 @@ internal static class StructuredProfileV2WriterTests
         );
 
         AssertContains(content, "profile_v2_autoload = true", "autoload flag missing when explicitly enabled");
+    }
+
+    private static void TestProfileV2AutoloadIsPartOfPersistedBoolSet()
+    {
+        AssertTrue(
+            HubUiConstants.BoolKeys.Contains("profile_v2_autoload"),
+            "autoload must be included in the shared UI bool key set so load/save paths persist it"
+        );
     }
 
     private static void TestWriteCreatesProfilesDirectory()

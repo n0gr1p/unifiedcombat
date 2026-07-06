@@ -45,6 +45,7 @@ internal static class HubUiConstants
         "puller_distance_only",
         "fight_leader",
         "party_follow",
+        "profile_v2_autoload",
         "scheduler_dark_launch_combat",
         "scheduler_dark_launch_defensive",
         "scheduler_dark_launch_movement",
