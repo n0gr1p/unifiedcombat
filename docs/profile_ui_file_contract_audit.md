@@ -52,6 +52,7 @@
 - The addon command `//uc profilev2 export` writes the structured v2 profile artifact to `data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua` as a Lua-table manual migration/bootstrap seed file.
 - The addon command `//uc profilev2 validate` reads that same structured v2 profile artifact and validates it in dry-run mode only.
 - The addon command `//uc profilev2 diff` reads and validates that same structured v2 profile artifact, then compares only its durable `config` domains against the current normalized runtime config in dry-run mode.
+- The addon command `//uc profilev2 diff detail` reads and validates that same structured v2 profile artifact, then prints the first few structured diff entries with path, file-side value, runtime-side value, and value types so the exact remaining mismatch is visible.
 - The addon command `//uc profilev2 status` reads and validates that same structured v2 profile artifact when possible, compares only its durable `config` domains against the current runtime config, and reports a terse read-only summary.
 - The addon command `//uc profilev2 apply` reads and validates that same structured v2 profile artifact, builds a verified candidate flat runtime settings table from its durable `config` domains, and then applies that candidate to `_G.UC_SETTINGS` in place without saving to disk.
 - The addon command `//uc profilev2 reload` reuses that same verified apply path and safe in-place mutation behavior, but reports reload-oriented chat.

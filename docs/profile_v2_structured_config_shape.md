@@ -61,6 +61,7 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - Command: `//uc profilev2 export`
 - Validation command: `//uc profilev2 validate`
 - Diff command: `//uc profilev2 diff`
+- Diff detail command: `//uc profilev2 diff detail`
 - Status command: `//uc profilev2 status`
 - Apply command: `//uc profilev2 apply`
 - Reload command: `//uc profilev2 reload`
@@ -77,6 +78,7 @@ The normalizer also accepts direct canonical-domain input, such as `{ combat = .
 - The validation command reads only the expected v2 file for the current character/main/sub, parses the returned Lua table, checks `version`, `profile`, and `config`, and runs contract validation when available.
 - The validation command is dry-run only: it does not apply the file to runtime settings, does not mutate `_G.UC_SETTINGS`, and does not write anything back to disk.
 - The diff command reads and validates that same file, builds the current durable canonical config from loaded runtime settings, and compares only `payload.config` durable domains.
+- The diff helper now also returns structured detail entries for each difference, including the diff path, file-side value, runtime-side value, and the value types, so the detail command can print the exact remaining mismatch.
 - The durable comparison intentionally ignores the legacy compatibility mirrors that the live normalizer rebuilds after reload: `abilities.legacy_slots`, `follow.party.leader_id`, `follow.fight.leader_id`, `targeting.legacy_slots`, `targeting.add_priority_names`, and the legacy `sleep` mirrors (`sleep`, `sleepspells`, `sleepspell`) because those fields stay outside the UI-owned durable contract.
 - The durable comparison also ignores the runtime engine mirror exposed through `command.engine_enabled_default`, because engine running state is addon runtime state, not durable profile config.
 - The diff command ignores `profile` metadata such as `exported_at`, `source`, `character`, `main_job`, `sub_job`, and `profile_key`, and reports only a terse difference count in chat.

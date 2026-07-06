@@ -217,6 +217,44 @@ local function append_path(prefix, key)
 	return prefix .. '[' .. key_string .. ']'
 end
 
+local function count_table_keys(value)
+	local count = 0
+	if type(value) ~= 'table' then
+		return count
+	end
+	for _ in pairs(value) do
+		count = count + 1
+	end
+	return count
+end
+
+local function summarize_diff_value(value)
+	local value_type = type(value)
+	if value_type == 'string' then
+		return string.format('%q', value)
+	elseif value_type == 'number' or value_type == 'boolean' or value_type == 'nil' then
+		return tostring(value)
+	elseif value_type == 'table' then
+		return 'table(' .. tostring(count_table_keys(value)) .. ')'
+	end
+	return string.format('%q', tostring(value))
+end
+
+local function record_difference(path, runtime_value, file_value, differences, details)
+	differences[#differences + 1] = path
+	details[#details + 1] = {
+		path = path,
+		runtime_value = runtime_value,
+		runtime_type = type(runtime_value),
+		file_value = file_value,
+		file_type = type(file_value),
+		left = runtime_value,
+		left_type = type(runtime_value),
+		right = file_value,
+		right_type = type(file_value),
+	}
+end
+
 local function collect_union_keys(left, right)
 	local seen = {}
 	local keys = {}
@@ -250,16 +288,16 @@ local function collect_union_keys(left, right)
 	return keys
 end
 
-local function diff_values(left, right, path, differences)
+local function diff_values(left, right, path, differences, details)
 	if left == right then
 		return
 	end
 	if type(left) ~= type(right) then
-		differences[#differences + 1] = path
+		record_difference(path, left, right, differences, details)
 		return
 	end
 	if type(left) ~= 'table' then
-		differences[#differences + 1] = path
+		record_difference(path, left, right, differences, details)
 		return
 	end
 
@@ -272,9 +310,9 @@ local function diff_values(left, right, path, differences)
 		if left_value == nil and right_value == nil then
 			-- no-op
 		elseif left_value == nil or right_value == nil then
-			differences[#differences + 1] = next_path
+			record_difference(next_path, left_value, right_value, differences, details)
 		else
-			diff_values(left_value, right_value, next_path, differences)
+			diff_values(left_value, right_value, next_path, differences, details)
 		end
 	end
 end
@@ -327,6 +365,61 @@ end
 function M.build_durable_config(settings, meta)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
 	return pick_durable_config_domains(normalized)
+end
+
+function M.format_structured_profile_diff_value(value)
+	return summarize_diff_value(value)
+end
+
+function M.format_structured_profile_diff_detail(detail, index)
+	if type(detail) ~= 'table' then
+		return tostring(index or '?') .. ') invalid structured diff detail'
+	end
+	local prefix = ''
+	if index ~= nil then
+		prefix = tostring(index) .. ') '
+	end
+	local path = detail.path or 'config'
+	local file_value = summarize_diff_value(detail.file_value)
+	local runtime_value = summarize_diff_value(detail.runtime_value)
+	local file_type = detail.file_type or type(detail.file_value)
+	local runtime_type = detail.runtime_type or type(detail.runtime_value)
+	return prefix .. tostring(path) .. ': file=' .. file_value .. ' [' .. tostring(file_type) .. '] runtime=' .. runtime_value .. ' [' .. tostring(runtime_type) .. ']'
+end
+
+function M.format_structured_profile_diff_detail_lines(diff, limit)
+	if type(diff) ~= 'table' then
+		return nil, 'structured diff result must be a table'
+	end
+
+	local diff_count = tonumber(diff.diff_count or diff.count) or 0
+	if diff_count == 0 then
+		return {
+			'UC profile v2 diff detail: no config differences',
+		}
+	end
+
+	local details = diff.details or diff.diff_details
+	if type(details) ~= 'table' then
+		return nil, 'structured diff details missing'
+	end
+
+	local resolved_limit = tonumber(limit) or 5
+	if resolved_limit < 0 then
+		resolved_limit = 0
+	end
+
+	local lines = {
+		'UC profile v2 diff detail: ' .. tostring(diff_count) .. ' config differences',
+	}
+	local max_items = math.min(#details, resolved_limit)
+	for i = 1, max_items do
+		lines[#lines + 1] = M.format_structured_profile_diff_detail(details[i], i)
+	end
+	if diff_count > resolved_limit then
+		lines[#lines + 1] = '... and ' .. tostring(diff_count - resolved_limit) .. ' more'
+	end
+	return lines
 end
 
 function M.serialize_structured_profile(profile)
@@ -825,10 +918,22 @@ end
 
 function M.diff_durable_config(current_config, target_config)
 	local differences = {}
-	diff_values(strip_durable_profile_overrides(clone_value(current_config)), strip_durable_profile_overrides(clone_value(target_config)), 'config', differences)
+	local details = {}
+	diff_values(
+		strip_durable_profile_overrides(clone_value(current_config)),
+		strip_durable_profile_overrides(clone_value(target_config)),
+		'config',
+		differences,
+		details
+	)
+	local diff_count = #differences
 	return {
-		count = #differences,
+		count = diff_count,
+		diff_count = diff_count,
 		differences = differences,
+		details = details,
+		diff_details = details,
+		first_difference = details[1],
 	}
 end
 
@@ -838,6 +943,10 @@ function M.diff_structured_profile_file_against_settings(settings, meta, validat
 		if type(validation) == 'table' then
 			validation.count = 0
 			validation.differences = {}
+			validation.details = {}
+			validation.diff_details = {}
+			validation.first_difference = nil
+			validation.diff_count = 0
 		end
 		return validation
 	end
@@ -851,7 +960,11 @@ function M.diff_structured_profile_file_against_settings(settings, meta, validat
 		payload = validation.payload,
 		validation = validation.validation,
 		count = diff.count,
+		diff_count = diff.diff_count,
 		differences = diff.differences,
+		details = diff.details,
+		diff_details = diff.diff_details,
+		first_difference = diff.first_difference,
 		current_config = current_config,
 	}
 end
@@ -870,14 +983,29 @@ function M.inspect_structured_profile_file_against_settings(settings, meta, vali
 	return diff
 end
 
-local function structured_profile_status_result(path, state, valid, reason, diff_count, meta, payload)
+local function structured_profile_status_result(path, state, valid, reason, diff, meta, payload)
 	local resolved_meta = type(meta) == 'table' and meta or {}
 	local resolved_profile = type(payload) == 'table' and type(payload.profile) == 'table' and payload.profile or nil
+	local diff_count = 0
+	local diff_details = {}
+	local first_difference = nil
+	if type(diff) == 'table' then
+		diff_count = tonumber(diff.diff_count or diff.count) or 0
+		diff_details = diff.diff_details or diff.details or {}
+		first_difference = diff.first_difference or diff_details[1] or nil
+	else
+		diff_count = tonumber(diff) or 0
+	end
 	return {
 		path = path,
 		state = state,
 		valid = valid == true,
-		diff_count = tonumber(diff_count) or 0,
+		count = diff_count,
+		diff_count = diff_count,
+		differences = type(diff_details) == 'table' and diff_details or {},
+		details = type(diff_details) == 'table' and diff_details or {},
+		diff_details = type(diff_details) == 'table' and diff_details or {},
+		first_difference = first_difference,
 		reason = reason,
 		source = resolved_profile and resolved_profile.source or resolved_meta.source,
 		character = resolved_profile and resolved_profile.character or resolved_meta.character,
@@ -915,7 +1043,7 @@ function M.inspect_structured_profile_status(settings, meta, validator, deps)
 	local diff = M.diff_durable_config(current_config, validation.payload.config)
 	local state = diff.count == 0 and 'valid_match' or 'valid_diff'
 	local reason = diff.count == 0 and 'runtime matches file' or 'runtime differs from file'
-	return structured_profile_status_result(validation.path or path, state, true, reason, diff.count, meta, validation.payload)
+	return structured_profile_status_result(validation.path or path, state, true, reason, diff, meta, validation.payload)
 end
 
 local function apply_result_to_active_profile(current_settings, payload, meta, deps)
@@ -988,9 +1116,12 @@ local function apply_result_to_active_profile(current_settings, payload, meta, d
 			stage = 'convert',
 			error = 'structured profile conversion mismatch',
 			detail = diff.differences and diff.differences[1] or nil,
-			first_difference = diff.differences and diff.differences[1] or nil,
+			first_difference = diff.first_difference or diff.details and diff.details[1] or nil,
 			count = diff.count,
+			diff_count = diff.diff_count,
 			differences = diff.differences or {},
+			details = diff.details or {},
+			diff_details = diff.diff_details or {},
 			active_profile = active_profile,
 			candidate = candidate,
 			candidate_config = candidate_config,
@@ -1005,7 +1136,11 @@ local function apply_result_to_active_profile(current_settings, payload, meta, d
 		projected_settings = candidate,
 		candidate_config = candidate_config,
 		count = diff.count,
+		diff_count = diff.diff_count,
 		differences = diff.differences or {},
+		details = diff.details or {},
+		diff_details = diff.diff_details or {},
+		first_difference = diff.first_difference,
 	}
 end
 
@@ -1047,7 +1182,11 @@ function M.apply_structured_profile_file_to_settings(current_settings, meta, val
 		projected_settings = apply_result.projected_settings,
 		candidate_config = apply_result.candidate_config,
 		count = diff.count,
+		diff_count = diff.diff_count,
 		differences = diff.differences,
+		details = diff.details,
+		diff_details = diff.diff_details,
+		first_difference = diff.first_difference,
 		current_config = current_config,
 	}
 end
