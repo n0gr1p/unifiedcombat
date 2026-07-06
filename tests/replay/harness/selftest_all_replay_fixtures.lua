@@ -16,6 +16,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_bridge_config_status_consumer.lua",
     "tests/replay/harness/selftest_structured_profile_config.lua",
     "tests/replay/harness/selftest_profile_v2_export.lua",
+    "tests/replay/harness/selftest_profile_v2_autoload_lifecycle.lua",
     "tests/replay/harness/selftest_side_effect_inventory.lua",
     "tests/replay/harness/selftest_dispatcher_fixtures.lua",
     "tests/replay/harness/selftest_movement_priority_arbitration.lua",

@@ -848,6 +848,30 @@ end
 
 local uc_sync_table_in_place
 local uc_normalize_settings_table
+local uc_profile_v2_autoload_pending_key = nil
+local uc_profile_v2_autoload_completed_key = nil
+
+local function uc_profile_v2_session_key(player)
+	if not player or not player.name or not player.main_job or not player.sub_job then
+		return nil
+	end
+	return tostring(player.name) .. '|' .. tostring(player.main_job) .. '|' .. tostring(player.sub_job)
+end
+
+local function uc_queue_profile_v2_autoload()
+	local p = windower.ffxi.get_player()
+	if not p or not p.name or not _G.UC_SETTINGS then
+		return nil
+	end
+
+	local key = uc_profile_v2_session_key(p)
+	if not key or uc_profile_v2_autoload_completed_key == key then
+		return key
+	end
+
+	uc_profile_v2_autoload_pending_key = key
+	return key
+end
 
 local function uc_apply_profile_v2_file(meta, settings)
 	local result = uc_profile_v2.apply_structured_profile_file_to_settings(settings, meta, function(payload)
@@ -892,12 +916,52 @@ local function uc_autoload_profile_v2_file()
 	if type(result) ~= 'table' then
 		return nil
 	end
+	return result
+end
+
+local function uc_run_queued_profile_v2_autoload()
+	local p = windower.ffxi.get_player()
+	if not p or not p.name or not _G.UC_SETTINGS then
+		return nil
+	end
+
+	local key = uc_profile_v2_session_key(p)
+	if not key or uc_profile_v2_autoload_pending_key ~= key or uc_profile_v2_autoload_completed_key == key then
+		return nil
+	end
+
+	local result = uc_autoload_profile_v2_file()
+	if type(result) ~= 'table' then
+		return nil
+	end
+
+	uc_profile_v2_autoload_completed_key = key
+	uc_profile_v2_autoload_pending_key = nil
 
 	if result.ok == true then
-		if tonumber(result.count) == 0 then
-			windower.add_to_chat(207, 'UC profile v2 autoload: no config differences')
+		local status = uc_update_profile_v2_contract_status({
+			settings = _G.UC_SETTINGS,
+			source = 'UC_SETTINGS',
+			character = p.name,
+			main_job = p.main_job,
+			sub_job = p.sub_job,
+			profile_key = tostring(p.name or '') .. '|' .. tostring(p.main_job or '') .. '|' .. tostring(p.sub_job or ''),
+			updated_at = uc_now_s(),
+		})
+		local diff_count = tonumber(status and (status.diff_count or status.count)) or 0
+		if status and status.valid == true and diff_count == 0 then
+			if tonumber(result.count) == 0 then
+				windower.add_to_chat(207, 'UC profile v2 autoload: no config differences')
+			else
+				windower.add_to_chat(207, 'UC profile v2 autoload: applied')
+			end
 		else
-			windower.add_to_chat(207, 'UC profile v2 autoload: applied')
+			local first_difference = type(status) == 'table' and status.first_difference or nil
+			if type(first_difference) ~= 'table' then
+				first_difference = type(result.first_difference) == 'table' and result.first_difference or nil
+			end
+			local diff_path = first_difference and first_difference.path or 'unknown diff'
+			windower.add_to_chat(167, 'UC profile v2 autoload warning: ' .. tostring(diff_path))
 		end
 	else
 		local reason = result.error or result.reason or 'unknown error'
@@ -1521,7 +1585,7 @@ windower.register_event('load', function()
 	if windower.ffxi.get_info().logged_in then
 		uc_update_engine()
 		uc_reload_active_profile()
-		uc_autoload_profile_v2_file()
+		uc_queue_profile_v2_autoload()
 	end
 end)
 
@@ -1593,12 +1657,14 @@ windower.register_event('prerender', function()
 	uc_party_follow.broadcast_self_ipc()
 	uc_remote_tick()
 	uc_party_follow.prerender()
+	uc_run_queued_profile_v2_autoload()
 end)
 
 windower.register_event('job change', function(job, lvl)
 	local jname = res.jobs:with('id', job).english_short
 	uc_update_engine()
 	uc_reload_active_profile(jname)
+	uc_queue_profile_v2_autoload()
 	uc_start_active_engine_if_running()
 	uc_register_action_listener()
 end)
@@ -2073,7 +2139,7 @@ end)
 windower.register_event('login', function()
 	uc_update_engine()
 	uc_reload_active_profile()
-	uc_autoload_profile_v2_file()
+	uc_queue_profile_v2_autoload()
 	uc_start_active_engine_if_running()
 	uc_register_action_listener()
 end)
