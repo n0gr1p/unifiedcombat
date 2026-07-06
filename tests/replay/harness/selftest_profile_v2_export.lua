@@ -1263,9 +1263,11 @@ local function main()
 
 	local legacy_mirror_current = deep_clone(profile.config)
 	legacy_mirror_current.abilities.legacy_slots = { 'Hagakure', 'Meditate' }
+	legacy_mirror_current.follow.party.leader_id = 1234
+	legacy_mirror_current.follow.fight.leader_id = 5678
 	legacy_mirror_current.targeting.legacy_slots = { 'apex bats' }
 	local legacy_mirror_diff = profile_v2.diff_durable_config(legacy_mirror_current, profile.config)
-	assert_equal(legacy_mirror_diff.count, 0, 'durable diff should ignore legacy ability and targeting slot mirrors')
+	assert_equal(legacy_mirror_diff.count, 0, 'durable diff should ignore legacy ability, follow id, and targeting slot mirrors')
 
 	local ui_fixture_reload_settings = deep_clone(flat)
 	ui_fixture_reload_settings.face = false

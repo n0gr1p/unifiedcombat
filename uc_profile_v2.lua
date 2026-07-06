@@ -188,6 +188,14 @@ local function strip_durable_profile_overrides(config)
 	if type(config.abilities) == 'table' then
 		config.abilities.legacy_slots = nil
 	end
+	if type(config.follow) == 'table' then
+		if type(config.follow.party) == 'table' then
+			config.follow.party.leader_id = nil
+		end
+		if type(config.follow.fight) == 'table' then
+			config.follow.fight.leader_id = nil
+		end
+	end
 	if type(config.targeting) == 'table' then
 		config.targeting.legacy_slots = nil
 		config.targeting.add_priority_names = nil
