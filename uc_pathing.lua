@@ -14,6 +14,7 @@ end
 
 local files = require('files')
 local res = require('resources')
+local uc_active_config = require('uc_active_config')
 local uc_party_follow = require('uc_party_follow')
 local texts_ok, texts = pcall(require, 'texts')
 
@@ -675,7 +676,11 @@ local function render_target_debug_overlay()
 end
 
 local function render_debug_overlay(settings)
-	if settings.debug ~= true then
+	local debug_enabled = uc_active_config.get_path('config.debug.enabled')
+	if debug_enabled == nil then
+		debug_enabled = settings.debug
+	end
+	if debug_enabled ~= true then
 		hide_debug_overlay()
 		return
 	end

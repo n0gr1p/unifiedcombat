@@ -19,6 +19,7 @@
 - `T3.8j` adds read-only `//uc profilev2 status` plus reload-oriented `//uc profilev2 reload` semantics while keeping the addon in a consumer role for the UI-owned v2 file.
 - `T3.8k` adds a hand-authored UI v2 fixture and consumer-contract tests proving validate/status/diff/reload helpers accept UI-owned files without requiring addon-export-only metadata.
 - `T3.8l` publishes the read-only v2 file status through the compact config status export payload as `profile_v2`, without changing bridge write behavior or any scheduler/provider action-decision reads.
+- `T4.1` migrates a low-risk debug-only runtime reader batch to `uc_active_config` accessors, classifies remaining slash-command durable writes as legacy compatibility behavior, and keeps active-profile refresh limited to startup/load/reload/apply paths.
 - The validation layer is fail-safe: malformed profile trees are rejected on load, and missing validation support is reported without changing save behavior.
 - No profile polling or live apply behavior has been implemented.
 - The bridge remains the live UI write path for now.
@@ -72,6 +73,9 @@
 - The structured v2 profile export still does not change the live v1 save contract.
 - Legacy in-game overlay visibility now reads `config.ui.show_ingame_ui` for display only; it does not change bridge write behavior, profile save behavior, or scheduler/provider action decisions.
 - The active bridge config-status consumer now uses the config runtime accessor with no bridge write or profile file behavior changes.
+- `_G.UC_ACTIVE_PROFILE` is refreshed only on startup initialization, the existing v1 load/reload path, and explicit `profilev2 apply/reload`.
+- UI-owned durable config changes should flow through the profile file plus `profilev2 reload`, not through arbitrary addon-side durable setting mutation.
+- Existing slash-command durable setting writes remain legacy compatibility behavior unless they are explicitly runtime-owned toggles/state.
 - `T3.7k` found no further safe active bridge read-only settings publication to migrate next; bridge write/edit protocol fields, `set`, `apply_set(...)`, `cfg_version`, runtime commands, and profile load/save triggers remain protected.
 - It uses `cfg_version` monotonic gating for incoming config messages, but it does not do file hashing, file mtime polling, or profile-file change detection.
 
@@ -90,6 +94,7 @@
 | COR / GEO / BRD maintenance settings | `profile_owned_by_ui` | Long-lived editable settings. |
 | Target / follow / pathing settings | `profile_owned_by_ui` | Long-lived editable settings. |
 | Debug flags | `profile_owned_by_ui` | Persisted config/debug toggles; not runtime state. |
+| Slash-command durable edits such as `fight_leader`, `sleep`, `add_priority` | `legacy_compat_durable_write` | Still mutate `_G.UC_SETTINGS` today for compatibility, but are not the long-term profile ownership model. |
 | Local ownership flags | `legacy_or_ambiguous` | Local-only manual override file; not part of the editable profile contract. |
 | Scheduler action state | `runtime_owned_by_addon` | Transient scheduler runtime state. |
 | Pending / lock state | `runtime_owned_by_addon` | Transient runtime state. |

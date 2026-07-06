@@ -32,6 +32,7 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T3.8j` adds read-only `//uc profilev2 status` plus reload-oriented `//uc profilev2 reload` command semantics while keeping the addon a consumer of UI-owned v2 files.
 - `T3.8k` adds a hand-authored UI v2 fixture and consumer-contract tests proving validate/status/diff/reload helpers accept UI-owned files without relying on addon-export metadata.
 - `T3.8l` adds the read-only `profile_v2` status summary to the compact config status export payload, so the UI can inspect the v2 file state without changing bridge writes or scheduler/provider reads.
+- `T4.1` migrates only debug-only active config readers in `unified_scheduler.lua`, `uc_party_follow.lua`, and `uc_pathing.lua`, while explicitly deferring scheduler action-decision reads, movement/follow control reads, and arbitrary slash-command durable-write syncing.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes

@@ -1,6 +1,6 @@
 # Active Config Consumer Migration Audit
 
-Task: `T3.7i`, updated by `T3.7k` and `T3.8a`
+Task: `T3.7i`, updated by `T3.7k`, `T3.8a`, and `T4.1`
 
 ## Scope
 
@@ -12,6 +12,7 @@ This is a docs/static audit only. No runtime behavior, profile load/save behavio
 `T3.8b` adds an explicit structured export command (`//uc profilev2 export`) that writes a separate v2 artifact for inspection. It does not migrate live profile loading, live profile saving, bridge writes, or scheduler/provider action-decision reads.
 `T3.8k` adds a hand-authored UI v2 fixture and consumer-contract tests only. It does not add runtime loading, writing, bridge behavior changes, or scheduler/provider consumer changes.
 `T3.8l` publishes the v2 file state summary through the read-only config status export surface as `profile_v2`. It does not add runtime loading, writing, bridge behavior changes, or scheduler/provider consumer changes.
+`T4.1` keeps active-profile refresh on startup, the existing v1 load/reload path, and explicit `profilev2 apply/reload`, while avoiding any new generic sync-after-command-mutation behavior. It migrates only a narrow debug-only batch of active runtime readers and documents slash-command durable-write caveats instead of promoting them to active-profile ownership.
 
 ## Active runtime entry points
 
@@ -58,12 +59,14 @@ Assessment:
 | `remote_bridge.lua` / `send_options_snapshot` and `send_state_snapshot` | Publishes `_G.UC_CONFIG_CONTRACT_STATUS` as read-only bridge fields | `safe_read_only_status` | Active bridge read-only state/options surface. Preferred next candidate. |
 | `remote_bridge.lua` / `apply_set` and `process_line` set handlers | Reads/writes `_G.UC_SETTINGS` for live UI changes | `moderate_runtime_gating` | Bridge write contract; explicitly out of scope. |
 | `unified_engine.lua` / `get_settings`, scheduler ownership helpers | Reads active settings for tick/domain ownership decisions and overlay gating | `moderate_runtime_gating` | Active engine behavior; not first candidate. |
-| `unified_scheduler.lua` / `enemy_dispel_diag`, `enemy_dispel_log` | Reads `debug`, `log_def_sched` for diagnostic logging | `safe_debug_or_ui` | Active but inside scheduler file; could be later after status candidate. |
-| `unified_scheduler.lua` / raw enemy action/message logging | Reads `def_remove_enemy_buffs` with log flag for diagnostic raw enemy logs | `safe_debug_or_ui` | Diagnostic-only, but coupled to defensive scheduler logging. |
+| `unified_scheduler.lua` / `enemy_dispel_diag`, `enemy_dispel_log` | Reads `debug`, `log_def_sched` for diagnostic logging | `safe_debug_or_ui` | `T4.1` migrated these debug-only gates to `uc_active_config` accessors with flat-value fallback only when the active path is missing. |
+| `unified_scheduler.lua` / raw enemy action/message logging | Reads `def_remove_enemy_buffs` with log flag for diagnostic raw enemy logs | `safe_debug_or_ui` | `T4.1` migrated only this diagnostic gate; no scheduler action-decision reads moved. |
 | `unified_scheduler.lua` / provider and dispatch paths via context settings | Reads many combat/defensive/maintenance/tank/movement/targeting fields | `high_action_selection_risk` | Avoid until domain parity is broad. |
-| `uc_party_follow.lua` / debug/status snapshots | Reads debug and follow flags for file logging/status text | `safe_debug_or_ui` | Active but near follow movement support. |
+| `uc_party_follow.lua` / debug logging gate | Reads only `debug` for file logging enablement | `safe_debug_or_ui` | `T4.1` migrated the debug gate only; follow-state reads remain on `_G.UC_SETTINGS`. |
+| `uc_party_follow.lua` / status snapshots | Reads follow flags for diagnostic status text | `deferred_legacy_compat` | Deferred because legacy flat follow mutations can still occur outside active-profile refresh paths. |
 | `uc_party_follow.lua` / follow tick and packet handling | Reads `party_follow`, leader ids, follow ranges | `high_movement_or_targeting_risk` | Avoid. |
-| `uc_pathing.lua` / debug overlay and path binding | Reads path/follow settings | `high_movement_or_targeting_risk` | Avoid. |
+| `uc_pathing.lua` / debug overlay gate | Reads only `debug` for overlay visibility | `safe_debug_or_ui` | `T4.1` migrated only the overlay debug gate; path/follow reads remain on `_G.UC_SETTINGS`. |
+| `uc_pathing.lua` / path binding, gating, and follow control | Reads path/follow settings | `high_movement_or_targeting_risk` | Deferred. |
 | `unified_combat_core.lua` / `get_settings` | Reads active settings for shared combat helpers | `high_action_selection_risk` | Avoid. |
 | `melee_engine.lua`, `dd2_module.lua` | Legacy overlay, ignore, reload/save reads | `legacy_or_inactive` | Not valid next active-runtime candidate. |
 
@@ -118,7 +121,7 @@ Result:
 - `config_contract_status` is already migrated and should remain compact/read-only.
 - `set`, `apply_set(...)`, `cfg_version`, runtime commands, profile load/save triggers, and all current flat-key edit/echo paths must not migrate yet.
 
-Recommended next step after `T3.7k`: pause bridge migration for now. If another active config read migration is desired, use a narrow non-bridge diagnostic candidate such as `unified_scheduler.lua` `enemy_dispel_diag(msg)` / `enemy_dispel_log(msg)`, migrating only their `debug` / `log_def_sched` diagnostic gates through focused `uc_config_runtime` parity helpers. Do not migrate scheduler/provider action-decision reads.
+Recommended next step after `T3.7k`: pause bridge migration for now. If another active config read migration is desired, use a narrow non-bridge diagnostic candidate such as `unified_scheduler.lua` `enemy_dispel_diag(msg)` / `enemy_dispel_log(msg)`, migrating only their `debug` / `log_def_sched` diagnostic gates through focused accessors. `T4.1` completes that conservative scheduler-debug slice and extends the same pattern to the `uc_party_follow.lua` file-log gate and the `uc_pathing.lua` debug-overlay gate. Scheduler/provider action-decision reads remain deferred.
 
 After `T3.8a`, another safe profile/config migration path is to wire structured v2 read compatibility into the live profile load path in fail-safe/read-only mode, or add a generated v2 fixture before live wiring. Bridge write behavior and scheduler/provider action-decision reads should remain unchanged.
 
@@ -132,6 +135,14 @@ Touched by `T3.7j`:
 - `tests/replay/harness/selftest_config_status.lua`: updated bridge source assertion.
 - `tests/replay/harness/selftest_all_replay_fixtures.lua`: registered focused selftest.
 
+Touched by `T4.1`:
+
+- `unified_scheduler.lua`: migrated only diagnostic `debug`, `log_def_sched`, and `def_remove_enemy_buffs` gates to `uc_active_config` accessors.
+- `uc_party_follow.lua`: migrated only the file-log debug gate to `uc_active_config`.
+- `uc_pathing.lua`: migrated only the debug-overlay visibility gate to `uc_active_config`.
+- `tests/replay/harness/selftest_active_config_consumer_migration.lua`: added focused static coverage for migrated readers and the no-generic-command-sync rule.
+- `tests/replay/harness/selftest_all_replay_fixtures.lua`: registered the focused migration selftest.
+
 ## Proposed parity tests
 
 Implemented in `T3.7j`:
@@ -144,6 +155,8 @@ Implemented in `T3.7j`:
 - Assert bridge source still preserves `cfg_version` and `apply_set(...)` write behavior.
 - Assert bridge/export do not expose full normalized config or `_G.UC_SETTINGS`.
 - Assert scheduler/provider code does not require `uc_config_runtime`.
+- Assert the debug-only migrated readers use `uc_active_config` accessors in `unified_scheduler.lua`, `uc_party_follow.lua`, and `uc_pathing.lua`.
+- Assert addon command handlers do not introduce a generic active-profile sync after arbitrary flat setting mutation.
 
 ## Domains not recommended yet
 
@@ -160,3 +173,30 @@ Do not select these domains for the next migration:
 - scheduler/provider action-decision reads
 - bridge write behavior
 - profile load/save behavior
+
+## T4.1 slash-command mutation classification
+
+`UnifiedCombat.lua` slash-command handlers were re-checked with the active-profile ownership model in mind.
+
+| Command surface | Current write behavior | Classification | T4.1 handling |
+| --- | --- | --- | --- |
+| `//uc start`, `//uc stop` | Mutate runtime `Start_Engine` and mirror `engine_enabled` in `_G.UC_SETTINGS` | `runtime_owned_toggle` | Keep as command-owned runtime state; do not treat as durable active-profile editing. |
+| `//uc save`, `//uc reload` | Persist/load existing v1 profile file | `existing_profile_path` | Keep existing v1 sync path that refreshes `_G.UC_ACTIVE_PROFILE` from loaded flat settings. |
+| `//uc profilev2 apply`, `//uc profilev2 reload` | Validate UI-owned v2 file, publish `_G.UC_ACTIVE_PROFILE`, then project back into `_G.UC_SETTINGS` | `explicit_ui_file_consume_path` | Keep as the explicit structured consume/apply path. |
+| `//uc configstatus export`, `//uc profilev2 validate`, `diff`, `status`, `export` | Read-only/export commands | `read_only_or_export` | No active-profile ownership change. |
+| `//uc fight_leader ...` | Mutates flat follow settings directly | `legacy_compat_durable_write` | Leave behavior unchanged for compatibility; do not sync arbitrary command writes into `_G.UC_ACTIVE_PROFILE`. |
+| `//uc add_priority ...` | Mutates flat targeting settings directly | `legacy_compat_durable_write` | Leave behavior unchanged for compatibility; do not sync arbitrary command writes into `_G.UC_ACTIVE_PROFILE`. |
+| `//uc sleep ...` | Mutates flat sleep settings directly | `legacy_compat_durable_write` | Leave behavior unchanged for compatibility; do not sync arbitrary command writes into `_G.UC_ACTIVE_PROFILE`. |
+
+Active-profile refresh paths after `T4.1` are still limited to:
+
+- addon startup initialization from flat settings
+- existing v1 load/reload paths
+- explicit `profilev2 apply`
+- explicit `profilev2 reload`
+
+Deferred because they could go stale behind legacy flat-only mutations:
+
+- follow-domain status text in `uc_party_follow.lua`
+- path/follow/movement control reads in `uc_pathing.lua`
+- slash-command-owned flat durable writes such as `fight_leader`, `add_priority`, and `sleep`

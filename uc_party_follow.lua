@@ -6,6 +6,7 @@
 
 local M = {}
 local packets = require('packets')
+local uc_active_config = require('uc_active_config')
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime or nil
 
@@ -58,6 +59,10 @@ end
 
 local function debug_enabled()
 	local s = rawget(_G, 'UC_SETTINGS')
+	local active_value = uc_active_config.get_path('config.debug.enabled')
+	if active_value ~= nil then
+		return active_value == true
+	end
 	return s and truthy(s.debug) or false
 end
 

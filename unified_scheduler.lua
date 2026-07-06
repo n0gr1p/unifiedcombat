@@ -14,6 +14,7 @@ local json = require('json')
 local tb_effect_table = require('uc_tb_effect_table')
 local scheduler_locks = require('uc_scheduler_locks')
 local scheduler_pending = require('uc_scheduler_pending')
+local uc_active_config = require('uc_active_config')
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
 	or nil
@@ -1320,7 +1321,12 @@ end
 
 local function enemy_dispel_diag(msg)
 	local s = rawget(_G, 'UC_SETTINGS') or {}
-	local dbg = s.debug == true or s.debug == 1 or tostring(s.debug or ''):lower() == 'true'
+	local dbg = uc_active_config.get_path('config.debug.enabled')
+	if dbg == nil then
+		dbg = s.debug == true or s.debug == 1 or tostring(s.debug or ''):lower() == 'true'
+	else
+		dbg = dbg == true
+	end
 	if not dbg then
 		return
 	end
@@ -1329,7 +1335,12 @@ end
 
 local function enemy_dispel_log(msg)
 	local s = rawget(_G, 'UC_SETTINGS') or {}
-	local log_on = s.log_def_sched == true or s.log_def_sched == 1 or tostring(s.log_def_sched or ''):lower() == 'true'
+	local log_on = uc_active_config.get_path('config.debug.def_sched')
+	if log_on == nil then
+		log_on = s.log_def_sched == true or s.log_def_sched == 1 or tostring(s.log_def_sched or ''):lower() == 'true'
+	else
+		log_on = log_on == true
+	end
 	if not log_on then
 		return
 	end
@@ -7372,7 +7383,13 @@ function scheduler.on_action(act)
 		)
 	end
 	local cfg = rawget(_G, 'UC_SETTINGS') or {}
-	local dbg_enemy_raw = _G.UC_LOG_DEF_SCHED and bool_setting(cfg.def_remove_enemy_buffs, false)
+	local enemy_buff_remove = uc_active_config.get_path('config.defensive.enemy_buffs.remove')
+	if enemy_buff_remove == nil then
+		enemy_buff_remove = bool_setting(cfg.def_remove_enemy_buffs, false)
+	else
+		enemy_buff_remove = enemy_buff_remove == true
+	end
+	local dbg_enemy_raw = _G.UC_LOG_DEF_SCHED and enemy_buff_remove
 	local raw_actor_id = tonumber(act and act.actor_id) or 0
 	local raw_actor = raw_actor_id > 0 and windower.ffxi.get_mob_by_id(raw_actor_id) or nil
 	if dbg_enemy_raw and raw_actor and tonumber(raw_actor.spawn_type) == 16 then
@@ -7517,7 +7534,13 @@ function scheduler.on_action_message(msg)
 		end
 	end
 	local cfg = rawget(_G, 'UC_SETTINGS') or {}
-	local dbg_enemy_raw = _G.UC_LOG_DEF_SCHED and bool_setting(cfg.def_remove_enemy_buffs, false)
+	local enemy_buff_remove = uc_active_config.get_path('config.defensive.enemy_buffs.remove')
+	if enemy_buff_remove == nil then
+		enemy_buff_remove = bool_setting(cfg.def_remove_enemy_buffs, false)
+	else
+		enemy_buff_remove = enemy_buff_remove == true
+	end
+	local dbg_enemy_raw = _G.UC_LOG_DEF_SCHED and enemy_buff_remove
 	if dbg_enemy_raw then
 		local ra = tonumber(msg and msg.actor_id) or 0
 		local rt = tonumber(msg and msg.target_id) or 0

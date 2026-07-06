@@ -1,6 +1,6 @@
 # Canonical Config Migration Audit
 
-Task: `T3.7d`
+Task: `T3.7d`, updated by `T4.1`
 
 ## Current conclusion
 
@@ -248,6 +248,7 @@ Ambiguous current fields:
 - `T3.8j` adds read-only `//uc profilev2 status` and reload-oriented `//uc profilev2 reload` command semantics. Status validates and compares the UI-owned v2 file without mutating runtime state; reload reuses the existing safe apply path and keeps export a manual migration/bootstrap seed only.
 - `T3.8k` adds a hand-authored UI v2 fixture and regression coverage proving the addon consumer path accepts UI-owned files without requiring addon-export-only metadata such as `exported_at` or `profile_key`.
 - `T3.8l` adds `profile_v2` to the compact config status export payload so the UI can read the addon’s v2 file view without changing bridge writes, runtime settings, or scheduler/provider reads.
+- `T4.1` keeps `_G.UC_ACTIVE_PROFILE` refresh limited to startup/load/reload and explicit `profilev2 apply/reload`, classifies slash-command durable writes as legacy compatibility behavior, and migrates only a debug-only active reader batch (`config.debug.*` plus scheduler raw-enemy diagnostic gating) through `uc_active_config` accessors.
 - Live v1 profile loading/saving, bridge writes, and scheduler/provider action-decision reads remain unchanged.
 - Runtime action decisions still use `_G.UC_SETTINGS`; scheduler/provider reads are not migrated.
 - Profile load/save behavior and bridge write behavior remain unchanged.
@@ -276,7 +277,7 @@ Ambiguous current fields:
 9. Migrate only the selected active read-only bridge status consumer with focused parity coverage. Complete in `T3.7j`.
 10. Audit remaining active bridge read-only settings consumers. Complete in `T3.7k`: no additional safe bridge read migration candidate was selected; pause bridge migration unless a new read-only status field is added.
 11. Add structured profile/config read compatibility in the pure normalizer and contract tests. Complete in `T3.8a`: `settings.config` is accepted as durable grouped config, wrapper `profile` metadata maps to `config.profile`, direct canonical-domain input remains supported, and malformed structured input does not throw.
-12. Reduce direct `_G.UC_SETTINGS` reads in scheduler/provider paths once each domain has coverage.
+12. Reduce direct `_G.UC_SETTINGS` reads in scheduler/provider paths once each domain has coverage. `T4.1` only migrates debug-only diagnostic reads and intentionally defers movement/follow/pathing and command-mutated durable settings.
 13. Consider versioned profile migration only after compatibility reads are field-proven.
 
 ## Risks
@@ -297,6 +298,7 @@ Requirements for the next task:
 - Use `//uc profilev2 export` only as a manual migration/bootstrap seed command for the structured v2 profile artifact under `data/profiles_v2/`.
 - Pause bridge migration unless the task is limited to a newly proven read-only/status-only bridge field. The remaining active bridge setting-touching paths are edit/write protocol or command state.
 - If continuing active read migration, prefer the narrow diagnostic candidate from `T3.7k`: `unified_scheduler.lua` `enemy_dispel_diag(msg)` / `enemy_dispel_log(msg)` debug gates through focused `uc_config_runtime` parity helper(s).
+- `T4.1` completed that debug-only scheduler slice and also moved the `uc_party_follow.lua` file-log gate plus the `uc_pathing.lua` debug-overlay gate. Keep the next slice equally narrow.
 - Keep the full normalized config out of bridge payloads.
 - Keep the full normalized config and `_G.UC_SETTINGS` out of diagnostic export files.
 - Keep the structured v2 profile export explicit-command-only; it is a separate artifact from the live v1 profile file and does not change live save/load behavior.
