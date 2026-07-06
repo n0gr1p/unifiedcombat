@@ -10,7 +10,7 @@ local INVENTORY_BASELINE = {
         ["uc_settarget.select_by_id("] = { 1919, 2055 },
     },
     ["UnifiedCombat.lua"] = {
-        ["windower.ffxi.run("] = { 397 },
+        ["windower.ffxi.run("] = { 401 },
     },
     ["uc_party_follow.lua"] = {
         ["windower.ffxi.run("] = { 869, 900, 910, 923, 928, 933 },

@@ -106,6 +106,7 @@ require('actions')
 local uc_partner_list = require('uc_partner_list')
 local uc_add_priority = require('uc_add_priority')
 local uc_config_status_export = require('uc_config_status_export')
+local uc_active_config = require('uc_active_config')
 local uc_profile_v2 = require('uc_profile_v2')
 local UC_PROFILE_CONTRACT = nil
 local UC_PROFILE_CONTRACT_LOAD_ERROR = nil
@@ -271,6 +272,9 @@ local function uc_new_settings_defaults()
 end
 
 _G.UC_SETTINGS = uc_new_settings_defaults()
+uc_active_config.initialize_active_profile(_G.UC_SETTINGS, {
+	source = 'UC_SETTINGS',
+})
 
 local function uc_truthy(v)
 	if v == true or v == 1 then
@@ -841,34 +845,23 @@ local function uc_apply_profile_v2_file(meta, settings)
 	if type(result) ~= 'table' then
 		return false, uc_profile_v2_file_path(meta), 'profile v2 apply returned invalid result', nil
 	end
-	if result.ok ~= true or type(result.candidate) ~= 'table' then
+	if result.ok ~= true or type(result.active_profile) ~= 'table' or type(result.candidate) ~= 'table' then
 		return false, result.path or uc_profile_v2_file_path(meta), result.error, nil
 	end
-	uc_normalize_settings_table(result.candidate)
-	uc_sync_table_in_place(settings, result.candidate)
+	local active_ok, active_err = uc_active_config.set_active_profile(result.active_profile)
+	if active_ok ~= true then
+		return false, result.path or uc_profile_v2_file_path(meta), active_err, nil
+	end
+	local sync_ok, sync_err = uc_active_config.sync_flat_settings_in_place(settings, result.candidate)
+	if sync_ok ~= true then
+		return false, result.path or uc_profile_v2_file_path(meta), sync_err, nil
+	end
 	uc_normalize_settings_table(settings)
 	return true, result.path, nil, result.count
 end
 
 uc_sync_table_in_place = function(dst, src)
-	if type(dst) ~= 'table' or type(src) ~= 'table' then
-		return
-	end
-	for key in pairs(dst) do
-		if src[key] == nil then
-			dst[key] = nil
-		end
-	end
-	for key, value in pairs(src) do
-		if type(value) == 'table' then
-			if type(dst[key]) ~= 'table' then
-				dst[key] = {}
-			end
-			uc_sync_table_in_place(dst[key], value)
-		else
-			dst[key] = value
-		end
-	end
+	return uc_active_config.sync_flat_settings_in_place(dst, src)
 end
 
 local function uc_read_profiles_file(char_name)
@@ -1282,6 +1275,21 @@ local function uc_apply_active_profile()
 	return true
 end
 
+local function uc_sync_active_profile_from_settings(source)
+	local s = _G.UC_SETTINGS
+	if type(s) ~= 'table' then
+		return false
+	end
+	local active_profile = uc_active_config.build_active_profile_from_settings(s, {
+		source = source or 'UC_SETTINGS',
+	})
+	local ok, err = uc_active_config.set_active_profile(active_profile)
+	if ok ~= true then
+		return false, err
+	end
+	return true
+end
+
 local function uc_save_active_profile()
 	local p = windower.ffxi.get_player()
 	if not p or not p.name or not _G.UC_SETTINGS then
@@ -1312,6 +1320,7 @@ local function uc_reload_active_profile(job_for_defaults)
 		uc_apply_job_defaults(p.main_job)
 	end
 	uc_apply_active_profile()
+	uc_sync_active_profile_from_settings('UC_SETTINGS')
 	local main_job = job_for_defaults or p.main_job
 	local profile_key = tostring(p.name or '')
 	if main_job ~= nil or p.sub_job ~= nil then

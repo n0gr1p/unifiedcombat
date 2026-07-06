@@ -153,6 +153,7 @@ local function load_profile_v2_apply_from_addon(addon_source, exporter_stub, val
 		uc_profile_v2 = {
 			apply_structured_profile_file_to_settings = exporter_stub,
 		},
+		uc_active_config = require('uc_active_config'),
 		uc_profile_v2_file_path = function()
 			return 'data/profiles_v2/test.lua'
 		end,
@@ -596,12 +597,15 @@ local function build_expected_config()
 end
 
 local function main()
+	local previous_active_profile = rawget(_G, 'UC_ACTIVE_PROFILE')
 	package.loaded['uc_profile_v2'] = nil
 	package.loaded['uc_profile_v2_export'] = nil
+	package.loaded['uc_active_config'] = nil
 	package.loaded['uc_config_normalizer'] = nil
 	package.loaded['uc_profile_contract'] = nil
 	local profile_v2 = require('uc_profile_v2')
 	local exporter = require('uc_profile_v2_export')
+	local active_config = require('uc_active_config')
 	local normalizer = require('uc_config_normalizer')
 	local contract = require('uc_profile_contract')
 	assert_true(type(profile_v2) == 'table', 'neutral profile v2 helper must load')
@@ -1370,6 +1374,7 @@ local function main()
 	assert_contains(addon, "//uc profilev2 apply", 'addon must advertise profilev2 apply help')
 	assert_contains(addon, "//uc profilev2 reload", 'addon must advertise profilev2 reload help')
 	assert_contains(addon, "local uc_profile_v2 = require('uc_profile_v2')", 'addon must require the canonical profile v2 helper')
+	assert_contains(addon, "local uc_active_config = require('uc_active_config')", 'addon must require the active config helper')
 	assert_contains(addon, "uc_profile_v2.write_structured_profile_export(profile, meta)", 'addon must use structured profile export helper')
 	assert_contains(addon, "uc_profile_v2.validate_structured_profile_file(meta, function(payload)", 'addon must use structured profile validate helper')
 	assert_contains(addon, "uc_profile_v2.diff_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile diff helper')
@@ -1377,6 +1382,8 @@ local function main()
 	assert_contains(addon, "uc_update_profile_v2_contract_status(context)", 'addon must build profile v2 status snapshots')
 	assert_contains(addon, "profile_v2 = uc_update_profile_v2_contract_status(context)", 'addon config status snapshot must include profile v2 status')
 	assert_contains(addon, "uc_profile_v2.apply_structured_profile_file_to_settings(settings, meta, function(payload)", 'addon must use structured profile apply helper')
+	assert_contains(addon, "uc_active_config.set_active_profile(result.active_profile)", 'addon apply path must publish the active profile')
+	assert_contains(addon, "uc_active_config.sync_flat_settings_in_place(settings, result.candidate)", 'addon apply path must project into flat settings through active config')
 	assert_contains(addon, "UC profile v2 status: valid, runtime matches file", 'addon must report matching status tersely')
 	assert_contains(addon, "UC profile v2 status: valid, ", 'addon must report differing status tersely')
 	assert_contains(addon, "UC profile v2 status: invalid: ", 'addon must report invalid status tersely')
@@ -1406,6 +1413,12 @@ local function main()
 	local live_apply_deps = make_fake_fs({
 		[durable_path] = profile_v2.serialize_structured_profile(live_apply_payload),
 	})
+	local live_apply_active_seed = active_config.build_active_profile_from_settings(flat, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		source = 'UC_SETTINGS',
+	})
 	local live_apply = load_profile_v2_apply_from_addon(
 		addon,
 		function(settings, meta, validator)
@@ -1415,6 +1428,8 @@ local function main()
 	)
 	local live_apply_settings = deep_clone(flat)
 	local live_apply_identity = live_apply_settings
+	_G.UC_ACTIVE_PROFILE = live_apply_active_seed
+	local live_apply_active_identity = rawget(_G, 'UC_ACTIVE_PROFILE')
 	local ok_live_apply, live_apply_path, live_apply_err, live_apply_count = live_apply({
 		character = 'Redrogue',
 		main_job = 'PLD',
@@ -1425,6 +1440,8 @@ local function main()
 	assert_nil(live_apply_err, 'live profilev2 apply should not report an error')
 	assert_true(type(live_apply_count) == 'number' and live_apply_count > 0, 'live profilev2 apply should report applied differences')
 	assert_true(live_apply_settings == live_apply_identity, 'live profilev2 apply must preserve settings table identity')
+	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE') == live_apply_active_identity, 'live profilev2 apply must preserve active profile table identity')
+	assert_equal(_G.UC_ACTIVE_PROFILE.profile.source, live_apply_payload.profile.source, 'live profilev2 apply must preserve profile source metadata')
 	assert_false(live_apply_settings.face, 'live profilev2 apply should update runtime scalar values')
 	assert_equal(live_apply_settings.partner_ids[1], 99, 'live profilev2 apply should update partner id list')
 	assert_equal(live_apply_settings.partner_id, 99, 'live profilev2 apply should sync primary partner legacy field')
@@ -1439,6 +1456,14 @@ local function main()
 	end)
 	local live_validation_failure_settings = deep_clone(flat)
 	local live_validation_failure_snapshot = deep_clone(live_validation_failure_settings)
+	local live_validation_failure_active = active_config.build_active_profile_from_settings(live_validation_failure_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		source = 'UC_SETTINGS',
+	})
+	_G.UC_ACTIVE_PROFILE = live_validation_failure_active
+	local live_validation_failure_active_snapshot = deep_clone(rawget(_G, 'UC_ACTIVE_PROFILE'))
 	local ok_validation_failure, _, validation_failure_err = live_validation_failure_apply({
 		character = 'Redrogue',
 		main_job = 'PLD',
@@ -1447,6 +1472,7 @@ local function main()
 	assert_true(ok_validation_failure == false, 'live profilev2 apply should fail cleanly on validation failure')
 	assert_equal(validation_failure_err, 'missing config', 'live profilev2 apply validation failure reason mismatch')
 	assert_deep_equal(live_validation_failure_settings, live_validation_failure_snapshot, 'live profilev2 apply validation failure must not mutate settings')
+	assert_deep_equal(rawget(_G, 'UC_ACTIVE_PROFILE'), live_validation_failure_active_snapshot, 'live profilev2 apply validation failure must not mutate active profile')
 
 	local live_conversion_failure_apply = load_profile_v2_apply_from_addon(addon, function()
 		return {
@@ -1457,6 +1483,14 @@ local function main()
 	end)
 	local live_conversion_failure_settings = deep_clone(flat)
 	local live_conversion_failure_snapshot = deep_clone(live_conversion_failure_settings)
+	local live_conversion_failure_active = active_config.build_active_profile_from_settings(live_conversion_failure_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		source = 'UC_SETTINGS',
+	})
+	_G.UC_ACTIVE_PROFILE = live_conversion_failure_active
+	local live_conversion_failure_active_snapshot = deep_clone(rawget(_G, 'UC_ACTIVE_PROFILE'))
 	local ok_conversion_failure, _, conversion_failure_err = live_conversion_failure_apply({
 		character = 'Redrogue',
 		main_job = 'PLD',
@@ -1465,10 +1499,12 @@ local function main()
 	assert_true(ok_conversion_failure == false, 'live profilev2 apply should fail cleanly on conversion failure')
 	assert_equal(conversion_failure_err, 'forced normalize failure', 'live profilev2 apply conversion failure reason mismatch')
 	assert_deep_equal(live_conversion_failure_settings, live_conversion_failure_snapshot, 'live profilev2 apply conversion failure must not mutate settings')
+	assert_deep_equal(rawget(_G, 'UC_ACTIVE_PROFILE'), live_conversion_failure_active_snapshot, 'live profilev2 apply conversion failure must not mutate active profile')
 
 	_G.UC_normalize_settings_table = previous_global_uc_normalize_settings_table
 	_G.uc_normalize_settings_table = previous_global_uc_normalize_settings_table_lower
 	_G.uc_sync_table_in_place = previous_global_uc_sync_table_in_place
+	_G.UC_ACTIVE_PROFILE = previous_active_profile
 
 	local expected_config = build_expected_config()
 	assert_true(deep_equal(profile.config, expected_config), 'exported config mismatch against expected durable domains')
