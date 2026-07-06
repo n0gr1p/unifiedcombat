@@ -55,7 +55,7 @@
 - The addon command `//uc profilev2 status` reads and validates that same structured v2 profile artifact when possible, compares only its durable `config` domains against the current runtime config, and reports a terse read-only summary.
 - The addon command `//uc profilev2 apply` reads and validates that same structured v2 profile artifact, builds a verified candidate flat runtime settings table from its durable `config` domains, and then applies that candidate to `_G.UC_SETTINGS` in place without saving to disk.
 - The addon command `//uc profilev2 reload` reuses that same verified apply path and safe in-place mutation behavior, but reports reload-oriented chat.
-- The durable reload/apply projection intentionally ignores `targeting.add_priority_names` and the legacy `sleep` mirrors (`sleep`, `sleepspells`, `sleepspell`) so UI-authored files can omit them without tripping conversion mismatch checks.
+- The durable reload/apply projection intentionally ignores the legacy compatibility mirrors that the live normalizer reconstructs after reload: `abilities.legacy_slots`, `targeting.legacy_slots`, `targeting.add_priority_names`, and the legacy `sleep` mirrors (`sleep`, `sleepspells`, `sleepspell`) so UI-authored files can omit them without tripping conversion mismatch checks.
 - Consumer-contract tests now cover a hand-authored UI fixture file, not just addon-exported bootstrap files.
 - The config status export now carries `profile_v2` with the v2 file state summary so the UI can distinguish missing, invalid, valid-match, valid-diff, and error outcomes from the existing read-only status surface.
 - The config status export is explicit-command-only; it is not written during bridge state requests, scheduler ticks, profile polling, or combat updates.

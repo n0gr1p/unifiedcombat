@@ -185,7 +185,11 @@ local function strip_durable_profile_overrides(config)
 	if type(config) ~= 'table' then
 		return config
 	end
+	if type(config.abilities) == 'table' then
+		config.abilities.legacy_slots = nil
+	end
 	if type(config.targeting) == 'table' then
+		config.targeting.legacy_slots = nil
 		config.targeting.add_priority_names = nil
 	end
 	config.sleep = nil

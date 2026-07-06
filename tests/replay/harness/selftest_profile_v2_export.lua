@@ -1261,6 +1261,12 @@ local function main()
 	assert_equal(#no_diff_state.open_calls, 0, 'structured profile apply should not write to disk on no-diff apply')
 	assert_equal(#no_diff_state.rename_calls, 0, 'structured profile apply should not rename files on no-diff apply')
 
+	local legacy_mirror_current = deep_clone(profile.config)
+	legacy_mirror_current.abilities.legacy_slots = { 'Hagakure', 'Meditate' }
+	legacy_mirror_current.targeting.legacy_slots = { 'apex bats' }
+	local legacy_mirror_diff = profile_v2.diff_durable_config(legacy_mirror_current, profile.config)
+	assert_equal(legacy_mirror_diff.count, 0, 'durable diff should ignore legacy ability and targeting slot mirrors')
+
 	local ui_fixture_reload_settings = deep_clone(flat)
 	ui_fixture_reload_settings.face = false
 	local ui_fixture_reload_identity = ui_fixture_reload_settings
