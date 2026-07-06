@@ -21,9 +21,16 @@ package.loaded['files'] = {
 package.loaded['resources'] = {
     zones = {},
 }
+package.loaded['uc_active_config'] = nil
+package.loaded['uc_config_normalizer'] = nil
+
+local active_config = require('uc_active_config')
 
 local fake_target = nil
-local fake_player = { status = 0 }
+local fake_player = { status = 0, id = 10, name = 'Tester' }
+local fake_self_mob = { id = 10, x = 0, y = 0, z = 0 }
+local run_calls = {}
+local expected_path_file_name = 'tester_unknown_unknown_zone_Path.lua'
 
 windower = {
     addon_path = '',
@@ -43,6 +50,8 @@ windower = {
         get_mob_by_target = function(name)
             if name == 't' then
                 return fake_target
+            elseif name == 'me' then
+                return fake_self_mob
             end
             return nil
         end,
@@ -54,6 +63,9 @@ windower = {
         end,
         get_mob_by_id = function()
             return nil
+        end,
+        run = function(x, y)
+            run_calls[#run_calls + 1] = { x = x, y = y }
         end,
     },
 }
@@ -67,6 +79,27 @@ local follow = dofile('uc_party_follow.lua')
 local function assert_equal(actual, expected, message)
     if actual ~= expected then
         error((message or 'assert_equal failed') .. ': expected=' .. tostring(expected) .. ' actual=' .. tostring(actual))
+    end
+end
+
+local function assert_true(value, message)
+    if not value then
+        error(message or 'assert_true failed')
+    end
+end
+
+local function set_active_profile(config)
+    local ok, err = active_config.set_active_profile({
+        version = 2,
+        profile = {
+            schema_version = 2,
+            engine = 'UC',
+            source = 'selftest',
+        },
+        config = config or {},
+    })
+    if ok ~= true then
+        error('failed to set active profile: ' .. tostring(err))
     end
 end
 
@@ -237,11 +270,105 @@ local function main()
     assert_equal(suppress, false, 'combat ended with no target and no lock must not suppress')
     assert_equal(reason, 'combat_intent_stale', 'combat ended release reason mismatch')
 
+    _G.UC_IsFollowParticipant = function()
+        return true
+    end
+    _G.UC_SETTINGS = {
+        party_follow = false,
+        party_follow_id = 0,
+        party_follow_leader_name = '',
+        party_follow_min = 0.5,
+        party_follow_max = 50,
+        fight_follow_min = 3.0,
+    }
+    set_active_profile({
+        follow = {
+            party = {
+                enabled = true,
+                leader_id = 77,
+                leader_name = 'Leader',
+                min = 1.25,
+                max = 22,
+            },
+        },
+    })
+    _G.UC_MOVEMENT_OWNER = nil
+    _G.UC_MOVEMENT_LOCK_UNTIL = nil
+    follow.prerender()
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'follow', 'party follow prerender must honor active config when flat settings differ')
+
+    _G.UC_SETTINGS.party_follow = true
+    _G.UC_SETTINGS.party_follow_id = 77
+    _G.UC_SETTINGS.party_follow_leader_name = 'Leader'
+    set_active_profile({
+        follow = {},
+    })
+    _G.UC_MOVEMENT_OWNER = nil
+    _G.UC_MOVEMENT_LOCK_UNTIL = nil
+    follow.prerender()
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'follow', 'party follow prerender must preserve flat fallback when active path is missing')
+
     package.loaded['uc_party_follow'] = follow
     local pathing = dofile('uc_pathing.lua')
     if type(pathing) ~= 'table' then
         error('uc_pathing must load successfully with arbitration helper available')
     end
+
+    Start_Engine = true
+    _G.UC_SETTINGS = {
+        path_recording = false,
+        path_follow_enabled = false,
+        path_file_name = expected_path_file_name,
+        path_route_type = 'unknown',
+        path_points = {
+            { x = 5, y = 0, z = 0 },
+        },
+        path_party_gate_yalms = 3.0,
+        path_resume_index_window = 12,
+        path_distance_to_start = 0,
+        party_follow = false,
+        party_follow_id = 0,
+    }
+    run_calls = {}
+    _G.__TEST_NOW = 100
+    set_active_profile({
+        movement = {
+            path = {
+                recording = false,
+                follow_enabled = true,
+                file_name = expected_path_file_name,
+                route_type = 'patrol',
+                party_gate_yalms = 3.0,
+                resume_index_window = 12,
+            },
+        },
+        follow = {
+            party = {
+                enabled = false,
+                leader_id = 0,
+            },
+        },
+    })
+    pathing.tick()
+    assert_true(#run_calls > 0, 'pathing tick must drive movement when active path-follow is enabled')
+    assert_equal(run_calls[#run_calls].x, 1, 'pathing tick must use active path-follow enablement when flat value differs')
+
+    run_calls = {}
+    _G.__TEST_NOW = 101
+    _G.UC_SETTINGS.path_follow_enabled = true
+    set_active_profile({
+        movement = {
+            path = {},
+        },
+        follow = {
+            party = {
+                enabled = false,
+                leader_id = 0,
+            },
+        },
+    })
+    pathing.tick()
+    assert_true(#run_calls > 0, 'pathing tick must preserve flat fallback when active path-follow setting is missing')
 
     if rawget(_G, 'UC_SCHED_P1_ENABLE_DISPATCHER_RUN_VECTOR_OWNERSHIP') ~= nil then
         error('movement arbitration test must not require ownership flags')

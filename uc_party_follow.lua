@@ -66,6 +66,38 @@ local function debug_enabled()
 	return s and truthy(s.debug) or false
 end
 
+local function active_value_or_flat(path, flat_value)
+	local active_value = uc_active_config.get_path(path)
+	if active_value ~= nil then
+		return active_value
+	end
+	return flat_value
+end
+
+local function party_follow_enabled(s)
+	return active_value_or_flat('config.follow.party.enabled', s and s.party_follow) == true
+end
+
+local function party_follow_id(s)
+	return tonumber(active_value_or_flat('config.follow.party.leader_id', s and s.party_follow_id)) or 0
+end
+
+local function party_follow_leader_name(s)
+	return active_value_or_flat('config.follow.party.leader_name', s and s.party_follow_leader_name)
+end
+
+local function party_follow_min(s)
+	return tonumber(active_value_or_flat('config.follow.party.min', s and s.party_follow_min)) or 0.5
+end
+
+local function party_follow_max(s)
+	return tonumber(active_value_or_flat('config.follow.party.max', s and s.party_follow_max)) or 50
+end
+
+local function fight_follow_min(s)
+	return tonumber(active_value_or_flat('config.follow.fight.min', s and s.fight_follow_min))
+end
+
 local function path_sep()
 	return package.config:sub(1, 1) == '\\' and '\\' or '/'
 end
@@ -156,7 +188,7 @@ local function state_snapshot(extra)
 		('self_zone=%s'):format(tostring(info and info.zone or '?')),
 		('self_x=%.3f'):format(tonumber(me and me.x) or -999),
 		('self_y=%.3f'):format(tonumber(me and me.y) or -999),
-		('party_follow=%s'):format(tostring(rawget(_G, 'UC_SETTINGS') and rawget(_G, 'UC_SETTINGS').party_follow or false)),
+		('party_follow=%s'):format(tostring(party_follow_enabled(rawget(_G, 'UC_SETTINGS')))),
 		('ff_following=%s'):format(tostring(ff_following or '')),
 		('ff_target_zone=%s'):format(tostring(ff_target and ff_target.zone or '')),
 		('ff_target_x=%.3f'):format(tonumber(ff_target and ff_target.x) or -999),
@@ -240,7 +272,7 @@ local function trim(s)
 end
 
 local function leader_name_lower(s, lid)
-	local n = trim(s and s.party_follow_leader_name)
+	local n = trim(party_follow_leader_name(s))
 	if n ~= '' then
 		return n:lower()
 	end
@@ -268,12 +300,12 @@ end
 
 local function refresh_ff_following_from_settings()
 	local s = _G.UC_SETTINGS
-	if not s or s.party_follow ~= true then
+	if not s or not party_follow_enabled(s) then
 		ff_following = nil
 		ff_target = nil
 		return
 	end
-	local lname = leader_name_lower(s, s.party_follow_id or 0)
+	local lname = leader_name_lower(s, party_follow_id(s))
 	if lname == '' then
 		ff_following = nil
 		ff_target = nil
@@ -541,7 +573,7 @@ function M.outgoing_chunk(id, data, blocked, injected)
 		return false
 	end
 	local s = _G.UC_SETTINGS
-	if s and s.party_follow == true then
+	if s and party_follow_enabled(s) then
 		local okp, pktp = pcall(function()
 			return packets.parse('outgoing', data)
 		end)
@@ -623,15 +655,15 @@ if not M._ipc_registered then
 end
 
 local function follow_dist_sq_bounds(s)
-	local mn = tonumber(s and s.party_follow_min) or 0.5
-	local mx = tonumber(s and s.party_follow_max) or 50
+	local mn = party_follow_min(s)
+	local mx = party_follow_max(s)
 	local ff_until = tonumber(rawget(_G, 'UC_FIGHT_FOLLOW_ACTIVE_UNTIL')) or 0
 	local allow_fight_follow = false
 	if type(rawget(_G, 'UC_IsCombatParticipant')) == 'function' then
 		allow_fight_follow = _G.UC_IsCombatParticipant(s) == true
 	end
 	if allow_fight_follow and now_s() < ff_until then
-		local fight_min = tonumber(s and s.fight_follow_min) or mn
+		local fight_min = fight_follow_min(s) or mn
 		if fight_min >= 0.01 and fight_min <= 99 then
 			mn = fight_min
 		end
@@ -829,7 +861,7 @@ function M.prerender()
 	end
 	refresh_ff_following_from_settings()
 	local s = _G.UC_SETTINGS
-	if not s or not s.party_follow or (s.party_follow_id or 0) == 0 then
+	if not s or not party_follow_enabled(s) or party_follow_id(s) == 0 then
 		set_follow_run_active(false)
 		set_follow_needs_catchup(false)
 		_G.UC_MOVEMENT_OWNER = 'none'
@@ -849,7 +881,7 @@ function M.prerender()
 		local p = windower.ffxi.get_player()
 		local out_of_combat = (tonumber(p and p.status) or 0) ~= 1
 		if out_of_combat then
-			local lid = s.party_follow_id or 0
+			local lid = party_follow_id(s)
 			local self_mob = windower.ffxi.get_mob_by_target('me')
 			local info = windower.ffxi.get_info()
 			local zone_self = info and info.zone
@@ -887,7 +919,7 @@ function M.prerender()
 		set_follow_run_active(false)
 		return
 	end
-	local lid = s.party_follow_id or 0
+	local lid = party_follow_id(s)
 	if lid == p.id then
 		set_follow_run_active(false)
 		return

@@ -1,10 +1,14 @@
 # Active Config Consumer Migration Audit
 
-Task: `T3.7i`, updated by `T3.7k`, `T3.8a`, and `T4.1`
+Task: `T3.7i`, updated by `T3.7k`, `T3.8a`, `T4.1`, and `T4.2`
 
 ## Scope
 
-This is a docs/static audit only. No runtime behavior, profile load/save behavior, bridge write behavior, scheduler behavior, action selection, movement, targeting, cure, tank, or combat decision code changed.
+This audit tracks the staged active-config consumer migration.
+
+- `T3.7k`, `T3.8a`, `T3.8b`, `T3.8k`, and `T3.8l` were docs/test/read-only status milestones.
+- `T4.1` changed only a conservative debug-reader batch.
+- `T4.2` changes runtime follow/path reader code in `uc_party_follow.lua` and `uc_pathing.lua`, but does not change profile load/save behavior, bridge write behavior, scheduler/provider action-decision behavior, addon command behavior, or any generic sync-after-mutation path.
 
 `T3.7k` audited the active bridge read-only settings consumers after the `T3.7j` migration. It also made no runtime behavior changes and no bridge behavior changes. `T3.7j` live sanity passed before `T3.7k`: addon reload succeeded, no Lua errors were reported, the external UI still connected/loaded, `//uc configstatus export` succeeded, the exported file looked sane, and a short combat loop showed no weirdness.
 
@@ -13,6 +17,7 @@ This is a docs/static audit only. No runtime behavior, profile load/save behavio
 `T3.8k` adds a hand-authored UI v2 fixture and consumer-contract tests only. It does not add runtime loading, writing, bridge behavior changes, or scheduler/provider consumer changes.
 `T3.8l` publishes the v2 file state summary through the read-only config status export surface as `profile_v2`. It does not add runtime loading, writing, bridge behavior changes, or scheduler/provider consumer changes.
 `T4.1` keeps active-profile refresh on startup, the existing v1 load/reload path, and explicit `profilev2 apply/reload`, while avoiding any new generic sync-after-command-mutation behavior. It migrates only a narrow debug-only batch of active runtime readers and documents slash-command durable-write caveats instead of promoting them to active-profile ownership.
+`T4.2` migrates a second runtime batch of durable follow/path readers. Those readers now prefer `uc_active_config` accessors and preserve the prior flat/default behavior only when the active path is missing. `T4.2` does not add startup v2 autoload, file watching/polling, addon-driven durable writes, generic active-profile sync after arbitrary mutation, or scheduler/provider action-decision migration.
 
 ## Active runtime entry points
 
@@ -62,11 +67,11 @@ Assessment:
 | `unified_scheduler.lua` / `enemy_dispel_diag`, `enemy_dispel_log` | Reads `debug`, `log_def_sched` for diagnostic logging | `safe_debug_or_ui` | `T4.1` migrated these debug-only gates to `uc_active_config` accessors with flat-value fallback only when the active path is missing. |
 | `unified_scheduler.lua` / raw enemy action/message logging | Reads `def_remove_enemy_buffs` with log flag for diagnostic raw enemy logs | `safe_debug_or_ui` | `T4.1` migrated only this diagnostic gate; no scheduler action-decision reads moved. |
 | `unified_scheduler.lua` / provider and dispatch paths via context settings | Reads many combat/defensive/maintenance/tank/movement/targeting fields | `high_action_selection_risk` | Avoid until domain parity is broad. |
-| `uc_party_follow.lua` / debug logging gate | Reads only `debug` for file logging enablement | `safe_debug_or_ui` | `T4.1` migrated the debug gate only; follow-state reads remain on `_G.UC_SETTINGS`. |
-| `uc_party_follow.lua` / status snapshots | Reads follow flags for diagnostic status text | `deferred_legacy_compat` | Deferred because legacy flat follow mutations can still occur outside active-profile refresh paths. |
-| `uc_party_follow.lua` / follow tick and packet handling | Reads `party_follow`, leader ids, follow ranges | `high_movement_or_targeting_risk` | Avoid. |
+| `uc_party_follow.lua` / debug logging gate | Reads only `debug` for file logging enablement | `safe_debug_or_ui` | `T4.1` migrated the debug gate to `uc_active_config`. |
+| `uc_party_follow.lua` / status snapshots | Reads follow flags for diagnostic status text | `migrated_active_config_reader` | `T4.2` now prefers `config.follow.party.enabled` with flat/default fallback only when the active path is missing. |
+| `uc_party_follow.lua` / follow tick and packet handling | Reads `party_follow`, leader ids, leader name, follow ranges, and fight-follow minimum | `migrated_active_config_reader` | `T4.2` now prefers `config.follow.party.*` and `config.follow.fight.min`, with flat/default fallback only when the active path is missing. |
 | `uc_pathing.lua` / debug overlay gate | Reads only `debug` for overlay visibility | `safe_debug_or_ui` | `T4.1` migrated only the overlay debug gate; path/follow reads remain on `_G.UC_SETTINGS`. |
-| `uc_pathing.lua` / path binding, gating, and follow control | Reads path/follow settings | `high_movement_or_targeting_risk` | Deferred. |
+| `uc_pathing.lua` / path binding, gating, and follow control | Reads `path_recording`, `path_follow_enabled`, `path_file_name`, `path_route_type`, `path_party_gate_yalms`, `path_resume_index_window`, and party-follow gating fields | `migrated_active_config_reader` | `T4.2` now prefers `config.movement.path.*` and `config.follow.party.*` for these durable readers, with flat/default fallback only when the active path is missing. Runtime-mutated path points/state remain flat/runtime-owned. |
 | `unified_combat_core.lua` / `get_settings` | Reads active settings for shared combat helpers | `high_action_selection_risk` | Avoid. |
 | `melee_engine.lua`, `dd2_module.lua` | Legacy overlay, ignore, reload/save reads | `legacy_or_inactive` | Not valid next active-runtime candidate. |
 
@@ -121,7 +126,7 @@ Result:
 - `config_contract_status` is already migrated and should remain compact/read-only.
 - `set`, `apply_set(...)`, `cfg_version`, runtime commands, profile load/save triggers, and all current flat-key edit/echo paths must not migrate yet.
 
-Recommended next step after `T3.7k`: pause bridge migration for now. If another active config read migration is desired, use a narrow non-bridge diagnostic candidate such as `unified_scheduler.lua` `enemy_dispel_diag(msg)` / `enemy_dispel_log(msg)`, migrating only their `debug` / `log_def_sched` diagnostic gates through focused accessors. `T4.1` completes that conservative scheduler-debug slice and extends the same pattern to the `uc_party_follow.lua` file-log gate and the `uc_pathing.lua` debug-overlay gate. Scheduler/provider action-decision reads remain deferred.
+Recommended next step after `T4.2`: keep scheduler/provider action-decision reads deferred. Any next migration should stay outside command-owned compatibility settings and avoid movement-owner state, locks, pending actions, current-action state, and live target-selection logic.
 
 After `T3.8a`, another safe profile/config migration path is to wire structured v2 read compatibility into the live profile load path in fail-safe/read-only mode, or add a generated v2 fixture before live wiring. Bridge write behavior and scheduler/provider action-decision reads should remain unchanged.
 
@@ -143,6 +148,13 @@ Touched by `T4.1`:
 - `tests/replay/harness/selftest_active_config_consumer_migration.lua`: added focused static coverage for migrated readers and the no-generic-command-sync rule.
 - `tests/replay/harness/selftest_all_replay_fixtures.lua`: registered the focused migration selftest.
 
+Touched by `T4.2`:
+
+- `uc_party_follow.lua`: migrated durable readers for `party_follow`, `party_follow_id`, `party_follow_leader_name`, `party_follow_min`, `party_follow_max`, and `fight_follow_min` to active-config-first accessors with flat/default fallback when the active path is missing.
+- `uc_pathing.lua`: migrated durable readers for `path_recording`, `path_follow_enabled`, `path_file_name`, `path_route_type`, `path_party_gate_yalms`, `path_resume_index_window`, and party-follow gating to active-config-first accessors with flat/default fallback when the active path is missing.
+- `tests/replay/harness/selftest_movement_priority_arbitration.lua`: added dynamic active-vs-flat and missing-active-path fallback coverage for the migrated follow/path readers.
+- `tests/replay/harness/selftest_active_config_consumer_migration.lua`: expanded focused static assertions for the newly migrated reader paths.
+
 ## Proposed parity tests
 
 Implemented in `T3.7j`:
@@ -157,6 +169,10 @@ Implemented in `T3.7j`:
 - Assert scheduler/provider code does not require `uc_config_runtime`.
 - Assert the debug-only migrated readers use `uc_active_config` accessors in `unified_scheduler.lua`, `uc_party_follow.lua`, and `uc_pathing.lua`.
 - Assert addon command handlers do not introduce a generic active-profile sync after arbitrary flat setting mutation.
+- Assert `uc_party_follow.prerender()` honors active-config follow values when active and flat differ.
+- Assert `uc_party_follow.prerender()` preserves flat follow behavior when the active reader path is missing.
+- Assert `uc_pathing.tick()` honors active-config path-follow enablement when active and flat differ.
+- Assert `uc_pathing.tick()` preserves flat path-follow behavior when the active reader path is missing.
 
 ## Domains not recommended yet
 
@@ -197,6 +213,11 @@ Active-profile refresh paths after `T4.1` are still limited to:
 
 Deferred because they could go stale behind legacy flat-only mutations:
 
-- follow-domain status text in `uc_party_follow.lua`
-- path/follow/movement control reads in `uc_pathing.lua`
 - slash-command-owned flat durable writes such as `fight_leader`, `add_priority`, and `sleep`
+
+Still explicitly deferred after `T4.2`:
+
+- `fight_leader` / `fight_leader_id` readers and adjacent follow ownership behavior because addon slash commands still mutate those flat keys directly.
+- `add_priority` / targeting command-owned readers because addon commands still own flat compatibility mutation there.
+- `sleep` command-owned readers because addon commands still mutate the flat compatibility settings directly.
+- scheduler/provider action-decision reads, live movement-owner state, pending/lock/current-action state, and runtime path point mutation semantics.

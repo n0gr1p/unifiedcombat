@@ -13,10 +13,10 @@ local INVENTORY_BASELINE = {
         ["windower.ffxi.run("] = { 401 },
     },
     ["uc_party_follow.lua"] = {
-        ["windower.ffxi.run("] = { 869, 900, 910, 923, 928, 933 },
+        ["windower.ffxi.run("] = { 906, 937, 947, 960, 965, 970 },
     },
     ["uc_pathing.lua"] = {
-        ["windower.ffxi.run("] = { 850, 860 },
+        ["windower.ffxi.run("] = { 895, 905 },
     },
     ["uc_add_control.lua"] = {
         ["windower.send_command("] = { 433, 474, 476 },

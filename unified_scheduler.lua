@@ -7157,7 +7157,7 @@ local function p1_static_command_ownership_shape_maintenance()
 	}
 end
 
-local function p1_try_dark_launch_dispatch(settings)
+function scheduler.p1_try_dark_launch_dispatch(settings)
 	local phase = scheduler.phase1
 	local selected = phase.last_selected
 	if type(selected) ~= 'table' or type(phase.last_plan) ~= 'table' then
@@ -7238,7 +7238,7 @@ function scheduler.process_tick(cadence)
 		return true, 'BLOCK_DEFENSIVE_SPELL_WAITING'
 	end
 	p1_run_dry(s)
-	local p1_acted, p1_reason = p1_try_dark_launch_dispatch(s)
+	local p1_acted, p1_reason = scheduler.p1_try_dark_launch_dispatch(s)
 	local move_acted, move_reason = run_movement_coordinator_tick()
 	if p1_acted then
 		if move_acted then

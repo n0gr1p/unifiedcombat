@@ -39,6 +39,46 @@ local follow_paused = false
 local follow_pause_anchor_index = nil
 local follow_pause_reason = 'NONE'
 
+local function active_value_or_flat(path, flat_value)
+	local active_value = uc_active_config.get_path(path)
+	if active_value ~= nil then
+		return active_value
+	end
+	return flat_value
+end
+
+local function path_recording_enabled(settings)
+	return active_value_or_flat('config.movement.path.recording', settings and settings.path_recording) == true
+end
+
+local function path_follow_enabled(settings)
+	return active_value_or_flat('config.movement.path.follow_enabled', settings and settings.path_follow_enabled) == true
+end
+
+local function path_file_name(settings)
+	return tostring(active_value_or_flat('config.movement.path.file_name', settings and settings.path_file_name) or '')
+end
+
+local function path_route_type(settings)
+	return tostring(active_value_or_flat('config.movement.path.route_type', settings and settings.path_route_type) or 'unknown')
+end
+
+local function path_party_gate_yalms(settings)
+	return tonumber(active_value_or_flat('config.movement.path.party_gate_yalms', settings and settings.path_party_gate_yalms)) or 3.0
+end
+
+local function path_resume_index_window(settings)
+	return tonumber(active_value_or_flat('config.movement.path.resume_index_window', settings and settings.path_resume_index_window)) or 12
+end
+
+local function party_follow_enabled(settings)
+	return active_value_or_flat('config.follow.party.enabled', settings and settings.party_follow) == true
+end
+
+local function party_follow_id(settings)
+	return tonumber(active_value_or_flat('config.follow.party.leader_id', settings and settings.party_follow_id)) or 0
+end
+
 local function sanitize_name(s)
 	local v = tostring(s or ''):lower()
 	v = v:gsub('[^%w%-_]+', '_')
@@ -119,7 +159,7 @@ local function serialize_lua(v, indent)
 end
 
 local function write_path_file(settings)
-	local file_name = tostring(settings.path_file_name or '')
+	local file_name = path_file_name(settings)
 	if file_name == '' then
 		return false
 	end
@@ -129,7 +169,7 @@ local function write_path_file(settings)
 		character = tostring(p.name or ''),
 		job = tostring(p.main_job or ''),
 		zone = get_zone_name(),
-		route_type = tostring(settings.path_route_type or 'unknown'),
+		route_type = path_route_type(settings),
 		points = clone_points(settings.path_points or {}),
 	}
 	local content = 'return ' .. serialize_lua(payload, 0) .. '\n'
@@ -139,7 +179,7 @@ local function write_path_file(settings)
 end
 
 local function read_path_file(settings)
-	local file_name = tostring(settings.path_file_name or '')
+	local file_name = path_file_name(settings)
 	if file_name == '' then
 		return false
 	end
@@ -171,7 +211,7 @@ local function read_path_file(settings)
 		end
 	end
 	settings.path_points = out
-	settings.path_route_type = tostring(payload.route_type or settings.path_route_type or 'unknown')
+	settings.path_route_type = tostring(payload.route_type or path_route_type(settings) or 'unknown')
 	return #out > 0
 end
 
@@ -240,7 +280,7 @@ local function closest_point_index(points, me)
 end
 
 local function normalize_resume_window(settings)
-	local w = tonumber(settings and settings.path_resume_index_window) or 12
+	local w = path_resume_index_window(settings)
 	w = math.floor(w + 0.5)
 	if w < 1 then
 		w = 1
@@ -251,7 +291,7 @@ local function normalize_resume_window(settings)
 end
 
 local function normalize_route(settings, points)
-	local route = tostring((settings and settings.path_route_type) or 'unknown')
+	local route = path_route_type(settings)
 	if route == 'unknown' then
 		route = classify_route_from_points(points or {})
 		if settings then
@@ -340,7 +380,7 @@ local function maybe_capture_point(settings)
 end
 
 local function party_follow_active(settings)
-	return settings.party_follow == true and (tonumber(settings.party_follow_id) or 0) > 0
+	return party_follow_enabled(settings) and party_follow_id(settings) > 0
 end
 
 local function resolve_member_xy(pm, zone_self)
@@ -693,7 +733,7 @@ local function render_debug_overlay(settings)
 	local player = windower.ffxi.get_player() or {}
 	local st = tonumber(player.status) or -1
 	lines[#lines + 1] = ('state: %d %s'):format(st, player_status_description(st))
-	local gate = tonumber(settings.path_party_gate_yalms) or 3.0
+	local gate = path_party_gate_yalms(settings)
 	if gate < 0.5 then
 		gate = 0.5
 	elseif gate > 50 then
@@ -701,7 +741,7 @@ local function render_debug_overlay(settings)
 	end
 	local cohesion = party_cohesion_ok(gate)
 	lines[#lines + 1] = ('cohesion<=%.2f: %s'):format(gate, cohesion and 'PASS' or 'BLOCK')
-	lines[#lines + 1] = ('path_follow_enabled: %s'):format(tostring(settings.path_follow_enabled == true))
+	lines[#lines + 1] = ('path_follow_enabled: %s'):format(tostring(path_follow_enabled(settings)))
 	lines[#lines + 1] = ('path_points_count: %d'):format(type(settings.path_points) == 'table' and #settings.path_points or 0)
 	lines[#lines + 1] = ('path_follow_paused: %s'):format(tostring(follow_paused == true))
 	lines[#lines + 1] = ('path_pause_reason: %s'):format(tostring(follow_pause_reason or 'NONE'))
@@ -874,7 +914,7 @@ local function ensure_path_points(settings)
 end
 
 local function maybe_autoload_for_ui(settings)
-	local file_name = tostring(settings.path_file_name or '')
+	local file_name = path_file_name(settings)
 	if file_name == '' then
 		return false
 	end
@@ -893,12 +933,12 @@ end
 
 local function ensure_path_file_binding(settings)
 	local expected = build_path_file_name()
-	if tostring(settings.path_file_name or '') == '' then
+	if path_file_name(settings) == '' then
 		settings.path_file_name = expected
 		return
 	end
 	-- If char/job/zone changed, rebind to that context for follow.
-	if tostring(settings.path_file_name) ~= expected and settings.path_recording ~= true then
+	if path_file_name(settings) ~= expected and not path_recording_enabled(settings) then
 		settings.path_file_name = expected
 		settings.path_points = {}
 		settings.path_route_type = 'unknown'
@@ -911,7 +951,7 @@ local function advance_follow_index(settings, points)
 		follow_state.index = 1
 		return
 	end
-	local route = tostring(settings.path_route_type or 'unknown')
+	local route = path_route_type(settings)
 	if route == 'unknown' then
 		route = classify_route_from_points(points)
 		settings.path_route_type = route
@@ -942,7 +982,7 @@ local function advance_follow_index(settings, points)
 end
 
 local function tick_follow(settings)
-	if settings.path_follow_enabled ~= true then
+	if not path_follow_enabled(settings) then
 		follow_pause_reason = 'PATH_FOLLOW_DISABLED'
 		return
 	end
@@ -970,7 +1010,7 @@ local function tick_follow(settings)
 		set_follow_paused(true)
 		return
 	end
-	local gate = tonumber(settings.path_party_gate_yalms) or 3.0
+	local gate = path_party_gate_yalms(settings)
 	if gate < 0.5 then
 		gate = 0.5
 	elseif gate > 50 then
@@ -1059,12 +1099,12 @@ function mod.tick()
 	ensure_path_file_binding(s)
 	maybe_autoload_for_ui(s)
 
-	if s.path_recording == true and not last_recording then
+	if path_recording_enabled(s) and not last_recording then
 		reset_recording_state(s)
 		write_path_file(s)
 	end
 
-	if s.path_recording == true then
+	if path_recording_enabled(s) then
 		maybe_capture_point(s)
 	elseif last_recording then
 		classify_route(s)
@@ -1076,7 +1116,7 @@ function mod.tick()
 		end
 	end
 
-	if s.path_follow_enabled == true and not last_follow_enabled then
+	if path_follow_enabled(s) and not last_follow_enabled then
 		follow_state.index = 1
 		follow_state.dir = 1
 		if #s.path_points == 0 then
@@ -1091,20 +1131,20 @@ function mod.tick()
 				follow_state.dir = 1
 			end
 		end
-	elseif s.path_follow_enabled ~= true and last_follow_enabled then
+	elseif not path_follow_enabled(s) and last_follow_enabled then
 		-- Explicitly stop any active run vector when path-follow is disabled.
 		stop_move()
 		set_follow_paused(false)
 	end
-	if s.path_recording ~= true then
+	if not path_recording_enabled(s) then
 		tick_follow(s)
 	else
 		-- Recording should not inherit prior movement vectors from follow.
 		stop_move()
 	end
 
-	last_recording = (s.path_recording == true)
-	last_follow_enabled = (s.path_follow_enabled == true)
+	last_recording = path_recording_enabled(s)
+	last_follow_enabled = path_follow_enabled(s)
 end
 
 return mod
