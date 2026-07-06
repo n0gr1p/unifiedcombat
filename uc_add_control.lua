@@ -22,6 +22,7 @@ end
 
 local uc_target_ignore = require('uc_target_ignore')
 local uc_add_priority = require('uc_add_priority')
+local uc_runtime_overrides = require('uc_runtime_overrides')
 
 local M = {}
 
@@ -98,7 +99,7 @@ function M.enabled(s)
 	if not s then
 		return false
 	end
-	return truthy(s.add_control) and truthy(s.fight_leader)
+	return truthy(s.add_control) and uc_runtime_overrides.fight_leader_enabled(s)
 end
 
 local function has_value(tab, val)

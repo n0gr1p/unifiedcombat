@@ -1862,32 +1862,8 @@ local function build_partner_target_set(settings)
 end
 
 function scheduler.sleep_spell_list_from_settings(settings)
-	local out = {}
-	local seen = {}
-	local function append_spell(raw)
-		local spell_name = tostring(raw or ''):match('^%s*(.-)%s*$') or ''
-		if spell_name == '' then
-			return
-		end
-		local key = spell_name:lower()
-		if seen[key] == true then
-			return
-		end
-		seen[key] = true
-		out[#out + 1] = spell_name
-	end
-	local list = settings and settings.sleepspells or nil
-	if type(list) == 'table' then
-		for i = 1, #list do
-			append_spell(list[i])
-		end
-	elseif type(list) == 'string' then
-		append_spell(list)
-	end
-	if #out == 0 then
-		append_spell(settings and settings.sleepspell or '')
-	end
-	return out
+	local runtime_overrides = require('uc_runtime_overrides')
+	return runtime_overrides.sleep_spell_names(settings)
 end
 
 scheduler.SLEEP_MAX_TARGET_DISTANCE = 6.0
@@ -4073,7 +4049,7 @@ function p1_combat_helpers.collect_combat_sleep(ctx, out)
 	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(ctx.settings), false) then
 		return
 	end
-	if not bool_setting(ctx.settings.sleep, false) then
+	if not bool_setting(require('uc_runtime_overrides').sleep_enabled(ctx.settings), false) then
 		return
 	end
 	local configured_sleep_spells = scheduler.sleep_spell_list_from_settings(ctx.settings)
@@ -4418,10 +4394,12 @@ local function p1_collect_combat_engage(ctx, out)
 		), 0.50)
 	end
 	local fight_leader_force_target_id = 0
-	local fight_leader_on = bool_setting(ctx.settings and ctx.settings.fight_leader, false)
-	if fight_leader_on and (tonumber(ctx.settings and ctx.settings.fight_leader_id) or 0) > 0
+	local runtime_overrides = require('uc_runtime_overrides')
+	local fight_leader_on = bool_setting(runtime_overrides.fight_leader_enabled(ctx.settings), false)
+	local fight_leader_id = runtime_overrides.fight_leader_id(ctx.settings)
+	if fight_leader_on and fight_leader_id > 0
 		and uc_fight_leader and type(uc_fight_leader.leader_target_id) == 'function' then
-		fight_leader_force_target_id = tonumber(uc_fight_leader.leader_target_id(tonumber(ctx.settings.fight_leader_id) or 0)) or 0
+		fight_leader_force_target_id = tonumber(uc_fight_leader.leader_target_id(fight_leader_id)) or 0
 	end
 	if engaged and fight_leader_force_target_id <= 0 then
 		return

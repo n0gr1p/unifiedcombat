@@ -7,6 +7,7 @@
 local M = {}
 
 local uc_target_ignore = require('uc_target_ignore')
+local uc_runtime_overrides = require('uc_runtime_overrides')
 
 local function has_value(tab, val)
 	if not tab then
@@ -74,10 +75,14 @@ end
 --- @param hunter_in_claim boolean  if true, settings.hunter bypasses party-claim check (DD2 behavior)
 --- @param partner_skip fun(tid: number): boolean  if true, do not use this mob as override
 function M.resolve_mid_override(settings, hunter_in_claim, partner_skip)
-	if not settings or not settings.fight_leader or (settings.fight_leader_id or 0) == 0 then
+	if not settings or not uc_runtime_overrides.fight_leader_enabled(settings) then
 		return 0
 	end
-	local tid = M.leader_target_id(settings.fight_leader_id)
+	local fight_leader_id = uc_runtime_overrides.fight_leader_id(settings)
+	if fight_leader_id == 0 then
+		return 0
+	end
+	local tid = M.leader_target_id(fight_leader_id)
 	if tid <= 0 then
 		return 0
 	end

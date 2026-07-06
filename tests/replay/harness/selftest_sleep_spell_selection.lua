@@ -1,6 +1,7 @@
 local scheduler_path = "unified_scheduler.lua"
 local settings_path = "UnifiedCombat.lua"
 local bridge_path = "remote_bridge.lua"
+local runtime_overrides_path = "uc_runtime_overrides.lua"
 local ui_logic_path = "UnifiedCombatWinForms/MainForm.ParityLogic.cs"
 local ui_store_path = "UnifiedCombatWinForms/MainForm.ProfileStore.cs"
 local ui_layout_path = "UnifiedCombatWinForms/MainForm.ParityUi.cs"
@@ -93,6 +94,7 @@ local function main()
     local scheduler_source = read_file(scheduler_path)
     local settings_source = read_file(settings_path)
     local bridge_source = read_file(bridge_path)
+    local runtime_overrides_source = read_file(runtime_overrides_path)
     local ui_logic_source = read_file(ui_logic_path)
     local ui_store_source = read_file(ui_store_path)
     local ui_layout_source = read_file(ui_layout_path)
@@ -102,8 +104,9 @@ local function main()
     assert_contains(settings_source, "_G.UC_SleepSpell = uc_sleep_spell", "Sleep UI and commands must share one sleep spell helper surface")
     assert_contains(settings_source, "s.sleepspell = out[1] or ''", "legacy sleepspell field must mirror the primary list spell")
     assert_contains(scheduler_source, "function scheduler.sleep_spell_list_from_settings(settings)", "scheduler must read ordered sleep spell lists from settings")
-    assert_contains(scheduler_source, "if #out == 0 then", "scheduler must keep legacy single-value migration path")
-    assert_contains(scheduler_source, "append_spell(settings and settings.sleepspell or '')", "legacy sleepspell must still backfill the new list")
+    assert_contains(scheduler_source, "return runtime_overrides.sleep_spell_names(settings)", "scheduler sleep spell list must route through runtime overrides")
+    assert_contains(runtime_overrides_source, "if #out == 0 then", "runtime override helper must keep legacy single-value migration path")
+    assert_contains(runtime_overrides_source, "return normalize_name_list(rawget(s, 'sleepspells'), rawget(s, 'sleepspell'))", "runtime override helper must backfill from legacy sleepspell compatibility keys")
     assert_contains(scheduler_source, "scheduler.SLEEP_MAX_TARGET_DISTANCE = 6.0", "scheduler must document the hard 6-yalm Sleep boundary")
     assert_contains(scheduler_source, "function scheduler.select_sleep_spell_for_target(settings, target)", "scheduler must select the first available sleep spell per target")
     assert_contains(scheduler_source, "if effective_max_range <= 0 or effective_max_range > scheduler.SLEEP_MAX_TARGET_DISTANCE then", "Sleep spell selection must clamp cast range to the hard Sleep boundary")

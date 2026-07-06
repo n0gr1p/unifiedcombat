@@ -19,7 +19,7 @@ local INVENTORY_BASELINE = {
         ["windower.ffxi.run("] = { 895, 905 },
     },
     ["uc_add_control.lua"] = {
-        ["windower.send_command("] = { 433, 474, 476 },
+        ["windower.send_command("] = { 434, 475, 477 },
     },
     ["remote_bridge.lua"] = {
         ["windower.send_command("] = { 1575 },

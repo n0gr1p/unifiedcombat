@@ -118,7 +118,7 @@ local function main()
     local source = read_file(scheduler_path)
 
     assert_contains(source, "function p1_combat_helpers.collect_combat_sleep(ctx, out)", "scheduler must collect Sleep proposals explicitly")
-    assert_contains(source, "if not bool_setting(ctx.settings.sleep, false) then", "Sleep collection must stay behind the existing Sleep toggle")
+    assert_contains(source, "if not bool_setting(require('uc_runtime_overrides').sleep_enabled(ctx.settings), false) then", "Sleep collection must stay behind the existing Sleep toggle")
     assert_contains(source, "local configured_sleep_spells = scheduler.sleep_spell_list_from_settings(ctx.settings)", "Sleep collection must use UI-owned configured spell lists")
     assert_contains(source, "if #configured_sleep_spells == 0 then", "Sleep collection must no-op when no spell list is configured")
     assert_contains(source, "scheduler.SLEEP_MAX_TARGET_DISTANCE = 6.0", "Sleep collection must document the hard 6-yalm boundary")
