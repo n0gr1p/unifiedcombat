@@ -1687,7 +1687,7 @@ end)
 windower.register_event('job change', function(job, lvl)
 	local jname = res.jobs:with('id', job).english_short
 	uc_update_engine()
-	uc_reload_startup_profile_once(jname)
+	uc_reload_active_profile(jname)
 	uc_queue_profile_v2_autoload()
 	uc_start_active_engine_if_running()
 	uc_register_action_listener()
