@@ -1608,7 +1608,6 @@ windower.register_event('load', function()
 	uc_register_action_listener()
 	if windower.ffxi.get_info().logged_in then
 		uc_update_engine()
-		uc_reload_startup_profile_once()
 		uc_queue_profile_v2_autoload()
 	end
 end)
