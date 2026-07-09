@@ -170,7 +170,7 @@ local function build_flat_settings()
         spell_active = true,
         dd2_spell_slots = { { spell = 'Dia' } },
         cor_roll_1 = 'Chaos Roll',
-        cor_roll_2 = 'Samurai Roll',
+        cor_roll_2 = 'Ninja Roll',
         cor_crooked_roll_slot = 2,
         cor_elevens = true,
         cor_luzaf_range_override = true,
@@ -383,7 +383,7 @@ local function build_nested_settings()
             enabled = true,
             cor = {
                 roll_1 = 'Chaos Roll',
-                roll_2 = 'Samurai Roll',
+                roll_2 = 'Ninja Roll',
                 crooked_roll_slot = 2,
                 elevens = true,
                 luzaf_range_override = true,
@@ -506,6 +506,7 @@ local function main()
     assert_equal(flat_config.spells.configured, 'Dia', 'spell configured mismatch')
     assert_equal(flat_config.spells.dd2_slots[1].spell, 'Dia', 'dd2 slots mismatch')
     assert_equal(flat_config.maintenance.cor.roll_1, 'Chaos Roll', 'cor roll 1 mismatch')
+    assert_equal(flat_config.maintenance.cor.roll_2, 'Ninja Roll', 'cor roll 2 mismatch')
     assert_equal(flat_config.maintenance.cor.range_require_ids[2], 2, 'cor range requirement mismatch')
     assert_equal(flat_config.debug.ja_debug, true, 'debug flag mismatch')
     assert_equal(flat_config.ownership.scheduler_dark_launch_maintenance, true, 'ownership flag mismatch')
@@ -527,6 +528,7 @@ local function main()
     assert_equal(nested_config.combat.enabled, false, 'nested combat enabled mismatch')
     assert_equal(nested_config.combat.weaponskill.enabled, true, 'nested combat ws enabled mismatch')
     assert_equal(nested_config.defensive.cure.min_tier, 5, 'nested defensive cure min tier mismatch')
+    assert_equal(nested_config.maintenance.cor.roll_2, 'Ninja Roll', 'nested cor roll 2 mismatch')
     assert_equal(nested_config.movement.path.points[1].x, 1, 'nested path points mismatch')
     assert_equal(nested_config.maintenance.brd.family, 'March', 'nested maintenance BRD mismatch')
     assert_equal(nested_config.maintenance.geo.bubble, 'Entrust', 'nested maintenance GEO mismatch')

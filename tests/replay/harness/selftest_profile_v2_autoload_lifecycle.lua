@@ -58,6 +58,7 @@ local function load_autoload_scope(state, status_result, autoload_result)
 		block,
 		'',
 		'return {',
+		'  startup_reload = uc_reload_startup_profile_once,',
 		'  queue = uc_queue_profile_v2_autoload,',
 		'  run = uc_run_queued_profile_v2_autoload,',
 		'  autoload = uc_autoload_profile_v2_file,',
@@ -83,6 +84,12 @@ local function load_autoload_scope(state, status_result, autoload_result)
 				state.settings_identity = current_settings
 				current_settings.profile_v2_autoload = true
 				current_settings.engine_enabled = false
+				current_settings.cor_roll_1 = 'Chaos Roll'
+				current_settings.cor_roll_2 = 'Ninja Roll'
+				current_settings.cor_crooked_roll_slot = 0
+				current_settings.cor_elevens = false
+				current_settings.cor_luzaf_range_override = false
+				current_settings.cor_roll_range_require_ids = {}
 				state.active_profile = {
 					version = 2,
 					profile = {
@@ -94,6 +101,16 @@ local function load_autoload_scope(state, status_result, autoload_result)
 					config = {
 						ownership = {
 							profile_v2_autoload = true,
+						},
+						maintenance = {
+							cor = {
+								roll_1 = 'Chaos Roll',
+								roll_2 = 'Ninja Roll',
+								crooked_roll_slot = 0,
+								elevens = false,
+								luzaf_range_override = false,
+								range_require_ids = {},
+							},
 						},
 					},
 				}
@@ -145,6 +162,8 @@ local function make_state()
 		active_profile = nil,
 		settings_identity = nil,
 		status_context = nil,
+		reload_calls = 0,
+		reload_job = nil,
 	}
 end
 
@@ -156,6 +175,7 @@ end
 local function main()
 	local previous_settings = rawget(_G, 'UC_SETTINGS')
 	local previous_active_profile = rawget(_G, 'UC_ACTIVE_PROFILE')
+	local previous_reload_active_profile = rawget(_G, 'UC_ReloadActiveProfile')
 
 	local success_state = make_state()
 	_G.UC_SETTINGS = success_state.settings
@@ -171,6 +191,33 @@ local function main()
 			ownership = {},
 		},
 	}
+	rawset(_G, 'UC_ReloadActiveProfile', function(job_for_defaults)
+		success_state.reload_calls = success_state.reload_calls + 1
+		success_state.reload_job = job_for_defaults
+		success_state.active_profile = {
+			version = 2,
+			profile = {
+				character = success_state.player.name,
+				main_job = success_state.player.main_job,
+				sub_job = success_state.player.sub_job,
+				source = 'legacy',
+			},
+			config = {
+				maintenance = {
+					cor = {
+						roll_1 = 'Corsair\'s Roll',
+						roll_2 = 'Ninja Roll',
+						crooked_roll_slot = 0,
+						elevens = false,
+						luzaf_range_override = false,
+						range_require_ids = {},
+					},
+				},
+			},
+		}
+		_G.UC_ACTIVE_PROFILE = success_state.active_profile
+		return true
+	end)
 
 	local success_scope = load_autoload_scope(
 		success_state,
@@ -193,6 +240,10 @@ local function main()
 	assert_true(success_scope.queue() == 'Terrasjr|PLD|RDM', 'duplicate queue requests should return the same session key')
 	assert_equal(success_state.autoload_calls, 0, 'queued autoload must not run before the startup runner fires')
 	assert_equal(success_state.status_calls, 0, 'queued autoload must not inspect status before the startup runner fires')
+	assert_true(success_scope.startup_reload() ~= nil, 'startup reload should run once before autoload')
+	assert_equal(success_state.reload_calls, 1, 'startup reload should call the legacy bootstrap path once')
+	assert_true(success_scope.startup_reload() ~= nil, 'duplicate startup reloads should be ignored for the same session')
+	assert_equal(success_state.reload_calls, 1, 'duplicate startup reloads must not run twice for the same session')
 	assert_true(success_scope.run() ~= nil, 'startup runner should execute the queued autoload')
 	assert_equal(success_state.autoload_calls, 1, 'autoload should run exactly once for the session')
 	assert_equal(success_state.status_calls, 1, 'autoload should compute a post-apply status check')
@@ -202,9 +253,50 @@ local function main()
 	assert_equal(success_state.settings.engine_enabled, false, 'autoload must not enable the engine')
 	assert_equal(success_state.start_calls, 0, 'autoload runner must not start the engine')
 	assert_chat_contains(success_state, 'UC profile v2 autoload: applied', 'successful autoload should report applied when post-apply diff is zero')
+	assert_true(success_scope.startup_reload() ~= nil, 'post-autoload startup reload should be ignored for the same session')
+	assert_equal(success_state.reload_calls, 1, 'post-autoload startup reload must not run twice for the same session')
+	local active_config = require('uc_active_config')
+	assert_equal(active_config.get_path('config.maintenance.cor.roll_1'), 'Chaos Roll', 'autoloaded active config roll 1 mismatch')
+	assert_equal(active_config.get_path('config.maintenance.cor.roll_2'), 'Ninja Roll', 'autoloaded active config roll 2 mismatch')
+	local previous_windower = rawget(_G, 'windower')
+	rawset(_G, 'windower', {
+		ffxi = {
+			get_player = function()
+				return {
+					main_job = 'COR',
+					sub_job = 'WAR',
+					status = 0,
+					buffs = {},
+				}
+			end,
+			get_ability_recasts = function()
+				return {}
+			end,
+			get_items = function()
+				return { enabled = false }
+			end,
+			get_mob_by_id = function()
+				return nil
+			end,
+		},
+	})
+	local active_cor = dofile('uc_cor_maintenance.lua')
+	local cor_action = active_cor.propose({
+		cor_roll_1 = 'Corsair\'s Roll',
+		cor_roll_2 = 'Samurai Roll',
+		cor_crooked_roll_slot = 0,
+		cor_elevens = false,
+		cor_luzaf_range_override = false,
+		cor_roll_range_require_ids = {},
+		abilities = {},
+	})
+	assert_true(type(cor_action) == 'table', 'post-autoload COR maintenance should still produce an action')
+	assert_equal(cor_action.action_name, 'Chaos Roll', 'autoloaded COR rolls must survive the startup reload guard')
+	rawset(_G, 'windower', previous_windower)
 
 	assert_true(success_scope.run() == nil, 'duplicate startup runner calls must not rerun the same session')
 	assert_equal(success_state.autoload_calls, 1, 'duplicate startup runner calls must not reapply the same session')
+	rawset(_G, 'UC_ReloadActiveProfile', previous_reload_active_profile)
 
 	local warning_state = make_state()
 	_G.UC_SETTINGS = warning_state.settings
@@ -252,6 +344,7 @@ local function main()
 
 	_G.UC_SETTINGS = previous_settings
 	_G.UC_ACTIVE_PROFILE = previous_active_profile
+	rawset(_G, 'UC_ReloadActiveProfile', previous_reload_active_profile)
 	io.stdout:write('selftest_profile_v2_autoload_lifecycle: OK\n')
 end
 
