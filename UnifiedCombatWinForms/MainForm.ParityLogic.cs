@@ -3081,7 +3081,7 @@ public partial class MainForm
         );
     }
 
-    private async void SaveRemote()
+    private void SaveRemote()
     {
         var sid = RequireSelectedSid();
         if (sid is null)
@@ -3091,15 +3091,6 @@ public partial class MainForm
 
         TrySaveProfileFromUi(sid);
         TrySaveStructuredProfileV2FromUi(sid);
-        // Force a full config reapply on explicit Save so addon runtime
-        // cannot stay stale behind UI-side set dedupe.
-        _lastSentSetBySidPath.Remove(sid);
-        PushFullFormState(sid);
-        await Task.Delay(200).ConfigureAwait(true);
-        if (!IsDisposed)
-        {
-            Forward(sid, new Dictionary<string, object?> { ["op"] = "save" });
-        }
     }
 
     private void ToggleEngine()

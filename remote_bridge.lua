@@ -1562,10 +1562,6 @@ local function process_line(line)
 		if type(_G.UC_ResetMovementLocksForFollow) == 'function' then
 			_G.UC_ResetMovementLocksForFollow()
 		end
-	elseif op == 'save' then
-		if type(_G.UC_SaveActiveProfile) == 'function' then
-			_G.UC_SaveActiveProfile()
-		end
 	elseif op == 'reload' then
 		if type(_G.UC_ReloadActiveProfile) == 'function' then
 			_G.UC_ReloadActiveProfile()

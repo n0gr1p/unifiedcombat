@@ -15,6 +15,8 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeOmitsProfileV2AutoloadWhenDisabled();
             TestSerializeIncludesProfileV2AutoloadWhenEnabled();
             TestProfileV2AutoloadIsPartOfPersistedBoolSet();
+            TestUiSaveIsFileOnly();
+            TestRemoteBridgeDoesNotConsumeUiSave();
             TestWriteCreatesProfilesDirectory();
             TestWritePreservesExistingFinalOnTempWriteFailure();
             TestWritePreservesExistingFinalOnPromotionFailure();
@@ -139,6 +141,23 @@ internal static class StructuredProfileV2WriterTests
             HubUiConstants.BoolKeys.Contains("profile_v2_autoload"),
             "autoload must be included in the shared UI bool key set so load/save paths persist it"
         );
+    }
+
+    private static void TestUiSaveIsFileOnly()
+    {
+        var source = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        AssertContains(source, "TrySaveProfileFromUi(sid);", "UI save must still write the legacy profile file");
+        AssertContains(source, "TrySaveStructuredProfileV2FromUi(sid);", "UI save must still write the structured profile file");
+        AssertNotContains(source, "PushFullFormState(sid);", "UI save must not push runtime state back into the addon");
+        AssertNotContains(source, "[\"op\"] = \"save\"", "UI save must not send a runtime save command");
+        AssertNotContains(source, "await Task.Delay(200)", "UI save should not defer a runtime reapply");
+    }
+
+    private static void TestRemoteBridgeDoesNotConsumeUiSave()
+    {
+        var source = ReadRepoFile("remote_bridge.lua");
+        AssertNotContains(source, "op == 'save'", "bridge must not treat UI save as a runtime mutation command");
+        AssertNotContains(source, "_G.UC_SaveActiveProfile()", "bridge must not call the runtime save hook from UI save");
     }
 
     private static void TestWriteCreatesProfilesDirectory()
@@ -375,6 +394,28 @@ internal static class StructuredProfileV2WriterTests
             }
             lastIndex = index;
         }
+    }
+
+    private static string ReadRepoFile(params string[] relativeParts)
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null)
+        {
+            var path = current.FullName;
+            foreach (var part in relativeParts)
+            {
+                path = Path.Combine(path, part);
+            }
+
+            if (File.Exists(path))
+            {
+                return File.ReadAllText(path);
+            }
+
+            current = current.Parent;
+        }
+
+        throw new FileNotFoundException("unable to locate repo source file: " + string.Join(Path.DirectorySeparatorChar, relativeParts));
     }
 
     private sealed class FakeStructuredProfileV2FileSystem : IStructuredProfileV2FileSystem
