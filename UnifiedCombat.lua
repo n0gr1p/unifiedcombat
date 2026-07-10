@@ -1813,6 +1813,7 @@ windower.register_event('addon command', function(...)
 			if _G.UC_SETTINGS then
 				_G.UC_SETTINGS.engine_enabled = true
 			end
+			_G.UC_ZONE_SUSPEND_UNTIL = nil
 			uc_start_active_engine_if_running()
 			windower.add_to_chat(207, 'UnifiedCombat: engine started')
 		end

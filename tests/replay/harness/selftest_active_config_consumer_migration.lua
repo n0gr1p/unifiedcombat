@@ -150,6 +150,26 @@ local function main()
         "windower.register_event('addon command', function(...)",
         "windower.add_to_chat(167, 'Unknown command.')"
     )
+    local start_command_block = slice_between(
+        addon,
+        "if a == 'start' then",
+        "elseif a == 'stop' then"
+    )
+    local load_block = slice_between(
+        addon,
+        "windower.register_event('load', function()",
+        "windower.register_event('incoming chunk', function(id, data)"
+    )
+    local job_change_block = slice_between(
+        addon,
+        "windower.register_event('job change', function(job, lvl)",
+        "windower.register_event('zone change', function()"
+    )
+    local login_start = addon:find("windower.register_event('login', function()", 1, true)
+    if not login_start then
+        error("missing login block start")
+    end
+    local login_block = addon:sub(login_start)
     assert_not_contains(
         addon_command_block,
         "uc_sync_active_profile_from_settings(",
@@ -166,6 +186,26 @@ local function main()
         "addon command handlers must not project command mutations through active-profile sync"
     )
     assert_contains(addon_command_block, "elseif a == 'fight_leader' or a == 'fightleader' then", "fight_leader command block must remain deferred rather than migrated through generic sync")
+    assert_contains(
+        start_command_block,
+        "_G.UC_ZONE_SUSPEND_UNTIL = nil",
+        "explicit start command must clear the remaining zone action pause"
+    )
+    assert_not_contains(
+        load_block,
+        "_G.UC_ZONE_SUSPEND_UNTIL = nil",
+        "addon load must not clear the zone action pause"
+    )
+    assert_not_contains(
+        job_change_block,
+        "_G.UC_ZONE_SUSPEND_UNTIL = nil",
+        "job change autoload path must not clear the zone action pause"
+    )
+    assert_not_contains(
+        login_block,
+        "_G.UC_ZONE_SUSPEND_UNTIL = nil",
+        "login autoload path must not clear the zone action pause"
+    )
 
     io.stdout:write("selftest_active_config_consumer_migration: OK\n")
 end

@@ -156,6 +156,14 @@ return {
                         cast_lock = { hard = false },
                         movement_lock = { hard = false },
                     },
+                    proposal = { action_type = "spell" },
+                },
+                {
+                    locks = {
+                        zone_guard_lock = { hard = false },
+                        cast_lock = { hard = false },
+                        movement_lock = { hard = false },
+                    },
                     proposal = { action_type = "item" },
                 },
                 {
@@ -173,6 +181,7 @@ return {
                 "zone_guard",
                 "hard_locked",
                 "hard_locked",
+                "",
                 "",
                 "",
             },
