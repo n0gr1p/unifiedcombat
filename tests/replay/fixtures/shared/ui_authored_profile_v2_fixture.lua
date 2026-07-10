@@ -154,15 +154,6 @@ return {
         },
         maintenance = {
             enabled = true,
-            cor = {
-                roll_1 = "Chaos Roll",
-                roll_2 = "Samurai Roll",
-                crooked_roll_slot = 0,
-                elevens = false,
-                luzaf_range_override = false,
-                range_selected = "",
-                range_require_ids = {},
-            },
             brd = {},
             geo = {},
         },

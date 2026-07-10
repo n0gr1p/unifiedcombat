@@ -162,7 +162,12 @@ local function serialize_value(value, indent, seen)
 	return table.concat(parts)
 end
 
-local function pick_durable_config_domains(config)
+local function is_cor_profile(meta)
+	local main_job = meta and meta.main_job
+	return type(main_job) == 'string' and main_job:upper() == 'COR'
+end
+
+local function pick_durable_config_domains(config, meta)
 	local out = {}
 	for i = 1, #DURABLE_CONFIG_DOMAINS do
 		local domain = DURABLE_CONFIG_DOMAINS[i]
@@ -175,6 +180,9 @@ local function pick_durable_config_domains(config)
 	-- durable v2 round-trip check. UI-authored files are allowed to omit them.
 	if type(out.targeting) == 'table' then
 		out.targeting.add_priority_names = nil
+	end
+	if not is_cor_profile(meta) and type(out.maintenance) == 'table' then
+		out.maintenance.cor = nil
 	end
 	out.sleep = nil
 	return out
@@ -208,6 +216,30 @@ local function strip_durable_profile_overrides(config)
 	end
 	config.sleep = nil
 	return config
+end
+
+local function strip_non_cor_maintenance_cor(current_config, target_config, meta)
+	if type(current_config) ~= 'table' or type(target_config) ~= 'table' or is_cor_profile(meta) then
+		return current_config, target_config
+	end
+
+	local target_maintenance = target_config.maintenance
+	local target_cor = type(target_maintenance) == 'table' and target_maintenance.cor or nil
+	if type(target_cor) ~= 'table' then
+		return current_config, target_config
+	end
+
+	local defaults = uc_config_normalizer.default_config(meta)
+	local default_cor = type(defaults) == 'table' and type(defaults.maintenance) == 'table' and defaults.maintenance.cor or nil
+	if type(default_cor) ~= 'table' then
+		return current_config, target_config
+	end
+
+	local diff = M.diff_durable_config(clone_value(target_cor), clone_value(default_cor))
+	if diff.count == 0 then
+		target_maintenance.cor = nil
+	end
+	return current_config, target_config
 end
 
 local function append_path(prefix, key)
@@ -348,7 +380,7 @@ function M.build_structured_profile(settings, meta)
 				exported_at = resolved_meta.exported_at,
 				profile_key = resolved_meta.profile_key,
 			},
-			config = pick_durable_config_domains(normalized),
+			config = pick_durable_config_domains(normalized, meta),
 		}
 	end
 	return {
@@ -362,13 +394,13 @@ function M.build_structured_profile(settings, meta)
 			source = 'exported_from_v1_settings',
 			exported_at = resolved_meta.exported_at,
 		},
-		config = pick_durable_config_domains(normalized),
+		config = pick_durable_config_domains(normalized, meta),
 	}
 end
 
 function M.build_durable_config(settings, meta)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
-	return pick_durable_config_domains(normalized)
+	return pick_durable_config_domains(normalized, meta)
 end
 
 function M.format_structured_profile_diff_value(value)
@@ -956,7 +988,9 @@ function M.diff_structured_profile_file_against_settings(settings, meta, validat
 	end
 
 	local current_config = M.build_durable_config(settings, meta)
-	local diff = M.diff_durable_config(current_config, validation.payload.config)
+	local target_config = clone_value(validation.payload.config)
+	current_config, target_config = strip_non_cor_maintenance_cor(current_config, target_config, meta)
+	local diff = M.diff_durable_config(current_config, target_config)
 	return {
 		ok = true,
 		path = validation.path,
@@ -1105,7 +1139,9 @@ local function apply_result_to_active_profile(current_settings, payload, meta, d
 		}
 	end
 
-	local diff = diff_durable_config(candidate_config, payload.config)
+	local target_config = clone_value(payload.config)
+	candidate_config, target_config = strip_non_cor_maintenance_cor(candidate_config, target_config, meta)
+	local diff = diff_durable_config(candidate_config, target_config)
 	if type(diff) ~= 'table' then
 		return {
 			ok = false,

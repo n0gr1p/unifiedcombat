@@ -682,15 +682,6 @@ local function build_expected_config()
 		},
 		maintenance = {
 			enabled = true,
-			cor = {
-				roll_1 = 'Chaos Roll',
-				roll_2 = 'Samurai Roll',
-				crooked_roll_slot = 0,
-				elevens = false,
-				luzaf_range_override = false,
-				range_selected = '',
-				range_require_ids = {},
-			},
 			brd = {},
 			geo = {},
 		},
@@ -769,7 +760,7 @@ local function main()
 	assert_equal(profile.profile.profile_key, 'Redrogue|PLD|WAR', 'structured profile key mismatch')
 	assert_equal(profile.config.ui.show_ingame_ui, true, 'ui domain mismatch')
 	assert_equal(profile.config.combat.weaponskill.primary, 'Savage Blade', 'combat domain mismatch')
-	assert_equal(profile.config.maintenance.cor.roll_1, 'Chaos Roll', 'maintenance domain mismatch')
+	assert_true(profile.config.maintenance.cor == nil, 'non-COR structured profile must omit maintenance.cor')
 	assert_equal(profile.config.legacy.hunter, true, 'legacy domain mismatch')
 	assert_true(profile.config.targeting.add_priority_names == nil, 'exported config must not include durable add priority names')
 	assert_true(profile.config.command == nil, 'exported config must not include engine runtime state')
@@ -803,8 +794,27 @@ local function main()
 	})
 	assert_equal(normalized.profile.character, 'Redrogue', 'round-tripped normalized character mismatch')
 	assert_equal(normalized.combat.weaponskill.primary, 'Savage Blade', 'round-tripped normalized combat mismatch')
-	assert_equal(normalized.maintenance.cor.roll_2, 'Samurai Roll', 'round-tripped normalized maintenance mismatch')
+	assert_equal(normalized.maintenance.cor.roll_2, '', 'round-tripped normalized non-COR maintenance mismatch')
 	assert_equal(normalized.legacy.hunter, true, 'round-tripped normalized legacy mismatch')
+
+	local cor_roundtrip = {
+		profile = profile_v2.build_structured_profile(flat, {
+			character = 'Redrogue',
+			main_job = 'COR',
+			sub_job = 'WAR',
+			profile_key = 'Redrogue|COR|WAR',
+			exported_at = '2026-06-29T18:00:00Z',
+		}),
+	}
+	assert_equal(cor_roundtrip.profile.config.maintenance.cor.roll_1, 'Chaos Roll', 'COR structured profile maintenance mismatch')
+	assert_equal(cor_roundtrip.profile.config.maintenance.cor.roll_2, 'Samurai Roll', 'COR structured profile maintenance mismatch')
+	cor_roundtrip.serialized = exporter.serialize_structured_profile(cor_roundtrip.profile)
+	cor_roundtrip.chunk, cor_roundtrip.load_err = loadstring(cor_roundtrip.serialized)
+	assert_true(type(cor_roundtrip.chunk) == 'function', 'serialized COR structured profile must load as Lua: ' .. tostring(cor_roundtrip.load_err))
+	cor_roundtrip.ok_load, cor_roundtrip.loaded = pcall(cor_roundtrip.chunk)
+	assert_true(cor_roundtrip.ok_load == true, 'serialized COR structured profile chunk should execute')
+	assert_true(type(cor_roundtrip.loaded) == 'table', 'serialized COR structured profile must return a table')
+	assert_deep_equal(cor_roundtrip.loaded, cor_roundtrip.profile, 'serialized COR structured profile should round-trip cleanly')
 
 	local defaults = exporter.build_structured_profile(nil, nil)
 	assert_equal(defaults.profile.character, 'unknown', 'nil settings character default mismatch')
@@ -1402,6 +1412,51 @@ local function main()
 	assert_equal(v2_fixture_status.main_job, 'PLD', 'UI-authored structured profile status main job mismatch')
 	assert_equal(v2_fixture_status.sub_job, 'WAR', 'UI-authored structured profile status sub job mismatch')
 	assert_deep_equal(v2_fixture_status_settings, v2_fixture_status_snapshot, 'UI-authored structured profile status must not mutate settings')
+
+	local brd_missing_cor = {
+		profile = deep_clone(profile),
+		settings = deep_clone(flat),
+	}
+	brd_missing_cor.settings_identity = brd_missing_cor.settings
+	brd_missing_cor.profile.main_job = 'BRD'
+	brd_missing_cor.profile.sub_job = 'WHM'
+	brd_missing_cor.profile.config.maintenance.cor = nil
+	assert_nil(brd_missing_cor.profile.config.maintenance.cor, 'BRD structured profile should omit maintenance.cor when it is non-applicable')
+	assert_true(contract.validate_structured_profile_config(brd_missing_cor.profile).ok == true, 'BRD structured profile missing maintenance.cor should validate')
+	brd_missing_cor.path = profile_v2.default_export_path({
+		character = 'Redrogue',
+		main_job = 'BRD',
+		sub_job = 'WHM',
+	})
+	brd_missing_cor.deps, brd_missing_cor.state = make_fake_fs({
+		[brd_missing_cor.path] = profile_v2.serialize_structured_profile(brd_missing_cor.profile),
+	})
+	brd_missing_cor.status = profile_v2.inspect_structured_profile_status(brd_missing_cor.settings, {
+		character = 'Redrogue',
+		main_job = 'BRD',
+		sub_job = 'WHM',
+	}, contract.validate_structured_profile_config, brd_missing_cor.deps)
+	assert_equal(brd_missing_cor.status.state, 'valid_match', 'BRD structured profile missing maintenance.cor should still match runtime')
+	assert_equal(brd_missing_cor.status.valid, true, 'BRD structured profile missing maintenance.cor should validate')
+	assert_equal(brd_missing_cor.status.diff_count, 0, 'BRD structured profile missing maintenance.cor should report zero differences')
+	assert_equal(brd_missing_cor.status.reason, 'runtime matches file', 'BRD structured profile missing maintenance.cor match reason mismatch')
+	assert_equal(brd_missing_cor.status.path, brd_missing_cor.path, 'BRD structured profile missing maintenance.cor path mismatch')
+	assert_true(brd_missing_cor.status.first_difference == nil, 'BRD structured profile missing maintenance.cor should not expose a first difference')
+	assert_true(brd_missing_cor.settings == brd_missing_cor.settings_identity, 'BRD structured profile status must preserve settings table identity')
+	brd_missing_cor.apply_settings = deep_clone(flat)
+	brd_missing_cor.apply_identity = brd_missing_cor.apply_settings
+	brd_missing_cor.apply = profile_v2.apply_structured_profile_file_to_settings(brd_missing_cor.apply_settings, {
+		character = 'Redrogue',
+		main_job = 'BRD',
+		sub_job = 'WHM',
+	}, contract.validate_structured_profile_config, brd_missing_cor.deps)
+	assert_true(brd_missing_cor.apply.ok == true, 'BRD structured profile missing maintenance.cor should apply cleanly')
+	assert_equal(brd_missing_cor.apply.count, 0, 'BRD structured profile missing maintenance.cor should report zero differences on apply')
+	assert_equal(brd_missing_cor.apply.diff_count, 0, 'BRD structured profile missing maintenance.cor apply diff_count mismatch')
+	assert_true(brd_missing_cor.apply_settings == brd_missing_cor.apply_identity, 'BRD structured profile missing maintenance.cor apply must preserve settings identity')
+	assert_deep_equal(brd_missing_cor.apply_settings, flat, 'BRD structured profile missing maintenance.cor apply should leave matching settings unchanged')
+	assert_equal(#brd_missing_cor.state.open_calls, 0, 'BRD structured profile missing maintenance.cor status should not write files')
+	assert_equal(#brd_missing_cor.state.rename_calls, 0, 'BRD structured profile missing maintenance.cor status should not rename files')
 
 	local apply_fail_snapshot = deep_clone(validate_settings_snapshot)
 	local apply_fail_deps = make_fake_fs({
