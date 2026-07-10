@@ -234,6 +234,7 @@ local function uc_new_settings_defaults()
 		defensive_overwrite_interval = 150,
 		defensive_buff_self_only = true,
 		defensive_buffs = '',
+		defensive_targeted_buffs = '',
 		engine_enabled = false,
 		domain_combat_enabled = true,
 		domain_defensive_enabled = true,
@@ -449,7 +450,7 @@ local PROFILE_KEYS = {
 	'show_ingame_ui',
 	'defensive_enabled', 'defensive_provider', 'defensive_cure_enabled', 'defensive_doom_water', 'def_remove_enemy_buffs', 'defensive_na_enabled', 'defensive_buff_enabled',
 	'defensive_critical_hpp', 'defensive_medium_hpp',
-	'defensive_overwrite_enabled', 'defensive_overwrite_interval', 'defensive_buff_self_only', 'defensive_buffs',
+	'defensive_overwrite_enabled', 'defensive_overwrite_interval', 'defensive_buff_self_only', 'defensive_buffs', 'defensive_targeted_buffs',
 	'engine_enabled', 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled',
 	'scheduler_dark_launch_combat',
 	'scheduler_dark_launch_defensive', 'scheduler_dark_launch_movement', 'scheduler_dark_launch_maintenance',
@@ -1817,6 +1818,23 @@ windower.register_event('addon command', function(...)
 			return
 		end
 		windower.add_to_chat(207, '//uc configstatus export')
+		return
+	elseif a == 'maint' or a == 'maintenance' then
+		local sub = args[2] and tostring(args[2]):lower() or ''
+		local detail = args[3] and tostring(args[3]):lower() or ''
+		if sub == 'debug' and detail == 'buffs' then
+			local scheduler = require('unified_scheduler')
+			local diag = type(scheduler) == 'table' and type(scheduler.debug_defensive_buffs) == 'function' and scheduler.debug_defensive_buffs() or nil
+			if type(diag) ~= 'table' then
+				windower.add_to_chat(167, 'UC maint debug buffs failed: unavailable')
+				return
+			end
+			for i = 1, #(diag.lines or {}) do
+				windower.add_to_chat(207, tostring(diag.lines[i]))
+			end
+			return
+		end
+		windower.add_to_chat(207, '//uc maint debug buffs')
 		return
 	elseif a == 'profilev2' then
 		local sub = args[2] and tostring(args[2]):lower() or ''

@@ -87,6 +87,7 @@ local DIRECT_PROFILE_FIELDS = {
     defensive_overwrite_interval = "profile_owned_by_ui",
     defensive_buff_self_only = "profile_owned_by_ui",
     defensive_buffs = "profile_owned_by_ui",
+    defensive_targeted_buffs = "profile_owned_by_ui",
     engine_enabled = "command_owned",
     domain_combat_enabled = "profile_owned_by_ui",
     domain_defensive_enabled = "profile_owned_by_ui",

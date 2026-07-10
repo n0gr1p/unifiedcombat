@@ -226,6 +226,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.defensive_buff_enabled = config.defensive.buffs.enabled
 			candidate.defensive_buff_self_only = config.defensive.buffs.self_only
 			candidate.defensive_buffs = config.defensive.buffs.list
+			candidate.defensive_targeted_buffs = config.defensive.buffs.targeted
 			candidate.defensive_overwrite_enabled = config.defensive.buffs.overwrite_enabled
 			candidate.defensive_overwrite_interval = config.defensive.buffs.overwrite_interval
 		end

@@ -251,6 +251,7 @@ local function default_config(meta)
                 enabled = false,
                 self_only = true,
                 list = '',
+                targeted = '',
                 overwrite_enabled = false,
                 overwrite_interval = 150,
             },
@@ -496,6 +497,7 @@ local function normalize_defensive(source, config)
         defensive.buffs.enabled = normalize_boolean(buffs.enabled, defensive.buffs.enabled)
         defensive.buffs.self_only = normalize_boolean(buffs.self_only, defensive.buffs.self_only)
         defensive.buffs.list = normalize_string(buffs.list, defensive.buffs.list)
+        defensive.buffs.targeted = normalize_string(buffs.targeted, defensive.buffs.targeted)
         defensive.buffs.overwrite_enabled = normalize_boolean(buffs.overwrite_enabled, defensive.buffs.overwrite_enabled)
         defensive.buffs.overwrite_interval = normalize_number(buffs.overwrite_interval, defensive.buffs.overwrite_interval, { integer = true })
         local thresholds = is_table(nested.thresholds) and nested.thresholds or {}
@@ -515,6 +517,7 @@ local function normalize_defensive(source, config)
         defensive.buffs.enabled = normalize_boolean(first_path(source, { path('defensive_buff_enabled') }), defensive.buffs.enabled)
         defensive.buffs.self_only = normalize_boolean(first_path(source, { path('defensive_buff_self_only') }), defensive.buffs.self_only)
         defensive.buffs.list = normalize_string(first_path(source, { path('defensive_buffs') }), defensive.buffs.list)
+        defensive.buffs.targeted = normalize_string(first_path(source, { path('defensive_targeted_buffs') }), defensive.buffs.targeted)
         defensive.buffs.overwrite_enabled = normalize_boolean(first_path(source, { path('defensive_overwrite_enabled') }), defensive.buffs.overwrite_enabled)
         defensive.buffs.overwrite_interval = normalize_number(first_path(source, { path('defensive_overwrite_interval') }), defensive.buffs.overwrite_interval, { integer = true })
         defensive.thresholds.critical_hpp = normalize_number(first_path(source, { path('defensive_critical_hpp') }), defensive.thresholds.critical_hpp, { integer = true })

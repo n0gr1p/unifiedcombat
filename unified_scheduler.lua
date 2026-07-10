@@ -3566,7 +3566,26 @@ choose_cure_spell = function(member)
 	if hpp <= (tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', s.defensive_critical_hpp)) or 35) then
 		return get_usable_cure_from_tier(max_tier, 1)
 	end
-	return nil
+return nil
+end
+
+function scheduler.debug_defensive_buffs()
+	local s = get_settings()
+	local members = get_party_members()
+	local diag = hb_buff_maint.inspect(s, members, {
+		bool_setting = bool_setting,
+		in_party_cast_range = in_party_cast_range,
+		action_ready = action_ready,
+		get_spell_resource = get_spell_resource,
+		get_ja_resource = get_ja_resource,
+		is_bard_song = is_bard_song,
+		attempt_allowed = attempt_allowed,
+		member_priority = member_priority,
+		pri_default = pri_default,
+		buff_priority = buff_priority,
+		last_overwrite = scheduler.last_overwrite,
+	})
+	return diag
 end
 
 local function try_internal_defensive_action()
