@@ -850,6 +850,7 @@ local uc_sync_table_in_place
 local uc_normalize_settings_table
 local uc_profile_v2_autoload_pending_key = nil
 local uc_profile_v2_autoload_completed_key = nil
+local uc_profile_v2_startup_reload_completed_key = nil
 
 local function uc_profile_v2_session_key(player)
 	if not player or not player.name or not player.main_job or not player.sub_job then
@@ -871,6 +872,29 @@ local function uc_queue_profile_v2_autoload()
 
 	uc_profile_v2_autoload_pending_key = key
 	return key
+end
+
+local function uc_reload_startup_profile_once(job_for_defaults)
+	local p = windower.ffxi.get_player()
+	if not p or not p.name or not _G.UC_SETTINGS then
+		return nil
+	end
+
+	local key = uc_profile_v2_session_key(p)
+	if not key or uc_profile_v2_startup_reload_completed_key == key then
+		return p
+	end
+
+	local reload = rawget(_G, 'UC_ReloadActiveProfile')
+	if type(reload) ~= 'function' then
+		return nil
+	end
+
+	local result = reload(job_for_defaults)
+	if result ~= nil then
+		uc_profile_v2_startup_reload_completed_key = key
+	end
+	return result
 end
 
 local function uc_apply_profile_v2_file(meta, settings)
@@ -1584,7 +1608,7 @@ windower.register_event('load', function()
 	uc_register_action_listener()
 	if windower.ffxi.get_info().logged_in then
 		uc_update_engine()
-		uc_reload_active_profile()
+		uc_reload_startup_profile_once()
 		uc_queue_profile_v2_autoload()
 	end
 end)
@@ -1676,6 +1700,9 @@ windower.register_event('zone change', function()
 end)
 
 windower.register_event('unload', function()
+	uc_profile_v2_autoload_pending_key = nil
+	uc_profile_v2_autoload_completed_key = nil
+	uc_profile_v2_startup_reload_completed_key = nil
 	uc_remote_unload()
 	if type(_G.UC_StopUnifiedEngine) == 'function' then
 		_G.UC_StopUnifiedEngine()
@@ -1688,6 +1715,9 @@ end)
 
 windower.register_event('logout', function()
 	_G.UC_ZONE_SUSPEND_UNTIL = nil
+	uc_profile_v2_autoload_pending_key = nil
+	uc_profile_v2_autoload_completed_key = nil
+	uc_profile_v2_startup_reload_completed_key = nil
 	uc_remote_unload()
 	if type(_G.UC_StopUnifiedEngine) == 'function' then
 		_G.UC_StopUnifiedEngine()
@@ -2138,7 +2168,7 @@ end)
 
 windower.register_event('login', function()
 	uc_update_engine()
-	uc_reload_active_profile()
+	uc_reload_startup_profile_once()
 	uc_queue_profile_v2_autoload()
 	uc_start_active_engine_if_running()
 	uc_register_action_listener()
