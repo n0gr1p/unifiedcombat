@@ -154,8 +154,24 @@ local function main()
 			source = 'ui',
 		},
 		config = {
+			combat = {
+				weaponskill = {
+					enabled = true,
+					primary = 'Savage Blade',
+					mode = 'smart',
+					aftermath_enabled = true,
+					aftermath_ws = 'Energy Steal',
+				},
+			},
 			defensive = {
 				enabled = true,
+				cure = {
+					enabled = true,
+					min_tier = 3,
+					max_tier = 4,
+					min_missing_hp = 250,
+					ignore_trusts = true,
+				},
 				buffs = {
 					enabled = true,
 					self_only = false,
@@ -164,7 +180,7 @@ local function main()
 						{ character = 'Target', buff = 'Victory March' },
 					},
 					overwrite_enabled = false,
-					overwrite_interval = 90,
+					overwrite_interval = 150,
 				},
 				thresholds = {
 					critical_hpp = 40,
@@ -188,6 +204,10 @@ local function main()
 
 	assert_equal(active_config.get_path('config.defensive.thresholds.critical_hpp'), 40, 'active defensive critical threshold mismatch')
 	assert_equal(active_config.get_path('config.defensive.thresholds.medium_hpp'), 60, 'active defensive medium threshold mismatch')
+	assert_equal(active_config.get_path('config.combat.weaponskill.aftermath_ws'), 'Energy Steal', 'active aftermath ws mismatch')
+	assert_equal(active_config.get_path('config.defensive.cure.max_tier'), 4, 'active defensive cure max tier mismatch')
+	assert_equal(active_config.get_path('config.defensive.cure.min_missing_hp'), 250, 'active defensive cure missing hp mismatch')
+	assert_equal(active_config.get_path('config.defensive.buffs.overwrite_interval'), 150, 'active defensive overwrite interval mismatch')
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_1'), 'Chaos Roll', 'active COR roll 1 mismatch')
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_2'), 'Samurai Roll', 'active COR roll 2 mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Target', 'active targeted buff character mismatch')
@@ -198,6 +218,10 @@ local function main()
 	local projected, project_err = active_config.project_flat_settings(active_profile, {})
 	assert_true(projected ~= nil, 'project_flat_settings should succeed')
 	assert_true(project_err == nil, 'project_flat_settings should not report an error')
+	assert_equal(projected.aftermath_ws, 'Energy Steal', 'projected aftermath ws mismatch')
+	assert_equal(projected.def_heal_max_tier_cure, 4, 'projected defensive cure max tier mismatch')
+	assert_equal(projected.def_heal_min_missing_hp, 250, 'projected defensive cure missing hp mismatch')
+	assert_equal(projected.defensive_overwrite_interval, 150, 'projected defensive overwrite interval mismatch')
 	assert_equal(projected.defensive_critical_hpp, 40, 'projected defensive critical threshold mismatch')
 	assert_equal(projected.defensive_medium_hpp, 60, 'projected defensive medium threshold mismatch')
 	assert_equal(projected.cor_roll_1, 'Chaos Roll', 'projected COR roll 1 mismatch')
@@ -218,6 +242,94 @@ local function main()
 	local cor_action = cor_maintenance.propose(cor_flat)
 	assert_true(type(cor_action) == 'table', 'cor maintenance should propose a roll from active config')
 	assert_equal(cor_action.action_name, 'Chaos Roll', 'cor maintenance must consume active config rolls')
+
+	local exact_profile = set_active_profile(active_config, {
+		version = 2,
+		profile = {
+			schema_version = 2,
+			engine = 'UC',
+			character = 'Audit',
+			main_job = 'COR',
+			sub_job = 'BRD',
+			source = 'ui',
+		},
+		config = {
+			combat = {
+				weaponskill = {
+					enabled = true,
+					primary = 'Savage Blade',
+					mode = 'smart',
+					aftermath_enabled = true,
+					aftermath_ws = 'Energy Steal',
+				},
+			},
+			defensive = {
+				enabled = true,
+				cure = {
+					enabled = true,
+					min_tier = 3,
+					max_tier = 4,
+					min_missing_hp = 250,
+					ignore_trusts = true,
+				},
+				buffs = {
+					enabled = true,
+					self_only = false,
+					list = 'Honor March|Victory March',
+					targeted = {
+						{ character = 'Target', buff = 'Mage’s Ballad III' },
+					},
+					overwrite_enabled = false,
+					overwrite_interval = 150,
+				},
+				thresholds = {
+					critical_hpp = 40,
+					medium_hpp = 60,
+				},
+			},
+			maintenance = {
+				cor = {
+					roll_1 = 'Chaos Roll',
+					roll_2 = 'Samurai Roll',
+					crooked_roll_slot = 0,
+					elevens = false,
+					luzaf_range_override = false,
+					range_require_ids = {},
+				},
+				brd = { 'Honor March', 'Victory March' },
+				geo = { 'Geo-Frailty' },
+			},
+		},
+	})
+	local exact_projected, exact_project_err = active_config.project_flat_settings(exact_profile, {})
+	assert_true(exact_projected ~= nil, 'exact roundtrip project_flat_settings should succeed')
+	assert_true(exact_project_err == nil, 'exact roundtrip project_flat_settings should not report an error')
+	assert_equal(exact_projected.aftermath_ws, 'Energy Steal', 'exact roundtrip aftermath ws mismatch')
+	assert_equal(exact_projected.def_heal_max_tier_cure, 4, 'exact roundtrip cure max tier mismatch')
+	assert_equal(exact_projected.def_heal_min_missing_hp, 250, 'exact roundtrip cure missing hp mismatch')
+	assert_equal(exact_projected.defensive_overwrite_interval, 150, 'exact roundtrip overwrite interval mismatch')
+	assert_equal(exact_projected.defensive_targeted_buffs, 'Target:Mage’s Ballad III', 'exact roundtrip targeted buff mismatch')
+	local exact_normalized = require('uc_config_normalizer').normalize(exact_projected, {
+		character = 'Audit',
+		main_job = 'COR',
+		sub_job = 'BRD',
+	})
+	assert_equal(exact_normalized.combat.weaponskill.aftermath_ws, 'Energy Steal', 'exact normalized aftermath ws mismatch')
+	assert_equal(exact_normalized.defensive.cure.max_tier, 4, 'exact normalized cure max tier mismatch')
+	assert_equal(exact_normalized.defensive.cure.min_missing_hp, 250, 'exact normalized cure missing hp mismatch')
+	assert_equal(exact_normalized.defensive.buffs.overwrite_interval, 150, 'exact normalized overwrite interval mismatch')
+	assert_equal(exact_normalized.defensive.buffs.targeted[1].buff, 'Mage’s Ballad III', 'exact normalized targeted buff mismatch')
+
+	local normalized = require('uc_config_normalizer').normalize(projected, {
+		character = 'Audit',
+		main_job = 'COR',
+		sub_job = 'BRD',
+	})
+	assert_equal(normalized.combat.weaponskill.aftermath_ws, 'Energy Steal', 'normalized aftermath ws mismatch')
+	assert_equal(normalized.defensive.cure.max_tier, 4, 'normalized cure max tier mismatch')
+	assert_equal(normalized.defensive.cure.min_missing_hp, 250, 'normalized cure missing hp mismatch')
+	assert_equal(normalized.defensive.buffs.overwrite_interval, 150, 'normalized overwrite interval mismatch')
+	assert_equal(normalized.defensive.buffs.targeted[1].buff, 'Victory March', 'normalized targeted buff mismatch')
 
 	local helpers = make_helpers()
 	local brd_general_flat = {
@@ -250,12 +362,12 @@ local function main()
 		},
 		config = {
 			defensive = {
-				buffs = {
-					enabled = true,
-					self_only = false,
-					list = '',
-					targeted = {
-						{ character = 'Target', buff = 'Victory March' },
+					buffs = {
+						enabled = true,
+						self_only = false,
+						list = '',
+						targeted = {
+							{ character = 'Target', buff = 'Victory March' },
 					},
 					overwrite_enabled = false,
 					overwrite_interval = 90,

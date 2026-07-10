@@ -51,7 +51,7 @@ local function load_autoload_scope(state, status_result, autoload_result)
 	local block = extract_source_block(
 		addon,
 		'local uc_sync_table_in_place',
-		'\n\nlocal function uc_read_profiles_file'
+		'\n\nlocal function uc_sleep_spell_list_lines'
 	)
 
 	local chunk_source = table.concat({
@@ -59,6 +59,7 @@ local function load_autoload_scope(state, status_result, autoload_result)
 		'',
 		'return {',
 		'  startup_reload = uc_reload_startup_profile_once,',
+		'  reload = uc_reload_active_profile,',
 		'  queue = uc_queue_profile_v2_autoload,',
 		'  run = uc_run_queued_profile_v2_autoload,',
 		'  autoload = uc_autoload_profile_v2_file,',
@@ -70,10 +71,22 @@ local function load_autoload_scope(state, status_result, autoload_result)
 		uc_now_s = function()
 			return 123.5
 		end,
+		uc_active_config = require('uc_active_config'),
+		uc_partner_list = {
+			migrate_from_legacy = function()
+			end,
+			sync_legacy_partner_fields = function()
+			end,
+		},
 		uc_addon_path = function()
 			return 'C:\\Addon'
 		end,
 		uc_validate_structured_profile_export = function()
+			return {
+				ok = true,
+			}
+		end,
+		uc_update_config_contract_status = function()
 			return {
 				ok = true,
 			}
@@ -271,6 +284,14 @@ local function main()
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_2'), 'Ninja Roll', 'autoloaded active config roll 2 mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Terrasjr', 'autoloaded active config targeted buff character mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].buff, 'Honor March', 'autoloaded active config targeted buff name mismatch')
+	assert_true(success_scope.reload('PLD') ~= nil, 'post-autoload legacy reload guard should still return the player')
+	assert_equal(success_state.settings.cor_roll_1, 'Chaos Roll', 'post-autoload reload must preserve COR roll 1 in settings')
+	assert_equal(success_state.settings.cor_roll_2, 'Ninja Roll', 'post-autoload reload must preserve COR roll 2 in settings')
+	assert_equal(success_state.settings.defensive_targeted_buffs, 'Terrasjr:Honor March', 'post-autoload reload must preserve targeted buffs in settings')
+	assert_equal(active_config.get_path('config.maintenance.cor.roll_1'), 'Chaos Roll', 'post-autoload reload must preserve active config roll 1')
+	assert_equal(active_config.get_path('config.maintenance.cor.roll_2'), 'Ninja Roll', 'post-autoload reload must preserve active config roll 2')
+	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Terrasjr', 'post-autoload reload must preserve active targeted buff character')
+	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].buff, 'Honor March', 'post-autoload reload must preserve active targeted buff name')
 	local previous_windower = rawget(_G, 'windower')
 	rawset(_G, 'windower', {
 		ffxi = {

@@ -1450,6 +1450,34 @@ local function uc_reload_active_profile(job_for_defaults)
 	if not p then
 		return nil
 	end
+	local key = uc_profile_v2_session_key(p)
+	local active_profile = uc_active_config.get_active_profile()
+	if key and uc_profile_v2_autoload_completed_key == key and type(active_profile) == 'table' then
+		local projected, projection_err = uc_active_config.project_flat_settings(active_profile, _G.UC_SETTINGS)
+		if type(projected) ~= 'table' then
+			return nil, projection_err
+		end
+		local sync_ok, sync_err = uc_active_config.sync_flat_settings_in_place(_G.UC_SETTINGS, projected)
+		if sync_ok ~= true then
+			return nil, sync_err
+		end
+		uc_normalize_settings_table(_G.UC_SETTINGS)
+		local main_job = job_for_defaults or p.main_job
+		local profile_key = tostring(p.name or '')
+		if main_job ~= nil or p.sub_job ~= nil then
+			profile_key = tostring(p.name or '') .. '|' .. tostring(main_job or '') .. '|' .. tostring(p.sub_job or '')
+		end
+		uc_update_config_contract_status({
+			settings = _G.UC_SETTINGS,
+			source = 'UC_SETTINGS',
+			character = p.name,
+			main_job = main_job,
+			sub_job = p.sub_job,
+			profile_key = profile_key,
+			updated_at = uc_now_s(),
+		})
+		return p
+	end
 	local loaded_from_file = uc_load_profiles_for_character(p.name)
 	if job_for_defaults then
 		uc_apply_job_defaults(job_for_defaults)
