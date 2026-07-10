@@ -27,6 +27,7 @@ package.loaded['uc_config_normalizer'] = nil
 local active_config = require('uc_active_config')
 
 local fake_target = nil
+local fake_party = nil
 local fake_player = { status = 0, id = 10, name = 'Tester' }
 local fake_self_mob = { id = 10, x = 0, y = 0, z = 0 }
 local run_calls = {}
@@ -59,7 +60,7 @@ windower = {
             return { zone = 0 }
         end,
         get_party = function()
-            return nil
+            return fake_party
         end,
         get_mob_by_id = function()
             return nil
@@ -296,6 +297,43 @@ local function main()
     _G.UC_MOVEMENT_LOCK_UNTIL = nil
     follow.prerender()
     assert_equal(_G.UC_MOVEMENT_OWNER, 'follow', 'party follow prerender must honor active config when flat settings differ')
+
+    fake_party = {
+        p1 = {
+            mob = {
+                id = 77,
+                name = 'Leader',
+                x = 12,
+                y = 0,
+            },
+        },
+    }
+    _G.UC_SETTINGS = {
+        party_follow = false,
+        party_follow_id = 0,
+        party_follow_leader_name = 'Leader',
+        party_follow_min = 1.25,
+        party_follow_max = 22,
+        fight_follow_min = 3.0,
+    }
+    set_active_profile({
+        follow = {
+            party = {
+                enabled = true,
+                leader_id = 0,
+                leader_name = 'Leader',
+                min = 1.25,
+                max = 22,
+            },
+        },
+    })
+    run_calls = {}
+    _G.UC_MOVEMENT_OWNER = nil
+    _G.UC_MOVEMENT_LOCK_UNTIL = nil
+    follow.prerender()
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'follow', 'party follow prerender must resolve a named leader even when leader_id is runtime-owned')
+    assert_true(#run_calls > 0, 'party follow prerender must issue movement for a named leader with no durable id')
+    fake_party = nil
 
     _G.UC_SETTINGS.party_follow = true
     _G.UC_SETTINGS.party_follow_id = 77

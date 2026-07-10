@@ -861,7 +861,7 @@ function M.prerender()
 	end
 	refresh_ff_following_from_settings()
 	local s = _G.UC_SETTINGS
-	if not s or not party_follow_enabled(s) or party_follow_id(s) == 0 then
+	if not s or not party_follow_enabled(s) then
 		set_follow_run_active(false)
 		set_follow_needs_catchup(false)
 		_G.UC_MOVEMENT_OWNER = 'none'
