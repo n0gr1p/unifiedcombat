@@ -930,8 +930,7 @@ local function uc_autoload_profile_v2_file()
 	if not p or not p.name or not _G.UC_SETTINGS then
 		return nil
 	end
-
-	local result = uc_profile_v2.autoload_structured_profile_file_to_settings(_G.UC_SETTINGS, {
+	local inspection = uc_profile_v2.validate_structured_profile_file({
 		character = p.name,
 		main_job = p.main_job,
 		sub_job = p.sub_job,
@@ -939,10 +938,37 @@ local function uc_autoload_profile_v2_file()
 	}, function(payload)
 		return uc_validate_structured_profile_export(payload)
 	end)
-	if type(result) ~= 'table' then
+	if type(inspection) ~= 'table' or inspection.ok ~= true or type(inspection.payload) ~= 'table' then
 		return nil
 	end
-	return result
+	local ownership = inspection.payload.config and inspection.payload.config.ownership or nil
+	if type(ownership) ~= 'table' or ownership.profile_v2_autoload ~= true then
+		return nil
+	end
+	local ok_apply, path, apply_err, apply_count = uc_apply_profile_v2_file({
+		character = p.name,
+		main_job = p.main_job,
+		sub_job = p.sub_job,
+		addon_path = uc_addon_path(),
+	}, _G.UC_SETTINGS)
+	if ok_apply ~= true then
+		return {
+			ok = false,
+			path = path,
+			error = apply_err,
+			reason = apply_err,
+			count = tonumber(apply_count) or 0,
+			diff_count = tonumber(apply_count) or 0,
+			stage = 'apply',
+		}
+	end
+	return {
+		ok = true,
+		path = path,
+		count = tonumber(apply_count) or 0,
+		diff_count = tonumber(apply_count) or 0,
+		stage = 'done',
+	}
 end
 
 local function uc_run_queued_profile_v2_autoload()

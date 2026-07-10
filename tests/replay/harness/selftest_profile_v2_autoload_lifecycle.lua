@@ -81,6 +81,9 @@ local function load_autoload_scope(state, status_result, autoload_result)
 		uc_addon_path = function()
 			return 'C:\\Addon'
 		end,
+		uc_profile_v2_file_path = function()
+			return 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'
+		end,
 		uc_validate_structured_profile_export = function()
 			return {
 				ok = true,
@@ -92,7 +95,20 @@ local function load_autoload_scope(state, status_result, autoload_result)
 			}
 		end,
 		uc_profile_v2 = {
-			autoload_structured_profile_file_to_settings = function(current_settings, meta)
+			validate_structured_profile_file = function(meta)
+				state.validate_calls = state.validate_calls + 1
+				return {
+					ok = true,
+					payload = {
+						config = {
+							ownership = {
+								profile_v2_autoload = true,
+							},
+						},
+					},
+				}
+			end,
+			apply_structured_profile_file_to_settings = function(current_settings, meta)
 				state.autoload_calls = state.autoload_calls + 1
 				state.settings_identity = current_settings
 				current_settings.profile_v2_autoload = true
@@ -136,7 +152,21 @@ local function load_autoload_scope(state, status_result, autoload_result)
 					},
 				}
 				_G.UC_ACTIVE_PROFILE = state.active_profile
-				return deep_clone(autoload_result)
+				return {
+					ok = true,
+					path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
+					stage = 'done',
+					active_profile = state.active_profile,
+					candidate = current_settings,
+					projected_settings = current_settings,
+					candidate_config = state.active_profile.config,
+					count = autoload_result.count,
+					diff_count = autoload_result.diff_count,
+					differences = deep_clone(autoload_result.differences or {}),
+					details = deep_clone(autoload_result.details or {}),
+					diff_details = deep_clone(autoload_result.diff_details or {}),
+					first_difference = deep_clone(autoload_result.first_difference),
+				}
 			end,
 		},
 		uc_update_profile_v2_contract_status = function(context)
@@ -167,6 +197,7 @@ end
 
 local function make_state()
 	return {
+		validate_calls = 0,
 		autoload_calls = 0,
 		status_calls = 0,
 		start_calls = 0,
@@ -266,6 +297,7 @@ local function main()
 	assert_true(success_scope.startup_reload() ~= nil, 'duplicate startup reloads should be ignored for the same session')
 	assert_equal(success_state.reload_calls, 1, 'duplicate startup reloads must not run twice for the same session')
 	assert_true(success_scope.run() ~= nil, 'startup runner should execute the queued autoload')
+	assert_equal(success_state.validate_calls, 1, 'autoload should validate the profile once before apply')
 	assert_equal(success_state.autoload_calls, 1, 'autoload should run exactly once for the session')
 	assert_equal(success_state.status_calls, 1, 'autoload should compute a post-apply status check')
 	assert_equal(success_state.settings_identity, success_state.settings, 'autoload must preserve _G.UC_SETTINGS identity')
