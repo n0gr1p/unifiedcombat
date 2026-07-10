@@ -16,6 +16,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeIncludesProfileV2AutoloadWhenEnabled();
             TestProfileV2AutoloadIsPartOfPersistedBoolSet();
             TestUiSaveIsFileOnly();
+            TestUiSaveSuppressesOutboundMirrorTraffic();
             TestRemoteBridgeDoesNotConsumeUiSave();
             TestWriteCreatesProfilesDirectory();
             TestWritePreservesExistingFinalOnTempWriteFailure();
@@ -148,9 +149,19 @@ internal static class StructuredProfileV2WriterTests
         var source = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
         AssertContains(source, "TrySaveProfileFromUi(sid);", "UI save must still write the legacy profile file");
         AssertContains(source, "TrySaveStructuredProfileV2FromUi(sid);", "UI save must still write the structured profile file");
-        AssertNotContains(source, "PushFullFormState(sid);", "UI save must not push runtime state back into the addon");
         AssertNotContains(source, "[\"op\"] = \"save\"", "UI save must not send a runtime save command");
-        AssertNotContains(source, "await Task.Delay(200)", "UI save should not defer a runtime reapply");
+    }
+
+    private static void TestUiSaveSuppressesOutboundMirrorTraffic()
+    {
+        var mainForm = ReadRepoFile("UnifiedCombatWinForms", "MainForm.cs");
+        var parity = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        AssertContains(mainForm, "_suppressUiSaveOutbound", "UI save must have an outbound suppression guard");
+        AssertContains(mainForm, "if (_suppressUiSaveOutbound)", "outbound mirror traffic must be suppressed during UI save");
+        AssertContains(parity, "_suppressUiSaveOutbound = true;", "UI save must enable the outbound suppression guard");
+        AssertContains(parity, "_suppressUiSaveOutbound = false;", "UI save must release the outbound suppression guard");
+        AssertNotContains(parity, "PushFullFormState(sid);", "UI save must not push runtime state back into the addon");
+        AssertNotContains(parity, "await Task.Delay(200)", "UI save should not defer a runtime reapply");
     }
 
     private static void TestRemoteBridgeDoesNotConsumeUiSave()

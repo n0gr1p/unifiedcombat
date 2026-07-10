@@ -21,6 +21,8 @@ public partial class MainForm : Form
     private readonly Dictionary<string, DateTime> _engineReapplyAttemptBySid = new(StringComparer.Ordinal);
     /// <summary>In-memory per-session working profiles. Session switching reads from here first; disk remains explicit-save only.</summary>
     private readonly Dictionary<string, JsonObject> _workingProfileBySid = new(StringComparer.Ordinal);
+    /// <summary>Suppress outbound mirror traffic while a file-only UI save is in flight.</summary>
+    private bool _suppressUiSaveOutbound;
     private string? _selectedSid;
     private string? _lastFillSid;
 
@@ -179,6 +181,10 @@ public partial class MainForm : Form
 
     private void Forward(string sid, Dictionary<string, object?> msg)
     {
+        if (_suppressUiSaveOutbound)
+        {
+            return;
+        }
         if (msg.TryGetValue("op", out var opObj)
             && string.Equals(Convert.ToString(opObj), "set", StringComparison.Ordinal))
         {

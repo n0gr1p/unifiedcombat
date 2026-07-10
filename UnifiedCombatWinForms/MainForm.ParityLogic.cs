@@ -3089,8 +3089,16 @@ public partial class MainForm
             return;
         }
 
-        TrySaveProfileFromUi(sid);
-        TrySaveStructuredProfileV2FromUi(sid);
+        _suppressUiSaveOutbound = true;
+        try
+        {
+            TrySaveProfileFromUi(sid);
+            TrySaveStructuredProfileV2FromUi(sid);
+        }
+        finally
+        {
+            _suppressUiSaveOutbound = false;
+        }
     }
 
     private void ToggleEngine()
