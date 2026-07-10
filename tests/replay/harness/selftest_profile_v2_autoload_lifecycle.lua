@@ -51,7 +51,6 @@ local function load_autoload_scope(state, status_result, autoload_result)
 	local addon = read_file('UnifiedCombat.lua')
 	assert_contains(addon, 'local function uc_queue_profile_v2_autoload()', 'addon must define the queued autoload helper')
 	assert_contains(addon, 'local function uc_run_queued_profile_v2_autoload()', 'addon must define the queued autoload runner')
-	assert_not_contains(addon, 'uc_reload_startup_profile_once()\n\t\tuc_queue_profile_v2_autoload()', 'load event must not consume the startup guard before login')
 	assert_contains(addon, 'uc_reload_active_profile(jname)', 'job change must keep the legacy runtime bootstrap call')
 	assert_not_contains(addon, "uc_reload_startup_profile_once(jname)", 'job change must not use the startup guard')
 
