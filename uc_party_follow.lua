@@ -910,10 +910,6 @@ function M.prerender()
 		return
 	end
 	last_follow_suppressed = false
-	if zone_suspend_active() then
-		set_follow_run_active(false)
-		return
-	end
 	local p = windower.ffxi.get_player()
 	if not p then
 		set_follow_run_active(false)

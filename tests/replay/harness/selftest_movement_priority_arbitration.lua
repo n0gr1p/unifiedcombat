@@ -333,6 +333,15 @@ local function main()
     follow.prerender()
     assert_equal(_G.UC_MOVEMENT_OWNER, 'follow', 'party follow prerender must resolve a named leader even when leader_id is runtime-owned')
     assert_true(#run_calls > 0, 'party follow prerender must issue movement for a named leader with no durable id')
+
+    run_calls = {}
+    _G.UC_ZONE_SUSPEND_UNTIL = _G.__TEST_NOW + 10
+    _G.UC_MOVEMENT_OWNER = nil
+    _G.UC_MOVEMENT_LOCK_UNTIL = nil
+    follow.prerender()
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'follow', 'party follow prerender must still own movement during zone grace')
+    assert_true(#run_calls > 0, 'party follow prerender must still issue movement during zone grace')
+    _G.UC_ZONE_SUSPEND_UNTIL = nil
     fake_party = nil
 
     _G.UC_SETTINGS.party_follow = true

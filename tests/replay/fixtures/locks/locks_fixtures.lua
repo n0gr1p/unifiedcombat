@@ -123,7 +123,7 @@ return {
     {
         fixture_id = "locks_hard_lock_reject_reasons",
         helper = "p1_hard_lock_reject",
-        description = "returns zone_guard then hard_locked per action type",
+        description = "returns zone_guard for actions but lets move proposals pass during zone guard",
         input = {
             calls = {
                 {
@@ -158,6 +158,14 @@ return {
                     },
                     proposal = { action_type = "item" },
                 },
+                {
+                    locks = {
+                        zone_guard_lock = { hard = true },
+                        cast_lock = { hard = false },
+                        movement_lock = { hard = false },
+                    },
+                    proposal = { action_type = "move" },
+                },
             },
         },
         expected = {
@@ -165,6 +173,7 @@ return {
                 "zone_guard",
                 "hard_locked",
                 "hard_locked",
+                "",
                 "",
             },
         },
