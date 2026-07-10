@@ -74,14 +74,6 @@ local function split_actions(raw)
 	return out
 end
 
-local function join_list(values)
-	local out = {}
-	for i = 1, #(values or {}) do
-		out[#out + 1] = tostring(values[i] or '')
-	end
-	return table.concat(out, '|')
-end
-
 local function parse_targeted_buffs(raw)
 	local out = {}
 	for token in tostring(raw or ''):gmatch('[^|]+') do
@@ -329,19 +321,6 @@ local function confirmed_bard_song_identity_set(member_name, family, action_name
 	return false
 end
 
-local function member_names(values)
-	local out = {}
-	for i = 1, #(values or {}) do
-		local entry = values[i]
-		if type(entry) == 'table' then
-			out[#out + 1] = tostring(entry.target or '') .. ':' .. tostring(entry.action or '')
-		else
-			out[#out + 1] = tostring(entry and entry.name or '')
-		end
-	end
-	return out
-end
-
 function mod.mark_bard_song_success(member_name, action_name, now, expires_at)
 	local normalized_action = normalize_name(action_name)
 	local family = family_for_name(normalized_action)
@@ -367,89 +346,9 @@ function mod._reset_test_state()
 	state.confirmed_bard_song_identity = {}
 end
 
-function mod.inspect(settings, members, helpers)
-	local diag = {
-		provider_registered = true,
-		provider_called = true,
-	}
-	local raw_general = tostring(active_value_or_flat('config.defensive.buffs.list', settings and settings.defensive_buffs) or '')
-	local raw_targeted = tostring(active_value_or_flat('config.defensive.buffs.targeted', settings and settings.defensive_targeted_buffs) or '')
-	local parsed_general = split_actions(raw_general)
-	local parsed_targeted = parse_targeted_buffs(raw_targeted)
-	diag.raw_general = raw_general
-	diag.raw_targeted = raw_targeted
-	diag.parsed_general = parsed_general
-	diag.parsed_targeted = parsed_targeted
-
-	local p = windower.ffxi.get_player()
-	diag.character = tostring(p and p.name or '')
-	diag.main_job = tostring(p and p.main_job or '')
-	diag.sub_job = tostring(p and p.sub_job or '')
-	diag.defensive_enabled = active_value_or_flat('config.defensive.enabled', settings and settings.defensive_enabled)
-	diag.buffs_enabled = active_value_or_flat('config.defensive.buffs.enabled', settings and settings.defensive_buff_enabled)
-	diag.self_only = active_value_or_flat('config.defensive.buffs.self_only', settings and settings.defensive_buff_self_only)
-
-	local captured_logs = {}
-	local traced_helpers = helpers or {}
-	traced_helpers.log_debug = function(line)
-		captured_logs[#captured_logs + 1] = tostring(line or '')
-	end
-
-	local action = mod.choose(settings, members, traced_helpers)
-	diag.action = action
-	local action_name = type(action) == 'table' and tostring(action.spell or action.action_name or '') or ''
-	if action_name ~= '' then
-		diag.first_reason = 'candidate:' .. action_name
-	else
-		for i = 1, #captured_logs do
-			local reason = tostring(captured_logs[i] or ''):match('reason=([%w_]+)')
-			if reason then
-				diag.first_reason = reason
-				break
-			end
-		end
-		if not diag.first_reason then
-			if #parsed_general == 0 and #parsed_targeted == 0 then
-				diag.first_reason = 'no_configured_buffs'
-			elseif #parsed_general == 0 and #parsed_targeted > 0 then
-				local any_match = false
-				for i = 1, #parsed_targeted do
-					local target = parsed_targeted[i].target
-					for j = 1, #(members or {}) do
-						local member = members[j]
-						if normalize_name(target):lower() == normalize_name(member and member.name or ''):lower() then
-							any_match = true
-							break
-						end
-					end
-					if any_match then
-						break
-					end
-				end
-				diag.first_reason = any_match and 'no_action' or 'target_character_not_matched'
-			else
-				diag.first_reason = 'no_action'
-			end
-		end
-	end
-
-	diag.lines = {
-		('defensive_enabled=%s buffs_enabled=%s self_only=%s'):format(tostring(diag.defensive_enabled), tostring(diag.buffs_enabled), tostring(diag.self_only)),
-		('raw_general=%s'):format(raw_general == '' and '(empty)' or raw_general),
-		('raw_targeted=%s'):format(raw_targeted == '' and '(empty)' or raw_targeted),
-		('parsed_general=%s'):format(join_list(parsed_general)),
-		('parsed_targeted=%s'):format(join_list(member_names(parsed_targeted))),
-		('character=%s job=%s/%s'):format(diag.character, diag.main_job, diag.sub_job),
-		('provider_registered=%s provider_called=%s'):format(tostring(diag.provider_registered), tostring(diag.provider_called)),
-		('provider_candidate=%s'):format(action_name ~= '' and action_name or '(none)'),
-		('first_reason=%s'):format(tostring(diag.first_reason or '')),
-	}
-	return diag
-end
-
 function mod.choose(settings, members, helpers)
 	local desired = split_actions(active_value_or_flat('config.defensive.buffs.list', settings.defensive_buffs) or '')
-	local targeted = parse_targeted_buffs(active_value_or_flat('config.defensive.buffs.targeted', settings.defensive_targeted_buffs) or '')
+	local targeted = parse_targeted_buffs(settings.defensive_targeted_buffs or '')
 	local self_only = helpers.bool_setting(active_value_or_flat('config.defensive.buffs.self_only', settings.defensive_buff_self_only), true)
 	local overwrite = helpers.bool_setting(active_value_or_flat('config.defensive.buffs.overwrite_enabled', settings.defensive_overwrite_enabled), false)
 	local overwrite_interval = tonumber(active_value_or_flat('config.defensive.buffs.overwrite_interval', settings.defensive_overwrite_interval) or 150) or 150
@@ -550,14 +449,14 @@ function mod.choose(settings, members, helpers)
 							reason = is_present and 'overwrite' or 'missing',
 							action_kind = action_kind,
 						}
-						if not first_eligible_non_majesty then
-							first_eligible_non_majesty = candidate
-						end
 						if is_majesty_action(action_name) then
+							return candidate
+						end
+						if not first_eligible_non_majesty then
 							if fam then
 								mark_last_family_action(m.name, fam, action_name, now)
 							end
-							return candidate
+							first_eligible_non_majesty = candidate
 						end
 					elseif helpers.log_debug then
 						helpers.log_debug(('HB_BUFF_SKIP name="%s" target="%s" reason=attempt_gate'):format(
@@ -582,12 +481,6 @@ function mod.choose(settings, members, helpers)
 					end
 				end
 			end
-		end
-	end
-	if first_eligible_non_majesty then
-		local fam = family_for_name(first_eligible_non_majesty.spell)
-		if fam then
-			mark_last_family_action(first_eligible_non_majesty.target and first_eligible_non_majesty.target.name or '', fam, first_eligible_non_majesty.spell, now)
 		end
 	end
 	return first_eligible_non_majesty

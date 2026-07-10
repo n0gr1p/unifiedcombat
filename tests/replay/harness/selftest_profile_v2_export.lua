@@ -494,7 +494,6 @@ local function build_flat_settings()
 		defensive_na_enabled = true,
 		defensive_buff_enabled = true,
 		defensive_buffs = 'Barspell',
-		defensive_targeted_buffs = 'Redrogue:Protect',
 		defensive_critical_hpp = 35,
 		defensive_medium_hpp = 55,
 		move = true,
@@ -589,7 +588,6 @@ local function build_expected_config()
 				enabled = true,
 				self_only = true,
 				list = 'Barspell',
-				targeted = 'Redrogue:Protect',
 				overwrite_enabled = false,
 				overwrite_interval = 150,
 			},
@@ -767,7 +765,6 @@ local function main()
 	assert_equal(profile.config.ui.show_ingame_ui, true, 'ui domain mismatch')
 	assert_equal(profile.config.combat.weaponskill.primary, 'Savage Blade', 'combat domain mismatch')
 	assert_equal(profile.config.maintenance.cor.roll_1, 'Chaos Roll', 'maintenance domain mismatch')
-	assert_equal(profile.config.defensive.buffs.targeted, 'Redrogue:Protect', 'defensive targeted buff export mismatch')
 	assert_equal(profile.config.legacy.hunter, true, 'legacy domain mismatch')
 	assert_true(profile.config.targeting.add_priority_names == nil, 'exported config must not include durable add priority names')
 	assert_true(profile.config.command == nil, 'exported config must not include engine runtime state')

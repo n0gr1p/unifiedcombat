@@ -61,7 +61,6 @@ return {
                 enabled = true,
                 self_only = true,
                 list = "Barspell",
-                targeted = "Redrogue:Protect",
                 overwrite_enabled = false,
                 overwrite_interval = 150,
             },
