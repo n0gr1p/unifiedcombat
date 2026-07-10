@@ -15,6 +15,8 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeOmitsProfileV2AutoloadWhenDisabled();
             TestSerializeIncludesProfileV2AutoloadWhenEnabled();
             TestProfileV2AutoloadIsPartOfPersistedBoolSet();
+            TestBrdOmitsHiddenCorMaintenanceDefaults();
+            TestCorPreservesConfiguredMaintenanceValues();
             TestUiSaveIsFileOnly();
             TestUiSaveSuppressesOutboundMirrorTraffic();
             TestRemoteBridgeDoesNotConsumeUiSave();
@@ -142,6 +144,52 @@ internal static class StructuredProfileV2WriterTests
             HubUiConstants.BoolKeys.Contains("profile_v2_autoload"),
             "autoload must be included in the shared UI bool key set so load/save paths persist it"
         );
+    }
+
+    private static void TestBrdOmitsHiddenCorMaintenanceDefaults()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["cor_roll_1"] = "";
+        flat["cor_roll_2"] = "";
+        flat["cor_crooked_roll_slot"] = 0;
+        flat["cor_elevens"] = false;
+        flat["cor_luzaf_range_override"] = false;
+        flat["cor_roll_range_selected"] = "";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+        );
+
+        AssertContains(content, "maintenance = {", "BRD profile should still serialize maintenance root");
+        AssertNotContains(content, "cor = {", "BRD profile must omit hidden COR maintenance section when defaults are blank");
+        AssertNotContains(content, "roll_1 = \"\"", "BRD profile must not serialize blank COR roll 1");
+        AssertNotContains(content, "roll_2 = \"\"", "BRD profile must not serialize blank COR roll 2");
+        AssertNotContains(content, "luzaf_range_override = false", "BRD profile must not serialize default COR Luzaf override");
+    }
+
+    private static void TestCorPreservesConfiguredMaintenanceValues()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["cor_roll_1"] = "Chaos Roll";
+        flat["cor_roll_2"] = "Samurai Roll";
+        flat["cor_crooked_roll_slot"] = 2;
+        flat["cor_elevens"] = true;
+        flat["cor_luzaf_range_override"] = true;
+        flat["cor_roll_range_selected"] = "Terrasjr|Nyoourke";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "COR", "WHM")
+        );
+
+        AssertContains(content, "cor = {", "COR profile must serialize maintenance COR section");
+        AssertContains(content, "roll_1 = \"Chaos Roll\"", "COR profile must preserve configured roll 1");
+        AssertContains(content, "roll_2 = \"Samurai Roll\"", "COR profile must preserve configured roll 2");
+        AssertContains(content, "crooked_roll_slot = 2", "COR profile must preserve crooked roll slot");
+        AssertContains(content, "elevens = true", "COR profile must preserve elevens mode");
+        AssertContains(content, "luzaf_range_override = true", "COR profile must preserve Luzaf override");
+        AssertContains(content, "range_selected = \"Terrasjr|Nyoourke\"", "COR profile must preserve range selection");
     }
 
     private static void TestUiSaveIsFileOnly()

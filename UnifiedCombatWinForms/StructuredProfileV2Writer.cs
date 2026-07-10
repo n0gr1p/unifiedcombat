@@ -184,11 +184,11 @@ internal static class StructuredProfileV2Writer
                 .Add("source", identity.Source)
         );
 
-        profile.Add("config", BuildConfig(flatProfile));
+        profile.Add("config", BuildConfig(flatProfile, identity));
         return profile;
     }
 
-    private static StructuredProfileNode BuildConfig(JsonObject flatProfile)
+    private static StructuredProfileNode BuildConfig(JsonObject flatProfile, StructuredProfileV2Identity identity)
     {
         var config = new StructuredProfileNode();
         config.Add("ui", BuildUi(flatProfile));
@@ -201,7 +201,7 @@ internal static class StructuredProfileV2Writer
         config.Add("tank", BuildTank(flatProfile));
         config.Add("sleep", BuildSleep(flatProfile));
         config.Add("spells", BuildSpells(flatProfile));
-        config.Add("maintenance", BuildMaintenance(flatProfile));
+        config.Add("maintenance", BuildMaintenance(flatProfile, identity));
         config.Add("debug", BuildDebug(flatProfile));
         config.Add("ownership", BuildOwnership(flatProfile));
         config.Add("legacy", BuildLegacy(flatProfile));
@@ -389,11 +389,25 @@ internal static class StructuredProfileV2Writer
             .Add("dd2_slots", EmptyList());
     }
 
-    private static StructuredProfileNode BuildMaintenance(JsonObject flatProfile)
+    private static bool HasConfiguredCorMaintenance(JsonObject flatProfile)
     {
-        return new StructuredProfileNode()
-            .Add("enabled", true)
-            .Add(
+        return ReadString(flatProfile, "cor_roll_1", "") != ""
+            || ReadString(flatProfile, "cor_roll_2", "") != ""
+            || ReadInt(flatProfile, "cor_crooked_roll_slot", 0) != 0
+            || ReadBool(flatProfile, "cor_elevens", false)
+            || ReadBool(flatProfile, "cor_luzaf_range_override", false)
+            || ReadString(flatProfile, "cor_roll_range_selected", "") != "";
+    }
+
+    private static StructuredProfileNode BuildMaintenance(JsonObject flatProfile, StructuredProfileV2Identity identity)
+    {
+        var maintenance = new StructuredProfileNode()
+            .Add("enabled", true);
+
+        var isCorProfile = string.Equals(SafeJobComponent(identity.MainJob), "COR", StringComparison.Ordinal);
+        if (isCorProfile || HasConfiguredCorMaintenance(flatProfile))
+        {
+            maintenance.Add(
                 "cor",
                 new StructuredProfileNode()
                     .Add("roll_1", ReadString(flatProfile, "cor_roll_1", ""))
@@ -403,9 +417,14 @@ internal static class StructuredProfileV2Writer
                     .Add("luzaf_range_override", ReadBool(flatProfile, "cor_luzaf_range_override", false))
                     .Add("range_selected", ReadString(flatProfile, "cor_roll_range_selected", ""))
                     .Add("range_require_ids", EmptyList())
-            )
+            );
+        }
+
+        maintenance
             .Add("brd", EmptyList())
             .Add("geo", EmptyList());
+
+        return maintenance;
     }
 
     private static StructuredProfileNode BuildDebug(JsonObject flatProfile)
@@ -756,6 +775,10 @@ internal static class StructuredProfileV2Writer
             {
                 return doubleValue;
             }
+            if (value.TryGetValue<int>(out var intValue))
+            {
+                return intValue;
+            }
             if (value.TryGetValue<long>(out var longValue))
             {
                 return longValue;
@@ -763,6 +786,10 @@ internal static class StructuredProfileV2Writer
             if (value.TryGetValue<string>(out var text) && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
             {
                 return parsed;
+            }
+            if (double.TryParse(value.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedText))
+            {
+                return parsedText;
             }
         }
 

@@ -37,6 +37,8 @@ The remaining flat-key reads fall into three buckets:
 
 The COR maintenance path is already on the active-profile reader path. The addon uses the v2 maintenance values when they exist and only falls back to the flat compatibility keys when the active path is absent.
 
+For structured profile writes, hidden or non-applicable COR maintenance fields are only durable when they are actually configured or the profile itself is COR. Blank default COR values from a hidden UI section are treated as "not configured" for non-COR profiles and are omitted from the durable v2 payload.
+
 ### BRD
 
 The general buff list is active-first. Targeted buff entries are still read from the flat compatibility string because the v2 schema does not yet provide a structured targeted-buff path.
@@ -64,4 +66,3 @@ The main remaining follow-up items are explicit compatibility seams, not source-
 - `fight_leader` / `fight_leader_id`
 - `add_priority_names`
 - `sleep` / `sleepspells` / `sleepspell`
-
