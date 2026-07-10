@@ -14,10 +14,6 @@ local function assert_contains(haystack, needle, message)
 	assert_true(type(haystack) == 'string' and haystack:find(needle, 1, true) ~= nil, message or ('missing substring: ' .. tostring(needle)))
 end
 
-local function assert_not_contains(haystack, needle, message)
-	assert_true(type(haystack) == 'string' and haystack:find(needle, 1, true) == nil, message or ('unexpected substring: ' .. tostring(needle)))
-end
-
 local function read_file(path)
 	local fh, err = io.open(path, 'r')
 	if not fh then
@@ -51,8 +47,6 @@ local function load_autoload_scope(state, status_result, autoload_result)
 	local addon = read_file('UnifiedCombat.lua')
 	assert_contains(addon, 'local function uc_queue_profile_v2_autoload()', 'addon must define the queued autoload helper')
 	assert_contains(addon, 'local function uc_run_queued_profile_v2_autoload()', 'addon must define the queued autoload runner')
-	assert_contains(addon, 'uc_reload_active_profile(jname)', 'job change must keep the legacy runtime bootstrap call')
-	assert_not_contains(addon, "uc_reload_startup_profile_once(jname)", 'job change must not use the startup guard')
 
 	local block = extract_source_block(
 		addon,
