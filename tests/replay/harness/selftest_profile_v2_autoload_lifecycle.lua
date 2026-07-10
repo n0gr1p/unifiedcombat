@@ -86,6 +86,7 @@ local function load_autoload_scope(state, status_result, autoload_result)
 				current_settings.engine_enabled = false
 				current_settings.cor_roll_1 = 'Chaos Roll'
 				current_settings.cor_roll_2 = 'Ninja Roll'
+				current_settings.defensive_targeted_buffs = 'Terrasjr:Honor March'
 				current_settings.cor_crooked_roll_slot = 0
 				current_settings.cor_elevens = false
 				current_settings.cor_luzaf_range_override = false
@@ -110,6 +111,13 @@ local function load_autoload_scope(state, status_result, autoload_result)
 								elevens = false,
 								luzaf_range_override = false,
 								range_require_ids = {},
+							},
+						},
+						defensive = {
+							buffs = {
+								targeted = {
+									{ character = 'Terrasjr', buff = 'Honor March' },
+								},
 							},
 						},
 					},
@@ -253,6 +261,7 @@ local function main()
 	assert_equal(success_state.settings.engine_enabled, false, 'autoload must not enable the engine')
 	assert_equal(success_state.settings.cor_roll_1, 'Chaos Roll', 'autoload must preserve COR roll 1 in settings')
 	assert_equal(success_state.settings.cor_roll_2, 'Ninja Roll', 'autoload must preserve COR roll 2 in settings')
+	assert_equal(success_state.settings.defensive_targeted_buffs, 'Terrasjr:Honor March', 'autoload must preserve targeted buffs in settings')
 	assert_equal(success_state.start_calls, 0, 'autoload runner must not start the engine')
 	assert_chat_contains(success_state, 'UC profile v2 autoload: applied', 'successful autoload should report applied when post-apply diff is zero')
 	assert_true(success_scope.startup_reload() ~= nil, 'post-autoload startup reload should be ignored for the same session')
@@ -260,6 +269,8 @@ local function main()
 	local active_config = require('uc_active_config')
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_1'), 'Chaos Roll', 'autoloaded active config roll 1 mismatch')
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_2'), 'Ninja Roll', 'autoloaded active config roll 2 mismatch')
+	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Terrasjr', 'autoloaded active config targeted buff character mismatch')
+	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].buff, 'Honor March', 'autoloaded active config targeted buff name mismatch')
 	local previous_windower = rawget(_G, 'windower')
 	rawset(_G, 'windower', {
 		ffxi = {

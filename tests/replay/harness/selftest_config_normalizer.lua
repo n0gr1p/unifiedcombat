@@ -123,6 +123,7 @@ local function build_flat_settings()
         defensive_overwrite_interval = 99,
         defensive_buff_self_only = false,
         defensive_buffs = 'Haste',
+        defensive_targeted_buffs = 'Terrasjr:Honor March|Nyoourke:Valor Minuet V',
         move = true,
         spacing = true,
         spacing_band_min = -1.2,
@@ -284,6 +285,10 @@ local function build_nested_settings()
                 enabled = true,
                 self_only = false,
                 list = 'Haste',
+                targeted = {
+                    { character = 'Terrasjr', buff = 'Honor March' },
+                    { character = 'Nyoourke', buff = 'Valor Minuet V' },
+                },
                 overwrite_enabled = true,
                 overwrite_interval = 10,
             },
@@ -494,6 +499,8 @@ local function main()
     assert_equal(flat_config.defensive.cure.min_missing_hp, 300, 'defensive cure missing hp mismatch')
     assert_equal(flat_config.defensive.enemy_buffs.remove, true, 'defensive enemy buffs mismatch')
     assert_equal(flat_config.defensive.buffs.list, 'Haste', 'defensive buffs mismatch')
+    assert_equal(flat_config.defensive.buffs.targeted[1].character, 'Terrasjr', 'defensive targeted buff character mismatch')
+    assert_equal(flat_config.defensive.buffs.targeted[1].buff, 'Honor March', 'defensive targeted buff name mismatch')
     assert_equal(flat_config.movement.spacing.band_min, -1.2, 'spacing band min mismatch')
     assert_equal(flat_config.movement.path.file_name, 'route.json', 'path file mismatch')
     assert_equal(flat_config.movement.path.hunter_targets[1], 'Target A', 'path hunter targets mismatch')
@@ -527,6 +534,8 @@ local function main()
     assert_equal(nested_config.combat.enabled, false, 'nested combat enabled mismatch')
     assert_equal(nested_config.combat.weaponskill.enabled, true, 'nested combat ws enabled mismatch')
     assert_equal(nested_config.defensive.cure.min_tier, 5, 'nested defensive cure min tier mismatch')
+    assert_equal(nested_config.defensive.buffs.targeted[2].character, 'Nyoourke', 'nested targeted buff character mismatch')
+    assert_equal(nested_config.defensive.buffs.targeted[2].buff, 'Valor Minuet V', 'nested targeted buff name mismatch')
     assert_equal(nested_config.movement.path.points[1].x, 1, 'nested path points mismatch')
     assert_equal(nested_config.maintenance.brd.family, 'March', 'nested maintenance BRD mismatch')
     assert_equal(nested_config.maintenance.geo.bubble, 'Entrust', 'nested maintenance GEO mismatch')

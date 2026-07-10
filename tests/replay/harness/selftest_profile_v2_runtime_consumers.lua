@@ -160,6 +160,9 @@ local function main()
 					enabled = true,
 					self_only = false,
 					list = 'Honor March|Victory March',
+					targeted = {
+						{ character = 'Target', buff = 'Victory March' },
+					},
 					overwrite_enabled = false,
 					overwrite_interval = 90,
 				},
@@ -187,6 +190,8 @@ local function main()
 	assert_equal(active_config.get_path('config.defensive.thresholds.medium_hpp'), 60, 'active defensive medium threshold mismatch')
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_1'), 'Chaos Roll', 'active COR roll 1 mismatch')
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_2'), 'Samurai Roll', 'active COR roll 2 mismatch')
+	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Target', 'active targeted buff character mismatch')
+	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].buff, 'Victory March', 'active targeted buff name mismatch')
 	assert_equal(active_config.get_path('config.maintenance.brd')[1], 'Honor March', 'active BRD maintenance list mismatch')
 	assert_equal(active_config.get_path('config.maintenance.geo')[1], 'Geo-Frailty', 'active GEO maintenance list mismatch')
 
@@ -197,6 +202,7 @@ local function main()
 	assert_equal(projected.defensive_medium_hpp, 60, 'projected defensive medium threshold mismatch')
 	assert_equal(projected.cor_roll_1, 'Chaos Roll', 'projected COR roll 1 mismatch')
 	assert_equal(projected.cor_roll_2, 'Samurai Roll', 'projected COR roll 2 mismatch')
+	assert_equal(projected.defensive_targeted_buffs, 'Target:Victory March', 'projected targeted buff string mismatch')
 	assert_equal(projected.maintenance_brd[1], 'Honor March', 'projected BRD maintenance list mismatch')
 	assert_equal(projected.maintenance_geo[1], 'Geo-Frailty', 'projected GEO maintenance list mismatch')
 
@@ -231,6 +237,50 @@ local function main()
 	local picked = hb_buff_maint.choose(brd_general_flat, brd_members, helpers)
 	assert_true(type(picked) == 'table', 'BRD general maintenance should return a candidate')
 	assert_equal(picked.spell, 'Honor March', 'BRD general maintenance must prefer the active config list')
+
+	set_active_profile(active_config, {
+		version = 2,
+		profile = {
+			schema_version = 2,
+			engine = 'UC',
+			character = 'Audit',
+			main_job = 'BRD',
+			sub_job = 'WHM',
+			source = 'ui',
+		},
+		config = {
+			defensive = {
+				buffs = {
+					enabled = true,
+					self_only = false,
+					list = '',
+					targeted = {
+						{ character = 'Target', buff = 'Victory March' },
+					},
+					overwrite_enabled = false,
+					overwrite_interval = 90,
+				},
+			},
+		},
+	})
+
+	local targeted_active_flat = {
+		defensive_buffs = '',
+		defensive_targeted_buffs = 'Target:Honor March',
+		defensive_buff_self_only = false,
+		defensive_overwrite_enabled = false,
+		defensive_overwrite_interval = 15,
+	}
+	local targeted_active_members = {
+		{
+			name = 'Target',
+			is_self = false,
+			buffs = {},
+		},
+	}
+	picked = hb_buff_maint.choose(targeted_active_flat, targeted_active_members, helpers)
+	assert_true(type(picked) == 'table', 'BRD structured targeted maintenance should return a candidate')
+	assert_equal(picked.spell, 'Victory March', 'BRD structured targeted maintenance must prefer active config targeted entries over the flat compatibility string')
 
 	set_active_profile(active_config, {
 		version = 2,

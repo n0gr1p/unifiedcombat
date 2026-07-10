@@ -19,6 +19,8 @@ internal sealed record StructuredProfileV2WriteResult(
     string? BackupPath
 );
 
+internal sealed record TargetedBuffEntry(string Character, string Buff);
+
 internal interface IStructuredProfileV2FileSystem
 {
     bool DirectoryExists(string path);
@@ -267,6 +269,7 @@ internal static class StructuredProfileV2Writer
                     .Add("enabled", ReadBool(flatProfile, "defensive_buff_enabled", false))
                     .Add("self_only", ReadBool(flatProfile, "defensive_buff_self_only", true))
                     .Add("list", ReadString(flatProfile, "defensive_buffs", ""))
+                    .Add("targeted", BuildTargetedBuffs(ReadString(flatProfile, "defensive_targeted_buffs", "")))
                     .Add("overwrite_enabled", ReadBool(flatProfile, "defensive_overwrite_enabled", false))
                     .Add("overwrite_interval", ReadInt(flatProfile, "defensive_overwrite_interval", 150))
             )
@@ -774,6 +777,53 @@ internal static class StructuredProfileV2Writer
         {
             list.Add(part);
         }
+        return list;
+    }
+
+    internal static List<TargetedBuffEntry> ParseTargetedBuffs(string value)
+    {
+        var list = new List<TargetedBuffEntry>();
+        var parts = value.Split('|', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var rawPart in parts)
+        {
+            var entry = rawPart.Trim();
+            if (entry.Length == 0)
+            {
+                continue;
+            }
+
+            var separatorIndex = entry.IndexOf(':');
+            if (separatorIndex <= 0 || separatorIndex >= entry.Length - 1)
+            {
+                continue;
+            }
+
+            var character = entry[..separatorIndex].Trim();
+            var buff = entry[(separatorIndex + 1)..].Trim();
+            if (character.Length == 0 || buff.Length == 0)
+            {
+                continue;
+            }
+
+            list.Add(new TargetedBuffEntry(character, buff));
+        }
+
+        return list;
+    }
+
+    private static List<object?> BuildTargetedBuffs(string value)
+    {
+        var entries = ParseTargetedBuffs(value);
+        var list = new List<object?>(entries.Count);
+        foreach (var entry in entries)
+        {
+            list.Add(
+                new StructuredProfileNode()
+                    .Add("character", entry.Character)
+                    .Add("buff", entry.Buff)
+            );
+        }
+
         return list;
     }
 

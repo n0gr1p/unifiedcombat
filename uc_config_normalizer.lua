@@ -138,6 +138,48 @@ local function normalize_list(value, default_value)
     return clone_value(default_value)
 end
 
+local function normalize_targeted_buffs(value, default_value)
+    if value == nil then
+        return clone_value(default_value)
+    end
+
+    local out = {}
+    local function append_entry(character, buff)
+        local target_name = normalize_optional_string(character)
+        local buff_name = normalize_optional_string(buff)
+        if target_name ~= nil and buff_name ~= nil then
+            out[#out + 1] = {
+                character = target_name,
+                buff = buff_name,
+            }
+        end
+    end
+
+    if type(value) == 'table' then
+        for i = 1, #value do
+            local entry = value[i]
+            if type(entry) == 'table' then
+                append_entry(entry.character or entry.target or entry.name, entry.buff or entry.action)
+            end
+        end
+        return out
+    end
+
+    if type(value) == 'string' then
+        for token in tostring(value):gmatch('[^|]+') do
+            local entry = trim_string(token)
+            if entry ~= '' then
+                local separator = entry:find(':', 1, true)
+                if separator and separator > 1 and separator < #entry then
+                    append_entry(entry:sub(1, separator - 1), entry:sub(separator + 1))
+                end
+            end
+        end
+    end
+
+    return out
+end
+
 local function get_path(root, segments)
     local current = root
     for i = 1, #segments do
@@ -251,6 +293,7 @@ local function default_config(meta)
                 enabled = false,
                 self_only = true,
                 list = '',
+                targeted = {},
                 overwrite_enabled = false,
                 overwrite_interval = 150,
             },
@@ -496,6 +539,7 @@ local function normalize_defensive(source, config)
         defensive.buffs.enabled = normalize_boolean(buffs.enabled, defensive.buffs.enabled)
         defensive.buffs.self_only = normalize_boolean(buffs.self_only, defensive.buffs.self_only)
         defensive.buffs.list = normalize_string(buffs.list, defensive.buffs.list)
+        defensive.buffs.targeted = normalize_targeted_buffs(buffs.targeted, defensive.buffs.targeted)
         defensive.buffs.overwrite_enabled = normalize_boolean(buffs.overwrite_enabled, defensive.buffs.overwrite_enabled)
         defensive.buffs.overwrite_interval = normalize_number(buffs.overwrite_interval, defensive.buffs.overwrite_interval, { integer = true })
         local thresholds = is_table(nested.thresholds) and nested.thresholds or {}
@@ -515,6 +559,7 @@ local function normalize_defensive(source, config)
         defensive.buffs.enabled = normalize_boolean(first_path(source, { path('defensive_buff_enabled') }), defensive.buffs.enabled)
         defensive.buffs.self_only = normalize_boolean(first_path(source, { path('defensive_buff_self_only') }), defensive.buffs.self_only)
         defensive.buffs.list = normalize_string(first_path(source, { path('defensive_buffs') }), defensive.buffs.list)
+        defensive.buffs.targeted = normalize_targeted_buffs(first_path(source, { path('defensive_targeted_buffs') }), defensive.buffs.targeted)
         defensive.buffs.overwrite_enabled = normalize_boolean(first_path(source, { path('defensive_overwrite_enabled') }), defensive.buffs.overwrite_enabled)
         defensive.buffs.overwrite_interval = normalize_number(first_path(source, { path('defensive_overwrite_interval') }), defensive.buffs.overwrite_interval, { integer = true })
         defensive.thresholds.critical_hpp = normalize_number(first_path(source, { path('defensive_critical_hpp') }), defensive.thresholds.critical_hpp, { integer = true })

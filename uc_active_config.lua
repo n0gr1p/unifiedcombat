@@ -60,6 +60,24 @@ local function clone_value(value, seen)
 	return out
 end
 
+local function serialize_targeted_buffs(entries)
+	local out = {}
+	if type(entries) ~= 'table' then
+		return ''
+	end
+	for i = 1, #entries do
+		local entry = entries[i]
+		if type(entry) == 'table' then
+			local character = trim_string(entry.character or entry.target or entry.name)
+			local buff = trim_string(entry.buff or entry.action)
+			if character ~= '' and buff ~= '' then
+				out[#out + 1] = character .. ':' .. buff
+			end
+		end
+	end
+	return table.concat(out, '|')
+end
+
 local function current_meta()
 	local meta = {
 		source = 'UC_SETTINGS',
@@ -226,6 +244,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.defensive_buff_enabled = config.defensive.buffs.enabled
 			candidate.defensive_buff_self_only = config.defensive.buffs.self_only
 			candidate.defensive_buffs = config.defensive.buffs.list
+			candidate.defensive_targeted_buffs = serialize_targeted_buffs(config.defensive.buffs.targeted)
 			candidate.defensive_overwrite_enabled = config.defensive.buffs.overwrite_enabled
 			candidate.defensive_overwrite_interval = config.defensive.buffs.overwrite_interval
 		end

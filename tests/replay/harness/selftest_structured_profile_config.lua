@@ -97,6 +97,7 @@ local function build_flat_settings()
         def_heal_max_tier_cure = 4,
         def_heal_min_missing_hp = 250,
         def_heal_ignore_trusts = true,
+        defensive_targeted_buffs = "Terrasjr:Honor March|Nyoourke:Valor Minuet V",
         tank = true,
         tank_enmity_actions = { "Provoke", "Flash" },
         cor_roll_1 = "Chaos Roll",
@@ -167,6 +168,15 @@ local function build_structured_payload()
                     max_tier = 4,
                     min_missing_hp = 250,
                     ignore_trusts = true,
+                },
+                buffs = {
+                    enabled = true,
+                    self_only = true,
+                    list = "",
+                    targeted = {
+                        { character = "Terrasjr", buff = "Honor March" },
+                        { character = "Nyoourke", buff = "Valor Minuet V" },
+                    },
                 },
             },
             tank = {
@@ -253,6 +263,8 @@ local function assert_common_config(config, source)
     assert_equal(config.defensive.cure.max_tier, 4, source .. " cure max tier mismatch")
     assert_equal(config.defensive.cure.min_missing_hp, 250, source .. " cure min missing HP mismatch")
     assert_equal(config.defensive.cure.ignore_trusts, true, source .. " cure ignore trusts mismatch")
+    assert_equal(config.defensive.buffs.targeted[1].character, "Terrasjr", source .. " targeted buff character mismatch")
+    assert_equal(config.defensive.buffs.targeted[1].buff, "Honor March", source .. " targeted buff name mismatch")
     assert_equal(config.tank.enabled, true, source .. " tank enabled mismatch")
     assert_equal(config.tank.enmity.actions[2], "Flash", source .. " tank enmity mismatch")
     assert_equal(config.maintenance.cor.roll_1, "Chaos Roll", source .. " COR roll 1 mismatch")

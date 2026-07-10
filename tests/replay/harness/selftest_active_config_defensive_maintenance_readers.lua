@@ -179,6 +179,30 @@ local function main()
     assert_equal(picked.spell, 'Majesty', 'hb buff maintenance must honor active config buff list when flat settings differ')
 
     set_active_profile(active_config, {
+            defensive = {
+                buffs = {
+                    enabled = true,
+                    self_only = false,
+                    list = '',
+                    targeted = {
+                        { character = 'Target', buff = 'Victory March' },
+                    },
+                    overwrite_enabled = false,
+                overwrite_interval = 90,
+            },
+        },
+    })
+    picked = hb_buff_maint.choose(hb_flat, {
+        {
+            name = 'Target',
+            is_self = false,
+            buffs = {},
+        },
+    }, make_hb_helpers())
+    assert_true(type(picked) == 'table', 'hb buff maintenance should pick a targeted candidate from active config')
+    assert_equal(picked.spell, 'Victory March', 'hb buff maintenance must honor active config targeted buff entries')
+
+    set_active_profile(active_config, {
         defensive = {
             buffs = {},
         },
@@ -192,6 +216,34 @@ local function main()
     }, make_hb_helpers())
     assert_true(type(picked) == 'table', 'hb buff maintenance should still pick a fallback candidate when active list path is missing')
     assert_equal(picked.spell, 'Protect', 'hb buff maintenance must preserve flat fallback when the active buff list path is missing')
+
+    local hb_targeted_flat = {
+        defensive_buffs = '',
+        defensive_targeted_buffs = 'Target:Victory March',
+        defensive_buff_self_only = false,
+        defensive_overwrite_enabled = false,
+        defensive_overwrite_interval = 15,
+    }
+    set_active_profile(active_config, {
+        defensive = {
+            buffs = {
+                enabled = true,
+                self_only = false,
+                list = '',
+                overwrite_enabled = false,
+                overwrite_interval = 90,
+            },
+        },
+    })
+    picked = hb_buff_maint.choose(hb_targeted_flat, {
+        {
+            name = 'Target',
+            is_self = false,
+            buffs = {},
+        },
+    }, make_hb_helpers())
+    assert_true(type(picked) == 'table', 'hb buff maintenance should still pick a fallback targeted candidate when structured path is missing')
+    assert_equal(picked.spell, 'Victory March', 'hb buff maintenance must preserve flat fallback when the active targeted path is missing')
 
     local hb_self_only_flat = {
         defensive_buffs = 'Protect',

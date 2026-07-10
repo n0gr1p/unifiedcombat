@@ -61,6 +61,10 @@ return {
                 enabled = true,
                 self_only = true,
                 list = "Barspell",
+                targeted = {
+                    { character = "Terrasjr", buff = "Honor March" },
+                    { character = "Nyoourke", buff = "Valor Minuet V" },
+                },
                 overwrite_enabled = false,
                 overwrite_interval = 150,
             },

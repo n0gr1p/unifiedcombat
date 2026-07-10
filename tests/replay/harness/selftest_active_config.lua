@@ -110,6 +110,7 @@ local function build_flat_settings()
 		def_heal_max_tier_cure = 4,
 		def_heal_min_missing_hp = 250,
 		def_heal_ignore_trusts = true,
+		defensive_targeted_buffs = 'Terrasjr:Honor March|Nyoourke:Valor Minuet V',
 		move = true,
 		spacing = true,
 		path_follow_enabled = true,
@@ -204,6 +205,7 @@ local function main()
 	assert_equal(projected.sleep, true, 'projected sleep mismatch')
 	assert_equal(projected.sleepspell, 'Horde Lullaby II', 'projected sleep mirror mismatch')
 	assert_equal(projected.sleepspells[1], 'Horde Lullaby II', 'projected sleep list mismatch')
+	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'projected targeted buff mirror mismatch')
 	assert_true(type(projected.partner_ids) == 'table' and #projected.partner_ids == 0, 'projected compatibility table should keep empty partner ids as an empty list')
 
 	local projected_snapshot = deep_clone(projected)
@@ -232,6 +234,8 @@ local function main()
 	assert_equal(ui_profile.config.combat.weaponskill.primary, 'Savage Blade', 'UI active combat mismatch')
 	assert_equal(ui_profile.config.movement.path.file_name, 'route-a', 'UI active path mismatch')
 	assert_equal(ui_profile.config.follow.party.leader_name, 'Leader', 'UI active follow mismatch')
+	assert_equal(ui_profile.config.defensive.buffs.targeted[1].character, 'Terrasjr', 'UI active targeted buff character mismatch')
+	assert_equal(ui_profile.config.defensive.buffs.targeted[1].buff, 'Honor March', 'UI active targeted buff name mismatch')
 	assert_deep_equal(ui_fixture, ui_fixture_snapshot, 'building from payload must not mutate fixture')
 
 	local ui_set_ok, ui_stored_profile = active_config.set_active_profile(ui_profile)

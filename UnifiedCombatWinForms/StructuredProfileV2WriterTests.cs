@@ -11,6 +11,7 @@ internal static class StructuredProfileV2WriterTests
         {
             TestBuildFinalPath();
             TestSerializeShapeAndEscaping();
+            TestParseTargetedBuffs();
             TestSerializeOmitsProfileV2AutoloadWhenDisabled();
             TestSerializeIncludesProfileV2AutoloadWhenEnabled();
             TestProfileV2AutoloadIsPartOfPersistedBoolSet();
@@ -61,6 +62,9 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "autotarget = true", "combat domain missing");
         AssertContains(content, "configured = {", "abilities domain missing");
         AssertContains(content, "list = \"Bar\\\"Spell\\\\Line\\nNext\"", "string escaping mismatch");
+        AssertContains(content, "targeted = {", "targeted defensive buff list missing");
+        AssertContains(content, "character = \"Terrasjr\"", "targeted defensive buff character missing");
+        AssertContains(content, "buff = \"Honor March\"", "targeted defensive buff name missing");
         AssertContains(content, "range_selected = \"Front\\\"Line\"", "range selection escaping mismatch");
         AssertNotContains(content, "file_name =", "path file name must not be serialized as durable profile data");
 
@@ -93,6 +97,17 @@ internal static class StructuredProfileV2WriterTests
         AssertNotContains(content, "sleepspells", "legacy sleep list must not be serialized");
         AssertNotContains(content, "sleepspell", "legacy sleep singleton must not be serialized");
         AssertNotContains(content, "profile_v2_autoload", "autoload must be omitted unless explicitly enabled");
+    }
+
+    private static void TestParseTargetedBuffs()
+    {
+        var parsed = StructuredProfileV2Writer.ParseTargetedBuffs("  Terrasjr : Honor March | | malformed | Nyoourke: Valor Minuet V | MissingColon | X: ");
+        AssertEqual(parsed.Count, 2, "targeted buff parser should ignore malformed and empty entries");
+
+        AssertEqual(parsed[0].Character, "Terrasjr", "first targeted buff character mismatch");
+        AssertEqual(parsed[0].Buff, "Honor March", "first targeted buff name mismatch");
+        AssertEqual(parsed[1].Character, "Nyoourke", "second targeted buff character mismatch");
+        AssertEqual(parsed[1].Buff, "Valor Minuet V", "second targeted buff name mismatch");
     }
 
     private static void TestSerializeOmitsProfileV2AutoloadWhenDisabled()
@@ -222,6 +237,7 @@ internal static class StructuredProfileV2WriterTests
             ["defensive_buff_enabled"] = true,
             ["defensive_buff_self_only"] = true,
             ["defensive_buffs"] = "Bar\"Spell\\Line\nNext",
+            ["defensive_targeted_buffs"] = " Terrasjr : Honor March | Nyoourke: Valor Minuet V | malformed | | MissingColon ",
             ["defensive_overwrite_enabled"] = false,
             ["defensive_overwrite_interval"] = 150,
             ["defensive_critical_hpp"] = 35,
@@ -314,6 +330,14 @@ internal static class StructuredProfileV2WriterTests
     private static void AssertEqual(string actual, string expected, string message)
     {
         if (!string.Equals(actual, expected, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"{message}: expected={expected}, actual={actual}");
+        }
+    }
+
+    private static void AssertEqual(int actual, int expected, string message)
+    {
+        if (actual != expected)
         {
             throw new InvalidOperationException($"{message}: expected={expected}, actual={actual}");
         }

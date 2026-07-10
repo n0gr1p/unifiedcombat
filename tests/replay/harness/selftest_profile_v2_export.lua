@@ -494,6 +494,7 @@ local function build_flat_settings()
 		defensive_na_enabled = true,
 		defensive_buff_enabled = true,
 		defensive_buffs = 'Barspell',
+		defensive_targeted_buffs = 'Terrasjr:Honor March|Nyoourke:Valor Minuet V',
 		defensive_critical_hpp = 35,
 		defensive_medium_hpp = 55,
 		move = true,
@@ -588,6 +589,10 @@ local function build_expected_config()
 				enabled = true,
 				self_only = true,
 				list = 'Barspell',
+				targeted = {
+					{ character = 'Terrasjr', buff = 'Honor March' },
+					{ character = 'Nyoourke', buff = 'Valor Minuet V' },
+				},
 				overwrite_enabled = false,
 				overwrite_interval = 150,
 			},

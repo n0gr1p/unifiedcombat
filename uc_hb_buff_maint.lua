@@ -90,6 +90,27 @@ local function parse_targeted_buffs(raw)
 	return out
 end
 
+local function active_targeted_buffs(settings)
+	local structured = uc_active_config.get_path('config.defensive.buffs.targeted')
+	if structured ~= nil then
+		local out = {}
+		if type(structured) == 'table' then
+			for i = 1, #structured do
+				local entry = structured[i]
+				if type(entry) == 'table' then
+					local target = normalize_name(entry.character or entry.target or entry.name)
+					local action = normalize_name(entry.buff or entry.action)
+					if target ~= '' and action ~= '' then
+						out[#out + 1] = { target = target, action = action }
+					end
+				end
+			end
+		end
+		return out
+	end
+	return parse_targeted_buffs(settings.defensive_targeted_buffs or '')
+end
+
 -- HealBot-style action->buff family aliases.
 local buff_map = {
 	["Army's Paeon"] = 'Paeon', ["Army's Paeon II"] = 'Paeon', ["Army's Paeon III"] = 'Paeon',
@@ -348,7 +369,7 @@ end
 
 function mod.choose(settings, members, helpers)
 	local desired = split_actions(active_value_or_flat('config.defensive.buffs.list', settings.defensive_buffs) or '')
-	local targeted = parse_targeted_buffs(settings.defensive_targeted_buffs or '')
+	local targeted = active_targeted_buffs(settings)
 	local self_only = helpers.bool_setting(active_value_or_flat('config.defensive.buffs.self_only', settings.defensive_buff_self_only), true)
 	local overwrite = helpers.bool_setting(active_value_or_flat('config.defensive.buffs.overwrite_enabled', settings.defensive_overwrite_enabled), false)
 	local overwrite_interval = tonumber(active_value_or_flat('config.defensive.buffs.overwrite_interval', settings.defensive_overwrite_interval) or 150) or 150
