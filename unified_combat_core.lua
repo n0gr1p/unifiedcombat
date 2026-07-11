@@ -129,6 +129,42 @@ local function set_movement_owner(owner, hold_s)
 	end
 end
 
+local function resolve_puller_id(settings)
+	local puller_name = tostring((settings and settings.puller_name) or '')
+	if puller_name ~= '' then
+		local ffxi = windower and windower.ffxi
+		if type(ffxi) == 'table' then
+			local get_party = ffxi.get_party
+			if type(get_party) == 'function' then
+				local ok_party, party = pcall(get_party)
+				if ok_party and type(party) == 'table' then
+					for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
+						local entry = party[key]
+						local mob = entry and entry.mob
+						if mob and type(mob.name) == 'string' and mob.name == puller_name then
+							local mob_id = tonumber(mob.id) or 0
+							if mob_id > 0 then
+								return mob_id
+							end
+						end
+					end
+				end
+			end
+			local get_mob_by_name = ffxi.get_mob_by_name
+			if type(get_mob_by_name) == 'function' then
+				local ok_mob, mob = pcall(get_mob_by_name, puller_name)
+				if ok_mob and mob then
+					local mob_id = tonumber(mob.id) or 0
+					if mob_id > 0 then
+						return mob_id
+					end
+				end
+			end
+		end
+	end
+	return tonumber(settings and settings.puller_id) or 0
+end
+
 local skillchain_ids = {
 	[288] = true, [289] = true, [290] = true, [291] = true, [292] = true, [293] = true, [294] = true, [295] = true,
 	[296] = true, [297] = true, [298] = true, [299] = true, [300] = true, [301] = true, [385] = true, [386] = true,
@@ -2275,20 +2311,25 @@ local function apply_movement(settings, target)
 		_G.UC_MOVE_DIAG = 'move_skip_not_actionable_target'
 		return
 	end
-	if setting_enabled(settings.puller) and (tonumber(settings.puller_id) or 0) > 0 then
-		local puller = windower.ffxi.get_mob_by_id(tonumber(settings.puller_id))
-		local near = mob_distance(target, puller) <= 6
-		local allow = near
-		if not setting_enabled(settings.puller_distance_only) then
-			allow = near or ((target.hpp or 0) < 99)
-		end
-		if not allow then
-			-- Puller gate blocks combat-close movement: explicitly stop current run vector and
-			-- let party-follow own movement for a short window to avoid orphan/stuck trajectories.
-			windower.ffxi.run(false)
-			core.last_run_active = false
-			_G.UC_PULLER_APPROACH_BLOCK_UNTIL = uc_now_s() + 0.6
-			return
+	if setting_enabled(settings.puller) then
+		local puller_id = resolve_puller_id(settings)
+		if puller_id > 0 then
+			local puller = windower.ffxi.get_mob_by_id(puller_id)
+			if puller then
+				local near = mob_distance(target, puller) <= 6
+				local allow = near
+				if not setting_enabled(settings.puller_distance_only) then
+					allow = near or ((target.hpp or 0) < 99)
+				end
+				if not allow then
+					-- Puller gate blocks combat-close movement: explicitly stop current run vector and
+					-- let party-follow own movement for a short window to avoid orphan/stuck trajectories.
+					windower.ffxi.run(false)
+					core.last_run_active = false
+					_G.UC_PULLER_APPROACH_BLOCK_UNTIL = uc_now_s() + 0.6
+					return
+				end
+			end
 		end
 	end
 	local dist = target_real_distance_movement(target, settings)

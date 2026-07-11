@@ -139,6 +139,7 @@ local function build_flat_settings()
         partner2 = true,
         puller = true,
         puller_distance_only = true,
+        puller_name = 'Niightsiide',
         partner_id = 11,
         partner_id2 = 22,
         partner_ids = { 11, 22 },
@@ -350,6 +351,7 @@ local function build_nested_settings()
                 secondary_enabled = true,
                 ids = { 11, 22 },
                 puller = true,
+                puller_name = 'Niightsiide',
                 puller_id = 33,
                 puller_distance_only = true,
             },
@@ -506,6 +508,7 @@ local function main()
     assert_equal(flat_config.movement.path.hunter_targets[1], 'Target A', 'path hunter targets mismatch')
     assert_equal(flat_config.follow.party.leader_name, 'Leader', 'party follow leader mismatch')
     assert_equal(flat_config.follow.partner.secondary_enabled, true, 'partner2 mismatch')
+    assert_equal(flat_config.follow.partner.puller_name, 'Niightsiide', 'flat puller name mismatch')
     assert_equal(flat_config.tank.enabled, true, 'tank mismatch')
     assert_equal(flat_config.tank.enmity.actions[2], 'Flash', 'tank enmity actions mismatch')
     assert_equal(flat_config.sleep.order[2], 'Sleepga', 'sleep order mismatch')
@@ -539,6 +542,7 @@ local function main()
     assert_equal(nested_config.movement.path.points[1].x, 1, 'nested path points mismatch')
     assert_equal(nested_config.maintenance.brd.family, 'March', 'nested maintenance BRD mismatch')
     assert_equal(nested_config.maintenance.geo.bubble, 'Entrust', 'nested maintenance GEO mismatch')
+    assert_equal(nested_config.follow.partner.puller_name, 'Niightsiide', 'nested puller name mismatch')
 
     nested_config.abilities.configured[1] = 'Changed'
     nested_config.targeting.targets[1] = 'Changed'

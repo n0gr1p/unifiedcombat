@@ -118,6 +118,8 @@ local function build_flat_settings()
 		path_points = { '1,2,3' },
 		party_follow = true,
 		party_follow_leader_name = 'Leader',
+		puller = true,
+		puller_name = 'Niightsiide',
 		add_control = true,
 		add_priority_names = { 'Apex Bat' },
 		sleep = true,
@@ -148,8 +150,31 @@ end
 
 local function main()
 	local previous_active_profile = rawget(_G, 'UC_ACTIVE_PROFILE')
+	local previous_windower = rawget(_G, 'windower')
 	package.loaded['uc_active_config'] = nil
 	package.loaded['uc_config_normalizer'] = nil
+	rawset(_G, 'windower', {
+		ffxi = {
+			get_party = function()
+				return {
+					p1 = {
+						mob = {
+							id = 77,
+							name = 'Niightsiide',
+						},
+					},
+				}
+			end,
+			get_mob_by_name = function(name)
+				if name == 'Niightsiide' then
+					return {
+						id = 77,
+					}
+				end
+				return nil
+			end,
+		},
+	})
 	local active_config = require('uc_active_config')
 	local normalizer = require('uc_config_normalizer')
 
@@ -170,6 +195,7 @@ local function main()
 	assert_equal(active_profile.profile.sub_job, 'WAR', 'active profile sub job mismatch')
 	assert_equal(active_profile.profile.source, 'UC_SETTINGS', 'active profile source mismatch')
 	assert_equal(active_profile.config.combat.weaponskill.primary, 'Savage Blade', 'active combat WS mismatch')
+	assert_equal(active_profile.config.follow.partner.puller_name, 'Niightsiide', 'active puller name mismatch')
 	assert_equal(active_profile.config.maintenance.enabled, true, 'active maintenance domain mismatch')
 	assert_equal(active_profile.config.legacy.hunter, true, 'active legacy hunter mismatch')
 	assert_deep_equal(flat, flat_snapshot, 'building active profile must not mutate input settings')
@@ -206,6 +232,8 @@ local function main()
 	assert_equal(projected.sleepspell, 'Horde Lullaby II', 'projected sleep mirror mismatch')
 	assert_equal(projected.sleepspells[1], 'Horde Lullaby II', 'projected sleep list mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'projected targeted buff mirror mismatch')
+	assert_equal(projected.puller_name, 'Niightsiide', 'projected puller name mismatch')
+	assert_equal(projected.puller_id, 77, 'projected puller id should resolve from puller name')
 	assert_true(type(projected.partner_ids) == 'table' and #projected.partner_ids == 0, 'projected compatibility table should keep empty partner ids as an empty list')
 
 	local projected_snapshot = deep_clone(projected)
@@ -234,6 +262,7 @@ local function main()
 	assert_equal(ui_profile.config.combat.weaponskill.primary, 'Savage Blade', 'UI active combat mismatch')
 	assert_equal(ui_profile.config.movement.path.file_name, 'route-a', 'UI active path mismatch')
 	assert_equal(ui_profile.config.follow.party.leader_name, 'Leader', 'UI active follow mismatch')
+	assert_equal(ui_profile.config.follow.partner.puller_name, 'Niightsiide', 'UI active puller mismatch')
 	assert_equal(ui_profile.config.defensive.buffs.targeted[1].character, 'Terrasjr', 'UI active targeted buff character mismatch')
 	assert_equal(ui_profile.config.defensive.buffs.targeted[1].buff, 'Honor March', 'UI active targeted buff name mismatch')
 	assert_deep_equal(ui_fixture, ui_fixture_snapshot, 'building from payload must not mutate fixture')
@@ -263,6 +292,7 @@ local function main()
 	assert_false(sync_target == flat, 'sanity check for identity comparison')
 
 	_G.UC_ACTIVE_PROFILE = previous_active_profile
+	rawset(_G, 'windower', previous_windower)
 	io.stdout:write('selftest_active_config: OK\n')
 end
 

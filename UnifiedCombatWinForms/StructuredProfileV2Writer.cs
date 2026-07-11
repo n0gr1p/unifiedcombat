@@ -322,6 +322,19 @@ internal static class StructuredProfileV2Writer
 
     private static StructuredProfileNode BuildFollow(JsonObject flatProfile)
     {
+        var partner = new StructuredProfileNode()
+            .Add("enabled", ReadBool(flatProfile, "partner", false))
+            .Add("secondary_enabled", false)
+            .Add("ids", EmptyList())
+            .Add("puller", ReadBool(flatProfile, "puller", false))
+            .Add("puller_distance_only", ReadBool(flatProfile, "puller_distance_only", false));
+
+        var pullerName = ReadString(flatProfile, "puller_selected", ReadString(flatProfile, "puller_name", ""));
+        if (!string.IsNullOrWhiteSpace(pullerName))
+        {
+            partner.Add("puller_name", pullerName);
+        }
+
         return new StructuredProfileNode()
             .Add("enabled", true)
             .Add(
@@ -341,16 +354,7 @@ internal static class StructuredProfileV2Writer
                     .Add("min", ReadDouble(flatProfile, "fight_follow_min", 3.0))
                     .Add("hold_s", ReadDouble(flatProfile, "fight_follow_hold_s", 8.0))
             )
-            .Add(
-                "partner",
-                new StructuredProfileNode()
-                    .Add("enabled", ReadBool(flatProfile, "partner", false))
-                    .Add("secondary_enabled", false)
-                    .Add("ids", EmptyList())
-                    .Add("puller", ReadBool(flatProfile, "puller", false))
-                    .Add("puller_id", 0)
-                    .Add("puller_distance_only", ReadBool(flatProfile, "puller_distance_only", false))
-            );
+            .Add("partner", partner);
     }
 
     private static StructuredProfileNode BuildTargeting(JsonObject flatProfile)

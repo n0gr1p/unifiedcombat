@@ -43,6 +43,17 @@ local function normalize_string(value, default_value)
 	return trimmed
 end
 
+local function normalize_number(value, default_value, options)
+	local number_value = tonumber(value)
+	if number_value == nil then
+		return default_value
+	end
+	if type(options) == 'table' and options.integer == true then
+		number_value = math.floor(number_value)
+	end
+	return number_value
+end
+
 local function clone_value(value, seen)
 	if type(value) ~= 'table' then
 		return value
@@ -58,6 +69,49 @@ local function clone_value(value, seen)
 	end
 	visited[value] = nil
 	return out
+end
+
+local function resolve_party_member_id_by_name(name)
+	local trimmed = normalize_optional_string(name)
+	if trimmed == nil then
+		return 0
+	end
+
+	local windower_ref = rawget(_G, 'windower')
+	local ffxi = type(windower_ref) == 'table' and windower_ref.ffxi or nil
+	if type(ffxi) ~= 'table' then
+		return 0
+	end
+
+	local get_party = ffxi.get_party
+	if type(get_party) == 'function' then
+		local ok_party, party = pcall(get_party)
+		if ok_party and type(party) == 'table' then
+			for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
+				local entry = party[key]
+				local mob = entry and entry.mob
+				if mob and type(mob.name) == 'string' and mob.name == trimmed then
+					local mob_id = tonumber(mob.id) or 0
+					if mob_id > 0 then
+						return mob_id
+					end
+				end
+			end
+		end
+	end
+
+	local get_mob_by_name = ffxi.get_mob_by_name
+	if type(get_mob_by_name) == 'function' then
+		local ok_mob, mob = pcall(get_mob_by_name, trimmed)
+		if ok_mob and mob then
+			local mob_id = tonumber(mob.id) or 0
+			if mob_id > 0 then
+				return mob_id
+			end
+		end
+	end
+
+	return 0
 end
 
 local function serialize_targeted_buffs(entries)
@@ -310,7 +364,12 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.partner_id = candidate.partner_ids[1] or 0
 			candidate.partner_id2 = candidate.partner_ids[2] or 0
 			candidate.puller = config.follow.partner.puller
-			candidate.puller_id = config.follow.partner.puller_id
+			candidate.puller_name = config.follow.partner.puller_name
+			local puller_id = resolve_party_member_id_by_name(config.follow.partner.puller_name)
+			if puller_id == 0 then
+				puller_id = normalize_number(config.follow.partner.puller_id, 0, { integer = true }) or 0
+			end
+			candidate.puller_id = puller_id
 			candidate.puller_distance_only = config.follow.partner.puller_distance_only
 		end
 	end

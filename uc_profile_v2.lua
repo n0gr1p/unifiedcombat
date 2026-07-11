@@ -194,6 +194,9 @@ local function pick_durable_config_domains(config, meta)
 	if type(out.targeting) == 'table' then
 		out.targeting.add_priority_names = nil
 	end
+	if type(out.follow) == 'table' and type(out.follow.partner) == 'table' then
+		out.follow.partner.puller_id = nil
+	end
 	if not is_cor_profile(meta) and type(out.maintenance) == 'table' then
 		out.maintenance.cor = nil
 	end
@@ -217,6 +220,9 @@ local function strip_durable_profile_overrides(config)
 		end
 		if type(config.follow.fight) == 'table' then
 			config.follow.fight.leader_id = nil
+		end
+		if type(config.follow.partner) == 'table' then
+			config.follow.partner.puller_id = nil
 		end
 	end
 	if type(config.targeting) == 'table' then

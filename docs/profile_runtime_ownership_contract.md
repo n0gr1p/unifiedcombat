@@ -125,6 +125,7 @@ Examples:
 - movement-owner state
 - live path points being recorded or mutated
 - current selected path/route filename (`movement.path.file_name`)
+- resolved follow/partner runtime ids such as `follow.partner.puller_id`
 - target snapshots
 - party/mob snapshots
 - bridge protocol state
@@ -170,6 +171,7 @@ Known compatibility/runtime mirror fields that should not define durable drift:
 - `targeting.add_priority_names`
 - `follow.party.leader_id`
 - `follow.fight.leader_id`
+- `follow.partner.puller_id`
 - `sleep`
 - `sleepspells`
 - `sleepspell`

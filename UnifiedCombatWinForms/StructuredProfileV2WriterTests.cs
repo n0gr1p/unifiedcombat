@@ -15,6 +15,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeOmitsProfileV2AutoloadWhenDisabled();
             TestSerializeIncludesProfileV2AutoloadWhenEnabled();
             TestProfileV2AutoloadIsPartOfPersistedBoolSet();
+            TestSerializeIncludesPullerNameWhenSelected();
             TestBrdOmitsHiddenCorMaintenanceDefaults();
             TestNonCorOmitsHiddenCorMaintenanceDefaultsAcrossJobs();
             TestCorPreservesConfiguredMaintenanceValues();
@@ -52,6 +53,8 @@ internal static class StructuredProfileV2WriterTests
     private static void TestSerializeShapeAndEscaping()
     {
         var flat = BuildSampleFlatProfile();
+        flat["puller"] = true;
+        flat["puller_selected"] = "Niightsiide";
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
             new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
@@ -72,7 +75,9 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "character = \"Terrasjr\"", "targeted defensive buff character missing");
         AssertContains(content, "buff = \"Honor March\"", "targeted defensive buff name missing");
         AssertContains(content, "range_selected = \"Front\\\"Line\"", "range selection escaping mismatch");
+        AssertContains(content, "puller_name = \"Niightsiide\"", "puller name must be serialized as durable profile data");
         AssertNotContains(content, "file_name =", "path file name must not be serialized as durable profile data");
+        AssertNotContains(content, "puller_id =", "puller id must not be serialized as durable profile data");
 
         AssertOrder(
             content,
@@ -145,6 +150,21 @@ internal static class StructuredProfileV2WriterTests
             HubUiConstants.BoolKeys.Contains("profile_v2_autoload"),
             "autoload must be included in the shared UI bool key set so load/save paths persist it"
         );
+    }
+
+    private static void TestSerializeIncludesPullerNameWhenSelected()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["puller"] = true;
+        flat["puller_selected"] = "Niightsiide";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+        );
+
+        AssertContains(content, "puller_name = \"Niightsiide\"", "selected puller name must be serialized durably");
+        AssertNotContains(content, "puller_id =", "selected puller id must stay runtime-owned");
     }
 
     private static void TestBrdOmitsHiddenCorMaintenanceDefaults()

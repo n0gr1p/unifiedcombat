@@ -355,6 +355,7 @@ local function default_config(meta)
                 secondary_enabled = false,
                 ids = {},
                 puller = false,
+                puller_name = '',
                 puller_id = 0,
                 puller_distance_only = false,
             },
@@ -652,6 +653,7 @@ local function normalize_follow(source, config)
         follow.partner.secondary_enabled = normalize_boolean(partner.secondary_enabled, follow.partner.secondary_enabled)
         follow.partner.ids = normalize_list(partner.ids, follow.partner.ids)
         follow.partner.puller = normalize_boolean(partner.puller, follow.partner.puller)
+        follow.partner.puller_name = normalize_string(partner.puller_name, follow.partner.puller_name)
         follow.partner.puller_id = normalize_number(partner.puller_id, follow.partner.puller_id, { integer = true })
         follow.partner.puller_distance_only = normalize_boolean(partner.puller_distance_only, follow.partner.puller_distance_only)
     else
@@ -669,6 +671,7 @@ local function normalize_follow(source, config)
         follow.partner.secondary_enabled = normalize_boolean(first_path(source, { path('partner2') }), follow.partner.secondary_enabled)
         follow.partner.ids = normalize_list(first_path(source, { path('partner_ids') }), follow.partner.ids)
         follow.partner.puller = normalize_boolean(first_path(source, { path('puller') }), follow.partner.puller)
+        follow.partner.puller_name = normalize_string(first_path(source, { path('puller_name'), path('puller_selected') }), follow.partner.puller_name)
         follow.partner.puller_id = normalize_number(first_path(source, { path('puller_id') }), follow.partner.puller_id, { integer = true })
         follow.partner.puller_distance_only = normalize_boolean(first_path(source, { path('puller_distance_only') }), follow.partner.puller_distance_only)
     end

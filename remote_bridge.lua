@@ -1068,6 +1068,7 @@ local function process_line(line)
 				if name ~= '' and id == 0 then
 					_G.UC_LAST_PARTNER_OP = 'PULLER_NAME_NOT_IN_PARTY:' .. name
 				end
+				s.puller_name = name
 				s.puller_id = id
 			else
 				_G.UC_LAST_PARTNER_OP = 'PARTNER_SET_LEGACY_IGNORED:' .. slot

@@ -126,6 +126,24 @@ local function main()
 					},
 				}
 			end,
+			get_mob_by_name = function(name)
+				if name == 'Niightsiide' then
+					return {
+						id = 77,
+					}
+				end
+				return nil
+			end,
+			get_party = function()
+				return {
+					p1 = {
+						mob = {
+							id = 77,
+							name = 'Niightsiide',
+						},
+					},
+				}
+			end,
 		},
 	})
 
@@ -199,6 +217,16 @@ local function main()
 				brd = { 'Honor March', 'Victory March' },
 				geo = { 'Geo-Frailty' },
 			},
+			follow = {
+				partner = {
+					enabled = false,
+					secondary_enabled = false,
+					ids = {},
+					puller = true,
+					puller_name = 'Niightsiide',
+					puller_distance_only = false,
+				},
+			},
 		},
 	})
 
@@ -210,6 +238,7 @@ local function main()
 	assert_equal(active_config.get_path('config.defensive.buffs.overwrite_interval'), 150, 'active defensive overwrite interval mismatch')
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_1'), 'Chaos Roll', 'active COR roll 1 mismatch')
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_2'), 'Samurai Roll', 'active COR roll 2 mismatch')
+	assert_equal(active_config.get_path('config.follow.partner.puller_name'), 'Niightsiide', 'active puller name mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Target', 'active targeted buff character mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].buff, 'Victory March', 'active targeted buff name mismatch')
 	assert_equal(active_config.get_path('config.maintenance.brd')[1], 'Honor March', 'active BRD maintenance list mismatch')
@@ -226,6 +255,8 @@ local function main()
 	assert_equal(projected.defensive_medium_hpp, 60, 'projected defensive medium threshold mismatch')
 	assert_equal(projected.cor_roll_1, 'Chaos Roll', 'projected COR roll 1 mismatch')
 	assert_equal(projected.cor_roll_2, 'Samurai Roll', 'projected COR roll 2 mismatch')
+	assert_equal(projected.puller_name, 'Niightsiide', 'projected puller name mismatch')
+	assert_equal(projected.puller_id, 77, 'projected puller id mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Target:Victory March', 'projected targeted buff string mismatch')
 	assert_equal(projected.maintenance_brd[1], 'Honor March', 'projected BRD maintenance list mismatch')
 	assert_equal(projected.maintenance_geo[1], 'Geo-Frailty', 'projected GEO maintenance list mismatch')

@@ -595,6 +595,8 @@ local function build_flat_settings()
 		party_follow_leader_name = 'Leader',
 		party_follow_min = 1,
 		party_follow_max = 25,
+		puller = true,
+		puller_name = 'Niightsiide',
 		add_control = true,
 		add_priority_names = { 'Apex Bat' },
 		sleep = true,
@@ -740,8 +742,8 @@ local function build_expected_config()
 				enabled = false,
 				secondary_enabled = false,
 				ids = {},
-				puller = false,
-				puller_id = 0,
+				puller = true,
+				puller_name = 'Niightsiide',
 				puller_distance_only = false,
 			},
 		},
@@ -938,6 +940,7 @@ local function main()
 	assert_equal(ui_fixture_payload.profile.source, 'ui', 'UI-authored fixture source metadata mismatch')
 	assert_nil(ui_fixture_payload.profile.exported_at, 'UI-authored fixture should omit exported_at metadata')
 	assert_nil(ui_fixture_payload.profile.profile_key, 'UI-authored fixture should omit profile_key metadata')
+	assert_equal(ui_fixture_payload.config.follow.partner.puller_name, 'Niightsiide', 'UI-authored fixture puller name mismatch')
 	local durable_deps, durable_state = make_fake_fs()
 	local durable_result = profile_v2.write_structured_profile_export(profile, {
 		character = 'Redrogue',
@@ -1186,7 +1189,10 @@ local function main()
 	assert_true(diff_ok_result.first_difference == nil, 'structured profile diff first difference should be nil for matching config')
 	assert_equal(#diff_ok_result.differences, 0, 'structured profile diff details should be empty for matching config')
 
-	local ui_fixture_diff_ok_result = exporter.diff_structured_profile_file_against_settings(flat, {
+	local ui_fixture_match_flat = deep_clone(flat)
+	ui_fixture_match_flat.puller = true
+	ui_fixture_match_flat.puller_name = 'Niightsiide'
+	local ui_fixture_diff_ok_result = exporter.diff_structured_profile_file_against_settings(ui_fixture_match_flat, {
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
@@ -1220,6 +1226,8 @@ local function main()
 	assert_equal(scalar_diff_result.first_difference.runtime_type, 'boolean', 'structured profile diff scalar runtime-side type mismatch')
 
 	local ui_fixture_diff_settings = deep_clone(flat)
+	ui_fixture_diff_settings.puller = true
+	ui_fixture_diff_settings.puller_name = 'Niightsiide'
 	ui_fixture_diff_settings.face = false
 	local ui_fixture_diff_snapshot = deep_clone(ui_fixture_diff_settings)
 	local ui_fixture_scalar_diff_result = exporter.diff_structured_profile_file_against_settings(ui_fixture_diff_settings, {
