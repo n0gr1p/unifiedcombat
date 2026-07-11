@@ -365,12 +365,37 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.partner_id2 = candidate.partner_ids[2] or 0
 			candidate.puller = config.follow.partner.puller
 			candidate.puller_name = config.follow.partner.puller_name
+			candidate.follow = candidate.follow or {}
+			candidate.follow.enabled = config.follow.enabled
+			candidate.follow.party = {
+				enabled = config.follow.party and config.follow.party.enabled or nil,
+				leader_id = config.follow.party and config.follow.party.leader_id or nil,
+				leader_name = config.follow.party and config.follow.party.leader_name or nil,
+				min = config.follow.party and config.follow.party.min or nil,
+				max = config.follow.party and config.follow.party.max or nil,
+			}
+			candidate.follow.fight = {
+				leader = config.follow.fight and config.follow.fight.leader or nil,
+				leader_id = config.follow.fight and config.follow.fight.leader_id or nil,
+				min = config.follow.fight and config.follow.fight.min or nil,
+				hold_s = config.follow.fight and config.follow.fight.hold_s or nil,
+			}
+			candidate.follow.partner = {
+				enabled = config.follow.partner.enabled,
+				secondary_enabled = config.follow.partner.secondary_enabled,
+				ids = clone_value(config.follow.partner.ids),
+				puller = config.follow.partner.puller,
+				puller_name = config.follow.partner.puller_name,
+				puller_distance_only = config.follow.partner.puller_distance_only,
+			}
 			local puller_id = resolve_party_member_id_by_name(config.follow.partner.puller_name)
 			if puller_id == 0 then
 				puller_id = normalize_number(config.follow.partner.puller_id, 0, { integer = true }) or 0
 			end
 			candidate.puller_id = puller_id
+			candidate.follow.partner.puller_id = puller_id
 			candidate.puller_distance_only = config.follow.partner.puller_distance_only
+			candidate.follow.partner.puller_distance_only = config.follow.partner.puller_distance_only
 		end
 	end
 
