@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace UnifiedCombatWinForms;
 
@@ -63,6 +64,7 @@ internal sealed class StructuredProfileV2FileWriteException : Exception
 internal static class StructuredProfileV2Writer
 {
     private static readonly IStructuredProfileV2FileSystem PhysicalFileSystem = new PhysicalStructuredProfileV2FileSystem();
+    private static readonly Regex TrailingDisplayIndex = new(@"\s*\[\d+\]\s*$", RegexOptions.Compiled);
 
     internal static string? FindAddonRootFrom(string startDir)
     {
@@ -231,6 +233,7 @@ internal static class StructuredProfileV2Writer
                     .Add("enabled", ReadBool(flatProfile, "weaponskill_active", false))
                     .Add("primary", ReadString(flatProfile, "weaponskill", ""))
                     .Add("mode", ReadString(flatProfile, "ws_mode", "smart"))
+                    .Add("wait_ignore_names", ParseNameList(ReadString(flatProfile, "ignore_entries", "")))
                     .Add("aftermath_enabled", ReadBool(flatProfile, "aftermath_enabled", false))
                     .Add("aftermath_ws", ReadString(flatProfile, "aftermath_ws", ""))
             );
@@ -359,14 +362,13 @@ internal static class StructuredProfileV2Writer
 
     private static StructuredProfileNode BuildTargeting(JsonObject flatProfile)
     {
-        _ = flatProfile;
         return new StructuredProfileNode()
             .Add("add_control", ReadBool(flatProfile, "add_control", false))
             .Add("legacy_slots", EmptyList())
             .Add("targets", EmptyList())
             .Add("targetability", new StructuredProfileNode().Add("enabled", false).Add("action", ""))
             .Add("ignore", EmptyList())
-            .Add("target_ignore_names", EmptyList());
+            .Add("target_ignore_names", ParseNameList(ReadString(flatProfile, "target_ignore_entries", "")));
     }
 
     private static StructuredProfileNode BuildTank(JsonObject flatProfile)
@@ -808,6 +810,41 @@ internal static class StructuredProfileV2Writer
         {
             list.Add(part);
         }
+        return list;
+    }
+
+    private static string StripTrailingDisplayIndex(string value)
+    {
+        return TrailingDisplayIndex.Replace(value, "").Trim();
+    }
+
+    private static List<object?> ParseNameList(string value)
+    {
+        var parts = value.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var list = new List<object?>(parts.Length);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rawPart in parts)
+        {
+            var entry = rawPart.Trim();
+            if (entry.Length == 0)
+            {
+                continue;
+            }
+
+            var separatorIndex = entry.IndexOf(':');
+            var name = separatorIndex >= 0 ? entry[(separatorIndex + 1)..] : entry;
+            name = StripTrailingDisplayIndex(name);
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            if (seen.Add(name))
+            {
+                list.Add(name);
+            }
+        }
+
         return list;
     }
 

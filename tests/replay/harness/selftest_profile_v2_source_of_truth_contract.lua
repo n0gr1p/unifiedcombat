@@ -234,6 +234,8 @@ local function build_flat_settings()
 		party_follow_max = 25,
 		puller = true,
 		puller_name = 'Niightsiide',
+		wait_ignore_names = { 'Niightsiide' },
+		target_ignore_names = { 'Ignore Me' },
 		add_control = true,
 		add_priority_names = { 'Apex Bat' },
 		sleep = true,
@@ -340,6 +342,8 @@ local function main()
 	assert_nil(project_err, 'structured payload should project without error')
 	assert_equal(projected.puller_name, 'Niightsiide', 'puller_name must remain durable in the projected settings')
 	assert_equal(projected.puller_id, 77, 'puller_name must resolve to the live runtime id when projected')
+	assert_equal(projected.wait_ignore_names[1], 'Ally One', 'wait ignore names must remain durable in the projected settings')
+	assert_equal(projected.ignore[1], nil, 'wait ignore names should not invent runtime ids when they are not resolvable')
 	assert_equal(projected.aftermath_ws, 'Atonement', 'weaponskill aftermath ws must round-trip')
 	assert_equal(projected.defensive_overwrite_interval, 150, 'defensive overwrite interval must round-trip')
 	assert_equal(projected.defensive_critical_hpp, 35, 'defensive critical threshold must round-trip')

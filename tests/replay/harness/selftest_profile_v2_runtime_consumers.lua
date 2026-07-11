@@ -158,6 +158,7 @@ local function main()
 	}
 
 	local active_config = require('uc_active_config')
+	local uc_ignore = require('uc_ignore')
 	local hb_buff_maint = require('uc_hb_buff_maint')
 	local cor_maintenance = require('uc_cor_maintenance')
 
@@ -177,6 +178,7 @@ local function main()
 					enabled = true,
 					primary = 'Savage Blade',
 					mode = 'smart',
+					wait_ignore_names = { 'Niightsiide' },
 					aftermath_enabled = true,
 					aftermath_ws = 'Energy Steal',
 				},
@@ -238,6 +240,7 @@ local function main()
 	assert_equal(active_config.get_path('config.defensive.buffs.overwrite_interval'), 150, 'active defensive overwrite interval mismatch')
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_1'), 'Chaos Roll', 'active COR roll 1 mismatch')
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_2'), 'Samurai Roll', 'active COR roll 2 mismatch')
+	assert_equal(active_config.get_path('config.combat.weaponskill.wait_ignore_names')[1], 'Niightsiide', 'active wait ignore name mismatch')
 	assert_equal(active_config.get_path('config.follow.partner.puller_name'), 'Niightsiide', 'active puller name mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Target', 'active targeted buff character mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].buff, 'Victory March', 'active targeted buff name mismatch')
@@ -255,11 +258,15 @@ local function main()
 	assert_equal(projected.defensive_medium_hpp, 60, 'projected defensive medium threshold mismatch')
 	assert_equal(projected.cor_roll_1, 'Chaos Roll', 'projected COR roll 1 mismatch')
 	assert_equal(projected.cor_roll_2, 'Samurai Roll', 'projected COR roll 2 mismatch')
+	assert_equal(projected.wait_ignore_names[1], 'Niightsiide', 'projected wait ignore name mismatch')
+	assert_equal(projected.ignore[1], 77, 'projected legacy ignore id mismatch')
 	assert_equal(projected.puller_name, 'Niightsiide', 'projected puller name mismatch')
 	assert_equal(projected.puller_id, 77, 'projected puller id mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Target:Victory March', 'projected targeted buff string mismatch')
 	assert_equal(projected.maintenance_brd[1], 'Honor March', 'projected BRD maintenance list mismatch')
 	assert_equal(projected.maintenance_geo[1], 'Geo-Frailty', 'projected GEO maintenance list mismatch')
+	assert_true(uc_ignore.is_name_blocked({ wait_ignore_names = { 'Niightsiide' } }, 'Niightsiide') == true, 'wait ignore helper must block by name')
+	assert_true(uc_ignore.is_name_blocked({ wait_ignore_names = { 'Niightsiide' } }, 'Other Ally') == false, 'wait ignore helper must not block unrelated names')
 
 	local cor_flat = {
 		cor_roll_1 = 'Ninja Roll',

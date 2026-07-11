@@ -268,6 +268,7 @@ local function uc_new_settings_defaults()
 		path_hunter_ignore_cooldown_s = 20.0,
 		path_pull_action_type = 'ja',
 		path_pull_action_name = '',
+		wait_ignore_names = {},
 		ignore = {},
 		target_ignore_names = {},
 		show_ingame_ui = false,
@@ -470,7 +471,7 @@ local PROFILE_KEYS = {
 	'target1', 'target2', 'target3', 'targets',
 	'targetability', 'targetability_active',
 	'spell', 'spell_active', 'sleepspell', 'sleepspells',
-	'dd2_spell_slots', 'ignore', 'target_ignore_names',
+	'dd2_spell_slots', 'wait_ignore_names', 'ignore', 'target_ignore_names',
 }
 
 local function uc_clone_value(v)
@@ -1183,6 +1184,9 @@ local function uc_normalize_domain_settings(s)
 	end
 	if s.domain_follow_enabled == nil then
 		s.domain_follow_enabled = true
+	end
+	if type(s.wait_ignore_names) ~= 'table' then
+		s.wait_ignore_names = {}
 	end
 end
 

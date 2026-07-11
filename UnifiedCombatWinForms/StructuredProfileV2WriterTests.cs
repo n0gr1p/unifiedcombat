@@ -16,6 +16,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeIncludesProfileV2AutoloadWhenEnabled();
             TestProfileV2AutoloadIsPartOfPersistedBoolSet();
             TestSerializeIncludesPullerNameWhenSelected();
+            TestSerializeIncludesWaitIgnoreNamesAndStripsDisplayIndexes();
             TestBrdOmitsHiddenCorMaintenanceDefaults();
             TestNonCorOmitsHiddenCorMaintenanceDefaultsAcrossJobs();
             TestCorPreservesConfiguredMaintenanceValues();
@@ -74,6 +75,10 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "targeted = {", "targeted defensive buff list missing");
         AssertContains(content, "character = \"Terrasjr\"", "targeted defensive buff character missing");
         AssertContains(content, "buff = \"Honor March\"", "targeted defensive buff name missing");
+        AssertContains(content, "wait_ignore_names = {", "combat wait ignore list missing");
+        AssertContains(content, "\"Ally One\"", "combat wait ignore names must be serialized");
+        AssertContains(content, "target_ignore_names = {", "target ignore list missing");
+        AssertContains(content, "\"Mob One\"", "target ignore names must be serialized");
         AssertContains(content, "range_selected = \"Front\\\"Line\"", "range selection escaping mismatch");
         AssertContains(content, "puller_name = \"Niightsiide\"", "puller name must be serialized as durable profile data");
         AssertNotContains(content, "file_name =", "path file name must not be serialized as durable profile data");
@@ -165,6 +170,27 @@ internal static class StructuredProfileV2WriterTests
 
         AssertContains(content, "puller_name = \"Niightsiide\"", "selected puller name must be serialized durably");
         AssertNotContains(content, "puller_id =", "selected puller id must stay runtime-owned");
+    }
+
+    private static void TestSerializeIncludesWaitIgnoreNamesAndStripsDisplayIndexes()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["ignore_entries"] = "101:Ally One [101]|202:Ally Two [202]";
+        flat["target_ignore_entries"] = "1:Mob One [1]|2:Mob Two [2]";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+
+        AssertContains(content, "wait_ignore_names = {", "wait ignore names must be serialized");
+        AssertContains(content, "\"Ally One\"", "wait ignore names must strip display indexes");
+        AssertContains(content, "\"Ally Two\"", "wait ignore names must include all names");
+        AssertNotContains(content, "Ally One [101]", "wait ignore names must not serialize display indexes");
+        AssertContains(content, "target_ignore_names = {", "target ignore names must be serialized");
+        AssertContains(content, "\"Mob One\"", "target ignore names must strip display indexes");
+        AssertContains(content, "\"Mob Two\"", "target ignore names must include all names");
+        AssertNotContains(content, "Mob One [1]", "target ignore names must not serialize display indexes");
     }
 
     private static void TestBrdOmitsHiddenCorMaintenanceDefaults()
@@ -400,6 +426,8 @@ internal static class StructuredProfileV2WriterTests
             ["partner"] = false,
             ["puller"] = false,
             ["puller_distance_only"] = false,
+            ["ignore_entries"] = "101:Ally One|202:Ally Two",
+            ["target_ignore_entries"] = "1:Mob One|2:Mob Two",
             ["add_control"] = true,
             ["tank"] = true,
             ["tank_enmity_actions"] = "Provoke|Flash",

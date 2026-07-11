@@ -193,6 +193,7 @@ local function pick_durable_config_domains(config, meta)
 	-- durable v2 round-trip check. UI-authored files are allowed to omit them.
 	if type(out.targeting) == 'table' then
 		out.targeting.add_priority_names = nil
+		out.targeting.ignore = nil
 	end
 	if type(out.follow) == 'table' and type(out.follow.partner) == 'table' then
 		out.follow.partner.puller_id = nil
@@ -228,6 +229,7 @@ local function strip_durable_profile_overrides(config)
 	if type(config.targeting) == 'table' then
 		config.targeting.legacy_slots = nil
 		config.targeting.add_priority_names = nil
+		config.targeting.ignore = nil
 	end
 	if type(config.movement) == 'table' and type(config.movement.path) == 'table' then
 		-- The selected path filename is addon/session state, not durable profile config.

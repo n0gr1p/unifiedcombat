@@ -28,6 +28,7 @@ return {
                 enabled = true,
                 primary = "Savage Blade",
                 mode = "smart",
+                wait_ignore_names = { "Ally One", "Ally Two" },
                 aftermath_enabled = true,
                 aftermath_ws = "Atonement",
             },
@@ -139,7 +140,7 @@ return {
                 action = "",
             },
             ignore = {},
-            target_ignore_names = {},
+            target_ignore_names = { "Mob One", "Mob Two" },
         },
         tank = {
             enabled = true,

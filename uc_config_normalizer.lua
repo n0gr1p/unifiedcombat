@@ -260,6 +260,7 @@ local function default_config(meta)
                 enabled = false,
                 primary = '',
                 mode = 'smart',
+                wait_ignore_names = {},
                 aftermath_enabled = false,
                 aftermath_ws = '',
             },
@@ -499,6 +500,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.enabled = normalize_boolean(nested_ws.enabled, combat.weaponskill.enabled)
         combat.weaponskill.primary = normalize_string(nested_ws.primary or nested_ws.ws1 or nested_ws.weaponskill, combat.weaponskill.primary)
         combat.weaponskill.mode = normalize_string(nested_ws.mode, combat.weaponskill.mode)
+        combat.weaponskill.wait_ignore_names = normalize_list(nested_ws.wait_ignore_names, combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(nested_ws.aftermath_enabled, combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(nested_ws.aftermath_ws, combat.weaponskill.aftermath_ws)
     else
@@ -513,6 +515,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.enabled = normalize_boolean(first_path(source, { path('weaponskill_active') }), combat.weaponskill.enabled)
         combat.weaponskill.primary = normalize_string(first_path(source, { path('weaponskill'), path('ws1') }), combat.weaponskill.primary)
         combat.weaponskill.mode = normalize_string(first_path(source, { path('ws_mode') }), combat.weaponskill.mode)
+        combat.weaponskill.wait_ignore_names = normalize_list(first_path(source, { path('wait_ignore_names') }), combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(first_path(source, { path('aftermath_enabled') }), combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(first_path(source, { path('aftermath_ws') }), combat.weaponskill.aftermath_ws)
     end

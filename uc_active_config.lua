@@ -114,6 +114,91 @@ local function resolve_party_member_id_by_name(name)
 	return 0
 end
 
+local function resolve_party_member_name_by_id(id)
+	local member_id = normalize_number(id, 0, { integer = true }) or 0
+	if member_id == 0 then
+		return nil
+	end
+
+	local windower_ref = rawget(_G, 'windower')
+	local ffxi = type(windower_ref) == 'table' and windower_ref.ffxi or nil
+	if type(ffxi) ~= 'table' then
+		return nil
+	end
+
+	local get_party = ffxi.get_party
+	if type(get_party) == 'function' then
+		local ok_party, party = pcall(get_party)
+		if ok_party and type(party) == 'table' then
+			for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
+				local entry = party[key]
+				local mob = entry and entry.mob
+				if mob then
+					local mob_id = tonumber(mob.id) or 0
+					if mob_id == member_id then
+						local name = normalize_optional_string(mob.name)
+						if name ~= nil then
+							return name
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return nil
+end
+
+local function resolve_party_member_ids_by_names(names)
+	if type(names) ~= 'table' then
+		return {}
+	end
+	local out = {}
+	local seen = {}
+	for i = 1, #names do
+		local id = resolve_party_member_id_by_name(names[i])
+		if id > 0 and not seen[id] then
+			seen[id] = true
+			out[#out + 1] = id
+		end
+	end
+	return out
+end
+
+local function resolve_party_member_names_by_ids(ids)
+	if type(ids) ~= 'table' then
+		return {}
+	end
+	local out = {}
+	local seen = {}
+	for i = 1, #ids do
+		local name = resolve_party_member_name_by_id(ids[i])
+		if type(name) == 'string' and name ~= '' then
+			local key = name:lower()
+			if not seen[key] then
+				seen[key] = true
+				out[#out + 1] = name
+			end
+		end
+	end
+	return out
+end
+
+local function resolve_wait_ignore_names(settings)
+	if type(settings) ~= 'table' then
+		return {}
+	end
+	local wait_ignore_names = settings.wait_ignore_names
+	if type(wait_ignore_names) == 'table' and #wait_ignore_names > 0 then
+		return clone_value(wait_ignore_names)
+	end
+	local legacy_ids = settings.ignore
+	if type(legacy_ids) == 'table' and #legacy_ids > 0 then
+		return resolve_party_member_names_by_ids(legacy_ids)
+	end
+	return {}
+end
+
 local function serialize_targeted_buffs(entries)
 	local out = {}
 	if type(entries) ~= 'table' then
@@ -182,6 +267,9 @@ local function pick_durable_config_domains(config)
 		if type(value) == 'table' then
 			out[domain] = clone_value(value)
 		end
+	end
+	if type(out.targeting) == 'table' then
+		out.targeting.ignore = nil
 	end
 	return out
 end
@@ -260,8 +348,10 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.weaponskill = config.combat.weaponskill.primary
 			candidate.ws1 = config.combat.weaponskill.primary
 			candidate.ws_mode = config.combat.weaponskill.mode
+			candidate.wait_ignore_names = clone_value(config.combat.weaponskill.wait_ignore_names)
 			candidate.aftermath_enabled = config.combat.weaponskill.aftermath_enabled
 			candidate.aftermath_ws = config.combat.weaponskill.aftermath_ws
+			candidate.ignore = resolve_party_member_ids_by_names(config.combat.weaponskill.wait_ignore_names)
 		end
 	end
 
@@ -407,7 +497,6 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.targetability_active = config.targeting.targetability.enabled
 			candidate.targetability = config.targeting.targetability.action
 		end
-		candidate.ignore = clone_value(config.targeting.ignore)
 		candidate.target_ignore_names = clone_value(config.targeting.target_ignore_names)
 		local legacy_targets = type(config.targeting.legacy_slots) == 'table' and config.targeting.legacy_slots or {}
 		for i = 1, 3 do
@@ -492,6 +581,9 @@ end
 function M.build_active_profile_from_settings(settings, context)
 	local meta = resolve_meta(context, 'UC_SETTINGS')
 	local normalized = uc_config_normalizer.normalize(settings, meta)
+	if type(normalized.combat) == 'table' and type(normalized.combat.weaponskill) == 'table' then
+		normalized.combat.weaponskill.wait_ignore_names = resolve_wait_ignore_names(settings)
+	end
 	local profile = build_profile_record(normalized.profile, meta, 'UC_SETTINGS')
 	return {
 		version = 2,

@@ -94,6 +94,7 @@ local function main()
         tank = "profile_owned_by_ui",
         sleepspells = "profile_owned_by_ui",
         cor_roll_1 = "profile_owned_by_ui",
+        wait_ignore_names = "profile_owned_by_ui",
         puller_name = "profile_owned_by_ui",
         puller_id = "runtime_owned_by_addon",
         path_points = "profile_owned_by_ui",

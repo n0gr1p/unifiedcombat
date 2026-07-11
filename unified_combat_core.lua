@@ -2515,6 +2515,7 @@ local function get_party_tp()
 		if mob and mob.id and mob.id ~= 0 then
 			out[#out + 1] = {
 				id = mob.id,
+				name = tostring(mob.name or ''),
 				target = get_mob_id_by_index(mob.target_index),
 				tp = e.tp or 0,
 				status = mob.status or 0,
@@ -3139,7 +3140,7 @@ local function select_smart_ws(settings, target_id)
 		local my_tp = ((windower.ffxi.get_player() or {}).vitals or {}).tp or 0
 		local my_id = (windower.ffxi.get_player() or {}).id or 0
 		for _, value in ipairs(get_party_tp()) do
-			if value.id ~= my_id and not uc_ignore.has_id(settings, value.id) then
+			if value.id ~= my_id and not uc_ignore.is_name_blocked(settings, value.name) then
 				local ally_holding_sc = ws_hold_remote_active_for(value.id, tid)
 				local ally_ws_ready = (value.tp or 0) >= 1000
 				local ally_far_ahead = (value.tp or 0) >= (my_tp + 300)

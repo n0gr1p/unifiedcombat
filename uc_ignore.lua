@@ -2,6 +2,17 @@
 
 local M = {}
 
+local function trim(name)
+	if not name then
+		return ''
+	end
+	return tostring(name):match('^%s*(.-)%s*$') or ''
+end
+
+local function lower(name)
+	return trim(name):lower()
+end
+
 function M.has_id(s, id)
 	if not s or id == nil or id == 0 then
 		return false
@@ -23,6 +34,33 @@ function M.has_id(s, id)
 	end
 	for _, v in pairs(ig) do
 		if v == id then
+			return true
+		end
+	end
+	return false
+end
+
+function M.as_ordered_names(s)
+	if not s or type(s.wait_ignore_names) ~= 'table' then
+		return {}
+	end
+	local out = {}
+	for i = 1, #s.wait_ignore_names do
+		local name = trim(s.wait_ignore_names[i])
+		if name ~= '' then
+			out[#out + 1] = name
+		end
+	end
+	return out
+end
+
+function M.is_name_blocked(s, name)
+	local needle = lower(name)
+	if needle == '' then
+		return false
+	end
+	for _, entry in ipairs(M.as_ordered_names(s)) do
+		if lower(entry) == needle then
 			return true
 		end
 	end

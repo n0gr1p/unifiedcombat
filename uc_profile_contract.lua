@@ -178,6 +178,7 @@ local DIRECT_PROFILE_FIELDS = {
     sleepspell = "profile_owned_by_ui",
     sleepspells = "profile_owned_by_ui",
     dd2_spell_slots = "profile_owned_by_ui",
+    wait_ignore_names = "profile_owned_by_ui",
     ignore = "profile_owned_by_ui",
     target_ignore_names = "profile_owned_by_ui",
 }

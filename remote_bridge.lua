@@ -1191,13 +1191,22 @@ local function process_line(line)
 		local s = _G.UC_SETTINGS
 		if s then
 			local vals = uc_split_pipe(msg.value)
+			local out = {}
+			local seen_name = {}
 			s.ignore = {}
 			for _, name in ipairs(vals) do
-				local tid = uc_resolve_target_id_by_name(name)
+				local n = uc_trim(name)
+				local nk = n:lower()
+				if n ~= '' and not seen_name[nk] then
+					seen_name[nk] = true
+					out[#out + 1] = n
+				end
+				local tid = uc_resolve_target_id_by_name(n)
 				if tid and tid ~= 0 then
 					uc_ignore.append_id(s, tid)
 				end
 			end
+			s.wait_ignore_names = out
 		end
 		last_state_send = 0
 	elseif op == 'partner_replace_names' then

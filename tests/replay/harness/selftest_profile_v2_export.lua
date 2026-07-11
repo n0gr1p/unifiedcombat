@@ -597,6 +597,8 @@ local function build_flat_settings()
 		party_follow_max = 25,
 		puller = true,
 		puller_name = 'Niightsiide',
+		wait_ignore_names = { 'Ally One', 'Ally Two' },
+		target_ignore_names = { 'Mob One', 'Mob Two' },
 		add_control = true,
 		add_priority_names = { 'Apex Bat' },
 		sleep = true,
@@ -645,6 +647,7 @@ local function build_expected_config()
 				enabled = true,
 				primary = 'Savage Blade',
 				mode = 'smart',
+				wait_ignore_names = { 'Ally One', 'Ally Two' },
 				aftermath_enabled = true,
 				aftermath_ws = 'Atonement',
 			},
@@ -755,8 +758,7 @@ local function build_expected_config()
 				enabled = false,
 				action = '',
 			},
-			ignore = {},
-			target_ignore_names = {},
+			target_ignore_names = { 'Mob One', 'Mob Two' },
 		},
 		tank = {
 			enabled = true,
@@ -940,7 +942,9 @@ local function main()
 	assert_equal(ui_fixture_payload.profile.source, 'ui', 'UI-authored fixture source metadata mismatch')
 	assert_nil(ui_fixture_payload.profile.exported_at, 'UI-authored fixture should omit exported_at metadata')
 	assert_nil(ui_fixture_payload.profile.profile_key, 'UI-authored fixture should omit profile_key metadata')
+	assert_equal(ui_fixture_payload.config.combat.weaponskill.wait_ignore_names[1], 'Ally One', 'UI-authored fixture wait ignore name mismatch')
 	assert_equal(ui_fixture_payload.config.follow.partner.puller_name, 'Niightsiide', 'UI-authored fixture puller name mismatch')
+	assert_equal(ui_fixture_payload.config.targeting.target_ignore_names[1], 'Mob One', 'UI-authored fixture target ignore name mismatch')
 	local durable_deps, durable_state = make_fake_fs()
 	local durable_result = profile_v2.write_structured_profile_export(profile, {
 		character = 'Redrogue',

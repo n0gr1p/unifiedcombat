@@ -120,6 +120,8 @@ local function build_flat_settings()
 		party_follow_leader_name = 'Leader',
 		puller = true,
 		puller_name = 'Niightsiide',
+		wait_ignore_names = { 'Niightsiide' },
+		target_ignore_names = { 'Ignore Me' },
 		add_control = true,
 		add_priority_names = { 'Apex Bat' },
 		sleep = true,
@@ -195,8 +197,10 @@ local function main()
 	assert_equal(active_profile.profile.sub_job, 'WAR', 'active profile sub job mismatch')
 	assert_equal(active_profile.profile.source, 'UC_SETTINGS', 'active profile source mismatch')
 	assert_equal(active_profile.config.combat.weaponskill.primary, 'Savage Blade', 'active combat WS mismatch')
+	assert_equal(active_profile.config.combat.weaponskill.wait_ignore_names[1], 'Niightsiide', 'active wait ignore names mismatch')
 	assert_equal(active_profile.config.follow.partner.puller_name, 'Niightsiide', 'active puller name mismatch')
 	assert_equal(active_profile.config.follow.partner.puller_id, 0, 'active puller id should remain runtime-owned in the durable active profile')
+	assert_equal(active_profile.config.targeting.target_ignore_names[1], 'Ignore Me', 'active target ignore names mismatch')
 	assert_equal(active_profile.config.maintenance.enabled, true, 'active maintenance domain mismatch')
 	assert_equal(active_profile.config.legacy.hunter, true, 'active legacy hunter mismatch')
 	assert_deep_equal(flat, flat_snapshot, 'building active profile must not mutate input settings')
@@ -233,6 +237,8 @@ local function main()
 	assert_equal(projected.sleepspell, 'Horde Lullaby II', 'projected sleep mirror mismatch')
 	assert_equal(projected.sleepspells[1], 'Horde Lullaby II', 'projected sleep list mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'projected targeted buff mirror mismatch')
+	assert_equal(projected.wait_ignore_names[1], 'Niightsiide', 'projected wait ignore names mismatch')
+	assert_equal(projected.ignore[1], 77, 'projected compatibility ignore id mismatch')
 	assert_equal(projected.puller_name, 'Niightsiide', 'projected puller name mismatch')
 	assert_equal(projected.puller_id, 77, 'projected puller id should resolve from puller name')
 	assert_equal(projected.follow.partner.puller_name, 'Niightsiide', 'projected nested puller name mismatch')
@@ -266,6 +272,8 @@ local function main()
 	assert_equal(ui_profile.config.movement.path.file_name, 'route-a', 'UI active path mismatch')
 	assert_equal(ui_profile.config.follow.party.leader_name, 'Leader', 'UI active follow mismatch')
 	assert_equal(ui_profile.config.follow.partner.puller_name, 'Niightsiide', 'UI active puller mismatch')
+	assert_equal(ui_profile.config.combat.weaponskill.wait_ignore_names[1], 'Ally One', 'UI active wait ignore name mismatch')
+	assert_equal(ui_profile.config.targeting.target_ignore_names[1], 'Mob One', 'UI active target ignore name mismatch')
 	assert_equal(ui_profile.config.defensive.buffs.targeted[1].character, 'Terrasjr', 'UI active targeted buff character mismatch')
 	assert_equal(ui_profile.config.defensive.buffs.targeted[1].buff, 'Honor March', 'UI active targeted buff name mismatch')
 	assert_deep_equal(ui_fixture, ui_fixture_snapshot, 'building from payload must not mutate fixture')
