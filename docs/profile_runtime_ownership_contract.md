@@ -100,6 +100,8 @@ Examples:
 - maintenance settings
 - follow/movement/pathing preferences that are profile material
 - debug config
+- follow/partner durable identity such as `follow.partner.puller_name`
+- configured COR roll names and other applicable maintenance selections
 
 Durable config may be loaded into `_G.UC_ACTIVE_PROFILE`.
 
@@ -138,6 +140,19 @@ Runtime/session state must not be required for v2 profile validation.
 Runtime/session state must not produce durable profile drift after reload.
 
 Runtime/session state may be reported through status/bridge surfaces.
+
+### Verified Lifecycle Rules
+
+The profile-v2 source-of-truth boundary is intentionally locked down:
+
+- UI Save is file-only. It may write the legacy profile file and the structured v2 file, but it must not send runtime bridge mutations or reapply active runtime state.
+- `profilev2 reload` and profile-v2 autoload use the same shared structured apply path.
+- Autoload only reports success when the post-apply durable diff count is zero.
+- Startup/bootstrap reload paths must not clobber an already autoloaded structured active profile.
+- Manual `profilev2 reload` must bring the runtime back to zero durable diffs after a real file change.
+- Runtime-owned fields remain excluded from durable drift, including engine running state, resolved follow/puller IDs, and the current path filename.
+- Non-COR profiles may omit `maintenance.cor`; omitted or default-empty COR maintenance is non-durable for those profiles.
+- Applicable configured sections still round-trip durably, including COR rolls, BRD buffs, follow puller name, defensive thresholds, and combat weaponskill settings.
 
 ### 3. Runtime / Legacy Overrides
 
