@@ -167,6 +167,19 @@ local function is_cor_profile(meta)
 	return type(main_job) == 'string' and main_job:upper() == 'COR'
 end
 
+local function non_cor_maintenance_cor_is_default_empty(cor, meta)
+	if is_cor_profile(meta) or type(cor) ~= 'table' then
+		return false
+	end
+	local defaults = uc_config_normalizer.default_config(meta)
+	local default_cor = type(defaults) == 'table' and type(defaults.maintenance) == 'table' and defaults.maintenance.cor or nil
+	if type(default_cor) ~= 'table' then
+		return false
+	end
+	local diff = M.diff_durable_config(clone_value(cor), clone_value(default_cor))
+	return diff.count == 0
+end
+
 local function pick_durable_config_domains(config, meta)
 	local out = {}
 	for i = 1, #DURABLE_CONFIG_DOMAINS do
@@ -223,22 +236,16 @@ local function strip_non_cor_maintenance_cor(current_config, target_config, meta
 		return current_config, target_config
 	end
 
+	local current_maintenance = current_config.maintenance
+	if type(current_maintenance) == 'table' then
+		current_maintenance.cor = nil
+	end
+
 	local target_maintenance = target_config.maintenance
-	local target_cor = type(target_maintenance) == 'table' and target_maintenance.cor or nil
-	if type(target_cor) ~= 'table' then
-		return current_config, target_config
-	end
-
-	local defaults = uc_config_normalizer.default_config(meta)
-	local default_cor = type(defaults) == 'table' and type(defaults.maintenance) == 'table' and defaults.maintenance.cor or nil
-	if type(default_cor) ~= 'table' then
-		return current_config, target_config
-	end
-
-	local diff = M.diff_durable_config(clone_value(target_cor), clone_value(default_cor))
-	if diff.count == 0 then
+	if type(target_maintenance) == 'table' then
 		target_maintenance.cor = nil
 	end
+
 	return current_config, target_config
 end
 
@@ -1078,7 +1085,9 @@ function M.inspect_structured_profile_status(settings, meta, validator, deps)
 	if not ok_current_config or type(current_config) ~= 'table' then
 		return structured_profile_status_result(validation.path or path, 'error', false, tostring(current_config or 'runtime config normalization failed'), 0, meta, validation.payload)
 	end
-	local diff = M.diff_durable_config(current_config, validation.payload.config)
+	local target_config = clone_value(validation.payload.config)
+	current_config, target_config = strip_non_cor_maintenance_cor(current_config, target_config, meta)
+	local diff = M.diff_durable_config(current_config, target_config)
 	local state = diff.count == 0 and 'valid_match' or 'valid_diff'
 	local reason = diff.count == 0 and 'runtime matches file' or 'runtime differs from file'
 	return structured_profile_status_result(validation.path or path, state, true, reason, diff, meta, validation.payload)
@@ -1209,7 +1218,9 @@ function M.apply_structured_profile_file_to_settings(current_settings, meta, val
 	end
 
 	local current_config = M.build_durable_config(current_settings, meta)
-	local diff = M.diff_durable_config(current_config, validation.payload.config)
+	local target_config = clone_value(validation.payload.config)
+	current_config, target_config = strip_non_cor_maintenance_cor(current_config, target_config, meta)
+	local diff = M.diff_durable_config(current_config, target_config)
 
 	return {
 		ok = true,

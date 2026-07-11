@@ -107,6 +107,93 @@ local function extract_source_block(source, start_marker, end_marker)
 	return source:sub(start_pos, end_pos - 1)
 end
 
+local function assert_non_cor_missing_cor_round_trip(profile_v2, contract, make_fake_fs_fn, flat, profile, main_job, sub_job)
+	local case = {
+		profile = deep_clone(profile),
+		settings = deep_clone(flat),
+	}
+	case.settings_identity = case.settings
+	case.profile.main_job = main_job
+	case.profile.sub_job = sub_job
+	case.profile.config.maintenance.cor = nil
+	assert_nil(case.profile.config.maintenance.cor, tostring(main_job) .. ' structured profile should omit maintenance.cor when it is non-applicable')
+	assert_true(contract.validate_structured_profile_config(case.profile).ok == true, tostring(main_job) .. ' structured profile missing maintenance.cor should validate')
+	case.path = profile_v2.default_export_path({
+		character = 'Redrogue',
+		main_job = main_job,
+		sub_job = sub_job,
+	})
+	case.deps, case.state = make_fake_fs_fn({
+		[case.path] = profile_v2.serialize_structured_profile(case.profile),
+	})
+	case.status = profile_v2.inspect_structured_profile_status(case.settings, {
+		character = 'Redrogue',
+		main_job = main_job,
+		sub_job = sub_job,
+	}, contract.validate_structured_profile_config, case.deps)
+	assert_equal(case.status.state, 'valid_match', tostring(main_job) .. ' structured profile missing maintenance.cor should still match runtime')
+	assert_equal(case.status.valid, true, tostring(main_job) .. ' structured profile missing maintenance.cor should validate')
+	assert_equal(case.status.diff_count, 0, tostring(main_job) .. ' structured profile missing maintenance.cor should report zero differences')
+	assert_equal(case.status.reason, 'runtime matches file', tostring(main_job) .. ' structured profile missing maintenance.cor match reason mismatch')
+	assert_equal(case.status.path, case.path, tostring(main_job) .. ' structured profile missing maintenance.cor path mismatch')
+	assert_true(case.status.first_difference == nil, tostring(main_job) .. ' structured profile missing maintenance.cor should not expose a first difference')
+	assert_true(case.settings == case.settings_identity, tostring(main_job) .. ' structured profile status must preserve settings table identity')
+	case.apply_settings = deep_clone(flat)
+	case.apply_identity = case.apply_settings
+	case.apply = profile_v2.apply_structured_profile_file_to_settings(case.apply_settings, {
+		character = 'Redrogue',
+		main_job = main_job,
+		sub_job = sub_job,
+	}, contract.validate_structured_profile_config, case.deps)
+	assert_true(case.apply.ok == true, tostring(main_job) .. ' structured profile missing maintenance.cor should apply cleanly')
+	assert_equal(case.apply.count, 0, tostring(main_job) .. ' structured profile missing maintenance.cor should report zero differences on apply')
+	assert_equal(case.apply.diff_count, 0, tostring(main_job) .. ' structured profile missing maintenance.cor apply diff_count mismatch')
+	assert_true(case.apply_settings == case.apply_identity, tostring(main_job) .. ' structured profile missing maintenance.cor apply must preserve settings identity')
+	assert_deep_equal(case.apply_settings, flat, tostring(main_job) .. ' structured profile missing maintenance.cor apply should leave matching settings unchanged')
+	assert_equal(#case.state.open_calls, 0, tostring(main_job) .. ' structured profile missing maintenance.cor status should not write files')
+	assert_equal(#case.state.rename_calls, 0, tostring(main_job) .. ' structured profile missing maintenance.cor status should not rename files')
+end
+
+local function assert_non_cor_blank_cor_round_trip(profile_v2, contract, make_fake_fs_fn, flat, profile)
+	local blank_cor = deep_clone(profile)
+	blank_cor.main_job = 'PLD'
+	blank_cor.sub_job = 'RDM'
+	blank_cor.config.maintenance.cor = {
+		roll_1 = '',
+		roll_2 = '',
+		crooked_roll_slot = 0,
+		elevens = false,
+		luzaf_range_override = false,
+		range_selected = '',
+		range_require_ids = {},
+	}
+	assert_true(contract.validate_structured_profile_config(blank_cor).ok == true, 'non-COR structured profile with blank maintenance.cor should validate')
+	local blank_cor_path = profile_v2.default_export_path({
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'RDM',
+	})
+	local blank_cor_deps = make_fake_fs_fn({
+		[blank_cor_path] = profile_v2.serialize_structured_profile(blank_cor),
+	})
+	local blank_cor_status = profile_v2.inspect_structured_profile_status(deep_clone(flat), {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'RDM',
+	}, contract.validate_structured_profile_config, blank_cor_deps)
+	assert_equal(blank_cor_status.state, 'valid_match', 'non-COR structured profile with blank maintenance.cor should match runtime')
+	assert_equal(blank_cor_status.diff_count, 0, 'non-COR structured profile with blank maintenance.cor should report zero differences')
+	assert_equal(blank_cor_status.reason, 'runtime matches file', 'non-COR structured profile with blank maintenance.cor reason mismatch')
+	local blank_cor_apply_settings = deep_clone(flat)
+	local blank_cor_apply = profile_v2.apply_structured_profile_file_to_settings(blank_cor_apply_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'RDM',
+	}, contract.validate_structured_profile_config, blank_cor_deps)
+	assert_true(blank_cor_apply.ok == true, 'non-COR structured profile with blank maintenance.cor should apply cleanly')
+	assert_equal(blank_cor_apply.diff_count, 0, 'non-COR structured profile with blank maintenance.cor apply diff count mismatch')
+end
+
 local function load_profile_v2_apply_from_addon(addon_source, exporter_stub, validator_stub)
 	local apply_block = extract_source_block(
 		addon_source,
@@ -1412,51 +1499,11 @@ local function main()
 	assert_equal(v2_fixture_status.main_job, 'PLD', 'UI-authored structured profile status main job mismatch')
 	assert_equal(v2_fixture_status.sub_job, 'WAR', 'UI-authored structured profile status sub job mismatch')
 	assert_deep_equal(v2_fixture_status_settings, v2_fixture_status_snapshot, 'UI-authored structured profile status must not mutate settings')
-
-	local brd_missing_cor = {
-		profile = deep_clone(profile),
-		settings = deep_clone(flat),
-	}
-	brd_missing_cor.settings_identity = brd_missing_cor.settings
-	brd_missing_cor.profile.main_job = 'BRD'
-	brd_missing_cor.profile.sub_job = 'WHM'
-	brd_missing_cor.profile.config.maintenance.cor = nil
-	assert_nil(brd_missing_cor.profile.config.maintenance.cor, 'BRD structured profile should omit maintenance.cor when it is non-applicable')
-	assert_true(contract.validate_structured_profile_config(brd_missing_cor.profile).ok == true, 'BRD structured profile missing maintenance.cor should validate')
-	brd_missing_cor.path = profile_v2.default_export_path({
-		character = 'Redrogue',
-		main_job = 'BRD',
-		sub_job = 'WHM',
-	})
-	brd_missing_cor.deps, brd_missing_cor.state = make_fake_fs({
-		[brd_missing_cor.path] = profile_v2.serialize_structured_profile(brd_missing_cor.profile),
-	})
-	brd_missing_cor.status = profile_v2.inspect_structured_profile_status(brd_missing_cor.settings, {
-		character = 'Redrogue',
-		main_job = 'BRD',
-		sub_job = 'WHM',
-	}, contract.validate_structured_profile_config, brd_missing_cor.deps)
-	assert_equal(brd_missing_cor.status.state, 'valid_match', 'BRD structured profile missing maintenance.cor should still match runtime')
-	assert_equal(brd_missing_cor.status.valid, true, 'BRD structured profile missing maintenance.cor should validate')
-	assert_equal(brd_missing_cor.status.diff_count, 0, 'BRD structured profile missing maintenance.cor should report zero differences')
-	assert_equal(brd_missing_cor.status.reason, 'runtime matches file', 'BRD structured profile missing maintenance.cor match reason mismatch')
-	assert_equal(brd_missing_cor.status.path, brd_missing_cor.path, 'BRD structured profile missing maintenance.cor path mismatch')
-	assert_true(brd_missing_cor.status.first_difference == nil, 'BRD structured profile missing maintenance.cor should not expose a first difference')
-	assert_true(brd_missing_cor.settings == brd_missing_cor.settings_identity, 'BRD structured profile status must preserve settings table identity')
-	brd_missing_cor.apply_settings = deep_clone(flat)
-	brd_missing_cor.apply_identity = brd_missing_cor.apply_settings
-	brd_missing_cor.apply = profile_v2.apply_structured_profile_file_to_settings(brd_missing_cor.apply_settings, {
-		character = 'Redrogue',
-		main_job = 'BRD',
-		sub_job = 'WHM',
-	}, contract.validate_structured_profile_config, brd_missing_cor.deps)
-	assert_true(brd_missing_cor.apply.ok == true, 'BRD structured profile missing maintenance.cor should apply cleanly')
-	assert_equal(brd_missing_cor.apply.count, 0, 'BRD structured profile missing maintenance.cor should report zero differences on apply')
-	assert_equal(brd_missing_cor.apply.diff_count, 0, 'BRD structured profile missing maintenance.cor apply diff_count mismatch')
-	assert_true(brd_missing_cor.apply_settings == brd_missing_cor.apply_identity, 'BRD structured profile missing maintenance.cor apply must preserve settings identity')
-	assert_deep_equal(brd_missing_cor.apply_settings, flat, 'BRD structured profile missing maintenance.cor apply should leave matching settings unchanged')
-	assert_equal(#brd_missing_cor.state.open_calls, 0, 'BRD structured profile missing maintenance.cor status should not write files')
-	assert_equal(#brd_missing_cor.state.rename_calls, 0, 'BRD structured profile missing maintenance.cor status should not rename files')
+	assert_non_cor_missing_cor_round_trip(profile_v2, contract, make_fake_fs, flat, profile, 'BRD', 'WHM')
+	assert_non_cor_missing_cor_round_trip(profile_v2, contract, make_fake_fs, flat, profile, 'PLD', 'RDM')
+	assert_non_cor_missing_cor_round_trip(profile_v2, contract, make_fake_fs, flat, profile, 'SAM', 'DRG')
+	assert_non_cor_missing_cor_round_trip(profile_v2, contract, make_fake_fs, flat, profile, 'GEO', 'WHM')
+	assert_non_cor_blank_cor_round_trip(profile_v2, contract, make_fake_fs, flat, profile)
 
 	local apply_fail_snapshot = deep_clone(validate_settings_snapshot)
 	local apply_fail_deps = make_fake_fs({

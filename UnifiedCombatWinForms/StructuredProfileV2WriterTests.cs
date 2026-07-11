@@ -16,6 +16,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeIncludesProfileV2AutoloadWhenEnabled();
             TestProfileV2AutoloadIsPartOfPersistedBoolSet();
             TestBrdOmitsHiddenCorMaintenanceDefaults();
+            TestNonCorOmitsHiddenCorMaintenanceDefaultsAcrossJobs();
             TestCorPreservesConfiguredMaintenanceValues();
             TestUiSaveIsFileOnly();
             TestUiSaveSuppressesOutboundMirrorTraffic();
@@ -166,6 +167,33 @@ internal static class StructuredProfileV2WriterTests
         AssertNotContains(content, "roll_1 = \"\"", "BRD profile must not serialize blank COR roll 1");
         AssertNotContains(content, "roll_2 = \"\"", "BRD profile must not serialize blank COR roll 2");
         AssertNotContains(content, "luzaf_range_override = false", "BRD profile must not serialize default COR Luzaf override");
+    }
+
+    private static void TestNonCorOmitsHiddenCorMaintenanceDefaultsAcrossJobs()
+    {
+        foreach (var identity in new[]
+        {
+            new StructuredProfileV2Identity("Redrogue", "PLD", "RDM"),
+            new StructuredProfileV2Identity("Redrogue", "SAM", "DRG"),
+            new StructuredProfileV2Identity("Redrogue", "GEO", "WHM"),
+        })
+        {
+            var flat = BuildSampleFlatProfile();
+            flat["cor_roll_1"] = "";
+            flat["cor_roll_2"] = "";
+            flat["cor_crooked_roll_slot"] = 0;
+            flat["cor_elevens"] = false;
+            flat["cor_luzaf_range_override"] = false;
+            flat["cor_roll_range_selected"] = "";
+
+            var content = StructuredProfileV2Writer.BuildStructuredProfileFile(flat, identity);
+
+            AssertContains(content, "maintenance = {", $"{identity.MainJob} profile should still serialize maintenance root");
+            AssertNotContains(content, "cor = {", $"{identity.MainJob} profile must omit hidden COR maintenance section when defaults are blank");
+            AssertNotContains(content, "roll_1 = \"\"", $"{identity.MainJob} profile must not serialize blank COR roll 1");
+            AssertNotContains(content, "roll_2 = \"\"", $"{identity.MainJob} profile must not serialize blank COR roll 2");
+            AssertNotContains(content, "luzaf_range_override = false", $"{identity.MainJob} profile must not serialize default COR Luzaf override");
+        }
     }
 
     private static void TestCorPreservesConfiguredMaintenanceValues()
