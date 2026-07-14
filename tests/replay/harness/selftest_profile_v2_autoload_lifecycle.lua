@@ -47,6 +47,7 @@ local function load_autoload_scope(state, status_result, autoload_result)
 	local addon = read_file('UnifiedCombat.lua')
 	assert_contains(addon, 'local function uc_queue_profile_v2_autoload()', 'addon must define the queued autoload helper')
 	assert_contains(addon, 'local function uc_run_queued_profile_v2_autoload()', 'addon must define the queued autoload runner')
+	assert_contains(addon, 'local function uc_run_profile_v2_auto_reload()', 'addon must define the file-change auto-reload runner')
 
 	local block = extract_source_block(
 		addon,
@@ -62,6 +63,8 @@ local function load_autoload_scope(state, status_result, autoload_result)
 		'  reload = uc_reload_active_profile,',
 		'  queue = uc_queue_profile_v2_autoload,',
 		'  run = uc_run_queued_profile_v2_autoload,',
+		'  auto_reload = uc_run_profile_v2_auto_reload,',
+		'  auto_reload_status = uc_profile_v2_auto_reload_status,',
 		'  autoload = uc_autoload_profile_v2_file,',
 		'}',
 	}, '\n')
@@ -69,7 +72,7 @@ local function load_autoload_scope(state, status_result, autoload_result)
 	local env = {
 		_G = _G,
 		uc_now_s = function()
-			return 123.5
+			return state.now
 		end,
 		uc_active_config = require('uc_active_config'),
 		uc_partner_list = {
@@ -97,22 +100,34 @@ local function load_autoload_scope(state, status_result, autoload_result)
 		uc_profile_v2 = {
 			validate_structured_profile_file = function(meta)
 				state.validate_calls = state.validate_calls + 1
+				if type(state.validate_result) == 'table' then
+					return deep_clone(state.validate_result)
+				end
 				return {
 					ok = true,
 					payload = {
 						config = {
 							ownership = {
 								profile_v2_autoload = true,
+								profile_v2_auto_reload_on_change = true,
 							},
 						},
 					},
 				}
 			end,
 			apply_structured_profile_file_to_settings = function(current_settings, meta)
+				if type(state.apply_result) == 'table' then
+					return deep_clone(state.apply_result)
+				end
 				state.autoload_calls = state.autoload_calls + 1
 				state.settings_identity = current_settings
+				local auto_reload_enabled = state.auto_reload_enabled_after_apply
+				if auto_reload_enabled == nil then
+					auto_reload_enabled = current_settings.profile_v2_auto_reload_on_change == true
+				end
 				current_settings.profile_v2_autoload = true
 				current_settings.engine_enabled = false
+				current_settings.profile_v2_auto_reload_on_change = auto_reload_enabled == true
 				current_settings.cor_roll_1 = 'Chaos Roll'
 				current_settings.cor_roll_2 = 'Ninja Roll'
 				current_settings.defensive_targeted_buffs = 'Terrasjr:Honor March'
@@ -131,6 +146,7 @@ local function load_autoload_scope(state, status_result, autoload_result)
 					config = {
 						ownership = {
 							profile_v2_autoload = true,
+							profile_v2_auto_reload_on_change = current_settings.profile_v2_auto_reload_on_change == true,
 						},
 						maintenance = {
 							cor = {
@@ -168,12 +184,54 @@ local function load_autoload_scope(state, status_result, autoload_result)
 					first_difference = deep_clone(autoload_result.first_difference),
 				}
 			end,
+			inspect_structured_profile_file_against_settings = function(settings, meta)
+				state.status_calls = state.status_calls + 1
+				state.status_context = {
+					settings = settings,
+					meta = meta,
+				}
+				return deep_clone(state.status_result)
+			end,
+		},
+		files = {
+			exists = function(path)
+				return state.files[path] ~= nil
+			end,
+			read = function(path)
+				state.read_calls[#state.read_calls + 1] = path
+				return state.files[path]
+			end,
 		},
 		uc_update_profile_v2_contract_status = function(context)
 			state.status_calls = state.status_calls + 1
 			state.status_context = context
 			return deep_clone(status_result)
 		end,
+		io = {
+			open = function(path, mode)
+				state.read_calls[#state.read_calls + 1] = path
+				local content = state.files[path]
+				if type(content) ~= 'string' then
+					return nil, 'missing'
+				end
+				local consumed = false
+				return {
+					read = function(_, read_mode)
+						if consumed then
+							return nil
+						end
+						consumed = true
+						if read_mode ~= nil and read_mode ~= '*' and read_mode ~= '*a' then
+							return content
+						end
+						return content
+					end,
+					close = function()
+						return true
+					end,
+				}
+			end,
+		},
 		windower = {
 			ffxi = {
 				get_player = function()
@@ -204,6 +262,9 @@ local function make_state()
 		reload_calls = 0,
 		reload_job = nil,
 		chats = {},
+		read_calls = {},
+		files = {},
+		now = 123.5,
 		player = {
 			name = 'Terrasjr',
 			main_job = 'PLD',
@@ -216,6 +277,15 @@ local function make_state()
 		active_profile = nil,
 		settings_identity = nil,
 		status_context = nil,
+		validate_result = nil,
+		status_result = {
+			ok = true,
+			valid = true,
+			diff_count = 0,
+			count = 0,
+			first_difference = nil,
+			path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
+		},
 	}
 end
 
@@ -363,6 +433,186 @@ local function main()
 	assert_true(success_scope.run() == nil, 'duplicate startup runner calls must not rerun the same session')
 	assert_equal(success_state.autoload_calls, 1, 'duplicate startup runner calls must not reapply the same session')
 	rawset(_G, 'UC_ReloadActiveProfile', previous_reload_active_profile)
+
+	local auto_reload_state = make_state()
+	auto_reload_state.settings.profile_v2_auto_reload_on_change = true
+	auto_reload_state.status_result = {
+		ok = true,
+		valid = true,
+		diff_count = 0,
+		count = 0,
+		first_difference = nil,
+		path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
+	}
+	local auto_reload_scope = load_autoload_scope(
+		auto_reload_state,
+		auto_reload_state.status_result,
+		{
+			ok = true,
+			count = 7,
+			diff_count = 7,
+			first_difference = {
+				path = 'config.defensive.thresholds.critical_hpp',
+			},
+		}
+	)
+	_G.UC_SETTINGS = auto_reload_state.settings
+	_G.UC_ACTIVE_PROFILE = {
+		version = 2,
+		profile = {
+			character = 'Terrasjr',
+			main_job = 'PLD',
+			sub_job = 'RDM',
+			source = 'UC_PROFILE_V2',
+		},
+		config = {
+			ownership = {
+				profile_v2_auto_reload_on_change = true,
+			},
+		},
+	}
+	auto_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { defensive = { thresholds = { critical_hpp = 35 } } } }'
+	assert_true(auto_reload_scope.auto_reload() == nil, 'first auto-reload poll should only arm the stable snapshot')
+	assert_equal(#auto_reload_state.read_calls, 1, 'auto-reload must read the active file once on the first poll')
+	auto_reload_state.now = auto_reload_state.now + 3.5
+	auto_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { defensive = { thresholds = { critical_hpp = 30 } } } }'
+	assert_true(auto_reload_scope.auto_reload() == nil, 'second auto-reload poll should record the changed file before applying')
+	auto_reload_state.now = auto_reload_state.now + 3.5
+	local auto_reload_settings_identity = auto_reload_state.settings
+	local auto_reload_result = auto_reload_scope.auto_reload()
+	assert_true(type(auto_reload_result) == 'table' and auto_reload_result.ok == true, 'stable file change should auto-reload successfully')
+	assert_equal(auto_reload_state.settings_identity, auto_reload_settings_identity, 'auto-reload must preserve _G.UC_SETTINGS identity')
+	assert_equal(auto_reload_state.settings.engine_enabled, false, 'auto-reload must not enable the engine')
+	assert_equal(auto_reload_state.settings.profile_v2_auto_reload_on_change, true, 'auto-reload must preserve the auto-reload flag in settings')
+	assert_equal(auto_reload_state.status_calls, 1, 'auto-reload should perform a post-apply status check')
+	local auto_reload_status = auto_reload_scope.auto_reload_status()
+	assert_true(type(auto_reload_status) == 'table', 'auto-reload status helper should return a table')
+	assert_equal(auto_reload_status.enabled, true, 'auto-reload status should report enabled')
+	assert_equal(auto_reload_status.last_error, nil, 'auto-reload status should clear last error on success')
+	assert_true(auto_reload_status.path ~= nil, 'auto-reload status should report the watched path')
+	assert_chat_contains(auto_reload_state, 'UC profile v2 auto-reload: applied', 'successful auto-reload should report applied when post-apply diff is zero')
+	assert_true(auto_reload_scope.auto_reload() == nil, 'no-op auto-reload poll should not reapply an unchanged file')
+	assert_equal(auto_reload_state.autoload_calls, 1, 'no-op auto-reload poll must not apply an unchanged file twice')
+
+	local disable_reload_state = make_state()
+	disable_reload_state.settings.profile_v2_auto_reload_on_change = true
+	disable_reload_state.auto_reload_enabled_after_apply = false
+	disable_reload_state.status_result = {
+		ok = true,
+		valid = true,
+		diff_count = 0,
+		count = 0,
+		first_difference = nil,
+		path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
+	}
+	local disable_reload_scope = load_autoload_scope(
+		disable_reload_state,
+		disable_reload_state.status_result,
+		{
+			ok = true,
+			count = 0,
+			diff_count = 0,
+			first_difference = nil,
+		}
+	)
+	_G.UC_SETTINGS = disable_reload_state.settings
+	_G.UC_ACTIVE_PROFILE = {
+		version = 2,
+		profile = {
+			character = 'Terrasjr',
+			main_job = 'PLD',
+			sub_job = 'RDM',
+			source = 'UC_PROFILE_V2',
+		},
+		config = {
+			ownership = {
+				profile_v2_auto_reload_on_change = true,
+			},
+		},
+	}
+	disable_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { ownership = { profile_v2_auto_reload_on_change = false }, defensive = { thresholds = { critical_hpp = 35 } } } }'
+	assert_true(disable_reload_scope.auto_reload() == nil, 'disabled auto-reload should arm on the first poll')
+	disable_reload_state.now = disable_reload_state.now + 3.5
+	disable_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { ownership = { profile_v2_auto_reload_on_change = false }, defensive = { thresholds = { critical_hpp = 30 } } } }'
+	assert_true(disable_reload_scope.auto_reload() == nil, 'disabled auto-reload should record the changed file before applying')
+	disable_reload_state.now = disable_reload_state.now + 3.5
+	local disable_reload_result = disable_reload_scope.auto_reload()
+	assert_true(type(disable_reload_result) == 'table' and disable_reload_result.ok == true, 'disabled auto-reload should still apply successfully')
+	assert_equal(disable_reload_state.settings.profile_v2_auto_reload_on_change, false, 'disabled auto-reload must clear the flag in settings')
+	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE').config.ownership.profile_v2_auto_reload_on_change == nil, 'disabled auto-reload must omit the durable ownership flag')
+	local disable_reload_status = disable_reload_scope.auto_reload_status()
+	assert_true(type(disable_reload_status) == 'table', 'disabled auto-reload status should return a table')
+	assert_equal(disable_reload_status.enabled, false, 'disabled auto-reload status should report disabled')
+	assert_equal(disable_reload_state.status_calls, 2, 'disabled auto-reload should perform a post-apply status check and a status query')
+	local disable_reload_reads_before = #disable_reload_state.read_calls
+	disable_reload_state.now = disable_reload_state.now + 3.5
+	assert_true(disable_reload_scope.auto_reload() == nil, 'disabled auto-reload should stop polling after the disabled flag is applied')
+	assert_equal(#disable_reload_state.read_calls, disable_reload_reads_before, 'disabled auto-reload must stop reading the file after the flag is cleared')
+
+	local invalid_reload_state = make_state()
+	invalid_reload_state.settings.profile_v2_auto_reload_on_change = true
+	invalid_reload_state.validate_result = {
+		ok = false,
+		path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
+		stage = 'load',
+		error = 'parse failed',
+		reason = 'parse failed',
+	}
+	invalid_reload_state.apply_result = {
+		ok = false,
+		path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
+		stage = 'apply',
+		error = 'parse failed',
+		reason = 'parse failed',
+		count = 0,
+		diff_count = 0,
+	}
+	invalid_reload_state.status_result = {
+		ok = false,
+		valid = false,
+		diff_count = 1,
+		count = 1,
+		first_difference = {
+			path = 'config.defensive.buffs.overwrite_interval',
+		},
+		path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
+	}
+	local invalid_reload_scope = load_autoload_scope(
+		invalid_reload_state,
+		invalid_reload_state.status_result,
+		{
+			ok = true,
+			count = 3,
+			diff_count = 3,
+			first_difference = {
+				path = 'config.defensive.buffs.overwrite_interval',
+			},
+		}
+	)
+	_G.UC_SETTINGS = invalid_reload_state.settings
+	_G.UC_ACTIVE_PROFILE = {
+		version = 2,
+		profile = {
+			character = 'Terrasjr',
+			main_job = 'PLD',
+			sub_job = 'RDM',
+			source = 'UC_PROFILE_V2',
+		},
+		config = {
+			ownership = {
+				profile_v2_auto_reload_on_change = true,
+			},
+		},
+	}
+	invalid_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { bad = true } }'
+	assert_true(invalid_reload_scope.auto_reload() == nil, 'invalid auto-reload should arm on the first poll')
+	invalid_reload_state.now = invalid_reload_state.now + 3.5
+	local invalid_reload_result = invalid_reload_scope.auto_reload()
+	assert_true(type(invalid_reload_result) == 'table' and invalid_reload_result.ok == false, 'invalid auto-reload should fail without mutating runtime')
+	assert_equal(invalid_reload_state.autoload_calls, 0, 'invalid auto-reload must not apply runtime changes')
+	assert_equal(invalid_reload_state.settings.engine_enabled, false, 'invalid auto-reload must not mutate engine state')
+	assert_equal(invalid_reload_state.settings.profile_v2_auto_reload_on_change, true, 'invalid auto-reload must preserve the flag in settings')
+	assert_chat_contains(invalid_reload_state, 'UC profile v2 auto-reload failed: ', 'invalid auto-reload should report a concise warning')
 
 	local warning_state = make_state()
 	_G.UC_SETTINGS = warning_state.settings

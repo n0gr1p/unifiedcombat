@@ -136,6 +136,7 @@ local function build_flat_settings()
 		domain_maintenance_enabled = true,
 		domain_follow_enabled = true,
 		scheduler_dark_launch_combat = true,
+		profile_v2_auto_reload_on_change = true,
 		tank = true,
 		tank_enmity_actions = { 'Provoke', 'Flash' },
 		sub = true,
@@ -198,12 +199,28 @@ local function main()
 	assert_equal(active_profile.profile.source, 'UC_SETTINGS', 'active profile source mismatch')
 	assert_equal(active_profile.config.combat.weaponskill.primary, 'Savage Blade', 'active combat WS mismatch')
 	assert_equal(active_profile.config.combat.weaponskill.wait_ignore_names[1], 'Niightsiide', 'active wait ignore names mismatch')
+	assert_equal(active_profile.config.ownership.profile_v2_auto_reload_on_change, true, 'active auto-reload flag mismatch')
 	assert_equal(active_profile.config.follow.partner.puller_name, 'Niightsiide', 'active puller name mismatch')
 	assert_equal(active_profile.config.follow.partner.puller_id, 0, 'active puller id should remain runtime-owned in the durable active profile')
 	assert_equal(active_profile.config.targeting.target_ignore_names[1], 'Ignore Me', 'active target ignore names mismatch')
 	assert_equal(active_profile.config.maintenance.enabled, true, 'active maintenance domain mismatch')
 	assert_equal(active_profile.config.legacy.hunter, true, 'active legacy hunter mismatch')
 	assert_deep_equal(flat, flat_snapshot, 'building active profile must not mutate input settings')
+
+	local disabled_flat = deep_clone(flat)
+	disabled_flat.profile_v2_auto_reload_on_change = false
+	local disabled_active = active_config.build_active_profile_from_settings(disabled_flat, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		source = 'UC_SETTINGS',
+	})
+	assert_true(type(disabled_active) == 'table', 'disabled active profile from settings must be a table')
+	assert_true(type(disabled_active.config.ownership) == 'table', 'disabled active profile must retain ownership table')
+	assert_true(disabled_active.config.ownership.profile_v2_auto_reload_on_change == nil, 'disabled auto-reload flag must be omitted from durable active config')
+	local disabled_projected = active_config.project_flat_settings(disabled_active, disabled_flat)
+	assert_true(type(disabled_projected) == 'table', 'disabled projection should still succeed')
+	assert_true(disabled_projected.profile_v2_auto_reload_on_change == nil, 'disabled auto-reload flag must stay omitted from projected settings')
 
 	local set_ok, stored_profile = active_config.set_active_profile(active_profile)
 	assert_true(set_ok == true, 'setting active profile should succeed')
@@ -239,6 +256,7 @@ local function main()
 	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'projected targeted buff mirror mismatch')
 	assert_equal(projected.wait_ignore_names[1], 'Niightsiide', 'projected wait ignore names mismatch')
 	assert_equal(projected.ignore[1], 77, 'projected compatibility ignore id mismatch')
+	assert_equal(projected.profile_v2_auto_reload_on_change, true, 'projected auto-reload flag mismatch')
 	assert_equal(projected.puller_name, 'Niightsiide', 'projected puller name mismatch')
 	assert_equal(projected.puller_id, 77, 'projected puller id should resolve from puller name')
 	assert_equal(projected.follow.partner.puller_name, 'Niightsiide', 'projected nested puller name mismatch')

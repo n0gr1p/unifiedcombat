@@ -493,8 +493,11 @@ local function run_profile_v2_autoload_selftest(profile_v2, active_config, contr
 	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE') == enabled_active_identity, 'enabled autoload must preserve active profile table identity')
 	assert_true(type(enabled_result.active_profile) == 'table', 'enabled autoload must return an active profile')
 	assert_true(_G.UC_ACTIVE_PROFILE.config.ownership.profile_v2_autoload == true, 'enabled autoload must update the active profile')
+	assert_true(_G.UC_ACTIVE_PROFILE.config.ownership.profile_v2_auto_reload_on_change == true, 'enabled autoload must update the auto-reload flag in the active profile')
 	assert_true(enabled_settings.profile_v2_autoload == true, 'enabled autoload must project the flag into flat settings')
+	assert_true(enabled_settings.profile_v2_auto_reload_on_change == true, 'enabled autoload must project the auto-reload flag into flat settings')
 	assert_true(enabled_result.candidate.profile_v2_autoload == true, 'enabled autoload must build a candidate with the flag projected')
+	assert_true(enabled_result.candidate.profile_v2_auto_reload_on_change == true, 'enabled autoload must build a candidate with the auto-reload flag projected')
 	assert_equal(#enabled_state.read_calls, 2, 'enabled autoload should inspect and then apply the file')
 	assert_equal(#enabled_state.open_calls, 0, 'enabled autoload must not write files')
 	assert_true(_G.Start_Engine == false, 'enabled autoload must not start the engine')
@@ -614,6 +617,7 @@ local function build_flat_settings()
 		domain_follow_enabled = true,
 		scheduler_dark_launch_combat = true,
 		profile_v2_autoload = true,
+		profile_v2_auto_reload_on_change = true,
 		cor_roll_1 = 'Chaos Roll',
 		cor_roll_2 = 'Samurai Roll',
 		sub = true,
@@ -795,6 +799,7 @@ local function build_expected_config()
 			scheduler_dark_launch_movement = false,
 			scheduler_dark_launch_maintenance = false,
 			profile_v2_autoload = true,
+			profile_v2_auto_reload_on_change = true,
 		},
 		legacy = {
 			sub = true,
@@ -1723,8 +1728,10 @@ local function main()
 	assert_contains(addon, "local uc_profile_v2_autoload_pending_key = nil", 'addon must track pending profilev2 autoload sessions')
 	assert_contains(addon, "local function uc_queue_profile_v2_autoload()", 'addon must queue profilev2 autoload after startup hooks')
 	assert_contains(addon, "local function uc_run_queued_profile_v2_autoload()", 'addon must run queued profilev2 autoload once per session')
+	assert_contains(addon, "local function uc_run_profile_v2_auto_reload()", 'addon must define the profilev2 file-change auto-reload helper')
 	assert_contains(addon, "uc_queue_profile_v2_autoload()", 'addon must queue profilev2 autoload from startup hooks')
 	assert_contains(addon, "uc_run_queued_profile_v2_autoload()", 'addon must run queued profilev2 autoload from prerender')
+	assert_contains(addon, "uc_run_profile_v2_auto_reload()", 'addon must run profilev2 auto-reload from prerender')
 	assert_contains(addon, "uc_profile_v2.validate_structured_profile_file(meta, function(payload)", 'addon autoload must validate the structured file before applying')
 	assert_contains(addon, "uc_apply_profile_v2_file(", 'addon autoload must use the shared apply path')
 	assert_contains(addon, "local detail_mode = args[3] and tostring(args[3]):lower() == 'detail'", 'addon must recognize the diff detail command')

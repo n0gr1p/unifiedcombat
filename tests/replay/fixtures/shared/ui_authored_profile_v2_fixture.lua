@@ -177,6 +177,7 @@ return {
             scheduler_dark_launch_movement = false,
             scheduler_dark_launch_maintenance = false,
             profile_v2_autoload = true,
+            profile_v2_auto_reload_on_change = true,
         },
         legacy = {
             sub = true,

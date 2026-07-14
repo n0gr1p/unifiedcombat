@@ -257,6 +257,27 @@ local function strip_non_cor_maintenance_cor(current_config, target_config, meta
 	return current_config, target_config
 end
 
+local OPTIONAL_TRUE_OWNERSHIP_FLAGS = {
+	profile_v2_autoload = true,
+	profile_v2_auto_reload_on_change = true,
+}
+
+local function canonicalize_optional_true_ownership_flags(config)
+	if type(config) ~= 'table' then
+		return config
+	end
+	local ownership = config.ownership
+	if type(ownership) ~= 'table' then
+		return config
+	end
+	for flag in pairs(OPTIONAL_TRUE_OWNERSHIP_FLAGS) do
+		if ownership[flag] ~= true then
+			ownership[flag] = nil
+		end
+	end
+	return config
+end
+
 local function append_path(prefix, key)
 	local key_string = tostring(key)
 	if prefix == nil or prefix == '' then
@@ -970,9 +991,11 @@ end
 function M.diff_durable_config(current_config, target_config)
 	local differences = {}
 	local details = {}
+	current_config = canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(current_config)))
+	target_config = canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(target_config)))
 	diff_values(
-		strip_durable_profile_overrides(clone_value(current_config)),
-		strip_durable_profile_overrides(clone_value(target_config)),
+		current_config,
+		target_config,
 		'config',
 		differences,
 		details

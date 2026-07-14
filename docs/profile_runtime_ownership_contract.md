@@ -146,6 +146,7 @@ Runtime/session state may be reported through status/bridge surfaces.
 The profile-v2 source-of-truth boundary is intentionally locked down:
 
 - UI Save is file-only. It may write the legacy profile file and the structured v2 file, but it must not send runtime bridge mutations or reapply active runtime state.
+- Durable UI edits stay local to the form until Save. Durable config controls may update in-memory UI state, but they must not emit live bridge mutations before the explicit file write.
 - `profilev2 reload` and profile-v2 autoload use the same shared structured apply path.
 - Autoload only reports success when the post-apply durable diff count is zero.
 - Startup/bootstrap reload paths must not clobber an already autoloaded structured active profile.

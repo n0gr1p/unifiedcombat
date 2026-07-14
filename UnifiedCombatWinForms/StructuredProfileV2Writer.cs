@@ -461,6 +461,10 @@ internal static class StructuredProfileV2Writer
         {
             ownership.Add("profile_v2_autoload", true);
         }
+        if (ReadBool(flatProfile, "profile_v2_auto_reload_on_change", false))
+        {
+            ownership.Add("profile_v2_auto_reload_on_change", true);
+        }
 
         return ownership;
     }

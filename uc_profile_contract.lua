@@ -98,6 +98,7 @@ local DIRECT_PROFILE_FIELDS = {
     scheduler_dark_launch_movement = "profile_owned_by_ui",
     scheduler_dark_launch_maintenance = "profile_owned_by_ui",
     profile_v2_autoload = "profile_owned_by_ui",
+    profile_v2_auto_reload_on_change = "profile_owned_by_ui",
     path_recording = "profile_owned_by_ui",
     path_follow_enabled = "profile_owned_by_ui",
     path_file_name = "profile_owned_by_ui",

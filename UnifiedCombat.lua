@@ -271,6 +271,7 @@ local function uc_new_settings_defaults()
 		wait_ignore_names = {},
 		ignore = {},
 		target_ignore_names = {},
+		profile_v2_auto_reload_on_change = false,
 		show_ingame_ui = false,
 	}
 end
@@ -855,12 +856,145 @@ local uc_normalize_settings_table
 local uc_profile_v2_autoload_pending_key = nil
 local uc_profile_v2_autoload_completed_key = nil
 local uc_profile_v2_startup_reload_completed_key = nil
+local uc_profile_v2_auto_reload_pending_path = nil
+local uc_profile_v2_auto_reload_pending_hash = nil
+local uc_profile_v2_auto_reload_pending_seen_at = nil
+local uc_profile_v2_auto_reload_session_key = nil
+local uc_profile_v2_auto_reload_last_applied_session_key = nil
+local uc_profile_v2_auto_reload_last_applied_hash = nil
+local uc_profile_v2_auto_reload_last_reported_hash = nil
+local uc_profile_v2_auto_reload_last_checked_at = 0
+local uc_profile_v2_auto_reload_last_error = nil
+local UC_PROFILE_V2_AUTO_RELOAD_POLL_SEC = 3
+local UC_PROFILE_V2_AUTO_RELOAD_STABLE_SEC = 3
 
 local function uc_profile_v2_session_key(player)
 	if not player or not player.name or not player.main_job or not player.sub_job then
 		return nil
 	end
 	return tostring(player.name) .. '|' .. tostring(player.main_job) .. '|' .. tostring(player.sub_job)
+end
+
+local function uc_profile_v2_content_hash(content)
+	local hash = 5381
+	if type(content) ~= 'string' or content == '' then
+		return nil
+	end
+	for i = 1, #content do
+		hash = (hash * 33 + content:byte(i)) % 4294967296
+	end
+	return hash
+end
+
+local function uc_profile_v2_read_file_content(path)
+	if type(path) ~= 'string' or path == '' then
+		return nil, 'missing path'
+	end
+	local fh, err = io.open(path, 'rb')
+	if not fh then
+		return nil, err
+	end
+	local ok_read, content_or_err = pcall(function()
+		return fh:read('*a')
+	end)
+	pcall(function()
+		fh:close()
+	end)
+	if not ok_read then
+		return nil, content_or_err
+	end
+	if type(content_or_err) ~= 'string' or content_or_err == '' then
+		return nil, 'empty file'
+	end
+	return content_or_err
+end
+
+local function uc_profile_v2_auto_reload_reset()
+	uc_profile_v2_auto_reload_pending_path = nil
+	uc_profile_v2_auto_reload_pending_hash = nil
+	uc_profile_v2_auto_reload_pending_seen_at = nil
+	uc_profile_v2_auto_reload_session_key = nil
+	uc_profile_v2_auto_reload_last_applied_session_key = nil
+	uc_profile_v2_auto_reload_last_applied_hash = nil
+	uc_profile_v2_auto_reload_last_reported_hash = nil
+	uc_profile_v2_auto_reload_last_checked_at = 0
+	uc_profile_v2_auto_reload_last_error = nil
+end
+
+local function uc_profile_v2_auto_reload_enabled()
+	local active_profile = uc_active_config.get_active_profile()
+	local ownership = active_profile and active_profile.config and active_profile.config.ownership or nil
+	return type(ownership) == 'table' and ownership.profile_v2_auto_reload_on_change == true
+end
+
+local function uc_profile_v2_auto_reload_note_applied(meta, session_key, path, known_hash)
+	if not uc_profile_v2_auto_reload_enabled() then
+		return
+	end
+	local effective_path = path or uc_profile_v2_file_path(meta)
+	if type(effective_path) ~= 'string' or effective_path == '' then
+		return
+	end
+	local current_hash = known_hash
+	if not current_hash then
+		local content, read_err = uc_profile_v2_read_file_content(effective_path)
+		if type(content) ~= 'string' then
+			uc_profile_v2_auto_reload_last_error = tostring(read_err or 'read failed')
+			return
+		end
+		current_hash = uc_profile_v2_content_hash(content)
+	end
+	if not current_hash then
+		return
+	end
+	local effective_key = session_key
+	if not effective_key and type(meta) == 'table' then
+		effective_key = normalize_optional_string(meta.character)
+		if effective_key ~= nil and (meta.main_job ~= nil or meta.sub_job ~= nil) then
+			effective_key = tostring(meta.character or '') .. '|' .. tostring(meta.main_job or '') .. '|' .. tostring(meta.sub_job or '')
+		end
+	end
+	uc_profile_v2_auto_reload_session_key = effective_key
+	uc_profile_v2_auto_reload_last_applied_session_key = effective_key
+	uc_profile_v2_auto_reload_last_applied_hash = current_hash
+	uc_profile_v2_auto_reload_last_reported_hash = current_hash
+	uc_profile_v2_auto_reload_last_error = nil
+	uc_profile_v2_auto_reload_pending_path = nil
+	uc_profile_v2_auto_reload_pending_hash = nil
+	uc_profile_v2_auto_reload_pending_seen_at = nil
+end
+
+local function uc_profile_v2_auto_reload_status(meta, settings)
+	local inspector = uc_profile_v2.inspect_structured_profile_file_against_settings
+	if type(inspector) ~= 'function' then
+		return {
+			ok = false,
+			valid = false,
+			path = uc_profile_v2_file_path(meta),
+			error = 'profile v2 status unavailable',
+		}
+	end
+	local result = inspector(settings, meta, function(payload)
+		return uc_validate_structured_profile_export(payload)
+	end)
+	if type(result) ~= 'table' then
+		return {
+			ok = false,
+			valid = false,
+			path = uc_profile_v2_file_path(meta),
+			error = 'profile v2 status returned invalid result',
+		}
+	end
+	result.enabled = uc_profile_v2_auto_reload_enabled() == true
+	result.pending_path = uc_profile_v2_auto_reload_pending_path
+	result.pending_hash = uc_profile_v2_auto_reload_pending_hash
+	result.pending_since = uc_profile_v2_auto_reload_pending_seen_at
+	result.last_applied_hash = uc_profile_v2_auto_reload_last_applied_hash
+	result.last_reported_hash = uc_profile_v2_auto_reload_last_reported_hash
+	result.last_checked_at = uc_profile_v2_auto_reload_last_checked_at
+	result.last_error = uc_profile_v2_auto_reload_last_error
+	result.session_key = uc_profile_v2_auto_reload_session_key
+	return result
 end
 
 local function uc_queue_profile_v2_autoload()
@@ -924,6 +1058,7 @@ local function uc_apply_profile_v2_file(meta, settings)
 		return false, result.path or uc_profile_v2_file_path(meta), sync_err, nil
 	end
 	uc_normalize_settings_table(settings)
+	uc_profile_v2_auto_reload_note_applied(meta, uc_profile_v2_session_key(windower.ffxi.get_player()), result.path)
 	return true, result.path, nil, result.count
 end
 
@@ -964,6 +1099,12 @@ local function uc_autoload_profile_v2_file()
 			stage = 'apply',
 		}
 	end
+	uc_profile_v2_auto_reload_note_applied({
+		character = p.name,
+		main_job = p.main_job,
+		sub_job = p.sub_job,
+		addon_path = uc_addon_path(),
+	}, uc_profile_v2_session_key(p), path)
 	return {
 		ok = true,
 		path = path,
@@ -1023,6 +1164,132 @@ local function uc_run_queued_profile_v2_autoload()
 	end
 
 	return result
+end
+
+local function uc_run_profile_v2_auto_reload()
+	local now = uc_now_s()
+	if (now - uc_profile_v2_auto_reload_last_checked_at) < UC_PROFILE_V2_AUTO_RELOAD_POLL_SEC then
+		return nil
+	end
+	uc_profile_v2_auto_reload_last_checked_at = now
+
+	local p = windower.ffxi.get_player()
+	if not p or not p.name or not p.main_job or not p.sub_job or not _G.UC_SETTINGS then
+		return nil
+	end
+	if not uc_profile_v2_auto_reload_enabled() then
+		uc_profile_v2_auto_reload_pending_path = nil
+		uc_profile_v2_auto_reload_pending_hash = nil
+		uc_profile_v2_auto_reload_pending_seen_at = nil
+		return nil
+	end
+
+	local session_key = uc_profile_v2_session_key(p)
+	if session_key ~= uc_profile_v2_auto_reload_session_key then
+		uc_profile_v2_auto_reload_reset()
+		uc_profile_v2_auto_reload_session_key = session_key
+	end
+
+	local meta = {
+		character = p.name,
+		main_job = p.main_job,
+		sub_job = p.sub_job,
+		profile_key = tostring(p.name or '') .. '|' .. tostring(p.main_job or '') .. '|' .. tostring(p.sub_job or ''),
+		addon_path = uc_addon_path(),
+	}
+	local path = uc_profile_v2_file_path(meta)
+	local content, read_err = uc_profile_v2_read_file_content(path)
+	if type(content) ~= 'string' then
+		uc_profile_v2_auto_reload_last_error = tostring(read_err or 'missing file')
+		return nil
+	end
+
+	local current_hash = uc_profile_v2_content_hash(content)
+	if not current_hash then
+		uc_profile_v2_auto_reload_last_error = 'unable to hash structured profile file'
+		return nil
+	end
+
+	if uc_profile_v2_auto_reload_last_applied_hash == current_hash and uc_profile_v2_auto_reload_last_applied_session_key == session_key then
+		uc_profile_v2_auto_reload_pending_path = nil
+		uc_profile_v2_auto_reload_pending_hash = nil
+		uc_profile_v2_auto_reload_pending_seen_at = nil
+		uc_profile_v2_auto_reload_last_error = nil
+		return nil
+	end
+	if uc_profile_v2_auto_reload_last_reported_hash == current_hash then
+		uc_profile_v2_auto_reload_last_error = nil
+		return nil
+	end
+
+	if uc_profile_v2_auto_reload_pending_path ~= path or uc_profile_v2_auto_reload_pending_hash ~= current_hash then
+		uc_profile_v2_auto_reload_pending_path = path
+		uc_profile_v2_auto_reload_pending_hash = current_hash
+		uc_profile_v2_auto_reload_pending_seen_at = now
+		uc_profile_v2_auto_reload_last_error = nil
+		return nil
+	end
+
+	if (now - (uc_profile_v2_auto_reload_pending_seen_at or now)) < UC_PROFILE_V2_AUTO_RELOAD_STABLE_SEC then
+		uc_profile_v2_auto_reload_last_error = nil
+		return nil
+	end
+
+	local ok_apply, apply_path, apply_err = uc_apply_profile_v2_file({
+		character = p.name,
+		main_job = p.main_job,
+		sub_job = p.sub_job,
+		addon_path = uc_addon_path(),
+	}, _G.UC_SETTINGS)
+	if ok_apply ~= true then
+		uc_profile_v2_auto_reload_last_reported_hash = current_hash
+		uc_profile_v2_auto_reload_pending_seen_at = now
+		uc_profile_v2_auto_reload_last_error = tostring(apply_err or 'unknown error')
+		windower.add_to_chat(167, 'UC profile v2 auto-reload failed: ' .. tostring(apply_err or 'unknown error'))
+		return {
+			ok = false,
+			path = apply_path or path,
+			error = apply_err,
+			reason = apply_err,
+		}
+	end
+
+	local inspector = uc_profile_v2.inspect_structured_profile_file_against_settings
+	local status = nil
+	if type(inspector) == 'function' then
+		status = inspector(_G.UC_SETTINGS, {
+			character = p.name,
+			main_job = p.main_job,
+			sub_job = p.sub_job,
+			addon_path = uc_addon_path(),
+		}, function(payload)
+			return uc_validate_structured_profile_export(payload)
+		end)
+	end
+	local diff_count = tonumber(status and (status.diff_count or status.count)) or 0
+	uc_profile_v2_auto_reload_last_reported_hash = current_hash
+	uc_profile_v2_auto_reload_last_applied_session_key = session_key
+	uc_profile_v2_auto_reload_last_applied_hash = current_hash
+	uc_profile_v2_auto_reload_last_error = nil
+	uc_profile_v2_auto_reload_pending_path = nil
+	uc_profile_v2_auto_reload_pending_hash = nil
+	uc_profile_v2_auto_reload_pending_seen_at = nil
+
+	if status and status.valid == true and diff_count == 0 then
+		windower.add_to_chat(207, 'UC profile v2 auto-reload: applied')
+	else
+		local first_difference = type(status) == 'table' and status.first_difference or nil
+		local diff_path = first_difference and first_difference.path or 'unknown diff'
+		windower.add_to_chat(167, 'UC profile v2 auto-reload warning: ' .. tostring(diff_path))
+	end
+
+	return {
+		ok = true,
+		path = status and status.path or apply_path or path,
+		count = tonumber(status and (status.count or status.diff_count)) or 0,
+		diff_count = diff_count,
+		status = status,
+	}
 end
 
 uc_sync_table_in_place = function(dst, src)
@@ -1187,6 +1454,9 @@ local function uc_normalize_domain_settings(s)
 	end
 	if type(s.wait_ignore_names) ~= 'table' then
 		s.wait_ignore_names = {}
+	end
+	if s.profile_v2_auto_reload_on_change == nil then
+		s.profile_v2_auto_reload_on_change = false
 	end
 end
 
@@ -1743,6 +2013,7 @@ windower.register_event('prerender', function()
 	uc_remote_tick()
 	uc_party_follow.prerender()
 	uc_run_queued_profile_v2_autoload()
+	uc_run_profile_v2_auto_reload()
 end)
 
 windower.register_event('job change', function(job, lvl)
@@ -1764,6 +2035,7 @@ windower.register_event('unload', function()
 	uc_profile_v2_autoload_pending_key = nil
 	uc_profile_v2_autoload_completed_key = nil
 	uc_profile_v2_startup_reload_completed_key = nil
+	uc_profile_v2_auto_reload_reset()
 	uc_remote_unload()
 	if type(_G.UC_StopUnifiedEngine) == 'function' then
 		_G.UC_StopUnifiedEngine()
@@ -1779,6 +2051,7 @@ windower.register_event('logout', function()
 	uc_profile_v2_autoload_pending_key = nil
 	uc_profile_v2_autoload_completed_key = nil
 	uc_profile_v2_startup_reload_completed_key = nil
+	uc_profile_v2_auto_reload_reset()
 	uc_remote_unload()
 	if type(_G.UC_StopUnifiedEngine) == 'function' then
 		_G.UC_StopUnifiedEngine()
@@ -2007,6 +2280,43 @@ windower.register_event('addon command', function(...)
 				windower.add_to_chat(207, 'UC profile v2 status: valid, ' .. tostring(status_result.count) .. ' config differences')
 			end
 			return
+		elseif sub == 'autoreload' and args[3] and tostring(args[3]):lower() == 'status' then
+			local p = windower.ffxi.get_player()
+			if not p or not p.name then
+				windower.add_to_chat(167, 'UC profile v2 autoreload status: missing player')
+				return
+			end
+			if not _G.UC_SETTINGS then
+				windower.add_to_chat(167, 'UC profile v2 autoreload status: missing settings')
+				return
+			end
+			local status_result = uc_profile_v2_auto_reload_status({
+				character = p.name,
+				main_job = p.main_job,
+				sub_job = p.sub_job,
+				addon_path = uc_addon_path(),
+			}, _G.UC_SETTINGS)
+			if type(status_result) ~= 'table' then
+				windower.add_to_chat(167, 'UC profile v2 autoreload status: invalid')
+				return
+			end
+			local pending_since = status_result.pending_since and tostring(status_result.pending_since) or 'nil'
+			local last_checked = status_result.last_checked_at and tostring(status_result.last_checked_at) or 'nil'
+			local pending_hash = status_result.pending_hash and tostring(status_result.pending_hash) or 'nil'
+			local last_hash = status_result.last_reported_hash and tostring(status_result.last_reported_hash) or 'nil'
+			local last_error = status_result.last_error and tostring(status_result.last_error) or 'nil'
+			windower.add_to_chat(
+				207,
+				'UC profile v2 autoreload status: enabled=' .. tostring(status_result.enabled == true)
+				.. ' path=' .. tostring(status_result.path or 'unknown')
+				.. ' pending=' .. tostring(status_result.pending_path or 'nil')
+				.. ' pending_hash=' .. pending_hash
+				.. ' pending_since=' .. pending_since
+				.. ' last_hash=' .. last_hash
+				.. ' last_checked=' .. last_checked
+				.. ' last_error=' .. last_error
+			)
+			return
 		elseif sub == 'apply' then
 			local p = windower.ffxi.get_player()
 			if not p or not p.name or not _G.UC_SETTINGS then
@@ -2019,6 +2329,14 @@ windower.register_event('addon command', function(...)
 				sub_job = p.sub_job,
 				addon_path = uc_addon_path(),
 			}, _G.UC_SETTINGS)
+			if ok_apply then
+				uc_profile_v2_auto_reload_note_applied({
+					character = p.name,
+					main_job = p.main_job,
+					sub_job = p.sub_job,
+					addon_path = uc_addon_path(),
+				}, uc_profile_v2_session_key(p))
+			end
 			if not ok_apply then
 				windower.add_to_chat(167, 'UC profile v2 apply failed: ' .. tostring(apply_err or 'unknown error'))
 			elseif apply_count == 0 then
@@ -2043,6 +2361,14 @@ windower.register_event('addon command', function(...)
 				sub_job = p.sub_job,
 				addon_path = uc_addon_path(),
 			}, _G.UC_SETTINGS)
+			if ok_reload then
+				uc_profile_v2_auto_reload_note_applied({
+					character = p.name,
+					main_job = p.main_job,
+					sub_job = p.sub_job,
+					addon_path = uc_addon_path(),
+				}, uc_profile_v2_session_key(p))
+			end
 			if not ok_reload then
 				windower.add_to_chat(167, 'UC profile v2 reload failed: ' .. tostring(reload_err or 'unknown error'))
 			elseif reload_count == 0 then
@@ -2052,7 +2378,7 @@ windower.register_event('addon command', function(...)
 			end
 			return
 		end
-		windower.add_to_chat(207, '//uc configstatus export | //uc profilev2 export | //uc profilev2 validate | //uc profilev2 diff | //uc profilev2 diff detail | //uc profilev2 status | //uc profilev2 apply | //uc profilev2 reload')
+		windower.add_to_chat(207, '//uc configstatus export | //uc profilev2 export | //uc profilev2 validate | //uc profilev2 diff | //uc profilev2 diff detail | //uc profilev2 status | //uc profilev2 autoreload status | //uc profilev2 apply | //uc profilev2 reload')
 		return
 	elseif a == 'host' and args[2] then
 		_G.UC_REMOTE_HOST = tostring(args[2])

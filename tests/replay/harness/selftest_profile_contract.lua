@@ -100,6 +100,7 @@ local function main()
         path_points = "profile_owned_by_ui",
         debug = "profile_owned_by_ui",
         profile_v2_autoload = "profile_owned_by_ui",
+        profile_v2_auto_reload_on_change = "profile_owned_by_ui",
         local_ownership_flags = "legacy_or_ambiguous",
         scheduler_action_state = "runtime_owned_by_addon",
         pending_lock_state = "runtime_owned_by_addon",

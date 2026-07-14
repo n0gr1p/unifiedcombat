@@ -199,6 +199,17 @@ local function resolve_wait_ignore_names(settings)
 	return {}
 end
 
+local function resolve_profile_v2_auto_reload_on_change(settings)
+	if type(settings) == 'table' and settings.profile_v2_auto_reload_on_change == true then
+		return true
+	end
+	local ownership = type(settings) == 'table' and settings.ownership or nil
+	if type(ownership) == 'table' and ownership.profile_v2_auto_reload_on_change == true then
+		return true
+	end
+	return false
+end
+
 local function serialize_targeted_buffs(entries)
 	local out = {}
 	if type(entries) ~= 'table' then
@@ -270,6 +281,12 @@ local function pick_durable_config_domains(config)
 	end
 	if type(out.targeting) == 'table' then
 		out.targeting.ignore = nil
+	end
+	if type(out.ownership) == 'table' and out.ownership.profile_v2_autoload ~= true then
+		out.ownership.profile_v2_autoload = nil
+	end
+	if type(out.ownership) == 'table' and out.ownership.profile_v2_auto_reload_on_change ~= true then
+		out.ownership.profile_v2_auto_reload_on_change = nil
 	end
 	return out
 end
@@ -547,7 +564,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.log_tank_sched = config.debug.tank_sched
 	end
 
-    if type(config.ownership) == 'table' then
+	if type(config.ownership) == 'table' then
         candidate.domain_combat_enabled = config.ownership.domain_combat_enabled
         candidate.domain_defensive_enabled = config.ownership.domain_defensive_enabled
         candidate.domain_movement_enabled = config.ownership.domain_movement_enabled
@@ -557,6 +574,11 @@ local function apply_structured_config_to_candidate(candidate, config)
         candidate.scheduler_dark_launch_defensive = config.ownership.scheduler_dark_launch_defensive
         candidate.scheduler_dark_launch_movement = config.ownership.scheduler_dark_launch_movement
         candidate.scheduler_dark_launch_maintenance = config.ownership.scheduler_dark_launch_maintenance
+        if config.ownership.profile_v2_auto_reload_on_change == true then
+            candidate.profile_v2_auto_reload_on_change = true
+        else
+            candidate.profile_v2_auto_reload_on_change = nil
+        end
         if config.ownership.profile_v2_autoload == true then
             candidate.profile_v2_autoload = true
         else
@@ -583,6 +605,9 @@ function M.build_active_profile_from_settings(settings, context)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
 	if type(normalized.combat) == 'table' and type(normalized.combat.weaponskill) == 'table' then
 		normalized.combat.weaponskill.wait_ignore_names = resolve_wait_ignore_names(settings)
+	end
+	if type(normalized.ownership) == 'table' then
+		normalized.ownership.profile_v2_auto_reload_on_change = resolve_profile_v2_auto_reload_on_change(settings)
 	end
 	local profile = build_profile_record(normalized.profile, meta, 'UC_SETTINGS')
 	return {
@@ -611,9 +636,27 @@ function M.build_active_profile_from_v2_payload(payload, context)
 	local active_profile = {
 		version = 2,
 		profile = profile,
-		config = clone_value(payload.config),
+		config = pick_durable_config_domains(payload.config),
 	}
 	return active_profile
+end
+
+local function clean_active_profile_durable_config(active_profile)
+	if type(active_profile) ~= 'table' then
+		return
+	end
+	local config = active_profile.config
+	if type(config) ~= 'table' then
+		return
+	end
+	if type(config.ownership) == 'table' then
+		if config.ownership.profile_v2_autoload ~= true then
+			config.ownership.profile_v2_autoload = nil
+		end
+		if config.ownership.profile_v2_auto_reload_on_change ~= true then
+			config.ownership.profile_v2_auto_reload_on_change = nil
+		end
+	end
 end
 
 function M.get_active_profile()
@@ -631,12 +674,14 @@ function M.set_active_profile(active_profile)
 	local current = rawget(_G, 'UC_ACTIVE_PROFILE')
 	if not is_structured_profile(current) then
 		_G.UC_ACTIVE_PROFILE = clone_value(active_profile)
+		clean_active_profile_durable_config(_G.UC_ACTIVE_PROFILE)
 		return true, _G.UC_ACTIVE_PROFILE
 	end
 	local ok, err = sync_table_in_place(current, active_profile)
 	if ok ~= true then
 		return false, err
 	end
+	clean_active_profile_durable_config(current)
 	return true, current
 end
 

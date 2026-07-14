@@ -179,58 +179,34 @@ public partial class MainForm : Form
         return null;
     }
 
+    private static bool IsRuntimeSessionOutboundOp(string op)
+    {
+        return string.Equals(op, "start_engine", StringComparison.Ordinal)
+            || string.Equals(op, "stop_engine", StringComparison.Ordinal)
+            || string.Equals(op, "addon_reload", StringComparison.Ordinal)
+            || string.Equals(op, "request_state", StringComparison.Ordinal)
+            || string.Equals(op, "request_options", StringComparison.Ordinal);
+    }
+
     private void Forward(string sid, Dictionary<string, object?> msg)
     {
         if (_suppressUiSaveOutbound)
         {
             return;
         }
-        if (msg.TryGetValue("op", out var opObj)
-            && string.Equals(Convert.ToString(opObj), "set", StringComparison.Ordinal))
+
+        var op = msg.TryGetValue("op", out var ov) ? Convert.ToString(ov) ?? "" : "";
+        if (!IsRuntimeSessionOutboundOp(op))
         {
-            var path = msg.TryGetValue("path", out var pObj) ? (Convert.ToString(pObj) ?? string.Empty) : string.Empty;
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                return;
-            }
-
-            if (!msg.TryGetValue("value", out var valObj) || valObj is null)
-            {
-                return;
-            }
-
-            // UI-authoritative delta sync:
-            // send config writes only when value actually changes for a session/path.
-            var valText = Convert.ToString(valObj) ?? string.Empty;
-            if (!_lastSentSetBySidPath.TryGetValue(sid, out var byPath))
-            {
-                byPath = new Dictionary<string, string>(StringComparer.Ordinal);
-                _lastSentSetBySidPath[sid] = byPath;
-            }
-            var bypassDedupe =
-                string.Equals(path, "def_remove_enemy_buffs", StringComparison.Ordinal);
-            if (!bypassDedupe && byPath.TryGetValue(path, out var prev) &&
-                string.Equals(prev, valText, StringComparison.Ordinal))
-            {
-                return;
-            }
-            byPath[path] = valText;
-
-            var nextVersion = (_cfgVersionBySid.TryGetValue(sid, out var ver) ? ver : 0L) + 1L;
-            _cfgVersionBySid[sid] = nextVersion;
-            msg["cfg_version"] = nextVersion;
-            if (string.Equals(path, "def_remove_enemy_buffs", StringComparison.Ordinal))
-            {
-                msg["trace_id"] = $"dre_{sid}_{nextVersion}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-            }
+            return;
         }
+
         _mirror?.EnqueueForward(sid, msg);
         if (!string.Equals(_selectedSid, sid, StringComparison.Ordinal))
         {
             return;
         }
 
-        var op = msg.TryGetValue("op", out var ov) ? Convert.ToString(ov) ?? "" : "";
         if (
             string.Equals(op, "request_state", StringComparison.Ordinal)
             || string.Equals(op, "request_options", StringComparison.Ordinal)

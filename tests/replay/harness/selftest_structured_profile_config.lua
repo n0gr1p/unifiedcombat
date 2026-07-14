@@ -122,6 +122,7 @@ local function build_flat_settings()
         domain_follow_enabled = true,
         scheduler_dark_launch_combat = true,
         profile_v2_autoload = true,
+        profile_v2_auto_reload_on_change = true,
         sub = true,
         hunter = true,
         profiles = {
@@ -231,6 +232,7 @@ local function build_structured_payload()
                 domain_follow_enabled = true,
                 scheduler_dark_launch_combat = true,
                 profile_v2_autoload = true,
+                profile_v2_auto_reload_on_change = true,
             },
             legacy = {
                 sub = true,
@@ -285,6 +287,7 @@ local function assert_common_config(config, source)
     assert_equal(config.debug.def_sched, true, source .. " debug defensive scheduler mismatch")
     assert_equal(config.ownership.scheduler_dark_launch_combat, true, source .. " ownership dark launch mismatch")
     assert_equal(config.ownership.profile_v2_autoload, true, source .. " ownership autoload mismatch")
+    assert_equal(config.ownership.profile_v2_auto_reload_on_change, true, source .. " ownership auto-reload mismatch")
     assert_equal(config.legacy.sub, true, source .. " legacy sub mismatch")
     assert_equal(config.legacy.hunter, true, source .. " legacy hunter mismatch")
     assert_equal(config.legacy.profiles.UC.PLD.marker, true, source .. " legacy profiles mismatch")
@@ -296,6 +299,7 @@ local function main()
     package.loaded["uc_profile_contract"] = nil
     local normalizer = require("uc_config_normalizer")
     local runtime = require("uc_config_runtime")
+    local profile_v2 = require("uc_profile_v2")
     local contract = require("uc_profile_contract")
 
     local flat = build_flat_settings()
@@ -312,6 +316,30 @@ local function main()
     assert_common_config(structured_config, "structured")
     assert_equal(structured_config.profile.schema_version, 2, "structured schema version mismatch")
     assert_equal(structured_config.profile.source, "meta-source", "structured source mismatch")
+
+    local disabled_structured = deep_clone(structured)
+    disabled_structured.config.ownership.profile_v2_auto_reload_on_change = false
+    local disabled_config = normalizer.normalize(disabled_structured, {
+        character = "Redrogue",
+        main_job = "PLD",
+        sub_job = "WAR",
+        source = "meta-source",
+    })
+    assert_true(disabled_config.ownership.profile_v2_auto_reload_on_change == false, "disabled auto-reload flag should normalize to the default false value")
+
+    local optional_true_false = deep_clone(structured_config)
+    optional_true_false.ownership.profile_v2_autoload = false
+    optional_true_false.ownership.profile_v2_auto_reload_on_change = false
+    local optional_true_omitted = deep_clone(structured_config)
+    optional_true_omitted.ownership.profile_v2_autoload = nil
+    optional_true_omitted.ownership.profile_v2_auto_reload_on_change = nil
+    local optional_true_diff = profile_v2.diff_durable_config(optional_true_false, optional_true_omitted)
+    assert_equal(optional_true_diff.count, 0, "optional-true ownership flags should compare equal when false or omitted")
+
+    local unrelated_ownership = deep_clone(structured_config)
+    unrelated_ownership.ownership.domain_follow_enabled = false
+    local unrelated_diff = profile_v2.diff_durable_config(unrelated_ownership, structured_config)
+    assert_true(unrelated_diff.count > 0, "unrelated ownership booleans must still compare as durable differences")
 
     structured_config.tank.enmity.actions[1] = "Changed"
     structured_config.maintenance.cor.roll_1 = "Changed"

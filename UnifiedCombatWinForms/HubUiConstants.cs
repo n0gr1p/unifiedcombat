@@ -46,6 +46,7 @@ internal static class HubUiConstants
         "fight_leader",
         "party_follow",
         "profile_v2_autoload",
+        "profile_v2_auto_reload_on_change",
         "scheduler_dark_launch_combat",
         "scheduler_dark_launch_defensive",
         "scheduler_dark_launch_movement",
@@ -98,6 +99,7 @@ internal static class HubUiConstants
         ["party_follow"] = "Party follow (idle; pauses when engaged)",
         ["add_control"] = "Add control (off-leader adds when FL on)",
         ["profile_v2_autoload"] = "Autoload profile v2 on load",
+        ["profile_v2_auto_reload_on_change"] = "Auto reload profile changes",
         ["ability_active"] = "abilities",
         ["weaponskill_active"] = "weaponskill",
         ["aftermath_enabled"] = "aftermath",
@@ -140,6 +142,7 @@ internal static class HubUiConstants
         "hunter",
         "add_control",
         "command",
+        "profile_v2_auto_reload_on_change",
     ];
 
     public static readonly string[] VisualsCardKeys =

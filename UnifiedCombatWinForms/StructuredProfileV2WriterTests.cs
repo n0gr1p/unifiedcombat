@@ -15,6 +15,9 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeOmitsProfileV2AutoloadWhenDisabled();
             TestSerializeIncludesProfileV2AutoloadWhenEnabled();
             TestProfileV2AutoloadIsPartOfPersistedBoolSet();
+            TestSerializeOmitsProfileV2AutoReloadWhenDisabled();
+            TestSerializeIncludesProfileV2AutoReloadWhenEnabled();
+            TestProfileV2AutoReloadIsPartOfPersistedBoolSet();
             TestSerializeIncludesPullerNameWhenSelected();
             TestSerializeIncludesWaitIgnoreNamesAndStripsDisplayIndexes();
             TestBrdOmitsHiddenCorMaintenanceDefaults();
@@ -149,11 +152,42 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "profile_v2_autoload = true", "autoload flag missing when explicitly enabled");
     }
 
+    private static void TestSerializeOmitsProfileV2AutoReloadWhenDisabled()
+    {
+        var flat = BuildSampleFlatProfile();
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+
+        AssertNotContains(content, "profile_v2_auto_reload_on_change", "auto-reload must stay missing when disabled");
+    }
+
+    private static void TestSerializeIncludesProfileV2AutoReloadWhenEnabled()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["profile_v2_auto_reload_on_change"] = true;
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+
+        AssertContains(content, "profile_v2_auto_reload_on_change = true", "auto-reload flag missing when explicitly enabled");
+    }
+
     private static void TestProfileV2AutoloadIsPartOfPersistedBoolSet()
     {
         AssertTrue(
             HubUiConstants.BoolKeys.Contains("profile_v2_autoload"),
             "autoload must be included in the shared UI bool key set so load/save paths persist it"
+        );
+    }
+
+    private static void TestProfileV2AutoReloadIsPartOfPersistedBoolSet()
+    {
+        AssertTrue(
+            HubUiConstants.BoolKeys.Contains("profile_v2_auto_reload_on_change"),
+            "auto-reload must be included in the shared UI bool key set so load/save paths persist it"
         );
     }
 

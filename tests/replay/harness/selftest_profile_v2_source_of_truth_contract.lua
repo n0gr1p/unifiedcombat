@@ -251,6 +251,7 @@ local function build_flat_settings()
 		domain_follow_enabled = true,
 		scheduler_dark_launch_combat = true,
 		profile_v2_autoload = true,
+		profile_v2_auto_reload_on_change = true,
 		cor_roll_1 = 'Chaos Roll',
 		cor_roll_2 = 'Samurai Roll',
 		sub = true,
@@ -279,6 +280,7 @@ end
 local function main()
 	local addon = read_file('UnifiedCombat.lua')
 	local parity = read_file('UnifiedCombatWinForms\\MainForm.ParityLogic.cs')
+	local main_form = read_file('UnifiedCombatWinForms\\MainForm.cs')
 	local bridge = read_file('remote_bridge.lua')
 	local profile_v2 = require('uc_profile_v2')
 	local active_config = require('uc_active_config')
@@ -314,6 +316,10 @@ local function main()
 	assert_contains(addon, 'local ok_reload, _, reload_err, reload_count = uc_apply_profile_v2_file(', 'manual profilev2 reload must use the shared apply helper')
 	assert_contains(addon, 'uc_queue_profile_v2_autoload()', 'autoload must be queued from startup hooks')
 	assert_contains(addon, 'uc_run_queued_profile_v2_autoload()', 'autoload must run from the queued helper')
+	assert_contains(addon, 'local function uc_run_profile_v2_auto_reload()', 'auto-reload must define its polling helper')
+	assert_contains(addon, 'uc_run_profile_v2_auto_reload()', 'auto-reload must run from prerender')
+	assert_contains(addon, 'local function uc_profile_v2_auto_reload_status(', 'auto-reload diagnostics must expose a status helper')
+	assert_contains(addon, '//uc profilev2 autoreload status', 'auto-reload diagnostics command must be documented')
 	assert_contains(addon, 'uc_profile_v2_autoload_completed_key == key', 'autoload must guard duplicate sessions')
 	assert_contains(addon, 'UC profile v2 autoload: applied', 'autoload success text must remain tied to post-apply zero diff')
 	assert_contains(addon, 'UC profile v2 autoload: no config differences', 'autoload zero-diff success text must remain available')
@@ -325,6 +331,17 @@ local function main()
 	assert_contains(save_remote_block, '_suppressUiSaveOutbound = true;', 'UI save must suppress outbound runtime mirroring')
 	assert_contains(save_remote_block, '_suppressUiSaveOutbound = false;', 'UI save must restore outbound mirroring')
 	assert_not_contains(save_remote_block, 'PushFullFormState(sid);', 'UI save must not push a runtime form-state mutation')
+
+	local runtime_gate_block = extract_source_block(main_form, '    private static bool IsRuntimeSessionOutboundOp(string op)', '    private void Forward(string sid, Dictionary<string, object?> msg)')
+	assert_contains(runtime_gate_block, 'start_engine', 'runtime gate must still allow explicit runtime engine commands')
+	assert_contains(runtime_gate_block, 'stop_engine', 'runtime gate must still allow explicit runtime engine commands')
+	assert_contains(runtime_gate_block, 'addon_reload', 'runtime gate must still allow explicit runtime reload commands')
+	assert_contains(runtime_gate_block, 'request_state', 'runtime gate must still allow runtime state requests')
+	assert_contains(runtime_gate_block, 'request_options', 'runtime gate must still allow runtime option requests')
+
+	local forward_block = extract_source_block(main_form, '    private void Forward(string sid, Dictionary<string, object?> msg)', '    private void ApplyMirrorLine(string line)')
+	assert_contains(forward_block, 'IsRuntimeSessionOutboundOp(op)', 'forward must gate live outbound traffic to runtime/session ops only')
+
 	assert_not_contains(bridge, "op == 'save'", 'bridge must not define a save runtime op')
 	assert_not_contains(bridge, 'UC_SaveActiveProfile()', 'bridge must not call the addon save helper')
 
@@ -336,6 +353,7 @@ local function main()
 	local active_profile, active_err = active_config.build_active_profile_from_v2_payload(fixture, meta)
 	assert_true(type(active_profile) == 'table', 'structured payload should build an active profile')
 	assert_nil(active_err, 'structured payload should build without error')
+	assert_equal(active_profile.config.ownership.profile_v2_auto_reload_on_change, true, 'structured active profile should retain the auto-reload flag')
 
 	local projected, project_err = active_config.project_flat_settings(active_profile, build_flat_settings())
 	assert_true(type(projected) == 'table', 'structured payload should project into flat settings')
@@ -344,6 +362,7 @@ local function main()
 	assert_equal(projected.puller_id, 77, 'puller_name must resolve to the live runtime id when projected')
 	assert_equal(projected.wait_ignore_names[1], 'Ally One', 'wait ignore names must remain durable in the projected settings')
 	assert_equal(projected.ignore[1], nil, 'wait ignore names should not invent runtime ids when they are not resolvable')
+	assert_equal(projected.profile_v2_auto_reload_on_change, true, 'auto-reload flag must round-trip in the projected settings')
 	assert_equal(projected.aftermath_ws, 'Atonement', 'weaponskill aftermath ws must round-trip')
 	assert_equal(projected.defensive_overwrite_interval, 150, 'defensive overwrite interval must round-trip')
 	assert_equal(projected.defensive_critical_hpp, 35, 'defensive critical threshold must round-trip')

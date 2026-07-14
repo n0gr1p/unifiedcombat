@@ -197,6 +197,13 @@ public partial class MainForm
         {
             profile.Remove("profile_v2_autoload");
         }
+        if (profile.TryGetPropertyValue("profile_v2_auto_reload_on_change", out var autoReloadValue)
+            && autoReloadValue is JsonValue autoReloadJson
+            && autoReloadJson.TryGetValue<bool>(out var autoReloadEnabled)
+            && autoReloadEnabled == false)
+        {
+            profile.Remove("profile_v2_auto_reload_on_change");
+        }
 
         return profile;
     }
