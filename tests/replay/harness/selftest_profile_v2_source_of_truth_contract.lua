@@ -169,6 +169,16 @@ local function make_non_cor_payload()
 	return payload
 end
 
+local function make_fight_leader_payload(leader_name)
+	local payload = load_lua_fixture('tests/replay/fixtures/shared/ui_authored_profile_v2_fixture.lua')
+	payload.profile.main_job = 'PLD'
+	payload.profile.sub_job = 'WAR'
+	payload.config.maintenance.cor = nil
+	payload.config.follow.fight.leader = false
+	payload.config.follow.fight.leader_name = leader_name
+	return payload
+end
+
 local function make_cor_payload()
 	local payload = load_lua_fixture('tests/replay/fixtures/shared/ui_authored_profile_v2_fixture.lua')
 	payload.profile.main_job = 'COR'
@@ -232,6 +242,8 @@ local function build_flat_settings()
 		party_follow_leader_name = 'Leader',
 		party_follow_min = 1,
 		party_follow_max = 25,
+		fight_leader = true,
+		fight_leader_selected = 'Niightsiide',
 		puller = true,
 		puller_name = 'Niightsiide',
 		wait_ignore_names = { 'Niightsiide' },
@@ -360,6 +372,15 @@ local function main()
 	assert_nil(project_err, 'structured payload should project without error')
 	assert_equal(projected.puller_name, 'Niightsiide', 'puller_name must remain durable in the projected settings')
 	assert_equal(projected.puller_id, 77, 'puller_name must resolve to the live runtime id when projected')
+	assert_equal(projected.fight_leader_name, 'Niightsiide', 'fight leader name must remain durable in the projected settings')
+	assert_equal(projected.fight_leader_id, 77, 'fight leader name must resolve to the live runtime id when projected')
+	assert_equal(projected.fight_leader_selected, 'Niightsiide', 'fight leader selected name must be projected for the UI')
+	assert_equal(projected.follow.fight.leader_name, 'Niightsiide', 'nested fight leader name must remain durable in the projected settings')
+	assert_equal(projected.follow.fight.leader_id, 77, 'nested fight leader id must resolve to the live runtime id when projected')
+	assert_equal(projected.follow.fight.leader_selected, 'Niightsiide', 'nested fight leader selected name must be projected for the UI')
+	assert_equal(projected.targets[1], 'Apex Bat', 'add priority targets must remain durable in the projected settings')
+	assert_equal(projected.add_priority_names[1], 'Apex Bat', 'add priority compatibility names must be projected for runtime consumers')
+	assert_equal(projected.follow.party.leader_name, 'Leader', 'party follow leader name must remain durable in the projected settings')
 	assert_equal(projected.wait_ignore_names[1], 'Ally One', 'wait ignore names must remain durable in the projected settings')
 	assert_equal(projected.ignore[1], nil, 'wait ignore names should not invent runtime ids when they are not resolvable')
 	assert_equal(projected.profile_v2_auto_reload_on_change, true, 'auto-reload flag must round-trip in the projected settings')
@@ -369,11 +390,63 @@ local function main()
 	assert_equal(projected.defensive_medium_hpp, 55, 'defensive medium threshold must round-trip')
 	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'targeted defensive buffs must round-trip')
 
+	local enabled_mismatch_payload = make_fight_leader_payload('Terrasjr')
+	enabled_mismatch_payload.config.follow.fight.leader = true
+	local enabled_mismatch_meta = make_meta(enabled_mismatch_payload.profile.main_job, enabled_mismatch_payload.profile.sub_job)
+	local enabled_mismatch_path = profile_v2.default_export_path(enabled_mismatch_meta)
+	local enabled_mismatch_deps = make_fake_fs({
+		[enabled_mismatch_path] = profile_v2.serialize_structured_profile(enabled_mismatch_payload),
+	})
+	local enabled_mismatch_status = profile_v2.inspect_structured_profile_status(deep_clone(projected), enabled_mismatch_meta, contract.validate_structured_profile_config, enabled_mismatch_deps)
+	assert_true(enabled_mismatch_status.valid == true, 'enabled fight leader mismatch case must validate')
+	assert_true(enabled_mismatch_status.diff_count > 0, 'enabled fight leader mismatch case must report a real difference')
+	assert_equal(enabled_mismatch_status.first_difference.path, 'config.follow.fight.leader_name', 'enabled fight leader mismatch path mismatch')
+
 	local base_settings = build_flat_settings()
 	local non_cor_apply = profile_v2.apply_structured_profile_file_to_settings(deep_clone(base_settings), meta, contract.validate_structured_profile_config, deps_missing_cor)
 	assert_true(type(non_cor_apply) == 'table' and non_cor_apply.ok == true, 'non-COR profile must apply cleanly before drift checks')
 	local non_cor_current = non_cor_apply.candidate
 	assert_true(type(non_cor_current) == 'table', 'non-COR apply must return a current settings table')
+	local disabled_settings = deep_clone(non_cor_current)
+	disabled_settings.fight_leader = false
+	disabled_settings.fight_leader_selected = 'Terrasjr'
+	if type(disabled_settings.follow) == 'table' and type(disabled_settings.follow.fight) == 'table' then
+		disabled_settings.follow.fight.leader = false
+		disabled_settings.follow.fight.leader_name = 'Terrasjr'
+		disabled_settings.follow.fight.leader_selected = 'Terrasjr'
+	end
+	local disabled_cases = {
+		{
+			label = 'omitted',
+			payload = make_fight_leader_payload(nil),
+		},
+		{
+			label = 'empty',
+			payload = make_fight_leader_payload(''),
+		},
+		{
+			label = 'stale',
+			payload = make_fight_leader_payload('Terrasjr'),
+		},
+	}
+	for i = 1, #disabled_cases do
+		local case = disabled_cases[i]
+		local case_meta = make_meta(case.payload.profile.main_job, case.payload.profile.sub_job)
+		local case_path = profile_v2.default_export_path(case_meta)
+		local case_deps = make_fake_fs({
+			[case_path] = profile_v2.serialize_structured_profile(case.payload),
+		})
+		local case_status = profile_v2.inspect_structured_profile_status(disabled_settings, case_meta, contract.validate_structured_profile_config, case_deps)
+		assert_true(case_status.valid == true, 'disabled fight leader ' .. case.label .. ' case must validate')
+		assert_equal(case_status.diff_count, 0, 'disabled fight leader ' .. case.label .. ' case must report zero differences')
+		assert_equal(case_status.reason, 'runtime matches file', 'disabled fight leader ' .. case.label .. ' case reason mismatch')
+		local case_apply = profile_v2.apply_structured_profile_file_to_settings(deep_clone(disabled_settings), case_meta, contract.validate_structured_profile_config, case_deps)
+		assert_true(case_apply.ok == true, 'disabled fight leader ' .. case.label .. ' case must apply cleanly')
+		assert_equal(case_apply.count, 0, 'disabled fight leader ' .. case.label .. ' case must apply with zero diffs')
+		local case_autoload = profile_v2.autoload_structured_profile_file_to_settings(deep_clone(disabled_settings), case_meta, contract.validate_structured_profile_config, case_deps)
+		assert_true(type(case_autoload) == 'table' and case_autoload.ok == true, 'disabled fight leader ' .. case.label .. ' case must autoload cleanly')
+		assert_equal(case_autoload.count, 0, 'disabled fight leader ' .. case.label .. ' case must autoload with zero diffs')
+	end
 	local runtime_only = deep_clone(non_cor_current)
 	runtime_only.engine_enabled = true
 	runtime_only.party_follow_id = 101

@@ -598,6 +598,8 @@ local function build_flat_settings()
 		party_follow_leader_name = 'Leader',
 		party_follow_min = 1,
 		party_follow_max = 25,
+		fight_leader = true,
+		fight_leader_selected = 'Niightsiide',
 		puller = true,
 		puller_name = 'Niightsiide',
 		wait_ignore_names = { 'Ally One', 'Ally Two' },
@@ -740,7 +742,8 @@ local function build_expected_config()
 				max = 25,
 			},
 			fight = {
-				leader = false,
+				leader = true,
+				leader_name = 'Niightsiide',
 				leader_id = 0,
 				min = 3.0,
 				hold_s = 8.0,
@@ -757,7 +760,7 @@ local function build_expected_config()
 		targeting = {
 			add_control = true,
 			legacy_slots = {},
-			targets = {},
+			targets = { 'Apex Bat' },
 			targetability = {
 				enabled = false,
 				action = '',
@@ -858,6 +861,7 @@ local function main()
 	assert_equal(profile.config.combat.weaponskill.primary, 'Savage Blade', 'combat domain mismatch')
 	assert_true(profile.config.maintenance.cor == nil, 'non-COR structured profile must omit maintenance.cor')
 	assert_equal(profile.config.legacy.hunter, true, 'legacy domain mismatch')
+	assert_equal(profile.config.targeting.targets[1], 'Apex Bat', 'exported config add priority target mismatch')
 	assert_true(profile.config.targeting.add_priority_names == nil, 'exported config must not include durable add priority names')
 	assert_true(profile.config.command == nil, 'exported config must not include engine runtime state')
 	assert_true(profile.config.sleep == nil, 'exported config must not include sleep domain')
@@ -948,8 +952,10 @@ local function main()
 	assert_nil(ui_fixture_payload.profile.exported_at, 'UI-authored fixture should omit exported_at metadata')
 	assert_nil(ui_fixture_payload.profile.profile_key, 'UI-authored fixture should omit profile_key metadata')
 	assert_equal(ui_fixture_payload.config.combat.weaponskill.wait_ignore_names[1], 'Ally One', 'UI-authored fixture wait ignore name mismatch')
+	assert_equal(ui_fixture_payload.config.follow.fight.leader_name, 'Niightsiide', 'UI-authored fixture fight leader name mismatch')
 	assert_equal(ui_fixture_payload.config.follow.partner.puller_name, 'Niightsiide', 'UI-authored fixture puller name mismatch')
 	assert_equal(ui_fixture_payload.config.targeting.target_ignore_names[1], 'Mob One', 'UI-authored fixture target ignore name mismatch')
+	assert_equal(ui_fixture_payload.config.targeting.targets[1], 'Apex Bat', 'UI-authored fixture add priority target name mismatch')
 	local durable_deps, durable_state = make_fake_fs()
 	local durable_result = profile_v2.write_structured_profile_export(profile, {
 		character = 'Redrogue',
@@ -1199,6 +1205,8 @@ local function main()
 	assert_equal(#diff_ok_result.differences, 0, 'structured profile diff details should be empty for matching config')
 
 	local ui_fixture_match_flat = deep_clone(flat)
+	ui_fixture_match_flat.fight_leader = true
+	ui_fixture_match_flat.fight_leader_selected = 'Niightsiide'
 	ui_fixture_match_flat.puller = true
 	ui_fixture_match_flat.puller_name = 'Niightsiide'
 	local ui_fixture_diff_ok_result = exporter.diff_structured_profile_file_against_settings(ui_fixture_match_flat, {
@@ -1211,6 +1219,8 @@ local function main()
 	assert_true(ui_fixture_diff_ok_result.ok == true, 'UI-authored structured profile fixture should diff successfully against matching runtime settings')
 	assert_equal(ui_fixture_diff_ok_result.count, 0, 'UI-authored structured profile fixture should report zero differences for matching runtime settings')
 	assert_equal(ui_fixture_diff_ok_result.payload.profile.source, 'ui', 'UI-authored structured profile diff must preserve source metadata')
+	assert_equal(ui_fixture_diff_ok_result.payload.config.follow.fight.leader_name, 'Niightsiide', 'UI-authored structured profile diff must preserve fight leader name')
+	assert_equal(ui_fixture_diff_ok_result.payload.config.follow.fight.leader, true, 'UI-authored structured profile diff must preserve fight leader enabled flag')
 
 	local scalar_diff_payload = deep_clone(profile)
 	scalar_diff_payload.profile.exported_at = '2099-01-01T00:00:00Z'

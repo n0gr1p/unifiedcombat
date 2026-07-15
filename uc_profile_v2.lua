@@ -257,6 +257,30 @@ local function strip_non_cor_maintenance_cor(current_config, target_config, meta
 	return current_config, target_config
 end
 
+local function canonicalize_disabled_fight_leader_name(config)
+	if type(config) ~= 'table' then
+		return config
+	end
+
+	local follow = config.follow
+	if type(follow) ~= 'table' then
+		return config
+	end
+
+	local fight = follow.fight
+	if type(fight) ~= 'table' then
+		return config
+	end
+
+	local leader = fight.leader
+	local leader_name = fight.leader_name
+	if leader ~= true or trim_string(leader_name) == '' then
+		fight.leader_name = nil
+	end
+
+	return config
+end
+
 local OPTIONAL_TRUE_OWNERSHIP_FLAGS = {
 	profile_v2_autoload = true,
 	profile_v2_auto_reload_on_change = true,
@@ -436,7 +460,7 @@ end
 
 function M.build_durable_config(settings, meta)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
-	return pick_durable_config_domains(normalized, meta)
+	return canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta))
 end
 
 function M.format_structured_profile_diff_value(value)
@@ -991,8 +1015,8 @@ end
 function M.diff_durable_config(current_config, target_config)
 	local differences = {}
 	local details = {}
-	current_config = canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(current_config)))
-	target_config = canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(target_config)))
+	current_config = canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(current_config))))
+	target_config = canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(target_config))))
 	diff_values(
 		current_config,
 		target_config,

@@ -19,7 +19,10 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeIncludesProfileV2AutoReloadWhenEnabled();
             TestProfileV2AutoReloadIsPartOfPersistedBoolSet();
             TestSerializeIncludesPullerNameWhenSelected();
+            TestSerializeIncludesFightLeaderNameWhenSelected();
+            TestSerializeOmitsFightLeaderNameWhenDisabled();
             TestSerializeIncludesWaitIgnoreNamesAndStripsDisplayIndexes();
+            TestSerializeIncludesAddPriorityTargetsAndStripsDisplayIndexes();
             TestBrdOmitsHiddenCorMaintenanceDefaults();
             TestNonCorOmitsHiddenCorMaintenanceDefaultsAcrossJobs();
             TestCorPreservesConfiguredMaintenanceValues();
@@ -59,6 +62,8 @@ internal static class StructuredProfileV2WriterTests
         var flat = BuildSampleFlatProfile();
         flat["puller"] = true;
         flat["puller_selected"] = "Niightsiide";
+        flat["fight_leader"] = true;
+        flat["fight_leader_selected"] = "Terrasjr [UC]";
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
             new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
@@ -84,6 +89,8 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "\"Mob One\"", "target ignore names must be serialized");
         AssertContains(content, "range_selected = \"Front\\\"Line\"", "range selection escaping mismatch");
         AssertContains(content, "puller_name = \"Niightsiide\"", "puller name must be serialized as durable profile data");
+        AssertContains(content, "leader = true", "fight leader checkbox state must be serialized");
+        AssertContains(content, "leader_name = \"Terrasjr\"", "fight leader name must be serialized without display suffixes");
         AssertNotContains(content, "file_name =", "path file name must not be serialized as durable profile data");
         AssertNotContains(content, "puller_id =", "puller id must not be serialized as durable profile data");
 
@@ -206,6 +213,39 @@ internal static class StructuredProfileV2WriterTests
         AssertNotContains(content, "puller_id =", "selected puller id must stay runtime-owned");
     }
 
+    private static void TestSerializeIncludesFightLeaderNameWhenSelected()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["fight_leader"] = true;
+        flat["fight_leader_selected"] = "Terrasjr [UC]";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+        );
+
+        AssertContains(content, "leader = true", "fight leader enabled flag must be serialized");
+        AssertContains(content, "leader_name = \"Terrasjr\"", "fight leader selected name must be serialized without display suffixes");
+        AssertNotContains(content, "Terrasjr [UC]", "fight leader display suffix must not be serialized");
+        AssertNotContains(content, "leader_id =", "fight leader id must stay runtime-owned");
+    }
+
+    private static void TestSerializeOmitsFightLeaderNameWhenDisabled()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["fight_leader"] = false;
+        flat["fight_leader_selected"] = "Terrasjr [UC]";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+        );
+
+        AssertContains(content, "leader = false", "disabled fight leader checkbox state must be serialized");
+        AssertNotContains(content, "leader_name = \"Terrasjr\"", "disabled fight leader must not serialize the selected durable name");
+        AssertNotContains(content, "Terrasjr [UC]", "disabled fight leader display suffix must not be serialized");
+    }
+
     private static void TestSerializeIncludesWaitIgnoreNamesAndStripsDisplayIndexes()
     {
         var flat = BuildSampleFlatProfile();
@@ -225,6 +265,25 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "\"Mob One\"", "target ignore names must strip display indexes");
         AssertContains(content, "\"Mob Two\"", "target ignore names must include all names");
         AssertNotContains(content, "Mob One [1]", "target ignore names must not serialize display indexes");
+    }
+
+    private static void TestSerializeIncludesAddPriorityTargetsAndStripsDisplayIndexes()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["add_priority_entries"] = "1:Bozzetto Mine [1]|2:Apex Bat [2]";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+
+        AssertContains(content, "add_control = true", "add control flag must be serialized");
+        AssertContains(content, "targets = {", "add priority targets list must be serialized");
+        AssertContains(content, "\"Bozzetto Mine\"", "add priority target names must preserve order");
+        AssertContains(content, "\"Apex Bat\"", "add priority target names must include every entry");
+        AssertNotContains(content, "Bozzetto Mine [1]", "add priority targets must not serialize display indexes");
+        AssertNotContains(content, "Apex Bat [2]", "add priority targets must not serialize display indexes");
+        AssertNotContains(content, "add_priority_names", "durable add priority names must not be promoted");
     }
 
     private static void TestBrdOmitsHiddenCorMaintenanceDefaults()

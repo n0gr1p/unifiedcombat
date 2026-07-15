@@ -67,7 +67,82 @@ local function normalize_name_list(values, legacy_single)
         append_name(legacy_single)
     end
 
-    return out
+	return out
+end
+
+local function resolve_party_member_id_by_name(name)
+	local trimmed = trim_string(name)
+	if trimmed == '' then
+		return 0
+	end
+
+	local windower_ref = rawget(_G, 'windower')
+	local ffxi = type(windower_ref) == 'table' and windower_ref.ffxi or nil
+	if type(ffxi) ~= 'table' then
+		return 0
+	end
+
+	local get_party = ffxi.get_party
+	if type(get_party) == 'function' then
+		local ok_party, party = pcall(get_party)
+		if ok_party and type(party) == 'table' then
+			for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
+				local entry = party[key]
+				local mob = entry and entry.mob
+				if mob and type(mob.name) == 'string' and mob.name == trimmed then
+					local mob_id = tonumber(mob.id) or 0
+					if mob_id > 0 then
+						return mob_id
+					end
+				end
+			end
+		end
+	end
+
+	local get_mob_by_name = ffxi.get_mob_by_name
+	if type(get_mob_by_name) == 'function' then
+		local ok_mob, mob = pcall(get_mob_by_name, trimmed)
+		if ok_mob and mob then
+			local mob_id = tonumber(mob.id) or 0
+			if mob_id > 0 then
+				return mob_id
+			end
+		end
+	end
+
+	return 0
+end
+
+local function resolve_party_member_name_by_id(id)
+	local member_id = tonumber(id) or 0
+	if member_id <= 0 then
+		return nil
+	end
+
+	local windower_ref = rawget(_G, 'windower')
+	local ffxi = type(windower_ref) == 'table' and windower_ref.ffxi or nil
+	if type(ffxi) ~= 'table' then
+		return nil
+	end
+
+	local get_party = ffxi.get_party
+	if type(get_party) == 'function' then
+		local ok_party, party = pcall(get_party)
+		if ok_party and type(party) == 'table' then
+			for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
+				local entry = party[key]
+				local mob = entry and entry.mob
+				if mob and tonumber(mob.id) == member_id then
+					local name = trim_string(mob.name)
+					if name ~= '' then
+						return name
+					end
+				end
+			end
+		end
+	end
+
+	return nil
 end
 
 function M.fight_leader_enabled(settings)
@@ -84,16 +159,52 @@ function M.fight_leader_enabled(settings)
 end
 
 function M.fight_leader_id(settings)
-    local s = settings_or_default(settings)
-    local flat_value = rawget(s, 'fight_leader_id')
-    if flat_value ~= nil then
-        return tonumber(flat_value) or 0
-    end
-    local active_value = uc_active_config.get_path('config.follow.fight.leader_id')
-    if active_value ~= nil then
-        return tonumber(active_value) or 0
-    end
-    return tonumber(s.fight_leader_id) or 0
+	local s = settings_or_default(settings)
+	local flat_name = rawget(s, 'fight_leader_name')
+	if type(flat_name) == 'string' and trim_string(flat_name) ~= '' then
+		local flat_name_id = resolve_party_member_id_by_name(flat_name)
+		if flat_name_id > 0 then
+			return flat_name_id
+		end
+	end
+	local flat_value = rawget(s, 'fight_leader_id')
+	if flat_value ~= nil then
+		return tonumber(flat_value) or 0
+	end
+	local active_name = uc_active_config.get_path('config.follow.fight.leader_name')
+	if type(active_name) == 'string' and trim_string(active_name) ~= '' then
+		local active_name_id = resolve_party_member_id_by_name(active_name)
+		if active_name_id > 0 then
+			return active_name_id
+		end
+	end
+	local active_value = uc_active_config.get_path('config.follow.fight.leader_id')
+	if active_value ~= nil then
+		return tonumber(active_value) or 0
+	end
+	return tonumber(s.fight_leader_id) or 0
+end
+
+function M.fight_leader_name(settings)
+	local s = settings_or_default(settings)
+	local flat_name = rawget(s, 'fight_leader_name')
+	if type(flat_name) == 'string' and trim_string(flat_name) ~= '' then
+		return trim_string(flat_name)
+	end
+	local flat_id_name = resolve_party_member_name_by_id(rawget(s, 'fight_leader_id'))
+	if type(flat_id_name) == 'string' and flat_id_name ~= '' then
+		return flat_id_name
+	end
+	local active_name = uc_active_config.get_path('config.follow.fight.leader_name')
+	if type(active_name) == 'string' and trim_string(active_name) ~= '' then
+		return trim_string(active_name)
+	end
+	local active_id = uc_active_config.get_path('config.follow.fight.leader_id')
+	local active_name_from_id = resolve_party_member_name_by_id(active_id)
+	if type(active_name_from_id) == 'string' and active_name_from_id ~= '' then
+		return active_name_from_id
+	end
+	return nil
 end
 
 function M.add_priority_names(settings)

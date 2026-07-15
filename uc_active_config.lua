@@ -460,7 +460,13 @@ local function apply_structured_config_to_candidate(candidate, config)
 		end
 		if type(config.follow.fight) == 'table' then
 			candidate.fight_leader = config.follow.fight.leader
-			candidate.fight_leader_id = config.follow.fight.leader_id
+			candidate.fight_leader_selected = config.follow.fight.leader_name
+			candidate.fight_leader_name = config.follow.fight.leader_name
+			local fight_leader_id = resolve_party_member_id_by_name(config.follow.fight.leader_name)
+			if fight_leader_id == 0 then
+				fight_leader_id = normalize_number(config.follow.fight.leader_id, 0, { integer = true }) or 0
+			end
+			candidate.fight_leader_id = fight_leader_id
 			candidate.fight_follow_min = config.follow.fight.min
 			candidate.fight_follow_hold_s = config.follow.fight.hold_s
 		end
@@ -483,10 +489,20 @@ local function apply_structured_config_to_candidate(candidate, config)
 			}
 			candidate.follow.fight = {
 				leader = config.follow.fight and config.follow.fight.leader or nil,
+				leader_selected = config.follow.fight and config.follow.fight.leader_name or nil,
+				leader_name = config.follow.fight and config.follow.fight.leader_name or nil,
 				leader_id = config.follow.fight and config.follow.fight.leader_id or nil,
 				min = config.follow.fight and config.follow.fight.min or nil,
 				hold_s = config.follow.fight and config.follow.fight.hold_s or nil,
 			}
+			candidate.follow.fight.leader_name = config.follow.fight.leader_name
+			local fight_leader_id = resolve_party_member_id_by_name(config.follow.fight.leader_name)
+			if fight_leader_id == 0 then
+				fight_leader_id = normalize_number(config.follow.fight.leader_id, 0, { integer = true }) or 0
+			end
+			candidate.follow.fight.leader_id = fight_leader_id
+			candidate.fight_leader_name = config.follow.fight.leader_name
+			candidate.fight_leader_id = fight_leader_id
 			candidate.follow.partner = {
 				enabled = config.follow.partner.enabled,
 				secondary_enabled = config.follow.partner.secondary_enabled,
@@ -504,12 +520,31 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.puller_distance_only = config.follow.partner.puller_distance_only
 			candidate.follow.partner.puller_distance_only = config.follow.partner.puller_distance_only
 		end
+		if type(config.follow.fight) == 'table' then
+			candidate.follow = candidate.follow or {}
+			candidate.follow.enabled = config.follow.enabled
+			candidate.follow.fight = {
+				leader = config.follow.fight.leader,
+				leader_selected = config.follow.fight.leader_name,
+				leader_name = config.follow.fight.leader_name,
+				leader_id = candidate.fight_leader_id,
+				min = config.follow.fight.min,
+				hold_s = config.follow.fight.hold_s,
+			}
+		end
 	end
 
 	if type(config.targeting) == 'table' then
 		candidate.add_control = config.targeting.add_control
-		candidate.add_priority_names = clone_value(config.targeting.add_priority_names)
-		candidate.targets = clone_value(config.targeting.targets)
+		local target_priority_names = config.targeting.targets
+		if type(target_priority_names) == 'table' and #target_priority_names == 0 then
+			target_priority_names = nil
+		end
+		if target_priority_names == nil then
+			target_priority_names = config.targeting.add_priority_names
+		end
+		candidate.add_priority_names = clone_value(target_priority_names)
+		candidate.targets = clone_value(target_priority_names)
 		if type(config.targeting.targetability) == 'table' then
 			candidate.targetability_active = config.targeting.targetability.enabled
 			candidate.targetability = config.targeting.targetability.action

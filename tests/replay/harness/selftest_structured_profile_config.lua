@@ -108,6 +108,8 @@ local function build_flat_settings()
         path_hunter_targets = { "Apex Bat" },
         party_follow = true,
         party_follow_leader_name = "Leader",
+        fight_leader = true,
+        fight_leader_selected = "Leader",
         add_control = true,
         add_priority_names = { "Apex Bat" },
         sleep = true,
@@ -207,10 +209,14 @@ local function build_structured_payload()
                     enabled = true,
                     leader_name = "Leader",
                 },
+                fight = {
+                    leader = true,
+                    leader_name = "Leader",
+                },
             },
             targeting = {
                 add_control = true,
-                add_priority_names = { "Apex Bat" },
+                targets = { "Apex Bat" },
             },
             sleep = {
                 enabled = true,
@@ -277,8 +283,10 @@ local function assert_common_config(config, source)
     assert_equal(config.movement.path.hunter_targets[1], "Apex Bat", source .. " path hunter mismatch")
     assert_equal(config.follow.party.enabled, true, source .. " party follow mismatch")
     assert_equal(config.follow.party.leader_name, "Leader", source .. " party leader mismatch")
+    assert_equal(config.follow.fight.leader, true, source .. " fight leader mismatch")
+    assert_equal(config.follow.fight.leader_name, "Leader", source .. " fight leader name mismatch")
     assert_equal(config.targeting.add_control, true, source .. " targeting add control mismatch")
-    assert_equal(config.targeting.add_priority_names[1], "Apex Bat", source .. " add priority mismatch")
+    assert_equal(config.targeting.targets[1], "Apex Bat", source .. " add priority target mismatch")
     assert_equal(config.sleep.enabled, true, source .. " sleep enabled mismatch")
     assert_equal(config.sleep.order[2], "Sleepga", source .. " sleep order mismatch")
     assert_equal(config.spells.enabled, true, source .. " spells enabled mismatch")
@@ -380,6 +388,7 @@ local function main()
     assert_equal(#ui_fixture_config.movement.path.hunter_targets, 0, "UI-authored fixture path hunter list mismatch")
     assert_equal(ui_fixture_config.follow.party.leader_name, "Leader", "UI-authored fixture party leader mismatch")
     assert_equal(ui_fixture_config.follow.partner.puller_name, "Niightsiide", "UI-authored fixture puller name mismatch")
+    assert_equal(ui_fixture_config.targeting.targets[1], "Apex Bat", "UI-authored fixture add priority target mismatch")
     assert_equal(ui_fixture_config.sleep.enabled, false, "UI-authored fixture sleep enabled mismatch")
     assert_equal(ui_fixture_config.sleep.order[1], "Horde Lullaby II", "UI-authored fixture sleep order mismatch")
     assert_equal(ui_fixture_config.legacy.profiles.UC.PLD.marker, true, "UI-authored fixture legacy marker mismatch")

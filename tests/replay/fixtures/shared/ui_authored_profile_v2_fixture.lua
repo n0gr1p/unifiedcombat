@@ -117,7 +117,8 @@ return {
                 max = 25,
             },
             fight = {
-                leader = false,
+                leader = true,
+                leader_name = "Niightsiide",
                 leader_id = 0,
                 min = 3.0,
                 hold_s = 8.0,
@@ -134,7 +135,7 @@ return {
         targeting = {
             add_control = true,
             legacy_slots = {},
-            targets = {},
+            targets = { "Apex Bat" },
             targetability = {
                 enabled = false,
                 action = "",

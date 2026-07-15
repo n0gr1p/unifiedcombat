@@ -64,7 +64,7 @@ internal sealed class StructuredProfileV2FileWriteException : Exception
 internal static class StructuredProfileV2Writer
 {
     private static readonly IStructuredProfileV2FileSystem PhysicalFileSystem = new PhysicalStructuredProfileV2FileSystem();
-    private static readonly Regex TrailingDisplayIndex = new(@"\s*\[\d+\]\s*$", RegexOptions.Compiled);
+    private static readonly Regex TrailingDisplayIndex = new(@"\s*\[[^\]]+\]\s*$", RegexOptions.Compiled);
 
     internal static string? FindAddonRootFrom(string startDir)
     {
@@ -344,20 +344,38 @@ internal static class StructuredProfileV2Writer
                 "party",
                 new StructuredProfileNode()
                     .Add("enabled", ReadBool(flatProfile, "party_follow", false))
-                    .Add("leader_id", 0)
                     .Add("leader_name", ReadString(flatProfile, "party_follow_selected", ""))
                     .Add("min", ReadDouble(flatProfile, "party_follow_min", 0.5))
                     .Add("max", ReadDouble(flatProfile, "party_follow_max", 50.0))
             )
             .Add(
                 "fight",
-                new StructuredProfileNode()
-                    .Add("leader", false)
-                    .Add("leader_id", 0)
-                    .Add("min", ReadDouble(flatProfile, "fight_follow_min", 3.0))
-                    .Add("hold_s", ReadDouble(flatProfile, "fight_follow_hold_s", 8.0))
+                BuildFightLeader(flatProfile)
             )
             .Add("partner", partner);
+    }
+
+    private static StructuredProfileNode BuildFightLeader(JsonObject flatProfile)
+    {
+        var fightLeaderEnabled = ReadBool(flatProfile, "fight_leader", false);
+        var fight = new StructuredProfileNode()
+            .Add("leader", fightLeaderEnabled)
+            .Add("min", ReadDouble(flatProfile, "fight_follow_min", 3.0))
+            .Add("hold_s", ReadDouble(flatProfile, "fight_follow_hold_s", 8.0));
+
+        if (fightLeaderEnabled)
+        {
+            fight.Add("leader_name", ResolveFightLeaderName(flatProfile));
+        }
+
+        return fight;
+    }
+
+    private static string ResolveFightLeaderName(JsonObject flatProfile)
+    {
+        var fightLeaderName = ReadString(flatProfile, "fight_leader_selected", ReadString(flatProfile, "fight_leader_name", ""));
+        fightLeaderName = StripTrailingDisplayIndex(fightLeaderName);
+        return string.IsNullOrWhiteSpace(fightLeaderName) ? "" : fightLeaderName;
     }
 
     private static StructuredProfileNode BuildTargeting(JsonObject flatProfile)
@@ -365,7 +383,7 @@ internal static class StructuredProfileV2Writer
         return new StructuredProfileNode()
             .Add("add_control", ReadBool(flatProfile, "add_control", false))
             .Add("legacy_slots", EmptyList())
-            .Add("targets", EmptyList())
+            .Add("targets", ParseNameList(ReadString(flatProfile, "add_priority_entries", "")))
             .Add("targetability", new StructuredProfileNode().Add("enabled", false).Add("action", ""))
             .Add("ignore", EmptyList())
             .Add("target_ignore_names", ParseNameList(ReadString(flatProfile, "target_ignore_entries", "")));

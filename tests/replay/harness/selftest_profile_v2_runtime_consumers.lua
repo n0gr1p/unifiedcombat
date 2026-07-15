@@ -161,6 +161,7 @@ local function main()
 	local uc_ignore = require('uc_ignore')
 	local hb_buff_maint = require('uc_hb_buff_maint')
 	local cor_maintenance = require('uc_cor_maintenance')
+	local runtime_overrides = require('uc_runtime_overrides')
 
 	local active_profile = set_active_profile(active_config, {
 		version = 2,
@@ -220,6 +221,13 @@ local function main()
 				geo = { 'Geo-Frailty' },
 			},
 			follow = {
+				fight = {
+					leader = true,
+					leader_name = 'Niightsiide',
+					leader_id = 0,
+					min = 3,
+					hold_s = 8,
+				},
 				partner = {
 					enabled = false,
 					secondary_enabled = false,
@@ -241,6 +249,7 @@ local function main()
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_1'), 'Chaos Roll', 'active COR roll 1 mismatch')
 	assert_equal(active_config.get_path('config.maintenance.cor.roll_2'), 'Samurai Roll', 'active COR roll 2 mismatch')
 	assert_equal(active_config.get_path('config.combat.weaponskill.wait_ignore_names')[1], 'Niightsiide', 'active wait ignore name mismatch')
+	assert_equal(active_config.get_path('config.follow.fight.leader_name'), 'Niightsiide', 'active fight leader name mismatch')
 	assert_equal(active_config.get_path('config.follow.partner.puller_name'), 'Niightsiide', 'active puller name mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Target', 'active targeted buff character mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].buff, 'Victory March', 'active targeted buff name mismatch')
@@ -260,11 +269,17 @@ local function main()
 	assert_equal(projected.cor_roll_2, 'Samurai Roll', 'projected COR roll 2 mismatch')
 	assert_equal(projected.wait_ignore_names[1], 'Niightsiide', 'projected wait ignore name mismatch')
 	assert_equal(projected.ignore[1], 77, 'projected legacy ignore id mismatch')
+	assert_equal(projected.fight_leader_name, 'Niightsiide', 'projected fight leader name mismatch')
+	assert_equal(projected.fight_leader_id, 77, 'projected fight leader id mismatch')
+	assert_equal(projected.fight_leader_selected, 'Niightsiide', 'projected fight leader selected mismatch')
+	assert_equal(projected.follow.fight.leader_name, 'Niightsiide', 'projected nested fight leader name mismatch')
+	assert_equal(projected.follow.fight.leader_id, 77, 'projected nested fight leader id mismatch')
 	assert_equal(projected.puller_name, 'Niightsiide', 'projected puller name mismatch')
 	assert_equal(projected.puller_id, 77, 'projected puller id mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Target:Victory March', 'projected targeted buff string mismatch')
 	assert_equal(projected.maintenance_brd[1], 'Honor March', 'projected BRD maintenance list mismatch')
 	assert_equal(projected.maintenance_geo[1], 'Geo-Frailty', 'projected GEO maintenance list mismatch')
+	assert_equal(runtime_overrides.fight_leader_id(projected), 77, 'fight leader helper must resolve the leader name before the id')
 	assert_true(uc_ignore.is_name_blocked({ wait_ignore_names = { 'Niightsiide' } }, 'Niightsiide') == true, 'wait ignore helper must block by name')
 	assert_true(uc_ignore.is_name_blocked({ wait_ignore_names = { 'Niightsiide' } }, 'Other Ally') == false, 'wait ignore helper must not block unrelated names')
 

@@ -348,6 +348,7 @@ local function default_config(meta)
             fight = {
                 leader = false,
                 leader_id = 0,
+                leader_name = '',
                 min = 3.0,
                 hold_s = 8.0,
             },
@@ -650,6 +651,7 @@ local function normalize_follow(source, config)
         local fight = is_table(nested.fight) and nested.fight or {}
         follow.fight.leader = normalize_boolean(fight.leader, follow.fight.leader)
         follow.fight.leader_id = normalize_number(fight.leader_id, follow.fight.leader_id, { integer = true })
+        follow.fight.leader_name = normalize_string(fight.leader_name, follow.fight.leader_name)
         follow.fight.min = normalize_number(fight.min, follow.fight.min)
         follow.fight.hold_s = normalize_number(fight.hold_s, follow.fight.hold_s)
         local partner = is_table(nested.partner) and nested.partner or {}
@@ -669,6 +671,7 @@ local function normalize_follow(source, config)
         follow.party.max = normalize_number(first_path(source, { path('party_follow_max') }), follow.party.max)
         follow.fight.leader = normalize_boolean(first_path(source, { path('fight_leader') }), follow.fight.leader)
         follow.fight.leader_id = normalize_number(first_path(source, { path('fight_leader_id') }), follow.fight.leader_id, { integer = true })
+        follow.fight.leader_name = normalize_string(first_path(source, { path('fight_leader_name'), path('fight_leader_selected') }), follow.fight.leader_name)
         follow.fight.min = normalize_number(first_path(source, { path('fight_follow_min') }), follow.fight.min)
         follow.fight.hold_s = normalize_number(first_path(source, { path('fight_follow_hold_s') }), follow.fight.hold_s)
         follow.partner.enabled = normalize_boolean(first_path(source, { path('partner') }), follow.partner.enabled)
@@ -686,9 +689,23 @@ local function normalize_targeting(source, config)
     local nested = get_path(source, { 'targeting' })
     if is_table(nested) and table_has_any(nested, { 'add_control', 'add_priority_names', 'legacy_slots', 'targets', 'targetability', 'ignore', 'target_ignore_names' }) then
         targeting.add_control = normalize_boolean(nested.add_control, targeting.add_control)
-        targeting.add_priority_names = normalize_list(nested.add_priority_names, targeting.add_priority_names)
+        local nested_target_names = nested.targets
+        if type(nested_target_names) == 'table' and #nested_target_names == 0 then
+            nested_target_names = nil
+        end
+        if nested_target_names == nil then
+            nested_target_names = nested.add_priority_names
+        end
+        local nested_add_priority_names = nested.add_priority_names
+        if type(nested_add_priority_names) == 'table' and #nested_add_priority_names == 0 then
+            nested_add_priority_names = nil
+        end
+        if nested_add_priority_names == nil then
+            nested_add_priority_names = nested.targets
+        end
+        targeting.add_priority_names = normalize_list(nested_add_priority_names, targeting.add_priority_names)
         targeting.legacy_slots = normalize_list(nested.legacy_slots, targeting.legacy_slots)
-        targeting.targets = normalize_list(nested.targets, targeting.targets)
+        targeting.targets = normalize_list(nested_target_names, targeting.targets)
         local nested_targetability = is_table(nested.targetability) and nested.targetability or {}
         targeting.targetability.enabled = normalize_boolean(nested_targetability.enabled, targeting.targetability.enabled)
         targeting.targetability.action = normalize_string(nested_targetability.action, targeting.targetability.action)
@@ -696,13 +713,27 @@ local function normalize_targeting(source, config)
         targeting.target_ignore_names = normalize_list(nested.target_ignore_names, targeting.target_ignore_names)
     else
         targeting.add_control = normalize_boolean(first_path(source, { path('add_control') }), targeting.add_control)
-        targeting.add_priority_names = normalize_list(first_path(source, { path('add_priority_names') }), targeting.add_priority_names)
+        local flat_target_names = first_path(source, { path('targets') })
+        if type(flat_target_names) == 'table' and #flat_target_names == 0 then
+            flat_target_names = nil
+        end
+        if flat_target_names == nil then
+            flat_target_names = first_path(source, { path('add_priority_names') })
+        end
+        local flat_add_priority_names = first_path(source, { path('add_priority_names') })
+        if type(flat_add_priority_names) == 'table' and #flat_add_priority_names == 0 then
+            flat_add_priority_names = nil
+        end
+        if flat_add_priority_names == nil then
+            flat_add_priority_names = first_path(source, { path('targets') })
+        end
+        targeting.add_priority_names = normalize_list(flat_add_priority_names, targeting.add_priority_names)
         targeting.legacy_slots = normalize_list({
             first_path(source, { path('target1') }),
             first_path(source, { path('target2') }),
             first_path(source, { path('target3') }),
         }, targeting.legacy_slots)
-        targeting.targets = normalize_list(first_path(source, { path('targets') }), targeting.targets)
+        targeting.targets = normalize_list(flat_target_names, targeting.targets)
         targeting.targetability.enabled = normalize_boolean(first_path(source, { path('targetability_active') }), targeting.targetability.enabled)
         targeting.targetability.action = normalize_string(first_path(source, { path('targetability') }), targeting.targetability.action)
         targeting.ignore = normalize_list(first_path(source, { path('ignore') }), targeting.ignore)
