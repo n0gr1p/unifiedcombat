@@ -586,7 +586,16 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.cor_roll_range_selected = config.maintenance.cor.range_selected
 			candidate.cor_roll_range_require_ids = clone_value(config.maintenance.cor.range_require_ids)
 		end
-		candidate.maintenance_brd = clone_value(config.maintenance.brd)
+		if type(config.maintenance.brd) == 'table' then
+			candidate.maintenance_brd = clone_value(config.maintenance.brd)
+			candidate.brd_maintenance_enabled = config.maintenance.brd.enabled
+			candidate.brd_songs = clone_value(config.maintenance.brd.songs)
+			candidate.brd_dummy_songs = clone_value(config.maintenance.brd.dummy_songs)
+			candidate.brd_use_nitro = config.maintenance.brd.use_nitro
+			candidate.brd_use_clarion_call = config.maintenance.brd.use_clarion_call
+			candidate.brd_use_marcato = config.maintenance.brd.use_marcato
+			candidate.brd_marcato_song = config.maintenance.brd.marcato_song
+		end
 		candidate.maintenance_geo = clone_value(config.maintenance.geo)
 	end
 

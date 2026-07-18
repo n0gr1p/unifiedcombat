@@ -29,8 +29,8 @@ local function main()
 
     assert_true(result.ok, "pending suite should fully pass")
     assert_equal(result.suite_id, "pending", "suite id mismatch")
-    assert_equal(result.total, 8, "fixture count mismatch")
-    assert_equal(result.passed, 8, "all fixtures should pass")
+    assert_equal(result.total, 10, "fixture count mismatch")
+    assert_equal(result.passed, 10, "all fixtures should pass")
     assert_equal(result.failed, 0, "no fixtures should fail")
 
     local timeout = find_entry(result.entries, "pending_update_live_effect_timeout")
@@ -44,6 +44,11 @@ local function main()
     local complete = find_entry(result.entries, "pending_mark_complete_sets_fields_and_duplicate_window")
     assert_true(complete ~= nil, "mark complete fixture missing")
     assert_equal(complete.actual.pending.completion_deadline, 50.75, "completion deadline mismatch")
+
+    local failed = find_entry(result.entries, "pending_mark_failed_sets_retry_window")
+    assert_true(failed ~= nil, "mark failed fixture missing")
+    assert_equal(failed.actual.pending.state, "failed", "failed pending state mismatch")
+    assert_equal(failed.actual.pending.completion_deadline, 70.75, "failed pending retry deadline mismatch")
 
     io.stdout:write("selftest_pending_fixtures: OK\n")
 end

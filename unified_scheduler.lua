@@ -415,6 +415,10 @@ function scheduler.clear_local_spell_interruption(meta)
 	return require('uc_scheduler_action_state').clear_local_spell_interruption(scheduler, now_s, meta)
 end
 
+function scheduler.clear_local_brd_spell_failure(meta)
+	return require('uc_scheduler_action_state').clear_local_brd_spell_failure(scheduler, now_s, meta)
+end
+
 function scheduler.clear_local_defensive_spell_success(meta)
 	return require('uc_scheduler_action_state').clear_local_defensive_spell_success(scheduler, now_s, meta)
 end
@@ -440,6 +444,11 @@ end
 function scheduler.is_spell_cast_interrupted_message_id(message_id)
 	local mid = tonumber(message_id) or 0
 	return mid == 16
+end
+
+function scheduler.is_spell_prestart_rejection_message_id(message_id)
+	local mid = tonumber(message_id) or 0
+	return mid == 17 or mid == 18
 end
 
 function scheduler.local_spell_cast_token_active(st)
@@ -2127,6 +2136,28 @@ function scheduler.handle_local_spell_action_message(phase, now, player, msg, st
 	if not matched then
 		return false, match_reason
 	end
+	if scheduler.is_spell_prestart_rejection_message_id(message_id) then
+		if tostring(st.last_action_provider or '') ~= 'maintenance_brd' or (tonumber(st.packet_start_at) or 0) > 0 then
+			return false, 'prestart_rejection_not_brd_pending'
+		end
+		local cleared = scheduler.clear_local_brd_spell_failure({
+			message_id = message_id,
+			message_param = message_param,
+			terminal_outcome = 'server_reject_unable_cast',
+			require_prestart = true,
+		})
+		if not cleared then
+			return false, require('uc_scheduler_action_state').last_completion_ignore_reason(scheduler)
+		end
+		require('uc_brd_maintenance').reject_pending_before_start(message_id, now)
+		scheduler.p1_pending_mark_failed(now, ('spell_server_reject_%d'):format(message_id), 0.75)
+		phase.maintenance_next_at = phase.maintenance_next_at or {}
+		phase.maintenance_next_at.brd_songs = math.max(
+			tonumber(phase.maintenance_next_at.brd_songs) or 0,
+			now + 0.75
+		)
+		return true, 'server_reject_unable_cast'
+	end
 	if scheduler.is_spell_cast_start_message_id(message_id) then
 		return false, 'cast_start_message'
 	end
@@ -2188,6 +2219,7 @@ function scheduler.handle_local_spell_action_message(phase, now, player, msg, st
 			local current_lock_until = tonumber(_G.UC_MOVEMENT_LOCK_UNTIL) or 0
 			_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)
 			scheduler.p1_pending_mark_complete(now, ('spell_cast_interrupted_%d'):format(message_id))
+			require('uc_brd_maintenance').cancel_pending('cast_interrupted')
 		end
 		return cleared == true, cleared and 'cast_interrupted' or require('uc_scheduler_action_state').last_completion_ignore_reason(scheduler)
 	end
@@ -2203,9 +2235,6 @@ function scheduler.handle_local_spell_effect_observation(phase, now, msg, st, me
 	local msg_tid = tonumber(msg and msg.target_id) or 0
 	if msg_tid > 0 and message_id == 204 and message_param == 2 and scheduler.is_sleep_spell_name(get_settings(), last_action_name) then
 		scheduler.mark_sleep_target_suppressed(msg_tid, last_action_name, now)
-	end
-	if message_id == 17 and message_param == 0 then
-		scheduler.record_confirmed_bard_song_success(pending_action_name, expected_tid, msg_tid)
 	end
 end
 
@@ -3216,40 +3245,6 @@ local function family_tokens_for(member_name, buff_id)
 	end
 	return tokens
 end
-
-function scheduler.resolve_party_member_name_by_id(target_id)
-	local want = tonumber(target_id) or 0
-	if want == 0 then
-		return ''
-	end
-	for _, member in ipairs(get_party_members() or {}) do
-		if tonumber(member and member.id) == want then
-			return tostring(member.name or '')
-		end
-	end
-	return ''
-end
-
-function scheduler.record_confirmed_bard_song_success(action_name, expected_target_id, message_target_id)
-	if is_bard_song(action_name) ~= true then
-		return
-	end
-	local success_target_id = tonumber(expected_target_id) or 0
-	if success_target_id == 0 then
-		success_target_id = tonumber(message_target_id) or 0
-	end
-	local success_target_name = scheduler.resolve_party_member_name_by_id(success_target_id)
-	if success_target_name == '' then
-		return
-	end
-	local now = now_s()
-	local expires_at = now + action_duration_seconds(
-		action_name,
-		tonumber(scheduler.active_value_or_flat('config.defensive.buffs.overwrite_interval', get_settings().defensive_overwrite_interval) or 150) or 150
-	)
-	hb_buff_maint.mark_bard_song_success(success_target_name, action_name, now, expires_at)
-end
-
 
 local function build_defensive_candidates()
 	local s = get_settings()
@@ -5053,38 +5048,36 @@ local function p1_collect_maintenance(ctx, out)
 			}, 2.0)
 			gate.cor_rolls = 0
 		end
-	elseif job == 'BRD' then
-		local song_count = count_matching_buffs(buff_list, maintenance_buff_cache.song_ids)
-		if song_count < 2 then
-			local emitted, blocker_reason, throttle_remaining = maybe_emit('brd_songs', 'brd', 'spell', 'maintenance_songs', 'songs_missing', (song_count == 0) and 0.80 or 0.50, {
-				job = job,
-				song_count = song_count,
-				expected = 2,
+	elseif job == 'BRD' or tostring(player.sub_job or '') == 'BRD' then
+		local brd_config = require('uc_active_config').get_path('config.maintenance.brd')
+		local brd_maintenance = require('uc_brd_maintenance')
+		local action = brd_maintenance.propose(brd_config, {
+			now = now,
+			player = player,
+			party = windower.ffxi.get_party(),
+			action_ready = action_ready,
+		})
+		local failure = brd_maintenance.take_scheduler_failure()
+		if type(failure) == 'table' then
+			scheduler.clear_local_brd_spell_failure({
+				terminal_outcome = tostring(failure.reason or 'brd_spell_failure'),
 			})
-			if emitted ~= true then
-				scheduler.action_timeline_log('MAINT_SONG_READY_NO_DISPATCH', {
-					action = 'maintenance_songs',
-					provider = 'brd',
-					reason = tostring(blocker_reason or 'unknown'),
-					song_count = tostring(song_count),
-					expected = '2',
-					best_action = 'maintenance_songs',
-					top_provider = '',
-					top_action = '',
-					remaining_s = (tonumber(throttle_remaining) or 0) > 0 and ('%.2f'):format(tonumber(throttle_remaining) or 0) or '',
-				}, ('maint_song_ready_no_dispatch:%s'):format(tostring(blocker_reason or 'unknown')), 2.0)
-			end
-		else
-			local song_snapshot = scheduler.active_song_snapshot(buff_list, maintenance_buff_cache.song_ids)
-			log_maint_candidate('MAINT_BUFF_CANDIDATE_SKIPPED', 'brd_songs', 'maintenance_songs', 'brd', 'songs_satisfied', 0.50, {
-				action_type = 'spell',
-				expected = 2,
-				song_count = song_count,
-				active_song_count = song_snapshot.active_song_count,
-				expected_song_count = song_snapshot.expected_song_count,
-				song_names = song_snapshot.song_names,
-				song_lowest_remaining_s = song_snapshot.song_lowest_remaining_s,
-			}, 2.0)
+			local retry_delay = tonumber(failure.retry_delay) or 0.75
+			scheduler.p1_pending_mark_failed(now, tostring(failure.reason or 'brd_spell_failure'), retry_delay)
+			gate.brd_songs = math.max(tonumber(gate.brd_songs) or 0, now + retry_delay)
+			action = nil
+		end
+		if type(action) == 'table' and tostring(action.action_name or '') ~= '' then
+			maybe_emit(
+				'brd_songs',
+				'maintenance_brd',
+				tostring(action.action_type or ''),
+				tostring(action.action_name or ''),
+				tostring(action.reason_code or 'brd_song_maintenance'),
+				tonumber(action.urgency) or 0.75,
+				action.detail
+			)
+		elseif failure == nil then
 			gate.brd_songs = 0
 		end
 	elseif job == 'GEO' then
@@ -5495,6 +5488,10 @@ end
 
 function scheduler.p1_pending_mark_complete(now, result_code)
 	return scheduler_pending.p1_pending_mark_complete(scheduler, now, result_code)
+end
+
+function scheduler.p1_pending_mark_failed(now, result_code, retry_delay)
+	return scheduler_pending.p1_pending_mark_failed(scheduler, now, result_code, retry_delay)
 end
 
 local function p1_run_dry(settings)
@@ -6183,6 +6180,79 @@ local function p1_dispatch_maintenance_cor(selected, settings, provider)
 	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 	_G.UC_LAST_SCHED_ACTION = ('[p1]cor:%s'):format(ability)
 	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_MAINT_COR'
+end
+
+function scheduler.p1_dispatch_maintenance_brd(selected, settings)
+	if not bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_maintenance', settings and settings.scheduler_dark_launch_maintenance), false) then
+		return false, nil
+	end
+	local blocked, block_reason = action_dispatch_blocked()
+	if blocked then
+		require('uc_brd_maintenance').note_scheduler_rejection(block_reason, selected.action_name)
+		return true, block_reason
+	end
+	local action_name = tostring(selected.action_name or '')
+	local action_type = tostring(selected.action_type or '')
+	if action_name == '' or (action_type ~= 'spell' and action_type ~= 'ja') then
+		return false, nil
+	end
+	local ok_ready, ready_reason, ready_kind = action_ready(action_name, tonumber(selected.target_id) or 0)
+	if not ok_ready or ready_kind ~= action_type then
+		require('uc_brd_maintenance').note_scheduler_rejection(ready_reason, action_name)
+		log_def_sched(('MAINT_BRD_DISPATCH_SKIP reason=NOT_READY action="%s" kind=%s ready_kind=%s ready_reason=%s'):format(
+			action_name,
+			action_type,
+			tostring(ready_kind or ''),
+			tostring(ready_reason or '')
+		))
+		return false, nil
+	end
+	local command_kind = action_type == 'spell' and 'ma' or 'ja'
+	local command = ('input /%s "%s" <me>'):format(command_kind, action_name)
+	local dispatcher = require('uc_scheduler_dispatcher')
+	local result = dispatcher.dispatch_intent({
+		kind = 'send_command',
+		source = 'unified_scheduler:maintenance_brd',
+		command = command,
+		meta = {
+			action_type = action_type,
+			action_name = action_name,
+			provider = 'maintenance_brd',
+		},
+	}, {
+		execute = true,
+		send_command = windower.send_command,
+	})
+	if type(result) ~= 'table' or result.ok ~= true or result.executed ~= true then
+		require('uc_brd_maintenance').note_scheduler_rejection(type(result) == 'table' and result.reason or 'dispatcher_failed', action_name)
+		log_def_sched(('MAINT_BRD_DISPATCH_SKIP reason=%s action="%s"'):format(
+			tostring(type(result) == 'table' and result.reason or 'dispatcher_failed'),
+			action_name
+		))
+		return false, nil
+	end
+	action_mark_sent(action_type, {
+		action_name = action_name,
+		provider = 'maintenance_brd',
+	})
+	local token = tostring(tonumber((action_state() or {}).action_token) or 0)
+	require('uc_brd_maintenance').note_dispatch({
+		action_type = action_type,
+		action_name = action_name,
+		detail = selected.detail,
+	}, token, now_s())
+	local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
+	scheduler.p1_record_legacy_dispatch(ctx)
+	scheduler.p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
+	_G.UC_LAST_SCHED_ACTION = ('[p1]brd:%s'):format(action_name)
+	scheduler.action_timeline_log('MAINT_BUFF_DISPATCHED', {
+		action = action_name,
+		provider = 'maintenance_brd',
+		band = tonumber(selected.priority_band) or 0,
+		action_token = token,
+	}, ('maint_brd_dispatch:%s'):format(action_name), 0.05)
+	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_MAINT_BRD'
 end
 
 local function p1_dispatch_defensive_internal(selected, settings)
@@ -7180,6 +7250,9 @@ function scheduler.p1_try_dark_launch_dispatch(settings)
 	if provider == 'maintenance_cor' then
 		return p1_dispatch_maintenance_cor(selected, settings, provider)
 	end
+	if provider == 'maintenance_brd' then
+		return scheduler.p1_dispatch_maintenance_brd(selected, settings)
+	end
 	return false, nil
 end
 
@@ -7295,10 +7368,22 @@ function scheduler.on_incoming_chunk(id, data)
 	if nid == 0x00A or nid == 0x00B then
 		enemy_effect_tracker.clear_all()
 		scheduler.phase1.effectiveTargets = {}
+		require('uc_brd_maintenance').reset('zone_change')
 		return
 	end
 	if nid == 0x028 and type(data) == 'string' then
 		ingest_enemy_effects_from_raw_action_028(data)
+		return
+	end
+	if nid == 0x037 and type(data) == 'string' then
+		local parsed = require('packets').parse('incoming', data)
+		if parsed and parsed['Timestamp'] and parsed['Time offset?'] then
+			require('uc_brd_maintenance').on_server_clock(
+				parsed['Timestamp'],
+				parsed['Time offset?'],
+				os.time()
+			)
+		end
 		return
 	end
 	if nid == 0x029 and type(data) == 'string' then
@@ -7346,11 +7431,32 @@ function scheduler.on_incoming_chunk(id, data)
 	end
 	local st = ensure_maintenance_state_tables()
 	st.status_snapshot[tostring(player.name)] = snap
+	require('uc_brd_maintenance').on_status_snapshot(snap, now_s())
+end
+
+function scheduler.seed_cached_status_snapshot()
+	local data = windower.packets.last_incoming(0x063)
+	if type(data) ~= 'string' then
+		return false
+	end
+	local snap = parse_status_snapshot_063(data)
+	if type(snap) ~= 'table' then
+		return false
+	end
+	local player = windower.ffxi.get_player()
+	if not player or not player.name then
+		return false
+	end
+	local st = ensure_maintenance_state_tables()
+	st.status_snapshot[tostring(player.name)] = snap
+	require('uc_brd_maintenance').on_status_snapshot(snap, now_s())
+	return true
 end
 
 function scheduler.on_action(act)
 	if type(act) == 'table' then
 		local p = windower.ffxi.get_player()
+		require('uc_brd_maintenance').on_action(act, tonumber(p and p.id) or 0, now_s())
 		tb_effect_table.apply_from_action(
 			act,
 			tonumber(p and p.id) or 0,
@@ -7432,6 +7538,7 @@ function scheduler.on_action(act)
 	local start_lock_categories = {
 		[4] = true,
 		[6] = true,
+		[8] = true,
 		[13] = true,
 		[14] = true,
 		[15] = true,
@@ -7770,6 +7877,8 @@ function scheduler.get_debug_overlay()
 		elseif p == 'defensive_healbot' then
 			return bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_defensive', s.scheduler_dark_launch_defensive), false)
 		elseif p == 'maintenance_cor' then
+			return bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_maintenance', s.scheduler_dark_launch_maintenance), false)
+		elseif p == 'maintenance_brd' then
 			return bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_maintenance', s.scheduler_dark_launch_maintenance), false)
 		end
 		return false

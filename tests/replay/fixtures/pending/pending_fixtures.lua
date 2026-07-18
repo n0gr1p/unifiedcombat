@@ -197,4 +197,62 @@ return {
             },
         },
     },
+    {
+        fixture_id = "pending_mark_failed_no_pending_noop",
+        helper = "p1_pending_mark_failed",
+        description = "no pending table returns without mutation",
+        input = {
+            scheduler = {
+                phase1 = {
+                    pending = nil,
+                    recent_duplicate_until = {
+                        keep = 1,
+                    },
+                },
+            },
+            now = 60,
+            result_code = "server_reject",
+            retry_delay = 0.75,
+        },
+        expected = {
+            result = nil,
+            pending = nil,
+            recent_duplicate_until = {
+                keep = 1,
+            },
+        },
+    },
+    {
+        fixture_id = "pending_mark_failed_sets_retry_window",
+        helper = "p1_pending_mark_failed",
+        description = "marks failed and applies the scheduler retry window",
+        input = {
+            scheduler = {
+                phase1 = {
+                    pending = {
+                        state = "sent",
+                        result = "",
+                        duplicate_suppression_key = "dup.brd",
+                    },
+                    recent_duplicate_until = {},
+                },
+            },
+            now = 70,
+            result_code = "spell_server_reject_17",
+            retry_delay = 0.75,
+        },
+        expected = {
+            result = nil,
+            pending = {
+                state = "failed",
+                result = "spell_server_reject_17",
+                duplicate_suppression_key = "dup.brd",
+                effect_at = 70,
+                completion_deadline = 70.75,
+            },
+            recent_duplicate_until = {
+                ["dup.brd"] = 70.75,
+            },
+        },
+    },
 }

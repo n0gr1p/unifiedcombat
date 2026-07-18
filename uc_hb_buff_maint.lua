@@ -370,6 +370,7 @@ end
 function mod.choose(settings, members, helpers)
 	local desired = split_actions(active_value_or_flat('config.defensive.buffs.list', settings.defensive_buffs) or '')
 	local targeted = active_targeted_buffs(settings)
+	local dedicated_brd_enabled = uc_active_config.get_path('config.maintenance.brd.enabled') == true
 	local self_only = helpers.bool_setting(active_value_or_flat('config.defensive.buffs.self_only', settings.defensive_buff_self_only), true)
 	local overwrite = helpers.bool_setting(active_value_or_flat('config.defensive.buffs.overwrite_enabled', settings.defensive_overwrite_enabled), false)
 	local overwrite_interval = tonumber(active_value_or_flat('config.defensive.buffs.overwrite_interval', settings.defensive_overwrite_interval) or 150) or 150
@@ -393,11 +394,15 @@ function mod.choose(settings, members, helpers)
 		if in_range and ((not self_only) or m.is_self) then
 			local actions = {}
 			for _, a in ipairs(desired) do
-				actions[#actions + 1] = a
+				if not dedicated_brd_enabled or not helpers.is_bard_song(a) then
+					actions[#actions + 1] = a
+				end
 			end
 			for _, t in ipairs(targeted) do
 				if normalize_name(t.target):lower() == normalize_name(m.name):lower() then
-					actions[#actions + 1] = t.action
+					if not dedicated_brd_enabled or not helpers.is_bard_song(t.action) then
+						actions[#actions + 1] = t.action
+					end
 				end
 			end
 

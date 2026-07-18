@@ -178,6 +178,13 @@ local function build_flat_settings()
         cor_luzaf_range_override = true,
         cor_roll_range_selected = 'Apex',
         cor_roll_range_require_ids = { 1, 2 },
+        brd_maintenance_enabled = true,
+        brd_songs = 'Honor March|Victory March',
+        brd_dummy_songs = "Army's Paeon|Army's Paeon II",
+        brd_use_nitro = true,
+        brd_use_clarion_call = false,
+        brd_use_marcato = true,
+        brd_marcato_song = 'Honor March',
         path_recording = true,
         path_follow_enabled = true,
         path_file_name = 'route.json',
@@ -398,7 +405,13 @@ local function build_nested_settings()
                 range_require_ids = { 1, 2 },
             },
             brd = {
-                family = 'March',
+                enabled = true,
+                songs = { 'Honor March', 'Victory March' },
+                dummy_songs = { "Army's Paeon", "Army's Paeon II" },
+                use_nitro = true,
+                use_clarion_call = false,
+                use_marcato = true,
+                marcato_song = 'Honor March',
             },
             geo = {
                 bubble = 'Entrust',
@@ -517,6 +530,11 @@ local function main()
     assert_equal(flat_config.spells.dd2_slots[1].spell, 'Dia', 'dd2 slots mismatch')
     assert_equal(flat_config.maintenance.cor.roll_1, 'Chaos Roll', 'cor roll 1 mismatch')
     assert_equal(flat_config.maintenance.cor.range_require_ids[2], 2, 'cor range requirement mismatch')
+    assert_equal(flat_config.maintenance.brd.enabled, true, 'flat BRD maintenance enabled mismatch')
+    assert_equal(flat_config.maintenance.brd.songs[2], 'Victory March', 'flat BRD song list mismatch')
+    assert_equal(flat_config.maintenance.brd.dummy_songs[2], "Army's Paeon II", 'flat BRD dummy song list mismatch')
+    assert_equal(flat_config.maintenance.brd.use_nitro, true, 'flat BRD NITRO mismatch')
+    assert_equal(flat_config.maintenance.brd.marcato_song, 'Honor March', 'flat BRD Marcato song mismatch')
     assert_equal(flat_config.debug.ja_debug, true, 'debug flag mismatch')
     assert_equal(flat_config.ownership.scheduler_dark_launch_maintenance, true, 'ownership flag mismatch')
     assert_equal(flat_config.legacy.command, true, 'legacy ambiguous flag mismatch')
@@ -540,7 +558,11 @@ local function main()
     assert_equal(nested_config.defensive.buffs.targeted[2].character, 'Nyoourke', 'nested targeted buff character mismatch')
     assert_equal(nested_config.defensive.buffs.targeted[2].buff, 'Valor Minuet V', 'nested targeted buff name mismatch')
     assert_equal(nested_config.movement.path.points[1].x, 1, 'nested path points mismatch')
-    assert_equal(nested_config.maintenance.brd.family, 'March', 'nested maintenance BRD mismatch')
+    assert_equal(nested_config.maintenance.brd.enabled, true, 'nested maintenance BRD enabled mismatch')
+    assert_equal(nested_config.maintenance.brd.songs[2], 'Victory March', 'nested maintenance BRD song mismatch')
+    assert_equal(nested_config.maintenance.brd.dummy_songs[1], "Army's Paeon", 'nested maintenance BRD dummy mismatch')
+    assert_equal(nested_config.maintenance.brd.use_nitro, true, 'nested maintenance BRD NITRO mismatch')
+    assert_equal(nested_config.maintenance.brd.marcato_song, 'Honor March', 'nested maintenance BRD Marcato mismatch')
     assert_equal(nested_config.maintenance.geo.bubble, 'Entrust', 'nested maintenance GEO mismatch')
     assert_equal(nested_config.follow.partner.puller_name, 'Niightsiide', 'nested puller name mismatch')
 
@@ -548,7 +570,7 @@ local function main()
     nested_config.targeting.targets[1] = 'Changed'
     nested_config.movement.path.points[1].x = 99
     nested_config.maintenance.cor.range_require_ids[1] = 99
-    nested_config.maintenance.brd.family = 'Changed'
+    nested_config.maintenance.brd.songs[1] = 'Changed'
     nested_config.legacy.profiles.UC.WAR.flag = false
 
     assert_deep_equal(nested_settings, nested_snapshot, 'nested input should not be mutated by output edits')

@@ -26,6 +26,9 @@ internal static class StructuredProfileV2WriterTests
             TestBrdOmitsHiddenCorMaintenanceDefaults();
             TestNonCorOmitsHiddenCorMaintenanceDefaultsAcrossJobs();
             TestCorPreservesConfiguredMaintenanceValues();
+            TestBrdPreservesConfiguredSongMaintenance();
+            TestNonBrdOmitsHiddenBrdMaintenance();
+            TestBrdUiEditsAreLocalUntilSave();
             TestUiSaveIsFileOnly();
             TestUiSaveSuppressesOutboundMirrorTraffic();
             TestRemoteBridgeDoesNotConsumeUiSave();
@@ -357,6 +360,59 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "elevens = true", "COR profile must preserve elevens mode");
         AssertContains(content, "luzaf_range_override = true", "COR profile must preserve Luzaf override");
         AssertContains(content, "range_selected = \"Terrasjr|Nyoourke\"", "COR profile must preserve range selection");
+    }
+
+    private static void TestBrdPreservesConfiguredSongMaintenance()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["brd_maintenance_enabled"] = true;
+        flat["brd_songs"] = "Honor March|Victory March|Valor Minuet V|Valor Minuet IV";
+        flat["brd_dummy_songs"] = "Army's Paeon|Army's Paeon II";
+        flat["brd_use_nitro"] = true;
+        flat["brd_use_clarion_call"] = false;
+        flat["brd_use_marcato"] = true;
+        flat["brd_marcato_song"] = "Honor March";
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+        );
+
+        AssertContains(content, "brd = {", "BRD profile must serialize dedicated song maintenance");
+        AssertContains(content, "enabled = true", "BRD maintenance enabled flag missing");
+        AssertContains(content, "songs = {", "BRD final song list missing");
+        AssertContains(content, "\"Honor March\"", "BRD final song identity missing");
+        AssertContains(content, "dummy_songs = {", "BRD dummy song list missing");
+        AssertContains(content, "\"Army's Paeon II\"", "BRD dummy song identity missing");
+        AssertContains(content, "use_nitro = true", "BRD NITRO policy missing");
+        AssertContains(content, "use_marcato = true", "BRD Marcato policy missing");
+        AssertContains(content, "marcato_song = \"Honor March\"", "BRD exact Marcato song missing");
+        AssertNotContains(content, "duration", "BRD runtime duration must not be durable");
+    }
+
+    private static void TestNonBrdOmitsHiddenBrdMaintenance()
+    {
+        var flat = BuildSampleFlatProfile();
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Terrasjr", "PLD", "RDM")
+        );
+
+        AssertNotContains(content, "brd = {", "non-BRD profile must omit hidden BRD maintenance");
+        AssertNotContains(content, "dummy_songs", "non-BRD profile must not serialize hidden BRD defaults");
+        AssertNotContains(content, "marcato_song", "non-BRD profile must not serialize hidden Marcato defaults");
+    }
+
+    private static void TestBrdUiEditsAreLocalUntilSave()
+    {
+        var root = StructuredProfileV2Writer.FindAddonRootFrom(AppContext.BaseDirectory)
+            ?? throw new InvalidOperationException("addon root unavailable for BRD UI source test");
+        var source = File.ReadAllText(Path.Combine(root, "UnifiedCombatWinForms", "MainForm.ParityLogic.cs"));
+        var start = source.IndexOf("private void EnsureBrdTabVisibility", StringComparison.Ordinal);
+        var end = source.IndexOf("private void ApplyCorRollFromSnapshot", start, StringComparison.Ordinal);
+        AssertTrue(start >= 0 && end > start, "BRD UI handler source range missing");
+        var brdHandlers = source[start..end];
+        AssertNotContains(brdHandlers, "Forward(", "BRD durable controls must not emit live bridge traffic");
+        AssertContains(brdHandlers, "CaptureWorkingProfileFromUi", "BRD durable controls must update local working state");
     }
 
     private static void TestUiSaveIsFileOnly()

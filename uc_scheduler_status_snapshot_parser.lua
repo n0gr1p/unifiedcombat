@@ -13,7 +13,7 @@ function M.parse_status_snapshot_063(data)
 		if buff_id == 255 then
 			break
 		end
-		local endtime = data:unpack('I', n * 4 + 71)
+		local endtime = data:unpack('I', n * 4 + 69)
 		status_by_id[buff_id] = status_by_id[buff_id] or { count = 0, endtimes = {} }
 		status_by_id[buff_id].count = status_by_id[buff_id].count + 1
 		if endtime and endtime > 0 then

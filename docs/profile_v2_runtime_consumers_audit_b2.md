@@ -24,7 +24,7 @@ The remaining flat-key reads fall into three buckets:
 | Domain | UI v2 path | Active-config reader path | Remaining flat compatibility readers | Status |
 | --- | --- | --- | --- | --- |
 | COR maintenance | `config.maintenance.cor.roll_1`, `roll_2`, `crooked_roll_slot`, `elevens`, `luzaf_range_override`, `range_selected`, `range_require_ids` | `uc_cor_maintenance.lua` reads these through `uc_active_config.get_path(...)` via its local `active_value_or_flat(...)` helper | `cor_roll_1`, `cor_roll_2`, `cor_crooked_roll_slot`, `cor_elevens`, `cor_luzaf_range_override`, `cor_roll_range_selected`, `cor_roll_range_require_ids` | `migrated_active_config_reader` |
-| BRD / defensive buff maintenance | `config.defensive.buffs.list`, `self_only`, `overwrite_enabled`, `overwrite_interval` | `uc_hb_buff_maint.lua` reads the active paths first through `active_value_or_flat(...)` | `defensive_targeted_buffs` remains a flat compatibility reader because no structured v2 path exists for targeted entries yet | `migrated_active_config_reader` for general buffs, `acceptable_compat_reader` for targeted buffs |
+| BRD song maintenance | `config.maintenance.brd.enabled`, `songs`, `dummy_songs`, `use_nitro`, `use_clarion_call`, `use_marcato`, `marcato_song` | `uc_brd_maintenance.lua` receives the active structured domain from the scheduler; `uc_hb_buff_maint.lua` excludes songs when the dedicated provider is enabled | `maintenance_brd` and `brd_*` fields are compatibility projections only | `dedicated_active_config_reader` |
 | GEO maintenance | `config.maintenance.geo` | `uc_active_config.lua` projects this durable domain into the active profile and flat compatibility mirror; the scheduler’s GEO proposal is job/buff driven and does not currently need a separate GEO config reader | `maintenance_geo` | `acceptable_compat_reader` |
 | Defensive thresholds / buffs | `config.defensive.enabled`, `provider`, `thresholds.critical_hpp`, `thresholds.medium_hpp`, `buffs.enabled`, `buffs.self_only`, `buffs.list`, `buffs.overwrite_enabled`, `buffs.overwrite_interval`, `enemy_buffs.remove`, `cure.*`, `na.enabled`, `doom.holy_water_enabled` | `unified_scheduler.lua`, `uc_scheduler_config.lua`, and `uc_hb_buff_maint.lua` read active config first through `scheduler.active_value_or_flat(...)` / `uc_active_config.get_path(...)` | `defensive_targeted_buffs` only; general defensive buff fields are already active-first | `migrated_active_config_reader` |
 | Combat toggles | `config.combat.autotarget`, `combat.prime`, `ownership.scheduler_dark_launch_combat`, `ownership.scheduler_dark_launch_defensive`, `ownership.scheduler_dark_launch_movement`, `ownership.scheduler_dark_launch_maintenance`, `config.defensive.provider` | `uc_scheduler_config.lua` and `unified_scheduler.lua` read active config first | Compatibility fallbacks remain on the flat mirror when the active path is missing | `migrated_active_config_reader` |
@@ -41,7 +41,7 @@ For structured profile writes, hidden or non-applicable COR maintenance fields a
 
 ### BRD
 
-The general buff list is active-first. Targeted buff entries are still read from the flat compatibility string because the v2 schema does not yet provide a structured targeted-buff path.
+General area-song maintenance now has a dedicated durable domain and scheduler provider. Exact song order, capacity dummy songs, NITRO/Clarion policy, and the Marcato song are durable. Exact ownership, recipients, server endtimes, capacity observations, and JA state are runtime-only. Targeted and enemy Bard songs are outside the initial dedicated provider; legacy defensive handling remains available only when the dedicated provider is disabled.
 
 ### GEO
 
@@ -57,7 +57,7 @@ These domains are already mostly on active config. The remaining flat reads are 
 
 ## Conclusion
 
-For this pass, the audit did not find a new durable reader mismatch that required changing runtime code.
+The BRD row has been updated after migration to the dedicated `maintenance_brd` provider. Other B2 findings remain unchanged.
 
 The main remaining follow-up items are explicit compatibility seams, not source-of-truth regressions:
 

@@ -102,6 +102,7 @@ Examples:
 - debug config
 - follow/partner durable identity such as `follow.partner.puller_name`
 - configured COR roll names and other applicable maintenance selections
+- configured BRD song order, dummy-song order, NITRO/Clarion policy, and exact Marcato song
 
 Durable config may be loaded into `_G.UC_ACTIVE_PROFILE`.
 
@@ -132,6 +133,7 @@ Examples:
 - party/mob snapshots
 - bridge protocol state
 - combat execution state
+- observed BRD song recipients, exact-song timer ownership, server endtimes, NITRO generations, capacity state, and Marcato reservations
 
 Runtime/session state must not be written into the UI-owned v2 profile file.
 
@@ -154,6 +156,7 @@ The profile-v2 source-of-truth boundary is intentionally locked down:
 - Runtime-owned fields remain excluded from durable drift, including engine running state, resolved follow/puller IDs, and the current path filename.
 - Non-COR profiles may omit `maintenance.cor`; omitted or default-empty COR maintenance is non-durable for those profiles.
 - Applicable configured sections still round-trip durably, including COR rolls, BRD buffs, follow puller name, defensive thresholds, and combat weaponskill settings.
+- BRD profiles may own `config.maintenance.brd`; non-BRD profiles omit it. Song durations, timer evidence, active capacity, recipients, and JA state are never durable.
 
 ### 3. Runtime / Legacy Overrides
 

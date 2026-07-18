@@ -444,9 +444,24 @@ internal static class StructuredProfileV2Writer
             );
         }
 
-        maintenance
-            .Add("brd", EmptyList())
-            .Add("geo", EmptyList());
+		var isBrdProfile = string.Equals(SafeJobComponent(identity.MainJob), "BRD", StringComparison.Ordinal)
+			|| string.Equals(SafeJobComponent(identity.SubJob), "BRD", StringComparison.Ordinal);
+		if (isBrdProfile)
+		{
+			maintenance.Add(
+				"brd",
+				new StructuredProfileNode()
+					.Add("enabled", ReadBool(flatProfile, "brd_maintenance_enabled", false))
+					.Add("songs", SplitPipeList(ReadString(flatProfile, "brd_songs", "")))
+					.Add("dummy_songs", SplitPipeList(ReadString(flatProfile, "brd_dummy_songs", "")))
+					.Add("use_nitro", ReadBool(flatProfile, "brd_use_nitro", false))
+					.Add("use_clarion_call", ReadBool(flatProfile, "brd_use_clarion_call", false))
+					.Add("use_marcato", ReadBool(flatProfile, "brd_use_marcato", false))
+					.Add("marcato_song", ReadString(flatProfile, "brd_marcato_song", ""))
+			);
+		}
+
+		maintenance.Add("geo", EmptyList());
 
         return maintenance;
     }

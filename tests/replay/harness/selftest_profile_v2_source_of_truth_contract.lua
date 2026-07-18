@@ -500,6 +500,22 @@ local function main()
 	assert_true(#state_missing_cor.read_calls >= 2, 'non-COR profile must validate and apply the expected file path')
 	assert_equal(state_missing_cor.read_calls[1], profile_v2.default_export_path(meta), 'non-COR profile must read the expected file path')
 
+	local empty_brd_payload = deep_clone(fixture)
+	empty_brd_payload.profile.main_job = 'BRD'
+	empty_brd_payload.profile.sub_job = 'WHM'
+	empty_brd_payload.config.maintenance.brd = {}
+	local empty_brd_meta = make_meta('BRD', 'WHM')
+	local empty_brd_deps = make_fake_fs({
+		[profile_v2.default_export_path(empty_brd_meta)] = profile_v2.serialize_structured_profile(empty_brd_payload),
+	})
+	local empty_brd_apply = profile_v2.apply_structured_profile_file_to_settings(build_flat_settings(), empty_brd_meta, contract.validate_structured_profile_config, empty_brd_deps)
+	assert_true(type(empty_brd_apply) == 'table' and empty_brd_apply.ok == true, 'legacy empty BRD maintenance section must apply cleanly')
+	local empty_brd_status = profile_v2.inspect_structured_profile_status(empty_brd_apply.candidate, empty_brd_meta, contract.validate_structured_profile_config, empty_brd_deps)
+	assert_true(empty_brd_status.valid == true, 'legacy empty BRD maintenance section must remain valid after apply')
+	assert_equal(empty_brd_status.diff_count, 0, 'legacy empty BRD maintenance section must match the post-apply runtime')
+	local empty_brd_autoload = profile_v2.autoload_structured_profile_file_to_settings(build_flat_settings(), empty_brd_meta, contract.validate_structured_profile_config, empty_brd_deps)
+	assert_true(type(empty_brd_autoload) == 'table' and empty_brd_autoload.ok == true, 'legacy empty BRD maintenance section must autoload cleanly')
+
 	local cor_payload = make_cor_payload()
 	local cor_meta = make_meta(cor_payload.profile.main_job, cor_payload.profile.sub_job)
 	local cor_active, cor_err = active_config.build_active_profile_from_v2_payload(cor_payload, cor_meta)

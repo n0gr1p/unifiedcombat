@@ -1938,6 +1938,7 @@ end
 windower.register_event('load', function()
 	uc_register_action_listener()
 	if windower.ffxi.get_info().logged_in then
+		UC_UNIFIED_ENGINE.seed_cached_status_snapshot()
 		uc_update_engine()
 		uc_reload_startup_profile_once()
 		uc_queue_profile_v2_autoload()
@@ -2018,6 +2019,7 @@ end)
 
 windower.register_event('job change', function(job, lvl)
 	local jname = res.jobs:with('id', job).english_short
+	require('uc_brd_maintenance').reset('job_change')
 	uc_update_engine()
 	uc_reload_active_profile(jname)
 	uc_queue_profile_v2_autoload()
@@ -2026,12 +2028,14 @@ windower.register_event('job change', function(job, lvl)
 end)
 
 windower.register_event('zone change', function()
+	require('uc_brd_maintenance').reset('zone_change')
 	_G.UC_LAST_ZONE_CHANGE_AT = uc_now_s()
 	_G.UC_ZONE_SUSPEND_UNTIL = uc_now_s() + UC_ZONE_SUSPEND_SEC
 	_G.UC_LAST_BLOCK_REASON = 'ZONE_SUSPEND'
 end)
 
 windower.register_event('unload', function()
+	require('uc_brd_maintenance').reset('unload')
 	uc_profile_v2_autoload_pending_key = nil
 	uc_profile_v2_autoload_completed_key = nil
 	uc_profile_v2_startup_reload_completed_key = nil
@@ -2098,6 +2102,7 @@ windower.register_event('addon command', function(...)
 		return
 	elseif a == 'stop' then
 		Start_Engine = false
+		require('uc_brd_maintenance').reset('engine_stop')
 		if _G.UC_SETTINGS then
 			_G.UC_SETTINGS.engine_enabled = false
 		end
@@ -2153,6 +2158,57 @@ windower.register_event('addon command', function(...)
 			return
 		end
 		windower.add_to_chat(207, '//uc configstatus export')
+		return
+	elseif a == 'brd' then
+		local sub = args[2] and tostring(args[2]):lower() or ''
+		if sub == 'options' then
+			local names, stats = require('uc_brd_song_options').collect(res, windower.ffxi.get_spells(), windower.ffxi.get_player())
+			windower.add_to_chat(207, ('UC BRD options: %d eligible, %d learned, %d resources (BRD level %d)'):format(
+				#names,
+				stats.learned_song_count,
+				stats.resource_song_count,
+				stats.bard_level
+			))
+			if #names > 0 then
+				windower.add_to_chat(207, table.concat(names, ' | '))
+			end
+			return
+		end
+		if sub == 'status' then
+			for _, line in ipairs(require('uc_brd_maintenance').status_lines()) do
+				windower.add_to_chat(207, line)
+			end
+			return
+		end
+		if sub == 'trace' and args[3] and tostring(args[3]):lower() == 'once' then
+			require('uc_brd_maintenance').arm_trace_once()
+			windower.add_to_chat(207, 'UC BRD trace armed for the next song transaction')
+			return
+		end
+		if sub == 'capture' and args[3] and tostring(args[3]):lower() == 'once' then
+			require('uc_brd_maintenance').arm_manual_capture_once()
+			windower.add_to_chat(207, 'UC BRD passive capture armed for the next local general song')
+			return
+		end
+		if sub == 'log' then
+			local op = args[3] and tostring(args[3]):lower() or ''
+			local brd = require('uc_brd_maintenance')
+			if op == 'start' then
+				local ok, path_or_error = brd.start_diagnostic_log()
+				windower.add_to_chat(ok and 207 or 167, ok and ('UC BRD diagnostic log started: ' .. path_or_error)
+					or ('UC BRD diagnostic log failed: ' .. path_or_error))
+				return
+			elseif op == 'stop' then
+				windower.add_to_chat(207, 'UC BRD diagnostic log stopped: ' .. tostring(brd.stop_diagnostic_log()))
+				return
+			elseif op == 'status' then
+				local enabled, path, log_error = brd.diagnostic_log_status()
+				windower.add_to_chat(207, ('UC BRD diagnostic log: enabled=%s path=%s error=%s'):format(
+					tostring(enabled), tostring(path), tostring(log_error)))
+				return
+			end
+		end
+		windower.add_to_chat(207, '//uc brd status | //uc brd options | //uc brd trace once | //uc brd capture once | //uc brd log start|stop|status')
 		return
 	elseif a == 'profilev2' then
 		local sub = args[2] and tostring(args[2]):lower() or ''

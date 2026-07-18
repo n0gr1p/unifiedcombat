@@ -39,6 +39,7 @@ local function main()
     assert_contains(action_state_source, "function M.clear_local_defensive_spell_interruption", "action-state helper for defensive spell interruption must exist")
     assert_contains(action_state_source, "if last_send_kind ~= 'spell' then", "interruption clear must not clear JA/WS state")
     assert_contains(action_state_source, "if last_provider ~= 'defensive_internal' and last_provider ~= 'defensive_healbot' then", "interruption clear must stay scoped to defensive spell providers")
+    assert_contains(action_state_source, "function M.clear_local_brd_spell_failure", "action-state helper for BRD spell failure must exist")
 
     assert_contains(scheduler_source, "function scheduler.is_spell_cast_complete_message_id(message_id)", "scheduler must classify spell cast-complete message ids")
     assert_contains(scheduler_source, "function scheduler.is_spell_cast_interrupted_message_id(message_id)", "scheduler must classify spell interruption message ids")
@@ -47,6 +48,7 @@ local function main()
     assert_contains(scheduler_source, "scheduler.clear_defensive_spell_wait_state()", "scheduler interruption branch must clear defensive spell wait")
     assert_contains(scheduler_source, "_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)", "scheduler interruption branch must only shorten scheduler-owned movement lock")
     assert_contains(scheduler_source, "p1_pending_mark_complete(now, ('spell_cast_interrupted_%d'):format(message_id))", "scheduler interruption branch must complete pending state with explicit interruption code")
+    assert_contains(scheduler_source, "return mid == 17 or mid == 18", "scheduler must classify unable-cast message ids")
 
     local scheduler = {}
 
@@ -92,6 +94,27 @@ local function main()
     })
     cleared = action_state.clear_local_defensive_spell_interruption(other_scheduler, now_s)
     assert_equal(cleared, false, "unrelated combat spell must not be cleared by defensive spell interruption helper")
+
+    now_value = 50
+    local brd_scheduler = {}
+    action_state.action_mark_sent_with_meta(brd_scheduler, "spell", now_s, {
+        action_name = "Honor March",
+        provider = "maintenance_brd",
+    })
+    cleared = action_state.clear_local_brd_spell_failure(brd_scheduler, now_s, { message_id = 17, require_prestart = true })
+    assert_equal(cleared, true, "unable-cast message must release pre-start BRD spell state")
+    assert_equal(action_state.action_is_acting(brd_scheduler, now_s), false, "BRD server rejection must end acting state immediately")
+    assert_equal(action_state.action_state(brd_scheduler).terminal_outcome, "server_reject_unable_cast", "BRD rejection terminal outcome mismatch")
+
+    now_value = 60
+    local started_brd_scheduler = {}
+    action_state.action_mark_sent_with_meta(started_brd_scheduler, "spell", now_s, {
+        action_name = "Honor March",
+        provider = "maintenance_brd",
+    })
+    action_state.action_mark_packet_start(started_brd_scheduler, now_s, { message_id = 327 })
+    cleared = action_state.clear_local_brd_spell_failure(started_brd_scheduler, now_s, { message_id = 17, require_prestart = true })
+    assert_equal(cleared, false, "unable-cast message must not reject BRD work after cast start")
 
     io.stdout:write("selftest_scheduler_spell_interruption_action_state: OK\n")
 end

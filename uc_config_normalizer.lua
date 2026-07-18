@@ -138,6 +138,30 @@ local function normalize_list(value, default_value)
     return clone_value(default_value)
 end
 
+local function normalize_pipe_string_list(value, default_value)
+    if type(value) == 'table' then
+        local out = {}
+        for i = 1, #value do
+            local item = type(value[i]) == 'string' and trim_string(value[i]) or ''
+            if item ~= '' then
+                out[#out + 1] = item
+            end
+        end
+        return out
+    end
+    if type(value) == 'string' then
+        local out = {}
+        for item in value:gmatch('[^|]+') do
+            item = trim_string(item)
+            if item ~= '' then
+                out[#out + 1] = item
+            end
+        end
+        return out
+    end
+    return clone_value(default_value or {})
+end
+
 local function normalize_targeted_buffs(value, default_value)
     if value == nil then
         return clone_value(default_value)
@@ -401,7 +425,15 @@ local function default_config(meta)
                 range_selected = '',
                 range_require_ids = {},
             },
-            brd = {},
+            brd = {
+                enabled = false,
+                songs = {},
+                dummy_songs = {},
+                use_nitro = false,
+                use_clarion_call = false,
+                use_marcato = false,
+                marcato_song = '',
+            },
             geo = {},
         },
         debug = {
@@ -816,7 +848,14 @@ local function normalize_maintenance(source, config)
         maintenance.cor.luzaf_range_override = normalize_boolean(cor.luzaf_range_override, maintenance.cor.luzaf_range_override)
         maintenance.cor.range_selected = normalize_string(cor.range_selected, maintenance.cor.range_selected)
         maintenance.cor.range_require_ids = normalize_list(cor.range_require_ids, maintenance.cor.range_require_ids)
-        maintenance.brd = normalize_list(nested.brd, maintenance.brd)
+        local brd = is_table(nested.brd) and nested.brd or {}
+        maintenance.brd.enabled = normalize_boolean(brd.enabled, maintenance.brd.enabled)
+        maintenance.brd.songs = normalize_pipe_string_list(brd.songs, maintenance.brd.songs)
+        maintenance.brd.dummy_songs = normalize_pipe_string_list(brd.dummy_songs, maintenance.brd.dummy_songs)
+        maintenance.brd.use_nitro = normalize_boolean(brd.use_nitro, maintenance.brd.use_nitro)
+        maintenance.brd.use_clarion_call = normalize_boolean(brd.use_clarion_call, maintenance.brd.use_clarion_call)
+        maintenance.brd.use_marcato = normalize_boolean(brd.use_marcato, maintenance.brd.use_marcato)
+        maintenance.brd.marcato_song = normalize_string(brd.marcato_song, maintenance.brd.marcato_song)
         maintenance.geo = normalize_list(nested.geo, maintenance.geo)
     else
         maintenance.enabled = normalize_boolean(first_path(source, { path('domain_maintenance_enabled') }), maintenance.enabled)
@@ -827,7 +866,13 @@ local function normalize_maintenance(source, config)
         maintenance.cor.luzaf_range_override = normalize_boolean(first_path(source, { path('cor_luzaf_range_override') }), maintenance.cor.luzaf_range_override)
         maintenance.cor.range_selected = normalize_string(first_path(source, { path('cor_roll_range_selected') }), maintenance.cor.range_selected)
         maintenance.cor.range_require_ids = normalize_list(first_path(source, { path('cor_roll_range_require_ids') }), maintenance.cor.range_require_ids)
-        maintenance.brd = normalize_list(first_path(source, { path('maintenance_brd') }), maintenance.brd)
+        maintenance.brd.enabled = normalize_boolean(first_path(source, { path('brd_maintenance_enabled') }), maintenance.brd.enabled)
+        maintenance.brd.songs = normalize_pipe_string_list(first_path(source, { path('brd_songs') }), maintenance.brd.songs)
+        maintenance.brd.dummy_songs = normalize_pipe_string_list(first_path(source, { path('brd_dummy_songs') }), maintenance.brd.dummy_songs)
+        maintenance.brd.use_nitro = normalize_boolean(first_path(source, { path('brd_use_nitro') }), maintenance.brd.use_nitro)
+        maintenance.brd.use_clarion_call = normalize_boolean(first_path(source, { path('brd_use_clarion_call') }), maintenance.brd.use_clarion_call)
+        maintenance.brd.use_marcato = normalize_boolean(first_path(source, { path('brd_use_marcato') }), maintenance.brd.use_marcato)
+        maintenance.brd.marcato_song = normalize_string(first_path(source, { path('brd_marcato_song') }), maintenance.brd.marcato_song)
         maintenance.geo = normalize_list(first_path(source, { path('maintenance_geo') }), maintenance.geo)
     end
 end

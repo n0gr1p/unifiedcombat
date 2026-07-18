@@ -87,6 +87,7 @@ public partial class MainForm
     private TextBox _spArrivalTolerance = null!;
     private TabControl _settingsTabs = null!;
     private TabPage _tabCor = null!;
+    private TabPage _tabBrd = null!;
     private ComboBox _corRoll1Combo = null!;
     private ComboBox _corRoll2Combo = null!;
     private CheckBox _corCrookedRoll1 = null!;
@@ -94,6 +95,23 @@ public partial class MainForm
     private CheckBox _corElevens = null!;
     private CheckBox _corLuzafRangeOverride = null!;
     private FlowLayoutPanel _corRangePartyPanel = null!;
+    private CheckBox _brdEnabled = null!;
+    private ListBox _brdSongList = null!;
+    private ComboBox _brdSongCombo = null!;
+    private Button _brdSongAdd = null!;
+    private Button _brdSongRemove = null!;
+    private Button _brdSongUp = null!;
+    private Button _brdSongDown = null!;
+    private ListBox _brdDummyList = null!;
+    private ComboBox _brdDummyCombo = null!;
+    private Button _brdDummyAdd = null!;
+    private Button _brdDummyRemove = null!;
+    private Button _brdDummyUp = null!;
+    private Button _brdDummyDown = null!;
+    private CheckBox _brdUseNitro = null!;
+    private CheckBox _brdUseClarion = null!;
+    private CheckBox _brdUseMarcato = null!;
+    private ComboBox _brdMarcatoSong = null!;
     private Label _pathFileValue = null!;
     private Label _pathRouteTypeValue = null!;
     private Label _pathDistanceValue = null!;
@@ -910,6 +928,90 @@ public partial class MainForm
         corRoot.Controls.Add(_corRangePartyPanel);
         _tabCor.Controls.Add(corRoot);
         _settingsTabs.TabPages.Add(_tabCor);
+
+        _tabBrd = new TabPage("BRD Songs") { AutoScroll = true };
+        var brdRoot = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 1,
+            Padding = new Padding(8),
+        };
+        _brdEnabled = new CheckBox { Text = "Maintain configured songs", AutoSize = true };
+        _brdEnabled.CheckedChanged += (_, _) => OnBrdConfigChanged();
+        brdRoot.Controls.Add(_brdEnabled);
+
+        brdRoot.Controls.Add(new Label { Text = "Final songs (ordered)", AutoSize = true, Padding = new Padding(0, 8, 0, 2) });
+        _brdSongList = new ListBox { Height = 105, IntegralHeight = false, Dock = DockStyle.Top };
+        brdRoot.Controls.Add(_brdSongList);
+        var brdSongAddRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        _brdSongCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 280 };
+        _brdSongCombo.DropDown += (_, _) =>
+        {
+            if (!string.IsNullOrWhiteSpace(_selectedSid)) EnsureOptionsHydrated(_selectedSid, _brdSongOptions.Count == 0);
+        };
+        _brdSongAdd = new Button { Text = "Add", AutoSize = true };
+        _brdSongAdd.Click += (_, _) => OnBrdListAdd(false);
+        brdSongAddRow.Controls.Add(_brdSongCombo);
+        brdSongAddRow.Controls.Add(_brdSongAdd);
+        brdRoot.Controls.Add(brdSongAddRow);
+        var brdSongButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        _brdSongRemove = new Button { Text = "Remove", AutoSize = true };
+        _brdSongRemove.Click += (_, _) => OnBrdListRemove(false);
+        _brdSongUp = new Button { Text = "Up", AutoSize = true };
+        _brdSongUp.Click += (_, _) => OnBrdListMove(false, -1);
+        _brdSongDown = new Button { Text = "Down", AutoSize = true };
+        _brdSongDown.Click += (_, _) => OnBrdListMove(false, 1);
+        brdSongButtons.Controls.AddRange([_brdSongRemove, _brdSongUp, _brdSongDown]);
+        brdRoot.Controls.Add(brdSongButtons);
+
+        brdRoot.Controls.Add(new Label { Text = "Capacity dummy songs (ordered; GearSwap equips the capacity instrument)", AutoSize = true, Padding = new Padding(0, 8, 0, 2) });
+        _brdDummyList = new ListBox { Height = 85, IntegralHeight = false, Dock = DockStyle.Top };
+        brdRoot.Controls.Add(_brdDummyList);
+        var brdDummyAddRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        _brdDummyCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 280 };
+        _brdDummyCombo.DropDown += (_, _) =>
+        {
+            if (!string.IsNullOrWhiteSpace(_selectedSid)) EnsureOptionsHydrated(_selectedSid, _brdSongOptions.Count == 0);
+        };
+        _brdDummyAdd = new Button { Text = "Add", AutoSize = true };
+        _brdDummyAdd.Click += (_, _) => OnBrdListAdd(true);
+        brdDummyAddRow.Controls.Add(_brdDummyCombo);
+        brdDummyAddRow.Controls.Add(_brdDummyAdd);
+        brdRoot.Controls.Add(brdDummyAddRow);
+        var brdDummyButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        _brdDummyRemove = new Button { Text = "Remove", AutoSize = true };
+        _brdDummyRemove.Click += (_, _) => OnBrdListRemove(true);
+        _brdDummyUp = new Button { Text = "Up", AutoSize = true };
+        _brdDummyUp.Click += (_, _) => OnBrdListMove(true, -1);
+        _brdDummyDown = new Button { Text = "Down", AutoSize = true };
+        _brdDummyDown.Click += (_, _) => OnBrdListMove(true, 1);
+        brdDummyButtons.Controls.AddRange([_brdDummyRemove, _brdDummyUp, _brdDummyDown]);
+        brdRoot.Controls.Add(brdDummyButtons);
+
+        var brdFlags = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Padding = new Padding(0, 8, 0, 0) };
+        _brdUseNitro = new CheckBox { Text = "Use NITRO (Nightingale + Troubadour)", AutoSize = true };
+        _brdUseNitro.CheckedChanged += (_, _) => OnBrdConfigChanged();
+        _brdUseClarion = new CheckBox { Text = "Use Clarion Call", AutoSize = true };
+        _brdUseClarion.CheckedChanged += (_, _) => OnBrdConfigChanged();
+        _brdUseMarcato = new CheckBox { Text = "Use Marcato", AutoSize = true };
+        _brdUseMarcato.CheckedChanged += (_, _) => OnBrdConfigChanged();
+        brdFlags.Controls.AddRange([_brdUseNitro, _brdUseClarion, _brdUseMarcato]);
+        brdRoot.Controls.Add(brdFlags);
+        var marcatoRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        marcatoRow.Controls.Add(new Label { Text = "Marcato song", AutoSize = true, Padding = new Padding(0, 5, 8, 0) });
+        _brdMarcatoSong = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 280 };
+        _brdMarcatoSong.SelectedIndexChanged += (_, _) => OnBrdConfigChanged();
+        marcatoRow.Controls.Add(_brdMarcatoSong);
+        brdRoot.Controls.Add(marcatoRow);
+        brdRoot.Controls.Add(new Label
+        {
+            Text = "Durations and active song ownership are observed by the addon and are never saved in the profile.",
+            AutoSize = true,
+            Padding = new Padding(0, 10, 0, 0),
+        });
+        _tabBrd.Controls.Add(brdRoot);
+        _settingsTabs.TabPages.Add(_tabBrd);
 
         var tabScheduler = new TabPage("Scheduler");
         tabScheduler.AutoScroll = true;

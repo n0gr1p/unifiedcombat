@@ -417,6 +417,38 @@ function M.clear_local_spell_interruption(scheduler, now_s, meta)
 	return true
 end
 
+function M.clear_local_brd_spell_failure(scheduler, now_s, meta)
+	local st = M.action_state(scheduler)
+	local now = now_s()
+	meta = type(meta) == 'table' and meta or {}
+	if tostring(st.last_send_kind or '') ~= 'spell' or tostring(st.last_action_provider or '') ~= 'maintenance_brd' then
+		return false
+	end
+	if meta.require_prestart == true and (tonumber(st.packet_start_at) or 0) > 0 then
+		return false
+	end
+	local outcome = tostring(meta.terminal_outcome or 'server_reject_unable_cast')
+	local applied, prior = mark_terminal_outcome(st, now, outcome, meta)
+	if not applied then
+		st.last_completion_ignore_reason = 'already_terminal_' .. tostring(prior or '')
+		return false
+	end
+	st.action_end = now
+	st.cooldown_until = now
+	st.action_delay = 0
+	st.last_action = now
+	st.last_acting_state = false
+	st.post_spell_tail_started_at = 0
+	st.post_spell_tail_until = 0
+	timeline_log('SPELL_PROVIDER_FAILURE', spell_elapsed_fields(st, now, {
+		message_id = tonumber(meta.message_id) or 0,
+		release_reason = outcome,
+		old_kind = 'spell',
+	}), ('spell_server_rejected:%s'):format(tostring(st.last_action_name or '')), 0.05)
+	emit_spell_action_release(st, now, outcome, outcome)
+	return true
+end
+
 function M.clear_local_defensive_spell_success(scheduler, now_s, meta)
 	local st = M.action_state(scheduler)
 	local now = now_s()

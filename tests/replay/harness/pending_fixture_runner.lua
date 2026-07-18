@@ -41,6 +41,16 @@ local function call_helper(fixture)
         }
     end
 
+    if fixture.helper == "p1_pending_mark_failed" then
+        local scheduler = input.scheduler or { phase1 = { recent_duplicate_until = {} } }
+        local result = pending.p1_pending_mark_failed(scheduler, input.now, input.result_code, input.retry_delay)
+        return {
+            result = result,
+            pending = scheduler.phase1.pending,
+            recent_duplicate_until = scheduler.phase1.recent_duplicate_until,
+        }
+    end
+
     error("unknown helper: " .. tostring(fixture.helper))
 end
 

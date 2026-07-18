@@ -9,6 +9,8 @@ local RUNTIME_LUA_FILES = {
     "uc_add_priority.lua",
     "uc_attack.lua",
     "uc_cor_maintenance.lua",
+    "uc_brd_maintenance.lua",
+    "uc_brd_song_options.lua",
     "uc_active_config.lua",
     "uc_enemy_effect_tracker.lua",
     "uc_fight_leader.lua",

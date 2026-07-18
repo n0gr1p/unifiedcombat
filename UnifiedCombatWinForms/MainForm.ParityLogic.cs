@@ -677,6 +677,23 @@ public partial class MainForm
                 var selectedNames = SessionStateHelper.SplitOptions(s.TryGetProperty("cor_roll_range_selected", out var crs) ? crs : default);
                 RenderCorRangePartyChecks(sid, selectedNames);
             }
+            var brdVisible = string.Equals(mainJob, "BRD", StringComparison.Ordinal) || string.Equals(subJob, "BRD", StringComparison.Ordinal);
+            EnsureBrdTabVisibility(brdVisible);
+            if (brdVisible)
+            {
+                _brdEnabled.Checked = SessionStateHelper.GetBool(s, "brd_maintenance_enabled", false);
+                ApplyBrdList(_brdSongList, SessionStateHelper.GetString(s, "brd_songs"));
+                ApplyBrdList(_brdDummyList, SessionStateHelper.GetString(s, "brd_dummy_songs"));
+                _brdUseNitro.Checked = SessionStateHelper.GetBool(s, "brd_use_nitro", false);
+                _brdUseClarion.Checked = SessionStateHelper.GetBool(s, "brd_use_clarion_call", false);
+                _brdUseMarcato.Checked = SessionStateHelper.GetBool(s, "brd_use_marcato", false);
+                RefreshBrdMarcatoOptions(SessionStateHelper.GetString(s, "brd_marcato_song"));
+                var subBrdOnly = !string.Equals(mainJob, "BRD", StringComparison.Ordinal) && string.Equals(subJob, "BRD", StringComparison.Ordinal);
+                _brdUseNitro.Enabled = !subBrdOnly;
+                _brdUseClarion.Enabled = !subBrdOnly;
+                _brdUseMarcato.Enabled = !subBrdOnly;
+                _brdMarcatoSong.Enabled = !subBrdOnly && _brdUseMarcato.Checked;
+            }
 
             foreach (var key in HubUiConstants.BoolKeys)
             {
@@ -711,8 +728,9 @@ public partial class MainForm
         var hasPullJa = s.TryGetProperty("path_pull_ja_options", out var pjo) && pjo.ValueKind == JsonValueKind.String;
         var hasPullSpell = s.TryGetProperty("path_pull_spell_options", out var pso) && pso.ValueKind == JsonValueKind.String;
         var hasCorRolls = s.TryGetProperty("cor_roll_options", out var cro) && cro.ValueKind == JsonValueKind.String;
+        var hasBrdSongs = s.TryGetProperty("brd_song_options", out var bso) && bso.ValueKind == JsonValueKind.String;
         var hasPartyOpts = s.TryGetProperty("party_options", out var po) && po.ValueKind == JsonValueKind.String;
-        if (!hasAbility && !hasWs && !hasPullJa && !hasPullSpell && !hasCorRolls && !hasPartyOpts)
+        if (!hasAbility && !hasWs && !hasPullJa && !hasPullSpell && !hasCorRolls && !hasBrdSongs && !hasPartyOpts)
         {
             return;
         }
@@ -722,6 +740,7 @@ public partial class MainForm
         var pullJaOpts = SessionStateHelper.SplitOptions(hasPullJa ? pjo : default);
         var pullSpellOpts = SessionStateHelper.SplitOptions(hasPullSpell ? pso : default);
         var corRollOpts = SessionStateHelper.SplitOptions(hasCorRolls ? cro : default);
+        var brdSongOpts = SessionStateHelper.SplitOptions(hasBrdSongs ? bso : default);
         var partyOpts = SessionStateHelper.SplitOptions(hasPartyOpts ? po : default);
         var changed = false;
 
@@ -798,6 +817,14 @@ public partial class MainForm
                 EnsureCorRollOptions(_corRoll2Combo);
                 changed = true;
             }
+            if (hasBrdSongs && !SequenceEqualOrdinal(_brdSongOptions, brdSongOpts))
+            {
+                _brdSongOptions.Clear();
+                _brdSongOptions.AddRange(brdSongOpts);
+                RefreshBrdSongPickOptions(_brdSongCombo);
+                RefreshBrdSongPickOptions(_brdDummyCombo);
+                changed = true;
+            }
             if (hasPartyOpts && !SequenceEqualOrdinal(_corPartyOptions, partyOpts))
             {
                 _corPartyOptions.Clear();
@@ -858,7 +885,8 @@ public partial class MainForm
             : SessionStateHelper.GetString(s, "job", "");
         if (!string.IsNullOrWhiteSpace(job))
         {
-            _optionsHydratedJobBySid[sid] = job;
+            var subJob = meta?.SubJob ?? SessionStateHelper.GetString(s, "sub_job", "");
+            _optionsHydratedJobBySid[sid] = $"{job}/{subJob}";
         }
         _optionsRequestInFlightBySid.Remove(sid);
         if (changed && string.Equals(_selectedSid, sid, StringComparison.Ordinal))
@@ -1399,6 +1427,160 @@ public partial class MainForm
                 _settingsTabs.SelectedIndex = 0;
             }
         }
+    }
+
+    private void EnsureBrdTabVisibility(bool shouldShow)
+    {
+        if (_settingsTabs is null || _tabBrd is null)
+        {
+            return;
+        }
+        var hasTab = _settingsTabs.TabPages.Contains(_tabBrd);
+        if (shouldShow && !hasTab)
+        {
+            _settingsTabs.TabPages.Add(_tabBrd);
+        }
+        else if (!shouldShow && hasTab)
+        {
+            var wasSelected = ReferenceEquals(_settingsTabs.SelectedTab, _tabBrd);
+            _settingsTabs.TabPages.Remove(_tabBrd);
+            if (wasSelected && _settingsTabs.TabPages.Count > 0)
+            {
+                _settingsTabs.SelectedIndex = 0;
+            }
+        }
+    }
+
+    private static void ApplyBrdList(ListBox list, string raw)
+    {
+        var incoming = raw.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var current = list.Items.Cast<object>().Select(x => x.ToString() ?? "").ToArray();
+        if (current.SequenceEqual(incoming, StringComparer.Ordinal))
+        {
+            return;
+        }
+        list.Items.Clear();
+        list.Items.AddRange(incoming.Cast<object>().ToArray());
+    }
+
+    private void RefreshBrdSongPickOptions(ComboBox combo)
+    {
+        var selected = combo.SelectedItem?.ToString() ?? "";
+        combo.Items.Clear();
+        combo.Items.AddRange(_brdSongOptions.Cast<object>().ToArray());
+        var index = combo.Items.Cast<object>().ToList().FindIndex(x => string.Equals(x?.ToString(), selected, StringComparison.Ordinal));
+        combo.SelectedIndex = index >= 0 ? index : (combo.Items.Count > 0 ? 0 : -1);
+    }
+
+    private void RefreshBrdMarcatoOptions(string selected = "")
+    {
+        var wasSuppressed = _suppressEvents;
+        _suppressEvents = true;
+        try
+        {
+            if (string.IsNullOrEmpty(selected))
+            {
+                selected = _brdMarcatoSong.SelectedItem?.ToString() ?? "";
+            }
+            _brdMarcatoSong.Items.Clear();
+            foreach (var item in _brdSongList.Items.Cast<object>().Select(x => x.ToString() ?? ""))
+            {
+                _brdMarcatoSong.Items.Add(item);
+            }
+            var index = _brdMarcatoSong.Items.Cast<object>().ToList().FindIndex(x => string.Equals(x?.ToString(), selected, StringComparison.Ordinal));
+            _brdMarcatoSong.SelectedIndex = index >= 0 ? index : (_brdMarcatoSong.Items.Count > 0 ? 0 : -1);
+            _brdMarcatoSong.Enabled = _brdUseMarcato.Enabled && _brdUseMarcato.Checked;
+        }
+        finally
+        {
+            _suppressEvents = wasSuppressed;
+        }
+    }
+
+    private void OnBrdConfigChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        RefreshBrdMarcatoOptions();
+        if (!string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            CaptureWorkingProfileFromUi(_selectedSid);
+        }
+    }
+
+    private void OnBrdListAdd(bool dummy)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var combo = dummy ? _brdDummyCombo : _brdSongCombo;
+        var list = dummy ? _brdDummyList : _brdSongList;
+        var other = dummy ? _brdSongList : _brdDummyList;
+        var name = combo.SelectedItem?.ToString() ?? "";
+        if (string.IsNullOrWhiteSpace(name)
+            || list.Items.Cast<object>().Any(x => string.Equals(x?.ToString(), name, StringComparison.Ordinal))
+            || other.Items.Cast<object>().Any(x => string.Equals(x?.ToString(), name, StringComparison.Ordinal)))
+        {
+            return;
+        }
+        if (!dummy && !string.IsNullOrWhiteSpace(_selectedSid) && _sessionMetaBySid.TryGetValue(_selectedSid, out var meta))
+        {
+            var subOnly = !string.Equals(meta.Job, "BRD", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(meta.SubJob, "BRD", StringComparison.OrdinalIgnoreCase);
+            if (subOnly && list.Items.Count >= 1)
+            {
+                return;
+            }
+        }
+        list.Items.Add(name);
+        list.SelectedIndex = list.Items.Count - 1;
+        RefreshBrdMarcatoOptions();
+        OnBrdConfigChanged();
+    }
+
+    private void OnBrdListRemove(bool dummy)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var list = dummy ? _brdDummyList : _brdSongList;
+        var index = list.SelectedIndex;
+        if (index < 0)
+        {
+            return;
+        }
+        list.Items.RemoveAt(index);
+        if (list.Items.Count > 0)
+        {
+            list.SelectedIndex = Math.Min(index, list.Items.Count - 1);
+        }
+        RefreshBrdMarcatoOptions();
+        OnBrdConfigChanged();
+    }
+
+    private void OnBrdListMove(bool dummy, int direction)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var list = dummy ? _brdDummyList : _brdSongList;
+        var from = list.SelectedIndex;
+        var to = from + direction;
+        if (from < 0 || to < 0 || to >= list.Items.Count)
+        {
+            return;
+        }
+        var item = list.Items[from];
+        list.Items.RemoveAt(from);
+        list.Items.Insert(to, item);
+        list.SelectedIndex = to;
+        RefreshBrdMarcatoOptions();
+        OnBrdConfigChanged();
     }
 
     private void ApplyCorRollFromSnapshot(ComboBox combo, string value)

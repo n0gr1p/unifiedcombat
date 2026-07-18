@@ -754,6 +754,10 @@ local function uc_get_roll_ability_names()
 	return uc_unique_sorted(out)
 end
 
+local function uc_get_bard_song_names()
+	return require('uc_brd_song_options').collect(res, windower.ffxi.get_spells(), windower.ffxi.get_player())
+end
+
 local function uc_get_enemy_spell_names()
 	local function spell_known_flag(v)
 		return v == true or v == 1 or v == 'true'
@@ -1006,6 +1010,7 @@ local function process_line(line)
 			path_pull_ja_options = select(1, uc_get_cached_pull_action_options()),
 			path_pull_spell_options = select(2, uc_get_cached_pull_action_options()),
 			cor_roll_options = uc_join_pipe(uc_get_roll_ability_names()),
+			brd_song_options = uc_join_pipe(uc_get_bard_song_names()),
 			party_options = uc_join_pipe(select(1, uc_get_party_name_maps(false))),
 		}
 		safe_send_line(json_encode_simple(st))

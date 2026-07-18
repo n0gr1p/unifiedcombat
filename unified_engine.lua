@@ -402,4 +402,8 @@ function engine.stop()
 	hide_sched_overlay()
 end
 
+function engine.seed_cached_status_snapshot()
+	return scheduler.seed_cached_status_snapshot()
+end
+
 return engine

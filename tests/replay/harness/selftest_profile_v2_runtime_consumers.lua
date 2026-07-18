@@ -217,7 +217,15 @@ local function main()
 					luzaf_range_override = false,
 					range_require_ids = {},
 				},
-				brd = { 'Honor March', 'Victory March' },
+				brd = {
+					enabled = true,
+					songs = { 'Honor March', 'Victory March' },
+					dummy_songs = {},
+					use_nitro = false,
+					use_clarion_call = false,
+					use_marcato = false,
+					marcato_song = '',
+				},
 				geo = { 'Geo-Frailty' },
 			},
 			follow = {
@@ -253,7 +261,7 @@ local function main()
 	assert_equal(active_config.get_path('config.follow.partner.puller_name'), 'Niightsiide', 'active puller name mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Target', 'active targeted buff character mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].buff, 'Victory March', 'active targeted buff name mismatch')
-	assert_equal(active_config.get_path('config.maintenance.brd')[1], 'Honor March', 'active BRD maintenance list mismatch')
+	assert_equal(active_config.get_path('config.maintenance.brd.songs')[1], 'Honor March', 'active BRD maintenance list mismatch')
 	assert_equal(active_config.get_path('config.maintenance.geo')[1], 'Geo-Frailty', 'active GEO maintenance list mismatch')
 
 	local projected, project_err = active_config.project_flat_settings(active_profile, {})
@@ -277,7 +285,8 @@ local function main()
 	assert_equal(projected.puller_name, 'Niightsiide', 'projected puller name mismatch')
 	assert_equal(projected.puller_id, 77, 'projected puller id mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Target:Victory March', 'projected targeted buff string mismatch')
-	assert_equal(projected.maintenance_brd[1], 'Honor March', 'projected BRD maintenance list mismatch')
+	assert_equal(projected.maintenance_brd.songs[1], 'Honor March', 'projected BRD maintenance list mismatch')
+	assert_equal(projected.brd_songs[2], 'Victory March', 'projected BRD flat song list mismatch')
 	assert_equal(projected.maintenance_geo[1], 'Geo-Frailty', 'projected GEO maintenance list mismatch')
 	assert_equal(runtime_overrides.fight_leader_id(projected), 77, 'fight leader helper must resolve the leader name before the id')
 	assert_true(uc_ignore.is_name_blocked({ wait_ignore_names = { 'Niightsiide' } }, 'Niightsiide') == true, 'wait ignore helper must block by name')
@@ -349,7 +358,15 @@ local function main()
 					luzaf_range_override = false,
 					range_require_ids = {},
 				},
-				brd = { 'Honor March', 'Victory March' },
+				brd = {
+					enabled = true,
+					songs = { 'Honor March', 'Victory March' },
+					dummy_songs = {},
+					use_nitro = false,
+					use_clarion_call = false,
+					use_marcato = false,
+					marcato_song = '',
+				},
 				geo = { 'Geo-Frailty' },
 			},
 		},
@@ -400,8 +417,7 @@ local function main()
 		},
 	}
 	local picked = hb_buff_maint.choose(brd_general_flat, brd_members, helpers)
-	assert_true(type(picked) == 'table', 'BRD general maintenance should return a candidate')
-	assert_equal(picked.spell, 'Honor March', 'BRD general maintenance must prefer the active config list')
+	assert_true(picked == nil, 'dedicated BRD maintenance must own songs instead of defensive_internal')
 
 	set_active_profile(active_config, {
 		version = 2,
@@ -444,8 +460,8 @@ local function main()
 		},
 	}
 	picked = hb_buff_maint.choose(targeted_active_flat, targeted_active_members, helpers)
-	assert_true(type(picked) == 'table', 'BRD structured targeted maintenance should return a candidate')
-	assert_equal(picked.spell, 'Victory March', 'BRD structured targeted maintenance must prefer active config targeted entries over the flat compatibility string')
+	assert_true(type(picked) == 'table', 'legacy targeted maintenance should remain available when dedicated BRD maintenance is absent')
+	assert_equal(picked.spell, 'Victory March', 'structured targeted maintenance must prefer active config targeted entries over the flat compatibility string')
 
 	set_active_profile(active_config, {
 		version = 2,

@@ -25,7 +25,7 @@ local function make_packet(opcode_byte_5, buffs, endtimes)
         local endtime = endtimes[n] or 0
 
         local buff_offset = n * 2 + 7
-        local endtime_offset = n * 4 + 71
+        local endtime_offset = n * 4 + 69
         write_u16_le(bytes, buff_offset, buff_id)
         write_u32_le(bytes, endtime_offset, endtime)
     end

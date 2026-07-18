@@ -41,6 +41,7 @@ public partial class MainForm : Form
     private readonly Dictionary<string, CheckBox> _boolChecks = new(StringComparer.Ordinal);
     private readonly List<string> _abilityOptions = [];
     private readonly List<string> _corRollOptions = [];
+    private readonly List<string> _brdSongOptions = [];
     private readonly List<string> _corPartyOptions = [];
     private readonly List<string> _partyOptions = [];
     private readonly List<string> _selectedAbilities = [];
@@ -357,7 +358,8 @@ public partial class MainForm : Form
                 continue;
             }
 
-            if (!string.Equals(oldMeta.Job, kv.Value.Job, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(oldMeta.Job, kv.Value.Job, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(oldMeta.SubJob, kv.Value.SubJob, StringComparison.OrdinalIgnoreCase))
             {
                 _optionsHydratedJobBySid.Remove(kv.Key);
                 _optionsRequestInFlightBySid.Remove(kv.Key);
@@ -463,7 +465,8 @@ public partial class MainForm : Form
         {
             return false;
         }
-        return string.Equals(hydratedJob, meta.Job, StringComparison.OrdinalIgnoreCase);
+        var currentJobs = $"{meta.Job}/{meta.SubJob}";
+        return string.Equals(hydratedJob, currentJobs, StringComparison.OrdinalIgnoreCase);
     }
 
     private void EnsureOptionsHydrated(string sid, bool force = false)

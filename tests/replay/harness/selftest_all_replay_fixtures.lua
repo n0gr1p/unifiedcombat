@@ -47,6 +47,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_scheduler_sleep_toggle.lua",
     "tests/replay/harness/selftest_sleep_target_state_suppression.lua",
     "tests/replay/harness/selftest_bard_song_identity_tracking.lua",
+    "tests/replay/harness/selftest_brd_maintenance.lua",
     "tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua",
     "tests/replay/harness/selftest_scheduler_defensive_cure_movement_lock.lua",
     "tests/replay/harness/selftest_scheduler_tank_spell_movement_lock.lua",

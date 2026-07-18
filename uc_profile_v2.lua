@@ -167,6 +167,13 @@ local function is_cor_profile(meta)
 	return type(main_job) == 'string' and main_job:upper() == 'COR'
 end
 
+local function is_brd_profile(meta)
+	local main_job = meta and meta.main_job
+	local sub_job = meta and meta.sub_job
+	return (type(main_job) == 'string' and main_job:upper() == 'BRD')
+		or (type(sub_job) == 'string' and sub_job:upper() == 'BRD')
+end
+
 local function non_cor_maintenance_cor_is_default_empty(cor, meta)
 	if is_cor_profile(meta) or type(cor) ~= 'table' then
 		return false
@@ -200,6 +207,9 @@ local function pick_durable_config_domains(config, meta)
 	end
 	if not is_cor_profile(meta) and type(out.maintenance) == 'table' then
 		out.maintenance.cor = nil
+	end
+	if not is_brd_profile(meta) and type(out.maintenance) == 'table' then
+		out.maintenance.brd = nil
 	end
 	out.sleep = nil
 	return out
@@ -239,21 +249,44 @@ local function strip_durable_profile_overrides(config)
 	return config
 end
 
-local function strip_non_cor_maintenance_cor(current_config, target_config, meta)
-	if type(current_config) ~= 'table' or type(target_config) ~= 'table' or is_cor_profile(meta) then
+local function strip_non_applicable_maintenance(current_config, target_config, meta)
+	if type(current_config) ~= 'table' or type(target_config) ~= 'table' then
 		return current_config, target_config
 	end
-
-	local current_maintenance = current_config.maintenance
-	if type(current_maintenance) == 'table' then
-		current_maintenance.cor = nil
+	local current_maintenance = type(current_config.maintenance) == 'table' and current_config.maintenance or nil
+	local target_maintenance = type(target_config.maintenance) == 'table' and target_config.maintenance or nil
+	if not is_cor_profile(meta) then
+		if current_maintenance then current_maintenance.cor = nil end
+		if target_maintenance then target_maintenance.cor = nil end
 	end
-
-	local target_maintenance = target_config.maintenance
-	if type(target_maintenance) == 'table' then
-		target_maintenance.cor = nil
+	if not is_brd_profile(meta) then
+		if current_maintenance then current_maintenance.brd = nil end
+		if target_maintenance then target_maintenance.brd = nil end
+	else
+		local function default_disabled_brd(value)
+			if type(value) ~= 'table' then
+				return false
+			end
+			if next(value) == nil then
+				return true
+			end
+			return value.enabled == false
+				and type(value.songs) == 'table' and #value.songs == 0
+				and type(value.dummy_songs) == 'table' and #value.dummy_songs == 0
+				and value.use_nitro == false
+				and value.use_clarion_call == false
+				and value.use_marcato == false
+				and tostring(value.marcato_song or '') == ''
+		end
+		local current_brd = current_maintenance and current_maintenance.brd or nil
+		local target_brd = target_maintenance and target_maintenance.brd or nil
+		local current_default = current_brd == nil or default_disabled_brd(current_brd)
+		local target_default = target_brd == nil or default_disabled_brd(target_brd)
+		if current_default and target_default then
+			if current_maintenance then current_maintenance.brd = nil end
+			if target_maintenance then target_maintenance.brd = nil end
+		end
 	end
-
 	return current_config, target_config
 end
 
@@ -1068,7 +1101,7 @@ function M.diff_structured_profile_file_against_settings(settings, meta, validat
 
 	local current_config = M.build_durable_config(settings, meta)
 	local target_config = clone_value(validation.payload.config)
-	current_config, target_config = strip_non_cor_maintenance_cor(current_config, target_config, meta)
+	current_config, target_config = strip_non_applicable_maintenance(current_config, target_config, meta)
 	local diff = M.diff_durable_config(current_config, target_config)
 	return {
 		ok = true,
@@ -1158,7 +1191,7 @@ function M.inspect_structured_profile_status(settings, meta, validator, deps)
 		return structured_profile_status_result(validation.path or path, 'error', false, tostring(current_config or 'runtime config normalization failed'), 0, meta, validation.payload)
 	end
 	local target_config = clone_value(validation.payload.config)
-	current_config, target_config = strip_non_cor_maintenance_cor(current_config, target_config, meta)
+	current_config, target_config = strip_non_applicable_maintenance(current_config, target_config, meta)
 	local diff = M.diff_durable_config(current_config, target_config)
 	local state = diff.count == 0 and 'valid_match' or 'valid_diff'
 	local reason = diff.count == 0 and 'runtime matches file' or 'runtime differs from file'
@@ -1221,7 +1254,7 @@ local function apply_result_to_active_profile(current_settings, payload, meta, d
 	end
 
 	local target_config = clone_value(payload.config)
-	candidate_config, target_config = strip_non_cor_maintenance_cor(candidate_config, target_config, meta)
+	candidate_config, target_config = strip_non_applicable_maintenance(candidate_config, target_config, meta)
 	local diff = diff_durable_config(candidate_config, target_config)
 	if type(diff) ~= 'table' then
 		return {
@@ -1291,7 +1324,7 @@ function M.apply_structured_profile_file_to_settings(current_settings, meta, val
 
 	local current_config = M.build_durable_config(current_settings, meta)
 	local target_config = clone_value(validation.payload.config)
-	current_config, target_config = strip_non_cor_maintenance_cor(current_config, target_config, meta)
+	current_config, target_config = strip_non_applicable_maintenance(current_config, target_config, meta)
 	local diff = M.diff_durable_config(current_config, target_config)
 
 	return {

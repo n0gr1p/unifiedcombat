@@ -780,7 +780,6 @@ local function build_expected_config()
 		},
 		maintenance = {
 			enabled = true,
-			brd = {},
 			geo = {},
 		},
 		debug = {

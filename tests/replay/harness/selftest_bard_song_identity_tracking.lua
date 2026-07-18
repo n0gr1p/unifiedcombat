@@ -175,12 +175,12 @@ local function main()
 	local scheduler_text = scheduler_source:read('*a')
 	scheduler_source:close()
 	assert_true(
-		scheduler_text:find("hb_buff_maint.mark_bard_song_success", 1, true) ~= nil,
-		'scheduler defensive spell success path must record confirmed Bard song identity'
+		scheduler_text:find("hb_buff_maint.mark_bard_song_success", 1, true) == nil,
+		'scheduler must not synthesize Bard duration through defensive maintenance'
 	)
 	assert_true(
-		scheduler_text:find("scheduler.record_confirmed_bard_song_success(pending_action_name, expected_tid, msg_tid)", 1, true) ~= nil,
-		'Bard identity marking must remain tied to the local defensive spell success branch'
+		scheduler_text:find("message_id == 17 and message_param == 0", 1, true) == nil,
+		'scheduler must not treat message 17 (unable to cast) as Bard song success'
 	)
 
 	io.stdout:write('selftest_bard_song_identity_tracking: OK\n')

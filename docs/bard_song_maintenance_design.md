@@ -2,9 +2,9 @@
 
 ## Status
 
-This document records the agreed design for a future Bard enhancing-song maintenance subsystem.
+This document records the design contract implemented by the dedicated Bard enhancing-song maintenance subsystem.
 
-It is a pre-implementation contract. It does not claim that the current addon implements the behavior described here.
+The initial implementation is in `uc_brd_maintenance.lua`, with scheduler ownership under provider `maintenance_brd` and UI-owned durable policy under `config.maintenance.brd`.
 
 The game-mechanics reference is `docs/RefDocs/FFXI_Bard_Song_Overwrite_Logic_Specification.md`. This document defines how UnifiedCombat will apply those mechanics while preserving the addon's scheduler and profile ownership boundaries.
 
@@ -200,6 +200,10 @@ For every dispatched enhancing song:
 5. Compare the family's before/after endtime multisets.
 6. Assign the newly added or changed endtime to the exact song just cast.
 7. If one prior endtime disappeared, remove or replace its previous exact-song owner.
+
+Packet snapshots can shift an unchanged raw endtime by a few ticks as the remaining duration is encoded again. Identity correlation therefore pairs before/after observations within one server-second before classifying unmatched values as a real addition or replacement. A paired owner adopts the newest observed raw endtime; exact numeric equality across snapshots is not an identity requirement.
+
+The raw `0x063` endtime uses the FFXI server timeline at 60 ticks per second. The provider begins with Windower's established epoch-derived offset, then calibrates its runtime offset from `Timestamp` and `Time offset?` in incoming `0x037` packets. Song identity correlation remains in raw packet units; remaining duration is `(endtime - (unix_time - server_offset) * 60) / 60`. The calibrated offset and its source are runtime state and are never durable configuration.
 8. Update only recipients with confirmed successful target evidence.
 
 Because the scheduler serializes actions, only one UnifiedCombat song can be responsible for the expected status change.
@@ -236,6 +240,12 @@ Packet ordering can still place the local `0x063` snapshot immediately before or
 4. On successful `0x028` completion, consume an already-observed matching delta or wait for the next matching `0x063` delta.
 5. Do not dispatch another Bard song until the transaction is resolved or explicitly timed out.
 6. On timeout without a relevant delta, record no timer ownership and expose the failure diagnostically.
+
+Confirmation timeout is phase-aware. A dispatched command has two seconds to produce its category-8/message-327 song-start evidence. An observed cast waits for successful completion or interruption, with a twenty-second exceptional watchdog for a lost terminal packet. A successful category-4 result then starts a fresh two-second window for the corresponding `0x063` timer change. Cast time must never consume the snapshot-confirmation window.
+
+Local action-message `17` or `18` (`Unable to cast spells at this time.`) is a terminal pre-start rejection when the current scheduler token belongs to `maintenance_brd` and no cast-start packet has arrived. The scheduler immediately releases action state as `server_reject_unable_cast`, marks its pending record failed, preserves the existing maintenance throttle with a minimum 0.75-second retry backoff, and tells the provider to discard the unstarted transaction without creating ownership.
+
+The silent two-second start timeout and exceptional casting watchdog publish the same scheduler-owned failure transition with outcomes `start_timeout` and `cast_terminal_timeout`. This releases stale action state, marks scheduler pending failed, and preserves retry backoff rather than merely clearing provider-local pending state.
 
 The bounded scheduler pending/confirmation transaction is the safe window. The implementation should measure actual high-resolution packet deltas with the one-shot trace diagnostic before assigning its timeout constant; it must not infer correctness from chat's one-second timestamp resolution alone.
 
@@ -381,6 +391,14 @@ The provider must not silently move the Marcato song to another durable slot or 
 
 Enemy-targeted Bard songs are outside the initial subsystem. No separate enemy-song Marcato exclusion lock will be added in the initial implementation. If an external or manual song consumes Marcato, observed Marcato loss invalidates the reservation rather than being modeled as provider success.
 
+### Startup snapshot ownership
+
+On addon load, the scheduler first attempts to seed Bard runtime ownership from Windower's cached type-9 `0x063` status snapshot. Other `0x063` variants are rejected by the existing parser. If no authoritative cached snapshot is available, starting maintenance enters an explicit ownership-rebuild state instead of blocking: the provider casts the effective configured sequence and learns exact song timers from the resulting action and type-9 `0x063` packets. This bootstrap state is runtime-only and never changes durable configuration.
+
+For live packet validation, `//uc brd capture once` passively records the next local general-song `0x028` target results and the matching status family from the next type-9 `0x063`. The command does not dispatch an action; stop the engine before arming it when capturing a manual cast, then inspect the evidence with `//uc brd status`.
+
+For multi-cast lifecycle diagnosis, `//uc brd log start` clears and enables `data/logs/<character>_brd_maintenance.log`. The runtime records proposals, dispatch baselines, raw `0x028` results, parsed `0x063` family timers, multiset deltas, owner confirmation/pruning, pending timeout/cancellation, and scheduler rejection. `//uc brd log stop` closes the diagnostic session; logging is runtime-only and never durable profile configuration.
+
 ## Clarion Call and Capacity
 
 Clarion Call is runtime capacity state controlled by durable user policy.
@@ -395,6 +413,8 @@ The dedicated provider must use the capacity and recovery rules in `docs/RefDocs
 - no guessed overwrite when shortest-duration victim identity is ambiguous.
 
 Clarion active state, remaining window, current song count, and degraded state are runtime-owned.
+
+The ordered final-song list may contain five songs while Clarion policy is disabled. In that case, the provider treats only the first four entries as the effective maintenance set and requires capacity dummy songs for those four slots only. Enabling Clarion activates the fifth entry and its additional dummy-song requirement. The durable five-song order is preserved when Clarion is toggled; the provider does not reject the profile or attempt to maintain the inactive fifth song.
 
 ### Dummy-song and GearSwap contract
 

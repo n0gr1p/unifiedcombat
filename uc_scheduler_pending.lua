@@ -51,4 +51,21 @@ function M.p1_pending_mark_complete(scheduler, now, result_code)
 	end
 end
 
+function M.p1_pending_mark_failed(scheduler, now, result_code, retry_delay)
+	local phase = scheduler.phase1
+	local pending = phase.pending
+	if type(pending) ~= 'table' then
+		return
+	end
+	local delay = tonumber(retry_delay) or 0
+	pending.state = 'failed'
+	pending.result = tostring(result_code or 'failed')
+	pending.effect_at = now
+	pending.completion_deadline = now + delay
+	local dkey = tostring(pending.duplicate_suppression_key or '')
+	if dkey ~= '' then
+		phase.recent_duplicate_until[dkey] = now + delay
+	end
+end
+
 return M
