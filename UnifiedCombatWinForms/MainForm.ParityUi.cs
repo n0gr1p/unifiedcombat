@@ -88,6 +88,16 @@ public partial class MainForm
     private TabControl _settingsTabs = null!;
     private TabPage _tabCor = null!;
     private TabPage _tabBrd = null!;
+    private CheckBox _reactionEnabled = null!;
+    private ListBox _reactionRuleList = null!;
+    private ComboBox _reactionTriggerCombo = null!;
+    private TextBox _reactionName = null!;
+    private ComboBox _reactionResponseCombo = null!;
+    private Button _reactionAdd = null!;
+    private Button _reactionRemove = null!;
+    private Button _reactionUp = null!;
+    private Button _reactionDown = null!;
+    private readonly List<ReactionRuleRow> _reactionRules = [];
     private ComboBox _corRoll1Combo = null!;
     private ComboBox _corRoll2Combo = null!;
     private CheckBox _corCrookedRoll1 = null!;
@@ -1012,6 +1022,67 @@ public partial class MainForm
         });
         _tabBrd.Controls.Add(brdRoot);
         _settingsTabs.TabPages.Add(_tabBrd);
+
+        var tabReactions = new TabPage("Reactions") { AutoScroll = true };
+        var reactionRoot = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 1,
+            Padding = new Padding(8),
+        };
+        _reactionEnabled = new CheckBox { Text = "Enable configured reactions", AutoSize = true };
+        _reactionEnabled.CheckedChanged += (_, _) => OnReactionConfigChanged();
+        reactionRoot.Controls.Add(_reactionEnabled);
+        reactionRoot.Controls.Add(new Label
+        {
+            Text = "Reactions apply only to the current combat target. Active actor IDs and reaction locks are runtime-only.",
+            AutoSize = true,
+            Padding = new Padding(0, 5, 0, 8),
+        });
+        _reactionRuleList = new ListBox { Height = 140, IntegralHeight = false, Dock = DockStyle.Top };
+        reactionRoot.Controls.Add(_reactionRuleList);
+        var reactionEditor = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 4,
+            Padding = new Padding(0, 8, 0, 0),
+        };
+        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));
+        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 145));
+        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
+        _reactionTriggerCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
+        _reactionTriggerCombo.Items.AddRange(["ability_window", "enemy_buff"]);
+        _reactionTriggerCombo.SelectedIndexChanged += (_, _) => OnReactionTriggerChanged();
+        _reactionName = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Cold Stare" };
+        _reactionResponseCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
+        _reactionAdd = new Button { Text = "Add", AutoSize = true };
+        _reactionAdd.Click += (_, _) => OnReactionRuleAdd();
+        reactionEditor.Controls.Add(_reactionTriggerCombo, 0, 0);
+        reactionEditor.Controls.Add(_reactionName, 1, 0);
+        reactionEditor.Controls.Add(_reactionResponseCombo, 2, 0);
+        reactionEditor.Controls.Add(_reactionAdd, 3, 0);
+        reactionRoot.Controls.Add(reactionEditor);
+        var reactionButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        _reactionRemove = new Button { Text = "Remove", AutoSize = true };
+        _reactionRemove.Click += (_, _) => OnReactionRuleRemove();
+        _reactionUp = new Button { Text = "Up", AutoSize = true };
+        _reactionUp.Click += (_, _) => OnReactionRuleMove(-1);
+        _reactionDown = new Button { Text = "Down", AutoSize = true };
+        _reactionDown.Click += (_, _) => OnReactionRuleMove(1);
+        reactionButtons.Controls.AddRange([_reactionRemove, _reactionUp, _reactionDown]);
+        reactionRoot.Controls.Add(reactionButtons);
+        reactionRoot.Controls.Add(new Label
+        {
+            Text = "ability_window turns away from ready until completion. enemy_buff holds attacks while the named enemy effect is active.",
+            AutoSize = true,
+            Padding = new Padding(0, 8, 0, 0),
+        });
+        tabReactions.Controls.Add(reactionRoot);
+        _settingsTabs.TabPages.Add(tabReactions);
+        _reactionTriggerCombo.SelectedItem = "ability_window";
 
         var tabScheduler = new TabPage("Scheduler");
         tabScheduler.AutoScroll = true;

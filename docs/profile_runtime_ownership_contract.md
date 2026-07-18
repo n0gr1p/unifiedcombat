@@ -157,6 +157,7 @@ The profile-v2 source-of-truth boundary is intentionally locked down:
 - Non-COR profiles may omit `maintenance.cor`; omitted or default-empty COR maintenance is non-durable for those profiles.
 - Applicable configured sections still round-trip durably, including COR rolls, BRD buffs, follow puller name, defensive thresholds, and combat weaponskill settings.
 - BRD profiles may own `config.maintenance.brd`; non-BRD profiles omit it. Song durations, timer evidence, active capacity, recipients, and JA state are never durable.
+- UI-authored reaction rules are durable at `config.reactions`. The disabled, empty domain may be omitted. Reaction actor IDs, resolved effect IDs, active locks, and turn state are addon-owned runtime state and never participate in durable drift.
 
 ### 3. Runtime / Legacy Overrides
 

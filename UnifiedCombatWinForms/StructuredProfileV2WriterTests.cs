@@ -29,6 +29,9 @@ internal static class StructuredProfileV2WriterTests
             TestBrdPreservesConfiguredSongMaintenance();
             TestNonBrdOmitsHiddenBrdMaintenance();
             TestBrdUiEditsAreLocalUntilSave();
+            TestSerializeReactionRules();
+            TestDisabledEmptyReactionsAreOmitted();
+            TestReactionUiEditsAreLocalUntilSave();
             TestUiSaveIsFileOnly();
             TestUiSaveSuppressesOutboundMirrorTraffic();
             TestRemoteBridgeDoesNotConsumeUiSave();
@@ -67,6 +70,11 @@ internal static class StructuredProfileV2WriterTests
         flat["puller_selected"] = "Niightsiide";
         flat["fight_leader"] = true;
         flat["fight_leader_selected"] = "Terrasjr [UC]";
+        flat["reaction_enabled"] = true;
+        flat["reaction_rules"] = new JsonArray
+        {
+            new JsonObject { ["trigger"] = "ability_window", ["name"] = "Cold Stare", ["response"] = "turn_away" },
+        };
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
             new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
@@ -106,6 +114,7 @@ internal static class StructuredProfileV2WriterTests
             "movement = {",
             "follow = {",
             "targeting = {",
+            "reactions = {",
             "tank = {",
             "sleep = {",
             "spells = {",
@@ -413,6 +422,53 @@ internal static class StructuredProfileV2WriterTests
         var brdHandlers = source[start..end];
         AssertNotContains(brdHandlers, "Forward(", "BRD durable controls must not emit live bridge traffic");
         AssertContains(brdHandlers, "CaptureWorkingProfileFromUi", "BRD durable controls must update local working state");
+    }
+
+    private static void TestSerializeReactionRules()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["reaction_enabled"] = true;
+        flat["reaction_rules"] = new JsonArray
+        {
+            new JsonObject { ["trigger"] = "ability_window", ["name"] = "Cold Stare", ["response"] = "turn_away" },
+            new JsonObject { ["trigger"] = "enemy_buff", ["name"] = "Dread Spikes", ["response"] = "stop_attacking" },
+        };
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+        );
+
+        AssertContains(content, "reactions = {", "reaction domain missing");
+        AssertContains(content, "trigger = \"ability_window\"", "ability-window trigger missing");
+        AssertContains(content, "name = \"Cold Stare\"", "Cold Stare rule missing");
+        AssertContains(content, "response = \"turn_away\"", "turn-away response missing");
+        AssertContains(content, "name = \"Dread Spikes\"", "enemy-buff rule missing");
+        AssertContains(content, "response = \"stop_attacking\"", "stop-attacking response missing");
+        AssertNotContains(content, "actor_id", "runtime actor ids must not be durable reaction config");
+        AssertNotContains(content, "effect_id", "resolved runtime effect ids must not be durable reaction config");
+    }
+
+    private static void TestDisabledEmptyReactionsAreOmitted()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["reaction_enabled"] = false;
+        flat["reaction_rules"] = new JsonArray();
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Terrasjr", "PLD", "RDM")
+        );
+        AssertNotContains(content, "reactions = {", "disabled empty reactions must remain optional for older profiles");
+    }
+
+    private static void TestReactionUiEditsAreLocalUntilSave()
+    {
+        var source = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        var start = source.IndexOf("private void ApplyReactionRulesFromSnapshot", StringComparison.Ordinal);
+        var end = source.IndexOf("private void OnBrdListAdd", start, StringComparison.Ordinal);
+        AssertTrue(start >= 0 && end > start, "reaction UI handler source range missing");
+        var reactionHandlers = source[start..end];
+        AssertNotContains(reactionHandlers, "Forward(", "reaction durable controls must not emit live bridge traffic");
+        AssertContains(reactionHandlers, "CaptureWorkingProfileFromUi", "reaction durable controls must update local working state");
     }
 
     private static void TestUiSaveIsFileOnly()

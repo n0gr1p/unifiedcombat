@@ -67,15 +67,8 @@ local function select_top_with_engage_preemption(settings, proposals)
         ranked[i] = proposals[i]
     end
     local top = select_top(ranked)
-    if type(top) == "table"
-        and tostring(top.provider or "") == "defensive_internal"
-        and tostring(top.action_type or "") == "spell"
-        and tostring(type(top.detail) == "table" and top.detail.def_action_type or "") == "cure" then
-        local threshold = tonumber(settings and settings.defensive_critical_hpp) or 35
-        local target_hpp = tonumber(type(top.detail) == "table" and top.detail.target_hpp or -1) or -1
-        if target_hpp > 0 and target_hpp <= threshold then
-            return top
-        end
+    if type(top) == "table" and type(top.priority_band) == "number" and top.priority_band >= 113 then
+        return top
     end
     for i = 1, #ranked do
         local candidate = ranked[i]
@@ -139,7 +132,7 @@ end
 local function defensive_proposal(kind, target_hpp)
     local priority_band = 100
     if tostring(kind or "") == "cure" and (tonumber(target_hpp) or -1) > 0 and (tonumber(target_hpp) or -1) <= 35 then
-        priority_band = 110
+        priority_band = 117
     end
     local urgency = 0.25
     if kind == "cure" then
@@ -169,7 +162,7 @@ local function sleep_proposal()
         provider = "combat",
         action_type = "spell",
         action_name = "Sleep II",
-        priority_band = 94,
+        priority_band = 113,
         urgency = 0.55,
     }
 end
@@ -222,7 +215,7 @@ local function main()
         tank_engage,
         sleep_proposal(),
     })
-    assert_equal(top.family_id, "combat.engage.primary", "tank engage must outrank Sleep")
+    assert_equal(top.family_id, "combat.sleep.primary", "globally high-priority Sleep must outrank tank engage")
 
     top = select_top_with_engage_preemption({
         defensive_critical_hpp = 35,
@@ -231,7 +224,7 @@ local function main()
         defensive_proposal("cure", 20),
     })
     assert_equal(top.provider, "defensive_internal", "critical Cure must still outrank tank engage")
-    assert_equal(top.priority_band, 110, "critical Cure band must remain unchanged")
+    assert_equal(top.priority_band, 117, "critical Cure band must use the global priority contract")
 
     local tank_target_control = mock_target_control({
         engine_on = true,

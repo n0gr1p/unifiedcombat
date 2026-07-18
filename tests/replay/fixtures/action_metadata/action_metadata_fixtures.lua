@@ -209,6 +209,36 @@ return {
         expected = { result = "self_only" },
     },
     {
+        fixture_id = "action_meta_target_mode_numeric_self_only_spell",
+        helper = "action_target_mode",
+        description = "Windower numeric target mask 1 is self_only",
+        input = {
+            deps = make_deps({
+                spells = {
+                    Barwatera = { targets = 1 },
+                },
+            }),
+            action_name = "Barwatera",
+            action_kind = "spell",
+        },
+        expected = { result = "self_only" },
+    },
+    {
+        fixture_id = "action_meta_target_mode_numeric_other_spell",
+        helper = "action_target_mode",
+        description = "Windower numeric non-self target masks remain normal",
+        input = {
+            deps = make_deps({
+                spells = {
+                    Cure = { targets = 3 },
+                },
+            }),
+            action_name = "Cure",
+            action_kind = "spell",
+        },
+        expected = { result = "normal" },
+    },
+    {
         fixture_id = "action_meta_target_mode_spell_other_player_normal",
         helper = "action_target_mode",
         description = "spell with Player target is normal",

@@ -48,6 +48,8 @@ local function load_autoload_scope(state, status_result, autoload_result)
 	assert_contains(addon, 'local function uc_queue_profile_v2_autoload()', 'addon must define the queued autoload helper')
 	assert_contains(addon, 'local function uc_run_queued_profile_v2_autoload()', 'addon must define the queued autoload runner')
 	assert_contains(addon, 'local function uc_run_profile_v2_auto_reload()', 'addon must define the file-change auto-reload runner')
+	assert_contains(addon, 'local UC_PROFILE_V2_AUTO_RELOAD_POLL_SEC = 1', 'auto-reload must poll once per second')
+	assert_contains(addon, 'local UC_PROFILE_V2_AUTO_RELOAD_STABLE_SEC = 1', 'auto-reload must retain a one-second stable-file window')
 
 	local block = extract_source_block(
 		addon,
@@ -474,10 +476,10 @@ local function main()
 	auto_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { defensive = { thresholds = { critical_hpp = 35 } } } }'
 	assert_true(auto_reload_scope.auto_reload() == nil, 'first auto-reload poll should only arm the stable snapshot')
 	assert_equal(#auto_reload_state.read_calls, 1, 'auto-reload must read the active file once on the first poll')
-	auto_reload_state.now = auto_reload_state.now + 3.5
+	auto_reload_state.now = auto_reload_state.now + 1.1
 	auto_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { defensive = { thresholds = { critical_hpp = 30 } } } }'
 	assert_true(auto_reload_scope.auto_reload() == nil, 'second auto-reload poll should record the changed file before applying')
-	auto_reload_state.now = auto_reload_state.now + 3.5
+	auto_reload_state.now = auto_reload_state.now + 1.1
 	local auto_reload_settings_identity = auto_reload_state.settings
 	local auto_reload_result = auto_reload_scope.auto_reload()
 	assert_true(type(auto_reload_result) == 'table' and auto_reload_result.ok == true, 'stable file change should auto-reload successfully')
@@ -532,10 +534,10 @@ local function main()
 	}
 	disable_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { ownership = { profile_v2_auto_reload_on_change = false }, defensive = { thresholds = { critical_hpp = 35 } } } }'
 	assert_true(disable_reload_scope.auto_reload() == nil, 'disabled auto-reload should arm on the first poll')
-	disable_reload_state.now = disable_reload_state.now + 3.5
+	disable_reload_state.now = disable_reload_state.now + 1.1
 	disable_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { ownership = { profile_v2_auto_reload_on_change = false }, defensive = { thresholds = { critical_hpp = 30 } } } }'
 	assert_true(disable_reload_scope.auto_reload() == nil, 'disabled auto-reload should record the changed file before applying')
-	disable_reload_state.now = disable_reload_state.now + 3.5
+	disable_reload_state.now = disable_reload_state.now + 1.1
 	local disable_reload_result = disable_reload_scope.auto_reload()
 	assert_true(type(disable_reload_result) == 'table' and disable_reload_result.ok == true, 'disabled auto-reload should still apply successfully')
 	assert_equal(disable_reload_state.settings.profile_v2_auto_reload_on_change, false, 'disabled auto-reload must clear the flag in settings')
@@ -545,7 +547,7 @@ local function main()
 	assert_equal(disable_reload_status.enabled, false, 'disabled auto-reload status should report disabled')
 	assert_equal(disable_reload_state.status_calls, 2, 'disabled auto-reload should perform a post-apply status check and a status query')
 	local disable_reload_reads_before = #disable_reload_state.read_calls
-	disable_reload_state.now = disable_reload_state.now + 3.5
+	disable_reload_state.now = disable_reload_state.now + 1.1
 	assert_true(disable_reload_scope.auto_reload() == nil, 'disabled auto-reload should stop polling after the disabled flag is applied')
 	assert_equal(#disable_reload_state.read_calls, disable_reload_reads_before, 'disabled auto-reload must stop reading the file after the flag is cleared')
 
@@ -606,7 +608,7 @@ local function main()
 	}
 	invalid_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { bad = true } }'
 	assert_true(invalid_reload_scope.auto_reload() == nil, 'invalid auto-reload should arm on the first poll')
-	invalid_reload_state.now = invalid_reload_state.now + 3.5
+	invalid_reload_state.now = invalid_reload_state.now + 1.1
 	local invalid_reload_result = invalid_reload_scope.auto_reload()
 	assert_true(type(invalid_reload_result) == 'table' and invalid_reload_result.ok == false, 'invalid auto-reload should fail without mutating runtime')
 	assert_equal(invalid_reload_state.autoload_calls, 0, 'invalid auto-reload must not apply runtime changes')

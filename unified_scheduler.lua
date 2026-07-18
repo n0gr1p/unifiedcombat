@@ -1883,6 +1883,11 @@ scheduler.TANK_ENGAGE_PRIORITY = 107
 scheduler.TANK_ENGAGE_URGENCY = 0.85
 scheduler.DEFAULT_ENGAGE_PRIORITY = 72
 scheduler.DEFAULT_ENGAGE_URGENCY = 0.70
+scheduler.PRIORITY_BAND_AFTERMATH_WS = 108
+scheduler.PRIORITY_BAND_SLEEP = 113
+scheduler.PRIORITY_BAND_CRITICAL_CURE = 117
+scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 120
+scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SLEEP
 scheduler.TARGET_ACQUIRE_DEBOUNCE_S = 0.20
 
 local maintenance_blocked_zone_names = {
@@ -2247,6 +2252,49 @@ local diag_init = {
 
 local p1_apply_face_to_target
 
+function scheduler.reaction_observed_effect_set()
+	local observed = {}
+	for effect_id in pairs(dispellable_enemy_effect_set) do
+		observed[effect_id] = true
+	end
+	for effect_id in pairs(require('uc_reaction_runtime').effect_watch_set()) do
+		observed[effect_id] = true
+	end
+	return observed
+end
+
+function scheduler.apply_reaction_turn(lock, turn_away)
+	if type(lock) ~= 'table' then
+		return false
+	end
+	local applied = p1_apply_face_to_target(
+		get_settings(),
+		tonumber(lock.actor_id) or 0,
+		turn_away == true,
+		true
+	)
+	if applied and turn_away == true then
+		require('uc_reaction_runtime').mark_turn_applied(lock.key)
+		lock.turn_applied = true
+	end
+	return applied
+end
+
+function scheduler.refresh_reaction_lock()
+	local target = windower.ffxi.get_mob_by_target('t')
+	local target_id = tonumber(target and target.id) or 0
+	local effects = target_id > 0 and enemy_effect_tracker.get_effects(target_id) or {}
+	local lock, released_target_id = require('uc_reaction_runtime').evaluate(target_id, effects, now_s())
+	_G.UC_REACTION_LOCK = lock
+	if released_target_id and released_target_id > 0 and target_id > 0 then
+		scheduler.apply_reaction_turn({ actor_id = target_id }, false)
+	end
+	if lock and lock.turn_applied ~= true then
+		scheduler.apply_reaction_turn(lock, true)
+	end
+	return lock
+end
+
 local function ensure_diag_logs_initialized()
 	local s = get_settings()
 	if not uc_scheduler_config.debug_enabled(s) then
@@ -2295,6 +2343,15 @@ local function run_movement_coordinator_tick()
 	end
 	_G.UC_MOVEMENT_MODE = mode
 	_G.UC_MOVEMENT_BLOCK_REASON = ''
+	local reaction_lock = rawget(_G, 'UC_REACTION_LOCK')
+	if type(reaction_lock) == 'table' then
+		if reaction_lock.turn_applied ~= true then
+			scheduler.apply_reaction_turn(reaction_lock, true)
+		end
+		_G.UC_MOVEMENT_MODE = 'REACTION_HOLD'
+		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_REACTION_HOLD'
+		return false, 'MOVE_COORD_REACTION_HOLD'
+	end
 	-- Facing is coordinator-owned and evaluated every movement tick.
 	-- C5 rule is enforced inside p1_apply_face_to_target (valid live combat mob only).
 	do
@@ -3807,7 +3864,7 @@ local function p1_collect_defensive_internal(ctx, out)
 	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings.defensive_critical_hpp)) or 35
 	local priority_band = 100
 	if tostring(action.type or '') == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp then
-		priority_band = 110
+		priority_band = scheduler.PRIORITY_BAND_CRITICAL_CURE
 	end
 	local _, _, action_kind = action_ready(action_name, target_id)
 	local legacy_command = build_action_command(action_name, action_kind, action.target)
@@ -3874,7 +3931,7 @@ local function p1_collect_defensive_healbot(ctx, out)
 	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings.defensive_critical_hpp)) or 35
 	local priority_band = 100
 	if atype == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp then
-		priority_band = 110
+		priority_band = scheduler.PRIORITY_BAND_CRITICAL_CURE
 	end
 	local urgency = 0.45
 	if atype == 'cure' then
@@ -3961,9 +4018,9 @@ local function p1_collect_combat_offense(ctx, out)
 	local priority_band = 70
 	local reason_code = 'tp_ready'
 	if tostring(ws_pick_reason or '') == 'AM_READY' then
-		-- Keep aftermath WS above defensive buffs/cures, but still below critical cures (110)
+		-- Keep aftermath WS above defensive buffs/cures, but still below the global critical Cure band.
 		-- and doom emergency handling, which is processed before proposal dispatch.
-		priority_band = 108
+		priority_band = scheduler.PRIORITY_BAND_AFTERMATH_WS
 		reason_code = 'aftermath_ready'
 		urgency = 1
 	end
@@ -4109,7 +4166,7 @@ function p1_combat_helpers.collect_combat_sleep(ctx, out)
 		target_kind = 'mob',
 		target_id = tonumber(best.target_id) or 0,
 		target_name = tostring(best.target_name or ''),
-		priority_band = 94,
+		priority_band = scheduler.PRIORITY_BAND_SLEEP,
 		urgency = p1_clamp_urgency(urgency),
 		starvation_eligible = true,
 		created_at = ctx.now,
@@ -4891,7 +4948,7 @@ local function p1_collect_maintenance(ctx, out)
 	local now = ctx.now
 	ensure_maintenance_buff_cache()
 	local buff_list = player.buffs or {}
-	local function log_maint_candidate(event_code, key, action_name, provider, reason, urgency, detail, interval)
+	local function log_maint_candidate(event_code, key, action_name, provider, reason, urgency, priority_band, detail, interval)
 		detail = type(detail) == 'table' and detail or {}
 		local fields = {
 			spell = (tostring(detail.cast_type or '') == 'spell' or tostring(detail.action_type or '') == 'spell') and tostring(action_name or '') or '',
@@ -4899,7 +4956,7 @@ local function p1_collect_maintenance(ctx, out)
 			target = tostring(detail.target_name or player.name or ''),
 			target_id = tonumber(detail.target_id) or tonumber(player.id) or 0,
 			provider = tostring(provider or ''),
-			band = 75,
+			band = priority_band,
 			urgency = (urgency ~= nil) and ('%.2f'):format(p1_clamp_urgency(urgency)) or '',
 			reason = tostring(reason or ''),
 			status = tonumber(player.status) or 0,
@@ -4914,7 +4971,7 @@ local function p1_collect_maintenance(ctx, out)
 		end
 		scheduler.action_timeline_log(event_code, fields, ('maint_candidate:%s:%s:%s'):format(tostring(event_code or ''), tostring(key or ''), tostring(reason or '')), interval or 2.0)
 	end
-	local function maybe_emit(key, provider, action_type, action_name, reason_code, urgency, detail)
+	local function maybe_emit(key, provider, action_type, action_name, reason_code, urgency, priority_band, proposal_throttle_s, detail)
 		detail = type(detail) == 'table' and detail or {}
 		detail.cast_type = action_type
 		detail.action_type = action_type
@@ -4938,7 +4995,7 @@ local function p1_collect_maintenance(ctx, out)
 				end
 				if moving then
 					detail.proposal_emitted = '0'
-					log_maint_candidate('MAINT_BUFF_CANDIDATE_HELD', key, action_name, provider, 'player_moving', urgency, detail, 2.0)
+					log_maint_candidate('MAINT_BUFF_CANDIDATE_HELD', key, action_name, provider, 'player_moving', urgency, priority_band, detail, 2.0)
 					return false, 'player_moving', 0
 				end
 			end
@@ -4952,12 +5009,18 @@ local function p1_collect_maintenance(ctx, out)
 			detail.last_maintenance_action = tostring(scheduler.action_timeline_state.last_maintenance_dispatch_action or '')
 			detail.last_maintenance_token = tostring(scheduler.action_timeline_state.last_maintenance_dispatch_token or '')
 			detail.proposal_emitted = '0'
-			log_maint_candidate('MAINT_BUFF_CANDIDATE_HELD', key, action_name, provider, 'throttle', urgency, detail, 2.0)
+			log_maint_candidate('MAINT_BUFF_CANDIDATE_HELD', key, action_name, provider, 'throttle', urgency, priority_band, detail, 2.0)
 			return false, 'throttle', math.max(0, next_at - now)
 		end
-		gate[key] = now + 2.0
+		if type(proposal_throttle_s) ~= 'number' then
+			error('maintenance proposal throttle must be numeric')
+		end
+		local proposal_throttle = proposal_throttle_s
+		if proposal_throttle > 0 then
+			gate[key] = now + proposal_throttle
+		end
 		detail.proposal_emitted = '1'
-		log_maint_candidate('MAINT_BUFF_CANDIDATE_READY', key, action_name, provider, reason_code, urgency, detail, 0.50)
+		log_maint_candidate('MAINT_BUFF_CANDIDATE_READY', key, action_name, provider, reason_code, urgency, priority_band, detail, 0.50)
 		out[#out + 1] = {
 			proposal_id = ('maint.%s.%d'):format(key, math.floor(now * 1000)),
 			family_id = ('maintenance.%s'):format(key),
@@ -4967,7 +5030,7 @@ local function p1_collect_maintenance(ctx, out)
 			target_kind = 'self',
 			target_id = tonumber(player.id) or 0,
 			target_name = tostring(player.name or ''),
-			priority_band = 75,
+			priority_band = priority_band,
 			urgency = p1_clamp_urgency(urgency),
 			starvation_eligible = true,
 			created_at = now,
@@ -5029,13 +5092,13 @@ local function p1_collect_maintenance(ctx, out)
 					reason_code = tostring(action.reason_code or 'cor_roll_maint'),
 					detail = action.detail or { job = job },
 				}
-				log_maint_candidate('MAINT_BUFF_CANDIDATE_READY', key, action_name, 'maintenance_cor', tostring(action.reason_code or 'cor_roll_maint'), urgency, {
+				log_maint_candidate('MAINT_BUFF_CANDIDATE_READY', key, action_name, 'maintenance_cor', tostring(action.reason_code or 'cor_roll_maint'), urgency, 75, {
 					target_name = target_name,
 					target_id = target_id,
 					action_type = 'ja',
 				}, 0.50)
 			else
-				log_maint_candidate('MAINT_BUFF_CANDIDATE_HELD', key, tostring(action.action_name or ''), 'maintenance_cor', 'throttle', tonumber(action.urgency) or 0.65, {
+				log_maint_candidate('MAINT_BUFF_CANDIDATE_HELD', key, tostring(action.action_name or ''), 'maintenance_cor', 'throttle', tonumber(action.urgency) or 0.65, 75, {
 					target_name = tostring(action.target_name or '<me>'),
 					target_id = tonumber(action.target_id) or 0,
 					action_type = 'ja',
@@ -5043,7 +5106,7 @@ local function p1_collect_maintenance(ctx, out)
 			end
 		else
 			log_def_sched('MAINT_COR_SKIP reason=PROPOSE_NIL')
-			log_maint_candidate('MAINT_BUFF_CANDIDATE_SKIPPED', 'cor_rolls', '', 'maintenance_cor', 'propose_nil', 0.65, {
+			log_maint_candidate('MAINT_BUFF_CANDIDATE_SKIPPED', 'cor_rolls', '', 'maintenance_cor', 'propose_nil', 0.65, 75, {
 				action_type = 'ja',
 			}, 2.0)
 			gate.cor_rolls = 0
@@ -5075,6 +5138,8 @@ local function p1_collect_maintenance(ctx, out)
 				tostring(action.action_name or ''),
 				tostring(action.reason_code or 'brd_song_maintenance'),
 				tonumber(action.urgency) or 0.75,
+				scheduler.PRIORITY_BAND_BRD_MAINTENANCE,
+				0,
 				action.detail
 			)
 		elseif failure == nil then
@@ -5092,7 +5157,7 @@ local function p1_collect_maintenance(ctx, out)
 			elseif missing_indi then
 				urgency = 0.65
 			end
-			maybe_emit('geo_buffs', 'geo', 'spell', 'maintenance_geo', 'geo_missing', urgency, {
+			maybe_emit('geo_buffs', 'geo', 'spell', 'maintenance_geo', 'geo_missing', urgency, 75, 2.0, {
 				job = job,
 				indi_count = indi_count,
 				geo_count = geo_count,
@@ -5100,12 +5165,26 @@ local function p1_collect_maintenance(ctx, out)
 				expected_geo = 1,
 			})
 		else
-			log_maint_candidate('MAINT_BUFF_CANDIDATE_SKIPPED', 'geo_buffs', 'maintenance_geo', 'geo', 'geo_satisfied', 0.45, {
+			log_maint_candidate('MAINT_BUFF_CANDIDATE_SKIPPED', 'geo_buffs', 'maintenance_geo', 'geo', 'geo_satisfied', 0.45, 75, {
 				action_type = 'spell',
 			}, 2.0)
 			gate.geo_buffs = 0
 		end
 	end
+end
+
+function scheduler.p1_brd_lane_blocks_proposal(proposal, lane_reserved)
+	if lane_reserved ~= true or type(proposal) ~= 'table' then
+		return false
+	end
+	if tostring(proposal.provider or '') == 'maintenance_brd' then
+		return false
+	end
+	if (tonumber(proposal.priority_band) or 0) >= scheduler.PRIORITY_BAND_BRD_MAINTENANCE then
+		return false
+	end
+	local action_type = tostring(proposal.action_type or '')
+	return action_type == 'spell' or action_type == 'ja' or action_type == 'ws'
 end
 
 local function p1_collect_proposals(ctx)
@@ -5125,9 +5204,32 @@ local function p1_collect_proposals(ctx)
 		p1_collect_defensive_internal(ctx, out)
 		p1_collect_defensive_healbot(ctx, out)
 	end
-	-- 1 Hz maintenance
-	if ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0) then
+	-- BRD sequencing participates every scheduler tick so lower-band defensive
+	-- work cannot enter between song lifecycle transitions. Other maintenance
+	-- providers retain the engine's 1 Hz collection cadence.
+	local player = ctx.player or {}
+	local main_job = tostring(player.main_job or '')
+	local sub_job = tostring(player.sub_job or '')
+	local brd_provider_active = main_job ~= 'COR' and (main_job == 'BRD' or sub_job == 'BRD')
+	if brd_provider_active or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0) then
 		p1_collect_maintenance(ctx, out)
+	end
+	if brd_provider_active then
+		local lane_reserved, lane_reason = require('uc_brd_maintenance').action_lane_status()
+		if lane_reserved then
+			for i = #out, 1, -1 do
+				local proposal = out[i]
+				if scheduler.p1_brd_lane_blocks_proposal(proposal, true) then
+					log_def_sched(('BRD_LANE_HOLD action="%s" provider=%s type=%s reason=%s'):format(
+						tostring(proposal.action_name or ''),
+						tostring(proposal.provider or ''),
+						tostring(proposal.action_type or ''),
+						tostring(lane_reason or '')
+					))
+					table.remove(out, i)
+				end
+			end
+		end
 	end
 	for i = 1, #out do
 		local proposal = out[i]
@@ -5244,6 +5346,13 @@ function scheduler.p1_hard_lock_reject(locks, proposal)
 	return scheduler_locks.p1_hard_lock_reject(locks, proposal)
 end
 
+function scheduler.p1_priority_bypasses_engage(proposal)
+	if type(proposal) ~= 'table' or type(proposal.priority_band) ~= 'number' then
+		return false
+	end
+	return proposal.priority_band >= scheduler.PRIORITY_BAND_ENGAGE_BYPASS
+end
+
 local function p1_validate_proposal(ctx, p)
 	if type(p) ~= 'table' then
 		return false, 'malformed'
@@ -5279,7 +5388,7 @@ local function p1_validate_proposal(ctx, p)
 					}, ('engage_retry_wait:%d'):format(tonumber(p.target_id) or 0), 0.25)
 					return false, 'pending_engage_retry_wait'
 				end
-			elseif not scheduler.p1_is_critical_defensive_proposal(ctx.settings, p) then
+			elseif not scheduler.p1_priority_bypasses_engage(p) then
 				scheduler.action_timeline_log('PENDING_ENGAGE_BLOCK_NONCRITICAL', {
 					tid = tonumber(p.target_id) or 0,
 					name = tostring(p.target_name or ''),
@@ -5364,6 +5473,10 @@ local function p1_rank(ctx, proposals)
 	end
 	for _, proposal in ipairs(proposals) do
 		local ok, reject_reason = p1_validate_proposal(ctx, proposal)
+		if require('uc_reaction_runtime').blocks_proposal(rawget(_G, 'UC_REACTION_LOCK'), proposal) then
+			ok = false
+			reject_reason = 'reaction_hold'
+		end
 		if ok then
 			local lock_reject = scheduler.p1_hard_lock_reject(locks, proposal)
 			if lock_reject ~= '' then
@@ -5427,6 +5540,8 @@ local function p1_rank(ctx, proposals)
 			local block_reason = 'BLOCK_UNKNOWN'
 			if scheduler.p1_is_critical_defensive_proposal(ctx and ctx.settings or nil, top) then
 				block_reason = 'BLOCK_CRITICAL_CURE'
+			elseif scheduler.p1_priority_bypasses_engage(top) then
+				block_reason = 'BLOCK_HIGH_PRIORITY'
 			end
 			scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
 				tid = tonumber(valid[1] and valid[1].target_id) or 0,
@@ -5735,6 +5850,9 @@ function scheduler.p1_try_nonblocking_target_acquire(settings)
 	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(settings), false) then
 		return false, nil
 	end
+	if type(rawget(_G, 'UC_REACTION_LOCK')) == 'table' then
+		return false, 'reaction_hold'
+	end
 	local ctx = p1_build_ctx(settings)
 	scheduler.p1_update_pending_state(ctx)
 	local proposals = {}
@@ -5807,18 +5925,18 @@ function p1_combat_helpers.spell_target_dispatch_ready(selected, expected_tid, t
 	return true
 end
 
-p1_apply_face_to_target = function(settings, target_id)
-	if not bool_setting(settings and settings.face, false) then
-		return
+p1_apply_face_to_target = function(settings, target_id, turn_away, force_face)
+	if turn_away ~= true and force_face ~= true and not bool_setting(settings and settings.face, false) then
+		return false
 	end
 	local tid = tonumber(target_id) or 0
 	if tid <= 0 then
-		return
+		return false
 	end
 	local me = windower.ffxi.get_mob_by_target('me')
 	local mob = windower.ffxi.get_mob_by_id(tid)
 	if not me or not mob then
-		return
+		return false
 	end
 	-- C5: face only valid combat targets.
 	-- If target is not a live monster combat target, do not issue explicit turn.
@@ -5826,19 +5944,25 @@ p1_apply_face_to_target = function(settings, target_id)
 		and ((tonumber(mob.spawn_type) or 0) == 16)
 		and ((tonumber(mob.hpp) or 0) > 0)
 	if not is_valid_combat_target then
-		return
+		return false
 	end
 	if me.x == nil or me.y == nil or mob.x == nil or mob.y == nil then
-		return
+		return false
 	end
 	-- Match core exactly: atan2(dx, dy) - pi/2.
 	local dx = (mob.x - me.x)
 	local dy = (mob.y - me.y)
 	local heading = math.atan2(dx, dy) - 1.5708
+	if turn_away == true then
+		heading = heading + math.pi
+		if heading > math.pi then
+			heading = heading - (2 * math.pi)
+		end
+	end
 	if heading then
 		local intent = {
 			kind = 'turn',
-			source = 'unified_scheduler:T2.3c_darklaunch',
+			source = turn_away == true and 'unified_scheduler:reaction_turn_away' or 'unified_scheduler:T2.3c_darklaunch',
 			heading = heading,
 			meta = {
 				target_id = tid,
@@ -5868,7 +5992,9 @@ p1_apply_face_to_target = function(settings, target_id)
 			dispatch_reason = turn_ownership_status.dispatch_reason,
 			fallback_used = turn_ownership_status.fallback_used,
 		}
+		return true
 	end
+	return false
 end
 
 local function p1_move_toward_mob(mob)
@@ -7278,6 +7404,7 @@ function scheduler.process_tick(cadence)
 		_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 		return true, doom_reason
 	end
+	scheduler.refresh_reaction_lock()
 	local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s)
 	if target_acted then
 		return true, target_reason
@@ -7300,6 +7427,14 @@ function scheduler.process_tick(cadence)
 	end
 	if move_acted then
 		_G.UC_LAST_SCHED_ACTION = '[move]coordinator_tick'
+	end
+	local scheduler_owns_defensive = bool_setting(scheduler.active_value_or_flat(
+		'config.ownership.scheduler_dark_launch_defensive',
+		s.scheduler_dark_launch_defensive
+	), false)
+	if scheduler_owns_defensive then
+		log_def_sched('DEF_SKIP reason=SCHEDULER_OWNS_DEFENSIVE')
+		return false, nil
 	end
 	if not bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', s.defensive_enabled), false) then
 		return false, nil
@@ -7341,7 +7476,7 @@ function scheduler.p1_pick_preemptive_engage(ctx, ranked)
 		return nil
 	end
 	local top = ranked[1]
-	if scheduler.p1_is_critical_defensive_proposal(ctx and ctx.settings or nil, top) then
+	if scheduler.p1_priority_bypasses_engage(top) then
 		return top
 	end
 	for i = 1, #ranked do
@@ -7367,6 +7502,8 @@ function scheduler.on_incoming_chunk(id, data)
 	local nid = tonumber(id) or 0
 	if nid == 0x00A or nid == 0x00B then
 		enemy_effect_tracker.clear_all()
+		require('uc_reaction_runtime').reset('zone_change')
+		_G.UC_REACTION_LOCK = nil
 		scheduler.phase1.effectiveTargets = {}
 		require('uc_brd_maintenance').reset('zone_change')
 		return
@@ -7457,6 +7594,21 @@ function scheduler.on_action(act)
 	if type(act) == 'table' then
 		local p = windower.ffxi.get_player()
 		require('uc_brd_maintenance').on_action(act, tonumber(p and p.id) or 0, now_s())
+		if rawget(_G, 'Start_Engine') == true then
+			local get_target = windower.ffxi.get_mob_by_target
+			local target = type(get_target) == 'function' and get_target('t') or nil
+			local reaction_event = require('uc_reaction_runtime').on_action(act, tonumber(target and target.id) or 0, now_s())
+			if type(reaction_event.activated) == 'table' then
+				_G.UC_REACTION_LOCK = reaction_event.activated
+				scheduler.apply_reaction_turn(reaction_event.activated, true)
+			elseif (tonumber(reaction_event.released_target_id) or 0) > 0 then
+				_G.UC_REACTION_LOCK = nil
+				local current_target_id = tonumber(target and target.id) or 0
+				if current_target_id > 0 then
+					scheduler.apply_reaction_turn({ actor_id = current_target_id }, false)
+				end
+			end
+		end
 		tb_effect_table.apply_from_action(
 			act,
 			tonumber(p and p.id) or 0,
@@ -7477,7 +7629,7 @@ function scheduler.on_action(act)
 			type(act and act.targets) == 'table' and #act.targets or 0
 		))
 	end
-	local evs = enemy_effect_tracker.on_action(act, dispellable_enemy_effect_set) or {}
+	local evs = enemy_effect_tracker.on_action(act, scheduler.reaction_observed_effect_set()) or {}
 	for _, ev in ipairs(evs) do
 		enemy_dispel_log(('ENEMY_TRACK event=%s source=%s target=%d effect=%d'):format(
 			tostring(ev.event or ''),
@@ -7629,7 +7781,7 @@ function scheduler.on_action_message(msg)
 			))
 		end
 	end
-	local evs = enemy_effect_tracker.on_action_message(msg, dispellable_enemy_effect_set) or {}
+	local evs = enemy_effect_tracker.on_action_message(msg, scheduler.reaction_observed_effect_set()) or {}
 	local removed_enemy_effect = false
 	for _, ev in ipairs(evs) do
 		if tostring(ev.event or '') == 'remove' then
@@ -7926,6 +8078,8 @@ end
 
 function scheduler.reset_runtime_locks()
 	scheduler_locks.reset_runtime_locks(_G, action_state)
+	require('uc_reaction_runtime').reset('scheduler_lock_reset')
+	_G.UC_REACTION_LOCK = nil
 end
 
 _G.UC_ResetSchedulerRuntimeLocks = function()

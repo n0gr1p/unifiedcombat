@@ -865,8 +865,8 @@ local uc_profile_v2_auto_reload_last_applied_hash = nil
 local uc_profile_v2_auto_reload_last_reported_hash = nil
 local uc_profile_v2_auto_reload_last_checked_at = 0
 local uc_profile_v2_auto_reload_last_error = nil
-local UC_PROFILE_V2_AUTO_RELOAD_POLL_SEC = 3
-local UC_PROFILE_V2_AUTO_RELOAD_STABLE_SEC = 3
+local UC_PROFILE_V2_AUTO_RELOAD_POLL_SEC = 1
+local UC_PROFILE_V2_AUTO_RELOAD_STABLE_SEC = 1
 
 local function uc_profile_v2_session_key(player)
 	if not player or not player.name or not player.main_job or not player.sub_job then
@@ -2020,6 +2020,7 @@ end)
 windower.register_event('job change', function(job, lvl)
 	local jname = res.jobs:with('id', job).english_short
 	require('uc_brd_maintenance').reset('job_change')
+	require('uc_reaction_runtime').reset('job_change')
 	uc_update_engine()
 	uc_reload_active_profile(jname)
 	uc_queue_profile_v2_autoload()
@@ -2029,6 +2030,8 @@ end)
 
 windower.register_event('zone change', function()
 	require('uc_brd_maintenance').reset('zone_change')
+	require('uc_reaction_runtime').reset('zone_change')
+	_G.UC_REACTION_LOCK = nil
 	_G.UC_LAST_ZONE_CHANGE_AT = uc_now_s()
 	_G.UC_ZONE_SUSPEND_UNTIL = uc_now_s() + UC_ZONE_SUSPEND_SEC
 	_G.UC_LAST_BLOCK_REASON = 'ZONE_SUSPEND'
@@ -2036,6 +2039,7 @@ end)
 
 windower.register_event('unload', function()
 	require('uc_brd_maintenance').reset('unload')
+	require('uc_reaction_runtime').reset('unload')
 	uc_profile_v2_autoload_pending_key = nil
 	uc_profile_v2_autoload_completed_key = nil
 	uc_profile_v2_startup_reload_completed_key = nil
@@ -2209,6 +2213,32 @@ windower.register_event('addon command', function(...)
 			end
 		end
 		windower.add_to_chat(207, '//uc brd status | //uc brd options | //uc brd trace once | //uc brd capture once | //uc brd log start|stop|status')
+		return
+	elseif a == 'reaction' or a == 'reactions' then
+		local sub = args[2] and tostring(args[2]):lower() or 'status'
+		if sub == 'status' then
+			local status = require('uc_reaction_runtime').status()
+			windower.add_to_chat(207, ('UC reactions: enabled=%s rules=%d active=%d transition=%s'):format(
+				tostring(status.enabled == true),
+				tonumber(status.rule_count) or 0,
+				type(status.active) == 'table' and #status.active or 0,
+				tostring(status.last_transition or 'none')
+			))
+			for i = 1, #(status.active or {}) do
+				local lock = status.active[i]
+				windower.add_to_chat(207, ('  %s %s actor=%d response=%s'):format(
+					tostring(lock.trigger or ''),
+					tostring(lock.name or ''),
+					tonumber(lock.actor_id) or 0,
+					tostring(lock.response or '')
+				))
+			end
+			if #(status.unresolved_enemy_buffs or {}) > 0 then
+				windower.add_to_chat(167, 'UC reactions unresolved enemy buffs: ' .. table.concat(status.unresolved_enemy_buffs, ', '))
+			end
+			return
+		end
+		windower.add_to_chat(207, '//uc reactions status')
 		return
 	elseif a == 'profilev2' then
 		local sub = args[2] and tostring(args[2]):lower() or ''

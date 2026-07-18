@@ -96,7 +96,7 @@ end
 local function defensive_proposal(kind, target_hpp)
     local priority_band = 100
     if tostring(kind or "") == "cure" and (tonumber(target_hpp) or -1) > 0 and (tonumber(target_hpp) or -1) <= 35 then
-        priority_band = 110
+        priority_band = 117
     end
     local urgency = 0.25
     if kind == "cure" then
@@ -126,31 +126,21 @@ local function sleep_proposal()
         provider = "combat",
         action_type = "spell",
         action_name = "Sleep II",
-        priority_band = 94,
+        priority_band = 113,
         urgency = 0.55,
     }
 end
 
-local function is_critical_defensive(settings, proposal)
-    if type(proposal) ~= "table" then
-        return false
-    end
-    if tostring(proposal.provider or "") ~= "defensive_internal" and tostring(proposal.provider or "") ~= "defensive_healbot" then
-        return false
-    end
-    local detail = type(proposal.detail) == "table" and proposal.detail or {}
-    if tostring(proposal.action_type or "") ~= "spell" or tostring(detail.def_action_type or "") ~= "cure" then
-        return false
-    end
-    local threshold = tonumber(settings.defensive_critical_hpp) or 35
-    local target_hpp = tonumber(detail.target_hpp) or -1
-    return target_hpp > 0 and target_hpp <= threshold
+local function priority_bypasses_engage(proposal)
+    return type(proposal) == "table"
+        and type(proposal.priority_band) == "number"
+        and proposal.priority_band >= 113
 end
 
 local function pick_preemptive_engage(settings, proposals)
     local ranked = sort_proposals(proposals)
     local top = ranked[1]
-    if is_critical_defensive(settings, top) then
+    if priority_bypasses_engage(top) then
         return top
     end
     for i = 1, #ranked do
@@ -176,9 +166,9 @@ local function main()
     local action_state_source = read_file(action_state_path)
 
     assert_contains(scheduler_source, "function scheduler.p1_pick_preemptive_engage(ctx, ranked)", "scheduler must define engage preemption helper")
-    assert_contains(scheduler_source, "function scheduler.p1_is_critical_defensive_proposal(settings, selected)", "scheduler must define critical defensive engage exception helper")
+    assert_contains(scheduler_source, "function scheduler.p1_priority_bypasses_engage(proposal)", "scheduler must define the global high-priority engage exception helper")
     assert_contains(scheduler_source, "local engage_candidate = scheduler.p1_pick_preemptive_engage(ctx, ranked)", "dry-run selection must consider engage preemption")
-    assert_contains(scheduler_source, "scheduler.p1_is_critical_defensive_proposal(ctx and ctx.settings or nil, top)", "engage preemption must keep the critical Cure exception")
+    assert_contains(scheduler_source, "scheduler.p1_priority_bypasses_engage(top)", "engage preemption must preserve all globally high-priority proposals")
     assert_contains(scheduler_source, "function scheduler.clear_local_spell_success(meta)", "scheduler must expose generic spell-success release helper")
     assert_contains(scheduler_source, "function scheduler.clear_local_spell_interruption(meta)", "scheduler must expose generic spell-interruption release helper")
     assert_contains(scheduler_source, "scheduler.clear_local_spell_success(release_meta)", "scheduler action-message handling must shorten generic local spell success lockout")
@@ -223,7 +213,7 @@ local function main()
         engage,
         sleep_proposal(),
     })
-    assert_equal(selected.family_id, "combat.engage.primary", "selected valid target plus Sleep must prefer engage")
+    assert_equal(selected.family_id, "combat.sleep.primary", "globally high-priority Sleep must outrank engage")
 
     selected = pick_preemptive_engage(settings, {
         engage,

@@ -29,8 +29,8 @@ local function main()
 
     assert_true(result.ok, "action metadata suite should fully pass")
     assert_equal(result.suite_id, "action_metadata", "suite id mismatch")
-    assert_equal(result.total, 20, "fixture count mismatch")
-    assert_equal(result.passed, 20, "all fixtures should pass")
+    assert_equal(result.total, 22, "fixture count mismatch")
+    assert_equal(result.passed, 22, "all fixtures should pass")
     assert_equal(result.failed, 0, "no fixtures should fail")
 
     local known_entry = find_entry(result.entries, "action_meta_spell_known_true_boolean")

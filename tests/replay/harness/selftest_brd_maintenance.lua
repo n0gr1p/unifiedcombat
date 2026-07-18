@@ -122,10 +122,26 @@ assert_equal(brd._test.state.last_transition, 'snapshot_bootstrap_rebuild', 'BRD
 brd.reset('bootstrap_test_complete')
 
 brd.on_status_snapshot({}, 1)
-local action = brd.propose(config, { now = 1, player = player, action_ready = ready })
+local action = brd.propose(config, {
+	now = 1,
+	player = player,
+	party = {
+		p0 = { id = 77 },
+		p1 = { id = 99 },
+	},
+	action_ready = ready,
+})
 assert_equal(action.action_name, 'Honor March', 'first base song proposal mismatch')
 assert_equal(action.action_type, 'spell', 'song proposal action type mismatch')
+assert_equal(#action.detail.required_recipient_ids, 1, 'general-song ownership must not require absent party roster members')
+assert_equal(action.detail.required_recipient_ids[1], 77, 'general-song ownership must require the local Bard timer')
+local lane_reserved, lane_reason = brd.action_lane_status()
+assert_true(lane_reserved == true, 'missing-song sequence must reserve the scheduler action lane')
+assert_equal(lane_reason, 'brd_build_base_song', 'missing-song lane reason mismatch')
 brd.note_dispatch(action, '11', 1)
+action = brd.propose(config, { now = 1.05, player = player, action_ready = ready })
+assert_true(action == nil, 'pending song confirmation must not emit another action')
+assert_true(brd.action_lane_status() == true, 'pending song confirmation must retain the scheduler action lane')
 brd.on_action({
 	actor_id = 77,
 	category = 4,
@@ -141,7 +157,15 @@ brd.on_status_snapshot({ [100] = { count = 1, endtimes = { future_one } } }, 1.2
 assert_true(brd._test.state.owners['Honor March'] ~= nil, 'confirmed song must receive exact runtime ownership')
 assert_equal(#brd._test.state.owners['Honor March'].recipients, 2, 'area-song recipients must come from successful 0x028 targets')
 
-action = brd.propose(config, { now = 2, player = player, action_ready = ready })
+action = brd.propose(config, {
+	now = 2,
+	player = player,
+	party = {
+		p0 = { id = 77 },
+		p1 = { id = 99 },
+	},
+	action_ready = ready,
+})
 assert_equal(action.action_name, 'Victory March', 'second base song proposal mismatch')
 brd.note_dispatch(action, '12', 2)
 brd.on_action({
@@ -173,6 +197,7 @@ assert_equal(brd._test.state.owners['Honor March'].endtime, jitter_honor + 3, 'p
 assert_true(brd._test.state.owners['Victory March'] ~= nil, 'one real timer addition plus jitter must confirm the incoming song')
 action = brd.propose(config, { now = 3.4, player = player, action_ready = ready })
 assert_true(action == nil, 'both same-family songs must remain satisfied after jitter-aware confirmation')
+assert_true(brd.action_lane_status() == false, 'satisfied song maintenance must release the scheduler action lane')
 
 brd.note_dispatch({ action_type = 'spell', action_name = 'Victory March', detail = { required_recipient_ids = { 77 } } }, 'jitter-refresh', 3.5)
 brd.on_action({
@@ -346,6 +371,8 @@ local scheduler_file = assert(io.open('unified_scheduler.lua', 'r'))
 local scheduler_source = scheduler_file:read('*a')
 scheduler_file:close()
 assert_true(scheduler_source:find("provider = 'maintenance_brd'", 1, true) ~= nil, 'scheduler must emit the dedicated BRD provider')
+assert_true(scheduler_source:find('scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 120', 1, true) ~= nil, 'scheduler must globally prioritize BRD maintenance')
+assert_true(scheduler_source:find('scheduler.p1_brd_lane_blocks_proposal', 1, true) ~= nil, 'scheduler must preserve BRD sequence ownership across proposal gaps')
 assert_true(scheduler_source:find('scheduler.p1_dispatch_maintenance_brd', 1, true) ~= nil, 'scheduler must own dedicated BRD dispatch')
 assert_true(scheduler_source:find('is_spell_prestart_rejection_message_id', 1, true) ~= nil, 'scheduler must classify unable-cast action messages')
 assert_true(scheduler_source:find("return mid == 17 or mid == 18", 1, true) ~= nil, 'scheduler must recognize both unable-cast message ids')

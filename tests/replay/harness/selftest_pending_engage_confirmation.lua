@@ -31,6 +31,7 @@ end
 
 local PENDING_ENGAGE_TIMEOUT_S = 1.75
 local PENDING_ENGAGE_RETRY_DELAY_S = 0.40
+local PRIORITY_BAND_ENGAGE_BYPASS = 113
 
 local function begin_pending_engage(state, target_id, target_name, now_value)
     state.pending_engage = {
@@ -66,17 +67,8 @@ local function pending_gate(settings, state, now_value, proposal)
         end
         return true, "engage_ready"
     end
-    local detail = type(proposal.detail) == "table" and proposal.detail or {}
-    local target_hpp = tonumber(detail.target_hpp) or -1
-    local critical_hpp = tonumber(settings.defensive_critical_hpp) or 35
-    local is_critical_cure =
-        (tostring(proposal.provider or "") == "defensive_internal" or tostring(proposal.provider or "") == "defensive_healbot")
-        and tostring(proposal.action_type or "") == "spell"
-        and tostring(detail.def_action_type or "") == "cure"
-        and target_hpp > 0
-        and target_hpp <= critical_hpp
-    if is_critical_cure then
-        return true, "critical_override"
+    if type(proposal.priority_band) == "number" and proposal.priority_band >= PRIORITY_BAND_ENGAGE_BYPASS then
+        return true, "priority_override"
     end
     return false, "pending_engage_block_noncritical"
 end
@@ -125,6 +117,7 @@ local function main()
         provider = "defensive_internal",
         action_type = "spell",
         action_name = "Cure IV",
+        priority_band = 100,
         detail = { def_action_type = "cure", target_hpp = 80 },
     })
     assert_equal(allowed, false, "pending engage must block non-critical Cure")
@@ -134,6 +127,7 @@ local function main()
         provider = "maintenance",
         action_type = "spell",
         action_name = "Protect V",
+        priority_band = 75,
     })
     assert_equal(allowed, false, "pending engage must block maintenance buffs")
     assert_equal(reason, "pending_engage_block_noncritical", "maintenance block reason mismatch")
@@ -143,18 +137,20 @@ local function main()
         family_id = "combat.sleep.primary",
         action_type = "spell",
         action_name = "Sleep II",
+        priority_band = 113,
     })
-    assert_equal(allowed, false, "pending engage must block Sleep dispatch")
-    assert_equal(reason, "pending_engage_block_noncritical", "Sleep block reason mismatch")
+    assert_equal(allowed, true, "pending engage must allow globally high-priority Sleep")
+    assert_equal(reason, "priority_override", "Sleep priority override reason mismatch")
 
     allowed, reason = pending_gate(settings, state, 10.05, {
         provider = "defensive_internal",
         action_type = "spell",
         action_name = "Cure IV",
+        priority_band = 117,
         detail = { def_action_type = "cure", target_hpp = 25 },
     })
     assert_equal(allowed, true, "pending engage must allow critical Cure overrides")
-    assert_equal(reason, "critical_override", "critical Cure override reason mismatch")
+    assert_equal(reason, "priority_override", "critical Cure priority override reason mismatch")
 
     allowed, reason = pending_gate(settings, state, 10.05, {
         provider = "target_control",

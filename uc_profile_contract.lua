@@ -48,6 +48,7 @@ local PREFIX_CLASSIFICATION = {
     cor_ = "profile_owned_by_ui",
     path_ = "profile_owned_by_ui",
     target_ = "profile_owned_by_ui",
+    reaction_ = "profile_owned_by_ui",
     party_follow_ = "profile_owned_by_ui",
     fight_follow_ = "profile_owned_by_ui",
     spacing_ = "profile_owned_by_ui",
@@ -184,6 +185,8 @@ local DIRECT_PROFILE_FIELDS = {
     wait_ignore_names = "profile_owned_by_ui",
     ignore = "profile_owned_by_ui",
     target_ignore_names = "profile_owned_by_ui",
+    reaction_enabled = "profile_owned_by_ui",
+    reaction_rules = "profile_owned_by_ui",
 }
 
 local function trim(value)

@@ -183,6 +183,8 @@ public partial class MainForm
             ["brd_use_clarion_call"] = _brdUseClarion.Checked,
             ["brd_use_marcato"] = _brdUseMarcato.Checked,
             ["brd_marcato_song"] = _brdUseMarcato.Checked ? (_brdMarcatoSong.SelectedItem?.ToString() ?? "") : "",
+            ["reaction_enabled"] = _reactionEnabled.Checked,
+            ["reaction_rules"] = BuildReactionRulesJson(),
             ["ignore_entries"] = string.Join("|", _ignoreRows.Select(r => $"{r.Id}:{r.Name}")),
             ["partner_entries"] = string.Join("|", _partnerRows.Select(r => $"{r.Id}:{r.Name}")),
             ["target_ignore_entries"] = string.Join("|", _targetIgnoreRows.Select(r => $"{r.Slot}:{r.Name}")),
@@ -214,6 +216,21 @@ public partial class MainForm
         }
 
         return profile;
+    }
+
+    private JsonArray BuildReactionRulesJson()
+    {
+        var rules = new JsonArray();
+        foreach (var rule in _reactionRules)
+        {
+            rules.Add(new JsonObject
+            {
+                ["trigger"] = rule.Trigger,
+                ["name"] = rule.Name,
+                ["response"] = rule.Response,
+            });
+        }
+        return rules;
     }
 
     private static int ParseInt(string? text, int fallback)
@@ -292,6 +309,8 @@ public partial class MainForm
             ["brd_use_clarion_call"] = false,
             ["brd_use_marcato"] = false,
             ["brd_marcato_song"] = "",
+            ["reaction_enabled"] = false,
+            ["reaction_rules"] = new JsonArray(),
             ["spacing_band_min"] = -0.9,
             ["spacing_band_max"] = 0.4,
             ["spacing_model_size_floor"] = 0.9,

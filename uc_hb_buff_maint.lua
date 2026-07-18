@@ -1,5 +1,6 @@
 local res = require('resources')
 local uc_active_config = require('uc_active_config')
+local action_metadata = require('uc_scheduler_action_metadata')
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
 	or nil
@@ -376,6 +377,10 @@ function mod.choose(settings, members, helpers)
 	local overwrite_interval = tonumber(active_value_or_flat('config.defensive.buffs.overwrite_interval', settings.defensive_overwrite_interval) or 150) or 150
 	local now = now_s()
 	local first_eligible_non_majesty = nil
+	local action_metadata_deps = {
+		get_spell_resource = helpers.get_spell_resource,
+		get_ja_resource = helpers.get_ja_resource,
+	}
 
 	local function is_majesty_action(action_name)
 		return normalize_name(action_name):lower() == 'majesty'
@@ -422,7 +427,15 @@ function mod.choose(settings, members, helpers)
 
 			for _, action_name in ipairs(actions) do
 				local ready, reason, action_kind = helpers.action_ready(action_name)
-				if ready then
+				local self_only_action = ready and action_metadata.action_target_mode(action_metadata_deps, action_name, action_kind) == 'self_only'
+				if self_only_action and not m.is_self then
+					if helpers.log_debug then
+						helpers.log_debug(('HB_BUFF_SKIP name="%s" target="%s" reason=SELF_ONLY_ACTION'):format(
+							tostring(action_name),
+							tostring(m.name or '?')
+						))
+					end
+				elseif ready then
 					local bids = resolve_status_ids(action_name, helpers.get_spell_resource, helpers.get_ja_resource)
 					if helpers.log_debug and normalize_name(action_name):lower() == 'enlight ii' then
 						local id_parts = {}

@@ -200,6 +200,11 @@ internal static class StructuredProfileV2Writer
         config.Add("movement", BuildMovement(flatProfile));
         config.Add("follow", BuildFollow(flatProfile));
         config.Add("targeting", BuildTargeting(flatProfile));
+        var reactions = BuildReactions(flatProfile);
+        if (reactions is not null)
+        {
+            config.Add("reactions", reactions);
+        }
         config.Add("tank", BuildTank(flatProfile));
         config.Add("sleep", BuildSleep(flatProfile));
         config.Add("spells", BuildSpells(flatProfile));
@@ -387,6 +392,19 @@ internal static class StructuredProfileV2Writer
             .Add("targetability", new StructuredProfileNode().Add("enabled", false).Add("action", ""))
             .Add("ignore", EmptyList())
             .Add("target_ignore_names", ParseNameList(ReadString(flatProfile, "target_ignore_entries", "")));
+    }
+
+    private static StructuredProfileNode? BuildReactions(JsonObject flatProfile)
+    {
+        var enabled = ReadBool(flatProfile, "reaction_enabled", false);
+        var rules = ParseReactionRules(flatProfile);
+        if (!enabled && rules.Count == 0)
+        {
+            return null;
+        }
+        return new StructuredProfileNode()
+            .Add("enabled", enabled)
+            .Add("rules", rules);
     }
 
     private static StructuredProfileNode BuildTank(JsonObject flatProfile)
@@ -929,6 +947,37 @@ internal static class StructuredProfileV2Writer
             );
         }
 
+        return list;
+    }
+
+    private static List<object?> ParseReactionRules(JsonObject flatProfile)
+    {
+        var list = new List<object?>();
+        if (!flatProfile.TryGetPropertyValue("reaction_rules", out var node) || node is not JsonArray rules)
+        {
+            return list;
+        }
+
+        foreach (var item in rules)
+        {
+            if (item is not JsonObject rule)
+            {
+                continue;
+            }
+            var trigger = ReadString(rule, "trigger", "").Trim();
+            var name = ReadString(rule, "name", "").Trim();
+            var response = ReadString(rule, "response", "").Trim();
+            var valid = (trigger == "ability_window" && response == "turn_away")
+                || (trigger == "enemy_buff" && response == "stop_attacking");
+            if (!valid || name.Length == 0)
+            {
+                continue;
+            }
+            list.Add(new StructuredProfileNode()
+                .Add("trigger", trigger)
+                .Add("name", name)
+                .Add("response", response));
+        }
         return list;
     }
 

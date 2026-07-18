@@ -261,6 +261,7 @@ The bounded scheduler pending/confirmation transaction is the safe window. The i
 - If a confirmed cast produces no relevant timer change, the runtime must not claim a new expiration or ownership transition.
 - If multiple unrelated family changes occur in one observation window, the state becomes ambiguous.
 - If two possible overwrite victims cannot be distinguished, the provider must not guess.
+- General-song ownership and completion are anchored to the Bard's own successful recipient result and local `0x063` timer transition. Other area-cast recipients are retained as runtime evidence, but party roster members are not mandatory completion targets because they may be dead, out of zone, or out of song range.
 - External Bard casts, dispels, K.O., zoning, party changes, missed range, and conflicting packet evidence invalidate or downgrade affected ownership.
 - Ambiguous state transitions to an explicit unknown/reconstruction state; it does not silently fall back to generic-family assumptions.
 
@@ -474,7 +475,9 @@ Within Bard maintenance, proposal priority is:
 8. Perform a unique-song overwrite only when the victim is uniquely predictable.
 9. Refuse or defer ambiguous replacement.
 
-The resulting proposal still competes normally with cures, emergency defensive actions, combat actions, movement ownership, and other scheduler providers. This list does not redefine global scheduler rank.
+Every dedicated `maintenance_brd` proposal uses global scheduler priority band 120. This is provider-scoped rather than job-scoped: only the Bard maintenance provider emits these actions. Doom remains the hard emergency prepass. Below Doom, the global support ordering is Bard maintenance, critical Cure, Sleep, aftermath weapon skill, then existing weighted actions. Critical Cure uses band 117, Sleep uses band 113, and aftermath uses band 108. Band 113 is also the global pending-engage and engage-preemption bypass threshold, so engage setup cannot suppress Bard maintenance, critical Cure, or Sleep. Existing action, cooldown, movement, zoning, and pending-action safety locks remain authoritative; priority never interrupts an action already underway.
+
+An actionable Bard proposal starts a runtime-only action-lane reservation for the current song sequence. The reservation remains active while the provider waits for cast start, cast completion or interruption, the applicable `0x063` ownership confirmation, and the next required song transition. During that interval, lower-band spell, job ability, and weapon-skill proposals are held so their action lock cannot split the sequence merely because the Bard provider is temporarily between proposals. Movement and targeting remain available. The reservation releases when the effective configured song set is satisfied or when the provider reaches a terminal unavailable state. An initially unavailable Bard action does not reserve the lane. Doom remains unaffected because it is processed by the hard emergency prepass before scheduler proposal arbitration.
 
 ## State Invalidation and Cleanup
 

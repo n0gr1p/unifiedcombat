@@ -11,6 +11,7 @@ local DURABLE_CONFIG_DOMAINS = {
 	'movement',
 	'follow',
 	'targeting',
+	'reactions',
 	'tank',
 	'sleep',
 	'spells',
@@ -204,6 +205,12 @@ local function pick_durable_config_domains(config, meta)
 	end
 	if type(out.follow) == 'table' and type(out.follow.partner) == 'table' then
 		out.follow.partner.puller_id = nil
+	end
+	if type(out.reactions) == 'table'
+		and out.reactions.enabled ~= true
+		and type(out.reactions.rules) == 'table'
+		and #out.reactions.rules == 0 then
+		out.reactions = nil
 	end
 	if not is_cor_profile(meta) and type(out.maintenance) == 'table' then
 		out.maintenance.cor = nil

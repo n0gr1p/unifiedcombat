@@ -11,6 +11,7 @@ local DURABLE_CONFIG_DOMAINS = {
 	'movement',
 	'follow',
 	'targeting',
+	'reactions',
 	'tank',
 	'sleep',
 	'spells',
@@ -281,6 +282,12 @@ local function pick_durable_config_domains(config)
 	end
 	if type(out.targeting) == 'table' then
 		out.targeting.ignore = nil
+	end
+	if type(out.reactions) == 'table'
+		and out.reactions.enabled ~= true
+		and type(out.reactions.rules) == 'table'
+		and #out.reactions.rules == 0 then
+		out.reactions = nil
 	end
 	if type(out.ownership) == 'table' and out.ownership.profile_v2_autoload ~= true then
 		out.ownership.profile_v2_autoload = nil
@@ -554,6 +561,14 @@ local function apply_structured_config_to_candidate(candidate, config)
 		for i = 1, 3 do
 			candidate['target' .. tostring(i)] = legacy_targets[i]
 		end
+	end
+
+	if type(config.reactions) == 'table' then
+		candidate.reaction_enabled = config.reactions.enabled
+		candidate.reaction_rules = clone_value(config.reactions.rules)
+	else
+		candidate.reaction_enabled = false
+		candidate.reaction_rules = {}
 	end
 
 	if type(config.tank) == 'table' then

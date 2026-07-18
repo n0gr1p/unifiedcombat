@@ -81,7 +81,7 @@ local function main()
     }
     local critical_cure = {
         name = "critical cure",
-        priority_band = 110,
+        priority_band = 117,
         urgency = 0.70,
     }
     local dps_configured_ja = {

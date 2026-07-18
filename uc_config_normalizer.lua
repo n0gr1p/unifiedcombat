@@ -204,6 +204,34 @@ local function normalize_targeted_buffs(value, default_value)
     return out
 end
 
+local function normalize_reaction_rules(value)
+    local out = {}
+    local seen = {}
+    if type(value) ~= 'table' then
+        return out
+    end
+    for i = 1, #value do
+        local entry = value[i]
+        if type(entry) == 'table' then
+            local trigger = normalize_optional_string(entry.trigger)
+            local name = normalize_optional_string(entry.name)
+            local response = normalize_optional_string(entry.response)
+            local valid = (trigger == 'ability_window' and response == 'turn_away')
+                or (trigger == 'enemy_buff' and response == 'stop_attacking')
+            local key = trigger and name and (trigger .. ':' .. name:lower()) or nil
+            if valid and name ~= nil and key ~= nil and not seen[key] then
+                seen[key] = true
+                out[#out + 1] = {
+                    trigger = trigger,
+                    name = name,
+                    response = response,
+                }
+            end
+        end
+    end
+    return out
+end
+
 local function get_path(root, segments)
     local current = root
     for i = 1, #segments do
@@ -397,6 +425,10 @@ local function default_config(meta)
             },
             ignore = {},
             target_ignore_names = {},
+        },
+        reactions = {
+            enabled = false,
+            rules = {},
         },
         tank = {
             enabled = false,
@@ -933,6 +965,18 @@ local function normalize_ownership(source, config)
     end
 end
 
+local function normalize_reactions(source, config)
+    local reactions = config.reactions
+    local nested = get_path(source, { 'reactions' })
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'rules' }) then
+        reactions.enabled = normalize_boolean(nested.enabled, reactions.enabled)
+        reactions.rules = normalize_reaction_rules(nested.rules)
+    else
+        reactions.enabled = normalize_boolean(first_path(source, { path('reaction_enabled') }), reactions.enabled)
+        reactions.rules = normalize_reaction_rules(first_path(source, { path('reaction_rules') }))
+    end
+end
+
 local function normalize_legacy(source, config)
     local legacy = config.legacy
     local nested = get_path(source, { 'legacy' })
@@ -974,6 +1018,7 @@ function M.normalize(settings, meta)
     normalize_movement(source, config)
     normalize_follow(source, config)
     normalize_targeting(source, config)
+    normalize_reactions(source, config)
     normalize_tank(source, config)
     normalize_sleep(source, config)
     normalize_spells(source, config)

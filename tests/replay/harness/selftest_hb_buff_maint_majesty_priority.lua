@@ -7,6 +7,7 @@ package.loaded['resources'] = {
     buffs = {
         [101] = { en = 'Protect' },
         [102] = { en = 'Majesty' },
+        [105] = { en = 'Barwater' },
     },
 }
 
@@ -47,6 +48,9 @@ local function make_helpers(overrides)
         if action_name == 'Protect' then
             return { id = 1, type = 'WhiteMagic', status = 101 }
         end
+        if action_name == 'Barwatera' then
+            return { id = 71, type = 'WhiteMagic', status = 105, targets = 1 }
+        end
         return nil
     end
     local function get_ja_resource(action_name)
@@ -81,6 +85,7 @@ local function make_helpers(overrides)
         buff_priority = {
             Protect = 2,
             Majesty = 0,
+            Barwatera = 5,
         },
         last_overwrite = {},
         log_debug = nil,
@@ -132,6 +137,25 @@ local function main()
 
     picked = hb_buff_maint.choose(settings, make_members({ 101, 102 }), make_helpers())
     assert_equal(picked, nil, 'no candidate expected when all listed buffs are already present')
+
+    local party_buff_settings = {
+        defensive_buffs = 'Barwatera',
+        defensive_targeted_buffs = '',
+        defensive_buff_self_only = false,
+        defensive_overwrite_enabled = false,
+    }
+    local party_members = {
+        { name = 'Redrogue', is_self = true, buffs = { 105 } },
+        { name = 'Terrasjr', is_self = false, buffs = {} },
+    }
+    picked = hb_buff_maint.choose(party_buff_settings, party_members, make_helpers())
+    assert_equal(picked, nil, 'self-centered Barwatera must not recast for a remote party snapshot')
+
+    party_members[1].buffs = {}
+    picked = hb_buff_maint.choose(party_buff_settings, party_members, make_helpers())
+    assert_true(type(picked) == 'table', 'missing local Barwater must propose Barwatera')
+    assert_equal(picked.spell, 'Barwatera', 'missing local Barwater must select Barwatera')
+    assert_equal(picked.target.name, 'Redrogue', 'self-centered Barwatera must target the local player')
 
     local scheduler_source = io.open('unified_scheduler.lua', 'r')
     local scheduler_text = scheduler_source:read('*a')

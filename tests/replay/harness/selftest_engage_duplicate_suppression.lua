@@ -153,17 +153,8 @@ local function pending_gate(settings, state, now_value, proposal)
         end
         return true, "engage_ready"
     end
-    local detail = type(proposal.detail) == "table" and proposal.detail or {}
-    local target_hpp = tonumber(detail.target_hpp) or -1
-    local critical_hpp = tonumber(settings.defensive_critical_hpp) or 35
-    local is_critical_cure =
-        (tostring(proposal.provider or "") == "defensive_internal" or tostring(proposal.provider or "") == "defensive_healbot")
-        and tostring(proposal.action_type or "") == "spell"
-        and tostring(detail.def_action_type or "") == "cure"
-        and target_hpp > 0
-        and target_hpp <= critical_hpp
-    if is_critical_cure then
-        return true, "critical_override"
+    if type(proposal.priority_band) == "number" and proposal.priority_band >= 113 then
+        return true, "priority_override"
     end
     return false, "pending_engage_block_noncritical"
 end
@@ -249,17 +240,19 @@ local function main()
         family_id = "combat.sleep.primary",
         action_type = "spell",
         action_name = "Sleep II",
+        priority_band = 113,
     })
-    assert_equal(pending_allowed, false, "pending engage must still block non-critical Sleep during engage confirmation")
-    assert_equal(pending_reason, "pending_engage_block_noncritical", "non-critical pending engage block reason mismatch")
+    assert_equal(pending_allowed, true, "pending engage must allow globally high-priority Sleep")
+    assert_equal(pending_reason, "priority_override", "Sleep pending engage priority reason mismatch")
     pending_allowed, pending_reason = pending_gate({ defensive_critical_hpp = 35 }, state, 70.05, {
         provider = "defensive_internal",
         action_type = "spell",
         action_name = "Cure IV",
+        priority_band = 117,
         detail = { def_action_type = "cure", target_hpp = 20 },
     })
     assert_equal(pending_allowed, true, "critical Cure override must survive the duplicate suppression hotfix")
-    assert_equal(pending_reason, "critical_override", "critical Cure override reason mismatch")
+    assert_equal(pending_reason, "priority_override", "critical Cure priority override reason mismatch")
 
     io.stdout:write("selftest_engage_duplicate_suppression: OK\n")
 end

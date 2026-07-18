@@ -10,14 +10,26 @@ function M.job_id_by_short(deps, short_name)
 end
 
 function M.action_target_mode(deps, action_name, action_kind)
-	local targets = ''
+	local targets = nil
 	if action_kind == 'spell' then
 		local sp = deps.get_spell_resource(action_name)
-		targets = tostring((sp and sp.targets) or '')
+		targets = sp and sp.targets or nil
 	elseif action_kind == 'ja' then
 		local ja = deps.get_ja_resource(action_name)
-		targets = tostring((ja and ja.targets) or '')
+		targets = ja and ja.targets or nil
 	end
+	if type(targets) == 'number' then
+		return targets == 1 and 'self_only' or 'normal'
+	end
+	if type(targets) == 'table' then
+		local has_self = targets.Self == true or targets.self == true
+		local has_other = targets.Player == true or targets.player == true
+			or targets.Party == true or targets.party == true
+			or targets.Ally == true or targets.ally == true
+			or targets.Enemy == true or targets.enemy == true
+		return (has_self and not has_other) and 'self_only' or 'normal'
+	end
+	targets = tostring(targets or '')
 	local has_self = targets:find('Self', 1, true) ~= nil
 	local has_other = targets:find('Player', 1, true) ~= nil or
 		targets:find('Party', 1, true) ~= nil or

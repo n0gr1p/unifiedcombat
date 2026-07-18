@@ -52,6 +52,8 @@ local state = {
 	server_time_offset = initial_server_time_offset(os.time()),
 	server_time_source = 'epoch_estimate',
 	scheduler_failure = nil,
+	action_lane_reserved = false,
+	action_lane_reason = '',
 }
 
 local spell_by_name = nil
@@ -111,6 +113,16 @@ local function diagnostic_log(event, fields)
 	fh:write(table.concat(parts, '\t') .. '\n')
 	fh:close()
 	return true
+end
+
+local function reserve_action_lane(reason)
+	state.action_lane_reserved = true
+	state.action_lane_reason = tostring(reason or 'brd_sequence')
+end
+
+local function release_action_lane(reason)
+	state.action_lane_reserved = false
+	state.action_lane_reason = tostring(reason or '')
 end
 
 local function owner_summary()
@@ -414,6 +426,7 @@ local function reset_runtime(reason, preserve_trace)
 	state.snapshot_source = 'none'
 	state.pending = nil
 	state.scheduler_failure = nil
+	release_action_lane(reason)
 	state.owners = {}
 	state.force = nil
 	state.nitro_armed = false
@@ -435,6 +448,7 @@ function M.reset(reason)
 end
 
 local function proposal(action_type, action_name, reason_code, urgency, detail)
+	reserve_action_lane(reason_code)
 	state.last_blocker = ''
 	diagnostic_log('PROPOSAL', {
 		action_type = action_type,
@@ -467,6 +481,7 @@ end
 local function start_force_generation(config)
 	local complete = {}
 	state.force = { complete = complete, started_at = os.time() }
+	reserve_action_lane('brd_nitro_force')
 	state.last_transition = 'nitro_force_started'
 	trace('force:start songs=' .. join(config.songs))
 end
@@ -859,6 +874,7 @@ local function song_proposal(ctx, name, reason, urgency, is_dummy, required_reci
 		state.last_blocker = 'not_ready:' .. name .. ':' .. why
 		return nil
 	end
+	reserve_action_lane(reason)
 	return proposal('spell', name, reason, urgency, {
 		is_dummy = is_dummy == true,
 		required_recipient_ids = clone_array(required_recipients),
@@ -866,23 +882,13 @@ local function song_proposal(ctx, name, reason, urgency, is_dummy, required_reci
 end
 
 local function required_recipient_ids(ctx)
-	local out = {}
-	local seen = {}
 	local player_id = tonumber(ctx.player and ctx.player.id) or 0
-	if player_id > 0 then
-		out[#out + 1] = player_id
-		seen[player_id] = true
+	if player_id <= 0 then
+		return {}
 	end
-	local party = type(ctx.party) == 'table' and ctx.party or {}
-	for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
-		local member = party[key]
-		local id = tonumber(member and member.mob and member.mob.id) or tonumber(member and member.id) or 0
-		if id > 0 and not seen[id] then
-			out[#out + 1] = id
-			seen[id] = true
-		end
-	end
-	return out
+	-- General-song ownership is authoritative on the Bard's local timer. Party
+	-- recipients are evidence only; roster members may be dead, remote, or out of range.
+	return { player_id }
 end
 
 local function maybe_marcato(config, ctx, song_name, nitro_active)
@@ -915,11 +921,13 @@ function M.propose(config, ctx)
 	local ok, reason = validate_config(config, player)
 	if not ok then
 		state.last_blocker = reason
+		release_action_lane(reason)
 		diagnostic_log('CONFIG_REJECT', { reason = reason })
 		return nil
 	end
 	if config.enabled ~= true then
 		state.last_blocker = 'disabled'
+		release_action_lane('disabled')
 		return nil
 	end
 	local signature = config_signature(config, player)
@@ -1020,6 +1028,7 @@ function M.propose(config, ctx)
 				return proposal('ja', JA.clarion.name, 'brd_capacity_clarion', 0.77)
 			end
 			state.last_blocker = 'clarion_unavailable_for_fifth_song'
+			release_action_lane('clarion_unavailable_for_fifth_song')
 			return nil
 		end
 		local dummy = next_missing_dummy(config, required_dummy)
@@ -1027,6 +1036,7 @@ function M.propose(config, ctx)
 			return song_proposal(ctx, dummy, 'brd_build_capacity_dummy', 0.75, true, required_recipients)
 		end
 		state.last_blocker = 'capacity_build_no_timer_transition'
+		release_action_lane('capacity_build_no_timer_transition')
 		return nil
 	end
 	local missing = next_missing_final(config, required_recipients)
@@ -1051,7 +1061,14 @@ function M.propose(config, ctx)
 		end
 	end
 	state.last_blocker = remaining and ('waiting_deadline:' .. tostring(math.floor(remaining))) or 'songs_satisfied'
+	if not state.nitro_armed then
+		release_action_lane(state.last_blocker)
+	end
 	return nil
+end
+
+function M.action_lane_status()
+	return state.action_lane_reserved == true, state.action_lane_reason
 end
 
 function M.arm_trace_once()
@@ -1171,6 +1188,10 @@ function M.status_lines()
 				for _ in pairs(state.owners) do count = count + 1 end
 				return count
 			end)()
+		),
+		('BRD action_lane=%s reason=%s'):format(
+			state.action_lane_reserved and 'reserved' or 'open',
+			state.action_lane_reason ~= '' and state.action_lane_reason or 'none'
 		),
 		('BRD log=%s path=%s error=%s'):format(
 			state.log_enabled and 'on' or 'off',

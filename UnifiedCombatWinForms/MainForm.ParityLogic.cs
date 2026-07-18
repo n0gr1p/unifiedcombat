@@ -5,6 +5,8 @@ namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
+    private sealed record ReactionRuleRow(string Trigger, string Name, string Response);
+
     private static bool SequenceEqualOrdinal(IReadOnlyList<string> a, IReadOnlyList<string> b)
     {
         if (a.Count != b.Count)
@@ -400,6 +402,12 @@ public partial class MainForm
             _corRangePartyPanel.Controls.Clear();
             _corRollOptions.Clear();
             _corPartyOptions.Clear();
+            _reactionEnabled.Checked = false;
+            _reactionRules.Clear();
+            _reactionRuleList.Items.Clear();
+            _reactionName.Text = "";
+            _reactionTriggerCombo.SelectedItem = "ability_window";
+            RefreshReactionResponseOptions();
             _partyOptions.Clear();
             _partyFollowModeWarning.Visible = false;
             _partyFollowModeWarning.Text = "";
@@ -694,6 +702,8 @@ public partial class MainForm
                 _brdUseMarcato.Enabled = !subBrdOnly;
                 _brdMarcatoSong.Enabled = !subBrdOnly && _brdUseMarcato.Checked;
             }
+            _reactionEnabled.Checked = SessionStateHelper.GetBool(s, "reaction_enabled", false);
+            ApplyReactionRulesFromSnapshot(s);
 
             foreach (var key in HubUiConstants.BoolKeys)
             {
@@ -1508,6 +1518,123 @@ public partial class MainForm
         {
             CaptureWorkingProfileFromUi(_selectedSid);
         }
+    }
+
+    private void ApplyReactionRulesFromSnapshot(JsonElement snapshot)
+    {
+        _reactionRules.Clear();
+        if (snapshot.TryGetProperty("reaction_rules", out var rules) && rules.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in rules.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+                var trigger = SessionStateHelper.GetString(item, "trigger").Trim();
+                var name = SessionStateHelper.GetString(item, "name").Trim();
+                var response = SessionStateHelper.GetString(item, "response").Trim();
+                var valid = (trigger == "ability_window" && response == "turn_away")
+                    || (trigger == "enemy_buff" && response == "stop_attacking");
+                if (valid && name.Length > 0)
+                {
+                    _reactionRules.Add(new ReactionRuleRow(trigger, name, response));
+                }
+            }
+        }
+        RebindReactionRuleList();
+    }
+
+    private void RebindReactionRuleList(int selectedIndex = -1)
+    {
+        _reactionRuleList.Items.Clear();
+        foreach (var rule in _reactionRules)
+        {
+            _reactionRuleList.Items.Add($"{rule.Trigger} | {rule.Name} | {rule.Response}");
+        }
+        if (_reactionRuleList.Items.Count > 0 && selectedIndex >= 0)
+        {
+            _reactionRuleList.SelectedIndex = Math.Min(selectedIndex, _reactionRuleList.Items.Count - 1);
+        }
+    }
+
+    private void RefreshReactionResponseOptions()
+    {
+        var response = string.Equals(_reactionTriggerCombo.SelectedItem?.ToString(), "enemy_buff", StringComparison.Ordinal)
+            ? "stop_attacking"
+            : "turn_away";
+        _reactionResponseCombo.Items.Clear();
+        _reactionResponseCombo.Items.Add(response);
+        _reactionResponseCombo.SelectedIndex = 0;
+    }
+
+    private void OnReactionTriggerChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        RefreshReactionResponseOptions();
+    }
+
+    private void OnReactionConfigChanged()
+    {
+        if (_suppressEvents || string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            return;
+        }
+        CaptureWorkingProfileFromUi(_selectedSid);
+    }
+
+    private void OnReactionRuleAdd()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var trigger = _reactionTriggerCombo.SelectedItem?.ToString() ?? "";
+        var name = (_reactionName.Text ?? "").Trim();
+        var response = _reactionResponseCombo.SelectedItem?.ToString() ?? "";
+        var valid = (trigger == "ability_window" && response == "turn_away")
+            || (trigger == "enemy_buff" && response == "stop_attacking");
+        if (!valid || name.Length == 0)
+        {
+            return;
+        }
+        if (_reactionRules.Any(x => string.Equals(x.Trigger, trigger, StringComparison.Ordinal)
+            && string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+        _reactionRules.Add(new ReactionRuleRow(trigger, name, response));
+        _reactionName.Text = "";
+        RebindReactionRuleList(_reactionRules.Count - 1);
+        OnReactionConfigChanged();
+    }
+
+    private void OnReactionRuleRemove()
+    {
+        var index = _reactionRuleList.SelectedIndex;
+        if (_suppressEvents || index < 0 || index >= _reactionRules.Count)
+        {
+            return;
+        }
+        _reactionRules.RemoveAt(index);
+        RebindReactionRuleList(Math.Min(index, _reactionRules.Count - 1));
+        OnReactionConfigChanged();
+    }
+
+    private void OnReactionRuleMove(int direction)
+    {
+        var index = _reactionRuleList.SelectedIndex;
+        var next = index + direction;
+        if (_suppressEvents || index < 0 || next < 0 || next >= _reactionRules.Count)
+        {
+            return;
+        }
+        (_reactionRules[index], _reactionRules[next]) = (_reactionRules[next], _reactionRules[index]);
+        RebindReactionRuleList(next);
+        OnReactionConfigChanged();
     }
 
     private void OnBrdListAdd(bool dummy)
