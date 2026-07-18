@@ -1,5 +1,5 @@
--- Ordered mob names for fight-adds: first entry = highest priority. Case-insensitive exact name match.
--- Empty list → add pick uses only distance / tank-hpp tiebreaks (legacy behavior).
+-- Ordered eligible mob names for fight-adds: first entry = highest priority. Case-insensitive exact name match.
+-- Empty list means add control does not override the fight leader target.
 
 local M = {}
 local uc_runtime_overrides = require('uc_runtime_overrides')

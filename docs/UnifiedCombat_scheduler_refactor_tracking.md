@@ -3,6 +3,8 @@
 Source RFC: `RFC/UnifiedCombat_scheduler_refactor_RFC_for_Codex.md`  
 Purpose: a living progress tracker for implementation scope, completed work, and remaining scope.
 
+- 2026-07-14: Completed add-control priority eligibility and scheduler engaged-retarget parity hotfix. Add control now treats the ordered add-priority names as an eligibility list, returns to the fight leader target when no listed add is valid, and does not unlock the ordinary claimed / Prime candidate scan while engaged. Scheduler-owned combat now permits engaged target-control proposals only for enabled add control and uses the existing switch-target attack primitive for those transitions, restoring parity with the legacy core path. Added focused eligibility coverage and refreshed side-effect line pins without changing the side-effect set. Validation: `luac -p uc_add_control.lua`, `luac -p uc_add_priority.lua`, `luac -p unified_combat_core.lua`, `luac -p unified_scheduler.lua`, `lua tests/replay/harness/selftest_add_control_priority_eligibility.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`, `dotnet build UnifiedCombatWinForms/UnifiedCombatWinForms.csproj --no-restore`. Field test: reload UnifiedCombat on every character, engage the fight leader target, spawn both listed and unlisted adds, confirm every combat owner switches to listed adds in configured order, ignores unlisted adds, and returns to the leader target after the last listed add dies.
+
 ## 1) Overall Status Snapshot
 
 - Current phase focus: scheduler runtime parity slices that stay inside existing ownership policy, plus replay/static coverage for those slices.

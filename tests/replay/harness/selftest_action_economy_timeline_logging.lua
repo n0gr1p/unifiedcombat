@@ -125,7 +125,10 @@ local function install_scheduler_stubs()
         }),
     }
     package.loaded["uc_ability_pipeline"] = {}
-    package.loaded["unified_combat_core"] = { on_action_message = function() end }
+    package.loaded["unified_combat_core"] = {
+        on_action_message = function() end,
+        add_control_enabled_for_scheduler = function() return false end,
+    }
     package.loaded["uc_targeting_common"] = {}
     package.loaded["uc_cor_maintenance"] = {}
     package.loaded["uc_settarget"] = {}

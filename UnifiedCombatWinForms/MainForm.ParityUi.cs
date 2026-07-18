@@ -378,7 +378,7 @@ public partial class MainForm
 
         _grpFightLeader = new GroupBox
         {
-            Text = "Fight leader — autotarget prefers leader target; add control uses priority list.",
+            Text = "Fight leader — autotarget stays on the leader target unless an eligible fight-add is valid.",
             Dock = DockStyle.Top,
             Padding = new Padding(8),
             AutoSize = true,
@@ -440,7 +440,7 @@ public partial class MainForm
 
         _grpAddPri = new GroupBox
         {
-            Text = "Fight-add priority — ordered mob names; Up/Down reorders.",
+            Text = "Fight-add priority — only listed mobs are eligible; Up/Down reorders.",
             Dock = DockStyle.Fill,
             Padding = new Padding(8),
             AutoSize = true,

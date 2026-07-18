@@ -2432,7 +2432,7 @@ windower.register_event('addon command', function(...)
 		if sub == 'clear' then
 			s.add_priority_names = {}
 			_G.UC_LAST_ADD_PRIORITY_OP = 'clear'
-			windower.add_to_chat(207, 'Add priority list cleared (fight-adds uses distance/tank only).')
+			windower.add_to_chat(207, 'Add priority list cleared (add control will stay on the fight leader target).')
 			return
 		elseif sub == 'list' then
 			local arr = uc_add_priority.as_ordered_names(s)

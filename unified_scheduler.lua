@@ -4534,9 +4534,9 @@ local function p1_collect_target_control(ctx, out)
 	if not player then
 		return
 	end
-	-- Keep parity with core engaged stickiness for this first migration slice:
-	-- target acquisition proposals are for pre-engage control only.
-	if tonumber(player.status) == 1 then
+	local engaged = tonumber(player.status) == 1
+	-- Engaged target control is reserved for explicit fight-leader add control.
+	if engaged and not combat_core.add_control_enabled_for_scheduler(ctx.settings) then
 		return
 	end
 	local pick = combat_core.select_target_for_scheduler(ctx.settings)
@@ -4592,6 +4592,7 @@ local function p1_collect_target_control(ctx, out)
 		reason_code = 'acquire_candidate',
 		detail = {
 			hpp = tonumber(pick.hpp) or 0,
+			add_control_retarget = engaged,
 		},
 		required_setting = 'autotarget',
 	}
@@ -5702,7 +5703,15 @@ function scheduler.p1_dispatch_target_control(selected, ctx)
 	if tid <= 0 then
 		return false, nil
 	end
-	local ok = p1_try_target_prep(tid)
+	local detail = type(selected.detail) == 'table' and selected.detail or {}
+	local player = windower.ffxi.get_player()
+	local engaged_retarget = detail.add_control_retarget == true and player and tonumber(player.status) == 1
+	local ok
+	if engaged_retarget then
+		ok = uc_attack.switch_target(tid)
+	else
+		ok = p1_try_target_prep(tid)
+	end
 	if not ok then
 		scheduler.action_timeline_log('TARGET_SELECT_BLOCKED', {
 			tid = tid,

@@ -193,6 +193,8 @@ Fight leader:
 
 Add priority list:
 
+Only listed mobs are eligible for add-control overrides. When no listed mob is valid, combat stays on the fight leader's target.
+
 - `//uc add_priority add <mob name>`
 - `//uc add_priority remove <index>`
 - `//uc add_priority list`

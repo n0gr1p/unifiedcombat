@@ -1145,6 +1145,11 @@ local function find_candidate_target(settings)
 			return ov
 		end
 	end
+	if engaged and allow_engaged_retarget then
+		-- Add control may switch only to its listed add or the resolved leader target.
+		-- Do not let it unlock the ordinary claimed / Prime candidate scan while engaged.
+		return nil
+	end
 	if cur_alive_monster then
 		if cur_is_partner_target then
 			-- Current target is explicitly in partner-skip set; do not keep it.
@@ -3771,6 +3776,10 @@ function core.select_target_for_scheduler(settings)
 		target_name = tostring(target.name or ''),
 		hpp = tonumber(target.hpp) or 0,
 	}
+end
+
+function core.add_control_enabled_for_scheduler(settings)
+	return uc_add_control.enabled(scheduler_settings_view(settings))
 end
 
 function core.select_pull_for_scheduler(settings)
