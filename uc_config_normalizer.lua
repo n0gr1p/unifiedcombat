@@ -411,6 +411,7 @@ local function default_config(meta)
                 puller = false,
                 puller_name = '',
                 puller_id = 0,
+                engage_range = 6.0,
                 puller_distance_only = false,
             },
         },
@@ -440,6 +441,7 @@ local function default_config(meta)
             enabled = false,
             order = clone_value(DEFAULT_SLEEP_ORDER),
             legacy_primary = DEFAULT_SLEEP_ORDER[1],
+            max_target_range = 6.0,
         },
         spells = {
             enabled = false,
@@ -725,6 +727,7 @@ local function normalize_follow(source, config)
         follow.partner.puller = normalize_boolean(partner.puller, follow.partner.puller)
         follow.partner.puller_name = normalize_string(partner.puller_name, follow.partner.puller_name)
         follow.partner.puller_id = normalize_number(partner.puller_id, follow.partner.puller_id, { integer = true })
+        follow.partner.engage_range = normalize_number(partner.engage_range, follow.partner.engage_range, { min = 0.1, max = 50.0 })
         follow.partner.puller_distance_only = normalize_boolean(partner.puller_distance_only, follow.partner.puller_distance_only)
     else
         follow.enabled = normalize_boolean(first_path(source, { path('domain_follow_enabled') }), follow.enabled)
@@ -744,6 +747,7 @@ local function normalize_follow(source, config)
         follow.partner.puller = normalize_boolean(first_path(source, { path('puller') }), follow.partner.puller)
         follow.partner.puller_name = normalize_string(first_path(source, { path('puller_name'), path('puller_selected') }), follow.partner.puller_name)
         follow.partner.puller_id = normalize_number(first_path(source, { path('puller_id') }), follow.partner.puller_id, { integer = true })
+        follow.partner.engage_range = normalize_number(first_path(source, { path('puller_engage_range') }), follow.partner.engage_range, { min = 0.1, max = 50.0 })
         follow.partner.puller_distance_only = normalize_boolean(first_path(source, { path('puller_distance_only') }), follow.partner.puller_distance_only)
     end
 end
@@ -821,11 +825,14 @@ end
 local function normalize_sleep(source, config)
     local sleep = config.sleep
     local nested = get_path(source, { 'sleep' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'order', 'legacy_primary' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'order', 'legacy_primary', 'max_target_range' }) then
         sleep.enabled = normalize_boolean(nested.enabled, sleep.enabled)
+        sleep.max_target_range = normalize_number(nested.max_target_range, sleep.max_target_range, { min = 0.1, max = 50.0 })
         local order = nested.order
+        local order_was_provided = order ~= nil
         if order == nil and nested.legacy_primary ~= nil then
             order = { nested.legacy_primary }
+            order_was_provided = true
         end
         sleep.order = normalize_list(order, sleep.order)
         local legacy_primary = normalize_optional_string(nested.legacy_primary)
@@ -833,14 +840,19 @@ local function normalize_sleep(source, config)
             sleep.legacy_primary = legacy_primary
         elseif #sleep.order > 0 then
             sleep.legacy_primary = normalize_string(sleep.order[1], sleep.legacy_primary)
+        elseif order_was_provided then
+            sleep.legacy_primary = ''
         end
     else
         sleep.enabled = normalize_boolean(first_path(source, { path('sleep') }), sleep.enabled)
+        sleep.max_target_range = normalize_number(first_path(source, { path('sleep_max_target_range') }), sleep.max_target_range, { min = 0.1, max = 50.0 })
         local order = first_path(source, { path('sleepspells') })
+        local order_was_provided = order ~= nil
         if order == nil then
             local legacy_primary = normalize_optional_string(first_path(source, { path('sleepspell') }))
             if legacy_primary ~= nil then
                 order = { legacy_primary }
+                order_was_provided = true
             end
         end
         sleep.order = normalize_list(order, sleep.order)
@@ -849,6 +861,8 @@ local function normalize_sleep(source, config)
             sleep.legacy_primary = legacy_primary
         elseif #sleep.order > 0 then
             sleep.legacy_primary = normalize_string(sleep.order[1], sleep.legacy_primary)
+        elseif order_was_provided then
+            sleep.legacy_primary = ''
         end
     end
 end

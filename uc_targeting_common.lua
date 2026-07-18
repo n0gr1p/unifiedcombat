@@ -91,6 +91,44 @@ function M.is_friendly_party_or_alliance_member_id(id, opts)
 	return set[member_id] == true
 end
 
+function M.mob_targets_friendly_member(mob, friendly_id_set, now)
+	if type(mob) ~= 'table' then
+		return false, 'missing_mob'
+	end
+	if type(friendly_id_set) ~= 'table' then
+		error('mob_targets_friendly_member requires a friendly id set')
+	end
+	local observed_at = tonumber(now)
+	if observed_at == nil then
+		error('mob_targets_friendly_member requires current time')
+	end
+
+	local target_index = tonumber(mob.target_index) or 0
+	if target_index > 0 then
+		local target = windower.ffxi.get_mob_by_index(target_index)
+		if target and friendly_id_set[tonumber(target.id) or 0] == true then
+			return true, 'target_index'
+		end
+	end
+
+	local direct_target_id = tonumber(mob.target) or 0
+	if direct_target_id > 0 and friendly_id_set[direct_target_id] == true then
+		return true, 'target_id'
+	end
+
+	local action_targets = rawget(_G, 'UC_MOB_LAST_ACTION_TARGETS')
+	local record = type(action_targets) == 'table' and action_targets[tonumber(mob.id) or 0] or nil
+	if type(record) == 'table' then
+		local age = observed_at - (tonumber(record.at) or 0)
+		local action_target_id = tonumber(record.target_id) or 0
+		if age >= 0 and age <= 5.0 and friendly_id_set[action_target_id] == true then
+			return true, 'recent_action'
+		end
+	end
+
+	return false, 'no_friendly_target_evidence'
+end
+
 function M.build_party_claims()
 	return M.build_friendly_claims()
 end

@@ -335,6 +335,7 @@ internal static class StructuredProfileV2Writer
             .Add("secondary_enabled", false)
             .Add("ids", EmptyList())
             .Add("puller", ReadBool(flatProfile, "puller", false))
+            .Add("engage_range", Math.Clamp(ReadDouble(flatProfile, "puller_engage_range", 6.0), 0.1, 50.0))
             .Add("puller_distance_only", ReadBool(flatProfile, "puller_distance_only", false));
 
         var pullerName = ReadString(flatProfile, "puller_selected", ReadString(flatProfile, "puller_name", ""));
@@ -416,11 +417,13 @@ internal static class StructuredProfileV2Writer
 
     private static StructuredProfileNode BuildSleep(JsonObject flatProfile)
     {
-        _ = flatProfile;
+        var order = ParseNameList(ReadString(flatProfile, "sleep_spell_entries", ""));
+        var legacyPrimary = order.Count > 0 ? order[0]?.ToString() ?? "" : "";
         return new StructuredProfileNode()
-            .Add("enabled", false)
-            .Add("order", EmptyList())
-            .Add("legacy_primary", "");
+            .Add("enabled", ReadBool(flatProfile, "sleep", false))
+            .Add("order", order)
+            .Add("legacy_primary", legacyPrimary)
+            .Add("max_target_range", Math.Clamp(ReadDouble(flatProfile, "sleep_max_target_range", 6.0), 0.1, 50.0));
     }
 
     private static StructuredProfileNode BuildSpells(JsonObject flatProfile)

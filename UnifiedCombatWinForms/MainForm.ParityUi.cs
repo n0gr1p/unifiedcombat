@@ -14,6 +14,7 @@ public partial class MainForm
     private ComboBox _wsModeCombo = null!;
     private ComboBox _aftermathCombo = null!;
     private ComboBox _pullerCombo = null!;
+    private TextBox _pullerEngageRange = null!;
     private ComboBox _fightLeaderCombo = null!;
     private ComboBox _partyFollowCombo = null!;
     private Label _partyFollowModeWarning = null!;
@@ -49,6 +50,7 @@ public partial class MainForm
     private GroupBox _grpSleepSpells = null!;
     private ListBox _sleepSpellList = null!;
     private TextBox _sleepSpellName = null!;
+    private TextBox _sleepMaxTargetRange = null!;
     private Button _sleepSpellSetOnly = null!;
     private Button _sleepSpellAdd = null!;
     private Button _sleepSpellRemove = null!;
@@ -329,6 +331,11 @@ public partial class MainForm
         _pullerCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
         _pullerCombo.SelectedIndexChanged += (_, _) => OnPullerSelected();
         pull.Controls.Add(_pullerCombo);
+        pull.Controls.Add(new Label { Text = "Engage range", AutoSize = true, Padding = new Padding(8, 4, 0, 0) });
+        _pullerEngageRange = new TextBox { Width = 52 };
+        _pullerEngageRange.Leave += (_, _) => OnPullerEngageRangeChanged();
+        pull.Controls.Add(_pullerEngageRange);
+        pull.Controls.Add(new Label { Text = "yalms", AutoSize = true, Padding = new Padding(0, 4, 0, 0) });
         leftCol.Controls.Add(new Label { Text = "puller", AutoSize = true }, 0, lr);
         leftCol.Controls.Add(pull, 1, lr);
         lr++;
@@ -596,6 +603,13 @@ public partial class MainForm
             MinimumSize = new Size(200, 120),
         };
         var sleepFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
+        var sleepRangeRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        sleepRangeRow.Controls.Add(new Label { Text = "Eligible mob range", AutoSize = true, Padding = new Padding(0, 4, 0, 0) });
+        _sleepMaxTargetRange = new TextBox { Width = 52 };
+        _sleepMaxTargetRange.Leave += (_, _) => OnSleepMaxTargetRangeChanged();
+        sleepRangeRow.Controls.Add(_sleepMaxTargetRange);
+        sleepRangeRow.Controls.Add(new Label { Text = "yalms", AutoSize = true, Padding = new Padding(0, 4, 0, 0) });
+        sleepFlow.Controls.Add(sleepRangeRow);
         _sleepSpellList = new ListBox { Height = 90, IntegralHeight = false, Dock = DockStyle.Top, Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top };
         sleepFlow.Controls.Add(_sleepSpellList);
         var sleepRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0), WrapContents = false };

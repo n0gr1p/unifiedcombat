@@ -89,14 +89,25 @@ local wrong_actor = reactions.on_action({
     actor_id = 901,
     category = 7,
     targets = { { actions = { { param = 284 } } } },
-}, 900, 1)
-assert_true(wrong_actor.activated == nil, 'non-current target must not activate a reaction')
+}, 900, 1, true)
+assert_equal(wrong_actor.activated.actor_id, 901, 'valid non-current enemy actor must activate a reaction')
+local off_target_lock = reactions.evaluate(900, {}, 1.1)
+assert_equal(off_target_lock.actor_id, 901, 'non-current actor ability lock must survive target-scoped refresh')
+local wrong_actor_complete = reactions.on_action({ actor_id = 901, category = 11, param = 284 }, 900, 1.2, false)
+assert_equal(wrong_actor_complete.released_target_id, 901, 'non-current actor completion must release its reaction')
+
+local invalid_actor = reactions.on_action({
+    actor_id = 902,
+    category = 7,
+    targets = { { actions = { { param = 284 } } } },
+}, 900, 1.3, false)
+assert_true(invalid_actor.activated == nil, 'invalid or non-enemy action actor must not activate a reaction')
 
 local ready = reactions.on_action({
     actor_id = 900,
     category = 7,
     targets = { { actions = { { param = 284 } } } },
-}, 900, 2)
+}, 900, 2, true)
 assert_equal(ready.activated.name, 'Cold Stare', 'Cold Stare ready must activate configured rule')
 assert_equal(ready.activated.response, 'turn_away', 'Cold Stare response mismatch')
 local active_lock = reactions.evaluate(900, {}, 2.1)
@@ -121,9 +132,9 @@ assert_true(watch[300] == true, 'configured enemy buff must be added to observed
 local buff_lock = reactions.evaluate(900, { { effect_id = 300 } }, 4)
 assert_equal(buff_lock.name, 'Dread Spikes', 'tracked enemy buff must activate stop-attacking lock')
 assert_equal(buff_lock.response, 'stop_attacking', 'enemy buff response mismatch')
-local no_buff, released_target = reactions.evaluate(900, {}, 5)
-assert_true(no_buff == nil, 'enemy buff lock must clear when authoritative tracker no longer reports it')
-assert_equal(released_target, 900, 'enemy buff removal must request facing restoration')
+local no_buff, released_target = reactions.evaluate(901, {}, 5)
+assert_true(no_buff == nil, 'enemy buff stop-attacking lock must clear when its actor is no longer the current target')
+assert_equal(released_target, 900, 'target-scoped enemy buff lock removal must request facing restoration')
 
 local source = assert(io.open('unified_scheduler.lua', 'rb')):read('*a')
 assert_true(source:find("reject_reason = 'reaction_hold'", 1, true) ~= nil, 'scheduler must reject blocked proposals through reaction hold')

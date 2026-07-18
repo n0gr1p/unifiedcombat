@@ -356,6 +356,8 @@ public partial class MainForm
             _pfFollowMaxYalms.Text = "50";
             _pfFightFollowMinYalms.Text = "3";
             _pfFightFollowHoldS.Text = "8";
+            _pullerEngageRange.Text = "6";
+            _sleepMaxTargetRange.Text = "6";
             _spUsePrediction.Checked = true;
             _spBandMin.Text = "-0.9";
             _spBandMax.Text = "0.4";
@@ -435,6 +437,8 @@ public partial class MainForm
             _addPriCurTarget.Enabled = false;
             _partnerCurTarget.Enabled = false;
             _pullerCombo.Enabled = false;
+            _pullerEngageRange.Enabled = false;
+            _sleepMaxTargetRange.Enabled = false;
             _fightLeaderCombo.Enabled = false;
             _partyFollowCombo.Enabled = false;
             _pfFollowMinYalms.Enabled = false;
@@ -548,6 +552,9 @@ public partial class MainForm
 
             BindPartyCombo(_pullerCombo, pullerOpts, selPull);
             _pullerCombo.Enabled = pullOn;
+            _pullerEngageRange.Text = SessionStateHelper.GetString(s, "puller_engage_range", "6");
+            _pullerEngageRange.Enabled = pullOn;
+            _sleepMaxTargetRange.Text = SessionStateHelper.GetString(s, "sleep_max_target_range", "6");
 
             var flOn = SessionStateHelper.GetBool(s, "fight_leader", false);
             var selFl = NormalizePartyName(SessionStateHelper.GetString(s, "fight_leader_selected"));
@@ -827,6 +834,8 @@ public partial class MainForm
                 EnsureCorRollOptions(_corRoll2Combo);
                 changed = true;
             }
+
+            _sleepMaxTargetRange.Enabled = _boolChecks.TryGetValue("sleep", out var sleepCheck) && sleepCheck.Checked;
             if (hasBrdSongs && !SequenceEqualOrdinal(_brdSongOptions, brdSongOpts))
             {
                 _brdSongOptions.Clear();
@@ -1220,12 +1229,18 @@ public partial class MainForm
         if (key == "puller")
         {
             _pullerCombo.Enabled = val;
+            _pullerEngageRange.Enabled = val;
             var ps = SelectedPartyName(_pullerCombo);
             if (val && !string.IsNullOrEmpty(ps) && !ComboContainsPartyName(_pullerCombo, ps))
             {
                 _pullerCombo.SelectedIndex = 0;
                 OnPullerSelected();
             }
+        }
+
+        if (key == "sleep")
+        {
+            _sleepMaxTargetRange.Enabled = val;
         }
 
         if (key == "fight_leader")
@@ -1445,6 +1460,7 @@ public partial class MainForm
         {
             return;
         }
+
         var hasTab = _settingsTabs.TabPages.Contains(_tabBrd);
         if (shouldShow && !hasTab)
         {
@@ -1459,6 +1475,32 @@ public partial class MainForm
                 _settingsTabs.SelectedIndex = 0;
             }
         }
+    }
+
+    private void OnPullerEngageRangeChanged()
+    {
+        CommitDurableRange(_pullerEngageRange, 6.0);
+    }
+
+    private void OnSleepMaxTargetRangeChanged()
+    {
+        CommitDurableRange(_sleepMaxTargetRange, 6.0);
+    }
+
+    private void CommitDurableRange(TextBox control, double defaultValue)
+    {
+        if (_suppressEvents || string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            return;
+        }
+
+        if (!double.TryParse((control.Text ?? "").Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            value = defaultValue;
+        }
+        value = Math.Clamp(value, 0.1, 50.0);
+        control.Text = value.ToString("0.###", CultureInfo.InvariantCulture);
+        CaptureWorkingProfileFromUi(_selectedSid);
     }
 
     private static void ApplyBrdList(ListBox list, string raw)

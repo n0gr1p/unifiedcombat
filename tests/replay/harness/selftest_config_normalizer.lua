@@ -138,6 +138,7 @@ local function build_flat_settings()
         partner = true,
         partner2 = true,
         puller = true,
+        puller_engage_range = 9.5,
         puller_distance_only = true,
         puller_name = 'Niightsiide',
         partner_id = 11,
@@ -168,6 +169,7 @@ local function build_flat_settings()
         sleep = true,
         sleepspells = { 'Sleep II', 'Sleepga' },
         sleepspell = 'Sleep II',
+        sleep_max_target_range = 14.0,
         spell = 'Dia',
         spell_active = true,
         dd2_spell_slots = { { spell = 'Dia' } },
@@ -360,6 +362,7 @@ local function build_nested_settings()
                 puller = true,
                 puller_name = 'Niightsiide',
                 puller_id = 33,
+                engage_range = 8.5,
                 puller_distance_only = true,
             },
         },
@@ -385,6 +388,7 @@ local function build_nested_settings()
             enabled = true,
             order = { 'Sleep II', 'Sleepga' },
             legacy_primary = 'Sleep II',
+            max_target_range = 12.0,
         },
         spells = {
             enabled = true,
@@ -486,6 +490,8 @@ local function main()
     assert_true(type(default_from_normalize.targeting) == 'table', 'targeting domain missing')
     assert_true(type(default_from_normalize.tank) == 'table', 'tank domain missing')
     assert_true(type(default_from_normalize.sleep) == 'table', 'sleep domain missing')
+    assert_equal(default_from_normalize.follow.partner.engage_range, 6.0, 'default puller engage range mismatch')
+    assert_equal(default_from_normalize.sleep.max_target_range, 6.0, 'default sleep target range mismatch')
     assert_true(type(default_from_normalize.spells) == 'table', 'spells domain missing')
     assert_true(type(default_from_normalize.maintenance) == 'table', 'maintenance domain missing')
     assert_true(type(default_from_normalize.debug) == 'table', 'debug domain missing')
@@ -522,10 +528,12 @@ local function main()
     assert_equal(flat_config.follow.party.leader_name, 'Leader', 'party follow leader mismatch')
     assert_equal(flat_config.follow.partner.secondary_enabled, true, 'partner2 mismatch')
     assert_equal(flat_config.follow.partner.puller_name, 'Niightsiide', 'flat puller name mismatch')
+    assert_equal(flat_config.follow.partner.engage_range, 9.5, 'flat puller engage range mismatch')
     assert_equal(flat_config.tank.enabled, true, 'tank mismatch')
     assert_equal(flat_config.tank.enmity.actions[2], 'Flash', 'tank enmity actions mismatch')
     assert_equal(flat_config.sleep.order[2], 'Sleepga', 'sleep order mismatch')
     assert_equal(flat_config.sleep.legacy_primary, 'Sleep II', 'sleep legacy primary mismatch')
+    assert_equal(flat_config.sleep.max_target_range, 14.0, 'flat sleep target range mismatch')
     assert_equal(flat_config.spells.configured, 'Dia', 'spell configured mismatch')
     assert_equal(flat_config.spells.dd2_slots[1].spell, 'Dia', 'dd2 slots mismatch')
     assert_equal(flat_config.maintenance.cor.roll_1, 'Chaos Roll', 'cor roll 1 mismatch')
@@ -565,6 +573,8 @@ local function main()
     assert_equal(nested_config.maintenance.brd.marcato_song, 'Honor March', 'nested maintenance BRD Marcato mismatch')
     assert_equal(nested_config.maintenance.geo.bubble, 'Entrust', 'nested maintenance GEO mismatch')
     assert_equal(nested_config.follow.partner.puller_name, 'Niightsiide', 'nested puller name mismatch')
+    assert_equal(nested_config.follow.partner.engage_range, 8.5, 'nested puller engage range mismatch')
+    assert_equal(nested_config.sleep.max_target_range, 12.0, 'nested sleep target range mismatch')
 
     nested_config.abilities.configured[1] = 'Changed'
     nested_config.targeting.targets[1] = 'Changed'

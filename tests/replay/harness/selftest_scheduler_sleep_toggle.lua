@@ -58,7 +58,7 @@ local function target_id_spell_dispatch_ready_mock(input)
 end
 
 local function collect_sleep_mock(input)
-    local sleep_max_target_distance = 6.0
+    local sleep_max_target_distance = tonumber(input.sleep_max_target_range) or 6.0
     if input.engine_on ~= true then
         return nil
     end
@@ -121,10 +121,11 @@ local function main()
     assert_contains(source, "if not bool_setting(require('uc_runtime_overrides').sleep_enabled(ctx.settings), false) then", "Sleep collection must stay behind the existing Sleep toggle")
     assert_contains(source, "local configured_sleep_spells = scheduler.sleep_spell_list_from_settings(ctx.settings)", "Sleep collection must use UI-owned configured spell lists")
     assert_contains(source, "if #configured_sleep_spells == 0 then", "Sleep collection must no-op when no spell list is configured")
-    assert_contains(source, "scheduler.SLEEP_MAX_TARGET_DISTANCE = 6.0", "Sleep collection must document the hard 6-yalm boundary")
+    assert_contains(source, "scheduler.SLEEP_MAX_TARGET_DISTANCE = 6.0", "Sleep collection must retain the 6-yalm compatibility default")
+    assert_contains(source, "function scheduler.sleep_max_target_distance(settings)", "Sleep collection must read the configured target range")
     assert_contains(source, "if tonumber(mob.status) ~= 1 then", "Sleep target selection must stay scoped to active threat-style mobs")
     assert_contains(source, "if (tonumber(mob.hpp) or 0) <= 99 then", "Sleep target selection must preserve the legacy full-HP add filter")
-    assert_contains(source, "if dist > scheduler.SLEEP_MAX_TARGET_DISTANCE then", "Sleep target eligibility must reject mobs beyond 6 yalms")
+    assert_contains(source, "if dist > scheduler.sleep_max_target_distance(ctx.settings) then", "Sleep target eligibility must reject mobs beyond the configured range")
     assert_contains(source, "if scheduler.target_sleep_suppressed(ctx.settings, tid, ctx.now) then", "Sleep target eligibility must reject already-slept targets")
     assert_contains(source, "scheduler.PRIORITY_BAND_SLEEP = 113", "Sleep priority band must remain globally pinned")
     assert_contains(source, "priority_band = scheduler.PRIORITY_BAND_SLEEP", "Sleep proposals must use the global priority band")
@@ -217,6 +218,30 @@ local function main()
         },
     })
     assert_equal(none, nil, "engaged add Sleep must reject targets beyond 6 yalms")
+
+    local configured_range = collect_sleep_mock({
+        engine_on = true,
+        scheduler_dark_launch_combat = true,
+        sleep = true,
+        sleep_max_target_range = 14.0,
+        sleep_spells = { "Sleep II" },
+        candidates = {
+            { eligible = true, target_id = 24, dist = 12.0, available_spell = "Sleep II" },
+        },
+    })
+    assert_true(type(configured_range) == "table", "configured Sleep range must admit candidates beyond the 6-yalm default")
+
+    none = collect_sleep_mock({
+        engine_on = true,
+        scheduler_dark_launch_combat = true,
+        sleep = true,
+        sleep_max_target_range = 14.0,
+        sleep_spells = { "Sleep II" },
+        candidates = {
+            { eligible = true, target_id = 25, dist = 14.01, available_spell = "Sleep II" },
+        },
+    })
+    assert_equal(none, nil, "configured Sleep range must reject candidates beyond its maximum")
 
     local send_ready = target_id_spell_dispatch_ready_mock({
         selected = {

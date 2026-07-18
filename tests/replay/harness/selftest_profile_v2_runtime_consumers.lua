@@ -242,8 +242,15 @@ local function main()
 					ids = {},
 					puller = true,
 					puller_name = 'Niightsiide',
+					engage_range = 9.5,
 					puller_distance_only = false,
 				},
+			},
+			sleep = {
+				enabled = true,
+				order = { 'Horde Lullaby II' },
+				legacy_primary = 'Horde Lullaby II',
+				max_target_range = 14.0,
 			},
 		},
 	})
@@ -259,6 +266,8 @@ local function main()
 	assert_equal(active_config.get_path('config.combat.weaponskill.wait_ignore_names')[1], 'Niightsiide', 'active wait ignore name mismatch')
 	assert_equal(active_config.get_path('config.follow.fight.leader_name'), 'Niightsiide', 'active fight leader name mismatch')
 	assert_equal(active_config.get_path('config.follow.partner.puller_name'), 'Niightsiide', 'active puller name mismatch')
+	assert_equal(active_config.get_path('config.follow.partner.engage_range'), 9.5, 'active puller engage range mismatch')
+	assert_equal(active_config.get_path('config.sleep.max_target_range'), 14.0, 'active sleep target range mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Target', 'active targeted buff character mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].buff, 'Victory March', 'active targeted buff name mismatch')
 	assert_equal(active_config.get_path('config.maintenance.brd.songs')[1], 'Honor March', 'active BRD maintenance list mismatch')
@@ -284,6 +293,8 @@ local function main()
 	assert_equal(projected.follow.fight.leader_id, 77, 'projected nested fight leader id mismatch')
 	assert_equal(projected.puller_name, 'Niightsiide', 'projected puller name mismatch')
 	assert_equal(projected.puller_id, 77, 'projected puller id mismatch')
+	assert_equal(projected.puller_engage_range, 9.5, 'projected puller engage range mismatch')
+	assert_equal(projected.sleep_max_target_range, 14.0, 'projected sleep target range mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Target:Victory March', 'projected targeted buff string mismatch')
 	assert_equal(projected.maintenance_brd.songs[1], 'Honor March', 'projected BRD maintenance list mismatch')
 	assert_equal(projected.brd_songs[2], 'Victory March', 'projected BRD flat song list mismatch')

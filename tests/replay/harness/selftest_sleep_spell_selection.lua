@@ -64,7 +64,7 @@ local function sleep_spell_list_from_settings(settings)
 end
 
 local function select_sleep_spell_for_target(settings, target, spell_state)
-    local sleep_max_target_distance = 6.0
+    local sleep_max_target_distance = tonumber(settings and settings.sleep_max_target_range) or 6.0
     if type(target) ~= "table" or (tonumber(target.id) or 0) <= 0 then
         return nil, "SLEEP_BAD_TARGET"
     end
@@ -107,9 +107,10 @@ local function main()
     assert_contains(scheduler_source, "return runtime_overrides.sleep_spell_names(settings)", "scheduler sleep spell list must route through runtime overrides")
     assert_contains(runtime_overrides_source, "if #out == 0 then", "runtime override helper must keep legacy single-value migration path")
     assert_contains(runtime_overrides_source, "return normalize_name_list(rawget(s, 'sleepspells'), rawget(s, 'sleepspell'))", "runtime override helper must backfill from legacy sleepspell compatibility keys")
-    assert_contains(scheduler_source, "scheduler.SLEEP_MAX_TARGET_DISTANCE = 6.0", "scheduler must document the hard 6-yalm Sleep boundary")
+    assert_contains(scheduler_source, "scheduler.SLEEP_MAX_TARGET_DISTANCE = 6.0", "scheduler must retain the 6-yalm Sleep default")
+    assert_contains(scheduler_source, "local configured_max_range = scheduler.sleep_max_target_distance(settings)", "Sleep spell selection must read the configured target range")
     assert_contains(scheduler_source, "function scheduler.select_sleep_spell_for_target(settings, target)", "scheduler must select the first available sleep spell per target")
-    assert_contains(scheduler_source, "if effective_max_range <= 0 or effective_max_range > scheduler.SLEEP_MAX_TARGET_DISTANCE then", "Sleep spell selection must clamp cast range to the hard Sleep boundary")
+    assert_contains(scheduler_source, "if effective_max_range <= 0 or effective_max_range > configured_max_range then", "Sleep spell selection must clamp cast range to the configured boundary")
     assert_contains(scheduler_source, "ready_reason = 'SLEEP_OUT_OF_RANGE'", "sleep selection must reject out-of-range spells before moving to the next choice")
     assert_contains(bridge_source, "op == 'sleep_replace_spells'", "remote bridge must support replacing the ordered Sleep spell list from the UI")
     assert_contains(bridge_source, "op == 'sleep_add_spell'", "remote bridge must support UI add-by-name Sleep edits")
@@ -160,6 +161,22 @@ local function main()
         ["Sleep"] = { ready = true, range_max = 21 },
     })
     assert_equal(chosen, nil, "target beyond 6 yalms must not select any Sleep spell even when spell range is longer")
+
+    chosen = select_sleep_spell_for_target({
+        sleepspells = { "Sleep II" },
+        sleep_max_target_range = 14.0,
+    }, { id = 81, dist = 12.0 }, {
+        ["Sleep II"] = { ready = true, range_max = 21 },
+    })
+    assert_equal(chosen.name, "Sleep II", "configured Sleep range must admit an in-range target beyond the default")
+
+    chosen = select_sleep_spell_for_target({
+        sleepspells = { "Sleep II" },
+        sleep_max_target_range = 30.0,
+    }, { id = 82, dist = 22.0 }, {
+        ["Sleep II"] = { ready = true, range_max = 21 },
+    })
+    assert_equal(chosen, nil, "configured Sleep range must not exceed the selected spell's native range")
 
     chosen = select_sleep_spell_for_target({
         sleepspells = { "Sleep II", "Repose" },

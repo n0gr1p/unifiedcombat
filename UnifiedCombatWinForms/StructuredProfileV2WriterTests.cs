@@ -32,6 +32,8 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeReactionRules();
             TestDisabledEmptyReactionsAreOmitted();
             TestReactionUiEditsAreLocalUntilSave();
+            TestSerializeConfigurableControlRanges();
+            TestControlRangeUiEditsAreLocalUntilSave();
             TestUiSaveIsFileOnly();
             TestUiSaveSuppressesOutboundMirrorTraffic();
             TestRemoteBridgeDoesNotConsumeUiSave();
@@ -469,6 +471,38 @@ internal static class StructuredProfileV2WriterTests
         var reactionHandlers = source[start..end];
         AssertNotContains(reactionHandlers, "Forward(", "reaction durable controls must not emit live bridge traffic");
         AssertContains(reactionHandlers, "CaptureWorkingProfileFromUi", "reaction durable controls must update local working state");
+    }
+
+    private static void TestSerializeConfigurableControlRanges()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["puller_engage_range"] = 9.5;
+        flat["sleep_max_target_range"] = 14.0;
+        flat["sleep"] = true;
+        flat["sleep_spell_entries"] = "1:Horde Lullaby II|2:Sleep II";
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+        );
+
+        AssertContains(content, "engage_range = 9.5", "puller engage range must serialize under follow.partner");
+        AssertContains(content, "max_target_range = 14", "sleep target range must serialize under config.sleep");
+        AssertContains(content, "enabled = true", "Sleep enabled state must serialize from the UI control");
+        AssertContains(content, "\"Horde Lullaby II\"", "ordered Sleep spells must serialize from UI profile entries");
+        AssertContains(content, "legacy_primary = \"Horde Lullaby II\"", "primary Sleep compatibility value must mirror the first ordered spell");
+        AssertNotContains(content, "puller_engage_range =", "flat puller range key must not leak into v2 config");
+        AssertNotContains(content, "sleep_max_target_range =", "flat sleep range key must not leak into v2 config");
+    }
+
+    private static void TestControlRangeUiEditsAreLocalUntilSave()
+    {
+        var source = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        var start = source.IndexOf("private void OnPullerEngageRangeChanged", StringComparison.Ordinal);
+        var end = source.IndexOf("private static void ApplyBrdList", start, StringComparison.Ordinal);
+        AssertTrue(start >= 0 && end > start, "control range UI handler source range missing");
+        var rangeHandlers = source[start..end];
+        AssertNotContains(rangeHandlers, "Forward(", "durable range controls must not emit live bridge traffic");
+        AssertContains(rangeHandlers, "CaptureWorkingProfileFromUi", "durable range controls must update local working state");
     }
 
     private static void TestUiSaveIsFileOnly()

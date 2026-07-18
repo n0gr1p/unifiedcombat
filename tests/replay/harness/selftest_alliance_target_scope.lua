@@ -84,6 +84,7 @@ package.loaded['uc_path_hunter'] = {
 local party_data = {}
 local mob_by_id = {}
 local mob_array = {}
+local run_calls = {}
 
 local function set_party(data)
     party_data = data or {}
@@ -163,7 +164,8 @@ windower = {
         get_spells = function()
             return {}
         end,
-        run = function()
+        run = function(direction)
+            run_calls[#run_calls + 1] = direction
             return true
         end,
     },
@@ -323,7 +325,48 @@ local function test_prime_aggressive_scope()
 
     _G.UC_ENABLE_ALLIANCE_TARGET_SCOPE = true
     selected = core.select_target_for_scheduler({ autotarget = true, prime = true, hunter = false, path_follow_enabled = false })
-    assert_true(type(selected) == 'table' and selected.target_id == 7002, 'flag-on should treat alliance aggro target as prime-valid')
+	assert_true(type(selected) == 'table' and selected.target_id == 7002, 'flag-on should treat alliance aggro target as prime-valid')
+end
+
+local function test_friendly_aggression_evidence()
+    set_party(make_party_fixture())
+    _G.UC_ENABLE_ALLIANCE_TARGET_SCOPE = true
+    _G.__TEST_NOW = 100
+    set_mob_by_id({
+        [44] = { id = 202, name = 'PartyMate' },
+        [45] = { id = 909, name = 'UnrelatedPlayer' },
+    })
+    local _, friendly_ids = targeting_common.get_friendly_combat_member_ids()
+
+    local mob = make_mob({ id = 7100, claim_id = 0, status = 1, target_index = 44 })
+    local aggressive, source = targeting_common.mob_targets_friendly_member(mob, friendly_ids, _G.__TEST_NOW)
+    assert_true(aggressive, 'live mob target_index aimed at a party member must be friendly aggression evidence')
+    assert_equal(source, 'target_index', 'live target-index evidence source mismatch')
+
+    mob.target_index = 0
+    mob.target = 303
+    aggressive, source = targeting_common.mob_targets_friendly_member(mob, friendly_ids, _G.__TEST_NOW)
+    assert_true(aggressive, 'live direct mob target aimed at an alliance member must be friendly aggression evidence')
+    assert_equal(source, 'target_id', 'live direct-target evidence source mismatch')
+
+    mob.target_index = 45
+    mob.target = 0
+    _G.UC_MOB_LAST_ACTION_TARGETS = {
+        [7100] = { target_id = 202, at = 99.5 },
+    }
+    aggressive, source = targeting_common.mob_targets_friendly_member(mob, friendly_ids, _G.__TEST_NOW)
+    assert_true(aggressive, 'recent hostile action against party must remain authoritative when target_index is stale')
+    assert_equal(source, 'recent_action', 'recent-action evidence source mismatch')
+
+    _G.UC_MOB_LAST_ACTION_TARGETS[7100].at = 94.9
+    aggressive = targeting_common.mob_targets_friendly_member(mob, friendly_ids, _G.__TEST_NOW)
+    assert_false(aggressive, 'expired action evidence and unrelated live target must not qualify an unclaimed mob')
+
+    mob.target_index = 0
+    mob.target = 909
+    _G.UC_MOB_LAST_ACTION_TARGETS = {}
+    aggressive = targeting_common.mob_targets_friendly_member(mob, friendly_ids, _G.__TEST_NOW)
+    assert_false(aggressive, 'unclaimed mob targeting an unrelated entity must not qualify')
 end
 
 local function test_tank_victim_scope()
@@ -384,6 +427,78 @@ local function test_zero_hp_and_recent_death_preserved()
     }), _G.__TEST_NOW, true), 'recent-death target must remain invalid even when alliance-claimed')
 end
 
+local function test_puller_range_gate_uses_live_puller_geometry()
+    local puller = { id = 202, name = 'PartyMate', x = 0, y = 0 }
+    local target = make_mob({
+        id = 7010,
+        claim_id = 202,
+        x = 12,
+        y = 0,
+        hpp = 100,
+    })
+    set_party({
+        p0 = { mob = { id = 101, name = 'Self' } },
+        p1 = { mob = puller },
+    })
+    set_mob_by_id({
+        [202] = puller,
+        [7010] = target,
+    })
+    set_mob_array({ target })
+    _G.__TEST_ME = { id = 101, x = 20, y = 0 }
+    _G.__TEST_TARGET = target
+
+    local settings = {
+        autotarget = true,
+        prime = false,
+        hunter = false,
+        path_follow_enabled = false,
+        puller = true,
+        puller_name = 'PartyMate',
+        puller_engage_range = 8,
+        puller_distance_only = false,
+    }
+    local allowed, reason, distance, max_range = core.puller_engage_allowed_for_scheduler(settings, target)
+    assert_false(allowed, 'full-health mob outside puller range must be blocked')
+    assert_equal(reason, 'PULLER_OUT_OF_RANGE', 'out-of-range gate reason mismatch')
+    assert_equal(distance, 12, 'gate must measure mob-to-puller distance')
+    assert_equal(max_range, 8, 'gate must use configured engage range')
+    local selected = core.select_target_for_scheduler(settings)
+    assert_true(type(selected) == 'table' and selected.target_id == 7010, 'target acquisition must remain allowed outside puller range')
+    run_calls = {}
+    core.last_run_active = true
+    local moved = core.apply_movement_for_scheduler(settings)
+    assert_false(moved, 'combat-close movement must not run toward a mob outside puller range')
+    assert_equal(run_calls[#run_calls], false, 'out-of-range movement gate must stop the current run vector')
+
+    target.x = 7
+    allowed, reason = core.puller_engage_allowed_for_scheduler(settings, target)
+    assert_true(allowed, 'mob inside puller range must be allowed')
+    assert_equal(reason, 'PULLER_IN_RANGE', 'in-range gate reason mismatch')
+    selected = core.select_target_for_scheduler(settings)
+    assert_true(type(selected) == 'table' and selected.target_id == 7010, 'scheduler target acquisition must allow mob inside puller range')
+
+    target.x = 12
+    target.hpp = 98
+    allowed, reason = core.puller_engage_allowed_for_scheduler(settings, target)
+    assert_true(allowed, 'configured damaged-mob bypass must remain available')
+    assert_equal(reason, 'PULLER_HPP_BYPASS', 'damaged-mob bypass reason mismatch')
+
+    target.hpp = 100
+    settings.puller_name = 'MissingPuller'
+    allowed, reason = core.puller_engage_allowed_for_scheduler(settings, target)
+    assert_false(allowed, 'configured unresolved puller must fail closed')
+    assert_equal(reason, 'PULLER_UNRESOLVED', 'unresolved puller reason mismatch')
+
+    settings.puller_name = 'PartyMate'
+    set_mob_by_id({
+        [7010] = target,
+    })
+    allowed, reason = core.puller_engage_allowed_for_scheduler(settings, target)
+    assert_false(allowed, 'configured unavailable puller entity must fail closed')
+    assert_equal(reason, 'PULLER_UNAVAILABLE', 'unavailable puller reason mismatch')
+end
+
 local function test_source_wiring()
     local targeting_source = read_file('uc_targeting_common.lua')
     local core_source = read_file('unified_combat_core.lua')
@@ -393,9 +508,10 @@ local function test_source_wiring()
     assert_contains(targeting_source, "function M.get_friendly_combat_member_ids(opts)", 'friendly member helper must exist')
     assert_contains(targeting_source, "function M.build_friendly_claims(opts)", 'friendly claims helper must exist')
     assert_contains(targeting_source, "function M.is_friendly_party_or_alliance_member_id(id, opts)", 'friendly id predicate must exist')
+	assert_contains(targeting_source, "function M.mob_targets_friendly_member(mob, friendly_id_set, now)", 'shared friendly aggression predicate must exist')
 
     assert_contains(core_source, "local function is_friendly_combat_member_id(id)", 'core friendly combat helper must exist')
-    assert_contains(core_source, "not is_friendly_combat_member_id(tid)", 'core prime target check must use friendly helper')
+	assert_contains(core_source, "uc_targeting_common.mob_targets_friendly_member(mob, friendly_id_set, uc_now_s())", 'core Prime target check must use shared live-or-action aggression evidence')
     assert_contains(core_source, "not is_friendly_combat_member_id(claim_id)", 'core prime claim check must use friendly helper')
     assert_contains(core_source, "return is_friendly_combat_member_id(tid)", 'tank victim helper must use friendly helper')
     assert_contains(core_source, "if claim_tid > 0 and is_friendly_combat_member_id(claim_tid) then", 'current-target claim resolution must use friendly helper')
@@ -406,14 +522,19 @@ local function test_source_wiring()
     assert_contains(scheduler_source, "return id_set", 'scheduler party id helper must return the friendly id set')
     assert_contains(scheduler_source, "local _, claims_set = uc_targeting_common.build_friendly_claims()", 'scheduler claim-validity paths must use friendly claims')
     assert_contains(scheduler_source, "local party_ids = p1_build_party_id_set()", 'scheduler engage prime path must still build the id set through the helper')
+	assert_contains(scheduler_source, "return uc_targeting_common.mob_targets_friendly_member(mob, party_ids, now_s())", 'scheduler Prime must accept live target or recent action evidence')
+	assert_contains(scheduler_source, "local unclaimed_friendly_aggressor = claim_id == 0", 'scheduler Sleep must distinguish the unclaimed friendly-aggressor path')
+	assert_contains(scheduler_source, "and uc_targeting_common.mob_targets_friendly_member(mob, claims_set, ctx.now)", 'scheduler Sleep must use the shared friendly aggression predicate')
 end
 
 local function main()
     test_helper_flag_off_and_on()
     test_claim_validity_scope()
     test_prime_aggressive_scope()
+	test_friendly_aggression_evidence()
     test_tank_victim_scope()
     test_zero_hp_and_recent_death_preserved()
+    test_puller_range_gate_uses_live_puller_geometry()
     test_source_wiring()
     io.stdout:write('selftest_alliance_target_scope: OK\n')
 end

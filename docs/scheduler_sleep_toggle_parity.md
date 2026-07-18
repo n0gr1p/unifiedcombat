@@ -24,11 +24,11 @@ Legacy Sleep selection is effectively single-value and tied to a hard-coded `Hor
 - The UI now shows a dedicated **Sleep spells** ordered list with `Set only`, `Add`, `Remove selected`, `Clear list`, `Move up`, and `Move down`.
 - The UI text explicitly calls out that the list is used for both pre-engage and in-combat Sleep picks, so Sleep remains usable while not engaged.
 
-## T3.4c 6-yalm boundary enforcement summary
+## Configurable Sleep boundary
 
-- Scheduler Sleep now enforces the same hard `6.0` yalm max target boundary used by legacy DD2.
-- This boundary is documented in code as `SLEEP_MAX_TARGET_DISTANCE = 6.0`.
-- The scheduler now rejects Sleep targets beyond `6.0` yalms before a Sleep proposal is emitted, for both pre-engage and engaged add-control Sleep.
+- Scheduler Sleep reads the UI-owned `config.sleep.max_target_range` value for both pre-engage and engaged add-control Sleep.
+- Existing profiles retain the prior `6.0`-yalm behavior when the value is missing.
+- The scheduler rejects Sleep targets beyond the configured range before emitting a proposal.
 
 ## T3.4d already-slept target suppression summary
 
@@ -46,7 +46,7 @@ Legacy Sleep selection is effectively single-value and tied to a hard-coded `Hor
 - Root cause: T3.4b moved spell-target helpers onto the shared `p1_combat_helpers` table, but one later combat-spell range recheck branch still referenced the old bare helper name.
 - The hotfix corrects that callsite to `p1_combat_helpers.target_distance_to_id(...)`.
 - No new global helper was introduced.
-- The hard `6.0`-yalm Sleep boundary remains intact, selected spell range checks still apply, and effective max range remains `min(selected spell range, 6.0)`.
+- The configured Sleep boundary and selected spell range checks both apply, so effective max range is `min(selected spell range, config.sleep.max_target_range)`.
 - T3.4d slept-target suppression remains intact, including per-target scope, confirmed-success marking only, and bounded local suppression expiration.
 
 ## New UI-owned configurable Sleep spell list behavior
@@ -66,16 +66,16 @@ The scheduler now walks the configured Sleep spell list in order and selects the
 - off recast,
 - affordable with current MP,
 - in range for the chosen target,
-- and within the hard `6.0`-yalm Sleep mechanic boundary.
+- and within the configured Sleep target boundary.
 
 If the first configured spell fails any of those checks, the scheduler tries the next configured spell. If none pass, no Sleep proposal is emitted.
 
 ## Exact range rule
 
-- A Sleep target must be at or under `6.0` yalms.
+- A Sleep target must be at or under `config.sleep.max_target_range`.
 - The selected spell must also be in its own valid cast range.
-- The effective Sleep proposal range is therefore `min(selected spell cast range, 6.0)`.
-- A target farther than `6.0` yalms is always rejected, even if the spell itself could normally cast farther.
+- The effective Sleep proposal range is therefore `min(selected spell cast range, configured target range)`.
+- Increasing the configured range never extends a spell beyond its native cast range.
 
 ## Backward compatibility and migration
 
@@ -97,12 +97,12 @@ Scheduler Sleep proposals currently require:
 
 - live actionable mob target,
 - no recent-death target,
-- friendly party/alliance claim validity via shared target-scope helpers,
+- friendly party/alliance claim validity, or an unclaimed combat mob whose live target or recent action target is a party/alliance member,
 - non-partner target,
 - not the current live selected target,
 - `status == 1`,
 - `hpp > 99`,
-- distance `<= 6.0`,
+- distance `<= config.sleep.max_target_range`,
 - target not already marked asleep / controlled,
 - in range for the selected spell.
 
@@ -136,7 +136,7 @@ The scheduler-owned version already runs inside scheduler proposal/action-state 
 ## Risks
 
 - The scheduler currently preserves DD2’s full-HP and `status == 1` gating, which may be stricter than some field situations where users expect broader Sleep use.
-- Target eligibility intentionally stays claim-scoped; if legacy field use depended on broader unclaimed behavior, that is not mirrored here.
+- Idle unclaimed mobs and unclaimed mobs fighting unrelated entities remain ineligible; only friendly-target aggression extends eligibility beyond friendly claims.
 - The desktop UI remains profile-authoritative between explicit Save/reload cycles, so slash-command edits made outside the UI are not automatically redrawn into already-open list widgets until the next profile refresh.
 - Existing side-effect inventory line pins need maintenance whenever shared runtime source line numbers shift.
 
@@ -156,13 +156,13 @@ The scheduler-owned version already runs inside scheduler proposal/action-state 
 4. Optionally verify command parity with `//uc sleep list`, `//uc sleep add <spell>`, and `//uc sleep move <n> up|down`.
 5. Enable scheduler combat ownership as you normally do for local field testing.
 6. Verify the scheduler emits Sleep only when a live eligible add exists.
-7. Verify a target at `6.0` yalms or closer can still produce Sleep when a configured spell is ready.
-8. Verify a target beyond `6.0` yalms does not produce Sleep even if the spell would normally cast farther.
-9. Verify the first configured unavailable spell falls through to the next configured available spell only when the target is still within `6.0` yalms.
+7. Set **Eligible mob range** in the Sleep panel and Save the profile.
+8. Verify a target inside the configured range can produce Sleep when a configured spell is ready.
+9. Verify a target beyond the configured range does not produce Sleep even if the spell would normally cast farther.
 10. Sleep target one eligible add, then verify the scheduler does not immediately spend another Sleep spell on that same slept mob while the mob remains controlled.
 11. While target A remains slept, bring in target B and verify the scheduler can still spend the first available configured Sleep spell on target B.
 12. Verify Sleep can still cast while not engaged and while preserving the current selected kill target without any runtime nil-helper error.
-13. Verify an eligible Sleep target inside `6.0` yalms still casts normally, and a target beyond `6.0` yalms still does not cast.
+13. Verify increasing the configured range does not permit a cast beyond the selected spell's native range.
 14. Verify critical Cure behavior still beats Sleep when both are possible.
 
 ## Rollback note

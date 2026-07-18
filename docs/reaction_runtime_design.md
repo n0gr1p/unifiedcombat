@@ -4,7 +4,7 @@
 
 UnifiedCombat supports profile-configured safety reactions without delegating execution to a second addon or bypassing scheduler ownership.
 
-The first live acceptance rule is `Cold Stare`: when the current combat target readies Cold Stare, UnifiedCombat turns away and holds enemy-facing work until that same actor completes Cold Stare.
+The first live acceptance rule is `Cold Stare`: when a valid live enemy actor readies Cold Stare, UnifiedCombat turns away from that actor and holds enemy-facing work until that same actor completes Cold Stare.
 
 ## Ownership
 
@@ -47,7 +47,7 @@ The disabled, empty domain is optional so profiles created before reactions exis
 - The ready ability is resolved from the first target action parameter through `resources.monster_abilities`.
 - Windower action category `11` is authoritative completion evidence.
 - Completion is correlated by actor ID and canonical ability name.
-- The rule activates only when the actor is the current combat target.
+- The rule activates for any valid live enemy actor observed readying the configured ability; target selection does not determine whether the ability can affect the player.
 
 ### Enemy Buff
 
@@ -55,6 +55,7 @@ The disabled, empty domain is optional so profiles created before reactions exis
 - `response = "stop_attacking"`
 - The configured name is resolved through `resources.buffs`.
 - The existing enemy-effect tracker supplies gain and removal evidence.
+- Enemy-buff reactions are scoped to the current combat target because they suppress attacks against that affected target.
 - Unresolved names fail closed and are reported by reaction status; IDs are never guessed or persisted.
 
 ## Scheduler Behavior
@@ -72,7 +73,7 @@ The disabled, empty domain is optional so profiles created before reactions exis
 - Locks are keyed by trigger, actor ID, and canonical action/effect name.
 - Multiple locks may coexist; facing is restored only after the final lock for the actor clears.
 - A new ability-ready event from the same actor supersedes an older incomplete ability-window lock.
-- Target changes, zone changes, job changes, scheduler lock resets, and addon unload clear runtime reaction state.
+- Target changes clear target-scoped enemy-buff locks but do not clear an ability-window lock owned by another actor. Zone changes, job changes, scheduler lock resets, and addon unload clear all runtime reaction state.
 - No speculative completion timeout is used. Missing completion evidence remains visible through diagnostics rather than being hidden by a guessed timer.
 
 ## Diagnostics
@@ -83,4 +84,3 @@ The disabled, empty domain is optional so profiles created before reactions exis
 - active runtime locks
 - last transition
 - unresolved enemy-buff resource names
-

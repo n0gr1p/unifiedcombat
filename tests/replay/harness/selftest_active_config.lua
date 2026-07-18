@@ -122,12 +122,14 @@ local function build_flat_settings()
 		fight_leader_selected = 'Niightsiide',
 		puller = true,
 		puller_name = 'Niightsiide',
+		puller_engage_range = 9.5,
 		wait_ignore_names = { 'Niightsiide' },
 		target_ignore_names = { 'Ignore Me' },
 		add_control = true,
 		add_priority_names = { 'Apex Bat' },
 		sleep = true,
 		sleepspells = { 'Horde Lullaby II' },
+		sleep_max_target_range = 14.0,
 		spell_active = true,
 		spell = 'Dia',
 		debug = true,
@@ -206,6 +208,7 @@ local function main()
 	assert_equal(active_profile.config.follow.fight.leader_name, 'Niightsiide', 'active fight leader name mismatch')
 	assert_equal(active_profile.config.follow.fight.leader_id, 0, 'active fight leader id must stay runtime-owned')
 	assert_equal(active_profile.config.follow.partner.puller_name, 'Niightsiide', 'active puller name mismatch')
+	assert_equal(active_profile.config.follow.partner.engage_range, 9.5, 'active puller engage range mismatch')
 	assert_equal(active_profile.config.follow.partner.puller_id, 0, 'active puller id should remain runtime-owned in the durable active profile')
 	assert_equal(active_profile.config.targeting.target_ignore_names[1], 'Ignore Me', 'active target ignore names mismatch')
 	assert_equal(active_profile.config.targeting.targets[1], 'Apex Bat', 'active add priority targets mismatch')
@@ -259,6 +262,7 @@ local function main()
 	assert_equal(projected.sleep, true, 'projected sleep mismatch')
 	assert_equal(projected.sleepspell, 'Horde Lullaby II', 'projected sleep mirror mismatch')
 	assert_equal(projected.sleepspells[1], 'Horde Lullaby II', 'projected sleep list mismatch')
+	assert_equal(projected.sleep_max_target_range, 14.0, 'projected sleep target range mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'projected targeted buff mirror mismatch')
 	assert_equal(projected.wait_ignore_names[1], 'Niightsiide', 'projected wait ignore names mismatch')
 	assert_equal(projected.ignore[1], 77, 'projected compatibility ignore id mismatch')
@@ -272,6 +276,8 @@ local function main()
 	assert_equal(projected.puller_name, 'Niightsiide', 'projected puller name mismatch')
 	assert_equal(projected.puller_id, 77, 'projected puller id should resolve from puller name')
 	assert_equal(projected.follow.partner.puller_name, 'Niightsiide', 'projected nested puller name mismatch')
+	assert_equal(projected.puller_engage_range, 9.5, 'projected puller engage range mismatch')
+	assert_equal(projected.follow.partner.engage_range, 9.5, 'projected nested puller engage range mismatch')
 	assert_equal(projected.follow.partner.puller_id, 77, 'projected nested puller id mismatch')
 	assert_equal(projected.targets[1], 'Apex Bat', 'projected add priority targets mismatch')
 	assert_equal(projected.add_priority_names[1], 'Apex Bat', 'projected add priority compatibility names mismatch')

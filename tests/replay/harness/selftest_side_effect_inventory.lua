@@ -5,12 +5,12 @@ local INVENTORY_BASELINE = {
         ["uc_settarget.select_by_id("] = {},
     },
     ["unified_combat_core.lua"] = {
-        ["windower.send_command("] = { 1861, 1882, 2048, 2059, 2998, 3012, 3684 },
-        ["windower.ffxi.run("] = { 1467, 1476, 1481, 1834, 1853, 1936, 1962, 1971, 2022, 2127, 2250, 2269, 2283, 2289, 2332, 2373, 2393, 2398, 2432, 3251, 3267 },
-        ["uc_settarget.select_by_id("] = { 1960, 2096 },
+        ["windower.send_command("] = { 1941, 1962, 2128, 2139, 3075, 3089, 3761 },
+        ["windower.ffxi.run("] = { 1547, 1556, 1561, 1914, 1933, 2016, 2042, 2051, 2102, 2207, 2330, 2349, 2363, 2369, 2403, 2441, 2461, 2466, 2500, 3328, 3344 },
+        ["uc_settarget.select_by_id("] = { 2040, 2176 },
     },
     ["UnifiedCombat.lua"] = {
-        ["windower.ffxi.run("] = { 406 },
+        ["windower.ffxi.run("] = { 408 },
     },
     ["uc_party_follow.lua"] = {
         ["windower.ffxi.run("] = { 906, 933, 943, 956, 961, 966 },

@@ -218,7 +218,6 @@ local function pick_durable_config_domains(config, meta)
 	if not is_brd_profile(meta) and type(out.maintenance) == 'table' then
 		out.maintenance.brd = nil
 	end
-	out.sleep = nil
 	return out
 end
 
@@ -252,8 +251,37 @@ local function strip_durable_profile_overrides(config)
 		-- The selected path filename is addon/session state, not durable profile config.
 		config.movement.path.file_name = nil
 	end
-	config.sleep = nil
 	return config
+end
+
+local function canonicalize_optional_control_ranges(current_config, target_config)
+	if type(current_config) ~= 'table' or type(target_config) ~= 'table' then
+		return current_config, target_config
+	end
+
+	local target_partner = type(target_config.follow) == 'table'
+		and type(target_config.follow.partner) == 'table'
+		and target_config.follow.partner or nil
+	if target_partner and target_partner.engage_range == nil then
+		target_partner.engage_range = 6.0
+		local current_partner = type(current_config.follow) == 'table'
+			and type(current_config.follow.partner) == 'table'
+			and current_config.follow.partner or nil
+		if current_partner and current_partner.engage_range == nil then
+			current_partner.engage_range = 6.0
+		end
+	end
+
+	if type(target_config.sleep) ~= 'table' then
+		-- Profiles written before Sleep became a durable v2 domain do not own it.
+		current_config.sleep = nil
+	else
+		if target_config.sleep.max_target_range == nil then
+			target_config.sleep.max_target_range = 6.0
+		end
+	end
+
+	return current_config, target_config
 end
 
 local function strip_non_applicable_maintenance(current_config, target_config, meta)
@@ -1074,6 +1102,7 @@ function M.diff_durable_config(current_config, target_config)
 	local details = {}
 	current_config = canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(current_config)))))
 	target_config = canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(target_config)))))
+	current_config, target_config = canonicalize_optional_control_ranges(current_config, target_config)
 	diff_values(
 		current_config,
 		target_config,

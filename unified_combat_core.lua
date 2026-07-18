@@ -560,6 +560,87 @@ local function mob_distance(a, b)
 	return math.sqrt((dx * dx) + (dy * dy))
 end
 
+local PULLER_ENGAGE_RANGE_DEFAULT = 6.0
+
+local function puller_engage_range(settings)
+	local configured = tonumber(settings and settings.puller_engage_range)
+	if configured == nil then
+		configured = PULLER_ENGAGE_RANGE_DEFAULT
+	end
+	if configured < 0.1 then
+		return 0.1
+	end
+	if configured > 50.0 then
+		return 50.0
+	end
+	return configured
+end
+
+local function puller_engage_allowed(settings, target)
+	local range = puller_engage_range(settings)
+	if not setting_enabled(settings and settings.puller) then
+		_G.UC_PULLER_GATE_DIAG = ('reason=PULLER_GATE_INACTIVE allowed=true max=%.2f'):format(range)
+		return true, 'PULLER_GATE_INACTIVE', 0, range
+	end
+	local puller_id = resolve_puller_id(settings)
+	if puller_id <= 0 then
+		_G.UC_PULLER_GATE_DIAG = ('reason=PULLER_UNRESOLVED allowed=false name=%s max=%.2f'):format(
+			tostring(settings and settings.puller_name or ''),
+			range
+		)
+		return false, 'PULLER_UNRESOLVED', 999, range
+	end
+	local puller = windower.ffxi.get_mob_by_id(puller_id)
+	if not puller then
+		_G.UC_PULLER_GATE_DIAG = ('reason=PULLER_UNAVAILABLE allowed=false name=%s id=%d max=%.2f'):format(
+			tostring(settings and settings.puller_name or ''),
+			puller_id,
+			range
+		)
+		return false, 'PULLER_UNAVAILABLE', 999, range
+	end
+	if not target or target.x == nil or target.y == nil or puller.x == nil or puller.y == nil then
+		_G.UC_PULLER_GATE_DIAG = ('reason=PULLER_GEOMETRY_UNAVAILABLE allowed=false name=%s id=%d target=%d max=%.2f'):format(
+			tostring(settings and settings.puller_name or ''),
+			puller_id,
+			tonumber(target and target.id) or 0,
+			range
+		)
+		return false, 'PULLER_GEOMETRY_UNAVAILABLE', 999, range
+	end
+	local dist = mob_distance(target, puller)
+	if dist <= range then
+		_G.UC_PULLER_GATE_DIAG = ('reason=PULLER_IN_RANGE allowed=true name=%s id=%d target=%d dist=%.2f max=%.2f'):format(
+			tostring(settings and settings.puller_name or ''),
+			puller_id,
+			tonumber(target.id) or 0,
+			dist,
+			range
+		)
+		return true, 'PULLER_IN_RANGE', dist, range
+	end
+	if not setting_enabled(settings.puller_distance_only) and (tonumber(target and target.hpp) or 0) < 99 then
+		_G.UC_PULLER_GATE_DIAG = ('reason=PULLER_HPP_BYPASS allowed=true name=%s id=%d target=%d hpp=%d dist=%.2f max=%.2f'):format(
+			tostring(settings and settings.puller_name or ''),
+			puller_id,
+			tonumber(target.id) or 0,
+			tonumber(target.hpp) or 0,
+			dist,
+			range
+		)
+		return true, 'PULLER_HPP_BYPASS', dist, range
+	end
+	_G.UC_PULLER_GATE_DIAG = ('reason=PULLER_OUT_OF_RANGE allowed=false name=%s id=%d target=%d hpp=%d dist=%.2f max=%.2f'):format(
+		tostring(settings and settings.puller_name or ''),
+		puller_id,
+		tonumber(target.id) or 0,
+		tonumber(target.hpp) or 0,
+		dist,
+		range
+	)
+	return false, 'PULLER_OUT_OF_RANGE', dist, range
+end
+
 local function mob_real_distance(a, b)
 	if not a or not b or a.x == nil or a.y == nil or b.x == nil or b.y == nil then
 		return 999
@@ -990,7 +1071,7 @@ local function find_candidate_target(settings)
 		end
 		return owner_id ~= 0 and my_player_id > owner_id
 	end
-	local function prime_unclaimed_party_aggressive_ok(mob)
+	local function prime_unclaimed_party_aggressive_ok(mob, friendly_id_set)
 		if not mob then
 			return false
 		end
@@ -1000,9 +1081,8 @@ local function find_candidate_target(settings)
 		if (tonumber(mob.status) or 0) ~= 1 then
 			return false
 		end
-		local t = resolve_mob_current_target and resolve_mob_current_target(mob) or nil
-		local tid = tonumber(t and t.id) or 0
-		if tid == 0 or not is_friendly_combat_member_id(tid) then
+		local targets_friendly = uc_targeting_common.mob_targets_friendly_member(mob, friendly_id_set, uc_now_s())
+		if not targets_friendly then
 			return false
 		end
 		-- Prime should not target mobs clearly focused on non-friendly entities.
@@ -1160,7 +1240,7 @@ local function find_candidate_target(settings)
 			return cur
 		end
 		local hunter_ok = uc_path_hunter.matches_mob(settings, cur.name or '')
-		local cur_prime_party_aggressive = prime_unclaimed_party_aggressive_ok(cur)
+		local cur_prime_party_aggressive = prime_unclaimed_party_aggressive_ok(cur, claims_set)
 		-- Prime party-aggressive targets should not be blocked by hunter name filters.
 		if (not hunter_ok) and cur_prime_party_aggressive then
 			hunter_ok = true
@@ -1176,7 +1256,7 @@ local function find_candidate_target(settings)
 		end
 		if hunter_ok and not hunter_cooldown_active(cur.id) then
 			local allow_prime_unclaimed = (not engaged) or allow_engaged_retarget
-			local prime_unclaimed_ok = (allow_prime_unclaimed and prime_unclaimed_party_aggressive_ok(cur))
+			local prime_unclaimed_ok = (allow_prime_unclaimed and prime_unclaimed_party_aggressive_ok(cur, claims_set))
 			local hunter_idle_unclaimed_ok = (cur.claim_id == 0 and cur.status == 0)
 			local claim_ok = claims_set[cur.claim_id] == true or prime_unclaimed_ok or hunter_idle_unclaimed_ok
 			if claim_ok then
@@ -1200,7 +1280,7 @@ local function find_candidate_target(settings)
 			(not partner_target_owned_by_lower_id(mob.id)) then
 			if not uc_target_ignore.is_mob_blocked(settings, mob) then
 				local hunter_ok = (not path_hunter_filter_active) or uc_path_hunter.matches_mob(settings, mob.name or '')
-				local mob_prime_party_aggressive = prime_unclaimed_party_aggressive_ok(mob)
+				local mob_prime_party_aggressive = prime_unclaimed_party_aggressive_ok(mob, claims_set)
 				-- Prime party-aggressive targets should not be blocked by hunter name filters.
 				if (not hunter_ok) and mob_prime_party_aggressive then
 					hunter_ok = true
@@ -1225,7 +1305,7 @@ local function find_candidate_target(settings)
 					-- Do not pull unclaimed prime candidates while already engaged unless explicit
 					-- engaged-retarget modes are active; this prevents mid-fight target flips.
 					local allow_prime_unclaimed = (not engaged) or allow_engaged_retarget
-					local prime_unclaimed_ok = (allow_prime_unclaimed and prime_unclaimed_party_aggressive_ok(mob))
+					local prime_unclaimed_ok = (allow_prime_unclaimed and prime_unclaimed_party_aggressive_ok(mob, claims_set))
 					local hunter_idle_unclaimed_ok = (path_hunter_filter_active and mob.claim_id == 0 and mob.status == 0)
 					local claim_ok = claims_set[mob.claim_id] == true or prime_unclaimed_ok or hunter_idle_unclaimed_ok
 					if claim_ok then
@@ -2316,26 +2396,14 @@ local function apply_movement(settings, target)
 		_G.UC_MOVE_DIAG = 'move_skip_not_actionable_target'
 		return
 	end
-	if setting_enabled(settings.puller) then
-		local puller_id = resolve_puller_id(settings)
-		if puller_id > 0 then
-			local puller = windower.ffxi.get_mob_by_id(puller_id)
-			if puller then
-				local near = mob_distance(target, puller) <= 6
-				local allow = near
-				if not setting_enabled(settings.puller_distance_only) then
-					allow = near or ((target.hpp or 0) < 99)
-				end
-				if not allow then
-					-- Puller gate blocks combat-close movement: explicitly stop current run vector and
-					-- let party-follow own movement for a short window to avoid orphan/stuck trajectories.
-					windower.ffxi.run(false)
-					core.last_run_active = false
-					_G.UC_PULLER_APPROACH_BLOCK_UNTIL = uc_now_s() + 0.6
-					return
-				end
-			end
-		end
+	local puller_allowed = puller_engage_allowed(settings, target)
+	if not puller_allowed then
+		-- Puller gate blocks combat-close movement: explicitly stop current run vector and
+		-- let party-follow own movement for a short window to avoid orphan/stuck trajectories.
+		windower.ffxi.run(false)
+		core.last_run_active = false
+		_G.UC_PULLER_APPROACH_BLOCK_UNTIL = uc_now_s() + 0.6
+		return
 	end
 	local dist = target_real_distance_movement(target, settings)
 	-- Comfortable fight-distance band around target.
@@ -2638,17 +2706,26 @@ function core.on_action(act)
 	local param, resource, action_id, _, conclusion = action:get_spell()
 	local ability = skills[resource] and skills[resource][action_id]
 	local my_id = (windower.ffxi.get_player() or {}).id
-	-- Packet-fed fallback map for mob->target visibility (used by debug overlays when mob.target_index is stale/missing).
+	-- Packet-fed hostile-target evidence supplements live target fields used by Prime and Sleep.
 	if actor and target and target.id and tonumber(actor) and tonumber(target.id) and tonumber(actor) > 0 and tonumber(target.id) > 0 then
 		local am = windower.ffxi.get_mob_by_id(actor)
 		if am and (tonumber(am.spawn_type) or 0) == 16 then
+			local observed_target_id = tonumber(target.id) or 0
+			local _, friendly_id_set = uc_targeting_common.get_friendly_combat_member_ids()
+			for _, raw_target in ipairs(type(act.targets) == 'table' and act.targets or {}) do
+				local raw_target_id = tonumber(raw_target and raw_target.id) or 0
+				if friendly_id_set[raw_target_id] == true then
+					observed_target_id = raw_target_id
+					break
+				end
+			end
 			local map = rawget(_G, 'UC_MOB_LAST_ACTION_TARGETS')
 			if type(map) ~= 'table' then
 				map = {}
 				_G.UC_MOB_LAST_ACTION_TARGETS = map
 			end
 			map[tonumber(actor)] = {
-				target_id = tonumber(target.id) or 0,
+				target_id = observed_target_id,
 				at = uc_now_s(),
 				category = tostring(category or ''),
 			}
@@ -3780,6 +3857,10 @@ end
 
 function core.add_control_enabled_for_scheduler(settings)
 	return uc_add_control.enabled(scheduler_settings_view(settings))
+end
+
+function core.puller_engage_allowed_for_scheduler(settings, target)
+	return puller_engage_allowed(settings or get_settings() or {}, target)
 end
 
 function core.select_pull_for_scheduler(settings)

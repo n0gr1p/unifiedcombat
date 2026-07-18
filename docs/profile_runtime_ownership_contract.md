@@ -101,6 +101,8 @@ Examples:
 - follow/movement/pathing preferences that are profile material
 - debug config
 - follow/partner durable identity such as `follow.partner.puller_name`
+- puller engagement policy such as `follow.partner.engage_range`; this is the maximum mob-to-puller distance that permits follower engagement and combat-close movement
+- sleep eligibility policy such as `sleep.max_target_range`; this limits viable sleep candidates but never extends a spell beyond its native cast range
 - configured COR roll names and other applicable maintenance selections
 - configured BRD song order, dummy-song order, NITRO/Clarion policy, and exact Marcato song
 

@@ -516,6 +516,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 				ids = clone_value(config.follow.partner.ids),
 				puller = config.follow.partner.puller,
 				puller_name = config.follow.partner.puller_name,
+				engage_range = config.follow.partner.engage_range,
 				puller_distance_only = config.follow.partner.puller_distance_only,
 			}
 			local puller_id = resolve_party_member_id_by_name(config.follow.partner.puller_name)
@@ -524,6 +525,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			end
 			candidate.puller_id = puller_id
 			candidate.follow.partner.puller_id = puller_id
+			candidate.puller_engage_range = config.follow.partner.engage_range
 			candidate.puller_distance_only = config.follow.partner.puller_distance_only
 			candidate.follow.partner.puller_distance_only = config.follow.partner.puller_distance_only
 		end
@@ -582,6 +584,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.sleep = config.sleep.enabled
 		candidate.sleepspells = clone_value(config.sleep.order)
 		candidate.sleepspell = config.sleep.legacy_primary
+		candidate.sleep_max_target_range = config.sleep.max_target_range
 	end
 
 	if type(config.spells) == 'table' then

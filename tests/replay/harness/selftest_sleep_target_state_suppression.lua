@@ -101,7 +101,7 @@ local function target_sleep_suppressed(state, settings, target_id, now, spell_st
 end
 
 local function select_sleep_spell_for_target(settings, target, spell_state)
-    local sleep_max_target_distance = 6.0
+    local sleep_max_target_distance = tonumber(settings and settings.sleep_max_target_range) or 6.0
     if type(target) ~= "table" or (tonumber(target.id) or 0) <= 0 then
         return nil
     end
@@ -124,6 +124,7 @@ local function collect_sleep_mock(input)
     local settings = {
         sleep = input.sleep,
         sleep_spells = input.sleep_spells or {},
+        sleep_max_target_range = input.sleep_max_target_range,
     }
     if input.engine_on ~= true or input.scheduler_dark_launch_combat ~= true or settings.sleep ~= true then
         return nil
@@ -162,7 +163,12 @@ local function main()
     assert_contains(source, "function scheduler.sleep_spell_effect_id_set_from_settings(settings)", "Sleep suppression must derive sleep-family effect ids from configured spells")
     assert_contains(source, "function scheduler.target_sleep_suppressed(settings, target_id, at)", "Sleep suppression must expose a target-id suppression gate")
     assert_contains(source, "if scheduler.target_sleep_suppressed(ctx.settings, tid, ctx.now) then", "Sleep target eligibility must consult the suppression gate")
-    assert_contains(source, "scheduler.mark_sleep_target_suppressed(msg_tid, last_action_name, now)", "confirmed local combat Sleep success must mark the target suppressed")
+    assert_contains(source, "function scheduler.observe_local_sleep_action(act, player_id, at)", "local Sleep action observation must expose a successful-recipient tracker")
+    assert_contains(source, "if scheduler.spell_effect_gain_messages[message_id] == true then", "local Sleep tracking must require a successful effect message")
+    assert_contains(source, "scheduler.mark_sleep_target_suppressed(tid, spell_name, now)", "confirmed local combat Sleep success must mark each successful target suppressed")
+    assert_contains(source, "local entry = sp and tb_spells[tonumber(sp.id) or 0] or nil", "Sleep effect ids must come from the same TargetBar catalog used by enemy effect tracking")
+    assert_not_contains(source, "message_id == 204 and message_param == 2", "Sleep tracking must not treat effect removal as successful application")
+    assert_not_contains(source, "local eid = tonumber(sp and sp.status) or 0", "Sleep suppression must not use generic resource status ids for Bard Lullaby")
     assert_contains(source, "scheduler.clear_sleep_target_suppression(tid)", "sleep suppression must clear on death or effect removal")
     assert_contains(source, "action_mark_sent('spell', {", "combat spell sends must preserve action metadata for success confirmation")
     assert_contains(source, "provider = 'combat'", "Sleep suppression success confirmation must stay scoped to combat provider sends")
@@ -175,6 +181,13 @@ local function main()
         ["Repose"] = 2,
         ["Horde Lullaby II"] = 193,
     }
+    local targetbar_spells = dofile("TargetBar/spells.lua")
+    assert_equal(targetbar_spells[253][1], 2, "TargetBar Sleep effect id mismatch")
+    assert_equal(targetbar_spells[259][1], 2, "TargetBar Sleep II effect id mismatch")
+    assert_equal(targetbar_spells[376][1], 193, "TargetBar Horde Lullaby effect id mismatch")
+    assert_equal(targetbar_spells[377][1], 193, "TargetBar Horde Lullaby II effect id mismatch")
+    assert_equal(targetbar_spells[463][1], 193, "TargetBar Foe Lullaby effect id mismatch")
+    assert_equal(targetbar_spells[471][1], 193, "TargetBar Foe Lullaby II effect id mismatch")
     local spell_state = {
         ["Sleep II"] = { ready = false, range_max = 21 },
         ["Sleep"] = { ready = true, range_max = 21 },

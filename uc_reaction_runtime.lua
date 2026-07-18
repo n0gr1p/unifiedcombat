@@ -111,15 +111,41 @@ local function actor_has_lock(actor_id)
 	return false
 end
 
-local function first_lock_for_target(target_id)
-	local id = tonumber(target_id) or 0
+local function first_lock_for_actor(actor_id)
+	local id = tonumber(actor_id) or 0
 	local best = nil
 	for _, lock in pairs(locks) do
 		if tonumber(lock.actor_id) == id then
-			if best == nil or (tonumber(lock.rule_index) or 9999) < (tonumber(best.rule_index) or 9999) then
+			local lock_rule = tonumber(lock.rule_index) or 9999
+			local best_rule = best and (tonumber(best.rule_index) or 9999) or 9999
+			if best == nil or lock_rule < best_rule or (lock_rule == best_rule and tostring(lock.key) < tostring(best.key)) then
 				best = lock
 			end
 		end
+	end
+	return best
+end
+
+local function select_active_lock()
+	local active = first_lock_for_actor(last_active_target_id)
+	if active then
+		return active
+	end
+	local best = nil
+	for _, lock in pairs(locks) do
+		local lock_rule = tonumber(lock.rule_index) or 9999
+		local best_rule = best and (tonumber(best.rule_index) or 9999) or 9999
+		local lock_started = tonumber(lock.started_at) or 0
+		local best_started = best and (tonumber(best.started_at) or 0) or 0
+		if best == nil
+			or lock_rule < best_rule
+			or (lock_rule == best_rule and lock_started > best_started)
+			or (lock_rule == best_rule and lock_started == best_started and tostring(lock.key) < tostring(best.key)) then
+			best = lock
+		end
+	end
+	if best then
+		last_active_target_id = tonumber(best.actor_id) or 0
 	end
 	return best
 end
@@ -170,7 +196,7 @@ function M.effect_watch_set()
 	return out
 end
 
-function M.on_action(act, current_target_id, now)
+function M.on_action(act, current_target_id, now, actor_is_valid_enemy)
 	local result = {}
 	local enabled, rules = configured()
 	if not enabled then
@@ -192,7 +218,7 @@ function M.on_action(act, current_target_id, now)
 	end
 	local key = lock_key('ability_window', actor_id, ability_name)
 	if category == 7 then
-		if actor_id ~= (tonumber(current_target_id) or 0) then
+		if actor_is_valid_enemy ~= true then
 			return result
 		end
 		local rule, rule_index = matching_rule(rules, 'ability_window', ability_name)
@@ -220,10 +246,14 @@ function M.on_action(act, current_target_id, now)
 	if locks[key] ~= nil then
 		locks[key] = nil
 		last_transition = 'complete:' .. ability_name
-		if not actor_has_lock(actor_id) then
-			result.released_target_id = actor_id
-			if last_active_target_id == actor_id then
-				last_active_target_id = 0
+		if last_active_target_id == actor_id then
+			last_active_target_id = 0
+			local replacement = select_active_lock()
+			if replacement then
+				replacement.turn_applied = false
+				result.activated = copy_lock(replacement)
+			else
+				result.released_target_id = actor_id
 			end
 		end
 	end
@@ -239,8 +269,9 @@ function M.evaluate(current_target_id, effects, now)
 	end
 	refresh_effect_watch_cache(rules)
 
+	local previously_active_actor_id = last_active_target_id
 	for key, lock in pairs(locks) do
-		if tonumber(lock.actor_id) ~= target_id then
+		if lock.trigger == 'enemy_buff' and tonumber(lock.actor_id) ~= target_id then
 			locks[key] = nil
 		end
 	end
@@ -279,13 +310,18 @@ function M.evaluate(current_target_id, effects, now)
 		end
 	end
 
-	local active = first_lock_for_target(target_id)
+	if not actor_has_lock(last_active_target_id) then
+		last_active_target_id = 0
+	end
+	local active = select_active_lock()
 	local released_target_id = nil
 	if active then
-		last_active_target_id = target_id
-	elseif last_active_target_id > 0 then
-		released_target_id = last_active_target_id
-		last_active_target_id = 0
+		local active_actor_id = tonumber(active.actor_id) or 0
+		if previously_active_actor_id > 0 and active_actor_id ~= previously_active_actor_id then
+			active.turn_applied = false
+		end
+	elseif previously_active_actor_id > 0 then
+		released_target_id = previously_active_actor_id
 		last_transition = 'released'
 	end
 	return copy_lock(active), released_target_id

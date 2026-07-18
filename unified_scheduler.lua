@@ -1504,6 +1504,13 @@ local raw_enemy_gain_messages = {
 	[194] = true,
 }
 
+scheduler.spell_effect_gain_messages = {
+	[2] = true, [230] = true, [236] = true, [237] = true, [252] = true,
+	[264] = true, [266] = true, [268] = true, [269] = true, [270] = true,
+	[271] = true, [272] = true, [329] = true, [330] = true, [331] = true,
+	[332] = true, [333] = true, [334] = true, [335] = true,
+}
+
 local raw_enemy_remove_messages = {
 	[204] = true, [206] = true,
 }
@@ -1547,7 +1554,6 @@ local function ingest_enemy_effects_from_raw_action_028(data_or_act)
 
 	local aa_hit_msgs = { [1]=true,[67]=true,[157]=true,[353]=true,[577]=true }
 	local aa_igan_msgs = { [15]=true,[31]=true,[70]=true,[354]=true,[355]=true }
-	local spell_add_msgs = { [2]=true,[230]=true,[236]=true,[237]=true,[252]=true,[264]=true,[266]=true,[268]=true,[269]=true,[270]=true,[271]=true,[272]=true,[329]=true,[330]=true,[331]=true,[332]=true,[333]=true,[334]=true,[335]=true }
 	local spell_remove_msgs = { [83]=true,[341]=true,[342]=true,[343]=true,[344]=true }
 	local spell_ign_msgs = { [0]=true,[31]=true,[75]=true,[78]=true,[85]=true,[106]=true,[114]=true,[283]=true,[284]=true }
 	local ja_add_msgs = { [100]=true,[102]=true,[110]=true,[115]=true,[116]=true,[117]=true,[118]=true,[119]=true,[120]=true,[121]=true,[126]=true,[131]=true,[134]=true,[143]=true,[148]=true,[149]=true,[266]=true,[285]=true,[286]=true,[287]=true,[304]=true,[317]=true,[319]=true,[452]=true,[519]=true,[529]=true,[667]=true,[668]=true,[669]=true }
@@ -1590,7 +1596,7 @@ local function ingest_enemy_effects_from_raw_action_028(data_or_act)
 						end
 					end
 				elseif category == 4 then
-					if spell_add_msgs[msg] == true then
+					if scheduler.spell_effect_gain_messages[msg] == true then
 						apply_catalog_effects(tb_spells, tonumber(act.param) or 0, actor_id, tid, false, ('raw_028_spell_msg_%d'):format(msg), now)
 					elseif spell_remove_msgs[msg] == true then
 						if eid > 0 then enemy_effect_state_clear(tid, eid) end
@@ -1879,6 +1885,23 @@ scheduler.SLEEP_MAX_TARGET_DISTANCE = 6.0
 scheduler.SLEEP_TARGET_SUPPRESSION_TIMEOUT_S = 45.0
 scheduler.TANK_TARGET_ACQUIRE_PRIORITY = 106
 scheduler.TANK_TARGET_ACQUIRE_URGENCY = 0.80
+
+function scheduler.sleep_max_target_distance(settings)
+	local configured = tonumber(scheduler.active_value_or_flat(
+		'config.sleep.max_target_range',
+		settings and settings.sleep_max_target_range
+	))
+	if configured == nil then
+		configured = scheduler.SLEEP_MAX_TARGET_DISTANCE
+	end
+	if configured < 0.1 then
+		return 0.1
+	end
+	if configured > 50.0 then
+		return 50.0
+	end
+	return configured
+end
 scheduler.TANK_ENGAGE_PRIORITY = 107
 scheduler.TANK_ENGAGE_URGENCY = 0.85
 scheduler.DEFAULT_ENGAGE_PRIORITY = 72
@@ -2229,18 +2252,6 @@ function scheduler.handle_local_spell_action_message(phase, now, player, msg, st
 		return cleared == true, cleared and 'cast_interrupted' or require('uc_scheduler_action_state').last_completion_ignore_reason(scheduler)
 	end
 	return false, 'not_cast_terminal'
-end
-
-function scheduler.handle_local_spell_effect_observation(phase, now, msg, st, message_id, message_param)
-	phase = type(phase) == 'table' and phase or {}
-	st = type(st) == 'table' and st or {}
-	local pending_action_name = tostring(phase.tank_pending_action or scheduler.defensive_pending_action or '')
-	local last_action_name = tostring(st.last_action_name or pending_action_name or '')
-	local expected_tid = tonumber(phase.tank_pending_target_id) or tonumber(scheduler.defensive_pending_target_id) or 0
-	local msg_tid = tonumber(msg and msg.target_id) or 0
-	if msg_tid > 0 and message_id == 204 and message_param == 2 and scheduler.is_sleep_spell_name(get_settings(), last_action_name) then
-		scheduler.mark_sleep_target_suppressed(msg_tid, last_action_name, now)
-	end
 end
 
 local diag_init = {
@@ -2690,26 +2701,7 @@ local function p1_prime_unclaimed_party_aggressive_ok(settings, mob, party_ids)
 	if (tonumber(mob.status) or 0) ~= 1 then
 		return false
 	end
-	-- Prime should only treat unclaimed mobs as aggressive-to-party based on
-	-- recent packet-derived mob->target evidence. Runtime target fields are too
-	-- unreliable in this environment.
-	local function resolve_recent_packet_target_id(m)
-		local amap = rawget(_G, 'UC_MOB_LAST_ACTION_TARGETS')
-		local rec = type(amap) == 'table' and amap[tonumber(m and m.id) or 0] or nil
-		if type(rec) ~= 'table' then
-			return 0
-		end
-		local age = now_s() - (tonumber(rec.at) or 0)
-		if age < 0 or age > 5.0 then
-			return 0
-		end
-		return tonumber(rec.target_id) or 0
-	end
-	local tid = resolve_recent_packet_target_id(mob)
-	if tid > 0 then
-		return party_ids[tid] == true
-	end
-	return false
+	return uc_targeting_common.mob_targets_friendly_member(mob, party_ids, now_s())
 end
 
 local function has_buff(buff_list, buff_id)
@@ -2921,6 +2913,7 @@ function scheduler.select_sleep_spell_for_target(settings, target)
 		return nil, 'SLEEP_BAD_TARGET'
 	end
 	local dist = target.distance and target.distance:sqrt() or 999
+	local configured_max_range = scheduler.sleep_max_target_distance(settings)
 	local sleep_spells = scheduler.sleep_spell_list_from_settings(settings)
 	for index, spell_name in ipairs(sleep_spells) do
 		local sp = get_spell_resource(spell_name)
@@ -2928,8 +2921,8 @@ function scheduler.select_sleep_spell_for_target(settings, target)
 		if ok_ready and action_kind == 'spell' and sp then
 			local max_range = action_effective_range(sp.range)
 			local effective_max_range = max_range
-			if effective_max_range <= 0 or effective_max_range > scheduler.SLEEP_MAX_TARGET_DISTANCE then
-				effective_max_range = scheduler.SLEEP_MAX_TARGET_DISTANCE
+			if effective_max_range <= 0 or effective_max_range > configured_max_range then
+				effective_max_range = configured_max_range
 			end
 			if effective_max_range > 0 and dist <= effective_max_range then
 				return {
@@ -2957,15 +2950,46 @@ end
 
 function scheduler.sleep_spell_effect_id_set_from_settings(settings)
 	local out = {}
+	load_targetbar_catalogs_once()
 	local sleep_spells = scheduler.sleep_spell_list_from_settings(settings)
 	for i = 1, #sleep_spells do
 		local sp = get_spell_resource(sleep_spells[i])
-		local eid = tonumber(sp and sp.status) or 0
+		local entry = sp and tb_spells[tonumber(sp.id) or 0] or nil
+		local eid = type(entry) == 'table' and tonumber(entry[1]) or 0
 		if eid > 0 then
 			out[eid] = true
 		end
 	end
 	return out
+end
+
+function scheduler.observe_local_sleep_action(act, player_id, at)
+	if type(act) ~= 'table' or tonumber(act.actor_id) ~= tonumber(player_id) or tonumber(act.category) ~= 4 then
+		return 0
+	end
+	local spell = res.spells and res.spells[tonumber(act.param) or 0] or nil
+	local spell_name = tostring(spell and spell.en or '')
+	if spell_name == '' or not scheduler.is_sleep_spell_name(get_settings(), spell_name) then
+		return 0
+	end
+	local marked = 0
+	local now = tonumber(at) or now_s()
+	for _, target in ipairs(type(act.targets) == 'table' and act.targets or {}) do
+		local tid = tonumber(target and target.id) or 0
+		local successful = false
+		for _, action in ipairs(type(target and target.actions) == 'table' and target.actions or {}) do
+			local message_id = tonumber(action and (action.message or action.message_id)) or 0
+			if scheduler.spell_effect_gain_messages[message_id] == true then
+				successful = true
+				break
+			end
+		end
+		if tid > 0 and successful then
+			scheduler.mark_sleep_target_suppressed(tid, spell_name, now)
+			marked = marked + 1
+		end
+	end
+	return marked
 end
 
 function scheduler.is_sleep_spell_name(settings, spell_name)
@@ -4075,7 +4099,11 @@ function p1_combat_helpers.sleep_target_eligible(ctx, mob, current_target_id, cl
 	if partner_target_set[tid] == true then
 		return false
 	end
-	if claims_set[tonumber(mob.claim_id) or 0] ~= true then
+	local claim_id = tonumber(mob.claim_id) or 0
+	local friendly_claim = claims_set[claim_id] == true
+	local unclaimed_friendly_aggressor = claim_id == 0
+		and uc_targeting_common.mob_targets_friendly_member(mob, claims_set, ctx.now)
+	if not friendly_claim and not unclaimed_friendly_aggressor then
 		return false
 	end
 	if tonumber(mob.status) ~= 1 then
@@ -4085,7 +4113,7 @@ function p1_combat_helpers.sleep_target_eligible(ctx, mob, current_target_id, cl
 		return false
 	end
 	local dist = mob.distance and mob.distance:sqrt() or 999
-	if dist > scheduler.SLEEP_MAX_TARGET_DISTANCE then
+	if dist > scheduler.sleep_max_target_distance(ctx.settings) then
 		return false
 	end
 	if scheduler.target_sleep_suppressed(ctx.settings, tid, ctx.now) then
@@ -4471,6 +4499,19 @@ local function p1_collect_combat_engage(ctx, out)
 			p1_log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', t, 'no_valid_target', 'inactive', 'not_checked')
 		end
 		return
+	end
+	if combat_core and type(combat_core.puller_engage_allowed_for_scheduler) == 'function' then
+		local puller_allowed, puller_reason, puller_dist, puller_range = combat_core.puller_engage_allowed_for_scheduler(ctx.settings, t)
+		if not puller_allowed then
+			if uc_scheduler_config.debug_enabled(ctx.settings) then
+				_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:puller_range dist=%.2f max=%.2f'):format(
+					tonumber(puller_dist) or 999,
+					tonumber(puller_range) or 0
+				)
+			end
+			p1_log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', t, tostring(puller_reason or 'PULLER_OUT_OF_RANGE'), 'puller_gate', 'not_checked')
+			return
+		end
 	end
 	-- Hunter/path pull ownership: when a pull action is currently applicable, suppress
 	-- engage proposals so we do not run into melee before the configured pull executes.
@@ -7593,11 +7634,25 @@ end
 function scheduler.on_action(act)
 	if type(act) == 'table' then
 		local p = windower.ffxi.get_player()
-		require('uc_brd_maintenance').on_action(act, tonumber(p and p.id) or 0, now_s())
+		local observed_at = now_s()
+		local player_id = tonumber(p and p.id) or 0
+		require('uc_brd_maintenance').on_action(act, player_id, observed_at)
+		scheduler.observe_local_sleep_action(act, player_id, observed_at)
 		if rawget(_G, 'Start_Engine') == true then
 			local get_target = windower.ffxi.get_mob_by_target
 			local target = type(get_target) == 'function' and get_target('t') or nil
-			local reaction_event = require('uc_reaction_runtime').on_action(act, tonumber(target and target.id) or 0, now_s())
+			local reaction_actor_id = tonumber(act.actor_id) or 0
+			local reaction_actor = reaction_actor_id > 0 and windower.ffxi.get_mob_by_id(reaction_actor_id) or nil
+			local reaction_actor_is_valid_enemy = reaction_actor ~= nil
+				and reaction_actor.valid_target == true
+				and (tonumber(reaction_actor.spawn_type) or 0) == 16
+				and (tonumber(reaction_actor.hpp) or 0) > 0
+			local reaction_event = require('uc_reaction_runtime').on_action(
+				act,
+				tonumber(target and target.id) or 0,
+				observed_at,
+				reaction_actor_is_valid_enemy
+			)
 			if type(reaction_event.activated) == 'table' then
 				_G.UC_REACTION_LOCK = reaction_event.activated
 				scheduler.apply_reaction_turn(reaction_event.activated, true)
@@ -7611,10 +7666,10 @@ function scheduler.on_action(act)
 		end
 		tb_effect_table.apply_from_action(
 			act,
-			tonumber(p and p.id) or 0,
+			player_id,
 			enemy_effect_state_set,
 			enemy_effect_state_clear,
-			now_s()
+			observed_at
 		)
 	end
 	local enemy_buff_remove = bool_setting(uc_scheduler_config.defensive_enemy_buffs_remove(), false)
@@ -7842,7 +7897,6 @@ function scheduler.on_action_message(msg)
 	end
 	if my_id ~= 0 and actor_id == my_id and message_id ~= 0 then
 		scheduler.handle_local_spell_action_message(phase, now, player, msg, st, message_id, message_param)
-		scheduler.handle_local_spell_effect_observation(phase, now, msg, st, message_id, message_param)
 	end
 	local pending = phase.pending
 	if type(pending) ~= 'table' then

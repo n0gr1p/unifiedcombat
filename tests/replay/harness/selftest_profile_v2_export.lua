@@ -754,6 +754,7 @@ local function build_expected_config()
 				ids = {},
 				puller = true,
 				puller_name = 'Niightsiide',
+				engage_range = 6.0,
 				puller_distance_only = false,
 			},
 		},
@@ -772,6 +773,12 @@ local function build_expected_config()
 			enmity = {
 				actions = { 'Provoke', 'Flash' },
 			},
+		},
+		sleep = {
+			enabled = true,
+			order = { 'Horde Lullaby II' },
+			legacy_primary = 'Horde Lullaby II',
+			max_target_range = 6.0,
 		},
 		spells = {
 			enabled = true,
@@ -863,7 +870,9 @@ local function main()
 	assert_equal(profile.config.targeting.targets[1], 'Apex Bat', 'exported config add priority target mismatch')
 	assert_true(profile.config.targeting.add_priority_names == nil, 'exported config must not include durable add priority names')
 	assert_true(profile.config.command == nil, 'exported config must not include engine runtime state')
-	assert_true(profile.config.sleep == nil, 'exported config must not include sleep domain')
+	assert_equal(profile.config.sleep.enabled, true, 'exported config must preserve Sleep enabled state')
+	assert_equal(profile.config.sleep.order[1], 'Horde Lullaby II', 'exported config must preserve ordered Sleep spells')
+	assert_equal(profile.config.sleep.max_target_range, 6.0, 'exported config must apply the compatibility Sleep range default')
 	assert_true(profile.config.profile == nil, 'exported config must not include profile metadata')
 	assert_true(profile.config.scheduler_action_state == nil, 'exported config must not include runtime scheduler state')
 	assert_true(profile.config.pending_state == nil, 'exported config must not include pending state')
