@@ -447,6 +447,34 @@ local function main()
 		assert_true(type(case_autoload) == 'table' and case_autoload.ok == true, 'disabled fight leader ' .. case.label .. ' case must autoload cleanly')
 		assert_equal(case_autoload.count, 0, 'disabled fight leader ' .. case.label .. ' case must autoload with zero diffs')
 	end
+
+	local unset_puller_payload = deep_clone(fixture)
+	unset_puller_payload.config.follow.partner.puller = false
+	unset_puller_payload.config.follow.partner.puller_name = nil
+	local unset_puller_meta = make_meta(unset_puller_payload.profile.main_job, unset_puller_payload.profile.sub_job)
+	local unset_puller_path = profile_v2.default_export_path(unset_puller_meta)
+	local unset_puller_deps = make_fake_fs({
+		[unset_puller_path] = profile_v2.serialize_structured_profile(unset_puller_payload),
+	})
+	local unset_puller_settings = deep_clone(non_cor_current)
+	unset_puller_settings.puller = false
+	unset_puller_settings.puller_name = ''
+	if type(unset_puller_settings.follow) == 'table' and type(unset_puller_settings.follow.partner) == 'table' then
+		unset_puller_settings.follow.partner.puller = false
+		unset_puller_settings.follow.partner.puller_name = ''
+	end
+	local unset_puller_config = profile_v2.build_durable_config(unset_puller_settings, unset_puller_meta)
+	assert_nil(unset_puller_config.follow.partner.puller_name, 'blank puller name must be omitted from durable config')
+	local unset_puller_status = profile_v2.inspect_structured_profile_status(unset_puller_settings, unset_puller_meta, contract.validate_structured_profile_config, unset_puller_deps)
+	assert_true(unset_puller_status.valid == true, 'omitted puller name profile must validate')
+	assert_equal(unset_puller_status.diff_count, 0, 'omitted puller name profile must report zero differences')
+	local unset_puller_apply = profile_v2.apply_structured_profile_file_to_settings(deep_clone(unset_puller_settings), unset_puller_meta, contract.validate_structured_profile_config, unset_puller_deps)
+	assert_true(unset_puller_apply.ok == true, 'omitted puller name profile must apply cleanly')
+	assert_equal(unset_puller_apply.count, 0, 'omitted puller name profile must apply with zero diffs')
+	local unset_puller_autoload = profile_v2.autoload_structured_profile_file_to_settings(deep_clone(unset_puller_settings), unset_puller_meta, contract.validate_structured_profile_config, unset_puller_deps)
+	assert_true(type(unset_puller_autoload) == 'table' and unset_puller_autoload.ok == true, 'omitted puller name profile must autoload cleanly')
+	assert_equal(unset_puller_autoload.count, 0, 'omitted puller name profile must autoload with zero diffs')
+
 	local runtime_only = deep_clone(non_cor_current)
 	runtime_only.engine_enabled = true
 	runtime_only.party_follow_id = 101
