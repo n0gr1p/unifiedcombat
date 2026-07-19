@@ -7,7 +7,8 @@ local death_messages = {
 }
 
 local remove_messages = {
-	[64] = true, [204] = true, [206] = true, [321] = true, [322] = true, [341] = true, [350] = true, [531] = true,
+	[64] = true, [83] = true, [204] = true, [206] = true, [321] = true, [322] = true,
+	[341] = true, [342] = true, [343] = true, [344] = true, [350] = true, [531] = true,
 }
 local gain_messages = {
 	[230] = true, [236] = true, [237] = true, [266] = true, [268] = true, [269] = true, [270] = true, [271] = true,

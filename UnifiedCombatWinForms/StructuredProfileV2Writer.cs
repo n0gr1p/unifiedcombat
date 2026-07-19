@@ -291,7 +291,7 @@ internal static class StructuredProfileV2Writer
 
     private static StructuredProfileNode BuildMovement(JsonObject flatProfile)
     {
-        return new StructuredProfileNode()
+        var movement = new StructuredProfileNode()
             .Add("enabled", true)
             .Add("move", ReadBool(flatProfile, "move", false))
             .Add(
@@ -325,6 +325,95 @@ internal static class StructuredProfileV2Writer
                     .Add("hunter_ignore_cooldown_s", ReadDouble(flatProfile, "path_hunter_ignore_cooldown_s", 20.0))
                     .Add("pull_action_type", ReadString(flatProfile, "path_pull_action_type", "ja"))
                     .Add("pull_action_name", ReadString(flatProfile, "path_pull_action_name", ""))
+            );
+        if (ReadFormationBool(flatProfile, "formation_enabled", false))
+        {
+            movement.Add("formation", BuildFormation(flatProfile));
+        }
+        return movement;
+    }
+
+    private static StructuredProfileNode BuildFormation(JsonObject flatProfile)
+    {
+        if (!ReadFormationBool(flatProfile, "domain_movement_enabled", true)
+            || !ReadFormationBool(flatProfile, "scheduler_dark_launch_movement", false))
+        {
+            throw new InvalidDataException("enabled formation requires movement domain and scheduler movement ownership");
+        }
+
+        var encounter = ReadString(flatProfile, "formation_encounter", "lilith_easy").ToLowerInvariant();
+        if (encounter != "lilith_easy")
+        {
+            throw new InvalidDataException($"unsupported formation encounter: {encounter}");
+        }
+
+        var role = ReadString(flatProfile, "formation_role", "disabled").ToLowerInvariant();
+        if (role is not ("tank" or "dps" or "healer"))
+        {
+            throw new InvalidDataException($"enabled formation requires tank, dps, or healer role: {role}");
+        }
+
+        var tankName = StripTrailingDisplayIndex(ReadString(flatProfile, "formation_tank_name", ""));
+        if (string.IsNullOrWhiteSpace(tankName))
+        {
+            throw new InvalidDataException("enabled formation requires a tank character name");
+        }
+
+        var captureStable = ReadFormationNumber(flatProfile, "formation_capture_stable_s", 0.5, 0.1, 5.0);
+        var captureTolerance = ReadFormationNumber(flatProfile, "formation_capture_tolerance", 0.1, 0.01, 1.0);
+        var safeRadius = ReadFormationNumber(flatProfile, "formation_safe_radius", 16.0, 5.0, 30.0);
+        var tankAccept = ReadFormationNumber(flatProfile, "formation_tank_accept_radius", 1.5, 0.1, 10.0);
+        var tankReturn = ReadFormationNumber(flatProfile, "formation_tank_return_radius", 3.0, 0.2, 15.0);
+        var dpsFlankAngle = ReadFormationNumber(flatProfile, "formation_dps_flank_angle_deg", 90.0, 1.0, 179.0);
+        var dpsMeleeRadius = ReadFormationNumber(flatProfile, "formation_dps_melee_radius", 3.0, 0.5, 8.0);
+        var dpsPositionTolerance = ReadFormationNumber(flatProfile, "formation_dps_position_tolerance", 1.5, 0.1, 5.0);
+        var healerPreferredRadius = ReadFormationNumber(flatProfile, "formation_healer_preferred_radius", 12.0, 2.0, 25.0);
+        var healerMinimumBossDistance = ReadFormationNumber(flatProfile, "formation_healer_minimum_boss_distance", 8.0, 1.0, 20.0);
+        var healerMaximumPartyRange = ReadFormationNumber(flatProfile, "formation_healer_maximum_party_range", 18.0, 2.0, 25.0);
+        var healerConeHalfAngle = ReadFormationNumber(flatProfile, "formation_healer_cone_half_angle_deg", 50.0, 1.0, 89.0);
+        var healerConeSafetyMargin = ReadFormationNumber(flatProfile, "formation_healer_cone_safety_margin_deg", 15.0, 1.0, 45.0);
+        var healerSampleStep = ReadFormationNumber(flatProfile, "formation_healer_sample_step_deg", 10.0, 1.0, 45.0);
+
+        if (tankReturn <= tankAccept)
+        {
+            throw new InvalidDataException("formation tank return radius must exceed accept radius");
+        }
+        if (healerPreferredRadius >= safeRadius)
+        {
+            throw new InvalidDataException("formation healer preferred radius must be inside safe radius");
+        }
+
+        return new StructuredProfileNode()
+            .Add("enabled", true)
+            .Add("encounter", encounter)
+            .Add("role", role)
+            .Add("tank_name", tankName)
+            .Add("required_party_names", ParseNameList(ReadString(flatProfile, "formation_required_party_names", "")))
+            .Add("capture_stable_s", captureStable)
+            .Add("capture_tolerance", captureTolerance)
+            .Add("safe_radius", safeRadius)
+            .Add(
+                "tank",
+                new StructuredProfileNode()
+                    .Add("accept_radius", tankAccept)
+                    .Add("return_radius", tankReturn)
+            )
+            .Add(
+                "dps",
+                new StructuredProfileNode()
+                    .Add("flank_angle_deg", dpsFlankAngle)
+                    .Add("melee_radius", dpsMeleeRadius)
+                    .Add("position_tolerance", dpsPositionTolerance)
+            )
+            .Add(
+                "healer",
+                new StructuredProfileNode()
+                    .Add("preferred_radius", healerPreferredRadius)
+                    .Add("minimum_boss_distance", healerMinimumBossDistance)
+                    .Add("maximum_party_range", healerMaximumPartyRange)
+                    .Add("cone_half_angle_deg", healerConeHalfAngle)
+                    .Add("cone_safety_margin_deg", healerConeSafetyMargin)
+                    .Add("sample_step_deg", healerSampleStep)
             );
     }
 
@@ -858,6 +947,50 @@ internal static class StructuredProfileV2Writer
         }
 
         return defaultValue;
+    }
+
+    private static double ReadFormationNumber(JsonObject flatProfile, string key, double defaultValue, double minimum, double maximum)
+    {
+        if (!flatProfile.TryGetPropertyValue(key, out var node) || node is null)
+        {
+            return defaultValue;
+        }
+        var raw = ReadString(flatProfile, key, "");
+        if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            throw new InvalidDataException($"formation setting {key} is not numeric: {raw}");
+        }
+        if (value < minimum || value > maximum)
+        {
+            throw new InvalidDataException($"formation setting {key} is outside {minimum}..{maximum}: {value}");
+        }
+        return value;
+    }
+
+    private static bool ReadFormationBool(JsonObject flatProfile, string key, bool defaultValue)
+    {
+        if (!flatProfile.TryGetPropertyValue(key, out var node) || node is null)
+        {
+            return defaultValue;
+        }
+        if (node is JsonValue value && value.TryGetValue<bool>(out var boolValue))
+        {
+            return boolValue;
+        }
+        if (node is JsonValue textValue && textValue.TryGetValue<string>(out var text))
+        {
+            return (text ?? "").Trim().ToLowerInvariant() switch
+            {
+                "true" or "on" or "1" or "yes" => true,
+                "false" or "off" or "0" or "no" => false,
+                _ => throw new InvalidDataException($"formation setting {key} is not boolean: {text}"),
+            };
+        }
+        if (node is JsonValue numericValue && numericValue.TryGetValue<long>(out var numeric) && (numeric == 0 || numeric == 1))
+        {
+            return numeric == 1;
+        }
+        throw new InvalidDataException($"formation setting {key} is not boolean: {node}");
     }
 
     private static List<object?> SplitPipeList(string value)

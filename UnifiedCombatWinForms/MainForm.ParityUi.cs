@@ -87,6 +87,28 @@ public partial class MainForm
     private TextBox _spEmergencyMargin = null!;
     private TextBox _spSwitchMargin = null!;
     private TextBox _spArrivalTolerance = null!;
+    private CheckBox _formationEnabled = null!;
+    private ComboBox _formationEncounter = null!;
+    private ComboBox _formationRole = null!;
+    private ComboBox _formationTankName = null!;
+    private CheckedListBox _formationRequiredParty = null!;
+    private NumericUpDown _formationCaptureStable = null!;
+    private NumericUpDown _formationCaptureTolerance = null!;
+    private NumericUpDown _formationSafeRadius = null!;
+    private NumericUpDown _formationTankAcceptRadius = null!;
+    private NumericUpDown _formationTankReturnRadius = null!;
+    private NumericUpDown _formationDpsFlankAngle = null!;
+    private NumericUpDown _formationDpsMeleeRadius = null!;
+    private NumericUpDown _formationDpsPositionTolerance = null!;
+    private NumericUpDown _formationHealerPreferredRadius = null!;
+    private NumericUpDown _formationHealerMinimumBossDistance = null!;
+    private NumericUpDown _formationHealerMaximumPartyRange = null!;
+    private NumericUpDown _formationHealerConeHalfAngle = null!;
+    private NumericUpDown _formationHealerConeSafetyMargin = null!;
+    private NumericUpDown _formationHealerSampleStep = null!;
+    private TableLayoutPanel _formationConfigPanel = null!;
+    private Label _formationValidation = null!;
+    private Button _formationEnableOwnership = null!;
     private TabControl _settingsTabs = null!;
     private TabPage _tabCor = null!;
     private TabPage _tabBrd = null!;
@@ -763,6 +785,130 @@ public partial class MainForm
         tabSpacing.Controls.Add(sp);
         _settingsTabs.TabPages.Add(tabSpacing);
 
+        var tabFormation = new TabPage("Encounter Formation") { AutoScroll = true };
+        var formationRoot = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 1,
+            Padding = new Padding(8),
+        };
+        _formationEnabled = new CheckBox { Text = "Enable encounter formation", AutoSize = true };
+        _formationEnabled.CheckedChanged += (_, _) => OnFormationConfigChanged();
+        formationRoot.Controls.Add(_formationEnabled);
+        formationRoot.Controls.Add(new Label
+        {
+            Text = "Profile-scoped positioning for supported encounters. Settings are saved to Profile V2 and are not sent over the live mirror.",
+            AutoSize = true,
+            MaximumSize = new Size(760, 0),
+            Padding = new Padding(0, 4, 0, 8),
+        });
+
+        var formationOwnership = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+        };
+        _formationValidation = new Label { AutoSize = true, Padding = new Padding(0, 6, 10, 0) };
+        _formationEnableOwnership = new Button { Text = "Enable required movement ownership", AutoSize = true };
+        _formationEnableOwnership.Click += (_, _) => OnFormationEnableOwnership();
+        formationOwnership.Controls.Add(_formationValidation);
+        formationOwnership.Controls.Add(_formationEnableOwnership);
+        formationRoot.Controls.Add(formationOwnership);
+
+        _formationConfigPanel = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 2,
+            Padding = new Padding(0, 8, 0, 0),
+        };
+        _formationConfigPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
+        _formationConfigPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
+        var formationRow = 0;
+
+        _formationConfigPanel.Controls.Add(new Label { Text = "Encounter", AutoSize = true, Anchor = AnchorStyles.Left }, 0, formationRow);
+        _formationEncounter = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
+        _formationEncounter.Items.Add("Lady Lilith — Easy");
+        _formationEncounter.SelectedIndex = 0;
+        _formationEncounter.SelectedIndexChanged += (_, _) => OnFormationConfigChanged();
+        _formationConfigPanel.Controls.Add(_formationEncounter, 1, formationRow++);
+
+        _formationConfigPanel.Controls.Add(new Label { Text = "Character role", AutoSize = true, Anchor = AnchorStyles.Left }, 0, formationRow);
+        _formationRole = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
+        _formationRole.Items.AddRange(["Disabled", "Tank", "DPS", "Healer"]);
+        _formationRole.SelectedItem = "Disabled";
+        _formationRole.SelectedIndexChanged += (_, _) => OnFormationConfigChanged();
+        _formationConfigPanel.Controls.Add(_formationRole, 1, formationRow++);
+
+        _formationConfigPanel.Controls.Add(new Label { Text = "Tank character", AutoSize = true, Anchor = AnchorStyles.Left }, 0, formationRow);
+        _formationTankName = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Width = 230 };
+        _formationTankName.SelectedIndexChanged += (_, _) => OnFormationConfigChanged();
+        _formationTankName.Leave += (_, _) => OnFormationConfigChanged();
+        _formationConfigPanel.Controls.Add(_formationTankName, 1, formationRow++);
+
+        _formationConfigPanel.Controls.Add(new Label
+        {
+            Text = "Healer coverage members",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left | AnchorStyles.Top,
+            Padding = new Padding(0, 5, 0, 0),
+        }, 0, formationRow);
+        _formationRequiredParty = new CheckedListBox
+        {
+            CheckOnClick = true,
+            Height = 92,
+            Width = 230,
+            IntegralHeight = false,
+        };
+        _formationRequiredParty.ItemCheck += (_, _) => OnFormationRequiredPartyItemCheck();
+        _formationConfigPanel.Controls.Add(_formationRequiredParty, 1, formationRow++);
+
+        AddFormationSectionLabel(_formationConfigPanel, "Arena capture", ref formationRow);
+        _formationCaptureStable = CreateFormationNumber(0.10m, 5.00m, 0.50m, 0.05m, 2);
+        AddFormationNumberRow(_formationConfigPanel, "Stable observation (seconds)", _formationCaptureStable, ref formationRow);
+        _formationCaptureTolerance = CreateFormationNumber(0.01m, 1.00m, 0.10m, 0.01m, 2);
+        AddFormationNumberRow(_formationConfigPanel, "Position tolerance (yalms)", _formationCaptureTolerance, ref formationRow);
+        _formationSafeRadius = CreateFormationNumber(5.0m, 30.0m, 16.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Arena safe radius (yalms)", _formationSafeRadius, ref formationRow);
+
+        AddFormationSectionLabel(_formationConfigPanel, "Tank center tether", ref formationRow);
+        _formationTankAcceptRadius = CreateFormationNumber(0.1m, 10.0m, 1.5m, 0.1m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Centered inside (yalms)", _formationTankAcceptRadius, ref formationRow);
+        _formationTankReturnRadius = CreateFormationNumber(0.2m, 15.0m, 3.0m, 0.1m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Return outside (yalms)", _formationTankReturnRadius, ref formationRow);
+
+        AddFormationSectionLabel(_formationConfigPanel, "DPS flank", ref formationRow);
+        _formationDpsFlankAngle = CreateFormationNumber(1.0m, 179.0m, 90.0m, 1.0m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Right-flank angle (degrees)", _formationDpsFlankAngle, ref formationRow);
+        _formationDpsMeleeRadius = CreateFormationNumber(0.5m, 8.0m, 3.0m, 0.1m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Melee radius (yalms)", _formationDpsMeleeRadius, ref formationRow);
+        _formationDpsPositionTolerance = CreateFormationNumber(0.1m, 5.0m, 1.5m, 0.1m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Position tolerance (yalms)", _formationDpsPositionTolerance, ref formationRow);
+
+        AddFormationSectionLabel(_formationConfigPanel, "Healer constraints", ref formationRow);
+        _formationHealerPreferredRadius = CreateFormationNumber(2.0m, 25.0m, 12.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Preferred center radius (yalms)", _formationHealerPreferredRadius, ref formationRow);
+        _formationHealerMinimumBossDistance = CreateFormationNumber(1.0m, 20.0m, 8.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Minimum boss distance (yalms)", _formationHealerMinimumBossDistance, ref formationRow);
+        _formationHealerMaximumPartyRange = CreateFormationNumber(2.0m, 25.0m, 18.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Maximum party range (yalms)", _formationHealerMaximumPartyRange, ref formationRow);
+        _formationHealerConeHalfAngle = CreateFormationNumber(1.0m, 89.0m, 50.0m, 1.0m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Threat cone half-angle (degrees)", _formationHealerConeHalfAngle, ref formationRow);
+        _formationHealerConeSafetyMargin = CreateFormationNumber(1.0m, 45.0m, 15.0m, 1.0m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Cone safety margin (degrees)", _formationHealerConeSafetyMargin, ref formationRow);
+        _formationHealerSampleStep = CreateFormationNumber(1.0m, 45.0m, 10.0m, 1.0m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Search sample step (degrees)", _formationHealerSampleStep, ref formationRow);
+
+        foreach (var numeric in FormationNumericControls())
+        {
+            numeric.ValueChanged += (_, _) => OnFormationConfigChanged();
+        }
+        formationRoot.Controls.Add(_formationConfigPanel);
+        tabFormation.Controls.Add(formationRoot);
+        _settingsTabs.TabPages.Add(tabFormation);
+
         var tabPathing = new TabPage("Pathing");
         tabPathing.AutoScroll = true;
         var path = new TableLayoutPanel
@@ -1159,6 +1305,61 @@ public partial class MainForm
             cb.CheckedChanged += (_, _) => OnAnyBool(key, cb.Checked);
             return cb;
         }
+    }
+
+    private IEnumerable<NumericUpDown> FormationNumericControls()
+    {
+        return
+        [
+            _formationCaptureStable,
+            _formationCaptureTolerance,
+            _formationSafeRadius,
+            _formationTankAcceptRadius,
+            _formationTankReturnRadius,
+            _formationDpsFlankAngle,
+            _formationDpsMeleeRadius,
+            _formationDpsPositionTolerance,
+            _formationHealerPreferredRadius,
+            _formationHealerMinimumBossDistance,
+            _formationHealerMaximumPartyRange,
+            _formationHealerConeHalfAngle,
+            _formationHealerConeSafetyMargin,
+            _formationHealerSampleStep,
+        ];
+    }
+
+    private static NumericUpDown CreateFormationNumber(decimal minimum, decimal maximum, decimal value, decimal increment, int decimalPlaces)
+    {
+        return new NumericUpDown
+        {
+            Minimum = minimum,
+            Maximum = maximum,
+            Value = value,
+            Increment = increment,
+            DecimalPlaces = decimalPlaces,
+            Width = 100,
+            ThousandsSeparator = false,
+        };
+    }
+
+    private static void AddFormationNumberRow(TableLayoutPanel panel, string label, NumericUpDown control, ref int row)
+    {
+        panel.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        panel.Controls.Add(control, 1, row++);
+    }
+
+    private static void AddFormationSectionLabel(TableLayoutPanel panel, string text, ref int row)
+    {
+        var label = new Label
+        {
+            Text = text,
+            AutoSize = true,
+            Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold),
+            Padding = new Padding(0, 10, 0, 3),
+        };
+        panel.Controls.Add(label, 0, row);
+        panel.SetColumnSpan(label, 2);
+        row++;
     }
 
     private GroupBox CreateBoolCard(string title, IEnumerable<string> keys)

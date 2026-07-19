@@ -32,6 +32,11 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeReactionRules();
             TestDisabledEmptyReactionsAreOmitted();
             TestReactionUiEditsAreLocalUntilSave();
+            TestDisabledFormationIsOmitted();
+            TestSerializeLilithEasyFormation();
+            TestEnabledFormationRequiresMovementOwnership();
+            TestFormationUiEditsAreLocalUntilSave();
+            TestFormationUiProfilePersistenceContract();
             TestSerializeConfigurableControlRanges();
             TestControlRangeUiEditsAreLocalUntilSave();
             TestUiSaveIsFileOnly();
@@ -473,6 +478,89 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(reactionHandlers, "CaptureWorkingProfileFromUi", "reaction durable controls must update local working state");
     }
 
+    private static void TestDisabledFormationIsOmitted()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["formation_enabled"] = false;
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Terrasjr", "PLD", "WAR")
+        );
+
+        AssertNotContains(content, "formation = {", "disabled formation must remain optional for older profiles");
+    }
+
+    private static void TestSerializeLilithEasyFormation()
+    {
+        var flat = BuildSampleFlatProfile();
+        EnableSampleFormation(flat);
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Niightsiide", "WHM", "RDM")
+        );
+
+        AssertContains(content, "formation = {", "formation domain missing from movement config");
+        AssertContains(content, "encounter = \"lilith_easy\"", "formation encounter missing");
+        AssertContains(content, "role = \"healer\"", "formation role missing");
+        AssertContains(content, "tank_name = \"Terrasjr\"", "formation tank name missing");
+        AssertContains(content, "required_party_names = {", "formation coverage member list missing");
+        AssertContains(content, "\"Etamame\"", "formation coverage member missing");
+        AssertNotContains(content, "Etamame [UC]", "formation member display suffix must not be durable");
+        AssertContains(content, "capture_stable_s = 0.5", "formation capture interval missing");
+        AssertContains(content, "safe_radius = 16", "formation safe radius missing");
+        AssertContains(content, "accept_radius = 1.5", "tank accept radius missing");
+        AssertContains(content, "return_radius = 3", "tank return radius missing");
+        AssertContains(content, "flank_angle_deg = 90", "DPS flank angle missing");
+        AssertContains(content, "preferred_radius = 12", "healer preferred radius missing");
+        AssertContains(content, "cone_safety_margin_deg = 15", "healer cone safety margin missing");
+    }
+
+    private static void TestEnabledFormationRequiresMovementOwnership()
+    {
+        var flat = BuildSampleFlatProfile();
+        EnableSampleFormation(flat);
+        flat["scheduler_dark_launch_movement"] = false;
+        try
+        {
+            _ = StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Niightsiide", "WHM", "RDM")
+            );
+        }
+        catch (InvalidDataException ex)
+        {
+            AssertContains(ex.Message, "movement domain and scheduler movement ownership", "formation ownership failure reason mismatch");
+            return;
+        }
+        throw new InvalidOperationException("enabled formation without scheduler movement ownership must fail");
+    }
+
+    private static void TestFormationUiEditsAreLocalUntilSave()
+    {
+        var source = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        var start = source.IndexOf("private string FormationEncounterValue", StringComparison.Ordinal);
+        var end = source.IndexOf("private void OnReactionRuleAdd", start, StringComparison.Ordinal);
+        AssertTrue(start >= 0 && end > start, "formation UI handler source range missing");
+        var formationHandlers = source[start..end];
+        AssertNotContains(formationHandlers, "Forward(", "formation durable controls must not emit live bridge traffic");
+        AssertContains(formationHandlers, "CaptureWorkingProfileFromUi", "formation durable controls must update local working state");
+        AssertContains(formationHandlers, "scheduler_dark_launch_movement", "formation UI must validate scheduler movement ownership");
+    }
+
+    private static void TestFormationUiProfilePersistenceContract()
+    {
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        AssertContains(ui, "new TabPage(\"Encounter Formation\")", "formation tab must exist");
+        AssertContains(store, "[\"formation_enabled\"] = _formationEnabled.Checked", "formation enable state must be captured");
+        AssertContains(store, "[\"formation_role\"] = FormationRoleValue()", "formation role must be captured");
+        AssertContains(store, "[\"formation_required_party_names\"]", "formation coverage members must be captured");
+        AssertContains(store, "[\"formation_healer_sample_step_deg\"]", "formation advanced settings must be captured");
+        AssertContains(logic, "ApplyFormationConfigFromSnapshot(s, partnerOpts);", "formation settings must restore from UI profiles");
+        AssertContains(logic, "profile save blocked", "invalid formation settings must block profile save");
+    }
+
     private static void TestSerializeConfigurableControlRanges()
     {
         var flat = BuildSampleFlatProfile();
@@ -710,6 +798,31 @@ internal static class StructuredProfileV2WriterTests
         };
 
         return flat;
+    }
+
+    private static void EnableSampleFormation(JsonObject flat)
+    {
+        flat["formation_enabled"] = true;
+        flat["formation_encounter"] = "lilith_easy";
+        flat["formation_role"] = "healer";
+        flat["formation_tank_name"] = "Terrasjr [UC]";
+        flat["formation_required_party_names"] = "Terrasjr|Etamame [UC]|Niightsiide";
+        flat["formation_capture_stable_s"] = 0.5;
+        flat["formation_capture_tolerance"] = 0.1;
+        flat["formation_safe_radius"] = 16.0;
+        flat["formation_tank_accept_radius"] = 1.5;
+        flat["formation_tank_return_radius"] = 3.0;
+        flat["formation_dps_flank_angle_deg"] = 90.0;
+        flat["formation_dps_melee_radius"] = 3.0;
+        flat["formation_dps_position_tolerance"] = 1.5;
+        flat["formation_healer_preferred_radius"] = 12.0;
+        flat["formation_healer_minimum_boss_distance"] = 8.0;
+        flat["formation_healer_maximum_party_range"] = 18.0;
+        flat["formation_healer_cone_half_angle_deg"] = 50.0;
+        flat["formation_healer_cone_safety_margin_deg"] = 15.0;
+        flat["formation_healer_sample_step_deg"] = 10.0;
+        flat["domain_movement_enabled"] = true;
+        flat["scheduler_dark_launch_movement"] = true;
     }
 
     private static void AssertTrue(bool condition, string message)

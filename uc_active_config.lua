@@ -425,6 +425,34 @@ local function apply_structured_config_to_candidate(candidate, config)
 	if type(config.movement) == 'table' then
 		candidate.domain_movement_enabled = config.movement.enabled
 		candidate.move = config.movement.move
+		if type(config.movement.formation) == 'table' then
+			local formation = config.movement.formation
+			candidate.formation_enabled = formation.enabled
+			candidate.formation_encounter = formation.encounter
+			candidate.formation_role = formation.role
+			candidate.formation_tank_name = formation.tank_name
+			candidate.formation_required_party_names = clone_value(formation.required_party_names)
+			candidate.formation_capture_stable_s = formation.capture_stable_s
+			candidate.formation_capture_tolerance = formation.capture_tolerance
+			candidate.formation_safe_radius = formation.safe_radius
+			if type(formation.tank) == 'table' then
+				candidate.formation_tank_accept_radius = formation.tank.accept_radius
+				candidate.formation_tank_return_radius = formation.tank.return_radius
+			end
+			if type(formation.dps) == 'table' then
+				candidate.formation_dps_flank_angle_deg = formation.dps.flank_angle_deg
+				candidate.formation_dps_melee_radius = formation.dps.melee_radius
+				candidate.formation_dps_position_tolerance = formation.dps.position_tolerance
+			end
+			if type(formation.healer) == 'table' then
+				candidate.formation_healer_preferred_radius = formation.healer.preferred_radius
+				candidate.formation_healer_minimum_boss_distance = formation.healer.minimum_boss_distance
+				candidate.formation_healer_maximum_party_range = formation.healer.maximum_party_range
+				candidate.formation_healer_cone_half_angle_deg = formation.healer.cone_half_angle_deg
+				candidate.formation_healer_cone_safety_margin_deg = formation.healer.cone_safety_margin_deg
+				candidate.formation_healer_sample_step_deg = formation.healer.sample_step_deg
+			end
+		end
 		if type(config.movement.spacing) == 'table' then
 			candidate.spacing = config.movement.spacing.enabled
 			candidate.spacing_band_min = config.movement.spacing.band_min

@@ -2291,6 +2291,30 @@ function scheduler.apply_reaction_turn(lock, turn_away)
 	return applied
 end
 
+function scheduler.apply_reaction_response(lock)
+	if type(lock) ~= 'table' then
+		return false
+	end
+	local response = tostring(lock.response or '')
+	if response == 'turn_away' then
+		return scheduler.apply_reaction_turn(lock, true)
+	end
+	if response ~= 'stop_attacking' then
+		error('unified_scheduler received unsupported reaction response: ' .. response)
+	end
+	local player = windower.ffxi.get_player()
+	local player_status = tonumber(player and player.status) or -1
+	if require('uc_reaction_runtime').requires_disengage(lock, player_status) then
+		local disengaged, reason = uc_attack.disengage()
+		if disengaged ~= true then
+			error('unified_scheduler failed to disengage for stop_attacking reaction: ' .. tostring(reason))
+		end
+	end
+	require('uc_reaction_runtime').mark_turn_applied(lock.key)
+	lock.turn_applied = true
+	return true
+end
+
 function scheduler.refresh_reaction_lock()
 	local target = windower.ffxi.get_mob_by_target('t')
 	local target_id = tonumber(target and target.id) or 0
@@ -2301,7 +2325,7 @@ function scheduler.refresh_reaction_lock()
 		scheduler.apply_reaction_turn({ actor_id = target_id }, false)
 	end
 	if lock and lock.turn_applied ~= true then
-		scheduler.apply_reaction_turn(lock, true)
+		scheduler.apply_reaction_response(lock)
 	end
 	return lock
 end
@@ -2354,14 +2378,18 @@ local function run_movement_coordinator_tick()
 	end
 	_G.UC_MOVEMENT_MODE = mode
 	_G.UC_MOVEMENT_BLOCK_REASON = ''
+	local formation_observation = require('uc_lilith_easy_formation_runtime').observe(now)
 	local reaction_lock = rawget(_G, 'UC_REACTION_LOCK')
 	if type(reaction_lock) == 'table' then
 		if reaction_lock.turn_applied ~= true then
-			scheduler.apply_reaction_turn(reaction_lock, true)
+			scheduler.apply_reaction_response(reaction_lock)
 		end
-		_G.UC_MOVEMENT_MODE = 'REACTION_HOLD'
-		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_REACTION_HOLD'
-		return false, 'MOVE_COORD_REACTION_HOLD'
+		if require('uc_reaction_runtime').blocks_movement(reaction_lock) then
+			require('uc_lilith_easy_formation_runtime').stop('FORMATION_REACTION_HOLD')
+			_G.UC_MOVEMENT_MODE = 'REACTION_HOLD'
+			_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_REACTION_HOLD'
+			return false, 'MOVE_COORD_REACTION_HOLD'
+		end
 	end
 	-- Facing is coordinator-owned and evaluated every movement tick.
 	-- C5 rule is enforced inside p1_apply_face_to_target (valid live combat mob only).
@@ -2374,6 +2402,7 @@ local function run_movement_coordinator_tick()
 	end
 	local freeze_prep_until = tonumber(rawget(_G, 'UC_MOVE_FREEZE_PREP_UNTIL')) or 0
 	if now < freeze_prep_until then
+		require('uc_lilith_easy_formation_runtime').stop('FORMATION_CAST_FREEZE_PREP')
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_CAST_FREEZE_PREP'
 		local intent = {
@@ -2413,6 +2442,7 @@ local function run_movement_coordinator_tick()
 	end
 	local pull_cast_hold_until = tonumber(rawget(_G, 'UC_PULL_CAST_HOLD_UNTIL')) or 0
 	if now < pull_cast_hold_until then
+		require('uc_lilith_easy_formation_runtime').stop('FORMATION_PULL_CAST_HOLD')
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_PULL_CAST_HOLD'
 		local intent = {
@@ -2451,6 +2481,7 @@ local function run_movement_coordinator_tick()
 		return false, 'MOVE_COORD_PULL_CAST_HOLD'
 	end
 	if rawget(_G, 'UC_PULL_SPELL_WAITING') == true then
+		require('uc_lilith_easy_formation_runtime').stop('FORMATION_PULL_SPELL_WAIT')
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_PULL_SPELL_WAIT'
 		local intent = {
@@ -2520,20 +2551,31 @@ local function run_movement_coordinator_tick()
 	end
 	-- Do not move while spellcasting/channeling.
 	if status == 4 then
+		require('uc_lilith_easy_formation_runtime').stop('FORMATION_CASTING_STATUS')
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_CASTING_STATUS'
 		return false, 'MOVE_COORD_CASTING_STATUS'
 	end
 	local ast = action_state()
 	if tostring(ast.last_send_kind or '') == 'spell' and now < (tonumber(ast.cooldown_until) or 0) then
+		require('uc_lilith_easy_formation_runtime').stop('FORMATION_CAST_FREEZE_COOLDOWN')
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_CAST_FREEZE_COOLDOWN'
 		return false, 'MOVE_COORD_CAST_FREEZE_COOLDOWN'
 	end
 	if action_is_acting() and tostring(ast.last_send_kind or '') == 'spell' then
+		require('uc_lilith_easy_formation_runtime').stop('FORMATION_CASTING_ACTION')
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_CASTING_ACTION'
 		return false, 'MOVE_COORD_CASTING_ACTION'
+	end
+	local formation_acted, formation_reason, formation_owns = require('uc_lilith_easy_formation_runtime').run_tick(formation_observation)
+	if formation_owns then
+		_G.UC_MOVEMENT_MODE = 'FORMATION'
+		_G.UC_MOVEMENT_BLOCK_REASON = formation_reason
+		_G.UC_MOVEMENT_OWNER = 'scheduler_formation'
+		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.40
+		return formation_acted, formation_reason
 	end
 	local ok = false
 	local ok_call, call_err = pcall(function()
@@ -4245,29 +4287,23 @@ local function p1_collect_enemy_buff_removal(ctx, out)
 		return
 	end
 	local _, claims_set = uc_targeting_common.build_friendly_claims()
-	enemy_effect_state_prune_expired(ctx.now)
-	local state = enemy_effect_state_map()
-	local has_any_target = false
-	for _, _ in pairs(state) do
-		has_any_target = true
-		break
-	end
-	if not has_any_target then
+	local tracked_targets = enemy_effect_tracker.list_targets()
+	if #tracked_targets == 0 then
 		enemy_dispel_log('ENEMY_DISPEL_SKIP reason=NO_TRACKED_TARGETS')
 		return
 	end
 	local best = nil
 	local best_effect_id = 0
 	local best_effect_prio = -1
-	for tid, effects in pairs(state) do
-		tid = tonumber(tid) or 0
+	for _, tracked_target in ipairs(tracked_targets) do
+		local tid = tonumber(tracked_target and tracked_target.target_id) or 0
 		if tid > 0 then
 			local mob = windower.ffxi.get_mob_by_id(tid)
 			if mob and tonumber(mob.spawn_type) == 16 and (tonumber(mob.hpp) or 0) > 0 and enemy_dispel_claim_valid(mob.claim_id, claims_set) then
 				local chosen_eid = 0
 				local chosen_prio = -1
-				for eid, _ in pairs(effects or {}) do
-					eid = tonumber(eid) or 0
+				for _, effect in ipairs(enemy_effect_tracker.get_effects(tid)) do
+					local eid = tonumber(effect and effect.effect_id) or 0
 					local prio = tonumber(dispellable_enemy_effect_priority[eid]) or -1
 					if prio > chosen_prio then
 						chosen_prio = prio
@@ -4499,19 +4535,6 @@ local function p1_collect_combat_engage(ctx, out)
 			p1_log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', t, 'no_valid_target', 'inactive', 'not_checked')
 		end
 		return
-	end
-	if combat_core and type(combat_core.puller_engage_allowed_for_scheduler) == 'function' then
-		local puller_allowed, puller_reason, puller_dist, puller_range = combat_core.puller_engage_allowed_for_scheduler(ctx.settings, t)
-		if not puller_allowed then
-			if uc_scheduler_config.debug_enabled(ctx.settings) then
-				_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:puller_range dist=%.2f max=%.2f'):format(
-					tonumber(puller_dist) or 999,
-					tonumber(puller_range) or 0
-				)
-			end
-			p1_log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', t, tostring(puller_reason or 'PULLER_OUT_OF_RANGE'), 'puller_gate', 'not_checked')
-			return
-		end
 	end
 	-- Hunter/path pull ownership: when a pull action is currently applicable, suppress
 	-- engage proposals so we do not run into melee before the configured pull executes.
@@ -7544,6 +7567,8 @@ function scheduler.on_incoming_chunk(id, data)
 	if nid == 0x00A or nid == 0x00B then
 		enemy_effect_tracker.clear_all()
 		require('uc_reaction_runtime').reset('zone_change')
+		require('uc_lilith_easy_encounter').reset('zone_change_packet')
+		require('uc_lilith_easy_formation_runtime').reset('zone_change_packet')
 		_G.UC_REACTION_LOCK = nil
 		scheduler.phase1.effectiveTargets = {}
 		require('uc_brd_maintenance').reset('zone_change')
@@ -7655,7 +7680,7 @@ function scheduler.on_action(act)
 			)
 			if type(reaction_event.activated) == 'table' then
 				_G.UC_REACTION_LOCK = reaction_event.activated
-				scheduler.apply_reaction_turn(reaction_event.activated, true)
+				scheduler.apply_reaction_response(reaction_event.activated)
 			elseif (tonumber(reaction_event.released_target_id) or 0) > 0 then
 				_G.UC_REACTION_LOCK = nil
 				local current_target_id = tonumber(target and target.id) or 0

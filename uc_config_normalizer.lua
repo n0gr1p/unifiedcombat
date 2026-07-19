@@ -358,6 +358,33 @@ local function default_config(meta)
         movement = {
             enabled = true,
             move = false,
+            formation = {
+                enabled = false,
+                encounter = 'lilith_easy',
+                role = 'disabled',
+                tank_name = '',
+                required_party_names = {},
+                capture_stable_s = 0.50,
+                capture_tolerance = 0.10,
+                safe_radius = 16.0,
+                tank = {
+                    accept_radius = 1.5,
+                    return_radius = 3.0,
+                },
+                dps = {
+                    flank_angle_deg = 90.0,
+                    melee_radius = 3.0,
+                    position_tolerance = 1.5,
+                },
+                healer = {
+                    preferred_radius = 12.0,
+                    minimum_boss_distance = 8.0,
+                    maximum_party_range = 18.0,
+                    cone_half_angle_deg = 50.0,
+                    cone_safety_margin_deg = 15.0,
+                    sample_step_deg = 10.0,
+                },
+            },
             spacing = {
                 enabled = false,
                 band_min = -0.9,
@@ -642,9 +669,32 @@ end
 local function normalize_movement(source, config)
     local movement = config.movement
     local nested = get_path(source, { 'movement' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'move', 'spacing', 'path' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'move', 'formation', 'spacing', 'path' }) then
         movement.enabled = normalize_boolean(nested.enabled, movement.enabled)
         movement.move = normalize_boolean(nested.move, movement.move)
+        local formation = is_table(nested.formation) and nested.formation or {}
+        movement.formation.enabled = normalize_boolean(formation.enabled, movement.formation.enabled)
+        movement.formation.encounter = normalize_string(formation.encounter, movement.formation.encounter)
+        movement.formation.role = normalize_string(formation.role, movement.formation.role):lower()
+        movement.formation.tank_name = normalize_string(formation.tank_name, movement.formation.tank_name)
+        movement.formation.required_party_names = normalize_list(formation.required_party_names, movement.formation.required_party_names)
+        movement.formation.capture_stable_s = normalize_number(formation.capture_stable_s, movement.formation.capture_stable_s, { min = 0.1, max = 5.0 })
+        movement.formation.capture_tolerance = normalize_number(formation.capture_tolerance, movement.formation.capture_tolerance, { min = 0.01, max = 1.0 })
+        movement.formation.safe_radius = normalize_number(formation.safe_radius, movement.formation.safe_radius, { min = 5.0, max = 30.0 })
+        local formation_tank = is_table(formation.tank) and formation.tank or {}
+        movement.formation.tank.accept_radius = normalize_number(formation_tank.accept_radius, movement.formation.tank.accept_radius, { min = 0.1, max = 10.0 })
+        movement.formation.tank.return_radius = normalize_number(formation_tank.return_radius, movement.formation.tank.return_radius, { min = 0.2, max = 15.0 })
+        local formation_dps = is_table(formation.dps) and formation.dps or {}
+        movement.formation.dps.flank_angle_deg = normalize_number(formation_dps.flank_angle_deg, movement.formation.dps.flank_angle_deg, { min = 1.0, max = 179.0 })
+        movement.formation.dps.melee_radius = normalize_number(formation_dps.melee_radius, movement.formation.dps.melee_radius, { min = 0.5, max = 8.0 })
+        movement.formation.dps.position_tolerance = normalize_number(formation_dps.position_tolerance, movement.formation.dps.position_tolerance, { min = 0.1, max = 5.0 })
+        local formation_healer = is_table(formation.healer) and formation.healer or {}
+        movement.formation.healer.preferred_radius = normalize_number(formation_healer.preferred_radius, movement.formation.healer.preferred_radius, { min = 2.0, max = 25.0 })
+        movement.formation.healer.minimum_boss_distance = normalize_number(formation_healer.minimum_boss_distance, movement.formation.healer.minimum_boss_distance, { min = 1.0, max = 20.0 })
+        movement.formation.healer.maximum_party_range = normalize_number(formation_healer.maximum_party_range, movement.formation.healer.maximum_party_range, { min = 2.0, max = 25.0 })
+        movement.formation.healer.cone_half_angle_deg = normalize_number(formation_healer.cone_half_angle_deg, movement.formation.healer.cone_half_angle_deg, { min = 1.0, max = 89.0 })
+        movement.formation.healer.cone_safety_margin_deg = normalize_number(formation_healer.cone_safety_margin_deg, movement.formation.healer.cone_safety_margin_deg, { min = 1.0, max = 45.0 })
+        movement.formation.healer.sample_step_deg = normalize_number(formation_healer.sample_step_deg, movement.formation.healer.sample_step_deg, { min = 1.0, max = 45.0 })
         local spacing = is_table(nested.spacing) and nested.spacing or {}
         movement.spacing.enabled = normalize_boolean(spacing.enabled, movement.spacing.enabled)
         movement.spacing.band_min = normalize_number(spacing.band_min, movement.spacing.band_min)
@@ -675,6 +725,25 @@ local function normalize_movement(source, config)
     else
         movement.enabled = normalize_boolean(first_path(source, { path('domain_movement_enabled') }), movement.enabled)
         movement.move = normalize_boolean(first_path(source, { path('move') }), movement.move)
+        movement.formation.enabled = normalize_boolean(first_path(source, { path('formation_enabled') }), movement.formation.enabled)
+        movement.formation.encounter = normalize_string(first_path(source, { path('formation_encounter') }), movement.formation.encounter)
+        movement.formation.role = normalize_string(first_path(source, { path('formation_role') }), movement.formation.role):lower()
+        movement.formation.tank_name = normalize_string(first_path(source, { path('formation_tank_name') }), movement.formation.tank_name)
+        movement.formation.required_party_names = normalize_list(first_path(source, { path('formation_required_party_names') }), movement.formation.required_party_names)
+        movement.formation.capture_stable_s = normalize_number(first_path(source, { path('formation_capture_stable_s') }), movement.formation.capture_stable_s, { min = 0.1, max = 5.0 })
+        movement.formation.capture_tolerance = normalize_number(first_path(source, { path('formation_capture_tolerance') }), movement.formation.capture_tolerance, { min = 0.01, max = 1.0 })
+        movement.formation.safe_radius = normalize_number(first_path(source, { path('formation_safe_radius') }), movement.formation.safe_radius, { min = 5.0, max = 30.0 })
+        movement.formation.tank.accept_radius = normalize_number(first_path(source, { path('formation_tank_accept_radius') }), movement.formation.tank.accept_radius, { min = 0.1, max = 10.0 })
+        movement.formation.tank.return_radius = normalize_number(first_path(source, { path('formation_tank_return_radius') }), movement.formation.tank.return_radius, { min = 0.2, max = 15.0 })
+        movement.formation.dps.flank_angle_deg = normalize_number(first_path(source, { path('formation_dps_flank_angle_deg') }), movement.formation.dps.flank_angle_deg, { min = 1.0, max = 179.0 })
+        movement.formation.dps.melee_radius = normalize_number(first_path(source, { path('formation_dps_melee_radius') }), movement.formation.dps.melee_radius, { min = 0.5, max = 8.0 })
+        movement.formation.dps.position_tolerance = normalize_number(first_path(source, { path('formation_dps_position_tolerance') }), movement.formation.dps.position_tolerance, { min = 0.1, max = 5.0 })
+        movement.formation.healer.preferred_radius = normalize_number(first_path(source, { path('formation_healer_preferred_radius') }), movement.formation.healer.preferred_radius, { min = 2.0, max = 25.0 })
+        movement.formation.healer.minimum_boss_distance = normalize_number(first_path(source, { path('formation_healer_minimum_boss_distance') }), movement.formation.healer.minimum_boss_distance, { min = 1.0, max = 20.0 })
+        movement.formation.healer.maximum_party_range = normalize_number(first_path(source, { path('formation_healer_maximum_party_range') }), movement.formation.healer.maximum_party_range, { min = 2.0, max = 25.0 })
+        movement.formation.healer.cone_half_angle_deg = normalize_number(first_path(source, { path('formation_healer_cone_half_angle_deg') }), movement.formation.healer.cone_half_angle_deg, { min = 1.0, max = 89.0 })
+        movement.formation.healer.cone_safety_margin_deg = normalize_number(first_path(source, { path('formation_healer_cone_safety_margin_deg') }), movement.formation.healer.cone_safety_margin_deg, { min = 1.0, max = 45.0 })
+        movement.formation.healer.sample_step_deg = normalize_number(first_path(source, { path('formation_healer_sample_step_deg') }), movement.formation.healer.sample_step_deg, { min = 1.0, max = 45.0 })
         movement.spacing.enabled = normalize_boolean(first_path(source, { path('spacing') }), movement.spacing.enabled)
         movement.spacing.band_min = normalize_number(first_path(source, { path('spacing_band_min') }), movement.spacing.band_min)
         movement.spacing.band_max = normalize_number(first_path(source, { path('spacing_band_max') }), movement.spacing.band_max)

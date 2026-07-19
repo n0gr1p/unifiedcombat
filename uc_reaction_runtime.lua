@@ -336,13 +336,56 @@ function M.mark_turn_applied(key)
 	return false
 end
 
+local function lock_response(lock)
+	if type(lock) ~= 'table' then
+		return ''
+	end
+	local response = tostring(lock.response or '')
+	if response ~= 'turn_away' and response ~= 'stop_attacking' then
+		error('uc_reaction_runtime received unsupported reaction response: ' .. response)
+	end
+	return response
+end
+
+function M.blocks_movement(lock)
+	return lock_response(lock) == 'turn_away'
+end
+
+function M.requires_disengage(lock, player_status)
+	return lock_response(lock) == 'stop_attacking' and tonumber(player_status) == 1
+end
+
 function M.blocks_proposal(lock, proposal)
 	if type(lock) ~= 'table' or type(proposal) ~= 'table' then
 		return false
 	end
+	local response = lock_response(lock)
 	local provider = tostring(proposal.provider or '')
 	local action_type = tostring(proposal.action_type or '')
 	local target_kind = tostring(proposal.target_kind or '')
+	local family_id = tostring(proposal.family_id or '')
+	local reason_code = tostring(proposal.reason_code or '')
+	if response == 'stop_attacking' then
+		if reason_code == 'enemy_buff_remove'
+			and provider == 'defensive_internal'
+			and action_type == 'spell'
+			and target_kind == 'mob' then
+			return false
+		end
+		if family_id == 'combat.tank_enmity.primary' then
+			return false
+		end
+		if action_type == 'move' or action_type == 'disengage' then
+			return false
+		end
+		if action_type == 'engage' or action_type == 'target_switch' or action_type == 'ws' then
+			return true
+		end
+		if target_kind == 'mob' then
+			return true
+		end
+		return provider == 'combat' or provider == 'pull_control' or provider == 'target_control'
+	end
 	if action_type == 'move' or action_type == 'engage' or action_type == 'disengage' or action_type == 'target_switch' or action_type == 'ws' then
 		return true
 	end

@@ -18,7 +18,8 @@ package.preload.resources = function()
             [1563] = { id = 1563, en = 'Cold Stare' },
         },
         buffs = {
-            [300] = { id = 300, en = 'Dread Spikes' },
+            [33] = { id = 33, en = 'Haste' },
+            [173] = { id = 173, en = 'Dread Spikes' },
         },
     }
 end
@@ -128,20 +129,68 @@ local after_complete = reactions.evaluate(900, {}, 3.1)
 assert_true(after_complete == nil, 'Cold Stare lock must be gone after completion')
 
 local watch = reactions.effect_watch_set()
-assert_true(watch[300] == true, 'configured enemy buff must be added to observed effect set')
-local buff_lock = reactions.evaluate(900, { { effect_id = 300 } }, 4)
+assert_true(watch[173] == true, 'configured enemy buff must resolve to the live Dread Spikes effect id')
+local buff_lock = reactions.evaluate(900, { { effect_id = 173 } }, 4)
 assert_equal(buff_lock.name, 'Dread Spikes', 'tracked enemy buff must activate stop-attacking lock')
 assert_equal(buff_lock.response, 'stop_attacking', 'enemy buff response mismatch')
+assert_true(reactions.requires_disengage(buff_lock, 1), 'stop-attacking must disengage an engaged player')
+assert_true(not reactions.requires_disengage(buff_lock, 0), 'stop-attacking must not resend disengage after leaving combat')
+assert_true(not reactions.blocks_movement(buff_lock), 'stop-attacking must preserve formation movement')
+assert_true(reactions.blocks_movement(active_lock), 'turn-away must continue holding movement and facing')
+assert_true(reactions.blocks_proposal(buff_lock, {
+    provider = 'combat', action_type = 'ws', target_kind = 'mob', family_id = 'combat.ws.primary',
+}), 'stop-attacking must reject melee offense')
+assert_true(not reactions.blocks_proposal(buff_lock, {
+    provider = 'defensive_internal', action_type = 'spell', target_kind = 'mob',
+    family_id = 'def.enemy_dispel.primary', reason_code = 'enemy_buff_remove',
+}), 'stop-attacking must allow the dedicated enemy-buff removal spell')
+assert_true(not reactions.blocks_proposal(buff_lock, {
+    provider = 'combat', action_type = 'spell', target_kind = 'mob', family_id = 'combat.tank_enmity.primary',
+}), 'stop-attacking must allow configured tank enmity actions while disengaged')
 local no_buff, released_target = reactions.evaluate(901, {}, 5)
 assert_true(no_buff == nil, 'enemy buff stop-attacking lock must clear when its actor is no longer the current target')
 assert_equal(released_target, 900, 'target-scoped enemy buff lock removal must request facing restoration')
+
+local original_windower = rawget(_G, 'windower')
+_G.windower = {
+    ffxi = {
+        get_mob_by_id = function(id)
+            if tonumber(id) == 900 then
+                return { id = 900, spawn_type = 16, hpp = 100 }
+            end
+            return nil
+        end,
+    },
+}
+package.loaded.uc_enemy_effect_tracker = nil
+local tracker = require('uc_enemy_effect_tracker')
+local tracked_set = { [33] = true, [173] = true }
+local gain_events = tracker.on_action({
+    actor_id = 900,
+    targets = { { id = 900, actions = { { message = 194, param = 173 } } } },
+}, tracked_set)
+assert_equal(gain_events[1].effect_id, 173, 'Dark Thorn packet effect must enter the authoritative tracker')
+tracker.on_action({
+    actor_id = 900,
+    targets = { { id = 900, actions = { { message = 194, param = 33 } } } },
+}, tracked_set)
+tracker.on_action_message({ actor_id = 900, target_id = 900, message_id = 341, param_1 = 33 }, tracked_set)
+local after_other_dispel = tracker.get_effects(900)
+assert_equal(#after_other_dispel, 1, 'removing another random enhancement must leave Dread Spikes tracked for retry')
+assert_equal(after_other_dispel[1].effect_id, 173, 'Dread Spikes must remain tracked when Dispel removes another enhancement')
+tracker.on_action_message({ actor_id = 900, target_id = 900, message_id = 341, param_1 = 173 }, tracked_set)
+assert_equal(#tracker.get_effects(900), 0, 'confirmed Dread Spikes removal must clear the authoritative tracker')
+package.loaded.uc_enemy_effect_tracker = nil
+_G.windower = original_windower
 
 local source = assert(io.open('unified_scheduler.lua', 'rb')):read('*a')
 assert_true(source:find("reject_reason = 'reaction_hold'", 1, true) ~= nil, 'scheduler must reject blocked proposals through reaction hold')
 assert_true(source:find("UC_MOVEMENT_MODE = 'REACTION_HOLD'", 1, true) ~= nil, 'movement coordinator must hold while turned away')
 assert_true(source:find("if rawget(_G, 'Start_Engine') == true then", 1, true) ~= nil, 'ability reactions must not activate while the engine is stopped')
-assert_true(source:find('scheduler.apply_reaction_turn(reaction_event.activated, true)', 1, true) ~= nil, 'ready event must use scheduler turn ownership')
+assert_true(source:find('scheduler.apply_reaction_response(reaction_event.activated)', 1, true) ~= nil, 'ready event must use response-specific scheduler ownership')
 assert_true(source:find('scheduler.apply_reaction_turn({ actor_id = current_target_id }, false)', 1, true) ~= nil, 'completion must restore scheduler facing toward the current target')
+assert_true(source:find('mark_enemy_dispel_attempt(tostring(dispel_detail.enemy_dispel_attempt_key), dispatch_now)', 1, true) ~= nil, 'enemy dispel retry cooldown must begin only after dispatch')
+assert_true(source:find('for _, tracked_target in ipairs(tracked_targets) do', 1, true) ~= nil, 'enemy dispel collection must use the authoritative effect tracker')
 
 local before_reset_config = active_config.get_path({ 'config', 'reactions', 'rules', 1, 'name' })
 reactions.reset('test')

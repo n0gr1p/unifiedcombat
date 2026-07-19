@@ -323,6 +323,50 @@ local function main()
 	assert_equal(active_config.get_path('profile.source'), 'ui', 'active profile path access should reach metadata')
 	assert_equal(active_config.get_path('config.movement.path.file_name'), 'route-a', 'active profile path access should reach config')
 
+	local formation_fixture = deep_clone(ui_fixture)
+	formation_fixture.config.movement.formation = {
+		enabled = true,
+		encounter = 'lilith_easy',
+		role = 'healer',
+		tank_name = 'Terrasjr',
+		required_party_names = { 'Terrasjr', 'Etamame' },
+		capture_stable_s = 0.5,
+		capture_tolerance = 0.1,
+		safe_radius = 16,
+		tank = {
+			accept_radius = 1.5,
+			return_radius = 3,
+		},
+		dps = {
+			flank_angle_deg = 90,
+			melee_radius = 3,
+			position_tolerance = 1.5,
+		},
+		healer = {
+			preferred_radius = 12,
+			minimum_boss_distance = 8,
+			maximum_party_range = 18,
+			cone_half_angle_deg = 50,
+			cone_safety_margin_deg = 15,
+			sample_step_deg = 10,
+		},
+	}
+	local formation_profile = active_config.build_active_profile_from_v2_payload(formation_fixture, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		source = 'UC_PROFILE_V2',
+	})
+	local formation_projected = active_config.project_flat_settings(formation_profile, {})
+	assert_equal(formation_profile.config.movement.formation.role, 'healer', 'formation role should remain durable')
+	assert_equal(formation_projected.formation_enabled, true, 'enabled formation should qualify as a movement participant')
+	assert_equal(formation_projected.formation_role, 'healer', 'formation role should project to flat runtime settings')
+	assert_equal(formation_projected.formation_tank_name, 'Terrasjr', 'formation tank name should project to flat runtime settings')
+	assert_equal(formation_projected.formation_required_party_names[2], 'Etamame', 'formation coverage members should project to flat runtime settings')
+	assert_equal(formation_projected.formation_tank_return_radius, 3, 'formation tank radius should project to flat runtime settings')
+	assert_equal(formation_projected.formation_dps_flank_angle_deg, 90, 'formation DPS angle should project to flat runtime settings')
+	assert_equal(formation_projected.formation_healer_maximum_party_range, 18, 'formation healer range should project to flat runtime settings')
+
 	local normalized = normalizer.normalize(flat, {
 		character = 'Redrogue',
 		main_job = 'PLD',

@@ -168,6 +168,20 @@ local function main()
     set_state({
         flag = true,
         now = 10,
+        intent_until = 0,
+        owner = 'scheduler_formation',
+        lock_until = 15,
+        fight_follow_until = 0,
+        preengage = false,
+        target = nil,
+    })
+    suppress, reason = follow.should_suppress_follow_or_path_return_now({ combat_participant = false }, _G.__TEST_NOW)
+    assert_equal(suppress, true, 'formation ownership must suppress follow even while disengaged')
+    assert_equal(reason, 'formation_movement_lock', 'formation movement lock reason mismatch')
+
+    set_state({
+        flag = true,
+        now = 10,
         intent_until = 20,
         owner = 'none',
         lock_until = 0,
@@ -360,6 +374,12 @@ local function main()
     if type(pathing) ~= 'table' then
         error('uc_pathing must load successfully with arbitration helper available')
     end
+
+    local scheduler_source = assert(io.open('unified_scheduler.lua', 'rb')):read('*a')
+    local formation_owner_block = scheduler_source:match("if formation_owns then(.-)return formation_acted, formation_reason")
+    assert_true(type(formation_owner_block) == 'string', 'scheduler formation ownership block must be present')
+    assert_true(formation_owner_block:find("UC_MOVEMENT_OWNER = 'scheduler_formation'", 1, true) ~= nil,
+        'scheduler must refresh formation ownership even when the current proposal is hold')
 
     Start_Engine = true
     _G.UC_SETTINGS = {

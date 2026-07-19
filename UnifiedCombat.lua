@@ -336,6 +336,7 @@ local function uc_is_movement_participant(s)
 	local st = s or _G.UC_SETTINGS or {}
 	return uc_domain_enabled(st, 'movement') and (
 		uc_truthy(st.move)
+		or uc_truthy(st.formation_enabled)
 		or uc_truthy(st.spacing)
 		or uc_truthy(st.autotarget)
 		or (uc_truthy(st.hunter) and uc_truthy(st.path_follow_enabled))
@@ -2023,6 +2024,8 @@ windower.register_event('job change', function(job, lvl)
 	local jname = res.jobs:with('id', job).english_short
 	require('uc_brd_maintenance').reset('job_change')
 	require('uc_reaction_runtime').reset('job_change')
+	require('uc_lilith_easy_encounter').reset('job_change')
+	require('uc_lilith_easy_formation_runtime').reset('job_change')
 	uc_update_engine()
 	uc_reload_active_profile(jname)
 	uc_queue_profile_v2_autoload()
@@ -2033,6 +2036,8 @@ end)
 windower.register_event('zone change', function()
 	require('uc_brd_maintenance').reset('zone_change')
 	require('uc_reaction_runtime').reset('zone_change')
+	require('uc_lilith_easy_encounter').reset('zone_change')
+	require('uc_lilith_easy_formation_runtime').reset('zone_change')
 	_G.UC_REACTION_LOCK = nil
 	_G.UC_LAST_ZONE_CHANGE_AT = uc_now_s()
 	_G.UC_ZONE_SUSPEND_UNTIL = uc_now_s() + UC_ZONE_SUSPEND_SEC
@@ -2042,6 +2047,8 @@ end)
 windower.register_event('unload', function()
 	require('uc_brd_maintenance').reset('unload')
 	require('uc_reaction_runtime').reset('unload')
+	require('uc_lilith_easy_encounter').reset('unload')
+	require('uc_lilith_easy_formation_runtime').reset('unload')
 	uc_profile_v2_autoload_pending_key = nil
 	uc_profile_v2_autoload_completed_key = nil
 	uc_profile_v2_startup_reload_completed_key = nil
@@ -2057,6 +2064,8 @@ windower.register_event('unload', function()
 end)
 
 windower.register_event('logout', function()
+	require('uc_lilith_easy_encounter').reset('logout')
+	require('uc_lilith_easy_formation_runtime').reset('logout')
 	_G.UC_ZONE_SUSPEND_UNTIL = nil
 	uc_profile_v2_autoload_pending_key = nil
 	uc_profile_v2_autoload_completed_key = nil
@@ -2109,6 +2118,8 @@ windower.register_event('addon command', function(...)
 	elseif a == 'stop' then
 		Start_Engine = false
 		require('uc_brd_maintenance').reset('engine_stop')
+		require('uc_lilith_easy_encounter').reset('engine_stop')
+		require('uc_lilith_easy_formation_runtime').reset('engine_stop')
 		if _G.UC_SETTINGS then
 			_G.UC_SETTINGS.engine_enabled = false
 		end
@@ -2241,6 +2252,28 @@ windower.register_event('addon command', function(...)
 			return
 		end
 		windower.add_to_chat(207, '//uc reactions status')
+		return
+	elseif a == 'formation' then
+		local sub = args[2] and tostring(args[2]):lower() or 'status'
+		if sub == 'status' then
+			local runtime = rawget(_G, 'UC_FORMATION_STATUS')
+			local encounter = require('uc_lilith_easy_encounter').status()
+			local runtime_enabled = type(runtime) == 'table' and runtime.enabled == true
+			local role = type(runtime) == 'table' and tostring(runtime.role or 'disabled') or 'disabled'
+			local reason = type(runtime) == 'table' and tostring(runtime.reason or '') or ''
+			local center_text = 'none'
+			if type(encounter.center) == 'table' then
+				center_text = ('%.3f,%.3f'):format(tonumber(encounter.center.x), tonumber(encounter.center.y))
+			end
+			windower.add_to_chat(207, ('UC formation: enabled=%s role=%s phase=%s reason=%s center=%s'):format(
+				tostring(runtime_enabled), role, tostring(encounter.phase), reason, center_text
+			))
+			if type(runtime) == 'table' and tostring(runtime.error or '') ~= '' then
+				windower.add_to_chat(167, 'UC formation error: ' .. tostring(runtime.error))
+			end
+			return
+		end
+		windower.add_to_chat(207, '//uc formation status')
 		return
 	elseif a == 'profilev2' then
 		local sub = args[2] and tostring(args[2]):lower() or ''

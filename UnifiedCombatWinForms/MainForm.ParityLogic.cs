@@ -367,6 +367,26 @@ public partial class MainForm
             _spEmergencyMargin.Text = "0.1";
             _spSwitchMargin.Text = "0.35";
             _spArrivalTolerance.Text = "0.2";
+            _formationEnabled.Checked = false;
+            _formationEncounter.SelectedItem = "Lady Lilith — Easy";
+            _formationRole.SelectedItem = "Disabled";
+            _formationTankName.Items.Clear();
+            _formationTankName.Text = "";
+            _formationRequiredParty.Items.Clear();
+            _formationCaptureStable.Value = 0.50m;
+            _formationCaptureTolerance.Value = 0.10m;
+            _formationSafeRadius.Value = 16.0m;
+            _formationTankAcceptRadius.Value = 1.5m;
+            _formationTankReturnRadius.Value = 3.0m;
+            _formationDpsFlankAngle.Value = 90.0m;
+            _formationDpsMeleeRadius.Value = 3.0m;
+            _formationDpsPositionTolerance.Value = 1.5m;
+            _formationHealerPreferredRadius.Value = 12.0m;
+            _formationHealerMinimumBossDistance.Value = 8.0m;
+            _formationHealerMaximumPartyRange.Value = 18.0m;
+            _formationHealerConeHalfAngle.Value = 50.0m;
+            _formationHealerConeSafetyMargin.Value = 15.0m;
+            _formationHealerSampleStep.Value = 10.0m;
             _pathFileValue.Text = "";
             _pathRouteTypeValue.Text = "unknown";
             _pathDistanceValue.Text = "0.0";
@@ -445,6 +465,7 @@ public partial class MainForm
             _pfFollowMaxYalms.Enabled = false;
             _pfFightFollowMinYalms.Enabled = false;
             _pfFightFollowHoldS.Enabled = false;
+            UpdateFormationUiState();
             UpdateBooleanCardVisuals();
         }
         finally
@@ -575,6 +596,7 @@ public partial class MainForm
             _pfFightFollowHoldS.Enabled = pfOn;
             ApplyPartyFollowDistancesFromSnapshot(sid, s);
             ApplySpacingTuningFromSnapshot(sid, s);
+            ApplyFormationConfigFromSnapshot(s, partnerOpts);
 
             var prov = SessionStateHelper.GetString(s, "defensive_provider", "internal");
             if (prov != "internal" && prov != "healbot")
@@ -730,6 +752,7 @@ public partial class MainForm
             }
 
             RenderAuxLists(s);
+            UpdateFormationUiState();
             UpdateBooleanCardVisuals();
         }
         finally
@@ -1626,6 +1649,211 @@ public partial class MainForm
             return;
         }
         CaptureWorkingProfileFromUi(_selectedSid);
+    }
+
+    private string FormationEncounterValue()
+    {
+        if (string.Equals(_formationEncounter.SelectedItem?.ToString(), "Lady Lilith — Easy", StringComparison.Ordinal))
+        {
+            return "lilith_easy";
+        }
+        throw new InvalidOperationException("unsupported formation encounter selection");
+    }
+
+    private string FormationRoleValue()
+    {
+        return _formationRole.SelectedItem?.ToString() switch
+        {
+            "Disabled" => "disabled",
+            "Tank" => "tank",
+            "DPS" => "dps",
+            "Healer" => "healer",
+            _ => throw new InvalidOperationException("unsupported formation role selection"),
+        };
+    }
+
+    private List<string> SelectedFormationRequiredPartyNames()
+    {
+        return _formationRequiredParty.CheckedItems
+            .Cast<object>()
+            .Select(item => NormalizePartyName(item?.ToString() ?? ""))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void ApplyFormationConfigFromSnapshot(JsonElement snapshot, IReadOnlyList<string> partyOptions)
+    {
+        _formationEnabled.Checked = SessionStateHelper.GetBool(snapshot, "formation_enabled", false);
+        var encounter = SessionStateHelper.GetString(snapshot, "formation_encounter", "lilith_easy");
+        if (!string.Equals(encounter, "lilith_easy", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"unsupported formation encounter in UI profile: {encounter}");
+        }
+        _formationEncounter.SelectedItem = "Lady Lilith — Easy";
+
+        var role = SessionStateHelper.GetString(snapshot, "formation_role", "disabled");
+        _formationRole.SelectedItem = role switch
+        {
+            "disabled" => "Disabled",
+            "tank" => "Tank",
+            "dps" => "DPS",
+            "healer" => "Healer",
+            _ => throw new InvalidDataException($"unsupported formation role in UI profile: {role}"),
+        };
+
+        var tankName = NormalizePartyName(SessionStateHelper.GetString(snapshot, "formation_tank_name"));
+        var required = SessionStateHelper.SplitOptions(
+            snapshot.TryGetProperty("formation_required_party_names", out var requiredNode) ? requiredNode : default
+        );
+        var names = partyOptions
+            .Concat(required)
+            .Append(tankName)
+            .Select(NormalizePartyName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        BindPartyCombo(_formationTankName, names, tankName);
+        _formationRequiredParty.Items.Clear();
+        foreach (var name in names)
+        {
+            var check = required.Any(selected => string.Equals(NormalizePartyName(selected), name, StringComparison.OrdinalIgnoreCase));
+            _formationRequiredParty.Items.Add(name, check);
+        }
+
+        ApplyFormationNumber(snapshot, "formation_capture_stable_s", _formationCaptureStable, "0.5");
+        ApplyFormationNumber(snapshot, "formation_capture_tolerance", _formationCaptureTolerance, "0.1");
+        ApplyFormationNumber(snapshot, "formation_safe_radius", _formationSafeRadius, "16");
+        ApplyFormationNumber(snapshot, "formation_tank_accept_radius", _formationTankAcceptRadius, "1.5");
+        ApplyFormationNumber(snapshot, "formation_tank_return_radius", _formationTankReturnRadius, "3");
+        ApplyFormationNumber(snapshot, "formation_dps_flank_angle_deg", _formationDpsFlankAngle, "90");
+        ApplyFormationNumber(snapshot, "formation_dps_melee_radius", _formationDpsMeleeRadius, "3");
+        ApplyFormationNumber(snapshot, "formation_dps_position_tolerance", _formationDpsPositionTolerance, "1.5");
+        ApplyFormationNumber(snapshot, "formation_healer_preferred_radius", _formationHealerPreferredRadius, "12");
+        ApplyFormationNumber(snapshot, "formation_healer_minimum_boss_distance", _formationHealerMinimumBossDistance, "8");
+        ApplyFormationNumber(snapshot, "formation_healer_maximum_party_range", _formationHealerMaximumPartyRange, "18");
+        ApplyFormationNumber(snapshot, "formation_healer_cone_half_angle_deg", _formationHealerConeHalfAngle, "50");
+        ApplyFormationNumber(snapshot, "formation_healer_cone_safety_margin_deg", _formationHealerConeSafetyMargin, "15");
+        ApplyFormationNumber(snapshot, "formation_healer_sample_step_deg", _formationHealerSampleStep, "10");
+    }
+
+    private static void ApplyFormationNumber(JsonElement snapshot, string key, NumericUpDown control, string defaultValue)
+    {
+        var raw = SessionStateHelper.GetString(snapshot, key, defaultValue);
+        if (!decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            throw new InvalidDataException($"formation setting {key} is not numeric: {raw}");
+        }
+        if (value < control.Minimum || value > control.Maximum)
+        {
+            throw new InvalidDataException($"formation setting {key} is outside {control.Minimum}..{control.Maximum}: {value}");
+        }
+        control.Value = value;
+    }
+
+    private void OnFormationRequiredPartyItemCheck()
+    {
+        if (_suppressEvents || !IsHandleCreated)
+        {
+            return;
+        }
+        BeginInvoke(
+            () =>
+            {
+                if (!IsDisposed)
+                {
+                    OnFormationConfigChanged();
+                }
+            }
+        );
+    }
+
+    private void OnFormationConfigChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        UpdateFormationUiState();
+        if (!string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            CaptureWorkingProfileFromUi(_selectedSid);
+        }
+    }
+
+    private void OnFormationEnableOwnership()
+    {
+        if (!_boolChecks.TryGetValue("scheduler_dark_launch_movement", out var schedulerMovement))
+        {
+            throw new InvalidOperationException("scheduler movement ownership control is unavailable");
+        }
+        var wasSuppressed = _suppressEvents;
+        _suppressEvents = true;
+        try
+        {
+            schedulerMovement.Checked = true;
+        }
+        finally
+        {
+            _suppressEvents = wasSuppressed;
+        }
+        UpdateFormationUiState();
+        if (!string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            CaptureWorkingProfileFromUi(_selectedSid);
+        }
+    }
+
+    private bool ValidateFormationConfiguration(out string error)
+    {
+        error = "";
+        if (!_formationEnabled.Checked)
+        {
+            return true;
+        }
+        if (FormationRoleValue() == "disabled")
+        {
+            error = "Choose Tank, DPS, or Healer for this character.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(SelectedPartyName(_formationTankName)))
+        {
+            error = "Select or enter the tank character.";
+            return false;
+        }
+        if (!_boolChecks.TryGetValue("scheduler_dark_launch_movement", out var schedulerMovement) || !schedulerMovement.Checked)
+        {
+            error = "Scheduler movement ownership must be enabled.";
+            return false;
+        }
+        if (_formationTankReturnRadius.Value <= _formationTankAcceptRadius.Value)
+        {
+            error = "Tank return radius must be greater than the centered radius.";
+            return false;
+        }
+        if (_formationHealerPreferredRadius.Value >= _formationSafeRadius.Value)
+        {
+            error = "Healer preferred radius must be inside the arena safe radius.";
+            return false;
+        }
+        return true;
+    }
+
+    private void UpdateFormationUiState()
+    {
+        var enabled = _formationEnabled.Checked;
+        _formationConfigPanel.Enabled = enabled;
+        var valid = ValidateFormationConfiguration(out var error);
+        _formationValidation.Text = !enabled
+            ? "Formation is disabled for this profile."
+            : valid
+                ? "Ready to save. Movement domain and scheduler ownership are enabled."
+                : error;
+        _formationValidation.ForeColor = !enabled || valid ? SystemColors.ControlText : Color.Firebrick;
+        var schedulerEnabled = _boolChecks.TryGetValue("scheduler_dark_launch_movement", out var schedulerMovement)
+            && schedulerMovement.Checked;
+        _formationEnableOwnership.Visible = enabled && !schedulerEnabled;
     }
 
     private void OnReactionRuleAdd()
@@ -3437,6 +3665,13 @@ public partial class MainForm
         var sid = RequireSelectedSid();
         if (sid is null)
         {
+            return;
+        }
+
+        if (!ValidateFormationConfiguration(out var formationError))
+        {
+            statusConnection.Text = $"Mirror: profile save blocked ({formationError})";
+            UpdateFormationUiState();
             return;
         }
 

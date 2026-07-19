@@ -1654,6 +1654,33 @@ local function main()
 
 	local nested_apply_payload = deep_clone(profile)
 	nested_apply_payload.config.movement.path.file_name = 'route-b'
+	nested_apply_payload.config.movement.formation = {
+		enabled = true,
+		encounter = 'lilith_easy',
+		role = 'dps',
+		tank_name = 'Terrasjr',
+		required_party_names = { 'Terrasjr', 'Etamame' },
+		capture_stable_s = 0.5,
+		capture_tolerance = 0.1,
+		safe_radius = 16,
+		tank = {
+			accept_radius = 1.5,
+			return_radius = 3,
+		},
+		dps = {
+			flank_angle_deg = 90,
+			melee_radius = 3,
+			position_tolerance = 1.5,
+		},
+		healer = {
+			preferred_radius = 12,
+			minimum_boss_distance = 8,
+			maximum_party_range = 18,
+			cone_half_angle_deg = 50,
+			cone_safety_margin_deg = 15,
+			sample_step_deg = 10,
+		},
+	}
 	nested_apply_payload.config.follow.partner.ids = { 99, 100 }
 	local nested_apply_deps = make_fake_fs({
 		[durable_path] = profile_v2.serialize_structured_profile(nested_apply_payload),
@@ -1666,6 +1693,12 @@ local function main()
 	}, contract.validate_structured_profile_config, nested_apply_deps)
 	assert_true(nested_apply_result.ok == true, 'structured profile apply should succeed for nested change')
 	assert_equal(nested_apply_result.candidate.path_file_name, 'route-b', 'structured profile apply should update nested movement runtime field')
+	assert_equal(nested_apply_result.candidate.formation_enabled, true, 'structured profile apply should enable formation runtime mirror')
+	assert_equal(nested_apply_result.candidate.formation_role, 'dps', 'structured profile apply should preserve formation role')
+	assert_equal(nested_apply_result.candidate.formation_tank_name, 'Terrasjr', 'structured profile apply should preserve formation tank name')
+	assert_equal(nested_apply_result.candidate.formation_required_party_names[2], 'Etamame', 'structured profile apply should preserve formation coverage members')
+	assert_equal(nested_apply_result.candidate.formation_healer_maximum_party_range, 18, 'structured profile apply should preserve formation healer range')
+	assert_equal(nested_apply_result.candidate_config.movement.formation.dps.flank_angle_deg, 90, 'structured profile conversion should round-trip formation geometry')
 	assert_equal(nested_apply_result.candidate.partner_ids[1], 99, 'structured profile apply should update nested partner id list')
 	assert_equal(nested_apply_result.candidate.partner_id, 99, 'structured profile apply should sync primary partner legacy field')
 	assert_equal(nested_apply_result.candidate.partner_id2, 100, 'structured profile apply should sync secondary partner legacy field')

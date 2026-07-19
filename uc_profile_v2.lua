@@ -212,6 +212,11 @@ local function pick_durable_config_domains(config, meta)
 		and #out.reactions.rules == 0 then
 		out.reactions = nil
 	end
+	if type(out.movement) == 'table'
+		and type(out.movement.formation) == 'table'
+		and out.movement.formation.enabled ~= true then
+		out.movement.formation = nil
+	end
 	if not is_cor_profile(meta) and type(out.maintenance) == 'table' then
 		out.maintenance.cor = nil
 	end

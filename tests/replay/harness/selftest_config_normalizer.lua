@@ -310,6 +310,31 @@ local function build_nested_settings()
         movement = {
             enabled = true,
             move = true,
+            formation = {
+                enabled = true,
+                encounter = 'lilith_easy',
+                role = 'HEALER',
+                tank_name = 'Terrasjr',
+                required_party_names = { 'Terrasjr', 'Etamame' },
+                safe_radius = 15,
+                tank = {
+                    accept_radius = 1,
+                    return_radius = 2.5,
+                },
+                dps = {
+                    flank_angle_deg = 100,
+                    melee_radius = 3.5,
+                    position_tolerance = 2,
+                },
+                healer = {
+                    preferred_radius = 11,
+                    minimum_boss_distance = 7,
+                    maximum_party_range = 17,
+                    cone_half_angle_deg = 45,
+                    cone_safety_margin_deg = 20,
+                    sample_step_deg = 5,
+                },
+            },
             spacing = {
                 enabled = true,
                 band_min = -1,
@@ -565,6 +590,11 @@ local function main()
     assert_equal(nested_config.defensive.cure.min_tier, 5, 'nested defensive cure min tier mismatch')
     assert_equal(nested_config.defensive.buffs.targeted[2].character, 'Nyoourke', 'nested targeted buff character mismatch')
     assert_equal(nested_config.defensive.buffs.targeted[2].buff, 'Valor Minuet V', 'nested targeted buff name mismatch')
+    assert_equal(nested_config.movement.formation.enabled, true, 'nested formation enabled mismatch')
+    assert_equal(nested_config.movement.formation.role, 'healer', 'nested formation role mismatch')
+    assert_equal(nested_config.movement.formation.tank_name, 'Terrasjr', 'nested formation tank name mismatch')
+    assert_equal(nested_config.movement.formation.required_party_names[2], 'Etamame', 'nested formation required party mismatch')
+    assert_equal(nested_config.movement.formation.healer.sample_step_deg, 5, 'nested formation healer sample mismatch')
     assert_equal(nested_config.movement.path.points[1].x, 1, 'nested path points mismatch')
     assert_equal(nested_config.maintenance.brd.enabled, true, 'nested maintenance BRD enabled mismatch')
     assert_equal(nested_config.maintenance.brd.songs[2], 'Victory March', 'nested maintenance BRD song mismatch')

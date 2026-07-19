@@ -722,12 +722,15 @@ local function should_suppress_follow_or_path_return_now(s, now)
 	if not movement_arbitration_enabled() then
 		return false, 'flag_off'
 	end
-	if not combat_participant_active(s) then
-		return false, 'not_combat_participant'
-	end
 	now = tonumber(now) or now_s()
 	local owner = tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or 'none')
 	local lock_until = tonumber(rawget(_G, 'UC_MOVEMENT_LOCK_UNTIL')) or 0
+	if owner == 'scheduler_formation' and now < lock_until then
+		return true, 'formation_movement_lock'
+	end
+	if not combat_participant_active(s) then
+		return false, 'not_combat_participant'
+	end
 	if owner == 'core' and now < lock_until then
 		return true, 'movement_lock'
 	end

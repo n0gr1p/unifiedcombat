@@ -26,6 +26,12 @@ local function assert_contains(text, needle, message)
     end
 end
 
+local function assert_not_contains(text, needle, message)
+    if text:find(needle, 1, true) then
+        error(message or ('unexpected text: ' .. needle))
+    end
+end
+
 local function puller_gate_mock(input)
     local max_range = tonumber(input.max_range) or 6.0
     local dist = tonumber(input.mob_to_puller_distance) or 999
@@ -116,7 +122,7 @@ local function main()
         mob_hpp = 100,
         distance_only = true,
     })
-    assert_true(allowed, 'mob inside configured puller range must be engageable')
+    assert_true(allowed, 'mob inside configured puller range must allow combat-close movement')
     assert_equal(reason, 'PULLER_IN_RANGE', 'in-range puller reason mismatch')
 
     allowed, reason = puller_gate_mock({
@@ -125,7 +131,7 @@ local function main()
         mob_hpp = 100,
         distance_only = true,
     })
-    assert_equal(allowed, false, 'mob outside distance-only puller range must remain blocked')
+    assert_equal(allowed, false, 'mob outside distance-only puller range must block combat-close movement')
     assert_equal(reason, 'PULLER_OUT_OF_RANGE', 'out-of-range puller reason mismatch')
 
     allowed, reason = puller_gate_mock({
@@ -142,10 +148,9 @@ local function main()
     assert_contains(core_source, 'local function puller_engage_range(settings)', 'core must read the configured puller engage range')
     assert_contains(core_source, 'if dist <= range then', 'core puller gate must compare mob-to-puller distance with configured range')
     assert_contains(core_source, 'local puller_allowed = puller_engage_allowed(settings, target)', 'combat-close movement must use the shared puller gate')
-    assert_contains(core_source, 'function core.puller_engage_allowed_for_scheduler(settings, target)', 'scheduler must have a shared puller gate surface')
     assert_contains(core_source, "return false, 'PULLER_UNRESOLVED'", 'configured unresolved puller must fail closed')
     assert_contains(core_source, "return false, 'PULLER_UNAVAILABLE'", 'configured unavailable puller must fail closed')
-    assert_contains(scheduler_source, "p1_log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', t, tostring(puller_reason", 'engage proposals must report configured puller range rejection')
+    assert_not_contains(scheduler_source, 'combat_core.puller_engage_allowed_for_scheduler', 'puller range must not block targeting or attack engagement')
     assert_contains(scheduler_source, "'config.sleep.max_target_range'", 'scheduler must read the active sleep target range')
     assert_contains(scheduler_source, 'if effective_max_range <= 0 or effective_max_range > configured_max_range then', 'native sleep spell range must be capped by configured range')
 
