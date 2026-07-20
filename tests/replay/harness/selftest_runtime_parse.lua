@@ -18,6 +18,7 @@ local RUNTIME_LUA_FILES = {
     "uc_hb_buff_maint.lua",
     "uc_ignore.lua",
     "uc_partner_list.lua",
+    "uc_party_buff_tracker.lua",
     "uc_party_follow.lua",
     "uc_path_hunter.lua",
     "uc_pathing.lua",

@@ -136,7 +136,7 @@ Examples:
 - party/mob snapshots
 - bridge protocol state
 - combat execution state
-- observed BRD song recipients, exact-song timer ownership, server endtimes, NITRO generations, capacity state, and Marcato reservations
+- observed BRD song recipients, exact-song timer ownership, server endtimes, `0x076` remote party-buff snapshots, NITRO generations, capacity state, and Marcato reservations
 - active Nyzul run token, queue cursor, parked stack, and local lamp/anchor movement role
 
 Runtime/session state must not be written into the UI-owned v2 profile file.

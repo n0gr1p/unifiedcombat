@@ -444,6 +444,8 @@ After reload, some slots may have unknown exact identity. The local provider com
 
 If the uniquely shortest owner is an existing desired song and a known dummy remains, the provider exact-refreshes that desired song as an alignment step. Exact refresh preserves the song and moves its endtime behind the dummy. The provider reevaluates the authoritative timers after every alignment refresh and replaces the missing final only when the dummy becomes uniquely shortest.
 
+If a capacity dummy was confirmed while Troubadour was active and Troubadour expires before that dummy can be replaced, its doubled duration may prevent normal-duration final songs from ever moving behind it. When that enhanced dummy obstructs the uniquely-shortest replacement order, the provider first exact-refreshes the same dummy without Troubadour. This deliberately replaces its enhanced endtime with the newly observed normal-duration endtime without changing song count. The normalization cast is allowed only when every eligible in-range recipient already owns that exact dummy, because otherwise the area cast could overwrite a protected song. After authoritative `0x063` confirmation, each still-shorter final may be aligned once before the missing final replaces the uniquely shortest dummy. A normalization or alignment that does not establish progress enters an explicit terminal blocker instead of repeating casts.
+
 ## Per-recipient State
 
 Song state is maintained per recipient, not as one party-wide count.
@@ -478,6 +480,8 @@ Party recovery is implemented as a per-recipient reducer in `uc_brd_party_song_s
 - the desired exact-song count from durable Bard policy;
 - the recipient's currently observed generic song count from party buff state;
 - exact effects owned from serialized UnifiedCombat casts, including the local `0x063` endtime associated with that cast.
+
+Remote party-member buff counts come from the Bard client's incoming `0x076 Party Buffs` packets, decoded and cached by `uc_party_buff_tracker.lua`. This packet is local server evidence and does not require the remote character to run UnifiedCombat. The local Bard uses `windower.ffxi.get_player().buffs` for itself. UnifiedCombat IPC may supply remote buffs before a usable `0x076` snapshot is available, but a missing packet and missing IPC state remains `unknown`; it must never be converted to an empty buff list or interpreted as zero songs.
 
 Clarion readiness is add-capacity state, not desired-set state. When five desired songs are already present, Clarion expiration or cooldown does not reduce the maintained set to four. Exact refresh and NITRO continue to include the persisted fifth song. If the observed count falls from five to four after Clarion expires, setup first replaces uniquely-shortest tracked dummies until the first four configured final songs are established. It then enters `degraded_fifth_waiting_for_clarion`. Existing desired songs remain eligible for exact refresh, but desired-song rotation is not used as a substitute for the unavailable fifth position.
 
@@ -540,7 +544,7 @@ The initial diagnostic surface will be:
 //uc brd trace once
 ```
 
-`//uc brd status` prints a concise current snapshot: provider eligibility, configured final and dummy songs, recipient ownership/confidence, next deadline, NITRO/Marcato/Clarion state, active generation, and first blocker.
+`//uc brd status` prints a concise current snapshot: provider eligibility, configured final and dummy songs, recipient ownership/confidence, party and buff source, song-range result and distance, next deadline, NITRO/Marcato/Clarion state, active generation, and first blocker.
 
 `//uc brd trace once` arms a one-action trace for the next Bard maintenance action. It records the pending action token, exact spell, `0x028` per-target messages and parameters, successful-recipient set, cast-complete time, relevant `0x063` arrival time, family before/after endtimes, resolved ownership transition, and rejection or timeout reason. It automatically disarms after that transaction so it cannot create continuous chat spam.
 
@@ -639,6 +643,9 @@ The completed subsystem must prove:
 - NITRO is ready only when both abilities are off cooldown;
 - the provider never intentionally activates only one half of NITRO;
 - activating NITRO forces all configured songs to be re-sung regardless of remaining duration;
+- a Troubadour-enhanced recovery dummy is normalized once after Troubadour expires when its duration obstructs final replacement;
+- dummy normalization is refused when any eligible area recipient lacks that exact dummy;
+- failed dummy normalization or post-normalization alignment blocks explicitly instead of refreshing songs repeatedly;
 - forced NITRO casts receive newly observed runtime endtimes;
 - Marcato is used only during active NITRO when both policies are enabled;
 - Marcato can be consumed only by its exact configured song;

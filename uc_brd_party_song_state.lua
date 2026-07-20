@@ -32,20 +32,21 @@ end
 
 function M.in_recovery_range(member, recovery_range_yalms, get_mob_by_id)
 	if type(recovery_range_yalms) ~= 'number' or recovery_range_yalms < 1.0 or recovery_range_yalms > 20.0 then
-		return false
+		return false, nil
 	end
 	if type(member) ~= 'table' or member.id == nil then
-		return false
+		return false, nil
 	end
 	if member.is_self then
-		return true
+		return true, 0
 	end
 	assert(type(get_mob_by_id) == 'function', 'Bard recovery range requires get_mob_by_id')
 	local mob = get_mob_by_id(member.id)
 	if not mob or mob.distance == nil then
-		return false
+		return false, nil
 	end
-	return mob.distance:sqrt() <= recovery_range_yalms
+	local distance = mob.distance:sqrt()
+	return distance <= recovery_range_yalms, distance
 end
 
 local function observed_song_count(member, song_status_ids)
@@ -123,6 +124,10 @@ function M.observe(members, ignore_names, song_status_ids, now)
 			local prior_count = record.observed_song_count
 			record.id = id
 			record.name = tostring(member.name or '')
+			record.source = tostring(member.source or 'unknown')
+			record.buff_source = tostring(member.buff_source or 'missing')
+			record.in_song_range = member.in_song_range == true
+			record.song_distance = tonumber(member.song_distance)
 			record.eligible = is_eligible(member, ignore_names)
 			record.observed_song_count = observed_song_count(member, song_status_ids or {})
 
@@ -208,6 +213,46 @@ local function unique_shortest_effect(member)
 	return shortest_name, ''
 end
 
+local function exact_refresh_is_safe_for_all(song_name)
+	for i = 1, #state.order do
+		local member = state.members[state.order[i]]
+		if type(member) == 'table' and member.eligible == true
+			and type(member.effects[song_name]) ~= 'table' then
+			return false, 'normalization_not_exact_refresh:' .. member.name
+		end
+	end
+	return true, ''
+end
+
+function M.exact_refresh_is_safe_for_all(song_name)
+	return exact_refresh_is_safe_for_all(song_name)
+end
+
+local function enhanced_dummy_to_normalize(member)
+	local selected_name = nil
+	local selected_endtime = nil
+	for name, effect in pairs(member.effects or {}) do
+		local endtime = tonumber(effect.endtime)
+		if effect.is_dummy == true and effect.troubadour_active == true
+			and effect.normalization_attempted ~= true and endtime ~= nil
+			and (selected_endtime == nil or endtime < selected_endtime
+				or (endtime == selected_endtime and name < selected_name)) then
+			selected_name = name
+			selected_endtime = endtime
+		end
+	end
+	return selected_name
+end
+
+local function normalized_dummy_name(member)
+	for name, effect in pairs(member.effects or {}) do
+		if effect.is_dummy == true and effect.normalization_attempted == true then
+			return name
+		end
+	end
+	return nil
+end
+
 local function apply_delivery(member, delivery)
 	local name = tostring(delivery.song_name or '')
 	local existing = member.effects[name]
@@ -216,6 +261,9 @@ local function apply_delivery(member, delivery)
 		existing.status_id = tonumber(delivery.status_id) or existing.status_id
 		existing.confirmed_at = tonumber(delivery.confirmed_at) or os.time()
 		existing.is_dummy = delivery.is_dummy == true
+		existing.troubadour_active = delivery.troubadour_active == true
+		existing.normalization_attempted = delivery.normalizes_dummy == true
+		existing.alignment_attempted = delivery.aligns_final == true
 		return 'exact_refresh'
 	end
 
@@ -227,6 +275,9 @@ local function apply_delivery(member, delivery)
 			status_id = tonumber(delivery.status_id) or 0,
 			confirmed_at = tonumber(delivery.confirmed_at) or os.time(),
 			is_dummy = delivery.is_dummy == true,
+			troubadour_active = delivery.troubadour_active == true,
+			normalization_attempted = delivery.normalizes_dummy == true,
+			alignment_attempted = delivery.aligns_final == true,
 		}
 		member.pending_count = {
 			before_count = count,
@@ -253,6 +304,9 @@ local function apply_delivery(member, delivery)
 		status_id = tonumber(delivery.status_id) or 0,
 		confirmed_at = tonumber(delivery.confirmed_at) or os.time(),
 		is_dummy = delivery.is_dummy == true,
+		troubadour_active = delivery.troubadour_active == true,
+		normalization_attempted = delivery.normalizes_dummy == true,
+		alignment_attempted = delivery.aligns_final == true,
 	}
 	return victim ~= nil and ('replaced:' .. victim) or reason
 end
@@ -267,7 +321,8 @@ function M.record_delivery(delivery)
 		local member = state.members[id]
 		if type(member) == 'table' then
 			local outcome = apply_delivery(member, delivery)
-			if id == recovery_member_id and delivery.is_dummy == true and type(state.recovery) == 'table' then
+			if id == recovery_member_id and delivery.is_dummy == true and delivery.normalizes_dummy ~= true
+				and type(state.recovery) == 'table' then
 				if outcome == 'awaiting_add_confirmation' then
 					state.recovery.awaiting_count = true
 					state.last_blocker = 'capacity_transition_pending:' .. member.name
@@ -339,7 +394,7 @@ local function area_song_is_safe(song_name, cast_capacity)
 	return true, ''
 end
 
-local function missing_final_action(config, song_limit)
+local function missing_final_action(config, song_limit, troubadour_active)
 	for song_index = 1, song_limit do
 		local song_name = config.songs[song_index]
 		local needed = false
@@ -354,9 +409,24 @@ local function missing_final_action(config, song_limit)
 				end
 				if member.effects[victim].is_dummy ~= true then
 					if desired_song_within_limit(config, victim, song_limit) then
+						local enhanced_dummy = troubadour_active ~= true and enhanced_dummy_to_normalize(member) or nil
+						if enhanced_dummy ~= nil then
+							local normalization_safe, normalization_reason = exact_refresh_is_safe_for_all(enhanced_dummy)
+							if normalization_safe then
+								return enhanced_dummy, '', 'brd_recovery_normalize_dummy', 'normalize_dummy'
+							end
+							return nil, normalization_reason
+						end
+						if member.effects[victim].alignment_attempted == true then
+							local normalized_dummy = normalized_dummy_name(member)
+							if normalized_dummy ~= nil then
+								return nil, 'dummy_duration_normalization_failed:' .. member.name .. ':' .. normalized_dummy
+							end
+							return nil, 'recovery_alignment_failed:' .. member.name .. ':' .. victim
+						end
 						local safe, safe_reason = area_song_is_safe(victim, 2)
 						if safe then
-							return victim, '', 'brd_recovery_align_shortest'
+							return victim, '', 'brd_recovery_align_shortest', 'align_final'
 						end
 						return nil, safe_reason
 					end
@@ -399,7 +469,7 @@ local function capacity_final_action(config, song_limit, recovery_member)
 	return '', 'no_missing_capacity_final', cast_capacity
 end
 
-function M.next_action(config, song_limit, clarion_active, clarion_ready)
+function M.next_action(config, song_limit, clarion_active, clarion_ready, troubadour_active)
 	local recovery = state.recovery or start_recovery(config, song_limit)
 	if type(recovery) ~= 'table' then
 		if state.last_blocker == 'not_evaluated' then
@@ -432,7 +502,7 @@ function M.next_action(config, song_limit, clarion_active, clarion_ready)
 					member_id = member.id,
 				}
 			end
-			local degraded_final, degraded_blocker, degraded_reason = missing_final_action(config, 4)
+			local degraded_final, degraded_blocker, degraded_reason, degraded_transition = missing_final_action(config, 4, troubadour_active)
 			if degraded_final == nil then
 				state.recovery = nil
 				state.last_blocker = degraded_blocker
@@ -448,8 +518,10 @@ function M.next_action(config, song_limit, clarion_active, clarion_ready)
 					action_name = degraded_final,
 					reason_code = reason_code,
 					member_id = member.id,
-					is_dummy = false,
+					is_dummy = degraded_transition == 'normalize_dummy',
 					cast_capacity = 2,
+					normalizes_dummy = degraded_transition == 'normalize_dummy',
+					aligns_final = degraded_transition == 'align_final',
 				}
 			end
 			state.last_blocker = 'degraded_fifth_waiting_for_clarion:' .. member.name
@@ -498,7 +570,7 @@ function M.next_action(config, song_limit, clarion_active, clarion_ready)
 		end
 	end
 
-	local final, blocker, final_reason = missing_final_action(config, song_limit)
+	local final, blocker, final_reason, final_transition = missing_final_action(config, song_limit, troubadour_active)
 	if final == nil then
 		state.recovery = nil
 		state.last_blocker = blocker
@@ -514,8 +586,10 @@ function M.next_action(config, song_limit, clarion_active, clarion_ready)
 			action_name = final,
 			reason_code = reason_code,
 			member_id = member.id,
-			is_dummy = false,
+			is_dummy = final_transition == 'normalize_dummy',
 			cast_capacity = 2,
+			normalizes_dummy = final_transition == 'normalize_dummy',
+			aligns_final = final_transition == 'align_final',
 		}
 	end
 	state.recovery = nil
@@ -540,13 +614,17 @@ function M.status_lines()
 	}
 	for i = 1, #state.order do
 		local member = state.members[state.order[i]]
-		lines[#lines + 1] = ('BRD recipient=%s eligible=%s count=%s known=%d unknown=%d confidence=%s loss=%s'):format(
+		lines[#lines + 1] = ('BRD recipient=%s eligible=%s count=%s known=%d unknown=%d confidence=%s source=%s buffs=%s range=%s distance=%s loss=%s'):format(
 			member.name,
 			member.eligible and 'yes' or 'no',
 			member.observed_song_count == nil and 'unknown' or tostring(member.observed_song_count),
 			effect_count(member),
 			tonumber(member.unknown_count) or 0,
 			tostring(member.confidence or 'unknown'),
+			tostring(member.source or 'unknown'),
+			tostring(member.buff_source or 'missing'),
+			member.in_song_range and 'yes' or 'no',
+			member.song_distance == nil and 'unknown' or ('%.1f'):format(member.song_distance),
 			tostring(member.loss_reason or 'none')
 		)
 	end
@@ -556,6 +634,7 @@ end
 M._test = {
 	state = state,
 	unique_shortest_effect = unique_shortest_effect,
+	exact_refresh_is_safe_for_all = exact_refresh_is_safe_for_all,
 }
 
 return M

@@ -603,6 +603,9 @@ local function resolve_pending_from_snapshot()
 		recipients = pending.recipients,
 		confirmed_at = tonumber(pending.success_at) or os.time(),
 		is_dummy = pending.is_dummy,
+		troubadour_active = pending.troubadour_active,
+		normalization_attempted = pending.normalizes_dummy,
+		alignment_attempted = pending.aligns_final,
 	}
 	party_song_state.record_delivery({
 		song_name = pending.name,
@@ -611,6 +614,9 @@ local function resolve_pending_from_snapshot()
 		recipients = pending.recipients,
 		confirmed_at = tonumber(pending.success_at) or os.time(),
 		is_dummy = pending.is_dummy,
+		troubadour_active = pending.troubadour_active,
+		normalizes_dummy = pending.normalizes_dummy,
+		aligns_final = pending.aligns_final,
 		cast_capacity = pending.cast_capacity,
 		song_limit = pending.song_limit,
 		recovery_member_id = pending.recovery_member_id,
@@ -710,6 +716,9 @@ function M.note_dispatch(action, action_token, now)
 		recipients = {},
 		success = false,
 		is_dummy = type(action.detail) == 'table' and action.detail.is_dummy == true,
+		troubadour_active = type(action.detail) == 'table' and action.detail.troubadour_active == true,
+		normalizes_dummy = type(action.detail) == 'table' and action.detail.normalizes_dummy == true,
+		aligns_final = type(action.detail) == 'table' and action.detail.aligns_final == true,
 		recovery_member_id = type(action.detail) == 'table' and tonumber(action.detail.recovery_member_id) or nil,
 		cast_capacity = type(action.detail) == 'table' and tonumber(action.detail.cast_capacity) or nil,
 		song_limit = type(action.detail) == 'table' and tonumber(action.detail.song_limit) or nil,
@@ -957,6 +966,31 @@ local function unique_shortest_owner(expected_count)
 	return shortest_name, ''
 end
 
+local function enhanced_dummy_owner()
+	local selected_name = ''
+	local selected_endtime = nil
+	for name, owner in pairs(state.owners) do
+		local endtime = tonumber(owner.endtime)
+		if owner.is_dummy == true and owner.troubadour_active == true
+			and owner.normalization_attempted ~= true and endtime ~= nil
+			and (selected_endtime == nil or endtime < selected_endtime
+				or (endtime == selected_endtime and name < selected_name)) then
+			selected_name = name
+			selected_endtime = endtime
+		end
+	end
+	return selected_name
+end
+
+local function normalized_dummy_owner()
+	for name, owner in pairs(state.owners) do
+		if owner.is_dummy == true and owner.normalization_attempted == true then
+			return name
+		end
+	end
+	return ''
+end
+
 local function urgent_song(config, song_limit, now_epoch)
 	local best_name = ''
 	local best_remaining = nil
@@ -984,7 +1018,7 @@ local function song_within_limit(config, name, song_limit)
 	return false
 end
 
-local function song_proposal(ctx, name, reason, urgency, is_dummy, required_recipients, recovery_member_id, cast_capacity, song_limit)
+local function song_proposal(ctx, name, reason, urgency, is_dummy, required_recipients, recovery_member_id, cast_capacity, song_limit, normalizes_dummy, aligns_final)
 	local ok, why = ready(ctx, name, 'spell')
 	if not ok then
 		state.last_blocker = 'not_ready:' .. name .. ':' .. why
@@ -997,7 +1031,46 @@ local function song_proposal(ctx, name, reason, urgency, is_dummy, required_reci
 		recovery_member_id = recovery_member_id,
 		cast_capacity = cast_capacity,
 		song_limit = song_limit,
+		troubadour_active = has_buff(ctx.player, JA.troubadour.buff_id),
+		normalizes_dummy = normalizes_dummy == true,
+		aligns_final = aligns_final == true,
 	})
+end
+
+local function maybe_normalize_enhanced_dummy(ctx, required_recipients, song_limit, troubadour_active, reason_code, recovery_member_id)
+	if troubadour_active == true then
+		return nil, ''
+	end
+	local dummy = enhanced_dummy_owner()
+	if dummy == '' then
+		return nil, ''
+	end
+	local safe, unsafe_reason = party_song_state.exact_refresh_is_safe_for_all(dummy)
+	if not safe then
+		return nil, unsafe_reason
+	end
+	diagnostic_log('DUMMY_DURATION_NORMALIZE', {
+		song = dummy,
+		owner_endtime = state.owners[dummy].endtime,
+		recovery_member_id = recovery_member_id,
+	})
+	local action = song_proposal(
+		ctx,
+		dummy,
+		reason_code,
+		0.746,
+		true,
+		required_recipients,
+		recovery_member_id,
+		2,
+		song_limit,
+		true,
+		false
+	)
+	if action == nil then
+		return nil, state.last_blocker
+	end
+	return action, ''
 end
 
 local function required_recipient_ids(ctx)
@@ -1155,12 +1228,36 @@ function M.propose(config, ctx)
 				return song_proposal(ctx, degraded_missing, 'brd_degraded_replace_dummy', 0.74, false, required_recipients, nil, base_count, song_limit)
 			end
 			if victim ~= '' and song_within_limit(config, victim, 4) and owner_covers(victim, required_recipients) then
+				local normalization, normalization_blocker = maybe_normalize_enhanced_dummy(
+					ctx,
+					required_recipients,
+					song_limit,
+					has_buff(player, JA.troubadour.buff_id),
+					'brd_degraded_normalize_dummy',
+					nil
+				)
+				if normalization then
+					return normalization
+				end
+				if normalization_blocker ~= '' then
+					state.last_blocker = normalization_blocker
+					release_action_lane(state.last_blocker)
+					return nil
+				end
+				if state.owners[victim].alignment_attempted == true then
+					local normalized_dummy = normalized_dummy_owner()
+					state.last_blocker = normalized_dummy ~= ''
+						and ('dummy_duration_normalization_failed:' .. normalized_dummy)
+						or ('degraded_alignment_failed:' .. victim)
+					release_action_lane(state.last_blocker)
+					return nil
+				end
 				diagnostic_log('DEGRADED_ALIGN_REFRESH', {
 					song = victim,
 					missing = degraded_missing,
 					count = count,
 				})
-				return song_proposal(ctx, victim, 'brd_degraded_align_shortest', 0.745, false, required_recipients, nil, base_count, song_limit)
+				return song_proposal(ctx, victim, 'brd_degraded_align_shortest', 0.745, false, required_recipients, nil, base_count, song_limit, false, true)
 			end
 			if victim ~= '' then
 				victim_reason = 'shortest_owner_not_alignable:' .. victim
@@ -1216,11 +1313,50 @@ function M.propose(config, ctx)
 
 	local missing = next_missing_final(config, song_limit, required_recipients)
 	if missing ~= '' then
-		local marcato = maybe_marcato(config, ctx, missing, nitro_active)
-		if marcato then
-			return marcato
+		local victim, victim_reason = unique_shortest_owner(count)
+		if victim ~= '' and state.owners[victim].is_dummy == true then
+			local marcato = maybe_marcato(config, ctx, missing, nitro_active)
+			if marcato then
+				return marcato
+			end
+			return song_proposal(ctx, missing, 'brd_replace_dummy_with_final', 0.74, false, required_recipients, nil, base_count, song_limit)
 		end
-		return song_proposal(ctx, missing, 'brd_replace_dummy_with_final', 0.74, false, required_recipients, nil, base_count, song_limit)
+		if victim ~= '' and song_within_limit(config, victim, song_limit) and owner_covers(victim, required_recipients) then
+			local normalization, normalization_blocker = maybe_normalize_enhanced_dummy(
+				ctx,
+				required_recipients,
+				song_limit,
+				has_buff(player, JA.troubadour.buff_id),
+				'brd_normalize_dummy_duration',
+				nil
+			)
+			if normalization then
+				return normalization
+			end
+			if normalization_blocker ~= '' then
+				state.last_blocker = normalization_blocker
+				release_action_lane(state.last_blocker)
+				return nil
+			end
+			if state.owners[victim].alignment_attempted == true then
+				local normalized_dummy = normalized_dummy_owner()
+				state.last_blocker = normalized_dummy ~= ''
+					and ('dummy_duration_normalization_failed:' .. normalized_dummy)
+					or ('final_alignment_failed:' .. victim)
+				release_action_lane(state.last_blocker)
+				return nil
+			end
+			return song_proposal(ctx, victim, 'brd_align_shortest_final', 0.745, false, required_recipients, nil, base_count, song_limit, false, true)
+		end
+		if victim ~= '' then
+			victim_reason = 'shortest_owner_not_alignable:' .. victim
+		end
+		if victim == '' and victim_reason == 'shortest_overwrite_owner_unknown' then
+			return song_proposal(ctx, missing, 'brd_rebuild_unknown', 0.743, false, required_recipients, nil, base_count, song_limit)
+		end
+		state.last_blocker = 'final_replacement_unsafe:' .. victim_reason
+		release_action_lane(state.last_blocker)
+		return nil
 	end
 
 	local forced = next_force_song(config, song_limit)
@@ -1248,11 +1384,20 @@ function M.propose(config, ctx)
 		config,
 		song_limit,
 		clarion_active,
-		clarion_ready
+		clarion_ready,
+		has_buff(player, JA.troubadour.buff_id)
 	)
 	if type(recovery) == 'table' then
 		if recovery.action_type == 'ja' then
 			return proposal('ja', recovery.action_name, recovery.reason_code, 0.72, { recovery_member_id = recovery.member_id })
+		end
+		if recovery.normalizes_dummy == true then
+			local local_owner = state.owners[recovery.action_name]
+			if type(local_owner) ~= 'table' or local_owner.is_dummy ~= true then
+				state.last_blocker = 'normalization_not_exact_refresh:self'
+				release_action_lane(state.last_blocker)
+				return nil
+			end
 		end
 		return song_proposal(
 			ctx,
@@ -1263,7 +1408,9 @@ function M.propose(config, ctx)
 			required_recipients,
 			recovery.member_id,
 			recovery.cast_capacity or base_count,
-			song_limit
+			song_limit,
+			recovery.normalizes_dummy,
+			recovery.aligns_final
 		)
 	end
 	local party_blocker = party_song_state.last_blocker()
@@ -1409,11 +1556,14 @@ function M.status_lines()
 		),
 	}
 	for name, owner in pairs(state.owners) do
-		lines[#lines + 1] = ('BRD owner=%s status=%d remaining=%.1fs recipients=%s'):format(
+		lines[#lines + 1] = ('BRD owner=%s status=%d remaining=%.1fs recipients=%s troubadour=%s normalized=%s aligned=%s'):format(
 			name,
 			tonumber(owner.status_id) or 0,
 			remaining_seconds(owner.endtime, os.time()),
-			join(owner.recipients)
+			join(owner.recipients),
+			owner.troubadour_active and 'yes' or 'no',
+			owner.normalization_attempted and 'yes' or 'no',
+			owner.alignment_attempted and 'yes' or 'no'
 		)
 	end
 	for _, line in ipairs(party_song_state.status_lines()) do

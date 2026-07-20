@@ -500,14 +500,163 @@ recovery_step = party_song_state.next_action(recovery_sequence_config, 5, false,
 assert_equal(recovery_step.action_name, 'Victory March', 'recipient recovery must exact-refresh a shorter desired song before replacing the remaining dummy')
 assert_equal(recovery_step.reason_code, 'brd_recovery_align_shortest', 'recipient alignment refresh reason mismatch')
 
--- An AoE recovery dummy must update every successful recipient, including the
--- collateral overwrite on already-full members.
-party_song_state.reset()
 local function recovery_member(id, name, count)
 	local buffs = {}
 	for i = 1, count do buffs[i] = 100 end
 	return { id = id, name = name, spawn_type = 1, is_npc = false, hpp = 100, in_song_range = true, buffs = buffs }
 end
+
+-- A fifth-slot dummy sung under Troubadour must be exact-refreshed after
+-- Troubadour expires when its doubled duration obstructs final replacement.
+party_song_state.reset()
+observe_recovery_member(4, 37)
+for _, delivery in ipairs({
+	{ name = 'Victory March', endtime = 4000, status_id = 100 },
+	{ name = "Mage's Ballad III", endtime = 4200, status_id = 104 },
+	{ name = 'Valor Minuet V', endtime = 5000, status_id = 103 },
+	{ name = 'Honor March', endtime = 6000, status_id = 100 },
+}) do
+	party_song_state.record_delivery({
+		song_name = delivery.name,
+		status_id = delivery.status_id,
+		endtime = delivery.endtime,
+		recipients = { 88 },
+		confirmed_at = 37,
+		is_dummy = false,
+		cast_capacity = 2,
+		song_limit = 5,
+	})
+end
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, true, false, true)
+assert_equal(recovery_step.action_name, "Army's Paeon", 'fifth-slot recovery must add its capacity dummy while Troubadour is active')
+party_song_state.record_delivery({
+	song_name = recovery_step.action_name,
+	status_id = 101,
+	endtime = 8000,
+	recipients = { 88 },
+	confirmed_at = 37.1,
+	is_dummy = true,
+	troubadour_active = true,
+	cast_capacity = 5,
+	song_limit = 5,
+	recovery_member_id = 88,
+})
+observe_recovery_member(5, 37.2)
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, false, false, false)
+assert_equal(recovery_step.action_name, "Army's Paeon", 'expired Troubadour must normalize the obstructing enhanced dummy first')
+assert_equal(recovery_step.reason_code, 'brd_recovery_normalize_dummy', 'enhanced dummy normalization reason mismatch')
+assert_true(recovery_step.normalizes_dummy == true, 'enhanced dummy normalization must be explicit action metadata')
+assert_true(recovery_step.is_dummy == true, 'enhanced dummy normalization must retain dummy identity')
+party_song_state.record_delivery({
+	song_name = recovery_step.action_name,
+	status_id = 101,
+	endtime = 4500,
+	recipients = { 88 },
+	confirmed_at = 37.3,
+	is_dummy = true,
+	troubadour_active = false,
+	normalizes_dummy = true,
+	cast_capacity = 2,
+	song_limit = 5,
+	recovery_member_id = 88,
+})
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, false, false, false)
+assert_equal(recovery_step.action_name, 'Victory March', 'shorter final must align after dummy normalization')
+assert_true(recovery_step.aligns_final == true, 'post-normalization final alignment must be explicit action metadata')
+party_song_state.record_delivery({
+	song_name = recovery_step.action_name,
+	status_id = 100,
+	endtime = 7000,
+	recipients = { 88 },
+	confirmed_at = 37.4,
+	is_dummy = false,
+	aligns_final = true,
+	cast_capacity = 2,
+	song_limit = 5,
+	recovery_member_id = 88,
+})
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, false, false, false)
+assert_equal(recovery_step.action_name, "Mage's Ballad III", 'every final shorter than the normalized dummy must align once')
+party_song_state.record_delivery({
+	song_name = recovery_step.action_name,
+	status_id = 104,
+	endtime = 7100,
+	recipients = { 88 },
+	confirmed_at = 37.5,
+	is_dummy = false,
+	aligns_final = true,
+	cast_capacity = 2,
+	song_limit = 5,
+	recovery_member_id = 88,
+})
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, false, false, false)
+assert_equal(recovery_step.action_name, 'Valor Minuet IV', 'missing final must replace the uniquely shortest normalized dummy')
+assert_true(recovery_step.normalizes_dummy ~= true and recovery_step.aligns_final ~= true,
+	'final replacement must not retain normalization or alignment metadata')
+
+party_song_state.reset()
+observe_recovery_member(5, 37.6)
+party_song_state._test.state.members[88].effects = {
+	['Victory March'] = { endtime = 7000, status_id = 100, is_dummy = false, alignment_attempted = true },
+	["Army's Paeon"] = { endtime = 8000, status_id = 101, is_dummy = true, normalization_attempted = true },
+	['Valor Minuet V'] = { endtime = 9000, status_id = 103, is_dummy = false },
+	['Honor March'] = { endtime = 10000, status_id = 100, is_dummy = false },
+	["Mage's Ballad III"] = { endtime = 11000, status_id = 104, is_dummy = false },
+}
+party_song_state._test.state.members[88].unknown_count = 0
+party_song_state._test.state.members[88].confidence = 'confirmed'
+party_song_state._test.state.recovery = {
+	member_id = 88,
+	member_name = 'ReturningPlayer',
+	song_limit = 5,
+	phase = 'capacity',
+	awaiting_count = false,
+}
+assert_true(party_song_state.next_action(recovery_sequence_config, 5, false, false, false) == nil,
+	'a normalized dummy that remains obstructive must not trigger repeated final refreshes')
+assert_true(party_song_state.last_blocker():find('dummy_duration_normalization_failed', 1, true) ~= nil,
+	'failed dummy normalization must expose an explicit terminal blocker')
+
+-- Normalization is allowed only when every eligible AoE recipient already has
+-- the exact dummy. Otherwise the same cast could overwrite a protected song.
+party_song_state.reset()
+party_song_state.observe({
+	recovery_member(88, 'ReturningPlayer', 4),
+	recovery_member(99, 'FullPlayer', 5),
+}, {}, { [100] = true }, 38)
+for _, delivery in ipairs({
+	{ name = 'Victory March', endtime = 4000 },
+	{ name = "Mage's Ballad III", endtime = 4200 },
+	{ name = 'Valor Minuet V', endtime = 5000 },
+	{ name = 'Honor March', endtime = 6000 },
+}) do
+	party_song_state.record_delivery({
+		song_name = delivery.name, status_id = 100, endtime = delivery.endtime,
+		recipients = { 88, 99 }, confirmed_at = 38, is_dummy = false, cast_capacity = 2, song_limit = 5,
+	})
+end
+party_song_state.record_delivery({
+	song_name = 'Valor Minuet IV', status_id = 103, endtime = 7000,
+	recipients = { 99 }, confirmed_at = 38, is_dummy = false, cast_capacity = 2, song_limit = 5,
+})
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, true, false, true)
+party_song_state.record_delivery({
+	song_name = recovery_step.action_name, status_id = 101, endtime = 8000,
+	recipients = { 88 }, confirmed_at = 38.1, is_dummy = true, troubadour_active = true,
+	cast_capacity = 5, song_limit = 5, recovery_member_id = 88,
+})
+party_song_state.observe({
+	recovery_member(88, 'ReturningPlayer', 5),
+	recovery_member(99, 'FullPlayer', 5),
+}, {}, { [100] = true }, 38.2)
+assert_true(party_song_state.next_action(recovery_sequence_config, 5, false, false, false) == nil,
+	'normalization must block when an eligible AoE recipient lacks the exact dummy')
+assert_true(party_song_state.last_blocker():find('normalization_not_exact_refresh:FullPlayer', 1, true) ~= nil,
+	'unsafe AoE normalization must identify the recipient lacking the dummy')
+
+-- An AoE recovery dummy must update every successful recipient, including the
+-- collateral overwrite on already-full members.
+party_song_state.reset()
 party_song_state.observe({
 	recovery_member(88, 'ReturningPlayer', 3),
 	recovery_member(99, 'FullPlayer', 4),
@@ -552,6 +701,119 @@ party_song_state.observe({
 }, {}, { [100] = true }, 40.2)
 recovery_step = party_song_state.next_action(recovery_sequence_config, 4, false, false)
 assert_equal(recovery_step.action_name, 'Honor March', 'AoE recovery must repair the exact song displaced on an already-full recipient')
+
+-- The local Bard ownership path must make the same normalization decision and
+-- carry its duration context through dispatch and authoritative 0x063 confirmation.
+brd.reset('local_enhanced_dummy_normalization_test')
+local local_normalization_config = {
+	enabled = true,
+	songs = { 'Honor March', 'Victory March', 'Valor Minuet V', 'Valor Minuet IV', "Mage's Ballad III" },
+	dummy_songs = { "Army's Paeon", "Army's Paeon II", 'Goblin Gavotte' },
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
+	use_nitro = false,
+	use_clarion_call = true,
+	use_marcato = false,
+	marcato_song = '',
+}
+local local_base = brd._test.server_now_raw(os.time())
+local local_victory = local_base + 14400
+local local_ballad = local_base + 15000
+local local_minuet = local_base + 18000
+local local_honor = local_base + 21000
+local local_dummy_long = local_base + 30000
+local local_snapshot = {
+	[100] = { count = 2, endtimes = { local_victory, local_honor } },
+	[101] = { count = 1, endtimes = { local_dummy_long } },
+	[103] = { count = 1, endtimes = { local_minuet } },
+	[104] = { count = 1, endtimes = { local_ballad } },
+}
+brd.on_status_snapshot(local_snapshot, 45)
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = local_victory, recipients = { 77 }, is_dummy = false }
+brd._test.state.owners["Mage's Ballad III"] = { status_id = 104, endtime = local_ballad, recipients = { 77 }, is_dummy = false }
+brd._test.state.owners['Valor Minuet V'] = { status_id = 103, endtime = local_minuet, recipients = { 77 }, is_dummy = false }
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = local_honor, recipients = { 77 }, is_dummy = false }
+brd._test.state.owners["Army's Paeon"] = {
+	status_id = 101,
+	endtime = local_dummy_long,
+	recipients = { 77 },
+	is_dummy = true,
+	troubadour_active = true,
+}
+action = brd.propose(local_normalization_config, { now = 45, player = player, action_ready = ready, party_members = {} })
+assert_equal(action.action_name, "Army's Paeon", 'local replacement must normalize the enhanced dummy before refreshing finals')
+assert_equal(action.reason_code, 'brd_normalize_dummy_duration', 'local dummy normalization reason mismatch')
+assert_true(action.detail.normalizes_dummy == true, 'local normalization proposal must carry explicit metadata')
+assert_true(action.detail.troubadour_active == false, 'local normalization proposal must record expired Troubadour')
+brd.note_dispatch(action, 'normalize-local-dummy', 45)
+assert_true(brd._test.state.pending.normalizes_dummy == true, 'normalization metadata must survive dispatch')
+brd.on_action({
+	actor_id = 77,
+	category = 4,
+	param = 3,
+	targets = { { id = 77, actions = { { message = 205, param = 101 } } } },
+}, 77, 45.1)
+local local_dummy_normal = local_base + 12000
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { local_victory, local_honor } },
+	[101] = { count = 1, endtimes = { local_dummy_normal } },
+	[103] = { count = 1, endtimes = { local_minuet } },
+	[104] = { count = 1, endtimes = { local_ballad } },
+}, 45.2)
+assert_true(brd._test.state.owners["Army's Paeon"].normalization_attempted == true,
+	'confirmed normalized dummy must be marked as a bounded attempt')
+assert_true(brd._test.state.owners["Army's Paeon"].troubadour_active == false,
+	'confirmed normalized dummy must replace its enhanced duration context')
+action = brd.propose(local_normalization_config, { now = 46, player = player, action_ready = ready, party_members = {} })
+assert_equal(action.action_name, 'Valor Minuet IV', 'missing final must replace the confirmed shortest normalized dummy')
+
+brd.reset('party_normalization_self_guard_test')
+party_song_state.observe({ recovery_member(88, 'ReturningPlayer', 4) }, {}, { [100] = true }, 47)
+for _, delivery in ipairs({
+	{ name = 'Victory March', endtime = 4000, status_id = 100 },
+	{ name = "Mage's Ballad III", endtime = 4200, status_id = 104 },
+	{ name = 'Valor Minuet V', endtime = 5000, status_id = 103 },
+	{ name = 'Honor March', endtime = 6000, status_id = 100 },
+}) do
+	party_song_state.record_delivery({
+		song_name = delivery.name, status_id = delivery.status_id, endtime = delivery.endtime,
+		recipients = { 88 }, confirmed_at = 47, is_dummy = false, cast_capacity = 2, song_limit = 5,
+	})
+end
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, true, false, true)
+party_song_state.record_delivery({
+	song_name = recovery_step.action_name, status_id = 101, endtime = 8000,
+	recipients = { 88 }, confirmed_at = 47.1, is_dummy = true, troubadour_active = true,
+	cast_capacity = 5, song_limit = 5, recovery_member_id = 88,
+})
+party_song_state.observe({ recovery_member(88, 'ReturningPlayer', 5) }, {}, { [100] = true }, 47.2)
+local self_guard_base = brd._test.server_now_raw(os.time())
+local self_guard_snapshot = {
+	[100] = { count = 2, endtimes = { self_guard_base + 18000, self_guard_base + 18600 } },
+	[103] = { count = 2, endtimes = { self_guard_base + 19200, self_guard_base + 19800 } },
+	[104] = { count = 1, endtimes = { self_guard_base + 20400 } },
+}
+brd.on_status_snapshot(self_guard_snapshot, 47.2)
+for index, song_name in ipairs(local_normalization_config.songs) do
+	local status_id = index <= 2 and 100 or (index <= 4 and 103 or 104)
+	local endtime = index <= 2 and self_guard_snapshot[100].endtimes[index]
+		or (index <= 4 and self_guard_snapshot[103].endtimes[index - 2] or self_guard_snapshot[104].endtimes[1])
+	brd._test.state.owners[song_name] = {
+		status_id = status_id,
+		endtime = endtime,
+		recipients = { 77 },
+		is_dummy = false,
+	}
+end
+action = brd.propose(local_normalization_config, {
+	now = 47.3,
+	player = player,
+	action_ready = ready,
+	party_members = { recovery_member(88, 'ReturningPlayer', 5) },
+})
+assert_true(action == nil, 'party dummy normalization must not overwrite a local Bard song')
+assert_equal(brd._test.state.last_blocker, 'normalization_not_exact_refresh:self',
+	'unsafe local normalization must expose an explicit self blocker')
 
 brd.reset('five_without_clarion_test')
 local five_without_clarion = {

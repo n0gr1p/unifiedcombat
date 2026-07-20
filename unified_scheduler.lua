@@ -2668,7 +2668,9 @@ local function get_party_members()
 		if entry and entry.mob and entry.mob.id and entry.mob.id ~= 0 then
 			local is_self = entry.mob.id == self_id
 			local ipc = get_party_state_ipc_entry(entry.mob.id, entry.mob.name)
+			local packet_buffs = require('uc_party_buff_tracker').get(entry.mob.id)
 			local source = 'party'
+			local buff_source = 'missing'
 			local hp = tonumber(entry.hp) or 0
 			local hpp = tonumber(entry.hpp) or 100
 			local mp = tonumber(entry.mp) or 0
@@ -2678,7 +2680,11 @@ local function get_party_members()
 			if hp > 0 and hpp > 0 then
 				max_hp = math.floor((hp / hpp) * 100 + 0.5)
 			end
-			local buffs = entry.buffs or {}
+			local buffs = nil
+			if type(packet_buffs) == 'table' and type(packet_buffs.buffs) == 'table' then
+				buffs = packet_buffs.buffs
+				buff_source = 'packet_076'
+			end
 			-- Source of truth for self state must be local player object, not party snapshot/IPC.
 			if is_self and player and player.vitals then
 				source = 'self_local'
@@ -2692,7 +2698,8 @@ local function get_party_members()
 				elseif hp > 0 and hpp > 0 then
 					max_hp = math.floor((hp / hpp) * 100 + 0.5)
 				end
-				buffs = player.buffs or buffs
+				buffs = player.buffs
+				buff_source = 'self_local'
 			end
 			if ipc then
 				source = is_self and 'self_local' or 'ipc'
@@ -2702,7 +2709,10 @@ local function get_party_members()
 				mp = tonumber(ipc.mp) or mp
 				max_mp = tonumber(ipc.max_mp) or max_mp
 				mpp = tonumber(ipc.mpp) or mpp
-				buffs = ipc.buffs or buffs
+				if buffs == nil and type(ipc.buffs) == 'table' then
+					buffs = ipc.buffs
+					buff_source = 'ipc'
+				end
 			end
 			-- Never let IPC override local self authoritative state.
 			if is_self and player and player.vitals then
@@ -2717,7 +2727,8 @@ local function get_party_members()
 				elseif hp > 0 and hpp > 0 then
 					max_hp = math.floor((hp / hpp) * 100 + 0.5)
 				end
-				buffs = player.buffs or buffs
+				buffs = player.buffs
+				buff_source = 'self_local'
 			end
 			out[#out + 1] = {
 				id = entry.mob.id,
@@ -2733,6 +2744,7 @@ local function get_party_members()
 				max_mp = max_mp,
 				buffs = buffs,
 				source = source,
+				buff_source = buff_source,
 			}
 		end
 	end
@@ -5228,7 +5240,7 @@ local function p1_collect_maintenance(ctx, out)
 		local brd_maintenance = require('uc_brd_maintenance')
 		local brd_party_members = get_party_members()
 		for _, member in ipairs(brd_party_members) do
-			member.in_song_range = require('uc_brd_party_song_state').in_recovery_range(
+			member.in_song_range, member.song_distance = require('uc_brd_party_song_state').in_recovery_range(
 				member,
 				brd_config.recovery_range_yalms,
 				windower.ffxi.get_mob_by_id
@@ -7611,6 +7623,11 @@ function scheduler.on_incoming_chunk(id, data)
 		_G.UC_REACTION_LOCK = nil
 		scheduler.phase1.effectiveTargets = {}
 		require('uc_brd_maintenance').reset('zone_change')
+		require('uc_party_buff_tracker').reset()
+		return
+	end
+	if nid == 0x076 and type(data) == 'string' then
+		require('uc_party_buff_tracker').ingest(data, now_s())
 		return
 	end
 	if nid == 0x028 and type(data) == 'string' then
@@ -7677,6 +7694,7 @@ function scheduler.on_incoming_chunk(id, data)
 end
 
 function scheduler.seed_cached_status_snapshot()
+	require('uc_party_buff_tracker').seed_cached(windower.packets.last_incoming, now_s())
 	local data = windower.packets.last_incoming(0x063)
 	if type(data) ~= 'string' then
 		return false
