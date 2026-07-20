@@ -1,5 +1,7 @@
 # Scheduler Ownership Field-Test Packet
 
+> **Historical note (2026-07-20):** The Stage 3 combat-WS ownership scenario documents the prior command seam. The live WS path no longer uses `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP`; use `TestResults/scheduler_owned_ws_skillchain_field_test_packet.md` for current WS validation.
+
 ## Preconditions
 
 - Full replay suite passes.

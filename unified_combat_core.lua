@@ -26,14 +26,29 @@ local uc_targeting_common = require('uc_targeting_common')
 local uc_settarget = require('uc_settarget')
 local uc_attack = require('uc_attack')
 local uc_path_hunter = require('uc_path_hunter')
+local uc_skillchain_state = require('uc_skillchain_state')
 local aftermath_table = dofile(windower.addon_path .. 'docs/aftermath_table.lua')
+
+if type(os.clock) ~= 'function' then
+	error('unified_combat_core requires monotonic os.clock for skillchain timing')
+end
+
+local function skillchain_telemetry(event_code, fields)
+	local logger = rawget(_G, 'UC_ACTION_TIMELINE_LOG')
+	if type(logger) == 'function' then
+		logger(event_code, fields, nil, 0)
+	end
+end
+
+local skillchain_runtime = uc_skillchain_state.new({
+	now = os.clock,
+	telemetry = skillchain_telemetry,
+})
 
 local core = {
 	adapters = {},
 	last_engine = '',
-	resonating = {},
-	ws_candidates = {},
-	ws_timer = 0,
+	resonating = skillchain_runtime.states,
 	buffs = {},
 	sticky_target_id = 0,
 	sticky_hold_until = 0,
@@ -208,25 +223,6 @@ local action_categories = {
 
 local buff_dur = { [163] = 40, [164] = 30, [470] = 60 }
 
-local sc_info = {
-	Radiance = { 'Fire', 'Wind', 'Lightning', 'Light', lvl = 4 },
-	Umbra = { 'Earth', 'Ice', 'Water', 'Dark', lvl = 4 },
-	Light = { 'Fire', 'Wind', 'Lightning', 'Light', Light = { 4, 'Light', 'Radiance' }, lvl = 3 },
-	Darkness = { 'Earth', 'Ice', 'Water', 'Dark', Darkness = { 4, 'Darkness', 'Umbra' }, lvl = 3 },
-	Gravitation = { 'Earth', 'Dark', Distortion = { 3, 'Darkness' }, Fragmentation = { 2, 'Fragmentation' }, lvl = 2 },
-	Fragmentation = { 'Wind', 'Lightning', Fusion = { 3, 'Light' }, Distortion = { 2, 'Distortion' }, lvl = 2 },
-	Distortion = { 'Ice', 'Water', Gravitation = { 3, 'Darkness' }, Fusion = { 2, 'Fusion' }, lvl = 2 },
-	Fusion = { 'Fire', 'Light', Fragmentation = { 3, 'Light' }, Gravitation = { 2, 'Gravitation' }, lvl = 2 },
-	Compression = { 'Darkness', Transfixion = { 1, 'Transfixion' }, Detonation = { 1, 'Detonation' }, lvl = 1 },
-	Liquefaction = { 'Fire', Impaction = { 2, 'Fusion' }, Scission = { 1, 'Scission' }, lvl = 1 },
-	Induration = { 'Ice', Reverberation = { 2, 'Fragmentation' }, Compression = { 1, 'Compression' }, Impaction = { 1, 'Impaction' }, lvl = 1 },
-	Reverberation = { 'Water', Induration = { 1, 'Induration' }, Impaction = { 1, 'Impaction' }, lvl = 1 },
-	Transfixion = { 'Light', Scission = { 2, 'Distortion' }, Reverberation = { 1, 'Reverberation' }, Compression = { 1, 'Compression' }, lvl = 1 },
-	Scission = { 'Earth', Liquefaction = { 1, 'Liquefaction' }, Reverberation = { 1, 'Reverberation' }, Detonation = { 1, 'Detonation' }, lvl = 1 },
-	Detonation = { 'Wind', Compression = { 2, 'Gravitation' }, Scission = { 1, 'Scission' }, lvl = 1 },
-	Impaction = { 'Lightning', Liquefaction = { 1, 'Liquefaction' }, Detonation = { 1, 'Detonation' }, lvl = 1 },
-}
-
 local chainbound = {
 	[1] = { 'Compression', 'Liquefaction', 'Induration', 'Reverberation', 'Scission' },
 	[2] = { 'Gravitation', 'Fragmentation', 'Distortion', 'Compression', 'Liquefaction', 'Induration', 'Reverberation', 'Scission' },
@@ -246,6 +242,27 @@ end
 
 local function status_blocks_actions(status)
 	return tonumber(status) == 3
+end
+
+local ws_incapacitating_buffs = {
+	[2] = true,   -- Sleep
+	[7] = true,   -- Petrification
+	[10] = true,  -- Stun
+	[14] = true,  -- Charm
+	[16] = true,  -- Amnesia
+	[17] = true,  -- Charm
+	[19] = true,  -- Sleep
+	[28] = true,  -- Terror
+	[193] = true, -- Lullaby
+}
+
+local function ws_actor_has_incapacitating_buff(buff_ids)
+	for _, buff_id in ipairs(buff_ids or {}) do
+		if ws_incapacitating_buffs[tonumber(buff_id) or -1] == true then
+			return true
+		end
+	end
+	return false
 end
 
 local function party_follow_hold_seconds(settings)
@@ -2598,46 +2615,116 @@ local function get_party_tp()
 	return out
 end
 
-local function get_resonating_step(tid)
-	local reson = core.resonating[tid]
-	local timer = reson and (reson.times - uc_now_s()) or 0
-	if reson and (not reson.closed) and timer > 0 then
-		return reson.step or 0
+local aeonic_weapon_names_by_id = {
+	[20515] = 'Godhand',
+	[20594] = 'Aeneas',
+	[20695] = 'Sequence',
+	[20843] = 'Chango',
+	[20890] = 'Anguta',
+	[20935] = 'Trishula',
+	[20977] = 'Heishi Shorinken',
+	[21025] = 'Dojikiri Yasutsuna',
+	[21082] = 'Tishtrya',
+	[21147] = 'Khatvanga',
+	[21485] = 'Fomalhaut',
+	[21694] = 'Lionheart',
+	[21753] = 'Tri-Edge',
+	[22117] = 'Fail-Not',
+	[22131] = 'Fail-Not',
+	[22143] = 'Fomalhaut',
+}
+
+local function equipped_item_id(equipment, slot_name)
+	local bag = equipment and equipment[slot_name .. '_bag']
+	local index = equipment and equipment[slot_name]
+	if bag == nil or index == nil then
+		return 0
 	end
-	return 0
+	local item = windower.ffxi.get_items(bag, index)
+	return tonumber(item and item.id) or 0
 end
 
-local function check_props(old_props, new_props)
-	for k = 1, #old_props do
-		local first = old_props[k]
-		local combo = sc_info[first]
-		if combo then
-			for i = 1, #new_props do
-				local second = new_props[i]
-				local result = combo[second]
-				if result then
-					return unpack(result)
-				end
-				if #old_props > 3 and combo.lvl == (sc_info[second] and sc_info[second].lvl) then
-					break
-				end
-			end
+local function buff_level(buff_ids)
+	local level = 0
+	for _, buff_id in ipairs(buff_ids or {}) do
+		local id = tonumber(buff_id) or 0
+		if id >= 270 and id <= 272 then
+			level = math.max(level, id - 269)
 		end
 	end
+	return level
 end
 
-local function apply_properties(target_id, resource, action_id, properties, delay, step, closed, bound)
-	local clock = uc_now_s()
-	core.resonating[target_id] = {
-		res = resource,
-		id = action_id,
-		active = properties or {},
-		delay = clock + (delay or 3),
-		times = clock + (delay or 3) + 8 - (step or 1),
-		step = step or 1,
-		closed = closed == true,
-		bound = bound,
+local function local_skillchain_actor_context()
+	local player = windower.ffxi.get_player()
+	if not player then
+		error('skillchain actor context requires live player data')
+	end
+	local equipment = windower.ffxi.get_items('equipment')
+	if type(equipment) ~= 'table' then
+		error('skillchain actor context requires equipment data')
+	end
+	local main_id = equipped_item_id(equipment, 'main')
+	local sub_id = equipped_item_id(equipment, 'sub')
+	local range_id = equipped_item_id(equipment, 'range')
+	return {
+		actor_id = tonumber(player.id) or 0,
+		aftermath_level = buff_level(player.buffs),
+		diamond_aspis = sub_id == 26488,
+		aeonic_weapon_name = aeonic_weapon_names_by_id[main_id] or aeonic_weapon_names_by_id[range_id] or '',
+		weapon_signature = ('%d:%d:%d'):format(main_id, sub_id, range_id),
+		main_item_id = main_id,
+		sub_item_id = sub_id,
+		range_item_id = range_id,
 	}
+end
+
+local function effective_ws_properties(skill, actor_context)
+	local properties = {}
+	for i = 1, #(skill and skill.skillchain or {}) do
+		properties[i] = skill.skillchain[i]
+	end
+	if skill and skill.aeonic
+		and (tonumber(actor_context and actor_context.aftermath_level) or 0) > 0
+		and tostring(skill.weapon or '') == tostring(actor_context and actor_context.aeonic_weapon_name or '') then
+		properties[#properties + 1] = skill.aeonic
+	end
+	return properties
+end
+
+local function local_ws_candidates(actor_context)
+	local player_abilities = windower.ffxi.get_abilities()
+	if type(player_abilities) ~= 'table' or type(player_abilities.weapon_skills) ~= 'table' then
+		error('skillchain planning requires learned weapon skill data')
+	end
+	local out = {}
+	for _, ws_id in ipairs(player_abilities.weapon_skills) do
+		local skill = skills.weapon_skills and skills.weapon_skills[ws_id]
+		local ws = res.weapon_skills and res.weapon_skills[ws_id]
+		local ws_name = ws and (ws.en or ws.name)
+		if skill and type(skill.skillchain) == 'table' and ws_name and ws_name ~= '' then
+			out[#out + 1] = {
+				ws_id = ws_id,
+				ws_name = ws_name,
+				effective_properties = effective_ws_properties(skill, actor_context),
+			}
+		end
+	end
+	return out
+end
+
+local function ws_is_currently_available(ws_id)
+	local abilities = windower.ffxi.get_abilities()
+	if type(abilities) ~= 'table' or type(abilities.weapon_skills) ~= 'table' then
+		return false
+	end
+	local expected = tonumber(ws_id) or 0
+	for _, available_id in ipairs(abilities.weapon_skills) do
+		if tonumber(available_id) == expected then
+			return true
+		end
+	end
+	return false
 end
 
 local function check_buff(t, i)
@@ -2657,36 +2744,11 @@ local function chain_buff(t)
 	return t[163] and check_buff(t, 163)
 end
 
-local function rebuild_ws_candidates(tid)
-	local reson = core.resonating[tid]
-	local active = reson and reson.active
-	if type(active) ~= 'table' or #active == 0 then
-		core.ws_candidates[tid] = {}
-		return
-	end
-	local player_abilities = windower.ffxi.get_abilities() or {}
-	local ws_ids = player_abilities.weapon_skills or {}
-	local out = {}
-	for _, ws_id in ipairs(ws_ids) do
-		local skillchain = skills.weapon_skills and skills.weapon_skills[ws_id]
-		if skillchain and type(skillchain.skillchain) == 'table' then
-			local lv, prop = check_props(active, skillchain.skillchain)
-			if prop then
-				local ws = res.weapon_skills[ws_id]
-				local ws_name = ws and (ws.name or ws.en)
-				if ws_name and ws_name ~= '' then
-					out[#out + 1] = { ws = ws_name, lvl = lv or 0 }
-				end
-			end
-		end
-	end
-	core.ws_candidates[tid] = out
-end
-
 function core.on_action(act)
 	if not act or type(ActionPacket) ~= 'table' or type(ActionPacket.new) ~= 'function' then
 		return
 	end
+	local skillchain_observed_at = os.clock()
 	local ok, actionpacket = pcall(ActionPacket.new, act)
 	if not ok or not actionpacket then
 		return
@@ -2703,7 +2765,7 @@ function core.on_action(act)
 	end
 	local message_id = action:get_message_id()
 	local add_effect = action:get_add_effect()
-	local param, resource, action_id, _, conclusion = action:get_spell()
+	local param, resource, action_id, interrupted = action:get_spell()
 	local ability = skills[resource] and skills[resource][action_id]
 	local my_id = (windower.ffxi.get_player() or {}).id
 	-- Packet-fed hostile-target evidence supplements live target fields used by Prime and Sleep.
@@ -2770,7 +2832,6 @@ function core.on_action(act)
 			debug_tank(_G.UC_WS_LAST_DIAG, true)
 		end
 	end
-	local current = get_current_target()
 	local is_ws_action = (resource == 'weapon_skills') and ability ~= nil
 	if is_ws_action and actor ~= my_id and is_party_member_id(actor) and target and target.id and target.id ~= 0 then
 		if category ~= 'weaponskill_finish' then
@@ -2791,35 +2852,81 @@ function core.on_action(act)
 			end
 		end
 	end
-	if target and current and target.id == current.id and ability and resource == 'weapon_skills' then
-		core.ws_timer = uc_now_s() + 3
-	end
 	if not action_categories[category] or act.param == 0 then
 		return
 	end
 
-	if add_effect and conclusion and skillchain_ids[add_effect.message_id] then
-		local skillchain = add_effect.animation and add_effect.animation:ucfirst()
-		local level = skillchain and sc_info[skillchain] and sc_info[skillchain].lvl
-		local reson = core.resonating[target.id]
-		local delay = (ability and ability.delay) or 3
-		local step = ((reson and reson.step) or 1) + 1
-		if level == 3 and reson and ability and type(ability.skillchain) == 'table' then
-			level = check_props(reson.active, ability.skillchain)
+	local server_skillchain = add_effect and skillchain_ids[add_effect.message_id]
+	local chain_affinity_success = ability and message_id == 2 and core.buffs[actor] and chain_buff(core.buffs[actor])
+	local has_properties = ability and type(ability.skillchain) == 'table' and #ability.skillchain > 0
+	local action_success = uc_skillchain_state.action_succeeded({
+		server_result = server_skillchain and true or false,
+		message_success = action_message_ids[message_id] == true,
+		chain_affinity_success = chain_affinity_success and true or false,
+		chainbound_level = message_id == 529 and param or 0,
+	})
+	local should_observe_skillchain = uc_skillchain_state.should_observe_action({
+		source_resource = resource,
+		has_properties = has_properties and true or false,
+		server_result = server_skillchain and true or false,
+		chain_affinity_success = chain_affinity_success and true or false,
+		chainbound_level = message_id == 529 and param or 0,
+	})
+	if should_observe_skillchain and target and (tonumber(target.id) or 0) > 0 then
+		local actor_context = {
+			actor_id = tonumber(actor) or 0,
+			aftermath_level = 0,
+			diamond_aspis = false,
+			weapon_signature = '',
+		}
+		if tonumber(actor) == tonumber(my_id) then
+			actor_context = local_skillchain_actor_context()
 		end
-		local closed = step > 5 or level == 4
-		if skillchain then
-			apply_properties(target.id, resource, action_id, { skillchain }, delay, step, closed)
-			rebuild_ws_candidates(target.id)
+		local properties = {}
+		if message_id == 529 then
+			properties = chainbound[param] or {}
+		elseif ability and type(ability.skillchain) == 'table' then
+			if resource == 'weapon_skills' and tonumber(actor) == tonumber(my_id) then
+				properties = effective_ws_properties(ability, actor_context)
+			else
+				for i = 1, #ability.skillchain do
+					properties[i] = ability.skillchain[i]
+				end
+			end
 		end
-	elseif ability and (action_message_ids[message_id] or (message_id == 2 and core.buffs[actor] and chain_buff(core.buffs[actor]))) then
-		local props = ability.skillchain or {}
-		apply_properties(target.id, resource, action_id, props, ability.delay or 3, 1)
-		rebuild_ws_candidates(target.id)
-	elseif message_id == 529 then
-		apply_properties(target.id, resource, action_id, chainbound[param] or {}, 2, 1, false, param)
-		rebuild_ws_candidates(target.id)
-	elseif message_id == 100 and buff_dur[param] then
+		local resource_action = res[resource] and res[resource][action_id]
+		local action_name = tostring(
+			(ability and (ability.en or ability.name))
+			or (resource_action and (resource_action.en or resource_action.name))
+			or ''
+		)
+		local expires_at_override = nil
+		if message_id == 529 then
+			expires_at_override = uc_skillchain_state.chainbound_expires_at(action_id, skillchain_observed_at)
+		end
+		local server_result = server_skillchain and add_effect.animation and add_effect.animation:ucfirst() or ''
+		local server_level = uc_skillchain_state.property_level(server_result)
+		skillchain_runtime:observe_action_result({
+			success = action_success and true or false,
+			interrupted = interrupted == true,
+			target_id = target.id,
+			actor_id = actor,
+			action_id = action_id,
+			action_name = action_name,
+			source_resource = resource,
+			effective_properties = properties,
+			server_result = server_result,
+			server_result_level = server_level,
+			delay = message_id == 529 and uc_skillchain_state.CHAINBOUND_DELAY_S or ((ability and ability.delay) or uc_skillchain_state.ORDINARY_WS_MIN_DELAY_S),
+			chainbound_level = message_id == 529 and param or 0,
+			expires_at_override = expires_at_override,
+			actor_has_diamond_aspis = actor_context.diamond_aspis,
+			actor_context = actor_context,
+			message_id = message_id,
+			observed_at = skillchain_observed_at,
+		})
+	end
+	if message_id == 100 and buff_dur[param] then
 		core.buffs[actor] = core.buffs[actor] or {}
 		core.buffs[actor][param] = buff_dur[param] + os.time()
 	end
@@ -2839,6 +2946,7 @@ function core.on_action_message(msg)
 	if tid > 0 and death_message_ids[mid] then
 		core.last_death_target_id = tid
 		core.last_death_at = uc_now_s()
+		skillchain_runtime:clear_target(tid, 'death')
 	end
 	if core.pull_spell_waiting == true then
 		local my_id = tonumber((windower.ffxi.get_player() or {}).id) or 0
@@ -3163,6 +3271,81 @@ local function select_smart_ws(settings, target_id)
 		return '', 'NO_TARGET'
 	end
 	local player = windower.ffxi.get_player() or {}
+	local spam_on = setting_enabled(settings.spam) or setting_enabled(settings.solo)
+	if not spam_on then
+		local hold_tid = tonumber(core.party_ws_hold_target_id) or 0
+		if hold_tid ~= 0 and hold_tid == tid then
+			local hold_until = tonumber(core.party_ws_hold_until) or 0
+			local now = uc_now_s()
+			if now < hold_until then
+				return '', ('ALLY_WS_READY_HOLD:%s:%s'):format(
+					tostring(core.party_ws_hold_name or ''),
+					tostring(core.party_ws_hold_category or '')
+				)
+			end
+			core.party_ws_hold_target_id = 0
+			core.party_ws_hold_actor_id = 0
+			core.party_ws_hold_until = 0
+			core.party_ws_hold_category = ''
+			core.party_ws_hold_name = ''
+		end
+	end
+	local ws_mode = get_ws_mode(settings)
+	local primary_ws = tostring(settings.weaponskill or settings.ws1 or '')
+	if spam_on then
+		if primary_ws == '' or not uc_ws_memory.valid_ws_name(primary_ws) then
+			return '', 'PRIMARY_WS_INVALID'
+		end
+		return primary_ws, 'READY_SPAM'
+	end
+	local actor_context = local_skillchain_actor_context()
+	local state = skillchain_runtime:get_state(tid)
+	local now = os.clock()
+	local resonance_active = state
+		and state.terminal ~= true
+		and now <= skillchain_runtime:expiry_for_actor(tid, actor_context.actor_id)
+	if ws_mode == 'primary_no_sc' then
+		if primary_ws == '' or not uc_ws_memory.valid_ws_name(primary_ws) then
+			return '', 'PRIMARY_WS_INVALID'
+		end
+		if resonance_active or (state and state.terminal == true and now < (tonumber(state.magic_burst_expires_at) or 0)) then
+			return '', 'WS_MODE_PRIMARY_ONLY_SC_HOLD'
+		end
+		return primary_ws, 'WS_MODE_PRIMARY_ONLY_READY'
+	end
+	if state and state.terminal == true and now < (tonumber(state.magic_burst_expires_at) or 0) then
+		return '', 'SC_TERMINAL'
+	end
+	if resonance_active then
+		local plan, plan_reason = skillchain_runtime:plan_continuation(
+			tid,
+			local_ws_candidates(actor_context),
+			actor_context,
+			now
+		)
+		if plan and (plan_reason == 'SC_READY'
+			or plan_reason == 'SC_WINDOW_HIGH_RISK'
+			or plan_reason == 'SC_NOT_READY'
+			or plan_reason == 'SC_DISPATCH_PENDING_RESULT') then
+			return plan.ws_name, plan_reason, plan
+		end
+		local hold_until = skillchain_runtime:expiry_for_actor(tid, actor_context.actor_id)
+		ws_hold_emit(tid, uc_now_s() + math.max(0, hold_until - now))
+		return '', plan_reason
+	end
+	local my_tp = ((windower.ffxi.get_player() or {}).vitals or {}).tp or 0
+	local my_id = (windower.ffxi.get_player() or {}).id or 0
+	for _, value in ipairs(get_party_tp()) do
+		if value.id ~= my_id and not uc_ignore.is_name_blocked(settings, value.name) then
+			local ally_holding_sc = ws_hold_remote_active_for(value.id, tid)
+			local ally_ws_ready = (value.tp or 0) >= 1000
+			local ally_far_ahead = (value.tp or 0) >= (my_tp + 300)
+			if (not ally_holding_sc) and value.target == tid and ally_ws_ready and ally_far_ahead and value.status == 1 then
+				return '', 'ALLY_WAIT'
+			end
+		end
+	end
+
 	if should_hold_ws_for_chivalry(settings, player) then
 		return '', 'CHIVALRY_HOLD_TP'
 	end
@@ -3199,90 +3382,10 @@ local function select_smart_ws(settings, target_id)
 			end
 		end
 	end
-	if not setting_enabled(settings.spam) and not setting_enabled(settings.solo) then
-		local hold_tid = tonumber(core.party_ws_hold_target_id) or 0
-		if hold_tid ~= 0 and hold_tid == tid then
-			local hold_until = tonumber(core.party_ws_hold_until) or 0
-			local now = uc_now_s()
-			if now < hold_until then
-				return '', ('ALLY_WS_READY_HOLD:%s:%s'):format(
-					tostring(core.party_ws_hold_name or ''),
-					tostring(core.party_ws_hold_category or '')
-				)
-			end
-			core.party_ws_hold_target_id = 0
-			core.party_ws_hold_actor_id = 0
-			core.party_ws_hold_until = 0
-			core.party_ws_hold_category = ''
-			core.party_ws_hold_name = ''
-		end
+	if primary_ws == '' or not uc_ws_memory.valid_ws_name(primary_ws) then
+		return '', 'PRIMARY_WS_INVALID'
 	end
-	local spam_on = setting_enabled(settings.spam)
-	if not spam_on then
-		local my_tp = ((windower.ffxi.get_player() or {}).vitals or {}).tp or 0
-		local my_id = (windower.ffxi.get_player() or {}).id or 0
-		for _, value in ipairs(get_party_tp()) do
-			if value.id ~= my_id and not uc_ignore.is_name_blocked(settings, value.name) then
-				local ally_holding_sc = ws_hold_remote_active_for(value.id, tid)
-				local ally_ws_ready = (value.tp or 0) >= 1000
-				local ally_far_ahead = (value.tp or 0) >= (my_tp + 300)
-				if (not ally_holding_sc) and value.target == tid and ally_ws_ready and ally_far_ahead and value.status == 1 and not setting_enabled(settings.solo) then
-					return '', 'ALLY_WAIT'
-				end
-			end
-		end
-	end
-
-	local ws_mode = get_ws_mode(settings)
-	local primary_ws = tostring(settings.weaponskill or settings.ws1 or '')
-	if get_resonating_step(tid) == 0 then
-		core.ws_candidates[tid] = {}
-	end
-	rebuild_ws_candidates(tid)
-	local sc_step = get_resonating_step(tid)
-	if ws_mode == 'primary_no_sc' then
-		if primary_ws == '' or not uc_ws_memory.valid_ws_name(primary_ws) then
-			return '', 'PRIMARY_WS_INVALID'
-		end
-		if sc_step > 0 and not spam_on then
-			local hold_until = tonumber((core.resonating[tid] or {}).times) or (uc_now_s() + 2.0)
-			ws_hold_emit(tid, hold_until)
-			return '', 'WS_MODE_PRIMARY_ONLY_SC_HOLD'
-		end
-		return primary_ws, 'WS_MODE_PRIMARY_ONLY_READY'
-	end
-
-	local tempwslvl = 0
-	local chosen = ''
-	for _, value in ipairs(core.ws_candidates[tid] or {}) do
-		if (value.lvl or 0) >= tempwslvl then
-			chosen = value.ws or ''
-			tempwslvl = value.lvl or 0
-		end
-	end
-	if chosen == '' and sc_step > 0 and not spam_on then
-		local hold_until = tonumber((core.resonating[tid] or {}).times) or (uc_now_s() + 2.0)
-		ws_hold_emit(tid, hold_until)
-		return '', 'SC_HOLD_NO_CONTINUE'
-	end
-	if chosen == '' or spam_on or sc_step == 0 then
-		chosen = tostring(settings.weaponskill or settings.ws1 or '')
-	end
-	if chosen ~= '' and not uc_ws_memory.valid_ws_name(chosen) then
-		chosen = uc_ws_memory.recall() or ''
-	end
-	if chosen == '' then
-		return '', 'NO_VALID_WS'
-	end
-	local target = windower.ffxi.get_mob_by_id(tid)
-	local hpp = (target and target.hpp) or 0
-	if spam_on then
-		return chosen, 'READY_SPAM'
-	end
-	if uc_now_s() >= (core.ws_timer or 0) or get_resonating_step(tid) == 0 or (hpp < 20 and setting_enabled(settings.closer)) then
-		return chosen, 'READY'
-	end
-	return '', 'TIMER_LOCK'
+	return primary_ws, 'READY'
 end
 
 local function run_unified_combat()
@@ -3733,6 +3836,15 @@ end
 
 function core.combat_tick_once()
 	core.last_engine = get_active_engine()
+	for target_id in pairs(skillchain_runtime.states) do
+		local target = windower.ffxi.get_mob_by_id(target_id)
+		if not target
+			or target.valid_target ~= true
+			or tonumber(target.spawn_type) ~= 16
+			or (tonumber(target.hpp) or 0) <= 0 then
+			skillchain_runtime:clear_target(target_id, 'despawn_or_invalid')
+		end
+	end
 	run_unified_combat()
 end
 
@@ -3741,14 +3853,66 @@ function core.assert_no_job_branch()
 end
 
 function core.select_smart_ws_for_scheduler(settings, target_id)
-	local ok, ws_name, ws_reason = pcall(select_smart_ws, settings or {}, target_id)
-	if not ok then
-		return '', 'SMART_WS_ERROR'
-	end
+	local ws_name, ws_reason = select_smart_ws(settings or {}, target_id)
 	return tostring(ws_name or ''), tostring(ws_reason or '')
 end
 
-function core.try_dispatch_ws_with_intent(ws_name, target_id, settings)
+function core.select_ws_plan_for_scheduler(settings, target_id)
+	local ws_name, ws_reason, skillchain_plan = select_smart_ws(settings or {}, target_id)
+	if tostring(ws_name or '') == '' then
+		return nil, tostring(ws_reason or '')
+	end
+	return {
+		ws_name = tostring(ws_name),
+		reason = tostring(ws_reason or ''),
+		skillchain_plan = skillchain_plan,
+	}, tostring(ws_reason or '')
+end
+
+function core.revalidate_skillchain_plan(plan, settings, expected_target_id, expected_ws_name, commit_stage)
+	if type(plan) ~= 'table' then
+		return false, 'SC_INTENT_LOST'
+	end
+	local player = windower.ffxi.get_player()
+	local current_target = windower.ffxi.get_mob_by_target('t')
+	local target_id = tonumber(expected_target_id) or 0
+	local target = target_id > 0 and windower.ffxi.get_mob_by_id(target_id) or nil
+	local ws_name = tostring(expected_ws_name or '')
+	local actor_context = local_skillchain_actor_context()
+	local skill = skills.weapon_skills and skills.weapon_skills[tonumber(plan.ws_id) or 0]
+	local effective_properties = effective_ws_properties(skill, actor_context)
+	local target_valid = target
+		and tonumber(target.id) == target_id
+		and target.valid_target == true
+		and tonumber(target.spawn_type) == 16
+		and (tonumber(target.hpp) or 0) > 0
+	if not target_valid and target_id > 0 then
+		skillchain_runtime:clear_target(target_id, 'despawn_or_invalid')
+	end
+	local current_target_id = tonumber(current_target and current_target.id) or 0
+	local reaction_lock = rawget(_G, 'UC_REACTION_LOCK')
+	local ok, reason = skillchain_runtime:revalidate_plan(plan, {
+		now = os.clock(),
+		engine_enabled = rawget(_G, 'Start_Engine') == true and setting_enabled(settings and settings.weaponskill_active),
+		current_target_id = current_target_id,
+		target_valid = target_valid and true or false,
+		ws_available = ws_name == tostring(plan.ws_name or '') and ws_is_currently_available(plan.ws_id),
+		tp = tonumber(player and player.vitals and player.vitals.tp) or 0,
+		actor_blocked = not player
+			or tonumber(player.status) ~= 1
+			or status_blocks_actions(player.status)
+			or ws_actor_has_incapacitating_buff(player.buffs),
+		range_valid = target_valid and target_distance(target) <= 5.5 or false,
+		reaction_hold = type(reaction_lock) == 'table',
+		intent_valid = target_id == tonumber(plan.target_id) and ws_name == tostring(plan.ws_name or ''),
+		actor_context = actor_context,
+		effective_properties = effective_properties,
+		commit_stage = tostring(commit_stage or 'unspecified'),
+	})
+	return ok, reason
+end
+
+function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillchain_plan)
 	local ws = tostring(ws_name or '')
 	local tid = tonumber(target_id) or 0
 	if ws == '' or tid <= 0 then
@@ -3758,13 +3922,53 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings)
 	if not ok then
 		return false, tostring(why or 'WS_INTENT_BLOCK')
 	end
+	if skillchain_plan ~= nil then
+		local plan_ok, plan_reason = core.revalidate_skillchain_plan(
+			skillchain_plan,
+			settings or get_settings(),
+			tid,
+			ws,
+			'dispatch_commit'
+		)
+		if not plan_ok then
+			ws_intent_clear_pending()
+			return false, tostring(plan_reason)
+		end
+	end
 	windower.send_command('input /ws "' .. ws .. '" ' .. tostring(tid))
+	if skillchain_plan ~= nil then
+		local marked, mark_reason = skillchain_runtime:mark_plan_dispatched(skillchain_plan, os.clock())
+		if not marked then
+			error('skillchain dispatch sent without generation reservation: ' .. tostring(mark_reason))
+		end
+	end
 	ws_intent_clear_pending()
 	core.ws_intent_remote_target_id = 0
 	core.ws_intent_remote_name = ''
 	core.ws_intent_remote_actor_id = 0
 	core.ws_intent_remote_until = 0
 	return true, 'WS_INTENT_SENT'
+end
+
+function core.get_skillchain_snapshot(target_id)
+	return skillchain_runtime:get_snapshot(target_id)
+end
+
+function core.reset_skillchain_state(reason)
+	skillchain_runtime:reset(reason)
+	core.party_ws_hold_target_id = 0
+	core.party_ws_hold_actor_id = 0
+	core.party_ws_hold_until = 0
+	core.party_ws_hold_category = ''
+	core.party_ws_hold_name = ''
+	core.ws_hold_remote = {}
+	core.ws_intent_remote_target_id = 0
+	core.ws_intent_remote_name = ''
+	core.ws_intent_remote_actor_id = 0
+	core.ws_intent_remote_until = 0
+	core.ws_intent_loser_cooldown_until = 0
+	core.ws_intent_loser_actor_id = 0
+	ws_intent_clear_pending()
 end
 
 local function scheduler_settings_view(settings)

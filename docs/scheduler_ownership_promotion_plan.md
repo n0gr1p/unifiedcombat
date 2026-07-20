@@ -1,5 +1,7 @@
 # Scheduler Ownership Promotion Plan
 
+> **2026-07-20 WS ownership update:** The historical `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP` entries below record the completed ownership rollout, but the live flag/seam is now retired. Scheduler-owned WS dispatch calls the unified core intent owner, which performs atomic skillchain-plan revalidation and the single final command send. There is no direct-send fallback. See `scheduler_owned_ws_skillchain_implementation_plan.md`.
+
 ## Current Closure State
 
 - `unified_scheduler.lua` has zero direct textual scheduler side-effect call expressions for `windower.send_command(`, `windower.ffxi.run(`, `windower.ffxi.turn(`, and `uc_settarget.select_by_id(`.

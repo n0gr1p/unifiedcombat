@@ -246,4 +246,63 @@ return {
             result = { true, "" },
         },
     },
+	{
+		fixture_id = "dispatch_plan_build_skillchain",
+		helper = "p1_build_dispatch_plan",
+		description = "structured skillchain plan is carried into the dispatch plan",
+		input = {
+			scheduler = {},
+			ctx = { now = 25, tick = 9 },
+			selected = {
+				proposal_id = "sc.1",
+				action_type = "ws",
+				action_name = "Tachi: Fudo",
+				target_id = 5005,
+				target_name = "Target",
+				skillchain_plan = {
+					kind = "skillchain_continuation",
+					resonance_generation = 7,
+				},
+			},
+			p1_number = function(v, fallback) return tonumber(v) or fallback end,
+		},
+		expected = {
+			result = {
+				plan_id = "plan.25000.9",
+				selected_proposal_id = "sc.1",
+				prelude = { type = "none", target_id = 5005, timeout_s = 0.20 },
+				primary = { action_type = "ws", action_name = "Tachi: Fudo", target_id = 5005, target_name = "Target" },
+				skillchain_plan = { kind = "skillchain_continuation", resonance_generation = 7 },
+				commit_deadline = 25.25,
+				created_at = 25,
+			},
+		},
+	},
+	{
+		fixture_id = "dispatch_plan_revalidate_skillchain_core_reason",
+		helper = "p1_revalidate_plan_commit",
+		description = "skillchain commit delegates to the core atomic validator",
+		input = {
+			scheduler = {},
+			ctx = { now = 25, settings = { weaponskill_active = true } },
+			selected = { expires_at = 26, target_id = 5005, action_name = "Tachi: Fudo" },
+			plan = {
+				commit_deadline = 25.2,
+				skillchain_plan = { kind = "skillchain_continuation", resonance_generation = 7 },
+			},
+			p1_number = function(v, fallback) return tonumber(v) or fallback end,
+			windower = make_windower({}),
+			combat_core = {
+				revalidate_skillchain_plan = function(plan, settings, target_id, ws_name)
+					if plan.resonance_generation == 7 and settings.weaponskill_active and target_id == 5005 and ws_name == "Tachi: Fudo" then
+						return false, "SC_RESONANCE_CHANGED"
+					end
+					error("unexpected skillchain revalidation inputs")
+				end,
+			},
+		},
+		expected = {
+			result = { false, "SC_RESONANCE_CHANGED" },
+		},
+	},
 }

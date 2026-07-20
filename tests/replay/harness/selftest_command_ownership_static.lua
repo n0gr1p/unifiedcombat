@@ -73,47 +73,41 @@ local function main()
         "fallback_used = command_ownership_status.fallback_used,",
         2
     )
-    local ws_command_block = slice_between(
+    local ja_target_command_block = slice_between(
         source,
         "local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({",
         "fallback_used = command_ownership_status.fallback_used,",
         3
     )
-    local ja_target_command_block = slice_between(
+    local ja_self_command_block = slice_between(
         source,
         "local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({",
         "fallback_used = command_ownership_status.fallback_used,",
         4
     )
-    local ja_self_command_block = slice_between(
+    local spell_target_command_block = slice_between(
         source,
         "local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({",
         "fallback_used = command_ownership_status.fallback_used,",
         5
     )
-    local spell_target_command_block = slice_between(
+    local spell_self_command_block = slice_between(
         source,
         "local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({",
         "fallback_used = command_ownership_status.fallback_used,",
         6
     )
-    local spell_self_command_block = slice_between(
-        source,
-        "local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({",
-        "fallback_used = command_ownership_status.fallback_used,",
-        7
-    )
     local maintenance_command_block = slice_between(
         source,
         "local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({",
         "command_present = command_ownership_status.command_present,",
-        9
+        8
     )
     local defensive_command_block = slice_between(
         source,
         "local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({",
         "fallback_used = command_ownership_status.fallback_used,",
-        8
+        7
     )
 
     assert_contains(
@@ -130,11 +124,6 @@ local function main()
         defensive_command_block,
         "ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_DEFENSIVE_INTERNAL_COMMAND_OWNERSHIP == true)",
         "defensive ownership flag must use explicit default-off true comparison"
-    )
-    assert_contains(
-        ws_command_block,
-        "ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP == true)",
-        "WS ownership flag must use explicit default-off true comparison"
     )
     assert_contains(
         ja_target_command_block,
@@ -193,11 +182,6 @@ local function main()
         "defensive dispatcher send_command dependency must inject windower.send_command"
     )
     assert_contains(
-        ws_command_block,
-        "send_command = windower.send_command",
-        "WS dispatcher send_command dependency must inject windower.send_command"
-    )
-    assert_contains(
         ja_target_command_block,
         "send_command = windower.send_command",
         "JA target dispatcher send_command dependency must inject windower.send_command"
@@ -244,8 +228,8 @@ local function main()
     )
     assert_contains(
         source,
-        "_G.UC_SCHED_P1_DARKLAUNCH_COMBAT_COMMAND_VALIDATE",
-        "WS validation status global must remain"
+        "combat_core.try_dispatch_ws_with_intent(ws, expected_tid, settings, selected.skillchain_plan)",
+        "scheduler WS dispatch must use the core intent owner and pass the skillchain plan"
     )
     assert_contains(
         source,
@@ -279,7 +263,6 @@ local function main()
     for _, field in ipairs(required_status_fields) do
         assert_contains(doom_command_block, field .. " = command_ownership_status." .. field, "missing doom status field: " .. field)
         assert_contains(internal_dispatch_command_block, field .. " = command_ownership_status." .. field, "missing internal dispatch status field: " .. field)
-        assert_contains(ws_command_block, field .. " = command_ownership_status." .. field, "missing WS status field: " .. field)
         assert_contains(maintenance_command_block, field .. " = command_ownership_status." .. field, "missing maintenance status field: " .. field)
         assert_contains(defensive_command_block, field .. " = command_ownership_status." .. field, "missing defensive status field: " .. field)
         assert_contains(ja_target_command_block, field .. " = command_ownership_status." .. field, "missing JA target status field: " .. field)
@@ -290,7 +273,7 @@ local function main()
     end
 
     if count_plain(source, "windower.send_command(") ~= 0 then
-        error("expected nine helper-owned command paths and zero remaining textual windower.send_command( callsites")
+        error("expected eight helper-owned command paths and zero remaining textual windower.send_command( callsites")
     end
 
     io.stdout:write("selftest_command_ownership_static: OK\n")

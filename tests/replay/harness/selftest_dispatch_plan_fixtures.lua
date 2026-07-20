@@ -29,8 +29,8 @@ local function main()
 
     assert_true(result.ok, "dispatch plan suite should fully pass")
     assert_equal(result.suite_id, "dispatch_plan", "suite id mismatch")
-    assert_equal(result.total, 10, "fixture count mismatch")
-    assert_equal(result.passed, 10, "all fixtures should pass")
+    assert_equal(result.total, 12, "fixture count mismatch")
+    assert_equal(result.passed, 12, "all fixtures should pass")
     assert_equal(result.failed, 0, "no fixtures should fail")
 
     local basic = find_entry(result.entries, "dispatch_plan_build_basic")

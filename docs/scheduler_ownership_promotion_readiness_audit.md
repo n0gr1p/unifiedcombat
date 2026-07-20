@@ -1,5 +1,7 @@
 # Scheduler Ownership Promotion Readiness Audit
 
+> **2026-07-20 WS ownership update:** This audit preserves the historical promotion evidence. The combat-WS command-ownership flag is no longer live; scheduler WS dispatch now delegates to the unified core intent owner so the same target-scoped skillchain plan can be revalidated immediately before the single send. See `scheduler_owned_ws_skillchain_compliance_audit.md`.
+
 ## Scope
 
 This audit covers every `_G.UC_SCHED_P1_ENABLE_DISPATCHER_*_OWNERSHIP` flag currently used by scheduler ownership seams.

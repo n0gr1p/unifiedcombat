@@ -135,7 +135,7 @@ local function main()
     assert_equal(chosen, self_paralyna, "self Paralyna must remain allowed to outrank cure")
     assert_equal(reason, "BLOCK_DEFENSIVE_NA", "self Paralyna reason mismatch")
 
-    assert_contains(source, "scheduler.PRIORITY_BAND_CRITICAL_CURE = 117", "critical cure scheduler priority band must remain globally pinned")
+    assert_contains(source, "scheduler.PRIORITY_BAND_CRITICAL_CURE = 153", "critical cure scheduler priority band must remain globally pinned")
     assert_contains(source, "priority_band = scheduler.PRIORITY_BAND_CRITICAL_CURE", "critical cure proposals must use the global priority band")
     assert_contains(source, "provider = 'defensive_internal'", "defensive proposal must still emit through defensive_internal provider")
 

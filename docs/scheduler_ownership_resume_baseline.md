@@ -1,5 +1,7 @@
 # Scheduler Ownership Resume Baseline
 
+> **2026-07-20 WS ownership update:** References below to `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP` are historical. That seam is retired in favor of the unified core WS intent owner and atomic skillchain commit validation.
+
 ## Current invariant
 
 `unified_scheduler.lua` must not directly perform these runtime side effects:

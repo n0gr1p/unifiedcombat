@@ -1557,6 +1557,9 @@ local function process_line(line)
 		if was_running and (not Start_Engine) and type(_G.UC_ResetMovementLocksForFollow) == 'function' then
 			_G.UC_ResetMovementLocksForFollow()
 		end
+		if was_running and (not Start_Engine) and type(_G.UC_StopUnifiedEngine) == 'function' then
+			_G.UC_StopUnifiedEngine('engine_stop')
+		end
 		if (not was_running) and Start_Engine then
 			maybe_start_active_engine()
 		end
@@ -1576,6 +1579,9 @@ local function process_line(line)
 		end
 		if type(_G.UC_ResetMovementLocksForFollow) == 'function' then
 			_G.UC_ResetMovementLocksForFollow()
+		end
+		if type(_G.UC_StopUnifiedEngine) == 'function' then
+			_G.UC_StopUnifiedEngine('engine_stop')
 		end
 	elseif op == 'reload' then
 		if type(_G.UC_ReloadActiveProfile) == 'function' then

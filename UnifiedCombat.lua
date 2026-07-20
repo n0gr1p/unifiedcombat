@@ -386,7 +386,10 @@ _G.UC_StartUnifiedEngine = function()
 	end
 end
 
-_G.UC_StopUnifiedEngine = function()
+_G.UC_StopUnifiedEngine = function(reason)
+	if UC_COMBAT_CORE and type(UC_COMBAT_CORE.reset_skillchain_state) == 'function' then
+		UC_COMBAT_CORE.reset_skillchain_state(tostring(reason or 'engine_stop'))
+	end
 	if UC_UNIFIED_ENGINE and type(UC_UNIFIED_ENGINE.stop) == 'function' then
 		UC_UNIFIED_ENGINE.stop()
 	end
@@ -2045,6 +2048,7 @@ windower.register_event('zone change', function()
 	require('uc_reaction_runtime').reset('zone_change')
 	require('uc_lilith_easy_encounter').reset('zone_change')
 	require('uc_lilith_easy_formation_runtime').reset('zone_change')
+	UC_COMBAT_CORE.reset_skillchain_state('zone_change')
 	_G.UC_REACTION_LOCK = nil
 	_G.UC_LAST_ZONE_CHANGE_AT = uc_now_s()
 	_G.UC_ZONE_SUSPEND_UNTIL = uc_now_s() + UC_ZONE_SUSPEND_SEC
@@ -2063,7 +2067,7 @@ windower.register_event('unload', function()
 	uc_profile_v2_auto_reload_reset()
 	uc_remote_unload()
 	if type(_G.UC_StopUnifiedEngine) == 'function' then
-		_G.UC_StopUnifiedEngine()
+		_G.UC_StopUnifiedEngine('unload')
 	end
 	if ap_listener_id then
 		ActionPacket.close_listener(ap_listener_id)
@@ -2082,7 +2086,7 @@ windower.register_event('logout', function()
 	uc_profile_v2_auto_reload_reset()
 	uc_remote_unload()
 	if type(_G.UC_StopUnifiedEngine) == 'function' then
-		_G.UC_StopUnifiedEngine()
+		_G.UC_StopUnifiedEngine('logout')
 	end
 end)
 
@@ -2136,7 +2140,7 @@ windower.register_event('addon command', function(...)
 			_G.UC_ResetMovementLocksForFollow()
 		end
 		if type(_G.UC_StopUnifiedEngine) == 'function' then
-			_G.UC_StopUnifiedEngine()
+			_G.UC_StopUnifiedEngine('engine_stop')
 		end
 		windower.add_to_chat(207, 'UnifiedCombat: engine stopped')
 		return

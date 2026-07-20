@@ -3,6 +3,10 @@
 Source RFC: `RFC/UnifiedCombat_scheduler_refactor_RFC_for_Codex.md`  
 Purpose: a living progress tracker for implementation scope, completed work, and remaining scope.
 
+- 2026-07-20: Completed scheduler-owned WS skillchain field acceptance after addon reload. The newest-session validators passed for Nyoourke (35 dispatches, 0 non-Aeonic Ultimate predictions, minimum 0.220s after preferred, 1.175s before latest-safe) and Ponponponponpon (13 dispatches, minimum 0.246s after preferred, 2.699s before latest-safe), with no duplicate target/generation dispatch and required pending-result reservation after every send. Initial Cases A/B, corrective replay, and post-reload acceptance are complete; Case C is replay-only by accepted disposition and Case D is not applicable. `WS-SC-0` through `WS-SC-4` are done.
+- 2026-07-20: Reviewed initial live Nyoourke/Ponponponponpon/Terrasjr timelines. All bounded continuation commits were inside preferred/latest-safe timing, and both multi-actor replacement variants canceled old generations before dispatch. The capture exposed non-Aeonic AM3 Radiance prediction and repeated sends for one pending generation; both were corrected with focused replay coverage. Aggregate replay remained 95/95. Artificial Case C was waived in favor of replay and Case D was not applicable per the current setup.
+- 2026-07-20: Implemented and replay-verified `WS-SC-0` through `WS-SC-3` and the runtime portion of `WS-SC-4`. Added target-scoped monotonic skillchain state, structured generation-bound continuations, atomic commit revalidation, Chainbound/Aeonic/Diamond Aspis/terminal-MB rules, deadline-aware priority, pending-window lane reservation, preferred-buffer admission, action-family classification, fail-closed unmapped Chainbound handling, telemetry, lifecycle reset, and focused fixtures. Removed the global `core.ws_timer`, speculative step cap, and scheduler WS command-ownership fallback seam. Validation: runtime parse 67 files and aggregate replay 95 suites pass. Initial field status was pending.
+- 2026-07-20: Approved and codified the scheduler-owned WS skillchain compliance workstream as `WS-SC-0` through `WS-SC-4`. Added the implementation contract covering target-scoped resonance timing, structured continuation plans, commit-time generation/property validation, Chainbound/Aeonic/Diamond Aspis rules, removal of the speculative step cap, deadline-aware arbitration, telemetry, replay coverage, and Nyoourke field validation. Status at approval: documentation complete; implementation not started. No runtime behavior changed in this approval slice.
 - 2026-07-14: Completed add-control priority eligibility and scheduler engaged-retarget parity hotfix. Add control now treats the ordered add-priority names as an eligibility list, returns to the fight leader target when no listed add is valid, and does not unlock the ordinary claimed / Prime candidate scan while engaged. Scheduler-owned combat now permits engaged target-control proposals only for enabled add control and uses the existing switch-target attack primitive for those transitions, restoring parity with the legacy core path. Added focused eligibility coverage and refreshed side-effect line pins without changing the side-effect set. Validation: `luac -p uc_add_control.lua`, `luac -p uc_add_priority.lua`, `luac -p unified_combat_core.lua`, `luac -p unified_scheduler.lua`, `lua tests/replay/harness/selftest_add_control_priority_eligibility.lua`, `lua tests/replay/harness/selftest_side_effect_inventory.lua`, `lua tests/replay/harness/selftest_runtime_parse.lua`, `lua tests/replay/harness/selftest_all_replay_fixtures.lua`, `dotnet build UnifiedCombatWinForms/UnifiedCombatWinForms.csproj --no-restore`. Field test: reload UnifiedCombat on every character, engage the fight leader target, spawn both listed and unlisted adds, confirm every combat owner switches to listed adds in configured order, ignores unlisted adds, and returns to the leader target after the last listed add dies.
 
 ## 1) Overall Status Snapshot
@@ -37,9 +41,38 @@ Purpose: a living progress tracker for implementation scope, completed work, and
 - `T4.1` migrates only debug-only active config readers in `unified_scheduler.lua`, `uc_party_follow.lua`, and `uc_pathing.lua`, while explicitly deferring scheduler action-decision reads, movement/follow control reads, and arbitrary slash-command durable-write syncing.
 - `T4.4` adds a scheduler config reader facade and migrates a bounded combat/target/tank scheduler slice plus scheduler-facing tank provider readers to active config, while still deferring `fight_leader`, `add_priority`, `sleep`, and broader core tick ownership reads.
 - `T4.3` migrates a bounded defensive/maintenance/spell-related durable-reader batch in `uc_hb_buff_maint.lua`, `uc_cor_maintenance.lua`, and `unified_scheduler.lua`, while preserving flat/default fallback and still deferring command-owned legacy settings plus broader scheduler/provider action-decision migration.
+- `WS-SC-0` through `WS-SC-4` are done, including replay and post-reload Nyoourke/multi-actor field validation.
 - Not started in this phase: broad provider extraction/cutover beyond existing scheduler ownership policy and any fallback-removal pass outside explicitly migrated slices.
 
 ## Latest Task Notes
+
+### `WS-SC` Codify scheduler-owned WS skillchain compliance work
+
+- Status: `DONE / REPLAY VERIFIED / FIELD VERIFIED`
+- Documentation:
+  - `docs/RefDocs/FFXI_Skillchain_Rules_Specification_2026-07-20.md`
+  - `docs/scheduler_owned_ws_skillchain_compliance_audit.md`
+  - `docs/scheduler_owned_ws_skillchain_implementation_plan.md`
+  - `docs/nyoourke_sam_ws_timing_audit.md`
+  - `docs/TestResults/scheduler_owned_ws_skillchain_replay_results_2026-07-20.md`
+  - `docs/TestResults/scheduler_owned_ws_skillchain_field_test_packet.md`
+  - `docs/TestResults/scheduler_owned_ws_skillchain_field_results_2026-07-20.md`
+- Work packages:
+  - `WS-SC-0`: characterization and replay foundation
+  - `WS-SC-1`: target-scoped state and timing
+  - `WS-SC-2`: structured plans and atomic dispatch validation
+  - `WS-SC-3`: Chainbound, Aeonic, Diamond Aspis, terminal, and MB rules
+  - `WS-SC-4`: deadline-aware arbitration, telemetry, and field validation
+- Outcome:
+  - `WS-SC-0`: done; pure state seam, fixtures, `os.clock` decision, aggregate/runtime registration.
+  - `WS-SC-1`: done; target-scoped timing/generation and lifecycle cleanup replace the global timer.
+  - `WS-SC-2`: done; structured plans and two-stage atomic revalidation cancel stale continuations without fallback.
+  - `WS-SC-3`: done; Chainbound, local actor Aeonic, Diamond Aspis, terminal/MB, and no action-count cap.
+  - `WS-SC-4`: done; initial Cases A/B reviewed, two field findings corrected, and post-reload Nyoourke/Ponponponponpon acceptance passed.
+- Next step:
+  - Reload the corrected runtime and capture five ordinary Nyoourke continuations to verify non-Aeonic prediction and one-send-per-generation behavior. Artificial Cases C/D are not required.
+- Runtime impact:
+  - Scheduler-owned smart WS now schedules valid continuations from the received action result and gives them time-bounded priority over routine work. Stale plans fail closed with explicit `SC_*` reasons.
 
 ### `T4.4` Add scheduler config reader facade and migrate targeting/tank readers
 

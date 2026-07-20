@@ -97,7 +97,7 @@ local function collect_sleep_mock(input)
         action_type = "spell",
         action_name = best.available_spell,
         target_id = best.target_id,
-        priority_band = 113,
+        priority_band = 142,
         detail = {
             allow_target_id_send = true,
         },
@@ -127,7 +127,7 @@ local function main()
     assert_contains(source, "if (tonumber(mob.hpp) or 0) <= 99 then", "Sleep target selection must preserve the legacy full-HP add filter")
     assert_contains(source, "if dist > scheduler.sleep_max_target_distance(ctx.settings) then", "Sleep target eligibility must reject mobs beyond the configured range")
     assert_contains(source, "if scheduler.target_sleep_suppressed(ctx.settings, tid, ctx.now) then", "Sleep target eligibility must reject already-slept targets")
-    assert_contains(source, "scheduler.PRIORITY_BAND_SLEEP = 113", "Sleep priority band must remain globally pinned")
+    assert_contains(source, "scheduler.PRIORITY_BAND_SLEEP = 142", "Sleep priority band must remain globally pinned")
     assert_contains(source, "priority_band = scheduler.PRIORITY_BAND_SLEEP", "Sleep proposals must use the global priority band")
     assert_contains(source, "provider = 'combat'", "Sleep proposals must dispatch through combat provider arbitration")
     assert_contains(source, "action_type = 'spell'", "Sleep proposals must remain spell actions")
@@ -289,14 +289,14 @@ local function main()
     assert_equal(skip_slept.action_name, "Sleep", "first available spell selection must remain intact for the unslept add")
 
     local ranked = pick_top_priority({
-        { action_name = "Cure IV", priority_band = 117 },
-        { action_name = "Sleep II", priority_band = 113 },
+        { action_name = "Cure IV", priority_band = 153 },
+        { action_name = "Sleep II", priority_band = 142 },
         { action_name = "Protect", priority_band = 70 },
     })
     assert_equal(ranked.action_name, "Cure IV", "critical defensive cures must still outrank Sleep")
 
     ranked = pick_top_priority({
-        { action_name = "Sleep II", priority_band = 113 },
+        { action_name = "Sleep II", priority_band = 142 },
         { action_name = "Protect", priority_band = 70 },
         { action_name = "Berserk", priority_band = 70 },
     })

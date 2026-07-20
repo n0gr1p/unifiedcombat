@@ -1907,10 +1907,11 @@ scheduler.TANK_ENGAGE_URGENCY = 0.85
 scheduler.DEFAULT_ENGAGE_PRIORITY = 72
 scheduler.DEFAULT_ENGAGE_URGENCY = 0.70
 scheduler.PRIORITY_BAND_AFTERMATH_WS = 108
-scheduler.PRIORITY_BAND_SLEEP = 113
-scheduler.PRIORITY_BAND_CRITICAL_CURE = 117
 scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 120
-scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SLEEP
+scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131
+scheduler.PRIORITY_BAND_SLEEP = 142
+scheduler.PRIORITY_BAND_CRITICAL_CURE = 153
+scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION
 scheduler.TARGET_ACQUIRE_DEBOUNCE_S = 0.20
 
 local maintenance_blocked_zone_names = {
@@ -4076,15 +4077,18 @@ local function p1_collect_combat_offense(ctx, out)
 	if partner_target_set[tonumber(target.id) or 0] == true then
 		return
 	end
-	local ws_pick_reason = ''
-	local ws = ''
-	if combat_core and type(combat_core.select_smart_ws_for_scheduler) == 'function' then
-		ws, ws_pick_reason = combat_core.select_smart_ws_for_scheduler(ctx.settings, tonumber(target.id) or 0)
+	if not combat_core or type(combat_core.select_ws_plan_for_scheduler) ~= 'function' then
+		error('scheduler combat WS collection requires structured core WS planner')
 	end
-	ws = tostring(ws or '')
+	local ws_selection, ws_pick_reason = combat_core.select_ws_plan_for_scheduler(ctx.settings, tonumber(target.id) or 0)
+	if type(ws_selection) ~= 'table' then
+		return
+	end
+	local ws = tostring(ws_selection.ws_name or '')
 	if ws == '' then
 		return
 	end
+	local skillchain_plan = ws_selection.skillchain_plan
 	local urgency = (tp - 1000) / 2000
 	if urgency < 0 then
 		urgency = 0
@@ -4093,7 +4097,35 @@ local function p1_collect_combat_offense(ctx, out)
 	end
 	local priority_band = 70
 	local reason_code = 'tp_ready'
-	if tostring(ws_pick_reason or '') == 'AM_READY' then
+	if type(skillchain_plan) == 'table' then
+		priority_band = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION
+		reason_code = tostring(ws_pick_reason or '') == 'SC_NOT_READY'
+			and 'skillchain_continuation_pending'
+			or tostring(ws_pick_reason or '') == 'SC_DISPATCH_PENDING_RESULT'
+			and 'skillchain_continuation_awaiting_result'
+			or 'skillchain_continuation'
+		local planned_at = tonumber(skillchain_plan.planned_at) or 0
+		local earliest = tonumber(skillchain_plan.earliest_execute_at) or planned_at
+		local latest = tonumber(skillchain_plan.latest_safe_at) or planned_at
+		local width = math.max(0.1, latest - earliest)
+		local remaining = math.max(0, latest - planned_at)
+		urgency = p1_clamp_urgency(1 - (remaining / width))
+		if skillchain_plan.high_risk == true then
+			urgency = 1
+		end
+		scheduler.action_timeline_log('SC_CONTINUATION_PROPOSED', {
+			target_id = tonumber(target.id) or 0,
+			resonance_generation = tonumber(skillchain_plan.resonance_generation) or 0,
+			ws_id = tonumber(skillchain_plan.ws_id) or 0,
+			ws_name = ws,
+			predicted_result = tostring(skillchain_plan.predicted_result or ''),
+			band = priority_band,
+			urgency = ('%.2f'):format(urgency),
+			earliest_execute_at = tonumber(skillchain_plan.earliest_execute_at) or 0,
+			preferred_execute_at = tonumber(skillchain_plan.preferred_execute_at) or 0,
+			latest_safe_at = tonumber(skillchain_plan.latest_safe_at) or 0,
+		}, nil, 0)
+	elseif tostring(ws_pick_reason or '') == 'AM_READY' then
 		-- Keep aftermath WS above defensive buffs/cures, but still below the global critical Cure band.
 		-- and doom emergency handling, which is processed before proposal dispatch.
 		priority_band = scheduler.PRIORITY_BAND_AFTERMATH_WS
@@ -4102,7 +4134,7 @@ local function p1_collect_combat_offense(ctx, out)
 	end
 	out[#out + 1] = {
 		proposal_id = ('combat.ws.%s.%d.%d'):format(ws, tonumber(target.id) or 0, math.floor(ctx.now * 1000)),
-		family_id = 'combat.ws.primary',
+		family_id = type(skillchain_plan) == 'table' and 'combat.ws.skillchain' or 'combat.ws.primary',
 		provider = 'combat',
 		action_type = 'ws',
 		action_name = ws,
@@ -4111,7 +4143,7 @@ local function p1_collect_combat_offense(ctx, out)
 		target_name = tostring(target.name or ''),
 		priority_band = priority_band,
 		urgency = p1_clamp_urgency(urgency),
-		starvation_eligible = true,
+		starvation_eligible = type(skillchain_plan) ~= 'table',
 		created_at = ctx.now,
 		expires_at = ctx.now + 0.30,
 		commit_deadline = ctx.now + 0.20,
@@ -4126,9 +4158,15 @@ local function p1_collect_combat_offense(ctx, out)
 		can_preempt_movement = false,
 		can_preempt_same_band = false,
 		reason_code = reason_code,
+		skillchain_plan = skillchain_plan,
 		detail = {
 			tp = tp,
 			ws_pick_reason = tostring(ws_pick_reason or ''),
+			resonance_generation = tonumber(skillchain_plan and skillchain_plan.resonance_generation) or 0,
+			predicted_result = tostring(skillchain_plan and skillchain_plan.predicted_result or ''),
+			earliest_execute_at = tonumber(skillchain_plan and skillchain_plan.earliest_execute_at) or 0,
+			preferred_execute_at = tonumber(skillchain_plan and skillchain_plan.preferred_execute_at) or 0,
+			latest_safe_at = tonumber(skillchain_plan and skillchain_plan.latest_safe_at) or 0,
 		},
 		legacy_command = ('input /ws \"%s\" <t>'):format(ws),
 		required_setting = 'weaponskill_active',
@@ -5668,7 +5706,7 @@ local function p1_build_dispatch_plan(ctx, selected)
 end
 
 local function p1_revalidate_plan_commit(ctx, selected, plan)
-	return require('uc_scheduler_dispatch_plan').p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, windower)
+	return require('uc_scheduler_dispatch_plan').p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, windower, combat_core)
 end
 
 function scheduler.p1_set_pending_globals()
@@ -6787,51 +6825,34 @@ local function p1_try_dark_launch_combat_dispatch(selected, settings, phase)
 		if ws == '' then
 			return false, nil
 		end
-		if combat_core and type(combat_core.try_dispatch_ws_with_intent) == 'function' then
-			local sent, why = combat_core.try_dispatch_ws_with_intent(ws, expected_tid, settings)
-			if not sent then
-				_G.UC_LAST_SCHED_ACTION = ('[p1]ws_hold:%s:%s'):format(ws, tostring(why or 'BLOCK'))
-				return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_WS_INTENT'
-			end
-			action_mark_sent('ws')
-		else
-			local ws_command = ('input /ws \"%s\" <t>'):format(ws)
-			local intent = {
-				kind = 'send_command',
-				source = 'unified_scheduler:T2.3d_darklaunch',
-				command = ws_command,
-				meta = {
-					action_type = tostring(action_type or ''),
-					action_name = ws,
+		if not combat_core or type(combat_core.try_dispatch_ws_with_intent) ~= 'function' then
+			error('scheduler combat WS dispatch requires core intent owner')
+		end
+		local sent, why = combat_core.try_dispatch_ws_with_intent(ws, expected_tid, settings, selected.skillchain_plan)
+		if not sent then
+			_G.UC_LAST_SCHED_ACTION = ('[p1]ws_hold:%s:%s'):format(ws, tostring(why or 'BLOCK'))
+			if type(selected.skillchain_plan) == 'table' then
+				scheduler.action_timeline_log('SC_COMMIT_RESULT', {
 					target_id = expected_tid,
-				},
-			}
-			local dispatcher = require('uc_scheduler_dispatcher')
-			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
-				dispatcher = dispatcher,
-				direct_send_command = windower.send_command,
-				send_command = windower.send_command,
-				ownership_enabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP == true),
-				promoted_default_on = true,
-				ownership_disabled = (_G.UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP == false),
-				promoted_kill_switch = promoted_ownership_kill_switch_enabled(),
-				intent = intent,
-				command = ws_command,
-			})
-			_G.UC_SCHED_P1_DARKLAUNCH_COMBAT_COMMAND_VALIDATE = {
-				ok = _darklaunch_ok and true or false,
-				reason = _darklaunch_reason,
-				kind = intent.kind,
-				source = intent.source,
-				command_present = command_ownership_status.command_present,
-				ownership_enabled = command_ownership_status.ownership_enabled,
-				dispatched = command_ownership_status.dispatched,
-				dispatch_ok = command_ownership_status.dispatch_ok,
-				dispatch_reason = command_ownership_status.dispatch_reason,
-				fallback_used = command_ownership_status.fallback_used,
-			}
-			action_mark_sent('ws')
+					resonance_generation = tonumber(selected.skillchain_plan.resonance_generation) or 0,
+					ws_name = ws,
+					predicted_result = tostring(selected.skillchain_plan.predicted_result or ''),
+					commit_result = tostring(why or 'SC_INTENT_LOST'),
+				}, nil, 0)
+			end
+			return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_WS_INTENT'
+		end
+		action_mark_sent('ws')
+		if type(selected.skillchain_plan) == 'table' then
+			scheduler.action_timeline_log('SC_WS_DISPATCHED', {
+				target_id = expected_tid,
+				resonance_generation = tonumber(selected.skillchain_plan.resonance_generation) or 0,
+				ws_id = tonumber(selected.skillchain_plan.ws_id) or 0,
+				ws_name = ws,
+				predicted_result = tostring(selected.skillchain_plan.predicted_result or ''),
+				band = tonumber(selected.priority_band) or 0,
+				urgency = ('%.2f'):format(p1_clamp_urgency(selected.urgency)),
+			}, nil, 0)
 		end
 		_G.UC_LAST_SCHED_ACTION = ('[p1]ws:%s->%s'):format(ws, tostring(selected.target_name or ''))
 	elseif action_type == 'ja' then

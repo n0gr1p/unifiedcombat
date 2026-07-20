@@ -24,7 +24,8 @@ local function call_helper(fixture)
             input.selected,
             input.plan,
             input.p1_number,
-            input.windower
+            input.windower,
+            input.combat_core
         )
         return {
             result = { ok, reason },

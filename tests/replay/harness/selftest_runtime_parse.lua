@@ -56,6 +56,7 @@ local RUNTIME_LUA_FILES = {
     "uc_scheduler_target_utils.lua",
     "uc_scheduler_text_utils.lua",
     "uc_settarget.lua",
+	"uc_skillchain_state.lua",
     "uc_target_ignore.lua",
     "uc_targeting_common.lua",
     "uc_tb_effect_table.lua",

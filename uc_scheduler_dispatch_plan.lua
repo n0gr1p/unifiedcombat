@@ -22,12 +22,13 @@ function M.p1_build_dispatch_plan(scheduler, ctx, selected, p1_number)
 			target_id = tonumber(selected.target_id) or 0,
 			target_name = tostring(selected.target_name or ''),
 		},
+		skillchain_plan = selected.skillchain_plan,
 		commit_deadline = p1_number(selected.commit_deadline, ctx.now + 0.25),
 		created_at = ctx.now,
 	}
 end
 
-function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, windower)
+function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, windower, combat_core)
 	if not selected or not plan then
 		return false, 'invalid_plan'
 	end
@@ -36,6 +37,18 @@ function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, 
 	end
 	if p1_number(plan.commit_deadline, 0) < ctx.now then
 		return false, 'commit_deadline'
+	end
+	if type(plan.skillchain_plan) == 'table' then
+		if type(combat_core) ~= 'table' or type(combat_core.revalidate_skillchain_plan) ~= 'function' then
+			error('skillchain dispatch plan requires core commit revalidation')
+		end
+		return combat_core.revalidate_skillchain_plan(
+			plan.skillchain_plan,
+			ctx.settings or {},
+			selected.target_id,
+			selected.action_name,
+			'rank_commit'
+		)
 	end
 	local target_kind = tostring(selected.target_kind or 'none')
 	if target_kind == 'self' then

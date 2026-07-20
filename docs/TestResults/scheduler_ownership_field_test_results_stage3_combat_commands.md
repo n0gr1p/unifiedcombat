@@ -1,5 +1,7 @@
 # Scheduler Ownership Field Test Results — Stage 3 Combat Commands
 
+> **Historical result:** The WS flag tested here was retired on 2026-07-20 when scheduler WS dispatch moved to the unified core intent owner for atomic skillchain-plan validation. The JA and spell evidence remains applicable to their ownership seams.
+
 ## Test Metadata
 
 **Tester:** Peter
