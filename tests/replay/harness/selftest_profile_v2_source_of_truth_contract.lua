@@ -516,6 +516,25 @@ local function main()
 	local empty_brd_autoload = profile_v2.autoload_structured_profile_file_to_settings(build_flat_settings(), empty_brd_meta, contract.validate_structured_profile_config, empty_brd_deps)
 	assert_true(type(empty_brd_autoload) == 'table' and empty_brd_autoload.ok == true, 'legacy empty BRD maintenance section must autoload cleanly')
 
+	local legacy_enabled_brd_payload = deep_clone(fixture)
+	legacy_enabled_brd_payload.profile.main_job = 'BRD'
+	legacy_enabled_brd_payload.profile.sub_job = 'WHM'
+	legacy_enabled_brd_payload.config.maintenance.brd = {
+		enabled = true,
+		songs = { 'Honor March', 'Victory March' },
+		dummy_songs = {},
+		use_nitro = false,
+		use_clarion_call = false,
+		use_marcato = false,
+		marcato_song = '',
+	}
+	local legacy_enabled_brd_deps = make_fake_fs({
+		[profile_v2.default_export_path(empty_brd_meta)] = profile_v2.serialize_structured_profile(legacy_enabled_brd_payload),
+	})
+	local legacy_enabled_brd_apply = profile_v2.apply_structured_profile_file_to_settings(build_flat_settings(), empty_brd_meta, contract.validate_structured_profile_config, legacy_enabled_brd_deps)
+	assert_true(type(legacy_enabled_brd_apply) == 'table' and legacy_enabled_brd_apply.ok == true, 'legacy enabled BRD maintenance must tolerate newly added optional durable fields')
+	assert_equal(legacy_enabled_brd_apply.candidate.brd_recovery_range_yalms, 9.9, 'legacy enabled BRD maintenance must receive the recovery range migration default')
+
 	local cor_payload = make_cor_payload()
 	local cor_meta = make_meta(cor_payload.profile.main_job, cor_payload.profile.sub_job)
 	local cor_active, cor_err = active_config.build_active_profile_from_v2_payload(cor_payload, cor_meta)

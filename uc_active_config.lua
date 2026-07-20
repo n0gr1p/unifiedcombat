@@ -557,6 +557,17 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.puller_distance_only = config.follow.partner.puller_distance_only
 			candidate.follow.partner.puller_distance_only = config.follow.partner.puller_distance_only
 		end
+		if type(config.follow.nyzul) == 'table' then
+			candidate.nyzul_coordinator_name = config.follow.nyzul.coordinator_name
+			candidate.nyzul_anchor_name = config.follow.nyzul.anchor_name
+			candidate.nyzul_parking_order = clone_value(config.follow.nyzul.parking_order)
+			candidate.follow = candidate.follow or {}
+			candidate.follow.nyzul = {
+				coordinator_name = config.follow.nyzul.coordinator_name,
+				anchor_name = config.follow.nyzul.anchor_name,
+				parking_order = clone_value(config.follow.nyzul.parking_order),
+			}
+		end
 		if type(config.follow.fight) == 'table' then
 			candidate.follow = candidate.follow or {}
 			candidate.follow.enabled = config.follow.enabled
@@ -637,6 +648,8 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.brd_maintenance_enabled = config.maintenance.brd.enabled
 			candidate.brd_songs = clone_value(config.maintenance.brd.songs)
 			candidate.brd_dummy_songs = clone_value(config.maintenance.brd.dummy_songs)
+			candidate.brd_recovery_range_yalms = config.maintenance.brd.recovery_range_yalms
+			candidate.brd_recovery_ignore_names = clone_value(config.maintenance.brd.recovery_ignore_names)
 			candidate.brd_use_nitro = config.maintenance.brd.use_nitro
 			candidate.brd_use_clarion_call = config.maintenance.brd.use_clarion_call
 			candidate.brd_use_marcato = config.maintenance.brd.use_marcato
@@ -723,10 +736,20 @@ function M.build_active_profile_from_v2_payload(payload, context)
 
 	local meta = resolve_meta(context, 'UC_PROFILE_V2')
 	local profile = build_profile_record(payload.profile, meta, 'UC_PROFILE_V2')
+	local config = pick_durable_config_domains(payload.config)
+	if type(config.maintenance) == 'table' and type(config.maintenance.brd) == 'table' then
+		local brd = config.maintenance.brd
+		if brd.recovery_range_yalms == nil then
+			brd.recovery_range_yalms = 9.9
+		end
+		if brd.recovery_ignore_names == nil then
+			brd.recovery_ignore_names = {}
+		end
+	end
 	local active_profile = {
 		version = 2,
 		profile = profile,
-		config = pick_durable_config_domains(payload.config),
+		config = config,
 	}
 	return active_profile
 end

@@ -22,6 +22,14 @@ public partial class MainForm
     private TextBox _pfFollowMaxYalms = null!;
     private TextBox _pfFightFollowMinYalms = null!;
     private TextBox _pfFightFollowHoldS = null!;
+	private ComboBox _nyzulCoordinatorCombo = null!;
+	private ComboBox _nyzulAnchorCombo = null!;
+	private ComboBox _nyzulParkerCombo = null!;
+	private ListBox _nyzulParkingList = null!;
+	private Button _nyzulParkerAdd = null!;
+	private Button _nyzulParkerRemove = null!;
+	private Button _nyzulParkerUp = null!;
+	private Button _nyzulParkerDown = null!;
     private ComboBox _defProviderCombo = null!;
     private ComboBox _abilityPickCombo = null!;
     private ListBox _abilityList = null!;
@@ -146,6 +154,8 @@ public partial class MainForm
     private CheckBox _brdUseClarion = null!;
     private CheckBox _brdUseMarcato = null!;
     private ComboBox _brdMarcatoSong = null!;
+	private NumericUpDown _brdRecoveryRangeYalms = null!;
+	private TextBox _brdRecoveryIgnoreNames = null!;
     private Label _pathFileValue = null!;
     private Label _pathRouteTypeValue = null!;
     private Label _pathDistanceValue = null!;
@@ -481,6 +491,58 @@ public partial class MainForm
         flFlow.Controls.Add(_partyFollowModeWarning);
         _grpFightLeader.Controls.Add(flFlow);
         g.Controls.Add(_grpFightLeader, 0, gRow++);
+
+		var nyzulGroup = new GroupBox
+		{
+			Text = "Nyzul lamp parking — coordinator profile owns the ordered runtime queue.",
+			Dock = DockStyle.Top,
+			Padding = new Padding(8),
+			AutoSize = true,
+		};
+		var nyzulFlow = new FlowLayoutPanel
+		{
+			FlowDirection = FlowDirection.TopDown,
+			AutoSize = true,
+			Dock = DockStyle.Fill,
+			WrapContents = false,
+		};
+		var nyzulNames = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+		nyzulNames.Controls.Add(new Label { Text = "Coordinator", AutoSize = true, Padding = new Padding(0, 4, 0, 0) });
+		_nyzulCoordinatorCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
+		_nyzulCoordinatorCombo.SelectedIndexChanged += (_, _) => OnNyzulConfigChanged();
+		nyzulNames.Controls.Add(_nyzulCoordinatorCombo);
+		nyzulNames.Controls.Add(new Label { Text = "Anchor", AutoSize = true, Padding = new Padding(10, 4, 0, 0) });
+		_nyzulAnchorCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
+		_nyzulAnchorCombo.SelectedIndexChanged += (_, _) => OnNyzulConfigChanged();
+		nyzulNames.Controls.Add(_nyzulAnchorCombo);
+		nyzulFlow.Controls.Add(nyzulNames);
+		_nyzulParkingList = new ListBox
+		{
+			Height = 82,
+			IntegralHeight = false,
+			Width = 380,
+			Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+		};
+		nyzulFlow.Controls.Add(_nyzulParkingList);
+		var nyzulButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+		nyzulButtons.Controls.Add(new Label { Text = "Next parker", AutoSize = true, Padding = new Padding(0, 4, 0, 0) });
+		_nyzulParkerCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
+		nyzulButtons.Controls.Add(_nyzulParkerCombo);
+		_nyzulParkerAdd = new Button { Text = "Add", AutoSize = true };
+		_nyzulParkerAdd.Click += (_, _) => NyzulParkerAdd();
+		nyzulButtons.Controls.Add(_nyzulParkerAdd);
+		_nyzulParkerRemove = new Button { Text = "Remove", AutoSize = true };
+		_nyzulParkerRemove.Click += (_, _) => NyzulParkerRemove();
+		nyzulButtons.Controls.Add(_nyzulParkerRemove);
+		_nyzulParkerUp = new Button { Text = "Up", AutoSize = true };
+		_nyzulParkerUp.Click += (_, _) => NyzulParkerMove(-1);
+		nyzulButtons.Controls.Add(_nyzulParkerUp);
+		_nyzulParkerDown = new Button { Text = "Down", AutoSize = true };
+		_nyzulParkerDown.Click += (_, _) => NyzulParkerMove(1);
+		nyzulButtons.Controls.Add(_nyzulParkerDown);
+		nyzulFlow.Controls.Add(nyzulButtons);
+		nyzulGroup.Controls.Add(nyzulFlow);
+		g.Controls.Add(nyzulGroup, 0, gRow++);
 
         var listsSplit = new TableLayoutPanel
         {
@@ -1174,6 +1236,28 @@ public partial class MainForm
         _brdMarcatoSong.SelectedIndexChanged += (_, _) => OnBrdConfigChanged();
         marcatoRow.Controls.Add(_brdMarcatoSong);
         brdRoot.Controls.Add(marcatoRow);
+		var recoveryRangeRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 8, 0, 0) };
+		recoveryRangeRow.Controls.Add(new Label { Text = "Recovery range (yalms)", AutoSize = true, Padding = new Padding(0, 5, 8, 0) });
+		_brdRecoveryRangeYalms = new NumericUpDown
+		{
+			Minimum = 1.0m,
+			Maximum = 20.0m,
+			Value = 9.9m,
+			Increment = 0.1m,
+			DecimalPlaces = 1,
+			Width = 80,
+		};
+		_brdRecoveryRangeYalms.ValueChanged += (_, _) => OnBrdConfigChanged();
+		recoveryRangeRow.Controls.Add(_brdRecoveryRangeYalms);
+		brdRoot.Controls.Add(recoveryRangeRow);
+		brdRoot.Controls.Add(new Label { Text = "Set to the equipped song instrument's actual area radius. Ordinary horn setups use 9.9; string instruments may support a larger tested radius.", AutoSize = true });
+		var recoveryIgnoreRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 8, 0, 0) };
+		recoveryIgnoreRow.Controls.Add(new Label { Text = "Recovery ignore players", AutoSize = true, Padding = new Padding(0, 5, 8, 0) });
+		_brdRecoveryIgnoreNames = new TextBox { Width = 280 };
+		_brdRecoveryIgnoreNames.TextChanged += (_, _) => OnBrdConfigChanged();
+		recoveryIgnoreRow.Controls.Add(_brdRecoveryIgnoreNames);
+		brdRoot.Controls.Add(recoveryIgnoreRow);
+		brdRoot.Controls.Add(new Label { Text = "Pipe-separated names. Ignored players never trigger song recovery after returning to range.", AutoSize = true });
         brdRoot.Controls.Add(new Label
         {
             Text = "Durations and active song ownership are observed by the addon and are never saved in the profile.",

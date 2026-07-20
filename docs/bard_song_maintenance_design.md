@@ -85,7 +85,9 @@ The tab will own durable user intent such as:
 - whether UnifiedCombat should use Nightingale and Troubadour as NITRO;
 - whether UnifiedCombat should use Clarion Call where the configured song count requires it;
 - whether Marcato is enabled;
-- the exact configured song assigned to Marcato.
+- the exact configured song assigned to Marcato;
+- the maximum party-member distance eligible to trigger recovery;
+- the player names excluded from recovery eligibility.
 
 The UI will not expose or serialize expected duration, current duration, expiration timestamps, active song slots, current JA buffs, recast timers, packet confidence, or runtime entity IDs.
 
@@ -114,6 +116,8 @@ config.maintenance.brd = {
     use_clarion_call = true,
     use_marcato = true,
     marcato_song = "Honor March",
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
 }
 ```
 
@@ -434,6 +438,12 @@ The contract is:
 
 After the base count is established, the provider replaces the dummy songs with configured final songs according to the deterministic shortest-remaining and exact-refresh rules in the mechanics reference. Dummy-song endtimes are observed runtime state and help make replacement order deterministic.
 
+Capacity recovery is count-driven rather than dummy-name-driven. If previously established final songs expire while all configured dummy names remain active, the provider uses the first missing desired song as the next safe add up to the currently available capacity. For example, three surviving dummies grow to four songs by adding the first configured final song; setup must not stop merely because every dummy name is already owned.
+
+After reload, some slots may have unknown exact identity. The local provider compares the complete `0x063` timer snapshot. When the uniquely shortest timer maps to a known dummy, the next missing final replaces it. When that unique timer has unknown identity during setup, a confirmed cast of the next missing desired song reconstructs identity whether the result was an exact refresh or an overwrite; the remaining desired songs are then rebuilt serially. Tied timers and non-alignable known owners still produce an explicit blocker instead of a guessed overwrite.
+
+If the uniquely shortest owner is an existing desired song and a known dummy remains, the provider exact-refreshes that desired song as an alignment step. Exact refresh preserves the song and moves its endtime behind the dummy. The provider reevaluates the authoritative timers after every alignment refresh and replaces the missing final only when the dummy becomes uniquely shortest.
+
 ## Per-recipient State
 
 Song state is maintained per recipient, not as one party-wide count.
@@ -460,6 +470,28 @@ recipient_song_state = {
 This is runtime state only. It is not a proposed v2 serialization shape.
 
 An area cast must not be assumed to affect every intended member. Each recipient requires successful action evidence or must remain unknown.
+
+### Implemented party recovery reducer
+
+Party recovery is implemented as a per-recipient reducer in `uc_brd_party_song_state.lua`. It deliberately keeps three facts separate:
+
+- the desired exact-song count from durable Bard policy;
+- the recipient's currently observed generic song count from party buff state;
+- exact effects owned from serialized UnifiedCombat casts, including the local `0x063` endtime associated with that cast.
+
+Clarion readiness is add-capacity state, not desired-set state. When five desired songs are already present, Clarion expiration or cooldown does not reduce the maintained set to four. Exact refresh and NITRO continue to include the persisted fifth song. If the observed count falls from five to four after Clarion expires, setup first replaces uniquely-shortest tracked dummies until the first four configured final songs are established. It then enters `degraded_fifth_waiting_for_clarion`. Existing desired songs remain eligible for exact refresh, but desired-song rotation is not used as a substitute for the unavailable fifth position.
+
+Slot recovery is driven by the observed deficit. A recipient at three of four normally receives one capacity dummy; if every distinct dummy is already tracked, a missing desired song is used as the safe capacity add. A recipient at four of five finalizes the first four songs, waits for Clarion, and then receives one capacity add. Recovery does not replay `desired_count - 2` dummies from an assumed two-song baseline.
+
+A successful `0x028` result proves delivery, not capacity growth. After a recovery dummy lands, the reducer waits for a later party observation showing `active_count = previous_count + 1`. Until that transition is observed, the next recovery step is blocked. If the bounded confirmation window expires with no count growth, recovery enters an explicit `capacity_transition_failed` state and does not mark the capacity as confirmed.
+
+Because general songs are area effects, every successful `0x028` recipient is reduced through the same cast. A capacity dummy that adds for the deficient recipient may overwrite the uniquely shortest effect on an already-full recipient. The reducer records that collateral overwrite and the final phase repairs missing desired songs across all eligible in-range player recipients. A final replacement is allowed only when the uniquely shortest tracked victim is a dummy; unknown or tied victims produce an explicit ambiguity blocker.
+
+Party recovery uses the same alignment rule when a desired song is shorter than the remaining dummy. An area alignment refresh is proposed only if every eligible recipient will exact-refresh that song, add it within available capacity, or overwrite a uniquely shortest tracked dummy.
+
+Dead recipients, trusts, ignored names, out-of-range players, and unavailable party members do not start recovery. Leaving range invalidates confidence but does not block the Bard's local setup. When a live player returns to range, their current observed count determines whether slot recovery begins.
+
+Recovery range is durable per-profile policy at `config.maintenance.brd.recovery_range_yalms`. The allowed range is `1.0` through `20.0` yalms and the migration/default value is `9.9`. The scheduler compares each party member's current mob distance directly against this value using a dedicated Bard predicate; it does not reuse the 20.9-yalm cure/status-removal casting window. `9.9` is the conservative ordinary-horn setting. A profile using a tested string-instrument radius may configure a larger value, up to 20.0. This setting controls only which live player recipients may trigger recovery; successful `0x028` action recipients remain authoritative for who actually received each song.
 
 ## Provider Priorities
 
@@ -591,6 +623,12 @@ The completed subsystem must prove:
 - a timed-out confirmation transaction creates no false ownership;
 - configured dummy songs round-trip durably without duration or instrument state;
 - each dummy capacity cast must produce a verified runtime capacity transition;
+- a three-to-four recovery casts one capacity dummy, not a full two-dummy rebuild;
+- a four-to-five recovery waits for Clarion and casts one capacity dummy;
+- Clarion cooldown never removes an already-present fifth song from exact refresh or NITRO maintenance;
+- a successful dummy delivery with no recipient count increase enters a terminal recovery blocker;
+- a later observed count loss remains recoverable after an earlier recovery completed;
+- AoE recovery models and repairs collateral overwrites on already-full recipients;
 - duplicate same-family songs map to distinct exact ownership after serialized casts;
 - exact refresh updates only the exact song's observed endtime;
 - a unique full-capacity overwrite removes the observed shortest owner;

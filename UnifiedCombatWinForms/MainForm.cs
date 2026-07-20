@@ -59,6 +59,7 @@ public partial class MainForm : Form
     private List<(int Slot, string Name)> _sleepSpellRows = [];
     private List<(int Id, string Name)> _pathHunterRows = [];
     private List<string> _tankEnmityRows = [];
+	private readonly List<string> _nyzulParkingOrder = [];
     private sealed record SessionMeta(string Sid, string CharName, string Job, string SubJob, string Engine);
 
     private void LogDefSync(string message)

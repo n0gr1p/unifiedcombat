@@ -60,6 +60,7 @@ package.loaded.resources = {
 		[6] = { id = 6, en = 'Valor Minuet V', status = 103, type = 'BardSong', targets = { Self = true } },
 		[7] = { id = 7, en = 'Valor Minuet IV', status = 103, type = 'BardSong', targets = { Self = true } },
 		[8] = { id = 8, en = 'Mage\'s Ballad III', status = 104, type = 'BardSong', targets = { Self = true } },
+		[9] = { id = 9, en = 'Goblin Gavotte', status = 105, type = 'BardSong', targets = { Self = true } },
 	},
 }
 package.loaded.uc_brd_maintenance = nil
@@ -84,6 +85,8 @@ local config = {
 	enabled = true,
 	songs = { 'Honor March', 'Victory March' },
 	dummy_songs = {},
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
 	use_nitro = false,
 	use_clarion_call = false,
 	use_marcato = false,
@@ -94,6 +97,11 @@ assert_true(log_ok == true, 'BRD diagnostic log must start in the replay harness
 
 local ok, reason = brd._test.validate_config(config, player)
 assert_true(ok, 'valid dedicated BRD config rejected: ' .. tostring(reason))
+config.recovery_range_yalms = 20.1
+local range_ok, range_reason = brd._test.validate_config(config, player)
+assert_true(range_ok == false, 'out-of-range BRD recovery distance must be rejected')
+assert_equal(range_reason, 'invalid_recovery_range_yalms', 'invalid BRD recovery distance blocker mismatch')
+config.recovery_range_yalms = 9.9
 local clock_epoch = 1784356393
 local clock_timestamp = 123456789
 local clock_packet_offset = 54321
@@ -108,6 +116,8 @@ local bad = {
 	enabled = true,
 	songs = { 'Magic Finale' },
 	dummy_songs = {},
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
 	use_nitro = false,
 	use_clarion_call = false,
 	use_marcato = false,
@@ -275,6 +285,8 @@ local capacity_config = {
 	enabled = true,
 	songs = { 'Honor March', 'Victory March', 'Valor Minuet V', 'Valor Minuet IV' },
 	dummy_songs = { "Army's Paeon", "Army's Paeon II" },
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
 	use_nitro = false,
 	use_clarion_call = false,
 	use_marcato = false,
@@ -290,11 +302,264 @@ action = brd.propose(capacity_config, { now = 5, player = player, action_ready =
 assert_equal(action.action_name, "Army's Paeon", 'capacity build must use the first configured dummy song')
 assert_equal(action.reason_code, 'brd_build_capacity_dummy', 'capacity build proposal reason mismatch')
 
+local party_song_state = require('uc_brd_party_song_state')
+local range_distance = {
+	sqrt = function() return 9.9 end,
+}
+local range_member = { id = 88, name = 'RangeTest' }
+local range_mob_lookup = function(id)
+	assert_equal(id, 88, 'BRD recovery range lookup id mismatch')
+	return { distance = range_distance }
+end
+assert_true(party_song_state.in_recovery_range(range_member, 9.9, range_mob_lookup), 'recipient at configured BRD recovery boundary must be eligible')
+assert_true(not party_song_state.in_recovery_range(range_member, 9.8, range_mob_lookup), 'recipient outside configured BRD recovery range must be ineligible')
+assert_true(not party_song_state.in_recovery_range(range_member, 20.1, range_mob_lookup), 'invalid BRD recovery range must not admit recipients')
+local recovery_sequence_config = {
+	songs = { 'Honor March', 'Victory March', 'Valor Minuet V', 'Valor Minuet IV', 'Mage\'s Ballad III' },
+	dummy_songs = { "Army's Paeon", "Army's Paeon II", 'Goblin Gavotte' },
+}
+local function observe_recovery_member(count, now, extra)
+	local buffs = {}
+	for i = 1, count do buffs[i] = 100 end
+	local member = {
+		id = 88,
+		name = 'ReturningPlayer',
+		is_npc = false,
+		spawn_type = 1,
+		hpp = 100,
+		in_song_range = true,
+		buffs = buffs,
+	}
+	for key, value in pairs(extra or {}) do member[key] = value end
+	party_song_state.observe({ member }, {}, { [100] = true }, now)
+end
+
+local function seed_recovery_song(song_name, endtime, count)
+	party_song_state.record_delivery({
+		song_name = song_name,
+		status_id = 100,
+		endtime = endtime,
+		recipients = { 88 },
+		confirmed_at = 1,
+		is_dummy = false,
+		cast_capacity = 2,
+		song_limit = count,
+	})
+end
+
+party_song_state.reset()
+observe_recovery_member(3, 1)
+seed_recovery_song('Honor March', 10000, 3)
+seed_recovery_song('Victory March', 11000, 3)
+seed_recovery_song('Valor Minuet V', 12000, 3)
+local recovery_step = party_song_state.next_action(recovery_sequence_config, 4, false, false)
+assert_equal(recovery_step.action_name, "Army's Paeon", 'three-to-four recovery must add exactly one capacity dummy')
+party_song_state.record_delivery({
+	song_name = recovery_step.action_name,
+	status_id = 101,
+	endtime = 5000,
+	recipients = { 88 },
+	confirmed_at = 1.1,
+	is_dummy = true,
+	cast_capacity = recovery_step.cast_capacity,
+	song_limit = 4,
+	recovery_member_id = 88,
+})
+assert_true(party_song_state.next_action(recovery_sequence_config, 4, false, false) == nil, 'recovery must wait for observed recipient count growth')
+observe_recovery_member(4, 1.2)
+recovery_step = party_song_state.next_action(recovery_sequence_config, 4, false, false)
+assert_equal(recovery_step.action_name, 'Valor Minuet IV', 'confirmed fourth slot must replace the uniquely shortest dummy with only the missing final')
+party_song_state.record_delivery({
+	song_name = recovery_step.action_name,
+	status_id = 103,
+	endtime = 13000,
+	recipients = { 88 },
+	confirmed_at = 1.3,
+	is_dummy = false,
+	cast_capacity = 2,
+	song_limit = 4,
+	recovery_member_id = 88,
+})
+recovery_step = party_song_state.next_action(recovery_sequence_config, 4, false, false)
+assert_true(recovery_step == nil, 'confirmed four-song recovery must stop when the exact four-song set is restored')
+
+-- A later real loss must invalidate the completed state and start recovery again.
+observe_recovery_member(3, 2)
+recovery_step = party_song_state.next_action(recovery_sequence_config, 4, false, false)
+assert_equal(recovery_step.action_name, "Army's Paeon", 'a later observed count loss must not be hidden by prior recovery completion')
+
+-- A successful action result without count growth must fail explicitly.
+party_song_state.reset()
+observe_recovery_member(3, 10)
+seed_recovery_song('Honor March', 10000, 3)
+seed_recovery_song('Victory March', 11000, 3)
+seed_recovery_song('Valor Minuet V', 12000, 3)
+recovery_step = party_song_state.next_action(recovery_sequence_config, 4, false, false)
+party_song_state.record_delivery({
+	song_name = recovery_step.action_name,
+	status_id = 101,
+	endtime = 5000,
+	recipients = { 88 },
+	confirmed_at = 10.1,
+	is_dummy = true,
+	cast_capacity = 4,
+	song_limit = 4,
+	recovery_member_id = 88,
+})
+observe_recovery_member(3, 12.2)
+assert_true(party_song_state.next_action(recovery_sequence_config, 4, false, false) == nil, 'a dummy with no observed count increase must not advance recovery')
+assert_true(party_song_state.last_blocker():find('capacity_transition_failed', 1, true) ~= nil, 'failed capacity verification must expose an explicit blocker')
+
+-- A recipient whose original songs expired after all dummy names were used
+-- must grow with a desired song instead of stalling on dummy-name exhaustion.
+party_song_state.reset()
+observe_recovery_member(3, 15)
+for index, dummy_name in ipairs(recovery_sequence_config.dummy_songs) do
+	party_song_state.record_delivery({
+		song_name = dummy_name,
+		status_id = index < 3 and 101 or 105,
+		endtime = 5000 + index * 1000,
+		recipients = { 88 },
+		confirmed_at = 15,
+		is_dummy = true,
+		cast_capacity = 2,
+		song_limit = 4,
+	})
+end
+recovery_step = party_song_state.next_action(recovery_sequence_config, 4, false, false)
+assert_equal(recovery_step.action_name, 'Honor March', 'three-dummy recipient recovery must grow the fourth slot with a final song')
+assert_equal(recovery_step.reason_code, 'brd_recovery_capacity_final', 'recipient desired-song capacity growth reason mismatch')
+assert_equal(recovery_step.cast_capacity, 4, 'recipient desired-song growth must advertise four-slot capacity')
+
+-- Ignore, dead, trust, and out-of-range members never start recovery.
+party_song_state.reset()
+party_song_state.observe({
+	{ id = 88, name = 'ReturningPlayer', spawn_type = 1, is_npc = false, hpp = 100, in_song_range = true, buffs = {} },
+	{ id = 89, name = 'DeadPlayer', spawn_type = 1, is_npc = false, hpp = 0, in_song_range = true, buffs = {} },
+	{ id = 90, name = 'Trust', spawn_type = 14, is_npc = false, hpp = 100, in_song_range = true, buffs = {} },
+	{ id = 91, name = 'RemotePlayer', spawn_type = 1, is_npc = false, hpp = 100, in_song_range = false, buffs = {} },
+}, { 'ReturningPlayer' }, { [100] = true }, 20)
+assert_true(party_song_state.next_action(recovery_sequence_config, 4, false, false) == nil, 'ignored, dead, trust, and out-of-range members must not trigger recovery')
+
+-- Four-to-five recovery waits for Clarion and adds only the one missing slot.
+party_song_state.reset()
+observe_recovery_member(4, 30)
+seed_recovery_song('Honor March', 10000, 4)
+seed_recovery_song('Victory March', 11000, 4)
+seed_recovery_song('Valor Minuet V', 12000, 4)
+seed_recovery_song('Valor Minuet IV', 13000, 4)
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, false, true)
+assert_equal(recovery_step.action_name, 'Clarion Call', 'four-to-five party recovery must wait for Clarion before adding the fifth slot')
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, true, false)
+assert_equal(recovery_step.action_name, "Army's Paeon", 'four-to-five party recovery must add only one distinct dummy')
+assert_equal(recovery_step.cast_capacity, 5, 'fifth-slot recovery dummy must require five-song cast capacity')
+
+-- Clarion cooldown must not leave a four-slot recipient wearing dummies.
+party_song_state.reset()
+observe_recovery_member(4, 35)
+party_song_state.record_delivery({
+	song_name = 'Honor March', status_id = 100, endtime = 10000,
+	recipients = { 88 }, confirmed_at = 35, is_dummy = false, cast_capacity = 2, song_limit = 5,
+})
+for index, dummy_name in ipairs(recovery_sequence_config.dummy_songs) do
+	party_song_state.record_delivery({
+		song_name = dummy_name,
+		status_id = index < 3 and 101 or 105,
+		endtime = 4000 + index * 1000,
+		recipients = { 88 },
+		confirmed_at = 35,
+		is_dummy = true,
+		cast_capacity = 2,
+		song_limit = 5,
+	})
+end
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, false, false)
+assert_equal(recovery_step.action_name, 'Victory March', 'Clarion cooldown must still replace uniquely shortest dummies in the first four slots')
+assert_equal(recovery_step.reason_code, 'brd_recovery_degraded_final', 'degraded recipient final replacement reason mismatch')
+
+party_song_state.reset()
+observe_recovery_member(4, 36)
+for _, delivery in ipairs({
+	{ name = 'Victory March', endtime = 4000, dummy = false },
+	{ name = "Army's Paeon", endtime = 4300, dummy = true },
+	{ name = 'Valor Minuet V', endtime = 5000, dummy = false },
+	{ name = 'Honor March', endtime = 6000, dummy = false },
+}) do
+	party_song_state.record_delivery({
+		song_name = delivery.name,
+		status_id = delivery.dummy and 101 or 100,
+		endtime = delivery.endtime,
+		recipients = { 88 },
+		confirmed_at = 36,
+		is_dummy = delivery.dummy,
+		cast_capacity = 2,
+		song_limit = 5,
+	})
+end
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, false, false)
+assert_equal(recovery_step.action_name, 'Victory March', 'recipient recovery must exact-refresh a shorter desired song before replacing the remaining dummy')
+assert_equal(recovery_step.reason_code, 'brd_recovery_align_shortest', 'recipient alignment refresh reason mismatch')
+
+-- An AoE recovery dummy must update every successful recipient, including the
+-- collateral overwrite on already-full members.
+party_song_state.reset()
+local function recovery_member(id, name, count)
+	local buffs = {}
+	for i = 1, count do buffs[i] = 100 end
+	return { id = id, name = name, spawn_type = 1, is_npc = false, hpp = 100, in_song_range = true, buffs = buffs }
+end
+party_song_state.observe({
+	recovery_member(88, 'ReturningPlayer', 3),
+	recovery_member(99, 'FullPlayer', 4),
+}, {}, { [100] = true }, 40)
+for index, song_name in ipairs({ 'Honor March', 'Victory March', 'Valor Minuet V' }) do
+	party_song_state.record_delivery({
+		song_name = song_name,
+		status_id = 100,
+		endtime = 9000 + index * 1000,
+		recipients = { 88, 99 },
+		confirmed_at = 40,
+		is_dummy = false,
+		cast_capacity = 2,
+		song_limit = 4,
+	})
+end
+party_song_state.record_delivery({
+	song_name = 'Valor Minuet IV',
+	status_id = 103,
+	endtime = 13000,
+	recipients = { 99 },
+	confirmed_at = 40,
+	is_dummy = false,
+	cast_capacity = 2,
+	song_limit = 4,
+})
+recovery_step = party_song_state.next_action(recovery_sequence_config, 4, false, false)
+party_song_state.record_delivery({
+	song_name = recovery_step.action_name,
+	status_id = 101,
+	endtime = 5000,
+	recipients = { 88, 99 },
+	confirmed_at = 40.1,
+	is_dummy = true,
+	cast_capacity = 4,
+	song_limit = 4,
+	recovery_member_id = 88,
+})
+party_song_state.observe({
+	recovery_member(88, 'ReturningPlayer', 4),
+	recovery_member(99, 'FullPlayer', 4),
+}, {}, { [100] = true }, 40.2)
+recovery_step = party_song_state.next_action(recovery_sequence_config, 4, false, false)
+assert_equal(recovery_step.action_name, 'Honor March', 'AoE recovery must repair the exact song displaced on an already-full recipient')
+
 brd.reset('five_without_clarion_test')
 local five_without_clarion = {
 	enabled = true,
 	songs = { 'Honor March', 'Victory March', 'Valor Minuet V', 'Valor Minuet IV', 'Mage\'s Ballad III' },
 	dummy_songs = { "Army's Paeon", "Army's Paeon II" },
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
 	use_nitro = false,
 	use_clarion_call = false,
 	use_marcato = false,
@@ -308,6 +573,8 @@ local five_with_clarion = brd._test.effective_config({
 	enabled = true,
 	songs = five_without_clarion.songs,
 	dummy_songs = { "Army's Paeon", "Army's Paeon II", 'Goblin Gavotte' },
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
 	use_nitro = false,
 	use_clarion_call = true,
 	use_marcato = false,
@@ -315,11 +582,191 @@ local five_with_clarion = brd._test.effective_config({
 }, player)
 assert_equal(#five_with_clarion.songs, 5, 'Clarion-enabled effective song list must retain the fifth song')
 
+brd.reset('five_clarion_cooldown_capacity_test')
+local clarion_cooldown_config = {
+	enabled = true,
+	songs = five_without_clarion.songs,
+	dummy_songs = { "Army's Paeon", "Army's Paeon II", 'Goblin Gavotte' },
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
+	use_nitro = false,
+	use_clarion_call = true,
+	use_marcato = false,
+	marcato_song = '',
+}
+local clarion_cooldown_ready = function(name)
+	if name == 'Clarion Call' then return false, 'recast', 'ja' end
+	return true, '', 'spell'
+end
+local cooldown_one = brd._test.server_now_raw(os.time()) + 40000
+local cooldown_two = cooldown_one + 600
+local cooldown_three = cooldown_two + 600
+local cooldown_four = cooldown_three + 600
+local cooldown_five = brd._test.server_now_raw(os.time()) + 300
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { cooldown_one, cooldown_two } },
+	[103] = { count = 2, endtimes = { cooldown_three, cooldown_four } },
+	[104] = { count = 1, endtimes = { cooldown_five } },
+}, 15)
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = cooldown_one, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = cooldown_two, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet V'] = { status_id = 103, endtime = cooldown_three, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet IV'] = { status_id = 103, endtime = cooldown_four, recipients = { 77 } }
+brd._test.state.owners['Mage\'s Ballad III'] = { status_id = 104, endtime = cooldown_five, recipients = { 77 } }
+action = brd.propose(clarion_cooldown_config, { now = 15, player = player, action_ready = clarion_cooldown_ready })
+assert_equal(action.action_name, 'Mage\'s Ballad III', 'persisted fifth song must remain an expiration-maintenance target while Clarion is on cooldown')
+assert_equal(action.reason_code, 'brd_song_expiring', 'persisted fifth song must use ordinary exact-refresh maintenance')
+
+brd.reset('five_clarion_three_dummies_test')
+local dummy_short = brd._test.server_now_raw(os.time()) + 12000
+local dummy_middle = dummy_short + 600
+local dummy_long = dummy_middle + 600
+brd.on_status_snapshot({
+	[101] = { count = 2, endtimes = { dummy_short, dummy_middle } },
+	[105] = { count = 1, endtimes = { dummy_long } },
+}, 15.1)
+brd._test.state.owners["Army's Paeon"] = { status_id = 101, endtime = dummy_short, recipients = { 77 }, is_dummy = true }
+brd._test.state.owners["Army's Paeon II"] = { status_id = 101, endtime = dummy_middle, recipients = { 77 }, is_dummy = true }
+brd._test.state.owners['Goblin Gavotte'] = { status_id = 105, endtime = dummy_long, recipients = { 77 }, is_dummy = true }
+action = brd.propose(clarion_cooldown_config, { now = 15.1, player = player, action_ready = clarion_cooldown_ready })
+assert_equal(action.action_name, 'Honor March', 'three tracked dummies must use a desired song to grow safely to the fourth slot')
+assert_equal(action.reason_code, 'brd_build_capacity_final', 'desired-song capacity growth reason mismatch')
+assert_equal(action.detail.cast_capacity, 4, 'pre-Clarion desired-song capacity growth must stop at four slots')
+
+brd.reset('five_clarion_four_slots_with_dummies_test')
+local degraded_final = dummy_long + 600
+brd.on_status_snapshot({
+	[100] = { count = 1, endtimes = { degraded_final } },
+	[101] = { count = 2, endtimes = { dummy_short, dummy_middle } },
+	[105] = { count = 1, endtimes = { dummy_long } },
+}, 15.2)
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = degraded_final, recipients = { 77 }, is_dummy = false }
+brd._test.state.owners["Army's Paeon"] = { status_id = 101, endtime = dummy_short, recipients = { 77 }, is_dummy = true }
+brd._test.state.owners["Army's Paeon II"] = { status_id = 101, endtime = dummy_middle, recipients = { 77 }, is_dummy = true }
+brd._test.state.owners['Goblin Gavotte'] = { status_id = 105, endtime = dummy_long, recipients = { 77 }, is_dummy = true }
+action = brd.propose(clarion_cooldown_config, { now = 15.2, player = player, action_ready = clarion_cooldown_ready })
+assert_equal(action.action_name, 'Victory March', 'degraded four-slot setup must replace a uniquely shortest dummy with the next final song')
+assert_equal(action.reason_code, 'brd_degraded_replace_dummy', 'degraded dummy replacement reason mismatch')
+
+brd.reset('five_clarion_degraded_alignment_test')
+local alignment_victory = dummy_short
+local alignment_dummy = alignment_victory + 300
+local alignment_minuet = alignment_dummy + 600
+local alignment_honor = alignment_minuet + 600
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { alignment_victory, alignment_honor } },
+	[101] = { count = 1, endtimes = { alignment_dummy } },
+	[103] = { count = 1, endtimes = { alignment_minuet } },
+}, 15.21)
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = alignment_victory, recipients = { 77 }, is_dummy = false }
+brd._test.state.owners["Army's Paeon"] = { status_id = 101, endtime = alignment_dummy, recipients = { 77 }, is_dummy = true }
+brd._test.state.owners['Valor Minuet V'] = { status_id = 103, endtime = alignment_minuet, recipients = { 77 }, is_dummy = false }
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = alignment_honor, recipients = { 77 }, is_dummy = false }
+action = brd.propose(clarion_cooldown_config, { now = 15.21, player = player, action_ready = clarion_cooldown_ready })
+assert_equal(action.action_name, 'Victory March', 'a desired song shorter than the remaining dummy must be exact-refreshed for alignment')
+assert_equal(action.reason_code, 'brd_degraded_align_shortest', 'degraded alignment refresh reason mismatch')
+
+brd.reset('five_clarion_degraded_aligned_dummy_test')
+local aligned_victory = alignment_honor + 600
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { alignment_honor, aligned_victory } },
+	[101] = { count = 1, endtimes = { alignment_dummy } },
+	[103] = { count = 1, endtimes = { alignment_minuet } },
+}, 15.215)
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = aligned_victory, recipients = { 77 }, is_dummy = false }
+brd._test.state.owners["Army's Paeon"] = { status_id = 101, endtime = alignment_dummy, recipients = { 77 }, is_dummy = true }
+brd._test.state.owners['Valor Minuet V'] = { status_id = 103, endtime = alignment_minuet, recipients = { 77 }, is_dummy = false }
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = alignment_honor, recipients = { 77 }, is_dummy = false }
+action = brd.propose(clarion_cooldown_config, { now = 15.215, player = player, action_ready = clarion_cooldown_ready })
+assert_equal(action.action_name, 'Valor Minuet IV', 'after alignment the missing final must replace the uniquely shortest dummy')
+assert_equal(action.reason_code, 'brd_degraded_replace_dummy', 'post-alignment dummy replacement reason mismatch')
+
+brd.reset('five_clarion_reload_partial_ownership_test')
+local unknown_long = degraded_final + 1200
+brd.on_status_snapshot({
+	[101] = { count = 2, endtimes = { dummy_short, dummy_middle } },
+	[103] = { count = 1, endtimes = { degraded_final } },
+	[104] = { count = 1, endtimes = { unknown_long } },
+}, 15.22)
+brd._test.state.owners["Army's Paeon"] = { status_id = 101, endtime = dummy_short, recipients = { 77 }, is_dummy = true }
+brd._test.state.owners["Army's Paeon II"] = { status_id = 101, endtime = dummy_middle, recipients = { 77 }, is_dummy = true }
+action = brd.propose(clarion_cooldown_config, { now = 15.22, player = player, action_ready = clarion_cooldown_ready })
+assert_equal(action.action_name, 'Honor March', 'reload recovery may replace a uniquely shortest known dummy even when longer slots have unknown identity')
+assert_equal(action.reason_code, 'brd_degraded_replace_dummy', 'partial-ownership reload replacement reason mismatch')
+
+brd.reset('five_clarion_reload_unknown_shortest_test')
+local unknown_short = dummy_short - 600
+brd.on_status_snapshot({
+	[101] = { count = 2, endtimes = { dummy_short, dummy_middle } },
+	[103] = { count = 1, endtimes = { unknown_short } },
+	[104] = { count = 1, endtimes = { unknown_long } },
+}, 15.23)
+brd._test.state.owners["Army's Paeon"] = { status_id = 101, endtime = dummy_short, recipients = { 77 }, is_dummy = true }
+brd._test.state.owners["Army's Paeon II"] = { status_id = 101, endtime = dummy_middle, recipients = { 77 }, is_dummy = true }
+action = brd.propose(clarion_cooldown_config, { now = 15.23, player = player, action_ready = clarion_cooldown_ready })
+assert_equal(action.action_name, 'Honor March', 'reload recovery must rebuild desired identity when the uniquely shortest slot is unknown')
+assert_equal(action.reason_code, 'brd_degraded_rebuild_unknown', 'unknown-slot rebuild reason mismatch')
+
+brd.reset('five_clarion_degraded_test')
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { cooldown_one, cooldown_two } },
+	[103] = { count = 2, endtimes = { cooldown_three, cooldown_four } },
+}, 15.25)
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = cooldown_one, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = cooldown_two, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet V'] = { status_id = 103, endtime = cooldown_three, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet IV'] = { status_id = 103, endtime = cooldown_four, recipients = { 77 } }
+action = brd.propose(clarion_cooldown_config, { now = 15.25, player = player, action_ready = clarion_cooldown_ready })
+assert_true(action == nil, 'a lost fifth slot must remain degraded instead of rotating four songs while Clarion is unavailable')
+assert_true(table.concat(brd.status_lines(), ' | '):find('degraded_fifth_waiting_for_clarion', 1, true) ~= nil, 'degraded fifth-slot state must be diagnostic')
+
+brd.reset('five_clarion_active_capacity_test')
+player.buffs = { 499 }
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { cooldown_one, cooldown_two } },
+	[103] = { count = 2, endtimes = { cooldown_three, cooldown_four } },
+}, 15.5)
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = cooldown_one, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = cooldown_two, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet V'] = { status_id = 103, endtime = cooldown_three, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet IV'] = { status_id = 103, endtime = cooldown_four, recipients = { 77 } }
+action = brd.propose(clarion_cooldown_config, { now = 15.5, player = player, action_ready = clarion_cooldown_ready })
+assert_equal(action.action_name, "Army's Paeon", 'four-to-five recovery needs only one capacity dummy while Clarion is active')
+assert_equal(action.detail.cast_capacity, 5, 'Clarion capacity dummy must require five-song add capacity')
+player.buffs = {}
+
+brd.reset('five_clarion_cooldown_force_test')
+local cooldown_force_five = cooldown_four + 600
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { cooldown_one, cooldown_two } },
+	[103] = { count = 2, endtimes = { cooldown_three, cooldown_four } },
+	[104] = { count = 1, endtimes = { cooldown_force_five } },
+}, 16)
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = cooldown_one, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = cooldown_two, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet V'] = { status_id = 103, endtime = cooldown_three, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet IV'] = { status_id = 103, endtime = cooldown_four, recipients = { 77 } }
+brd._test.state.owners['Mage\'s Ballad III'] = { status_id = 104, endtime = cooldown_force_five, recipients = { 77 } }
+brd._test.state.force = {
+	complete = {
+		['Honor March'] = true,
+		['Victory March'] = true,
+		['Valor Minuet V'] = true,
+		['Valor Minuet IV'] = true,
+	},
+	started_at = 16,
+}
+action = brd.propose(clarion_cooldown_config, { now = 16, player = player, action_ready = clarion_cooldown_ready })
+assert_equal(action.action_name, 'Mage\'s Ballad III', 'NITRO generation must refresh a persisted fifth song while Clarion is on cooldown')
+assert_equal(action.reason_code, 'brd_nitro_forced_refresh', 'persisted fifth NITRO refresh reason mismatch')
+
 brd.reset('nitro_test')
 local nitro_config = {
 	enabled = true,
 	songs = { 'Honor March', 'Victory March' },
 	dummy_songs = {},
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
 	use_nitro = true,
 	use_clarion_call = false,
 	use_marcato = true,

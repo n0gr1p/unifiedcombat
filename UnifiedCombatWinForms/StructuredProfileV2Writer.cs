@@ -433,7 +433,7 @@ internal static class StructuredProfileV2Writer
             partner.Add("puller_name", pullerName);
         }
 
-        return new StructuredProfileNode()
+        var follow = new StructuredProfileNode()
             .Add("enabled", true)
             .Add(
                 "party",
@@ -448,6 +448,58 @@ internal static class StructuredProfileV2Writer
                 BuildFightLeader(flatProfile)
             )
             .Add("partner", partner);
+
+        var nyzul = BuildNyzul(flatProfile);
+        if (nyzul is not null)
+        {
+            follow.Add("nyzul", nyzul);
+        }
+
+        return follow;
+    }
+
+    private static StructuredProfileNode? BuildNyzul(JsonObject flatProfile)
+    {
+        var coordinator = StripTrailingDisplayIndex(ReadString(flatProfile, "nyzul_coordinator_name", ""));
+        var anchor = StripTrailingDisplayIndex(ReadString(flatProfile, "nyzul_anchor_name", ""));
+        var parkingOrder = ParseNameList(ReadString(flatProfile, "nyzul_parking_order", ""));
+        if (coordinator.Length == 0 && anchor.Length == 0 && parkingOrder.Count == 0)
+        {
+            return null;
+        }
+        if (coordinator.Length == 0)
+        {
+            throw new InvalidDataException("configured Nyzul roster requires a coordinator name");
+        }
+        if (anchor.Length == 0)
+        {
+            throw new InvalidDataException("configured Nyzul roster requires an anchor name");
+        }
+        if (parkingOrder.Count == 0)
+        {
+            throw new InvalidDataException("configured Nyzul roster requires at least one parker");
+        }
+        if (string.Equals(coordinator, anchor, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("Nyzul coordinator and anchor must be different characters");
+        }
+        foreach (var rawName in parkingOrder)
+        {
+            var name = rawName?.ToString() ?? "";
+            if (string.Equals(name, coordinator, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("Nyzul parking order cannot contain the coordinator");
+            }
+            if (string.Equals(name, anchor, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("Nyzul parking order cannot contain the anchor");
+            }
+        }
+
+        return new StructuredProfileNode()
+            .Add("coordinator_name", coordinator)
+            .Add("anchor_name", anchor)
+            .Add("parking_order", parkingOrder);
     }
 
     private static StructuredProfileNode BuildFightLeader(JsonObject flatProfile)
@@ -568,6 +620,8 @@ internal static class StructuredProfileV2Writer
 					.Add("use_clarion_call", ReadBool(flatProfile, "brd_use_clarion_call", false))
 					.Add("use_marcato", ReadBool(flatProfile, "brd_use_marcato", false))
 					.Add("marcato_song", ReadString(flatProfile, "brd_marcato_song", ""))
+					.Add("recovery_range_yalms", ReadBoundedDouble(flatProfile, "brd_recovery_range_yalms", 9.9, 1.0, 20.0))
+					.Add("recovery_ignore_names", SplitPipeList(ReadString(flatProfile, "brd_recovery_ignore_names", "")))
 			);
 		}
 
@@ -966,6 +1020,24 @@ internal static class StructuredProfileV2Writer
         }
         return value;
     }
+
+	private static double ReadBoundedDouble(JsonObject flatProfile, string key, double defaultValue, double minimum, double maximum)
+	{
+		if (!flatProfile.TryGetPropertyValue(key, out var node) || node is null)
+		{
+			return defaultValue;
+		}
+		var raw = ReadString(flatProfile, key, "");
+		if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+		{
+			throw new InvalidDataException($"setting {key} is not numeric: {raw}");
+		}
+		if (value < minimum || value > maximum)
+		{
+			throw new InvalidDataException($"setting {key} is outside {minimum}..{maximum}: {value}");
+		}
+		return value;
+	}
 
     private static bool ReadFormationBool(JsonObject flatProfile, string key, bool defaultValue)
     {

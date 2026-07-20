@@ -221,6 +221,8 @@ local function main()
 					enabled = true,
 					songs = { 'Honor March', 'Victory March' },
 					dummy_songs = {},
+					recovery_range_yalms = 14.5,
+					recovery_ignore_names = { 'Niightsiide' },
 					use_nitro = false,
 					use_clarion_call = false,
 					use_marcato = false,
@@ -229,6 +231,11 @@ local function main()
 				geo = { 'Geo-Frailty' },
 			},
 			follow = {
+				nyzul = {
+					coordinator_name = 'Audit',
+					anchor_name = 'Terrasjr',
+					parking_order = { 'Niightsiide', 'Nyoourke' },
+				},
 				fight = {
 					leader = true,
 					leader_name = 'Niightsiide',
@@ -267,10 +274,15 @@ local function main()
 	assert_equal(active_config.get_path('config.follow.fight.leader_name'), 'Niightsiide', 'active fight leader name mismatch')
 	assert_equal(active_config.get_path('config.follow.partner.puller_name'), 'Niightsiide', 'active puller name mismatch')
 	assert_equal(active_config.get_path('config.follow.partner.engage_range'), 9.5, 'active puller engage range mismatch')
+	assert_equal(active_config.get_path('config.follow.nyzul.coordinator_name'), 'Audit', 'active Nyzul coordinator mismatch')
+	assert_equal(active_config.get_path('config.follow.nyzul.anchor_name'), 'Terrasjr', 'active Nyzul anchor mismatch')
+	assert_equal(active_config.get_path('config.follow.nyzul.parking_order')[2], 'Nyoourke', 'active Nyzul parking order mismatch')
 	assert_equal(active_config.get_path('config.sleep.max_target_range'), 14.0, 'active sleep target range mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Target', 'active targeted buff character mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].buff, 'Victory March', 'active targeted buff name mismatch')
 	assert_equal(active_config.get_path('config.maintenance.brd.songs')[1], 'Honor March', 'active BRD maintenance list mismatch')
+	assert_equal(active_config.get_path('config.maintenance.brd.recovery_range_yalms'), 14.5, 'active BRD recovery range mismatch')
+	assert_equal(active_config.get_path('config.maintenance.brd.recovery_ignore_names')[1], 'Niightsiide', 'active BRD recovery ignore list mismatch')
 	assert_equal(active_config.get_path('config.maintenance.geo')[1], 'Geo-Frailty', 'active GEO maintenance list mismatch')
 
 	local projected, project_err = active_config.project_flat_settings(active_profile, {})
@@ -294,10 +306,15 @@ local function main()
 	assert_equal(projected.puller_name, 'Niightsiide', 'projected puller name mismatch')
 	assert_equal(projected.puller_id, 77, 'projected puller id mismatch')
 	assert_equal(projected.puller_engage_range, 9.5, 'projected puller engage range mismatch')
+	assert_equal(projected.nyzul_coordinator_name, 'Audit', 'projected Nyzul coordinator mismatch')
+	assert_equal(projected.nyzul_anchor_name, 'Terrasjr', 'projected Nyzul anchor mismatch')
+	assert_equal(projected.nyzul_parking_order[1], 'Niightsiide', 'projected Nyzul parking order mismatch')
 	assert_equal(projected.sleep_max_target_range, 14.0, 'projected sleep target range mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Target:Victory March', 'projected targeted buff string mismatch')
 	assert_equal(projected.maintenance_brd.songs[1], 'Honor March', 'projected BRD maintenance list mismatch')
 	assert_equal(projected.brd_songs[2], 'Victory March', 'projected BRD flat song list mismatch')
+	assert_equal(projected.brd_recovery_range_yalms, 14.5, 'projected BRD recovery range mismatch')
+	assert_equal(projected.brd_recovery_ignore_names[1], 'Niightsiide', 'projected BRD recovery ignore list mismatch')
 	assert_equal(projected.maintenance_geo[1], 'Geo-Frailty', 'projected GEO maintenance list mismatch')
 	assert_equal(runtime_overrides.fight_leader_id(projected), 77, 'fight leader helper must resolve the leader name before the id')
 	assert_true(uc_ignore.is_name_blocked({ wait_ignore_names = { 'Niightsiide' } }, 'Niightsiide') == true, 'wait ignore helper must block by name')

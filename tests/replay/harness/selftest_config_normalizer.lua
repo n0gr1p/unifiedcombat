@@ -141,6 +141,9 @@ local function build_flat_settings()
         puller_engage_range = 9.5,
         puller_distance_only = true,
         puller_name = 'Niightsiide',
+		nyzul_coordinator_name = 'Redrogue',
+		nyzul_anchor_name = 'Terrasjr',
+		nyzul_parking_order = 'Nyoourke|Ponponponponp',
         partner_id = 11,
         partner_id2 = 22,
         partner_ids = { 11, 22 },
@@ -187,6 +190,7 @@ local function build_flat_settings()
         brd_use_clarion_call = false,
         brd_use_marcato = true,
         brd_marcato_song = 'Honor March',
+		brd_recovery_range_yalms = 12.4,
         path_recording = true,
         path_follow_enabled = true,
         path_file_name = 'route.json',
@@ -390,6 +394,11 @@ local function build_nested_settings()
                 engage_range = 8.5,
                 puller_distance_only = true,
             },
+			nyzul = {
+				coordinator_name = 'Redrogue',
+				anchor_name = 'Terrasjr',
+				parking_order = { 'Nyoourke', 'Ponponponponp' },
+			},
         },
         targeting = {
             add_control = true,
@@ -441,6 +450,7 @@ local function build_nested_settings()
                 use_clarion_call = false,
                 use_marcato = true,
                 marcato_song = 'Honor March',
+				recovery_range_yalms = 17.5,
             },
             geo = {
                 bubble = 'Entrust',
@@ -554,6 +564,9 @@ local function main()
     assert_equal(flat_config.follow.partner.secondary_enabled, true, 'partner2 mismatch')
     assert_equal(flat_config.follow.partner.puller_name, 'Niightsiide', 'flat puller name mismatch')
     assert_equal(flat_config.follow.partner.engage_range, 9.5, 'flat puller engage range mismatch')
+	assert_equal(flat_config.follow.nyzul.coordinator_name, 'Redrogue', 'flat Nyzul coordinator mismatch')
+	assert_equal(flat_config.follow.nyzul.anchor_name, 'Terrasjr', 'flat Nyzul anchor mismatch')
+	assert_equal(flat_config.follow.nyzul.parking_order[1], 'Nyoourke', 'flat Nyzul parking order mismatch')
     assert_equal(flat_config.tank.enabled, true, 'tank mismatch')
     assert_equal(flat_config.tank.enmity.actions[2], 'Flash', 'tank enmity actions mismatch')
     assert_equal(flat_config.sleep.order[2], 'Sleepga', 'sleep order mismatch')
@@ -568,6 +581,7 @@ local function main()
     assert_equal(flat_config.maintenance.brd.dummy_songs[2], "Army's Paeon II", 'flat BRD dummy song list mismatch')
     assert_equal(flat_config.maintenance.brd.use_nitro, true, 'flat BRD NITRO mismatch')
     assert_equal(flat_config.maintenance.brd.marcato_song, 'Honor March', 'flat BRD Marcato song mismatch')
+	assert_equal(flat_config.maintenance.brd.recovery_range_yalms, 12.4, 'flat BRD recovery range mismatch')
     assert_equal(flat_config.debug.ja_debug, true, 'debug flag mismatch')
     assert_equal(flat_config.ownership.scheduler_dark_launch_maintenance, true, 'ownership flag mismatch')
     assert_equal(flat_config.legacy.command, true, 'legacy ambiguous flag mismatch')
@@ -601,9 +615,13 @@ local function main()
     assert_equal(nested_config.maintenance.brd.dummy_songs[1], "Army's Paeon", 'nested maintenance BRD dummy mismatch')
     assert_equal(nested_config.maintenance.brd.use_nitro, true, 'nested maintenance BRD NITRO mismatch')
     assert_equal(nested_config.maintenance.brd.marcato_song, 'Honor March', 'nested maintenance BRD Marcato mismatch')
+	assert_equal(nested_config.maintenance.brd.recovery_range_yalms, 17.5, 'nested maintenance BRD recovery range mismatch')
     assert_equal(nested_config.maintenance.geo.bubble, 'Entrust', 'nested maintenance GEO mismatch')
     assert_equal(nested_config.follow.partner.puller_name, 'Niightsiide', 'nested puller name mismatch')
     assert_equal(nested_config.follow.partner.engage_range, 8.5, 'nested puller engage range mismatch')
+	assert_equal(nested_config.follow.nyzul.coordinator_name, 'Redrogue', 'nested Nyzul coordinator mismatch')
+	assert_equal(nested_config.follow.nyzul.anchor_name, 'Terrasjr', 'nested Nyzul anchor mismatch')
+	assert_equal(nested_config.follow.nyzul.parking_order[2], 'Ponponponponp', 'nested Nyzul parking order mismatch')
     assert_equal(nested_config.sleep.max_target_range, 12.0, 'nested sleep target range mismatch')
 
     nested_config.abilities.configured[1] = 'Changed'

@@ -303,23 +303,42 @@ local function strip_non_applicable_maintenance(current_config, target_config, m
 		if current_maintenance then current_maintenance.brd = nil end
 		if target_maintenance then target_maintenance.brd = nil end
 	else
+		local function canonicalize_brd_recovery_config(value)
+			if type(value) == 'table' then
+				if value.recovery_range_yalms == nil then
+					value.recovery_range_yalms = 9.9
+				end
+				if value.recovery_ignore_names == nil then
+					value.recovery_ignore_names = {}
+				end
+			end
+			return value
+		end
 		local function default_disabled_brd(value)
 			if type(value) ~= 'table' then
 				return false
 			end
-			if next(value) == nil then
+			if next(value) == nil or (
+				value.recovery_range_yalms == 9.9
+				and type(value.recovery_ignore_names) == 'table' and #value.recovery_ignore_names == 0
+				and value.enabled == nil and value.songs == nil and value.dummy_songs == nil
+				and value.use_nitro == nil and value.use_clarion_call == nil and value.use_marcato == nil
+				and value.marcato_song == nil
+			) then
 				return true
 			end
 			return value.enabled == false
 				and type(value.songs) == 'table' and #value.songs == 0
 				and type(value.dummy_songs) == 'table' and #value.dummy_songs == 0
+				and value.recovery_range_yalms == 9.9
+				and type(value.recovery_ignore_names) == 'table' and #value.recovery_ignore_names == 0
 				and value.use_nitro == false
 				and value.use_clarion_call == false
 				and value.use_marcato == false
 				and tostring(value.marcato_song or '') == ''
 		end
-		local current_brd = current_maintenance and current_maintenance.brd or nil
-		local target_brd = target_maintenance and target_maintenance.brd or nil
+		local current_brd = canonicalize_brd_recovery_config(current_maintenance and current_maintenance.brd or nil)
+		local target_brd = canonicalize_brd_recovery_config(target_maintenance and target_maintenance.brd or nil)
 		local current_default = current_brd == nil or default_disabled_brd(current_brd)
 		local target_default = target_brd == nil or default_disabled_brd(target_brd)
 		if current_default and target_default then
@@ -368,6 +387,32 @@ local function canonicalize_unset_puller_name(config)
 		follow.partner.puller_name = nil
 	end
 
+	return config
+end
+
+local function canonicalize_empty_nyzul(config)
+	if type(config) ~= 'table' or type(config.follow) ~= 'table' then
+		return config
+	end
+	local nyzul = config.follow.nyzul
+	if type(nyzul) ~= 'table' then
+		return config
+	end
+	local order = nyzul.parking_order
+	local has_parker = false
+	if type(order) == 'table' then
+		for i = 1, #order do
+			if trim_string(order[i]) ~= '' then
+				has_parker = true
+				break
+			end
+		end
+	end
+	if trim_string(nyzul.coordinator_name) == ''
+		and trim_string(nyzul.anchor_name) == ''
+		and not has_parker then
+		config.follow.nyzul = nil
+	end
 	return config
 end
 
@@ -517,6 +562,7 @@ end
 function M.build_structured_profile(settings, meta)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
 	local resolved_meta = normalized_meta(meta)
+	local durable_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta))))
 	if resolved_meta.profile_key ~= nil then
 		return {
 			version = 2,
@@ -530,7 +576,7 @@ function M.build_structured_profile(settings, meta)
 				exported_at = resolved_meta.exported_at,
 				profile_key = resolved_meta.profile_key,
 			},
-			config = pick_durable_config_domains(normalized, meta),
+			config = durable_config,
 		}
 	end
 	return {
@@ -544,13 +590,13 @@ function M.build_structured_profile(settings, meta)
 			source = 'exported_from_v1_settings',
 			exported_at = resolved_meta.exported_at,
 		},
-		config = pick_durable_config_domains(normalized, meta),
+		config = durable_config,
 	}
 end
 
 function M.build_durable_config(settings, meta)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
-	return canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta)))
+	return canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta))))
 end
 
 function M.format_structured_profile_diff_value(value)
@@ -1105,8 +1151,8 @@ end
 function M.diff_durable_config(current_config, target_config)
 	local differences = {}
 	local details = {}
-	current_config = canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(current_config)))))
-	target_config = canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(target_config)))))
+	current_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(current_config))))))
+	target_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(target_config))))))
 	current_config, target_config = canonicalize_optional_control_ranges(current_config, target_config)
 	diff_values(
 		current_config,

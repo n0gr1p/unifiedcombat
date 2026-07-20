@@ -339,6 +339,11 @@ public partial class MainForm
             _pullerCombo.Items.Clear();
             _fightLeaderCombo.Items.Clear();
             _partyFollowCombo.Items.Clear();
+			_nyzulCoordinatorCombo.Items.Clear();
+			_nyzulAnchorCombo.Items.Clear();
+			_nyzulParkerCombo.Items.Clear();
+			_nyzulParkingList.Items.Clear();
+			_nyzulParkingOrder.Clear();
             _aftermathCombo.Items.Clear();
             _aftermathCombo.Enabled = false;
             _defProviderCombo.SelectedIndex = _defProviderCombo.Items.IndexOf("internal");
@@ -484,6 +489,7 @@ public partial class MainForm
             _targetIgnoreRows = [];
             _addPriorityRows = [];
             _sleepSpellRows = [];
+			_nyzulParkingOrder.Clear();
         }
 
         var eng = SessionStateHelper.GetString(s, "engine", "melee");
@@ -589,6 +595,17 @@ public partial class MainForm
             BindPartyCombo(_partyFollowCombo, partnerOpts, selPf);
             _partyFollowCombo.Enabled = pfOn;
             UpdatePartyFollowModeWarning(sid);
+
+			var nyzulCoordinator = NormalizePartyName(SessionStateHelper.GetString(s, "nyzul_coordinator_name"));
+			var nyzulAnchor = NormalizePartyName(SessionStateHelper.GetString(s, "nyzul_anchor_name"));
+			BindPartyCombo(_nyzulCoordinatorCombo, partnerOpts, nyzulCoordinator);
+			BindPartyCombo(_nyzulAnchorCombo, partnerOpts, nyzulAnchor);
+			BindPartyCombo(_nyzulParkerCombo, partnerOpts, "");
+			_nyzulParkingOrder.Clear();
+			_nyzulParkingOrder.AddRange(SessionStateHelper.SplitOptions(
+				s.TryGetProperty("nyzul_parking_order", out var nyzulOrder) ? nyzulOrder : default
+			));
+			RebindNyzulParkingList();
 
             _pfFollowMinYalms.Enabled = pfOn;
             _pfFollowMaxYalms.Enabled = pfOn;
@@ -725,6 +742,8 @@ public partial class MainForm
                 _brdUseClarion.Checked = SessionStateHelper.GetBool(s, "brd_use_clarion_call", false);
                 _brdUseMarcato.Checked = SessionStateHelper.GetBool(s, "brd_use_marcato", false);
                 RefreshBrdMarcatoOptions(SessionStateHelper.GetString(s, "brd_marcato_song"));
+				ApplyBrdRecoveryRange(s);
+				_brdRecoveryIgnoreNames.Text = SessionStateHelper.GetString(s, "brd_recovery_ignore_names");
                 var subBrdOnly = !string.Equals(mainJob, "BRD", StringComparison.Ordinal) && string.Equals(subJob, "BRD", StringComparison.Ordinal);
                 _brdUseNitro.Enabled = !subBrdOnly;
                 _brdUseClarion.Enabled = !subBrdOnly;
@@ -887,6 +906,9 @@ public partial class MainForm
                 var keepPuller = SelectedPartyName(_pullerCombo);
                 var keepFightLeader = SelectedPartyName(_fightLeaderCombo);
                 var keepPartyFollow = SelectedPartyName(_partyFollowCombo);
+				var keepNyzulCoordinator = SelectedPartyName(_nyzulCoordinatorCombo);
+				var keepNyzulAnchor = SelectedPartyName(_nyzulAnchorCombo);
+				var keepNyzulParker = SelectedPartyName(_nyzulParkerCombo);
                 if (string.IsNullOrWhiteSpace(snapPuller) && !string.IsNullOrWhiteSpace(keepPuller))
                 {
                     snapPuller = keepPuller;
@@ -902,6 +924,9 @@ public partial class MainForm
                 BindPartyCombo(_pullerCombo, pullerOpts, snapPuller);
                 BindPartyCombo(_fightLeaderCombo, partnerOpts, snapFightLeader);
                 BindPartyCombo(_partyFollowCombo, partnerOpts, snapPartyFollow);
+				BindPartyCombo(_nyzulCoordinatorCombo, partnerOpts, keepNyzulCoordinator);
+				BindPartyCombo(_nyzulAnchorCombo, partnerOpts, keepNyzulAnchor);
+				BindPartyCombo(_nyzulParkerCombo, partnerOpts, keepNyzulParker);
                 UpdatePartyFollowModeWarning(sid);
                 var selectedNames = SessionStateHelper.SplitOptions(s.TryGetProperty("cor_roll_range_selected", out var crs2) ? crs2 : default);
                 RenderCorRangePartyChecks(sid, selectedNames);
@@ -1537,6 +1562,20 @@ public partial class MainForm
         list.Items.Clear();
         list.Items.AddRange(incoming.Cast<object>().ToArray());
     }
+
+	private void ApplyBrdRecoveryRange(JsonElement snapshot)
+	{
+		var raw = SessionStateHelper.GetString(snapshot, "brd_recovery_range_yalms", "9.9");
+		if (!decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+		{
+			throw new InvalidDataException($"BRD recovery range is not numeric: {raw}");
+		}
+		if (value < _brdRecoveryRangeYalms.Minimum || value > _brdRecoveryRangeYalms.Maximum)
+		{
+			throw new InvalidDataException($"BRD recovery range is outside 1.0..20.0: {value}");
+		}
+		_brdRecoveryRangeYalms.Value = value;
+	}
 
     private void RefreshBrdSongPickOptions(ComboBox combo)
     {
@@ -2985,6 +3024,76 @@ public partial class MainForm
         ApplyNumericTextIfChanged(_spSwitchMargin, repelWeightSrv);
         ApplyNumericTextIfChanged(_spArrivalTolerance, bandDeadbandSrv);
     }
+
+	private void RebindNyzulParkingList()
+	{
+		var selected = _nyzulParkingList.SelectedIndex;
+		_nyzulParkingList.Items.Clear();
+		for (var i = 0; i < _nyzulParkingOrder.Count; i++)
+		{
+			_nyzulParkingList.Items.Add($"{i + 1}. {FormatPartyDisplayName(_nyzulParkingOrder[i])}");
+		}
+		if (_nyzulParkingOrder.Count > 0)
+		{
+			_nyzulParkingList.SelectedIndex = Math.Clamp(selected, 0, _nyzulParkingOrder.Count - 1);
+		}
+	}
+
+	private void OnNyzulConfigChanged()
+	{
+		if (_suppressEvents || string.IsNullOrWhiteSpace(_selectedSid))
+		{
+			return;
+		}
+		CaptureWorkingProfileFromUi(_selectedSid);
+	}
+
+	private void NyzulParkerAdd()
+	{
+		var name = SelectedPartyName(_nyzulParkerCombo);
+		if (string.IsNullOrWhiteSpace(name))
+		{
+			return;
+		}
+		var coordinator = SelectedPartyName(_nyzulCoordinatorCombo);
+		var anchor = SelectedPartyName(_nyzulAnchorCombo);
+		if (string.Equals(name, coordinator, StringComparison.OrdinalIgnoreCase)
+			|| string.Equals(name, anchor, StringComparison.OrdinalIgnoreCase)
+			|| _nyzulParkingOrder.Any(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase)))
+		{
+			return;
+		}
+		_nyzulParkingOrder.Add(name);
+		RebindNyzulParkingList();
+		_nyzulParkingList.SelectedIndex = _nyzulParkingOrder.Count - 1;
+		OnNyzulConfigChanged();
+	}
+
+	private void NyzulParkerRemove()
+	{
+		var index = _nyzulParkingList.SelectedIndex;
+		if (index < 0 || index >= _nyzulParkingOrder.Count)
+		{
+			return;
+		}
+		_nyzulParkingOrder.RemoveAt(index);
+		RebindNyzulParkingList();
+		OnNyzulConfigChanged();
+	}
+
+	private void NyzulParkerMove(int delta)
+	{
+		var index = _nyzulParkingList.SelectedIndex;
+		var next = index + delta;
+		if (index < 0 || next < 0 || next >= _nyzulParkingOrder.Count)
+		{
+			return;
+		}
+		(_nyzulParkingOrder[index], _nyzulParkingOrder[next]) = (_nyzulParkingOrder[next], _nyzulParkingOrder[index]);
+		RebindNyzulParkingList();
+		_nyzulParkingList.SelectedIndex = next;
+		OnNyzulConfigChanged();
+	}
 
     private void OnDefProviderSelected()
     {

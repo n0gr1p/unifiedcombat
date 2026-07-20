@@ -10,14 +10,17 @@ local INVENTORY_BASELINE = {
         ["uc_settarget.select_by_id("] = { 2040, 2176 },
     },
     ["UnifiedCombat.lua"] = {
-        ["windower.ffxi.run("] = { 409 },
+        ["windower.ffxi.run("] = { 413 },
     },
     ["uc_party_follow.lua"] = {
-        ["windower.ffxi.run("] = { 909, 936, 946, 959, 964, 969 },
+        ["windower.ffxi.run("] = { 916, 943, 953, 966, 971, 976 },
     },
     ["uc_pathing.lua"] = {
-        ["windower.ffxi.run("] = { 895, 905 },
+        ["windower.ffxi.run("] = { 896, 906 },
     },
+	["uc_nyzul_runtime.lua"] = {
+		["windower.ffxi.run("] = { 51 },
+	},
     ["uc_add_control.lua"] = {
         ["windower.send_command("] = { 433, 474, 476 },
     },

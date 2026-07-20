@@ -441,6 +441,11 @@ local function default_config(meta)
                 engage_range = 6.0,
                 puller_distance_only = false,
             },
+			nyzul = {
+				coordinator_name = '',
+				anchor_name = '',
+				parking_order = {},
+			},
         },
         targeting = {
             add_control = false,
@@ -494,6 +499,8 @@ local function default_config(meta)
                 use_clarion_call = false,
                 use_marcato = false,
                 marcato_song = '',
+				recovery_range_yalms = 9.9,
+				recovery_ignore_names = {},
             },
             geo = {},
         },
@@ -775,7 +782,7 @@ end
 local function normalize_follow(source, config)
     local follow = config.follow
     local nested = get_path(source, { 'follow' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'party', 'fight', 'partner' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'party', 'fight', 'partner', 'nyzul' }) then
         follow.enabled = normalize_boolean(nested.enabled, follow.enabled)
         local party = is_table(nested.party) and nested.party or {}
         follow.party.enabled = normalize_boolean(party.enabled, follow.party.enabled)
@@ -798,6 +805,10 @@ local function normalize_follow(source, config)
         follow.partner.puller_id = normalize_number(partner.puller_id, follow.partner.puller_id, { integer = true })
         follow.partner.engage_range = normalize_number(partner.engage_range, follow.partner.engage_range, { min = 0.1, max = 50.0 })
         follow.partner.puller_distance_only = normalize_boolean(partner.puller_distance_only, follow.partner.puller_distance_only)
+		local nyzul = is_table(nested.nyzul) and nested.nyzul or {}
+		follow.nyzul.coordinator_name = normalize_string(nyzul.coordinator_name, follow.nyzul.coordinator_name)
+		follow.nyzul.anchor_name = normalize_string(nyzul.anchor_name, follow.nyzul.anchor_name)
+		follow.nyzul.parking_order = normalize_pipe_string_list(nyzul.parking_order, follow.nyzul.parking_order)
     else
         follow.enabled = normalize_boolean(first_path(source, { path('domain_follow_enabled') }), follow.enabled)
         follow.party.enabled = normalize_boolean(first_path(source, { path('party_follow') }), follow.party.enabled)
@@ -818,6 +829,9 @@ local function normalize_follow(source, config)
         follow.partner.puller_id = normalize_number(first_path(source, { path('puller_id') }), follow.partner.puller_id, { integer = true })
         follow.partner.engage_range = normalize_number(first_path(source, { path('puller_engage_range') }), follow.partner.engage_range, { min = 0.1, max = 50.0 })
         follow.partner.puller_distance_only = normalize_boolean(first_path(source, { path('puller_distance_only') }), follow.partner.puller_distance_only)
+		follow.nyzul.coordinator_name = normalize_string(first_path(source, { path('nyzul_coordinator_name') }), follow.nyzul.coordinator_name)
+		follow.nyzul.anchor_name = normalize_string(first_path(source, { path('nyzul_anchor_name') }), follow.nyzul.anchor_name)
+		follow.nyzul.parking_order = normalize_pipe_string_list(first_path(source, { path('nyzul_parking_order') }), follow.nyzul.parking_order)
     end
 end
 
@@ -971,6 +985,8 @@ local function normalize_maintenance(source, config)
         maintenance.brd.use_clarion_call = normalize_boolean(brd.use_clarion_call, maintenance.brd.use_clarion_call)
         maintenance.brd.use_marcato = normalize_boolean(brd.use_marcato, maintenance.brd.use_marcato)
         maintenance.brd.marcato_song = normalize_string(brd.marcato_song, maintenance.brd.marcato_song)
+		maintenance.brd.recovery_range_yalms = normalize_number(brd.recovery_range_yalms, maintenance.brd.recovery_range_yalms, { min = 1.0, max = 20.0 })
+		maintenance.brd.recovery_ignore_names = normalize_pipe_string_list(brd.recovery_ignore_names, maintenance.brd.recovery_ignore_names)
         maintenance.geo = normalize_list(nested.geo, maintenance.geo)
     else
         maintenance.enabled = normalize_boolean(first_path(source, { path('domain_maintenance_enabled') }), maintenance.enabled)
@@ -988,6 +1004,8 @@ local function normalize_maintenance(source, config)
         maintenance.brd.use_clarion_call = normalize_boolean(first_path(source, { path('brd_use_clarion_call') }), maintenance.brd.use_clarion_call)
         maintenance.brd.use_marcato = normalize_boolean(first_path(source, { path('brd_use_marcato') }), maintenance.brd.use_marcato)
         maintenance.brd.marcato_song = normalize_string(first_path(source, { path('brd_marcato_song') }), maintenance.brd.marcato_song)
+		maintenance.brd.recovery_range_yalms = normalize_number(first_path(source, { path('brd_recovery_range_yalms') }), maintenance.brd.recovery_range_yalms, { min = 1.0, max = 20.0 })
+		maintenance.brd.recovery_ignore_names = normalize_pipe_string_list(first_path(source, { path('brd_recovery_ignore_names') }), maintenance.brd.recovery_ignore_names)
         maintenance.geo = normalize_list(first_path(source, { path('maintenance_geo') }), maintenance.geo)
     end
 end

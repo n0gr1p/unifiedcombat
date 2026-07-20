@@ -1,5 +1,7 @@
 # T3.3a — Bard song identity tracking audit
 
+> Historical note: this document describes the bounded identity heuristic that preceded the dedicated `maintenance_brd` provider. When `config.maintenance.brd.enabled` is true, beneficial Bard songs are excluded from generic defensive buff maintenance. Current local exact-song ownership is reconstructed by `uc_brd_maintenance.lua`, and current party recovery state is reduced per recipient by `uc_brd_party_song_state.lua`. The heuristic below remains only for the legacy generic defensive path.
+
 ## Observed bug
 
 - Defensive buff maintenance can be configured with multiple Bard songs from the same family, such as `Honor March|Victory March`.

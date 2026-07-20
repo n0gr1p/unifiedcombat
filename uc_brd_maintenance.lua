@@ -1,5 +1,6 @@
 local res = require('resources')
 local brd_song_options = require('uc_brd_song_options')
+local party_song_state = require('uc_brd_party_song_state')
 
 local M = {}
 
@@ -40,6 +41,7 @@ local state = {
 	nitro_was_active = false,
 	marcato_reservation = '',
 	config_signature = '',
+	recovery_range_yalms = 0,
 	identity = '',
 	last_blocker = 'not_evaluated',
 	last_transition = '',
@@ -196,6 +198,16 @@ local function is_general_song(spell)
 		and brd_song_options.is_self_target(spell.targets)
 end
 
+local function general_song_status_ids()
+	local ids = {}
+	for _, spell in pairs(ensure_spell_index()) do
+		if is_general_song(spell) and tonumber(spell.status_id) and tonumber(spell.status_id) > 0 then
+			ids[tonumber(spell.status_id)] = true
+		end
+	end
+	return ids
+end
+
 local function has_buff(player, buff_id)
 	for _, id in ipairs(type(player) == 'table' and player.buffs or {}) do
 		if tonumber(id) == tonumber(buff_id) then
@@ -315,6 +327,8 @@ local function config_signature(config, player)
 		tostring(config.enabled),
 		join(config.songs),
 		join(config.dummy_songs),
+		tostring(config.recovery_range_yalms),
+		join(config.recovery_ignore_names),
 		tostring(config.use_nitro),
 		tostring(config.use_clarion_call),
 		tostring(config.use_marcato),
@@ -340,6 +354,8 @@ local function effective_config(config, player)
 		enabled = config.enabled,
 		songs = songs,
 		dummy_songs = config.dummy_songs,
+		recovery_range_yalms = config.recovery_range_yalms,
+		recovery_ignore_names = config.recovery_ignore_names,
 		use_nitro = config.use_nitro,
 		use_clarion_call = config.use_clarion_call,
 		use_marcato = config.use_marcato,
@@ -351,8 +367,13 @@ local function validate_config(config, player)
 	if type(config) ~= 'table' then
 		return false, 'missing_config'
 	end
-	if type(config.enabled) ~= 'boolean' or type(config.songs) ~= 'table' or type(config.dummy_songs) ~= 'table' then
+	if type(config.enabled) ~= 'boolean' or type(config.songs) ~= 'table' or type(config.dummy_songs) ~= 'table'
+		or type(config.recovery_ignore_names) ~= 'table' then
 		return false, 'invalid_config_shape'
+	end
+	if type(config.recovery_range_yalms) ~= 'number'
+		or config.recovery_range_yalms < 1.0 or config.recovery_range_yalms > 20.0 then
+		return false, 'invalid_recovery_range_yalms'
 	end
 	if type(config.use_nitro) ~= 'boolean' or type(config.use_clarion_call) ~= 'boolean'
 		or type(config.use_marcato) ~= 'boolean' or type(config.marcato_song) ~= 'string' then
@@ -394,6 +415,11 @@ local function validate_config(config, player)
 		end
 		dummy_seen[name] = true
 	end
+	for i = 1, #config.recovery_ignore_names do
+		if type(config.recovery_ignore_names[i]) ~= 'string' or config.recovery_ignore_names[i] == '' then
+			return false, 'invalid_recovery_ignore_name'
+		end
+	end
 	if main_job == 'BRD' then
 		local effective_song_count = config.use_clarion_call and #config.songs or math.min(#config.songs, 4)
 		local additional = math.max(0, effective_song_count - 2)
@@ -429,6 +455,7 @@ local function reset_runtime(reason, preserve_trace)
 	release_action_lane(reason)
 	state.owners = {}
 	state.force = nil
+	party_song_state.reset()
 	state.nitro_armed = false
 	state.nitro_was_active = false
 	state.marcato_reservation = ''
@@ -478,19 +505,23 @@ local function ready(ctx, name, expected_kind)
 	return ok == true, tostring(reason or '')
 end
 
-local function start_force_generation(config)
+local function start_force_generation(config, song_limit)
 	local complete = {}
 	state.force = { complete = complete, started_at = os.time() }
 	reserve_action_lane('brd_nitro_force')
 	state.last_transition = 'nitro_force_started'
-	trace('force:start songs=' .. join(config.songs))
+	local songs = {}
+	for i = 1, song_limit do
+		songs[i] = config.songs[i]
+	end
+	trace('force:start songs=' .. join(songs))
 end
 
-local function next_force_song(config)
+local function next_force_song(config, song_limit)
 	if type(state.force) ~= 'table' then
 		return ''
 	end
-	for i = 1, #config.songs do
+	for i = 1, song_limit do
 		local name = config.songs[i]
 		if state.force.complete[name] ~= true then
 			return name
@@ -570,9 +601,20 @@ local function resolve_pending_from_snapshot()
 		status_id = pending.status_id,
 		endtime = added[1],
 		recipients = pending.recipients,
-		confirmed_at = os.time(),
+		confirmed_at = tonumber(pending.success_at) or os.time(),
 		is_dummy = pending.is_dummy,
 	}
+	party_song_state.record_delivery({
+		song_name = pending.name,
+		status_id = pending.status_id,
+		endtime = added[1],
+		recipients = pending.recipients,
+		confirmed_at = tonumber(pending.success_at) or os.time(),
+		is_dummy = pending.is_dummy,
+		cast_capacity = pending.cast_capacity,
+		song_limit = pending.song_limit,
+		recovery_member_id = pending.recovery_member_id,
+	})
 	local required_complete = recipients_cover(pending.required_recipients, pending.recipients)
 	diagnostic_log('OWNER_CONFIRM', {
 		song = pending.name,
@@ -668,6 +710,9 @@ function M.note_dispatch(action, action_token, now)
 		recipients = {},
 		success = false,
 		is_dummy = type(action.detail) == 'table' and action.detail.is_dummy == true,
+		recovery_member_id = type(action.detail) == 'table' and tonumber(action.detail.recovery_member_id) or nil,
+		cast_capacity = type(action.detail) == 'table' and tonumber(action.detail.cast_capacity) or nil,
+		song_limit = type(action.detail) == 'table' and tonumber(action.detail.song_limit) or nil,
 		required_recipients = type(action.detail) == 'table' and clone_array(action.detail.required_recipient_ids) or {},
 	}
 	diagnostic_log('DISPATCH', {
@@ -841,8 +886,8 @@ local function next_missing_dummy(config, required)
 	return ''
 end
 
-local function next_missing_final(config, required_recipients)
-	for i = 1, #config.songs do
+local function next_missing_final(config, song_limit, required_recipients)
+	for i = 1, song_limit do
 		if not owner_covers(config.songs[i], required_recipients) then
 			return config.songs[i]
 		end
@@ -850,11 +895,73 @@ local function next_missing_final(config, required_recipients)
 	return ''
 end
 
-local function urgent_song(config, now_epoch)
+local function unique_shortest_owner(expected_count)
+	local song_statuses = general_song_status_ids()
+	local effect_count = 0
+	local shortest_status_id = 0
+	local shortest_endtime = nil
+	local tied = false
+	for status_id, family in pairs(state.snapshot) do
+		local numeric_status_id = tonumber(status_id)
+		if song_statuses[numeric_status_id] and type(family) == 'table' then
+			if type(family.endtimes) ~= 'table' or tonumber(family.count) == nil then
+				return '', 'invalid_snapshot_family:' .. tostring(numeric_status_id)
+			end
+			local endtimes = family.endtimes
+			local family_count = tonumber(family.count)
+			if family_count ~= #endtimes then
+				return '', ('snapshot_timer_count_mismatch:%d:%d:%d'):format(numeric_status_id, family_count, #endtimes)
+			end
+			for i = 1, #endtimes do
+				local endtime = tonumber(endtimes[i])
+				if endtime == nil or endtime <= 0 then
+					return '', 'unknown_snapshot_endtime:' .. tostring(numeric_status_id)
+				end
+				effect_count = effect_count + 1
+				if shortest_endtime == nil or endtime < shortest_endtime - TIMER_MATCH_TOLERANCE then
+					shortest_status_id = numeric_status_id
+					shortest_endtime = endtime
+					tied = false
+				elseif math.abs(endtime - shortest_endtime) <= TIMER_MATCH_TOLERANCE then
+					tied = true
+				end
+			end
+		end
+	end
+	if effect_count ~= expected_count then
+		return '', ('snapshot_count_mismatch:%d:%d'):format(effect_count, expected_count)
+	end
+	if shortest_endtime == nil then
+		return '', 'missing_overwrite_victim'
+	end
+	if tied then
+		return '', 'ambiguous_overwrite_victim'
+	end
+	local shortest_name = ''
+	for name, owner in pairs(state.owners) do
+		local owner_endtime = tonumber(owner.endtime)
+		if tonumber(owner.status_id) == shortest_status_id and owner_endtime == nil then
+			return '', 'unknown_owner_endtime:' .. name
+		end
+		if tonumber(owner.status_id) == shortest_status_id
+			and math.abs(owner_endtime - shortest_endtime) <= TIMER_MATCH_TOLERANCE then
+			if shortest_name ~= '' then
+				return '', 'ambiguous_overwrite_owner'
+			end
+			shortest_name = name
+		end
+	end
+	if shortest_name == '' then
+		return '', 'shortest_overwrite_owner_unknown'
+	end
+	return shortest_name, ''
+end
+
+local function urgent_song(config, song_limit, now_epoch)
 	local best_name = ''
 	local best_remaining = nil
-	local refresh_lead = REFRESH_BASE_LEAD_S + (#config.songs * REFRESH_PER_SONG_LEAD_S)
-	for i = 1, #config.songs do
+	local refresh_lead = REFRESH_BASE_LEAD_S + (song_limit * REFRESH_PER_SONG_LEAD_S)
+	for i = 1, song_limit do
 		local name = config.songs[i]
 		local owner = state.owners[name]
 		if type(owner) == 'table' then
@@ -868,7 +975,16 @@ local function urgent_song(config, now_epoch)
 	return best_name, best_remaining
 end
 
-local function song_proposal(ctx, name, reason, urgency, is_dummy, required_recipients)
+local function song_within_limit(config, name, song_limit)
+	for i = 1, song_limit do
+		if config.songs[i] == name then
+			return true
+		end
+	end
+	return false
+end
+
+local function song_proposal(ctx, name, reason, urgency, is_dummy, required_recipients, recovery_member_id, cast_capacity, song_limit)
 	local ok, why = ready(ctx, name, 'spell')
 	if not ok then
 		state.last_blocker = 'not_ready:' .. name .. ':' .. why
@@ -878,6 +994,9 @@ local function song_proposal(ctx, name, reason, urgency, is_dummy, required_reci
 	return proposal('spell', name, reason, urgency, {
 		is_dummy = is_dummy == true,
 		required_recipient_ids = clone_array(required_recipients),
+		recovery_member_id = recovery_member_id,
+		cast_capacity = cast_capacity,
+		song_limit = song_limit,
 	})
 end
 
@@ -935,6 +1054,7 @@ function M.propose(config, ctx)
 		reset_runtime('config_changed', true)
 	end
 	state.config_signature = signature
+	state.recovery_range_yalms = config.recovery_range_yalms
 	config = effective_config(config, player)
 	state.identity = tostring(player.name or '') .. ':' .. tostring(player.main_job or '') .. ':' .. tostring(player.sub_job or '')
 	if type(state.snapshot) ~= 'table' then
@@ -983,69 +1103,133 @@ function M.propose(config, ctx)
 	end
 	prune_owners()
 	local required_recipients = required_recipient_ids(ctx)
+	local song_limit = #config.songs
+	local main_brd = tostring(player.main_job or '') == 'BRD'
+	local base_count = main_brd and 2 or 1
+	local count = snapshot_song_count(state.snapshot)
+	local clarion_active = has_buff(player, JA.clarion.buff_id)
+	local clarion_ready = ready(ctx, JA.clarion.name, 'ja')
+	party_song_state.observe(ctx.party_members, config.recovery_ignore_names, general_song_status_ids(), now)
 	local nitro_active = has_buff(player, JA.nightingale.buff_id) and has_buff(player, JA.troubadour.buff_id)
 	if state.nitro_armed and nitro_active and not state.nitro_was_active then
-		start_force_generation(config)
+		start_force_generation(config, song_limit)
 		state.nitro_armed = false
 	end
 	state.nitro_was_active = nitro_active
 	if state.marcato_reservation ~= '' and not has_buff(player, JA.marcato.buff_id) then
 		state.marcato_reservation = ''
 	end
-	if state.marcato_reservation ~= '' then
-		return song_proposal(ctx, state.marcato_reservation, 'brd_marcato_reserved_song', 0.98, false, required_recipients)
+	if state.marcato_reservation ~= '' and not song_within_limit(config, state.marcato_reservation, song_limit) then
+		state.marcato_reservation = ''
 	end
-	local urgent, remaining = urgent_song(config, os.time())
+	if state.marcato_reservation ~= '' then
+		return song_proposal(ctx, state.marcato_reservation, 'brd_marcato_reserved_song', 0.98, false, required_recipients, nil, base_count, song_limit)
+	end
+	local urgent, remaining = urgent_song(config, song_limit, os.time())
 	if urgent ~= '' then
 		local marcato = maybe_marcato(config, ctx, urgent, nitro_active)
 		if marcato then
 			return marcato
 		end
-		return song_proposal(ctx, urgent, 'brd_song_expiring', 0.98, false, required_recipients)
+		return song_proposal(ctx, urgent, 'brd_song_expiring', 0.98, false, required_recipients, nil, base_count, song_limit)
 	end
-	local forced = next_force_song(config)
-	if forced ~= '' then
-		local marcato = maybe_marcato(config, ctx, forced, nitro_active)
-		if marcato then
-			return marcato
+
+	-- Clarion controls whether a missing fifth position can be added. It never
+	-- changes the five-song desired set or suppresses exact refresh of a
+	-- persisted fifth song.
+	if main_brd and song_limit == 5 and count < 5 and count >= 4 and not clarion_active then
+		state.force = nil
+		state.marcato_reservation = ''
+		if config.use_clarion_call and clarion_ready then
+			return proposal('ja', JA.clarion.name, 'brd_capacity_clarion', 0.77)
 		end
-		return song_proposal(ctx, forced, 'brd_nitro_forced_refresh', 0.88, false, required_recipients)
-	end
-	local main_brd = tostring(player.main_job or '') == 'BRD'
-	local base_count = main_brd and 2 or 1
-	local base_song = next_missing_base_song(config, base_count, required_recipients)
-	if base_song ~= '' then
-		local marcato = maybe_marcato(config, ctx, base_song, nitro_active)
-		if marcato then return marcato end
-		return song_proposal(ctx, base_song, 'brd_build_base_song', 0.76, false, required_recipients)
-	end
-	local required_dummy = main_brd and math.max(0, #config.songs - base_count) or 0
-	local count = snapshot_song_count(state.snapshot)
-	if required_dummy > 0 and count < #config.songs then
-		if #config.songs > 4 and count >= 4 and not has_buff(player, JA.clarion.buff_id) then
-			local clarion_ready = ready(ctx, JA.clarion.name, 'ja')
-			if config.use_clarion_call and clarion_ready then
-				return proposal('ja', JA.clarion.name, 'brd_capacity_clarion', 0.77)
+		local degraded_missing = next_missing_final(config, 4, required_recipients)
+		if degraded_missing ~= '' then
+			local victim, victim_reason = unique_shortest_owner(count)
+			if victim ~= '' and state.owners[victim].is_dummy == true then
+				diagnostic_log('DEGRADED_DUMMY_REPLACE', {
+					song = degraded_missing,
+					victim = victim,
+					count = count,
+				})
+				return song_proposal(ctx, degraded_missing, 'brd_degraded_replace_dummy', 0.74, false, required_recipients, nil, base_count, song_limit)
 			end
-			state.last_blocker = 'clarion_unavailable_for_fifth_song'
-			release_action_lane('clarion_unavailable_for_fifth_song')
+			if victim ~= '' and song_within_limit(config, victim, 4) and owner_covers(victim, required_recipients) then
+				diagnostic_log('DEGRADED_ALIGN_REFRESH', {
+					song = victim,
+					missing = degraded_missing,
+					count = count,
+				})
+				return song_proposal(ctx, victim, 'brd_degraded_align_shortest', 0.745, false, required_recipients, nil, base_count, song_limit)
+			end
+			if victim ~= '' then
+				victim_reason = 'shortest_owner_not_alignable:' .. victim
+			end
+			if victim == '' and victim_reason == 'shortest_overwrite_owner_unknown' then
+				diagnostic_log('DEGRADED_UNKNOWN_REBUILD', {
+					song = degraded_missing,
+					count = count,
+					owners = owner_summary(),
+				})
+				return song_proposal(ctx, degraded_missing, 'brd_degraded_rebuild_unknown', 0.743, false, required_recipients, nil, base_count, song_limit)
+			end
+			state.last_blocker = 'degraded_final_unsafe:' .. victim_reason
+			release_action_lane(state.last_blocker)
 			return nil
 		end
-		local dummy = next_missing_dummy(config, required_dummy)
-		if dummy ~= '' then
-			return song_proposal(ctx, dummy, 'brd_build_capacity_dummy', 0.75, true, required_recipients)
-		end
-		state.last_blocker = 'capacity_build_no_timer_transition'
-		release_action_lane('capacity_build_no_timer_transition')
+		state.last_blocker = 'degraded_fifth_waiting_for_clarion'
+		release_action_lane(state.last_blocker)
 		return nil
 	end
-	local missing = next_missing_final(config, required_recipients)
+
+	if count < base_count then
+		local base_song = next_missing_base_song(config, base_count, required_recipients)
+		if base_song ~= '' then
+			local marcato = maybe_marcato(config, ctx, base_song, nitro_active)
+			if marcato then return marcato end
+			return song_proposal(ctx, base_song, 'brd_build_base_song', 0.76, false, required_recipients, nil, base_count, song_limit)
+		end
+	end
+
+	local required_dummy = main_brd and math.max(0, song_limit - base_count) or 0
+	if required_dummy > 0 and count < song_limit then
+		local dummy = next_missing_dummy(config, required_dummy)
+		if dummy ~= '' then
+			local dummy_capacity = song_limit
+			if song_limit == 5 and count < 4 then
+				dummy_capacity = 4
+			end
+			return song_proposal(ctx, dummy, 'brd_build_capacity_dummy', 0.75, true, required_recipients, nil, dummy_capacity, song_limit)
+		end
+		local capacity_final = next_missing_final(config, song_limit, required_recipients)
+		if capacity_final ~= '' then
+			local final_capacity = song_limit
+			if song_limit == 5 and count < 4 then
+				final_capacity = 4
+			end
+			return song_proposal(ctx, capacity_final, 'brd_build_capacity_final', 0.75, false, required_recipients, nil, final_capacity, song_limit)
+		end
+		state.last_blocker = 'capacity_build_no_timer_transition'
+		release_action_lane(state.last_blocker)
+		return nil
+	end
+
+	local missing = next_missing_final(config, song_limit, required_recipients)
 	if missing ~= '' then
 		local marcato = maybe_marcato(config, ctx, missing, nitro_active)
 		if marcato then
 			return marcato
 		end
-		return song_proposal(ctx, missing, 'brd_replace_dummy_with_final', 0.74, false, required_recipients)
+		return song_proposal(ctx, missing, 'brd_replace_dummy_with_final', 0.74, false, required_recipients, nil, base_count, song_limit)
+	end
+
+	local forced = next_force_song(config, song_limit)
+	if forced ~= '' then
+		local marcato = maybe_marcato(config, ctx, forced, nitro_active)
+		if marcato then
+			return marcato
+		end
+		return song_proposal(ctx, forced, 'brd_nitro_forced_refresh', 0.88, false, required_recipients, nil, base_count, song_limit)
 	end
 	if config.use_nitro and tostring(player.main_job or '') == 'BRD' and not nitro_active then
 		local night_active = has_buff(player, JA.nightingale.buff_id)
@@ -1060,8 +1244,32 @@ function M.propose(config, ctx)
 			return proposal('ja', JA.nightingale.name, 'brd_nitro_nightingale', 0.78)
 		end
 	end
-	state.last_blocker = remaining and ('waiting_deadline:' .. tostring(math.floor(remaining))) or 'songs_satisfied'
-	if not state.nitro_armed then
+	local recovery = party_song_state.next_action(
+		config,
+		song_limit,
+		clarion_active,
+		clarion_ready
+	)
+	if type(recovery) == 'table' then
+		if recovery.action_type == 'ja' then
+			return proposal('ja', recovery.action_name, recovery.reason_code, 0.72, { recovery_member_id = recovery.member_id })
+		end
+		return song_proposal(
+			ctx,
+			recovery.action_name,
+			recovery.reason_code,
+			0.72,
+			recovery.is_dummy,
+			required_recipients,
+			recovery.member_id,
+			recovery.cast_capacity or base_count,
+			song_limit
+		)
+	end
+	local party_blocker = party_song_state.last_blocker()
+	state.last_blocker = party_blocker ~= 'party_songs_satisfied' and party_blocker
+		or (remaining and ('waiting_deadline:' .. tostring(math.floor(remaining))) or 'songs_satisfied')
+	if not state.nitro_armed and not party_song_state.is_recovery_active() then
 		release_action_lane(state.last_blocker)
 	end
 	return nil
@@ -1180,6 +1388,7 @@ function M.status_lines()
 			tostring(state.server_time_source),
 			tonumber(state.server_time_offset) or 0
 		),
+		('BRD recovery_range=%.1f yalms'):format(state.recovery_range_yalms),
 		('BRD nitro_force=%s marcato_reservation=%s owners=%d'):format(
 			type(state.force) == 'table' and 'active' or 'none',
 			state.marcato_reservation ~= '' and state.marcato_reservation or 'none',
@@ -1206,6 +1415,9 @@ function M.status_lines()
 			remaining_seconds(owner.endtime, os.time()),
 			join(owner.recipients)
 		)
+	end
+	for _, line in ipairs(party_song_state.status_lines()) do
+		lines[#lines + 1] = line
 	end
 	if #state.trace_lines > 0 then
 		for i = 1, #state.trace_lines do

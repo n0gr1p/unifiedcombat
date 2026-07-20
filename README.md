@@ -32,6 +32,7 @@ UnifiedCombat provides:
   - In scheduler combat ownership mode, `AM_READY` aftermath WS intents are prioritized above defensive buffs/non-critical cures, while critical cures and doom emergency still preempt.
 - Ordered JA execution pipeline.
 - Party-follow with zone replay behavior.
+- Ordered Nyzul lamp parking with a persistent exit anchor and one-command regroup.
 - Defensive scheduler integration path.
   - Majesty is treated as a high-priority defensive buff and is cast before non-critical cures.
   - Defensive spell casts are deferred while pre-engage combat approach movement is active.
@@ -52,6 +53,8 @@ UnifiedCombat provides:
   - Primary combat logic: target selection, engage/switch, movement, abilities, WS.
 - `uc_party_follow.lua`
   - Party-follow movement in prerender loop + IPC position/zone replay.
+- `uc_nyzul_runtime.lua`
+  - Runtime-only Nyzul parking queue, IPC targeting, and movement holds.
 - `remote_bridge.lua`
   - UI hub endpoint and settings/state bridge between addon and WinForms app.
 - `UnifiedCombatWinForms/`
@@ -131,7 +134,8 @@ Profiles are character-scoped files with job sub-profiles:
 Notes:
 
 - New/canonical UC settings are persisted under UC profile tree.
-- UI edits generally apply live and can be persisted with save.
+- Durable UI edits remain local until Save writes the profile files.
+- The addon consumes saved v2 changes through profile reload, startup autoload, or opt-in file-change auto-reload.
 - In-game command `//uc save` writes active profile.
 
 ## Installation
@@ -199,6 +203,26 @@ Only listed mobs are eligible for add-control overrides. When no listed mob is v
 - `//uc add_priority remove <index>`
 - `//uc add_priority list`
 - `//uc add_priority clear`
+
+Nyzul lamp parking:
+
+Configure the coordinator, persistent anchor, and ordered parker names in the coordinator character's UI profile. The durable profile stores names only at `config.follow.nyzul`; the active run, queue position, and movement holds are runtime state.
+
+- `//uc nyzul begin` - start a run and park the configured anchor
+- `//uc nyzul park` - park the next present character in configured order
+- `//uc nyzul regroup` - release lamp parkers, reset the queue, and keep the anchor parked
+- `//uc nyzul undo` - release the most recently parked lamp character
+- `//uc nyzul status` - show local role and coordinator queue state
+- `//uc nyzul end` - release the anchor and all lamp parkers
+
+Typical flow:
+
+1. Run `//uc nyzul begin` once at the start of the investigation.
+2. Run `//uc nyzul park` once at each lamp; no character name is required.
+3. Run `//uc nyzul regroup` after completing the lamp objective.
+4. Run `//uc nyzul end` when the investigation ends.
+
+Parking blocks UnifiedCombat party-follow, path, formation, and combat movement without changing durable follow settings or starting/stopping the engine.
 
 Most settings should be managed in WinForms UI for consistency and discoverability.
 

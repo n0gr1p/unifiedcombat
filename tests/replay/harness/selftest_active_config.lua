@@ -123,6 +123,9 @@ local function build_flat_settings()
 		puller = true,
 		puller_name = 'Niightsiide',
 		puller_engage_range = 9.5,
+		nyzul_coordinator_name = 'Redrogue',
+		nyzul_anchor_name = 'Terrasjr',
+		nyzul_parking_order = { 'Nyoourke', 'Ponponponponp' },
 		wait_ignore_names = { 'Niightsiide' },
 		target_ignore_names = { 'Ignore Me' },
 		add_control = true,
@@ -210,6 +213,9 @@ local function main()
 	assert_equal(active_profile.config.follow.partner.puller_name, 'Niightsiide', 'active puller name mismatch')
 	assert_equal(active_profile.config.follow.partner.engage_range, 9.5, 'active puller engage range mismatch')
 	assert_equal(active_profile.config.follow.partner.puller_id, 0, 'active puller id should remain runtime-owned in the durable active profile')
+	assert_equal(active_profile.config.follow.nyzul.coordinator_name, 'Redrogue', 'active Nyzul coordinator mismatch')
+	assert_equal(active_profile.config.follow.nyzul.anchor_name, 'Terrasjr', 'active Nyzul anchor mismatch')
+	assert_equal(active_profile.config.follow.nyzul.parking_order[2], 'Ponponponponp', 'active Nyzul parking order mismatch')
 	assert_equal(active_profile.config.targeting.target_ignore_names[1], 'Ignore Me', 'active target ignore names mismatch')
 	assert_equal(active_profile.config.targeting.targets[1], 'Apex Bat', 'active add priority targets mismatch')
 	assert_equal(active_profile.config.maintenance.enabled, true, 'active maintenance domain mismatch')
@@ -279,6 +285,10 @@ local function main()
 	assert_equal(projected.puller_engage_range, 9.5, 'projected puller engage range mismatch')
 	assert_equal(projected.follow.partner.engage_range, 9.5, 'projected nested puller engage range mismatch')
 	assert_equal(projected.follow.partner.puller_id, 77, 'projected nested puller id mismatch')
+	assert_equal(projected.nyzul_coordinator_name, 'Redrogue', 'projected Nyzul coordinator mismatch')
+	assert_equal(projected.nyzul_anchor_name, 'Terrasjr', 'projected Nyzul anchor mismatch')
+	assert_equal(projected.nyzul_parking_order[1], 'Nyoourke', 'projected Nyzul parking order mismatch')
+	assert_equal(projected.follow.nyzul.anchor_name, 'Terrasjr', 'projected nested Nyzul anchor mismatch')
 	assert_equal(projected.targets[1], 'Apex Bat', 'projected add priority targets mismatch')
 	assert_equal(projected.add_priority_names[1], 'Apex Bat', 'projected add priority compatibility names mismatch')
 	assert_true(type(projected.partner_ids) == 'table' and #projected.partner_ids == 0, 'projected compatibility table should keep empty partner ids as an empty list')

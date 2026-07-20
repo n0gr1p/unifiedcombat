@@ -16,6 +16,7 @@ local files = require('files')
 local res = require('resources')
 local uc_active_config = require('uc_active_config')
 local uc_party_follow = require('uc_party_follow')
+local uc_nyzul_runtime = require('uc_nyzul_runtime')
 local texts_ok, texts = pcall(require, 'texts')
 
 local mod = {}
@@ -982,6 +983,11 @@ local function advance_follow_index(settings, points)
 end
 
 local function tick_follow(settings)
+	if uc_nyzul_runtime.is_movement_held() then
+		follow_pause_reason = uc_nyzul_runtime.movement_hold_reason()
+		set_follow_paused(true)
+		return
+	end
 	if not path_follow_enabled(settings) then
 		follow_pause_reason = 'PATH_FOLLOW_DISABLED'
 		return

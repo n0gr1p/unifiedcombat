@@ -2359,6 +2359,15 @@ end
 local function run_movement_coordinator_tick()
 	local s = get_settings()
 	local now = now_s()
+	local nyzul_runtime = require('uc_nyzul_runtime')
+	if nyzul_runtime.is_movement_held() then
+		local reason = nyzul_runtime.movement_hold_reason()
+		_G.UC_MOVEMENT_MODE = 'NYZUL_HOLD'
+		_G.UC_MOVEMENT_BLOCK_REASON = reason
+		_G.UC_MOVEMENT_OWNER = 'nyzul_hold'
+		_G.UC_MOVEMENT_LOCK_UNTIL = math.huge
+		return false, reason
+	end
 	local p = windower.ffxi.get_player()
 	local status = tonumber(p and p.status) or -1
 	local engaged = (status == 1)
@@ -2714,6 +2723,7 @@ local function get_party_members()
 				name = entry.mob.name,
 				is_self = is_self,
 				spawn_type = entry.mob.spawn_type,
+				is_npc = entry.mob.is_npc == true,
 				hpp = hpp,
 				hp = hp,
 				max_hp = max_hp,
@@ -5178,10 +5188,18 @@ local function p1_collect_maintenance(ctx, out)
 	elseif job == 'BRD' or tostring(player.sub_job or '') == 'BRD' then
 		local brd_config = require('uc_active_config').get_path('config.maintenance.brd')
 		local brd_maintenance = require('uc_brd_maintenance')
+		local brd_party_members = get_party_members()
+		for _, member in ipairs(brd_party_members) do
+			member.in_song_range = require('uc_brd_party_song_state').in_recovery_range(
+				member,
+				brd_config.recovery_range_yalms,
+				windower.ffxi.get_mob_by_id
+			)
+		end
 		local action = brd_maintenance.propose(brd_config, {
 			now = now,
 			player = player,
-			party = windower.ffxi.get_party(),
+			party_members = brd_party_members,
 			action_ready = action_ready,
 		})
 		local failure = brd_maintenance.take_scheduler_failure()

@@ -24,6 +24,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_side_effect_inventory.lua",
     "tests/replay/harness/selftest_dispatcher_fixtures.lua",
     "tests/replay/harness/selftest_movement_priority_arbitration.lua",
+	"tests/replay/harness/selftest_nyzul_runtime.lua",
     "tests/replay/harness/selftest_zero_hp_actionable_target.lua",
     "tests/replay/harness/selftest_alliance_target_scope.lua",
     "tests/replay/harness/selftest_hb_buff_maint_majesty_priority.lua",

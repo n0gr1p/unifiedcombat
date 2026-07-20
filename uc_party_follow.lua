@@ -7,6 +7,7 @@
 local M = {}
 local packets = require('packets')
 local uc_active_config = require('uc_active_config')
+local uc_nyzul_runtime = require('uc_nyzul_runtime')
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime or nil
 
@@ -863,6 +864,12 @@ function M.prerender()
 		end, zone_post_snapshot_delay_s)
 	end
 	refresh_ff_following_from_settings()
+	if uc_nyzul_runtime.enforce_movement_hold() then
+		set_follow_run_active(false)
+		set_follow_needs_catchup(false)
+		last_follow_suppressed = false
+		return
+	end
 	local s = _G.UC_SETTINGS
 	if not s or not party_follow_enabled(s) then
 		set_follow_run_active(false)

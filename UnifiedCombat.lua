@@ -198,6 +198,9 @@ local function uc_new_settings_defaults()
 		party_follow_max = 50,
 		fight_follow_min = 3.0,
 		fight_follow_hold_s = 8.0,
+		nyzul_coordinator_name = '',
+		nyzul_anchor_name = '',
+		nyzul_parking_order = {},
 		add_control = false,
 		add_priority_names = {},
 		sub = false,
@@ -361,6 +364,7 @@ require('remote_bridge')
 local UC_COMBAT_CORE = require('unified_combat_core')
 local UC_UNIFIED_ENGINE = require('unified_engine')
 local uc_party_follow = require('uc_party_follow')
+local uc_nyzul_runtime = require('uc_nyzul_runtime')
 local uc_pathing = require('uc_pathing')
 
 local function uc_update_engine()
@@ -469,6 +473,7 @@ local PROFILE_KEYS = {
 	'spacing_repel_hold_ticks', 'spacing_overlap_deadband', 'spacing_repel_weight', 'spacing_band_deadband',
 	'partner', 'partner2', 'puller', 'puller_name', 'puller_engage_range', 'puller_distance_only', 'partner_id', 'partner_id2', 'partner_ids', 'puller_id',
 	'fight_leader', 'fight_leader_id', 'party_follow', 'party_follow_id', 'party_follow_leader_name', 'party_follow_min', 'party_follow_max', 'fight_follow_min', 'fight_follow_hold_s',
+	'nyzul_coordinator_name', 'nyzul_anchor_name', 'nyzul_parking_order',
 	'add_control', 'add_priority_names',
 	'sub', 'sub2', 'move', 'debug', 'log_combat_sched', 'log_ja_sched', 'log_ja_debug', 'log_def_sched', 'log_tank_sched', 'solo', 'aeonic', 'color', 'tank', 'sleep', 'command', 'hunter',
 	'tank_enmity_actions',
@@ -2022,6 +2027,7 @@ end)
 
 windower.register_event('job change', function(job, lvl)
 	local jname = res.jobs:with('id', job).english_short
+	uc_nyzul_runtime.reset('job_change')
 	require('uc_brd_maintenance').reset('job_change')
 	require('uc_reaction_runtime').reset('job_change')
 	require('uc_lilith_easy_encounter').reset('job_change')
@@ -2034,6 +2040,7 @@ windower.register_event('job change', function(job, lvl)
 end)
 
 windower.register_event('zone change', function()
+	uc_nyzul_runtime.reset('zone_change')
 	require('uc_brd_maintenance').reset('zone_change')
 	require('uc_reaction_runtime').reset('zone_change')
 	require('uc_lilith_easy_encounter').reset('zone_change')
@@ -2045,6 +2052,7 @@ windower.register_event('zone change', function()
 end)
 
 windower.register_event('unload', function()
+	uc_nyzul_runtime.reset('unload')
 	require('uc_brd_maintenance').reset('unload')
 	require('uc_reaction_runtime').reset('unload')
 	require('uc_lilith_easy_encounter').reset('unload')
@@ -2064,6 +2072,7 @@ windower.register_event('unload', function()
 end)
 
 windower.register_event('logout', function()
+	uc_nyzul_runtime.reset('logout')
 	require('uc_lilith_easy_encounter').reset('logout')
 	require('uc_lilith_easy_formation_runtime').reset('logout')
 	_G.UC_ZONE_SUSPEND_UNTIL = nil
@@ -2226,6 +2235,39 @@ windower.register_event('addon command', function(...)
 			end
 		end
 		windower.add_to_chat(207, '//uc brd status | //uc brd options | //uc brd trace once | //uc brd capture once | //uc brd log start|stop|status')
+		return
+	elseif a == 'nyzul' then
+		local sub = args[2] and tostring(args[2]):lower() or 'status'
+		local ok, message
+		if sub == 'begin' then
+			ok, message = uc_nyzul_runtime.begin()
+		elseif sub == 'park' then
+			ok, message = uc_nyzul_runtime.park_next()
+		elseif sub == 'regroup' then
+			ok, message = uc_nyzul_runtime.regroup()
+		elseif sub == 'undo' then
+			ok, message = uc_nyzul_runtime.undo()
+		elseif sub == 'end' or sub == 'finish' then
+			ok, message = uc_nyzul_runtime.finish()
+		elseif sub == 'status' then
+			local status = uc_nyzul_runtime.status()
+			local parked = #status.parked_order > 0 and table.concat(status.parked_order, ',') or 'none'
+			local next_name = status.parking_order[status.next_index] or 'none'
+			windower.add_to_chat(207, ('UC Nyzul: active=%s role=%s coordinator=%s anchor=%s parked=%s pending=%s next=%s'):format(
+				tostring(status.active == true),
+				tostring(status.role),
+				tostring(status.coordinator_name ~= '' and status.coordinator_name or 'none'),
+				tostring(status.anchor_name ~= '' and status.anchor_name or 'none'),
+				parked,
+				tostring(status.pending_park or 'none'),
+				next_name
+			))
+			return
+		else
+			windower.add_to_chat(207, '//uc nyzul begin|park|regroup|undo|status|end')
+			return
+		end
+		windower.add_to_chat(ok and 207 or 167, 'UC Nyzul: ' .. tostring(message))
 		return
 	elseif a == 'reaction' or a == 'reactions' then
 		local sub = args[2] and tostring(args[2]):lower() or 'status'
