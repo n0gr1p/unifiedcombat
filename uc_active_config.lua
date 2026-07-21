@@ -229,6 +229,18 @@ local function serialize_targeted_buffs(entries)
 	return table.concat(out, '|')
 end
 
+local function serialize_brd_targeted_songs(entries)
+	local out = {}
+	for i = 1, #(entries or {}) do
+		local entry = entries[i]
+		if type(entry) == 'table' then
+			out[#out + 1] = table.concat(entry.recipients or {}, ',') .. ':'
+				.. table.concat(entry.priority_songs or {}, ',')
+		end
+	end
+	return table.concat(out, '|')
+end
+
 local function current_meta()
 	local meta = {
 		source = 'UC_SETTINGS',
@@ -651,9 +663,11 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.brd_recovery_range_yalms = config.maintenance.brd.recovery_range_yalms
 			candidate.brd_recovery_ignore_names = clone_value(config.maintenance.brd.recovery_ignore_names)
 			candidate.brd_use_nitro = config.maintenance.brd.use_nitro
+			candidate.brd_use_soul_voice = config.maintenance.brd.use_soul_voice
 			candidate.brd_use_clarion_call = config.maintenance.brd.use_clarion_call
 			candidate.brd_use_marcato = config.maintenance.brd.use_marcato
 			candidate.brd_marcato_song = config.maintenance.brd.marcato_song
+			candidate.brd_targeted_songs = serialize_brd_targeted_songs(config.maintenance.brd.targeted_songs)
 		end
 		candidate.maintenance_geo = clone_value(config.maintenance.geo)
 	end

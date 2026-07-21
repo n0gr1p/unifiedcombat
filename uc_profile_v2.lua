@@ -311,6 +311,12 @@ local function strip_non_applicable_maintenance(current_config, target_config, m
 				if value.recovery_ignore_names == nil then
 					value.recovery_ignore_names = {}
 				end
+				if value.use_soul_voice == nil then
+					value.use_soul_voice = false
+				end
+				if value.targeted_songs == nil then
+					value.targeted_songs = {}
+				end
 			end
 			return value
 		end
@@ -322,7 +328,9 @@ local function strip_non_applicable_maintenance(current_config, target_config, m
 				value.recovery_range_yalms == 9.9
 				and type(value.recovery_ignore_names) == 'table' and #value.recovery_ignore_names == 0
 				and value.enabled == nil and value.songs == nil and value.dummy_songs == nil
-				and value.use_nitro == nil and value.use_clarion_call == nil and value.use_marcato == nil
+				and value.use_nitro == nil and value.use_soul_voice == false
+				and value.use_clarion_call == nil and value.use_marcato == nil
+				and type(value.targeted_songs) == 'table' and #value.targeted_songs == 0
 				and value.marcato_song == nil
 			) then
 				return true
@@ -333,8 +341,10 @@ local function strip_non_applicable_maintenance(current_config, target_config, m
 				and value.recovery_range_yalms == 9.9
 				and type(value.recovery_ignore_names) == 'table' and #value.recovery_ignore_names == 0
 				and value.use_nitro == false
+				and value.use_soul_voice == false
 				and value.use_clarion_call == false
 				and value.use_marcato == false
+				and type(value.targeted_songs) == 'table' and #value.targeted_songs == 0
 				and tostring(value.marcato_song or '') == ''
 		end
 		local current_brd = canonicalize_brd_recovery_config(current_maintenance and current_maintenance.brd or nil)

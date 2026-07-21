@@ -739,16 +739,20 @@ public partial class MainForm
                 ApplyBrdList(_brdSongList, SessionStateHelper.GetString(s, "brd_songs"));
                 ApplyBrdList(_brdDummyList, SessionStateHelper.GetString(s, "brd_dummy_songs"));
                 _brdUseNitro.Checked = SessionStateHelper.GetBool(s, "brd_use_nitro", false);
+				_brdUseSoulVoice.Checked = SessionStateHelper.GetBool(s, "brd_use_soul_voice", false);
                 _brdUseClarion.Checked = SessionStateHelper.GetBool(s, "brd_use_clarion_call", false);
                 _brdUseMarcato.Checked = SessionStateHelper.GetBool(s, "brd_use_marcato", false);
                 RefreshBrdMarcatoOptions(SessionStateHelper.GetString(s, "brd_marcato_song"));
 				ApplyBrdRecoveryRange(s);
 				_brdRecoveryIgnoreNames.Text = SessionStateHelper.GetString(s, "brd_recovery_ignore_names");
+				_brdTargetedSongs.Text = SessionStateHelper.GetString(s, "brd_targeted_songs");
                 var subBrdOnly = !string.Equals(mainJob, "BRD", StringComparison.Ordinal) && string.Equals(subJob, "BRD", StringComparison.Ordinal);
                 _brdUseNitro.Enabled = !subBrdOnly;
+				_brdUseSoulVoice.Enabled = !subBrdOnly;
                 _brdUseClarion.Enabled = !subBrdOnly;
                 _brdUseMarcato.Enabled = !subBrdOnly;
                 _brdMarcatoSong.Enabled = !subBrdOnly && _brdUseMarcato.Checked;
+				_brdTargetedSongs.Enabled = !subBrdOnly;
             }
             _reactionEnabled.Checked = SessionStateHelper.GetBool(s, "reaction_enabled", false);
             ApplyReactionRulesFromSnapshot(s);

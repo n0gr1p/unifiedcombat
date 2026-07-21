@@ -30,6 +30,8 @@ internal static class StructuredProfileV2WriterTests
             TestNonCorOmitsHiddenCorMaintenanceDefaultsAcrossJobs();
             TestCorPreservesConfiguredMaintenanceValues();
             TestBrdPreservesConfiguredSongMaintenance();
+			TestParseBardTargetedSongs();
+			TestBrdRejectsSoulVoiceWithoutNitro();
 			TestBrdRejectsInvalidRecoveryRange();
             TestNonBrdOmitsHiddenBrdMaintenance();
             TestBrdUiEditsAreLocalUntilSave();
@@ -432,9 +434,11 @@ internal static class StructuredProfileV2WriterTests
         flat["brd_songs"] = "Honor March|Victory March|Valor Minuet V|Valor Minuet IV";
         flat["brd_dummy_songs"] = "Army's Paeon|Army's Paeon II";
         flat["brd_use_nitro"] = true;
+		flat["brd_use_soul_voice"] = true;
         flat["brd_use_clarion_call"] = false;
         flat["brd_use_marcato"] = true;
         flat["brd_marcato_song"] = "Honor March";
+		flat["brd_targeted_songs"] = "Tankone,Tanktwo:Mage's Ballad III,Mage's Ballad II";
 		flat["brd_recovery_range_yalms"] = 14.5;
 		flat["brd_recovery_ignore_names"] = "PullerOne|PullerTwo";
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
@@ -449,13 +453,72 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "dummy_songs = {", "BRD dummy song list missing");
         AssertContains(content, "\"Army's Paeon II\"", "BRD dummy song identity missing");
         AssertContains(content, "use_nitro = true", "BRD NITRO policy missing");
+		AssertContains(content, "use_soul_voice = true", "BRD Soul Voice policy missing");
         AssertContains(content, "use_marcato = true", "BRD Marcato policy missing");
         AssertContains(content, "marcato_song = \"Honor March\"", "BRD exact Marcato song missing");
+		AssertContains(content, "targeted_songs = {", "BRD targeted song sets missing");
+		AssertContains(content, "\"Tanktwo\"", "BRD targeted recipient missing");
+		AssertContains(content, "priority_songs = {", "BRD targeted priority songs missing");
+		AssertContains(content, "\"Mage's Ballad II\"", "BRD targeted priority song identity missing");
 		AssertContains(content, "recovery_range_yalms = 14.5", "BRD recovery range missing");
 		AssertContains(content, "recovery_ignore_names = {", "BRD recovery ignore list missing");
 		AssertContains(content, "\"PullerTwo\"", "BRD recovery ignore player missing");
         AssertNotContains(content, "duration", "BRD runtime duration must not be durable");
     }
+
+	private static void TestParseBardTargetedSongs()
+	{
+		var parsed = StructuredProfileV2Writer.ParseBardTargetedSongs(
+			"Tankone,Tanktwo:Mage's Ballad III,Mage's Ballad II|Healer:Victory March"
+		);
+		AssertEqual(parsed.Count, 2, "BRD targeted parser set count mismatch");
+		AssertEqual(parsed[0].Recipients[1], "Tanktwo", "BRD targeted parser recipient mismatch");
+		AssertEqual(parsed[0].PrioritySongs[0], "Mage's Ballad III", "BRD targeted parser priority mismatch");
+		var duplicateSongRejected = false;
+		try
+		{
+			_ = StructuredProfileV2Writer.ParseBardTargetedSongs("Tank:Victory March,Victory March");
+		}
+		catch (InvalidDataException ex)
+		{
+			AssertContains(ex.Message, "repeats a song", "duplicate BRD targeted song reason mismatch");
+			duplicateSongRejected = true;
+		}
+		if (!duplicateSongRejected)
+		{
+			throw new InvalidOperationException("duplicate BRD targeted song must fail parsing");
+		}
+		try
+		{
+			_ = StructuredProfileV2Writer.ParseBardTargetedSongs("Tank:Victory March|tank:Honor March");
+		}
+		catch (InvalidDataException ex)
+		{
+			AssertContains(ex.Message, "appears more than once", "duplicate BRD targeted recipient reason mismatch");
+			return;
+		}
+		throw new InvalidOperationException("duplicate BRD targeted recipient must fail parsing");
+	}
+
+	private static void TestBrdRejectsSoulVoiceWithoutNitro()
+	{
+		var flat = BuildSampleFlatProfile();
+		flat["brd_use_nitro"] = false;
+		flat["brd_use_soul_voice"] = true;
+		try
+		{
+			_ = StructuredProfileV2Writer.BuildStructuredProfileFile(
+				flat,
+				new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+			);
+		}
+		catch (InvalidDataException ex)
+		{
+			AssertContains(ex.Message, "requires NITRO", "Soul Voice without NITRO failure reason mismatch");
+			return;
+		}
+		throw new InvalidOperationException("BRD Soul Voice without NITRO must fail profile serialization");
+	}
 
     private static void TestNonBrdOmitsHiddenBrdMaintenance()
     {
@@ -513,6 +576,10 @@ internal static class StructuredProfileV2WriterTests
 		AssertContains(store, "[\"brd_recovery_range_yalms\"] = 9.9", "BRD recovery range must have a durable UI default");
 		AssertContains(logic, "ApplyBrdRecoveryRange(s);", "BRD recovery range must restore from UI profiles");
 		AssertContains(writer, ".Add(\"recovery_range_yalms\"", "BRD recovery range must serialize into structured profiles");
+		AssertContains(ui, "_brdUseSoulVoice = new CheckBox", "BRD Soul Voice control must exist");
+		AssertContains(store, "[\"brd_use_soul_voice\"] = _brdUseSoulVoice.Checked", "BRD Soul Voice policy must be captured from the UI");
+		AssertContains(ui, "_brdTargetedSongs = new TextBox", "BRD targeted song control must exist");
+		AssertContains(writer, ".Add(\"targeted_songs\"", "BRD targeted songs must serialize into structured profiles");
 	}
 
     private static void TestSerializeReactionRules()

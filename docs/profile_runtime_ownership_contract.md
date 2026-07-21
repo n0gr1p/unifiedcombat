@@ -105,7 +105,7 @@ Examples:
 - puller engagement policy such as `follow.partner.engage_range`; this is the maximum mob-to-puller distance that permits follower engagement and combat-close movement
 - sleep eligibility policy such as `sleep.max_target_range`; this limits viable sleep candidates but never extends a spell beyond its native cast range
 - configured COR roll names and other applicable maintenance selections
-- configured BRD song order, dummy-song order, NITRO/Clarion policy, exact Marcato song, recovery range, and recovery ignore names
+- configured BRD song order, dummy-song order, NITRO/Soul Voice/Clarion policy, exact Marcato song, Pianissimo recipient priority-song sets, recovery range, and recovery ignore names
 
 Durable config may be loaded into `_G.UC_ACTIVE_PROFILE`.
 
@@ -136,7 +136,7 @@ Examples:
 - party/mob snapshots
 - bridge protocol state
 - combat execution state
-- observed BRD song recipients, exact-song timer ownership, server endtimes, `0x076` remote party-buff snapshots, NITRO generations, capacity state, and Marcato reservations
+- observed BRD song recipients, exact-song timer ownership, server endtimes, `0x076` remote party-buff snapshots, NITRO/Soul Voice generations, Pianissimo transactions, resolution-time modifier evidence, capacity state, and Marcato reservations
 - active Nyzul run token, queue cursor, parked stack, and local lamp/anchor movement role
 
 Runtime/session state must not be written into the UI-owned v2 profile file.
@@ -160,7 +160,7 @@ The profile-v2 source-of-truth boundary is intentionally locked down:
 - Runtime-owned fields remain excluded from durable drift, including engine running state, resolved follow/puller IDs, and the current path filename.
 - Non-COR profiles may omit `maintenance.cor`; omitted or default-empty COR maintenance is non-durable for those profiles.
 - Applicable configured sections still round-trip durably, including COR rolls, BRD buffs, follow puller name, defensive thresholds, and combat weaponskill settings.
-- BRD profiles may own `config.maintenance.brd`; non-BRD profiles omit it. `recovery_range_yalms` is durable per-profile policy with a `9.9` default and a valid range of `1.0` through `20.0`. Song durations, timer evidence, active capacity, recipients, measured party distances, and JA state are never durable.
+- BRD profiles may own `config.maintenance.brd`; non-BRD profiles omit it. `use_soul_voice` and `targeted_songs` are durable policy, while active Soul Voice generations, resolved recipient IDs, Pianissimo reservations, and modifier evidence remain runtime state. `recovery_range_yalms` is durable per-profile policy with a `9.9` default and a valid range of `1.0` through `20.0`. Song durations, timer evidence, active capacity, measured party distances, and JA state are never durable.
 - UI-authored reaction rules are durable at `config.reactions`. The disabled, empty domain may be omitted. Reaction actor IDs, resolved effect IDs, active locks, and turn state are addon-owned runtime state and never participate in durable drift.
 - An unconfigured `config.follow.nyzul` section may be omitted. Configured coordinator, anchor, and parking-order names round-trip durably; queue progress and movement holds never participate in durable drift.
 

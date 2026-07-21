@@ -47,13 +47,14 @@ local function main()
     assert_contains(source, "scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131", "skillchain continuation priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_SLEEP = 142", "Sleep priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_CRITICAL_CURE = 153", "critical Cure priority band mismatch")
-    assert_contains(source, "scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 120", "Bard maintenance priority band mismatch")
+    assert_contains(source, "scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 200", "Bard maintenance priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION", "engage bypass threshold must begin at skillchain continuation")
 
     assert_true(score(153, 0.70) > score(142, 1.00), "critical Cure must beat maximum Sleep urgency")
     assert_true(score(142, 0.55) > score(131, 1.00), "minimum Sleep urgency must beat maximum skillchain urgency")
-    assert_true(score(131, 0.00) > score(120, 1.00), "minimum skillchain urgency must beat maximum Bard maintenance urgency")
-    assert_true(score(120, 0.00) > score(108, 1.00), "minimum Bard maintenance urgency must beat maximum aftermath WS urgency")
+    assert_true(score(200, 0.00) > score(153, 1.00), "minimum Bard maintenance urgency must beat maximum critical Cure urgency")
+    assert_true(score(200, 0.00) > score(142, 1.00), "minimum Bard maintenance urgency must beat maximum Sleep urgency")
+    assert_true(score(200, 0.00) > score(131, 1.00), "minimum Bard maintenance urgency must beat maximum skillchain urgency")
 
     assert_contains(source, "scheduler.PRIORITY_BAND_BRD_MAINTENANCE,", "Bard emitter must pass the global Bard band")
     assert_contains(source, "priority_band = scheduler.PRIORITY_BAND_CRITICAL_CURE", "critical Cure emitters must use the global Cure band")
@@ -80,17 +81,32 @@ local function main()
     local lane_policy = source:match("function scheduler%.p1_brd_lane_blocks_proposal%(proposal, lane_reserved%)(.-)\nend")
     assert_true(type(lane_policy) == "string", "failed to capture BRD action-lane policy")
     assert_contains(lane_policy, "provider or '') == 'maintenance_brd'", "BRD proposals must remain eligible during lane reservation")
-    assert_contains(lane_policy, "action_type == 'spell' or action_type == 'ja' or action_type == 'ws'",
-        "BRD lane reservation must hold lower-priority action proposals")
-    assert_not_contains(lane_policy, "action_type == 'move'", "BRD lane reservation must not block movement")
-    assert_not_contains(lane_policy, "action_type == 'target'", "BRD lane reservation must not block targeting")
-    assert_contains(source, "local lane_reserved, lane_reason = require('uc_brd_maintenance').action_lane_status()",
-        "scheduler collection must consult authoritative BRD sequence state")
+    assert_contains(lane_policy, "return true", "BRD lane reservation must hold every competing proposal")
+    assert_not_contains(lane_policy, "priority_band", "BRD lane reservation must not admit a competing action based on priority")
+    assert_not_contains(lane_policy, "action_type", "BRD lane reservation must not exempt movement, targeting, or engage proposals")
+	assert_contains(source, "local lane_reserved, lane_reason = require('uc_brd_maintenance').action_lane_status()",
+		"scheduler collection must consult authoritative BRD sequence state")
+	assert_contains(source, "local _, brd_action_event = require('uc_brd_maintenance').on_action(act, player_id, observed_at)",
+		"scheduler action handling must receive Bard modifier confirmation events")
+	assert_contains(source, "if brd_action_event == 'pianissimo_confirmed' then",
+		"confirmed Pianissimo must enter the scheduler action-state completion path")
+	assert_contains(source, "action_mark_packet_end({\n\t\t\t\tmessage_id = tonumber(act.category) or 0,",
+		"confirmed Pianissimo must release the active JA lock while preserving normal cooldown")
+	assert_contains(source, "scheduler.p1_pending_mark_complete(observed_at, 'brd_pianissimo_action')",
+		"confirmed Pianissimo must complete its scheduler pending record before the reserved song")
 
-    local process_tick = source:match("function scheduler%.process_tick%(cadence%)(.-)function scheduler%.on_ipc_message")
+	local process_tick = source:match("function scheduler%.process_tick%(cadence%)(.-)function scheduler%.on_ipc_message")
     assert_true(type(process_tick) == "string", "failed to capture scheduler process_tick")
     assert_contains(process_tick, "'config.ownership.scheduler_dark_launch_defensive'",
         "process_tick must enforce defensive scheduler ownership before legacy dispatch")
+    assert_before(process_tick, "try_doom_water_emergency(s)", "scheduler.p1_try_dark_launch_dispatch(s)",
+        "Doom must remain the sole hard prepass ahead of Bard scheduler arbitration")
+    assert_contains(process_tick, "if not brd_lane_reserved then\n\t\tlocal target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s)",
+        "Bard lane must hold nonblocking target acquisition")
+    assert_contains(process_tick, "if not brd_lane_reserved then\n\t\tmove_acted, move_reason = run_movement_coordinator_tick()",
+        "Bard lane must hold movement coordination")
+    assert_before(process_tick, "if brd_lane_reserved then\n\t\t_G.UC_LAST_SCHED_ACTION = '[p1]brd_lane_hold'", "try_internal_defensive_action()",
+        "Bard lane hold must prevent legacy defensive execution")
     assert_contains(process_tick, "if scheduler_owns_defensive then",
         "scheduler-owned defensive work must not fall through to the legacy direct executor")
     assert_contains(process_tick, "DEF_SKIP reason=SCHEDULER_OWNS_DEFENSIVE",

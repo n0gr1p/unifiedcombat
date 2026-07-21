@@ -204,6 +204,79 @@ local function normalize_targeted_buffs(value, default_value)
     return out
 end
 
+local function normalize_brd_targeted_songs(value, default_value)
+    if value == nil then
+        return clone_value(default_value or {})
+    end
+
+    local out = {}
+    local function append_invalid_entry()
+        out[#out + 1] = {
+            recipients = {},
+            priority_songs = {},
+        }
+    end
+    local function split_csv(text)
+        local values = {}
+        for token in tostring(text or ''):gmatch('[^,]+') do
+            local item = trim_string(token)
+            if item ~= '' then
+                values[#values + 1] = item
+            end
+        end
+        return values
+    end
+    local function append_entry(recipients, priority_songs)
+        local normalized_recipients = type(recipients) == 'table'
+            and normalize_pipe_string_list(recipients, {}) or split_csv(recipients)
+        local normalized_songs = type(priority_songs) == 'table'
+            and normalize_pipe_string_list(priority_songs, {}) or split_csv(priority_songs)
+        if #normalized_recipients > 0 and #normalized_songs > 0 then
+            out[#out + 1] = {
+                recipients = normalized_recipients,
+                priority_songs = normalized_songs,
+            }
+        else
+            append_invalid_entry()
+        end
+    end
+
+    if type(value) == 'table' then
+		if #value == 0 and next(value) ~= nil then
+			append_invalid_entry()
+			return out
+		end
+        for i = 1, #value do
+            local entry = value[i]
+            if type(entry) == 'table' then
+                append_entry(entry.recipients, entry.priority_songs or entry.songs)
+            else
+                append_invalid_entry()
+            end
+        end
+        return out
+    end
+
+    if type(value) == 'string' then
+        for token in value:gmatch('[^|]+') do
+            local entry = trim_string(token)
+            local separator = entry:find(':', 1, true)
+            if separator and separator > 1 and separator < #entry then
+                append_entry(entry:sub(1, separator - 1), entry:sub(separator + 1))
+            else
+                append_invalid_entry()
+            end
+        end
+		if trim_string(value) ~= '' and #out == 0 then
+			append_invalid_entry()
+		end
+        return out
+    end
+
+    append_invalid_entry()
+    return out
+end
+
 local function normalize_reaction_rules(value)
     local out = {}
     local seen = {}
@@ -496,9 +569,11 @@ local function default_config(meta)
                 songs = {},
                 dummy_songs = {},
                 use_nitro = false,
+                use_soul_voice = false,
                 use_clarion_call = false,
                 use_marcato = false,
                 marcato_song = '',
+				targeted_songs = {},
 				recovery_range_yalms = 9.9,
 				recovery_ignore_names = {},
             },
@@ -982,9 +1057,11 @@ local function normalize_maintenance(source, config)
         maintenance.brd.songs = normalize_pipe_string_list(brd.songs, maintenance.brd.songs)
         maintenance.brd.dummy_songs = normalize_pipe_string_list(brd.dummy_songs, maintenance.brd.dummy_songs)
         maintenance.brd.use_nitro = normalize_boolean(brd.use_nitro, maintenance.brd.use_nitro)
+        maintenance.brd.use_soul_voice = normalize_boolean(brd.use_soul_voice, maintenance.brd.use_soul_voice)
         maintenance.brd.use_clarion_call = normalize_boolean(brd.use_clarion_call, maintenance.brd.use_clarion_call)
         maintenance.brd.use_marcato = normalize_boolean(brd.use_marcato, maintenance.brd.use_marcato)
         maintenance.brd.marcato_song = normalize_string(brd.marcato_song, maintenance.brd.marcato_song)
+		maintenance.brd.targeted_songs = normalize_brd_targeted_songs(brd.targeted_songs, maintenance.brd.targeted_songs)
 		maintenance.brd.recovery_range_yalms = normalize_number(brd.recovery_range_yalms, maintenance.brd.recovery_range_yalms, { min = 1.0, max = 20.0 })
 		maintenance.brd.recovery_ignore_names = normalize_pipe_string_list(brd.recovery_ignore_names, maintenance.brd.recovery_ignore_names)
         maintenance.geo = normalize_list(nested.geo, maintenance.geo)
@@ -1001,9 +1078,11 @@ local function normalize_maintenance(source, config)
         maintenance.brd.songs = normalize_pipe_string_list(first_path(source, { path('brd_songs') }), maintenance.brd.songs)
         maintenance.brd.dummy_songs = normalize_pipe_string_list(first_path(source, { path('brd_dummy_songs') }), maintenance.brd.dummy_songs)
         maintenance.brd.use_nitro = normalize_boolean(first_path(source, { path('brd_use_nitro') }), maintenance.brd.use_nitro)
+        maintenance.brd.use_soul_voice = normalize_boolean(first_path(source, { path('brd_use_soul_voice') }), maintenance.brd.use_soul_voice)
         maintenance.brd.use_clarion_call = normalize_boolean(first_path(source, { path('brd_use_clarion_call') }), maintenance.brd.use_clarion_call)
         maintenance.brd.use_marcato = normalize_boolean(first_path(source, { path('brd_use_marcato') }), maintenance.brd.use_marcato)
         maintenance.brd.marcato_song = normalize_string(first_path(source, { path('brd_marcato_song') }), maintenance.brd.marcato_song)
+		maintenance.brd.targeted_songs = normalize_brd_targeted_songs(first_path(source, { path('brd_targeted_songs') }), maintenance.brd.targeted_songs)
 		maintenance.brd.recovery_range_yalms = normalize_number(first_path(source, { path('brd_recovery_range_yalms') }), maintenance.brd.recovery_range_yalms, { min = 1.0, max = 20.0 })
 		maintenance.brd.recovery_ignore_names = normalize_pipe_string_list(first_path(source, { path('brd_recovery_ignore_names') }), maintenance.brd.recovery_ignore_names)
         maintenance.geo = normalize_list(first_path(source, { path('maintenance_geo') }), maintenance.geo)

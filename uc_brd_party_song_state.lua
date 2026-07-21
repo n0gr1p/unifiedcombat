@@ -30,6 +30,14 @@ local function is_eligible(member, ignore_names)
 		and not name_is_ignored(ignore_names, member.name)
 end
 
+local function is_targetable(member)
+	return type(member) == 'table'
+		and member.is_npc ~= true
+		and tonumber(member.spawn_type) ~= 14
+		and member.in_song_range == true
+		and (tonumber(member.hpp) or 0) > 0
+end
+
 function M.in_recovery_range(member, recovery_range_yalms, get_mob_by_id)
 	if type(recovery_range_yalms) ~= 'number' or recovery_range_yalms < 1.0 or recovery_range_yalms > 20.0 then
 		return false, nil
@@ -129,6 +137,7 @@ function M.observe(members, ignore_names, song_status_ids, now)
 			record.in_song_range = member.in_song_range == true
 			record.song_distance = tonumber(member.song_distance)
 			record.eligible = is_eligible(member, ignore_names)
+			record.targetable = is_targetable(member)
 			record.observed_song_count = observed_song_count(member, song_status_ids or {})
 
 			if (tonumber(member.hpp) or 0) <= 0 then
@@ -144,7 +153,7 @@ function M.observe(members, ignore_names, song_status_ids, now)
 			end
 
 			local pending = record.pending_count
-			if record.eligible and record.observed_song_count ~= nil and type(pending) == 'table' then
+			if record.targetable and record.observed_song_count ~= nil and type(pending) == 'table' then
 				if record.observed_song_count >= pending.expected_count then
 					record.pending_count = nil
 					if type(state.recovery) == 'table' and state.recovery.member_id == id then
@@ -162,7 +171,7 @@ function M.observe(members, ignore_names, song_status_ids, now)
 				end
 			end
 
-			if record.eligible and record.observed_song_count ~= nil and record.pending_count == nil then
+			if record.targetable and record.observed_song_count ~= nil and record.pending_count == nil then
 				reconcile_observed_count(record, record.observed_song_count)
 			end
 			state.members[id] = record
@@ -213,6 +222,119 @@ local function unique_shortest_effect(member)
 	return shortest_name, ''
 end
 
+local function targeted_overwrite_candidates(member)
+	if (tonumber(member.unknown_count) or 0) > 0 then
+		return nil, 'unknown_overwrite_victim'
+	end
+	local shortest_endtime = nil
+	for _, effect in pairs(member.effects or {}) do
+		local endtime = tonumber(effect.endtime)
+		if endtime == nil or endtime <= 0 then
+			return nil, 'unknown_effect_endtime'
+		end
+		if shortest_endtime == nil or endtime < shortest_endtime then
+			shortest_endtime = endtime
+		end
+	end
+	if shortest_endtime == nil then
+		return nil, 'missing_overwrite_victim'
+	end
+	local names = {}
+	for name, effect in pairs(member.effects or {}) do
+		if math.abs((tonumber(effect.endtime) or 0) - shortest_endtime) <= TIMER_TIE_TOLERANCE then
+			names[#names + 1] = name
+		end
+	end
+	table.sort(names)
+	return names, ''
+end
+
+function M.plan_targeted_song(member_id, song_name, cast_capacity, protected_songs, allow_unknown_overwrite)
+	local member = state.members[tonumber(member_id) or 0]
+	if type(member) ~= 'table' or member.targetable ~= true then
+		return nil, 'targeted_recipient_unavailable'
+	end
+	if type(member.pending_count) == 'table' then
+		return nil, 'targeted_recipient_count_pending'
+	end
+	local name = tostring(song_name or '')
+	local existing = member.effects[name]
+	if type(existing) == 'table' then
+		return {
+			operation = 'exact_refresh',
+			candidate_names = { name },
+			requires_troubadour = existing.troubadour_active == true,
+		}, ''
+	end
+	local count = tonumber(member.observed_song_count)
+	if count == nil then
+		return nil, 'missing_recipient_song_count:' .. member.name
+	end
+	if count < (tonumber(cast_capacity) or 0) then
+		return {
+			operation = 'add',
+			candidate_names = {},
+			requires_troubadour = false,
+		}, ''
+	end
+	local candidates, reason = targeted_overwrite_candidates(member)
+	if candidates == nil then
+		if reason == 'unknown_overwrite_victim' and allow_unknown_overwrite == true then
+			return {
+				operation = 'replace',
+				candidate_names = {},
+				requires_troubadour = true,
+				unknown_overwrite = true,
+			}, ''
+		end
+		return nil, reason
+	end
+	local protected = type(protected_songs) == 'table' and protected_songs or {}
+	local requires_troubadour = false
+	for i = 1, #candidates do
+		local candidate = candidates[i]
+		if protected[candidate] == true then
+			return nil, 'targeted_candidate_protected:' .. candidate
+		end
+		if member.effects[candidate].troubadour_active == true then
+			requires_troubadour = true
+		end
+	end
+	return {
+		operation = 'replace',
+		candidate_names = candidates,
+		requires_troubadour = requires_troubadour,
+	}, ''
+end
+
+function M.member_by_name(name)
+	local wanted = tostring(name or ''):lower()
+	local matched = nil
+	for i = 1, #state.order do
+		local member = state.members[state.order[i]]
+		if type(member) == 'table' and tostring(member.name or ''):lower() == wanted then
+			if matched ~= nil then
+				return nil, 'ambiguous_targeted_recipient:' .. tostring(name or '')
+			end
+			matched = member
+		end
+	end
+	if matched == nil then
+		return nil, 'targeted_recipient_not_in_party:' .. tostring(name or '')
+	end
+	return matched, ''
+end
+
+function M.mark_member_unknown(member_id, reason)
+	local member = state.members[tonumber(member_id) or 0]
+	if type(member) ~= 'table' then
+		return false
+	end
+	clear_member(member, reason or 'targeted_state_unknown')
+	member.observed_song_count = nil
+	return true
+end
+
 local function exact_refresh_is_safe_for_all(song_name)
 	for i = 1, #state.order do
 		local member = state.members[state.order[i]]
@@ -226,6 +348,28 @@ end
 
 function M.exact_refresh_is_safe_for_all(song_name)
 	return exact_refresh_is_safe_for_all(song_name)
+end
+
+function M.earliest_effect_endtime(song_name)
+	local name = tostring(song_name or '')
+	local earliest = nil
+	local recipient_name = ''
+	for i = 1, #state.order do
+		local member = state.members[state.order[i]]
+		local effect = type(member) == 'table' and member.eligible == true
+			and member.effects[name] or nil
+		if type(effect) == 'table' then
+			local endtime = tonumber(effect.endtime)
+			if effect.endtime_confidence ~= 'confirmed' or endtime == nil or endtime <= 0 then
+				return nil, '', 'unknown_recipient_song_endtime:' .. member.name .. ':' .. name
+			end
+			if earliest == nil or endtime < earliest then
+				earliest = endtime
+				recipient_name = member.name
+			end
+		end
+	end
+	return earliest, recipient_name, ''
 end
 
 local function enhanced_dummy_to_normalize(member)
@@ -257,11 +401,20 @@ local function apply_delivery(member, delivery)
 	local name = tostring(delivery.song_name or '')
 	local existing = member.effects[name]
 	if type(existing) == 'table' then
-		existing.endtime = tonumber(delivery.endtime) or existing.endtime
+		if delivery.pianissimo_applied == true and delivery.endtime == nil then
+			existing.endtime = 0
+			existing.endtime_confidence = 'unknown'
+		else
+			existing.endtime = tonumber(delivery.endtime) or existing.endtime
+			existing.endtime_confidence = delivery.endtime ~= nil and 'confirmed'
+				or tostring(existing.endtime_confidence or 'unknown')
+		end
 		existing.status_id = tonumber(delivery.status_id) or existing.status_id
 		existing.confirmed_at = tonumber(delivery.confirmed_at) or os.time()
 		existing.is_dummy = delivery.is_dummy == true
 		existing.troubadour_active = delivery.troubadour_active == true
+		existing.soul_voice_applied = delivery.soul_voice_applied == true
+		existing.pianissimo_applied = delivery.pianissimo_applied == true
 		existing.normalization_attempted = delivery.normalizes_dummy == true
 		existing.alignment_attempted = delivery.aligns_final == true
 		return 'exact_refresh'
@@ -276,6 +429,9 @@ local function apply_delivery(member, delivery)
 			confirmed_at = tonumber(delivery.confirmed_at) or os.time(),
 			is_dummy = delivery.is_dummy == true,
 			troubadour_active = delivery.troubadour_active == true,
+			soul_voice_applied = delivery.soul_voice_applied == true,
+			pianissimo_applied = delivery.pianissimo_applied == true,
+			endtime_confidence = delivery.endtime ~= nil and 'confirmed' or 'unknown',
 			normalization_attempted = delivery.normalizes_dummy == true,
 			alignment_attempted = delivery.aligns_final == true,
 		}
@@ -305,6 +461,9 @@ local function apply_delivery(member, delivery)
 		confirmed_at = tonumber(delivery.confirmed_at) or os.time(),
 		is_dummy = delivery.is_dummy == true,
 		troubadour_active = delivery.troubadour_active == true,
+		soul_voice_applied = delivery.soul_voice_applied == true,
+		pianissimo_applied = delivery.pianissimo_applied == true,
+		endtime_confidence = delivery.endtime ~= nil and 'confirmed' or 'unknown',
 		normalization_attempted = delivery.normalizes_dummy == true,
 		alignment_attempted = delivery.aligns_final == true,
 	}
@@ -614,9 +773,10 @@ function M.status_lines()
 	}
 	for i = 1, #state.order do
 		local member = state.members[state.order[i]]
-		lines[#lines + 1] = ('BRD recipient=%s eligible=%s count=%s known=%d unknown=%d confidence=%s source=%s buffs=%s range=%s distance=%s loss=%s'):format(
+		lines[#lines + 1] = ('BRD recipient=%s eligible=%s targetable=%s count=%s known=%d unknown=%d confidence=%s source=%s buffs=%s range=%s distance=%s loss=%s'):format(
 			member.name,
 			member.eligible and 'yes' or 'no',
+			member.targetable and 'yes' or 'no',
 			member.observed_song_count == nil and 'unknown' or tostring(member.observed_song_count),
 			effect_count(member),
 			tonumber(member.unknown_count) or 0,
@@ -627,6 +787,24 @@ function M.status_lines()
 			member.song_distance == nil and 'unknown' or ('%.1f'):format(member.song_distance),
 			tostring(member.loss_reason or 'none')
 		)
+		local effect_names = {}
+		for effect_name in pairs(member.effects) do
+			effect_names[#effect_names + 1] = effect_name
+		end
+		table.sort(effect_names)
+		for effect_index = 1, #effect_names do
+			local effect_name = effect_names[effect_index]
+			local effect = member.effects[effect_name]
+			lines[#lines + 1] = ('BRD recipient_effect=%s song=%s endtime=%s endtime_confidence=%s troubadour=%s soul_voice=%s pianissimo=%s'):format(
+				member.name,
+				effect_name,
+				tostring(effect.endtime),
+				tostring(effect.endtime_confidence),
+				effect.troubadour_active and 'yes' or 'no',
+				effect.soul_voice_applied and 'yes' or 'no',
+				effect.pianissimo_applied and 'yes' or 'no'
+			)
+		end
 	end
 	return lines
 end
@@ -634,6 +812,7 @@ end
 M._test = {
 	state = state,
 	unique_shortest_effect = unique_shortest_effect,
+	targeted_overwrite_candidates = targeted_overwrite_candidates,
 	exact_refresh_is_safe_for_all = exact_refresh_is_safe_for_all,
 }
 

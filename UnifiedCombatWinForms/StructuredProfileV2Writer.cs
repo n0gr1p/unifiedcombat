@@ -21,6 +21,7 @@ internal sealed record StructuredProfileV2WriteResult(
 );
 
 internal sealed record TargetedBuffEntry(string Character, string Buff);
+internal sealed record BardTargetedSongSet(IReadOnlyList<string> Recipients, IReadOnlyList<string> PrioritySongs);
 
 internal interface IStructuredProfileV2FileSystem
 {
@@ -610,16 +611,24 @@ internal static class StructuredProfileV2Writer
 			|| string.Equals(SafeJobComponent(identity.SubJob), "BRD", StringComparison.Ordinal);
 		if (isBrdProfile)
 		{
+			var useNitro = ReadBool(flatProfile, "brd_use_nitro", false);
+			var useSoulVoice = ReadBool(flatProfile, "brd_use_soul_voice", false);
+			if (useSoulVoice && !useNitro)
+			{
+				throw new InvalidDataException("BRD Soul Voice requires NITRO.");
+			}
 			maintenance.Add(
 				"brd",
 				new StructuredProfileNode()
 					.Add("enabled", ReadBool(flatProfile, "brd_maintenance_enabled", false))
 					.Add("songs", SplitPipeList(ReadString(flatProfile, "brd_songs", "")))
 					.Add("dummy_songs", SplitPipeList(ReadString(flatProfile, "brd_dummy_songs", "")))
-					.Add("use_nitro", ReadBool(flatProfile, "brd_use_nitro", false))
+					.Add("use_nitro", useNitro)
+					.Add("use_soul_voice", useSoulVoice)
 					.Add("use_clarion_call", ReadBool(flatProfile, "brd_use_clarion_call", false))
 					.Add("use_marcato", ReadBool(flatProfile, "brd_use_marcato", false))
 					.Add("marcato_song", ReadString(flatProfile, "brd_marcato_song", ""))
+					.Add("targeted_songs", BuildBardTargetedSongs(ReadString(flatProfile, "brd_targeted_songs", "")))
 					.Add("recovery_range_yalms", ReadBoundedDouble(flatProfile, "brd_recovery_range_yalms", 9.9, 1.0, 20.0))
 					.Add("recovery_ignore_names", SplitPipeList(ReadString(flatProfile, "brd_recovery_ignore_names", "")))
 			);
@@ -1141,6 +1150,64 @@ internal static class StructuredProfileV2Writer
 
         return list;
     }
+
+	internal static List<BardTargetedSongSet> ParseBardTargetedSongs(string value)
+	{
+		var sets = new List<BardTargetedSongSet>();
+		var assignedRecipients = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		foreach (var rawEntry in value.Split('|', StringSplitOptions.RemoveEmptyEntries))
+		{
+			var entry = rawEntry.Trim();
+			var separatorIndex = entry.IndexOf(':');
+			if (separatorIndex <= 0 || separatorIndex >= entry.Length - 1)
+			{
+				throw new InvalidDataException($"BRD targeted song entry must be Recipients:PrioritySongs: {entry}");
+			}
+			var recipients = entry[..separatorIndex]
+				.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+				.ToArray();
+			var songs = entry[(separatorIndex + 1)..]
+				.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+				.ToArray();
+			if (recipients.Length == 0 || songs.Length == 0)
+			{
+				throw new InvalidDataException($"BRD targeted song entry requires recipients and songs: {entry}");
+			}
+			if (recipients.Distinct(StringComparer.OrdinalIgnoreCase).Count() != recipients.Length)
+			{
+				throw new InvalidDataException($"BRD targeted song entry repeats a recipient: {entry}");
+			}
+			if (songs.Distinct(StringComparer.Ordinal).Count() != songs.Length)
+			{
+				throw new InvalidDataException($"BRD targeted song entry repeats a song: {entry}");
+			}
+			foreach (var recipient in recipients)
+			{
+				if (!assignedRecipients.Add(recipient))
+				{
+					throw new InvalidDataException($"BRD targeted song recipient appears more than once: {recipient}");
+				}
+			}
+			sets.Add(new BardTargetedSongSet(recipients, songs));
+		}
+		if (!string.IsNullOrWhiteSpace(value) && sets.Count == 0)
+		{
+			throw new InvalidDataException("BRD targeted songs contain no valid recipient/song entries.");
+		}
+		return sets;
+	}
+
+	private static List<object?> BuildBardTargetedSongs(string value)
+	{
+		var list = new List<object?>();
+		foreach (var set in ParseBardTargetedSongs(value))
+		{
+			list.Add(new StructuredProfileNode()
+				.Add("recipients", set.Recipients.Cast<object?>().ToList())
+				.Add("priority_songs", set.PrioritySongs.Cast<object?>().ToList()));
+		}
+		return list;
+	}
 
     private static List<object?> BuildTargetedBuffs(string value)
     {

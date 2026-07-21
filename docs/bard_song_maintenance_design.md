@@ -6,6 +6,8 @@ This document records the design contract implemented by the dedicated Bard enha
 
 The initial implementation is in `uc_brd_maintenance.lua`, with scheduler ownership under provider `maintenance_brd` and UI-owned durable policy under `config.maintenance.brd`.
 
+Soul Voice and per-recipient Pianissimo overlays extend this initial contract through `docs/bard_soul_voice_pianissimo_implementation_plan.md`. Where that follow-on contract addresses targeted beneficial songs, it supersedes the initial deferral below.
+
 The game-mechanics reference is `docs/RefDocs/FFXI_Bard_Song_Overwrite_Logic_Specification.md`. This document defines how UnifiedCombat will apply those mechanics while preserving the addon's scheduler and profile ownership boundaries.
 
 ## Goals
@@ -28,7 +30,7 @@ The initial implementation will not:
 
 - make song duration, expiration, active slots, confidence, or target IDs durable profile data;
 - estimate durable song duration from equipment configuration;
-- support targeted beneficial songs in the initial implementation;
+- treat targeted beneficial songs as part of the initial implementation; the follow-on Soul Voice/Pianissimo contract owns that later implementation;
 - control enemy-targeted Bard debuffs;
 - model uncontrolled multi-Bard song interaction as deterministic;
 - bypass scheduler locks, pending-action handling, cooldown checks, or action arbitration;
@@ -184,6 +186,8 @@ Therefore:
 - a recipient must not be marked as receiving a song without successful target evidence;
 - a locally observed endtime from the same successful area cast may be associated with confirmed recipients because it represents that serialized cast;
 - unknown or contradictory recipient timing must lower confidence rather than invent a duration.
+
+Steady-state group maintenance uses the earliest confirmed endtime for each desired song across the Bard and all currently eligible recipients. A later Bard-local endtime created by a self-only Pianissimo exact refresh cannot postpone the next area refresh. If an eligible recipient owns the song but its endtime is unknown, maintenance reports an explicit blocker instead of substituting the Bard's timer.
 
 The initial implementation supports general area songs only. Targeted songs that do not affect the Bard are deferred to a possible future enhancement, so they do not require a timing solution in this design.
 
@@ -444,6 +448,8 @@ After reload, some slots may have unknown exact identity. The local provider com
 
 If the uniquely shortest owner is an existing desired song and a known dummy remains, the provider exact-refreshes that desired song as an alignment step. Exact refresh preserves the song and moves its endtime behind the dummy. The provider reevaluates the authoritative timers after every alignment refresh and replaces the missing final only when the dummy becomes uniquely shortest.
 
+If the uniquely shortest local owner is a configured Pianissimo self-overlay rather than a general desired song, the provider performs the equivalent alignment as an atomic Pianissimo exact refresh. The five-song setup lane remains reserved while Pianissimo or the song is temporarily unavailable, through both confirmations, and into the next alignment or dummy-replacement step. No non-Doom provider may run during that interval.
+
 If a capacity dummy was confirmed while Troubadour was active and Troubadour expires before that dummy can be replaced, its doubled duration may prevent normal-duration final songs from ever moving behind it. When that enhanced dummy obstructs the uniquely-shortest replacement order, the provider first exact-refreshes the same dummy without Troubadour. This deliberately replaces its enhanced endtime with the newly observed normal-duration endtime without changing song count. The normalization cast is allowed only when every eligible in-range recipient already owns that exact dummy, because otherwise the area cast could overwrite a protected song. After authoritative `0x063` confirmation, each still-shorter final may be aligned once before the missing final replaces the uniquely shortest dummy. A normalization or alignment that does not establish progress enters an explicit terminal blocker instead of repeating casts.
 
 ## Per-recipient State
@@ -511,7 +517,7 @@ Within Bard maintenance, proposal priority is:
 8. Perform a unique-song overwrite only when the victim is uniquely predictable.
 9. Refuse or defer ambiguous replacement.
 
-Every dedicated `maintenance_brd` proposal uses global scheduler priority band 120. This is provider-scoped rather than job-scoped: only the Bard maintenance provider emits these actions. Doom remains the hard emergency prepass. Below Doom, the global support ordering is Bard maintenance, critical Cure, Sleep, aftermath weapon skill, then existing weighted actions. Critical Cure uses band 117, Sleep uses band 113, and aftermath uses band 108. Band 113 is also the global pending-engage and engage-preemption bypass threshold, so engage setup cannot suppress Bard maintenance, critical Cure, or Sleep. Existing action, cooldown, movement, zoning, and pending-action safety locks remain authoritative; priority never interrupts an action already underway.
+Every dedicated `maintenance_brd` proposal uses global scheduler priority band 200. This is provider-scoped rather than job-scoped: only the Bard maintenance provider emits these actions. Doom remains the sole hard emergency prepass. Below Doom, Bard maintenance outranks every spell, job ability, weapon skill, target-control proposal, engage operation, and movement operation, including critical Cure, Sleep, debuff removal, skillchain continuation, aftermath weapon skills, and ordinary weighted actions. Once the Bard action lane is reserved, no competing scheduler proposal, nonblocking target acquisition, or movement-coordinator tick is admitted. Existing action, cooldown, zoning, and pending-action safety locks remain authoritative; priority never interrupts an action already underway.
 
 An actionable Bard proposal starts a runtime-only action-lane reservation for the current song sequence. The reservation remains active while the provider waits for cast start, cast completion or interruption, the applicable `0x063` ownership confirmation, and the next required song transition. During that interval, lower-band spell, job ability, and weapon-skill proposals are held so their action lock cannot split the sequence merely because the Bard provider is temporarily between proposals. Movement and targeting remain available. The reservation releases when the effective configured song set is satisfied or when the provider reaches a terminal unavailable state. An initially unavailable Bard action does not reserve the lane. Doom remains unaffected because it is processed by the hard emergency prepass before scheduler proposal arbitration.
 

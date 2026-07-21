@@ -76,7 +76,8 @@ windower = {
 	},
 }
 local ready = function(name)
-	if name == 'Nightingale' or name == 'Troubadour' or name == 'Marcato' or name == 'Clarion Call' then
+	if name == 'Nightingale' or name == 'Troubadour' or name == 'Marcato' or name == 'Clarion Call'
+		or name == 'Soul Voice' or name == 'Pianissimo' then
 		return true, '', 'ja'
 	end
 	return true, '', 'spell'
@@ -88,9 +89,11 @@ local config = {
 	recovery_range_yalms = 9.9,
 	recovery_ignore_names = {},
 	use_nitro = false,
+	use_soul_voice = false,
 	use_clarion_call = false,
 	use_marcato = false,
 	marcato_song = '',
+	targeted_songs = {},
 }
 local log_ok, log_path = brd.start_diagnostic_log()
 assert_true(log_ok == true, 'BRD diagnostic log must start in the replay harness')
@@ -119,9 +122,11 @@ local bad = {
 	recovery_range_yalms = 9.9,
 	recovery_ignore_names = {},
 	use_nitro = false,
+	use_soul_voice = false,
 	use_clarion_call = false,
 	use_marcato = false,
 	marcato_song = '',
+	targeted_songs = {},
 }
 assert_true(brd._test.validate_config(bad, player) == false, 'enemy-targeted Bard song must be rejected')
 
@@ -288,9 +293,11 @@ local capacity_config = {
 	recovery_range_yalms = 9.9,
 	recovery_ignore_names = {},
 	use_nitro = false,
+	use_soul_voice = false,
 	use_clarion_call = false,
 	use_marcato = false,
 	marcato_song = '',
+	targeted_songs = {},
 }
 assert_true(brd._test.validate_config(capacity_config, player) == true, 'valid four-song capacity config rejected')
 local cap_one = brd._test.server_now_raw(os.time()) + 40000
@@ -712,9 +719,11 @@ local local_normalization_config = {
 	recovery_range_yalms = 9.9,
 	recovery_ignore_names = {},
 	use_nitro = false,
+	use_soul_voice = false,
 	use_clarion_call = true,
 	use_marcato = false,
 	marcato_song = '',
+	targeted_songs = {},
 }
 local local_base = brd._test.server_now_raw(os.time())
 local local_victory = local_base + 14400
@@ -768,12 +777,13 @@ action = brd.propose(local_normalization_config, { now = 46, player = player, ac
 assert_equal(action.action_name, 'Valor Minuet IV', 'missing final must replace the confirmed shortest normalized dummy')
 
 brd.reset('party_normalization_self_guard_test')
+local self_guard_base = brd._test.server_now_raw(os.time())
 party_song_state.observe({ recovery_member(88, 'ReturningPlayer', 4) }, {}, { [100] = true }, 47)
 for _, delivery in ipairs({
-	{ name = 'Victory March', endtime = 4000, status_id = 100 },
-	{ name = "Mage's Ballad III", endtime = 4200, status_id = 104 },
-	{ name = 'Valor Minuet V', endtime = 5000, status_id = 103 },
-	{ name = 'Honor March', endtime = 6000, status_id = 100 },
+	{ name = 'Victory March', endtime = self_guard_base + 18000, status_id = 100 },
+	{ name = "Mage's Ballad III", endtime = self_guard_base + 18600, status_id = 104 },
+	{ name = 'Valor Minuet V', endtime = self_guard_base + 19200, status_id = 103 },
+	{ name = 'Honor March', endtime = self_guard_base + 19800, status_id = 100 },
 }) do
 	party_song_state.record_delivery({
 		song_name = delivery.name, status_id = delivery.status_id, endtime = delivery.endtime,
@@ -782,12 +792,11 @@ for _, delivery in ipairs({
 end
 recovery_step = party_song_state.next_action(recovery_sequence_config, 5, true, false, true)
 party_song_state.record_delivery({
-	song_name = recovery_step.action_name, status_id = 101, endtime = 8000,
+	song_name = recovery_step.action_name, status_id = 101, endtime = self_guard_base + 30000,
 	recipients = { 88 }, confirmed_at = 47.1, is_dummy = true, troubadour_active = true,
 	cast_capacity = 5, song_limit = 5, recovery_member_id = 88,
 })
 party_song_state.observe({ recovery_member(88, 'ReturningPlayer', 5) }, {}, { [100] = true }, 47.2)
-local self_guard_base = brd._test.server_now_raw(os.time())
 local self_guard_snapshot = {
 	[100] = { count = 2, endtimes = { self_guard_base + 18000, self_guard_base + 18600 } },
 	[103] = { count = 2, endtimes = { self_guard_base + 19200, self_guard_base + 19800 } },
@@ -811,7 +820,8 @@ action = brd.propose(local_normalization_config, {
 	action_ready = ready,
 	party_members = { recovery_member(88, 'ReturningPlayer', 5) },
 })
-assert_true(action == nil, 'party dummy normalization must not overwrite a local Bard song')
+assert_true(action == nil, 'party dummy normalization must not overwrite a local Bard song: '
+	.. tostring(action and action.action_name or 'nil'))
 assert_equal(brd._test.state.last_blocker, 'normalization_not_exact_refresh:self',
 	'unsafe local normalization must expose an explicit self blocker')
 
@@ -823,9 +833,11 @@ local five_without_clarion = {
 	recovery_range_yalms = 9.9,
 	recovery_ignore_names = {},
 	use_nitro = false,
+	use_soul_voice = false,
 	use_clarion_call = false,
 	use_marcato = false,
 	marcato_song = '',
+	targeted_songs = {},
 }
 assert_true(brd._test.validate_config(five_without_clarion, player) == true, 'fifth configured song must not require Clarion when only the first four are effective')
 local effective_without_clarion = brd._test.effective_config(five_without_clarion, player)
@@ -838,9 +850,11 @@ local five_with_clarion = brd._test.effective_config({
 	recovery_range_yalms = 9.9,
 	recovery_ignore_names = {},
 	use_nitro = false,
+	use_soul_voice = false,
 	use_clarion_call = true,
 	use_marcato = false,
 	marcato_song = '',
+	targeted_songs = {},
 }, player)
 assert_equal(#five_with_clarion.songs, 5, 'Clarion-enabled effective song list must retain the fifth song')
 
@@ -852,9 +866,11 @@ local clarion_cooldown_config = {
 	recovery_range_yalms = 9.9,
 	recovery_ignore_names = {},
 	use_nitro = false,
+	use_soul_voice = false,
 	use_clarion_call = true,
 	use_marcato = false,
 	marcato_song = '',
+	targeted_songs = {},
 }
 local clarion_cooldown_ready = function(name)
 	if name == 'Clarion Call' then return false, 'recast', 'ja' end
@@ -878,6 +894,63 @@ brd._test.state.owners['Mage\'s Ballad III'] = { status_id = 104, endtime = cool
 action = brd.propose(clarion_cooldown_config, { now = 15, player = player, action_ready = clarion_cooldown_ready })
 assert_equal(action.action_name, 'Mage\'s Ballad III', 'persisted fifth song must remain an expiration-maintenance target while Clarion is on cooldown')
 assert_equal(action.reason_code, 'brd_song_expiring', 'persisted fifth song must use ordinary exact-refresh maintenance')
+
+brd.reset('party_deadline_precedes_pianissimo_extended_self_test')
+local party_deadline_now = os.time()
+local party_deadline_short = brd._test.server_now_raw(party_deadline_now) + 600
+local party_deadline_long = brd._test.server_now_raw(party_deadline_now) + 24000
+local party_deadline_later = party_deadline_long + 600
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { party_deadline_long, party_deadline_later } },
+}, party_deadline_now)
+brd._test.state.owners['Honor March'] = {
+	status_id = 100,
+	endtime = party_deadline_long,
+	recipients = { 77 },
+	pianissimo_applied = true,
+}
+brd._test.state.owners['Victory March'] = {
+	status_id = 100,
+	endtime = party_deadline_later,
+	recipients = { 77 },
+}
+local party_deadline_member = {
+	id = 88,
+	name = 'PartyDeadline',
+	hpp = 100,
+	spawn_type = 1,
+	is_npc = false,
+	in_song_range = true,
+	buffs = { 100, 100 },
+}
+local party_deadline_state = require('uc_brd_party_song_state')
+party_deadline_state.observe({ party_deadline_member }, {}, { [100] = true }, party_deadline_now)
+party_deadline_state.record_delivery({
+	song_name = 'Honor March',
+	status_id = 100,
+	endtime = party_deadline_short,
+	recipients = { 88 },
+	confirmed_at = party_deadline_now,
+	cast_capacity = 2,
+	song_limit = 2,
+})
+party_deadline_state.record_delivery({
+	song_name = 'Victory March',
+	status_id = 100,
+	endtime = party_deadline_later,
+	recipients = { 88 },
+	confirmed_at = party_deadline_now,
+	cast_capacity = 2,
+	song_limit = 2,
+})
+action = brd.propose(config, {
+	now = party_deadline_now,
+	player = player,
+	party_members = { party_deadline_member },
+	action_ready = ready,
+})
+assert_equal(action.action_name, 'Honor March', 'earliest remote recipient timer must drive group refresh after a self Pianissimo refresh')
+assert_equal(action.reason_code, 'brd_party_song_expiring', 'remote-driven group refresh reason mismatch')
 
 brd.reset('five_clarion_three_dummies_test')
 local dummy_short = brd._test.server_now_raw(os.time()) + 12000
@@ -969,6 +1042,34 @@ action = brd.propose(clarion_cooldown_config, { now = 15.23, player = player, ac
 assert_equal(action.action_name, 'Honor March', 'reload recovery must rebuild desired identity when the uniquely shortest slot is unknown')
 assert_equal(action.reason_code, 'brd_degraded_rebuild_unknown', 'unknown-slot rebuild reason mismatch')
 
+brd.reset('five_clarion_reload_tied_unknown_shortest_test')
+local tied_unknown_short = unknown_short - 600
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { tied_unknown_short, tied_unknown_short + 1 } },
+	[103] = { count = 2, endtimes = { dummy_middle, degraded_final } },
+	[104] = { count = 1, endtimes = { unknown_long } },
+}, 15.24)
+action = brd.propose(clarion_cooldown_config, { now = 15.24, player = player, action_ready = clarion_cooldown_ready })
+assert_equal(action.action_name, 'Honor March', 'reload recovery must rebuild desired identity when every tied shortest slot is unknown')
+assert_equal(action.reason_code, 'brd_rebuild_unknown', 'tied unknown-slot rebuild reason mismatch')
+
+brd.reset('five_clarion_reload_tied_known_shortest_test')
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { tied_unknown_short, tied_unknown_short + 1 } },
+	[103] = { count = 2, endtimes = { dummy_middle, degraded_final } },
+	[104] = { count = 1, endtimes = { unknown_long } },
+}, 15.245)
+brd._test.state.owners['Victory March'] = {
+	status_id = 100,
+	endtime = tied_unknown_short,
+	recipients = { 77 },
+	is_dummy = false,
+}
+action = brd.propose(clarion_cooldown_config, { now = 15.245, player = player, action_ready = clarion_cooldown_ready })
+assert_true(action == nil, 'reload recovery must remain blocked when a tied shortest slot has a known owner')
+assert_true(table.concat(brd.status_lines(), ' | '):find('ambiguous_overwrite_victim', 1, true) ~= nil,
+	'tied known-slot reload blocker must remain diagnostic')
+
 brd.reset('five_clarion_degraded_test')
 brd.on_status_snapshot({
 	[100] = { count = 2, endtimes = { cooldown_one, cooldown_two } },
@@ -981,6 +1082,92 @@ brd._test.state.owners['Valor Minuet IV'] = { status_id = 103, endtime = cooldow
 action = brd.propose(clarion_cooldown_config, { now = 15.25, player = player, action_ready = clarion_cooldown_ready })
 assert_true(action == nil, 'a lost fifth slot must remain degraded instead of rotating four songs while Clarion is unavailable')
 assert_true(table.concat(brd.status_lines(), ' | '):find('degraded_fifth_waiting_for_clarion', 1, true) ~= nil, 'degraded fifth-slot state must be diagnostic')
+
+brd.reset('five_clarion_degraded_nitro_test')
+local degraded_nitro_config = {
+	enabled = true,
+	songs = five_without_clarion.songs,
+	dummy_songs = { "Army's Paeon", "Army's Paeon II", 'Goblin Gavotte' },
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
+	use_nitro = true,
+	use_soul_voice = false,
+	use_clarion_call = true,
+	use_marcato = false,
+	marcato_song = '',
+	targeted_songs = {},
+}
+local degraded_action_ready = function(name)
+	if name == 'Clarion Call' then return false, 'recast', 'ja' end
+	return ready(name)
+end
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { cooldown_one, cooldown_two } },
+	[103] = { count = 2, endtimes = { cooldown_three, cooldown_four } },
+}, 15.3)
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = cooldown_one, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = cooldown_two, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet V'] = { status_id = 103, endtime = cooldown_three, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet IV'] = { status_id = 103, endtime = cooldown_four, recipients = { 77 } }
+action = brd.propose(degraded_nitro_config, { now = 15.3, player = player, action_ready = degraded_action_ready })
+assert_equal(action.action_name, 'Nightingale', 'a satisfied degraded four-song set must continue into NITRO planning')
+
+brd.reset('five_clarion_degraded_targeted_test')
+local degraded_targeted_config = {
+	enabled = true,
+	songs = five_without_clarion.songs,
+	dummy_songs = { "Army's Paeon", "Army's Paeon II", 'Goblin Gavotte' },
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = { 'Target' },
+	use_nitro = false,
+	use_soul_voice = false,
+	use_clarion_call = true,
+	use_marcato = false,
+	marcato_song = '',
+	targeted_songs = {
+		{ recipients = { 'Target' }, priority_songs = { "Mage's Ballad III" } },
+	},
+}
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { cooldown_one, cooldown_two } },
+	[103] = { count = 2, endtimes = { cooldown_three, cooldown_four } },
+}, 15.4)
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = cooldown_one, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = cooldown_two, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet V'] = { status_id = 103, endtime = cooldown_three, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet IV'] = { status_id = 103, endtime = cooldown_four, recipients = { 77 } }
+local degraded_target = {
+	id = 99,
+	name = 'Target',
+	hpp = 100,
+	spawn_type = 13,
+	is_npc = false,
+	in_song_range = true,
+	buffs = { 100, 100, 103, 103 },
+}
+local degraded_party_state = require('uc_brd_party_song_state')
+degraded_party_state.observe({ degraded_target }, { 'Target' }, { [100] = true, [103] = true }, 15.4)
+for _, delivery in ipairs({
+	{ song_name = 'Honor March', status_id = 100, endtime = cooldown_one },
+	{ song_name = 'Victory March', status_id = 100, endtime = cooldown_two },
+	{ song_name = 'Valor Minuet V', status_id = 103, endtime = cooldown_three },
+	{ song_name = 'Valor Minuet IV', status_id = 103, endtime = cooldown_four },
+}) do
+	degraded_party_state.record_delivery({
+		song_name = delivery.song_name,
+		status_id = delivery.status_id,
+		endtime = delivery.endtime,
+		recipients = { 99 },
+		cast_capacity = 4,
+	})
+end
+action = brd.propose(degraded_targeted_config, {
+	now = 15.4,
+	player = player,
+	party_members = { degraded_target },
+	action_ready = degraded_action_ready,
+})
+assert_equal(action.action_name, 'Pianissimo', 'a satisfied degraded four-song set must continue into targeted overlay planning')
 
 brd.reset('five_clarion_active_capacity_test')
 player.buffs = { 499 }
@@ -995,6 +1182,140 @@ brd._test.state.owners['Valor Minuet IV'] = { status_id = 103, endtime = cooldow
 action = brd.propose(clarion_cooldown_config, { now = 15.5, player = player, action_ready = clarion_cooldown_ready })
 assert_equal(action.action_name, "Army's Paeon", 'four-to-five recovery needs only one capacity dummy while Clarion is active')
 assert_equal(action.detail.cast_capacity, 5, 'Clarion capacity dummy must require five-song add capacity')
+player.buffs = {}
+
+brd.reset('five_song_targeted_self_alignment_lane_test')
+local self_alignment_config = {
+	enabled = true,
+	songs = { 'Honor March', 'Victory March', 'Valor Minuet V', 'Valor Minuet IV', 'Goblin Gavotte' },
+	dummy_songs = { "Army's Paeon", "Army's Paeon II", "Mage's Ballad III" },
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
+	use_nitro = false,
+	use_soul_voice = false,
+	use_clarion_call = true,
+	use_marcato = false,
+	marcato_song = '',
+	targeted_songs = {
+		{ recipients = { 'Redrogue' }, priority_songs = { "Mage's Ballad III" } },
+	},
+}
+local alignment_now = os.time()
+local alignment_ballad = brd._test.server_now_raw(alignment_now) + 24000
+local alignment_honor = alignment_ballad + 1000
+local alignment_minuet_four = alignment_honor + 1000
+local alignment_dummy = alignment_minuet_four + 4000
+local alignment_minuet_five = alignment_dummy + 1000
+brd.on_status_snapshot({
+	[100] = { count = 1, endtimes = { alignment_honor } },
+	[101] = { count = 1, endtimes = { alignment_dummy } },
+	[103] = { count = 2, endtimes = { alignment_minuet_four, alignment_minuet_five } },
+	[104] = { count = 1, endtimes = { alignment_ballad } },
+}, alignment_now)
+for _, owner in ipairs({
+	{ name = 'Honor March', status_id = 100, endtime = alignment_honor },
+	{ name = "Army's Paeon", status_id = 101, endtime = alignment_dummy, is_dummy = true },
+	{ name = 'Valor Minuet IV', status_id = 103, endtime = alignment_minuet_four },
+	{ name = 'Valor Minuet V', status_id = 103, endtime = alignment_minuet_five },
+	{ name = "Mage's Ballad III", status_id = 104, endtime = alignment_ballad },
+}) do
+	brd._test.state.owners[owner.name] = {
+		status_id = owner.status_id,
+		endtime = owner.endtime,
+		recipients = { 77 },
+		is_dummy = owner.is_dummy == true,
+	}
+end
+local self_alignment_member = {
+	id = 77,
+	name = 'Redrogue',
+	hpp = 100,
+	spawn_type = 1,
+	is_npc = false,
+	in_song_range = true,
+	buffs = { 100, 101, 103, 103, 104 },
+}
+local self_alignment_party_state = require('uc_brd_party_song_state')
+self_alignment_party_state.observe({ self_alignment_member }, {}, { [100] = true, [101] = true, [103] = true, [104] = true }, alignment_now)
+for _, delivery in ipairs({
+	{ name = 'Honor March', status_id = 100, endtime = alignment_honor },
+	{ name = "Army's Paeon", status_id = 101, endtime = alignment_dummy, is_dummy = true },
+	{ name = 'Valor Minuet IV', status_id = 103, endtime = alignment_minuet_four },
+	{ name = 'Valor Minuet V', status_id = 103, endtime = alignment_minuet_five },
+	{ name = "Mage's Ballad III", status_id = 104, endtime = alignment_ballad },
+}) do
+	self_alignment_party_state.record_delivery({
+		song_name = delivery.name,
+		status_id = delivery.status_id,
+		endtime = delivery.endtime,
+		recipients = { 77 },
+		confirmed_at = alignment_now,
+		is_dummy = delivery.is_dummy == true,
+		cast_capacity = 5,
+		song_limit = 5,
+	})
+end
+player.buffs = { 499 }
+local self_alignment_wait_ready = function(name)
+	if name == 'Pianissimo' then return false, 'recast', 'ja' end
+	return ready(name)
+end
+action = brd.propose(self_alignment_config, {
+	now = alignment_now,
+	player = player,
+	party_members = { self_alignment_member },
+	action_ready = self_alignment_wait_ready,
+})
+assert_true(action == nil, 'fifth-song setup must wait when Pianissimo is temporarily unavailable')
+assert_true(type(brd._test.state.targeted_transaction) == 'table', 'Pianissimo wait must preserve the targeted setup transaction')
+assert_true(brd.action_lane_status() == true, 'Pianissimo wait must retain the Bard setup lane')
+action = brd.propose(self_alignment_config, {
+	now = alignment_now + 0.01,
+	player = player,
+	party_members = { self_alignment_member },
+	action_ready = ready,
+})
+assert_equal(action.action_name, 'Pianissimo', 'targeted self song blocking a fifth-slot dummy must be aligned through Pianissimo')
+assert_true(brd._test.state.targeted_transaction.preserve_action_lane == true, 'fifth-song targeted alignment must retain setup-lane ownership')
+brd.note_dispatch(action, 'self-alignment-pianissimo', alignment_now)
+brd.on_action({
+	actor_id = 77,
+	category = 6,
+	param = 229,
+	targets = { { id = 77, actions = {} } },
+}, 77, alignment_now + 0.1)
+player.buffs = { 499, 409 }
+action = brd.propose(self_alignment_config, {
+	now = alignment_now + 0.1,
+	player = player,
+	party_members = { self_alignment_member },
+	action_ready = ready,
+})
+assert_equal(action.action_name, "Mage's Ballad III", 'confirmed setup Pianissimo must refresh the blocking targeted self song')
+brd.note_dispatch(action, 'self-alignment-ballad', alignment_now + 0.1)
+brd.on_action({
+	actor_id = 77,
+	category = 4,
+	param = 8,
+	targets = { { id = 77, actions = { { message = 230, param = 104 } } } },
+}, 77, alignment_now + 0.2)
+local refreshed_ballad = alignment_minuet_five + 1000
+brd.on_status_snapshot({
+	[100] = { count = 1, endtimes = { alignment_honor } },
+	[101] = { count = 1, endtimes = { alignment_dummy } },
+	[103] = { count = 2, endtimes = { alignment_minuet_four, alignment_minuet_five } },
+	[104] = { count = 1, endtimes = { refreshed_ballad } },
+}, alignment_now + 0.3)
+assert_true(brd.action_lane_status() == true, 'targeted setup alignment confirmation must not release the Bard lane')
+player.buffs = { 499 }
+action = brd.propose(self_alignment_config, {
+	now = alignment_now + 0.4,
+	player = player,
+	party_members = { self_alignment_member },
+	action_ready = ready,
+})
+assert_equal(action.action_name, 'Honor March', 'fifth-song setup must continue immediately with the next alignment action')
+assert_equal(action.reason_code, 'brd_align_shortest_final', 'continued fifth-song setup alignment reason mismatch')
 player.buffs = {}
 
 brd.reset('five_clarion_cooldown_force_test')
@@ -1030,9 +1351,11 @@ local nitro_config = {
 	recovery_range_yalms = 9.9,
 	recovery_ignore_names = {},
 	use_nitro = true,
+	use_soul_voice = false,
 	use_clarion_call = false,
 	use_marcato = true,
 	marcato_song = 'Honor March',
+	targeted_songs = {},
 }
 local nitro_one = brd._test.server_now_raw(os.time()) + 42000
 local nitro_two = nitro_one + 600
@@ -1047,6 +1370,419 @@ assert_equal(action.action_name, 'Troubadour', 'NITRO must pair Troubadour after
 player.buffs = { 347, 348 }
 action = brd.propose(nitro_config, { now = 12, player = player, action_ready = ready })
 assert_equal(action.action_name, 'Marcato', 'Marcato must be reserved immediately before its configured NITRO song')
+
+brd.reset('soul_voice_generation_test')
+player.buffs = {}
+local soul_config = {
+	enabled = true,
+	songs = { 'Honor March', 'Victory March' },
+	dummy_songs = {},
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
+	use_nitro = true,
+	use_soul_voice = true,
+	use_clarion_call = false,
+	use_marcato = true,
+	marcato_song = 'Honor March',
+	targeted_songs = {},
+}
+local soul_one = brd._test.server_now_raw(os.time()) + 42000
+local soul_two = soul_one + 600
+brd.on_status_snapshot({ [100] = { count = 2, endtimes = { soul_one, soul_two } } }, os.time())
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = soul_one, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = soul_two, recipients = { 77 } }
+action = brd.propose(soul_config, { now = os.time(), player = player, action_ready = ready })
+assert_equal(action.action_name, 'Nightingale', 'Soul Voice generation must begin by activating NITRO')
+assert_true(type(brd._test.state.soul_voice_generation) == 'table', 'Soul Voice generation state must arm before NITRO')
+brd.note_dispatch(action, 'soul-night', os.time())
+action = brd.propose(soul_config, { now = os.time(), player = player, action_ready = ready })
+assert_true(action == nil, 'Nightingale confirmation gap must not admit another Bard action')
+assert_true(brd.action_lane_status() == true, 'Nightingale confirmation gap must retain the Bard action lane')
+assert_equal(brd._test.state.last_blocker, 'nightingale_confirmation_pending', 'Nightingale confirmation blocker mismatch')
+player.buffs = { 347 }
+action = brd.propose(soul_config, { now = os.time(), player = player, action_ready = ready })
+assert_equal(action.action_name, 'Troubadour', 'Soul Voice generation must confirm full NITRO before Soul Voice')
+brd.note_dispatch(action, 'soul-troub', os.time())
+action = brd.propose(soul_config, { now = os.time(), player = player, action_ready = ready })
+assert_true(action == nil, 'Troubadour confirmation gap must not admit another Bard action')
+assert_true(brd.action_lane_status() == true, 'Troubadour confirmation gap must retain the Bard action lane')
+assert_equal(brd._test.state.last_blocker, 'troubadour_confirmation_pending', 'Troubadour confirmation blocker mismatch')
+player.buffs = { 347, 348 }
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { soul_one, soul_two } },
+	[347] = { count = 1, endtimes = { soul_two } },
+	[348] = { count = 1, endtimes = { soul_two } },
+}, os.time())
+action = brd.propose(soul_config, { now = os.time(), player = player, action_ready = ready })
+assert_equal(action.action_name, 'Soul Voice', 'Soul Voice must dispatch only after NITRO is active')
+player.buffs = { 347, 348, 52 }
+action = brd.propose(soul_config, { now = os.time(), player = player, action_ready = ready })
+assert_equal(action.action_name, 'Honor March', 'confirmed Soul Voice must start the forced group refresh')
+assert_equal(action.reason_code, 'brd_nitro_forced_refresh', 'Soul Voice group refresh reason mismatch')
+assert_true(action.action_name ~= 'Marcato', 'Marcato must be excluded from a Soul Voice generation')
+
+brd.reset('soul_voice_manual_nitro_marcato_exemption_test')
+player.buffs = { 347, 348, 231 }
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { soul_one, soul_two } },
+	[347] = { count = 1, endtimes = { soul_two } },
+	[348] = { count = 1, endtimes = { soul_two } },
+}, os.time())
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = soul_one, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = soul_two, recipients = { 77 } }
+brd._test.state.marcato_reservation = 'Honor March'
+action = brd.propose(soul_config, { now = os.time(), player = player, action_ready = ready })
+assert_equal(action.action_name, 'Soul Voice', 'active NITRO must activate Soul Voice before spending a Marcato reservation')
+assert_equal(brd._test.state.marcato_reservation, '', 'Soul Voice generation must clear addon-owned Marcato reservations')
+local short_nitro_endtime = brd._test.server_now_raw(os.time()) + 600
+brd.on_status_snapshot({
+	[347] = { count = 1, endtimes = { short_nitro_endtime } },
+	[348] = { count = 1, endtimes = { short_nitro_endtime } },
+}, os.time())
+assert_true(brd._test.nitro_supports_soul_voice({ now = os.time(), player = player }, 2) == false, 'Soul Voice must reject a NITRO window too short for the minimum group refresh')
+
+local invalid_soul_config = {}
+for key, value in pairs(soul_config) do invalid_soul_config[key] = value end
+invalid_soul_config.use_nitro = false
+local soul_ok, soul_reason = brd._test.validate_config(invalid_soul_config, player)
+assert_true(soul_ok == false, 'Soul Voice without NITRO must be rejected')
+assert_equal(soul_reason, 'soul_voice_requires_nitro', 'Soul Voice without NITRO blocker mismatch')
+
+brd.reset('nightingale_confirmation_retry_test')
+player.buffs = {}
+brd.on_status_snapshot({ [100] = { count = 2, endtimes = { soul_one, soul_two } } }, 50)
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = soul_one, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = soul_two, recipients = { 77 } }
+action = brd.propose(soul_config, { now = 50, player = player, action_ready = ready })
+assert_equal(action.action_name, 'Nightingale', 'Nightingale retry setup proposal mismatch')
+brd.note_dispatch(action, 'nightingale-timeout', 50)
+action = brd.propose(soul_config, { now = 50.6, player = player, action_ready = ready })
+assert_true(action == nil, 'missing Nightingale confirmation must first return the reserved step to retry eligibility')
+assert_equal(brd._test.state.last_blocker, 'nightingale_confirmation_retry', 'Nightingale confirmation retry blocker mismatch')
+assert_true(brd.action_lane_status() == true, 'Nightingale confirmation retry must retain the Bard lane')
+action = brd.propose(soul_config, { now = 50.7, player = player, action_ready = ready })
+assert_equal(action.action_name, 'Nightingale', 'missing Nightingale confirmation must retry the same reserved ability')
+
+brd.reset('targeted_pianissimo_test')
+player.buffs = {}
+local targeted_config = {
+	enabled = true,
+	songs = { 'Honor March', 'Victory March' },
+	dummy_songs = {},
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
+	use_nitro = false,
+	use_soul_voice = false,
+	use_clarion_call = false,
+	use_marcato = false,
+	marcato_song = '',
+	targeted_songs = {
+		{ recipients = { 'Target' }, priority_songs = { "Mage's Ballad III", "Army's Paeon" } },
+	},
+}
+local targeted_one = brd._test.server_now_raw(os.time()) + 30000
+local targeted_two = targeted_one + 600
+brd.on_status_snapshot({ [100] = { count = 2, endtimes = { targeted_one, targeted_two } } }, os.time())
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = targeted_one, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = targeted_two, recipients = { 77 } }
+local party_state = require('uc_brd_party_song_state')
+local targeted_member = {
+	id = 99,
+	name = 'Target',
+	hpp = 100,
+	spawn_type = 13,
+	is_npc = false,
+	in_song_range = true,
+	buffs = { 100, 100 },
+}
+party_state.observe({ targeted_member }, { 'Target' }, { [100] = true, [104] = true }, os.time())
+assert_true(party_state._test.state.members[99].eligible == false, 'recovery ignore policy must exclude the recipient from area recovery')
+assert_true(party_state._test.state.members[99].targetable == true, 'recovery ignore policy must not make an explicit Pianissimo recipient untargetable')
+assert_equal(party_state._test.state.members[99].unknown_count, 2, 'targetable ignored recipients must still reconcile observed song counts conservatively')
+party_state.reset()
+party_state.observe({ targeted_member }, {}, { [100] = true, [104] = true }, os.time())
+party_state.record_delivery({ song_name = 'Honor March', status_id = 100, endtime = targeted_one, recipients = { 99 }, cast_capacity = 2 })
+party_state.record_delivery({ song_name = 'Victory March', status_id = 100, endtime = targeted_two, recipients = { 99 }, cast_capacity = 2 })
+action = brd.propose(targeted_config, {
+	now = os.time(),
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_equal(action.action_name, 'Pianissimo', 'normal targeted overlay must reserve Pianissimo')
+assert_equal(brd._test.state.targeted_transaction.song_name, "Mage's Ballad III", 'best-effort overlay must select the highest-priority safe song first')
+brd.note_dispatch(action, 'targeted-pianissimo', os.time())
+action = brd.propose(targeted_config, {
+	now = os.time(),
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_true(action == nil, 'Pianissimo confirmation gap must not admit another Bard action')
+assert_true(brd.action_lane_status() == true, 'Pianissimo confirmation gap must retain the Bard action lane')
+assert_equal(brd._test.state.last_blocker, 'pianissimo_confirmation_pending:Target', 'Pianissimo confirmation blocker mismatch')
+local pianissimo_confirmed, pianissimo_event = brd.on_action({
+	actor_id = 77,
+	category = 6,
+	param = 229,
+	targets = { { id = 77, actions = {} } },
+}, 77, os.time())
+assert_true(pianissimo_confirmed == true, 'successful local Pianissimo action packet must confirm the reserved transaction')
+assert_equal(pianissimo_event, 'pianissimo_confirmed', 'Pianissimo confirmation must identify the scheduler action-state release event')
+assert_equal(brd._test.state.targeted_transaction.phase, 'awaiting_song', 'Pianissimo action packet must advance directly to the reserved song')
+action = brd.propose(targeted_config, {
+	now = os.time(),
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_equal(action.action_name, "Mage's Ballad III", 'action-confirmed Pianissimo must dispatch the reserved targeted song without waiting for buff polling')
+assert_equal(action.detail.target_id, 99, 'targeted song proposal must preserve recipient server ID')
+assert_true(action.detail.requires_troubadour == false, 'normal victim must not require Troubadour')
+brd.note_scheduler_rejection('BLOCK_ACTION_COOLDOWN', action.action_name)
+assert_equal(brd._test.state.targeted_transaction.phase, 'awaiting_song', 'scheduler rejection must leave the targeted song eligible for retry')
+action = brd.propose(targeted_config, {
+	now = os.time(),
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_equal(action.action_name, "Mage's Ballad III", 'scheduler cooldown rejection must retry the same targeted song')
+assert_equal(action.detail.target_id, 99, 'scheduler cooldown retry must preserve the same recipient')
+assert_true(brd.action_lane_status() == true, 'scheduler cooldown retry must retain the Bard action lane')
+player.buffs = { 409 }
+brd.note_dispatch(action, 'targeted-1', os.time())
+assert_equal(brd._test.state.targeted_transaction.phase, 'song_dispatched', 'successful dispatch must own the targeted transaction phase transition')
+brd.on_action({
+	actor_id = 77,
+	category = 4,
+	param = 8,
+	targets = { { id = 99, actions = { { message = 205, param = 104 } } } },
+}, 77, os.time())
+assert_true(type(party_state._test.state.members[99].effects["Mage's Ballad III"]) == 'table', 'targeted success must update only the confirmed recipient')
+assert_true(party_state._test.state.members[99].effects["Mage's Ballad III"].pianissimo_applied == true, 'targeted effect must retain Pianissimo provenance')
+action = brd.propose(targeted_config, {
+	now = os.time(),
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_true(action == nil, 'a consumed Pianissimo must clear before another targeted song can begin')
+assert_equal(brd._test.state.last_blocker, 'targeted_waiting_for_pianissimo_consumption', 'Pianissimo consumption wait blocker mismatch')
+
+party_state.reset()
+party_state._test.state.members[99] = {
+	id = 99,
+	name = 'Target',
+	eligible = true,
+	targetable = true,
+	observed_song_count = 2,
+	unknown_count = 0,
+	effects = {
+		['Honor March'] = { endtime = targeted_one, troubadour_active = true },
+		['Victory March'] = { endtime = targeted_two, troubadour_active = false },
+	},
+}
+party_state._test.state.order = { 99 }
+local targeted_plan = assert(party_state.plan_targeted_song(99, "Mage's Ballad III", 2, {}))
+assert_true(targeted_plan.requires_troubadour == true, 'targeted overlay over a Troubadour victim must require Troubadour')
+local modifier_now = os.time()
+local modifier_endtime = brd._test.server_now_raw(modifier_now) + 1200
+brd.on_status_snapshot({ [348] = { count = 1, endtimes = { modifier_endtime } } }, modifier_now)
+assert_true(brd._test.status_active_at_resolution(348, modifier_now) == true, 'Troubadour must be proven active from its authoritative endtime at resolution')
+assert_true(brd._test.status_active_at_resolution(348, modifier_now + 21) == false, 'expired Troubadour must fail resolution-time evidence')
+brd._test.state.pending = {
+	name = "Mage's Ballad III",
+	spell_id = 8,
+	status_id = 104,
+	targeted = true,
+	target_id = 99,
+	target_name = 'Target',
+	requires_troubadour = true,
+	targeted_candidate_names = { 'Honor March' },
+}
+brd._test.state.targeted_transaction = { recipient_id = 99, recipient_name = 'Target' }
+assert_true(brd.on_action({
+	actor_id = 77,
+	category = 4,
+	param = 8,
+	targets = { { id = 99, actions = { { message = 205, param = 104 } } } },
+}, 77, modifier_now + 21) == false, 'targeted resolution must fail when required Troubadour has expired')
+assert_equal(brd._test.state.last_blocker, "targeted_troubadour_expired_at_resolution:Mage's Ballad III", 'resolution-time Troubadour failure blocker mismatch')
+assert_equal(party_state._test.state.members[99].confidence, 'unknown', 'expired required Troubadour must invalidate recipient song ownership')
+
+brd.reset('targeted_unknown_overwrite_retry_test')
+player.buffs = {}
+local unknown_targeted_config = {
+	enabled = true,
+	songs = { 'Honor March', 'Victory March' },
+	dummy_songs = {},
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = { 'Target' },
+	use_nitro = false,
+	use_soul_voice = false,
+	use_clarion_call = false,
+	use_marcato = false,
+	marcato_song = '',
+	targeted_songs = {
+		{ recipients = { 'Target' }, priority_songs = { "Mage's Ballad III" } },
+	},
+}
+local unknown_now = os.time()
+local unknown_one = brd._test.server_now_raw(unknown_now) + 30000
+local unknown_two = unknown_one + 600
+brd.on_status_snapshot({ [100] = { count = 2, endtimes = { unknown_one, unknown_two } } }, unknown_now)
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = unknown_one, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = unknown_two, recipients = { 77 } }
+party_state.observe({ targeted_member }, { 'Target' }, { [100] = true, [104] = true }, unknown_now)
+action = brd.propose(unknown_targeted_config, {
+	now = unknown_now,
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_true(action == nil, 'unknown overwrite victim must remain blocked without safe Troubadour evidence')
+assert_equal(brd._test.state.last_blocker, 'targeted_blocked:Target:unknown_overwrite_victim', 'unknown targeted victim blocker mismatch')
+assert_equal(brd._test.state.targeted_skip_reasons["1:target:Mage's Ballad III"], 'unknown_overwrite_victim', 'per-recipient skip reason must retain the exact blocker')
+
+local unknown_troubadour_endtime = brd._test.server_now_raw(unknown_now) + 1200
+player.buffs = { 348 }
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { unknown_one, unknown_two } },
+	[348] = { count = 1, endtimes = { unknown_troubadour_endtime } },
+}, unknown_now)
+action = brd.propose(unknown_targeted_config, {
+	now = unknown_now,
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_equal(action.action_name, 'Pianissimo', 'safe Troubadour window must make an unknown targeted victim retryable')
+assert_equal(brd._test.state.targeted_transaction.recipient_name, 'Target', 'unknown overwrite retry must preserve deterministic recipient selection')
+brd.note_dispatch(action, 'pianissimo-retry', unknown_now)
+action = brd.propose(unknown_targeted_config, {
+	now = unknown_now + 0.6,
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_true(action == nil, 'missing Pianissimo confirmation must return the same transaction to retry eligibility')
+assert_equal(brd._test.state.last_blocker, 'pianissimo_confirmation_retry:Target', 'Pianissimo confirmation retry blocker mismatch')
+action = brd.propose(unknown_targeted_config, {
+	now = unknown_now + 0.7,
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_equal(action.action_name, 'Pianissimo', 'missing Pianissimo confirmation must retry after half a second')
+assert_equal(brd._test.state.targeted_transaction.recipient_name, 'Target', 'Pianissimo retry must not advance to another recipient')
+
+brd.reset('targeted_self_final_candidate_test')
+player.buffs = {}
+local self_targeted_config = {
+	enabled = true,
+	songs = { 'Honor March', 'Victory March', 'Valor Minuet V', 'Valor Minuet IV' },
+	dummy_songs = { "Army's Paeon", "Army's Paeon II" },
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = { 'Niightsiide', 'Terrasjr', 'Redrogue' },
+	use_nitro = false,
+	use_soul_voice = false,
+	use_clarion_call = false,
+	use_marcato = false,
+	marcato_song = '',
+	targeted_songs = {
+		{
+			recipients = { 'Niightsiide', 'Terrasjr', 'Redrogue' },
+			priority_songs = { "Mage's Ballad III" },
+		},
+	},
+}
+local self_targeted_base = brd._test.server_now_raw(os.time()) + 30000
+local self_targeted_snapshot = {
+	[100] = { count = 2, endtimes = { self_targeted_base, self_targeted_base + 120 } },
+	[103] = { count = 2, endtimes = { self_targeted_base + 240, self_targeted_base + 360 } },
+}
+brd.on_status_snapshot(self_targeted_snapshot, os.time())
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = self_targeted_base, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = self_targeted_base + 120, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet V'] = { status_id = 103, endtime = self_targeted_base + 240, recipients = { 77 } }
+brd._test.state.owners['Valor Minuet IV'] = { status_id = 103, endtime = self_targeted_base + 360, recipients = { 77 } }
+local self_targeted_members = {
+	{ id = 91, name = 'Niightsiide', hpp = 100, spawn_type = 13, is_npc = false, in_song_range = true, buffs = { 100, 103, 103, 104 } },
+	{ id = 92, name = 'Terrasjr', hpp = 100, spawn_type = 13, is_npc = false, in_song_range = true, buffs = { 100, 103, 103, 104 } },
+	{ id = 77, name = 'Redrogue', hpp = 100, spawn_type = 13, is_npc = false, is_self = true, in_song_range = true, buffs = { 100, 100, 103, 103 } },
+}
+party_state.observe(self_targeted_members, self_targeted_config.recovery_ignore_names, { [100] = true, [103] = true, [104] = true }, os.time())
+assert_true(party_state._test.state.members[77].eligible == false, 'the Bard must remain excluded from party recovery')
+assert_true(party_state._test.state.members[77].targetable == true, 'the Bard must be targetable for an explicit self Pianissimo overlay')
+for _, member_id in ipairs({ 91, 92, 77 }) do
+	for _, delivery in ipairs({
+		{ song_name = 'Honor March', status_id = 100, endtime = self_targeted_base },
+		{ song_name = 'Victory March', status_id = 100, endtime = self_targeted_base + 120 },
+		{ song_name = 'Valor Minuet V', status_id = 103, endtime = self_targeted_base + 240 },
+		{ song_name = 'Valor Minuet IV', status_id = 103, endtime = self_targeted_base + 360 },
+	}) do
+		party_state.record_delivery({
+			song_name = delivery.song_name,
+			status_id = delivery.status_id,
+			endtime = delivery.endtime,
+			recipients = { member_id },
+			cast_capacity = 4,
+		})
+	end
+end
+for _, member_id in ipairs({ 91, 92 }) do
+	party_state.record_delivery({
+		song_name = "Mage's Ballad III",
+		status_id = 104,
+		endtime = self_targeted_base + 480,
+		recipients = { member_id },
+		cast_capacity = 2,
+	})
+end
+action = brd.propose(self_targeted_config, {
+	now = os.time(),
+	player = player,
+	party_members = self_targeted_members,
+	action_ready = ready,
+})
+assert_equal(action.action_name, 'Pianissimo', 'the Bard must be selected after earlier targeted recipients are already satisfied')
+assert_equal(brd._test.state.targeted_transaction.recipient_name, 'Redrogue', 'the final targeted transaction must resolve the configured self recipient')
+brd.note_dispatch(action, 'targeted-self-pianissimo', os.time())
+assert_true(brd.on_action({ actor_id = 77, category = 6, param = 229, targets = { { id = 77, actions = {} } } }, 77, os.time()) == true, 'self-targeted Pianissimo must confirm')
+action = brd.propose(self_targeted_config, {
+	now = os.time(),
+	player = player,
+	party_members = self_targeted_members,
+	action_ready = ready,
+})
+assert_equal(action.action_name, "Mage's Ballad III", 'confirmed self Pianissimo must reserve the configured song')
+assert_equal(action.detail.target_id, 77, 'self-targeted song must preserve the Bard server ID')
+player.buffs = { 409 }
+brd.note_dispatch(action, 'targeted-self-song', os.time())
+brd.on_action({
+	actor_id = 77,
+	category = 4,
+	param = 8,
+	targets = { { id = 77, actions = { { message = 230, param = 104 } } } },
+}, 77, os.time())
+self_targeted_members[3].buffs = { 100, 103, 103, 104 }
+brd.on_status_snapshot({
+	[100] = { count = 1, endtimes = { self_targeted_base + 120 } },
+	[103] = self_targeted_snapshot[103],
+	[104] = { count = 1, endtimes = { self_targeted_base + 480 } },
+}, os.time())
+assert_true(type(brd._test.state.owners["Mage's Ballad III"]) == 'table', 'self-targeted song must use authoritative local timer ownership')
+assert_true(brd._test.state.owners["Mage's Ballad III"].pianissimo_applied == true, 'self-targeted local ownership must retain Pianissimo provenance')
+assert_true(brd._test.state.targeted_transaction == nil, 'self-targeted local timer confirmation must complete the transaction')
+player.buffs = {}
+action = brd.propose(self_targeted_config, {
+	now = os.time(),
+	player = player,
+	party_members = self_targeted_members,
+	action_ready = ready,
+})
+assert_true(action == nil, 'a confirmed self overlay must remain an accepted replacement instead of triggering group-song repair')
 
 brd.reset('failure_message_test')
 player.buffs = {}
@@ -1080,9 +1816,10 @@ local scheduler_file = assert(io.open('unified_scheduler.lua', 'r'))
 local scheduler_source = scheduler_file:read('*a')
 scheduler_file:close()
 assert_true(scheduler_source:find("provider = 'maintenance_brd'", 1, true) ~= nil, 'scheduler must emit the dedicated BRD provider')
-assert_true(scheduler_source:find('scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 120', 1, true) ~= nil, 'scheduler must globally prioritize BRD maintenance')
+assert_true(scheduler_source:find('scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 200', 1, true) ~= nil, 'scheduler must globally prioritize BRD maintenance above every non-Doom proposal')
 assert_true(scheduler_source:find('scheduler.p1_brd_lane_blocks_proposal', 1, true) ~= nil, 'scheduler must preserve BRD sequence ownership across proposal gaps')
 assert_true(scheduler_source:find('scheduler.p1_dispatch_maintenance_brd', 1, true) ~= nil, 'scheduler must own dedicated BRD dispatch')
+assert_true(scheduler_source:find("command_target = '\"' .. target_name", 1, true) ~= nil, 'scheduler must dispatch targeted Bard spells by verified party name')
 assert_true(scheduler_source:find('is_spell_prestart_rejection_message_id', 1, true) ~= nil, 'scheduler must classify unable-cast action messages')
 assert_true(scheduler_source:find("return mid == 17 or mid == 18", 1, true) ~= nil, 'scheduler must recognize both unable-cast message ids')
 assert_true(scheduler_source:find("[8] = true", 1, true) ~= nil, 'scheduler action state must recognize category-8 song start packets')
@@ -1110,7 +1847,23 @@ assert_true(log_text:find('\tSERVER_REJECT\t', 1, true) ~= nil, 'BRD diagnostic 
 assert_true(log_text:find('\tSNAPSHOT_063\t', 1, true) ~= nil, 'BRD diagnostic log must record parsed status snapshots')
 assert_true(log_text:find('\tTIMER_DELTA\t', 1, true) ~= nil, 'BRD diagnostic log must record timer deltas')
 assert_true(log_text:find('\tOWNER_CONFIRM\t', 1, true) ~= nil, 'BRD diagnostic log must record owner confirmation')
+assert_true(log_text:find('\tPLANNER_BLOCKED\t', 1, true) ~= nil, 'BRD diagnostic log must record no-action planner blockers')
+assert_true(log_text:find('\tTARGETED_RECIPIENT_SKIPPED\t', 1, true) ~= nil, 'BRD diagnostic log must record each targeted recipient skip reason')
+assert_true(log_text:find('\tPIANISSIMO_CONFIRMATION_RETRY\t', 1, true) ~= nil, 'BRD diagnostic log must record missing Pianissimo confirmation retries')
 os.remove(log_path)
+
+local old_auto_brd_log = rawget(_G, 'UC_BRD_DIAGNOSTIC_LOG')
+_G.UC_BRD_DIAGNOSTIC_LOG = true
+brd.reset('auto_diagnostic_log_test')
+player.buffs = {}
+brd.propose(config, { now = 40, player = player, action_ready = ready })
+local auto_log_enabled, auto_log_path = brd.diagnostic_log_status()
+assert_true(auto_log_enabled == true, 'local Bard diagnostic flag must auto-start logging after reload initialization')
+_G.UC_BRD_DIAGNOSTIC_LOG = nil
+brd.propose(config, { now = 40.1, player = player, action_ready = ready })
+assert_true(brd.diagnostic_log_status() == false, 'clearing the local Bard diagnostic flag must stop only an auto-started log')
+os.remove(auto_log_path)
+_G.UC_BRD_DIAGNOSTIC_LOG = old_auto_brd_log
 
 package.loaded.uc_brd_maintenance = old_module
 package.loaded.resources = old_resources

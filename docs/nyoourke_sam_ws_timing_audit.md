@@ -11,7 +11,7 @@ The source-backed causes identified below have been codified and corrected in th
 
 - The incoming-WS `core.ws_timer` gate is removed. Ordinary WS still observes the documented three-second action-result minimum, now per target/resonance with a 0.3-second preferred buffer and 0.6-second late guard.
 - A ready compatible continuation is selected before ally TP-lead waiting, Chivalry holding, and aftermath refresh.
-- Continuations use explicit scheduler band 131. Critical Cure (153) and Sleep/agreed emergency control (142) remain above it; Bard/routine maintenance (120), aftermath refresh (108), and ordinary offense remain below it.
+- Continuations use explicit scheduler band 131. Bard maintenance (200), Critical Cure (153), and Sleep/agreed emergency control (142) remain above it; aftermath refresh (108) and ordinary offense remain below it.
 - The selected continuation carries its target, resonance generation, effective properties, earliest time, and latest-safe deadline through scheduler commit and into the core intent owner.
 - A not-yet-ready continuation reserves the scheduler action lane from routine work, then becomes dispatch-admissible at the conservative preferred time (normally action result + 3.3 seconds). Emergency bands can still preempt it.
 - The core revalidates the same resonance, target, WS, TP, equipment/Aftermath, status, range, reaction state, and deadline immediately before send. Failure cancels with an `SC_*` code and sends no fallback WS.

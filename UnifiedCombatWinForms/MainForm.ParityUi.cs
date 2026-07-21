@@ -151,11 +151,13 @@ public partial class MainForm
     private Button _brdDummyUp = null!;
     private Button _brdDummyDown = null!;
     private CheckBox _brdUseNitro = null!;
+	private CheckBox _brdUseSoulVoice = null!;
     private CheckBox _brdUseClarion = null!;
     private CheckBox _brdUseMarcato = null!;
     private ComboBox _brdMarcatoSong = null!;
 	private NumericUpDown _brdRecoveryRangeYalms = null!;
 	private TextBox _brdRecoveryIgnoreNames = null!;
+	private TextBox _brdTargetedSongs = null!;
     private Label _pathFileValue = null!;
     private Label _pathRouteTypeValue = null!;
     private Label _pathDistanceValue = null!;
@@ -1224,11 +1226,13 @@ public partial class MainForm
         var brdFlags = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Padding = new Padding(0, 8, 0, 0) };
         _brdUseNitro = new CheckBox { Text = "Use NITRO (Nightingale + Troubadour)", AutoSize = true };
         _brdUseNitro.CheckedChanged += (_, _) => OnBrdConfigChanged();
+		_brdUseSoulVoice = new CheckBox { Text = "Use Soul Voice (requires NITRO)", AutoSize = true };
+		_brdUseSoulVoice.CheckedChanged += (_, _) => OnBrdConfigChanged();
         _brdUseClarion = new CheckBox { Text = "Use Clarion Call", AutoSize = true };
         _brdUseClarion.CheckedChanged += (_, _) => OnBrdConfigChanged();
         _brdUseMarcato = new CheckBox { Text = "Use Marcato", AutoSize = true };
         _brdUseMarcato.CheckedChanged += (_, _) => OnBrdConfigChanged();
-        brdFlags.Controls.AddRange([_brdUseNitro, _brdUseClarion, _brdUseMarcato]);
+        brdFlags.Controls.AddRange([_brdUseNitro, _brdUseSoulVoice, _brdUseClarion, _brdUseMarcato]);
         brdRoot.Controls.Add(brdFlags);
         var marcatoRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         marcatoRow.Controls.Add(new Label { Text = "Marcato song", AutoSize = true, Padding = new Padding(0, 5, 8, 0) });
@@ -1258,6 +1262,13 @@ public partial class MainForm
 		recoveryIgnoreRow.Controls.Add(_brdRecoveryIgnoreNames);
 		brdRoot.Controls.Add(recoveryIgnoreRow);
 		brdRoot.Controls.Add(new Label { Text = "Pipe-separated names. Ignored players never trigger song recovery after returning to range.", AutoSize = true });
+		var targetedSongsRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 8, 0, 0) };
+		targetedSongsRow.Controls.Add(new Label { Text = "Pianissimo overlays", AutoSize = true, Padding = new Padding(0, 5, 8, 0) });
+		_brdTargetedSongs = new TextBox { Width = 460 };
+		_brdTargetedSongs.TextChanged += (_, _) => OnBrdConfigChanged();
+		targetedSongsRow.Controls.Add(_brdTargetedSongs);
+		brdRoot.Controls.Add(targetedSongsRow);
+		brdRoot.Controls.Add(new Label { Text = "TargetA,TargetB:Highest Priority Song,Next Song|OtherTarget:Song", AutoSize = true });
         brdRoot.Controls.Add(new Label
         {
             Text = "Durations and active song ownership are observed by the addon and are never saved in the profile.",

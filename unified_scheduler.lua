@@ -1907,7 +1907,7 @@ scheduler.TANK_ENGAGE_URGENCY = 0.85
 scheduler.DEFAULT_ENGAGE_PRIORITY = 72
 scheduler.DEFAULT_ENGAGE_URGENCY = 0.70
 scheduler.PRIORITY_BAND_AFTERMATH_WS = 108
-scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 120
+scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 200
 scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131
 scheduler.PRIORITY_BAND_SLEEP = 142
 scheduler.PRIORITY_BAND_CRITICAL_CURE = 153
@@ -5099,8 +5099,17 @@ local function p1_collect_maintenance(ctx, out)
 		detail = type(detail) == 'table' and detail or {}
 		detail.cast_type = action_type
 		detail.action_type = action_type
-		detail.target_name = tostring(player.name or '')
-		detail.target_id = tonumber(player.id) or 0
+		local proposal_target_id = tonumber(detail.target_id)
+		local proposal_target_name = tostring(detail.target_name or '')
+		if proposal_target_id == nil then
+			proposal_target_id = tonumber(player.id) or 0
+			proposal_target_name = tostring(player.name or '')
+		end
+		if proposal_target_id <= 0 or proposal_target_name == '' then
+			error('maintenance proposal requires an explicit valid target')
+		end
+		detail.target_name = proposal_target_name
+		detail.target_id = proposal_target_id
 		if action_type == 'spell' then
 			local p = windower.ffxi.get_player() or {}
 			local out_of_combat = tonumber(p.status) ~= 1
@@ -5151,9 +5160,9 @@ local function p1_collect_maintenance(ctx, out)
 			provider = provider,
 			action_type = action_type,
 			action_name = action_name,
-			target_kind = 'self',
-			target_id = tonumber(player.id) or 0,
-			target_name = tostring(player.name or ''),
+			target_kind = proposal_target_id == (tonumber(player.id) or 0) and 'self' or 'ally',
+			target_id = proposal_target_id,
+			target_name = proposal_target_name,
 			priority_band = priority_band,
 			urgency = p1_clamp_urgency(urgency),
 			starvation_eligible = true,
@@ -5163,7 +5172,7 @@ local function p1_collect_maintenance(ctx, out)
 			movement_policy = 'must_stop',
 			range_policy = { min = 0.0, max = 20.0, los_required = false },
 			recast_key = ('maint:%s'):format(key),
-			duplicate_suppression_key = ('maint:%s:%d'):format(key, tonumber(player.id) or 0),
+			duplicate_suppression_key = ('maint:%s:%d'):format(key, proposal_target_id),
 			lock_class = 'support_action',
 			expected_ack = 'action_start',
 			expected_effect = 'buff_gain',
@@ -5312,11 +5321,7 @@ function scheduler.p1_brd_lane_blocks_proposal(proposal, lane_reserved)
 	if tostring(proposal.provider or '') == 'maintenance_brd' then
 		return false
 	end
-	if (tonumber(proposal.priority_band) or 0) >= scheduler.PRIORITY_BAND_BRD_MAINTENANCE then
-		return false
-	end
-	local action_type = tostring(proposal.action_type or '')
-	return action_type == 'spell' or action_type == 'ja' or action_type == 'ws'
+	return true
 end
 
 local function p1_collect_proposals(ctx)
@@ -6466,7 +6471,18 @@ function scheduler.p1_dispatch_maintenance_brd(selected, settings)
 		return false, nil
 	end
 	local command_kind = action_type == 'spell' and 'ma' or 'ja'
-	local command = ('input /%s "%s" <me>'):format(command_kind, action_name)
+	local command_target = '<me>'
+	local player = windower.ffxi.get_player() or {}
+	local target_id = tonumber(selected.target_id) or 0
+	local player_id = tonumber(player.id) or 0
+	if action_type == 'spell' and target_id ~= player_id then
+		local target_name = tostring(selected.target_name or '')
+		if target_id <= 0 or target_name == '' then
+			error('targeted Bard spell requires target id and name')
+		end
+		command_target = '"' .. target_name:gsub('"', '') .. '"'
+	end
+	local command = ('input /%s "%s" %s'):format(command_kind, action_name, command_target)
 	local dispatcher = require('uc_scheduler_dispatcher')
 	local result = dispatcher.dispatch_intent({
 		kind = 'send_command',
@@ -6476,6 +6492,8 @@ function scheduler.p1_dispatch_maintenance_brd(selected, settings)
 			action_type = action_type,
 			action_name = action_name,
 			provider = 'maintenance_brd',
+			target_id = target_id,
+			target_name = tostring(selected.target_name or ''),
 		},
 	}, {
 		execute = true,
@@ -6492,6 +6510,8 @@ function scheduler.p1_dispatch_maintenance_brd(selected, settings)
 	action_mark_sent(action_type, {
 		action_name = action_name,
 		provider = 'maintenance_brd',
+		target_id = target_id,
+		target_name = tostring(selected.target_name or ''),
 	})
 	local token = tostring(tonumber((action_state() or {}).action_token) or 0)
 	require('uc_brd_maintenance').note_dispatch({
@@ -7520,9 +7540,14 @@ function scheduler.process_tick(cadence)
 		return true, doom_reason
 	end
 	scheduler.refresh_reaction_lock()
-	local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s)
-	if target_acted then
-		return true, target_reason
+	local brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
+	if not brd_lane_reserved then
+		local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s)
+		if target_acted then
+			return true, target_reason
+		end
+	else
+		_G.UC_TARGET_BLOCK_REASON = 'BRD_LANE:' .. tostring(brd_lane_reason or '')
 	end
 	local defensive_spell_wait_locked = scheduler.refresh_defensive_spell_wait_lock(now_s())
 	if defensive_spell_wait_locked then
@@ -7531,7 +7556,13 @@ function scheduler.process_tick(cadence)
 	end
 	p1_run_dry(s)
 	local p1_acted, p1_reason = scheduler.p1_try_dark_launch_dispatch(s)
-	local move_acted, move_reason = run_movement_coordinator_tick()
+	brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
+	local move_acted, move_reason = false, ''
+	if not brd_lane_reserved then
+		move_acted, move_reason = run_movement_coordinator_tick()
+	else
+		_G.UC_MOVEMENT_BLOCK_REASON = 'BRD_LANE:' .. tostring(brd_lane_reason or '')
+	end
 	if p1_acted then
 		if move_acted then
 			_G.UC_LAST_SCHED_ACTION = tostring(_G.UC_LAST_SCHED_ACTION or '') .. '|move'
@@ -7542,6 +7573,10 @@ function scheduler.process_tick(cadence)
 	end
 	if move_acted then
 		_G.UC_LAST_SCHED_ACTION = '[move]coordinator_tick'
+	end
+	if brd_lane_reserved then
+		_G.UC_LAST_SCHED_ACTION = '[p1]brd_lane_hold'
+		return true, 'BLOCK_BRD_ACTION_LANE:' .. tostring(brd_lane_reason or '')
 	end
 	local scheduler_owns_defensive = bool_setting(scheduler.active_value_or_flat(
 		'config.ownership.scheduler_dark_launch_defensive',
@@ -7718,7 +7753,18 @@ function scheduler.on_action(act)
 		local p = windower.ffxi.get_player()
 		local observed_at = now_s()
 		local player_id = tonumber(p and p.id) or 0
-		require('uc_brd_maintenance').on_action(act, player_id, observed_at)
+		local _, brd_action_event = require('uc_brd_maintenance').on_action(act, player_id, observed_at)
+		if brd_action_event == 'pianissimo_confirmed' then
+			action_mark_packet_end({
+				message_id = tonumber(act.category) or 0,
+			})
+			local brd_pending = scheduler.phase1 and scheduler.phase1.pending
+			if type(brd_pending) == 'table'
+				and tostring(brd_pending.provider or '') == 'maintenance_brd'
+				and tostring(brd_pending.action_name or '') == 'Pianissimo' then
+				scheduler.p1_pending_mark_complete(observed_at, 'brd_pianissimo_action')
+			end
+		end
 		scheduler.observe_local_sleep_action(act, player_id, observed_at)
 		if rawget(_G, 'Start_Engine') == true then
 			local get_target = windower.ffxi.get_mob_by_target

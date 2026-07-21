@@ -187,9 +187,11 @@ local function build_flat_settings()
         brd_songs = 'Honor March|Victory March',
         brd_dummy_songs = "Army's Paeon|Army's Paeon II",
         brd_use_nitro = true,
+		brd_use_soul_voice = true,
         brd_use_clarion_call = false,
         brd_use_marcato = true,
         brd_marcato_song = 'Honor March',
+		brd_targeted_songs = "Tankone,Tanktwo:Mage's Ballad III,Mage's Ballad II",
 		brd_recovery_range_yalms = 12.4,
         path_recording = true,
         path_follow_enabled = true,
@@ -447,9 +449,13 @@ local function build_nested_settings()
                 songs = { 'Honor March', 'Victory March' },
                 dummy_songs = { "Army's Paeon", "Army's Paeon II" },
                 use_nitro = true,
+				use_soul_voice = true,
                 use_clarion_call = false,
                 use_marcato = true,
                 marcato_song = 'Honor March',
+				targeted_songs = {
+					{ recipients = { 'Tankone', 'Tanktwo' }, priority_songs = { "Mage's Ballad III", "Mage's Ballad II" } },
+				},
 				recovery_range_yalms = 17.5,
             },
             geo = {
@@ -580,6 +586,12 @@ local function main()
     assert_equal(flat_config.maintenance.brd.songs[2], 'Victory March', 'flat BRD song list mismatch')
     assert_equal(flat_config.maintenance.brd.dummy_songs[2], "Army's Paeon II", 'flat BRD dummy song list mismatch')
     assert_equal(flat_config.maintenance.brd.use_nitro, true, 'flat BRD NITRO mismatch')
+	assert_equal(flat_config.maintenance.brd.use_soul_voice, true, 'flat BRD Soul Voice mismatch')
+	assert_equal(flat_config.maintenance.brd.targeted_songs[1].recipients[2], 'Tanktwo', 'flat BRD targeted recipient mismatch')
+	assert_equal(flat_config.maintenance.brd.targeted_songs[1].priority_songs[2], "Mage's Ballad II", 'flat BRD targeted priority mismatch')
+	local malformed_targeted_config = normalizer.normalize({ brd_targeted_songs = 'TargetWithoutSongs' })
+	assert_equal(#malformed_targeted_config.maintenance.brd.targeted_songs, 1, 'malformed BRD targeted config must remain visible to runtime validation')
+	assert_equal(#malformed_targeted_config.maintenance.brd.targeted_songs[1].recipients, 0, 'malformed BRD targeted config must not normalize into a valid empty policy')
     assert_equal(flat_config.maintenance.brd.marcato_song, 'Honor March', 'flat BRD Marcato song mismatch')
 	assert_equal(flat_config.maintenance.brd.recovery_range_yalms, 12.4, 'flat BRD recovery range mismatch')
     assert_equal(flat_config.debug.ja_debug, true, 'debug flag mismatch')
@@ -614,6 +626,8 @@ local function main()
     assert_equal(nested_config.maintenance.brd.songs[2], 'Victory March', 'nested maintenance BRD song mismatch')
     assert_equal(nested_config.maintenance.brd.dummy_songs[1], "Army's Paeon", 'nested maintenance BRD dummy mismatch')
     assert_equal(nested_config.maintenance.brd.use_nitro, true, 'nested maintenance BRD NITRO mismatch')
+	assert_equal(nested_config.maintenance.brd.use_soul_voice, true, 'nested maintenance BRD Soul Voice mismatch')
+	assert_equal(nested_config.maintenance.brd.targeted_songs[1].priority_songs[1], "Mage's Ballad III", 'nested BRD targeted song mismatch')
     assert_equal(nested_config.maintenance.brd.marcato_song, 'Honor March', 'nested maintenance BRD Marcato mismatch')
 	assert_equal(nested_config.maintenance.brd.recovery_range_yalms, 17.5, 'nested maintenance BRD recovery range mismatch')
     assert_equal(nested_config.maintenance.geo.bubble, 'Entrust', 'nested maintenance GEO mismatch')

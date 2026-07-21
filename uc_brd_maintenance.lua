@@ -7,6 +7,8 @@ local M = {}
 local SONG_START_TIMEOUT_S = 2.0
 local SONG_CAST_TIMEOUT_S = 20.0
 local SONG_CONFIRM_TIMEOUT_S = 2.0
+local JA_CONFIRM_RETRY_S = 0.5
+local TARGETED_TROUBADOUR_SAFETY_S = 8.0
 local REFRESH_BASE_LEAD_S = 8.0
 local REFRESH_PER_SONG_LEAD_S = 4.0
 local TIMER_MATCH_TOLERANCE = 60
@@ -22,6 +24,8 @@ local JA = {
 	troubadour = { name = 'Troubadour', buff_id = 348 },
 	marcato = { name = 'Marcato', buff_id = 231 },
 	clarion = { name = 'Clarion Call', buff_id = 499 },
+	soul_voice = { name = 'Soul Voice', buff_id = 52 },
+	pianissimo = { name = 'Pianissimo', buff_id = 409, action_id = 229 },
 }
 
 local function initial_server_time_offset(epoch)
@@ -39,7 +43,17 @@ local state = {
 	force = nil,
 	nitro_armed = false,
 	nitro_was_active = false,
+	nitro_phase = '',
+	nitro_phase_started_at = 0,
 	marcato_reservation = '',
+	clarion_reserved = false,
+	clarion_dispatched_at = 0,
+	soul_voice_generation = nil,
+	targeted_transaction = nil,
+	targeted_completed = {},
+	targeted_skip_reasons = {},
+	targeted_blocker = '',
+	pianissimo_consumed_wait = false,
 	config_signature = '',
 	recovery_range_yalms = 0,
 	identity = '',
@@ -49,6 +63,8 @@ local state = {
 	trace_lines = {},
 	manual_capture = nil,
 	log_enabled = false,
+	log_auto_started = false,
+	log_last_blocker = '',
 	log_path = '',
 	log_error = '',
 	server_time_offset = initial_server_time_offset(os.time()),
@@ -125,6 +141,28 @@ end
 local function release_action_lane(reason)
 	state.action_lane_reserved = false
 	state.action_lane_reason = tostring(reason or '')
+end
+
+local function sequence_requires_action_lane()
+	return type(state.pending) == 'table'
+		or type(state.force) == 'table'
+		or state.nitro_armed == true
+		or state.marcato_reservation ~= ''
+		or state.clarion_reserved == true
+		or type(state.soul_voice_generation) == 'table'
+		or type(state.targeted_transaction) == 'table'
+		or party_song_state.is_recovery_active()
+end
+
+local function release_action_lane_if_idle(reason)
+	if not sequence_requires_action_lane() then
+		release_action_lane(reason)
+	end
+end
+
+local function confirmation_timed_out(started_at, now)
+	local started = tonumber(started_at)
+	return started ~= nil and started > 0 and (tonumber(now) or os.time()) - started > JA_CONFIRM_RETRY_S
 end
 
 local function owner_summary()
@@ -322,7 +360,44 @@ local function remaining_seconds(endtime, epoch)
 	return ((tonumber(endtime) or 0) - server_now_raw(epoch)) / 60
 end
 
+local function status_endtime(status_id, epoch)
+	local best = nil
+	for _, endtime in ipairs(family_endtimes(state.snapshot, status_id)) do
+		if remaining_seconds(endtime, epoch) > 0 and (best == nil or endtime > best) then
+			best = endtime
+		end
+	end
+	return best
+end
+
+local function status_active_at_resolution(status_id, epoch)
+	local endtime = status_endtime(status_id, epoch)
+	return endtime ~= nil and remaining_seconds(endtime, epoch) > 0, endtime
+end
+
+local function nitro_supports_soul_voice(ctx, song_limit)
+	if not has_buff(ctx.player, JA.nightingale.buff_id) or not has_buff(ctx.player, JA.troubadour.buff_id) then
+		return false, 'soul_voice_requires_active_nitro'
+	end
+	local nightingale_endtime = status_endtime(JA.nightingale.buff_id, ctx.now)
+	local troubadour_endtime = status_endtime(JA.troubadour.buff_id, ctx.now)
+	if nightingale_endtime == nil or troubadour_endtime == nil then
+		return false, 'soul_voice_waiting_nitro_endtime'
+	end
+	local minimum_window = REFRESH_BASE_LEAD_S + REFRESH_PER_SONG_LEAD_S * (tonumber(song_limit) or 0)
+	if remaining_seconds(nightingale_endtime, ctx.now) <= minimum_window
+		or remaining_seconds(troubadour_endtime, ctx.now) <= minimum_window then
+		return false, 'soul_voice_insufficient_nitro_window'
+	end
+	return true, ''
+end
+
 local function config_signature(config, player)
+	local targeted = {}
+	for i = 1, #(config.targeted_songs or {}) do
+		local entry = config.targeted_songs[i]
+		targeted[#targeted + 1] = join(entry.recipients or {}) .. ':' .. join(entry.priority_songs or {})
+	end
 	return table.concat({
 		tostring(config.enabled),
 		join(config.songs),
@@ -330,9 +405,11 @@ local function config_signature(config, player)
 		tostring(config.recovery_range_yalms),
 		join(config.recovery_ignore_names),
 		tostring(config.use_nitro),
+		tostring(config.use_soul_voice),
 		tostring(config.use_clarion_call),
 		tostring(config.use_marcato),
 		tostring(config.marcato_song),
+		table.concat(targeted, ';'),
 		tostring(player and player.main_job or ''),
 		tostring(player and player.sub_job or ''),
 	}, '|')
@@ -357,9 +434,11 @@ local function effective_config(config, player)
 		recovery_range_yalms = config.recovery_range_yalms,
 		recovery_ignore_names = config.recovery_ignore_names,
 		use_nitro = config.use_nitro,
+		use_soul_voice = config.use_soul_voice,
 		use_clarion_call = config.use_clarion_call,
 		use_marcato = config.use_marcato,
 		marcato_song = config.marcato_song,
+		targeted_songs = config.targeted_songs,
 	}
 end
 
@@ -375,8 +454,9 @@ local function validate_config(config, player)
 		or config.recovery_range_yalms < 1.0 or config.recovery_range_yalms > 20.0 then
 		return false, 'invalid_recovery_range_yalms'
 	end
-	if type(config.use_nitro) ~= 'boolean' or type(config.use_clarion_call) ~= 'boolean'
-		or type(config.use_marcato) ~= 'boolean' or type(config.marcato_song) ~= 'string' then
+	if type(config.use_nitro) ~= 'boolean' or type(config.use_soul_voice) ~= 'boolean'
+		or type(config.use_clarion_call) ~= 'boolean' or type(config.use_marcato) ~= 'boolean'
+		or type(config.marcato_song) ~= 'string' or type(config.targeted_songs) ~= 'table' then
 		return false, 'invalid_config_shape'
 	end
 	local main_job = tostring(player and player.main_job or '')
@@ -389,6 +469,12 @@ local function validate_config(config, player)
 	end
 	if main_job ~= 'BRD' and #config.songs > 1 then
 		return false, 'subjob_song_limit'
+	end
+	if config.use_soul_voice and not config.use_nitro then
+		return false, 'soul_voice_requires_nitro'
+	end
+	if main_job ~= 'BRD' and (config.use_soul_voice or #config.targeted_songs > 0) then
+		return false, 'main_job_brd_required'
 	end
 	if main_job == 'BRD' and #config.songs > 5 then
 		return false, 'main_job_song_limit'
@@ -414,6 +500,37 @@ local function validate_config(config, player)
 			return false, 'duplicate_dummy_song:' .. name
 		end
 		dummy_seen[name] = true
+	end
+	local assigned_recipients = {}
+	for assignment_index = 1, #config.targeted_songs do
+		local assignment = config.targeted_songs[assignment_index]
+		if type(assignment) ~= 'table' or type(assignment.recipients) ~= 'table'
+			or type(assignment.priority_songs) ~= 'table' or #assignment.recipients == 0
+			or #assignment.priority_songs == 0 then
+			return false, 'invalid_targeted_assignment:' .. tostring(assignment_index)
+		end
+		local assignment_songs = {}
+		for i = 1, #assignment.priority_songs do
+			local name = assignment.priority_songs[i]
+			if type(name) ~= 'string' or name == '' or not is_general_song(get_song(name)) then
+				return false, 'invalid_targeted_song:' .. tostring(name)
+			end
+			if assignment_songs[name] then
+				return false, 'duplicate_targeted_song:' .. name
+			end
+			assignment_songs[name] = true
+		end
+		for i = 1, #assignment.recipients do
+			local name = assignment.recipients[i]
+			local key = type(name) == 'string' and name:lower() or ''
+			if key == '' then
+				return false, 'invalid_targeted_recipient'
+			end
+			if assigned_recipients[key] then
+				return false, 'duplicate_targeted_recipient:' .. name
+			end
+			assigned_recipients[key] = true
+		end
 	end
 	for i = 1, #config.recovery_ignore_names do
 		if type(config.recovery_ignore_names[i]) ~= 'string' or config.recovery_ignore_names[i] == '' then
@@ -458,7 +575,17 @@ local function reset_runtime(reason, preserve_trace)
 	party_song_state.reset()
 	state.nitro_armed = false
 	state.nitro_was_active = false
+	state.nitro_phase = ''
+	state.nitro_phase_started_at = 0
 	state.marcato_reservation = ''
+	state.clarion_reserved = false
+	state.clarion_dispatched_at = 0
+	state.soul_voice_generation = nil
+	state.targeted_transaction = nil
+	state.targeted_completed = {}
+	state.targeted_skip_reasons = {}
+	state.targeted_blocker = ''
+	state.pianissimo_consumed_wait = false
 	state.last_blocker = tostring(reason or 'reset')
 	state.last_transition = ''
 	state.manual_capture = nil
@@ -477,6 +604,7 @@ end
 local function proposal(action_type, action_name, reason_code, urgency, detail)
 	reserve_action_lane(reason_code)
 	state.last_blocker = ''
+	state.log_last_blocker = ''
 	diagnostic_log('PROPOSAL', {
 		action_type = action_type,
 		action_name = action_name,
@@ -494,11 +622,12 @@ local function proposal(action_type, action_name, reason_code, urgency, detail)
 	}
 end
 
-local function ready(ctx, name, expected_kind)
+local function ready(ctx, name, expected_kind, target_id)
 	if type(ctx.action_ready) ~= 'function' then
 		return false, 'missing_action_ready'
 	end
-	local ok, reason, kind = ctx.action_ready(name, tonumber(ctx.player and ctx.player.id) or 0)
+	local resolved_target_id = tonumber(target_id) or tonumber(ctx.player and ctx.player.id) or 0
+	local ok, reason, kind = ctx.action_ready(name, resolved_target_id)
 	if kind ~= expected_kind then
 		return false, 'wrong_action_kind'
 	end
@@ -529,6 +658,9 @@ local function next_force_song(config, song_limit)
 	end
 	state.force = nil
 	state.last_transition = 'nitro_force_complete'
+	if type(state.soul_voice_generation) == 'table' then
+		state.soul_voice_generation.phase = 'targeted_overlays'
+	end
 	return ''
 end
 
@@ -603,7 +735,9 @@ local function resolve_pending_from_snapshot()
 		recipients = pending.recipients,
 		confirmed_at = tonumber(pending.success_at) or os.time(),
 		is_dummy = pending.is_dummy,
-		troubadour_active = pending.troubadour_active,
+		troubadour_active = pending.troubadour_active_at_resolution == true,
+		soul_voice_applied = pending.soul_voice_applied_at_resolution == true,
+		pianissimo_applied = pending.pianissimo_applied == true,
 		normalization_attempted = pending.normalizes_dummy,
 		alignment_attempted = pending.aligns_final,
 	}
@@ -614,7 +748,9 @@ local function resolve_pending_from_snapshot()
 		recipients = pending.recipients,
 		confirmed_at = tonumber(pending.success_at) or os.time(),
 		is_dummy = pending.is_dummy,
-		troubadour_active = pending.troubadour_active,
+		troubadour_active = pending.troubadour_active_at_resolution == true,
+		soul_voice_applied = pending.soul_voice_applied_at_resolution == true,
+		pianissimo_applied = pending.pianissimo_applied == true,
 		normalizes_dummy = pending.normalizes_dummy,
 		aligns_final = pending.aligns_final,
 		cast_capacity = pending.cast_capacity,
@@ -632,8 +768,20 @@ local function resolve_pending_from_snapshot()
 		required_complete = required_complete,
 		owners = owner_summary(),
 	})
-	mark_song_confirmed(pending.name, required_complete)
-	state.last_transition = ('confirmed:%s replaced:%s'):format(pending.name, replaced)
+	if pending.targeted == true then
+		local transaction = state.targeted_transaction
+		if type(transaction) == 'table' and transaction.completion_key then
+			state.targeted_completed[transaction.completion_key] = true
+		end
+		state.targeted_transaction = nil
+		state.last_transition = 'targeted_confirmed:' .. pending.target_name .. ':' .. pending.name
+		state.last_blocker = ''
+	else
+		state.targeted_completed = {}
+		state.targeted_skip_reasons = {}
+		mark_song_confirmed(pending.name, required_complete)
+		state.last_transition = ('confirmed:%s replaced:%s'):format(pending.name, replaced)
+	end
 	finish_trace(('resolve:confirmed song=%s endtime=%d replaced=%s recipients=%s'):format(
 		pending.name,
 		added[1],
@@ -641,6 +789,9 @@ local function resolve_pending_from_snapshot()
 		join(pending.recipients)
 	))
 	state.pending = nil
+	if pending.targeted == true and pending.preserve_action_lane ~= true then
+		release_action_lane_if_idle('targeted_confirmed')
+	end
 	return true
 end
 
@@ -696,7 +847,38 @@ function M.on_server_clock(timestamp, time_offset, now)
 end
 
 function M.note_dispatch(action, action_token, now)
-	if type(action) ~= 'table' or tostring(action.action_type or '') ~= 'spell' then
+	if type(action) ~= 'table' then
+		return false
+	end
+	local action_type = tostring(action.action_type or '')
+	local action_name = tostring(action.action_name or '')
+	if action_type == 'ja' then
+		local dispatched_at = tonumber(now) or os.time()
+		if action_name == JA.nightingale.name and state.nitro_armed then
+			state.nitro_phase = 'confirming_nightingale'
+			state.nitro_phase_started_at = dispatched_at
+		elseif action_name == JA.troubadour.name and state.nitro_armed then
+			state.nitro_phase = 'confirming_troubadour'
+			state.nitro_phase_started_at = dispatched_at
+		elseif action_name == JA.soul_voice.name and type(state.soul_voice_generation) == 'table' then
+			state.soul_voice_generation.phase = 'confirming_soul_voice'
+			state.soul_voice_generation.phase_started_at = dispatched_at
+		elseif action_name == JA.pianissimo.name and type(state.targeted_transaction) == 'table' then
+			state.targeted_transaction.phase = 'confirming_pianissimo'
+			state.targeted_transaction.phase_started_at = dispatched_at
+			diagnostic_log('PIANISSIMO_DISPATCH', {
+				action_token = action_token,
+				dispatched_at = dispatched_at,
+				recipient_id = state.targeted_transaction.recipient_id,
+				recipient_name = state.targeted_transaction.recipient_name,
+				song = state.targeted_transaction.song_name,
+			})
+		elseif action_name == JA.clarion.name and state.clarion_reserved then
+			state.clarion_dispatched_at = dispatched_at
+		end
+		return true
+	end
+	if action_type ~= 'spell' then
 		return true
 	end
 	local spell = get_song(action.action_name)
@@ -716,7 +898,15 @@ function M.note_dispatch(action, action_token, now)
 		recipients = {},
 		success = false,
 		is_dummy = type(action.detail) == 'table' and action.detail.is_dummy == true,
-		troubadour_active = type(action.detail) == 'table' and action.detail.troubadour_active == true,
+		troubadour_active_at_dispatch = type(action.detail) == 'table' and action.detail.troubadour_active == true,
+		requires_troubadour = type(action.detail) == 'table' and action.detail.requires_troubadour == true,
+		soul_voice_active_at_dispatch = type(action.detail) == 'table' and action.detail.soul_voice_active == true,
+		pianissimo_applied = type(action.detail) == 'table' and action.detail.pianissimo_applied == true,
+		targeted = type(action.detail) == 'table' and action.detail.targeted == true,
+		target_id = type(action.detail) == 'table' and tonumber(action.detail.target_id) or nil,
+		target_name = type(action.detail) == 'table' and tostring(action.detail.target_name or '') or '',
+		targeted_operation = type(action.detail) == 'table' and tostring(action.detail.targeted_operation or '') or '',
+		targeted_candidate_names = type(action.detail) == 'table' and clone_array(action.detail.targeted_candidate_names) or {},
 		normalizes_dummy = type(action.detail) == 'table' and action.detail.normalizes_dummy == true,
 		aligns_final = type(action.detail) == 'table' and action.detail.aligns_final == true,
 		recovery_member_id = type(action.detail) == 'table' and tonumber(action.detail.recovery_member_id) or nil,
@@ -724,6 +914,20 @@ function M.note_dispatch(action, action_token, now)
 		song_limit = type(action.detail) == 'table' and tonumber(action.detail.song_limit) or nil,
 		required_recipients = type(action.detail) == 'table' and clone_array(action.detail.required_recipient_ids) or {},
 	}
+	if state.pending.targeted == true then
+		local transaction = state.targeted_transaction
+		if type(transaction) ~= 'table'
+			or transaction.phase ~= 'awaiting_song'
+			or tonumber(transaction.recipient_id) ~= tonumber(state.pending.target_id)
+			or tostring(transaction.song_name or '') ~= state.pending.name then
+			state.last_blocker = 'invalid_targeted_dispatch_transaction'
+			state.pending = nil
+			return false
+		end
+		state.pending.preserve_action_lane = transaction.preserve_action_lane == true
+		transaction.phase = 'song_dispatched'
+		transaction.phase_started_at = state.pending.dispatched_at
+	end
 	diagnostic_log('DISPATCH', {
 		now = now,
 		token = state.pending.token,
@@ -776,6 +980,26 @@ function M.on_action(act, player_id, now)
 			state.last_transition = 'manual_capture_awaiting_063:' .. capture.song
 		end
 	end
+	local action_category = tonumber(act and act.category) or 0
+	if type(state.targeted_transaction) == 'table'
+		and state.targeted_transaction.phase == 'confirming_pianissimo'
+		and tonumber(act and act.actor_id) == tonumber(player_id)
+		and (action_category == 6 or action_category == 13 or action_category == 14 or action_category == 15)
+		and tonumber(act and act.param) == JA.pianissimo.action_id then
+		state.targeted_transaction.phase = 'awaiting_song'
+		state.targeted_transaction.phase_started_at = 0
+		state.last_transition = 'pianissimo_confirmed_action:' .. state.targeted_transaction.recipient_name
+		state.last_blocker = ''
+		diagnostic_log('PIANISSIMO_ACTION_CONFIRMED', {
+			now = now,
+			category = action_category,
+			action_id = act.param,
+			recipient_id = state.targeted_transaction.recipient_id,
+			recipient_name = state.targeted_transaction.recipient_name,
+			song = state.targeted_transaction.song_name,
+		})
+		return true, 'pianissimo_confirmed'
+	end
 	local pending = state.pending
 	if type(pending) ~= 'table' or type(act) ~= 'table' then
 		return false
@@ -804,6 +1028,9 @@ function M.on_action(act, player_id, now)
 		for _, target in ipairs(type(act.targets) == 'table' and act.targets or {}) do
 			for _, result in ipairs(type(target.actions) == 'table' and target.actions or {}) do
 				if tonumber(result.message) == 327 and tonumber(result.param) == pending.spell_id then
+					if pending.targeted == true then
+						state.pianissimo_consumed_wait = true
+					end
 					pending.started_at = tonumber(now) or os.time()
 					pending.phase = 'casting'
 					diagnostic_log('ACTION_START', {
@@ -840,9 +1067,79 @@ function M.on_action(act, player_id, now)
 	if #recipients == 0 then
 		state.last_blocker = 'no_successful_recipients'
 		finish_trace('resolve:no_successful_recipients')
+		if pending.targeted == true then
+			state.pianissimo_consumed_wait = true
+			party_song_state.mark_member_unknown(pending.target_id, state.last_blocker)
+			state.targeted_transaction = nil
+		end
 		state.pending = nil
+		release_action_lane_if_idle(state.last_blocker)
 		diagnostic_log('ACTION_REJECT_NO_RECIPIENTS', { song = pending.name, results = message_trace })
 		return false
+	end
+	local resolved_at = tonumber(now) or os.time()
+	local troubadour_active = status_active_at_resolution(JA.troubadour.buff_id, resolved_at)
+	local soul_voice_active = status_active_at_resolution(JA.soul_voice.buff_id, resolved_at)
+	pending.troubadour_active_at_resolution = troubadour_active == true
+	pending.soul_voice_applied_at_resolution = soul_voice_active == true
+	if pending.targeted == true then
+		state.pianissimo_consumed_wait = true
+		if #recipients ~= 1 or tonumber(recipients[1]) ~= tonumber(pending.target_id) then
+			state.last_blocker = 'targeted_unexpected_recipient:' .. join(recipients)
+			party_song_state.mark_member_unknown(pending.target_id, state.last_blocker)
+			state.pending = nil
+			state.targeted_transaction = nil
+			release_action_lane_if_idle(state.last_blocker)
+			return false
+		end
+		if pending.requires_troubadour == true and pending.troubadour_active_at_resolution ~= true then
+			state.last_blocker = 'targeted_troubadour_expired_at_resolution:' .. pending.name
+			party_song_state.mark_member_unknown(pending.target_id, state.last_blocker)
+			state.pending = nil
+			state.targeted_transaction = nil
+			release_action_lane_if_idle(state.last_blocker)
+			return false
+		end
+		if tonumber(pending.target_id) == tonumber(player_id) then
+			pending.success = true
+			pending.success_at = resolved_at
+			pending.phase = 'awaiting_snapshot'
+			pending.recipients = recipients
+			diagnostic_log('ACTION_SUCCESS', {
+				song = pending.name,
+				recipients = recipients,
+				required_recipients = pending.required_recipients,
+				results = message_trace,
+			})
+			return resolve_pending_from_snapshot()
+		end
+		party_song_state.record_delivery({
+			song_name = pending.name,
+			status_id = pending.status_id,
+			recipients = recipients,
+			confirmed_at = resolved_at,
+			is_dummy = pending.is_dummy,
+			troubadour_active = pending.troubadour_active_at_resolution,
+			soul_voice_applied = pending.soul_voice_applied_at_resolution,
+			pianissimo_applied = true,
+			cast_capacity = pending.cast_capacity,
+			song_limit = pending.song_limit,
+		})
+		if pending.targeted_operation == 'replace' and #pending.targeted_candidate_names ~= 1 then
+			party_song_state.mark_member_unknown(pending.target_id, 'targeted_overwrite_victim_unconfirmed')
+		end
+		local transaction = state.targeted_transaction
+		if type(transaction) == 'table' and transaction.completion_key then
+			state.targeted_completed[transaction.completion_key] = true
+		end
+		state.targeted_transaction = nil
+		state.pending = nil
+		state.last_transition = 'targeted_confirmed:' .. pending.target_name .. ':' .. pending.name
+		state.last_blocker = ''
+		if pending.preserve_action_lane ~= true then
+			release_action_lane_if_idle('targeted_confirmed')
+		end
+		return true
 	end
 	local local_success = false
 	for i = 1, #recipients do
@@ -859,7 +1156,7 @@ function M.on_action(act, player_id, now)
 		return false
 	end
 	pending.success = true
-	pending.success_at = tonumber(now) or os.time()
+	pending.success_at = resolved_at
 	pending.phase = 'awaiting_snapshot'
 	pending.recipients = recipients
 	diagnostic_log('ACTION_SUCCESS', {
@@ -904,6 +1201,52 @@ local function next_missing_final(config, song_limit, required_recipients)
 	return ''
 end
 
+local function targeted_self_overlay_covers_group_gap(config, player, song_limit, required_recipients, count)
+	if tonumber(count) < tonumber(song_limit) then
+		return false
+	end
+	local player_name = tostring(player and player.name or ''):lower()
+	if player_name == '' then
+		return false
+	end
+	local assignment = nil
+	for i = 1, #(config.targeted_songs or {}) do
+		local candidate = config.targeted_songs[i]
+		for j = 1, #(candidate.recipients or {}) do
+			if tostring(candidate.recipients[j]):lower() == player_name then
+				assignment = candidate
+				break
+			end
+		end
+		if assignment ~= nil then
+			break
+		end
+	end
+	if assignment == nil then
+		return false
+	end
+	local group = {}
+	local missing_count = 0
+	for i = 1, song_limit do
+		local song_name = config.songs[i]
+		group[song_name] = true
+		if not owner_covers(song_name, required_recipients) then
+			missing_count = missing_count + 1
+		end
+	end
+	if missing_count == 0 then
+		return false
+	end
+	local targeted_extra_count = 0
+	for i = 1, #(assignment.priority_songs or {}) do
+		local song_name = assignment.priority_songs[i]
+		if group[song_name] ~= true and owner_covers(song_name, required_recipients) then
+			targeted_extra_count = targeted_extra_count + 1
+		end
+	end
+	return targeted_extra_count >= missing_count
+end
+
 local function unique_shortest_owner(expected_count)
 	local song_statuses = general_song_status_ids()
 	local effect_count = 0
@@ -944,7 +1287,13 @@ local function unique_shortest_owner(expected_count)
 		return '', 'missing_overwrite_victim'
 	end
 	if tied then
-		return '', 'ambiguous_overwrite_victim'
+		for _, owner in pairs(state.owners) do
+			local owner_endtime = tonumber(owner.endtime)
+			if owner_endtime ~= nil and math.abs(owner_endtime - shortest_endtime) <= TIMER_MATCH_TOLERANCE then
+				return '', 'ambiguous_overwrite_victim'
+			end
+		end
+		return '', 'ambiguous_overwrite_owners_unknown'
 	end
 	local shortest_name = ''
 	for name, owner in pairs(state.owners) do
@@ -994,19 +1343,31 @@ end
 local function urgent_song(config, song_limit, now_epoch)
 	local best_name = ''
 	local best_remaining = nil
+	local best_recipient = ''
 	local refresh_lead = REFRESH_BASE_LEAD_S + (song_limit * REFRESH_PER_SONG_LEAD_S)
 	for i = 1, song_limit do
 		local name = config.songs[i]
 		local owner = state.owners[name]
-		if type(owner) == 'table' then
-			local remaining = remaining_seconds(owner.endtime, now_epoch)
+		local endtime = type(owner) == 'table' and tonumber(owner.endtime) or nil
+		local recipient = ''
+		local recipient_endtime, recipient_name, recipient_reason = party_song_state.earliest_effect_endtime(name)
+		if recipient_reason ~= '' then
+			return '', nil, '', recipient_reason
+		end
+		if recipient_endtime ~= nil and (endtime == nil or recipient_endtime < endtime) then
+			endtime = recipient_endtime
+			recipient = recipient_name
+		end
+		if endtime ~= nil then
+			local remaining = remaining_seconds(endtime, now_epoch)
 			if remaining <= refresh_lead and (best_remaining == nil or remaining < best_remaining) then
 				best_name = name
 				best_remaining = remaining
+				best_recipient = recipient
 			end
 		end
 	end
-	return best_name, best_remaining
+	return best_name, best_remaining, best_recipient, ''
 end
 
 local function song_within_limit(config, name, song_limit)
@@ -1032,8 +1393,48 @@ local function song_proposal(ctx, name, reason, urgency, is_dummy, required_reci
 		cast_capacity = cast_capacity,
 		song_limit = song_limit,
 		troubadour_active = has_buff(ctx.player, JA.troubadour.buff_id),
+		soul_voice_active = has_buff(ctx.player, JA.soul_voice.buff_id),
 		normalizes_dummy = normalizes_dummy == true,
 		aligns_final = aligns_final == true,
+	})
+end
+
+local function targeted_song_proposal(ctx, transaction, plan, song_limit)
+	local target_id = tonumber(transaction and transaction.recipient_id) or 0
+	local target_name = tostring(transaction and transaction.recipient_name or '')
+	if target_id <= 0 or target_name == '' then
+		state.last_blocker = 'invalid_targeted_transaction'
+		return nil
+	end
+	local ok, why = ready(ctx, transaction.song_name, 'spell', target_id)
+	if not ok then
+		state.last_blocker = 'not_ready:' .. transaction.song_name .. ':' .. why
+		return nil
+	end
+	if plan.requires_troubadour == true then
+		local endtime = status_endtime(JA.troubadour.buff_id, ctx.now)
+		if endtime == nil then
+			state.last_blocker = 'missing_troubadour_endtime'
+			return nil
+		end
+		if remaining_seconds(endtime, ctx.now) <= TARGETED_TROUBADOUR_SAFETY_S then
+			state.last_blocker = 'insufficient_troubadour_time:' .. transaction.song_name
+			return nil
+		end
+	end
+	return proposal('spell', transaction.song_name, 'brd_targeted_song', 0.735, {
+		targeted = true,
+		target_id = target_id,
+		target_name = target_name,
+		pianissimo_applied = true,
+		requires_troubadour = plan.requires_troubadour == true,
+		troubadour_active = has_buff(ctx.player, JA.troubadour.buff_id),
+		soul_voice_active = has_buff(ctx.player, JA.soul_voice.buff_id),
+		targeted_operation = plan.operation,
+		targeted_candidate_names = clone_array(plan.candidate_names),
+		required_recipient_ids = { target_id },
+		cast_capacity = 2,
+		song_limit = song_limit,
 	})
 end
 
@@ -1083,7 +1484,351 @@ local function required_recipient_ids(ctx)
 	return { player_id }
 end
 
+local function targeted_completion_key(assignment_index, recipient_name, song_name)
+	return table.concat({ tostring(assignment_index), tostring(recipient_name):lower(), tostring(song_name) }, ':')
+end
+
+local function note_targeted_recipient_skip(key, fields)
+	local reason = tostring(fields and fields.reason or 'targeted_skip_unknown')
+	if state.targeted_skip_reasons[key] == reason then
+		return
+	end
+	state.targeted_skip_reasons[key] = reason
+	diagnostic_log('TARGETED_RECIPIENT_SKIPPED', fields)
+end
+
+local function clear_targeted_recipient_skip(key)
+	state.targeted_skip_reasons[key] = nil
+end
+
+local function targeted_protected_songs(assignment)
+	local protected = {}
+	for i = 1, #(assignment.priority_songs or {}) do
+		protected[assignment.priority_songs[i]] = true
+	end
+	return protected
+end
+
+local function targeted_troubadour_is_safe(ctx)
+	if not has_buff(ctx.player, JA.troubadour.buff_id) then
+		return false
+	end
+	local endtime = status_endtime(JA.troubadour.buff_id, ctx.now)
+	return endtime ~= nil and remaining_seconds(endtime, ctx.now) > TARGETED_TROUBADOUR_SAFETY_S
+end
+
+local function validate_targeted_transaction(transaction)
+	local member, reason = party_song_state.member_by_name(transaction.recipient_name)
+	if type(member) ~= 'table' then
+		return nil, reason
+	end
+	if tonumber(member.id) ~= tonumber(transaction.recipient_id) then
+		return nil, 'targeted_recipient_id_changed:' .. transaction.recipient_name
+	end
+	if member.targetable ~= true then
+		return nil, 'targeted_recipient_unavailable:' .. transaction.recipient_name
+	end
+	return member, ''
+end
+
+local function targeted_transaction_action(config, ctx, song_limit)
+	state.targeted_blocker = ''
+	local function block(reason)
+		state.targeted_blocker = tostring(reason or 'targeted_blocked')
+		state.last_blocker = state.targeted_blocker
+	end
+	if state.pianissimo_consumed_wait then
+		if has_buff(ctx.player, JA.pianissimo.buff_id) then
+			block('targeted_waiting_for_pianissimo_consumption')
+			return nil
+		end
+		state.pianissimo_consumed_wait = false
+	end
+	local transaction = state.targeted_transaction
+	if type(transaction) == 'table' then
+		local member, member_reason = validate_targeted_transaction(transaction)
+		if member == nil then
+			block(member_reason)
+			state.targeted_transaction = nil
+			release_action_lane_if_idle(member_reason)
+			return nil
+		end
+		local assignment = config.targeted_songs[transaction.assignment_index]
+		if type(assignment) ~= 'table' then
+			block('targeted_assignment_removed')
+			state.targeted_transaction = nil
+			release_action_lane_if_idle(state.last_blocker)
+			return nil
+		end
+		local plan, plan_reason = party_song_state.plan_targeted_song(
+			member.id,
+			transaction.song_name,
+			2,
+			targeted_protected_songs(assignment),
+			targeted_troubadour_is_safe(ctx)
+		)
+		if type(plan) ~= 'table' then
+			block('targeted_plan_changed:' .. tostring(plan_reason))
+			state.targeted_transaction = nil
+			release_action_lane_if_idle(state.last_blocker)
+			return nil
+		end
+		if transaction.phase == 'confirming_pianissimo' then
+			if has_buff(ctx.player, JA.pianissimo.buff_id) then
+				transaction.phase = 'awaiting_song'
+				transaction.phase_started_at = 0
+			elseif confirmation_timed_out(transaction.phase_started_at, ctx.now) then
+				block('pianissimo_confirmation_retry:' .. member.name)
+				diagnostic_log('PIANISSIMO_CONFIRMATION_RETRY', {
+					age = (tonumber(ctx.now) or os.time()) - (tonumber(transaction.phase_started_at) or 0),
+					buff_active = has_buff(ctx.player, JA.pianissimo.buff_id),
+					recipient_id = member.id,
+					recipient_name = member.name,
+					song = transaction.song_name,
+				})
+				transaction.phase = 'awaiting_pianissimo'
+				transaction.phase_started_at = tonumber(ctx.now) or os.time()
+				return nil
+			else
+				block('pianissimo_confirmation_pending:' .. member.name)
+				return nil
+			end
+		end
+		if transaction.phase == 'awaiting_pianissimo' then
+			if has_buff(ctx.player, JA.pianissimo.buff_id) then
+				transaction.phase = 'awaiting_song'
+			else
+				local song_ready = ready(ctx, transaction.song_name, 'spell', member.id)
+				if not song_ready then
+					block('targeted_song_not_ready_before_pianissimo:' .. transaction.song_name)
+					if transaction.preserve_action_lane ~= true then
+						state.targeted_transaction = nil
+						release_action_lane_if_idle(state.last_blocker)
+					end
+					return nil
+				end
+				local ready_ok = ready(ctx, JA.pianissimo.name, 'ja')
+				if ready_ok then
+					return proposal('ja', JA.pianissimo.name, 'brd_targeted_pianissimo', 0.74, {
+						targeted_recipient_id = member.id,
+						targeted_recipient_name = member.name,
+						reserved_song = transaction.song_name,
+					})
+				end
+				block('pianissimo_not_ready:' .. member.name)
+				if transaction.preserve_action_lane ~= true then
+					state.targeted_transaction = nil
+					release_action_lane_if_idle(state.last_blocker)
+				end
+				return nil
+			end
+		end
+		if transaction.phase == 'awaiting_song' then
+			return targeted_song_proposal(ctx, transaction, plan, song_limit)
+		end
+		return nil
+	end
+
+	local first_blocker = ''
+	for assignment_index = 1, #config.targeted_songs do
+		local assignment = config.targeted_songs[assignment_index]
+		local protected = targeted_protected_songs(assignment)
+		for recipient_index = 1, #assignment.recipients do
+			local recipient_name = assignment.recipients[recipient_index]
+			local member, member_reason = party_song_state.member_by_name(recipient_name)
+			if type(member) == 'table' and member.targetable == true then
+				for song_index = 1, #assignment.priority_songs do
+					local song_name = assignment.priority_songs[song_index]
+					local key = targeted_completion_key(assignment_index, member.name, song_name)
+					local existing = member.effects[song_name]
+					if type(existing) == 'table' then
+						state.targeted_completed[key] = true
+						note_targeted_recipient_skip(key, {
+							assignment = assignment_index,
+							reason = 'already_satisfied',
+							recipient = member.name,
+							recipient_order = recipient_index,
+							song = song_name,
+							song_order = song_index,
+						})
+					elseif state.targeted_completed[key] == true then
+						note_targeted_recipient_skip(key, {
+							assignment = assignment_index,
+							reason = 'completed_this_group_generation',
+							recipient = member.name,
+							recipient_order = recipient_index,
+							song = song_name,
+							song_order = song_index,
+						})
+					else
+						local plan, plan_reason = party_song_state.plan_targeted_song(
+							member.id,
+							song_name,
+							2,
+							protected,
+							targeted_troubadour_is_safe(ctx)
+						)
+						if type(plan) == 'table' then
+							if plan.requires_troubadour == true then
+								if not targeted_troubadour_is_safe(ctx) then
+									local wait_reason = 'targeted_waiting_for_troubadour:' .. member.name .. ':' .. song_name
+									first_blocker = first_blocker ~= '' and first_blocker or wait_reason
+									note_targeted_recipient_skip(key, {
+										assignment = assignment_index,
+										reason = wait_reason,
+										recipient = member.name,
+										recipient_order = recipient_index,
+										song = song_name,
+										song_order = song_index,
+									})
+									plan = nil
+								end
+							end
+							if type(plan) == 'table' then
+								clear_targeted_recipient_skip(key)
+								diagnostic_log('TARGETED_RECIPIENT_SELECTED', {
+									assignment = assignment_index,
+									operation = plan.operation,
+									recipient = member.name,
+									recipient_order = recipient_index,
+									requires_troubadour = plan.requires_troubadour,
+									song = song_name,
+									song_order = song_index,
+									unknown_overwrite = plan.unknown_overwrite == true,
+								})
+								state.targeted_transaction = {
+									recipient_id = member.id,
+									recipient_name = member.name,
+									assignment_index = assignment_index,
+									song_name = song_name,
+									song_priority = song_index,
+									phase = 'awaiting_pianissimo',
+									completion_key = key,
+								}
+								return targeted_transaction_action(config, ctx, song_limit)
+							end
+						else
+							local blocked_reason = 'targeted_blocked:' .. member.name .. ':' .. tostring(plan_reason)
+							if first_blocker == '' then
+								first_blocker = blocked_reason
+							end
+							note_targeted_recipient_skip(key, {
+								assignment = assignment_index,
+								reason = tostring(plan_reason),
+								recipient = member.name,
+								recipient_order = recipient_index,
+								song = song_name,
+								song_order = song_index,
+							})
+						end
+					end
+				end
+			else
+				local unavailable_reason = member_reason ~= '' and member_reason
+					or ('targeted_recipient_unavailable:' .. recipient_name)
+				if first_blocker == '' then
+					first_blocker = unavailable_reason
+				end
+				for song_index = 1, #assignment.priority_songs do
+					local song_name = assignment.priority_songs[song_index]
+					local key = targeted_completion_key(assignment_index, recipient_name, song_name)
+					note_targeted_recipient_skip(key, {
+						assignment = assignment_index,
+						reason = unavailable_reason,
+						recipient = recipient_name,
+						recipient_order = recipient_index,
+						song = song_name,
+						song_order = song_index,
+					})
+				end
+			end
+		end
+	end
+	if first_blocker ~= '' then
+		block(first_blocker)
+	end
+	return nil
+end
+
+local function targeted_self_alignment_action(config, ctx, song_name, song_limit)
+	local player_name = tostring(ctx.player and ctx.player.name or '')
+	local player_id = tonumber(ctx.player and ctx.player.id) or 0
+	if player_name == '' or player_id <= 0 then
+		return nil, 'targeted_self_alignment_missing_player'
+	end
+	local assignment_index = nil
+	local recipient_index = nil
+	local song_index = nil
+	for i = 1, #(config.targeted_songs or {}) do
+		local assignment = config.targeted_songs[i]
+		for j = 1, #(assignment.recipients or {}) do
+			if tostring(assignment.recipients[j]):lower() == player_name:lower() then
+				for k = 1, #(assignment.priority_songs or {}) do
+					if assignment.priority_songs[k] == song_name then
+						assignment_index = i
+						recipient_index = j
+						song_index = k
+						break
+					end
+				end
+			end
+			if assignment_index ~= nil then break end
+		end
+		if assignment_index ~= nil then break end
+	end
+	if assignment_index == nil then
+		return nil, 'targeted_self_alignment_not_configured:' .. song_name
+	end
+	local member, member_reason = party_song_state.member_by_name(player_name)
+	if type(member) ~= 'table' then
+		return nil, member_reason
+	end
+	if tonumber(member.id) ~= player_id then
+		return nil, 'targeted_self_alignment_id_mismatch:' .. player_name
+	end
+	local assignment = config.targeted_songs[assignment_index]
+	local plan, plan_reason = party_song_state.plan_targeted_song(
+		member.id,
+		song_name,
+		2,
+		targeted_protected_songs(assignment),
+		false
+	)
+	if type(plan) ~= 'table' or plan.operation ~= 'exact_refresh' then
+		return nil, 'targeted_self_alignment_plan:' .. tostring(plan_reason)
+	end
+	if plan.requires_troubadour == true and not targeted_troubadour_is_safe(ctx) then
+		return nil, 'targeted_self_alignment_waiting_for_troubadour:' .. song_name
+	end
+	local key = targeted_completion_key(assignment_index, member.name, song_name)
+	clear_targeted_recipient_skip(key)
+	reserve_action_lane('brd_five_song_targeted_alignment')
+	state.targeted_transaction = {
+		recipient_id = member.id,
+		recipient_name = member.name,
+		assignment_index = assignment_index,
+		song_name = song_name,
+		song_priority = song_index,
+		phase = 'awaiting_pianissimo',
+		completion_key = key,
+		preserve_action_lane = true,
+		setup_alignment = true,
+	}
+	diagnostic_log('TARGETED_SELF_SETUP_ALIGNMENT', {
+		assignment = assignment_index,
+		recipient = member.name,
+		recipient_order = recipient_index,
+		requires_troubadour = plan.requires_troubadour,
+		song = song_name,
+		song_order = song_index,
+	})
+	return targeted_transaction_action(config, ctx, song_limit), ''
+end
+
 local function maybe_marcato(config, ctx, song_name, nitro_active)
+	if type(state.soul_voice_generation) == 'table' or has_buff(ctx.player, JA.soul_voice.buff_id) then
+		return nil
+	end
 	if config.use_marcato ~= true or song_name ~= config.marcato_song then
 		return nil
 	end
@@ -1116,6 +1861,16 @@ function M.propose(config, ctx)
 		release_action_lane(reason)
 		diagnostic_log('CONFIG_REJECT', { reason = reason })
 		return nil
+	end
+	local auto_diagnostic_log = rawget(_G, 'UC_BRD_DIAGNOSTIC_LOG') == true
+	if auto_diagnostic_log and state.log_enabled ~= true then
+		local log_ok, log_reason = M.start_diagnostic_log(true)
+		if not log_ok then
+			state.last_blocker = 'diagnostic_log_start_failed:' .. tostring(log_reason)
+			return nil
+		end
+	elseif not auto_diagnostic_log and state.log_auto_started == true then
+		M.stop_diagnostic_log()
 	end
 	if config.enabled ~= true then
 		state.last_blocker = 'disabled'
@@ -1169,6 +1924,10 @@ function M.propose(config, ctx)
 				}
 			end
 			state.pending = nil
+			if state.targeted_transaction ~= nil then
+				party_song_state.mark_member_unknown(state.targeted_transaction.recipient_id, state.last_blocker)
+				state.targeted_transaction = nil
+			end
 		else
 			state.last_blocker = 'song_confirmation_pending:' .. state.pending.name
 			return nil
@@ -1182,13 +1941,148 @@ function M.propose(config, ctx)
 	local count = snapshot_song_count(state.snapshot)
 	local clarion_active = has_buff(player, JA.clarion.buff_id)
 	local clarion_ready = ready(ctx, JA.clarion.name, 'ja')
+	local maintenance_song_limit = song_limit
+	local degraded_fifth_waiting = false
+	if main_brd and song_limit == 5 and count >= 4 and count < 5 and not clarion_active then
+		maintenance_song_limit = 4
+	end
 	party_song_state.observe(ctx.party_members, config.recovery_ignore_names, general_song_status_ids(), now)
-	local nitro_active = has_buff(player, JA.nightingale.buff_id) and has_buff(player, JA.troubadour.buff_id)
+	local nightingale_active = has_buff(player, JA.nightingale.buff_id)
+	local troubadour_active = has_buff(player, JA.troubadour.buff_id)
+	local nitro_active = nightingale_active and troubadour_active
+	local soul_voice_active = has_buff(player, JA.soul_voice.buff_id)
+	if state.clarion_reserved then
+		if clarion_active then
+			state.clarion_reserved = false
+			state.clarion_dispatched_at = 0
+		elseif state.clarion_dispatched_at > 0 then
+			if confirmation_timed_out(state.clarion_dispatched_at, now) then
+				state.last_blocker = 'clarion_confirmation_retry'
+				state.clarion_dispatched_at = 0
+				diagnostic_log('JA_CONFIRMATION_RETRY', { ability = JA.clarion.name })
+				return nil
+			end
+			state.last_blocker = 'clarion_confirmation_pending'
+			return nil
+		end
+	end
 	if state.nitro_armed and nitro_active and not state.nitro_was_active then
-		start_force_generation(config, song_limit)
+		if type(state.soul_voice_generation) == 'table' then
+			state.soul_voice_generation.phase = 'awaiting_soul_voice'
+		else
+			start_force_generation(config, maintenance_song_limit)
+		end
 		state.nitro_armed = false
+		state.nitro_phase = ''
+		state.nitro_phase_started_at = 0
+	end
+	if type(state.soul_voice_generation) == 'table'
+		and state.soul_voice_generation.phase == 'awaiting_nitro' and nitro_active then
+		state.soul_voice_generation.phase = 'awaiting_soul_voice'
+		state.nitro_armed = false
+		state.nitro_phase = ''
+		state.nitro_phase_started_at = 0
 	end
 	state.nitro_was_active = nitro_active
+	if state.nitro_armed and not nitro_active then
+		if state.nitro_phase == 'confirming_nightingale' and not nightingale_active then
+			if confirmation_timed_out(state.nitro_phase_started_at, now) then
+				state.last_blocker = 'nightingale_confirmation_retry'
+				state.nitro_phase = 'awaiting_nightingale'
+				state.nitro_phase_started_at = now
+				diagnostic_log('JA_CONFIRMATION_RETRY', { ability = JA.nightingale.name })
+				return nil
+			end
+			state.last_blocker = 'nightingale_confirmation_pending'
+			return nil
+		end
+		if not nightingale_active then
+			local night_ready = ready(ctx, JA.nightingale.name, 'ja')
+			local troub_ready = ready(ctx, JA.troubadour.name, 'ja')
+			if night_ready and troub_ready then
+				return proposal('ja', JA.nightingale.name, 'brd_nitro_nightingale', 0.78)
+			end
+			state.last_blocker = 'nightingale_dispatch_pending'
+			return nil
+		end
+		if state.nitro_phase ~= 'confirming_troubadour' then
+			state.nitro_phase = 'awaiting_troubadour'
+			state.nitro_phase_started_at = now
+		end
+		if state.nitro_phase == 'confirming_troubadour' then
+			if confirmation_timed_out(state.nitro_phase_started_at, now) then
+				state.last_blocker = 'troubadour_confirmation_retry'
+				state.nitro_phase = 'awaiting_troubadour'
+				state.nitro_phase_started_at = now
+				diagnostic_log('JA_CONFIRMATION_RETRY', { ability = JA.troubadour.name })
+				return nil
+			end
+			state.last_blocker = 'troubadour_confirmation_pending'
+			return nil
+		end
+		local troub_ready = ready(ctx, JA.troubadour.name, 'ja')
+		if troub_ready then
+			return proposal('ja', JA.troubadour.name, 'brd_nitro_troubadour', 0.79)
+		end
+		state.last_blocker = 'troubadour_dispatch_pending'
+		return nil
+	end
+	if type(state.soul_voice_generation) == 'table' then
+		state.marcato_reservation = ''
+		if state.soul_voice_generation.phase == 'confirming_soul_voice' then
+			if soul_voice_active then
+				state.soul_voice_generation.phase = 'group_refresh'
+				state.soul_voice_generation.phase_started_at = 0
+				start_force_generation(config, maintenance_song_limit)
+			elseif confirmation_timed_out(state.soul_voice_generation.phase_started_at, now) then
+				state.last_blocker = 'soul_voice_confirmation_retry'
+				state.soul_voice_generation.phase = 'awaiting_soul_voice'
+				state.soul_voice_generation.phase_started_at = now
+				diagnostic_log('JA_CONFIRMATION_RETRY', { ability = JA.soul_voice.name })
+				return nil
+			else
+				state.last_blocker = 'soul_voice_confirmation_pending'
+				return nil
+			end
+		end
+		if state.soul_voice_generation.phase == 'awaiting_soul_voice' then
+			local nitro_supported, nitro_reason = nitro_supports_soul_voice(ctx, maintenance_song_limit)
+			if soul_voice_active then
+				state.soul_voice_generation.phase = 'group_refresh'
+				start_force_generation(config, maintenance_song_limit)
+			elseif not nitro_supported then
+				state.last_blocker = nitro_reason
+				if nitro_reason ~= 'soul_voice_waiting_nitro_endtime' then
+					state.soul_voice_generation = nil
+					release_action_lane(state.last_blocker)
+				end
+				return nil
+			elseif ready(ctx, JA.soul_voice.name, 'ja') then
+				return proposal('ja', JA.soul_voice.name, 'brd_soul_voice', 0.90, {
+					soul_voice_generation = true,
+				})
+			else
+				state.last_blocker = 'soul_voice_dispatch_pending'
+				return nil
+			end
+		end
+	end
+	if config.use_soul_voice and nitro_active and not soul_voice_active
+		and type(state.soul_voice_generation) ~= 'table' and ready(ctx, JA.soul_voice.name, 'ja') then
+		local nitro_supported, nitro_reason = nitro_supports_soul_voice(ctx, maintenance_song_limit)
+		if not nitro_supported then
+			state.last_blocker = nitro_reason
+		else
+			state.soul_voice_generation = {
+				phase = 'awaiting_soul_voice',
+				started_at = now,
+			}
+			state.marcato_reservation = ''
+			return proposal('ja', JA.soul_voice.name, 'brd_soul_voice', 0.90, {
+				soul_voice_generation = true,
+			})
+		end
+	end
 	if state.marcato_reservation ~= '' and not has_buff(player, JA.marcato.buff_id) then
 		state.marcato_reservation = ''
 	end
@@ -1198,25 +2092,45 @@ function M.propose(config, ctx)
 	if state.marcato_reservation ~= '' then
 		return song_proposal(ctx, state.marcato_reservation, 'brd_marcato_reserved_song', 0.98, false, required_recipients, nil, base_count, song_limit)
 	end
-	local urgent, remaining = urgent_song(config, song_limit, os.time())
+	local urgent, remaining, urgent_recipient, urgent_blocker = urgent_song(config, song_limit, os.time())
+	if urgent_blocker ~= '' then
+		state.last_blocker = urgent_blocker
+		release_action_lane(state.last_blocker)
+		return nil
+	end
 	if urgent ~= '' then
 		local marcato = maybe_marcato(config, ctx, urgent, nitro_active)
 		if marcato then
 			return marcato
 		end
-		return song_proposal(ctx, urgent, 'brd_song_expiring', 0.98, false, required_recipients, nil, base_count, song_limit)
+		local reason_code = urgent_recipient ~= '' and 'brd_party_song_expiring' or 'brd_song_expiring'
+		if urgent_recipient ~= '' then
+			diagnostic_log('PARTY_SONG_DEADLINE', {
+				recipient = urgent_recipient,
+				remaining = remaining,
+				song = urgent,
+			})
+		end
+		return song_proposal(ctx, urgent, reason_code, 0.98, false, required_recipients, nil, base_count, song_limit)
 	end
 
 	-- Clarion controls whether a missing fifth position can be added. It never
 	-- changes the five-song desired set or suppresses exact refresh of a
-	-- persisted fifth song.
+	-- persisted fifth song. A satisfied four-song degraded set must continue
+	-- into NITRO and targeted-overlay planning while Clarion is unavailable.
 	if main_brd and song_limit == 5 and count < 5 and count >= 4 and not clarion_active then
-		state.force = nil
 		state.marcato_reservation = ''
 		if config.use_clarion_call and clarion_ready then
+			state.clarion_reserved = true
+			state.clarion_dispatched_at = 0
 			return proposal('ja', JA.clarion.name, 'brd_capacity_clarion', 0.77)
 		end
 		local degraded_missing = next_missing_final(config, 4, required_recipients)
+		if degraded_missing ~= '' and targeted_self_overlay_covers_group_gap(
+			config, player, 4, required_recipients, count
+		) then
+			degraded_missing = ''
+		end
 		if degraded_missing ~= '' then
 			local victim, victim_reason = unique_shortest_owner(count)
 			if victim ~= '' and state.owners[victim].is_dummy == true then
@@ -1262,7 +2176,8 @@ function M.propose(config, ctx)
 			if victim ~= '' then
 				victim_reason = 'shortest_owner_not_alignable:' .. victim
 			end
-			if victim == '' and victim_reason == 'shortest_overwrite_owner_unknown' then
+			if victim == '' and (victim_reason == 'shortest_overwrite_owner_unknown'
+				or victim_reason == 'ambiguous_overwrite_owners_unknown') then
 				diagnostic_log('DEGRADED_UNKNOWN_REBUILD', {
 					song = degraded_missing,
 					count = count,
@@ -1275,8 +2190,7 @@ function M.propose(config, ctx)
 			return nil
 		end
 		state.last_blocker = 'degraded_fifth_waiting_for_clarion'
-		release_action_lane(state.last_blocker)
-		return nil
+		degraded_fifth_waiting = true
 	end
 
 	if count < base_count then
@@ -1288,30 +2202,35 @@ function M.propose(config, ctx)
 		end
 	end
 
-	local required_dummy = main_brd and math.max(0, song_limit - base_count) or 0
-	if required_dummy > 0 and count < song_limit then
+	local required_dummy = main_brd and math.max(0, maintenance_song_limit - base_count) or 0
+	if required_dummy > 0 and count < maintenance_song_limit then
 		local dummy = next_missing_dummy(config, required_dummy)
 		if dummy ~= '' then
-			local dummy_capacity = song_limit
-			if song_limit == 5 and count < 4 then
+			local dummy_capacity = maintenance_song_limit
+			if maintenance_song_limit == 5 and count < 4 then
 				dummy_capacity = 4
 			end
-			return song_proposal(ctx, dummy, 'brd_build_capacity_dummy', 0.75, true, required_recipients, nil, dummy_capacity, song_limit)
+			return song_proposal(ctx, dummy, 'brd_build_capacity_dummy', 0.75, true, required_recipients, nil, dummy_capacity, maintenance_song_limit)
 		end
-		local capacity_final = next_missing_final(config, song_limit, required_recipients)
+		local capacity_final = next_missing_final(config, maintenance_song_limit, required_recipients)
 		if capacity_final ~= '' then
-			local final_capacity = song_limit
-			if song_limit == 5 and count < 4 then
+			local final_capacity = maintenance_song_limit
+			if maintenance_song_limit == 5 and count < 4 then
 				final_capacity = 4
 			end
-			return song_proposal(ctx, capacity_final, 'brd_build_capacity_final', 0.75, false, required_recipients, nil, final_capacity, song_limit)
+			return song_proposal(ctx, capacity_final, 'brd_build_capacity_final', 0.75, false, required_recipients, nil, final_capacity, maintenance_song_limit)
 		end
 		state.last_blocker = 'capacity_build_no_timer_transition'
 		release_action_lane(state.last_blocker)
 		return nil
 	end
 
-	local missing = next_missing_final(config, song_limit, required_recipients)
+	local missing = next_missing_final(config, maintenance_song_limit, required_recipients)
+	if missing ~= '' and targeted_self_overlay_covers_group_gap(
+		config, player, maintenance_song_limit, required_recipients, count
+	) then
+		missing = ''
+	end
 	if missing ~= '' then
 		local victim, victim_reason = unique_shortest_owner(count)
 		if victim ~= '' and state.owners[victim].is_dummy == true then
@@ -1321,7 +2240,7 @@ function M.propose(config, ctx)
 			end
 			return song_proposal(ctx, missing, 'brd_replace_dummy_with_final', 0.74, false, required_recipients, nil, base_count, song_limit)
 		end
-		if victim ~= '' and song_within_limit(config, victim, song_limit) and owner_covers(victim, required_recipients) then
+		if victim ~= '' and song_within_limit(config, victim, maintenance_song_limit) and owner_covers(victim, required_recipients) then
 			local normalization, normalization_blocker = maybe_normalize_enhanced_dummy(
 				ctx,
 				required_recipients,
@@ -1348,10 +2267,31 @@ function M.propose(config, ctx)
 			end
 			return song_proposal(ctx, victim, 'brd_align_shortest_final', 0.745, false, required_recipients, nil, base_count, song_limit, false, true)
 		end
+		if victim ~= '' and owner_covers(victim, required_recipients) then
+			local targeted_alignment, targeted_alignment_reason = targeted_self_alignment_action(
+				config,
+				ctx,
+				victim,
+				song_limit
+			)
+			if type(targeted_alignment) == 'table' then
+				return targeted_alignment
+			end
+			if type(state.targeted_transaction) == 'table' then
+				state.last_blocker = 'targeted_self_alignment_pending:' .. victim
+				return nil
+			end
+			if targeted_alignment_reason ~= ('targeted_self_alignment_not_configured:' .. victim) then
+				state.last_blocker = targeted_alignment_reason
+				release_action_lane(state.last_blocker)
+				return nil
+			end
+		end
 		if victim ~= '' then
 			victim_reason = 'shortest_owner_not_alignable:' .. victim
 		end
-		if victim == '' and victim_reason == 'shortest_overwrite_owner_unknown' then
+		if victim == '' and (victim_reason == 'shortest_overwrite_owner_unknown'
+			or victim_reason == 'ambiguous_overwrite_owners_unknown') then
 			return song_proposal(ctx, missing, 'brd_rebuild_unknown', 0.743, false, required_recipients, nil, base_count, song_limit)
 		end
 		state.last_blocker = 'final_replacement_unsafe:' .. victim_reason
@@ -1359,36 +2299,45 @@ function M.propose(config, ctx)
 		return nil
 	end
 
-	local forced = next_force_song(config, song_limit)
+	local forced = next_force_song(config, maintenance_song_limit)
 	if forced ~= '' then
 		local marcato = maybe_marcato(config, ctx, forced, nitro_active)
 		if marcato then
 			return marcato
 		end
-		return song_proposal(ctx, forced, 'brd_nitro_forced_refresh', 0.88, false, required_recipients, nil, base_count, song_limit)
+		return song_proposal(ctx, forced, 'brd_nitro_forced_refresh', 0.88, false, required_recipients, nil, base_count, maintenance_song_limit)
 	end
-	if config.use_nitro and tostring(player.main_job or '') == 'BRD' and not nitro_active then
-		local night_active = has_buff(player, JA.nightingale.buff_id)
-		local troub_active = has_buff(player, JA.troubadour.buff_id)
+	if config.use_nitro and tostring(player.main_job or '') == 'BRD'
+		and not nitro_active and not state.nitro_armed then
 		local night_ready = ready(ctx, JA.nightingale.name, 'ja')
 		local troub_ready = ready(ctx, JA.troubadour.name, 'ja')
-		if night_active and not troub_active and state.nitro_armed and troub_ready then
-			return proposal('ja', JA.troubadour.name, 'brd_nitro_troubadour', 0.79)
-		end
-		if not night_active and not troub_active and night_ready and troub_ready then
+		if not nightingale_active and not troubadour_active and night_ready and troub_ready then
+			if config.use_soul_voice and ready(ctx, JA.soul_voice.name, 'ja') then
+				state.soul_voice_generation = {
+					phase = 'awaiting_nitro',
+					started_at = now,
+				}
+				state.marcato_reservation = ''
+			end
 			state.nitro_armed = true
+			state.nitro_phase = 'awaiting_nightingale'
+			state.nitro_phase_started_at = now
 			return proposal('ja', JA.nightingale.name, 'brd_nitro_nightingale', 0.78)
 		end
 	end
 	local recovery = party_song_state.next_action(
 		config,
-		song_limit,
+		maintenance_song_limit,
 		clarion_active,
 		clarion_ready,
 		has_buff(player, JA.troubadour.buff_id)
 	)
 	if type(recovery) == 'table' then
 		if recovery.action_type == 'ja' then
+			if recovery.action_name == JA.clarion.name then
+				state.clarion_reserved = true
+				state.clarion_dispatched_at = 0
+			end
 			return proposal('ja', recovery.action_name, recovery.reason_code, 0.72, { recovery_member_id = recovery.member_id })
 		end
 		if recovery.normalizes_dummy == true then
@@ -1413,12 +2362,38 @@ function M.propose(config, ctx)
 			recovery.aligns_final
 		)
 	end
-	local party_blocker = party_song_state.last_blocker()
-	state.last_blocker = party_blocker ~= 'party_songs_satisfied' and party_blocker
-		or (remaining and ('waiting_deadline:' .. tostring(math.floor(remaining))) or 'songs_satisfied')
-	if not state.nitro_armed and not party_song_state.is_recovery_active() then
-		release_action_lane(state.last_blocker)
+	local targeted = targeted_transaction_action(config, ctx, maintenance_song_limit)
+	if type(targeted) == 'table' then
+		return targeted
 	end
+	if type(state.soul_voice_generation) == 'table'
+		and state.soul_voice_generation.phase == 'targeted_overlays'
+		and state.targeted_transaction == nil then
+		state.last_transition = 'soul_voice_generation_complete'
+		state.soul_voice_generation = nil
+	end
+	local party_blocker = party_song_state.last_blocker()
+	if state.targeted_blocker ~= '' then
+		state.last_blocker = state.targeted_blocker
+	elseif degraded_fifth_waiting then
+		state.last_blocker = 'degraded_fifth_waiting_for_clarion'
+	else
+		state.last_blocker = party_blocker ~= 'party_songs_satisfied' and party_blocker
+			or (remaining and ('waiting_deadline:' .. tostring(math.floor(remaining))) or 'songs_satisfied')
+	end
+	if state.log_last_blocker ~= state.last_blocker then
+		diagnostic_log('PLANNER_BLOCKED', {
+			reason = state.last_blocker,
+			targeted_blocker = state.targeted_blocker,
+			party_blocker = party_blocker,
+			snapshot_count = count,
+			force = type(state.force) == 'table' and 'active' or 'none',
+			soul_voice_generation = type(state.soul_voice_generation) == 'table'
+				and tostring(state.soul_voice_generation.phase) or 'none',
+		})
+		state.log_last_blocker = state.last_blocker
+	end
+	release_action_lane_if_idle(state.last_blocker)
 	return nil
 end
 
@@ -1439,7 +2414,7 @@ function M.arm_manual_capture_once()
 	return true
 end
 
-function M.start_diagnostic_log()
+function M.start_diagnostic_log(auto_started)
 	local player = windower.ffxi.get_player()
 	if type(player) ~= 'table' or type(player.name) ~= 'string' or player.name == '' then
 		return false, 'missing_player'
@@ -1455,6 +2430,8 @@ function M.start_diagnostic_log()
 	state.log_path = path
 	state.log_error = ''
 	state.log_enabled = true
+	state.log_auto_started = auto_started == true
+	state.log_last_blocker = ''
 	diagnostic_log('LOG_START', {
 		identity = state.identity,
 		snapshot_source = state.snapshot_source,
@@ -1473,6 +2450,7 @@ function M.stop_diagnostic_log()
 		})
 	end
 	state.log_enabled = false
+	state.log_auto_started = false
 	return state.log_path
 end
 
@@ -1495,6 +2473,7 @@ function M.cancel_pending(reason)
 	finish_trace('resolve:' .. state.last_blocker)
 	state.pending = nil
 	state.marcato_reservation = ''
+	state.targeted_transaction = nil
 	return true
 end
 
@@ -1513,6 +2492,7 @@ function M.reject_pending_before_start(message_id, now)
 	finish_trace(('resolve:server_reject_unable_cast message=%d song=%s'):format(tonumber(message_id) or 0, song))
 	state.pending = nil
 	state.marcato_reservation = ''
+	state.targeted_transaction = nil
 	return true
 end
 
@@ -1536,8 +2516,12 @@ function M.status_lines()
 			tonumber(state.server_time_offset) or 0
 		),
 		('BRD recovery_range=%.1f yalms'):format(state.recovery_range_yalms),
-		('BRD nitro_force=%s marcato_reservation=%s owners=%d'):format(
+		('BRD nitro_force=%s nitro_phase=%s soul_voice_generation=%s clarion_reservation=%s pianissimo_consumption=%s marcato_reservation=%s owners=%d'):format(
 			type(state.force) == 'table' and 'active' or 'none',
+			state.nitro_phase ~= '' and state.nitro_phase or 'none',
+			type(state.soul_voice_generation) == 'table' and tostring(state.soul_voice_generation.phase) or 'none',
+			state.clarion_reserved and 'active' or 'none',
+			state.pianissimo_consumed_wait and 'pending' or 'clear',
 			state.marcato_reservation ~= '' and state.marcato_reservation or 'none',
 			(function()
 				local count = 0
@@ -1556,12 +2540,14 @@ function M.status_lines()
 		),
 	}
 	for name, owner in pairs(state.owners) do
-		lines[#lines + 1] = ('BRD owner=%s status=%d remaining=%.1fs recipients=%s troubadour=%s normalized=%s aligned=%s'):format(
+		lines[#lines + 1] = ('BRD owner=%s status=%d remaining=%.1fs recipients=%s troubadour=%s soul_voice=%s pianissimo=%s normalized=%s aligned=%s'):format(
 			name,
 			tonumber(owner.status_id) or 0,
 			remaining_seconds(owner.endtime, os.time()),
 			join(owner.recipients),
 			owner.troubadour_active and 'yes' or 'no',
+			owner.soul_voice_applied and 'yes' or 'no',
+			owner.pianissimo_applied and 'yes' or 'no',
 			owner.normalization_attempted and 'yes' or 'no',
 			owner.alignment_attempted and 'yes' or 'no'
 		)
@@ -1584,6 +2570,8 @@ M._test = {
 	multiset_delta = multiset_delta,
 	remaining_seconds = remaining_seconds,
 	server_now_raw = server_now_raw,
+	status_active_at_resolution = status_active_at_resolution,
+	nitro_supports_soul_voice = nitro_supports_soul_voice,
 	reset = M.reset,
 }
 
