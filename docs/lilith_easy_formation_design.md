@@ -27,10 +27,12 @@ The tank uses a hard arena-relative tether to the captured center.
 
 ### DPS
 
-DPS uses a loose boss-relative flank rather than a fixed arena point.
+DPS uses an arena-center-anchored flank whose direction follows the live boss-to-tank axis.
 
 - The desired direction is calculated from the Lady-Lilith-to-tank vector.
 - The vector is rotated by the configured flank angle, initially 90 degrees toward Lilith's right flank.
+- The rotated melee offset is projected from the captured arena center, not from Lilith's current position.
+- Knockback cannot make an unsafe outer-ring position acceptable merely because Lilith followed the displaced party.
 - A broad position tolerance lets melee continue fighting without unnecessary correction.
 
 ### Healer

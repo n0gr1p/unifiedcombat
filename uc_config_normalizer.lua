@@ -507,6 +507,7 @@ local function default_config(meta)
             partner = {
                 enabled = false,
                 secondary_enabled = false,
+                names = {},
                 ids = {},
                 puller = false,
                 puller_name = '',
@@ -874,6 +875,7 @@ local function normalize_follow(source, config)
         local partner = is_table(nested.partner) and nested.partner or {}
         follow.partner.enabled = normalize_boolean(partner.enabled, follow.partner.enabled)
         follow.partner.secondary_enabled = normalize_boolean(partner.secondary_enabled, follow.partner.secondary_enabled)
+		follow.partner.names = normalize_pipe_string_list(partner.names, follow.partner.names)
         follow.partner.ids = normalize_list(partner.ids, follow.partner.ids)
         follow.partner.puller = normalize_boolean(partner.puller, follow.partner.puller)
         follow.partner.puller_name = normalize_string(partner.puller_name, follow.partner.puller_name)
@@ -898,6 +900,7 @@ local function normalize_follow(source, config)
         follow.fight.hold_s = normalize_number(first_path(source, { path('fight_follow_hold_s') }), follow.fight.hold_s)
         follow.partner.enabled = normalize_boolean(first_path(source, { path('partner') }), follow.partner.enabled)
         follow.partner.secondary_enabled = normalize_boolean(first_path(source, { path('partner2') }), follow.partner.secondary_enabled)
+		follow.partner.names = normalize_pipe_string_list(first_path(source, { path('partner_names') }), follow.partner.names)
         follow.partner.ids = normalize_list(first_path(source, { path('partner_ids') }), follow.partner.ids)
         follow.partner.puller = normalize_boolean(first_path(source, { path('puller') }), follow.partner.puller)
         follow.partner.puller_name = normalize_string(first_path(source, { path('puller_name'), path('puller_selected') }), follow.partner.puller_name)

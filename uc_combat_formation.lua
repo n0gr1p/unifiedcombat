@@ -102,25 +102,26 @@ local function evaluate_tank(ctx, config)
 	return hold('FORMATION_TANK_HYSTERESIS', { distance = center_distance })
 end
 
-local function dps_goal(ctx, config, boss, tank)
+local function dps_goal(ctx, config, center, boss, tank)
 	local boss_to_tank = direction(boss, tank)
 	if boss_to_tank == nil then
 		return nil, 'DPS_TANK_VECTOR_UNRESOLVED'
 	end
 	local angle = math.rad(tonumber(config.dps.flank_angle_deg))
 	local radius = positive_number(config.dps.melee_radius, 'dps.melee_radius')
-	return projected(boss, rotate(boss_to_tank, -angle), radius), nil
+	return projected(center, rotate(boss_to_tank, -angle), radius), nil
 end
 
 local function evaluate_dps(ctx, config, members)
 	local me = point(ctx.me, 'ctx.me')
+	local center = point(ctx.center, 'ctx.center')
 	local boss = point(ctx.boss, 'ctx.boss')
 	local tank = find_member_by_name(members, config.tank_name)
 	if tank == nil then
 		return failure('TANK_MEMBER_UNRESOLVED')
 	end
 	tank = point(tank, 'tank member')
-	local goal, goal_error = dps_goal(ctx, config, boss, tank)
+	local goal, goal_error = dps_goal(ctx, config, center, boss, tank)
 	if goal == nil then
 		return failure(goal_error)
 	end
@@ -217,7 +218,7 @@ local function evaluate_healer(ctx, config, members)
 		return failure('TANK_MEMBER_UNRESOLVED')
 	end
 	local tank = point(tank_member, 'tank member')
-	local dps_point, dps_error = dps_goal(ctx, config, boss, tank)
+	local dps_point, dps_error = dps_goal(ctx, config, center, boss, tank)
 	if dps_point == nil then
 		return failure(dps_error)
 	end

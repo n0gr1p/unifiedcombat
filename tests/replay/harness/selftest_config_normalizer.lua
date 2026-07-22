@@ -389,6 +389,7 @@ local function build_nested_settings()
             partner = {
                 enabled = true,
                 secondary_enabled = true,
+                names = { 'Ponponponponpon', 'Nyoourke' },
                 ids = { 11, 22 },
                 puller = true,
                 puller_name = 'Niightsiide',
@@ -632,6 +633,8 @@ local function main()
 	assert_equal(nested_config.maintenance.brd.recovery_range_yalms, 17.5, 'nested maintenance BRD recovery range mismatch')
     assert_equal(nested_config.maintenance.geo.bubble, 'Entrust', 'nested maintenance GEO mismatch')
     assert_equal(nested_config.follow.partner.puller_name, 'Niightsiide', 'nested puller name mismatch')
+	assert_equal(nested_config.follow.partner.names[1], 'Ponponponponpon', 'nested primary partner name mismatch')
+	assert_equal(nested_config.follow.partner.names[2], 'Nyoourke', 'nested secondary partner name mismatch')
     assert_equal(nested_config.follow.partner.engage_range, 8.5, 'nested puller engage range mismatch')
 	assert_equal(nested_config.follow.nyzul.coordinator_name, 'Redrogue', 'nested Nyzul coordinator mismatch')
 	assert_equal(nested_config.follow.nyzul.anchor_name, 'Terrasjr', 'nested Nyzul anchor mismatch')

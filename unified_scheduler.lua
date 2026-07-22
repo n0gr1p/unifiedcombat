@@ -187,52 +187,8 @@ local function promoted_ownership_kill_switch_enabled()
 	return rawget(_G, 'UC_SCHED_P1_DISABLE_PROMOTED_OWNERSHIP') == true
 end
 
-local dispellable_enemy_effect_priority = {
-	[33] = 100,   -- Haste
-	[580] = 95,   -- Haste II
-	[604] = 95,   -- Flurry
-	[605] = 96,   -- Flurry II
-	[274] = 92,   -- Enfire
-	[275] = 92,   -- Enblizzard
-	[276] = 92,   -- Enaero
-	[277] = 92,   -- Enstone
-	[278] = 92,   -- Enthunder
-	[279] = 92,   -- Enwater
-	[94] = 88,    -- En-spells
-	[95] = 88,
-	[96] = 88,
-	[97] = 88,
-	[98] = 88,
-	[99] = 88,
-	[100] = 80,   -- Barfire
-	[101] = 80,   -- Barblizzard
-	[102] = 80,   -- Baraero
-	[103] = 80,   -- Barstone
-	[104] = 80,   -- Barthunder
-	[105] = 80,   -- Barwater
-	[106] = 80,   -- Barsleep
-	[107] = 80,   -- Barpoison
-	[108] = 80,   -- Barparalyze
-	[109] = 80,   -- Barblind
-	[110] = 80,   -- Barsilence
-	[111] = 80,   -- Barpetrify
-	[112] = 80,   -- Barvirus
-	[40] = 78,    -- Protect
-	[41] = 78,    -- Shell
-	[43] = 82,    -- Refresh
-	[116] = 82,   -- Phalanx
-	[57] = 76,    -- Defender
-	[64] = 76,    -- Boost
-	[170] = 84,   -- Sneak
-	[171] = 84,   -- Invisible
-	[289] = 75,   -- Enmity Boost
-	[621] = 75,   -- Majesty
-}
-
+local dispellable_enemy_effect_priority = {}
 local dispellable_enemy_effect_set = {}
-for eid, _ in pairs(dispellable_enemy_effect_priority) do
-	dispellable_enemy_effect_set[tonumber(eid) or 0] = true
-end
 local enemy_effect_observed_once = {}
 
 local function danger_weight_to_priority(w)
@@ -249,6 +205,9 @@ local function load_enemy_dispel_map_from_json()
 	f:close()
 	if type(raw) ~= 'string' or raw == '' then
 		error(('unified_scheduler fatal: dispel map JSON is empty at %s'):format(tostring(path)))
+	end
+	if not raw:find('"schema_name"%s*:%s*"ffxi_enemy_dispellable_buffs"') then
+		error(('unified_scheduler fatal: invalid dispel map schema at %s'):format(tostring(path)))
 	end
 
 	-- Deterministic text parse for this schema:
@@ -268,15 +227,18 @@ local function load_enemy_dispel_map_from_json()
 			break
 		end
 		local tail = raw:sub(e1 + 1, math.min(#raw, e1 + 1200))
-		local dw = tonumber(tail:match('"danger_weight"%s*:%s*(%d+)')) or 3
+		local dw = tonumber(tail:match('"danger_weight"%s*:%s*(%d+)'))
+		if not dw then
+			error(('unified_scheduler fatal: dispel map buff_ids record at byte %d has no danger_weight'):format(s1))
+		end
 		local prio = danger_weight_to_priority(dw)
 		for num in tostring(ids_blob or ''):gmatch('%d+') do
 			local id = tonumber(num) or 0
 			if id > 0 then
-				local existing = tonumber(dispellable_enemy_effect_priority[id]) or 0
-				if prio > existing then
-					dispellable_enemy_effect_priority[id] = prio
+				if dispellable_enemy_effect_set[id] == true then
+					error(('unified_scheduler fatal: duplicate dispel map buff id %d'):format(id))
 				end
+				dispellable_enemy_effect_priority[id] = prio
 				dispellable_enemy_effect_set[id] = true
 				imported_count = imported_count + 1
 			end
@@ -1901,6 +1863,85 @@ function scheduler.sleep_max_target_distance(settings)
 		return 50.0
 	end
 	return configured
+end
+
+function scheduler.try_partner_tiebreak(settings)
+	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(settings), false) then
+		return false, nil
+	end
+	if not bool_setting(settings and settings.partner, false) then
+		return false, nil
+	end
+
+	local player = windower.ffxi.get_player()
+	local current = windower.ffxi.get_mob_by_target('t')
+	local partner_snapshots = {}
+	for _, partner_id in ipairs(uc_partner_list.as_ordered_ids(settings)) do
+		local partner = windower.ffxi.get_mob_by_id(partner_id)
+		local target = partner and partner.target_index and windower.ffxi.get_mob_by_index(partner.target_index) or nil
+		partner_snapshots[#partner_snapshots + 1] = {
+			id = partner_id,
+			status = partner and partner.status,
+			target_id = target and target.id,
+			target_live = target and target.valid_target == true and (tonumber(target.hpp) or 0) > 0,
+		}
+	end
+
+	local mobs = windower.ffxi.get_mob_array()
+	assert(type(mobs) == 'table', 'scheduler partner arbitration requires mob array')
+	local _, claims_set = uc_targeting_common.build_friendly_claims()
+	assert(type(claims_set) == 'table', 'scheduler partner arbitration requires friendly claims')
+	local blocked_mob_ids = {}
+	for _, mob in pairs(mobs) do
+		local mob_id = tonumber(mob and mob.id) or 0
+		if mob_id > 0 and require('uc_target_ignore').is_mob_blocked(settings, mob) then
+			blocked_mob_ids[mob_id] = true
+		end
+	end
+
+	local decision = require('uc_scheduler_partner_arbitration').decide({
+		partner_enabled = true,
+		autotarget_enabled = bool_setting(uc_scheduler_config.combat_autotarget(settings), false),
+		my_id = player and player.id,
+		player_status = player and player.status,
+		current_target = current,
+		partners = partner_snapshots,
+		mobs = mobs,
+		claims_set = claims_set,
+		blocked_mob_ids = blocked_mob_ids,
+	})
+	if not decision then
+		return false, nil
+	end
+
+	local ok, dispatch_reason
+	if decision.action == 'switch' then
+		ok, dispatch_reason = uc_attack.switch_target(decision.target_id)
+		if ok then
+			_G.UC_LAST_BLOCK_REASON = 'PARTNER_TIEBREAK_SWITCH'
+			_G.UC_LAST_SCHED_ACTION = ('[partner]tiebreak_switch:%d->%d'):format(decision.from_target_id, decision.target_id)
+			_G.UC_WS_LAST_DIAG = ('scheduler partner tiebreak yield my=%d winner=%d from=%d to=%d'):format(
+				tonumber(player.id), decision.winner_id, decision.from_target_id, decision.target_id
+			)
+			return true, 'BLOCK_PARTNER_TIEBREAK_SWITCH'
+		end
+	elseif decision.action == 'disengage' then
+		ok, dispatch_reason = uc_attack.disengage()
+		if ok then
+			_G.UC_LAST_BLOCK_REASON = 'PARTNER_TIEBREAK_DISENGAGE'
+			_G.UC_LAST_SCHED_ACTION = ('[partner]tiebreak_disengage:%d'):format(decision.from_target_id)
+			_G.UC_WS_LAST_DIAG = ('scheduler partner tiebreak disengage my=%d winner=%d mob=%d'):format(
+				tonumber(player.id), decision.winner_id, decision.from_target_id
+			)
+			return true, 'BLOCK_PARTNER_TIEBREAK_DISENGAGE'
+		end
+	else
+		error('scheduler partner arbitration returned unsupported action: ' .. tostring(decision.action))
+	end
+
+	error(('scheduler partner arbitration dispatch failed action=%s reason=%s'):format(
+		tostring(decision.action), tostring(dispatch_reason)
+	))
 end
 scheduler.TANK_ENGAGE_PRIORITY = 107
 scheduler.TANK_ENGAGE_URGENCY = 0.85
@@ -4364,10 +4405,15 @@ local function p1_collect_enemy_buff_removal(ctx, out)
 				local chosen_prio = -1
 				for _, effect in ipairs(enemy_effect_tracker.get_effects(tid)) do
 					local eid = tonumber(effect and effect.effect_id) or 0
-					local prio = tonumber(dispellable_enemy_effect_priority[eid]) or -1
-					if prio > chosen_prio then
-						chosen_prio = prio
-						chosen_eid = eid
+					if dispellable_enemy_effect_set[eid] == true then
+						local prio = tonumber(dispellable_enemy_effect_priority[eid])
+						if not prio then
+							error(('unified_scheduler fatal: dispellable effect %d has no priority'):format(eid))
+						end
+						if prio > chosen_prio then
+							chosen_prio = prio
+							chosen_eid = eid
+						end
 					end
 				end
 				if chosen_eid > 0 then
@@ -7520,6 +7566,7 @@ end
 function scheduler.process_tick(cadence)
 	_G.UC_LAST_SCHED_ACTION = ''
 	local s = get_settings()
+	enemy_effect_tracker.sweep_invalid()
 	if type(cadence) == 'table' then
 		s._sched_next_defensive_at = tonumber(cadence.next_defensive_at) or 0
 		s._sched_next_maintenance_at = tonumber(cadence.next_maintenance_at) or 0
@@ -7538,6 +7585,10 @@ function scheduler.process_tick(cadence)
 		scheduler.p1_set_pending_globals()
 		_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 		return true, doom_reason
+	end
+	local partner_blocked, partner_reason = scheduler.try_partner_tiebreak(s)
+	if partner_blocked then
+		return true, partner_reason
 	end
 	scheduler.refresh_reaction_lock()
 	local brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
@@ -7792,13 +7843,35 @@ function scheduler.on_action(act)
 				end
 			end
 		end
+		local observed_effect_set = scheduler.reaction_observed_effect_set()
+		local catalog_events = {}
 		tb_effect_table.apply_from_action(
 			act,
 			player_id,
-			enemy_effect_state_set,
-			enemy_effect_state_clear,
+			function(target_id, effect_id, source, now, duration)
+				enemy_effect_state_set(target_id, effect_id, source, now, duration)
+				local event = enemy_effect_tracker.observe_effect(target_id, effect_id, source, observed_effect_set)
+				if event then
+					catalog_events[#catalog_events + 1] = event
+				end
+			end,
+			function(target_id, effect_id)
+				enemy_effect_state_clear(target_id, effect_id)
+				local event = enemy_effect_tracker.clear_effect(target_id, effect_id)
+				if event then
+					catalog_events[#catalog_events + 1] = event
+				end
+			end,
 			observed_at
 		)
+		for _, event in ipairs(catalog_events) do
+			enemy_dispel_log(('ENEMY_TRACK event=%s source=%s target=%d effect=%d'):format(
+				tostring(event.event or ''),
+				tostring(event.source or ''),
+				tonumber(event.target_id) or 0,
+				tonumber(event.effect_id) or 0
+			))
+		end
 	end
 	local enemy_buff_remove = bool_setting(uc_scheduler_config.defensive_enemy_buffs_remove(), false)
 	local dbg_enemy_raw = _G.UC_LOG_DEF_SCHED and enemy_buff_remove

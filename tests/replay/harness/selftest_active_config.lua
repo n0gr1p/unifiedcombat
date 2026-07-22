@@ -122,6 +122,9 @@ local function build_flat_settings()
 		fight_leader_selected = 'Niightsiide',
 		puller = true,
 		puller_name = 'Niightsiide',
+		partner = true,
+		partner2 = true,
+		partner_names = { 'Ponponponponpon', 'Nyoourke' },
 		puller_engage_range = 9.5,
 		nyzul_coordinator_name = 'Redrogue',
 		nyzul_anchor_name = 'Terrasjr',
@@ -173,6 +176,8 @@ local function main()
 							name = 'Niightsiide',
 						},
 					},
+					p2 = { mob = { id = 568177, name = 'Ponponponponpon' } },
+					p3 = { mob = { id = 558393, name = 'Nyoourke' } },
 				}
 			end,
 			get_mob_by_name = function(name)
@@ -211,6 +216,8 @@ local function main()
 	assert_equal(active_profile.config.follow.fight.leader_name, 'Niightsiide', 'active fight leader name mismatch')
 	assert_equal(active_profile.config.follow.fight.leader_id, 0, 'active fight leader id must stay runtime-owned')
 	assert_equal(active_profile.config.follow.partner.puller_name, 'Niightsiide', 'active puller name mismatch')
+	assert_equal(active_profile.config.follow.partner.names[1], 'Ponponponponpon', 'active primary partner name mismatch')
+	assert_equal(active_profile.config.follow.partner.names[2], 'Nyoourke', 'active secondary partner name mismatch')
 	assert_equal(active_profile.config.follow.partner.engage_range, 9.5, 'active puller engage range mismatch')
 	assert_equal(active_profile.config.follow.partner.puller_id, 0, 'active puller id should remain runtime-owned in the durable active profile')
 	assert_equal(active_profile.config.follow.nyzul.coordinator_name, 'Redrogue', 'active Nyzul coordinator mismatch')
@@ -291,7 +298,12 @@ local function main()
 	assert_equal(projected.follow.nyzul.anchor_name, 'Terrasjr', 'projected nested Nyzul anchor mismatch')
 	assert_equal(projected.targets[1], 'Apex Bat', 'projected add priority targets mismatch')
 	assert_equal(projected.add_priority_names[1], 'Apex Bat', 'projected add priority compatibility names mismatch')
-	assert_true(type(projected.partner_ids) == 'table' and #projected.partner_ids == 0, 'projected compatibility table should keep empty partner ids as an empty list')
+	assert_equal(projected.partner_names[1], 'Ponponponponpon', 'projected primary partner name mismatch')
+	assert_equal(projected.partner_names[2], 'Nyoourke', 'projected secondary partner name mismatch')
+	assert_equal(projected.partner_ids[1], 568177, 'projected primary partner id must resolve from durable name')
+	assert_equal(projected.partner_ids[2], 558393, 'projected secondary partner id must resolve from durable name')
+	assert_equal(projected.follow.partner.names[1], 'Ponponponponpon', 'projected nested primary partner name mismatch')
+	assert_equal(projected.follow.partner.ids[1], 568177, 'projected nested primary partner id mismatch')
 
 	local projected_snapshot = deep_clone(projected)
 	local sync_target = deep_clone(flat)

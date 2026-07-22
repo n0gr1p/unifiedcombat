@@ -420,10 +420,11 @@ internal static class StructuredProfileV2Writer
 
     private static StructuredProfileNode BuildFollow(JsonObject flatProfile)
     {
+        var partnerNames = ParseNameList(ReadString(flatProfile, "partner_entries", ""));
         var partner = new StructuredProfileNode()
             .Add("enabled", ReadBool(flatProfile, "partner", false))
-            .Add("secondary_enabled", false)
-            .Add("ids", EmptyList())
+            .Add("secondary_enabled", partnerNames.Count > 1)
+            .Add("names", partnerNames)
             .Add("puller", ReadBool(flatProfile, "puller", false))
             .Add("engage_range", Math.Clamp(ReadDouble(flatProfile, "puller_engage_range", 6.0), 0.1, 50.0))
             .Add("puller_distance_only", ReadBool(flatProfile, "puller_distance_only", false));

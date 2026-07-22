@@ -751,7 +751,6 @@ local function build_expected_config()
 			partner = {
 				enabled = false,
 				secondary_enabled = false,
-				ids = {},
 				puller = true,
 				puller_name = 'Niightsiide',
 				engage_range = 6.0,

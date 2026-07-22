@@ -520,7 +520,24 @@ local function apply_structured_config_to_candidate(candidate, config)
 		if type(config.follow.partner) == 'table' then
 			candidate.partner = config.follow.partner.enabled
 			candidate.partner2 = config.follow.partner.secondary_enabled
-			candidate.partner_ids = clone_value(config.follow.partner.ids)
+			local durable_partner_names = config.follow.partner.names
+			if durable_partner_names == nil then
+				durable_partner_names = {}
+			elseif type(durable_partner_names) ~= 'table' then
+				error('durable partner names must be a list')
+			end
+			candidate.partner_names = clone_value(durable_partner_names)
+			if #candidate.partner_names > 0 then
+				candidate.partner_ids = resolve_party_member_ids_by_names(candidate.partner_names)
+			else
+				local legacy_partner_ids = config.follow.partner.ids
+				if legacy_partner_ids == nil then
+					legacy_partner_ids = {}
+				elseif type(legacy_partner_ids) ~= 'table' then
+					error('legacy partner ids must be a list')
+				end
+				candidate.partner_ids = clone_value(legacy_partner_ids)
+			end
 			candidate.partner_id = candidate.partner_ids[1] or 0
 			candidate.partner_id2 = candidate.partner_ids[2] or 0
 			candidate.puller = config.follow.partner.puller
@@ -553,7 +570,8 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.follow.partner = {
 				enabled = config.follow.partner.enabled,
 				secondary_enabled = config.follow.partner.secondary_enabled,
-				ids = clone_value(config.follow.partner.ids),
+				names = clone_value(config.follow.partner.names),
+				ids = clone_value(candidate.partner_ids),
 				puller = config.follow.partner.puller,
 				puller_name = config.follow.partner.puller_name,
 				engage_range = config.follow.partner.engage_range,

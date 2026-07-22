@@ -19,6 +19,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeIncludesProfileV2AutoReloadWhenEnabled();
             TestProfileV2AutoReloadIsPartOfPersistedBoolSet();
             TestSerializeIncludesPullerNameWhenSelected();
+			TestSerializeIncludesPartnerNames();
             TestSerializeIncludesFightLeaderNameWhenSelected();
             TestSerializeOmitsFightLeaderNameWhenDisabled();
 			TestSerializeNyzulParkingRoster();
@@ -150,6 +151,22 @@ internal static class StructuredProfileV2WriterTests
         AssertNotContains(content, "sleepspell", "legacy sleep singleton must not be serialized");
         AssertNotContains(content, "profile_v2_autoload", "autoload must be omitted unless explicitly enabled");
     }
+
+	private static void TestSerializeIncludesPartnerNames()
+	{
+		var flat = BuildSampleFlatProfile();
+		flat["partner"] = true;
+		flat["partner_entries"] = "1:Ponponponponpon|2:Nyoourke";
+		var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+			flat,
+			new StructuredProfileV2Identity("Terrasjr", "MNK", "WAR")
+		);
+
+		AssertContains(content, "names = {", "partner names must serialize under follow.partner");
+		AssertContains(content, "\"Ponponponponpon\"", "primary partner name must be durable");
+		AssertContains(content, "\"Nyoourke\"", "secondary partner name must be durable");
+		AssertContains(content, "secondary_enabled = true", "two durable partner names must enable the secondary partner");
+	}
 
 	private static void TestSerializeNyzulParkingRoster()
 	{

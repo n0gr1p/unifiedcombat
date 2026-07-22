@@ -205,6 +205,10 @@ local function pick_durable_config_domains(config, meta)
 	end
 	if type(out.follow) == 'table' and type(out.follow.partner) == 'table' then
 		out.follow.partner.puller_id = nil
+		out.follow.partner.ids = nil
+		if type(out.follow.partner.names) == 'table' and #out.follow.partner.names == 0 then
+			out.follow.partner.names = nil
+		end
 	end
 	if type(out.reactions) == 'table'
 		and out.reactions.enabled ~= true
@@ -245,6 +249,10 @@ local function strip_durable_profile_overrides(config)
 		end
 		if type(config.follow.partner) == 'table' then
 			config.follow.partner.puller_id = nil
+			config.follow.partner.ids = nil
+			if type(config.follow.partner.names) == 'table' and #config.follow.partner.names == 0 then
+				config.follow.partner.names = nil
+			end
 		end
 	end
 	if type(config.targeting) == 'table' then

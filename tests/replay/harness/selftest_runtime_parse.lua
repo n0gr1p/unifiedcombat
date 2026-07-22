@@ -50,6 +50,7 @@ local RUNTIME_LUA_FILES = {
     "uc_scheduler_numeric_utils.lua",
     "uc_scheduler_pending_record.lua",
     "uc_scheduler_pending.lua",
+    "uc_scheduler_partner_arbitration.lua",
     "uc_scheduler_proposal_keys.lua",
     "uc_scheduler_rank_output.lua",
     "uc_scheduler_reject_history.lua",

@@ -84,6 +84,22 @@ assert_true(math.abs(proposal.goal.x) < 0.0001, 'DPS flank goal x mismatch')
 assert_true(math.abs(proposal.goal.y + 3) < 0.0001, 'DPS flank goal y mismatch')
 
 proposal = formation.evaluate({
+	config = config('dps'),
+	center = center,
+	boss = { id = 900, x = 5, y = 0 },
+	me = { id = 2, x = 5, y = -3 },
+	party_members = {
+		{ id = 1, name = 'Tank', x = 6, y = 0 },
+		{ id = 2, name = 'Dps', x = 5, y = -3 },
+	},
+	was_moving = false,
+})
+assert_equal(proposal.action, 'move', 'DPS on a displaced boss-relative flank must return toward arena center')
+assert_equal(proposal.reason, 'FORMATION_DPS_FLANK', 'knockback recovery reason mismatch')
+assert_true(math.abs(proposal.goal.x) < 0.0001, 'knockback recovery goal must remain arena-center anchored')
+assert_true(math.abs(proposal.goal.y + 3) < 0.0001, 'knockback recovery goal must preserve the configured flank offset')
+
+proposal = formation.evaluate({
 	config = config('healer'),
 	center = center,
 	boss = boss,

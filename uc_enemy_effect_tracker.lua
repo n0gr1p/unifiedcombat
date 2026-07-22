@@ -3,7 +3,7 @@ local M = {}
 local tracked = {}
 
 local death_messages = {
-	[20] = true, [97] = true, [113] = true, [406] = true, [605] = true, [646] = true,
+	[6] = true, [20] = true, [97] = true, [113] = true, [406] = true, [605] = true, [646] = true,
 }
 
 local remove_messages = {
@@ -11,6 +11,7 @@ local remove_messages = {
 	[341] = true, [342] = true, [343] = true, [344] = true, [350] = true, [531] = true,
 }
 local gain_messages = {
+	[194] = true,
 	[230] = true, [236] = true, [237] = true, [266] = true, [268] = true, [269] = true, [270] = true, [271] = true,
 	[272] = true, [278] = true, [280] = true, [285] = true, [286] = true, [287] = true, [304] = true, [667] = true,
 	[668] = true, [669] = true,
@@ -110,9 +111,23 @@ function M.clear_effect(target_id, effect_id)
 	return nil
 end
 
-function M.sweep_invalid(max_age_s)
-	local age = tonumber(max_age_s) or 90
-	local cutoff = now_s() - age
+function M.observe_effect(target_id, effect_id, source, observed_set)
+	local tid = tonumber(target_id) or 0
+	local eid = tonumber(effect_id) or 0
+	if type(observed_set) ~= 'table' or observed_set[eid] ~= true then
+		return nil
+	end
+	if not is_enemy_npc_by_id(tid) then
+		return nil
+	end
+	local ok, ev = set_effect(tid, eid, source)
+	if ok and ev then
+		return { target_id = tid, effect_id = eid, event = ev, source = tostring(source or '') }
+	end
+	return nil
+end
+
+function M.sweep_invalid()
 	for tid, t in pairs(tracked) do
 		local remove_target = false
 		if type(t) ~= 'table' then
@@ -121,21 +136,6 @@ function M.sweep_invalid(max_age_s)
 			local mob = windower.ffxi.get_mob_by_id(tonumber(tid) or 0)
 			if not mob or tonumber(mob.spawn_type) ~= 16 or (tonumber(mob.hpp) or 0) <= 0 then
 				remove_target = true
-			else
-				for eid, row in pairs(t.effects or {}) do
-					local at = tonumber(row and row.seen_at) or 0
-					if at > 0 and at < cutoff then
-						t.effects[eid] = nil
-					end
-				end
-				local has_any = false
-				for _, _ in pairs(t.effects or {}) do
-					has_any = true
-					break
-				end
-				if not has_any then
-					remove_target = true
-				end
 			end
 		end
 		if remove_target then
@@ -161,51 +161,63 @@ function M.on_action(act, dispellable_set)
 		if type(target.actions) == 'table' then
 			for _, a in ipairs(target.actions) do
 				local message_id = tonumber(a and a.message) or 0
-				-- Removal actions can be emitted by player-cast effects (Dispel/Finale) and
-				-- will not be visible via enemy actor-based gain tracking.
-				if tid > 0 and is_enemy_npc_by_id(tid) and remove_messages[message_id] == true then
-					local remove_eid = tonumber(a and a.param) or 0
-					if remove_eid > 0 then
-						local ok, ev = clear_effect(tid, remove_eid)
-						if ok and ev then
-							events[#events + 1] = {
-								target_id = tid,
-								effect_id = remove_eid,
-								event = ev,
-								source = 'action_remove',
-							}
+				if death_messages[message_id] == true then
+					local ok, ev = clear_target(tid)
+					if ok and ev then
+						events[#events + 1] = {
+							target_id = tid,
+							effect_id = 0,
+							event = ev,
+							source = 'action_death',
+						}
+					end
+				else
+					-- Removal actions can be emitted by player-cast effects (Dispel/Finale) and
+					-- will not be visible via enemy actor-based gain tracking.
+					if tid > 0 and is_enemy_npc_by_id(tid) and remove_messages[message_id] == true then
+						local remove_eid = tonumber(a and a.param) or 0
+						if remove_eid > 0 then
+							local ok, ev = clear_effect(tid, remove_eid)
+							if ok and ev then
+								events[#events + 1] = {
+									target_id = tid,
+									effect_id = remove_eid,
+									event = ev,
+									source = 'action_remove',
+								}
+							end
 						end
 					end
-				end
-				if is_enemy_npc_by_id(actor_id) then
-					local target_is_enemy = tid > 0 and is_enemy_npc_by_id(tid)
-					-- Only treat action params as enemy-buff gain signals when the packet
-					-- target is an enemy NPC. This prevents hostile actions aimed at party
-					-- members (or other non-enemy targets) from being misclassified as
-					-- removable enemy self-buffs.
-					if target_is_enemy then
-						local eid = tonumber(a and a.param) or 0
-						if eid > 0 and dispellable_set[eid] == true then
-							local owner = tid
-							local ok, ev = set_effect(owner, eid, 'action')
-							if ok and ev then
-								events[#events + 1] = { target_id = owner, effect_id = eid, event = ev, source = 'action' }
+					if is_enemy_npc_by_id(actor_id) then
+						local target_is_enemy = tid > 0 and is_enemy_npc_by_id(tid)
+						-- Action params are polymorphic. Require a confirmed gain-effect message
+						-- before interpreting the param as a status effect id.
+						if target_is_enemy then
+							local eid = tonumber(a and a.param) or 0
+							if gain_messages[message_id] == true and eid > 0 and dispellable_set[eid] == true then
+								local owner = tid
+								local ok, ev = set_effect(owner, eid, 'action')
+								if ok and ev then
+									events[#events + 1] = { target_id = owner, effect_id = eid, event = ev, source = 'action' }
+								end
 							end
-						end
-						local aeid = tonumber(a and a.add_effect_param) or 0
-						if aeid > 0 and dispellable_set[aeid] == true then
-							local owner = tid
-							local ok, ev = set_effect(owner, aeid, 'add_effect')
-							if ok and ev then
-								events[#events + 1] = { target_id = owner, effect_id = aeid, event = ev, source = 'add_effect' }
+							local add_effect_message = tonumber(a and a.add_effect_message) or 0
+							local aeid = tonumber(a and a.add_effect_param) or 0
+							if a.has_add_effect == true and (add_effect_message == 160 or add_effect_message == 164)
+								and aeid > 0 and dispellable_set[aeid] == true then
+								local owner = tid
+								local ok, ev = set_effect(owner, aeid, 'add_effect')
+								if ok and ev then
+									events[#events + 1] = { target_id = owner, effect_id = aeid, event = ev, source = 'add_effect' }
+								end
 							end
-						end
-						local seid = tonumber(a and a.spike_effect_param) or 0
-						if seid > 0 and dispellable_set[seid] == true then
-							local owner = tid
-							local ok, ev = set_effect(owner, seid, 'spike_effect')
-							if ok and ev then
-								events[#events + 1] = { target_id = owner, effect_id = seid, event = ev, source = 'spike_effect' }
+							local seid = tonumber(a and a.spike_effect_param) or 0
+							if a.has_spike_effect == true and seid > 0 and dispellable_set[seid] == true then
+								local owner = tid
+								local ok, ev = set_effect(owner, seid, 'spike_effect')
+								if ok and ev then
+									events[#events + 1] = { target_id = owner, effect_id = seid, event = ev, source = 'spike_effect' }
+								end
 							end
 						end
 					end
@@ -245,7 +257,7 @@ function M.on_action_message(msg, dispellable_set)
 	if effect_id > 0 and dispellable_set[effect_id] == true then
 		local actor_is_enemy = actor_id > 0 and is_enemy_npc_by_id(actor_id)
 		local target_is_enemy = target_id > 0 and is_enemy_npc_by_id(target_id)
-		if gain_messages[message_id] == true or target_id == actor_id then
+		if gain_messages[message_id] == true then
 			local owner = target_is_enemy and target_id or actor_id
 			if not (owner > 0 and is_enemy_npc_by_id(owner)) and actor_is_enemy then
 				owner = actor_id
