@@ -136,6 +136,7 @@ local DIRECT_PROFILE_FIELDS = {
     partner2 = "profile_owned_by_ui",
     puller = "profile_owned_by_ui",
     puller_name = "profile_owned_by_ui",
+	puller_leash_source = "profile_owned_by_ui",
     puller_engage_range = "profile_owned_by_ui",
     fight_leader_selected = "profile_owned_by_ui",
     puller_distance_only = "profile_owned_by_ui",

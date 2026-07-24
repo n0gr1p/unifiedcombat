@@ -401,10 +401,23 @@ local function canonicalize_unset_puller_name(config)
 		return config
 	end
 
-	if trim_string(follow.partner.puller_name) == '' then
+	if follow.partner.leash_source == 'camp' or trim_string(follow.partner.puller_name) == '' then
 		follow.partner.puller_name = nil
 	end
 
+	return config
+end
+
+local function canonicalize_leash_source(config)
+	if type(config) ~= 'table' or type(config.follow) ~= 'table' or type(config.follow.partner) ~= 'table' then
+		return config
+	end
+	local source = config.follow.partner.leash_source
+	if source == nil then
+		config.follow.partner.leash_source = 'player'
+	elseif source ~= 'player' and source ~= 'camp' then
+		error('follow.partner.leash_source must be player or camp')
+	end
 	return config
 end
 
@@ -580,7 +593,7 @@ end
 function M.build_structured_profile(settings, meta)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
 	local resolved_meta = normalized_meta(meta)
-	local durable_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta))))
+	local durable_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta)))))
 	if resolved_meta.profile_key ~= nil then
 		return {
 			version = 2,
@@ -614,7 +627,7 @@ end
 
 function M.build_durable_config(settings, meta)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
-	return canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta))))
+	return canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta)))))
 end
 
 function M.format_structured_profile_diff_value(value)
@@ -1169,8 +1182,8 @@ end
 function M.diff_durable_config(current_config, target_config)
 	local differences = {}
 	local details = {}
-	current_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(current_config))))))
-	target_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(target_config))))))
+	current_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(current_config)))))))
+	target_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(target_config)))))))
 	current_config, target_config = canonicalize_optional_control_ranges(current_config, target_config)
 	diff_values(
 		current_config,

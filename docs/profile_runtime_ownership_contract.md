@@ -101,6 +101,7 @@ Examples:
 - follow/movement/pathing preferences that are profile material
 - debug config
 - follow/partner durable identity such as `follow.partner.puller_name`
+- follow leash source policy at `follow.partner.leash_source` (`player` or `camp`)
 - Nyzul coordinator, anchor, and ordered parker names under `follow.nyzul`
 - puller engagement policy such as `follow.partner.engage_range`; this is the maximum mob-to-puller distance that permits follower engagement and combat-close movement
 - sleep eligibility policy such as `sleep.max_target_range`; this limits viable sleep candidates but never extends a spell beyond its native cast range
@@ -132,6 +133,7 @@ Examples:
 - live path points being recorded or mutated
 - current selected path/route filename (`movement.path.file_name`)
 - resolved follow/partner runtime ids such as `follow.partner.puller_id`
+- shared camp anchor state, including zone id, X/Y coordinates, and the character that captured the point
 - target snapshots
 - party/mob snapshots
 - bridge protocol state

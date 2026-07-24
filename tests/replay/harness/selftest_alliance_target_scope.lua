@@ -114,6 +114,7 @@ windower = {
     ffxi = {
         get_player = function()
             return {
+				name = 'Self',
                 status = 0,
                 id = 101,
                 vitals = {
@@ -148,7 +149,7 @@ windower = {
             return party_data
         end,
         get_info = function()
-            return { zone = 0 }
+			return { zone = _G.__TEST_ZONE or 0 }
         end,
         get_ability_recasts = function()
             return {}
@@ -499,6 +500,48 @@ local function test_puller_range_gate_uses_live_puller_geometry()
     assert_equal(reason, 'PULLER_UNAVAILABLE', 'unavailable puller reason mismatch')
 end
 
+local function test_camp_range_gate_uses_shared_runtime_geometry()
+	local camp = require('uc_camp_anchor')
+	camp.clear()
+	_G.__TEST_ZONE = 100
+	local consumed, installed = camp.on_ipc_message('uc_camp_anchor_v1|set|100|5|5|Setter')
+	assert_true(consumed and installed, 'camp test point must install')
+	local target = make_mob({
+		id = 7020,
+		claim_id = 202,
+		x = 14,
+		y = 5,
+		hpp = 100,
+	})
+	local settings = {
+		puller = true,
+		puller_leash_source = 'camp',
+		puller_engage_range = 8,
+		puller_distance_only = true,
+	}
+	local allowed, reason, distance = core.puller_engage_allowed_for_scheduler(settings, target)
+	assert_false(allowed, 'mob outside camp range must be blocked')
+	assert_equal(reason, 'CAMP_OUT_OF_RANGE', 'camp out-of-range reason mismatch')
+	assert_equal(distance, 9, 'camp gate must measure mob-to-camp distance')
+
+	target.x = 13
+	allowed, reason, distance = core.puller_engage_allowed_for_scheduler(settings, target)
+	assert_true(allowed, 'mob on camp boundary must be allowed')
+	assert_equal(reason, 'CAMP_IN_RANGE', 'camp in-range reason mismatch')
+	assert_equal(distance, 8, 'camp boundary distance mismatch')
+
+	_G.__TEST_ZONE = 101
+	allowed, reason = core.puller_engage_allowed_for_scheduler(settings, target)
+	assert_false(allowed, 'camp from another zone must fail closed')
+	assert_equal(reason, 'CAMP_ZONE_MISMATCH', 'camp zone mismatch reason mismatch')
+
+	camp.clear()
+	allowed, reason = core.puller_engage_allowed_for_scheduler(settings, target)
+	assert_false(allowed, 'unset camp must fail closed')
+	assert_equal(reason, 'CAMP_UNSET', 'unset camp reason mismatch')
+	_G.__TEST_ZONE = nil
+end
+
 local function test_source_wiring()
     local targeting_source = read_file('uc_targeting_common.lua')
     local core_source = read_file('unified_combat_core.lua')
@@ -535,6 +578,7 @@ local function main()
     test_tank_victim_scope()
     test_zero_hp_and_recent_death_preserved()
     test_puller_range_gate_uses_live_puller_geometry()
+	test_camp_range_gate_uses_shared_runtime_geometry()
     test_source_wiring()
     io.stdout:write('selftest_alliance_target_scope: OK\n')
 end

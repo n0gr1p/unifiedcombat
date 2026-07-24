@@ -108,6 +108,11 @@ public partial class MainForm
     {
         var partyNames = CurrentPartyNameOptions();
         var running = _sessionRunningBySid.TryGetValue(sid, out var rv) && rv;
+		var leashSource = _pullerLeashSource.SelectedItem?.ToString();
+		if (leashSource is not ("Player" or "Camp"))
+		{
+			throw new InvalidOperationException("Puller leash source must be Player or Camp.");
+		}
         var profile = new JsonObject
         {
             ["profile_schema_version"] = ProfileSchemaVersion,
@@ -136,6 +141,7 @@ public partial class MainForm
             ["path_hunter_entries"] = string.Join("|", _pathHunterRows.Select(r => $"{r.Id}:{r.Name}")),
             ["tank_enmity_actions"] = string.Join("|", _tankEnmityRows),
             ["puller_selected"] = SelectedPartyName(_pullerCombo),
+			["puller_leash_source"] = leashSource.ToLowerInvariant(),
             ["puller_engage_range"] = Math.Clamp(ParseDouble(_pullerEngageRange.Text, 6), 0.1, 50.0),
             ["fight_leader_selected"] = SelectedPartyName(_fightLeaderCombo),
             ["party_follow_selected"] = SelectedPartyName(_partyFollowCombo),
@@ -308,6 +314,7 @@ public partial class MainForm
 			["nyzul_anchor_name"] = "",
 			["nyzul_parking_order"] = "",
             ["puller_engage_range"] = 6,
+			["puller_leash_source"] = "player",
             ["path_route_type"] = "unknown",
             ["path_distance_to_start"] = 0,
             ["path_points_count"] = 0,

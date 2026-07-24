@@ -518,6 +518,12 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.fight_follow_hold_s = config.follow.fight.hold_s
 		end
 		if type(config.follow.partner) == 'table' then
+			local leash_source = config.follow.partner.leash_source
+			if leash_source == nil then
+				leash_source = 'player'
+			elseif leash_source ~= 'player' and leash_source ~= 'camp' then
+				error('follow.partner.leash_source must be player or camp')
+			end
 			candidate.partner = config.follow.partner.enabled
 			candidate.partner2 = config.follow.partner.secondary_enabled
 			local durable_partner_names = config.follow.partner.names
@@ -542,6 +548,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.partner_id2 = candidate.partner_ids[2] or 0
 			candidate.puller = config.follow.partner.puller
 			candidate.puller_name = config.follow.partner.puller_name
+			candidate.puller_leash_source = leash_source
 			candidate.follow = candidate.follow or {}
 			candidate.follow.enabled = config.follow.enabled
 			candidate.follow.party = {
@@ -574,12 +581,16 @@ local function apply_structured_config_to_candidate(candidate, config)
 				ids = clone_value(candidate.partner_ids),
 				puller = config.follow.partner.puller,
 				puller_name = config.follow.partner.puller_name,
+				leash_source = leash_source,
 				engage_range = config.follow.partner.engage_range,
 				puller_distance_only = config.follow.partner.puller_distance_only,
 			}
-			local puller_id = resolve_party_member_id_by_name(config.follow.partner.puller_name)
-			if puller_id == 0 then
-				puller_id = normalize_number(config.follow.partner.puller_id, 0, { integer = true }) or 0
+			local puller_id = 0
+			if leash_source == 'player' then
+				puller_id = resolve_party_member_id_by_name(config.follow.partner.puller_name)
+				if puller_id == 0 then
+					puller_id = normalize_number(config.follow.partner.puller_id, 0, { integer = true }) or 0
+				end
 			end
 			candidate.puller_id = puller_id
 			candidate.follow.partner.puller_id = puller_id

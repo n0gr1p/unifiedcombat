@@ -19,6 +19,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeIncludesProfileV2AutoReloadWhenEnabled();
             TestProfileV2AutoReloadIsPartOfPersistedBoolSet();
             TestSerializeIncludesPullerNameWhenSelected();
+			TestSerializeCampLeashSourceWithoutPullerName();
 			TestSerializeIncludesPartnerNames();
             TestSerializeIncludesFightLeaderNameWhenSelected();
             TestSerializeOmitsFightLeaderNameWhenDisabled();
@@ -297,6 +298,31 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "puller_name = \"Niightsiide\"", "selected puller name must be serialized durably");
         AssertNotContains(content, "puller_id =", "selected puller id must stay runtime-owned");
     }
+
+	private static void TestSerializeCampLeashSourceWithoutPullerName()
+	{
+		var flat = BuildSampleFlatProfile();
+		flat["puller"] = true;
+		flat["puller_selected"] = "Niightsiide";
+		flat["puller_leash_source"] = "camp";
+
+		var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+			flat,
+			new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+		);
+
+		AssertContains(content, "leash_source = \"camp\"", "camp leash source must serialize durably");
+		AssertNotContains(content, "puller_name =", "camp leash must not serialize a stale puller name");
+		var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+		var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+		var main = ReadRepoFile("UnifiedCombatWinForms", "MainForm.cs");
+		var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+		AssertContains(ui, "Set camp here", "camp capture button must exist");
+		AssertContains(store, "[\"puller_leash_source\"] = leashSource.ToLowerInvariant()", "camp leash source must be captured by UI profiles");
+		AssertContains(main, "string.Equals(op, \"camp_set\"", "camp capture must be an explicit runtime bridge operation");
+		AssertContains(main, "ApplyCampRuntimeStatus(selectedState)", "recurring live snapshots must refresh camp status");
+		AssertContains(logic, "Camp unavailable — reload UnifiedCombat addon", "missing runtime support must produce an actionable camp status");
+	}
 
     private static void TestSerializeIncludesFightLeaderNameWhenSelected()
     {
@@ -920,6 +946,7 @@ internal static class StructuredProfileV2WriterTests
             ["fight_follow_hold_s"] = 8,
             ["partner"] = false,
             ["puller"] = false,
+			["puller_leash_source"] = "player",
             ["puller_distance_only"] = false,
             ["ignore_entries"] = "101:Ally One|202:Ally Two",
             ["target_ignore_entries"] = "1:Mob One|2:Mob Two",

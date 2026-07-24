@@ -96,6 +96,7 @@ local function main()
         cor_roll_1 = "profile_owned_by_ui",
         wait_ignore_names = "profile_owned_by_ui",
         puller_name = "profile_owned_by_ui",
+		puller_leash_source = "profile_owned_by_ui",
         fight_leader_name = "profile_owned_by_ui",
         fight_leader_selected = "profile_owned_by_ui",
         puller_id = "runtime_owned_by_addon",

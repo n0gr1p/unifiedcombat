@@ -138,6 +138,14 @@ local function normalize_list(value, default_value)
     return clone_value(default_value)
 end
 
+local function normalize_leash_source(value, default_value)
+	local normalized = normalize_string(value, default_value):lower()
+	if normalized ~= 'player' and normalized ~= 'camp' then
+		error('follow.partner.leash_source must be player or camp')
+	end
+	return normalized
+end
+
 local function normalize_pipe_string_list(value, default_value)
     if type(value) == 'table' then
         local out = {}
@@ -512,6 +520,7 @@ local function default_config(meta)
                 puller = false,
                 puller_name = '',
                 puller_id = 0,
+				leash_source = 'player',
                 engage_range = 6.0,
                 puller_distance_only = false,
             },
@@ -880,6 +889,7 @@ local function normalize_follow(source, config)
         follow.partner.puller = normalize_boolean(partner.puller, follow.partner.puller)
         follow.partner.puller_name = normalize_string(partner.puller_name, follow.partner.puller_name)
         follow.partner.puller_id = normalize_number(partner.puller_id, follow.partner.puller_id, { integer = true })
+		follow.partner.leash_source = normalize_leash_source(partner.leash_source, follow.partner.leash_source)
         follow.partner.engage_range = normalize_number(partner.engage_range, follow.partner.engage_range, { min = 0.1, max = 50.0 })
         follow.partner.puller_distance_only = normalize_boolean(partner.puller_distance_only, follow.partner.puller_distance_only)
 		local nyzul = is_table(nested.nyzul) and nested.nyzul or {}
@@ -905,6 +915,7 @@ local function normalize_follow(source, config)
         follow.partner.puller = normalize_boolean(first_path(source, { path('puller') }), follow.partner.puller)
         follow.partner.puller_name = normalize_string(first_path(source, { path('puller_name'), path('puller_selected') }), follow.partner.puller_name)
         follow.partner.puller_id = normalize_number(first_path(source, { path('puller_id') }), follow.partner.puller_id, { integer = true })
+		follow.partner.leash_source = normalize_leash_source(first_path(source, { path('puller_leash_source') }), follow.partner.leash_source)
         follow.partner.engage_range = normalize_number(first_path(source, { path('puller_engage_range') }), follow.partner.engage_range, { min = 0.1, max = 50.0 })
         follow.partner.puller_distance_only = normalize_boolean(first_path(source, { path('puller_distance_only') }), follow.partner.puller_distance_only)
 		follow.nyzul.coordinator_name = normalize_string(first_path(source, { path('nyzul_coordinator_name') }), follow.nyzul.coordinator_name)

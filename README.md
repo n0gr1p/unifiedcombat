@@ -91,6 +91,8 @@ Active runtime uses UC engine path from `UnifiedCombat.lua` and does not require
 - Puller distance gate:
   - Blocks approach movement when configured conditions fail.
   - Hands movement back to party-follow while puller gate is active to prevent orphan/stale run-vector behavior.
+	- Supports an explicit player anchor or a shared runtime camp coordinate.
+	- Use `//uc camp set`, `//uc camp clear`, and `//uc camp status` to manage the shared camp point.
 - Party-follow min/max + fight-follow min override window after combat activity.
 
 ### Combat Actions

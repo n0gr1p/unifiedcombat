@@ -239,10 +239,13 @@ Priority ordering for ready actions must be explicit:
 
 ```text
 Doom / critical Cure / agreed emergency control
+    > Chivalry and aftermath TP-maintenance reservation gate
     > valid time-bounded skillchain continuation
-    > aftermath refresh and routine defensive/maintenance work
+    > routine defensive/maintenance work
     > ordinary TP-ready opener and configured JA work
 ```
+
+The TP-maintenance ordering is enforced in WS planning rather than by inflating scheduler bands. Chivalry blocks competing WS proposals while holding for 2,000 TP and while ready to dispatch. Missing aftermath blocks continuation planning until its configured 3,000-TP WS is ready. Once emitted, the aftermath WS retains band 108; no continuation proposal competes with it on that tick.
 
 Sleep/add-control emergency ordering must remain explicit and covered by tests. Do not assign a continuation band until the resulting numeric order is verified against every existing priority constant, including maintenance sequencing.
 
@@ -389,6 +392,9 @@ Exit gate: repeated live runs show valid continuations dispatched inside the saf
 - [x] Death/despawn/zone/logout/unload/engine-stop cleanup.
 - [x] Doom and critical Cure preempt a continuation.
 - [x] Routine defensive/maintenance proposal does not consume a ready continuation's safe window.
+- [x] Active resonance does not consume TP reserved for ready Chivalry or missing aftermath.
+- [x] Chivalry suppresses competing WS proposals at both the below-2,000 hold state and the 2,000-TP ready boundary.
+- [x] Missing aftermath suppresses continuations below 3,000 TP and emits the configured `AM_READY` WS at 3,000 TP.
 
 ## Verification commands expected for implementation phases
 

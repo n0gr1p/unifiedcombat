@@ -26,6 +26,7 @@ local RUNTIME_LUA_FILES = {
     "uc_config_runtime.lua",
     "uc_config_status_export.lua",
     "uc_combat_formation.lua",
+	"uc_camp_anchor.lua",
     "uc_lilith_easy_encounter.lua",
     "uc_lilith_easy_formation_runtime.lua",
 	"uc_nyzul_runtime.lua",

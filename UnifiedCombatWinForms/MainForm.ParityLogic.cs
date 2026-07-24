@@ -337,6 +337,8 @@ public partial class MainForm
             _wsCombo.Items.Clear();
             _wsModeCombo.SelectedItem = "Smart";
             _pullerCombo.Items.Clear();
+			_pullerLeashSource.SelectedItem = "Player";
+			_campStatus.Text = "Camp not set";
             _fightLeaderCombo.Items.Clear();
             _partyFollowCombo.Items.Clear();
 			_nyzulCoordinatorCombo.Items.Clear();
@@ -576,11 +578,21 @@ public partial class MainForm
 
             var pullOn = SessionStateHelper.GetBool(s, "puller", false);
             var selPull = NormalizePartyName(SessionStateHelper.GetString(s, "puller_selected"));
+			var leashSource = SessionStateHelper.GetString(s, "puller_leash_source", "player").Trim().ToLowerInvariant();
+			if (leashSource is not ("player" or "camp"))
+			{
+				throw new InvalidDataException($"Invalid puller leash source '{leashSource}'.");
+			}
+			_pullerLeashSource.SelectedItem = leashSource == "camp" ? "Camp" : "Player";
 
             BindPartyCombo(_pullerCombo, pullerOpts, selPull);
-            _pullerCombo.Enabled = pullOn;
+			_pullerCombo.Enabled = pullOn && leashSource == "player";
+			_pullerLeashSource.Enabled = pullOn;
             _pullerEngageRange.Text = SessionStateHelper.GetString(s, "puller_engage_range", "6");
             _pullerEngageRange.Enabled = pullOn;
+			_campSet.Enabled = pullOn && leashSource == "camp";
+			_campClear.Enabled = pullOn && leashSource == "camp";
+			_campStatus.Text = leashSource == "camp" ? "Waiting for addon state…" : "Camp mode inactive";
             _sleepMaxTargetRange.Text = SessionStateHelper.GetString(s, "sleep_max_target_range", "6");
 
             var flOn = SessionStateHelper.GetBool(s, "fight_leader", false);
@@ -1280,8 +1292,12 @@ public partial class MainForm
 
         if (key == "puller")
         {
-            _pullerCombo.Enabled = val;
+			var campSource = string.Equals(_pullerLeashSource.SelectedItem?.ToString(), "Camp", StringComparison.Ordinal);
+			_pullerLeashSource.Enabled = val;
+			_pullerCombo.Enabled = val && !campSource;
             _pullerEngageRange.Enabled = val;
+			_campSet.Enabled = val && campSource;
+			_campClear.Enabled = val && campSource;
             var ps = SelectedPartyName(_pullerCombo);
             if (val && !string.IsNullOrEmpty(ps) && !ComboContainsPartyName(_pullerCombo, ps))
             {
@@ -1533,6 +1549,23 @@ public partial class MainForm
     {
         CommitDurableRange(_pullerEngageRange, 6.0);
     }
+
+	private void OnPullerLeashSourceChanged()
+	{
+		if (_suppressEvents || string.IsNullOrWhiteSpace(_selectedSid))
+		{
+			return;
+		}
+		if (_pullerLeashSource.SelectedItem?.ToString() is not ("Player" or "Camp"))
+		{
+			throw new InvalidOperationException("Puller leash source must be Player or Camp.");
+		}
+		var campSource = string.Equals(_pullerLeashSource.SelectedItem.ToString(), "Camp", StringComparison.Ordinal);
+		_pullerCombo.Enabled = _chkPuller.Checked && !campSource;
+		_campSet.Enabled = _chkPuller.Checked && campSource;
+		_campClear.Enabled = _chkPuller.Checked && campSource;
+		CaptureWorkingProfileFromUi(_selectedSid);
+	}
 
     private void OnSleepMaxTargetRangeChanged()
     {
@@ -2616,6 +2649,92 @@ public partial class MainForm
         _tankEnmityList.SelectedIndex = next;
         PushTankEnmityActions(sid);
     }
+
+	private void OnCampSet()
+	{
+		var sid = RequireSelectedSid();
+		if (sid is null)
+		{
+			return;
+		}
+		if (!SelectedSessionSupportsCampRuntime())
+		{
+			_campStatus.Text = "Camp unavailable — reload UnifiedCombat addon";
+			return;
+		}
+		Forward(sid, new Dictionary<string, object?> { ["op"] = "camp_set" });
+		_campStatus.Text = "Setting camp…";
+	}
+
+	private void OnCampClear()
+	{
+		var sid = RequireSelectedSid();
+		if (sid is null)
+		{
+			return;
+		}
+		if (!SelectedSessionSupportsCampRuntime())
+		{
+			_campStatus.Text = "Camp unavailable — reload UnifiedCombat addon";
+			return;
+		}
+		Forward(sid, new Dictionary<string, object?> { ["op"] = "camp_clear" });
+		_campStatus.Text = "Clearing camp…";
+	}
+
+	private bool TryGetSelectedRuntimeState(out JsonElement state)
+	{
+		state = default;
+		if (string.IsNullOrWhiteSpace(_selectedSid) || _snapshotDoc is null)
+		{
+			return false;
+		}
+		var root = _snapshotDoc.RootElement;
+		return root.TryGetProperty("sessions", out var sessions)
+			&& sessions.ValueKind == JsonValueKind.Object
+			&& sessions.TryGetProperty(_selectedSid, out state);
+	}
+
+	private bool SelectedSessionSupportsCampRuntime()
+	{
+		return TryGetSelectedRuntimeState(out var state) && state.TryGetProperty("camp_active", out _);
+	}
+
+	private void RefreshCampRuntimeStatus()
+	{
+		if (TryGetSelectedRuntimeState(out var state))
+		{
+			ApplyCampRuntimeStatus(state);
+		}
+	}
+
+	private void ApplyCampRuntimeStatus(JsonElement state)
+	{
+		if (!state.TryGetProperty("camp_active", out _))
+		{
+			_campStatus.Text = "Camp unavailable — reload UnifiedCombat addon";
+			return;
+		}
+		if (SessionStateHelper.GetBool(state, "camp_active", false))
+		{
+			_campStatus.Text = string.Format(
+				CultureInfo.InvariantCulture,
+				"Zone {0} ({1}, {2}) by {3}",
+				SessionStateHelper.GetString(state, "camp_zone_id", "?"),
+				SessionStateHelper.GetString(state, "camp_x", "?"),
+				SessionStateHelper.GetString(state, "camp_y", "?"),
+				SessionStateHelper.GetString(state, "camp_set_by", "?")
+			);
+			return;
+		}
+		var lastOperation = SessionStateHelper.GetString(state, "camp_last_op", "");
+		if (lastOperation != "" && lastOperation != "CAMP_CLEARED")
+		{
+			_campStatus.Text = "Camp failed: " + lastOperation;
+			return;
+		}
+		_campStatus.Text = "Camp not set";
+	}
 
     private void OnPullerSelected()
     {

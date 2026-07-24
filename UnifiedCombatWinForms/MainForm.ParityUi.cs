@@ -14,7 +14,11 @@ public partial class MainForm
     private ComboBox _wsModeCombo = null!;
     private ComboBox _aftermathCombo = null!;
     private ComboBox _pullerCombo = null!;
+	private ComboBox _pullerLeashSource = null!;
     private TextBox _pullerEngageRange = null!;
+	private Button _campSet = null!;
+	private Button _campClear = null!;
+	private Label _campStatus = null!;
     private ComboBox _fightLeaderCombo = null!;
     private ComboBox _partyFollowCombo = null!;
     private Label _partyFollowModeWarning = null!;
@@ -362,6 +366,10 @@ public partial class MainForm
         var pull = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
         _chkPuller = MkCtx("puller");
         pull.Controls.Add(_chkPuller);
+		_pullerLeashSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 80 };
+		_pullerLeashSource.Items.AddRange(new object[] { "Player", "Camp" });
+		_pullerLeashSource.SelectedIndexChanged += (_, _) => OnPullerLeashSourceChanged();
+		pull.Controls.Add(_pullerLeashSource);
         _pullerCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
         _pullerCombo.SelectedIndexChanged += (_, _) => OnPullerSelected();
         pull.Controls.Add(_pullerCombo);
@@ -370,6 +378,14 @@ public partial class MainForm
         _pullerEngageRange.Leave += (_, _) => OnPullerEngageRangeChanged();
         pull.Controls.Add(_pullerEngageRange);
         pull.Controls.Add(new Label { Text = "yalms", AutoSize = true, Padding = new Padding(0, 4, 0, 0) });
+		_campSet = new Button { Text = "Set camp here", AutoSize = true };
+		_campSet.Click += (_, _) => OnCampSet();
+		pull.Controls.Add(_campSet);
+		_campClear = new Button { Text = "Clear camp", AutoSize = true };
+		_campClear.Click += (_, _) => OnCampClear();
+		pull.Controls.Add(_campClear);
+		_campStatus = new Label { Text = "Camp not set", AutoSize = true, Padding = new Padding(8, 4, 0, 0) };
+		pull.Controls.Add(_campStatus);
         leftCol.Controls.Add(new Label { Text = "puller", AutoSize = true }, 0, lr);
         leftCol.Controls.Add(pull, 1, lr);
         lr++;

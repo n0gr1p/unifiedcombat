@@ -27,6 +27,7 @@ local uc_target_ignore = require('uc_target_ignore')
 local uc_add_priority = require('uc_add_priority')
 local uc_path_hunter = require('uc_path_hunter')
 local uc_config_runtime = require('uc_config_runtime')
+local uc_camp_anchor = require('uc_camp_anchor')
 
 local function uc_trim(s)
 	if not s then
@@ -1583,6 +1584,20 @@ local function process_line(line)
 		if type(_G.UC_StopUnifiedEngine) == 'function' then
 			_G.UC_StopUnifiedEngine('engine_stop')
 		end
+	elseif op == 'camp_set' then
+		local ok, reason = uc_camp_anchor.set_current_position()
+		_G.UC_LAST_CAMP_OP = tostring(reason)
+		if not ok then
+			windower.add_to_chat(167, 'UC camp: ' .. tostring(reason))
+		end
+		last_state_send = 0
+	elseif op == 'camp_clear' then
+		local ok, reason = uc_camp_anchor.clear_shared()
+		_G.UC_LAST_CAMP_OP = tostring(reason)
+		if not ok then
+			windower.add_to_chat(167, 'UC camp: ' .. tostring(reason))
+		end
+		last_state_send = 0
 	elseif op == 'reload' then
 		if type(_G.UC_ReloadActiveProfile) == 'function' then
 			_G.UC_ReloadActiveProfile()
@@ -1633,6 +1648,11 @@ function uc_remote_tick()
 	end
 	local zu = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
 	local zone_suspend_active = type(zu) == 'number' and uc_now_s() < zu
+	local camp_status = uc_camp_anchor.status()
+	local camp_last_op = rawget(_G, 'UC_LAST_CAMP_OP')
+	if type(camp_last_op) ~= 'string' then
+		camp_last_op = ''
+	end
 	local st = {
 		op = 'state',
 		session = session_id,
@@ -1642,6 +1662,12 @@ function uc_remote_tick()
 		engine = _G.UC_ENGINE,
 		Start_Engine = Start_Engine,
 		zone_suspend_active = zone_suspend_active,
+		camp_active = camp_status.active,
+		camp_zone_id = camp_status.zone_id,
+		camp_x = camp_status.x,
+		camp_y = camp_status.y,
+		camp_set_by = camp_status.set_by,
+		camp_last_op = camp_last_op,
 		profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS,
 		config_contract_status = uc_config_runtime.config_contract_status(_G.UC_SETTINGS),
 	}

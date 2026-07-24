@@ -157,6 +157,7 @@ public partial class MainForm : Form
         {
             _selectedSid = li.Sid;
             RefreshEditorFromSnapshot();
+			RefreshCampRuntimeStatus();
         }
         else
         {
@@ -186,6 +187,8 @@ public partial class MainForm : Form
         return string.Equals(op, "start_engine", StringComparison.Ordinal)
             || string.Equals(op, "stop_engine", StringComparison.Ordinal)
             || string.Equals(op, "addon_reload", StringComparison.Ordinal)
+			|| string.Equals(op, "camp_set", StringComparison.Ordinal)
+			|| string.Equals(op, "camp_clear", StringComparison.Ordinal)
             || string.Equals(op, "request_state", StringComparison.Ordinal)
             || string.Equals(op, "request_options", StringComparison.Ordinal);
     }
@@ -394,6 +397,7 @@ public partial class MainForm : Form
         if (!string.IsNullOrWhiteSpace(_selectedSid) && sessionsEl.TryGetProperty(_selectedSid, out var selectedState))
         {
             ApplyOptionsFromSnapshotIfPresent(_selectedSid!, selectedState);
+			ApplyCampRuntimeStatus(selectedState);
         }
         // UI is authoritative after initial/manual session selection.
         // Do not force-refresh controls on every inbound snapshot.

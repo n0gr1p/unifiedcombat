@@ -10,14 +10,14 @@ Approved follow-up work: `docs/scheduler_owned_ws_skillchain_implementation_plan
 The source-backed causes identified below have been codified and corrected in the scheduler-owned WS path:
 
 - The incoming-WS `core.ws_timer` gate is removed. Ordinary WS still observes the documented three-second action-result minimum, now per target/resonance with a 0.3-second preferred buffer and 0.6-second late guard.
-- A ready compatible continuation is selected before ally TP-lead waiting, Chivalry holding, and aftermath refresh.
-- Continuations use explicit scheduler band 131. Bard maintenance (200), Critical Cure (153), and Sleep/agreed emergency control (142) remain above it; aftermath refresh (108) and ordinary offense remain below it.
+- Ready Chivalry and missing-aftermath TP reservations are evaluated before compatible continuation planning. Chivalry suppresses competing WS proposals below and at its 2,000-TP ready boundary; missing aftermath reserves TP through the 3,000-TP `AM_READY` dispatch.
+- When neither TP-maintenance reservation applies, continuations use explicit scheduler band 131. Bard maintenance (200), Critical Cure (153), and Sleep/agreed emergency control (142) remain above it. Aftermath retains band 108 because the planner does not emit a competing continuation while aftermath maintenance is active.
 - The selected continuation carries its target, resonance generation, effective properties, earliest time, and latest-safe deadline through scheduler commit and into the core intent owner.
-- A not-yet-ready continuation reserves the scheduler action lane from routine work, then becomes dispatch-admissible at the conservative preferred time (normally action result + 3.3 seconds). Emergency bands can still preempt it.
+- A not-yet-ready continuation reserves the scheduler action lane from routine work only after Chivalry and aftermath TP maintenance are satisfied, then becomes dispatch-admissible at the conservative preferred time (normally action result + 3.3 seconds). Emergency bands can still preempt it.
 - The core revalidates the same resonance, target, WS, TP, equipment/Aftermath, status, range, reaction state, and deadline immediately before send. Failure cancels with an `SC_*` code and sends no fallback WS.
 - Action-result, plan, rank, commit, dispatch, and server-confirmation telemetry is available through the action timeline.
 
-All 95 aggregate replay suites pass. Initial Nyoourke and multi-actor evidence is recorded in `docs/TestResults/scheduler_owned_ws_skillchain_field_results_2026-07-20.md`: timing and race behavior passed, and two field-only findings were corrected. The focused post-reload acceptance also passed with 35 Nyoourke and 13 Ponponponponpon dispatches, closing `WS-SC-4`.
+All 99 aggregate replay suites pass. Initial Nyoourke and multi-actor evidence is recorded in `docs/TestResults/scheduler_owned_ws_skillchain_field_results_2026-07-20.md`: timing and race behavior passed, and two field-only findings were corrected. The focused post-reload acceptance also passed with 35 Nyoourke and 13 Ponponponponpon dispatches, closing `WS-SC-4`.
 
 ## Profile facts
 

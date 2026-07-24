@@ -27,6 +27,7 @@ local uc_settarget = require('uc_settarget')
 local uc_attack = require('uc_attack')
 local uc_path_hunter = require('uc_path_hunter')
 local uc_skillchain_state = require('uc_skillchain_state')
+local uc_camp_anchor = require('uc_camp_anchor')
 local aftermath_table = dofile(windower.addon_path .. 'docs/aftermath_table.lua')
 
 if type(os.clock) ~= 'function' then
@@ -598,6 +599,67 @@ local function puller_engage_allowed(settings, target)
 	if not setting_enabled(settings and settings.puller) then
 		_G.UC_PULLER_GATE_DIAG = ('reason=PULLER_GATE_INACTIVE allowed=true max=%.2f'):format(range)
 		return true, 'PULLER_GATE_INACTIVE', 0, range
+	end
+	local leash_source = settings and settings.puller_leash_source
+	if leash_source == nil then
+		leash_source = 'player'
+	else
+		leash_source = tostring(leash_source)
+	end
+	if leash_source == 'camp' then
+		local camp, camp_reason = uc_camp_anchor.resolve_current_anchor()
+		if not camp then
+			_G.UC_PULLER_GATE_DIAG = ('reason=%s allowed=false source=camp max=%.2f'):format(
+				tostring(camp_reason),
+				range
+			)
+			return false, camp_reason, 999, range
+		end
+		if not target or target.x == nil or target.y == nil then
+			_G.UC_PULLER_GATE_DIAG = ('reason=CAMP_GEOMETRY_UNAVAILABLE allowed=false source=camp target=%d max=%.2f'):format(
+				tonumber(target and target.id) or 0,
+				range
+			)
+			return false, 'CAMP_GEOMETRY_UNAVAILABLE', 999, range
+		end
+		local dist = mob_distance(target, camp)
+		if dist <= range then
+			_G.UC_PULLER_GATE_DIAG = ('reason=CAMP_IN_RANGE allowed=true source=camp setter=%s zone=%d target=%d dist=%.2f max=%.2f'):format(
+				tostring(camp.set_by),
+				tonumber(camp.zone_id),
+				tonumber(target.id) or 0,
+				dist,
+				range
+			)
+			return true, 'CAMP_IN_RANGE', dist, range
+		end
+		if not setting_enabled(settings.puller_distance_only) and (tonumber(target and target.hpp) or 0) < 99 then
+			_G.UC_PULLER_GATE_DIAG = ('reason=CAMP_HPP_BYPASS allowed=true source=camp setter=%s zone=%d target=%d hpp=%d dist=%.2f max=%.2f'):format(
+				tostring(camp.set_by),
+				tonumber(camp.zone_id),
+				tonumber(target.id) or 0,
+				tonumber(target.hpp) or 0,
+				dist,
+				range
+			)
+			return true, 'CAMP_HPP_BYPASS', dist, range
+		end
+		_G.UC_PULLER_GATE_DIAG = ('reason=CAMP_OUT_OF_RANGE allowed=false source=camp setter=%s zone=%d target=%d hpp=%d dist=%.2f max=%.2f'):format(
+			tostring(camp.set_by),
+			tonumber(camp.zone_id),
+			tonumber(target.id) or 0,
+			tonumber(target.hpp) or 0,
+			dist,
+			range
+		)
+		return false, 'CAMP_OUT_OF_RANGE', dist, range
+	end
+	if leash_source ~= 'player' then
+		_G.UC_PULLER_GATE_DIAG = ('reason=PULLER_LEASH_SOURCE_INVALID allowed=false source=%s max=%.2f'):format(
+			leash_source,
+			range
+		)
+		return false, 'PULLER_LEASH_SOURCE_INVALID', 999, range
 	end
 	local puller_id = resolve_puller_id(settings)
 	if puller_id <= 0 then
@@ -3206,16 +3268,16 @@ local function cast_ja(name)
 	end
 end
 
-local function should_hold_ws_for_chivalry(settings, player)
+local function chivalry_ws_reservation_reason(settings, player)
 	if not setting_enabled(settings and settings.ability_active) then
-		return false
+		return nil
 	end
 	if not player or not player.vitals then
-		return false
+		return nil
 	end
 	local now = uc_now_s()
 	if now < (tonumber(core.chivalry_hold_until) or 0) then
-		return true
+		return 'CHIVALRY_WAIT'
 	end
 	local abilities = uc_ability_pipeline.collect_ordered(settings or {}, 6)
 	local has_chivalry = false
@@ -3226,11 +3288,11 @@ local function should_hold_ws_for_chivalry(settings, player)
 		end
 	end
 	if not has_chivalry then
-		return false
+		return nil
 	end
 	local ja = res.job_abilities:with('en', 'Chivalry')
 	if not ja then
-		return false
+		return nil
 	end
 	local abil = windower.ffxi.get_abilities() or {}
 	local owns = false
@@ -3241,20 +3303,57 @@ local function should_hold_ws_for_chivalry(settings, player)
 		end
 	end
 	if not owns then
-		return false
+		return nil
 	end
 	local recasts = windower.ffxi.get_ability_recasts() or {}
 	if (recasts[ja.recast_id] or 0) > 0 then
-		return false
-	end
-	local tp = tonumber(player.vitals.tp) or 0
-	if tp >= CHIVALRY_MIN_TP then
-		return false
+		return nil
 	end
 	local mp = tonumber(player.vitals.mp) or 0
 	local mmp = tonumber(player.vitals.max_mp) or 0
 	local mp_pct = (mmp > 0) and ((mp / mmp) * 100.0) or 100.0
-	return mp_pct < CHIVALRY_MAX_MP_PCT
+	if mp_pct >= CHIVALRY_MAX_MP_PCT then
+		return nil
+	end
+	local tp = tonumber(player.vitals.tp) or 0
+	if tp < CHIVALRY_MIN_TP then
+		return 'CHIVALRY_HOLD_TP'
+	end
+	return 'CHIVALRY_READY'
+end
+
+local function select_aftermath_maintenance_ws(settings, player)
+	if not setting_enabled(settings and settings.aftermath_enabled) then
+		return nil, nil
+	end
+	local am_ws = tostring(settings.aftermath_ws or '')
+	if am_ws == '' then
+		return nil, nil
+	end
+	local weapon_name, weapon = aftermath_table.get_weapon_by_ws(am_ws)
+	if not weapon_name or type(weapon) ~= 'table' then
+		return '', 'AM_WS_UNMAPPED'
+	end
+	local profile = weapon.aftermath
+	local stage = tonumber(weapon.minimum_aftermath_stage) or 3
+	local stage_info = profile and profile.tp and profile.tp[stage] or nil
+	local required_buff_id = tonumber(stage_info and stage_info.buff_id) or 0
+	if required_buff_id <= 0 then
+		return '', 'AM_PROFILE_INVALID'
+	end
+	for _, bid in ipairs(player.buffs or {}) do
+		if tonumber(bid) == required_buff_id then
+			return nil, nil
+		end
+	end
+	if not uc_ws_memory.valid_ws_name(am_ws) then
+		return '', 'AM_WS_INVALID'
+	end
+	local tp = tonumber(player.vitals and player.vitals.tp) or 0
+	if tp >= 3000 then
+		return am_ws, 'AM_READY'
+	end
+	return '', 'AM_HOLD_TP'
 end
 
 local function get_ws_mode(settings)
@@ -3316,6 +3415,14 @@ local function select_smart_ws(settings, target_id)
 	if state and state.terminal == true and now < (tonumber(state.magic_burst_expires_at) or 0) then
 		return '', 'SC_TERMINAL'
 	end
+	local chivalry_reason = chivalry_ws_reservation_reason(settings, player)
+	if chivalry_reason then
+		return '', chivalry_reason
+	end
+	local aftermath_ws, aftermath_reason = select_aftermath_maintenance_ws(settings, player)
+	if aftermath_reason then
+		return aftermath_ws, aftermath_reason
+	end
 	if resonance_active then
 		local plan, plan_reason = skillchain_runtime:plan_continuation(
 			tid,
@@ -3346,42 +3453,6 @@ local function select_smart_ws(settings, target_id)
 		end
 	end
 
-	if should_hold_ws_for_chivalry(settings, player) then
-		return '', 'CHIVALRY_HOLD_TP'
-	end
-	if setting_enabled(settings.aftermath_enabled) then
-		local am_ws = tostring(settings.aftermath_ws or '')
-		if am_ws ~= '' then
-			local weapon_name, weapon = aftermath_table.get_weapon_by_ws(am_ws)
-			if not weapon_name or type(weapon) ~= 'table' then
-				return '', 'AM_WS_UNMAPPED'
-			end
-			local profile = weapon.aftermath
-			local stage = tonumber(weapon.minimum_aftermath_stage) or 3
-			local stage_info = profile and profile.tp and profile.tp[stage] or nil
-			local required_buff_id = tonumber(stage_info and stage_info.buff_id) or 0
-			if required_buff_id <= 0 then
-				return '', 'AM_PROFILE_INVALID'
-			end
-			local has_am = false
-			for _, bid in ipairs(player.buffs or {}) do
-				if tonumber(bid) == required_buff_id then
-					has_am = true
-					break
-				end
-			end
-			if not has_am then
-				if not uc_ws_memory.valid_ws_name(am_ws) then
-					return '', 'AM_WS_INVALID'
-				end
-				local tp = (player.vitals and player.vitals.tp) or 0
-				if tp >= 3000 then
-					return am_ws, 'AM_READY'
-				end
-				return '', 'AM_HOLD_TP'
-			end
-		end
-	end
 	if primary_ws == '' or not uc_ws_memory.valid_ws_name(primary_ws) then
 		return '', 'PRIMARY_WS_INVALID'
 	end

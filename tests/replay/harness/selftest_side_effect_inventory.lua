@@ -5,12 +5,12 @@ local INVENTORY_BASELINE = {
         ["uc_settarget.select_by_id("] = {},
     },
     ["unified_combat_core.lua"] = {
-        ["windower.send_command("] = { 1958, 1979, 2145, 2156, 3183, 3197, 3938 },
-        ["windower.ffxi.run("] = { 1564, 1573, 1578, 1931, 1950, 2033, 2059, 2068, 2119, 2224, 2347, 2366, 2380, 2386, 2420, 2458, 2478, 2483, 2517, 3431, 3447 },
-        ["uc_settarget.select_by_id("] = { 2057, 2193 },
+		["windower.send_command("] = { 2020, 2041, 2207, 2218, 3245, 3259, 4009 },
+		["windower.ffxi.run("] = { 1626, 1635, 1640, 1993, 2012, 2095, 2121, 2130, 2181, 2286, 2409, 2428, 2442, 2448, 2482, 2520, 2540, 2545, 2579, 3502, 3518 },
+		["uc_settarget.select_by_id("] = { 2119, 2255 },
     },
     ["UnifiedCombat.lua"] = {
-        ["windower.ffxi.run("] = { 416 },
+		["windower.ffxi.run("] = { 418 },
     },
     ["uc_party_follow.lua"] = {
         ["windower.ffxi.run("] = { 916, 943, 953, 966, 971, 976 },
@@ -25,7 +25,7 @@ local INVENTORY_BASELINE = {
         ["windower.send_command("] = { 433, 474, 476 },
     },
     ["remote_bridge.lua"] = {
-        ["windower.send_command("] = { 1592 },
+		["windower.send_command("] = { 1607 },
     },
     ["melee_engine.lua"] = {
         ["windower.send_command("] = { 377, 382, 661, 667, 814, 820, 1040, 1042, 1922, 2005, 2029, 2104, 2126, 2131, 2196, 2226, 2346, 2419, 2524, 2591, 2600, 2623, 2640, 2649 },

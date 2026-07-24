@@ -106,6 +106,7 @@ require('actions')
 
 local uc_partner_list = require('uc_partner_list')
 local uc_add_priority = require('uc_add_priority')
+local uc_camp_anchor = require('uc_camp_anchor')
 local uc_config_status_export = require('uc_config_status_export')
 local uc_active_config = require('uc_active_config')
 local uc_profile_v2 = require('uc_profile_v2')
@@ -183,6 +184,7 @@ local function uc_new_settings_defaults()
 		partner2 = false,
 		puller = false,
 		puller_name = '',
+		puller_leash_source = 'player',
 		puller_engage_range = 6.0,
 		puller_distance_only = false,
 		partner_id = 0,
@@ -474,7 +476,7 @@ local PROFILE_KEYS = {
 	'spacing_band_min', 'spacing_band_max', 'spacing_use_prediction', 'spacing_lookahead_s',
 	'spacing_model_size_floor',
 	'spacing_repel_hold_ticks', 'spacing_overlap_deadband', 'spacing_repel_weight', 'spacing_band_deadband',
-	'partner', 'partner2', 'puller', 'puller_name', 'puller_engage_range', 'puller_distance_only', 'partner_id', 'partner_id2', 'partner_ids', 'puller_id',
+	'partner', 'partner2', 'puller', 'puller_name', 'puller_leash_source', 'puller_engage_range', 'puller_distance_only', 'partner_id', 'partner_id2', 'partner_ids', 'puller_id',
 	'fight_leader', 'fight_leader_id', 'party_follow', 'party_follow_id', 'party_follow_leader_name', 'party_follow_min', 'party_follow_max', 'fight_follow_min', 'fight_follow_hold_s',
 	'nyzul_coordinator_name', 'nyzul_anchor_name', 'nyzul_parking_order',
 	'add_control', 'add_priority_names',
@@ -1998,6 +2000,7 @@ windower.register_event('incoming text', function(original, modified, mode, bloc
 end)
 
 windower.register_event('ipc message', function(msg)
+	uc_camp_anchor.on_ipc_message(msg)
 	if UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_ipc_message) == 'function' then
 		pcall(function()
 			UC_COMBAT_CORE.on_ipc_message(msg)
@@ -2043,6 +2046,7 @@ windower.register_event('job change', function(job, lvl)
 end)
 
 windower.register_event('zone change', function()
+	uc_camp_anchor.clear()
 	uc_nyzul_runtime.reset('zone_change')
 	require('uc_brd_maintenance').reset('zone_change')
 	require('uc_reaction_runtime').reset('zone_change')
@@ -2056,6 +2060,7 @@ windower.register_event('zone change', function()
 end)
 
 windower.register_event('unload', function()
+	uc_camp_anchor.clear()
 	uc_nyzul_runtime.reset('unload')
 	require('uc_brd_maintenance').reset('unload')
 	require('uc_reaction_runtime').reset('unload')
@@ -2076,6 +2081,7 @@ windower.register_event('unload', function()
 end)
 
 windower.register_event('logout', function()
+	uc_camp_anchor.clear()
 	uc_nyzul_runtime.reset('logout')
 	require('uc_lilith_easy_encounter').reset('logout')
 	require('uc_lilith_easy_formation_runtime').reset('logout')
@@ -2272,6 +2278,32 @@ windower.register_event('addon command', function(...)
 			return
 		end
 		windower.add_to_chat(ok and 207 or 167, 'UC Nyzul: ' .. tostring(message))
+		return
+	elseif a == 'camp' then
+		local sub = args[2] and tostring(args[2]):lower() or 'status'
+		if sub == 'set' then
+			local ok, message = uc_camp_anchor.set_current_position()
+			windower.add_to_chat(ok and 207 or 167, 'UC camp: ' .. tostring(message))
+			return
+		elseif sub == 'clear' then
+			local ok, message = uc_camp_anchor.clear_shared()
+			windower.add_to_chat(ok and 207 or 167, 'UC camp: ' .. tostring(message))
+			return
+		elseif sub == 'status' then
+			local status = uc_camp_anchor.status()
+			if status.active then
+				windower.add_to_chat(207, ('UC camp: active=true zone=%d x=%.2f y=%.2f set_by=%s'):format(
+					status.zone_id,
+					status.x,
+					status.y,
+					status.set_by
+				))
+			else
+				windower.add_to_chat(207, 'UC camp: active=false')
+			end
+			return
+		end
+		windower.add_to_chat(207, '//uc camp set|clear|status')
 		return
 	elseif a == 'reaction' or a == 'reactions' then
 		local sub = args[2] and tostring(args[2]):lower() or 'status'

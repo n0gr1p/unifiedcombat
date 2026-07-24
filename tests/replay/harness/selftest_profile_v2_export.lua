@@ -753,6 +753,7 @@ local function build_expected_config()
 				secondary_enabled = false,
 				puller = true,
 				puller_name = 'Niightsiide',
+				leash_source = 'player',
 				engage_range = 6.0,
 				puller_distance_only = false,
 			},

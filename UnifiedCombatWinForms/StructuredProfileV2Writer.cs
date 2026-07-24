@@ -421,16 +421,22 @@ internal static class StructuredProfileV2Writer
     private static StructuredProfileNode BuildFollow(JsonObject flatProfile)
     {
         var partnerNames = ParseNameList(ReadString(flatProfile, "partner_entries", ""));
+		var leashSource = ReadString(flatProfile, "puller_leash_source", "player").Trim().ToLowerInvariant();
+		if (leashSource is not ("player" or "camp"))
+		{
+			throw new InvalidDataException($"puller_leash_source must be player or camp, got '{leashSource}'.");
+		}
         var partner = new StructuredProfileNode()
             .Add("enabled", ReadBool(flatProfile, "partner", false))
             .Add("secondary_enabled", partnerNames.Count > 1)
             .Add("names", partnerNames)
             .Add("puller", ReadBool(flatProfile, "puller", false))
+			.Add("leash_source", leashSource)
             .Add("engage_range", Math.Clamp(ReadDouble(flatProfile, "puller_engage_range", 6.0), 0.1, 50.0))
             .Add("puller_distance_only", ReadBool(flatProfile, "puller_distance_only", false));
 
         var pullerName = ReadString(flatProfile, "puller_selected", ReadString(flatProfile, "puller_name", ""));
-        if (!string.IsNullOrWhiteSpace(pullerName))
+		if (leashSource == "player" && !string.IsNullOrWhiteSpace(pullerName))
         {
             partner.Add("puller_name", pullerName);
         }
