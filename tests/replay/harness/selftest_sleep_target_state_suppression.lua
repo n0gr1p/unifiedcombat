@@ -158,11 +158,13 @@ end
 
 local function main()
     local source = read_file(scheduler_path)
+    local combat_provider = read_file("uc_provider_combat.lua")
 
     assert_contains(source, "scheduler.SLEEP_TARGET_SUPPRESSION_TIMEOUT_S = 45.0", "Sleep suppression must use a bounded timeout")
     assert_contains(source, "function scheduler.sleep_spell_effect_id_set_from_settings(settings)", "Sleep suppression must derive sleep-family effect ids from configured spells")
     assert_contains(source, "function scheduler.target_sleep_suppressed(settings, target_id, at)", "Sleep suppression must expose a target-id suppression gate")
-    assert_contains(source, "if scheduler.target_sleep_suppressed(ctx.settings, tid, ctx.now) then", "Sleep target eligibility must consult the suppression gate")
+    assert_contains(source, "target_sleep_suppressed = scheduler.target_sleep_suppressed", "scheduler must inject the suppression gate into the combat provider")
+    assert_contains(combat_provider, "if target_sleep_suppressed(ctx.settings, tid, ctx.now) then", "Sleep target eligibility must consult the suppression gate")
     assert_contains(source, "function scheduler.observe_local_sleep_action(act, player_id, at)", "local Sleep action observation must expose a successful-recipient tracker")
     assert_contains(source, "if scheduler.spell_effect_gain_messages[message_id] == true then", "local Sleep tracking must require a successful effect message")
     assert_contains(source, "scheduler.mark_sleep_target_suppressed(tid, spell_name, now)", "confirmed local combat Sleep success must mark each successful target suppressed")

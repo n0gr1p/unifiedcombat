@@ -71,6 +71,15 @@ return {
             direct_ipc_send = 3,
             packet_inject = 1,
         },
+        ["uc_provider_combat.lua"] = {
+            command_magic = 1,
+            command_ability = 2,
+            command_weaponskill = 1,
+        },
+        ["uc_provider_tank_enmity.lua"] = {
+            command_magic = 1,
+            command_ability = 1,
+        },
         ["uc_pathing.lua"] = {
             direct_run = 2,
         },
@@ -98,9 +107,8 @@ return {
             wrapper_disengage = 2,
         },
         ["unified_scheduler.lua"] = {
-            command_magic = 4,
-            command_ability = 6,
-            command_weaponskill = 1,
+            command_magic = 2,
+            command_ability = 3,
         },
         ["UnifiedCombat.lua"] = {
             direct_run = 1,

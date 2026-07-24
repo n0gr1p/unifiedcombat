@@ -8,6 +8,7 @@ local SONG_START_TIMEOUT_S = 2.0
 local SONG_CAST_TIMEOUT_S = 20.0
 local SONG_CONFIRM_TIMEOUT_S = 2.0
 local JA_CONFIRM_RETRY_S = 0.5
+local PIANISSIMO_CONFIRM_TIMEOUT_S = 2.0
 local TARGETED_TROUBADOUR_SAFETY_S = 8.0
 local REFRESH_BASE_LEAD_S = 8.0
 local REFRESH_PER_SONG_LEAD_S = 4.0
@@ -866,6 +867,7 @@ function M.note_dispatch(action, action_token, now)
 		elseif action_name == JA.pianissimo.name and type(state.targeted_transaction) == 'table' then
 			state.targeted_transaction.phase = 'confirming_pianissimo'
 			state.targeted_transaction.phase_started_at = dispatched_at
+			state.targeted_transaction.pianissimo_dispatched_at = dispatched_at
 			diagnostic_log('PIANISSIMO_DISPATCH', {
 				action_token = action_token,
 				dispatched_at = dispatched_at,
@@ -1577,19 +1579,39 @@ local function targeted_transaction_action(config, ctx, song_limit)
 			if has_buff(ctx.player, JA.pianissimo.buff_id) then
 				transaction.phase = 'awaiting_song'
 				transaction.phase_started_at = 0
-			elseif confirmation_timed_out(transaction.phase_started_at, ctx.now) then
-				block('pianissimo_confirmation_retry:' .. member.name)
-				diagnostic_log('PIANISSIMO_CONFIRMATION_RETRY', {
-					age = (tonumber(ctx.now) or os.time()) - (tonumber(transaction.phase_started_at) or 0),
-					buff_active = has_buff(ctx.player, JA.pianissimo.buff_id),
-					recipient_id = member.id,
-					recipient_name = member.name,
-					song = transaction.song_name,
-				})
-				transaction.phase = 'awaiting_pianissimo'
-				transaction.phase_started_at = tonumber(ctx.now) or os.time()
-				return nil
 			else
+				local confirmation_age = (tonumber(ctx.now) or os.time())
+					- (tonumber(transaction.phase_started_at) or 0)
+				if confirmation_age > PIANISSIMO_CONFIRM_TIMEOUT_S then
+					block('pianissimo_confirmation_timeout:' .. member.name)
+					diagnostic_log('PIANISSIMO_CONFIRMATION_TIMEOUT', {
+						age = confirmation_age,
+						recipient_id = member.id,
+						recipient_name = member.name,
+						song = transaction.song_name,
+					})
+					state.targeted_transaction = nil
+					release_action_lane_if_idle(state.last_blocker)
+					return nil
+				end
+				if confirmation_age > JA_CONFIRM_RETRY_S then
+					local ready_ok = ready(ctx, JA.pianissimo.name, 'ja')
+					if ready_ok then
+						block('pianissimo_confirmation_retry:' .. member.name)
+						diagnostic_log('PIANISSIMO_CONFIRMATION_RETRY', {
+							age = confirmation_age,
+							buff_active = false,
+							recipient_id = member.id,
+							recipient_name = member.name,
+							song = transaction.song_name,
+						})
+						transaction.phase = 'awaiting_pianissimo'
+						transaction.phase_started_at = tonumber(ctx.now) or os.time()
+					else
+						block('pianissimo_confirmation_pending_recast:' .. member.name)
+					end
+					return nil
+				end
 				block('pianissimo_confirmation_pending:' .. member.name)
 				return nil
 			end
@@ -1598,10 +1620,32 @@ local function targeted_transaction_action(config, ctx, song_limit)
 			if has_buff(ctx.player, JA.pianissimo.buff_id) then
 				transaction.phase = 'awaiting_song'
 			else
+				local last_dispatch_at = tonumber(transaction.pianissimo_dispatched_at)
+				if last_dispatch_at ~= nil and last_dispatch_at > 0 then
+					local dispatch_age = (tonumber(ctx.now) or os.time()) - last_dispatch_at
+					if dispatch_age > PIANISSIMO_CONFIRM_TIMEOUT_S then
+						block('pianissimo_confirmation_timeout:' .. member.name)
+						diagnostic_log('PIANISSIMO_CONFIRMATION_TIMEOUT', {
+							age = dispatch_age,
+							recipient_id = member.id,
+							recipient_name = member.name,
+							song = transaction.song_name,
+						})
+						state.targeted_transaction = nil
+						release_action_lane_if_idle(state.last_blocker)
+						return nil
+					end
+					local retry_ready = ready(ctx, JA.pianissimo.name, 'ja')
+					if not retry_ready then
+						block('pianissimo_confirmation_pending_recast:' .. member.name)
+						return nil
+					end
+				end
 				local song_ready = ready(ctx, transaction.song_name, 'spell', member.id)
 				if not song_ready then
 					block('targeted_song_not_ready_before_pianissimo:' .. transaction.song_name)
-					if transaction.preserve_action_lane ~= true then
+					if transaction.preserve_action_lane ~= true
+						and tonumber(transaction.pianissimo_dispatched_at) == nil then
 						state.targeted_transaction = nil
 						release_action_lane_if_idle(state.last_blocker)
 					end
@@ -1616,7 +1660,8 @@ local function targeted_transaction_action(config, ctx, song_limit)
 					})
 				end
 				block('pianissimo_not_ready:' .. member.name)
-				if transaction.preserve_action_lane ~= true then
+				if transaction.preserve_action_lane ~= true
+					and tonumber(transaction.pianissimo_dispatched_at) == nil then
 					state.targeted_transaction = nil
 					release_action_lane_if_idle(state.last_blocker)
 				end
@@ -1947,6 +1992,15 @@ function M.propose(config, ctx)
 		maintenance_song_limit = 4
 	end
 	party_song_state.observe(ctx.party_members, config.recovery_ignore_names, general_song_status_ids(), now)
+	if type(state.targeted_transaction) == 'table' or state.pianissimo_consumed_wait then
+		local targeted = targeted_transaction_action(config, ctx, maintenance_song_limit)
+		if type(targeted) == 'table' then
+			return targeted
+		end
+		if type(state.targeted_transaction) == 'table' or state.pianissimo_consumed_wait then
+			return nil
+		end
+	end
 	local nightingale_active = has_buff(player, JA.nightingale.buff_id)
 	local troubadour_active = has_buff(player, JA.troubadour.buff_id)
 	local nitro_active = nightingale_active and troubadour_active
@@ -2054,7 +2108,7 @@ function M.propose(config, ctx)
 				state.last_blocker = nitro_reason
 				if nitro_reason ~= 'soul_voice_waiting_nitro_endtime' then
 					state.soul_voice_generation = nil
-					release_action_lane(state.last_blocker)
+					release_action_lane_if_idle(state.last_blocker)
 				end
 				return nil
 			elseif ready(ctx, JA.soul_voice.name, 'ja') then
@@ -2095,7 +2149,7 @@ function M.propose(config, ctx)
 	local urgent, remaining, urgent_recipient, urgent_blocker = urgent_song(config, song_limit, os.time())
 	if urgent_blocker ~= '' then
 		state.last_blocker = urgent_blocker
-		release_action_lane(state.last_blocker)
+		release_action_lane_if_idle(state.last_blocker)
 		return nil
 	end
 	if urgent ~= '' then
@@ -2155,7 +2209,7 @@ function M.propose(config, ctx)
 				end
 				if normalization_blocker ~= '' then
 					state.last_blocker = normalization_blocker
-					release_action_lane(state.last_blocker)
+					release_action_lane_if_idle(state.last_blocker)
 					return nil
 				end
 				if state.owners[victim].alignment_attempted == true then
@@ -2163,7 +2217,7 @@ function M.propose(config, ctx)
 					state.last_blocker = normalized_dummy ~= ''
 						and ('dummy_duration_normalization_failed:' .. normalized_dummy)
 						or ('degraded_alignment_failed:' .. victim)
-					release_action_lane(state.last_blocker)
+					release_action_lane_if_idle(state.last_blocker)
 					return nil
 				end
 				diagnostic_log('DEGRADED_ALIGN_REFRESH', {
@@ -2186,7 +2240,7 @@ function M.propose(config, ctx)
 				return song_proposal(ctx, degraded_missing, 'brd_degraded_rebuild_unknown', 0.743, false, required_recipients, nil, base_count, song_limit)
 			end
 			state.last_blocker = 'degraded_final_unsafe:' .. victim_reason
-			release_action_lane(state.last_blocker)
+			release_action_lane_if_idle(state.last_blocker)
 			return nil
 		end
 		state.last_blocker = 'degraded_fifth_waiting_for_clarion'
@@ -2221,7 +2275,7 @@ function M.propose(config, ctx)
 			return song_proposal(ctx, capacity_final, 'brd_build_capacity_final', 0.75, false, required_recipients, nil, final_capacity, maintenance_song_limit)
 		end
 		state.last_blocker = 'capacity_build_no_timer_transition'
-		release_action_lane(state.last_blocker)
+		release_action_lane_if_idle(state.last_blocker)
 		return nil
 	end
 
@@ -2254,7 +2308,7 @@ function M.propose(config, ctx)
 			end
 			if normalization_blocker ~= '' then
 				state.last_blocker = normalization_blocker
-				release_action_lane(state.last_blocker)
+				release_action_lane_if_idle(state.last_blocker)
 				return nil
 			end
 			if state.owners[victim].alignment_attempted == true then
@@ -2262,7 +2316,7 @@ function M.propose(config, ctx)
 				state.last_blocker = normalized_dummy ~= ''
 					and ('dummy_duration_normalization_failed:' .. normalized_dummy)
 					or ('final_alignment_failed:' .. victim)
-				release_action_lane(state.last_blocker)
+				release_action_lane_if_idle(state.last_blocker)
 				return nil
 			end
 			return song_proposal(ctx, victim, 'brd_align_shortest_final', 0.745, false, required_recipients, nil, base_count, song_limit, false, true)
@@ -2283,7 +2337,7 @@ function M.propose(config, ctx)
 			end
 			if targeted_alignment_reason ~= ('targeted_self_alignment_not_configured:' .. victim) then
 				state.last_blocker = targeted_alignment_reason
-				release_action_lane(state.last_blocker)
+				release_action_lane_if_idle(state.last_blocker)
 				return nil
 			end
 		end
@@ -2295,7 +2349,7 @@ function M.propose(config, ctx)
 			return song_proposal(ctx, missing, 'brd_rebuild_unknown', 0.743, false, required_recipients, nil, base_count, song_limit)
 		end
 		state.last_blocker = 'final_replacement_unsafe:' .. victim_reason
-		release_action_lane(state.last_blocker)
+		release_action_lane_if_idle(state.last_blocker)
 		return nil
 	end
 
@@ -2344,7 +2398,7 @@ function M.propose(config, ctx)
 			local local_owner = state.owners[recovery.action_name]
 			if type(local_owner) ~= 'table' or local_owner.is_dummy ~= true then
 				state.last_blocker = 'normalization_not_exact_refresh:self'
-				release_action_lane(state.last_blocker)
+				release_action_lane_if_idle(state.last_blocker)
 				return nil
 			end
 		end

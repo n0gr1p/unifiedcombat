@@ -169,15 +169,17 @@ end
 
 local function main()
     local source = read_file(scheduler_path)
+    local combat_provider = read_file("uc_provider_combat.lua")
+    local target_provider = read_file("uc_provider_target_control.lua")
 
     assert_contains(source, "scheduler.TANK_TARGET_ACQUIRE_PRIORITY = 106", "tank target-acquire priority constant must exist")
     assert_contains(source, "scheduler.TANK_ENGAGE_PRIORITY = 107", "tank engage priority constant must exist")
     assert_contains(source, "scheduler.DEFAULT_ENGAGE_PRIORITY = 72", "non-tank engage priority must stay explicit")
-    assert_contains(source, "local tank_mode = bool_setting(uc_scheduler_config.tank_enabled(ctx.settings), false)", "tank engage priority must remain tank-specific")
-    assert_contains(source, "local engage_priority = tank_mode and scheduler.TANK_ENGAGE_PRIORITY or scheduler.DEFAULT_ENGAGE_PRIORITY", "engage collector must use explicit scoped priority values")
-    assert_contains(source, "local priority_band = tank_mode and scheduler.TANK_TARGET_ACQUIRE_PRIORITY or 84", "target-control collector must raise tank target acquisition above non-critical defensive actions")
-    assert_contains(source, "duplicate_suppression_key = ('engage:%d'):format(tonumber(t.id) or 0)", "engage duplicate suppression must remain intact")
-    assert_contains(source, "recast_key = 'engage:attack_on'", "engage recast/throttle key must remain intact")
+    assert_contains(combat_provider, "local tank_mode = bool_setting(tank_enabled(ctx.settings), false)", "tank engage priority must remain tank-specific")
+    assert_contains(combat_provider, "local engage_priority = tank_mode and tank_engage_priority or default_engage_priority", "engage collector must use injected scoped priority values")
+    assert_contains(target_provider, "local priority_band = tank_mode and tank_target_priority or 84", "target-control collector must raise tank target acquisition above non-critical defensive actions")
+    assert_contains(combat_provider, "duplicate_suppression_key = ('engage:%d'):format(tonumber(target.id) or 0)", "engage duplicate suppression must remain intact")
+    assert_contains(combat_provider, "recast_key = 'engage:attack_on'", "engage recast/throttle key must remain intact")
     assert_not_contains(source, "hb off", "tank engage priority fix must not introduce direct scheduler side-effect toggles")
     assert_not_contains(source, "hb on", "tank engage priority fix must not introduce direct scheduler side-effect toggles")
 

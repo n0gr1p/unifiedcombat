@@ -1,7 +1,7 @@
 # Side-Effect Allowlist
 
-Status: **Phase 2 dispatcher-monopoly baseline**
-Verified: 2026-07-24 in the Phase 2 working tree.
+Status: **Phase 3 provider-purity baseline**
+Verified: 2026-07-24 in the Phase 3 working tree.
 Runtime behavior intent: scheduler-owned execution is dispatcher-only; legacy
 and independent subsystems remain explicitly allowlisted.
 
@@ -35,6 +35,8 @@ The human call-site inventory is:
 | `uc_nyzul_runtime.lua` | Stop and IPC | Nyzul coordination behavior | Route stop through movement facade; retain IPC only if Nyzul remains its owner |
 | `uc_lilith_easy_formation_runtime.lua` | Injected run adapter | Formation movement already dispatches validated run/run-stop intents | Retain as the formation-owned dispatcher adapter or consolidate during Phase 4 |
 | `uc_camp_anchor.lua` | IPC | Camp-anchor synchronization | Expected to remain if camp-anchor remains the state owner |
+| `uc_provider_combat.lua` | `/ma`, `/ja`, and `/ws` proposal command strings | Pure construction of compatibility fields; the provider never executes them | Retain only while proposal compatibility requires `legacy_command` |
+| `uc_provider_tank_enmity.lua` | `/ma` and `/ja` proposal command strings | Pure construction of compatibility fields; the provider never executes them | Retain only while proposal compatibility requires `legacy_command` |
 | `uc_scheduler_command_builder.lua` | `/ma` and `/ja` construction only | Pure intent construction, not execution | Expected to remain pure |
 | `remote_bridge.lua` | Explicit addon reload command | User/UI control operation outside combat arbitration | Expected bridge exception unless a later task changes it |
 
@@ -84,8 +86,8 @@ lua tests/replay/harness/selftest_side_effect_inventory.lua
 Current expected result:
 
 ```text
-runtime_files=126
-allowlisted_files=20
-pattern_checks=300
+runtime_files=132
+allowlisted_files=22
+pattern_checks=330
 observed_hits=250
 ```

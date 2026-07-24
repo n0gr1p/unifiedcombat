@@ -7,8 +7,8 @@ Canonical location: `RFC/UnifiedCombat_scheduler_refactor_tracking.md`
 ## 1) Authoritative Current Status
 
 Status date: 2026-07-24
-Audited state: current Phase 2 working tree based on Phase 1 commit
-`dca8efb`
+Audited state: current Phase 3 working tree based on Phase 2 commit
+`1060c27`
 
 This compact board is the authoritative current status. The detailed task notes and
 older progress rows below are retained as implementation history and may describe
@@ -19,7 +19,7 @@ an earlier state.
 | Phase 0 — Baseline and guardrails | `DONE` | T0.1 side-effect inventory, T0.2 responsibility map, T0.3 canonical tracker, and T0.4 repository-wide discovery guard are current and linked below. |
 | Phase 1 — Mechanical decomposition | `DONE / REPLAY VERIFIED` | Proposal normalization, ranker, context, enemy-effect state, observability, and party IPC are extracted. One tick context is shared by target acquisition and provider collection/ranking. Phase 1 exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase1_exit_audit_2026-07-24.md`. |
 | Phase 2 — Dispatcher monopoly | `DONE / REPLAY VERIFIED` | Scheduler-owned command, target, turn, attack, skillchain WS, and movement execution is dispatcher-only; transitional flags and direct fallback execution are retired. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase2_exit_audit_2026-07-24.md`. |
-| Phase 3 — Provider purity | `NOT STARTED structurally` | Primary `p1_collect_*` providers remain local to `unified_scheduler.lua`; the RFC provider-module boundary does not exist. |
+| Phase 3 — Provider purity | `DONE / FIELD VERIFIED` | Defensive, combat, tank-enmity, enemy-buff-removal, maintenance, and target/pull proposal collection is extracted into six fail-fast provider modules. Providers do not dispatch, acquire locks, move, turn, target, or attack. Multibox acceptance passed with Bard maintenance, tank, COR maintenance, and defensive spell casting active. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase3_exit_audit_2026-07-24.md`. |
 | Phase 4 — Movement ownership cleanup | `IN PROGRESS / FAR FROM COMPLETE` | Scheduler coordinator and formation movement use dispatcher paths; legacy core, follow, pathing, Nyzul, lifecycle, and other movement owners still execute directly. |
 | Phase 5 — Domain cutover | `PARTIAL` | Scheduler-owned paths are cut over without fallback, while legacy/core and independent subsystem direct paths remain. |
 | Phase 6 — Cleanup and simplification | `NOT STARTED` | Broad legacy retirement and scheduler simplification have not occurred. |
@@ -95,12 +95,96 @@ Phase 2 verification:
 - detailed audit:
   `RFC/UnifiedCombat_scheduler_refactor_phase2_exit_audit_2026-07-24.md`.
 
-Next architectural work: Phase 3 provider extraction. Independent follow,
-pathing, Nyzul, lifecycle, and legacy core movement remain Phase 4/5 work and
-are explicitly allowlisted.
+### Phase 3 acceptance record
+
+| Task | Status | Artifact / evidence |
+| --- | --- | --- |
+| T3.1 — Defensive provider | `DONE` | `uc_provider_defensive.lua` owns internal and HealBot proposal adapters without dispatch or lock acquisition. |
+| T3.2 — Combat provider | `DONE` | `uc_provider_combat.lua` owns WS, Sleep, engage, and configured-JA proposal adapters while preserving fields, priorities, and combat ownership gates. |
+| T3.3 — Tank enmity provider | `DONE` | `uc_provider_tank_enmity.lua` converts the existing core selector result into the established tank proposal without command, movement, or targeting execution. |
+| T3.4 — Maintenance provider | `DONE / FIELD VERIFIED` | `uc_provider_maintenance.lua` owns existing COR, BRD, and GEO proposal collection. Field-discovered Bard execution gaps are corrected: every setup/song dispatch receives dispatcher-owned `run_stop`; the reserved lane refreshes scheduler movement ownership; and a dispatched Pianissimo transaction retains atomic lane ownership while confirmation is late, including when a generated retry proposal is not dispatched. Bard and COR maintenance passed the Phase 3 multibox acceptance session. |
+| T3.5 — Target/pull/add-control providers | `DONE` | `uc_provider_target_control.lua` owns target acquisition, engaged add-control retarget, and pull proposal generation without invoking the legacy direct add-control executor. |
+| Enemy-buff removal provider | `DONE` | `uc_provider_enemy_buff_removal.lua` converts authoritative tracker state into the established dispel proposal without dispatch. |
+| Cast/spacing movement safety | `DONE / FIELD VERIFIED` | Casting-status, spell-cooldown, and active-spell movement blocks now cancel an already-active spacing vector through dispatcher-owned `run_stop` and refresh a bounded scheduler movement lock without changing spacing geometry. Defensive spell casting passed the Phase 3 multibox acceptance session. |
+| Provider boundary guard | `DONE` | `tests/replay/harness/selftest_scheduler_providers_phase3.lua` pins six fail-fast factories, scheduler wiring/order, representative proposal shapes, removed scheduler-local collectors, and prohibited provider execution calls. |
+
+Phase 3 verification:
+
+- runtime parse: 83 runtime Lua files;
+- aggregate replay/static runner: 114/114 suites;
+- side-effect discovery guard: 132 non-test Lua files scanned, 22 files
+  allowlisted, 15 patterns checked per allowlisted file, 330 exact file-pattern
+  assertions, and 250 observed tracked hits;
+- scheduler provider collection order: unchanged and pinned by the Phase 3
+  contract suite;
+- provider direct command, movement, turn, target, attack, dispatcher, and lock
+  calls: zero;
+- live Windower DPS smoke test: Terrasjr MNK/WAR targeting, engage, and observed
+  combat actions passed; an apparent movement failure was traced to addon reload
+  clearing the runtime camp anchor while the UI displayed its stale persisted
+  value, not to a scheduler/provider regression;
+- live Windower multibox acceptance: PASS with Bard maintenance, tank, COR
+  maintenance, and defensive spell casting active; no remaining Phase 3 field
+  blocker was reported;
+- detailed audit:
+  `RFC/UnifiedCombat_scheduler_refactor_phase3_exit_audit_2026-07-24.md`.
+
+Next architectural work: Phase 4 movement ownership cleanup. Independent follow,
+pathing, Nyzul, lifecycle, and legacy core movement remain explicitly
+allowlisted.
 
 ## Recent Historical Entries
 
+- 2026-07-24: Completed Phase 3 multibox field acceptance after the Bard
+  Pianissimo retry-lane correction. Bard maintenance, tank behavior, COR
+  maintenance, and defensive spell casting all passed together. Phase 3 status
+  advanced from replay verified with live retests pending to `DONE / FIELD
+  VERIFIED`; Phase 4 movement ownership cleanup is now the next RFC phase.
+- 2026-07-24: Corrected the live Pianissimo lane-continuity failure. Timeline
+  evidence showed Pianissimo dispatch and recast consumption followed by the
+  0.5-second confirmation retry, transaction abandonment, target/engage or Erase
+  admission, and no immediate reserved song. The second retest isolated the
+  remaining case: the retry proposal could be generated but lose dispatch while
+  the original Pianissimo then consumed its recast. The transaction now records
+  the last actual Pianissimo dispatch independently of proposal phase, retains
+  the action lane for the bounded late-confirmation window even when the retry
+  is not dispatched, gives active Pianissimo work atomic planner priority, and
+  uses idle-aware lane release throughout normal planner blockers. Focused Bard
+  maintenance and movement-safety tests pass; runtime parse passes for 83 files,
+  the side-effect guard remains at 250 observed hits, and aggregate replay/static
+  validation passes 114/114 suites. The subsequent multibox retest passed.
+- 2026-07-24: Corrected the field-discovered spacing/cast movement-safety gap.
+  The movement coordinator previously recognized casting status, spell cooldown,
+  and active spell state but returned without cancelling the already-active
+  spacing run vector. All three cast-freeze branches now issue dispatcher-owned
+  `run_stop`, refresh a bounded scheduler movement lock, preserve active Nyzul
+  ownership, and emit `CAST_MOVEMENT_HOLD`; spacing geometry is unchanged.
+  Added `selftest_spacing_cast_movement_lock.lua`. Runtime parse passes for 83
+  files, the side-effect guard remains at 250 observed hits, and aggregate
+  replay/static validation passes 114/114 suites. The subsequent multibox
+  defensive-spell retest passed.
+- 2026-07-24: Corrected the field-discovered Bard maintenance movement-safety
+  gap at the scheduler execution boundary. Bard setup/song dispatch now issues
+  dispatcher-owned `run_stop` before checking temporary action blockage and
+  before sending the command. The reserved Bard lane refreshes a bounded
+  scheduler movement lock so follow/pathing cannot restart movement mid-sequence
+  and preserves an active higher-priority Nyzul hold. Added
+  `selftest_brd_maintenance_movement_safety.lua`; runtime parse passes for 83
+  files, the side-effect guard remains at 250 observed hits, and aggregate
+  replay/static validation passes 114/114 suites. Later corrective multibox
+  testing passed.
+- 2026-07-24: Completed RFC Phase 3 provider purity in the current working
+  tree. Extracted defensive, combat, tank-enmity, enemy-buff-removal,
+  maintenance, and target/pull proposal adapters into six fail-fast modules;
+  preserved scheduler collection order and centralized dispatch; added focused
+  provider boundary and proposal-shape coverage; and refreshed the side-effect
+  inventory for compatibility command-string construction. Runtime parse passes
+  for 83 files, aggregate replay/static validation passes 114/114 suites, and
+  the side-effect guard remains at 250 observed hits. A live Terrasjr MNK/WAR
+  DPS smoke confirmed targeting, engage, and observed combat actions. The
+  apparent approach failure was traced to a stale UI camp value after reload
+  cleared the runtime camp anchor, not to scheduler/provider behavior. See
+  `RFC/UnifiedCombat_scheduler_refactor_phase3_exit_audit_2026-07-24.md`.
 - 2026-07-24: Completed RFC Phase 2 dispatcher monopoly in the current working
   tree. Removed transitional ownership flags and every ownership-helper direct
   fallback, routed scheduler engage/switch/disengage and scheduler-owned

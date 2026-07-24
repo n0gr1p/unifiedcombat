@@ -257,19 +257,21 @@ package.loaded.uc_tb_effect_table = nil
 _G.windower = original_windower
 
 local source = assert(io.open('unified_scheduler.lua', 'rb')):read('*a')
+local enemy_buff_provider_source = assert(io.open('uc_provider_enemy_buff_removal.lua', 'rb')):read('*a')
 local enemy_effect_state_source = assert(io.open('uc_scheduler_enemy_effect_state.lua', 'rb')):read('*a')
 local ranker_source = assert(io.open('uc_scheduler_ranker.lua', 'rb')):read('*a')
 assert_true(enemy_effect_state_source:find('local dispellable_priority = {}', 1, true) ~= nil, 'enemy-effect state must own JSON dispel priorities')
 assert_true(enemy_effect_state_source:find('local dispellable_set = {}', 1, true) ~= nil, 'enemy-effect state must own JSON dispel membership')
 assert_true(enemy_effect_state_source:find('buff_ids record at byte %d has no danger_weight', 1, true) ~= nil, 'the JSON dispel catalog must reject records without a danger weight')
-assert_true(source:find("require('uc_scheduler_enemy_effect_state').is_dispellable(eid)", 1, true) ~= nil, 'enemy dispel collection must require explicit JSON catalog membership')
+assert_true(source:find("is_dispellable = require('uc_scheduler_enemy_effect_state').is_dispellable", 1, true) ~= nil, 'scheduler must inject explicit JSON catalog membership into enemy dispel collection')
+assert_true(enemy_buff_provider_source:find('if is_dispellable(eid) then', 1, true) ~= nil, 'enemy dispel collection must require explicit JSON catalog membership')
 assert_true(ranker_source:find("reject_reason = 'reaction_hold'", 1, true) ~= nil, 'ranker must reject blocked proposals through reaction hold')
 assert_true(source:find("UC_MOVEMENT_MODE = 'REACTION_HOLD'", 1, true) ~= nil, 'movement coordinator must hold while turned away')
 assert_true(source:find("if rawget(_G, 'Start_Engine') == true then", 1, true) ~= nil, 'ability reactions must not activate while the engine is stopped')
 assert_true(source:find('scheduler.apply_reaction_response(reaction_event.activated)', 1, true) ~= nil, 'ready event must use response-specific scheduler ownership')
 assert_true(source:find('scheduler.apply_reaction_turn({ actor_id = current_target_id }, false)', 1, true) ~= nil, 'completion must restore scheduler facing toward the current target')
 assert_true(source:find('mark_enemy_dispel_attempt(tostring(dispel_detail.enemy_dispel_attempt_key), dispatch_now)', 1, true) ~= nil, 'enemy dispel retry cooldown must begin only after dispatch')
-assert_true(source:find('for _, tracked_target in ipairs(tracked_targets) do', 1, true) ~= nil, 'enemy dispel collection must use the authoritative effect tracker')
+assert_true(enemy_buff_provider_source:find('for _, tracked_target in ipairs(tracked_targets) do', 1, true) ~= nil, 'enemy dispel collection must use the authoritative effect tracker')
 assert_true(source:find('enemy_effect_tracker.sweep_invalid()', 1, true) ~= nil, 'every scheduler tick must sweep dead or despawned enemy effect targets')
 assert_true(source:find('enemy_effect_tracker.observe_effect(target_id, effect_id, source, observed_effect_set)', 1, true) ~= nil, 'TargetBar catalog observations must feed the authoritative enemy effect tracker')
 

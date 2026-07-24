@@ -124,21 +124,37 @@ local function install_scheduler_stubs()
             [214] = { id = 214, en = "Ballad" },
         }),
     }
-    package.loaded["uc_ability_pipeline"] = {}
+    package.loaded["uc_ability_pipeline"] = {
+        collect_ordered = function() return {} end,
+    }
     package.loaded["unified_combat_core"] = {
         on_action_message = function() end,
         add_control_enabled_for_scheduler = function() return false end,
+        select_ws_plan_for_scheduler = function() return nil end,
+        is_live_actionable_combat_target = function() return false end,
+        select_pull_for_scheduler = function() return nil end,
+        select_tank_enmity_for_scheduler = function() return nil end,
+        select_target_for_scheduler = function() return nil end,
     }
-    package.loaded["uc_targeting_common"] = {}
-    package.loaded["uc_cor_maintenance"] = {}
+    package.loaded["uc_targeting_common"] = {
+        build_friendly_claims = function() return {}, {} end,
+        mob_targets_friendly_member = function() return false end,
+    }
+    package.loaded["uc_cor_maintenance"] = {
+        propose = function() return nil end,
+    }
     package.loaded["uc_settarget"] = {}
     package.loaded["uc_attack"] = {}
     package.loaded["uc_partner_list"] = {}
-    package.loaded["uc_fight_leader"] = {}
+    package.loaded["uc_fight_leader"] = {
+        leader_target_id = function() return 0 end,
+    }
     package.loaded["uc_hb_buff_maint"] = {}
     package.loaded["uc_enemy_effect_tracker"] = {
         on_action = function() return {} end,
         on_action_message = function() return {} end,
+        list_targets = function() return {} end,
+        get_effects = function() return {} end,
     }
     package.loaded["lor/lor_packets"] = {}
     package.loaded["json"] = {}
@@ -146,6 +162,7 @@ local function install_scheduler_stubs()
     package.loaded["uc_scheduler_locks"] = { p1_pending_is_live_state = function() return false end }
     package.loaded["uc_scheduler_pending"] = {
         p1_pending_mark_complete = function() return true end,
+        p1_pending_mark_failed = function() return true end,
         p1_update_pending_state = function() end,
         p1_set_pending_globals = function() end,
     }

@@ -48,12 +48,19 @@ assert_contains(
 	'ranking path must receive the shared context'
 )
 
-local provider_block = source:match(
-	"local function p1_collect_defensive_internal%(ctx, out%)(.-)local function p1_collect_proposals%(ctx%)"
-)
-if type(provider_block) ~= 'string' then
-	error('failed to capture scheduler proposal provider block')
+local provider_files = {
+	'uc_provider_combat.lua',
+	'uc_provider_defensive.lua',
+	'uc_provider_enemy_buff_removal.lua',
+	'uc_provider_maintenance.lua',
+	'uc_provider_tank_enmity.lua',
+	'uc_provider_target_control.lua',
+}
+local provider_parts = {}
+for _, path in ipairs(provider_files) do
+	provider_parts[#provider_parts + 1] = read_file(path)
 end
+local provider_block = table.concat(provider_parts, '\n')
 assert_not_contains(
 	provider_block,
 	'windower.ffxi.get_',

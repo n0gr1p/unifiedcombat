@@ -1676,6 +1676,30 @@ action = brd.propose(unknown_targeted_config, {
 })
 assert_equal(action.action_name, 'Pianissimo', 'missing Pianissimo confirmation must retry after half a second')
 assert_equal(brd._test.state.targeted_transaction.recipient_name, 'Target', 'Pianissimo retry must not advance to another recipient')
+local pianissimo_recast_consumed = function(name)
+	if name == 'Pianissimo' then return false, 'recast', 'ja' end
+	return ready(name)
+end
+action = brd.propose(unknown_targeted_config, {
+	now = unknown_now + 1.3,
+	player = player,
+	party_members = { targeted_member },
+	action_ready = pianissimo_recast_consumed,
+})
+assert_true(action == nil, 'an undispatched retry must not discard evidence from the original Pianissimo dispatch')
+assert_equal(brd._test.state.last_blocker, 'pianissimo_confirmation_pending_recast:Target', 'original Pianissimo dispatch blocker mismatch after retry loses arbitration')
+assert_equal(brd._test.state.targeted_transaction.phase, 'awaiting_pianissimo', 'undispatched retry must preserve the original transaction')
+assert_true(brd.action_lane_status() == true, 'undispatched retry must retain the Bard action lane while the original recast is consumed')
+player.buffs = { 348, 409 }
+action = brd.propose(unknown_targeted_config, {
+	now = unknown_now + 1.4,
+	player = player,
+	party_members = { targeted_member },
+	action_ready = pianissimo_recast_consumed,
+})
+assert_equal(action.action_name, "Mage's Ballad III", 'late Pianissimo buff confirmation must continue directly to the reserved song')
+assert_equal(action.detail.target_id, 99, 'late Pianissimo confirmation must preserve the reserved recipient')
+assert_true(brd.action_lane_status() == true, 'late Pianissimo confirmation must keep the Bard lane reserved through song proposal')
 
 brd.reset('targeted_self_final_candidate_test')
 player.buffs = {}
@@ -1815,7 +1839,12 @@ assert_true(capture_text:find('capture 063 song=Honor March status=100 count=1 e
 local scheduler_file = assert(io.open('unified_scheduler.lua', 'r'))
 local scheduler_source = scheduler_file:read('*a')
 scheduler_file:close()
-assert_true(scheduler_source:find("provider = 'maintenance_brd'", 1, true) ~= nil, 'scheduler must emit the dedicated BRD provider')
+local maintenance_provider_file = assert(io.open('uc_provider_maintenance.lua', 'r'))
+local maintenance_provider_source = maintenance_provider_file:read('*a')
+maintenance_provider_file:close()
+assert_true(maintenance_provider_source:find("'maintenance_brd'", 1, true) ~= nil
+	and maintenance_provider_source:find('provider = source_provider', 1, true) ~= nil,
+	'maintenance provider must emit the dedicated BRD provider')
 assert_true(scheduler_source:find('scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 200', 1, true) ~= nil, 'scheduler must globally prioritize BRD maintenance above every non-Doom proposal')
 assert_true(scheduler_source:find('scheduler.p1_brd_lane_blocks_proposal', 1, true) ~= nil, 'scheduler must preserve BRD sequence ownership across proposal gaps')
 assert_true(scheduler_source:find('scheduler.p1_dispatch_maintenance_brd', 1, true) ~= nil, 'scheduler must own dedicated BRD dispatch')
@@ -1825,8 +1854,8 @@ assert_true(scheduler_source:find("return mid == 17 or mid == 18", 1, true) ~= n
 assert_true(scheduler_source:find("[8] = true", 1, true) ~= nil, 'scheduler action state must recognize category-8 song start packets')
 assert_true(scheduler_source:find('p1_pending_mark_failed', 1, true) ~= nil, 'unable-cast handling must fail scheduler pending work')
 assert_true(scheduler_source:find('maintenance_next_at.brd_songs', 1, true) ~= nil, 'unable-cast handling must use the scheduler BRD retry gate')
-assert_true(scheduler_source:find('take_scheduler_failure', 1, true) ~= nil, 'scheduler must consume silent BRD lifecycle failures')
-assert_true(scheduler_source:find("'maintenance_songs'", 1, true) == nil, 'old non-dispatchable Bard placeholder must be removed')
+assert_true(maintenance_provider_source:find('take_scheduler_failure', 1, true) ~= nil, 'maintenance provider must consume silent BRD lifecycle failures')
+assert_true(maintenance_provider_source:find("'maintenance_songs'", 1, true) == nil, 'old non-dispatchable Bard placeholder must be removed')
 
 local addon_file = assert(io.open('UnifiedCombat.lua', 'r'))
 local addon_source = addon_file:read('*a')

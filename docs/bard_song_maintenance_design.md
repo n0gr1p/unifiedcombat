@@ -519,7 +519,25 @@ Within Bard maintenance, proposal priority is:
 
 Every dedicated `maintenance_brd` proposal uses global scheduler priority band 200. This is provider-scoped rather than job-scoped: only the Bard maintenance provider emits these actions. Doom remains the sole hard emergency prepass. Below Doom, Bard maintenance outranks every spell, job ability, weapon skill, target-control proposal, engage operation, and movement operation, including critical Cure, Sleep, debuff removal, skillchain continuation, aftermath weapon skills, and ordinary weighted actions. Once the Bard action lane is reserved, no competing scheduler proposal, nonblocking target acquisition, or movement-coordinator tick is admitted. Existing action, cooldown, zoning, and pending-action safety locks remain authoritative; priority never interrupts an action already underway.
 
-An actionable Bard proposal starts a runtime-only action-lane reservation for the current song sequence. The reservation remains active while the provider waits for cast start, cast completion or interruption, the applicable `0x063` ownership confirmation, and the next required song transition. During that interval, lower-band spell, job ability, and weapon-skill proposals are held so their action lock cannot split the sequence merely because the Bard provider is temporarily between proposals. Movement and targeting remain available. The reservation releases when the effective configured song set is satisfied or when the provider reaches a terminal unavailable state. An initially unavailable Bard action does not reserve the lane. Doom remains unaffected because it is processed by the hard emergency prepass before scheduler proposal arbitration.
+The reserved Bard action lane is also a movement-safety hold. Before every
+dedicated setup JA or song dispatch, the scheduler sends dispatcher-owned
+`run_stop` and claims a bounded scheduler movement lock. The lock is refreshed
+while the lane remains reserved so follow and pathing cannot restart movement
+between setup and song lifecycle transitions. An active Nyzul hold remains
+higher priority and is not replaced.
+
+Pianissimo and its paired targeted song are one atomic Bard transaction. If the
+Pianissimo packet or buff confirmation is late but the JA recast has been
+consumed, the transaction remains in its confirmation phase for a bounded two
+seconds instead of being abandoned at the ordinary half-second retry point.
+During that bounded wait, the Bard action lane and movement hold remain active.
+An available recast after the retry point permits a normal Pianissimo retry.
+The transaction records actual Pianissimo dispatch time separately from proposal
+phase: if a retry proposal is generated but rejected, blocked, or otherwise not
+dispatched, later recast consumption remains evidence for the original dispatch
+and cannot open the Bard lane.
+
+An actionable Bard proposal starts a runtime-only action-lane reservation for the current song sequence. The reservation remains active while the provider waits for cast start, cast completion or interruption, the applicable `0x063` ownership confirmation, and the next required song transition. During that interval, lower-band spell, job ability, and weapon-skill proposals are held so their action lock cannot split the sequence merely because the Bard provider is temporarily between proposals. Scheduler target acquisition, engage, and movement are also held while the lane is reserved. The reservation releases when the effective configured song set is satisfied or when the provider reaches a terminal unavailable state. An initially unavailable Bard action does not reserve the lane. Doom remains unaffected because it is processed by the hard emergency prepass before scheduler proposal arbitration.
 
 ## State Invalidation and Cleanup
 

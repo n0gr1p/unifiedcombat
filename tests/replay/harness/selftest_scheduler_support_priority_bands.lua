@@ -42,6 +42,9 @@ end
 
 local function main()
     local source = read_file(scheduler_path)
+    local combat_provider = read_file("uc_provider_combat.lua")
+    local defensive_provider = read_file("uc_provider_defensive.lua")
+    local maintenance_provider = read_file("uc_provider_maintenance.lua")
     local proposals_source = read_file("uc_scheduler_proposals.lua")
     local ranker_source = read_file("uc_scheduler_ranker.lua")
 
@@ -58,11 +61,16 @@ local function main()
     assert_true(score(200, 0.00) > score(142, 1.00), "minimum Bard maintenance urgency must beat maximum Sleep urgency")
     assert_true(score(200, 0.00) > score(131, 1.00), "minimum Bard maintenance urgency must beat maximum skillchain urgency")
 
-    assert_contains(source, "scheduler.PRIORITY_BAND_BRD_MAINTENANCE,", "Bard emitter must pass the global Bard band")
-    assert_contains(source, "priority_band = scheduler.PRIORITY_BAND_CRITICAL_CURE", "critical Cure emitters must use the global Cure band")
-    assert_contains(source, "priority_band = scheduler.PRIORITY_BAND_SLEEP", "Sleep emitter must use the global Sleep band")
-    assert_contains(source, "priority_band = scheduler.PRIORITY_BAND_AFTERMATH_WS", "aftermath emitter must use the global aftermath band")
-    assert_contains(source, "priority_band = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION", "skillchain emitter must use the global continuation band")
+    assert_contains(source, "brd_maintenance_priority = scheduler.PRIORITY_BAND_BRD_MAINTENANCE", "scheduler must inject the global Bard band")
+    assert_contains(source, "critical_cure_priority = scheduler.PRIORITY_BAND_CRITICAL_CURE", "scheduler must inject the global Cure band")
+    assert_contains(source, "sleep_priority = scheduler.PRIORITY_BAND_SLEEP", "scheduler must inject the global Sleep band")
+    assert_contains(source, "aftermath_priority = scheduler.PRIORITY_BAND_AFTERMATH_WS", "scheduler must inject the global aftermath band")
+    assert_contains(source, "skillchain_priority = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION", "scheduler must inject the global continuation band")
+    assert_contains(maintenance_provider, "brd_maintenance_priority,", "Bard emitter must pass the injected global Bard band")
+    assert_contains(defensive_provider, "priority_band = critical_cure_priority", "critical Cure emitters must use the injected global Cure band")
+    assert_contains(combat_provider, "priority_band = sleep_priority", "Sleep emitter must use the injected global Sleep band")
+    assert_contains(combat_provider, "priority_band = aftermath_priority", "aftermath emitter must use the injected global aftermath band")
+    assert_contains(combat_provider, "priority_band = skillchain_priority", "skillchain emitter must use the injected global continuation band")
 
     local bypass = source:match("function scheduler%.p1_priority_bypasses_engage%(proposal%)(.-)\nend")
     assert_true(type(bypass) == "string", "failed to capture engage bypass helper")
@@ -78,7 +86,7 @@ local function main()
         "BRD provider cadence must use the same job eligibility as maintenance collection")
     assert_contains(source, "if brd_provider_active or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0) then",
         "BRD provider must be collected every scheduler tick")
-    assert_contains(source, "scheduler.PRIORITY_BAND_BRD_MAINTENANCE,\n\t\t\t\t0,",
+    assert_contains(maintenance_provider, "brd_maintenance_priority,\n\t\t\t\t\t0,",
         "BRD proposal emission must not consume a speculative throttle")
 
     local lane_policy = source:match("function scheduler%.p1_brd_lane_blocks_proposal%(proposal, lane_reserved%)(.-)\nend")

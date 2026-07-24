@@ -1,22 +1,24 @@
 # Unified Scheduler Responsibility Map
 
-Status: **Phase 2 dispatcher monopoly complete**
-Verified: 2026-07-24 in the Phase 2 working tree.
+Status: **Phase 3 provider purity complete and field verified**
+Verified: 2026-07-24 by replay/static validation and multibox acceptance.
 Runtime behavior intent: selection behavior remains stable; scheduler-owned
-side effects now cross one dispatcher contract without direct fallback.
+side effects cross one dispatcher contract, while domain providers append
+proposals only.
 
 ## Purpose
 
-This map records the current post-Phase-2 architecture. It replaces the
-2026-05-15 pre-extraction draft and provides the baseline for Phase 3 provider
-purity work.
+This map records the current post-Phase-3 architecture. It replaces the
+2026-05-15 pre-extraction draft and provides the baseline for Phase 4 movement
+ownership work.
 
 Current primary sizes:
 
 | File | Lines | Current role |
 | --- | ---: | --- |
-| `unified_scheduler.lua` | 7,470 | Scheduler facade plus providers, dispatcher orchestration, movement coordination, lifecycle policy, and packet observation |
-| `unified_combat_core.lua` | 4,254 | Legacy/core combat and movement implementation plus scheduler-facing selection helpers and target-scoped skillchain state |
+| `unified_scheduler.lua` | 6,196 | Scheduler facade, provider wiring, dispatcher orchestration, movement coordination, lifecycle policy, and packet observation |
+| `uc_provider_*.lua` | 1,673 across six modules | Defensive, combat, tank, enemy-buff, maintenance, and target/pull proposal generation |
+| `unified_combat_core.lua` | 4,263 | Legacy/core combat and movement implementation plus scheduler-facing selection helpers and target-scoped skillchain state |
 | `unified_engine.lua` | 409 | 0.20-second lifecycle tick, overlay rendering, scheduler invocation, and conditional core fallback |
 
 The scheduler is larger than the approximately 5,300-line RFC snapshot because
@@ -49,6 +51,12 @@ These modules are active and called by `unified_scheduler.lua`.
 | Partner arbitration | `uc_scheduler_partner_arbitration.lua` | Pure arbitration decision |
 | Pending record/lifecycle | `uc_scheduler_pending_record.lua`, `uc_scheduler_pending.lua` | Pending construction, state transitions, globals |
 | Party-state IPC | `uc_scheduler_party_state.lua` | Encode, throttle/send, parse/apply, TTL, and lookup wrappers |
+| Defensive proposals | `uc_provider_defensive.lua` | Internal and HealBot proposal adapters |
+| Combat proposals | `uc_provider_combat.lua` | WS, Sleep, engage, and configured-JA proposal adapters |
+| Tank enmity proposals | `uc_provider_tank_enmity.lua` | Tank selector-to-proposal adapter |
+| Enemy-buff removal proposals | `uc_provider_enemy_buff_removal.lua` | Authoritative enemy-effect tracker to dispel proposal adapter |
+| Maintenance proposals | `uc_provider_maintenance.lua` | COR, BRD, and GEO proposal adapters |
+| Target and pull proposals | `uc_provider_target_control.lua` | Target acquisition, add-control retarget, and pull proposal adapters |
 | Proposal schema/normalization | `uc_scheduler_proposals.lua` | Identity validation, timestamp/default normalization, created-age, and engage-priority policy |
 | Proposal keys | `uc_scheduler_proposal_keys.lua` | Family and attempt keys |
 | Validation, scoring, and ranking | `uc_scheduler_ranker.lua` | Explicit dependency interface behind scheduler validation/rank wrappers |
@@ -112,31 +120,38 @@ Priority/risk: **retain / high**
 
 Functions:
 
-- `p1_collect_defensive_internal`
-- `p1_collect_defensive_healbot`
-- `p1_collect_combat_offense`
-- `p1_collect_enemy_buff_removal`
-- `p1_collect_combat_engage`
-- `p1_collect_target_control`
-- `p1_collect_pull_control`
-- `p1_collect_combat_tank_enmity`
-- `p1_collect_combat_ja`
-- `p1_collect_maintenance`
+- `uc_provider_defensive.collect_internal`
+- `uc_provider_defensive.collect_healbot`
+- `uc_provider_combat.collect_offense`
+- `uc_provider_combat.collect_sleep`
+- `uc_provider_combat.collect_engage`
+- `uc_provider_combat.collect_ja`
+- `uc_provider_tank_enmity.collect`
+- `uc_provider_enemy_buff_removal.collect`
+- `uc_provider_maintenance.collect`
+- `uc_provider_target_control.collect_target`
+- `uc_provider_target_control.collect_pull`
 - `p1_collect_proposals`
 - `scheduler.p1_brd_lane_blocks_proposal`
 
 Current responsibility:
 
-- builds all primary scheduler proposals and applies domain/provider gates;
-- calls scheduler-facing selectors in core and maintenance modules.
+- the six dependency-injected provider modules build all primary proposals and
+  apply existing domain/provider gates;
+- `p1_collect_proposals` preserves the established collection sequence and
+  remains the scheduler-owned coordinator;
+- providers call scheduler-facing selectors in core and maintenance modules,
+  but do not dispatch, acquire locks, move, turn, target, or attack.
 
 Target:
 
-- pure provider modules grouped by defensive, combat, tank, enemy-effect,
-  maintenance, target, and pull ownership;
-- providers receive one explicit context and append proposals only.
+- retain cohesive provider modules against one explicit tick context;
+- preserve proposal fields, priority bands, collection order, and dispatcher
+  separation during later domain cutover.
 
-Priority/risk: **high / high**
+Status: **Phase 3 extracted, replay verified, and multibox field accepted.**
+
+Priority/risk: **retain / high**
 
 ### 4. Proposal schema, validation, scoring, and ranking
 
@@ -174,12 +189,14 @@ Functions:
 - pending engage and engage-duplicate functions
 - stale combat-spell release functions
 - `scheduler.apply_defensive_spell_movement_lock`
+- `scheduler.apply_brd_maintenance_movement_lock`
+- `scheduler.refresh_brd_maintenance_movement_lock`
 - `scheduler.handle_local_spell_action_message`
 
 Current responsibility:
 
 - combines extracted action-state primitives with scheduler-specific spell,
-  Cure, tank, and engage policies.
+  Cure, tank, Bard movement-safety, and engage policies.
 
 Target:
 
@@ -261,12 +278,14 @@ Functions:
 Current responsibility:
 
 - owns candidate construction and legacy defensive execution compatibility;
-- delegates pure leaf operations to extracted helper modules.
+- delegates pure leaf operations to extracted helper modules;
+- extracted defensive and maintenance adapters convert existing selections into
+  proposal records without taking over legacy execution.
 
 Target:
 
-- defensive provider plus separate legacy compatibility adapter until cutover;
-- maintenance provider adapters.
+- retain the extracted providers plus separate legacy compatibility execution
+  until explicit domain cutover.
 
 Priority/risk: **high / high**
 
@@ -278,6 +297,7 @@ Functions:
 - `scheduler.apply_reaction_turn`
 - `scheduler.apply_reaction_response`
 - `scheduler.refresh_reaction_lock`
+- `scheduler.apply_cast_movement_hold`
 - `run_movement_coordinator_tick`
 - `p1_apply_face_to_target`
 
@@ -285,6 +305,12 @@ Current responsibility:
 
 - coordinates Nyzul, reaction, Lilith formation, cast freeze, pull holds, domain
   eligibility, and core movement decisions through an injected dispatcher facade;
+- cast-freeze branches actively cancel an existing spacing run vector and hold
+  scheduler movement ownership until the cast state clears;
+- stops before Bard maintenance execution and refreshes scheduler movement
+  ownership throughout the reserved Bard action lane, including the bounded
+  late-confirmation window between dispatched Pianissimo and its paired song,
+  even when a generated Pianissimo retry proposal is not dispatched;
 - publishes movement owner/block diagnostics.
 
 Status:
@@ -454,21 +480,20 @@ Target:
 
 ## Current highest-risk areas
 
-1. Provider extraction without changing ranking or proposal identity.
-2. Movement coordination across legacy core, follow, pathing, Nyzul, and
+1. Movement coordination across legacy core, follow, pathing, Nyzul, and
    lifecycle.
-3. Packet/action observation fan-out.
-4. Defensive/tank spell and engage lifecycle state.
-5. Provider extraction while preserving the now-explicit context and ranker
+2. Packet/action observation fan-out.
+3. Defensive/tank spell and engage lifecycle state.
+4. Domain cutover while preserving provider, context, ranker, and dispatcher
    contracts.
 
-## Recommended next order after Phase 2
+## Recommended next order after Phase 3
 
-1. Extract providers by cohesive domain against the stable context/ranker
-   interfaces.
-2. Preserve proposal keys, priority bands, rejection taxonomy, and public
-   scheduler wrappers during each provider move.
-3. Keep independent movement ownership cleanup separate from provider extraction.
+1. Define and apply the Phase 4 movement ownership decision record.
+2. Route independent follow, pathing, Nyzul, and lifecycle movement through the
+   selected movement API in small, separately verified slices.
+3. Preserve proposal keys, priority bands, rejection taxonomy, provider order,
+   and public scheduler wrappers during movement work.
 
-Do not combine provider extraction with stricter proposal validation, legacy
-domain cutover, or independent movement behavior changes.
+Do not combine movement ownership cleanup with stricter proposal validation or
+legacy domain cutover.

@@ -1,4 +1,7 @@
 local active_priority_names = {}
+local old_target_ignore = package.loaded['uc_target_ignore']
+local old_runtime_overrides = package.loaded['uc_runtime_overrides']
+local old_add_priority = package.loaded['uc_add_priority']
 
 local function read_file(path)
 	local file = assert(io.open(path, 'r'))
@@ -111,12 +114,17 @@ if not core_source:find('function core.add_control_enabled_for_scheduler(setting
 end
 
 local scheduler_source = read_file('unified_scheduler.lua')
-if not scheduler_source:find('if engaged and not combat_core.add_control_enabled_for_scheduler(ctx.settings) then', 1, true) then
+local target_provider_source = read_file('uc_provider_target_control.lua')
+if not target_provider_source:find('if engaged and not add_control_enabled(ctx.settings) then', 1, true) then
 	error('scheduler must allow engaged target control only for add control')
 end
 if not scheduler_source:find("kind = 'switch_target'", 1, true)
 	or not scheduler_source:find('switch_target = uc_attack.switch_target', 1, true) then
 	error('scheduler engaged add control must dispatch the attack switch-target primitive')
 end
+
+package.loaded['uc_target_ignore'] = old_target_ignore
+package.loaded['uc_runtime_overrides'] = old_runtime_overrides
+package.loaded['uc_add_priority'] = old_add_priority
 
 io.stdout:write('selftest_add_control_priority_eligibility: OK\n')

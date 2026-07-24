@@ -82,7 +82,7 @@ local function main()
 
     assert_contains(source, "scheduler.TARGET_ACQUIRE_DEBOUNCE_S = 0.20", "target acquire lane must use a short debounce")
     assert_contains(source, "function scheduler.p1_try_nonblocking_target_acquire(settings, ctx)", "scheduler must define a nonblocking target acquire lane")
-    assert_contains(source, "p1_collect_target_control(ctx, proposals)", "nonblocking lane must reuse existing target-control proposal generation")
+    assert_contains(source, "scheduler.providers.target_control.collect_target(ctx, proposals)", "nonblocking lane must reuse extracted target-control proposal generation")
     assert_contains(source, "local lock_reject = p1_hard_lock_reject(p1_get_locks(ctx), selected)", "nonblocking lane must still respect scheduler safety locks")
     assert_contains(source, "return scheduler.p1_dispatch_target_control(selected, ctx)", "nonblocking lane must dispatch through the existing target ownership seam")
     assert_contains(source, "scheduler.p1_apply_target_acquire_debounce(selected, ctx.now)", "target acquire dispatch must debounce without creating multi-second lag")

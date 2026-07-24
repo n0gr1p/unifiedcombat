@@ -12,7 +12,9 @@ tracking, and RFC-level audits.
    exit decision and behavior-parity evidence.
 4. `UnifiedCombat_scheduler_refactor_phase2_exit_audit_2026-07-24.md` — Phase 2
    dispatcher-monopoly exit decision and evidence.
-5. `UnifiedCombat_scheduler_refactor_tracking_audit_2026-07-24.md` — Phase 0
+5. `UnifiedCombat_scheduler_refactor_phase3_exit_audit_2026-07-24.md` — Phase 3
+   provider-purity exit decision and evidence.
+6. `UnifiedCombat_scheduler_refactor_tracking_audit_2026-07-24.md` — Phase 0
    implementation and tracking-accuracy audit.
 
 ## Phase 0 baselines
