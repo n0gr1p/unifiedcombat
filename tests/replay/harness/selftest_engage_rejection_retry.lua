@@ -1,4 +1,5 @@
 local scheduler_path = "unified_scheduler.lua"
+local ranker_path = "uc_scheduler_ranker.lua"
 
 local function read_file(file_path)
     local fh, err = io.open(file_path, "r")
@@ -78,6 +79,7 @@ end
 
 local function main()
     local scheduler_source = read_file(scheduler_path)
+    local ranker_source = read_file(ranker_path)
 
     assert_contains(scheduler_source, "scheduler.ENGAGE_REJECT_WAIT_LONGER_MESSAGE_ID = 94", "scheduler must pin the raw action-message id for wait-longer rejection")
     assert_contains(scheduler_source, "message_id == scheduler.ENGAGE_REJECT_WAIT_LONGER_MESSAGE_ID", "scheduler must detect wait-longer rejections by message id, not raw chat text")
@@ -89,7 +91,7 @@ local function main()
     assert_contains(scheduler_source, "scheduler.p1_clear_engage_duplicate_state(phase, 'ENGAGE_DUPLICATE_RESET_REJECTION'", "wait-longer rejection must reset explicit attack-on duplicate state directly")
     assert_contains(scheduler_source, "pending.timeout_at = now_value + scheduler.PENDING_ENGAGE_TIMEOUT_S", "retry attempts must refresh the pending timeout from the latest attempt")
     assert_contains(scheduler_source, "age_s = ('%.2f'):format(math.max(0, now_value - last_attempt_at))", "pending timeout logs must report age from the latest attempt")
-    assert_contains(scheduler_source, "pending_engage_retry_wait", "scheduler must block engage retries until the short retry delay clears")
+    assert_contains(ranker_source, "pending_engage_retry_wait", "ranker must block engage retries until the short retry delay clears")
 
     local state = {}
     begin_pending_engage(state, 50.00)

@@ -257,11 +257,13 @@ package.loaded.uc_tb_effect_table = nil
 _G.windower = original_windower
 
 local source = assert(io.open('unified_scheduler.lua', 'rb')):read('*a')
-assert_true(source:find('local dispellable_enemy_effect_priority = {}', 1, true) ~= nil, 'the JSON dispel catalog must be the only source of dispellable effect priorities')
-assert_true(source:find('local dispellable_enemy_effect_set = {}', 1, true) ~= nil, 'the JSON dispel catalog must be the only source of dispellable effect membership')
-assert_true(source:find('dispel map buff_ids record at byte %d has no danger_weight', 1, true) ~= nil, 'the JSON dispel catalog must reject records without a danger weight')
-assert_true(source:find('if dispellable_enemy_effect_set[eid] == true then', 1, true) ~= nil, 'enemy dispel collection must require explicit JSON catalog membership')
-assert_true(source:find("reject_reason = 'reaction_hold'", 1, true) ~= nil, 'scheduler must reject blocked proposals through reaction hold')
+local enemy_effect_state_source = assert(io.open('uc_scheduler_enemy_effect_state.lua', 'rb')):read('*a')
+local ranker_source = assert(io.open('uc_scheduler_ranker.lua', 'rb')):read('*a')
+assert_true(enemy_effect_state_source:find('local dispellable_priority = {}', 1, true) ~= nil, 'enemy-effect state must own JSON dispel priorities')
+assert_true(enemy_effect_state_source:find('local dispellable_set = {}', 1, true) ~= nil, 'enemy-effect state must own JSON dispel membership')
+assert_true(enemy_effect_state_source:find('buff_ids record at byte %d has no danger_weight', 1, true) ~= nil, 'the JSON dispel catalog must reject records without a danger weight')
+assert_true(source:find("require('uc_scheduler_enemy_effect_state').is_dispellable(eid)", 1, true) ~= nil, 'enemy dispel collection must require explicit JSON catalog membership')
+assert_true(ranker_source:find("reject_reason = 'reaction_hold'", 1, true) ~= nil, 'ranker must reject blocked proposals through reaction hold')
 assert_true(source:find("UC_MOVEMENT_MODE = 'REACTION_HOLD'", 1, true) ~= nil, 'movement coordinator must hold while turned away')
 assert_true(source:find("if rawget(_G, 'Start_Engine') == true then", 1, true) ~= nil, 'ability reactions must not activate while the engine is stopped')
 assert_true(source:find('scheduler.apply_reaction_response(reaction_event.activated)', 1, true) ~= nil, 'ready event must use response-specific scheduler ownership')

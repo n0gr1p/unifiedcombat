@@ -19,9 +19,6 @@ local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
 	or nil
 local time_source_error_reported = false
-local tb_spells = nil
-local tb_abilities = nil
-local tb_skills = nil
 
 local action_buff_map = {}
 do
@@ -180,78 +177,13 @@ local count_matching_buffs
 local ensure_maintenance_state_tables
 local canon_name
 local action_ready
-local PARTY_STATE_IPC_PREFIX = 'ucps'
 local DISPell_ATTEMPT_COOLDOWN_S = 3.0
 
 local function promoted_ownership_kill_switch_enabled()
 	return rawget(_G, 'UC_SCHED_P1_DISABLE_PROMOTED_OWNERSHIP') == true
 end
 
-local dispellable_enemy_effect_priority = {}
-local dispellable_enemy_effect_set = {}
-local enemy_effect_observed_once = {}
-
-local function danger_weight_to_priority(w)
-	return require('uc_scheduler_enemy_effect_utils').danger_weight_to_priority(w)
-end
-
-local function load_enemy_dispel_map_from_json()
-	local path = windower.addon_path .. 'docs/ffxi_enemy_dispellable_buffs.json'
-	local f = io.open(path, 'r')
-	if not f then
-		error(('unified_scheduler fatal: unable to open dispel map JSON at %s'):format(tostring(path)))
-	end
-	local raw = f:read('*a')
-	f:close()
-	if type(raw) ~= 'string' or raw == '' then
-		error(('unified_scheduler fatal: dispel map JSON is empty at %s'):format(tostring(path)))
-	end
-	if not raw:find('"schema_name"%s*:%s*"ffxi_enemy_dispellable_buffs"') then
-		error(('unified_scheduler fatal: invalid dispel map schema at %s'):format(tostring(path)))
-	end
-
-	-- Deterministic text parse for this schema:
-	-- each buff record includes "buff_ids": [ ... ] and "danger_weight": N.
-	-- This avoids runtime incompatibilities with Windower JSON container variants.
-	local imported_count = 0
-	local cursor = 1
-	local guard = 0
-	local guard_max = 250000
-	while true do
-		guard = guard + 1
-		if guard > guard_max then
-			error('unified_scheduler fatal: dispel map text parse exceeded safety limit')
-		end
-		local s1, e1, ids_blob = raw:find('"buff_ids"%s*:%s*%[(.-)%]', cursor)
-		if not s1 then
-			break
-		end
-		local tail = raw:sub(e1 + 1, math.min(#raw, e1 + 1200))
-		local dw = tonumber(tail:match('"danger_weight"%s*:%s*(%d+)'))
-		if not dw then
-			error(('unified_scheduler fatal: dispel map buff_ids record at byte %d has no danger_weight'):format(s1))
-		end
-		local prio = danger_weight_to_priority(dw)
-		for num in tostring(ids_blob or ''):gmatch('%d+') do
-			local id = tonumber(num) or 0
-			if id > 0 then
-				if dispellable_enemy_effect_set[id] == true then
-					error(('unified_scheduler fatal: duplicate dispel map buff id %d'):format(id))
-				end
-				dispellable_enemy_effect_priority[id] = prio
-				dispellable_enemy_effect_set[id] = true
-				imported_count = imported_count + 1
-			end
-		end
-		cursor = e1 + 1
-	end
-
-	if imported_count <= 0 then
-		error(('unified_scheduler fatal: dispel map JSON imported zero buff ids from %s'):format(tostring(path)))
-	end
-end
-
-load_enemy_dispel_map_from_json()
+require('uc_scheduler_enemy_effect_state').load_dispel_map(windower.addon_path)
 
 local function now_s()
 	if not socket_gettime then
@@ -264,74 +196,6 @@ local function now_s()
 		error('unified_scheduler fatal: socket.gettime unavailable')
 	end
 	return socket_gettime()
-end
-
-local function load_targetbar_catalogs_once()
-	if tb_spells ~= nil and tb_abilities ~= nil and tb_skills ~= nil then
-		return
-	end
-	local base = tostring(windower.addon_path or '') .. 'TargetBar\\'
-	local ok_s, s = pcall(dofile, base .. 'spells.lua')
-	if not ok_s or type(s) ~= 'table' then
-		error(('unified_scheduler fatal: failed loading TargetBar spells catalog from %s (%s)'):format(base .. 'spells.lua', tostring(s)))
-	end
-	local ok_a, a = pcall(dofile, base .. 'abilities.lua')
-	if not ok_a or type(a) ~= 'table' then
-		error(('unified_scheduler fatal: failed loading TargetBar abilities catalog from %s (%s)'):format(base .. 'abilities.lua', tostring(a)))
-	end
-	local ok_k, k = pcall(dofile, base .. 'skills.lua')
-	if not ok_k or type(k) ~= 'table' then
-		error(('unified_scheduler fatal: failed loading TargetBar skills catalog from %s (%s)'):format(base .. 'skills.lua', tostring(k)))
-	end
-	tb_spells = s
-	tb_abilities = a
-	tb_skills = k
-end
-
-local function apply_effect_list_to_target(target_id, effect_list, source, at)
-	if type(effect_list) ~= 'table' then
-		return
-	end
-	for i = 1, #effect_list do
-		local row = effect_list[i]
-		if type(row) == 'table' then
-			local eid = tonumber(row[1]) or 0
-			if eid > 0 then
-				enemy_effect_state_set(target_id, eid, source, at)
-			end
-		end
-	end
-end
-
-local function apply_catalog_effects(catalog, action_id, actor_id, target_id, from_player, source, at)
-	local id = tonumber(action_id) or 0
-	if id <= 0 or type(catalog) ~= 'table' then
-		return
-	end
-	local entry = catalog[id]
-	if type(entry) ~= 'table' or #entry == 0 then
-		return
-	end
-	-- Single effect form: { effectId, duration }
-	if type(entry[1]) == 'number' then
-		local eid = tonumber(entry[1]) or 0
-		if eid > 0 then
-			enemy_effect_state_set(target_id, eid, source, at)
-		end
-		return
-	end
-	-- Multi-effect target form: { {e,d}, {e,d}, ... }
-	if type(entry[1]) == 'table' and type(entry[1][1]) == 'number' then
-		apply_effect_list_to_target(target_id, entry, source, at)
-		return
-	end
-	-- Dual target/actor form: { { {e,d}, ... }, { {e,d}, ... } }
-	if type(entry[1]) == 'table' and type(entry[1][1]) == 'table' then
-		apply_effect_list_to_target(target_id, entry[1], source, at)
-		if not from_player then
-			apply_effect_list_to_target(actor_id, entry[2], source .. '_actor', at)
-		end
-	end
 end
 
 local function set_has(settbl, v)
@@ -1278,14 +1142,6 @@ function scheduler.apply_defensive_spell_movement_lock(action_name, target_id, a
 	_G.UC_MOVEMENT_LOCK_UNTIL = now_value + 0.6
 end
 
-local function split_pipe(msg)
-	return require('uc_scheduler_text_utils').split_pipe(msg)
-end
-
-local function split_csv_numbers(s)
-	return require('uc_scheduler_text_utils').split_csv_numbers(s)
-end
-
 local function current_zone_id()
 	return require('uc_scheduler_context_utils').current_zone_id()
 end
@@ -1314,136 +1170,75 @@ local function enemy_effect_log_label(effect_id)
 end
 
 local function enemy_dispel_attempt_map()
-	local p = scheduler.phase1 or {}
-	p.enemy_dispel_attempts = p.enemy_dispel_attempts or {}
-	scheduler.phase1 = p
-	return p.enemy_dispel_attempts
+	return require('uc_scheduler_enemy_effect_state').attempt_map(scheduler.phase1)
 end
 
 local function enemy_effect_state_map()
-	local p = scheduler.phase1 or {}
-	p.effectiveTargets = p.effectiveTargets or {}
-	scheduler.phase1 = p
-	return p.effectiveTargets
+	return require('uc_scheduler_enemy_effect_state').effect_map(scheduler.phase1)
 end
 
 local function enemy_effect_state_set(target_id, effect_id, source, at, duration_s)
-	local tid = tonumber(target_id) or 0
-	local eid = tonumber(effect_id) or 0
-	if tid <= 0 or eid <= 0 then
-		return
-	end
-	local ts = tonumber(at) or now_s()
-	local d = tonumber(duration_s) or 0
-	local expires_at = 0
-	if d > 0 then
-		expires_at = ts + d
-	end
-	local st = enemy_effect_state_map()
-	st[tid] = st[tid] or {}
-	st[tid][eid] = { seen_at = ts, source = tostring(source or ''), expires_at = expires_at }
+	return require('uc_scheduler_enemy_effect_state').set(
+		scheduler.phase1,
+		target_id,
+		effect_id,
+		source,
+		at,
+		duration_s,
+		now_s
+	)
 end
 
 local function enemy_effect_state_clear(target_id, effect_id)
-	local tid = tonumber(target_id) or 0
-	local eid = tonumber(effect_id) or 0
-	if tid <= 0 or eid <= 0 then
-		return false
-	end
-	local st = enemy_effect_state_map()
-	if type(st[tid]) == 'table' and st[tid][eid] ~= nil then
-		st[tid][eid] = nil
-		return true
-	end
-	return false
+	return require('uc_scheduler_enemy_effect_state').clear(
+		scheduler.phase1,
+		target_id,
+		effect_id
+	)
 end
 
 local function enemy_effect_state_clear_target(target_id)
-	local tid = tonumber(target_id) or 0
-	if tid <= 0 then
-		return
-	end
-	local st = enemy_effect_state_map()
-	st[tid] = nil
+	return require('uc_scheduler_enemy_effect_state').clear_target(
+		scheduler.phase1,
+		target_id
+	)
 end
 
 local function enemy_effect_state_prune_expired(at)
-	local st = enemy_effect_state_map()
-	local now = tonumber(at) or now_s()
-	for tid, effects in pairs(st) do
-		if type(effects) == 'table' then
-			for eid, row in pairs(effects) do
-				local ex = tonumber(row and row.expires_at) or 0
-				if ex > 0 and ex <= now then
-					effects[eid] = nil
-				end
-			end
-			local any = false
-			for _, _ in pairs(effects) do
-				any = true
-				break
-			end
-			if not any then
-				st[tid] = nil
-			end
-		else
-			st[tid] = nil
-		end
-	end
+	return require('uc_scheduler_enemy_effect_state').prune_expired(
+		scheduler.phase1,
+		at,
+		now_s
+	)
 end
 
 local function enemy_effect_state_sweep(max_age_s)
-	local st = enemy_effect_state_map()
-	local cutoff = now_s() - (tonumber(max_age_s) or 120)
-	for tid, effects in pairs(st) do
-		local remove_target = false
-		local mob = windower.ffxi.get_mob_by_id(tonumber(tid) or 0)
-		if not mob or tonumber(mob.spawn_type) ~= 16 or (tonumber(mob.hpp) or 0) <= 0 then
-			remove_target = true
-		elseif type(effects) ~= 'table' then
-			remove_target = true
-		else
-			for eid, row in pairs(effects) do
-				local seen_at = tonumber(row and row.seen_at) or 0
-				if seen_at > 0 and seen_at < cutoff then
-					effects[eid] = nil
-				end
-			end
-			local has_any = false
-			for _, _ in pairs(effects) do
-				has_any = true
-				break
-			end
-			if not has_any then
-				remove_target = true
-			end
-		end
-		if remove_target then
-			st[tid] = nil
-		end
-	end
+	return require('uc_scheduler_enemy_effect_state').sweep(
+		scheduler.phase1,
+		max_age_s,
+		now_s,
+		windower.ffxi.get_mob_by_id
+	)
 end
 
 local function can_attempt_enemy_dispel(action_name, target_id, effect_id, now)
-	local key = table.concat({
-		tostring(action_name or ''),
-		tostring(tonumber(target_id) or 0),
-		tostring(tonumber(effect_id) or 0),
-	}, ':')
-	local attempts = enemy_dispel_attempt_map()
-	local last = tonumber(attempts[key]) or 0
-	if last > 0 and (now - last) < DISPell_ATTEMPT_COOLDOWN_S then
-		return false, key
-	end
-	return true, key
+	return require('uc_scheduler_enemy_effect_state').can_attempt(
+		scheduler.phase1,
+		action_name,
+		target_id,
+		effect_id,
+		now,
+		DISPell_ATTEMPT_COOLDOWN_S
+	)
 end
 
 local function mark_enemy_dispel_attempt(key, now)
-	if tostring(key or '') == '' then
-		return
-	end
-	local attempts = enemy_dispel_attempt_map()
-	attempts[tostring(key)] = tonumber(now) or now_s()
+	return require('uc_scheduler_enemy_effect_state').mark_attempt(
+		scheduler.phase1,
+		key,
+		now,
+		now_s
+	)
 end
 
 local function enemy_dispel_choose_action(target_id)
@@ -1462,10 +1257,6 @@ local function enemy_dispel_claim_valid(claim_id, party_claim_set)
 	return require('uc_scheduler_enemy_effect_utils').enemy_dispel_claim_valid(claim_id, party_claim_set)
 end
 
-local raw_enemy_gain_messages = {
-	[194] = true,
-}
-
 scheduler.spell_effect_gain_messages = {
 	[2] = true, [230] = true, [236] = true, [237] = true, [252] = true,
 	[264] = true, [266] = true, [268] = true, [269] = true, [270] = true,
@@ -1473,255 +1264,53 @@ scheduler.spell_effect_gain_messages = {
 	[332] = true, [333] = true, [334] = true, [335] = true,
 }
 
-local raw_enemy_remove_messages = {
-	[204] = true, [206] = true,
-}
-
-local raw_enemy_death_messages = {
-	[6] = true, [20] = true, [113] = true, [406] = true, [605] = true, [646] = true,
-}
-
-local function is_enemy_mob_id(id)
-	local n = tonumber(id) or 0
-	if n <= 0 then
-		return false
-	end
-	local m = windower.ffxi.get_mob_by_id(n)
-	return m and tonumber(m.spawn_type) == 16 and (tonumber(m.hpp) or 0) > 0
-end
-
 local function ingest_enemy_effects_from_raw_action_028(data_or_act)
-	load_targetbar_catalogs_once()
-	local act = nil
-	if type(data_or_act) == 'table' then
-		act = data_or_act
-	else
-		if type(windower) ~= 'table' or type(windower.packets) ~= 'table' or type(windower.packets.parse_action) ~= 'function' then
-			error('unified_scheduler fatal: windower.packets.parse_action is unavailable')
-		end
-		local ok, parsed = pcall(function() return windower.packets.parse_action(data_or_act) end)
-		if not ok or type(parsed) ~= 'table' then
-			error(('unified_scheduler fatal: failed to parse 0x028 action packet (%s)'):format(tostring(parsed)))
-		end
-		act = parsed
-	end
-	local player = windower.ffxi.get_player()
-	local player_id = tonumber(player and player.id) or 0
-	local actor_id = tonumber(act.actor_id) or 0
-	if actor_id <= 0 then return end
-	if player_id > 0 and actor_id == player_id then return end
-	if type(act.targets) ~= 'table' then return end
-	local category = tonumber(act.category) or 0
-	local now = now_s()
-
-	local aa_hit_msgs = { [1]=true,[67]=true,[157]=true,[353]=true,[577]=true }
-	local aa_igan_msgs = { [15]=true,[31]=true,[70]=true,[354]=true,[355]=true }
-	local spell_remove_msgs = { [83]=true,[341]=true,[342]=true,[343]=true,[344]=true }
-	local spell_ign_msgs = { [0]=true,[31]=true,[75]=true,[78]=true,[85]=true,[106]=true,[114]=true,[283]=true,[284]=true }
-	local ja_add_msgs = { [100]=true,[102]=true,[110]=true,[115]=true,[116]=true,[117]=true,[118]=true,[119]=true,[120]=true,[121]=true,[126]=true,[131]=true,[134]=true,[143]=true,[148]=true,[149]=true,[266]=true,[285]=true,[286]=true,[287]=true,[304]=true,[317]=true,[319]=true,[452]=true,[519]=true,[529]=true,[667]=true,[668]=true,[669]=true }
-	local ws_add_msgs = { [1]=true,[101]=true,[110]=true,[185]=true,[187]=true,[194]=true,[224]=true,[225]=true,[226]=true,[238]=true,[242]=true,[243]=true,[264]=true,[276]=true,[277]=true,[278]=true,[280]=true,[281]=true,[299]=true,[317]=true,[367]=true,[763]=true }
-	local ws_ign_msgs = { [15]=true,[31]=true,[188]=true,[189]=true,[282]=true,[283]=true }
-
-	for _, target in ipairs(act.targets) do
-		local tid = tonumber(target and target.id) or 0
-		if tid > 0 and type(target.actions) == 'table' then
-			for i = 1, #target.actions do
-				local a = target.actions[i] or {}
-				local msg = tonumber(a.message) or tonumber(a.message_id) or 0
-				local eid = tonumber(a.param) or 0
-
-				-- TargetBar: paralysis actor lockout detection (message 29/84 on first action)
-				if i == 1 and actor_id ~= 0 and (msg == 29 or msg == 84) then
-					if dispellable_enemy_effect_set[4] == true then
-						enemy_effect_state_set(actor_id, 4, 'raw_028_actor_para', now)
-					end
-				end
-
-				if category == 1 or category == 2 then
-					if aa_hit_msgs[msg] == true then
-						enemy_effect_state_clear(tid, 36)
-						enemy_effect_state_clear(tid, 66)
-						enemy_effect_state_clear(tid, 444)
-						enemy_effect_state_clear(tid, 445)
-						enemy_effect_state_clear(tid, 446)
-						if eid > 0 then enemy_effect_state_clear(tid, 37) end
-					elseif msg == 30 then
-						enemy_effect_state_clear(tid, 67)
-					elseif aa_igan_msgs[msg] ~= true then
-						-- keep parity with TargetBar branching; unknowns intentionally not inferred
-					end
-					if a.has_add_effect then
-						local em = tonumber(a.add_effect_message) or 0
-						local ee = tonumber(a.add_effect_param) or 0
-						if (em == 160 or em == 164) and ee > 0 and dispellable_enemy_effect_set[ee] == true then
-							enemy_effect_state_set(tid, ee, ('raw_028_add_effect_msg_%d'):format(em), now)
-						end
-					end
-				elseif category == 4 then
-					if scheduler.spell_effect_gain_messages[msg] == true then
-						apply_catalog_effects(tb_spells, tonumber(act.param) or 0, actor_id, tid, false, ('raw_028_spell_msg_%d'):format(msg), now)
-					elseif spell_remove_msgs[msg] == true then
-						if eid > 0 then enemy_effect_state_clear(tid, eid) end
-					elseif msg == 84 then
-						if dispellable_enemy_effect_set[4] == true then
-							enemy_effect_state_set(tid, 4, 'raw_028_spell_para', now)
-						end
-					elseif spell_ign_msgs[msg] ~= true then
-						-- keep parity branch without inference
-					end
-				elseif category == 6 or category == 13 or category == 14 or category == 15 then
-					if ja_add_msgs[msg] == true then
-						apply_catalog_effects(tb_abilities, tonumber(act.param) or 0, actor_id, tid, false, ('raw_028_ja_msg_%d'):format(msg), now)
-					end
-				elseif category == 3 or category == 11 then
-					if ws_add_msgs[msg] == true then
-						apply_catalog_effects(tb_skills, tonumber(act.param) or 0, actor_id, tid, false, ('raw_028_ws_msg_%d'):format(msg), now)
-					elseif ws_ign_msgs[msg] ~= true then
-						-- keep parity branch without inference
-					end
-				end
-			end
-		end
-	end
-
-	-- TargetBar parity: clear actor disable effects after any successful action packet.
-	if actor_id > 0 and (player_id <= 0 or actor_id ~= player_id) then
-		enemy_effect_state_clear(actor_id, 10)
-		enemy_effect_state_clear(actor_id, 2)
-		enemy_effect_state_clear(actor_id, 7)
-	end
-end
-
-local function encode_party_state_payload()
-	local p = windower.ffxi.get_player()
-	if not p or not p.name or not p.id or not p.vitals then
-		return nil
-	end
-	local hp = tonumber(p.vitals.hp) or 0
-	local hpp = tonumber(p.vitals.hpp) or 100
-	local max_hp = tonumber(p.vitals.max_hp) or 0
-	local mp = tonumber(p.vitals.mp) or 0
-	local max_mp = tonumber(p.vitals.max_mp) or 0
-	local mpp = tonumber(p.vitals.mpp) or ((max_mp > 0) and math.floor((mp / max_mp) * 100) or 100)
-	local zone = current_zone_id()
-	if zone <= 0 then
-		return nil
-	end
-	local buffs = p.buffs or {}
-	local bparts = {}
-	for i = 1, #buffs do
-		local bid = tonumber(buffs[i]) or 0
-		if bid > 0 then
-			bparts[#bparts + 1] = tostring(bid)
-		end
-	end
-	local bcsv = table.concat(bparts, ',')
-	local nm = tostring(p.name):gsub('|', '_')
-	return table.concat({
-		PARTY_STATE_IPC_PREFIX,
-		'1',
-		tostring(tonumber(p.id) or 0),
-		nm,
-		tostring(zone),
-		tostring(hp),
-		tostring(hpp),
-		tostring(max_hp),
-		tostring(mp),
-		tostring(max_mp),
-		tostring(mpp),
-		bcsv,
-		('%.3f'):format(now_s()),
-	}, '|')
+	return require('uc_scheduler_enemy_effect_state').ingest_raw_action(
+		scheduler.phase1,
+		data_or_act,
+		{
+			addon_path = windower.addon_path,
+			parse_action = windower.packets.parse_action,
+			get_player = windower.ffxi.get_player,
+			now = now_s,
+			spell_effect_gain_messages = scheduler.spell_effect_gain_messages,
+		}
+	)
 end
 
 local function maybe_broadcast_party_state_ipc()
-	local ps = scheduler.party_state_ipc or {}
-	local now = now_s()
-	local last = tonumber(ps.last_sent_at) or 0
-	if (now - last) < (tonumber(ps.send_interval) or 1.0) then
-		return
-	end
-	local payload = encode_party_state_payload()
-	if not payload then
-		return
-	end
-	ps.last_sent_at = now
-	scheduler.party_state_ipc = ps
-	windower.send_ipc_message(payload)
+	return require('uc_scheduler_party_state').maybe_broadcast(
+		scheduler.party_state_ipc,
+		{
+			now = now_s,
+			get_player = windower.ffxi.get_player,
+			current_zone_id = current_zone_id,
+			send_ipc_message = windower.send_ipc_message,
+		}
+	)
 end
 
 local function apply_party_state_ipc_message(msg)
-	local parts = split_pipe(msg)
-	if #parts < 13 then
-		return
-	end
-	if tostring(parts[1]) ~= PARTY_STATE_IPC_PREFIX then
-		return
-	end
-	if tostring(parts[2]) ~= '1' then
-		return
-	end
-	local actor_id = tonumber(parts[3]) or 0
-	local actor_name = tostring(parts[4] or '')
-	local zone = tonumber(parts[5]) or 0
-	if actor_id <= 0 or actor_name == '' or zone <= 0 then
-		return
-	end
-	if zone ~= current_zone_id() then
-		return
-	end
-	local hp = tonumber(parts[6]) or 0
-	local hpp = tonumber(parts[7]) or 100
-	local max_hp = tonumber(parts[8]) or 0
-	local mp = tonumber(parts[9]) or 0
-	local max_mp = tonumber(parts[10]) or 0
-	local mpp = tonumber(parts[11]) or ((max_mp > 0) and math.floor((mp / max_mp) * 100) or 100)
-	local buffs = split_csv_numbers(parts[12] or '')
-	local stamp = tonumber(parts[13]) or now_s()
-	local ps = scheduler.party_state_ipc or {}
-	ps.by_id = ps.by_id or {}
-	local prev = ps.by_id[actor_id]
-	if prev and tonumber(prev.seq_ts or 0) > stamp then
-		return
-	end
-	ps.by_id[actor_id] = {
-		id = actor_id,
-		name = actor_name,
-		zone = zone,
-		hp = hp,
-		hpp = hpp,
-		max_hp = max_hp,
-		mp = mp,
-		max_mp = max_mp,
-		mpp = mpp,
-		buffs = buffs,
-		seq_ts = stamp,
-		rcv_ts = now_s(),
-	}
-	scheduler.party_state_ipc = ps
+	return require('uc_scheduler_party_state').apply_message(
+		scheduler.party_state_ipc,
+		msg,
+		{
+			current_zone_id = current_zone_id,
+			now = now_s,
+		}
+	)
 end
 
 local function get_party_state_ipc_entry(member_id, member_name)
-	local ps = scheduler.party_state_ipc or {}
-	local by_id = ps.by_id or {}
-	local e = by_id[tonumber(member_id) or 0]
-	if not e then
-		return nil
-	end
-	local ttl = tonumber(ps.ttl) or 4.0
-	local now = now_s()
-	if (now - (tonumber(e.rcv_ts) or 0)) > ttl then
-		by_id[tonumber(member_id) or 0] = nil
-		return nil
-	end
-	if tonumber(e.zone) ~= current_zone_id() then
-		return nil
-	end
-	local nm = tostring(member_name or '')
-	if nm ~= '' and tostring(e.name or ''):lower() ~= nm:lower() then
-		return nil
-	end
-	return e
+	return require('uc_scheduler_party_state').get_entry(
+		scheduler.party_state_ipc,
+		member_id,
+		member_name,
+		{
+			current_zone_id = current_zone_id,
+			now = now_s,
+		}
+	)
 end
 
 local function get_settings()
@@ -2306,10 +1895,7 @@ local diag_init = {
 local p1_apply_face_to_target
 
 function scheduler.reaction_observed_effect_set()
-	local observed = {}
-	for effect_id in pairs(dispellable_enemy_effect_set) do
-		observed[effect_id] = true
-	end
+	local observed = require('uc_scheduler_enemy_effect_state').copy_dispellable_set()
 	for effect_id in pairs(require('uc_reaction_runtime').effect_watch_set()) do
 		observed[effect_id] = true
 	end
@@ -2695,10 +2281,10 @@ local function ja_requires_engaged_front(name, ja)
 	return require('uc_scheduler_action_predicates').ja_requires_engaged_front(name, ja)
 end
 
-local function get_party_members()
+local function get_party_members(ctx)
 	local out = {}
-	local party = windower.ffxi.get_party()
-	local player = windower.ffxi.get_player()
+	local party = type(ctx) == 'table' and ctx.party or windower.ffxi.get_party()
+	local player = type(ctx) == 'table' and ctx.player or windower.ffxi.get_player()
 	local self_id = player and player.id or 0
 	if type(party) ~= 'table' then
 		return out
@@ -3056,12 +2642,13 @@ end
 
 function scheduler.sleep_spell_effect_id_set_from_settings(settings)
 	local out = {}
-	load_targetbar_catalogs_once()
 	local sleep_spells = scheduler.sleep_spell_list_from_settings(settings)
 	for i = 1, #sleep_spells do
 		local sp = get_spell_resource(sleep_spells[i])
-		local entry = sp and tb_spells[tonumber(sp.id) or 0] or nil
-		local eid = type(entry) == 'table' and tonumber(entry[1]) or 0
+		local eid = require('uc_scheduler_enemy_effect_state').spell_effect_id(
+			windower.addon_path,
+			tonumber(sp and sp.id) or 0
+		)
 		if eid > 0 then
 			out[eid] = true
 		end
@@ -3433,16 +3020,16 @@ local function family_tokens_for(member_name, buff_id)
 	return tokens
 end
 
-local function build_defensive_candidates()
-	local s = get_settings()
-	local members = get_party_members()
+local function build_defensive_candidates(ctx)
+	local s = type(ctx) == 'table' and ctx.settings or get_settings()
+	local members = get_party_members(ctx)
 	local out = {
 		cure = nil,
 		debuff = nil,
 		buff = nil,
 		overwrite = nil,
 	}
-	local now = now_s()
+	local now = type(ctx) == 'table' and ctx.now or now_s()
 	local ignore_trusts = bool_setting(scheduler.active_value_or_flat('config.defensive.cure.ignore_trusts', s.def_heal_ignore_trusts), true)
 
 	if bool_setting(scheduler.active_value_or_flat('config.defensive.buffs.enabled', s.defensive_buff_enabled), true) then
@@ -3942,26 +3529,13 @@ local function p1_clamp_urgency(v)
 end
 
 local function p1_build_ctx(settings)
-	local player = windower.ffxi.get_player() or {}
-	local me = windower.ffxi.get_mob_by_target('me') or {}
-	local party = windower.ffxi.get_party() or {}
-	local mob_array = windower.ffxi.get_mob_array() or {}
-	local p = scheduler.phase1
-	p.tick = (tonumber(p.tick) or 0) + 1
-	return {
-		now = now_s(),
-		tick = p.tick,
-		settings = settings or {},
-		player = player,
-		me = me,
-		party = party,
-		mob_array = mob_array,
-		player_status = tonumber(player.status) or -1,
-		player_id = tonumber(player.id) or 0,
-		player_name = tostring(player.name or ''),
-		me_id = tonumber(me.id) or 0,
-		me_name = tostring(me.name or ''),
-	}
+	return require('uc_scheduler_context').build(settings, scheduler.phase1, {
+		get_player = windower.ffxi.get_player,
+		get_mob_by_target = windower.ffxi.get_mob_by_target,
+		get_party = windower.ffxi.get_party,
+		get_mob_array = windower.ffxi.get_mob_array,
+		now = now_s,
+	})
 end
 
 local function p1_collect_defensive_internal(ctx, out)
@@ -3971,7 +3545,7 @@ local function p1_collect_defensive_internal(ctx, out)
 	if tostring(scheduler.active_value_or_flat('config.defensive.provider', ctx.settings.defensive_provider) or 'internal') ~= 'internal' then
 		return
 	end
-	local candidates = build_defensive_candidates()
+	local candidates = build_defensive_candidates(ctx)
 	local action, reason = choose_defensive_action(candidates)
 	if not action or not action.spell or not action.target or not action.target.name then
 		return
@@ -4114,16 +3688,17 @@ local function p1_collect_combat_offense(ctx, out)
 	if not bool_setting(ctx.settings.weaponskill_active, false) then
 		return
 	end
-	local player = windower.ffxi.get_player()
-	if not player or tonumber(player.status) ~= 1 then
+	local player = ctx.player
+	if ctx.player_present ~= true or tonumber(player.status) ~= 1 then
 		return
 	end
 	local tp = tonumber(player.vitals and player.vitals.tp) or 0
 	if tp < 1000 then
 		return
 	end
-	local target = windower.ffxi.get_mob_by_target('t')
-	if not target or not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
+	local target = ctx.target
+	if ctx.target_present ~= true or not target.valid_target
+		or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
 		return
 	end
 	local partner_target_set = build_partner_target_set(ctx.settings)
@@ -4279,11 +3854,11 @@ function p1_combat_helpers.collect_combat_sleep(ctx, out)
 	if #configured_sleep_spells == 0 then
 		return
 	end
-	local player = windower.ffxi.get_player()
-	if not player then
+	local player = ctx.player
+	if ctx.player_present ~= true then
 		return
 	end
-	local current_target = windower.ffxi.get_mob_by_target('t')
+	local current_target = ctx.target_present == true and ctx.target or nil
 	local current_target_id = 0
 	if current_target and combat_core.is_live_actionable_combat_target(current_target, ctx.now, true) then
 		current_target_id = tonumber(current_target.id) or 0
@@ -4291,7 +3866,7 @@ function p1_combat_helpers.collect_combat_sleep(ctx, out)
 	local _, claims_set = uc_targeting_common.build_friendly_claims()
 	local partner_target_set = build_partner_target_set(ctx.settings)
 	local best = nil
-	local marray = windower.ffxi.get_mob_array() or {}
+	local marray = ctx.mob_array
 	for _, mob in pairs(marray) do
 		if p1_combat_helpers.sleep_target_eligible(ctx, mob, current_target_id, claims_set, partner_target_set) then
 			local spell_pick = scheduler.select_sleep_spell_for_target(ctx.settings, mob)
@@ -4399,14 +3974,16 @@ local function p1_collect_enemy_buff_removal(ctx, out)
 	for _, tracked_target in ipairs(tracked_targets) do
 		local tid = tonumber(tracked_target and tracked_target.target_id) or 0
 		if tid > 0 then
-			local mob = windower.ffxi.get_mob_by_id(tid)
+			local mob = ctx.mobs_by_id[tid]
 			if mob and tonumber(mob.spawn_type) == 16 and (tonumber(mob.hpp) or 0) > 0 and enemy_dispel_claim_valid(mob.claim_id, claims_set) then
 				local chosen_eid = 0
 				local chosen_prio = -1
 				for _, effect in ipairs(enemy_effect_tracker.get_effects(tid)) do
 					local eid = tonumber(effect and effect.effect_id) or 0
-					if dispellable_enemy_effect_set[eid] == true then
-						local prio = tonumber(dispellable_enemy_effect_priority[eid])
+					if require('uc_scheduler_enemy_effect_state').is_dispellable(eid) then
+						local prio = tonumber(
+							require('uc_scheduler_enemy_effect_state').dispel_priority(eid)
+						)
 						if not prio then
 							error(('unified_scheduler fatal: dispellable effect %d has no priority'):format(eid))
 						end
@@ -4543,8 +4120,8 @@ local function p1_collect_combat_engage(ctx, out)
 	if not bool_setting(uc_scheduler_config.combat_autotarget(ctx.settings), false) then
 		return
 	end
-	local player = windower.ffxi.get_player()
-	if not player then
+	local player = ctx.player
+	if ctx.player_present ~= true then
 		return
 	end
 	local tank_mode = bool_setting(uc_scheduler_config.tank_enabled(ctx.settings), false)
@@ -4553,7 +4130,7 @@ local function p1_collect_combat_engage(ctx, out)
 	local engaged = tonumber(player.status) == 1
 	local function p1_engage_action_state_summary()
 		local st = scheduler.action_state or {}
-		local now_value = tonumber(ctx.now) or now_s()
+		local now_value = ctx.now
 		local cooldown_until = tonumber(st.cooldown_until) or 0
 		local post_spell_tail_until = tonumber(st.post_spell_tail_until) or 0
 		local action_start = tonumber(st.action_start) or 0
@@ -4574,7 +4151,7 @@ local function p1_collect_combat_engage(ctx, out)
 		end
 		local retry_ready_at = tonumber(pending.retry_ready_at) or 0
 		local retry_count = tonumber(pending.retry_count) or 0
-		local now_value = tonumber(ctx.now) or now_s()
+		local now_value = ctx.now
 		if scheduler.p1_pending_engage_live(scheduler.phase1, now_value) then
 			return ('active:retry=%.2f,count=%d'):format(math.max(0, retry_ready_at - now_value), retry_count)
 		end
@@ -4628,10 +4205,10 @@ local function p1_collect_combat_engage(ctx, out)
 	end
 	local t = nil
 	if fight_leader_force_target_id > 0 then
-		t = windower.ffxi.get_mob_by_id(fight_leader_force_target_id)
+		t = ctx.mobs_by_id[fight_leader_force_target_id]
 	end
 	if not t then
-		t = windower.ffxi.get_mob_by_target('t')
+		t = ctx.target_present == true and ctx.target or nil
 	end
 	if not t or not t.valid_target or tonumber(t.spawn_type) ~= 16 or (tonumber(t.hpp) or 0) <= 0 then
 		if uc_scheduler_config.debug_enabled(ctx.settings) then
@@ -4752,8 +4329,8 @@ local function p1_collect_target_control(ctx, out)
 	if not combat_core or type(combat_core.select_target_for_scheduler) ~= 'function' then
 		return
 	end
-	local player = windower.ffxi.get_player()
-	if not player then
+	local player = ctx.player
+	if ctx.player_present ~= true then
 		return
 	end
 	local engaged = tonumber(player.status) == 1
@@ -4772,7 +4349,7 @@ local function p1_collect_target_control(ctx, out)
 	local tank_mode = bool_setting(uc_scheduler_config.tank_enabled(ctx.settings), false)
 	local priority_band = tank_mode and scheduler.TANK_TARGET_ACQUIRE_PRIORITY or 84
 	local urgency = tank_mode and scheduler.TANK_TARGET_ACQUIRE_URGENCY or 0.55
-	local cur = windower.ffxi.get_mob_by_target('t')
+	local cur = ctx.target_present == true and ctx.target or nil
 	if cur and tonumber(cur.id) == tid then
 		scheduler.action_timeline_log('TARGET_SELECT_SKIPPED_ALREADY_TARGETED', {
 			tid = tid,
@@ -4884,8 +4461,8 @@ local function p1_collect_combat_tank_enmity(ctx, out)
 	if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 		return
 	end
-	local player = windower.ffxi.get_player()
-	if not player or tonumber(player.status) ~= 1 then
+	local player = ctx.player
+	if ctx.player_present ~= true or tonumber(player.status) ~= 1 then
 		-- Force initial /attack engagement to occur before enmity actions.
 		return
 	end
@@ -4992,8 +4569,8 @@ local function p1_collect_combat_ja(ctx, out)
 	if not bool_setting(ctx.settings.ability_active, false) then
 		return
 	end
-	local player = windower.ffxi.get_player()
-	if not player or tonumber(player.status) ~= 1 then
+	local player = ctx.player
+	if ctx.player_present ~= true or tonumber(player.status) ~= 1 then
 		return
 	end
 	local tank_mode = bool_setting(uc_scheduler_config.tank_enabled(ctx.settings), false)
@@ -5001,7 +4578,7 @@ local function p1_collect_combat_ja(ctx, out)
 	if #ordered == 0 then
 		return
 	end
-	local target = windower.ffxi.get_mob_by_target('t')
+	local target = ctx.target_present == true and ctx.target or nil
 	local partner_target_set = build_partner_target_set(ctx.settings)
 	for _, name in ipairs(ordered) do
 		local ja = get_ja_resource(name)
@@ -5074,7 +4651,7 @@ local function p1_collect_combat_ja(ctx, out)
 				else
 					log_ja_sched(('collect_skip name=\"%s\" reason=TARGET_INVALID status=%s target_id=%s'):format(
 						tostring(name),
-						tostring((windower.ffxi.get_player() or {}).status or ''),
+						tostring(player.status or ''),
 						tostring(target and target.id or 0)
 					))
 				end
@@ -5082,7 +4659,7 @@ local function p1_collect_combat_ja(ctx, out)
 				log_ja_sched(('collect_skip name=\"%s\" reason=%s status=%s pending=%s'):format(
 					tostring(name),
 					tostring(reason or 'NOT_READY'),
-					tostring((windower.ffxi.get_player() or {}).status or ''),
+					tostring(player.status or ''),
 					tostring((scheduler.phase1.pending and scheduler.phase1.pending.action_name) or '')
 				))
 			end
@@ -5095,8 +4672,8 @@ local function p1_collect_maintenance(ctx, out)
 		log_def_sched('MAINT_SKIP reason=ENGINE_OFF')
 		return
 	end
-	local player = windower.ffxi.get_player()
-	if not player then
+	local player = ctx.player
+	if ctx.player_present ~= true then
 		log_def_sched('MAINT_SKIP reason=NO_PLAYER')
 		return
 	end
@@ -5157,8 +4734,7 @@ local function p1_collect_maintenance(ctx, out)
 		detail.target_name = proposal_target_name
 		detail.target_id = proposal_target_id
 		if action_type == 'spell' then
-			local p = windower.ffxi.get_player() or {}
-			local out_of_combat = tonumber(p.status) ~= 1
+			local out_of_combat = tonumber(player.status) ~= 1
 			if out_of_combat then
 				local moving = false
 				local ok_lor, lor_actor_mod = pcall(require, 'lor/lor_actor')
@@ -5293,12 +4869,14 @@ local function p1_collect_maintenance(ctx, out)
 	elseif job == 'BRD' or tostring(player.sub_job or '') == 'BRD' then
 		local brd_config = require('uc_active_config').get_path('config.maintenance.brd')
 		local brd_maintenance = require('uc_brd_maintenance')
-		local brd_party_members = get_party_members()
+		local brd_party_members = get_party_members(ctx)
 		for _, member in ipairs(brd_party_members) do
 			member.in_song_range, member.song_distance = require('uc_brd_party_song_state').in_recovery_range(
 				member,
 				brd_config.recovery_range_yalms,
-				windower.ffxi.get_mob_by_id
+				function(member_id)
+					return ctx.mobs_by_id[tonumber(member_id) or 0]
+				end
 			)
 		end
 		local action = brd_maintenance.propose(brd_config, {
@@ -5530,238 +5108,48 @@ function scheduler.p1_hard_lock_reject(locks, proposal)
 end
 
 function scheduler.p1_priority_bypasses_engage(proposal)
-	if type(proposal) ~= 'table' or type(proposal.priority_band) ~= 'number' then
-		return false
-	end
-	return proposal.priority_band >= scheduler.PRIORITY_BAND_ENGAGE_BYPASS
+	return require('uc_scheduler_proposals').priority_bypasses_engage(
+		proposal,
+		scheduler.PRIORITY_BAND_ENGAGE_BYPASS
+	)
 end
 
-local function p1_validate_proposal(ctx, p)
-	if type(p) ~= 'table' then
-		return false, 'malformed'
-	end
-	if tostring(p.proposal_id or '') == '' or tostring(p.provider or '') == '' then
-		return false, 'malformed'
-	end
-	local required_setting = tostring(p.required_setting or '')
-	if required_setting ~= '' and not bool_setting(ctx.settings[required_setting], false) then
-		return false, 'settings_disabled'
-	end
-	if p1_number(ctx.now - p1_number(p.created_at, ctx.now), 0) > 0.8 then
-		return false, 'stale_snapshot'
-	end
-	local phase = scheduler.phase1
-	local pending_engage_live = scheduler.p1_pending_engage_live(phase, ctx.now)
-	if pending_engage_live then
-		local provider = tostring(p.provider or '')
-		local action_type = tostring(p.action_type or '')
-		if provider ~= 'target_control' then
-			if action_type == 'engage' then
-				local pending = scheduler.p1_pending_engage_state(phase)
-				local retry_ready_at = tonumber(pending and pending.retry_ready_at) or 0
-				if retry_ready_at > ctx.now then
-					scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
-						tid = tonumber(p.target_id) or 0,
-						name = tostring(p.target_name or ''),
-						reason = 'pending_engage_retry_wait',
-						retry_in_s = ('%.2f'):format(math.max(0, retry_ready_at - ctx.now)),
-						retry_count = tonumber(pending and pending.retry_count) or 0,
-						pending_engage = 'retry_wait',
-						dispatch_method = scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON,
-					}, ('engage_retry_wait:%d'):format(tonumber(p.target_id) or 0), 0.25)
-					return false, 'pending_engage_retry_wait'
-				end
-			elseif not scheduler.p1_priority_bypasses_engage(p) then
-				scheduler.action_timeline_log('PENDING_ENGAGE_BLOCK_NONCRITICAL', {
-					tid = tonumber(p.target_id) or 0,
-					name = tostring(p.target_name or ''),
-					action = tostring(p.action_name or ''),
-					provider = provider,
-				}, ('pending_engage_block:%s:%s'):format(provider, tostring(p.action_name or '')), 0.25)
-				return false, 'pending_engage_block_noncritical'
-			end
-		end
-	end
-	if type(phase.pending) == 'table' and scheduler.p1_pending_is_live_state(tostring(phase.pending.state or '')) then
-		local pending_lock_class = tostring(phase.pending.lock_class or '')
-		local proposal_lock_class = tostring(p.lock_class or '')
-		if pending_lock_class ~= '' and proposal_lock_class ~= '' and pending_lock_class ~= proposal_lock_class then
-			local at = tostring(p.action_type or '')
-			if at == 'spell' or at == 'ja' or at == 'ws' or at == 'move' then
-				return false, 'pending_conflict'
-			end
-		end
-	end
-	local expires_at = p1_number(p.expires_at, ctx.now + 0.40)
-	if expires_at <= ctx.now then
-		return false, 'expired'
-	end
-	p.expires_at = expires_at
-	p.commit_deadline = p1_number(p.commit_deadline, ctx.now + 0.25)
-	p.priority_band = math.floor(p1_number(p.priority_band, 0))
-	p.urgency = p1_clamp_urgency(p.urgency)
-	local engage_duplicate_mode, engage_duplicate_fields = scheduler.p1_validate_engage_duplicate_retry(ctx, p)
-	if engage_duplicate_mode == 'suppressed' then
-		p._engage_duplicate_log_fields = engage_duplicate_fields
-		return false, 'duplicate_suppressed'
-	end
-	if engage_duplicate_mode ~= 'skip_generic' and scheduler.p1_duplicate_suppressed(ctx, p) then
-		p._engage_duplicate_log_fields = engage_duplicate_fields
-		return false, 'duplicate_suppressed'
-	end
-	return true, ''
-end
-
-local function p1_score(eval)
-	local priority_band = math.floor(p1_number(eval.priority_band, 0))
-	local urgency_bonus = p1_clamp_urgency(eval.urgency) * 9.9
-	local starvation_bonus = 0
-	local sticky_bonus = 0
-	local risk_penalty = 0
-	local score = priority_band + urgency_bonus + starvation_bonus + sticky_bonus - risk_penalty
-	eval._score = score
-	eval._score_parts = {
-		priority_band = priority_band,
-		urgency_bonus = urgency_bonus,
-		starvation_bonus = starvation_bonus,
-		sticky_bonus = sticky_bonus,
-		risk_penalty = risk_penalty,
+local function p1_ranker_dependencies()
+	return {
+		bool_setting = bool_setting,
+		phase1 = scheduler.phase1,
+		pending_engage_live = scheduler.p1_pending_engage_live,
+		pending_engage_state = scheduler.p1_pending_engage_state,
+		priority_bypasses_engage = scheduler.p1_priority_bypasses_engage,
+		timeline_log = scheduler.action_timeline_log,
+		pending_is_live_state = scheduler.p1_pending_is_live_state,
+		validate_engage_duplicate_retry = scheduler.p1_validate_engage_duplicate_retry,
+		duplicate_suppressed = scheduler.p1_duplicate_suppressed,
+		get_locks = scheduler.p1_get_locks,
+		hard_lock_reject = scheduler.p1_hard_lock_reject,
+		reaction_blocks_proposal = require('uc_reaction_runtime').blocks_proposal,
+		get_reaction_lock = function()
+			return rawget(_G, 'UC_REACTION_LOCK')
+		end,
+		debug_enabled = uc_scheduler_config.debug_enabled,
+		publish_last_action = function(value)
+			_G.UC_LAST_SCHED_ACTION = value
+		end,
+		is_critical_defensive_proposal = scheduler.p1_is_critical_defensive_proposal,
+		engage_dispatch_method = scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON,
 	}
-	return score
+end
+
+local function p1_validate_proposal(ctx, proposal)
+	return require('uc_scheduler_ranker').validate_proposal(
+		ctx,
+		proposal,
+		p1_ranker_dependencies()
+	)
 end
 
 local function p1_rank(ctx, proposals)
-	local locks = scheduler.p1_get_locks(ctx)
-	local valid = {}
-	local reject_counts = {}
-	local rejected = {}
-	local function add_reject(proposal, reason)
-		local p = proposal or {}
-		if tostring(p.family_id or '') == 'combat.engage.primary' and tostring(reason or '') == 'duplicate_suppressed' then
-			local fields = type(p._engage_duplicate_log_fields) == 'table' and p._engage_duplicate_log_fields or {
-				tid = tonumber(p.target_id) or 0,
-				name = tostring(p.target_name or ''),
-				reason = 'BLOCK_DUPLICATE',
-				status = tonumber(ctx and ctx.player_status) or 0,
-				dispatch_method = scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON,
-			}
-			scheduler.action_timeline_log('ENGAGE_DUPLICATE_SUPPRESSED', fields, ('engage_dup:%d'):format(tonumber(p.target_id) or 0), 0.50)
-		end
-		rejected[#rejected + 1] = {
-			provider = tostring(p.provider or ''),
-			family = tostring(p.family_id or ''),
-			action = tostring(p.action_name or ''),
-			reason = tostring(reason or ''),
-		}
-	end
-	for _, proposal in ipairs(proposals) do
-		local ok, reject_reason = p1_validate_proposal(ctx, proposal)
-		if require('uc_reaction_runtime').blocks_proposal(rawget(_G, 'UC_REACTION_LOCK'), proposal) then
-			ok = false
-			reject_reason = 'reaction_hold'
-		end
-		if ok then
-			local lock_reject = scheduler.p1_hard_lock_reject(locks, proposal)
-			if lock_reject ~= '' then
-				reject_counts[lock_reject] = (reject_counts[lock_reject] or 0) + 1
-				add_reject(proposal, lock_reject)
-			else
-				p1_score(proposal)
-				valid[#valid + 1] = proposal
-			end
-		else
-			local rr = reject_reason ~= '' and tostring(reject_reason) or 'invalid'
-			reject_counts[rr] = (reject_counts[rr] or 0) + 1
-			add_reject(proposal, rr)
-		end
-	end
-	table.sort(valid, function(a, b)
-		local sa = p1_number(a._score, -1e9)
-		local sb = p1_number(b._score, -1e9)
-		if sa ~= sb then
-			return sa > sb
-		end
-		local ea = p1_number(a.expires_at, ctx.now + 999)
-		local eb = p1_number(b.expires_at, ctx.now + 999)
-		if ea ~= eb then
-			return ea < eb
-		end
-		local pa = tostring(a.provider or '')
-		local pb = tostring(b.provider or '')
-		if pa ~= pb then
-			return pa < pb
-		end
-		return tostring(a.proposal_id or '') < tostring(b.proposal_id or '')
-	end)
-	if uc_scheduler_config.debug_enabled(ctx and ctx.settings) then
-		local seen_engage = false
-		local won_engage = false
-		local top_provider = ''
-		local top_family = ''
-		local top_action = ''
-		local top_score = 0
-		if type(valid) == 'table' and #valid > 0 then
-			top_provider = tostring(valid[1].provider or '')
-			top_family = tostring(valid[1].family_id or '')
-			top_action = tostring(valid[1].action_type or '')
-			top_score = tonumber(valid[1]._score) or 0
-		end
-		for _, v in ipairs(valid) do
-			if tostring(v.family_id or '') == 'combat.engage.primary' then
-				seen_engage = true
-				if v == valid[1] then
-					won_engage = true
-				end
-				break
-			end
-		end
-		if seen_engage and (not won_engage) then
-			_G.UC_LAST_SCHED_ACTION = ('[p1]engage:rank_lost top=%s/%s/%s score=%.2f'):format(
-				top_provider, top_family, top_action, top_score
-			)
-			local top = valid[1]
-			local block_reason = 'BLOCK_UNKNOWN'
-			if scheduler.p1_is_critical_defensive_proposal(ctx and ctx.settings or nil, top) then
-				block_reason = 'BLOCK_CRITICAL_CURE'
-			elseif scheduler.p1_priority_bypasses_engage(top) then
-				block_reason = 'BLOCK_HIGH_PRIORITY'
-			end
-			scheduler.action_timeline_log('ENGAGE_DISPATCH_BLOCKED', {
-				tid = tonumber(valid[1] and valid[1].target_id) or 0,
-				name = tostring(valid[1] and valid[1].target_name or ''),
-				reason = block_reason,
-				provider = top_provider,
-				action = top_action,
-			}, ('engage_rank_lost:%s:%s'):format(top_provider, top_action), 0.50)
-		elseif seen_engage and won_engage then
-			_G.UC_LAST_SCHED_ACTION = '[p1]engage:rank_win'
-		end
-	end
-	return valid, reject_counts, locks, rejected
-end
-
-local function p1_format_top3(ranked)
-	return require('uc_scheduler_rank_output').p1_format_top3(scheduler, ranked, p1_number)
-end
-
-local function p1_format_top3_verbose(ranked)
-	return require('uc_scheduler_rank_output').p1_format_top3_verbose(scheduler, ranked, p1_number)
-end
-
-local function p1_format_topn_lines(ranked, n)
-	return require('uc_scheduler_rank_output').p1_format_topn_lines(scheduler, ranked, n, p1_number)
-end
-
-local function p1_capture_topn_items(ranked, n)
-	return require('uc_scheduler_rank_output').p1_capture_topn_items(scheduler, ranked, n, p1_number)
-end
-
-local function p1_push_recent_rejects(ctx, rejected)
-	return require('uc_scheduler_reject_history').p1_push_recent_rejects(scheduler, ctx, rejected)
-end
-
-local function p1_reject_top(reject_counts, proposal_count)
-	return require('uc_scheduler_rank_output').p1_reject_top(scheduler, reject_counts, proposal_count)
+	return require('uc_scheduler_ranker').rank(ctx, proposals, p1_ranker_dependencies())
 end
 
 local function p1_build_dispatch_plan(ctx, selected)
@@ -5792,8 +5180,10 @@ function scheduler.p1_pending_mark_failed(now, result_code, retry_delay)
 	return scheduler_pending.p1_pending_mark_failed(scheduler, now, result_code, retry_delay)
 end
 
-local function p1_run_dry(settings)
-	local ctx = p1_build_ctx(settings)
+local function p1_run_dry(settings, ctx)
+	if type(ctx) ~= 'table' then
+		ctx = p1_build_ctx(settings)
+	end
 	scheduler.p1_update_pending_state(ctx)
 	local proposals = p1_collect_proposals(ctx)
 	local ranked, reject_counts, locks, rejected = p1_rank(ctx, proposals)
@@ -5903,7 +5293,7 @@ local function p1_run_dry(settings)
 			}, ('maint_idle_gap:%s'):format(tostring(best_maint.action_name or '')), 2.00)
 		end
 	end
-	require('uc_scheduler_dryrun_publish').publish(
+	require('uc_scheduler_observability').publish_dryrun(
 		scheduler,
 		_G,
 		ctx,
@@ -5915,14 +5305,10 @@ local function p1_run_dry(settings)
 		locks,
 		plan,
 		commit_reason,
-		p1_format_top3,
-		p1_format_top3_verbose,
-		p1_format_topn_lines,
-		p1_capture_topn_items,
-		p1_push_recent_rejects,
-		p1_reject_top,
-		scheduler.p1_set_pending_globals,
-		scheduler.p1_build_lock_summary
+		{
+			set_pending_globals = scheduler.p1_set_pending_globals,
+			build_lock_summary = scheduler.p1_build_lock_summary,
+		}
 	)
 end
 
@@ -6029,14 +5415,16 @@ function scheduler.p1_dispatch_target_control(selected, ctx)
 	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_TARGET'
 end
 
-function scheduler.p1_try_nonblocking_target_acquire(settings)
+function scheduler.p1_try_nonblocking_target_acquire(settings, ctx)
 	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(settings), false) then
 		return false, nil
 	end
 	if type(rawget(_G, 'UC_REACTION_LOCK')) == 'table' then
 		return false, 'reaction_hold'
 	end
-	local ctx = p1_build_ctx(settings)
+	if type(ctx) ~= 'table' then
+		ctx = p1_build_ctx(settings)
+	end
 	scheduler.p1_update_pending_state(ctx)
 	local proposals = {}
 	p1_collect_target_control(ctx, proposals)
@@ -7566,6 +6954,13 @@ end
 function scheduler.process_tick(cadence)
 	_G.UC_LAST_SCHED_ACTION = ''
 	local s = get_settings()
+	local tick_ctx = nil
+	local function get_tick_ctx()
+		if tick_ctx == nil then
+			tick_ctx = p1_build_ctx(s)
+		end
+		return tick_ctx
+	end
 	enemy_effect_tracker.sweep_invalid()
 	if type(cadence) == 'table' then
 		s._sched_next_defensive_at = tonumber(cadence.next_defensive_at) or 0
@@ -7593,7 +6988,12 @@ function scheduler.process_tick(cadence)
 	scheduler.refresh_reaction_lock()
 	local brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
 	if not brd_lane_reserved then
-		local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s)
+		local target_ctx = nil
+		if bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(s), false)
+			and type(rawget(_G, 'UC_REACTION_LOCK')) ~= 'table' then
+			target_ctx = get_tick_ctx()
+		end
+		local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s, target_ctx)
 		if target_acted then
 			return true, target_reason
 		end
@@ -7605,7 +7005,7 @@ function scheduler.process_tick(cadence)
 		_G.UC_LAST_SCHED_ACTION = ('[def]spell_wait:%s'):format(tostring(scheduler.defensive_pending_action or ''))
 		return true, 'BLOCK_DEFENSIVE_SPELL_WAITING'
 	end
-	p1_run_dry(s)
+	p1_run_dry(s, get_tick_ctx())
 	local p1_acted, p1_reason = scheduler.p1_try_dark_launch_dispatch(s)
 	brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
 	local move_acted, move_reason = false, ''
@@ -7745,9 +7145,9 @@ function scheduler.on_incoming_chunk(id, data)
 		local mid = tonumber(msg.message_id) or 0
 		local eid = tonumber(msg.effect_id) or 0
 		if tid > 0 then
-			if raw_enemy_death_messages[mid] == true then
+			if require('uc_scheduler_enemy_effect_state').is_raw_death_message(mid) then
 				enemy_effect_state_clear_target(tid)
-			elseif raw_enemy_remove_messages[mid] == true then
+			elseif require('uc_scheduler_enemy_effect_state').is_raw_remove_message(mid) then
 				enemy_effect_state_clear(tid, eid)
 			end
 		end
@@ -7920,10 +7320,10 @@ function scheduler.on_action(act)
 							tonumber(a and a.spike_effect_param) or 0,
 						}
 						for _, eid in ipairs(candidates) do
-							if eid > 0 and not dispellable_enemy_effect_set[eid] then
+							if eid > 0
+								and not require('uc_scheduler_enemy_effect_state').is_dispellable(eid) then
 								local k = ('act:%d:%d'):format(eid, tonumber(a and a.message) or 0)
-								if not enemy_effect_observed_once[k] then
-									enemy_effect_observed_once[k] = true
+								if require('uc_scheduler_enemy_effect_state').observe_unknown_once(k) then
 									enemy_dispel_log(('ENEMY_EFFECT_OBS source=action actor=%d target=%d effect=%d msg=%d dispel_known=false'):format(
 										actor_id,
 										tid,
@@ -8056,10 +7456,11 @@ function scheduler.on_action_message(msg)
 		local effect_id = tonumber(msg and msg.param_1) or 0
 		local message_id = tonumber(msg and msg.message_id) or 0
 		local target = target_id > 0 and windower.ffxi.get_mob_by_id(target_id) or nil
-		if effect_id > 0 and target and tonumber(target.spawn_type) == 16 and target_id == actor_id and not dispellable_enemy_effect_set[effect_id] then
+		if effect_id > 0 and target and tonumber(target.spawn_type) == 16
+			and target_id == actor_id
+			and not require('uc_scheduler_enemy_effect_state').is_dispellable(effect_id) then
 			local k = ('msg:%d:%d'):format(effect_id, message_id)
-			if not enemy_effect_observed_once[k] then
-				enemy_effect_observed_once[k] = true
+			if require('uc_scheduler_enemy_effect_state').observe_unknown_once(k) then
 				enemy_dispel_log(('ENEMY_EFFECT_OBS source=action_message actor=%d target=%d effect=%d msg=%d dispel_known=false'):format(
 					actor_id, target_id, effect_id, message_id
 				))
@@ -8164,117 +7565,6 @@ end
 function scheduler.get_debug_overlay()
 	local phase = scheduler.phase1 or {}
 	local s = get_settings()
-	local function build_buff_up_lines()
-		local lines = {}
-		local function buff_label_from_id(bid)
-			local id = tonumber(bid) or 0
-			if id <= 0 then
-				return ''
-			end
-			local b = res.buffs and res.buffs[id] or nil
-			local bn = tostring((b and b.en) or ('id:' .. tostring(id)))
-			return ('%s[%d]'):format(bn, id)
-		end
-		local function buff_labels(list)
-			local out = {}
-			for _, bid in ipairs(list or {}) do
-				local lbl = buff_label_from_id(bid)
-				if lbl ~= '' then
-					out[#out + 1] = lbl
-				end
-			end
-			return out
-		end
-		local function pad_right(s, w)
-			local t = tostring(s or '')
-			local n = w - #t
-			if n <= 0 then
-				return t
-			end
-			return t .. string.rep(' ', n)
-		end
-
-		local members = get_party_members()
-		if type(members) ~= 'table' or #members == 0 then
-			lines[#lines + 1] = 'self: (no party member view)'
-			return lines
-		end
-		local self_member = nil
-		for _, m in ipairs(members) do
-			if m and m.is_self == true then
-				self_member = m
-				break
-			end
-		end
-		if not self_member then
-			lines[#lines + 1] = 'self: (not found in scheduler member view)'
-			return lines
-		end
-		local self_name = tostring(self_member.name or '')
-		local self_source = tostring(self_member.source or 'unknown')
-
-		-- Effective buffs used by scheduler evaluation.
-		local eval_buffs = self_member.buffs or {}
-
-		-- Raw source views for side-by-side comparison.
-		local p = windower.ffxi.get_player()
-		local self_local_buffs = (p and p.buffs) or {}
-
-		local ipc_buffs = {}
-		do
-			local ipc = get_party_state_ipc_entry(tonumber(self_member.id) or 0, self_name)
-			if ipc and type(ipc.buffs) == 'table' then
-				ipc_buffs = ipc.buffs
-			end
-		end
-
-		local party_buffs = {}
-		do
-			local party = windower.ffxi.get_party() or {}
-			local keys = { 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }
-			for _, k in ipairs(keys) do
-				local e = party[k]
-				if e and e.mob and tonumber(e.mob.id) == tonumber(self_member.id) then
-					party_buffs = e.buffs or {}
-					break
-				end
-			end
-		end
-
-		local st = ensure_maintenance_state_tables()
-		local snap = (st.status_snapshot or {})[self_name]
-		local snap_count = 0
-		if type(snap) == 'table' then
-			for _, _ in pairs(snap) do
-				snap_count = snap_count + 1
-			end
-		end
-
-		lines[#lines + 1] = ('eval_source=%s self=%s snapshot_ids=%d'):format(self_source, self_name, snap_count)
-
-		local col_eval = buff_labels(eval_buffs)
-		local col_self = buff_labels(self_local_buffs)
-		local col_ipc = buff_labels(ipc_buffs)
-		local col_party = buff_labels(party_buffs)
-		local max_rows = math.max(#col_eval, #col_self, #col_ipc, #col_party)
-		local show_rows = math.max(1, max_rows)
-
-		local w_eval, w_self, w_ipc = 30, 30, 30
-		lines[#lines + 1] = pad_right('eval(used)', w_eval) .. ' | '
-			.. pad_right('self_local', w_self) .. ' | '
-			.. pad_right('ipc', w_ipc) .. ' | party'
-
-		for i = 1, show_rows do
-			local e = col_eval[i] or ''
-			local sl = col_self[i] or ''
-			local ip = col_ipc[i] or ''
-			local pa = col_party[i] or ''
-			lines[#lines + 1] = pad_right(e, w_eval) .. ' | '
-				.. pad_right(sl, w_self) .. ' | '
-				.. pad_right(ip, w_ipc) .. ' | ' .. pa
-		end
-		return lines
-	end
 	local function enabled_for_provider(provider)
 		local p = tostring(provider or '')
 		if p == 'combat' then
@@ -8290,45 +7580,15 @@ function scheduler.get_debug_overlay()
 		end
 		return false
 	end
-	local queued = {}
-	for _, item in ipairs(phase.last_top5_items or {}) do
-		if enabled_for_provider(item.provider) then
-			queued[#queued + 1] = ('%d) %.2f %s/%s %s u=%.2f rp=%.2f'):format(
-				tonumber(item.idx) or 0,
-				tonumber(item.score) or 0,
-				tostring(item.provider or ''),
-				tostring(item.family or ''),
-				tostring(item.action or ''),
-				tonumber(item.urgency_bonus) or 0,
-				tonumber(item.risk_penalty) or 0
-			)
-		end
-	end
-	local rejected = {}
-	local rri = phase.recent_reject_items or {}
-	local accepted = {}
-	for _, item in ipairs(rri) do
-		if enabled_for_provider(item.provider) then
-			accepted[#accepted + 1] = item
-		end
-	end
-	local start = math.max(1, #accepted - 4)
-	for i = #accepted, start, -1 do
-		local item = accepted[i]
-		rejected[#rejected + 1] = ('t%s %s/%s %s :: %s'):format(
-			tostring(item.tick or ''),
-			tostring(item.provider or ''),
-			tostring(item.family or ''),
-			tostring(item.action or ''),
-			tostring(item.reason or '')
-		)
-	end
-	return {
-		tick = p1_number(phase.tick, 0),
-		queued = queued,
-		rejected = rejected,
-		buff_up = build_buff_up_lines(),
-	}
+	return require('uc_scheduler_observability').build_debug_overlay(phase, {
+		provider_enabled = enabled_for_provider,
+		get_party_members = get_party_members,
+		resources_buffs = res and res.buffs,
+		get_player = windower.ffxi.get_player,
+		get_party_state_ipc_entry = get_party_state_ipc_entry,
+		get_party = windower.ffxi.get_party,
+		ensure_maintenance_state_tables = ensure_maintenance_state_tables,
+	})
 end
 
 function scheduler.reset_runtime_locks()
@@ -8345,53 +7605,13 @@ end
 
 function scheduler.get_enemy_effect_table_overlay()
 	enemy_effect_state_prune_expired(now_s())
-	local phase = scheduler.phase1 or {}
-	local et = type(phase.effectiveTargets) == 'table' and phase.effectiveTargets or {}
-	local lines = { 'Enemy Effect Table (effectiveTargets)' }
-	local target_ids = {}
-	for tid, effects in pairs(et) do
-		if type(effects) == 'table' then
-			target_ids[#target_ids + 1] = tonumber(tid) or 0
-		end
-	end
-	table.sort(target_ids)
-	if #target_ids == 0 then
-		lines[#lines + 1] = '(none)'
-		return { lines = lines }
-	end
-	for _, tid in ipairs(target_ids) do
-		if tid > 0 then
-			local mob = windower.ffxi.get_mob_by_id(tid)
-			local mname = tostring((mob and mob.name) or '?')
-			local hpp = tonumber((mob and mob.hpp) or 0) or 0
-			lines[#lines + 1] = ('%s[%d] hpp=%d'):format(mname, tid, hpp)
-			local effects = et[tid] or et[tostring(tid)] or {}
-			local eids = {}
-			for eid, _ in pairs(effects) do
-				local n = tonumber(eid) or 0
-				if n > 0 then
-					eids[#eids + 1] = n
-				end
-			end
-			table.sort(eids)
-			if #eids == 0 then
-				lines[#lines + 1] = '  (no effects)'
-			else
-				for _, eid in ipairs(eids) do
-					local b = res.buffs and res.buffs[eid] or nil
-					local bn = tostring((b and b.en) or ('id:' .. tostring(eid)))
-					local rec = effects[eid] or effects[tostring(eid)] or {}
-					local src = tostring(rec.source or '')
-					if src ~= '' then
-						lines[#lines + 1] = ('  - %s(%d) src=%s'):format(bn, eid, src)
-					else
-						lines[#lines + 1] = ('  - %s(%d)'):format(bn, eid)
-					end
-				end
-			end
-		end
-	end
-	return { lines = lines }
+	return require('uc_scheduler_observability').build_enemy_effect_overlay(
+		enemy_effect_state_map(),
+		{
+			resources_buffs = res and res.buffs,
+			get_mob_by_id = windower.ffxi.get_mob_by_id,
+		}
+	)
 end
 
 return scheduler

@@ -1,8 +1,10 @@
 # Side-Effect Allowlist
 
-Status: **Phase 0 guardrail complete**
-Verified: 2026-07-24 at `ff5a56ced0158b1bdabb9413c168de5c0be6b523`
-Runtime behavior change: none
+Status: **Phase 0 guardrail maintained through Phase 1**
+Verified: 2026-07-24 in the working tree based on
+`3bd8d2355edb618d81bd2ef4a85f6dfa115d12a0`
+Runtime behavior intent: unchanged; scheduler party-state IPC ownership moved to
+an extracted module.
 
 ## Purpose
 
@@ -23,7 +25,8 @@ The human call-site inventory is:
 | File | Allowed surface | Why it remains | Removal or retention condition |
 | --- | --- | --- | --- |
 | `UnifiedCombat.lua` | Lifecycle `run(false)` | Stops movement during addon lifecycle control | Route through the chosen movement facade |
-| `unified_scheduler.lua` | Scheduler IPC, action command construction, indirect `uc_attack` calls | Scheduler remains a hybrid coordinator/executor | Remove indirect attack execution under dispatcher monopoly; decide IPC ownership explicitly |
+| `unified_scheduler.lua` | Action command construction and indirect `uc_attack` calls | Scheduler remains a hybrid coordinator/executor | Remove indirect attack execution under dispatcher monopoly |
+| `uc_scheduler_party_state.lua` | Injected party-state IPC send | Explicit owner for scheduler party-state IPC encoding, throttling, send, receive, and lookup | Retain while scheduler party-state IPC remains part of the runtime contract |
 | `unified_combat_core.lua` | Commands, movement, turn, target selection, IPC, attack wrappers | Core remains the legacy/runtime helper owner and owns the current skillchain WS send | Migrate each active domain with parity evidence; retain IPC only by explicit decision |
 | `uc_attack.lua` | Action packet injection | Central packet implementation for engage/switch/disengage | Make it a dispatcher-owned dependency or move packet execution into dispatcher |
 | `uc_settarget.lua` | Target packet injection | Central packet implementation for target selection | Make it a dispatcher-owned dependency or move packet execution into dispatcher |
@@ -82,8 +85,8 @@ lua tests/replay/harness/selftest_side_effect_inventory.lua
 Current expected result:
 
 ```text
-runtime_files=119
-allowlisted_files=19
-pattern_checks=266
+runtime_files=125
+allowlisted_files=20
+pattern_checks=300
 observed_hits=263
 ```

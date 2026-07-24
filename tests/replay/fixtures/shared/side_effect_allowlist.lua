@@ -6,6 +6,7 @@ return {
         { key = "direct_turn", literal = "windower.ffxi.turn(" },
         { key = "direct_target_select", literal = "uc_settarget.select_by_id(" },
         { key = "direct_ipc_send", literal = "windower.send_ipc_message(" },
+        { key = "injected_ipc_send", literal = "require_function(deps, 'send_ipc_message')(" },
         { key = "packet_inject", literal = "packets.inject(", case_insensitive = true },
         { key = "command_attack", literal = "input /attack", case_insensitive = true },
         { key = "command_magic", literal = "input /ma", case_insensitive = true },
@@ -77,6 +78,9 @@ return {
             command_magic = 1,
             command_ability = 1,
         },
+        ["uc_scheduler_party_state.lua"] = {
+            injected_ipc_send = 1,
+        },
         ["uc_settarget.lua"] = {
             packet_inject = 1,
         },
@@ -94,7 +98,6 @@ return {
             wrapper_disengage = 2,
         },
         ["unified_scheduler.lua"] = {
-            direct_ipc_send = 1,
             command_magic = 4,
             command_ability = 6,
             command_weaponskill = 1,

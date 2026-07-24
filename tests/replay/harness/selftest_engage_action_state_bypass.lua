@@ -1,5 +1,6 @@
 local scheduler_path = "unified_scheduler.lua"
 local action_state_path = "uc_scheduler_action_state.lua"
+local ranker_path = "uc_scheduler_ranker.lua"
 
 local function read_file(file_path)
     local fh, err = io.open(file_path, "r")
@@ -73,13 +74,14 @@ end
 local function main()
     local scheduler_source = read_file(scheduler_path)
     local action_state_source = read_file(action_state_path)
+    local ranker_source = read_file(ranker_path)
 
     assert_contains(action_state_source, "function M.engage_attack_on_action_state_gate", "action-state module must define explicit attack-on engage gate")
     assert_contains(action_state_source, "ENGAGE_ACTION_STATE_BYPASS", "engage action-state bypass must be logged")
     assert_contains(action_state_source, "if send_kind == 'engage' then", "engage retry debounce must remain blocking")
     assert_contains(scheduler_source, "engage_attack_on_action_state_gate({", "scheduler engage dispatch must use the explicit attack-on action-state gate")
     assert_contains(scheduler_source, "scheduler.p1_maybe_release_stale_spell_lock_for_target_transition(selected, now_s())", "scheduler must still attempt stale spell release before engage send")
-    assert_contains(scheduler_source, "reason = 'pending_engage_retry_wait'", "retry cadence holds must log their exact blocker")
+    assert_contains(ranker_source, "reason = 'pending_engage_retry_wait'", "ranker retry cadence holds must log their exact blocker")
     assert_contains(scheduler_source, "reason = 'BLOCK_PLAYER_DEAD'", "dead-player engage holds must log their exact blocker")
 
     local ws_scheduler = {}

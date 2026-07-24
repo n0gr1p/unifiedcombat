@@ -7,7 +7,8 @@ Canonical location: `RFC/UnifiedCombat_scheduler_refactor_tracking.md`
 ## 1) Authoritative Current Status
 
 Status date: 2026-07-24
-Audited commit: `ff5a56ced0158b1bdabb9413c168de5c0be6b523`
+Audited state: current working tree based on Phase 0 commit
+`3bd8d2355edb618d81bd2ef4a85f6dfa115d12a0`
 
 This compact board is the authoritative current status. The detailed task notes and
 older progress rows below are retained as implementation history and may describe
@@ -16,7 +17,7 @@ an earlier state.
 | RFC phase | Current status | Current evidence |
 | --- | --- | --- |
 | Phase 0 — Baseline and guardrails | `DONE` | T0.1 side-effect inventory, T0.2 responsibility map, T0.3 canonical tracker, and T0.4 repository-wide discovery guard are current and linked below. |
-| Phase 1 — Mechanical decomposition | `PARTIAL` | Many state and helper seams are extracted. Proposal validation/scoring/ranking, provider collection, enemy-effect state, much observability, context construction, and tick orchestration remain in `unified_scheduler.lua`. |
+| Phase 1 — Mechanical decomposition | `DONE / REPLAY VERIFIED` | Proposal normalization, ranker, context, enemy-effect state, observability, and party IPC are extracted. One tick context is shared by target acquisition and provider collection/ranking. Phase 1 exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase1_exit_audit_2026-07-24.md`. |
 | Phase 2 — Dispatcher monopoly | `IN PROGRESS` | Dispatcher and ownership helpers are live and broadly promoted, but direct executors and direct fallback behavior remain. |
 | Phase 3 — Provider purity | `NOT STARTED structurally` | Primary `p1_collect_*` providers remain local to `unified_scheduler.lua`; the RFC provider-module boundary does not exist. |
 | Phase 4 — Movement ownership cleanup | `IN PROGRESS / FAR FROM COMPLETE` | Scheduler run-stop seams exist, while core, follow, pathing, Nyzul, lifecycle, and other movement paths still execute directly. |
@@ -47,13 +48,43 @@ Verification baseline at Phase 0 closeout:
   allowlisted, 14 patterns checked per allowlisted file, 266 exact file-pattern
   assertions, and 263 observed tracked hits.
 
-Next architectural work: resume Phase 1 with a behavior-preserving extraction of
-proposal schema/normalization and validation/scoring/ranking. Do not combine that
-mechanical extraction with stricter proposal rejection, dispatcher fallback
-removal, provider extraction, or new runtime behavior.
+### Phase 1 acceptance record
+
+| Task | Status | Artifact / evidence |
+| --- | --- | --- |
+| T1.1 — Action state, pending lifecycle, locks, duplicate suppression | `DONE` | Existing extracted action-state, pending, pending-record, and locks modules; aggregate fixtures pass. |
+| T1.2 — Proposal normalization/schema helpers | `DONE` | `uc_scheduler_proposals.lua`; focused proposal tests pass. |
+| T1.3 — Validation, scoring, and ranking | `DONE` | `uc_scheduler_ranker.lua`; focused rank/rejection/debug tests pass. |
+| T1.4 — Scheduler observability formatting | `DONE` | `uc_scheduler_observability.lua`; exact-shape focused tests pass. |
+| T1.5 — Enemy-effect state | `DONE` | `uc_scheduler_enemy_effect_state.lua`; dynamic/static ingestion and lifecycle tests pass. |
+| Party IPC state | `DONE` | `uc_scheduler_party_state.lua`; encoding, throttling, ordering, expiry, and integration tests pass. |
+| Explicit tick-stable context | `DONE` | `uc_scheduler_context.lua`; one-sample behavior and scheduler shared-context static tests pass. |
+
+Phase 1 verification:
+
+- runtime parse: 76 runtime Lua files;
+- aggregate replay/static runner: 109/109 suites;
+- side-effect discovery guard: 125 non-test Lua files scanned, 20 files
+  allowlisted, 15 patterns checked per allowlisted file, 300 exact file-pattern
+  assertions, and 263 observed tracked hits;
+- proposal-key assignment diff against Phase 0: no changes;
+- detailed audit:
+  `RFC/UnifiedCombat_scheduler_refactor_phase1_exit_audit_2026-07-24.md`.
+
+Next architectural work: choose an evidence-backed Phase 2 dispatcher-monopoly
+slice or begin Phase 3 provider extraction. Provider modules are intentionally
+not a Phase 1 requirement; the RFC places provider purity in Phase 3.
 
 ## Recent Historical Entries
 
+- 2026-07-24: Completed RFC Phase 1 mechanical decomposition in the current
+  working tree. Added explicit proposal, ranker, context, enemy-effect-state,
+  observability, and party-state modules; shared one tick-stable context across
+  target acquisition and provider collection/ranking; added focused dynamic and
+  static coverage; preserved proposal keys, rank order, rejection reasons,
+  debug output, and the 263 side-effect-hit baseline. Runtime parse passes for
+  76 files and the aggregate runner passes 109/109 suites. See
+  `RFC/UnifiedCombat_scheduler_refactor_phase1_exit_audit_2026-07-24.md`.
 - 2026-07-20: Completed scheduler-owned WS skillchain field acceptance after addon reload. The newest-session validators passed for Nyoourke (35 dispatches, 0 non-Aeonic Ultimate predictions, minimum 0.220s after preferred, 1.175s before latest-safe) and Ponponponponpon (13 dispatches, minimum 0.246s after preferred, 2.699s before latest-safe), with no duplicate target/generation dispatch and required pending-result reservation after every send. Initial Cases A/B, corrective replay, and post-reload acceptance are complete; Case C is replay-only by accepted disposition and Case D is not applicable. `WS-SC-0` through `WS-SC-4` are done.
 - 2026-07-20: Reviewed initial live Nyoourke/Ponponponponpon/Terrasjr timelines. All bounded continuation commits were inside preferred/latest-safe timing, and both multi-actor replacement variants canceled old generations before dispatch. The capture exposed non-Aeonic AM3 Radiance prediction and repeated sends for one pending generation; both were corrected with focused replay coverage. Aggregate replay remained 95/95. Artificial Case C was waived in favor of replay and Case D was not applicable per the current setup.
 - 2026-07-20: Implemented and replay-verified `WS-SC-0` through `WS-SC-3` and the runtime portion of `WS-SC-4`. Added target-scoped monotonic skillchain state, structured generation-bound continuations, atomic commit revalidation, Chainbound/Aeonic/Diamond Aspis/terminal-MB rules, deadline-aware priority, pending-window lane reservation, preferred-buffer admission, action-family classification, fail-closed unmapped Chainbound handling, telemetry, lifecycle reset, and focused fixtures. Removed the global `core.ws_timer`, speculative step cap, and scheduler WS command-ownership fallback seam. Validation: runtime parse 67 files and aggregate replay 95 suites pass. Initial field status was pending.
@@ -2398,30 +2429,23 @@ Runtime foundation files:
 
 ### 4.1 High-priority remaining implementation scope
 
-1. Mechanical decomposition (RFC Phase 1):
-   - Extract proposal schema/normalization without changing proposal fields or
-     rejection behavior.
-   - Extract validation/scoring/ranking without changing rank order, proposal
-     keys, or rejection reasons.
-   - Extract enemy-effect state and establish one explicit tick-context contract.
-
-2. Dispatcher monopoly (RFC Phase 2):
+1. Dispatcher monopoly (RFC Phase 2):
    - Migrate the remaining direct and indirect executors in explicit, field-tested
      slices.
    - Retire existing direct fallback branches only after parity evidence; do not
      add new fallback execution.
 
-3. Provider purity and scheduler slimming (RFC Phase 3):
+2. Provider purity and scheduler slimming (RFC Phase 3):
    - Extract defensive, combat, tank, maintenance, target-control, and pull
-     providers after context and ranker contracts are stable.
+     providers using the now-stable context and ranker contracts.
    - Keep providers proposal-only and preserve action-selection semantics.
 
-4. Movement ownership cleanup (RFC Phase 4):
+3. Movement ownership cleanup (RFC Phase 4):
    - Decide ownership across coordinator, core movement, follow, pathing, Nyzul,
      formation, and lifecycle stops.
    - Migrate one reachable path at a time with exact run/stop evidence.
 
-5. Domain cutover and cleanup (RFC Phases 5 and 6):
+4. Domain cutover and cleanup (RFC Phases 5 and 6):
    - Maintain separate domain-specific parity and field evidence.
    - Make ownership default-on only after proof, then retire legacy paths and
      simplify the scheduler.

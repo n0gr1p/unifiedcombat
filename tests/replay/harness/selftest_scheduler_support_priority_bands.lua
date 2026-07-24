@@ -42,6 +42,8 @@ end
 
 local function main()
     local source = read_file(scheduler_path)
+    local proposals_source = read_file("uc_scheduler_proposals.lua")
+    local ranker_source = read_file("uc_scheduler_ranker.lua")
 
     assert_contains(source, "scheduler.PRIORITY_BAND_AFTERMATH_WS = 108", "aftermath priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131", "skillchain continuation priority band mismatch")
@@ -64,11 +66,12 @@ local function main()
 
     local bypass = source:match("function scheduler%.p1_priority_bypasses_engage%(proposal%)(.-)\nend")
     assert_true(type(bypass) == "string", "failed to capture engage bypass helper")
-    assert_contains(bypass, "proposal.priority_band >= scheduler.PRIORITY_BAND_ENGAGE_BYPASS", "engage bypass must use the global band threshold")
+    assert_contains(bypass, "scheduler.PRIORITY_BAND_ENGAGE_BYPASS", "engage bypass wrapper must pass the global band threshold")
     assert_not_contains(bypass, "main_job", "engage bypass must not inspect job identity")
     assert_not_contains(bypass, "provider", "engage bypass must not special-case providers")
+    assert_contains(proposals_source, "proposal.priority_band >= engage_bypass_band", "proposal helper must apply the injected band threshold")
 
-    assert_contains(source, "elseif not scheduler.p1_priority_bypasses_engage(p) then", "pending engage must admit globally high-priority bands")
+    assert_contains(ranker_source, "elseif not require_function(deps, 'priority_bypasses_engage')(proposal) then", "pending engage must admit globally high-priority bands")
     assert_contains(source, "if scheduler.p1_priority_bypasses_engage(top) then", "engage preemption must preserve globally high-priority bands")
 
     assert_contains(source, "local brd_provider_active = main_job ~= 'COR' and (main_job == 'BRD' or sub_job == 'BRD')",
@@ -101,8 +104,10 @@ local function main()
         "process_tick must enforce defensive scheduler ownership before legacy dispatch")
     assert_before(process_tick, "try_doom_water_emergency(s)", "scheduler.p1_try_dark_launch_dispatch(s)",
         "Doom must remain the sole hard prepass ahead of Bard scheduler arbitration")
-    assert_contains(process_tick, "if not brd_lane_reserved then\n\t\tlocal target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s)",
+    assert_contains(process_tick, "if not brd_lane_reserved then\n\t\tlocal target_ctx = nil",
         "Bard lane must hold nonblocking target acquisition")
+    assert_contains(process_tick, "scheduler.p1_try_nonblocking_target_acquire(s, target_ctx)",
+        "Bard lane target acquisition must use the tick-stable context")
     assert_contains(process_tick, "if not brd_lane_reserved then\n\t\tmove_acted, move_reason = run_movement_coordinator_tick()",
         "Bard lane must hold movement coordination")
     assert_before(process_tick, "if brd_lane_reserved then\n\t\t_G.UC_LAST_SCHED_ACTION = '[p1]brd_lane_hold'", "try_internal_defensive_action()",

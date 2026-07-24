@@ -1,8 +1,10 @@
 # Side-Effect Inventory
 
-Status: **Phase 0 baseline complete**
-Verified: 2026-07-24 at `ff5a56ced0158b1bdabb9413c168de5c0be6b523`
-Runtime behavior change: none
+Status: **Phase 0 guardrail maintained through Phase 1**
+Verified: 2026-07-24 in the working tree based on
+`3bd8d2355edb618d81bd2ef4a85f6dfa115d12a0`
+Runtime behavior intent: unchanged; scheduler party-state IPC ownership moved to
+an extracted module.
 
 ## Purpose
 
@@ -27,6 +29,7 @@ Direct execution:
 - `windower.ffxi.turn(...)`
 - `uc_settarget.select_by_id(...)`
 - `windower.send_ipc_message(...)`
+- injected `send_ipc_message(...)` execution through an explicit dependency
 - `packets.inject(...)`
 
 Command construction:
@@ -51,7 +54,8 @@ that only constructs an intent is not thereby classified as a direct executor.
 | File | Current call sites | Domain / responsibility | Migration target |
 | --- | --- | --- | --- |
 | `UnifiedCombat.lua` | `run`: 418 | Lifecycle stop | Movement dispatcher/facade |
-| `unified_scheduler.lua` | `send_ipc`: 1650; `/ws`: 4224; `/ma`: 4367, 4983, 7292, 7400; `/ja`: 4984, 5069, 5070, 6443, 6964, 7044; `engage`: 6342; `switch_target`: 1919, 6006; `disengage`: 1929, 2350 | Scheduler IPC, intent construction, and indirect attack execution | Dispatcher monopoly; IPC owner to be decided separately |
+| `unified_scheduler.lua` | `/ws`: 3799; `/ma`: 3942, 4560, 6680, 6788; `/ja`: 4561, 4646, 4647, 5831, 6352, 6432; `engage`: 5730; `switch_target`: 1508, 5392; `disengage`: 1518, 1936 | Intent construction and indirect attack execution | Dispatcher monopoly |
+| `uc_scheduler_party_state.lua` | injected `send_ipc_message`: 91 | Scheduler party-state IPC encoding, throttling, send, receive, and lookup | Retain as the explicit party-state IPC owner |
 | `unified_combat_core.lua` | `send_command`: 2020, 2041, 2207, 2218, 3245, 3259, 4009; `run`: 1626, 1635, 1640, 1993, 2012, 2095, 2121, 2130, 2181, 2286, 2409, 2428, 2442, 2448, 2482, 2520, 2540, 2545, 2579, 3502, 3518; `turn`: 2313, 2348; `select_by_id`: 2119, 2255; `send_ipc`: 352, 363; indirect attack wrappers: 2246, 2275, 3608, 3618, 3685, 3775; action command strings at the matching send sites | Legacy/core combat, pull, tank, movement, and scheduler-owned skillchain WS send | Dispatcher and movement facade; preserve only explicitly approved IPC ownership |
 | `uc_attack.lua` | `packets.inject`: 54, 74, 101 | Engage, switch-target, and disengage packet executor | Dispatcher-owned attack adapter |
 | `uc_settarget.lua` | `packets.inject`: 31 | Target selection packet executor | Dispatcher-owned target adapter |
@@ -81,8 +85,8 @@ Detailed per-pattern counts for every row are pinned in the machine allowlist.
 
 ## Zero-match coverage
 
-The verification scan currently discovers 119 non-test Lua files. Nineteen
-contain one or more tracked patterns. The other 100 files are still scanned and
+The verification scan currently discovers 125 non-test Lua files. Twenty
+contain one or more tracked patterns. The other 105 files are still scanned and
 must remain free of tracked side-effect surfaces unless the allowlist and this
 inventory are deliberately updated.
 
@@ -90,8 +94,9 @@ inventory are deliberately updated.
 
 1. `unified_scheduler.lua` has no literal `windower.send_command(...)`,
    `windower.ffxi.run(...)`, `windower.ffxi.turn(...)`, or
-   `uc_settarget.select_by_id(...)` call. It still injects those functions into
-   compatibility ownership helpers and invokes indirect packet executors.
+   `uc_settarget.select_by_id(...)` call. It still injects several of those
+   function references into compatibility ownership helpers, invokes indirect
+   packet executors, and constructs action commands.
 2. Dispatcher monopoly is not complete. Core, movement modules, attack/target
    packet adapters, add control, and lifecycle code remain executors.
 3. Movement authority remains distributed across core, follow, pathing, Nyzul,
@@ -99,7 +104,8 @@ inventory are deliberately updated.
 4. Scheduler-owned skillchain WS execution currently occurs through the direct
    core `send_command` site at `unified_combat_core.lua:4009`.
 5. IPC is intentionally tracked but is not automatically assumed to belong to
-   the combat dispatcher.
+   the combat dispatcher. Scheduler party-state IPC is owned by
+   `uc_scheduler_party_state.lua`.
 
 ## Maintenance rule
 

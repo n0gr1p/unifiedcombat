@@ -67,7 +67,7 @@ local function main()
     assert_contains(source, "local defensive_spell_wait_locked = scheduler.refresh_defensive_spell_wait_lock(now_s())", "process tick must refresh defensive spell lock before movement coordinator")
     assert_contains(source, "return true, 'BLOCK_DEFENSIVE_SPELL_WAITING'", "active defensive spell wait must block scheduler movement/action dispatch")
 
-    local target_lane_pos = assert(source:find("local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s)", 1, true))
+    local target_lane_pos = assert(source:find("local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s, target_ctx)", 1, true))
     local refresh_pos = assert(source:find("local defensive_spell_wait_locked = scheduler.refresh_defensive_spell_wait_lock(now_s())", 1, true))
     local p1_pos = assert(source:find("local p1_acted, p1_reason = scheduler.p1_try_dark_launch_dispatch(s)", 1, true))
     local move_pos = assert(source:find("move_acted, move_reason = run_movement_coordinator_tick()", refresh_pos + 1, true))

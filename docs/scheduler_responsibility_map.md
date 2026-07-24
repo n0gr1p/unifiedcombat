@@ -1,20 +1,22 @@
 # Unified Scheduler Responsibility Map
 
-Status: **Phase 0 baseline complete**
-Verified: 2026-07-24 at `ff5a56ced0158b1bdabb9413c168de5c0be6b523`
-Runtime behavior change: none
+Status: **Phase 1 decomposition complete**
+Verified: 2026-07-24 in the working tree based on
+`3bd8d2355edb618d81bd2ef4a85f6dfa115d12a0`
+Runtime behavior intent: selection behavior unchanged; world state is sampled
+once and shared within each scheduler tick.
 
 ## Purpose
 
 This map records the current post-extraction hybrid architecture. It replaces
-the 2026-05-15 pre-extraction draft and provides the baseline for the remaining
-Phase 1 decomposition.
+the 2026-05-15 pre-extraction draft and provides the baseline for Phase 2/3
+work after Phase 1 decomposition.
 
 Current primary sizes:
 
 | File | Lines | Current role |
 | --- | ---: | --- |
-| `unified_scheduler.lua` | 8,398 | Scheduler facade plus most providers, ranking, dispatch orchestration, movement coordination, enemy state, IPC, diagnostics, and packet observation |
+| `unified_scheduler.lua` | 7,618 | Scheduler facade plus providers, dispatch orchestration, movement coordination, lifecycle policy, and packet observation |
 | `unified_combat_core.lua` | 4,213 | Legacy/core combat and movement implementation plus scheduler-facing selection helpers and skillchain WS execution |
 | `unified_engine.lua` | 409 | 0.20-second lifecycle tick, overlay rendering, scheduler invocation, and conditional core fallback |
 
@@ -33,25 +35,31 @@ These modules are active and called by `unified_scheduler.lua`.
 | Command construction | `uc_scheduler_command_builder.lua` | `build_action_command` |
 | Active config readers | `uc_scheduler_config.lua` | Scheduler/provider-facing ownership, combat, tank, and debug reads |
 | Context leaf helpers | `uc_scheduler_context_utils.lua` | Settings, zone, partner target, and maintenance-city helpers |
+| Tick context | `uc_scheduler_context.lua` | `p1_build_ctx` wrapper; one cached context shared by target acquisition and proposal collection/ranking |
 | Defensive pure helpers | `uc_scheduler_defensive_utils.lua` | Buff, cure, debuff, priority, and danger calculations |
 | Dispatch-plan structure | `uc_scheduler_dispatch_plan.lua` | `p1_build_dispatch_plan`, `p1_revalidate_plan_commit` |
 | Dispatcher contract | `uc_scheduler_dispatcher.lua` | Intent validation and injected-dependency execution |
 | Dry-run publication | `uc_scheduler_dryrun_publish.lua` | Ranked queue/global publication |
 | Enemy-effect leaf helpers | `uc_scheduler_enemy_effect_utils.lua` | Labels, normalization, priority conversion, claim validation |
+| Enemy-effect state | `uc_scheduler_enemy_effect_state.lua` | Catalog loading, effect/attempt maps, raw ingestion, removal classification, and scheduler wrappers |
 | Geometry | `uc_scheduler_geometry.lua` | Angle normalization and front-arc checks |
 | Phase 1 locks | `uc_scheduler_locks.lua` | Pending-live predicate, duplicate suppression, lock state, summary, reset |
 | Maintenance pure helpers | `uc_scheduler_maintenance_utils.lua` | Set, split, dedupe, and buff-count helpers |
 | Numeric normalization | `uc_scheduler_numeric_utils.lua` | `p1_number`, urgency clamp, boolean setting |
 | Partner arbitration | `uc_scheduler_partner_arbitration.lua` | Pure arbitration decision |
 | Pending record/lifecycle | `uc_scheduler_pending_record.lua`, `uc_scheduler_pending.lua` | Pending construction, state transitions, globals |
+| Party-state IPC | `uc_scheduler_party_state.lua` | Encode, throttle/send, parse/apply, TTL, and lookup wrappers |
+| Proposal schema/normalization | `uc_scheduler_proposals.lua` | Identity validation, timestamp/default normalization, created-age, and engage-priority policy |
 | Proposal keys | `uc_scheduler_proposal_keys.lua` | Family and attempt keys |
+| Validation, scoring, and ranking | `uc_scheduler_ranker.lua` | Explicit dependency interface behind scheduler validation/rank wrappers |
 | Rank/reject presentation | `uc_scheduler_rank_output.lua`, `uc_scheduler_reject_history.lua` | Top-N formatting/capture and recent reject history |
+| Observability facade | `uc_scheduler_observability.lua` | Dry-run publication, rank/reject formatting, debug overlay, and enemy-effect overlay |
 | Status snapshot parsing | `uc_scheduler_status_snapshot_parser.lua` | `0x063` parse helper |
 | Target helpers | `uc_scheduler_target_utils.lua` | Target distance and tank-enmity selection predicates |
 | Text helpers | `uc_scheduler_text_utils.lua` | Split, decode, normalization, Roman numeral helpers |
 | Ownership compatibility seams | `uc_scheduler_command_ownership.lua`, `uc_scheduler_run_ownership.lua`, `uc_scheduler_run_stop_ownership.lua`, `uc_scheduler_target_ownership.lua`, `uc_scheduler_turn_ownership.lua` | Dispatcher-first versus direct execution selection and status publication |
 
-## Responsibilities remaining in `unified_scheduler.lua`
+## Current scheduler-owned responsibilities and façade seams
 
 ### 1. Time, config, and root state
 
@@ -73,7 +81,7 @@ Current responsibility:
 Target:
 
 - keep a small root coordinator state;
-- move tick snapshot construction into an explicit context/world-snapshot owner;
+- keep tick snapshot construction behind `uc_scheduler_context.lua`;
 - do not duplicate settings ownership.
 
 Priority/risk: **high / high**
@@ -90,17 +98,15 @@ Functions:
 
 Current responsibility:
 
-- independently samples player, self mob, party, mob array, and time;
-- increments `phase1.tick`.
+- `uc_scheduler_context.lua` samples player, self mob, target, party, mob array,
+  and time through explicit dependencies;
+- `scheduler.process_tick` caches one context and supplies it to nonblocking
+  target acquisition and proposal collection/ranking;
+- providers use snapshot fields rather than resampling Windower state.
 
-Known boundary issue:
+Status: **Phase 1 extracted; retain the scheduler wrapper for compatibility.**
 
-- `p1_try_nonblocking_target_acquire` and `p1_run_dry` build separate contexts
-  during one engine tick, so the RFC tick-stable snapshot target is not met.
-
-Target: `uc_scheduler_context.lua` or `uc_world_snapshot.lua`
-
-Priority/risk: **high / high**
+Priority/risk: **retain / high**
 
 ### 3. Proposal providers
 
@@ -146,21 +152,15 @@ Functions:
 
 Current responsibility:
 
-- normalizes proposal fields in place;
-- supplies default timestamps/deadlines;
-- applies settings, pending, reaction, duplicate, and lock rejection;
-- calculates score and deterministic ordering;
-- applies engage-specific preemption.
+- `uc_scheduler_proposals.lua` validates identity and normalizes live fields;
+- `uc_scheduler_ranker.lua` applies settings, pending, reaction, duplicate, and
+  lock rejection, calculates score, and applies deterministic ordering;
+- scheduler wrappers retain engage preemption and existing call signatures.
 
-Target:
+Status: **Phase 1 extracted and replay verified.** Strict missing-field
+rejection remains a separate behavior task.
 
-- `uc_scheduler_proposals.lua` for schema/normalization;
-- `uc_scheduler_ranker.lua` for validation/scoring/ranking.
-
-Extraction must preserve bands, tie-breaks, rejection taxonomy, and side-effect
-counts. Strict missing-field rejection is a separate behavior task.
-
-Priority/risk: **high / high**
+Priority/risk: **retain / high**
 
 ### 5. Action and spell lifecycle orchestration
 
@@ -211,18 +211,16 @@ Functions/state:
 
 Current responsibility:
 
-- owns a scheduler effect table in addition to using
-  `uc_enemy_effect_tracker.lua`;
-- ingests catalogs, raw action data, action messages, and removal events;
-- feeds enemy-dispel proposals and overlays.
+- `uc_scheduler_enemy_effect_state.lua` owns the scheduler effect/attempt maps,
+  JSON catalog, raw-action ingestion, death/removal classification, and unknown
+  observation dedupe;
+- `uc_enemy_effect_tracker.lua` remains the authoritative observed-effect
+  tracker consumed by proposal collection;
+- scheduler wrappers preserve packet/action entrypoints and overlay inputs.
 
-Target:
+Status: **Phase 1 extracted and replay verified.**
 
-- one explicit enemy-effect state owner, either a new
-  `uc_enemy_effect_state.lua` or a deliberately expanded
-  `uc_enemy_effect_tracker.lua`.
-
-Priority/risk: **high / high**
+Priority/risk: **retain / high**
 
 ### 7. Party state IPC
 
@@ -237,12 +235,13 @@ Functions/state:
 
 Current responsibility:
 
-- encodes, broadcasts, receives, expires, and queries scheduler party state.
+- `uc_scheduler_party_state.lua` encodes, throttles/sends, receives, sequence
+  checks, expires, and queries scheduler party state;
+- the scheduler keeps its public IPC event entrypoint and state table.
 
-Target: `uc_scheduler_party_state.lua` after the higher-priority context, ranker,
-and enemy-state extractions.
+Status: **Phase 1 extracted and replay verified.**
 
-Priority/risk: **medium / medium**
+Priority/risk: **retain / medium**
 
 ### 8. Defensive and maintenance decision implementation
 
@@ -346,15 +345,15 @@ Functions:
 
 Current responsibility:
 
-- combines extracted formatters with scheduler-owned logging, globals, overlays,
-  timelines, and effect presentation.
+- `uc_scheduler_observability.lua` combines rank/reject formatters, dry-run
+  publication, debug-overlay formatting, and enemy-effect presentation;
+- scheduler-owned diagnostic log/timeline event production remains local;
+- scheduler public overlay methods delegate formatting while preserving
+  `_G.UC_*` and bridge/overlay shapes.
 
-Target:
+Status: **Phase 1 formatting consolidation complete and replay verified.**
 
-- `uc_scheduler_observability.lua` after state inputs are stable;
-- preserve `_G.UC_*` and bridge/overlay shapes during extraction.
-
-Priority/risk: **medium / medium-high**
+Priority/risk: **retain / medium-high**
 
 ### 12. Packet and action observation
 
@@ -458,17 +457,18 @@ Target:
    Nyzul, and lifecycle.
 3. Packet/action observation fan-out.
 4. Defensive/tank spell and engage lifecycle state.
-5. Enemy-effect state split between scheduler and tracker.
-6. Multiple context builds and live reads within one engine tick.
+5. Provider extraction while preserving the now-explicit context and ranker
+   contracts.
 
-## Recommended Phase 1 order
+## Recommended next order after Phase 1
 
-1. Extract proposal schema/normalization without changing fields.
-2. Extract validation/scoring/ranking unchanged.
-3. Define and introduce one explicit tick-context contract.
-4. Extract enemy-effect state.
-5. Extract provider modules after the context and ranker interfaces are stable.
-6. Extract observability and party IPC after their state inputs are explicit.
+1. Select a bounded Phase 2 dispatcher-monopoly slice with exact side-effect
+   evidence, or begin Phase 3 provider extraction.
+2. Extract providers by cohesive domain against the stable context/ranker
+   interfaces.
+3. Preserve proposal keys, priority bands, rejection taxonomy, and public
+   scheduler wrappers during each provider move.
+4. Keep movement ownership cleanup separate from provider extraction.
 
-Do not combine these mechanical extractions with stricter proposal validation,
-dispatcher fallback removal, domain cutover, or movement behavior changes.
+Do not combine provider extraction with stricter proposal validation, dispatcher
+fallback removal, domain cutover, or movement behavior changes.

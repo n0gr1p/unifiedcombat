@@ -297,8 +297,8 @@ local function main()
     assert_equal(blocked, false, "interrupted local spell must not leave stale engage cooldown")
     assert_equal(reason, nil, "interrupted local spell should not leave a block reason")
 
-    assert_contains(scheduler_source, "function scheduler.p1_try_nonblocking_target_acquire(settings)", "T3.4g nonblocking target-acquire lane must remain intact")
-    assert_contains(scheduler_source, "local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s)", "target-acquire lane must still run before ranked dispatch")
+    assert_contains(scheduler_source, "function scheduler.p1_try_nonblocking_target_acquire(settings, ctx)", "T3.4g nonblocking target-acquire lane must remain intact")
+    assert_contains(scheduler_source, "local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s, target_ctx)", "target-acquire lane must still run before ranked dispatch")
     assert_contains(scheduler_source, "scheduler.TANK_ENGAGE_PRIORITY = 107", "T3.4f tank engage priority band must remain intact")
 
     io.stdout:write("selftest_engage_dispatch_priority: OK\n")
