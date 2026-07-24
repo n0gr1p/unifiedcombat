@@ -1,118 +1,89 @@
-# Side-Effect Allowlist (Scheduler Ownership Migration Guardrail)
+# Side-Effect Allowlist
 
-Status: Draft (documentation-only)
-Scope: Guardrail for scheduler ownership refactor tasks
-Date: 2026-05-15
-Related:
-- `docs/side_effect_inventory.md`
-- `docs/scheduler_responsibility_map.md`
-- `docs/unified_scheduler_rfc.md`
-- `docs/unified_scheduler_phase1_amendment.md`
-- `docs/scheduler_work_tracking.md`
+Status: **Phase 0 guardrail complete**
+Verified: 2026-07-24 at `ff5a56ced0158b1bdabb9413c168de5c0be6b523`
+Runtime behavior change: none
 
-## 1. Purpose
+## Purpose
 
-This allowlist is a migration guardrail for the UnifiedCombat scheduler ownership refactor.
+This allowlist makes the current hybrid execution surface explicit. An
+allowlisted call site is tolerated for the current migration baseline; it is not
+an endorsement of the final architecture.
 
-It exists to prevent accidental expansion of side-effect execution while code is being mechanically extracted. During migration, this file is the source of truth for where direct runtime side effects are currently allowed and what module should own them in the target architecture.
+The executable source of truth is:
 
-## 2. Side effects covered
+`tests/replay/fixtures/shared/side_effect_allowlist.lua`
 
-This allowlist covers direct runtime side-effect APIs:
+The human call-site inventory is:
 
-- `windower.send_command(...)`
-- `windower.ffxi.run(...)`
-- `windower.ffxi.turn(...)`
-- `uc_settarget.select_by_id(...)`
-- Windower IPC send/broadcast calls present in current code:
-  - `windower.send_ipc_message(...)`
+`docs/side_effect_inventory.md`
 
-## 3. Current allowed active-runtime side-effect locations
+## Active runtime exceptions
 
-Conservative rule: listed locations are allowed for current behavior parity during migration, but no new locations may be introduced outside this allowlist.
-
-| File path | Side-effect API used | Current reason it is allowed | Temporary or expected to remain | Target future owner |
-| --- | --- | --- | --- | --- |
-| `unified_scheduler.lua` | `windower.send_command`, `windower.ffxi.run`, `windower.ffxi.turn`, `uc_settarget.select_by_id`, `windower.send_ipc_message` | Current scheduler tick path still executes dark-launch dispatch (`p1_try_dark_launch_dispatch`), movement coordinator tick (`run_movement_coordinator_tick`), doom emergency action (`try_doom_water_emergency`), and party-state IPC broadcast (`maybe_broadcast_party_state_ipc`). | Mostly temporary for command/target/movement execution; IPC ownership is mixed/uncertain during Phase 1. | `uc_scheduler_dispatcher.lua` for command/target/action execution; movement via dispatcher or dispatcher-owned movement facade; IPC ownership uncertain (likely scheduler context path). |
-| `unified_combat_core.lua` | `windower.send_command`, `windower.ffxi.run`, `windower.ffxi.turn`, `uc_settarget.select_by_id`, `windower.send_ipc_message` | Core still contains legacy and partial dark-launch-adjacent direct execution paths, plus WS intent/hold IPC emission. Work tracking notes scheduler ownership is partial while legacy paths remain operational. | Temporary for direct command/target/movement execution; IPC use is expected to remain but final owner boundary is uncertain. | `uc_scheduler_dispatcher.lua` for runtime execution; IPC ownership uncertain between core and scheduler context modules. |
-| `UnifiedCombat.lua` | `windower.ffxi.run` | Entrypoint has direct stop-movement call site (`run(false)`) used in lifecycle control. | Temporary. | Dispatcher-owned movement facade (or dispatcher direct movement path) after extraction. |
-| `uc_party_follow.lua` | `windower.ffxi.run`, `windower.send_ipc_message` | Follow module currently owns follow run/stop behavior and follow/zone IPC messages (`ucpf_up`, `zone ...`) for multibox behavior. | Temporary for direct movement; IPC location may remain module-local or be routed, uncertain. | Movement side effects should be routed through dispatcher-owned movement facade; IPC ownership uncertain. |
-| `uc_pathing.lua` | `windower.ffxi.run` | Pathing helper currently issues direct movement vectors and stop. | Temporary. | Dispatcher-owned movement facade (or dispatcher direct movement path). |
-| `uc_add_control.lua` | `windower.send_command` | Add-control retarget flow intentionally does `/attack off` -> wait idle -> `st` -> attack command sequence. | Temporary in scheduler refactor context; behavior-sensitive path. | `uc_scheduler_dispatcher.lua` should eventually own target/attack command execution when under scheduler authority. |
-| `remote_bridge.lua` | `windower.send_command` | UI-triggered explicit reload path (`lua reload unifiedcombat`). | Expected to remain for bridge UI control; not a scheduler provider dispatch path. | `remote_bridge.lua` (remain) unless explicit RFC/task later rehomes bridge operations. |
-
-## 4. Legacy / out-of-initial-scope side-effect locations
-
-These known paths contain side effects but are out of initial scheduler ownership extraction scope:
-
-- `melee_engine.lua`
-- `dd2_engine.lua`
-- `dd2_module.lua`
-- `lor/lor_actor.lua`
-- `lor/lor_chat.lua`
-
-Rule for migration tasks: do not modify these files or move side-effect logic in these files unless an explicit task asks for it.
-
-## 5. Target future side-effect ownership model
-
-Target rule (explicit):
-
-Providers may propose.  
-Scheduler may select.  
-Only dispatcher may execute side effects.
-
-Target owner details:
-
-- `uc_scheduler_dispatcher.lua` should own command dispatch, target selection, and action execution.
-- Movement side effects should eventually be routed through dispatcher or a dispatcher-owned movement facade.
-- Provider modules must not directly call:
-  - `windower.send_command`
-  - `windower.ffxi.run`
-  - `windower.ffxi.turn`
-  - `uc_settarget.select_by_id`
-
-## 6. Temporary exceptions
-
-These exceptions are allowed during migration and must be removed/rerouted by targeted follow-up tasks.
-
-| Exception | Why it exists today | Future task to remove or route it | Risk level |
+| File | Allowed surface | Why it remains | Removal or retention condition |
 | --- | --- | --- | --- |
-| Dark-launch dispatch side effects in `unified_scheduler.lua` | Scheduler currently executes selected proposals in `p1_try_dark_launch_dispatch` to support incremental cutover while legacy paths still exist. | Mechanical extraction that moves dispatch-plan execution + action send + target prep into `uc_scheduler_dispatcher.lua` without changing semantics. | High |
-| Movement calls in `uc_party_follow.lua` and `uc_pathing.lua` | Movement is still directly controlled in follow/pathing modules; scheduler movement ownership is partial and not yet fully centralized. | Introduce dispatcher-owned movement facade and route module calls through it without changing movement timing/threshold semantics. | High |
-| Core fallback direct dispatch in `unified_combat_core.lua` | Work tracking and code comments indicate legacy/core paths remain active while scheduler dark-launch is opt-in/partial. | Mechanical extraction of core direct send/target/movement execution behind dispatcher entrypoints, preserving command strings and gate conditions. | High |
-| Reload command path in `remote_bridge.lua` | Explicit UI operation for full addon reload; intentionally separate from scheduler dispatch pipeline. | Optional follow-up only if RFC explicitly re-scopes bridge command ownership; otherwise remain as bridge-owned operation. | Low |
+| `UnifiedCombat.lua` | Lifecycle `run(false)` | Stops movement during addon lifecycle control | Route through the chosen movement facade |
+| `unified_scheduler.lua` | Scheduler IPC, action command construction, indirect `uc_attack` calls | Scheduler remains a hybrid coordinator/executor | Remove indirect attack execution under dispatcher monopoly; decide IPC ownership explicitly |
+| `unified_combat_core.lua` | Commands, movement, turn, target selection, IPC, attack wrappers | Core remains the legacy/runtime helper owner and owns the current skillchain WS send | Migrate each active domain with parity evidence; retain IPC only by explicit decision |
+| `uc_attack.lua` | Action packet injection | Central packet implementation for engage/switch/disengage | Make it a dispatcher-owned dependency or move packet execution into dispatcher |
+| `uc_settarget.lua` | Target packet injection | Central packet implementation for target selection | Make it a dispatcher-owned dependency or move packet execution into dispatcher |
+| `uc_add_control.lua` | Attack-off, select-target, and attack command sequence | Behavior-sensitive add retarget flow | Migrate the full ordered sequence atomically |
+| `uc_party_follow.lua` | Run/stop, IPC, zone packet injection | Independent follow and zone-replay behavior | Route movement through the selected facade; retain IPC/injection only by explicit movement/follow decision |
+| `uc_pathing.lua` | Run/stop | Independent path movement | Route through movement facade |
+| `uc_nyzul_runtime.lua` | Stop and IPC | Nyzul coordination behavior | Route stop through movement facade; retain IPC only if Nyzul remains its owner |
+| `uc_lilith_easy_formation_runtime.lua` | Run | Formation movement | Route through movement facade |
+| `uc_camp_anchor.lua` | IPC | Camp-anchor synchronization | Expected to remain if camp-anchor remains the state owner |
+| `uc_scheduler_command_builder.lua` | `/ma` and `/ja` construction only | Pure intent construction, not execution | Expected to remain pure |
+| `remote_bridge.lua` | Explicit addon reload command | User/UI control operation outside combat arbitration | Expected bridge exception unless a later task changes it |
 
-## 7. Rules for future Codex tasks
+## Legacy and separate-subsystem exceptions
 
-- Do not add new direct side-effect calls outside this allowlist.
-- Do not move side-effect calls into provider modules.
-- Do not create a new dispatcher-like module unless the RFC explicitly asks for it.
-- Do not replace `send_command` strings with inferred equivalents unless explicitly instructed.
-- Do not alter command strings while moving code.
-- Do not change timing, lock, duplicate, pending, or movement semantics during mechanical extraction.
-- Any new side-effect call site must be documented in this allowlist in the same commit.
+| File | Reason |
+| --- | --- |
+| `melee_engine.lua` | Legacy engine; do not expand its side-effect surface |
+| `dd2_engine.lua` | Legacy engine; do not expand its side-effect surface |
+| `dd2_module.lua` | Legacy module; do not expand its side-effect surface |
+| `lor/lor_actor.lua` | Shared actor-control library |
+| `lor/lor_chat.lua` | Shared chat/echo library |
+| `TargetBar/TargetBar.lua` | Separate TargetBar packet behavior |
 
-## 8. Suggested static grep checks
+## Guard behavior
 
-Run from repo root:
+`tests/replay/harness/selftest_side_effect_inventory.lua`:
+
+1. uses `rg --files` to discover every non-test Lua file, including untracked
+   files;
+2. scans all discovered files for the tracked direct, construction, packet, IPC,
+   and wrapper patterns;
+3. fails if a file with a match is not allowlisted;
+4. fails if an allowlisted file disappears;
+5. fails if any per-file/per-pattern count changes.
+
+The test has no alternate discovery path. Missing `rg`, unreadable files, an
+invalid allowlist schema, or an empty discovery set are fatal errors.
+
+## Rules for future work
+
+- Do not add a direct side-effect site without an explicit ownership decision.
+- Do not add provider-side execution.
+- Do not add a new fallback executor when migrating a path.
+- Keep command strings and side-effect counts stable during mechanical moves.
+- Update the machine allowlist and both human documents in the same task.
+- Remove an allowlist entry as soon as its last tracked surface is migrated.
+- Treat a passing guard as proof of inventory consistency, not proof that
+  dispatcher monopoly has been achieved.
+
+## Verification
 
 ```powershell
-Select-String -Path *.lua, .\lor\*.lua -Pattern 'windower\.send_command' -CaseSensitive:$false
-Select-String -Path *.lua, .\lor\*.lua -Pattern 'windower\.ffxi\.run' -CaseSensitive:$false
-Select-String -Path *.lua, .\lor\*.lua -Pattern 'windower\.ffxi\.turn' -CaseSensitive:$false
-Select-String -Path *.lua, .\lor\*.lua -Pattern 'uc_settarget\.select_by_id' -CaseSensitive:$false
-Select-String -Path *.lua, .\lor\*.lua -Pattern 'windower\.send_ipc_message' -CaseSensitive:$false
+lua tests/replay/harness/selftest_side_effect_inventory.lua
 ```
 
-## 9. Recommended next task
+Current expected result:
 
-Recommended smallest runtime-safe next step:
-
-- Create `uc_scheduler_locks.lua` and copy lock/duplicate/pending-lock helper logic only (mechanical extraction), with `unified_scheduler.lua` calling through unchanged interfaces.
-
-Why this is the next smallest safe slice:
-
-- `docs/scheduler_responsibility_map.md` already identifies lock semantics as a discrete boundary.
-- This can be done without moving dispatch strings, movement execution, or provider behavior.
-- It reduces extraction risk before any side-effect execution relocation.
-
+```text
+runtime_files=119
+allowlisted_files=19
+pattern_checks=266
+observed_hits=263
+```

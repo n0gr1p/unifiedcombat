@@ -1,493 +1,474 @@
-# Unified Scheduler Responsibility Map (Pre-Extraction Baseline)
+# Unified Scheduler Responsibility Map
 
-Status: Draft (documentation-only)
-Scope: Current `unified_scheduler.lua` responsibilities before mechanical extraction
-Date: 2026-05-15
-Related: `docs/unified_scheduler_rfc.md`, `docs/unified_scheduler_phase1_amendment.md`, `docs/unified_scheduler_design.md`, `docs/scheduler_work_tracking.md`, `docs/core_vs_scheduler_gap_checklist.md`, `docs/movement_coordinator_implementation_checklist.md`, `docs/side_effect_inventory.md`
+Status: **Phase 0 baseline complete**
+Verified: 2026-07-24 at `ff5a56ced0158b1bdabb9413c168de5c0be6b523`
+Runtime behavior change: none
 
 ## Purpose
-This map documents what `unified_scheduler.lua` currently owns so extraction tasks can move code by verified responsibility rather than by guesswork.
 
-Notes:
-- This is a code-observed inventory, not a behavior proposal.
-- When classification is ambiguous, entries are marked mixed/uncertain.
-- No runtime behavior changes are defined here.
+This map records the current post-extraction hybrid architecture. It replaces
+the 2026-05-15 pre-extraction draft and provides the baseline for the remaining
+Phase 1 decomposition.
 
-## 1) Time/source helpers
-- Functions:
-  - `now_s`
-  - `p1_number`
-  - `p1_clamp_urgency`
-  - `current_zone_id`
-- Important state:
-  - `socket_gettime`
-  - `time_source_error_reported`
-- Current responsibility:
-  - Provide canonical wall-clock time and numeric normalization used by cooldowns, pending deadlines, locks, and scheduler scoring fields.
-- Known side effects:
-  - None.
-- Should eventually become:
-  - `uc_scheduler_context.lua`
-- Extraction priority:
-  - Medium
-- Extraction risk:
-  - Medium (time source consistency is a coordinator/scheduler invariant)
-- Dependencies/blockers:
-  - Must preserve fail-fast time behavior used by movement coordinator timing expectations.
+Current primary sizes:
 
-## 2) Logging/diagnostics/debug globals
-- Functions:
-  - `log_ja_sched`, `log_tank_sched`, `log_combat_sched`, `log_def_sched`
-  - `ensure_diag_logs_initialized`
-  - `enemy_dispel_diag`, `enemy_dispel_log`, `enemy_effect_log_label`
-  - `p1_format_top3`, `p1_format_top3_verbose`, `p1_format_topn_lines`, `p1_capture_topn_items`, `p1_push_recent_rejects`, `p1_reject_top`
-  - `scheduler.get_debug_overlay`, `scheduler.get_enemy_effect_table_overlay`
-- Important state:
-  - `_G.UC_LOG_*` flags, `_G.UC_SCHED_P1_*` debug globals
-  - `diag_init`
-  - `scheduler.phase1.last_top*`, `recent_rejects`, `recent_reject_items`
-- Current responsibility:
-  - Build diagnostic logs, ranked-candidate overlays, reject summaries, and exported debug fields for in-game and remote visibility.
-- Known side effects:
-  - File append logging to `data/logs/*_*.log`.
-  - Writes many `_G.UC_SCHED_P1_*` and `_G.UC_*` observability globals.
-- Should eventually become:
-  - `uc_scheduler_observability.lua`
-- Extraction priority:
-  - High
-- Extraction risk:
-  - Medium (high coupling to many internals, but low gameplay authority if interfaces are preserved)
-- Dependencies/blockers:
-  - Keep output field names stable until downstream UI/bridge consumers are migrated.
+| File | Lines | Current role |
+| --- | ---: | --- |
+| `unified_scheduler.lua` | 8,398 | Scheduler facade plus most providers, ranking, dispatch orchestration, movement coordination, enemy state, IPC, diagnostics, and packet observation |
+| `unified_combat_core.lua` | 4,213 | Legacy/core combat and movement implementation plus scheduler-facing selection helpers and skillchain WS execution |
+| `unified_engine.lua` | 409 | 0.20-second lifecycle tick, overlay rendering, scheduler invocation, and conditional core fallback |
 
-## 3) Scheduler public API
-- Functions:
-  - `scheduler.process_tick`
-  - `scheduler.on_ipc_message`
-  - `scheduler.on_incoming_chunk`
-  - `scheduler.on_action`
-  - `scheduler.on_action_message`
-  - `scheduler.reset_runtime_locks`
-  - `scheduler.get_debug_overlay`
-  - `scheduler.get_enemy_effect_table_overlay`
-  - global wrappers: `_G.UC_SCHED_On*`, `_G.UC_ResetSchedulerRuntimeLocks`
-- Important state:
-  - `scheduler` table root
-  - `scheduler.phase1`
-  - `scheduler.party_state_ipc`
-  - `scheduler.action_state`
-- Current responsibility:
-  - Own module entrypoints for tick processing, packet/action observation, runtime lock reset, and diagnostics.
-- Known side effects:
-  - Directly calls movement/dispatch helpers that issue commands and run controls.
-- Should eventually become:
-  - remain in `unified_scheduler.lua` (as facade), with internals extracted
-- Extraction priority:
-  - Low
-- Extraction risk:
-  - Medium (API surface is integration point with engine/core/global hooks)
-- Dependencies/blockers:
-  - Any extraction must preserve current function names/signatures used by `unified_engine.lua` and global hook callbacks.
+The scheduler is larger than the approximately 5,300-line RFC snapshot because
+new runtime behavior was added while only selected responsibilities were
+extracted.
 
-## 4) Tick orchestration
-- Functions:
-  - `scheduler.process_tick`
-  - `p1_run_dry`
-  - `p1_try_dark_launch_dispatch`
-  - `run_movement_coordinator_tick`
-  - doom pre-check path: `try_doom_water_emergency`
-- Important state:
-  - `_sched_next_defensive_at`, `_sched_next_maintenance_at` (settings scratch)
-  - `_G.UC_LAST_SCHED_ACTION`, `_G.UC_SCHED_PROVIDER`
-- Current responsibility:
-  - Per-tick orchestration order: diagnostics setup, party IPC broadcast, doom emergency, phase1 dry-run select, dark-launch dispatch, movement coordinator tick, and legacy defensive fallback dispatch.
-- Known side effects:
-  - Via called paths: command dispatch, movement stop/run, target set, global-state writes.
-- Should eventually become:
-  - uncertain
-- Extraction priority:
-  - High
-- Extraction risk:
-  - High (this is the highest authority path; order changes can alter behavior)
-- Dependencies/blockers:
-  - Must preserve current precedence ordering documented in work tracking and dark-launch assumptions.
+## Extracted scheduler boundaries
 
-## 5) Context/snapshot building
-- Functions:
-  - `p1_build_ctx`
-  - `get_settings`
-  - helpers feeding context/guard checks (`get_party_members`, `p1_build_party_id_set`, `build_partner_target_set`)
-- Important state:
-  - `scheduler.phase1.tick`
-  - `scheduler.maintenance_state.status_snapshot`
-  - cached player/party/mob snapshots in ctx
-- Current responsibility:
-  - Build per-tick scheduler context and lightweight participant snapshots.
-- Known side effects:
-  - None directly.
-- Should eventually become:
-  - `uc_scheduler_context.lua`
-- Extraction priority:
-  - High
-- Extraction risk:
-  - Medium (widely consumed by provider collectors and rank/lock logic)
-- Dependencies/blockers:
-  - Requires stable ctx contract before moving provider code into separate modules.
+These modules are active and called by `unified_scheduler.lua`.
 
-## 6) Proposal schema/normalization helpers
-- Functions:
-  - name/text normalization: `normalize_action_name_like_healbot`, `decode_json_escapes`, `to_roman_numeral`, `ucfirst`
-  - proposal field helpers: `action_target_mode`, `build_action_command`, `family_key`, `attempt_key`
-  - numeric/schema normalization: `p1_number`, `p1_clamp_urgency`
-- Important state:
-  - `spell_name_cache`, `ja_name_cache`
-  - `scheduler.attempted`, `last_overwrite`, `family_*`
-- Current responsibility:
-  - Normalize names and construct proposal-compatible identifiers/commands/keys for downstream validation and dispatch.
-- Known side effects:
-  - None directly.
-- Should eventually become:
-  - `uc_scheduler_proposals.lua`
-- Extraction priority:
-  - Medium
-- Extraction risk:
-  - Medium (string normalization impacts resource lookups and duplicate keys)
-- Dependencies/blockers:
-  - Must remain aligned with action readiness helpers and provider output schema.
+| Responsibility | Current module(s) | Scheduler compatibility surface |
+| --- | --- | --- |
+| Action resource metadata and predicates | `uc_scheduler_action_metadata.lua`, `uc_scheduler_action_predicates.lua` | Small local wrappers such as `action_effective_range`, `ja_targets_enemy`, and resource coercion helpers |
+| Action lifecycle | `uc_scheduler_action_state.lua` | `action_state`, `action_mark_sent`, packet start/end, acting/block checks, spell completion/interruption bridges |
+| Command construction | `uc_scheduler_command_builder.lua` | `build_action_command` |
+| Active config readers | `uc_scheduler_config.lua` | Scheduler/provider-facing ownership, combat, tank, and debug reads |
+| Context leaf helpers | `uc_scheduler_context_utils.lua` | Settings, zone, partner target, and maintenance-city helpers |
+| Defensive pure helpers | `uc_scheduler_defensive_utils.lua` | Buff, cure, debuff, priority, and danger calculations |
+| Dispatch-plan structure | `uc_scheduler_dispatch_plan.lua` | `p1_build_dispatch_plan`, `p1_revalidate_plan_commit` |
+| Dispatcher contract | `uc_scheduler_dispatcher.lua` | Intent validation and injected-dependency execution |
+| Dry-run publication | `uc_scheduler_dryrun_publish.lua` | Ranked queue/global publication |
+| Enemy-effect leaf helpers | `uc_scheduler_enemy_effect_utils.lua` | Labels, normalization, priority conversion, claim validation |
+| Geometry | `uc_scheduler_geometry.lua` | Angle normalization and front-arc checks |
+| Phase 1 locks | `uc_scheduler_locks.lua` | Pending-live predicate, duplicate suppression, lock state, summary, reset |
+| Maintenance pure helpers | `uc_scheduler_maintenance_utils.lua` | Set, split, dedupe, and buff-count helpers |
+| Numeric normalization | `uc_scheduler_numeric_utils.lua` | `p1_number`, urgency clamp, boolean setting |
+| Partner arbitration | `uc_scheduler_partner_arbitration.lua` | Pure arbitration decision |
+| Pending record/lifecycle | `uc_scheduler_pending_record.lua`, `uc_scheduler_pending.lua` | Pending construction, state transitions, globals |
+| Proposal keys | `uc_scheduler_proposal_keys.lua` | Family and attempt keys |
+| Rank/reject presentation | `uc_scheduler_rank_output.lua`, `uc_scheduler_reject_history.lua` | Top-N formatting/capture and recent reject history |
+| Status snapshot parsing | `uc_scheduler_status_snapshot_parser.lua` | `0x063` parse helper |
+| Target helpers | `uc_scheduler_target_utils.lua` | Target distance and tank-enmity selection predicates |
+| Text helpers | `uc_scheduler_text_utils.lua` | Split, decode, normalization, Roman numeral helpers |
+| Ownership compatibility seams | `uc_scheduler_command_ownership.lua`, `uc_scheduler_run_ownership.lua`, `uc_scheduler_run_stop_ownership.lua`, `uc_scheduler_target_ownership.lua`, `uc_scheduler_turn_ownership.lua` | Dispatcher-first versus direct execution selection and status publication |
 
-## 7) Provider collection functions
-- Functions:
-  - `p1_collect_defensive_internal`
-  - `p1_collect_defensive_healbot`
-  - `p1_collect_combat_offense`
-  - `p1_collect_enemy_buff_removal`
-  - `p1_collect_combat_engage`
-  - `p1_collect_target_control`
-  - `p1_collect_pull_control`
-  - `p1_collect_combat_tank_enmity`
-  - `p1_collect_combat_ja`
-  - `p1_collect_maintenance`
-  - `p1_collect_proposals` (collector orchestrator)
-- Important state:
-  - `scheduler.phase1.maintenance_next_at`
-  - `maintenance_buff_cache`, `maintenance_state`
-- Current responsibility:
-  - Convert domain logic into proposal lists across combat/defensive/target/pull/tank/maintenance lanes.
-- Known side effects:
-  - Collection functions are mostly proposal-only; some logging/global diagnostics updated indirectly.
-- Should eventually become:
-  - provider module
-- Extraction priority:
-  - High
-- Extraction risk:
-  - High (largest surface and strongest behavior-coupling risk)
-- Dependencies/blockers:
-  - Requires stable shared ctx helpers and proposal schema helpers.
-  - Must preserve cadence assumptions (5Hz/2Hz/1Hz domains) and dark-launch lane behavior.
+## Responsibilities remaining in `unified_scheduler.lua`
 
-## 8) Validation/scoring/ranking functions
-- Functions:
-  - `p1_validate_proposal`
-  - `p1_score`
-  - `p1_rank`
-  - `p1_revalidate_plan_commit`
-- Important state:
-  - `scheduler.phase1.pending`
-  - `scheduler.phase1.recent_duplicate_until`
-- Current responsibility:
-  - Enforce proposal validity, lock/duplicate rejection, deterministic ranking, and commit-edge revalidation.
-- Known side effects:
-  - Writes eval metadata (`_score`, `_score_parts`) to ranked proposal objects.
-- Should eventually become:
-  - `uc_scheduler_ranker.lua`
-- Extraction priority:
-  - High
-- Extraction risk:
-  - High (directly controls winner selection and no-op reasons)
-- Dependencies/blockers:
-  - Strong coupling with lock/pending structures and duplicate suppression contracts.
+### 1. Time, config, and root state
 
-## 9) Action state and pending lifecycle
-- Functions:
-  - action-state helpers: `action_state`, `action_mark_sent`, `action_mark_packet_start`, `action_mark_packet_end`, `action_is_acting`, `action_dispatch_blocked`
-  - pending lifecycle: `p1_pending_is_live_state`, `p1_update_pending_state`, `p1_pending_mark_complete`, `p1_set_pending_globals`, `p1_record_legacy_dispatch`
-- Important state:
-  - `scheduler.action_state.*`
-  - `scheduler.phase1.pending`
-  - `scheduler.phase1.recent_duplicate_until`
-- Current responsibility:
-  - Track in-flight action state and transition pending records from selected/sent through completion/timeout.
-- Known side effects:
-  - Writes runtime lock/pending debug globals.
-- Should eventually become:
-  - `uc_scheduler_dispatcher.lua`
-- Extraction priority:
-  - High
-- Extraction risk:
-  - High (timing/lifecycle bugs can create duplicate spam or lock starvation)
-- Dependencies/blockers:
-  - Packet observers and dispatch paths both mutate these structures.
+Functions/state:
 
-## 10) Locks and duplicate suppression
-- Functions:
-  - `p1_get_locks`
-  - `p1_hard_lock_reject`
-  - `p1_duplicate_suppressed`
-  - `p1_build_lock_summary`
-  - `scheduler.reset_runtime_locks`
-- Important state:
-  - pending-derived lock state
-  - `recent_duplicate_until`
-  - `_G.UC_MOVE_FREEZE_PREP_*`, `_G.UC_ZONE_SUSPEND_UNTIL`
-- Current responsibility:
-  - Synthesize lock model from pending+zone guards and enforce duplicate suppression windows.
-- Known side effects:
-  - Runtime reset mutates global freeze state and action-state internals.
-- Should eventually become:
-  - `uc_scheduler_locks.lua`
-- Extraction priority:
-  - High
-- Extraction risk:
-  - High (lock semantics are central to non-oscillation and anti-repeat guarantees)
-- Dependencies/blockers:
-  - Must stay consistent with pending lifecycle and movement coordinator freeze behavior.
+- `now_s`
+- `get_settings`
+- `scheduler.active_value_or_flat`
+- `bool_setting`
+- root `scheduler`, `phase1`, party IPC, maintenance, action, and spell-probe
+  tables
 
-## 11) Dispatch plan construction
-- Functions:
-  - `p1_build_dispatch_plan`
-  - plan usage in `p1_run_dry`
-- Important state:
-  - `scheduler.phase1.last_plan`
-- Current responsibility:
-  - Build prelude+primary plan object (`none/stop` prelude in current path) from selected proposal.
-- Known side effects:
-  - None directly.
-- Should eventually become:
-  - `uc_scheduler_dispatcher.lua`
-- Extraction priority:
-  - Medium
-- Extraction risk:
-  - Medium (compact logic but contract-sensitive to amendment schema)
-- Dependencies/blockers:
-  - Needs lock/ranker/pending modules to agree on plan fields and commit checks.
+Current responsibility:
 
-## 12) Direct dispatch / dark-launch execution
-- Functions:
-  - `p1_try_dark_launch_dispatch`
-  - `p1_try_target_prep`
-  - `p1_target_distance_to_id`
-  - `p1_move_toward_mob`
-  - `p1_is_tank_enmity_selected`
-  - selected direct-action send paths in this function (`/ws`, `/ja`, `/ma`, maint cor)
-- Important state:
-  - `scheduler.phase1.last_selected`, `last_plan`
-  - `scheduler.phase1.tank_*_settle_*`
-  - `_G.UC_LAST_SCHED_ACTION`
-- Current responsibility:
-  - Execute scheduler-selected proposals behind dark-launch toggles with pre-dispatch guards, range/target prep, settle windows, and legacy pending record updates.
-- Known side effects:
-  - `windower.send_command(...)`
-  - `windower.ffxi.run(...)`
-  - `uc_settarget.select_by_id(...)`
-  - writes movement/dispatch globals.
-- Should eventually become:
-  - `uc_scheduler_dispatcher.lua`
-- Extraction priority:
-  - High
-- Extraction risk:
-  - High (highest side-effect density and lane-specific behavior)
-- Dependencies/blockers:
-  - Tight coupling to core helper APIs (`unified_combat_core.lua`), lock/pending model, and dark-launch flags.
+- owns root mutable state and the scheduler wall-clock source;
+- bridges flat and active config reads;
+- exposes state consumed by extracted modules.
 
-## 13) Packet/action observation
-- Functions:
-  - `scheduler.on_incoming_chunk`
-  - `scheduler.on_action`
-  - `scheduler.on_action_message`
-  - global hook wrappers `_G.UC_SCHED_On*`
-- Important state:
-  - `scheduler.phase1.last_action_message_sig*`
-  - `scheduler.phase1.pending` transitions via observations
-- Current responsibility:
-  - Consume packet/action streams and advance pending/action locks and enemy effect updates.
-- Known side effects:
-  - Updates pending/action-state globals and effect tables.
-- Should eventually become:
-  - `uc_scheduler_observability.lua`
-- Extraction priority:
-  - Medium
-- Extraction risk:
-  - High (message duplication filters and completion detection are timing sensitive)
-- Dependencies/blockers:
-  - Must remain consistent with pending lifecycle state machine.
+Target:
 
-## 14) Enemy effect tracking / dispel state
-- Functions:
-  - ingestion/updates: `ingest_enemy_effects_from_raw_action_028`, `apply_effect_list_to_target`, `apply_catalog_effects`
-  - state map ops: `enemy_effect_state_map`, `enemy_effect_state_set`, `enemy_effect_state_clear`, `enemy_effect_state_clear_target`, `enemy_effect_state_prune_expired`, `enemy_effect_state_sweep`
-  - dispel policy: `enemy_dispel_attempt_map`, `can_attempt_enemy_dispel`, `mark_enemy_dispel_attempt`, `enemy_dispel_choose_action`, `enemy_dispel_claim_valid`, `is_enemy_mob_id`
-  - data loaders: `load_enemy_dispel_map_from_json`, `load_targetbar_catalogs_once`
-- Important state:
-  - `scheduler.phase1.effectiveTargets`
-  - `dispellable_enemy_effect_priority`, `dispellable_enemy_effect_set`
-  - `enemy_effect_observed_once`
-- Current responsibility:
-  - Maintain scheduler-local enemy buff/effect state and select dispel candidates with anti-repeat gating.
-- Known side effects:
-  - File IO reads from `docs/ffxi_enemy_dispellable_buffs.json` and `TargetBar` catalogs.
-- Should eventually become:
-  - `uc_enemy_effect_state.lua`
-- Extraction priority:
-  - High
-- Extraction risk:
-  - Medium (domain-heavy but reasonably isolatable)
-- Dependencies/blockers:
-  - Needs clear contract boundary with `uc_enemy_effect_tracker` events and defensive collector logic.
+- keep a small root coordinator state;
+- move tick snapshot construction into an explicit context/world-snapshot owner;
+- do not duplicate settings ownership.
 
-## 15) Defensive helpers
-- Functions:
-  - buff/debuff/cure helpers: `resolve_doom_buff_id`, `player_has_doom`, `has_buff`, `estimate_missing_hp`, `available_cure_tier_max`, `cure_tier_for_missing_hp`, `get_usable_cure_from_tier`, `debuff_spell_for_buff_id`
-  - action readiness/helpers: `get_spell_resource`, `spell_known_flag`, `job_id_by_short`, `spell_usable_by_current_job`, `spell_known_and_usable`, `get_ja_resource`, `action_status_id`, `spell_ready`, `ja_ready`, `action_ready`, `action_duration_seconds`
-  - candidate selection internals: `build_defensive_candidates`, `choose_defensive_action`, `try_internal_defensive_action`, `try_delegate_healbot`
-  - family/recent gain helpers: `set_recent_gain`, `get_recent_gain`, `family_tokens_for`, `attempt_allowed`, `mark_attempt`, `count_buff_occurrences`, `is_bard_song`, `member_priority`, `pri_default`, `danger_level`, `cure_better`
-- Important state:
-  - `scheduler.attempted`, `last_overwrite`, `family_tokens`, `recent_gain`
-  - `doom_last_item_at`
-- Current responsibility:
-  - Build and execute non-combat defensive intent paths (internal + healbot-delegated), including cure/debuff/buff prioritization and anti-overwrite throttles.
-- Known side effects:
-  - Via execution paths: `windower.send_command` for direct legacy/internal sends.
-- Should eventually become:
-  - provider module
-- Extraction priority:
-  - Medium
-- Extraction risk:
-  - Medium
-- Dependencies/blockers:
-  - Heavily intertwined with party state snapshots and pending/attempt throttles.
+Priority/risk: **high / high**
 
-## 16) COR / maintenance helpers
-- Functions:
-  - maintenance scaffolding: `ensure_maintenance_buff_cache`, `count_matching_buffs`, `ensure_maintenance_state_tables`, `canon_name`, `split_actions`, `dedupe_numeric_ids`, `parse_status_snapshot_063`
-  - collection path: `p1_collect_maintenance`
-  - packet integration hook: `_G.UC_COR_MAINT_OnIncomingChunk`
-- Important state:
-  - `maintenance_buff_cache`
-  - `scheduler.maintenance_state`
-  - `scheduler.phase1.maintenance_next_at`
-- Current responsibility:
-  - Maintain BRD/GEO/COR maintenance proposal generation and status cache prep; integrate COR maintenance packet updates.
-- Known side effects:
-  - Dark-launch maintenance dispatch path issues `/ja` send commands (inside `p1_try_dark_launch_dispatch`).
-- Should eventually become:
-  - provider module
-- Extraction priority:
-  - Medium
-- Extraction risk:
-  - Medium
-- Dependencies/blockers:
-  - Maintenance cadence and state cache ownership must be stabilized with context module extraction.
+### 2. Tick context construction
 
-## 17) Movement coordinator functions
-- Functions:
-  - `run_movement_coordinator_tick`
-  - `p1_apply_face_to_target`
-  - `p1_move_toward_mob`
-  - related geometry helpers: `normalize_angle_rad`, `target_is_in_front_arc`
-- Important state:
-  - `_G.UC_MOVEMENT_MODE`, `_G.UC_MOVEMENT_BLOCK_REASON`, `_G.UC_MOVEMENT_OWNER`, `_G.UC_MOVEMENT_LOCK_UNTIL`
-  - `_G.UC_FIGHT_FOLLOW_ACTIVE_UNTIL`, `_G.UC_MOVE_FREEZE_PREP_UNTIL`
-- Current responsibility:
-  - Execute per-tick coordinator-owned movement/facing gate logic independent of proposal ranking winner.
-- Known side effects:
-  - `windower.ffxi.run(false)` and run heading calls.
-  - `windower.ffxi.turn(...)` via face helper.
-- Should eventually become:
-  - `uc_scheduler_movement.lua`
-- Extraction priority:
-  - High
-- Extraction risk:
-  - High (timing and owner lock interactions are sensitive)
-- Dependencies/blockers:
-  - Must preserve movement coordinator checklist invariants (cast freeze, role gating, follow alignment).
+Functions:
 
-## 18) Party state / IPC helpers
-- Functions:
-  - `encode_party_state_payload`
-  - `maybe_broadcast_party_state_ipc`
-  - `apply_party_state_ipc_message`
-  - `get_party_state_ipc_entry`
-  - `scheduler.on_ipc_message`
-- Important state:
-  - `scheduler.party_state_ipc.last_sent_at`, `send_interval`, `ttl`, `by_id`
-  - `PARTY_STATE_IPC_PREFIX`
-- Current responsibility:
-  - Share/consume party snapshot state over IPC and expose that state to member-resolution logic.
-- Known side effects:
-  - IPC send/receive side effects through Windower addon messaging.
-- Should eventually become:
-  - `uc_scheduler_context.lua`
-- Extraction priority:
-  - Medium
-- Extraction risk:
-  - Medium
-- Dependencies/blockers:
-  - Consumers in defensive/maintenance member resolution must keep same payload fields.
+- `p1_build_ctx`
+- `get_party_members`
+- `p1_build_party_id_set`
+- `build_partner_target_set`
+- `p1_prime_unclaimed_party_aggressive_ok`
 
-## 19) Legacy bridge/fallback helpers
-- Functions:
-  - `try_doom_water_emergency`
-  - `try_internal_defensive_action`
-  - `try_delegate_healbot`
-  - `p1_record_legacy_dispatch`
-  - `_G.UC_SCHED_On*` wrapper functions (best-effort `pcall` bridge)
-- Important state:
-  - doom globals/cooldowns
-  - pending record backfill from legacy sends
-- Current responsibility:
-  - Maintain pre-existing operational paths while scheduler dark-launch migration remains partial.
-- Known side effects:
-  - Direct item/spell command emission and pending/lock state mutation.
-- Should eventually become:
-  - uncertain
-- Extraction priority:
-  - Low
-- Extraction risk:
-  - High (removal/move sequencing depends on final cutover plan)
-- Dependencies/blockers:
-  - Blocked on scheduler full-domain cutover and explicit deprecation plan from workboard G7.
+Current responsibility:
 
-## 20) Unknown or mixed-responsibility functions
-- Mixed/uncertain examples:
-  - `action_effective_range` (used by action/range checks and tank/movement prep)
-  - `ja_targets_enemy`, `ja_requires_engaged_front` (combat policy + dispatch gating)
-  - `in_party_cast_range` (context + defensive policy)
-  - `danger_weight_to_priority` (enemy dispel policy but also ranking semantics)
-  - `is_city_zone_for_maintenance` (maintenance policy + world-state guard)
-- Current responsibility:
-  - Cross-cutting helpers that span multiple candidate modules.
-- Known side effects:
-  - None directly (for listed examples).
-- Should eventually become:
-  - uncertain
-- Extraction priority:
-  - Low
-- Extraction risk:
-  - Medium (misplacement can increase cyclic dependencies)
-- Dependencies/blockers:
-  - Best moved only after primary module boundaries are concretely implemented and imports settle.
+- independently samples player, self mob, party, mob array, and time;
+- increments `phase1.tick`.
 
-## Current Highest-Risk Extraction Areas
-1. Tick orchestration (`scheduler.process_tick` path ordering and mixed fallback sequencing).
-2. Direct dark-launch dispatch (`p1_try_dark_launch_dispatch`) due to side-effect concentration.
-3. Pending/lock lifecycle coupling (`p1_update_pending_state`, lock synthesis, packet-driven completion).
-4. Movement coordinator ownership boundaries (`run_movement_coordinator_tick` + freeze/owner globals).
-5. Provider collector split (large surface and domain coupling across combat/defensive/maintenance).
+Known boundary issue:
 
-## Recommended Next Task
-Create extraction stubs and explicit interface contracts (no behavior change) for:
-1. `uc_scheduler_context.lua` (ctx/time/party IPC)
-2. `uc_scheduler_locks.lua` (lock + duplicate model)
-3. `uc_scheduler_dispatcher.lua` (plan + pending lifecycle + dispatch facade)
+- `p1_try_nonblocking_target_acquire` and `p1_run_dry` build separate contexts
+  during one engine tick, so the RFC tick-stable snapshot target is not met.
 
-Then wire `unified_scheduler.lua` to call those stubs while preserving current execution order and globals.
+Target: `uc_scheduler_context.lua` or `uc_world_snapshot.lua`
+
+Priority/risk: **high / high**
+
+### 3. Proposal providers
+
+Functions:
+
+- `p1_collect_defensive_internal`
+- `p1_collect_defensive_healbot`
+- `p1_collect_combat_offense`
+- `p1_collect_enemy_buff_removal`
+- `p1_collect_combat_engage`
+- `p1_collect_target_control`
+- `p1_collect_pull_control`
+- `p1_collect_combat_tank_enmity`
+- `p1_collect_combat_ja`
+- `p1_collect_maintenance`
+- `p1_collect_proposals`
+- `scheduler.p1_brd_lane_blocks_proposal`
+
+Current responsibility:
+
+- builds all primary scheduler proposals and applies domain/provider gates;
+- calls scheduler-facing selectors in core and maintenance modules.
+
+Target:
+
+- pure provider modules grouped by defensive, combat, tank, enemy-effect,
+  maintenance, target, and pull ownership;
+- providers receive one explicit context and append proposals only.
+
+Priority/risk: **high / high**
+
+### 4. Proposal schema, validation, scoring, and ranking
+
+Functions:
+
+- `p1_number`
+- `p1_clamp_urgency`
+- `p1_validate_proposal`
+- `p1_score`
+- `p1_rank`
+- `scheduler.p1_priority_bypasses_engage`
+- `scheduler.p1_pick_preemptive_engage`
+
+Current responsibility:
+
+- normalizes proposal fields in place;
+- supplies default timestamps/deadlines;
+- applies settings, pending, reaction, duplicate, and lock rejection;
+- calculates score and deterministic ordering;
+- applies engage-specific preemption.
+
+Target:
+
+- `uc_scheduler_proposals.lua` for schema/normalization;
+- `uc_scheduler_ranker.lua` for validation/scoring/ranking.
+
+Extraction must preserve bands, tie-breaks, rejection taxonomy, and side-effect
+counts. Strict missing-field rejection is a separate behavior task.
+
+Priority/risk: **high / high**
+
+### 5. Action and spell lifecycle orchestration
+
+Functions:
+
+- scheduler wrappers around `uc_scheduler_action_state`
+- spell lifecycle probe functions
+- `scheduler.on_incoming_text`
+- tank spell wait functions
+- defensive spell wait functions
+- pending engage and engage-duplicate functions
+- stale combat-spell release functions
+- `scheduler.apply_defensive_spell_movement_lock`
+- `scheduler.handle_local_spell_action_message`
+
+Current responsibility:
+
+- combines extracted action-state primitives with scheduler-specific spell,
+  Cure, tank, and engage policies.
+
+Target:
+
+- keep domain-neutral lifecycle in `uc_scheduler_action_state.lua`;
+- extract cohesive engage and defensive/tank spell policy only after interfaces
+  are explicit.
+
+Priority/risk: **high / high**
+
+### 6. Enemy effect and dispel state
+
+Functions/state:
+
+- `load_enemy_dispel_map_from_json`
+- `apply_effect_list_to_target`
+- `apply_catalog_effects`
+- `enemy_dispel_attempt_map`
+- `enemy_effect_state_map`
+- `enemy_effect_state_set`
+- `enemy_effect_state_clear`
+- `enemy_effect_state_clear_target`
+- `enemy_effect_state_prune_expired`
+- `enemy_effect_state_sweep`
+- `can_attempt_enemy_dispel`
+- `mark_enemy_dispel_attempt`
+- `enemy_dispel_choose_action`
+- `ingest_enemy_effects_from_raw_action_028`
+- dispellable-effect tables and observed-once state
+
+Current responsibility:
+
+- owns a scheduler effect table in addition to using
+  `uc_enemy_effect_tracker.lua`;
+- ingests catalogs, raw action data, action messages, and removal events;
+- feeds enemy-dispel proposals and overlays.
+
+Target:
+
+- one explicit enemy-effect state owner, either a new
+  `uc_enemy_effect_state.lua` or a deliberately expanded
+  `uc_enemy_effect_tracker.lua`.
+
+Priority/risk: **high / high**
+
+### 7. Party state IPC
+
+Functions/state:
+
+- `encode_party_state_payload`
+- `maybe_broadcast_party_state_ipc`
+- `apply_party_state_ipc_message`
+- `get_party_state_ipc_entry`
+- `scheduler.on_ipc_message`
+- `scheduler.party_state_ipc`
+
+Current responsibility:
+
+- encodes, broadcasts, receives, expires, and queries scheduler party state.
+
+Target: `uc_scheduler_party_state.lua` after the higher-priority context, ranker,
+and enemy-state extractions.
+
+Priority/risk: **medium / medium**
+
+### 8. Defensive and maintenance decision implementation
+
+Functions:
+
+- party/resource/readiness helpers from `in_party_cast_range` through
+  `action_ready`
+- cure, debuff, priority, attempt, duration, recent-gain, and family-token
+  helpers
+- `build_defensive_candidates`
+- `choose_defensive_action`
+- `choose_cure_spell`
+- `try_delegate_healbot`
+- `try_internal_defensive_action`
+- maintenance cache and song snapshot helpers
+
+Current responsibility:
+
+- owns candidate construction and legacy defensive execution compatibility;
+- delegates pure leaf operations to extracted helper modules.
+
+Target:
+
+- defensive provider plus separate legacy compatibility adapter until cutover;
+- maintenance provider adapters.
+
+Priority/risk: **high / high**
+
+### 9. Movement, reaction, encounter, and partner coordination
+
+Functions:
+
+- `scheduler.try_partner_tiebreak`
+- `scheduler.apply_reaction_turn`
+- `scheduler.apply_reaction_response`
+- `scheduler.refresh_reaction_lock`
+- `run_movement_coordinator_tick`
+- `p1_apply_face_to_target`
+- dormant `p1_move_toward_mob`
+
+Current responsibility:
+
+- coordinates Nyzul, reaction, Lilith formation, cast freeze, pull holds, domain
+  eligibility, and core movement delegation;
+- publishes movement owner/block diagnostics.
+
+Target:
+
+- explicit movement coordinator plus one movement execution facade;
+- partner/reaction decisions remain separate pure owners where already
+  extracted.
+
+Priority/risk: **high / very high**
+
+### 10. Dispatch orchestration
+
+Functions:
+
+- `try_doom_water_emergency`
+- `p1_try_target_prep`
+- `scheduler.p1_dispatch_target_control`
+- `scheduler.p1_try_nonblocking_target_acquire`
+- `p1_dispatch_combat_engage`
+- `p1_dispatch_pull_control`
+- `p1_dispatch_maintenance_cor`
+- `scheduler.p1_dispatch_maintenance_brd`
+- `p1_dispatch_defensive_internal`
+- `p1_dispatch_defensive_healbot`
+- `p1_try_dark_launch_combat_dispatch`
+- `scheduler.p1_try_dark_launch_dispatch`
+- ownership status-shape helpers
+
+Current responsibility:
+
+- performs commit-time live reads and domain gates;
+- constructs dispatcher intents;
+- calls dispatcher-first ownership helpers;
+- records sent/action/pending state;
+- invokes indirect attack/target/movement executors.
+
+Target:
+
+- scheduler selects and plans;
+- dispatcher validates commit and is the only action executor;
+- locks/pending receive explicit dispatch outcomes.
+
+Priority/risk: **highest / very high**
+
+### 11. Dry-run, ranking presentation, and observability
+
+Functions:
+
+- `p1_run_dry`
+- local wrappers around rank-output, reject-history, dispatch-plan, pending, and
+  dry-run modules
+- diagnostic log functions
+- action timeline functions
+- `ensure_diag_logs_initialized`
+- `scheduler.get_debug_overlay`
+- `scheduler.get_enemy_effect_table_overlay`
+
+Current responsibility:
+
+- combines extracted formatters with scheduler-owned logging, globals, overlays,
+  timelines, and effect presentation.
+
+Target:
+
+- `uc_scheduler_observability.lua` after state inputs are stable;
+- preserve `_G.UC_*` and bridge/overlay shapes during extraction.
+
+Priority/risk: **medium / medium-high**
+
+### 12. Packet and action observation
+
+Functions:
+
+- `scheduler.on_incoming_chunk`
+- `scheduler.seed_cached_status_snapshot`
+- `scheduler.on_action`
+- `scheduler.on_action_message`
+- `scheduler.on_incoming_text`
+
+Current responsibility:
+
+- fans raw observations into action state, spell lifecycle, enemy effect state,
+  reaction state, sleep suppression, Bard maintenance, COR maintenance, and
+  pending lifecycle.
+
+Target:
+
+- keep public observation entrypoints in the scheduler facade;
+- delegate each event to explicit state owners.
+
+Priority/risk: **high / very high**
+
+### 13. Public scheduler facade
+
+Functions:
+
+- `scheduler.process_tick`
+- `scheduler.on_ipc_message`
+- `scheduler.on_incoming_chunk`
+- `scheduler.on_action`
+- `scheduler.on_action_message`
+- `scheduler.on_incoming_text`
+- `scheduler.reset_runtime_locks`
+- `scheduler.get_debug_overlay`
+- `scheduler.get_enemy_effect_table_overlay`
+- `_G.UC_ResetSchedulerRuntimeLocks`
+
+Current responsibility:
+
+- integration surface for engine and Windower event forwarding.
+
+Target:
+
+- remain stable while implementation moves behind it;
+- `process_tick` should eventually be a small
+  snapshot → collect → validate/rank → plan → dispatch → publish coordinator.
+
+Priority/risk: **retain / very high**
+
+## Adjacent ownership boundaries
+
+### `unified_engine.lua`
+
+Current:
+
+- runs the 0.20-second cadence;
+- calls `scheduler.process_tick`;
+- renders scheduler overlays;
+- calls `_G.UC_CoreCombatTickOnce` when combat is not scheduler-owned.
+
+Target:
+
+- lifecycle and one scheduler call per tick;
+- remove core fallback only through domain cutover;
+- move overlay rendering only after observability extraction.
+
+### `unified_combat_core.lua`
+
+Current:
+
+- owns direct combat and movement execution;
+- exposes scheduler-facing WS, tank, pull, target, and movement helpers;
+- owns the target-scoped skillchain runtime and direct skillchain WS send.
+
+Target:
+
+- retain compatibility helpers during migration;
+- stop executing scheduler-owned actions after dispatcher cutover;
+- do not remove wrappers until callers are proven migrated.
+
+### Independent movement owners
+
+Current:
+
+- `uc_party_follow.lua`
+- `uc_pathing.lua`
+- `uc_nyzul_runtime.lua`
+- `uc_lilith_easy_formation_runtime.lua`
+- lifecycle stop in `UnifiedCombat.lua`
+
+Target:
+
+- one explicit movement execution API with domain-specific decision owners.
+
+## Current highest-risk areas
+
+1. Dispatch orchestration and its direct fallback ownership helpers.
+2. Movement coordination across scheduler, core, follow, pathing, formation,
+   Nyzul, and lifecycle.
+3. Packet/action observation fan-out.
+4. Defensive/tank spell and engage lifecycle state.
+5. Enemy-effect state split between scheduler and tracker.
+6. Multiple context builds and live reads within one engine tick.
+
+## Recommended Phase 1 order
+
+1. Extract proposal schema/normalization without changing fields.
+2. Extract validation/scoring/ranking unchanged.
+3. Define and introduce one explicit tick-context contract.
+4. Extract enemy-effect state.
+5. Extract provider modules after the context and ranker interfaces are stable.
+6. Extract observability and party IPC after their state inputs are explicit.
+
+Do not combine these mechanical extractions with stricter proposal validation,
+dispatcher fallback removal, domain cutover, or movement behavior changes.
