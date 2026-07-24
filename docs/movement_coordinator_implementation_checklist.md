@@ -2,18 +2,31 @@
 
 Purpose: replace movement-as-proposal arbitration with movement-as-coordinator behavior while preserving scheduler ownership of combat/defensive/maintenance dispatch.
 
+Phase 4 update (2026-07-24): coordinator-based movement remains the selected
+model. Scheduler, formation, party-follow, pathing, Nyzul hold, and lifecycle
+movement execution now share `uc_movement_dispatcher.lua`. Follow and pathing
+remain independent decision owners. See
+`RFC/UnifiedCombat_scheduler_refactor_phase4_movement_ownership_decision.md`.
+The Phase 4 implementation is field verified for reload, party follow, combat
+movement/casting, and lifecycle stop. Live path-follow was deferred with risk
+accepted; focused path execution/arbitration coverage passes.
+
 ## Scope
 - Files expected:
   - `C:\Program Files (x86)\Windower\addons\UnifiedCombat\unified_scheduler.lua`
   - `C:\Program Files (x86)\Windower\addons\UnifiedCombat\unified_combat_core.lua`
   - `C:\Program Files (x86)\Windower\addons\UnifiedCombat\uc_party_follow.lua`
+  - `C:\Program Files (x86)\Windower\addons\UnifiedCombat\uc_pathing.lua`
+  - `C:\Program Files (x86)\Windower\addons\UnifiedCombat\uc_nyzul_runtime.lua`
+  - `C:\Program Files (x86)\Windower\addons\UnifiedCombat\uc_lilith_easy_formation_runtime.lua`
+  - `C:\Program Files (x86)\Windower\addons\UnifiedCombat\uc_movement_dispatcher.lua`
 
 ## C1. Remove Movement Proposal Arbitration
 
 Code
 - [x] Remove/disable `p1_collect_movement(ctx, out)` movement proposal emission path.
 - [x] Remove scheduler `provider == 'mobility'` dispatch path as the primary movement driver.
-- [ ] Keep movement dark-launch toggle as coordinator enable/disable gate (not proposal gate).
+- [x] Keep movement dark-launch toggle as coordinator enable/disable gate (not proposal gate).
 - [x] Ensure no movement duplicate suppression / pending-conflict path can block normal locomotion.
 
 Validation
@@ -56,7 +69,7 @@ Code
 - [x] Ensure freeze timing uses `socket.gettime` consistently.
 
 Validation
-- [ ] Spell casts are not self-interrupted by movement.
+- [x] Spell casts are not self-interrupted by movement.
 - [ ] JA/WS cadence is not unnecessarily frozen.
 
 ## C5. Facing Rules (Finalized Requirement)
@@ -76,9 +89,11 @@ Code
 - [x] Keep `uc_party_follow` suppression only for explicit combat/freeze guards.
 - [x] Remove dependency on movement proposal ownership/locks for normal follow arbitration.
 - [x] Maintain zone suspend/local request hard guards intact.
+- [x] Route party-follow and pathing run/stop effects through the shared
+  dispatcher-backed movement API without changing cadence or geometry.
 
 Validation
-- [ ] Out-of-combat follow remains smooth with engine on.
+- [x] Out-of-combat follow remains smooth with engine on.
 - [ ] No yo-yo between follow and combat movement during fights.
 
 ## C7. Time Source Unification
@@ -117,10 +132,20 @@ Validation
 
 - [ ] A1: Engine OFF + follow ON => follow works.
 - [ ] A2: Engine ON + non-fighter => follow works; no combat-close movement.
-- [ ] A3: Engine ON + fighter + valid target => close/fight movement + spacing/facing behavior correct.
-- [ ] A4: During spell cast => movement frozen, facing still allowed on valid combat target.
+- [x] A3: Engine ON + fighter + valid target => close/fight movement + spacing/facing behavior correct.
+- [x] A4: During spell cast => movement frozen, facing still allowed on valid combat target.
 - [ ] A5: Post-combat => hold window respected, then return to normal follow.
 - [ ] A6: Under intent load => no movement starvation/stutter from queue contention.
+
+Field disposition:
+
+- addon reload: pass, no Lua error;
+- party follow: pass;
+- combat approach/spacing/casting: pass with possible non-blocking settle-time
+  fine tuning;
+- lifecycle `//uc stop`: pass;
+- live path-follow: deferred with risk accepted;
+- Nyzul hold: no live result reported; focused runtime coverage passes.
 
 ## Rollout Notes
 

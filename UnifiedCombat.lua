@@ -19,6 +19,11 @@ uc_prefer_addon_local_libs()
 require('lor/lor_utils')
 require('tables')
 local uc_runtime_overrides = require('uc_runtime_overrides')
+local uc_lifecycle_movement = require('uc_movement_dispatcher').build({
+	dispatcher = require('uc_scheduler_dispatcher'),
+	run = windower.ffxi.run,
+	source_prefix = 'lifecycle',
+})
 
 local function uc_now_s()
 	local s = rawget(_G, 'socket')
@@ -415,7 +420,7 @@ _G.UC_ResetMovementLocksForFollow = function()
 	if type(_G.UC_ResetSchedulerRuntimeLocks) == 'function' then
 		_G.UC_ResetSchedulerRuntimeLocks()
 	end
-	windower.ffxi.run(false)
+	uc_lifecycle_movement.stop({ reason = 'reset_movement_locks_for_follow' })
 end
 
 local function uc_try_load_local_ownership_flags()

@@ -8,6 +8,11 @@ local M = {}
 local packets = require('packets')
 local uc_active_config = require('uc_active_config')
 local uc_nyzul_runtime = require('uc_nyzul_runtime')
+local movement_dispatcher = require('uc_movement_dispatcher').build({
+	dispatcher = require('uc_scheduler_dispatcher'),
+	run = windower.ffxi.run,
+	source_prefix = 'party_follow',
+})
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime or nil
 
@@ -913,7 +918,7 @@ function M.prerender()
 		-- Transition hard-stop: prevent stale run vector drift when follow yields to
 		-- combat-owned movement.
 		if not last_follow_suppressed then
-			windower.ffxi.run(false)
+			movement_dispatcher.stop()
 		end
 		set_follow_run_active(false)
 		last_follow_suppressed = true
@@ -940,7 +945,7 @@ function M.prerender()
 	local lname = leader_name_lower(s, lid)
 	local lx, ly = resolve_leader_xy(s, lid, lname, zone_self)
 	if not lx or not ly then
-		windower.ffxi.run(false)
+		movement_dispatcher.stop()
 		set_follow_run_active(false)
 		_G.UC_MOVEMENT_OWNER = 'follow'
 		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.20
@@ -950,7 +955,7 @@ function M.prerender()
 		return windower.ffxi.get_mob_by_id(lid)
 	end)
 	if ok and leader_mob and leader_mob.id and leader_mob.id ~= 0 and leader_mob.hpp ~= nil and leader_mob.hpp <= 0 then
-		windower.ffxi.run(false)
+		movement_dispatcher.stop()
 		set_follow_run_active(false)
 		_G.UC_MOVEMENT_OWNER = 'follow'
 		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.20
@@ -963,17 +968,17 @@ function M.prerender()
 		if len < 1 then
 			len = 1
 		end
-		windower.ffxi.run((lx - self_mob.x) / len, (ly - self_mob.y) / len)
+		movement_dispatcher.run_vector((lx - self_mob.x) / len, (ly - self_mob.y) / len)
 		set_follow_run_active(true)
 		_G.UC_MOVEMENT_OWNER = 'follow'
 		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.25
 	elseif d2 <= min_dist then
-		windower.ffxi.run(false)
+		movement_dispatcher.stop()
 		set_follow_run_active(false)
 		_G.UC_MOVEMENT_OWNER = 'follow'
 		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.20
 	else
-		windower.ffxi.run(false)
+		movement_dispatcher.stop()
 		set_follow_run_active(false)
 		_G.UC_MOVEMENT_OWNER = 'follow'
 		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.20

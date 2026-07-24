@@ -1,9 +1,11 @@
 # Side-Effect Allowlist
 
-Status: **Phase 3 provider-purity baseline**
-Verified: 2026-07-24 in the Phase 3 working tree.
-Runtime behavior intent: scheduler-owned execution is dispatcher-only; legacy
-and independent subsystems remain explicitly allowlisted.
+Status: **Phase 4 movement-ownership baseline**
+Verified: 2026-07-24 by replay/static validation and live reload, party-follow,
+combat movement/casting, and lifecycle-stop acceptance. Live path-follow was
+deferred with risk accepted.
+Runtime behavior intent: active UnifiedCombat movement execution uses one
+dispatcher-backed API; legacy core movement remains explicitly allowlisted.
 
 ## Purpose
 
@@ -23,17 +25,14 @@ The human call-site inventory is:
 
 | File | Allowed surface | Why it remains | Removal or retention condition |
 | --- | --- | --- | --- |
-| `UnifiedCombat.lua` | Lifecycle `run(false)` | Stops movement during addon lifecycle control | Route through the chosen movement facade |
 | `unified_scheduler.lua` | Action command construction only | Scheduler builds intents but no longer directly invokes tracked executors | Retain while command construction remains scheduler-owned |
 | `uc_scheduler_party_state.lua` | Injected party-state IPC send | Explicit owner for scheduler party-state IPC encoding, throttling, send, receive, and lookup | Retain while scheduler party-state IPC remains part of the runtime contract |
 | `unified_combat_core.lua` | Legacy commands, movement, turn, target selection, IPC, and attack wrappers | Core remains the legacy/runtime helper owner; scheduler-owned skillchain WS and movement now enter through dispatcher facades | Migrate remaining legacy domains in Phase 5; retain IPC only by explicit decision |
 | `uc_attack.lua` | Action packet injection | Dispatcher-owned low-level adapter for scheduler engage/switch/disengage; legacy core also calls it directly | Retain as adapter, then remove legacy direct callers during domain cutover |
 | `uc_settarget.lua` | Target packet injection | Dispatcher-owned low-level adapter for scheduler target selection; legacy core also calls it directly | Retain as adapter, then remove legacy direct callers during domain cutover |
 | `uc_add_control.lua` | Attack-off, select-target, and attack command sequence | Behavior-sensitive add retarget flow | Migrate the full ordered sequence atomically |
-| `uc_party_follow.lua` | Run/stop, IPC, zone packet injection | Independent follow and zone-replay behavior | Route movement through the selected facade; retain IPC/injection only by explicit movement/follow decision |
-| `uc_pathing.lua` | Run/stop | Independent path movement | Route through movement facade |
-| `uc_nyzul_runtime.lua` | Stop and IPC | Nyzul coordination behavior | Route stop through movement facade; retain IPC only if Nyzul remains its owner |
-| `uc_lilith_easy_formation_runtime.lua` | Injected run adapter | Formation movement already dispatches validated run/run-stop intents | Retain as the formation-owned dispatcher adapter or consolidate during Phase 4 |
+| `uc_party_follow.lua` | IPC and zone packet injection | Independent follow position sharing and zone replay; movement itself is migrated | Retain IPC/injection under the Phase 4 ownership decision |
+| `uc_nyzul_runtime.lua` | IPC | Nyzul coordination behavior; movement stop is migrated | Retain while Nyzul remains its IPC state owner |
 | `uc_camp_anchor.lua` | IPC | Camp-anchor synchronization | Expected to remain if camp-anchor remains the state owner |
 | `uc_provider_combat.lua` | `/ma`, `/ja`, and `/ws` proposal command strings | Pure construction of compatibility fields; the provider never executes them | Retain only while proposal compatibility requires `legacy_command` |
 | `uc_provider_tank_enmity.lua` | `/ma` and `/ja` proposal command strings | Pure construction of compatibility fields; the provider never executes them | Retain only while proposal compatibility requires `legacy_command` |
@@ -86,8 +85,8 @@ lua tests/replay/harness/selftest_side_effect_inventory.lua
 Current expected result:
 
 ```text
-runtime_files=132
-allowlisted_files=22
-pattern_checks=330
-observed_hits=250
+runtime_files=133
+allowlisted_files=19
+pattern_checks=285
+observed_hits=239
 ```

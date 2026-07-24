@@ -17,6 +17,11 @@ local res = require('resources')
 local uc_active_config = require('uc_active_config')
 local uc_party_follow = require('uc_party_follow')
 local uc_nyzul_runtime = require('uc_nyzul_runtime')
+local movement_dispatcher = require('uc_movement_dispatcher').build({
+	dispatcher = require('uc_scheduler_dispatcher'),
+	run = windower.ffxi.run,
+	source_prefix = 'pathing',
+})
 local texts_ok, texts = pcall(require, 'texts')
 
 local mod = {}
@@ -893,7 +898,7 @@ local function should_pause_for_combat()
 end
 
 local function stop_move()
-	windower.ffxi.run(false)
+	movement_dispatcher.stop()
 end
 
 local function run_to_point(me, point)
@@ -903,7 +908,7 @@ local function run_to_point(me, point)
 	if len < 0.001 then
 		return false
 	end
-	windower.ffxi.run(dx / len, dy / len)
+	movement_dispatcher.run_vector(dx / len, dy / len)
 	return true
 end
 

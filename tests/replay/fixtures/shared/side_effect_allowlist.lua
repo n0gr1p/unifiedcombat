@@ -59,15 +59,10 @@ return {
         ["uc_camp_anchor.lua"] = {
             direct_ipc_send = 2,
         },
-        ["uc_lilith_easy_formation_runtime.lua"] = {
-            direct_run = 1,
-        },
         ["uc_nyzul_runtime.lua"] = {
-            direct_run = 1,
             direct_ipc_send = 2,
         },
         ["uc_party_follow.lua"] = {
-            direct_run = 6,
             direct_ipc_send = 3,
             packet_inject = 1,
         },
@@ -79,9 +74,6 @@ return {
         ["uc_provider_tank_enmity.lua"] = {
             command_magic = 1,
             command_ability = 1,
-        },
-        ["uc_pathing.lua"] = {
-            direct_run = 2,
         },
         ["uc_scheduler_command_builder.lua"] = {
             command_magic = 1,
@@ -109,9 +101,6 @@ return {
         ["unified_scheduler.lua"] = {
             command_magic = 2,
             command_ability = 3,
-        },
-        ["UnifiedCombat.lua"] = {
-            direct_run = 1,
         },
         ["lor/lor_actor.lua"] = {
             direct_send_command = 1,

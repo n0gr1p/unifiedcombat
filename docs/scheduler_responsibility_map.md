@@ -1,25 +1,29 @@
 # Unified Scheduler Responsibility Map
 
-Status: **Phase 3 provider purity complete and field verified**
-Verified: 2026-07-24 by replay/static validation and multibox acceptance.
+Status: **Phase 4 movement ownership complete and field verified**
+Verified: 2026-07-24 by replay/static validation and live reload, party-follow,
+combat movement/casting, and lifecycle-stop acceptance. Live path-follow was
+deferred with risk accepted.
 Runtime behavior intent: selection behavior remains stable; scheduler-owned
 side effects cross one dispatcher contract, while domain providers append
 proposals only.
 
 ## Purpose
 
-This map records the current post-Phase-3 architecture. It replaces the
-2026-05-15 pre-extraction draft and provides the baseline for Phase 4 movement
-ownership work.
+This map records the current post-Phase-4 architecture. It replaces the
+2026-05-15 pre-extraction draft and records the movement ownership boundary
+selected in
+`RFC/UnifiedCombat_scheduler_refactor_phase4_movement_ownership_decision.md`.
 
 Current primary sizes:
 
 | File | Lines | Current role |
 | --- | ---: | --- |
-| `unified_scheduler.lua` | 6,196 | Scheduler facade, provider wiring, dispatcher orchestration, movement coordination, lifecycle policy, and packet observation |
+| `unified_scheduler.lua` | 6,273 | Scheduler facade, provider wiring, dispatcher orchestration, movement coordination, lifecycle policy, and packet observation |
 | `uc_provider_*.lua` | 1,673 across six modules | Defensive, combat, tank, enemy-buff, maintenance, and target/pull proposal generation |
 | `unified_combat_core.lua` | 4,263 | Legacy/core combat and movement implementation plus scheduler-facing selection helpers and target-scoped skillchain state |
 | `unified_engine.lua` | 409 | 0.20-second lifecycle tick, overlay rendering, scheduler invocation, and conditional core fallback |
+| `uc_movement_dispatcher.lua` | 169 | Shared dispatcher-backed movement execution adapter |
 
 The scheduler is larger than the approximately 5,300-line RFC snapshot because
 new runtime behavior was added while only selected responsibilities were
@@ -316,8 +320,10 @@ Current responsibility:
 Status:
 
 - scheduler movement coordinator and core movement decision helper use one
-  injected dispatcher movement facade;
-- independent follow/pathing/Nyzul/formation/lifecycle owners remain Phase 4.
+  injected dispatcher movement facade backed by `uc_movement_dispatcher.lua`;
+- independent follow, pathing, Nyzul, formation, and lifecycle decision owners
+  execute movement through the same shared adapter;
+- legacy core movement remains a Phase 5 domain-cutover concern.
 
 Priority/risk: **high / very high**
 
@@ -471,29 +477,30 @@ Current:
 - `uc_nyzul_runtime.lua`
 - lifecycle stop in `UnifiedCombat.lua`
 
-`uc_lilith_easy_formation_runtime.lua` is a separate decision owner but already
-executes validated run/run-stop intents through the dispatcher.
+`uc_lilith_easy_formation_runtime.lua` is a separate decision owner.
 
-Target:
+Execution:
 
-- one explicit movement execution API with domain-specific decision owners.
+- all listed owners use `uc_movement_dispatcher.lua`;
+- no listed owner directly calls `windower.ffxi.run(...)`;
+- follow/pathing cadence and arbitration remain independent of ranked scheduler
+  proposals.
 
 ## Current highest-risk areas
 
-1. Movement coordination across legacy core, follow, pathing, Nyzul, and
-   lifecycle.
+1. Phase 5 legacy core domain cutover without changing movement decisions.
 2. Packet/action observation fan-out.
 3. Defensive/tank spell and engage lifecycle state.
 4. Domain cutover while preserving provider, context, ranker, and dispatcher
    contracts.
 
-## Recommended next order after Phase 3
+## Recommended next order after Phase 4 field acceptance
 
-1. Define and apply the Phase 4 movement ownership decision record.
-2. Route independent follow, pathing, Nyzul, and lifecycle movement through the
-   selected movement API in small, separately verified slices.
-3. Preserve proposal keys, priority bands, rejection taxonomy, provider order,
-   and public scheduler wrappers during movement work.
+1. Begin Phase 5 domain cutover one legacy domain at a time.
+2. Preserve proposal keys, priority bands, rejection taxonomy, provider order,
+   and public scheduler wrappers during cutover.
+3. Keep the dormant scheduler vector path disconnected unless a separate design
+   explicitly reconnects it.
 
-Do not combine movement ownership cleanup with stricter proposal validation or
-legacy domain cutover.
+Do not combine legacy domain cutover with stricter proposal validation or a
+proposal-based movement redesign.

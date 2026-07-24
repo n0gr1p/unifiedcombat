@@ -7,8 +7,8 @@ Canonical location: `RFC/UnifiedCombat_scheduler_refactor_tracking.md`
 ## 1) Authoritative Current Status
 
 Status date: 2026-07-24
-Audited state: current Phase 3 working tree based on Phase 2 commit
-`1060c27`
+Audited state: current Phase 4 complete working tree based on Phase 3 commit
+`3fcbcd0`
 
 This compact board is the authoritative current status. The detailed task notes and
 older progress rows below are retained as implementation history and may describe
@@ -20,7 +20,7 @@ an earlier state.
 | Phase 1 — Mechanical decomposition | `DONE / REPLAY VERIFIED` | Proposal normalization, ranker, context, enemy-effect state, observability, and party IPC are extracted. One tick context is shared by target acquisition and provider collection/ranking. Phase 1 exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase1_exit_audit_2026-07-24.md`. |
 | Phase 2 — Dispatcher monopoly | `DONE / REPLAY VERIFIED` | Scheduler-owned command, target, turn, attack, skillchain WS, and movement execution is dispatcher-only; transitional flags and direct fallback execution are retired. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase2_exit_audit_2026-07-24.md`. |
 | Phase 3 — Provider purity | `DONE / FIELD VERIFIED` | Defensive, combat, tank-enmity, enemy-buff-removal, maintenance, and target/pull proposal collection is extracted into six fail-fast provider modules. Providers do not dispatch, acquire locks, move, turn, target, or attack. Multibox acceptance passed with Bard maintenance, tank, COR maintenance, and defensive spell casting active. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase3_exit_audit_2026-07-24.md`. |
-| Phase 4 — Movement ownership cleanup | `IN PROGRESS / FAR FROM COMPLETE` | Scheduler coordinator and formation movement use dispatcher paths; legacy core, follow, pathing, Nyzul, lifecycle, and other movement owners still execute directly. |
+| Phase 4 — Movement ownership cleanup | `DONE / FIELD VERIFIED` | The ownership decision is recorded in `RFC/`; scheduler, formation, follow, pathing, Nyzul, and lifecycle movement execute through `uc_movement_dispatcher.lua`. Follow/pathing remain independent decision owners. Reload, party follow, combat approach/spacing/cast behavior, and lifecycle stop passed live acceptance. Live path-follow was explicitly deferred with risk accepted; its focused execution/arbitration tests pass. Legacy core movement is Phase 5. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase4_exit_audit_2026-07-24.md`. |
 | Phase 5 — Domain cutover | `PARTIAL` | Scheduler-owned paths are cut over without fallback, while legacy/core and independent subsystem direct paths remain. |
 | Phase 6 — Cleanup and simplification | `NOT STARTED` | Broad legacy retirement and scheduler simplification have not occurred. |
 
@@ -129,12 +129,59 @@ Phase 3 verification:
 - detailed audit:
   `RFC/UnifiedCombat_scheduler_refactor_phase3_exit_audit_2026-07-24.md`.
 
-Next architectural work: Phase 4 movement ownership cleanup. Independent follow,
-pathing, Nyzul, lifecycle, and legacy core movement remain explicitly
-allowlisted.
+### Phase 4 acceptance record
+
+| Task | Status | Artifact / evidence |
+| --- | --- | --- |
+| T4.1 — Movement ownership decision | `DONE` | `RFC/UnifiedCombat_scheduler_refactor_phase4_movement_ownership_decision.md` is the RFC-folder replacement for the RFC's proposed `docs/movement_ownership_decision.md`. It keeps follow/pathing as independent decision owners, keeps movement coordinator-based, and defers legacy core cutover to Phase 5. |
+| T4.2 — Shared movement side-effect adapter | `DONE / REPLAY VERIFIED` | `uc_movement_dispatcher.lua` provides fail-fast stop, vector, heading, forward, turn, move-towards, and move-away operations through `uc_scheduler_dispatcher.lua`. |
+| Scheduler movement consolidation | `DONE / REPLAY VERIFIED` | `uc_scheduler_movement_facade.lua` preserves the core executor contract and delegates all execution to the shared adapter. |
+| Independent owner cutover | `DONE / REPLAY VERIFIED` | Party follow, pathing, Nyzul hold, Lilith formation, and lifecycle reset retain their decisions and exact movement call shapes but no longer call `windower.ffxi.run(...)` directly. |
+| Smooth follow and live movement parity | `DONE / FIELD VERIFIED WITH ACCEPTED PATHING RISK` | Addon reload produced no Lua error; party follow passed; combat approach/spacing/casting passed with acceptable behavior and a possible future settle-time tuning note; `//uc stop` passed. Live path-follow was explicitly deferred with risk accepted. Focused path execution/arbitration tests pass. Nyzul live testing was not reported; its focused runtime/IPC hold test passes. |
+
+Phase 4 verification:
+
+- runtime parse: 84 runtime Lua files;
+- aggregate replay/static runner: 116/116 suites;
+- side-effect discovery guard: 133 non-test Lua files scanned, 19 files
+  allowlisted, 15 patterns checked per allowlisted file, 285 exact file-pattern
+  assertions, and 239 observed tracked hits;
+- direct `windower.ffxi.run(...)` calls removed from the five migrated owners:
+  11;
+- focused adapter, scheduler movement, follow/pathing arbitration, Nyzul hold,
+  cast movement lock, Bard movement safety, pure formation, and formation
+  runtime-adapter suites: PASS;
+- live Windower Phase 4 acceptance: PASS for reload, party follow,
+  combat approach/spacing/casting, and lifecycle stop;
+- accepted field-test disposition: live path-follow deferred with risk accepted;
+  focused path execution/arbitration coverage passes;
+- Nyzul disposition: no live result reported; focused runtime/IPC hold coverage
+  passes;
+- exit audit:
+  `RFC/UnifiedCombat_scheduler_refactor_phase4_exit_audit_2026-07-24.md`.
+
+Next architectural work: Phase 5 domain cutover. Possible movement settle-time
+fine tuning is an accepted follow-up, not a Phase 4 blocker.
 
 ## Recent Historical Entries
 
+- 2026-07-24: Completed Phase 4 field acceptance. UnifiedCombat reloaded on the
+  test characters without Lua errors; party follow passed; combat
+  approach/spacing/casting passed with acceptable behavior; and `//uc stop`
+  stopped movement correctly. Live path-follow was explicitly deferred with
+  risk accepted, backed by focused path execution/arbitration coverage. Nyzul
+  live testing was not reported; focused runtime/IPC hold coverage remains
+  green. Phase 4 advanced to `DONE / FIELD VERIFIED`; possible settle-time fine
+  tuning remains a non-blocking follow-up.
+- 2026-07-24: Implemented the Phase 4 movement ownership candidate. Added the
+  RFC-folder movement ownership decision and `uc_movement_dispatcher.lua`;
+  routed scheduler, formation, follow, pathing, Nyzul, and lifecycle movement
+  through the shared dispatcher-backed API without moving follow/pathing into
+  the ranked proposal queue. Removed 11 direct run call sites from the five
+  migrated owners. Runtime parse passes for 84 files, the side-effect guard
+  passes with 133 runtime files / 19 allowlisted files / 239 hits, and aggregate
+  replay/static validation passes 116/116 suites. Live movement parity remains
+  pending.
 - 2026-07-24: Completed Phase 3 multibox field acceptance after the Bard
   Pianissimo retry-lane correction. Bard maintenance, tank behavior, COR
   maintenance, and defensive spell casting all passed together. Phase 3 status
@@ -1461,10 +1508,10 @@ Legend:
 | Dispatch plan fixtures | DONE | Dispatch-plan build and commit revalidation helpers covered. |
 | Pending fixtures | DONE | Pending-state lifecycle/global publish/complete-mark helpers covered. |
 | Dryrun publish fixtures | DONE | Dry-run publish phase/global output helper coverage completed. |
-| Dispatcher ownership migration | IN PROGRESS | Many command, target, turn, and run-stop seams are promoted; direct executors and fallback branches prevent dispatcher monopoly. |
-| Provider extraction/cutover | NOT STARTED structurally | Runtime domain ownership progressed, but all primary `p1_collect_*` providers remain inside `unified_scheduler.lua`. |
-| Movement ownership runtime migration | IN PROGRESS | Scheduler run-stop seams migrated; direct movement remains across core, follow, pathing, Nyzul, and lifecycle paths. |
-| Domain cutover checklists and fallback removal | IN PROGRESS | Ownership promotion and field evidence exist; source defaults, direct paths, and fallback retirement remain incomplete. |
+| Dispatcher ownership migration | DONE / PHASE 2 | Scheduler-owned command, target, turn, attack, skillchain WS, and movement execution is dispatcher-only without transitional fallback execution. |
+| Provider extraction/cutover | DONE / PHASE 3 | Six fail-fast provider modules own defensive, combat, tank, enemy-buff-removal, maintenance, and target/pull proposal generation without execution side effects. |
+| Movement ownership runtime migration | DONE / PHASE 4 | Scheduler, formation, follow, pathing, Nyzul, and lifecycle movement use `uc_movement_dispatcher.lua`; legacy core movement remains explicitly scoped to Phase 5. |
+| Domain cutover checklists and fallback removal | PARTIAL / PHASE 5 | Scheduler-owned paths are cut over without fallback; legacy core domains remain for one-at-a-time Phase 5 cutover. |
 
 ### 2.1 T2.4n run_stop coverage audit
 

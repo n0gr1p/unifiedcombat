@@ -39,6 +39,8 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_dispatcher_fixtures.lua",
     "tests/replay/harness/selftest_scheduler_dispatcher_phase2.lua",
     "tests/replay/harness/selftest_scheduler_movement_facade.lua",
+    "tests/replay/harness/selftest_movement_dispatcher_phase4.lua",
+    "tests/replay/harness/selftest_formation_movement_dispatcher_phase4.lua",
     "tests/replay/harness/selftest_scheduler_providers_phase3.lua",
     "tests/replay/harness/selftest_spacing_cast_movement_lock.lua",
     "tests/replay/harness/selftest_movement_priority_arbitration.lua",

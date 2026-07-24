@@ -29,6 +29,7 @@ local RUNTIME_LUA_FILES = {
 	"uc_camp_anchor.lua",
     "uc_lilith_easy_encounter.lua",
     "uc_lilith_easy_formation_runtime.lua",
+	"uc_movement_dispatcher.lua",
 	"uc_nyzul_runtime.lua",
     "uc_profile_v2.lua",
     "uc_profile_v2_export.lua",

@@ -1,4 +1,9 @@
 local uc_active_config = require('uc_active_config')
+local movement_dispatcher = require('uc_movement_dispatcher').build({
+	dispatcher = require('uc_scheduler_dispatcher'),
+	run = windower.ffxi.run,
+	source_prefix = 'nyzul_runtime',
+})
 
 local M = {}
 
@@ -48,7 +53,7 @@ local function player_name()
 end
 
 local function stop_local_movement()
-	windower.ffxi.run(false)
+	movement_dispatcher.stop({ reason = 'nyzul_hold' })
 end
 
 local function set_local_role(role)

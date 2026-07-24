@@ -1,6 +1,11 @@
 local uc_active_config = require('uc_active_config')
 local combat_formation = require('uc_combat_formation')
 local lilith_easy_encounter = require('uc_lilith_easy_encounter')
+local movement_dispatcher = require('uc_movement_dispatcher').build({
+	dispatcher = require('uc_scheduler_dispatcher'),
+	run = windower.ffxi.run,
+	source_prefix = 'lilith_formation',
+})
 
 local M = {}
 
@@ -142,23 +147,11 @@ local function formation_heading(me, goal)
 end
 
 local function dispatch_formation_stop(reason)
-	local dispatcher = require('uc_scheduler_dispatcher')
-	local intent = {
-		kind = 'run_stop',
-		source = 'unified_scheduler:formation_stop',
-		meta = { reason = reason },
-	}
-	local valid, validation_reason = dispatcher.validate_intent(intent)
-	if valid ~= true then
-		return false, 'FORMATION_STOP_INVALID:' .. tostring(validation_reason)
-	end
-	local result = dispatcher.dispatch_intent(intent, {
-		execute = true,
-		run = windower.ffxi.run,
-	})
-	if type(result) ~= 'table' or result.ok ~= true or result.executed ~= true then
-		local dispatch_reason = type(result) == 'table' and tostring(result.reason) or 'missing_dispatch_result'
-		return false, 'FORMATION_STOP_DISPATCH_FAILED:' .. dispatch_reason
+	local ok, dispatch_error = pcall(function()
+		movement_dispatcher.stop({ reason = reason })
+	end)
+	if not ok then
+		return false, 'FORMATION_STOP_DISPATCH_FAILED:' .. tostring(dispatch_error)
 	end
 	formation_run_active = false
 	return true, reason
@@ -183,35 +176,16 @@ local function dispatch_formation_move(me, proposal)
 	if heading == nil then
 		return false, 'FORMATION_MOVE_ZERO_VECTOR'
 	end
-	local intent = {
-		kind = 'run',
-		source = 'unified_scheduler:formation_move',
-		run_x = math.cos(heading),
-		run_y = math.sin(heading),
-		meta = {
+	local ok, dispatch_error = pcall(function()
+		movement_dispatcher.run_heading(heading, {
 			reason = proposal.reason,
 			heading = heading,
 			goal_x = proposal.goal.x,
 			goal_y = proposal.goal.y,
-		},
-	}
-	local dispatcher = require('uc_scheduler_dispatcher')
-	local valid, validation_reason = dispatcher.validate_intent(intent)
-	if valid ~= true then
-		return false, 'FORMATION_MOVE_INVALID:' .. tostring(validation_reason)
-	end
-	local result = dispatcher.dispatch_intent(intent, {
-		execute = true,
-		run = function(run_x, run_y)
-			if tonumber(run_x) == nil or tonumber(run_y) == nil then
-				error('formation dispatcher supplied invalid run vector')
-			end
-			windower.ffxi.run(heading)
-		end,
-	})
-	if type(result) ~= 'table' or result.ok ~= true or result.executed ~= true then
-		local dispatch_reason = type(result) == 'table' and tostring(result.reason) or 'missing_dispatch_result'
-		return false, 'FORMATION_MOVE_DISPATCH_FAILED:' .. dispatch_reason
+		})
+	end)
+	if not ok then
+		return false, 'FORMATION_MOVE_DISPATCH_FAILED:' .. tostring(dispatch_error)
 	end
 	formation_run_active = true
 	return true, proposal.reason
