@@ -50,6 +50,7 @@ local RUNTIME_LUA_FILES = {
     "uc_scheduler_geometry.lua",
     "uc_scheduler_locks.lua",
     "uc_scheduler_maintenance_utils.lua",
+    "uc_scheduler_movement_facade.lua",
     "uc_scheduler_numeric_utils.lua",
     "uc_scheduler_observability.lua",
     "uc_scheduler_pending_record.lua",

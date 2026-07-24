@@ -1,5 +1,9 @@
 # Doom Ownership Promotion Readiness Audit
 
+> **Historical Phase 1 artifact (2026-07-24):** Phase 2 made Doom command and
+> stop execution dispatcher-only and removed the flags/fallbacks discussed
+> below. See `RFC/UnifiedCombat_scheduler_refactor_tracking.md`.
+
 ## Current remaining surface
 
 - `UC_SCHED_P1_ENABLE_DISPATCHER_DOOM_HOLY_WATER_COMMAND_OWNERSHIP`

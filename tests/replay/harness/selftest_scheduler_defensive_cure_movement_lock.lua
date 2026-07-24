@@ -57,7 +57,7 @@ local function main()
 
     assert_contains(source, "phase.tank_spell_wait_until = now_value + 8.0", "tank spell helper baseline must remain bounded")
     assert_contains(source, "scheduler.defensive_spell_wait_until = now_value + 8.0", "defensive spell wait must be bounded")
-    assert_contains(source, "ownership_enabled = false,", "defensive spell stop helper must not change ownership promotion policy")
+    assert_not_contains(source, "direct_run =", "defensive spell stop helper must not expose direct fallback execution")
     assert_contains(source, "require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({", "defensive spell stop helper must use existing run_stop seam")
     assert_contains(source, "_G.UC_MOVEMENT_OWNER = 'scheduler'", "defensive spell helper must set scheduler movement owner")
     assert_contains(source, "_G.UC_MOVEMENT_LOCK_UNTIL = now_value + 0.6", "defensive spell send helper must create a bounded initial lock")

@@ -1,5 +1,9 @@
 # Scheduler Combat-Spell Run-Stop Field-Test Packet
 
+> **Historical Phase 1 artifact (2026-07-24):** Phase 2 retired the ownership
+> flags and made these scheduler paths dispatcher-only. See
+> `RFC/UnifiedCombat_scheduler_refactor_tracking.md`.
+
 ## Purpose
 
 Validate live behavior for combat-spell run-stop ownership before any promotion decision.

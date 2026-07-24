@@ -1,5 +1,9 @@
 # Scheduler Remaining Run-Stop Coverage Plan
 
+> **Historical Phase 1 artifact (2026-07-24):** Phase 2 completed scheduler
+> run/run-stop dispatcher ownership and removed the flags/fallbacks discussed
+> below. See `RFC/UnifiedCombat_scheduler_refactor_tracking.md`.
+
 ## Summary
 
 T3.0b promoted 11 low-risk scheduler ownership paths to default-on.

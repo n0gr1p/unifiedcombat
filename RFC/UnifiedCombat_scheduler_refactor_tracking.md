@@ -7,8 +7,8 @@ Canonical location: `RFC/UnifiedCombat_scheduler_refactor_tracking.md`
 ## 1) Authoritative Current Status
 
 Status date: 2026-07-24
-Audited state: current working tree based on Phase 0 commit
-`3bd8d2355edb618d81bd2ef4a85f6dfa115d12a0`
+Audited state: current Phase 2 working tree based on Phase 1 commit
+`dca8efb`
 
 This compact board is the authoritative current status. The detailed task notes and
 older progress rows below are retained as implementation history and may describe
@@ -18,10 +18,10 @@ an earlier state.
 | --- | --- | --- |
 | Phase 0 — Baseline and guardrails | `DONE` | T0.1 side-effect inventory, T0.2 responsibility map, T0.3 canonical tracker, and T0.4 repository-wide discovery guard are current and linked below. |
 | Phase 1 — Mechanical decomposition | `DONE / REPLAY VERIFIED` | Proposal normalization, ranker, context, enemy-effect state, observability, and party IPC are extracted. One tick context is shared by target acquisition and provider collection/ranking. Phase 1 exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase1_exit_audit_2026-07-24.md`. |
-| Phase 2 — Dispatcher monopoly | `IN PROGRESS` | Dispatcher and ownership helpers are live and broadly promoted, but direct executors and direct fallback behavior remain. |
+| Phase 2 — Dispatcher monopoly | `DONE / REPLAY VERIFIED` | Scheduler-owned command, target, turn, attack, skillchain WS, and movement execution is dispatcher-only; transitional flags and direct fallback execution are retired. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase2_exit_audit_2026-07-24.md`. |
 | Phase 3 — Provider purity | `NOT STARTED structurally` | Primary `p1_collect_*` providers remain local to `unified_scheduler.lua`; the RFC provider-module boundary does not exist. |
-| Phase 4 — Movement ownership cleanup | `IN PROGRESS / FAR FROM COMPLETE` | Scheduler run-stop seams exist, while core, follow, pathing, Nyzul, lifecycle, and other movement paths still execute directly. |
-| Phase 5 — Domain cutover | `PARTIAL` | Scheduler-owned paths and field evidence exist, but source defaults and legacy/direct paths remain. |
+| Phase 4 — Movement ownership cleanup | `IN PROGRESS / FAR FROM COMPLETE` | Scheduler coordinator and formation movement use dispatcher paths; legacy core, follow, pathing, Nyzul, lifecycle, and other movement owners still execute directly. |
+| Phase 5 — Domain cutover | `PARTIAL` | Scheduler-owned paths are cut over without fallback, while legacy/core and independent subsystem direct paths remain. |
 | Phase 6 — Cleanup and simplification | `NOT STARTED` | Broad legacy retirement and scheduler simplification have not occurred. |
 
 ### Phase 0 acceptance record
@@ -71,12 +71,47 @@ Phase 1 verification:
 - detailed audit:
   `RFC/UnifiedCombat_scheduler_refactor_phase1_exit_audit_2026-07-24.md`.
 
-Next architectural work: choose an evidence-backed Phase 2 dispatcher-monopoly
-slice or begin Phase 3 provider extraction. Provider modules are intentionally
-not a Phase 1 requirement; the RFC places provider purity in Phase 3.
+### Phase 2 acceptance record
+
+| Task | Status | Artifact / evidence |
+| --- | --- | --- |
+| T2.1 — Dispatcher contract | `DONE` | `uc_scheduler_dispatcher.lua` is the established project-specific filename; it validates intents, injects concrete executors, runs commit validation immediately before execution, and runs exactly-once post-execution hooks. |
+| T2.2 — Scheduler primary dispatch | `DONE` | All eight scheduler command seams plus engage, switch, disengage, target, and turn execution route through the dispatcher without a direct fallback. |
+| T2.3 — Side-effect allowlist | `DONE` | `docs/side_effect_inventory.md`, `docs/side_effect_allowlist.md`, and the exact-count machine guard reflect the Phase 2 surface. |
+| T2.4 — Scheduler movement facade | `DONE` | `uc_scheduler_movement_facade.lua` executes scheduler coordinator stop, heading, forward, turn, move-towards, and move-away operations through the dispatcher; independent movement owners remain Phase 4. |
+| Scheduler-owned skillchain WS commit | `DONE` | Core delegates the send through the dispatcher with atomic `dispatch_commit` revalidation and exactly-once generation marking. |
+| Transitional ownership flags/fallbacks | `DONE` | All `_G.UC_SCHED_P1_ENABLE_DISPATCHER_*_OWNERSHIP` flags, the promotion kill switch, and direct fallback arguments are absent from scheduler runtime code. |
+
+Phase 2 verification:
+
+- runtime parse: 77 runtime Lua files;
+- aggregate replay/static runner: 111/111 suites;
+- side-effect discovery guard: 126 non-test Lua files scanned, 20 files
+  allowlisted, 15 patterns checked per allowlisted file, 300 exact file-pattern
+  assertions, and 250 observed tracked hits;
+- scheduler direct tracked executors: zero;
+- live Windower scheduler movement-facade smoke test: PASS for movement,
+  spacing, and automatic stop behavior;
+- detailed audit:
+  `RFC/UnifiedCombat_scheduler_refactor_phase2_exit_audit_2026-07-24.md`.
+
+Next architectural work: Phase 3 provider extraction. Independent follow,
+pathing, Nyzul, lifecycle, and legacy core movement remain Phase 4/5 work and
+are explicitly allowlisted.
 
 ## Recent Historical Entries
 
+- 2026-07-24: Completed RFC Phase 2 dispatcher monopoly in the current working
+  tree. Removed transitional ownership flags and every ownership-helper direct
+  fallback, routed scheduler engage/switch/disengage and scheduler-owned
+  skillchain WS through the dispatcher, added atomic pre-execution validation
+  and exactly-once post-execution hooks, and injected a dispatcher movement
+  facade into the scheduler movement coordinator. Scheduler source now has zero
+  tracked direct executor calls. Runtime parse passes for 77 files, aggregate
+  replay/static validation passes 111/111 suites, and the side-effect guard
+  passes with 250 observed hits. The targeted live Windower movement, spacing,
+  and automatic-stop smoke test also passed. See
+  `RFC/UnifiedCombat_scheduler_refactor_phase2_exit_audit_2026-07-24.md`.
 - 2026-07-24: Completed RFC Phase 1 mechanical decomposition in the current
   working tree. Added explicit proposal, ranker, context, enemy-effect-state,
   observability, and party-state modules; shared one tick-stable context across

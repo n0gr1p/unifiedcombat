@@ -1,5 +1,9 @@
 # Tank Run-Stop Ownership Promotion Audit
 
+> **Historical Phase 1 artifact (2026-07-24):** Phase 2 retired the tank
+> ownership flags and direct fallbacks audited below. See
+> `RFC/UnifiedCombat_scheduler_refactor_tracking.md`.
+
 ## Aggregate replay status
 
 - `lua tests/replay/harness/selftest_all_replay_fixtures.lua`: passes.

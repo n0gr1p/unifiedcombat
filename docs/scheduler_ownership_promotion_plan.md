@@ -1,5 +1,10 @@
 # Scheduler Ownership Promotion Plan
 
+> **Historical Phase 1 artifact (2026-07-24):** Phase 2 completed dispatcher
+> ownership, removed the flags and kill switch described below, and removed
+> direct fallback execution. Current status is tracked in
+> `RFC/UnifiedCombat_scheduler_refactor_tracking.md`.
+
 > **2026-07-20 WS ownership update:** The historical `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP` entries below record the completed ownership rollout, but the live flag/seam is now retired. Scheduler-owned WS dispatch calls the unified core intent owner, which performs atomic skillchain-plan revalidation and the single final command send. There is no direct-send fallback. See `scheduler_owned_ws_skillchain_implementation_plan.md`.
 
 ## Current Closure State

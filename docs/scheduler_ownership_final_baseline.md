@@ -1,5 +1,9 @@
 # Scheduler Ownership Final Baseline
 
+> **Historical Phase 1 artifact (2026-07-24):** Phase 2 supersedes this
+> promotion baseline by retiring all ownership flags and direct fallbacks. See
+> `RFC/UnifiedCombat_scheduler_refactor_tracking.md`.
+
 ## Final baseline
 
 - Combat spell run-stop seams are promoted default-on.

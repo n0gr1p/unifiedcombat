@@ -1,5 +1,9 @@
 # Local Ownership Flags Audit
 
+> **Historical Phase 1 artifact (2026-07-24):** Phase 2 retired the local
+> dispatcher ownership flags and direct fallbacks audited below. See
+> `RFC/UnifiedCombat_scheduler_refactor_tracking.md`.
+
 ## Scope
 
 - Path inspected: `C:\Program Files (x86)\Windower\addons\UnifiedCombat\local_ownership_flags.lua`

@@ -77,9 +77,13 @@ local arbitration_start = assert(scheduler_source:find('function scheduler.try_p
 local arbitration_call = assert(scheduler_source:find('scheduler.try_partner_tiebreak(s)', 1, true))
 local reaction_lock_call = assert(scheduler_source:find('scheduler.refresh_reaction_lock()', arbitration_call, true))
 assert_equal(arbitration_call < reaction_lock_call, true, 'partner arbitration must run before normal scheduler locks')
-assert_equal(scheduler_source:find("uc_attack.switch_target(decision.target_id)", arbitration_start, true) ~= nil, true,
-	'scheduler arbitration must dispatch target switch')
-assert_equal(scheduler_source:find('uc_attack.disengage()', arbitration_start, true) ~= nil, true,
-	'scheduler arbitration must dispatch disengage')
+assert_equal(scheduler_source:find("kind = 'switch_target'", arbitration_start, true) ~= nil, true,
+	'scheduler arbitration must dispatch target switch intent')
+assert_equal(scheduler_source:find('switch_target = uc_attack.switch_target', arbitration_start, true) ~= nil, true,
+	'scheduler arbitration must inject target switch executor')
+assert_equal(scheduler_source:find("kind = 'disengage'", arbitration_start, true) ~= nil, true,
+	'scheduler arbitration must dispatch disengage intent')
+assert_equal(scheduler_source:find('disengage = uc_attack.disengage', arbitration_start, true) ~= nil, true,
+	'scheduler arbitration must inject disengage executor')
 
 print('selftest_scheduler_partner_arbitration: OK')

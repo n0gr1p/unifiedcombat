@@ -1,5 +1,11 @@
 local M = {}
 
+-- Scheduler-owned side effects cross this contract exactly once. Callers supply
+-- the concrete Windower/packet adapter as an injected dependency; there is no
+-- direct fallback when validation or dependency execution is rejected.
+-- revalidate runs immediately before execution, and on_executed runs exactly
+-- once after successful execution so pending/action state can commit atomically.
+
 local function as_string(v)
     if v == nil then
         return ""
@@ -155,6 +161,10 @@ function M.validate_intent(intent)
         return true, ""
     end
 
+    if kind == "run_forward" then
+        return true, ""
+    end
+
     if kind == "turn" then
         if n.payload.heading == nil then
             return false, "missing_heading"
@@ -162,10 +172,16 @@ function M.validate_intent(intent)
         return true, ""
     end
 
-    if kind == "select_target" or kind == "set_target" then
+    if kind == "select_target" or kind == "set_target"
+        or kind == "engage" or kind == "switch_target"
+        or kind == "move_towards" or kind == "move_away_from" then
         if n.payload.target_id <= 0 then
             return false, "invalid_target_id"
         end
+        return true, ""
+    end
+
+    if kind == "disengage" then
         return true, ""
     end
 
@@ -180,8 +196,44 @@ local function require_dep_fn(deps, key)
     return fn, ""
 end
 
-function M.dispatch_intent(intent, deps)
-    deps = deps or {}
+local function run_commit_validation(normalized, hooks)
+    local revalidate = hooks.revalidate
+    if revalidate == nil then
+        return true, ""
+    end
+    if type(revalidate) ~= "function" then
+        error("uc_scheduler_dispatcher hooks.revalidate must be a function")
+    end
+    local ok, reason = revalidate(normalized)
+    if ok ~= true then
+        return false, tostring(reason or "commit_rejected")
+    end
+    return true, ""
+end
+
+local function run_executed_hook(normalized, result, hooks)
+    local on_executed = hooks.on_executed
+    if on_executed == nil then
+        return
+    end
+    if type(on_executed) ~= "function" then
+        error("uc_scheduler_dispatcher hooks.on_executed must be a function")
+    end
+    local ok, reason = on_executed(normalized, result)
+    if ok == false then
+        error("uc_scheduler_dispatcher execution hook failed: " .. tostring(reason or "unknown"))
+    end
+end
+
+function M.dispatch_intent(intent, deps, hooks)
+    if type(deps) ~= "table" then
+        error("uc_scheduler_dispatcher deps must be a table")
+    end
+    if hooks == nil then
+        hooks = {}
+    elseif type(hooks) ~= "table" then
+        error("uc_scheduler_dispatcher hooks must be a table")
+    end
     local normalized = normalize_intent_internal(intent)
     local ok, reason = M.validate_intent(normalized)
     if not ok then
@@ -204,8 +256,21 @@ function M.dispatch_intent(intent, deps)
         }
     end
 
+    local commit_ok, commit_reason = run_commit_validation(normalized, hooks)
+    if not commit_ok then
+        scrub_validation_fields(normalized)
+        return {
+            ok = false,
+            reason = commit_reason,
+            executed = false,
+            normalized_intent = normalized,
+        }
+    end
+
     local kind = normalized.kind
     local err = ""
+    local dep_result = nil
+    local dep_reason = nil
 
     if kind == "send_command" then
         local fn
@@ -246,6 +311,19 @@ function M.dispatch_intent(intent, deps)
             }
         end
         fn(false)
+    elseif kind == "run_forward" then
+        local fn
+        fn, err = require_dep_fn(deps, "run_forward")
+        if not fn then
+            scrub_validation_fields(normalized)
+            return {
+                ok = false,
+                reason = err,
+                executed = false,
+                normalized_intent = normalized,
+            }
+        end
+        fn()
     elseif kind == "turn" then
         local fn
         fn, err = require_dep_fn(deps, "turn")
@@ -271,15 +349,59 @@ function M.dispatch_intent(intent, deps)
                 normalized_intent = normalized,
             }
         end
-        local dep_result = fn(normalized.payload.target_id)
-        scrub_validation_fields(normalized)
-        return {
-            ok = true,
-            reason = "executed",
-            executed = true,
-            dep_result = dep_result,
-            normalized_intent = normalized,
-        }
+        dep_result, dep_reason = fn(normalized.payload.target_id)
+    elseif kind == "engage" then
+        local fn
+        fn, err = require_dep_fn(deps, "engage_target")
+        if not fn then
+            scrub_validation_fields(normalized)
+            return {
+                ok = false,
+                reason = err,
+                executed = false,
+                normalized_intent = normalized,
+            }
+        end
+        dep_result, dep_reason = fn(normalized.payload.target_id)
+    elseif kind == "switch_target" then
+        local fn
+        fn, err = require_dep_fn(deps, "switch_target")
+        if not fn then
+            scrub_validation_fields(normalized)
+            return {
+                ok = false,
+                reason = err,
+                executed = false,
+                normalized_intent = normalized,
+            }
+        end
+        dep_result, dep_reason = fn(normalized.payload.target_id)
+    elseif kind == "disengage" then
+        local fn
+        fn, err = require_dep_fn(deps, "disengage")
+        if not fn then
+            scrub_validation_fields(normalized)
+            return {
+                ok = false,
+                reason = err,
+                executed = false,
+                normalized_intent = normalized,
+            }
+        end
+        dep_result, dep_reason = fn()
+    elseif kind == "move_towards" or kind == "move_away_from" then
+        local fn
+        fn, err = require_dep_fn(deps, kind)
+        if not fn then
+            scrub_validation_fields(normalized)
+            return {
+                ok = false,
+                reason = err,
+                executed = false,
+                normalized_intent = normalized,
+            }
+        end
+        fn(normalized.payload.target_id)
     else
         scrub_validation_fields(normalized)
         return {
@@ -290,13 +412,32 @@ function M.dispatch_intent(intent, deps)
         }
     end
 
+    if kind == "select_target" or kind == "set_target"
+        or kind == "engage" or kind == "switch_target" or kind == "disengage" then
+        if dep_result ~= true then
+            scrub_validation_fields(normalized)
+            return {
+                ok = false,
+                reason = tostring(dep_reason or "dependency_rejected"),
+                executed = false,
+                dep_result = dep_result,
+                dep_reason = dep_reason,
+                normalized_intent = normalized,
+            }
+        end
+    end
+
     scrub_validation_fields(normalized)
-    return {
+    local result = {
         ok = true,
         reason = "executed",
         executed = true,
+        dep_result = dep_result,
+        dep_reason = dep_reason,
         normalized_intent = normalized,
     }
+    run_executed_hook(normalized, result, hooks)
+    return result
 end
 
 return M

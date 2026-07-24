@@ -1,5 +1,9 @@
 # Tank Run-Stop Ownership Phase Closure
 
+> **Historical Phase 1 artifact (2026-07-24):** Phase 2 retired the tank
+> ownership flags and direct fallbacks described below. See
+> `RFC/UnifiedCombat_scheduler_refactor_tracking.md`.
+
 ## Completed sequence
 
 - `T3.6h` promoted tank action-settle run-stop ownership default-on.

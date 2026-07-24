@@ -1,5 +1,10 @@
 # Scheduler Ownership Promotion Readiness Audit
 
+> **Historical Phase 1 artifact (2026-07-24):** Phase 2 completed dispatcher
+> ownership, retired the flags described below, and removed direct fallback
+> execution. Current status is tracked in
+> `RFC/UnifiedCombat_scheduler_refactor_tracking.md`.
+
 > **2026-07-20 WS ownership update:** This audit preserves the historical promotion evidence. The combat-WS command-ownership flag is no longer live; scheduler WS dispatch now delegates to the unified core intent owner so the same target-scoped skillchain plan can be revalidated immediately before the single send. See `scheduler_owned_ws_skillchain_compliance_audit.md`.
 
 ## Scope

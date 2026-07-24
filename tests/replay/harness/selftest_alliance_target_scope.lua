@@ -468,7 +468,7 @@ local function test_puller_range_gate_uses_live_puller_geometry()
     assert_true(type(selected) == 'table' and selected.target_id == 7010, 'target acquisition must remain allowed outside puller range')
     run_calls = {}
     core.last_run_active = true
-    local moved = core.apply_movement_for_scheduler(settings)
+    local moved = core.apply_movement_for_scheduler(settings, core.legacy_movement_executor)
     assert_false(moved, 'combat-close movement must not run toward a mob outside puller range')
     assert_equal(run_calls[#run_calls], false, 'out-of-range movement gate must stop the current run vector')
 

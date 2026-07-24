@@ -179,7 +179,7 @@ local function main()
     windower.ffxi_run_calls = {}
     _G.__TEST_ME = { id = 1, x = 0, y = 0 }
     _G.__TEST_TARGET = make_target({ id = 1001, hpp = 0, x = 10, y = 0 })
-    local moved = core.apply_movement_for_scheduler({ move = true })
+    local moved = core.apply_movement_for_scheduler({ move = true }, core.legacy_movement_executor)
     assert_false(moved, 'zero-hp target must not produce movement intent')
     assert_equal(#windower.ffxi_run_calls, 0, 'zero-hp target must not call run')
 
@@ -187,7 +187,7 @@ local function main()
     core.last_death_target_id = 1001
     core.last_death_at = 99.5
     _G.__TEST_TARGET = make_target({ id = 1001, hpp = 40, x = 10, y = 0 })
-    moved = core.apply_movement_for_scheduler({ move = true })
+    moved = core.apply_movement_for_scheduler({ move = true }, core.legacy_movement_executor)
     assert_false(moved, 'recent-death same id must not produce movement intent')
     assert_equal(#windower.ffxi_run_calls, 0, 'recent-death same id must not call run')
 
@@ -195,7 +195,7 @@ local function main()
     core.last_death_target_id = 1001
     core.last_death_at = 99.5
     _G.__TEST_TARGET = make_target({ id = 1002, hpp = 40, x = 10, y = 0 })
-    moved = core.apply_movement_for_scheduler({ move = true })
+    moved = core.apply_movement_for_scheduler({ move = true }, core.legacy_movement_executor)
     assert_true(moved, 'different live target must still produce movement intent')
     assert_equal(#windower.ffxi_run_calls > 0, true, 'different live target must still call run')
 

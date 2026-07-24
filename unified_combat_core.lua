@@ -2282,8 +2282,29 @@ end
 
 core.is_live_actionable_combat_target = is_live_actionable_combat_target
 
-stop_run = function()
-	windower.ffxi.run(false)
+core.legacy_movement_executor = {
+	stop = function()
+		windower.ffxi.run(false)
+	end,
+	run_heading = function(heading)
+		windower.ffxi.run(heading)
+	end,
+	run_forward = function()
+		windower.ffxi.run()
+	end,
+	turn = function(heading)
+		windower.ffxi.turn(heading)
+	end,
+	move_towards = function(mover, target_id)
+		mover:move_towards(target_id)
+	end,
+	move_away_from = function(mover, target_id)
+		mover:move_away_from(target_id)
+	end,
+}
+
+stop_run = function(executor)
+	executor.stop()
 	core.last_run_active = false
 	set_movement_owner('none', 0)
 end
@@ -2339,13 +2360,13 @@ local function ensure_move_guard_state()
 	return g
 end
 
-local function force_face_target(target)
+local function force_face_target(target, executor)
 	if not target or target.x == nil or target.y == nil then
 		return
 	end
 	local heading = uc_heading_to(target.x, target.y)
 	if heading then
-		windower.ffxi.turn(heading)
+		executor.turn(heading)
 	end
 end
 
@@ -2382,7 +2403,7 @@ local function movement_guard_sample(g, me, dist, now)
 	g.last_sample_at = tonumber(now) or uc_now_s()
 end
 
-local function run_heading_guarded(target, me, heading, tag, is_retreat_intent)
+local function run_heading_guarded(target, me, heading, tag, is_retreat_intent, executor)
 	if not heading then
 		return false
 	end
@@ -2406,9 +2427,9 @@ local function run_heading_guarded(target, me, heading, tag, is_retreat_intent)
 	end
 	if g.recovery_active and now < (tonumber(g.recovery_until) or 0) and target and target.x ~= nil and target.y ~= nil then
 		if now < (tonumber(g.recovery_hold_until) or 0) then
-			windower.ffxi.run(false)
+			executor.stop()
 			core.last_run_active = false
-			force_face_target(target)
+			force_face_target(target, executor)
 			_G.UC_MOVE_DIAG = ('stuck_recovery_hold ticks=%d'):format(tonumber(g.stuck_ticks) or 0)
 			return false
 		end
@@ -2425,9 +2446,9 @@ local function run_heading_guarded(target, me, heading, tag, is_retreat_intent)
 		end
 	end
 	if away and now < (tonumber(g.retreat_suppress_until) or 0) then
-		windower.ffxi.run(false)
+		executor.stop()
 		core.last_run_active = false
-		force_face_target(target)
+		force_face_target(target, executor)
 		_G.UC_MOVE_DIAG = ('retreat_suppressed until=%.2f tag=%s'):format(tonumber(g.retreat_suppress_until) or 0, tostring(tag or ''))
 		return false
 	end
@@ -2439,38 +2460,38 @@ local function run_heading_guarded(target, me, heading, tag, is_retreat_intent)
 		g.recovery_flipped = false
 		g.recovery_until = now + 1.00
 		g.retreat_suppress_until = math.max(tonumber(g.retreat_suppress_until) or 0, now + 2.0)
-		windower.ffxi.run(false)
+		executor.stop()
 		core.last_run_active = false
-		force_face_target(target)
+		force_face_target(target, executor)
 		_G.UC_MOVE_DIAG = ('stuck_detected ticks=%d tag=%s -> hold+sidestep+suppress'):format(tonumber(g.stuck_ticks) or 0, tostring(tag or ''))
 		return false
 	end
-	windower.ffxi.run(heading)
+	executor.run_heading(heading)
 	core.last_run_active = true
 	_G.UC_MOVE_DIAG = ('move tag=%s away=%s stuck=%d'):format(tostring(tag or ''), tostring(away), tonumber(g.stuck_ticks) or 0)
 	return true
 end
 
-local function apply_movement(settings, target)
+local function apply_movement(settings, target, executor)
 	set_preengage_approach_active(false)
 	_G.UC_PULLER_APPROACH_BLOCK_UNTIL = 0
 	-- Guard: do not drive combat-close movement from a manually selected target
 	-- unless autotarget is enabled (normal combat ownership) or explicit move mode is on.
 	if (not setting_enabled(settings.autotarget)) and (not setting_enabled(settings.move)) then
 		if core.last_run_active then
-			stop_run()
+			stop_run(executor)
 		end
 		return
 	end
 	if setting_enabled(settings.manual) or setting_enabled(settings.static) or not target then
 		if core.last_run_active then
-			stop_run()
+			stop_run(executor)
 		end
 		return
 	end
 	if not is_live_actionable_combat_target(target, uc_now_s(), true) then
 		if core.last_run_active then
-			stop_run()
+			stop_run(executor)
 		end
 		_G.UC_MOVE_DIAG = 'move_skip_not_actionable_target'
 		return
@@ -2479,7 +2500,7 @@ local function apply_movement(settings, target)
 	if not puller_allowed then
 		-- Puller gate blocks combat-close movement: explicitly stop current run vector and
 		-- let party-follow own movement for a short window to avoid orphan/stuck trajectories.
-		windower.ffxi.run(false)
+		executor.stop()
 		core.last_run_active = false
 		_G.UC_PULLER_APPROACH_BLOCK_UNTIL = uc_now_s() + 0.6
 		return
@@ -2512,12 +2533,12 @@ local function apply_movement(settings, target)
 		local heading, mode = spacing_compute_heading(settings, me, target, min_range, max_range)
 		if mode == 'HOLD_POSITION' then
 			if core.last_run_active then
-				stop_run()
+				stop_run(executor)
 			end
 			return
 		end
 		if heading then
-			windower.ffxi.run(heading)
+			executor.run_heading(heading)
 			core.last_run_active = true
 			return
 		end
@@ -2529,27 +2550,30 @@ local function apply_movement(settings, target)
 		if dist > stop_range then
 			local moved = false
 			if mover and target.id and type(mover.move_towards) == 'function' then
-				local ok = pcall(function()
-					mover:move_towards(target.id)
+				local ok, err = pcall(function()
+					executor.move_towards(mover, target.id)
 				end)
-				moved = ok
+				if not ok then
+					error('movement executor move_towards failed: ' .. tostring(err))
+				end
+				moved = true
 			end
 			if not moved then
 				local heading = uc_heading_to(target.x, target.y)
 				if heading then
-					windower.ffxi.run(heading)
+					executor.run_heading(heading)
 					moved = true
 				end
 			end
 			if not moved then
-				windower.ffxi.run()
+				executor.run_forward()
 				moved = true
 			end
 			core.last_run_active = moved
 			set_preengage_approach_active(moved)
 		else
 			if core.last_run_active then
-				stop_run()
+				stop_run(executor)
 			end
 		end
 		return
@@ -2560,23 +2584,26 @@ local function apply_movement(settings, target)
 		if spacing_on and me then
 			local heading = uc_spacing_aware_approach_heading(settings, me, target)
 			if heading then
-				moved = run_heading_guarded(target, me, heading, 'close_spacing', false)
+				moved = run_heading_guarded(target, me, heading, 'close_spacing', false, executor)
 			end
 		end
 		if (not moved) and mover and target.id and type(mover.move_towards) == 'function' then
-			local ok = pcall(function()
-				mover:move_towards(target.id)
+			local ok, err = pcall(function()
+				executor.move_towards(mover, target.id)
 			end)
-			moved = ok
+			if not ok then
+				error('movement executor move_towards failed: ' .. tostring(err))
+			end
+			moved = true
 		end
 		if not moved then
 			local heading = uc_heading_to(target.x, target.y)
 			if heading then
-				moved = run_heading_guarded(target, me, heading, 'close_direct', false)
+				moved = run_heading_guarded(target, me, heading, 'close_direct', false, executor)
 			end
 		end
 		if not moved then
-			windower.ffxi.run()
+			executor.run_forward()
 			moved = true
 		end
 		core.last_run_active = moved
@@ -2585,16 +2612,16 @@ local function apply_movement(settings, target)
 		local moved = false
 		local heading = uc_heading_to(target.x, target.y)
 		if heading then
-			moved = run_heading_guarded(target, me, heading + math.pi, 'retreat_target', true)
+			moved = run_heading_guarded(target, me, heading + math.pi, 'retreat_target', true, executor)
 		end
 		if not moved then
-			stop_run()
-			force_face_target(target)
+			stop_run(executor)
+			force_face_target(target, executor)
 		end
 		core.last_run_active = moved
 	else
 		if core.last_run_active then
-			stop_run()
+			stop_run(executor)
 		end
 	end
 
@@ -2629,15 +2656,18 @@ local function apply_movement(settings, target)
 			if chosen_id ~= 0 then
 				local moved = false
 				if mover and type(mover.move_away_from) == 'function' then
-					local ok = pcall(function()
-						mover:move_away_from(chosen_id)
+					local ok, err = pcall(function()
+						executor.move_away_from(mover, chosen_id)
 					end)
-					moved = ok
+					if not ok then
+						error('movement executor move_away_from failed: ' .. tostring(err))
+					end
+					moved = true
 				end
 				if not moved and chosen_member and chosen_member.x and chosen_member.y then
 					local heading = uc_heading_to(chosen_member.x, chosen_member.y)
 					if heading then
-						moved = run_heading_guarded(target, me, heading + math.pi, 'retreat_party', true)
+						moved = run_heading_guarded(target, me, heading + math.pi, 'retreat_party', true, executor)
 					end
 				end
 				core.last_run_active = moved
@@ -3547,7 +3577,7 @@ local function run_unified_combat()
 		local cur = get_current_target()
 		apply_facing(s, cur)
 		if not setting_enabled(s.scheduler_dark_launch_movement) then
-			apply_movement(s, cur)
+			apply_movement(s, cur, core.legacy_movement_executor)
 		end
 		_G.UC_WS_LAST_DIAG = 'core ws reason=SCHED_COMBAT_OWNED'
 		return
@@ -3686,7 +3716,7 @@ local function run_unified_combat()
 			end
 			_G.UC_COMBAT_INTENT_UNTIL = 0
 			if core.last_run_active then
-				stop_run()
+				stop_run(core.legacy_movement_executor)
 			end
 			_G.UC_LAST_BLOCK_REASON = 'NO_TARGET'
 			_G.UC_WS_LAST_DIAG = 'core ws reason=NO_TARGET'
@@ -3731,7 +3761,7 @@ local function run_unified_combat()
 					_G.UC_LAST_BLOCK_REASON = 'HUNTER_ACQUIRE_TIMEOUT'
 					_G.UC_WS_LAST_DIAG = ('core hunter timeout tid=%d cooldown=%.1f'):format(tid, ignore_cooldown)
 					if core.last_run_active then
-						stop_run()
+						stop_run(core.legacy_movement_executor)
 					end
 					return
 				end
@@ -3826,7 +3856,7 @@ local function run_unified_combat()
 	local current = get_current_target()
 	apply_facing(s, current)
 	if not setting_enabled(s.scheduler_dark_launch_movement) then
-		apply_movement(s, current)
+		apply_movement(s, current, core.legacy_movement_executor)
 	end
 
 	local player = windower.ffxi.get_player()
@@ -3993,25 +4023,42 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillcha
 	if not ok then
 		return false, tostring(why or 'WS_INTENT_BLOCK')
 	end
+	local hooks = {}
 	if skillchain_plan ~= nil then
-		local plan_ok, plan_reason = core.revalidate_skillchain_plan(
-			skillchain_plan,
-			settings or get_settings(),
-			tid,
-			ws,
-			'dispatch_commit'
-		)
-		if not plan_ok then
-			ws_intent_clear_pending()
-			return false, tostring(plan_reason)
+		hooks.revalidate = function()
+			return core.revalidate_skillchain_plan(
+				skillchain_plan,
+				settings or get_settings(),
+				tid,
+				ws,
+				'dispatch_commit'
+			)
+		end
+		hooks.on_executed = function()
+			local marked, mark_reason = skillchain_runtime:mark_plan_dispatched(skillchain_plan, os.clock())
+			if not marked then
+				error('skillchain dispatch sent without generation reservation: ' .. tostring(mark_reason))
+			end
+			return true
 		end
 	end
-	windower.send_command('input /ws "' .. ws .. '" ' .. tostring(tid))
-	if skillchain_plan ~= nil then
-		local marked, mark_reason = skillchain_runtime:mark_plan_dispatched(skillchain_plan, os.clock())
-		if not marked then
-			error('skillchain dispatch sent without generation reservation: ' .. tostring(mark_reason))
-		end
+	local dispatch_result = require('uc_scheduler_dispatcher').dispatch_intent({
+		kind = 'send_command',
+		source = 'unified_combat_core:skillchain_ws',
+		command = 'input /ws "' .. ws .. '" ' .. tostring(tid),
+		meta = {
+			action_type = 'weaponskill',
+			action_name = ws,
+			target_id = tid,
+			skillchain_owned = skillchain_plan ~= nil,
+		},
+	}, {
+		execute = true,
+		send_command = windower.send_command,
+	}, hooks)
+	if not dispatch_result.ok or not dispatch_result.executed then
+		ws_intent_clear_pending()
+		return false, tostring(dispatch_result.reason or 'WS_DISPATCH_BLOCK')
 	end
 	ws_intent_clear_pending()
 	core.ws_intent_remote_target_id = 0
@@ -4198,11 +4245,14 @@ function core.dispatch_pull_for_scheduler(settings, target_id)
 	return false, 'PULL_NOT_APPLICABLE'
 end
 
-function core.apply_movement_for_scheduler(settings)
+function core.apply_movement_for_scheduler(settings, movement_executor)
+	if type(movement_executor) ~= 'table' then
+		error('core.apply_movement_for_scheduler movement_executor must be a table')
+	end
 	local s = settings or get_settings() or {}
 	local current = get_current_target()
 	local before_run = (core.last_run_active == true)
-	apply_movement(s, current)
+	apply_movement(s, current, movement_executor)
 	local after_run = (core.last_run_active == true)
 	local preengage = (rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true)
 	-- Movement coordinator should only claim ownership when this tick produced

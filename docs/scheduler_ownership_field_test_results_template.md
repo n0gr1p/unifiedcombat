@@ -1,5 +1,10 @@
 # Scheduler Ownership Field-Test Results Template
 
+> **Historical Phase 1 artifact (2026-07-24):** Phase 2 retired these
+> transitional ownership flags and all direct fallback execution. This
+> template is retained only as field-evidence history. Current status is
+> tracked in `RFC/UnifiedCombat_scheduler_refactor_tracking.md`.
+
 ## Session Details
 
 - Tester:

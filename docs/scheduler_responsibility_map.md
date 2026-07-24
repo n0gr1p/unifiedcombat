@@ -1,23 +1,22 @@
 # Unified Scheduler Responsibility Map
 
-Status: **Phase 1 decomposition complete**
-Verified: 2026-07-24 in the working tree based on
-`3bd8d2355edb618d81bd2ef4a85f6dfa115d12a0`
-Runtime behavior intent: selection behavior unchanged; world state is sampled
-once and shared within each scheduler tick.
+Status: **Phase 2 dispatcher monopoly complete**
+Verified: 2026-07-24 in the Phase 2 working tree.
+Runtime behavior intent: selection behavior remains stable; scheduler-owned
+side effects now cross one dispatcher contract without direct fallback.
 
 ## Purpose
 
-This map records the current post-extraction hybrid architecture. It replaces
-the 2026-05-15 pre-extraction draft and provides the baseline for Phase 2/3
-work after Phase 1 decomposition.
+This map records the current post-Phase-2 architecture. It replaces the
+2026-05-15 pre-extraction draft and provides the baseline for Phase 3 provider
+purity work.
 
 Current primary sizes:
 
 | File | Lines | Current role |
 | --- | ---: | --- |
-| `unified_scheduler.lua` | 7,618 | Scheduler facade plus providers, dispatch orchestration, movement coordination, lifecycle policy, and packet observation |
-| `unified_combat_core.lua` | 4,213 | Legacy/core combat and movement implementation plus scheduler-facing selection helpers and skillchain WS execution |
+| `unified_scheduler.lua` | 7,470 | Scheduler facade plus providers, dispatcher orchestration, movement coordination, lifecycle policy, and packet observation |
+| `unified_combat_core.lua` | 4,254 | Legacy/core combat and movement implementation plus scheduler-facing selection helpers and target-scoped skillchain state |
 | `unified_engine.lua` | 409 | 0.20-second lifecycle tick, overlay rendering, scheduler invocation, and conditional core fallback |
 
 The scheduler is larger than the approximately 5,300-line RFC snapshot because
@@ -38,7 +37,8 @@ These modules are active and called by `unified_scheduler.lua`.
 | Tick context | `uc_scheduler_context.lua` | `p1_build_ctx` wrapper; one cached context shared by target acquisition and proposal collection/ranking |
 | Defensive pure helpers | `uc_scheduler_defensive_utils.lua` | Buff, cure, debuff, priority, and danger calculations |
 | Dispatch-plan structure | `uc_scheduler_dispatch_plan.lua` | `p1_build_dispatch_plan`, `p1_revalidate_plan_commit` |
-| Dispatcher contract | `uc_scheduler_dispatcher.lua` | Intent validation and injected-dependency execution |
+| Dispatcher contract | `uc_scheduler_dispatcher.lua` | Intent validation, commit validation, exactly-once post-execution hooks, and injected-dependency execution |
+| Scheduler movement facade | `uc_scheduler_movement_facade.lua` | Dispatcher-backed stop, heading, forward, turn, move-towards, and move-away execution |
 | Dry-run publication | `uc_scheduler_dryrun_publish.lua` | Ranked queue/global publication |
 | Enemy-effect leaf helpers | `uc_scheduler_enemy_effect_utils.lua` | Labels, normalization, priority conversion, claim validation |
 | Enemy-effect state | `uc_scheduler_enemy_effect_state.lua` | Catalog loading, effect/attempt maps, raw ingestion, removal classification, and scheduler wrappers |
@@ -57,7 +57,7 @@ These modules are active and called by `unified_scheduler.lua`.
 | Status snapshot parsing | `uc_scheduler_status_snapshot_parser.lua` | `0x063` parse helper |
 | Target helpers | `uc_scheduler_target_utils.lua` | Target distance and tank-enmity selection predicates |
 | Text helpers | `uc_scheduler_text_utils.lua` | Split, decode, normalization, Roman numeral helpers |
-| Ownership compatibility seams | `uc_scheduler_command_ownership.lua`, `uc_scheduler_run_ownership.lua`, `uc_scheduler_run_stop_ownership.lua`, `uc_scheduler_target_ownership.lua`, `uc_scheduler_turn_ownership.lua` | Dispatcher-first versus direct execution selection and status publication |
+| Ownership seams | `uc_scheduler_command_ownership.lua`, `uc_scheduler_run_ownership.lua`, `uc_scheduler_run_stop_ownership.lua`, `uc_scheduler_target_ownership.lua`, `uc_scheduler_turn_ownership.lua` | Dispatcher-only execution and status publication; transitional flags and direct fallbacks are retired |
 
 ## Current scheduler-owned responsibilities and façade seams
 
@@ -280,19 +280,18 @@ Functions:
 - `scheduler.refresh_reaction_lock`
 - `run_movement_coordinator_tick`
 - `p1_apply_face_to_target`
-- dormant `p1_move_toward_mob`
 
 Current responsibility:
 
 - coordinates Nyzul, reaction, Lilith formation, cast freeze, pull holds, domain
-  eligibility, and core movement delegation;
+  eligibility, and core movement decisions through an injected dispatcher facade;
 - publishes movement owner/block diagnostics.
 
-Target:
+Status:
 
-- explicit movement coordinator plus one movement execution facade;
-- partner/reaction decisions remain separate pure owners where already
-  extracted.
+- scheduler movement coordinator and core movement decision helper use one
+  injected dispatcher movement facade;
+- independent follow/pathing/Nyzul/formation/lifecycle owners remain Phase 4.
 
 Priority/risk: **high / very high**
 
@@ -318,15 +317,15 @@ Current responsibility:
 
 - performs commit-time live reads and domain gates;
 - constructs dispatcher intents;
-- calls dispatcher-first ownership helpers;
+- calls dispatcher-only ownership helpers;
 - records sent/action/pending state;
-- invokes indirect attack/target/movement executors.
+- injects low-level action and movement adapters into the dispatcher.
 
-Target:
+Status:
 
 - scheduler selects and plans;
-- dispatcher validates commit and is the only action executor;
-- locks/pending receive explicit dispatch outcomes.
+- dispatcher validates commits and is the only scheduler-owned action executor;
+- skillchain generation marking is an exactly-once post-execution hook.
 
 Priority/risk: **highest / very high**
 
@@ -426,9 +425,10 @@ Target:
 
 Current:
 
-- owns direct combat and movement execution;
+- owns legacy direct combat and movement execution;
 - exposes scheduler-facing WS, tank, pull, target, and movement helpers;
-- owns the target-scoped skillchain runtime and direct skillchain WS send.
+- owns target-scoped skillchain state while its scheduler-owned WS send and
+  movement path execute through injected dispatcher contracts.
 
 Target:
 
@@ -443,8 +443,10 @@ Current:
 - `uc_party_follow.lua`
 - `uc_pathing.lua`
 - `uc_nyzul_runtime.lua`
-- `uc_lilith_easy_formation_runtime.lua`
 - lifecycle stop in `UnifiedCombat.lua`
+
+`uc_lilith_easy_formation_runtime.lua` is a separate decision owner but already
+executes validated run/run-stop intents through the dispatcher.
 
 Target:
 
@@ -452,23 +454,21 @@ Target:
 
 ## Current highest-risk areas
 
-1. Dispatch orchestration and its direct fallback ownership helpers.
-2. Movement coordination across scheduler, core, follow, pathing, formation,
-   Nyzul, and lifecycle.
+1. Provider extraction without changing ranking or proposal identity.
+2. Movement coordination across legacy core, follow, pathing, Nyzul, and
+   lifecycle.
 3. Packet/action observation fan-out.
 4. Defensive/tank spell and engage lifecycle state.
 5. Provider extraction while preserving the now-explicit context and ranker
    contracts.
 
-## Recommended next order after Phase 1
+## Recommended next order after Phase 2
 
-1. Select a bounded Phase 2 dispatcher-monopoly slice with exact side-effect
-   evidence, or begin Phase 3 provider extraction.
-2. Extract providers by cohesive domain against the stable context/ranker
+1. Extract providers by cohesive domain against the stable context/ranker
    interfaces.
-3. Preserve proposal keys, priority bands, rejection taxonomy, and public
+2. Preserve proposal keys, priority bands, rejection taxonomy, and public
    scheduler wrappers during each provider move.
-4. Keep movement ownership cleanup separate from provider extraction.
+3. Keep independent movement ownership cleanup separate from provider extraction.
 
-Do not combine provider extraction with stricter proposal validation, dispatcher
-fallback removal, domain cutover, or movement behavior changes.
+Do not combine provider extraction with stricter proposal validation, legacy
+domain cutover, or independent movement behavior changes.

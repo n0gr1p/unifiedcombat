@@ -1,5 +1,9 @@
 # Scheduler Ownership Resume Baseline
 
+> **Historical Phase 1 artifact (2026-07-24):** Phase 2 supersedes this resume
+> baseline by retiring all ownership flags and direct fallbacks. See
+> `RFC/UnifiedCombat_scheduler_refactor_tracking.md`.
+
 > **2026-07-20 WS ownership update:** References below to `UC_SCHED_P1_ENABLE_DISPATCHER_COMBAT_WS_COMMAND_OWNERSHIP` are historical. That seam is retired in favor of the unified core WS intent owner and atomic skillchain commit validation.
 
 ## Current invariant

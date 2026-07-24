@@ -85,8 +85,8 @@ return {
             packet_inject = 1,
         },
         ["unified_combat_core.lua"] = {
-            direct_send_command = 7,
-            direct_run = 21,
+            direct_send_command = 6,
+            direct_run = 14,
             direct_turn = 2,
             direct_target_select = 2,
             direct_ipc_send = 2,
@@ -101,9 +101,6 @@ return {
             command_magic = 4,
             command_ability = 6,
             command_weaponskill = 1,
-            wrapper_engage = 1,
-            wrapper_switch_target = 2,
-            wrapper_disengage = 2,
         },
         ["UnifiedCombat.lua"] = {
             direct_run = 1,
