@@ -2,6 +2,11 @@
 
 Status date: 2026-07-24
 
+> Historical Phase 5 decision. Superseded for current runtime/schema status by
+> `UnifiedCombat_scheduler_refactor_phase6_exit_audit_2026-07-24.md`. Phase 6
+> removed the compatibility markers and renamed the active dispatch functions;
+> the domain-ownership decision itself remains in force.
+
 ## Decision
 
 Domain ownership is now described in terms of enabled domains and their single

@@ -185,7 +185,7 @@ Recommended generic fixture shape:
   settings = {
     defensive_enabled = true,
     def_remove_enemy_buffs = true,
-    scheduler_dark_launch_defensive = true,
+    domain_defensive_enabled = true,
     -- other lane-specific toggles under test
   },
   player_context = {
@@ -417,7 +417,7 @@ This document does not permit moving:
 - `spell_ready`
 - `ja_ready`
 - `p1_run_dry`
-- `p1_try_dark_launch_dispatch`
+- `dispatch_selected_plan`
 - `run_movement_coordinator_tick`
 - Any direct side-effect owner
 

@@ -663,11 +663,7 @@ internal static class StructuredProfileV2Writer
             .Add("domain_defensive_enabled", ReadBool(flatProfile, "domain_defensive_enabled", true))
             .Add("domain_movement_enabled", ReadBool(flatProfile, "domain_movement_enabled", true))
             .Add("domain_maintenance_enabled", ReadBool(flatProfile, "domain_maintenance_enabled", true))
-            .Add("domain_follow_enabled", ReadBool(flatProfile, "domain_follow_enabled", true))
-            .Add("scheduler_dark_launch_combat", ReadBool(flatProfile, "scheduler_dark_launch_combat", false))
-            .Add("scheduler_dark_launch_defensive", ReadBool(flatProfile, "scheduler_dark_launch_defensive", false))
-            .Add("scheduler_dark_launch_movement", ReadBool(flatProfile, "scheduler_dark_launch_movement", false))
-            .Add("scheduler_dark_launch_maintenance", ReadBool(flatProfile, "scheduler_dark_launch_maintenance", false));
+            .Add("domain_follow_enabled", ReadBool(flatProfile, "domain_follow_enabled", true));
 
         if (ReadBool(flatProfile, "profile_v2_autoload", false))
         {

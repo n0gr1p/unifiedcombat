@@ -1,15 +1,14 @@
 # Side-Effect Allowlist
 
-Status: **Phase 5 domain cutover complete**
-Verified: 2026-07-24 by replay/static validation and multibox field acceptance;
-live path-follow remains an explicitly accepted risk.
+Status: **Phase 6 cleanup complete**
+Verified: 2026-07-24 by repository-wide static/replay validation and live
+acceptance on all active profiles; live path-follow remains an accepted risk.
 Runtime behavior intent: enabled UnifiedCombat domains have scheduler/shared
-dispatcher execution and no engine core fallback. Dormant legacy core effects
-remain allowlisted for Phase 6 deletion.
+dispatcher execution and no legacy core fallback or executor.
 
 ## Purpose
 
-This allowlist makes the current hybrid execution surface explicit. An
+This allowlist makes the current execution surface explicit. An
 allowlisted call site is tolerated for the current migration baseline; it is not
 an endorsement of the final architecture.
 
@@ -27,9 +26,9 @@ The human call-site inventory is:
 | --- | --- | --- | --- |
 | `unified_scheduler.lua` | Action command construction only | Scheduler builds intents but no longer directly invokes tracked executors | Retain while command construction remains scheduler-owned |
 | `uc_scheduler_party_state.lua` | Injected party-state IPC send | Explicit owner for scheduler party-state IPC encoding, throttling, send, receive, and lookup | Retain while scheduler party-state IPC remains part of the runtime contract |
-| `unified_combat_core.lua` | Dormant legacy commands, movement, turn, target selection, IPC, and attack wrappers | The active engine no longer calls the legacy core tick; scheduler pull, skillchain WS, and movement require injected dispatcher-backed executors | Delete unreachable direct paths in Phase 6; retain scheduler-facing helpers and IPC only by explicit decision |
-| `uc_attack.lua` | Action packet injection | Dispatcher-owned low-level adapter for scheduler engage/switch/disengage; dormant legacy core code also calls it directly | Retain as adapter, then remove unreachable legacy direct callers during Phase 6 cleanup |
-| `uc_settarget.lua` | Target packet injection | Dispatcher-owned low-level adapter for scheduler target selection; dormant legacy core code also calls it directly | Retain as adapter, then remove unreachable legacy direct callers during Phase 6 cleanup |
+| `unified_combat_core.lua` | WS coordination IPC plus pure `/ma`, `/ja`, and `/ws` intent construction | Scheduler-facing selectors retain their established contracts while all execution is explicitly injected through dispatcher-backed executors | Retain required decision helpers and WS IPC; do not reintroduce direct command, movement, turn, target, or attack execution |
+| `uc_attack.lua` | Action packet injection | Dispatcher-owned low-level adapter for scheduler engage/switch/disengage | Retain as the dispatcher adapter |
+| `uc_settarget.lua` | Target packet injection | Dispatcher-owned low-level adapter for scheduler target selection | Retain as the dispatcher adapter |
 | `uc_add_control.lua` | Attack-off, select-target, and attack command sequence | Behavior-sensitive add retarget flow | Migrate the full ordered sequence atomically |
 | `uc_party_follow.lua` | IPC and zone packet injection | Independent follow position sharing and zone replay; movement itself is migrated | Retain IPC/injection under the Phase 4 ownership decision |
 | `uc_nyzul_runtime.lua` | IPC | Nyzul coordination behavior; movement stop is migrated | Retain while Nyzul remains its IPC state owner |
@@ -88,5 +87,5 @@ Current expected result:
 runtime_files=135
 allowlisted_files=19
 pattern_checks=285
-observed_hits=236
+observed_hits=205
 ```

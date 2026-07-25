@@ -76,11 +76,6 @@ function M.combat_prime(settings)
     return M.active_value_or_flat('config.combat.prime', s.prime)
 end
 
-function M.ownership_scheduler_dark_launch_combat(settings)
-    local s = settings_or_default(settings)
-    return M.active_value_or_flat('config.ownership.scheduler_dark_launch_combat', s.scheduler_dark_launch_combat)
-end
-
 function M.tank_enabled(settings)
     local s = settings_or_default(settings)
     return M.active_value_or_flat('config.tank.enabled', s.tank)

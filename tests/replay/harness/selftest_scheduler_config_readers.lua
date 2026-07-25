@@ -58,7 +58,6 @@ local function main()
 		log_tank_sched = false,
 		autotarget = false,
 		prime = false,
-		scheduler_dark_launch_combat = false,
 		tank = false,
 		tank_enmity_actions = { 'spell:Flash' },
 		def_remove_enemy_buffs = false,
@@ -77,9 +76,7 @@ local function main()
 			autotarget = true,
 			prime = true,
 		},
-		ownership = {
-			scheduler_dark_launch_combat = true,
-		},
+		ownership = {},
 		tank = {
 			enabled = true,
 			enmity = {
@@ -101,7 +98,6 @@ local function main()
 	assert_equal(scheduler_config.debug_log_tank_sched(flat), true, 'tank scheduler log gate should prefer active config')
 	assert_equal(scheduler_config.combat_autotarget(flat), true, 'autotarget should prefer active config')
 	assert_equal(scheduler_config.combat_prime(flat), true, 'prime should prefer active config')
-	assert_equal(scheduler_config.ownership_scheduler_dark_launch_combat(flat), true, 'combat ownership toggle should prefer active config')
 	assert_equal(scheduler_config.tank_enabled(flat), true, 'tank enabled should prefer active config')
 	assert_equal(scheduler_config.defensive_enemy_buffs_remove(flat), true, 'enemy-buff removal should prefer active config')
 	assert_equal(scheduler_config.tank_enmity_actions(flat)[1], 'ja:Provoke', 'tank enmity actions should prefer active config')
@@ -125,7 +121,6 @@ local function main()
 		log_tank_sched = true,
 		autotarget = true,
 		prime = true,
-		scheduler_dark_launch_combat = true,
 		tank = true,
 		tank_enmity_actions = { 'spell:Foil' },
 		def_remove_enemy_buffs = true,
@@ -139,7 +134,6 @@ local function main()
 	assert_equal(scheduler_config.debug_log_tank_sched(fallback), true, 'tank scheduler log gate should preserve flat fallback when active path is missing')
 	assert_equal(scheduler_config.combat_autotarget(fallback), true, 'autotarget should preserve flat fallback when active path is missing')
 	assert_equal(scheduler_config.combat_prime(fallback), true, 'prime should preserve flat fallback when active path is missing')
-	assert_equal(scheduler_config.ownership_scheduler_dark_launch_combat(fallback), true, 'combat ownership toggle should preserve flat fallback when active path is missing')
 	assert_equal(scheduler_config.tank_enabled(fallback), true, 'tank enabled should preserve flat fallback when active path is missing')
 	assert_equal(scheduler_config.defensive_enemy_buffs_remove(fallback), true, 'enemy-buff removal should preserve flat fallback when active path is missing')
 	assert_equal(scheduler_config.tank_enmity_actions(fallback)[1], 'spell:Foil', 'tank enmity actions should preserve flat fallback when active path is missing')

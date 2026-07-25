@@ -603,10 +603,6 @@ local function default_config(meta)
             domain_movement_enabled = true,
             domain_maintenance_enabled = true,
             domain_follow_enabled = true,
-            scheduler_dark_launch_combat = false,
-            scheduler_dark_launch_defensive = false,
-            scheduler_dark_launch_movement = false,
-            scheduler_dark_launch_maintenance = false,
             profile_v2_auto_reload_on_change = false,
         },
         legacy = {
@@ -1126,16 +1122,12 @@ end
 local function normalize_ownership(source, config)
     local ownership = config.ownership
     local nested = get_path(source, { 'ownership' })
-    if is_table(nested) and table_has_any(nested, { 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled', 'scheduler_dark_launch_combat', 'scheduler_dark_launch_defensive', 'scheduler_dark_launch_movement', 'scheduler_dark_launch_maintenance', 'profile_v2_autoload', 'profile_v2_auto_reload_on_change' }) then
+    if is_table(nested) and table_has_any(nested, { 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled', 'profile_v2_autoload', 'profile_v2_auto_reload_on_change' }) then
         ownership.domain_combat_enabled = normalize_boolean(nested.domain_combat_enabled, ownership.domain_combat_enabled)
         ownership.domain_defensive_enabled = normalize_boolean(nested.domain_defensive_enabled, ownership.domain_defensive_enabled)
         ownership.domain_movement_enabled = normalize_boolean(nested.domain_movement_enabled, ownership.domain_movement_enabled)
         ownership.domain_maintenance_enabled = normalize_boolean(nested.domain_maintenance_enabled, ownership.domain_maintenance_enabled)
         ownership.domain_follow_enabled = normalize_boolean(nested.domain_follow_enabled, ownership.domain_follow_enabled)
-        ownership.scheduler_dark_launch_combat = normalize_boolean(nested.scheduler_dark_launch_combat, ownership.scheduler_dark_launch_combat)
-        ownership.scheduler_dark_launch_defensive = normalize_boolean(nested.scheduler_dark_launch_defensive, ownership.scheduler_dark_launch_defensive)
-        ownership.scheduler_dark_launch_movement = normalize_boolean(nested.scheduler_dark_launch_movement, ownership.scheduler_dark_launch_movement)
-        ownership.scheduler_dark_launch_maintenance = normalize_boolean(nested.scheduler_dark_launch_maintenance, ownership.scheduler_dark_launch_maintenance)
         ownership.profile_v2_autoload = normalize_optional_true_boolean(nested.profile_v2_autoload)
         local auto_reload = normalize_optional_true_boolean(nested.profile_v2_auto_reload_on_change)
         if auto_reload ~= nil then
@@ -1147,10 +1139,6 @@ local function normalize_ownership(source, config)
         ownership.domain_movement_enabled = normalize_boolean(first_path(source, { path('domain_movement_enabled') }), ownership.domain_movement_enabled)
         ownership.domain_maintenance_enabled = normalize_boolean(first_path(source, { path('domain_maintenance_enabled') }), ownership.domain_maintenance_enabled)
         ownership.domain_follow_enabled = normalize_boolean(first_path(source, { path('domain_follow_enabled') }), ownership.domain_follow_enabled)
-        ownership.scheduler_dark_launch_combat = normalize_boolean(first_path(source, { path('scheduler_dark_launch_combat') }), ownership.scheduler_dark_launch_combat)
-        ownership.scheduler_dark_launch_defensive = normalize_boolean(first_path(source, { path('scheduler_dark_launch_defensive') }), ownership.scheduler_dark_launch_defensive)
-        ownership.scheduler_dark_launch_movement = normalize_boolean(first_path(source, { path('scheduler_dark_launch_movement') }), ownership.scheduler_dark_launch_movement)
-        ownership.scheduler_dark_launch_maintenance = normalize_boolean(first_path(source, { path('scheduler_dark_launch_maintenance') }), ownership.scheduler_dark_launch_maintenance)
         ownership.profile_v2_autoload = normalize_optional_true_boolean(first_path(source, { path('profile_v2_autoload') }))
         local auto_reload = normalize_optional_true_boolean(first_path(source, { path('profile_v2_auto_reload_on_change') }))
         if auto_reload ~= nil then

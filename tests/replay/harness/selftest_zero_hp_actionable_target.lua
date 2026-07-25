@@ -144,6 +144,14 @@ local function make_target(tbl)
 end
 
 local function main()
+    local movement_executor = {
+        stop = function() windower.ffxi.run(false) end,
+        run_heading = function(heading) windower.ffxi.run(heading) end,
+        run_forward = function() windower.ffxi.run() end,
+        turn = function(heading) windower.ffxi.turn(heading) end,
+        move_towards = function(mover, target_id) mover:move_towards(target_id) end,
+        move_away_from = function(mover, target_id) mover:move_away_from(target_id) end,
+    }
     if type(core.is_live_actionable_combat_target) ~= 'function' then
         error('unified_combat_core must export is_live_actionable_combat_target')
     end
@@ -179,7 +187,7 @@ local function main()
     windower.ffxi_run_calls = {}
     _G.__TEST_ME = { id = 1, x = 0, y = 0 }
     _G.__TEST_TARGET = make_target({ id = 1001, hpp = 0, x = 10, y = 0 })
-    local moved = core.apply_movement_for_scheduler({ move = true }, core.legacy_movement_executor)
+    local moved = core.apply_movement_for_scheduler({ move = true }, movement_executor)
     assert_false(moved, 'zero-hp target must not produce movement intent')
     assert_equal(#windower.ffxi_run_calls, 0, 'zero-hp target must not call run')
 
@@ -187,7 +195,7 @@ local function main()
     core.last_death_target_id = 1001
     core.last_death_at = 99.5
     _G.__TEST_TARGET = make_target({ id = 1001, hpp = 40, x = 10, y = 0 })
-    moved = core.apply_movement_for_scheduler({ move = true }, core.legacy_movement_executor)
+    moved = core.apply_movement_for_scheduler({ move = true }, movement_executor)
     assert_false(moved, 'recent-death same id must not produce movement intent')
     assert_equal(#windower.ffxi_run_calls, 0, 'recent-death same id must not call run')
 
@@ -195,7 +203,7 @@ local function main()
     core.last_death_target_id = 1001
     core.last_death_at = 99.5
     _G.__TEST_TARGET = make_target({ id = 1002, hpp = 40, x = 10, y = 0 })
-    moved = core.apply_movement_for_scheduler({ move = true }, core.legacy_movement_executor)
+    moved = core.apply_movement_for_scheduler({ move = true }, movement_executor)
     assert_true(moved, 'different live target must still produce movement intent')
     assert_equal(#windower.ffxi_run_calls > 0, true, 'different live target must still call run')
 

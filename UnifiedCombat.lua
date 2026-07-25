@@ -51,7 +51,6 @@ _G.UC_REMOTE_HOST = _G.UC_REMOTE_HOST or '127.0.0.1'
 _G.UC_REMOTE_PORT = _G.UC_REMOTE_PORT or 27182
 
 Start_Engine = false
-_G.UC_ENABLE_LEGACY_JOB_ADAPTERS = false
 
 -- After zoning, suspend unified combat ticks (scheduler + offense) so mob data can settle and we
 -- do not immediately autotarget with stale/cleared engine state (zone resets engagement; no /attack off).
@@ -254,10 +253,6 @@ local function uc_new_settings_defaults()
 		domain_movement_enabled = true,
 		domain_maintenance_enabled = true,
 		domain_follow_enabled = true,
-		scheduler_dark_launch_combat = false,
-		scheduler_dark_launch_defensive = false,
-		scheduler_dark_launch_movement = false,
-		scheduler_dark_launch_maintenance = false,
 		cor_roll_1 = '',
 		cor_roll_2 = '',
 		cor_crooked_roll_slot = 0,
@@ -402,12 +397,6 @@ _G.UC_StopUnifiedEngine = function(reason)
 	end
 end
 
-_G.UC_CoreCombatTickOnce = function()
-	if UC_COMBAT_CORE and type(UC_COMBAT_CORE.combat_tick_once) == 'function' then
-		UC_COMBAT_CORE.combat_tick_once()
-	end
-end
-
 _G.UC_ResetMovementLocksForFollow = function()
 	_G.UC_MOVE_FREEZE_PREP_KEY = ''
 	_G.UC_MOVE_FREEZE_PREP_UNTIL = 0
@@ -473,8 +462,6 @@ local PROFILE_KEYS = {
 	'defensive_overwrite_enabled', 'defensive_overwrite_interval', 'defensive_buff_self_only', 'defensive_buffs',
 	'defensive_targeted_buffs',
 	'engine_enabled', 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled',
-	'scheduler_dark_launch_combat',
-	'scheduler_dark_launch_defensive', 'scheduler_dark_launch_movement', 'scheduler_dark_launch_maintenance',
 	'cor_roll_1', 'cor_roll_2', 'cor_crooked_roll_slot', 'cor_elevens', 'cor_luzaf_range_override', 'cor_roll_range_selected', 'cor_roll_range_require_ids',
 	'path_recording', 'path_follow_enabled', 'path_file_name', 'path_route_type', 'path_distance_to_start', 'path_points', 'path_party_gate_yalms', 'path_resume_index_window', 'path_hunter_targets', 'path_hunter_max_z_delta', 'path_hunter_max_target_range', 'path_hunter_claim_timeout_s', 'path_hunter_ignore_cooldown_s', 'path_pull_action_type', 'path_pull_action_name',
 	'autotarget', 'spam', 'closer', 'manual', 'prime', 'static', 'spacing', 'face',
@@ -1991,7 +1978,8 @@ windower.register_event('incoming chunk', function(id, data)
 			end
 		end)
 		if not ok then
-			-- ignore malformed packet parse; core tick remains authoritative fallback.
+			-- Ignore malformed packet data. The scheduler continues on the next
+			-- engine tick with no alternate execution path.
 		end
 	end
 end)
@@ -2099,10 +2087,6 @@ windower.register_event('logout', function()
 	if type(_G.UC_StopUnifiedEngine) == 'function' then
 		_G.UC_StopUnifiedEngine('logout')
 	end
-end)
-
-windower.register_event('status change', function(a, b)
-	-- unified core handles runtime behavior; no legacy status hooks.
 end)
 
 local function uc_fight_leader_party_id_by_name(name)

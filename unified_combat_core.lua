@@ -15,7 +15,6 @@ end
 local res = require('resources')
 local skills = require('skills')
 local uc_ability_pipeline = require('uc_ability_pipeline')
-local uc_ws_gate = require('uc_ws_gate')
 local uc_ws_memory = require('uc_ws_memory')
 local uc_ignore = require('uc_ignore')
 local uc_target_ignore = require('uc_target_ignore')
@@ -23,8 +22,6 @@ local uc_partner_list = require('uc_partner_list')
 local uc_fight_leader = require('uc_fight_leader')
 local uc_add_control = require('uc_add_control')
 local uc_targeting_common = require('uc_targeting_common')
-local uc_settarget = require('uc_settarget')
-local uc_attack = require('uc_attack')
 local uc_path_hunter = require('uc_path_hunter')
 local uc_skillchain_state = require('uc_skillchain_state')
 local uc_camp_anchor = require('uc_camp_anchor')
@@ -266,19 +263,7 @@ local function ws_actor_has_incapacitating_buff(buff_ids)
 	return false
 end
 
-local function party_follow_hold_seconds(settings)
-	local n = tonumber(settings and settings.fight_follow_hold_s) or 8.0
-	if n < 0 then
-		n = 0
-	elseif n > 60 then
-		n = 60
-	end
-	return n
-end
 
-local function get_active_engine()
-	return 'UC'
-end
 
 local function get_settings()
 	return rawget(_G, 'UC_SETTINGS') or {}
@@ -489,33 +474,6 @@ _G.UC_LOG_DIAG = function(channel, msg)
 	pcall(debug_log_channel, channel, msg)
 end
 
-local function debug_ja_gate(name, reason, extra)
-	local now = uc_now_s()
-	local key = tostring(name or '?') .. '|' .. tostring(reason or '?')
-	local last = tonumber((core.ja_gate_log_at or {})[key]) or 0
-	if (now - last) < 0.25 then
-		return
-	end
-	core.ja_gate_log_at[key] = now
-	local p = windower.ffxi.get_player() or {}
-	local status = tonumber(p.status) or -1
-	local lock_left = math.max(0, (tonumber(core.ja_lock_until) or 0) - now)
-	local pending_name = tostring(core.ja_pending_name or '')
-	local pending_age = 0
-	local sent_at = tonumber(core.ja_pending_sent_at) or 0
-	if sent_at > 0 then
-		pending_age = now - sent_at
-	end
-	debug_ja_dispatch(('gate name=\"%s\" reason=%s status=%d lock_left=%.2f pending=\"%s\" pending_age=%.2f %s'):format(
-		tostring(name or ''),
-		tostring(reason or ''),
-		status,
-		lock_left,
-		pending_name,
-		pending_age,
-		tostring(extra or '')
-	))
-end
 
 local function is_party_member_id(id)
 	return uc_targeting_common.is_friendly_party_or_alliance_member_id(id, {
@@ -720,13 +678,6 @@ local function puller_engage_allowed(settings, target)
 	return false, 'PULLER_OUT_OF_RANGE', dist, range
 end
 
-local function mob_real_distance(a, b)
-	if not a or not b or a.x == nil or a.y == nil or b.x == nil or b.y == nil then
-		return 999
-	end
-	local d = mob_distance(a, b)
-	return d - (a.model_size or 0) - (b.model_size or 0)
-end
 
 local function mob_real_distance_movement(a, b, settings)
 	if not a or not b or a.x == nil or a.y == nil or b.x == nil or b.y == nil then
@@ -1415,30 +1366,6 @@ local function find_candidate_target(settings)
 	return best
 end
 
-local function target_is_partner_claimed(settings, tid)
-	local target_id = tonumber(tid) or 0
-	if target_id == 0 or not setting_enabled(settings and settings.partner) then
-		return false
-	end
-	local my_player_id = tonumber((windower.ffxi.get_player() or {}).id) or 0
-	if my_player_id == 0 then
-		return false
-	end
-	local partner_ids = uc_partner_list.as_ordered_ids(settings or {})
-	local owner_id = 0
-	for _, pid in ipairs(partner_ids) do
-		local pm = windower.ffxi.get_mob_by_id(pid)
-		if pm and pm.target_index then
-			local tm = windower.ffxi.get_mob_by_index(pm.target_index)
-			if tm and (tonumber(tm.id) or 0) == target_id then
-				if owner_id == 0 or pid < owner_id then
-					owner_id = pid
-				end
-			end
-		end
-	end
-	return owner_id ~= 0 and my_player_id > owner_id
-end
 
 local function clear_pull_spell_wait_state()
 	core.pull_spell_waiting = false
@@ -1497,48 +1424,9 @@ local function action_effective_range(raw_range)
 	return r
 end
 
-local function ja_targets_enemy(ja)
-	local targets = ja and ja.targets
-	if type(targets) == 'string' then
-		return targets:find('Enemy', 1, true) ~= nil
-	end
-	if type(targets) == 'number' then
-		local n = math.floor(targets)
-		return (n % 64) >= 32
-	end
-	if type(targets) == 'table' then
-		return targets.Enemy == true or targets.enemy == true
-	end
-	return false
-end
 
-local function normalize_angle_rad(a)
-	local two_pi = math.pi * 2
-	while a > math.pi do
-		a = a - two_pi
-	end
-	while a < -math.pi do
-		a = a + two_pi
-	end
-	return a
-end
 
-local function target_is_in_front_arc(target, arc)
-	local me = windower.ffxi.get_mob_by_target('me')
-	if not me or not target or me.x == nil or me.y == nil or target.x == nil or target.y == nil or me.facing == nil then
-		return false
-	end
-	local heading = math.atan2(target.y - me.y, target.x - me.x)
-	local delta = math.abs(normalize_angle_rad(heading - tonumber(me.facing)))
-	return delta <= (tonumber(arc) or (math.pi / 2))
-end
 
-local function ja_requires_engaged_front(name, ja)
-	if (tonumber(ja and ja.id) or 0) == 46 then -- Shield Bash
-		return true
-	end
-	return tostring(name or ''):lower() == 'shield bash'
-end
 
 local function should_use_pull_action(settings, player, target)
 	if not setting_enabled(settings and settings.hunter) then
@@ -1621,27 +1509,6 @@ local function pull_action_ready(action_type, action_name)
 	return true, ''
 end
 
-local function move_toward_target_for_pull(target)
-	if not target then
-		windower.ffxi.run(false)
-		core.last_run_active = false
-		set_movement_owner('none', 0)
-		return false
-	end
-	-- Pull approach must be range-precise (stop to cast) and must not delegate to
-	-- mover:move_towards(), which can continue advancing into melee beyond pull range.
-	local heading = uc_heading_to(target.x, target.y)
-	if heading then
-		windower.ffxi.run(heading)
-		core.last_run_active = true
-		set_movement_owner('core', 0.8)
-		return true
-	end
-	windower.ffxi.run(false)
-	core.last_run_active = false
-	set_movement_owner('none', 0)
-	return false
-end
 
 local function debug_tank(msg, force)
 	local s = get_settings()
@@ -1967,117 +1834,6 @@ local function tank_action_ready(entry, mob, player)
 	return true, '', cast_max, dist
 end
 
-local function execute_tank_enmity(settings, player, violation)
-	if not violation or not violation.mob then
-		return false
-	end
-	local actions = parse_tank_enmity_actions(settings)
-	if #actions == 0 then
-		local mob = windower.ffxi.get_mob_by_id(violation.mob.id) or violation.mob
-		_G.UC_LAST_BLOCK_REASON = 'TANK_ENMITY_NO_ACTIONS'
-		_G.UC_WS_LAST_DIAG = ('core tank no_actions mob=%s victim=%s(%s%%)'):format(
-			tostring((mob and mob.name) or '?'),
-			tostring((violation.victim and violation.victim.name) or '?'),
-			tostring(tonumber(violation.victim_hpp) or 0)
-		)
-		debug_tank(_G.UC_WS_LAST_DIAG)
-		return false
-	end
-	local mob = windower.ffxi.get_mob_by_id(violation.mob.id) or violation.mob
-	if not mob or not mob.id or not mob.valid_target or (tonumber(mob.hpp) or 0) <= 0 then
-		return false
-	end
-	local now = uc_now_s()
-	if core.tank_spell_waiting == true then
-		if now < (tonumber(core.tank_spell_wait_until) or 0) then
-			windower.ffxi.run(false)
-			core.last_run_active = false
-			_G.UC_LAST_BLOCK_REASON = 'TANK_SPELL_WAITING'
-			_G.UC_WS_LAST_DIAG = ('core tank wait action=%s mob=%s'):format(tostring(core.tank_pending_action or ''), tostring(mob.name or '?'))
-			debug_tank(_G.UC_WS_LAST_DIAG)
-			return true
-		end
-		clear_tank_spell_wait_state()
-	end
-	for _, entry in ipairs(actions) do
-		local ready, reason, cast_max, dist = tank_action_ready(entry, mob, player)
-		if ready then
-			if entry.kind == 'spell' then
-				local settle_key = ('%s:%d'):format(tostring(entry.name), tonumber(mob.id) or 0)
-				local now_settle = uc_now_s()
-				if core.tank_spell_settle_key ~= settle_key then
-					core.tank_spell_settle_key = settle_key
-					core.tank_spell_settle_until = now_settle + 0.40
-				end
-				windower.ffxi.run(false)
-				core.last_run_active = false
-				if now_settle < (tonumber(core.tank_spell_settle_until) or 0) then
-					_G.UC_LAST_BLOCK_REASON = 'TANK_PRECAST_SETTLE'
-					_G.UC_WS_LAST_DIAG = ('core tank settle action=%s mob=%s'):format(tostring(entry.name), tostring(mob.name or '?'))
-					debug_tank(_G.UC_WS_LAST_DIAG)
-					return true
-				end
-				windower.send_command(('input /ma "%s" %d'):format(entry.name, tonumber(mob.id) or 0))
-				core.tank_spell_waiting = true
-				core.tank_spell_wait_until = now + 8.0
-				core.tank_pending_type = 'spell'
-				core.tank_pending_action = tostring(entry.name)
-				core.tank_pending_target_id = tonumber(mob.id) or 0
-				core.tank_pending_sent_at = now
-				core.tank_last_sent_at[tostring(entry.kind) .. ':' .. tostring(entry.name)] = now
-				_G.UC_LAST_BLOCK_REASON = 'TANK_ENMITY_SENT'
-				_G.UC_WS_LAST_DIAG = ('core tank sent spell=%s mob=%s victim=%s'):format(tostring(entry.name), tostring(mob.name or '?'), tostring((violation.victim and violation.victim.name) or '?'))
-				debug_tank(_G.UC_WS_LAST_DIAG, true)
-				return true
-			end
-			local ja = get_ja_resource(entry.name)
-			if ja then
-				core.ja_pending_name = tostring(entry.name or '')
-				core.ja_pending_recast_id = tonumber(ja.recast_id) or 0
-				core.ja_pending_sent_at = now
-				core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
-				core.ja_last_sent_at[tostring(entry.name or '')] = now
-			end
-			windower.send_command(('input /ja "%s" %d'):format(entry.name, tonumber(mob.id) or 0))
-			core.tank_pending_type = 'ja'
-			core.tank_pending_action = tostring(entry.name)
-			core.tank_pending_target_id = tonumber(mob.id) or 0
-			core.tank_pending_sent_at = now
-			core.tank_last_sent_at[tostring(entry.kind) .. ':' .. tostring(entry.name)] = now
-			_G.UC_LAST_BLOCK_REASON = 'TANK_ENMITY_SENT'
-			_G.UC_WS_LAST_DIAG = ('core tank sent ja=%s mob=%s victim=%s'):format(tostring(entry.name), tostring(mob.name or '?'), tostring((violation.victim and violation.victim.name) or '?'))
-			debug_tank(_G.UC_WS_LAST_DIAG, true)
-			return true
-		end
-		if reason == 'TANK_OUT_OF_RANGE' then
-			move_toward_target_for_pull(mob)
-			_G.UC_LAST_BLOCK_REASON = 'TANK_ENMITY_MOVE'
-			_G.UC_WS_LAST_DIAG = ('core tank move action=%s:%s mob=%s dist=%.2f need<=%.2f victim=%s(%s%%)'):format(
-				tostring(entry.kind),
-				tostring(entry.name),
-				tostring(mob.name or '?'),
-				tonumber(dist) or 999,
-				tonumber(cast_max) or 0,
-				tostring((violation.victim and violation.victim.name) or '?'),
-				tostring(tonumber(violation.victim_hpp) or 0)
-			)
-			debug_tank(_G.UC_WS_LAST_DIAG)
-			return true
-		end
-		if reason ~= 'TANK_RECAST' and reason ~= 'TANK_RECENT_SEND' and reason ~= 'TANK_JA_LOCK' and reason ~= 'TANK_SPELL_WAITING' then
-			_G.UC_WS_LAST_DIAG = ('core tank skip action=%s:%s reason=%s'):format(tostring(entry.kind), tostring(entry.name), tostring(reason or 'BLOCK'))
-			debug_tank(_G.UC_WS_LAST_DIAG)
-		end
-	end
-	_G.UC_LAST_BLOCK_REASON = 'TANK_ENMITY_NO_READY_ACTION'
-	_G.UC_WS_LAST_DIAG = ('core tank no_ready_action mob=%s victim=%s(%s%%)'):format(
-		tostring(mob.name or '?'),
-		tostring((violation.victim and violation.victim.name) or '?'),
-		tostring(tonumber(violation.victim_hpp) or 0)
-	)
-	debug_tank(_G.UC_WS_LAST_DIAG)
-	return false
-end
 
 local function require_pull_executor(executor)
 	if type(executor) ~= 'table' then
@@ -2277,92 +2033,8 @@ local function try_pull_action(settings, player, target, executor)
 	return true
 end
 
-local function ensure_target_and_attack(tid)
-	if not tid or tid == 0 then
-		return false
-	end
-	local cur = get_current_target()
-	local now = uc_now_s()
-	local p = windower.ffxi.get_player()
-	local engaged = p and p.status == 1
-	if engaged and cur and cur.id and cur.id ~= tid then
-		local ok_sw = uc_attack.switch_target(tid)
-		if not ok_sw then
-			_G.UC_LAST_BLOCK_REASON = 'TARGET_SWITCH_FAIL'
-			return false
-		end
-		coroutine.sleep(0.05)
-		cur = get_current_target()
-	end
-	if not cur or cur.id ~= tid then
-		local ok = uc_settarget.select_by_id(tid)
-		if not ok then
-			_G.UC_LAST_BLOCK_REASON = 'TARGET_SET_FAIL'
-			return false
-		end
-		coroutine.sleep(0.1)
-		cur = get_current_target()
-	end
-	if not cur or cur.id ~= tid then
-		return false
-	end
-	if not is_live_actionable_combat_target(cur, now, true) then
-		_G.UC_LAST_BLOCK_REASON = 'TARGET_NOT_ACTIONABLE'
-		return false
-	end
-	-- Avoid re-sending engage while already engaged on the correct target; repeated engage
-	-- injections can create churn on some clients/servers.
-	if engaged then
-		return true
-	end
-	local ok_attack = uc_attack.engage_target(tid)
-	if not ok_attack then
-		_G.UC_LAST_BLOCK_REASON = 'ATTACK_PACKET_FAIL'
-		return false
-	end
-	return true
-end
-
-core.legacy_pull_executor = {
-	stop = function()
-		windower.ffxi.run(false)
-	end,
-	run_heading = function(heading)
-		windower.ffxi.run(heading)
-	end,
-	select_target = function(target_id)
-		return uc_settarget.select_by_id(target_id)
-	end,
-	sleep = function(seconds)
-		coroutine.sleep(seconds)
-	end,
-	send_command = function(command)
-		windower.send_command(command)
-	end,
-}
 
 core.is_live_actionable_combat_target = is_live_actionable_combat_target
-
-core.legacy_movement_executor = {
-	stop = function()
-		windower.ffxi.run(false)
-	end,
-	run_heading = function(heading)
-		windower.ffxi.run(heading)
-	end,
-	run_forward = function()
-		windower.ffxi.run()
-	end,
-	turn = function(heading)
-		windower.ffxi.turn(heading)
-	end,
-	move_towards = function(mover, target_id)
-		mover:move_towards(target_id)
-	end,
-	move_away_from = function(mover, target_id)
-		mover:move_away_from(target_id)
-	end,
-}
 
 stop_run = function(executor)
 	executor.stop()
@@ -2386,15 +2058,6 @@ get_mover = function()
 	return nil
 end
 
-local function apply_facing(settings, target)
-	if not setting_enabled(settings.face) or not target then
-		return
-	end
-	local heading = uc_heading_to(target.x, target.y)
-	if heading then
-		windower.ffxi.turn(heading)
-	end
-end
 
 local function ensure_move_guard_state()
 	if type(core.move_guard) ~= 'table' then
@@ -3203,161 +2866,7 @@ function core.on_ipc_message(msg)
 	end
 end
 
-local function can_cast_ja(name)
-	local ja = res.job_abilities:with('en', name)
-	if not ja then
-		debug_ja_gate(name, 'JA_UNKNOWN')
-		return false
-	end
-	local player = windower.ffxi.get_player()
-	if status_blocks_actions(player and player.status) then
-		debug_ja_gate(name, 'ACTION_BLOCK_STATUS3')
-		return false
-	end
-	local requires_engaged_front = ja_requires_engaged_front(name, ja)
-	if requires_engaged_front and (tonumber(player and player.status) or 0) ~= 1 then
-		debug_ja_gate(name, 'JA_REQUIRES_ENGAGED')
-		return false
-	end
-	local now = uc_now_s()
-	if now < (tonumber(core.ja_lock_until) or 0) then
-		debug_ja_gate(name, 'JA_LOCK_ACTIVE')
-		return false
-	end
-	local recasts = windower.ffxi.get_ability_recasts() or {}
-	local pending_name = tostring(core.ja_pending_name or '')
-	if pending_name ~= '' and pending_name == tostring(name) then
-		local pending_recast = tonumber(core.ja_pending_recast_id) or 0
-		local pending_started = (pending_recast > 0 and (recasts[pending_recast] or 0) > 0)
-		if pending_started then
-			core.ja_pending_name = ''
-			core.ja_pending_recast_id = 0
-			core.ja_pending_sent_at = 0
-			core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
-			debug_ja_gate(name, 'PENDING_RECAST_STARTED')
-			return false
-		end
-		local sent_at = tonumber(core.ja_pending_sent_at) or 0
-		if sent_at > 0 and (now - sent_at) < 0.5 then
-			debug_ja_gate(name, 'PENDING_RECENT_SEND')
-			return false
-		end
-		core.ja_pending_name = ''
-		core.ja_pending_recast_id = 0
-		core.ja_pending_sent_at = 0
-	end
-	local last_sent = tonumber((core.ja_last_sent_at or {})[tostring(name)]) or 0
-	if last_sent > 0 and (now - last_sent) < 0.5 then
-		debug_ja_gate(name, 'LAST_SENT_WINDOW')
-		return false
-	end
-	if (recasts[ja.recast_id] or 0) > 0 then
-		debug_ja_gate(name, 'JA_RECAST')
-		return false
-	end
-	local abil = windower.ffxi.get_abilities() or {}
-	local owns = false
-	for _, id in ipairs(abil.job_abilities or {}) do
-		if id == ja.id then
-			owns = true
-			break
-		end
-	end
-	if not owns then
-		debug_ja_gate(name, 'JA_NOT_OWNED')
-		return false
-	end
-	if tostring(name or ''):lower() == 'chivalry' then
-		local tp = tonumber(((p or {}).vitals or {}).tp) or 0
-		if tp < CHIVALRY_MIN_TP then
-			debug_ja_gate(name, 'CHIVALRY_TP_LOW', ('tp=%d need=%d'):format(tp, CHIVALRY_MIN_TP))
-			return false
-		end
-		local mp = tonumber(((p or {}).vitals or {}).mp) or 0
-		local mmp = tonumber(((p or {}).vitals or {}).max_mp) or 0
-		local mp_pct = (mmp > 0) and ((mp / mmp) * 100.0) or 100.0
-		if mp_pct >= CHIVALRY_MAX_MP_PCT then
-			debug_ja_gate(name, 'CHIVALRY_MP_TOO_HIGH', ('mp=%d max=%d mp_pct=%.1f need<%d'):format(mp, mmp, mp_pct, CHIVALRY_MAX_MP_PCT))
-			return false
-		end
-	end
-	local t = get_current_target()
-	if ja_targets_enemy(ja) then
-		if not t or t.id == 0 or not t.valid_target or tonumber(t.spawn_type) ~= 16 or (tonumber(t.hpp) or 0) <= 0 then
-			debug_ja_gate(name, 'NO_TARGET')
-			return false
-		end
-		local d = target_distance(t)
-		local r = action_effective_range(ja.range)
-		if r > 0 and d > r then
-			debug_ja_gate(name, 'OUT_OF_RANGE', ('dist=%.2f range=%.2f'):format(tonumber(d) or 0, tonumber(r) or 0))
-			return false
-		end
-		if requires_engaged_front and not target_is_in_front_arc(t, math.pi / 2) then
-			debug_ja_gate(name, 'TARGET_NOT_IN_FRONT')
-			return false
-		end
-	end
-	debug_ja_gate(name, 'READY')
-	return true
-end
 
-local function cast_ja(name)
-	local ja = res.job_abilities:with('en', name)
-	if not ja then
-		return
-	end
-	local now = uc_now_s()
-	core.ja_pending_name = tostring(name or '')
-	core.ja_pending_recast_id = tonumber(ja.recast_id) or 0
-	core.ja_pending_sent_at = now
-	core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
-	core.ja_last_sent_at[tostring(name or '')] = now
-	if tostring(name or ''):lower() == 'chivalry' then
-		core.chivalry_hold_until = math.max(tonumber(core.chivalry_hold_until) or 0, now + 1.25)
-	end
-	local p = windower.ffxi.get_player() or {}
-	local status = tonumber(p.status) or 0
-	local tp = (((p or {}).vitals or {}).tp) or 0
-	local cur = get_current_target()
-	local cur_id = (cur and cur.id) or 0
-	local cur_name = (cur and cur.name) or ''
-	local cur_dist = (cur and target_distance(cur)) or 0
-	local target_desc = tostring(ja.targets or '')
-	if tostring(ja.targets) == '{Self}' or tostring(ja.targets) == '{Self, Player}' then
-		debug_ja_dispatch(('send name="%s" mode=self status=%d tp=%d cur=%d "%s" dist=%.2f'):format(
-			tostring(name),
-			status,
-			tp,
-			tonumber(cur_id) or 0,
-			tostring(cur_name),
-			tonumber(cur_dist) or 0
-		))
-		windower.send_command('input /ja "' .. name .. '" <me>')
-	else
-		local t = get_current_target()
-		if t and t.id and t.id ~= 0 then
-			local tdist = target_distance(t)
-			debug_ja_dispatch(('send name="%s" mode=target ja_targets=%s status=%d tp=%d tid=%d "%s" dist=%.2f'):format(
-				tostring(name),
-				target_desc,
-				status,
-				tp,
-				tonumber(t.id) or 0,
-				tostring(t.name or ''),
-				tonumber(tdist) or 0
-			))
-			windower.send_command('input /ja "' .. name .. '" ' .. tostring(t.id))
-		else
-			debug_ja_dispatch(('skip name="%s" mode=target reason=NO_CURRENT_TARGET ja_targets=%s status=%d tp=%d'):format(
-				tostring(name),
-				target_desc,
-				status,
-				tp
-			))
-		end
-	end
-end
 
 local function chivalry_ws_reservation_reason(settings, player)
 	if not setting_enabled(settings and settings.ability_active) then
@@ -3550,439 +3059,6 @@ local function select_smart_ws(settings, target_id)
 	return primary_ws, 'READY'
 end
 
-local function run_unified_combat()
-	set_preengage_approach_active(false)
-	local s = get_settings()
-	local p = windower.ffxi.get_player()
-	if not p then
-		_G.UC_WS_LAST_DIAG = 'core ws reason=NO_PLAYER'
-		return
-	end
-	if setting_enabled(s.tank) then
-		local now_dbg = uc_now_s()
-		local last_dbg = tonumber(core.tank_tick_log_at) or 0
-		if (now_dbg - last_dbg) >= 1.0 then
-			core.tank_tick_log_at = now_dbg
-			debug_tank(('tick status=%s autotarget=%s puller=%s hunter=%s'):format(
-				tostring(p.status or 0),
-				tostring(setting_enabled(s.autotarget)),
-				tostring(setting_enabled(s.puller)),
-				tostring(setting_enabled(s.hunter) and setting_enabled(s.path_follow_enabled))
-			), true)
-		end
-	end
-	_G.UC_WS_LAST_DIAG = 'core ws reason=PENDING'
-	local combat_participant = false
-	if type(rawget(_G, 'UC_IsCombatParticipant')) == 'function' then
-		combat_participant = (_G.UC_IsCombatParticipant(s) == true)
-	else
-		combat_participant = setting_enabled(s.autotarget)
-			or setting_enabled(s.move)
-			or setting_enabled(s.tank)
-			or (setting_enabled(s.hunter) and setting_enabled(s.path_follow_enabled))
-			or setting_enabled(s.puller)
-			or setting_enabled(s.add_control)
-	end
-	local now_status = p.status or 0
-	if combat_participant and setting_enabled(s.autotarget) and now_status == 1 then
-		_G.UC_FIGHT_FOLLOW_ACTIVE_UNTIL = uc_now_s() + party_follow_hold_seconds(s)
-	end
-	local now = uc_now_s()
-	if core.pull_spell_waiting == true then
-		if now < (tonumber(core.pull_spell_wait_until) or 0) then
-			windower.ffxi.run(false)
-			core.last_run_active = false
-			set_movement_owner('core', 0.6)
-			_G.UC_PULL_SPELL_WAITING = true
-			_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 0.6
-			_G.UC_LAST_BLOCK_REASON = 'PULL_SPELL_WAITING'
-			_G.UC_WS_LAST_DIAG = ('core pull spell-wait action=%s'):format(tostring(core.pull_pending_action or ''))
-			return
-		end
-		clear_pull_spell_wait_state()
-	end
-	-- Tank enmity spell wait is global movement/action lock until completion or timeout.
-	-- This must apply even if the current violation disappears, otherwise normal movement
-	-- can resume and self-interrupt the in-progress enmity cast.
-	if core.tank_spell_waiting == true then
-		if now < (tonumber(core.tank_spell_wait_until) or 0) then
-			windower.ffxi.run(false)
-			core.last_run_active = false
-			set_movement_owner('core', 0.6)
-			_G.UC_LAST_BLOCK_REASON = 'TANK_SPELL_WAITING'
-			_G.UC_WS_LAST_DIAG = ('core tank spell-wait action=%s'):format(tostring(core.tank_pending_action or ''))
-			debug_tank(_G.UC_WS_LAST_DIAG)
-			return
-		end
-		clear_tank_spell_wait_state()
-	end
-	if now_status ~= 1 then
-		if (core.last_player_status or 0) == 1 then
-			-- Engagement just dropped; keep sticky target briefly to absorb status jitter.
-			core.sticky_hold_until = now + 1.2
-		elseif now > (tonumber(core.sticky_hold_until) or 0) then
-			core.sticky_target_id = 0
-		end
-	elseif (core.last_player_status or 0) ~= 1 then
-		-- just engaged: seed sticky target once; do not keep rewriting it every tick
-		local cur = get_current_target()
-		if cur and cur.valid_target and (cur.hpp or 0) > 0 and cur.spawn_type == 16 then
-			core.sticky_target_id = cur.id
-		end
-		core.sticky_hold_until = 0
-	end
-	core.last_player_status = now_status
-	-- Scheduler combat ownership short-circuit:
-	-- avoid heavy target scans/arbitration/WS selection in core when scheduler combat dispatch is active.
-	if setting_enabled(s.scheduler_dark_launch_combat) then
-		local cur = get_current_target()
-		apply_facing(s, cur)
-		if not setting_enabled(s.scheduler_dark_launch_movement) then
-			apply_movement(s, cur, core.legacy_movement_executor)
-		end
-		_G.UC_WS_LAST_DIAG = 'core ws reason=SCHED_COMBAT_OWNED'
-		return
-	end
-	-- Hard partner arbitration while engaged:
-	-- if two configured partners are actively on the same live mob, higher player id must yield.
-	do
-		local my_id = tonumber(p.id) or 0
-		local cur_live = get_current_target()
-		if setting_enabled(s.partner) and my_id > 0 and now_status == 1 and cur_live and cur_live.valid_target and
-			(tonumber(cur_live.spawn_type) or 0) == 16 and (tonumber(cur_live.hpp) or 0) > 0 then
-			local partner_ids = uc_partner_list.as_ordered_ids(s)
-			local lowest_partner_on_cur = 0
-			for _, pid in ipairs(partner_ids) do
-				local pm = windower.ffxi.get_mob_by_id(pid)
-				if pm and (tonumber(pm.status) or 0) == 1 and pm.target_index then
-					local tm = windower.ffxi.get_mob_by_index(pm.target_index)
-					if tm and (tonumber(tm.id) or 0) == (tonumber(cur_live.id) or 0) and tm.valid_target and (tonumber(tm.hpp) or 0) > 0 then
-						if lowest_partner_on_cur == 0 or pid < lowest_partner_on_cur then
-							lowest_partner_on_cur = pid
-						end
-					end
-				end
-			end
-			if lowest_partner_on_cur > 0 and my_id > lowest_partner_on_cur and setting_enabled(s.autotarget) then
-				local claims, claims_set = uc_targeting_common.build_friendly_claims()
-				local marray = windower.ffxi.get_mob_array() or {}
-				local best = nil
-				local best_dist = 1e9
-				for _, mob in pairs(marray) do
-					if mob and mob.id and mob.id ~= cur_live.id and mob.valid_target and (tonumber(mob.spawn_type) or 0) == 16 and (tonumber(mob.hpp) or 0) > 0 then
-						if not uc_target_ignore.is_mob_blocked(s, mob) then
-							local claimed_ok = claims_set[tonumber(mob.claim_id) or 0] == true
-							if claimed_ok then
-								local partner_on_mob = false
-								for _, pid in ipairs(partner_ids) do
-									local pm = windower.ffxi.get_mob_by_id(pid)
-									if pm and (tonumber(pm.status) or 0) == 1 and pm.target_index then
-										local tm = windower.ffxi.get_mob_by_index(pm.target_index)
-										if tm and (tonumber(tm.id) or 0) == (tonumber(mob.id) or 0) and tm.valid_target and (tonumber(tm.hpp) or 0) > 0 then
-											partner_on_mob = true
-											break
-										end
-									end
-								end
-								if not partner_on_mob then
-									local d = target_distance(mob)
-									if d < best_dist then
-										best_dist = d
-										best = mob
-									end
-								end
-							end
-						end
-					end
-				end
-				if best and best.id and best.id ~= 0 then
-					local ok_sw = uc_attack.switch_target(best.id)
-					if ok_sw then
-						core.sticky_target_id = best.id
-						core.sticky_hold_until = 0
-						_G.UC_LAST_BLOCK_REASON = 'PARTNER_TIEBREAK_SWITCH'
-						_G.UC_WS_LAST_DIAG = ('core partner tiebreak yield my=%d winner=%d from=%d to=%d'):format(
-							my_id, lowest_partner_on_cur, tonumber(cur_live.id) or 0, tonumber(best.id) or 0
-						)
-					end
-				else
-					uc_attack.disengage()
-					core.sticky_target_id = 0
-					core.sticky_hold_until = 0
-					_G.UC_LAST_BLOCK_REASON = 'PARTNER_TIEBREAK_DISENGAGE'
-					_G.UC_WS_LAST_DIAG = ('core partner tiebreak disengage my=%d winner=%d mob=%d'):format(
-						my_id, lowest_partner_on_cur, tonumber(cur_live.id) or 0
-					)
-					return
-				end
-			end
-		end
-	end
-	local sched_target_owned = setting_enabled(s.scheduler_dark_launch_combat) and setting_enabled(s.autotarget)
-	local target = nil
-	if sched_target_owned then
-		-- G3 cutover step: when scheduler combat dark-launch is active, target acquisition
-		-- ownership is scheduler-driven (target_control proposals). Core consumes currently
-		-- selected target only and does not run nearest-scan arbitration.
-		local cur = get_current_target()
-		if cur and cur.valid_target and tonumber(cur.spawn_type) == 16 and (tonumber(cur.hpp) or 0) > 0 then
-			target = cur
-		end
-	else
-		target = find_candidate_target(s)
-	end
-	local path_hunter_filter_active = setting_enabled(s.hunter) and setting_enabled(s.path_follow_enabled)
-	local claim_timeout = tonumber(s.path_hunter_claim_timeout_s) or 4.0
-	local ignore_cooldown = tonumber(s.path_hunter_ignore_cooldown_s) or 20.0
-	if claim_timeout < 0.5 then
-		claim_timeout = 0.5
-	elseif claim_timeout > 30 then
-		claim_timeout = 30
-	end
-	if ignore_cooldown < 0 then
-		ignore_cooldown = 0
-	elseif ignore_cooldown > 120 then
-		ignore_cooldown = 120
-	end
-	if not target and not setting_enabled(s.manual) then
-		-- Tank fallback: if normal target selection yields none, still attempt to acquire
-		-- a live violation target (mob attacking a non-tank party member).
-		if (not sched_target_owned) and setting_enabled(s.tank) and setting_enabled(s.autotarget) then
-			local tank_violation_fallback = pick_tank_violation_target(s, p)
-			if tank_violation_fallback and tank_violation_fallback.mob and tank_violation_fallback.mob.id and tank_violation_fallback.mob.id ~= 0 then
-				target = windower.ffxi.get_mob_by_id(tank_violation_fallback.mob.id) or tank_violation_fallback.mob
-				_G.UC_LAST_BLOCK_REASON = 'TANK_FALLBACK_TARGET'
-				_G.UC_WS_LAST_DIAG = ('core tank fallback-target mob=%s victim=%s(%s%%)'):format(
-					tostring((target and target.name) or '?'),
-					tostring((tank_violation_fallback.victim and tank_violation_fallback.victim.name) or '?'),
-					tostring(tonumber(tank_violation_fallback.victim_hpp) or 0)
-				)
-				debug_tank(_G.UC_WS_LAST_DIAG, true)
-			end
-		end
-		if not target then
-			if path_hunter_filter_active then
-				core.hunter_acquire.target_id = 0
-				core.hunter_acquire.started_at = 0
-			end
-			-- No live target: pull wait/approach flags are stale and must be cleared so
-			-- out-of-combat path follow can resume immediately.
-			clear_pull_spell_wait_state()
-			_G.UC_PULL_APPROACH_UNTIL = 0
-			set_preengage_approach_active(false)
-			-- Path-hunter route follow pauses while engaged. If no valid combat target remains,
-			-- force disengage so path-follow can immediately resume after kill.
-			if path_hunter_filter_active and (tonumber(p and p.status) or 0) == 1 then
-				uc_attack.disengage()
-			end
-			_G.UC_COMBAT_INTENT_UNTIL = 0
-			if core.last_run_active then
-				stop_run(core.legacy_movement_executor)
-			end
-			_G.UC_LAST_BLOCK_REASON = 'NO_TARGET'
-			_G.UC_WS_LAST_DIAG = 'core ws reason=NO_TARGET'
-			if setting_enabled(s.tank) then
-				debug_tank('tick no_target')
-			end
-			return
-		end
-	end
-	if target and target.id and target.id ~= 0 then
-		-- Hold a short combat-intent window so party-follow does not fight approach movement
-		-- during post-kill re-engage delay.
-		if combat_participant and setting_enabled(s.autotarget) then
-			_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 0.8
-			_G.UC_FIGHT_FOLLOW_ACTIVE_UNTIL = uc_now_s() + party_follow_hold_seconds(s)
-			set_movement_owner('core', 0.8)
-		end
-	end
-	local tid = target and target.id or 0
-	if path_hunter_filter_active and tid > 0 then
-		local now = uc_now_s()
-		if (tonumber(core.hunter_acquire.target_id) or 0) ~= tid then
-			core.hunter_acquire.target_id = tid
-			core.hunter_acquire.started_at = now
-		else
-			local mob = windower.ffxi.get_mob_by_id(tid)
-			local claims, claims_set = uc_targeting_common.build_friendly_claims()
-			local claimed = mob and claims_set[mob.claim_id] == true
-			if not claimed and (p.status or 0) ~= 1 then
-				local pull_wait_same_target = (core.pull_spell_waiting == true) and ((tonumber(core.pull_pending_target_id) or 0) == tid)
-				if pull_wait_same_target then
-					core.hunter_acquire.started_at = now
-				end
-				local started = tonumber(core.hunter_acquire.started_at) or now
-				if (not pull_wait_same_target) and (now - started) >= claim_timeout then
-					if ignore_cooldown > 0 then
-						core.hunter_ignore_until_by_id[tid] = now + ignore_cooldown
-					end
-					core.hunter_acquire.target_id = 0
-					core.hunter_acquire.started_at = 0
-					_G.UC_COMBAT_INTENT_UNTIL = 0
-					_G.UC_LAST_BLOCK_REASON = 'HUNTER_ACQUIRE_TIMEOUT'
-					_G.UC_WS_LAST_DIAG = ('core hunter timeout tid=%d cooldown=%.1f'):format(tid, ignore_cooldown)
-					if core.last_run_active then
-						stop_run(core.legacy_movement_executor)
-					end
-					return
-				end
-			else
-				core.hunter_acquire.target_id = 0
-				core.hunter_acquire.started_at = 0
-			end
-		end
-	elseif path_hunter_filter_active then
-		core.hunter_acquire.target_id = 0
-		core.hunter_acquire.started_at = 0
-	end
-	if tid > 0 and setting_enabled(s.autotarget) and (not setting_enabled(s.scheduler_dark_launch_combat)) then
-		local pull_handled = try_pull_action(s, p, target, core.legacy_pull_executor)
-		if pull_handled then
-			if setting_enabled(s.tank) then
-				debug_tank(('tick bypass_tank reason=pull_handled tid=%d'):format(tonumber(tid) or 0), true)
-			end
-			return
-		end
-	end
-	local current_before = get_current_target()
-	local current_dead = current_before and current_before.spawn_type == 16 and ((current_before.hpp or 0) <= 0)
-	local switched_on_kill = false
-	local incumbent_same_target = false
-	if tid > 0 and p and (tonumber(p.status) or 0) == 1 then
-		local cur_live = get_current_target()
-		if cur_live and cur_live.valid_target and (tonumber(cur_live.hpp) or 0) > 0 and tonumber(cur_live.spawn_type) == 16 and
-			(tonumber(cur_live.id) or 0) == tid then
-			incumbent_same_target = true
-		end
-	end
-	if tid > 0 and (not incumbent_same_target) and target_is_partner_claimed(s, tid) then
-		-- Re-check partner target exclusion at commit time so death fast-switch can't
-		-- re-lock us onto a partner target selected from a stale snapshot.
-		tid = 0
-		target = nil
-	end
-	if setting_enabled(s.autotarget) and current_dead and tid > 0 and
-		(not current_before or current_before.id ~= tid) then
-		local ok_sw = uc_attack.switch_target(tid)
-		if ok_sw then
-			core.sticky_target_id = tid
-			core.sticky_hold_until = 0
-			switched_on_kill = true
-			_G.UC_WS_LAST_DIAG = ('core death fast-switch from=%d to=%d status=%d'):format(
-				tonumber(current_before and current_before.id) or 0,
-				tonumber(tid) or 0,
-				tonumber(p and p.status) or 0
-			)
-		end
-	end
-	if tid > 0 and setting_enabled(s.autotarget) then
-		local ok_target = ensure_target_and_attack(tid)
-		if not ok_target then
-			if switched_on_kill then
-				_G.UC_WS_LAST_DIAG = 'core ws reason=TARGET_PREP_FAIL_AFTER_DEATH_SWITCH'
-			else
-				_G.UC_WS_LAST_DIAG = 'core ws reason=TARGET_PREP_FAIL'
-			end
-		end
-	end
-	local tank_violation = pick_tank_violation_target(s, p)
-	if tank_violation and tank_violation.mob then
-		_G.UC_TANK_VIOLATION_MOB_ID = tonumber(tank_violation.mob.id) or 0
-		_G.UC_TANK_VIOLATION_MOB_NAME = tostring(tank_violation.mob.name or '')
-		_G.UC_TANK_VIOLATION_VICTIM_ID = tonumber((tank_violation.victim and tank_violation.victim.id) or 0)
-		_G.UC_TANK_VIOLATION_VICTIM_NAME = tostring((tank_violation.victim and tank_violation.victim.name) or '')
-		_G.UC_TANK_VIOLATION_VICTIM_HPP = tonumber(tank_violation.victim_hpp) or 0
-		-- T7: when combat dark launch is enabled, tank enmity dispatch is scheduler-owned.
-		if setting_enabled(s.scheduler_dark_launch_combat) then
-			_G.UC_LAST_BLOCK_REASON = 'TANK_ENMITY_SCHED_OWNED'
-			_G.UC_WS_LAST_DIAG = ('core tank sched-owned mob=%s victim=%s(%s%%)'):format(
-				tostring((tank_violation.mob and tank_violation.mob.name) or '?'),
-				tostring((tank_violation.victim and tank_violation.victim.name) or '?'),
-				tostring(tonumber(tank_violation.victim_hpp) or 0)
-			)
-			debug_tank(_G.UC_WS_LAST_DIAG, true)
-		else
-			local tank_handled = execute_tank_enmity(s, p, tank_violation)
-			if tank_handled then
-				return
-			end
-		end
-	else
-		_G.UC_TANK_VIOLATION_MOB_ID = 0
-		_G.UC_TANK_VIOLATION_MOB_NAME = ''
-		_G.UC_TANK_VIOLATION_VICTIM_ID = 0
-		_G.UC_TANK_VIOLATION_VICTIM_NAME = ''
-		_G.UC_TANK_VIOLATION_VICTIM_HPP = 0
-	end
-	local current = get_current_target()
-	apply_facing(s, current)
-	if not setting_enabled(s.scheduler_dark_launch_movement) then
-		apply_movement(s, current, core.legacy_movement_executor)
-	end
-
-	local player = windower.ffxi.get_player()
-	if status_blocks_actions(player and player.status) then
-		_G.UC_LAST_BLOCK_REASON = 'ACTION_BLOCK_STATUS3'
-		_G.UC_WS_LAST_DIAG = 'core action_block status=3'
-		return
-	end
-	if setting_enabled(s.scheduler_dark_launch_combat) then
-		-- G6: combat action dispatch is scheduler-owned in dark-launch combat mode.
-		_G.UC_WS_LAST_DIAG = 'core ws reason=SCHED_COMBAT_OWNED'
-		return
-	end
-	uc_ability_pipeline.execute_ordered_abilities({
-		settings = s,
-		ability_active = setting_enabled(s.ability_active),
-		can_cast_fn = can_cast_ja,
-		cast_fn = cast_ja,
-		job_abilities = res.job_abilities,
-		player_buffs = player and player.buffs or {},
-	})
-
-	local t = get_current_target()
-	if not t or not t.id or t.id == 0 then
-		_G.UC_WS_LAST_DIAG = 'core ws reason=NO_CURRENT_TARGET'
-		return
-	end
-	local ws_name, ws_pick_reason = select_smart_ws(s, t and t.id or 0)
-	local dist = target_distance(t)
-	local hpp = (t and t.hpp) or 0
-	local tp = (p and p.vitals and p.vitals.tp) or 0
-	local ws_busy = uc_ws_gate.busy_for_gate({
-		is_casting = false,
-	})
-	local ok_ws, reason = uc_ws_gate.evaluate({
-		ws_enabled = setting_enabled(s.weaponskill_active),
-		tp = tp,
-		dist = dist,
-		hpp = hpp,
-		busy = ws_busy,
-		max_dist = 4,
-		ws_name = ws_name,
-	})
-	_G.UC_WS_LAST_DIAG = ('core ws pick=%s tp=%d dist=%.2f hpp=%d ws=%s reason=%s'):format(
-		ws_pick_reason,
-		tp,
-		dist,
-		hpp,
-		ws_name,
-		reason)
-	if ok_ws and t and t.id and t.id ~= 0 then
-		local sent, intent_reason = core.try_dispatch_ws_with_intent(ws_name, t.id, s)
-		if not sent then
-			_G.UC_WS_LAST_DIAG = ('core ws pick=%s tp=%d dist=%.2f hpp=%d ws=%s reason=%s intent=%s'):format(
-				ws_pick_reason,
-				tp,
-				dist,
-				hpp,
-				ws_name,
-				reason,
-				tostring(intent_reason or 'BLOCK')
-			)
-		end
-	end
-end
 
 function core.register_adapter(name, adapter)
 	if type(name) ~= 'string' or name == '' or type(adapter) ~= 'table' then
@@ -3994,20 +3070,6 @@ end
 
 function core.get_adapter(name)
 	return core.adapters[name]
-end
-
-function core.combat_tick_once()
-	core.last_engine = get_active_engine()
-	for target_id in pairs(skillchain_runtime.states) do
-		local target = windower.ffxi.get_mob_by_id(target_id)
-		if not target
-			or target.valid_target ~= true
-			or tonumber(target.spawn_type) ~= 16
-			or (tonumber(target.hpp) or 0) <= 0 then
-			skillchain_runtime:clear_target(target_id, 'despawn_or_invalid')
-		end
-	end
-	run_unified_combat()
 end
 
 function core.assert_no_job_branch()

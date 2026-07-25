@@ -145,7 +145,6 @@ local function build_flat_settings()
 		domain_movement_enabled = true,
 		domain_maintenance_enabled = true,
 		domain_follow_enabled = true,
-		scheduler_dark_launch_combat = true,
 		profile_v2_auto_reload_on_change = true,
 		tank = true,
 		tank_enmity_actions = { 'Provoke', 'Flash' },

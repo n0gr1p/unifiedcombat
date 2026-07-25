@@ -9,8 +9,7 @@ local uc_partner_list = require('uc_partner_list')
 local uc_fight_leader = require('uc_fight_leader')
 local hb_buff_maint = require('uc_hb_buff_maint')
 local enemy_effect_tracker = require('uc_enemy_effect_tracker')
-local lor_packets = require('lor/lor_packets')
-local json = require('json')
+require('lor/lor_packets') -- initializes _libs.lor.packets for lazy lor/lor_actor loading
 local tb_effect_table = require('uc_tb_effect_table')
 local scheduler_locks = require('uc_scheduler_locks')
 local scheduler_pending = require('uc_scheduler_pending')
@@ -1424,15 +1423,15 @@ local function try_doom_water_emergency(settings)
 		},
 	}
 	local dispatcher = require('uc_scheduler_dispatcher')
-	local _stop_darklaunch_ok, _stop_darklaunch_reason = dispatcher.validate_intent(stop_intent)
+	local _stop_intent_ok, _stop_intent_reason = dispatcher.validate_intent(stop_intent)
 	local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
 		dispatcher = dispatcher,
 		run = windower.ffxi.run,
 		intent = stop_intent,
 	})
 	_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_DOOM_HOLY_WATER_VALIDATE = {
-		ok = _stop_darklaunch_ok and true or false,
-		reason = _stop_darklaunch_reason,
+		ok = _stop_intent_ok and true or false,
+		reason = _stop_intent_reason,
 		kind = stop_intent.kind,
 		source = stop_intent.source,
 		ownership_enabled = run_stop_ownership_status.ownership_enabled,
@@ -1459,7 +1458,7 @@ local function try_doom_water_emergency(settings)
 			reason = 'doom_emergency',
 		},
 	}
-	local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+	local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 	local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
 		dispatcher = dispatcher,
 		send_command = windower.send_command,
@@ -1467,8 +1466,8 @@ local function try_doom_water_emergency(settings)
 		command = doom_holy_water_command,
 	})
 	_G.UC_SCHED_P1_DARKLAUNCH_DOOM_HOLY_WATER_COMMAND_VALIDATE = {
-		ok = _darklaunch_ok and true or false,
-		reason = _darklaunch_reason,
+		ok = _intent_ok and true or false,
+		reason = _intent_reason,
 		kind = intent.kind,
 		source = intent.source,
 		command_present = command_ownership_status.command_present,
@@ -2138,15 +2137,15 @@ local function run_movement_coordinator_tick()
 			},
 		}
 		local dispatcher = require('uc_scheduler_dispatcher')
-		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+		local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
 				dispatcher = dispatcher,
 				run = windower.ffxi.run,
 				intent = intent,
 			})
 		_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_VALIDATE = {
-			ok = _darklaunch_ok and true or false,
-			reason = _darklaunch_reason,
+			ok = _intent_ok and true or false,
+			reason = _intent_reason,
 			kind = intent.kind,
 			source = intent.source,
 			ownership_enabled = run_stop_ownership_status.ownership_enabled,
@@ -2173,15 +2172,15 @@ local function run_movement_coordinator_tick()
 			},
 		}
 		local dispatcher = require('uc_scheduler_dispatcher')
-		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+		local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
 				dispatcher = dispatcher,
 				run = windower.ffxi.run,
 				intent = intent,
 			})
 		_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_PULL_CAST_HOLD_VALIDATE = {
-			ok = _darklaunch_ok and true or false,
-			reason = _darklaunch_reason,
+			ok = _intent_ok and true or false,
+			reason = _intent_reason,
 			kind = intent.kind,
 			source = intent.source,
 			ownership_enabled = run_stop_ownership_status.ownership_enabled,
@@ -2207,15 +2206,15 @@ local function run_movement_coordinator_tick()
 			},
 		}
 		local dispatcher = require('uc_scheduler_dispatcher')
-		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+		local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
 				dispatcher = dispatcher,
 				run = windower.ffxi.run,
 				intent = intent,
 			})
 		_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_PULL_SPELL_WAIT_VALIDATE = {
-			ok = _darklaunch_ok and true or false,
-			reason = _darklaunch_reason,
+			ok = _intent_ok and true or false,
+			reason = _intent_reason,
 			kind = intent.kind,
 			source = intent.source,
 			ownership_enabled = run_stop_ownership_status.ownership_enabled,
@@ -3350,38 +3349,6 @@ local function choose_defensive_action(c)
 	return nil, nil
 end
 
-local function try_delegate_healbot()
-	local ok_actions = type(rawget(_G, 'actions')) == 'table' and type(_G.actions.get_defensive_action) == 'function'
-	local ok_healer = type(rawget(_G, 'healer')) == 'table' and type(_G.healer.take_action) == 'function'
-	if not ok_actions or not ok_healer then
-		return false, 'BLOCK_DEFENSIVE_PROVIDER_UNAVAILABLE'
-	end
-	local action = _G.actions.get_defensive_action()
-	if not action then
-		return false, nil
-	end
-	local phase = scheduler.phase1 or {}
-	if scheduler.p1_pending_engage_live(phase, now_s()) then
-		local atype = tostring(action.type or '')
-		local target_hpp = tonumber(action.target and action.target.hpp) or -1
-		local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', get_settings().defensive_critical_hpp)) or 35
-		local is_critical_cure = (atype == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp)
-		if not is_critical_cure then
-			scheduler.action_timeline_log('PENDING_ENGAGE_BLOCK_NONCRITICAL', {
-				action = tostring(action.action and action.action.en or atype or 'healbot_action'),
-				provider = 'defensive_healbot',
-				target = tostring(action.target and action.target.name or ''),
-				target_id = tonumber(action.target and action.target.id) or 0,
-			}, ('pending_engage_block:healbot:%s'):format(tostring(action.action and action.action.en or atype or 'healbot_action')), 0.25)
-			return false, nil
-		end
-		scheduler.p1_clear_pending_engage_for_critical_dispatch(phase, tostring(action.action and action.action.en or atype or 'healbot_action'), tonumber(action.target and action.target.id) or 0, tostring(action.target and action.target.name or ''))
-	end
-	_G.healer:take_action(action)
-	local reason = 'BLOCK_DEFENSIVE_' .. tostring(action.type or 'ACTION')
-	_G.UC_LAST_SCHED_ACTION = tostring(action.action and action.action.en or 'healbot_action')
-	return true, reason
-end
 
 choose_cure_spell = function(member)
 	local s = get_settings()
@@ -3407,182 +3374,6 @@ choose_cure_spell = function(member)
 	return nil
 end
 
-local function try_internal_defensive_action()
-	local s = get_settings()
-	if not bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', s.defensive_enabled), false) then
-		log_def_sched('DEF_SKIP reason=DEFENSIVE_DISABLED')
-		return false, nil
-	end
-	local p = windower.ffxi.get_player()
-	if not p then
-		log_def_sched('DEF_BLOCK reason=NO_PLAYER')
-		return true, 'BLOCK_DEFENSIVE_NO_PLAYER'
-	end
-	if not can_act_statuses[p.status or -1] then
-		log_def_sched(('DEF_BLOCK reason=PLAYER_STATUS status=%s'):format(tostring(p.status or -1)))
-		return true, 'BLOCK_DEFENSIVE_PLAYER_STATUS'
-	end
-	local now = now_s()
-	local candidates = build_defensive_candidates()
-	_G.UC_BUFF_QUEUE = tostring(buff_runtime.last_queue_debug or '')
-	local action, reason = choose_defensive_action(candidates)
-	if action and action.spell and action.target and action.target.name then
-		local _, _, action_kind = action_ready(action.spell)
-		local phase = scheduler.phase1 or {}
-		if scheduler.p1_pending_engage_live(phase, now) then
-			local target_hpp = tonumber(action.target and action.target.hpp) or -1
-			local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', s.defensive_critical_hpp)) or 35
-			local is_critical_cure = (tostring(action.type or '') == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp)
-			if not is_critical_cure then
-				scheduler.action_timeline_log('PENDING_ENGAGE_BLOCK_NONCRITICAL', {
-					action = tostring(action.spell or ''),
-					provider = 'defensive_internal',
-					target = tostring(action.target and action.target.name or ''),
-					target_id = tonumber(action.target and action.target.id) or 0,
-				}, ('pending_engage_block:legacy:%s'):format(tostring(action.spell or '')), 0.25)
-				return false, nil
-			end
-			scheduler.p1_clear_pending_engage_for_critical_dispatch(phase, tostring(action.spell or ''), tonumber(action.target and action.target.id) or 0, tostring(action.target and action.target.name or ''))
-		end
-		local out_of_combat = (tonumber(p and p.status) or 0) ~= 1
-		local now_gate = now_s()
-		local preengage_move_active = (rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true)
-		local follow_run_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE_UNTIL')) or 0
-		local follow_run_active = (rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE') == true) or (now_gate < follow_run_until)
-		local follow_catchup_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL')) or 0
-		local follow_needs_catchup = (rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP') == true) or (now_gate < follow_catchup_until)
-		if action_kind == 'spell' and out_of_combat and preengage_move_active then
-			_G.UC_LAST_SCHED_ACTION = ('def_defer_preengage_move:%s->%s'):format(
-				tostring(action.spell or ''),
-				tostring(action.target and action.target.name or '')
-			)
-			log_def_sched(('DEF_SKIP reason=PREENGAGE_MOVE_ACTIVE action="%s" target="%s"'):format(
-				tostring(action.spell or ''),
-				tostring(action.target and action.target.name or '')
-			))
-			return false, nil
-		end
-		if action_kind == 'spell' and out_of_combat and (follow_run_active or follow_needs_catchup) then
-			_G.UC_LAST_SCHED_ACTION = ('def_defer_follow_move:%s->%s'):format(
-				tostring(action.spell or ''),
-				tostring(action.target and action.target.name or '')
-			)
-			log_def_sched(('DEF_SKIP reason=FOLLOW_MOVE_ACTIVE action="%s" target="%s"'):format(
-				tostring(action.spell or ''),
-				tostring(action.target and action.target.name or '')
-			))
-			return false, nil
-		end
-		_G.UC_DEFENSIVE_CHAIN_ACTION = {
-			provider = 'defensive_internal',
-			action_kind = tostring(action_kind or ''),
-			def_action_type = tostring(action.type or ''),
-			action_name = tostring(action.spell or ''),
-		}
-		local blocked, b_reason = action_dispatch_blocked()
-		_G.UC_DEFENSIVE_CHAIN_ACTION = nil
-		if blocked then
-			log_def_sched(('DEF_BLOCK reason=%s action="%s" target="%s" type=%s'):format(
-				tostring(b_reason or 'BLOCKED'),
-				tostring(action.spell or ''),
-				tostring(action.target and action.target.name or ''),
-				tostring(action.type or '')
-			))
-			return true, b_reason
-		end
-		if now - scheduler.last_action_at < scheduler.action_delay then
-			-- Cooldown paces defensive casts only; do not freeze offensive combat ticks.
-			log_def_sched(('DEF_SKIP reason=LOCAL_DELAY action="%s" target="%s" dt=%.2f delay=%.2f'):format(
-				tostring(action.spell or ''),
-				tostring(action.target and action.target.name or ''),
-				now - scheduler.last_action_at,
-				tonumber(scheduler.action_delay) or 0
-			))
-			return false, nil
-		end
-		local cmd = build_action_command(action.spell, action_kind, action.target)
-		local target_hpp = tonumber(action.target and action.target.hpp) or -1
-		local can_apply_defensive_spell_lock = (
-			action_kind == 'spell'
-			and cmd ~= ''
-			and (tostring(action.type or '') ~= 'cure' or target_hpp > 0)
-		)
-		if can_apply_defensive_spell_lock then
-			scheduler.apply_defensive_spell_movement_lock(tostring(action.spell or ''), tonumber(action.target and action.target.id) or 0, now)
-		end
-		log_def_sched(('DEF_SEND type=%s action="%s" target="%s" cmd=%s'):format(
-			tostring(action_kind or action.type or 'defensive'),
-			tostring(action.spell or ''),
-			tostring(action.target and action.target.name or ''),
-			tostring(cmd or '')
-		))
-		local intent = {
-			kind = 'send_command',
-			source = 'unified_scheduler:T2.1_darklaunch',
-			command = cmd,
-			meta = {
-				action_kind = tostring(action_kind or action.type or 'defensive'),
-				action_name = tostring(action.spell or ''),
-				target_name = tostring(action.target and action.target.name or ''),
-			},
-		}
-		local dispatcher = require('uc_scheduler_dispatcher')
-		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
-			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
-				dispatcher = dispatcher,
-				send_command = windower.send_command,
-				intent = intent,
-				command = cmd,
-			})
-		_G.UC_SCHED_P1_DARKLAUNCH_DISPATCH_VALIDATE = {
-			ok = _darklaunch_ok and true or false,
-			reason = _darklaunch_reason,
-			kind = intent.kind,
-			source = intent.source,
-			command_present = command_ownership_status.command_present,
-			ownership_enabled = command_ownership_status.ownership_enabled,
-			dispatched = command_ownership_status.dispatched,
-			dispatch_ok = command_ownership_status.dispatch_ok,
-			dispatch_reason = command_ownership_status.dispatch_reason,
-			fallback_used = command_ownership_status.fallback_used,
-		}
-		if can_apply_defensive_spell_lock then
-			scheduler.begin_defensive_spell_wait(tostring(action.spell or ''), tonumber(action.target and action.target.id) or 0, now)
-		end
-		action_mark_sent(action_kind or action.type or 'defensive', {
-			action_name = tostring(action.spell or ''),
-			provider = 'defensive_internal',
-			def_action_type = tostring(action.type or ''),
-			target_id = tonumber(action.target and action.target.id) or 0,
-			target_kind = ((tonumber(action.target and action.target.id) or 0) ~= 0 and (tonumber(action.target and action.target.id) or 0) ~= (tonumber(p and p.id) or 0)) and 'ally' or 'self',
-		})
-		scheduler.last_action_at = now
-		_G.UC_LAST_SCHED_ACTION = action.spell .. '->' .. tostring(action.target.name)
-		mark_attempt(action.type or 'defensive', action.target.name, action.spell, now)
-		if action.entry_key then
-			local st = ensure_maintenance_state_tables()
-			local e = st.buffs[action.entry_key] or {}
-			e.attempted = now
-			e.last_attempt_reason = tostring(action.reason or action.type or '')
-			e.last_seen_at = now
-			if action.type == 'buff' or action.type == 'overwrite' then
-				e.landed = now + action_duration_seconds(action.spell, tonumber(scheduler.active_value_or_flat('config.defensive.buffs.overwrite_interval', get_settings().defensive_overwrite_interval) or 150) or 150)
-			end
-			st.buffs[action.entry_key] = e
-		end
-		if action.type == 'overwrite' then
-			scheduler.last_overwrite[attempt_key('overwrite', action.target.name, action.spell)] = now
-		end
-		if (action.type == 'buff' or action.type == 'overwrite') and action.buff_id then
-			set_recent_gain(action.target.name, action.buff_id, action.spell, now)
-			local tokens = family_tokens_for(action.target.name, action.buff_id)
-			tokens[action.spell] = now + action_duration_seconds(action.spell, tonumber(scheduler.active_value_or_flat('config.defensive.buffs.overwrite_interval', get_settings().defensive_overwrite_interval) or 150) or 150)
-		end
-		return true, reason
-	end
-	log_def_sched('DEF_SKIP reason=NO_ACTION')
-	return false, nil
-end
 
 local function p1_number(v, default_value)
 	return require('uc_scheduler_numeric_utils').p1_number(v, default_value)
@@ -3841,8 +3632,8 @@ function scheduler.p1_build_lock_summary(ctx, locks)
 	return scheduler_locks.p1_build_lock_summary(ctx, locks, scheduler.p1_get_locks)
 end
 
-function scheduler.p1_record_legacy_dispatch(ctx)
-	return require('uc_scheduler_pending_record').p1_record_legacy_dispatch(scheduler, ctx, p1_number)
+function scheduler.record_dispatch(ctx)
+	return require('uc_scheduler_pending_record').record_dispatch(scheduler, ctx, p1_number)
 end
 
 function scheduler.p1_pending_mark_complete(now, result_code)
@@ -4009,7 +3800,7 @@ local function p1_try_target_prep(target_id)
 			},
 		}
 		local dispatcher = require('uc_scheduler_dispatcher')
-		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+		local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 		local target_ownership_status = require('uc_scheduler_target_ownership').apply_target_ownership({
 			dispatcher = dispatcher,
 			set_target = uc_settarget.select_by_id,
@@ -4017,8 +3808,8 @@ local function p1_try_target_prep(target_id)
 			target_id = tid,
 		})
 		_G.UC_SCHED_P1_DARKLAUNCH_TARGET_VALIDATE = {
-			ok = _darklaunch_ok and true or false,
-			reason = _darklaunch_reason,
+			ok = _intent_ok and true or false,
+			reason = _intent_reason,
 			kind = intent.kind,
 			source = intent.source,
 			target_id = tonumber(intent.target_id) or 0,
@@ -4216,15 +4007,15 @@ p1_apply_face_to_target = function(settings, target_id, turn_away, force_face)
 			},
 		}
 		local dispatcher = require('uc_scheduler_dispatcher')
-		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+		local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 		local turn_ownership_status = require('uc_scheduler_turn_ownership').apply_turn_ownership({
 			dispatcher = dispatcher,
 			turn = windower.ffxi.turn,
 			intent = intent,
 		})
 		_G.UC_SCHED_P1_DARKLAUNCH_TURN_VALIDATE = {
-			ok = _darklaunch_ok and true or false,
-			reason = _darklaunch_reason,
+			ok = _intent_ok and true or false,
+			reason = _intent_reason,
 			kind = intent.kind,
 			source = intent.source,
 			heading = tonumber(intent.heading) or 0,
@@ -4427,7 +4218,7 @@ local function p1_dispatch_pull_control(selected, settings)
 	local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
 	if sent then
 		action_mark_sent('pull')
-		scheduler.p1_record_legacy_dispatch(ctx)
+		scheduler.record_dispatch(ctx)
 		scheduler.p1_set_pending_globals()
 		_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 	else
@@ -4480,7 +4271,7 @@ local function p1_dispatch_maintenance_cor(selected, settings, provider)
 		},
 	}
 	local dispatcher = require('uc_scheduler_dispatcher')
-	local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+	local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 	local maintenance_command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
 		dispatcher = dispatcher,
 		send_command = windower.send_command,
@@ -4493,8 +4284,8 @@ local function p1_dispatch_maintenance_cor(selected, settings, provider)
 		band = tonumber(selected.priority_band) or 0,
 	}, ('maint_dispatch:%s'):format(tostring(ability or '')), 0.05)
 	_G.UC_SCHED_P1_DARKLAUNCH_MAINTENANCE_COR_COMMAND_VALIDATE = {
-		ok = _darklaunch_ok and true or false,
-		reason = _darklaunch_reason,
+		ok = _intent_ok and true or false,
+		reason = _intent_reason,
 		kind = intent.kind,
 		source = intent.source,
 		ownership_enabled = maintenance_command_ownership_status.ownership_enabled,
@@ -4507,7 +4298,7 @@ local function p1_dispatch_maintenance_cor(selected, settings, provider)
 	log_def_sched(('MAINT_COR_DISPATCH_SEND action=\"%s\"'):format(tostring(ability)))
 	action_mark_sent(action_kind or 'ja')
 	local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-	scheduler.p1_record_legacy_dispatch(ctx)
+	scheduler.record_dispatch(ctx)
 	scheduler.p1_set_pending_globals()
 	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 	_G.UC_LAST_SCHED_ACTION = ('[p1]cor:%s'):format(ability)
@@ -4596,7 +4387,7 @@ function scheduler.p1_dispatch_maintenance_brd(selected, settings)
 		detail = selected.detail,
 	}, token, now_s())
 	local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-	scheduler.p1_record_legacy_dispatch(ctx)
+	scheduler.record_dispatch(ctx)
 	scheduler.p1_set_pending_globals()
 	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 	_G.UC_LAST_SCHED_ACTION = ('[p1]brd:%s'):format(action_name)
@@ -4665,7 +4456,7 @@ local function p1_dispatch_defensive_internal(selected, settings)
 		},
 	}
 	local dispatcher = require('uc_scheduler_dispatcher')
-	local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+	local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 	local defensive_command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
 		dispatcher = dispatcher,
 		send_command = windower.send_command,
@@ -4673,8 +4464,8 @@ local function p1_dispatch_defensive_internal(selected, settings)
 		command = cmd,
 	})
 	_G.UC_SCHED_P1_DARKLAUNCH_DEFENSIVE_INTERNAL_COMMAND_VALIDATE = {
-		ok = _darklaunch_ok and true or false,
-		reason = _darklaunch_reason,
+		ok = _intent_ok and true or false,
+		reason = _intent_reason,
 		kind = intent.kind,
 		source = intent.source,
 		command_present = defensive_command_ownership_status.command_present,
@@ -4739,7 +4530,7 @@ local function p1_dispatch_defensive_internal(selected, settings)
 		mark_enemy_dispel_attempt(tostring(dispel_detail.enemy_dispel_attempt_key), dispatch_now)
 	end
 	local ctx = { now = dispatch_now, tick = p1_number(scheduler.phase1.tick, 0) }
-	scheduler.p1_record_legacy_dispatch(ctx)
+	scheduler.record_dispatch(ctx)
 	scheduler.p1_set_pending_globals()
 	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 	_G.UC_LAST_SCHED_ACTION = ('[p1]%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
@@ -4787,14 +4578,14 @@ local function p1_dispatch_defensive_healbot(selected, settings)
 		band = tonumber(selected.priority_band) or 0,
 	}, ('hb_dispatch:%s:%d'):format(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0), 0.05)
 	local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-	scheduler.p1_record_legacy_dispatch(ctx)
+	scheduler.record_dispatch(ctx)
 	scheduler.p1_set_pending_globals()
 	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 	_G.UC_LAST_SCHED_ACTION = ('[p1]hb:%s->%s'):format(tostring(selected.action_name or ''), tostring(selected.target_name or ''))
 	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_HEALBOT'
 end
 
-local function p1_try_dark_launch_combat_dispatch(selected, settings, phase)
+local function p1_dispatch_combat(selected, settings, phase)
 	_G.UC_TANK_ENMITY_BLOCK = ''
 	if not domain_ownership.is_enabled('combat') then
 		return false, nil
@@ -4869,15 +4660,15 @@ local function p1_try_dark_launch_combat_dispatch(selected, settings, phase)
 			},
 		}
 		local dispatcher = require('uc_scheduler_dispatcher')
-		local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+		local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 		local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
 			dispatcher = dispatcher,
 			run = windower.ffxi.run,
 			intent = intent,
 		})
 		_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ACTION_SETTLE_VALIDATE = {
-			ok = _darklaunch_ok and true or false,
-			reason = _darklaunch_reason,
+			ok = _intent_ok and true or false,
+			reason = _intent_reason,
 			kind = intent.kind,
 			source = intent.source,
 			ownership_enabled = run_stop_ownership_status.ownership_enabled,
@@ -4994,7 +4785,7 @@ local function p1_try_dark_launch_combat_dispatch(selected, settings, phase)
 				},
 			}
 			local dispatcher = require('uc_scheduler_dispatcher')
-			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
 				dispatcher = dispatcher,
 				send_command = windower.send_command,
@@ -5002,8 +4793,8 @@ local function p1_try_dark_launch_combat_dispatch(selected, settings, phase)
 				command = ja_target_command,
 			})
 			_G.UC_SCHED_P1_DARKLAUNCH_JA_COMMAND_VALIDATE = {
-				ok = _darklaunch_ok and true or false,
-				reason = _darklaunch_reason,
+				ok = _intent_ok and true or false,
+				reason = _intent_reason,
 				kind = intent.kind,
 				source = intent.source,
 				command_present = command_ownership_status.command_present,
@@ -5032,15 +4823,15 @@ local function p1_try_dark_launch_combat_dispatch(selected, settings, phase)
 					},
 				}
 				local dispatcher = require('uc_scheduler_dispatcher')
-				local _stop_darklaunch_ok, _stop_darklaunch_reason = dispatcher.validate_intent(stop_intent)
+				local _stop_intent_ok, _stop_intent_reason = dispatcher.validate_intent(stop_intent)
 				local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
 					dispatcher = dispatcher,
 					run = windower.ffxi.run,
 					intent = stop_intent,
 				})
 				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_JA_SELF_SEND_VALIDATE = {
-					ok = _stop_darklaunch_ok and true or false,
-					reason = _stop_darklaunch_reason,
+					ok = _stop_intent_ok and true or false,
+					reason = _stop_intent_reason,
 					kind = stop_intent.kind,
 					source = stop_intent.source,
 					ownership_enabled = run_stop_ownership_status.ownership_enabled,
@@ -5063,7 +4854,7 @@ local function p1_try_dark_launch_combat_dispatch(selected, settings, phase)
 				},
 			}
 			local dispatcher = require('uc_scheduler_dispatcher')
-			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
 				dispatcher = dispatcher,
 				send_command = windower.send_command,
@@ -5071,8 +4862,8 @@ local function p1_try_dark_launch_combat_dispatch(selected, settings, phase)
 				command = ja_self_command,
 			})
 			_G.UC_SCHED_P1_DARKLAUNCH_JA_SELF_COMMAND_VALIDATE = {
-				ok = _darklaunch_ok and true or false,
-				reason = _darklaunch_reason,
+				ok = _intent_ok and true or false,
+				reason = _intent_reason,
 				kind = intent.kind,
 				source = intent.source,
 				command_present = command_ownership_status.command_present,
@@ -5119,15 +4910,15 @@ elseif action_type == 'spell' then
 				},
 			}
 			local dispatcher = require('uc_scheduler_dispatcher')
-			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
 				dispatcher = dispatcher,
 				run = windower.ffxi.run,
 				intent = intent,
 			})
 			_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_COMBAT_SPELL_SETTLE_VALIDATE = {
-				ok = _darklaunch_ok and true or false,
-				reason = _darklaunch_reason,
+				ok = _intent_ok and true or false,
+				reason = _intent_reason,
 				kind = intent.kind,
 				source = intent.source,
 				ownership_enabled = run_stop_ownership_status.ownership_enabled,
@@ -5155,15 +4946,15 @@ elseif action_type == 'spell' then
 				},
 			}
 			local dispatcher = require('uc_scheduler_dispatcher')
-			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
 				dispatcher = dispatcher,
 				run = windower.ffxi.run,
 				intent = intent,
 			})
 			_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_COMBAT_SPELL_PREP_WAIT_VALIDATE = {
-				ok = _darklaunch_ok and true or false,
-				reason = _darklaunch_reason,
+				ok = _intent_ok and true or false,
+				reason = _intent_reason,
 				kind = intent.kind,
 				source = intent.source,
 				ownership_enabled = run_stop_ownership_status.ownership_enabled,
@@ -5209,15 +5000,15 @@ elseif action_type == 'spell' then
 				},
 			}
 			local dispatcher = require('uc_scheduler_dispatcher')
-			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
 				dispatcher = dispatcher,
 				run = windower.ffxi.run,
 				intent = intent,
 			})
 			_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_SPELL_SETTLE_VALIDATE = {
-				ok = _darklaunch_ok and true or false,
-				reason = _darklaunch_reason,
+				ok = _intent_ok and true or false,
+				reason = _intent_reason,
 				kind = intent.kind,
 				source = intent.source,
 				ownership_enabled = run_stop_ownership_status.ownership_enabled,
@@ -5255,15 +5046,15 @@ elseif action_type == 'spell' then
 					},
 				}
 				local dispatcher = require('uc_scheduler_dispatcher')
-				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+				local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 				local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
 					dispatcher = dispatcher,
 					run = windower.ffxi.run,
 					intent = intent,
 				})
 				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_SPELL_SEND_VALIDATE = {
-					ok = _darklaunch_ok and true or false,
-					reason = _darklaunch_reason,
+					ok = _intent_ok and true or false,
+					reason = _intent_reason,
 					kind = intent.kind,
 					source = intent.source,
 					ownership_enabled = run_stop_ownership_status.ownership_enabled,
@@ -5287,7 +5078,7 @@ elseif action_type == 'spell' then
 				},
 			}
 			local dispatcher = require('uc_scheduler_dispatcher')
-			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
 				dispatcher = dispatcher,
 				send_command = windower.send_command,
@@ -5295,8 +5086,8 @@ elseif action_type == 'spell' then
 				command = spell_target_command,
 			})
 			_G.UC_SCHED_P1_DARKLAUNCH_SPELL_TARGET_COMMAND_VALIDATE = {
-				ok = _darklaunch_ok and true or false,
-				reason = _darklaunch_reason,
+				ok = _intent_ok and true or false,
+				reason = _intent_reason,
 				kind = intent.kind,
 				source = intent.source,
 				command_present = command_ownership_status.command_present,
@@ -5353,15 +5144,15 @@ elseif action_type == 'spell' then
 					},
 				}
 				local dispatcher = require('uc_scheduler_dispatcher')
-				local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+				local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 				local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
 					dispatcher = dispatcher,
 					run = windower.ffxi.run,
 					intent = intent,
 				})
 				_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_TANK_ENMITY_SPELL_SELF_SEND_VALIDATE = {
-					ok = _darklaunch_ok and true or false,
-					reason = _darklaunch_reason,
+					ok = _intent_ok and true or false,
+					reason = _intent_reason,
 					kind = intent.kind,
 					source = intent.source,
 					ownership_enabled = run_stop_ownership_status.ownership_enabled,
@@ -5384,7 +5175,7 @@ elseif action_type == 'spell' then
 				},
 			}
 			local dispatcher = require('uc_scheduler_dispatcher')
-			local _darklaunch_ok, _darklaunch_reason = dispatcher.validate_intent(intent)
+			local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
 			local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
 				dispatcher = dispatcher,
 				send_command = windower.send_command,
@@ -5392,8 +5183,8 @@ elseif action_type == 'spell' then
 				command = spell_self_command,
 			})
 			_G.UC_SCHED_P1_DARKLAUNCH_SPELL_SELF_COMMAND_VALIDATE = {
-				ok = _darklaunch_ok and true or false,
-				reason = _darklaunch_reason,
+				ok = _intent_ok and true or false,
+				reason = _intent_reason,
 				kind = intent.kind,
 				source = intent.source,
 				command_present = command_ownership_status.command_present,
@@ -5437,13 +5228,13 @@ elseif action_type == 'spell' then
 		return false, nil
 	end
 	local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-	scheduler.p1_record_legacy_dispatch(ctx)
+	scheduler.record_dispatch(ctx)
 	scheduler.p1_set_pending_globals()
 	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT'
 end
 
-function scheduler.p1_try_dark_launch_dispatch(settings)
+function scheduler.dispatch_selected_plan(settings)
 	local phase = scheduler.phase1
 	local selected = phase.last_selected
 	if type(selected) ~= 'table' or type(phase.last_plan) ~= 'table' then
@@ -5469,7 +5260,7 @@ function scheduler.p1_try_dark_launch_dispatch(settings)
 		return p1_dispatch_pull_control(selected, settings)
 	end
 	if provider == 'combat' then
-		return p1_try_dark_launch_combat_dispatch(selected, settings, phase)
+		return p1_dispatch_combat(selected, settings, phase)
 	end
 	if provider == 'defensive_internal' then
 		_G.UC_DEFENSIVE_CHAIN_ACTION = {
@@ -5526,7 +5317,7 @@ function scheduler.process_tick(cadence)
 		local doom_blocked, doom_reason = try_doom_water_emergency(s)
 		if doom_blocked then
 			local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-			scheduler.p1_record_legacy_dispatch(ctx)
+			scheduler.record_dispatch(ctx)
 			scheduler.p1_set_pending_globals()
 			_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 			return true, doom_reason
@@ -5566,7 +5357,7 @@ function scheduler.process_tick(cadence)
 		end
 	end
 	p1_run_dry(s, get_tick_ctx())
-	local p1_acted, p1_reason = scheduler.p1_try_dark_launch_dispatch(s)
+	local p1_acted, p1_reason = scheduler.dispatch_selected_plan(s)
 	brd_lane_reserved, brd_lane_reason = false, ''
 	if maintenance_domain_enabled then
 		brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()

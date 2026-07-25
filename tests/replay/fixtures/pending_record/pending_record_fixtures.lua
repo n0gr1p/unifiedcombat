@@ -1,7 +1,7 @@
 return {
     {
         fixture_id = "pending_record_basic_spell",
-        helper = "p1_record_legacy_dispatch",
+        helper = "record_dispatch",
         description = "builds pending record and duplicate suppression entry for normal dispatch",
         input = {
             scheduler = {
@@ -65,7 +65,7 @@ return {
     },
     {
         fixture_id = "pending_record_empty_duplicate_key_not_recorded",
-        helper = "p1_record_legacy_dispatch",
+        helper = "record_dispatch",
         description = "empty duplicate key does not update recent_duplicate_until",
         input = {
             scheduler = {
@@ -131,7 +131,7 @@ return {
     },
     {
         fixture_id = "pending_record_missing_selected_noop",
-        helper = "p1_record_legacy_dispatch",
+        helper = "record_dispatch",
         description = "missing selected proposal leaves phase unchanged",
         input = {
             scheduler = {
@@ -168,7 +168,7 @@ return {
     },
     {
         fixture_id = "pending_record_missing_plan_noop",
-        helper = "p1_record_legacy_dispatch",
+        helper = "record_dispatch",
         description = "missing last_plan leaves phase unchanged",
         input = {
             scheduler = {
@@ -205,7 +205,7 @@ return {
     },
     {
         fixture_id = "pending_record_field_coercions",
-        helper = "p1_record_legacy_dispatch",
+        helper = "record_dispatch",
         description = "coerces nil and numeric fields using module defaults",
         input = {
             scheduler = {

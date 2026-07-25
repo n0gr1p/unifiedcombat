@@ -1,5 +1,8 @@
 # Canonical Config Migration Audit
 
+> Historical migration snapshot. Its retained-marker and legacy-dispatch
+> descriptions are superseded by the Phase 6 exit audit in `../RFC/`.
+
 Task: `T3.7d`, updated by `T4.1`, `T4.2`, `T4.3`, and `T4.4`
 
 ## Current conclusion

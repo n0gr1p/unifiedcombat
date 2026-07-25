@@ -52,10 +52,6 @@ internal static class HubUiConstants
         "domain_movement_enabled",
         "domain_maintenance_enabled",
         "domain_follow_enabled",
-        "scheduler_dark_launch_combat",
-        "scheduler_dark_launch_defensive",
-        "scheduler_dark_launch_movement",
-        "scheduler_dark_launch_maintenance",
         "path_recording",
         "path_follow_enabled",
     ];
@@ -114,10 +110,6 @@ internal static class HubUiConstants
         ["weaponskill_active"] = "weaponskill",
         ["aftermath_enabled"] = "aftermath",
         ["puller"] = "puller",
-        ["scheduler_dark_launch_combat"] = "Legacy combat ownership marker (compatibility only)",
-        ["scheduler_dark_launch_defensive"] = "Legacy defensive ownership marker (compatibility only)",
-        ["scheduler_dark_launch_movement"] = "Legacy movement ownership marker (compatibility only)",
-        ["scheduler_dark_launch_maintenance"] = "Legacy maintenance ownership marker (compatibility only)",
         ["path_recording"] = "Record path",
         ["path_follow_enabled"] = "Follow path",
     };

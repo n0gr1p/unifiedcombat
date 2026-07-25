@@ -1377,19 +1377,6 @@ public partial class MainForm
         sch.Controls.Add(MkGlobal("domain_movement_enabled"));
         sch.Controls.Add(MkGlobal("domain_maintenance_enabled"));
         sch.Controls.Add(MkGlobal("domain_follow_enabled"));
-        sch.Controls.Add(
-            new Label
-            {
-                Text = "Legacy ownership markers are displayed for profile compatibility only and cannot change runtime execution.",
-                AutoSize = true,
-                ForeColor = SystemColors.GrayText,
-                Padding = new Padding(0, 10, 0, 4),
-            }
-        );
-        sch.Controls.Add(MkReadOnlyGlobal("scheduler_dark_launch_combat"));
-        sch.Controls.Add(MkReadOnlyGlobal("scheduler_dark_launch_defensive"));
-        sch.Controls.Add(MkReadOnlyGlobal("scheduler_dark_launch_movement"));
-        sch.Controls.Add(MkReadOnlyGlobal("scheduler_dark_launch_maintenance"));
         tabScheduler.Controls.Add(sch);
         _settingsTabs.TabPages.Add(tabScheduler);
 
@@ -1431,17 +1418,6 @@ public partial class MainForm
             return cb;
         }
 
-        CheckBox MkReadOnlyGlobal(string key)
-        {
-            var cb = new CheckBox
-            {
-                Text = HubUiConstants.BoolLabel(key),
-                AutoSize = true,
-                Enabled = false,
-            };
-            _boolChecks[key] = cb;
-            return cb;
-        }
     }
 
     private IEnumerable<NumericUpDown> FormationNumericControls()

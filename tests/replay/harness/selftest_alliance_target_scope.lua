@@ -429,6 +429,14 @@ local function test_zero_hp_and_recent_death_preserved()
 end
 
 local function test_puller_range_gate_uses_live_puller_geometry()
+    local movement_executor = {
+        stop = function() windower.ffxi.run(false) end,
+        run_heading = function(heading) windower.ffxi.run(heading) end,
+        run_forward = function() windower.ffxi.run() end,
+        turn = function(heading) windower.ffxi.turn(heading) end,
+        move_towards = function(mover, target_id) mover:move_towards(target_id) end,
+        move_away_from = function(mover, target_id) mover:move_away_from(target_id) end,
+    }
     local puller = { id = 202, name = 'PartyMate', x = 0, y = 0 }
     local target = make_mob({
         id = 7010,
@@ -468,7 +476,7 @@ local function test_puller_range_gate_uses_live_puller_geometry()
     assert_true(type(selected) == 'table' and selected.target_id == 7010, 'target acquisition must remain allowed outside puller range')
     run_calls = {}
     core.last_run_active = true
-    local moved = core.apply_movement_for_scheduler(settings, core.legacy_movement_executor)
+    local moved = core.apply_movement_for_scheduler(settings, movement_executor)
     assert_false(moved, 'combat-close movement must not run toward a mob outside puller range')
     assert_equal(run_calls[#run_calls], false, 'out-of-range movement gate must stop the current run vector')
 

@@ -124,8 +124,8 @@ local function main()
 	local scheduler_facade_source = read('uc_scheduler_movement_facade.lua')
 	assert_true(scheduler_facade_source:find("require('uc_movement_dispatcher').build({", 1, true) ~= nil,
 		'scheduler movement facade must delegate to the shared movement dispatcher')
-	assert_true(read('unified_combat_core.lua'):find('core.legacy_movement_executor', 1, true) ~= nil,
-		'legacy core movement must remain explicit for Phase 5 cutover')
+	assert_true(read('unified_combat_core.lua'):find('legacy_movement_executor', 1, true) == nil,
+		'Phase 6 must remove the unreachable legacy core movement executor')
 
 	io.stdout:write('selftest_movement_dispatcher_phase4: OK\n')
 end

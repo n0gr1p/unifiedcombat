@@ -297,6 +297,20 @@ local function test_satisfied_maintenance_allows_continuation()
 	assert_equal(selection.ws_name, 'Test Continuation', 'continuation WS mismatch')
 end
 
+local function test_spam_forces_primary_ws_across_active_resonance()
+	ability_recasts[20] = 30
+	settings.spam = true
+	settings.aftermath_enabled = false
+	player.buffs = {}
+	player.vitals.tp = 1000
+	local selection, reason = select()
+	assert_true(type(selection) == 'table', 'spam must produce a primary WS selection')
+	assert_equal(reason, 'READY_SPAM', 'spam primary WS reason mismatch')
+	assert_equal(selection.ws_name, 'Savage Blade', 'spam must not select a skillchain continuation WS')
+	assert_equal(selection.skillchain_plan, nil, 'spam primary WS must not carry a skillchain plan')
+	settings.spam = false
+end
+
 local function restore_test_environment()
 	for _, module_name in ipairs(TEST_MODULE_NAMES) do
 		package.loaded[module_name] = saved_modules[module_name]
@@ -310,6 +324,7 @@ local function main()
 	test_chivalry_reserves_tp_across_ready_boundary()
 	test_aftermath_reserves_tp_and_dispatches_before_continuation()
 	test_satisfied_maintenance_allows_continuation()
+	test_spam_forces_primary_ws_across_active_resonance()
 	end)
 	restore_test_environment()
 	if not ok then

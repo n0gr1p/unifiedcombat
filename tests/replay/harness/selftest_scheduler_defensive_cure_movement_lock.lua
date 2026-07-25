@@ -69,20 +69,19 @@ local function main()
 
     local target_lane_pos = assert(source:find("local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s, target_ctx)", 1, true))
     local refresh_pos = assert(source:find("local defensive_spell_wait_locked = scheduler.refresh_defensive_spell_wait_lock(now_s())", 1, true))
-    local p1_pos = assert(source:find("local p1_acted, p1_reason = scheduler.p1_try_dark_launch_dispatch(s)", 1, true))
+    local p1_pos = assert(source:find("local p1_acted, p1_reason = scheduler.dispatch_selected_plan(s)", 1, true))
     local move_pos = assert(source:find("move_acted, move_reason = run_movement_coordinator_tick()", refresh_pos + 1, true))
     assert_true(target_lane_pos < refresh_pos, "nonblocking target acquire may run before defensive spell wait refresh")
     assert_true(refresh_pos < p1_pos, "defensive spell wait refresh must run before p1 dispatch")
     assert_true(refresh_pos < move_pos, "defensive spell wait refresh must run before movement coordinator")
 
     assert_contains(source, "local can_apply_defensive_spell_lock = (", "defensive spell send paths must guard lock creation")
-    assert_contains(source, "scheduler.apply_defensive_spell_movement_lock(tostring(action.spell or ''), tonumber(action.target and action.target.id) or 0, now)", "direct defensive sender must apply spell movement lock at send point")
-    assert_contains(source, "scheduler.begin_defensive_spell_wait(tostring(action.spell or ''), tonumber(action.target and action.target.id) or 0, now)", "direct defensive sender must begin defensive spell wait")
     assert_contains(source, "scheduler.apply_defensive_spell_movement_lock(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0, now_gate)", "ranked defensive sender must apply spell movement lock at send point")
     assert_contains(source, "scheduler.begin_defensive_spell_wait(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0, now_gate)", "ranked defensive sender must begin defensive spell wait")
 
-    assert_contains(source, "(tostring(action.type or '') ~= 'cure' or target_hpp > 0)", "direct defensive sender must avoid stale cure lock on dead/invalid targets")
     assert_contains(source, "(tostring(type(detail) == 'table' and detail.def_action_type or '') ~= 'cure' or target_hpp > 0)", "ranked defensive sender must avoid stale cure lock on dead/invalid targets")
+    assert_not_contains(source, "local function try_internal_defensive_action()", "legacy direct defensive sender must be removed")
+    assert_not_contains(source, "local function try_delegate_healbot()", "legacy direct HealBot sender must be removed")
 
     local direct_side_effect_patterns = {
         "windower.send_command(",

@@ -11,6 +11,7 @@ internal static class StructuredProfileV2WriterTests
         {
             TestBuildFinalPath();
             TestSerializeShapeAndEscaping();
+            TestSerializeOmitsRetiredOwnershipMarkers();
             TestParseTargetedBuffs();
             TestSerializeOmitsProfileV2AutoloadWhenDisabled();
             TestSerializeIncludesProfileV2AutoloadWhenEnabled();
@@ -234,6 +235,22 @@ internal static class StructuredProfileV2WriterTests
         AssertNotContains(content, "profile_v2_autoload", "autoload must stay missing when disabled");
     }
 
+    private static void TestSerializeOmitsRetiredOwnershipMarkers()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["scheduler_dark_launch_combat"] = true;
+        flat["scheduler_dark_launch_defensive"] = true;
+        flat["scheduler_dark_launch_movement"] = true;
+        flat["scheduler_dark_launch_maintenance"] = true;
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Ponponponponpon", "COR", "DNC")
+        );
+
+        AssertNotContains(content, "scheduler_dark_launch_", "retired ownership markers must not survive a structured profile save");
+    }
+
     private static void TestSerializeIncludesProfileV2AutoloadWhenEnabled()
     {
         var flat = BuildSampleFlatProfile();
@@ -313,8 +330,8 @@ internal static class StructuredProfileV2WriterTests
             "scheduler_dark_launch_maintenance",
         })
         {
-            AssertContains(source, $"MkReadOnlyGlobal(\"{key}\")", $"{key} must be read-only");
-            AssertNotContains(source, $"sch.Controls.Add(MkGlobal(\"{key}\"))", $"{key} must not remain editable");
+            AssertTrue(!HubUiConstants.BoolKeys.Contains(key), $"{key} must be retired from UI booleans");
+            AssertNotContains(source, key, $"{key} must be absent from the scheduler UI");
         }
         AssertNotContains(source, "Dark-launch toggles: opt into", "obsolete ownership guidance must be removed");
     }
@@ -723,7 +740,6 @@ internal static class StructuredProfileV2WriterTests
     {
         var flat = BuildSampleFlatProfile();
         EnableSampleFormation(flat);
-        flat["scheduler_dark_launch_movement"] = false;
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
             new StructuredProfileV2Identity("Niightsiide", "WHM", "RDM")
@@ -1009,10 +1025,6 @@ internal static class StructuredProfileV2WriterTests
             ["domain_movement_enabled"] = true,
             ["domain_maintenance_enabled"] = true,
             ["domain_follow_enabled"] = true,
-            ["scheduler_dark_launch_combat"] = true,
-            ["scheduler_dark_launch_defensive"] = false,
-            ["scheduler_dark_launch_movement"] = false,
-            ["scheduler_dark_launch_maintenance"] = false,
             ["sub"] = true,
             ["sub2"] = false,
             ["solo"] = false,
@@ -1054,7 +1066,6 @@ internal static class StructuredProfileV2WriterTests
         flat["formation_healer_cone_safety_margin_deg"] = 15.0;
         flat["formation_healer_sample_step_deg"] = 10.0;
         flat["domain_movement_enabled"] = true;
-        flat["scheduler_dark_launch_movement"] = true;
     }
 
     private static void AssertTrue(bool condition, string message)

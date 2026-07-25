@@ -1,5 +1,8 @@
 # Scheduler State-Provider Boundary Runbook
 
+> Historical extraction runbook. Superseded for current runtime ownership by
+> `scheduler_responsibility_map.md` and the Phase 6 exit audit in `../RFC/`.
+
 ## 1. Purpose
 
 The low-risk pure-helper extraction lane is complete. Future runtime refactor work in `unified_scheduler.lua` must be gated by explicit ownership boundaries and replay/live-log validation before stateful/provider/dispatcher/readiness movement.

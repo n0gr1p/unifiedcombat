@@ -110,7 +110,7 @@ local function main()
     assert_true(type(process_tick) == "string", "failed to capture scheduler process_tick")
     assert_contains(process_tick, "local defensive_domain_enabled = domain_ownership.is_enabled('defensive')",
         "process_tick must enforce defensive domain enablement")
-    assert_before(process_tick, "try_doom_water_emergency(s)", "scheduler.p1_try_dark_launch_dispatch(s)",
+    assert_before(process_tick, "try_doom_water_emergency(s)", "scheduler.dispatch_selected_plan(s)",
         "Doom must remain the sole hard prepass ahead of Bard scheduler arbitration")
     assert_contains(process_tick, "if not brd_lane_reserved then\n\t\tlocal target_ctx = nil",
         "Bard lane must hold nonblocking target acquisition")

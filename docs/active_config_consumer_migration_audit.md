@@ -1,5 +1,8 @@
 # Active Config Consumer Migration Audit
 
+> Historical migration snapshot. Its compatibility-marker descriptions are
+> superseded by the Phase 6 exit audit in `../RFC/`.
+
 Task: `T3.7i`, updated by `T3.7k`, `T3.8a`, `T4.1`, `T4.2`, `T4.3`, `T4.4`, `T4.5`, and `T4.6`
 
 ## Scope

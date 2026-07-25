@@ -1,5 +1,9 @@
 # Scheduler Wrapper vs Owned Map
 
+> Historical pre-cutover map. Superseded for current ownership and callable
+> surfaces by `scheduler_responsibility_map.md` and the Phase 6 exit audit in
+> `../RFC/`.
+
 ## 1. Purpose
 This is a post-extraction map to prevent future tasks from targeting wrapper-only functions in `unified_scheduler.lua`.
 

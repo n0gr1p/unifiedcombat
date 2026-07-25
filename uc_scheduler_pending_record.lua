@@ -1,6 +1,6 @@
 local M = {}
 
-function M.p1_record_legacy_dispatch(scheduler, ctx, p1_number)
+function M.record_dispatch(scheduler, ctx, p1_number)
 	local phase = scheduler.phase1
 	local selected = phase.last_selected
 	local plan = phase.last_plan

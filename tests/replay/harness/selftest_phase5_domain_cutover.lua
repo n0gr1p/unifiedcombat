@@ -24,7 +24,7 @@ local function assert_not_contains(text, needle, message)
 	end
 end
 
-local function ownership_config(domain_values, marker_values)
+local function ownership_config(domain_values)
 	return {
 		version = 2,
 		profile = {},
@@ -34,10 +34,6 @@ local function ownership_config(domain_values, marker_values)
 				domain_defensive_enabled = domain_values.defensive,
 				domain_movement_enabled = domain_values.movement,
 				domain_maintenance_enabled = domain_values.maintenance,
-				scheduler_dark_launch_combat = marker_values.combat,
-				scheduler_dark_launch_defensive = marker_values.defensive,
-				scheduler_dark_launch_movement = marker_values.movement,
-				scheduler_dark_launch_maintenance = marker_values.maintenance,
 			},
 		},
 	}
@@ -47,8 +43,7 @@ local function main()
 	local old_active_profile = rawget(_G, 'UC_ACTIVE_PROFILE')
 	local active_config = require('uc_active_config')
 	local domain_values = { combat = true, defensive = false, movement = true, maintenance = false }
-	local marker_values = { combat = false, defensive = true, movement = false, maintenance = true }
-	local ok_set = active_config.set_active_profile(ownership_config(domain_values, marker_values))
+	local ok_set = active_config.set_active_profile(ownership_config(domain_values))
 	assert_equal(ok_set, true, 'test active profile must be accepted')
 	package.loaded.uc_domain_ownership = nil
 	local ownership = require('uc_domain_ownership')
@@ -56,8 +51,6 @@ local function main()
 	assert_equal(ownership.is_enabled('defensive'), false, 'defensive must follow domain enablement')
 	assert_equal(ownership.is_enabled('movement'), true, 'movement must follow domain enablement')
 	assert_equal(ownership.is_enabled('maintenance'), false, 'maintenance must follow domain enablement')
-	assert_equal(ownership.legacy_marker('combat'), false, 'legacy combat marker must remain readable')
-	assert_equal(ownership.legacy_marker('defensive'), true, 'legacy defensive marker must remain readable')
 
 	_G.UC_ACTIVE_PROFILE.config.ownership.domain_combat_enabled = nil
 	local ok, err = pcall(function()
@@ -119,10 +112,7 @@ local function main()
 	assert_contains(pathing, "if not domain_ownership.is_enabled('movement') then", 'pathing must honor movement domain disablement')
 
 	for _, source in ipairs({ addon, normalizer, contract }) do
-		assert_contains(source, 'scheduler_dark_launch_combat', 'compatibility key must remain serialized')
-		assert_contains(source, 'scheduler_dark_launch_defensive', 'compatibility key must remain serialized')
-		assert_contains(source, 'scheduler_dark_launch_movement', 'compatibility key must remain serialized')
-		assert_contains(source, 'scheduler_dark_launch_maintenance', 'compatibility key must remain serialized')
+		assert_not_contains(source, 'scheduler_dark_launch_', 'obsolete ownership markers must be retired')
 	end
 
 	io.stdout:write('selftest_phase5_domain_cutover: OK\n')

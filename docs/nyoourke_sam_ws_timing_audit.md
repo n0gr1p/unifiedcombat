@@ -23,7 +23,7 @@ All 99 aggregate replay suites pass. Initial Nyoourke and multi-actor evidence i
 
 `data/profiles/nyoourke.lua` configures the UC/SAM profile with:
 
-- Scheduler-owned combat enabled (`scheduler_dark_launch_combat = true`).
+- Scheduler-owned combat enabled (`domain_combat_enabled = true`).
 - Weaponskills enabled and `ws_mode = "smart"`.
 - Normal WS set to `Tachi: Kasha` (`weaponskill` and `ws1`).
 - Aftermath enabled with `aftermath_ws = "Tachi: Fudo"`.

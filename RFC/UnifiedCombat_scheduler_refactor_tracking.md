@@ -7,8 +7,8 @@ Canonical location: `RFC/UnifiedCombat_scheduler_refactor_tracking.md`
 ## 1) Authoritative Current Status
 
 Status date: 2026-07-24
-Audited state: current Phase 5 complete working tree based on Phase 4 commit
-`fe4de05`
+Audited state: current Phase 6 implementation working tree based on Phase 5
+commit `853bed49f9482a13a3918bbc8a15fc6288efa9a5`
 
 This compact board is the authoritative current status. The detailed task notes and
 older progress rows below are retained as implementation history and may describe
@@ -21,8 +21,8 @@ an earlier state.
 | Phase 2 — Dispatcher monopoly | `DONE / REPLAY VERIFIED` | Scheduler-owned command, target, turn, attack, skillchain WS, and movement execution is dispatcher-only; transitional flags and direct fallback execution are retired. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase2_exit_audit_2026-07-24.md`. |
 | Phase 3 — Provider purity | `DONE / FIELD VERIFIED` | Defensive, combat, tank-enmity, enemy-buff-removal, maintenance, and target/pull proposal collection is extracted into six fail-fast provider modules. Providers do not dispatch, acquire locks, move, turn, target, or attack. Multibox acceptance passed with Bard maintenance, tank, COR maintenance, and defensive spell casting active. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase3_exit_audit_2026-07-24.md`. |
 | Phase 4 — Movement ownership cleanup | `DONE / FIELD VERIFIED` | The ownership decision is recorded in `RFC/`; scheduler, formation, follow, pathing, Nyzul, and lifecycle movement execute through `uc_movement_dispatcher.lua`. Follow/pathing remain independent decision owners. Reload, party follow, combat approach/spacing/cast behavior, and lifecycle stop passed live acceptance. Live path-follow was explicitly deferred with risk accepted; its focused execution/arbitration tests pass. Legacy core movement is Phase 5. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase4_exit_audit_2026-07-24.md`. |
-| Phase 5 — Domain cutover | `DONE / FIELD VERIFIED WITH ACCEPTED PATH-FOLLOW RISK` | `domain_*_enabled` values are authoritative, legacy ownership markers are compatibility-only, the engine core fallback and scheduler-local defensive fallback are removed, scheduler pull uses an injected dispatcher executor, and pathing honors the movement domain. Five-character multibox testing completed several combat/song/roll cycles without an observed regression. Live path-follow remains deferred with risk accepted. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase5_exit_audit_2026-07-24.md`. |
-| Phase 6 — Cleanup and simplification | `NOT STARTED` | Broad legacy retirement and scheduler simplification have not occurred. |
+| Phase 5 — Domain cutover | `DONE / FIELD VERIFIED WITH ACCEPTED PATH-FOLLOW RISK` | `domain_*_enabled` values became authoritative, the engine core fallback and scheduler-local defensive fallback were removed, scheduler pull required an injected dispatcher executor, and pathing honored the movement domain. Five-character multibox testing completed several combat/song/roll cycles without an observed regression. The compatibility markers retained at this historical exit were removed in Phase 6. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase5_exit_audit_2026-07-24.md`. |
+| Phase 6 — Cleanup and simplification | `DONE / FIELD VERIFIED WITH ACCEPTED PATH-FOLLOW RISK` | Cleanup source and automated verification pass, and the current published UI leaves profiles clean. Post-closeout evidence showed Ponponponponpon using Detonator because its earlier v2 reload failed on markers written by the old UI, leaving the runtime on the legacy COR profile with Spam disabled. After the clean v2 deployment, an addon reload restored the configured Spam/Savage Blade behavior. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase6_exit_audit_2026-07-24.md`. |
 
 ### Phase 0 acceptance record
 
@@ -164,7 +164,7 @@ Phase 4 verification:
 
 | Task | Status | Artifact / evidence |
 | --- | --- | --- |
-| T5.1 — Ownership terminology | `DONE` | `RFC/UnifiedCombat_scheduler_refactor_phase5_ownership_terminology.md` records `domain_*_enabled` as runtime authority, exposes those controls in WinForms, and retains `scheduler_dark_launch_*` as read-only compatibility markers until profile migration. |
+| T5.1 — Ownership terminology | `DONE / HISTORICAL` | `RFC/UnifiedCombat_scheduler_refactor_phase5_ownership_terminology.md` records the Phase 5 decision that made `domain_*_enabled` authoritative. Its temporary retained-marker disposition was superseded by Phase 6 marker removal. |
 | T5.2 — Combat cutover | `DONE / FIELD VERIFIED` | `RFC/UnifiedCombat_scheduler_refactor_phase5_combat_cutover_checklist.md`; engine core fallback removed, scheduler pull requires `uc_scheduler_pull_executor.lua`, and the PLD/WAR plus MNK/WAR live profiles completed several full mob cycles without an observed regression. |
 | T5.3 — Defensive cutover | `DONE / FIELD VERIFIED` | `RFC/UnifiedCombat_scheduler_refactor_phase5_defensive_cutover_checklist.md`; ranked internal/HealBot paths remain, the post-ranking defensive fallback is removed, prior defensive-casting field acceptance remains green, and the current party reported no regression. |
 | T5.4 — Maintenance cutover | `DONE / FIELD VERIFIED` | `RFC/UnifiedCombat_scheduler_refactor_phase5_maintenance_cutover_checklist.md`; Redrogue BRD/WHM and Ponponponponpon COR/DNC completed several full song/roll cycles without an observed regression. GEO remains accurately recorded as a proposal-only scaffold; Niightsiide used an external GEO addon. |
@@ -198,8 +198,70 @@ The consolidated field configuration and pass matrix are in
 The completion decision and limitations are in
 `RFC/UnifiedCombat_scheduler_refactor_phase5_exit_audit_2026-07-24.md`.
 
+### Phase 6 acceptance record
+
+| Task | Status | Artifact / evidence |
+| --- | --- | --- |
+| Delete unreachable legacy scheduler branches | `DONE / REPLAY VERIFIED` | Removed `_G.UC_CoreCombatTickOnce`, `core.combat_tick_once()`, `run_unified_combat()`, the core legacy pull/movement executors, unused legacy-job-adapter global, and scheduler-local defensive/HealBot fallback execution. |
+| Remove duplicate and unreachable helpers | `DONE / REPLAY VERIFIED` | Removed helpers/imports whose only callers were deleted legacy paths, the unused scheduler JSON import, the unused UI helper, and the empty legacy status-change event hook. The `lor/lor_packets` require-time initializer is deliberately retained for lazy actor loading. |
+| Retire obsolete ownership markers | `DONE / PROFILE VERIFIED` | Removed all four `scheduler_dark_launch_*` keys from runtime/profile/UI contracts and local profiles. The current writer omits stale marker input, all 42 v2 profiles validate, and the restarted published UI leaves profiles clean. |
+| Rename active dispatch terminology | `DONE / REPLAY VERIFIED` | Active functions are `scheduler.dispatch_selected_plan()`, `p1_dispatch_combat()`, and `record_dispatch()`; local validation variables use intent terminology. |
+| Debug-global collapse | `CONDITION NOT MET — RETAINED` | Historical `_G.UC_SCHED_P1_DARKLAUNCH_*` validation payloads and block reasons remain because no bridge/UI replacement exists. This follows the RFC condition and is pinned by `selftest_phase6_cleanup.lua`. |
+| Documentation disposition | `DONE` | Current side-effect/ownership/replay/readiness docs use current names; material pre-cutover docs and the Phase 5 terminology decision are explicitly marked historical/superseded. |
+| Phase 6 live acceptance | `DONE / FIELD VERIFIED WITH ACCEPTED PATH-FOLLOW RISK` | The user reloaded UnifiedCombat on all active profiles and completed live testing. A stale-profile deployment regression on Ponponponponpon was isolated, repaired, and retested: after addon reload, Weaponskill Spam again used Savage Blade as configured. Live path-follow remains the explicitly accepted untested risk from Phases 4 and 5. |
+
+Phase 6 automated verification:
+
+- runtime parse: 86 runtime Lua files;
+- aggregate replay/static runner: 119/119 suites;
+- side-effect discovery guard: 135 non-test Lua files, 19 allowlisted files,
+  285 exact file-pattern assertions, and 205 observed tracked hits;
+- WinForms build: zero warnings and zero errors after dead helper removal;
+- WinForms structured-profile self-test: pass, including explicit stale-input
+  coverage proving retired ownership markers are omitted;
+- final local v2 profile validation: 42/42 load successfully with all five
+  domains boolean and no retired ownership marker; post-restart scan clean.
+
+Phase 6 artifacts:
+
+- `RFC/UnifiedCombat_scheduler_refactor_phase6_cleanup_checklist.md`;
+- `RFC/UnifiedCombat_scheduler_refactor_phase6_exit_audit_2026-07-24.md`.
+
 ## Recent Historical Entries
 
+- 2026-07-24: Closed the Ponponponponpon field regression and restored Phase 6
+  completion. After the clean v2 profile deployment, the user reloaded
+  UnifiedCombat and confirmed that Weaponskill Spam again uses Savage Blade as
+  configured. This verifies that the observed Detonator behavior was stale
+  runtime state after the earlier conversion failure, not scheduler selection
+  logic.
+- 2026-07-24: Reopened Phase 6 field completion after Ponponponponpon used
+  Detonator despite its v2 Spam/Savage Blade configuration. Windower logs prove
+  its earlier v2 reload failed conversion on a retired ownership marker,
+  leaving runtime settings sourced from the legacy COR profile where
+  `spam = false`. The current UI/profile deployment is clean. Added focused
+  replay coverage proving Spam selects only the configured primary WS across
+  active skillchain resonance; live reload/retest remains.
+- 2026-07-24: Completed Phase 6 field acceptance. UnifiedCombat was reloaded on
+  all active profiles and live testing completed with no noticed regression.
+  Final profile verification found that the still-running pre-Phase-6
+  published UI could reserialize retired ownership markers. The affected
+  generated profile was cleaned, and an explicit stale-input writer regression
+  test now passes. The current UI was published and restarted, all 42 v2
+  profiles passed the final validation, and the post-restart scan remained
+  clean.
+  The prior untested live path-follow disposition remains explicitly accepted,
+  backed by focused automated coverage. Phase 6 advanced to `DONE / FIELD
+  VERIFIED WITH ACCEPTED PATH-FOLLOW RISK`.
+- 2026-07-24: Implemented and replay-verified the Phase 6 cleanup candidate.
+  Removed the unreachable legacy core tick/loop/executors, scheduler-local
+  defensive fallbacks, obsolete ownership markers, unused core/UI/global
+  helpers, and active legacy/dark-launch function names. Refreshed current architecture documents
+  and marked material pre-cutover documents superseded. Historical validation
+  globals remain because no bridge/UI replacement exists. Automated validation
+  passes 119/119 suites, 86/86 runtime parse checks, the 205-hit side-effect
+  guard, WinForms build/self-test, and all 42 local v2 profiles. Five-character
+  live acceptance remains pending.
 - 2026-07-24: Completed Phase 5 field acceptance. Nyoourke PLD/WAR, Terrasjr
   MNK/WAR, Niightsiide GEO/RDM, Redrogue BRD/WHM, and Ponponponponpon COR/DNC
   completed several full cycles of combat, mob songs, and COR rolls with no

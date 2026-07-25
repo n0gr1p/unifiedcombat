@@ -1,5 +1,8 @@
 # B2 - Profile v2 runtime consumer audit
 
+> Historical migration snapshot. Its compatibility-marker inventory is
+> superseded by the Phase 6 exit audit in `../RFC/`.
+
 This audit checks the live addon consumers against the UI-owned v2 profile source of truth after profilev2 autoload/reload was fixed.
 
 Core rule used here:

@@ -61,7 +61,7 @@ local function assert_provider_purity()
         "apply_turn_ownership(",
         "p1_get_locks(",
         "p1_hard_lock_reject(",
-        "p1_record_legacy_dispatch(",
+        "record_dispatch(",
         "pcall(require",
     }
     for _, path in ipairs(PROVIDER_PATHS) do

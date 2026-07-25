@@ -83,6 +83,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_scheduler_ownership_flags_static.lua",
     "tests/replay/harness/selftest_scheduler_ownership_field_docs_static.lua",
     "tests/replay/harness/selftest_phase5_domain_cutover.lua",
+    "tests/replay/harness/selftest_phase6_cleanup.lua",
     "tests/replay/harness/selftest_run_ownership_static.lua",
     "tests/replay/harness/selftest_run_ownership_runtime.lua",
     "tests/replay/harness/selftest_run_stop_ownership_static.lua",

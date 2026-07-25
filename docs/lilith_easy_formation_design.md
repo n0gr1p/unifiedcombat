@@ -92,7 +92,6 @@ Required ownership configuration:
 ```lua
 ownership = {
     domain_movement_enabled = true,
-    scheduler_dark_launch_movement = true,
 }
 ```
 

@@ -95,12 +95,12 @@ local function main()
 
     local helper_block = source:match("function scheduler%.p1_dispatch_target_control%(selected, ctx%)(.-)\nend\n\nfunction scheduler%.p1_try_nonblocking_target_acquire")
     assert_true(type(helper_block) == "string", "failed to capture nonblocking target dispatch helper")
-    assert_not_contains(helper_block, "p1_record_legacy_dispatch(ctx)", "nonblocking target dispatch helper must not create a normal pending action lock")
+    assert_not_contains(helper_block, "record_dispatch(ctx)", "nonblocking target dispatch helper must not create a normal pending action lock")
     assert_not_contains(helper_block, "action_mark_sent(", "nonblocking target dispatch helper must not consume spell/JA/WS action economy")
 
     local target_block = source:match("if provider == 'target_control' then(.-)\n\tend\n\n\tif provider == 'pull_control' then")
     assert_true(type(target_block) == "string", "failed to capture target_control dispatch block")
-    assert_not_contains(target_block, "p1_record_legacy_dispatch(ctx)", "ranked target-control dispatch must also avoid creating a normal pending action lock")
+    assert_not_contains(target_block, "record_dispatch(ctx)", "ranked target-control dispatch must also avoid creating a normal pending action lock")
     assert_not_contains(target_block, "action_mark_sent(", "target-control dispatch must not consume spell/JA/WS action economy")
 
     local disabled_ok, disabled_reason = select_target_nonblocking_mock({

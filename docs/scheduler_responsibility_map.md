@@ -1,18 +1,18 @@
 # Unified Scheduler Responsibility Map
 
-Status: **Phase 5 domain cutover complete**
-Verified: 2026-07-24 by replay/static validation and multibox field acceptance.
-Several full live combat/song/roll cycles passed without an observed regression.
-Phase 3/4 field evidence remains the baseline for defensive casting,
-Pianissimo, party follow, cast movement lockout, and lifecycle stop. Live
-path-follow remains deferred with risk accepted.
+Status: **Phase 6 cleanup complete**
+Verified: 2026-07-24 by repository-wide static/replay validation and live
+acceptance on all active profiles. Live path-follow remains an accepted risk.
+Phase 6 removes unreachable legacy execution and obsolete profile markers
+without changing domain authority, proposal order, priority bands, or
+dispatcher execution.
 Runtime behavior intent: selection behavior remains stable; scheduler-owned
 side effects cross one dispatcher contract, while domain providers append
 proposals only.
 
 ## Purpose
 
-This map records the completed Phase 5 cutover architecture. It replaces the
+This map records the implemented Phase 6 cleanup architecture. It replaces the
 2026-05-15 pre-extraction draft and records the movement ownership boundary
 selected in
 `RFC/UnifiedCombat_scheduler_refactor_phase4_movement_ownership_decision.md`.
@@ -21,12 +21,12 @@ Current primary sizes:
 
 | File | Lines | Current role |
 | --- | ---: | --- |
-| `unified_scheduler.lua` | 6,275 | Scheduler facade, provider wiring, dispatcher orchestration, movement coordination, lifecycle policy, and packet observation |
-| `uc_provider_*.lua` | 1,673 across six modules | Defensive, combat, tank, enemy-buff, maintenance, and target/pull proposal generation |
-| `unified_combat_core.lua` | 4,325 | Dormant legacy combat/movement implementation plus scheduler-facing selection helpers and target-scoped skillchain state |
+| `unified_scheduler.lua` | 6,066 | Scheduler facade, provider wiring, dispatcher orchestration, movement coordination, lifecycle policy, and packet observation |
+| `uc_provider_*.lua` | 1,672 across six modules | Defensive, combat, tank, enemy-buff, maintenance, and target/pull proposal generation |
+| `unified_combat_core.lua` | 3,387 | Scheduler-facing selection helpers, movement decisions, WS coordination, and target-scoped skillchain state |
 | `unified_engine.lua` | 359 | 0.20-second lifecycle tick, overlay rendering, and one scheduler invocation; no core fallback |
 | `uc_movement_dispatcher.lua` | 169 | Shared dispatcher-backed movement execution adapter |
-| `uc_domain_ownership.lua` | 62 | Strict active-config domain enablement and compatibility-marker diagnostics |
+| `uc_domain_ownership.lua` | 42 | Strict active-config domain enablement |
 | `uc_scheduler_pull_executor.lua` | 68 | Dispatcher-backed target, movement, command, and settle adapter for scheduler pull |
 
 The scheduler is larger than the approximately 5,300-line RFC snapshot because
@@ -43,7 +43,7 @@ These modules are active and called by `unified_scheduler.lua`.
 | Action lifecycle | `uc_scheduler_action_state.lua` | `action_state`, `action_mark_sent`, packet start/end, acting/block checks, spell completion/interruption bridges |
 | Command construction | `uc_scheduler_command_builder.lua` | `build_action_command` |
 | Active config readers | `uc_scheduler_config.lua` | Scheduler/provider-facing ownership, combat, tank, and debug reads |
-| Domain ownership policy | `uc_domain_ownership.lua` | Authoritative combat, defensive, movement, and maintenance enablement; retained legacy-marker inspection |
+| Domain ownership policy | `uc_domain_ownership.lua` | Authoritative combat, defensive, movement, and maintenance enablement; party follow reads its own authoritative follow-domain setting |
 | Context leaf helpers | `uc_scheduler_context_utils.lua` | Settings, zone, partner target, and maintenance-city helpers |
 | Tick context | `uc_scheduler_context.lua` | `p1_build_ctx` wrapper; one cached context shared by target acquisition and proposal collection/ranking |
 | Defensive pure helpers | `uc_scheduler_defensive_utils.lua` | Buff, cure, debuff, priority, and danger calculations |
@@ -93,7 +93,7 @@ Functions/state:
 Current responsibility:
 
 - owns root mutable state and the scheduler wall-clock source;
-- bridges flat and active config reads;
+- reads normalized active configuration through the established config facade;
 - exposes state consumed by extracted modules.
 
 Target:
@@ -281,21 +281,18 @@ Functions:
 - `build_defensive_candidates`
 - `choose_defensive_action`
 - `choose_cure_spell`
-- `try_delegate_healbot`
-- `try_internal_defensive_action`
 - maintenance cache and song snapshot helpers
 
 Current responsibility:
 
-- owns candidate construction and legacy defensive execution compatibility;
+- owns defensive candidate construction and scheduler lifecycle policy;
 - delegates pure leaf operations to extracted helper modules;
 - extracted defensive and maintenance adapters convert existing selections into
-  proposal records without taking over legacy execution.
+  proposal records for the ranked scheduler path.
 
 Target:
 
-- retain the extracted providers plus separate legacy compatibility execution
-  until explicit domain cutover.
+- retain the extracted providers and ranked scheduler execution path.
 
 Priority/risk: **high / high**
 
@@ -329,8 +326,7 @@ Status:
   injected dispatcher movement facade backed by `uc_movement_dispatcher.lua`;
 - independent follow, pathing, Nyzul, formation, and lifecycle decision owners
   execute movement through the same shared adapter;
-- legacy core movement code remains present but is not reachable from
-  `unified_engine.lua`; deletion is Phase 6 cleanup.
+- legacy core movement execution is deleted.
 
 Priority/risk: **high / very high**
 
@@ -348,8 +344,8 @@ Functions:
 - `scheduler.p1_dispatch_maintenance_brd`
 - `p1_dispatch_defensive_internal`
 - `p1_dispatch_defensive_healbot`
-- `p1_try_dark_launch_combat_dispatch`
-- `scheduler.p1_try_dark_launch_dispatch`
+- `p1_dispatch_combat`
+- `scheduler.dispatch_selected_plan`
 - ownership status-shape helpers
 
 Current responsibility:
@@ -465,17 +461,15 @@ Target:
 
 Current:
 
-- retains legacy direct combat and movement code that is no longer invoked by
-  `unified_engine.lua`;
-- exposes scheduler-facing WS, tank, pull, target, and movement helpers;
+- exposes scheduler-facing WS, tank, pull, target, and movement decision helpers;
 - owns target-scoped skillchain state while its scheduler-owned WS send and
   movement path execute through injected dispatcher contracts.
 
 Target:
 
-- retain compatibility helpers during migration;
-- stop executing scheduler-owned actions after dispatcher cutover;
-- do not remove wrappers until callers are proven migrated.
+- retain only helpers with proven scheduler callers;
+- keep execution dependency-injected and dispatcher-backed;
+- do not reintroduce the removed legacy tick or direct executors.
 
 ### Independent movement owners
 
@@ -502,17 +496,21 @@ Execution:
 
 1. Packet/action observation fan-out.
 2. Defensive/tank spell and engage lifecycle state.
-3. Phase 6 deletion of unreachable legacy branches without removing
-   scheduler-facing core helpers.
+3. Live validation after Phase 6 deletion of unreachable legacy branches.
 4. Live path-follow parity remains an accepted, unclosed field risk.
 
-## Recommended next order after Phase 5 completion
+## Phase 6 completion boundary
 
-1. Preserve proposal keys, priority bands, rejection taxonomy, provider order,
-   and public scheduler wrappers during Phase 6 cleanup.
-2. Delete unreachable legacy execution in small, independently verified cuts.
-3. Keep the dormant scheduler vector path disconnected unless a separate design
-   explicitly reconnects it.
+1. Proposal keys, priority bands, rejection taxonomy, provider order, and public
+   scheduler event wrappers remain unchanged.
+2. The legacy core tick, its direct execution branches, scheduler-local
+   defensive fallbacks, obsolete ownership markers, and unused helpers are
+   removed.
+3. Historical `_G.UC_SCHED_P1_DARKLAUNCH_*` validation payloads and
+   `BLOCK_SCHED_P1_DARKLAUNCH_*` reason strings remain because the RFC requires
+   a bridge/UI replacement before those diagnostic contracts are collapsed.
+4. Live reload and multibox combat/maintenance/movement acceptance remains the
+   Phase 6 exit gate. Live path-follow remains the previously accepted risk.
 
-Do not combine legacy domain cutover with stricter proposal validation or a
-proposal-based movement redesign.
+Treat stricter proposal validation or a proposal-based movement redesign as
+separate future behavior changes.

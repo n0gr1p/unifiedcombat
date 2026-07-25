@@ -1,5 +1,9 @@
 # Vector Run Reachability Decision
 
+> Historical reachability decision. Phase 6 removed the unreachable legacy
+> vector/dispatch surfaces; use the Phase 6 exit audit in `../RFC/` for current
+> status.
+
 ## Current Reachability Evidence
 
 The current repo state shows:

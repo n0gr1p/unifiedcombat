@@ -121,7 +121,7 @@ Active runtime uses UC engine path from `UnifiedCombat.lua` and does not require
   - The scheduler owns combat, defensive, maintenance, and scheduler/path
     movement execution according to the corresponding `domain_*_enabled`
     settings.
-  - The engine does not invoke the legacy core combat tick.
+  - The removed legacy core combat tick has no runtime entrypoint.
 4. Each prerender frame:
   - Broadcast own follow IPC position.
   - Tick remote bridge.

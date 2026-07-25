@@ -1,5 +1,9 @@
 # Cure Cast Movement-Stop Audit
 
+> Historical defect audit. The direct defensive fallback described here was
+> removed by Phase 5/6; use `scheduler_responsibility_map.md` for current
+> ownership.
+
 ## Observed Field Behavior
 
 - Character begins initial approach toward a mob.

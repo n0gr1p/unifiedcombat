@@ -4,7 +4,7 @@ local pending_record = require("uc_scheduler_pending_record")
 local M = {}
 
 local function call_helper(fixture)
-    if fixture.helper ~= "p1_record_legacy_dispatch" then
+    if fixture.helper ~= "record_dispatch" then
         error("unknown helper: " .. tostring(fixture.helper))
     end
 
@@ -16,7 +16,7 @@ local function call_helper(fixture)
         error("fixture input.p1_number must be a function")
     end
 
-    local result = pending_record.p1_record_legacy_dispatch(scheduler, ctx, p1_number)
+    local result = pending_record.record_dispatch(scheduler, ctx, p1_number)
     local phase1 = scheduler.phase1 or {}
 
     return {

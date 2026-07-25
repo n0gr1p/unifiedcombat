@@ -219,10 +219,6 @@ local function build_flat_settings()
         domain_movement_enabled = false,
         domain_maintenance_enabled = false,
         domain_follow_enabled = false,
-        scheduler_dark_launch_combat = true,
-        scheduler_dark_launch_defensive = true,
-        scheduler_dark_launch_movement = true,
-        scheduler_dark_launch_maintenance = true,
         sub = true,
         sub2 = true,
         solo = true,
@@ -477,10 +473,6 @@ local function build_nested_settings()
             domain_movement_enabled = false,
             domain_maintenance_enabled = false,
             domain_follow_enabled = false,
-            scheduler_dark_launch_combat = true,
-            scheduler_dark_launch_defensive = true,
-            scheduler_dark_launch_movement = true,
-            scheduler_dark_launch_maintenance = true,
         },
         legacy = {
             sub = true,
@@ -598,7 +590,7 @@ local function main()
     assert_equal(flat_config.maintenance.brd.marcato_song, 'Honor March', 'flat BRD Marcato song mismatch')
 	assert_equal(flat_config.maintenance.brd.recovery_range_yalms, 12.4, 'flat BRD recovery range mismatch')
     assert_equal(flat_config.debug.ja_debug, true, 'debug flag mismatch')
-    assert_equal(flat_config.ownership.scheduler_dark_launch_maintenance, true, 'ownership flag mismatch')
+    assert_equal(flat_config.ownership.domain_maintenance_enabled, false, 'maintenance domain mismatch')
     assert_equal(flat_config.legacy.command, true, 'legacy ambiguous flag mismatch')
     assert_equal(flat_config.legacy.profiles.UC.WAR.flag, true, 'legacy profiles mismatch')
 
