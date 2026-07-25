@@ -39,11 +39,10 @@ function M.new(deps)
 	function provider.collect(ctx, out)
 		require_table(ctx, 'ctx')
 		require_table(out, 'out')
-		log(('ENEMY_DISPEL_TICK def_enabled=%s remove_enemy=%s provider=%s dark_def=%s'):format(
+		log(('ENEMY_DISPEL_TICK def_enabled=%s remove_enemy=%s provider=%s domain_defensive=true'):format(
 			tostring(bool_setting(active_value_or_flat('config.defensive.enabled', ctx.settings.defensive_enabled), false)),
 			tostring(bool_setting(active_value_or_flat('config.defensive.enemy_buffs.remove', ctx.settings.def_remove_enemy_buffs), false)),
-			tostring(active_value_or_flat('config.defensive.provider', ctx.settings.defensive_provider) or ''),
-			tostring(bool_setting(active_value_or_flat('config.ownership.scheduler_dark_launch_defensive', ctx.settings.scheduler_dark_launch_defensive), false))
+			tostring(active_value_or_flat('config.defensive.provider', ctx.settings.defensive_provider) or '')
 		))
 		if not bool_setting(active_value_or_flat('config.defensive.enabled', ctx.settings.defensive_enabled), false) then
 			log('ENEMY_DISPEL_SKIP reason=DEFENSIVE_DISABLED')

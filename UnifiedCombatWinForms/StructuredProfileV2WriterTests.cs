@@ -18,6 +18,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeOmitsProfileV2AutoReloadWhenDisabled();
             TestSerializeIncludesProfileV2AutoReloadWhenEnabled();
             TestProfileV2AutoReloadIsPartOfPersistedBoolSet();
+            TestDomainOwnershipUiContract();
             TestSerializeIncludesPullerNameWhenSelected();
 			TestSerializeCampLeashSourceWithoutPullerName();
 			TestSerializeIncludesPartnerNames();
@@ -43,7 +44,7 @@ internal static class StructuredProfileV2WriterTests
             TestReactionUiEditsAreLocalUntilSave();
             TestDisabledFormationIsOmitted();
             TestSerializeLilithEasyFormation();
-            TestEnabledFormationRequiresMovementOwnership();
+            TestEnabledFormationRequiresMovementDomain();
             TestFormationUiEditsAreLocalUntilSave();
             TestFormationUiProfilePersistenceContract();
             TestSerializeConfigurableControlRanges();
@@ -282,6 +283,40 @@ internal static class StructuredProfileV2WriterTests
             HubUiConstants.BoolKeys.Contains("profile_v2_auto_reload_on_change"),
             "auto-reload must be included in the shared UI bool key set so load/save paths persist it"
         );
+    }
+
+    private static void TestDomainOwnershipUiContract()
+    {
+        foreach (var key in new[]
+        {
+            "domain_combat_enabled",
+            "domain_defensive_enabled",
+            "domain_movement_enabled",
+            "domain_maintenance_enabled",
+            "domain_follow_enabled",
+        })
+        {
+            AssertTrue(HubUiConstants.BoolKeys.Contains(key), $"{key} must be an editable UI boolean");
+        }
+
+        var source = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        AssertContains(source, "MkGlobal(\"domain_combat_enabled\")", "combat domain control missing");
+        AssertContains(source, "MkGlobal(\"domain_defensive_enabled\")", "defensive domain control missing");
+        AssertContains(source, "MkGlobal(\"domain_movement_enabled\")", "movement domain control missing");
+        AssertContains(source, "MkGlobal(\"domain_maintenance_enabled\")", "maintenance domain control missing");
+        AssertContains(source, "MkGlobal(\"domain_follow_enabled\")", "follow domain control missing");
+        foreach (var key in new[]
+        {
+            "scheduler_dark_launch_combat",
+            "scheduler_dark_launch_defensive",
+            "scheduler_dark_launch_movement",
+            "scheduler_dark_launch_maintenance",
+        })
+        {
+            AssertContains(source, $"MkReadOnlyGlobal(\"{key}\")", $"{key} must be read-only");
+            AssertNotContains(source, $"sch.Controls.Add(MkGlobal(\"{key}\"))", $"{key} must not remain editable");
+        }
+        AssertNotContains(source, "Dark-launch toggles: opt into", "obsolete ownership guidance must be removed");
     }
 
     private static void TestSerializeIncludesPullerNameWhenSelected()
@@ -688,6 +723,7 @@ internal static class StructuredProfileV2WriterTests
     {
         var flat = BuildSampleFlatProfile();
         EnableSampleFormation(flat);
+        flat["scheduler_dark_launch_movement"] = false;
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
             new StructuredProfileV2Identity("Niightsiide", "WHM", "RDM")
@@ -709,11 +745,11 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "cone_safety_margin_deg = 15", "healer cone safety margin missing");
     }
 
-    private static void TestEnabledFormationRequiresMovementOwnership()
+    private static void TestEnabledFormationRequiresMovementDomain()
     {
         var flat = BuildSampleFlatProfile();
         EnableSampleFormation(flat);
-        flat["scheduler_dark_launch_movement"] = false;
+        flat["domain_movement_enabled"] = false;
         try
         {
             _ = StructuredProfileV2Writer.BuildStructuredProfileFile(
@@ -723,10 +759,10 @@ internal static class StructuredProfileV2WriterTests
         }
         catch (InvalidDataException ex)
         {
-            AssertContains(ex.Message, "movement domain and scheduler movement ownership", "formation ownership failure reason mismatch");
+            AssertContains(ex.Message, "requires movement domain", "formation domain failure reason mismatch");
             return;
         }
-        throw new InvalidOperationException("enabled formation without scheduler movement ownership must fail");
+        throw new InvalidOperationException("enabled formation without movement domain must fail");
     }
 
     private static void TestFormationUiEditsAreLocalUntilSave()
@@ -738,7 +774,8 @@ internal static class StructuredProfileV2WriterTests
         var formationHandlers = source[start..end];
         AssertNotContains(formationHandlers, "Forward(", "formation durable controls must not emit live bridge traffic");
         AssertContains(formationHandlers, "CaptureWorkingProfileFromUi", "formation durable controls must update local working state");
-        AssertContains(formationHandlers, "scheduler_dark_launch_movement", "formation UI must validate scheduler movement ownership");
+        AssertContains(formationHandlers, "domain_movement_enabled", "formation UI must validate movement domain enablement");
+        AssertNotContains(formationHandlers, "scheduler_dark_launch_movement", "formation UI must not depend on compatibility-only ownership markers");
     }
 
     private static void TestFormationUiProfilePersistenceContract()

@@ -126,7 +126,7 @@ local function collect_sleep_mock(input)
         sleep_spells = input.sleep_spells or {},
         sleep_max_target_range = input.sleep_max_target_range,
     }
-    if input.engine_on ~= true or input.scheduler_dark_launch_combat ~= true or settings.sleep ~= true then
+    if input.engine_on ~= true or input.domain_combat_enabled ~= true or settings.sleep ~= true then
         return nil
     end
     if #settings.sleep_spells == 0 then
@@ -211,7 +211,7 @@ local function main()
 
     local picked = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         sleep = true,
         sleep_spells = { "Sleep II", "Sleep" },
         now = 10,
@@ -264,7 +264,7 @@ local function main()
 
     picked = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         sleep = true,
         sleep_spells = { "Sleep II", "Sleep" },
         now = 50,
@@ -283,7 +283,7 @@ local function main()
 
     picked = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         sleep = false,
         sleep_spells = { "Sleep II", "Sleep" },
         now = 60,
@@ -302,7 +302,7 @@ local function main()
 
     picked = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         sleep = true,
         sleep_spells = {},
         now = 70,

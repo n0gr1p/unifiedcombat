@@ -15,6 +15,7 @@ local tb_effect_table = require('uc_tb_effect_table')
 local scheduler_locks = require('uc_scheduler_locks')
 local scheduler_pending = require('uc_scheduler_pending')
 local uc_scheduler_config = require('uc_scheduler_config')
+local domain_ownership = require('uc_domain_ownership')
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
 	or nil
@@ -1516,9 +1517,6 @@ function scheduler.sleep_max_target_distance(settings)
 end
 
 function scheduler.try_partner_tiebreak(settings)
-	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(settings), false) then
-		return false, nil
-	end
 	if not bool_setting(settings and settings.partner, false) then
 		return false, nil
 	end
@@ -2071,6 +2069,10 @@ end
 local function run_movement_coordinator_tick()
 	local s = get_settings()
 	local now = now_s()
+	if not domain_ownership.is_enabled('movement') then
+		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_DOMAIN_DISABLED'
+		return false, 'MOVE_COORD_DOMAIN_DISABLED'
+	end
 	local nyzul_runtime = require('uc_nyzul_runtime')
 	if nyzul_runtime.is_movement_held() then
 		local reason = nyzul_runtime.movement_hold_reason()
@@ -2224,10 +2226,6 @@ local function run_movement_coordinator_tick()
 			stop = run_stop_ownership_status.stop,
 		}
 		return false, 'MOVE_COORD_PULL_SPELL_WAIT'
-	end
-	if not bool_setting(s and s.scheduler_dark_launch_movement, false) then
-		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_TOGGLE_OFF'
-		return false, 'MOVE_COORD_TOGGLE_OFF'
 	end
 	-- Keep fight-follow hold semantics only for active combat participants.
 	if engaged and combat_participant then
@@ -3620,15 +3618,18 @@ local function p1_collect_proposals(ctx)
 	local out = {}
 	local s = ctx.settings or {}
 	-- 5 Hz domains
-	scheduler.providers.target_control.collect_target(ctx, out)
-	scheduler.providers.combat.collect_engage(ctx, out)
-	scheduler.providers.target_control.collect_pull(ctx, out)
-	scheduler.providers.tank_enmity.collect(ctx, out)
-	scheduler.providers.combat.collect_sleep(ctx, out)
-	scheduler.providers.combat.collect_offense(ctx, out)
-	scheduler.providers.combat.collect_ja(ctx, out)
+	if domain_ownership.is_enabled('combat') then
+		scheduler.providers.target_control.collect_target(ctx, out)
+		scheduler.providers.combat.collect_engage(ctx, out)
+		scheduler.providers.target_control.collect_pull(ctx, out)
+		scheduler.providers.tank_enmity.collect(ctx, out)
+		scheduler.providers.combat.collect_sleep(ctx, out)
+		scheduler.providers.combat.collect_offense(ctx, out)
+		scheduler.providers.combat.collect_ja(ctx, out)
+	end
 	-- 2 Hz defensive
-	if ctx.now >= (tonumber(s._sched_next_defensive_at) or 0) then
+	if domain_ownership.is_enabled('defensive')
+		and ctx.now >= (tonumber(s._sched_next_defensive_at) or 0) then
 		scheduler.providers.enemy_buff_removal.collect(ctx, out)
 		scheduler.providers.defensive.collect_internal(ctx, out)
 		scheduler.providers.defensive.collect_healbot(ctx, out)
@@ -3639,8 +3640,12 @@ local function p1_collect_proposals(ctx)
 	local player = ctx.player or {}
 	local main_job = tostring(player.main_job or '')
 	local sub_job = tostring(player.sub_job or '')
-	local brd_provider_active = main_job ~= 'COR' and (main_job == 'BRD' or sub_job == 'BRD')
-	if brd_provider_active or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0) then
+	local maintenance_enabled = domain_ownership.is_enabled('maintenance')
+	local brd_provider_active = maintenance_enabled
+		and main_job ~= 'COR'
+		and (main_job == 'BRD' or sub_job == 'BRD')
+	if maintenance_enabled
+		and (brd_provider_active or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0)) then
 		scheduler.providers.maintenance.collect(ctx, out)
 	end
 	if brd_provider_active then
@@ -4087,7 +4092,7 @@ function scheduler.p1_dispatch_target_control(selected, ctx)
 end
 
 function scheduler.p1_try_nonblocking_target_acquire(settings, ctx)
-	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(settings), false) then
+	if not domain_ownership.is_enabled('combat') then
 		return false, nil
 	end
 	if type(rawget(_G, 'UC_REACTION_LOCK')) == 'table' then
@@ -4389,8 +4394,18 @@ local function p1_dispatch_combat_engage(selected, settings, phase, expected_tid
 	return true, nil
 end
 
+local function p1_build_pull_executor()
+	return require('uc_scheduler_pull_executor').build({
+		dispatcher = require('uc_scheduler_dispatcher'),
+		run = windower.ffxi.run,
+		set_target = uc_settarget.select_by_id,
+		send_command = windower.send_command,
+		sleep = coroutine.sleep,
+	})
+end
+
 local function p1_dispatch_pull_control(selected, settings)
-	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(settings), false) then
+	if not domain_ownership.is_enabled('combat') then
 		return false, nil
 	end
 	local blocked, block_reason = action_dispatch_blocked()
@@ -4404,7 +4419,7 @@ local function p1_dispatch_pull_control(selected, settings)
 	if target_id <= 0 then
 		return false, nil
 	end
-	local ok, reason = combat_core.dispatch_pull_for_scheduler(settings, target_id)
+	local ok, reason = combat_core.dispatch_pull_for_scheduler(settings, target_id, p1_build_pull_executor())
 	if not ok then
 		return false, nil
 	end
@@ -4429,8 +4444,8 @@ local function p1_dispatch_pull_control(selected, settings)
 end
 
 local function p1_dispatch_maintenance_cor(selected, settings, provider)
-	if not bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_maintenance', settings and settings.scheduler_dark_launch_maintenance), false) then
-		log_def_sched('MAINT_COR_DISPATCH_SKIP reason=TOGGLE_OFF')
+	if not domain_ownership.is_enabled('maintenance') then
+		log_def_sched('MAINT_COR_DISPATCH_SKIP reason=DOMAIN_DISABLED')
 		return false, nil
 	end
 	local blocked, block_reason = action_dispatch_blocked()
@@ -4500,7 +4515,7 @@ local function p1_dispatch_maintenance_cor(selected, settings, provider)
 end
 
 function scheduler.p1_dispatch_maintenance_brd(selected, settings)
-	if not bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_maintenance', settings and settings.scheduler_dark_launch_maintenance), false) then
+	if not domain_ownership.is_enabled('maintenance') then
 		return false, nil
 	end
 	local action_name = tostring(selected.action_name or '')
@@ -4595,7 +4610,7 @@ function scheduler.p1_dispatch_maintenance_brd(selected, settings)
 end
 
 local function p1_dispatch_defensive_internal(selected, settings)
-	if not bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_defensive', settings and settings.scheduler_dark_launch_defensive), false) then
+	if not domain_ownership.is_enabled('defensive') then
 		return false, nil
 	end
 	_G.UC_DEFENSIVE_CHAIN_ACTION = {
@@ -4732,7 +4747,7 @@ local function p1_dispatch_defensive_internal(selected, settings)
 end
 
 local function p1_dispatch_defensive_healbot(selected, settings)
-	if not bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_defensive', settings and settings.scheduler_dark_launch_defensive), false) then
+	if not domain_ownership.is_enabled('defensive') then
 		return false, nil
 	end
 	local blocked, block_reason = action_dispatch_blocked()
@@ -4781,7 +4796,7 @@ end
 
 local function p1_try_dark_launch_combat_dispatch(selected, settings, phase)
 	_G.UC_TANK_ENMITY_BLOCK = ''
-	if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(settings), false) then
+	if not domain_ownership.is_enabled('combat') then
 		return false, nil
 	end
 	p1_apply_face_to_target(settings, tonumber(selected.target_id) or 0)
@@ -5434,14 +5449,16 @@ function scheduler.p1_try_dark_launch_dispatch(settings)
 	if type(selected) ~= 'table' or type(phase.last_plan) ~= 'table' then
 		return false, nil
 	end
-	local tank_spell_wait_locked = scheduler.p1_refresh_tank_spell_wait_lock(phase, now_s())
-	if tank_spell_wait_locked then
-		_G.UC_LAST_SCHED_ACTION = ('[p1]tank_spell_wait:%s'):format(tostring(phase.tank_pending_action or ''))
-		return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_SPELL_WAIT'
+	if domain_ownership.is_enabled('combat') then
+		local tank_spell_wait_locked = scheduler.p1_refresh_tank_spell_wait_lock(phase, now_s())
+		if tank_spell_wait_locked then
+			_G.UC_LAST_SCHED_ACTION = ('[p1]tank_spell_wait:%s'):format(tostring(phase.tank_pending_action or ''))
+			return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_SPELL_WAIT'
+		end
 	end
 	local provider = tostring(selected.provider or '')
 	if provider == 'target_control' then
-		if not bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(settings), false) then
+		if not domain_ownership.is_enabled('combat') then
 			return false, nil
 		end
 		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
@@ -5483,6 +5500,9 @@ end
 function scheduler.process_tick(cadence)
 	_G.UC_LAST_SCHED_ACTION = ''
 	local s = get_settings()
+	local combat_domain_enabled = domain_ownership.is_enabled('combat')
+	local defensive_domain_enabled = domain_ownership.is_enabled('defensive')
+	local maintenance_domain_enabled = domain_ownership.is_enabled('maintenance')
 	local tick_ctx = nil
 	local function get_tick_ctx()
 		if tick_ctx == nil then
@@ -5502,42 +5522,55 @@ function scheduler.process_tick(cadence)
 	_G.UC_LOG_TANK_SCHED = uc_scheduler_config.debug_log_tank_sched(s)
 	ensure_diag_logs_initialized()
 	maybe_broadcast_party_state_ipc()
-	local doom_blocked, doom_reason = try_doom_water_emergency(s)
-	if doom_blocked then
-		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-		scheduler.p1_record_legacy_dispatch(ctx)
-		scheduler.p1_set_pending_globals()
-		_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
-		return true, doom_reason
+	if defensive_domain_enabled then
+		local doom_blocked, doom_reason = try_doom_water_emergency(s)
+		if doom_blocked then
+			local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
+			scheduler.p1_record_legacy_dispatch(ctx)
+			scheduler.p1_set_pending_globals()
+			_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
+			return true, doom_reason
+		end
 	end
-	local partner_blocked, partner_reason = scheduler.try_partner_tiebreak(s)
-	if partner_blocked then
-		return true, partner_reason
+	if combat_domain_enabled then
+		local partner_blocked, partner_reason = scheduler.try_partner_tiebreak(s)
+		if partner_blocked then
+			return true, partner_reason
+		end
 	end
 	scheduler.refresh_reaction_lock()
-	local brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
+	local brd_lane_reserved, brd_lane_reason = false, ''
+	if maintenance_domain_enabled then
+		brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
+	end
 	if not brd_lane_reserved then
 		local target_ctx = nil
-		if bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(s), false)
-			and type(rawget(_G, 'UC_REACTION_LOCK')) ~= 'table' then
+		if combat_domain_enabled and type(rawget(_G, 'UC_REACTION_LOCK')) ~= 'table' then
 			target_ctx = get_tick_ctx()
 		end
-		local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s, target_ctx)
-		if target_acted then
-			return true, target_reason
+		if combat_domain_enabled then
+			local target_acted, target_reason = scheduler.p1_try_nonblocking_target_acquire(s, target_ctx)
+			if target_acted then
+				return true, target_reason
+			end
 		end
 	else
 		scheduler.refresh_brd_maintenance_movement_lock(brd_lane_reason, now_s())
 		_G.UC_TARGET_BLOCK_REASON = 'BRD_LANE:' .. tostring(brd_lane_reason or '')
 	end
-	local defensive_spell_wait_locked = scheduler.refresh_defensive_spell_wait_lock(now_s())
-	if defensive_spell_wait_locked then
-		_G.UC_LAST_SCHED_ACTION = ('[def]spell_wait:%s'):format(tostring(scheduler.defensive_pending_action or ''))
-		return true, 'BLOCK_DEFENSIVE_SPELL_WAITING'
+	if defensive_domain_enabled then
+		local defensive_spell_wait_locked = scheduler.refresh_defensive_spell_wait_lock(now_s())
+		if defensive_spell_wait_locked then
+			_G.UC_LAST_SCHED_ACTION = ('[def]spell_wait:%s'):format(tostring(scheduler.defensive_pending_action or ''))
+			return true, 'BLOCK_DEFENSIVE_SPELL_WAITING'
+		end
 	end
 	p1_run_dry(s, get_tick_ctx())
 	local p1_acted, p1_reason = scheduler.p1_try_dark_launch_dispatch(s)
-	brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
+	brd_lane_reserved, brd_lane_reason = false, ''
+	if maintenance_domain_enabled then
+		brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
+	end
 	local move_acted, move_reason = false, ''
 	if not brd_lane_reserved then
 		move_acted, move_reason = run_movement_coordinator_tick()
@@ -5559,43 +5592,6 @@ function scheduler.process_tick(cadence)
 	if brd_lane_reserved then
 		_G.UC_LAST_SCHED_ACTION = '[p1]brd_lane_hold'
 		return true, 'BLOCK_BRD_ACTION_LANE:' .. tostring(brd_lane_reason or '')
-	end
-	local scheduler_owns_defensive = bool_setting(scheduler.active_value_or_flat(
-		'config.ownership.scheduler_dark_launch_defensive',
-		s.scheduler_dark_launch_defensive
-	), false)
-	if scheduler_owns_defensive then
-		log_def_sched('DEF_SKIP reason=SCHEDULER_OWNS_DEFENSIVE')
-		return false, nil
-	end
-	if not bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', s.defensive_enabled), false) then
-		return false, nil
-	end
-	local provider = tostring(scheduler.active_value_or_flat('config.defensive.provider', s.defensive_provider) or 'internal')
-	_G.UC_SCHED_PROVIDER = provider
-	local acted, reason
-	if provider == 'healbot' then
-		acted, reason = try_delegate_healbot()
-		if not acted and reason == 'BLOCK_DEFENSIVE_PROVIDER_UNAVAILABLE' then
-			_G.UC_LAST_SCHED_ACTION = 'healbot_unavailable_no_block'
-			return false, nil
-		end
-		if acted then
-			local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-			scheduler.p1_record_legacy_dispatch(ctx)
-			scheduler.p1_set_pending_globals()
-			_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
-			return true, reason
-		end
-		return false, nil
-	end
-	acted, reason = try_internal_defensive_action()
-	if acted then
-		local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
-		scheduler.p1_record_legacy_dispatch(ctx)
-		scheduler.p1_set_pending_globals()
-		_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
-		return true, reason
 	end
 	return false, nil
 end
@@ -6099,15 +6095,17 @@ function scheduler.get_debug_overlay()
 	local function enabled_for_provider(provider)
 		local p = tostring(provider or '')
 		if p == 'combat' then
-			return bool_setting(uc_scheduler_config.ownership_scheduler_dark_launch_combat(s), false)
+			return domain_ownership.is_enabled('combat')
 		elseif p == 'defensive_internal' then
-			return bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_defensive', s.scheduler_dark_launch_defensive), false)
+			return domain_ownership.is_enabled('defensive')
 		elseif p == 'defensive_healbot' then
-			return bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_defensive', s.scheduler_dark_launch_defensive), false)
+			return domain_ownership.is_enabled('defensive')
 		elseif p == 'maintenance_cor' then
-			return bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_maintenance', s.scheduler_dark_launch_maintenance), false)
+			return domain_ownership.is_enabled('maintenance')
 		elseif p == 'maintenance_brd' then
-			return bool_setting(scheduler.active_value_or_flat('config.ownership.scheduler_dark_launch_maintenance', s.scheduler_dark_launch_maintenance), false)
+			return domain_ownership.is_enabled('maintenance')
+		elseif p == 'geo' then
+			return domain_ownership.is_enabled('maintenance')
 		end
 		return false
 	end
@@ -6184,7 +6182,9 @@ scheduler.providers.tank_enmity = require('uc_provider_tank_enmity').new({
 scheduler.providers.target_control = require('uc_provider_target_control').new({
 	bool_setting = bool_setting,
 	combat_autotarget = uc_scheduler_config.combat_autotarget,
-	scheduler_owns_combat = uc_scheduler_config.ownership_scheduler_dark_launch_combat,
+	combat_domain_enabled = function()
+		return domain_ownership.is_enabled('combat')
+	end,
 	tank_enabled = uc_scheduler_config.tank_enabled,
 	select_target = combat_core.select_target_for_scheduler,
 	add_control_enabled = combat_core.add_control_enabled_for_scheduler,
@@ -6204,7 +6204,9 @@ scheduler.providers.combat = require('uc_provider_combat').new({
 	action_timeline_log = function(...)
 		return scheduler.action_timeline_log(...)
 	end,
-	scheduler_owns_combat = uc_scheduler_config.ownership_scheduler_dark_launch_combat,
+	combat_domain_enabled = function()
+		return domain_ownership.is_enabled('combat')
+	end,
 	sleep_enabled = require('uc_runtime_overrides').sleep_enabled,
 	sleep_spell_list = scheduler.sleep_spell_list_from_settings,
 	is_live_actionable_target = combat_core.is_live_actionable_combat_target,

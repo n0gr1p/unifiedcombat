@@ -270,6 +270,16 @@ local function set_follow_needs_catchup(active)
 	_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP = false
 end
 
+local function stop_and_release_follow_movement()
+	if tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or '') ~= 'follow' then
+		return false
+	end
+	movement_dispatcher.stop()
+	_G.UC_MOVEMENT_OWNER = 'none'
+	_G.UC_MOVEMENT_LOCK_UNTIL = now_s()
+	return true
+end
+
 local function trim(s)
 	if not s then
 		return ''
@@ -879,16 +889,14 @@ function M.prerender()
 	if not s or not party_follow_enabled(s) then
 		set_follow_run_active(false)
 		set_follow_needs_catchup(false)
-		_G.UC_MOVEMENT_OWNER = 'none'
-		_G.UC_MOVEMENT_LOCK_UNTIL = now_s()
+		stop_and_release_follow_movement()
 		last_follow_suppressed = false
 		return
 	end
 	if type(rawget(_G, 'UC_IsFollowParticipant')) == 'function' and not _G.UC_IsFollowParticipant(s) then
 		set_follow_run_active(false)
 		set_follow_needs_catchup(false)
-		_G.UC_MOVEMENT_OWNER = 'none'
-		_G.UC_MOVEMENT_LOCK_UNTIL = now_s()
+		stop_and_release_follow_movement()
 		last_follow_suppressed = false
 		return
 	end
@@ -918,7 +926,9 @@ function M.prerender()
 		-- Transition hard-stop: prevent stale run vector drift when follow yields to
 		-- combat-owned movement.
 		if not last_follow_suppressed then
-			movement_dispatcher.stop()
+			if not stop_and_release_follow_movement() then
+				movement_dispatcher.stop()
+			end
 		end
 		set_follow_run_active(false)
 		last_follow_suppressed = true
@@ -927,16 +937,19 @@ function M.prerender()
 	last_follow_suppressed = false
 	local p = windower.ffxi.get_player()
 	if not p then
+		stop_and_release_follow_movement()
 		set_follow_run_active(false)
 		return
 	end
 	local lid = party_follow_id(s)
 	if lid == p.id then
+		stop_and_release_follow_movement()
 		set_follow_run_active(false)
 		return
 	end
 	local self_mob = windower.ffxi.get_mob_by_target('me')
 	if not self_mob or not self_mob.x or not self_mob.y then
+		stop_and_release_follow_movement()
 		set_follow_run_active(false)
 		return
 	end

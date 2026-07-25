@@ -241,7 +241,7 @@ local function assert_target_and_pull_proposal_shapes()
     local provider = require("uc_provider_target_control").new({
         bool_setting = function(value) return value == true end,
         combat_autotarget = function() return true end,
-        scheduler_owns_combat = function() return true end,
+        combat_domain_enabled = function() return true end,
         tank_enabled = function() return false end,
         select_target = function() return target_pick end,
         add_control_enabled = function() return false end,

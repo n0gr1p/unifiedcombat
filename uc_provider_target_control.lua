@@ -27,7 +27,7 @@ function M.new(deps)
 	deps = require_table(deps, 'deps')
 	local bool_setting = require_function(deps, 'bool_setting')
 	local combat_autotarget = require_function(deps, 'combat_autotarget')
-	local scheduler_owns_combat = require_function(deps, 'scheduler_owns_combat')
+	local combat_domain_enabled = require_function(deps, 'combat_domain_enabled')
 	local tank_enabled = require_function(deps, 'tank_enabled')
 	local select_target = require_function(deps, 'select_target')
 	local add_control_enabled = require_function(deps, 'add_control_enabled')
@@ -122,7 +122,7 @@ function M.new(deps)
 		if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 			return
 		end
-		if not bool_setting(scheduler_owns_combat(ctx.settings), false) then
+		if not bool_setting(combat_domain_enabled(), false) then
 			return
 		end
 		if not bool_setting(combat_autotarget(ctx.settings), false) then

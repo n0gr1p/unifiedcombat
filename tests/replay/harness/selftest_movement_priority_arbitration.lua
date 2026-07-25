@@ -333,6 +333,28 @@ local function main()
     set_active_profile({
         follow = {
             party = {
+                enabled = false,
+            },
+        },
+    })
+    run_calls = {}
+    _G.UC_MOVEMENT_OWNER = 'scheduler'
+    _G.UC_MOVEMENT_LOCK_UNTIL = _G.__TEST_NOW + 5
+    follow.prerender()
+    assert_equal(#run_calls, 0, 'disabled party follow must not stop another movement owner')
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'scheduler', 'disabled party follow must preserve another movement owner')
+
+    run_calls = {}
+    _G.UC_MOVEMENT_OWNER = 'follow'
+    _G.UC_MOVEMENT_LOCK_UNTIL = _G.__TEST_NOW + 5
+    follow.prerender()
+    assert_equal(#run_calls, 1, 'disabled party follow must stop its own active vector once')
+    assert_equal(run_calls[1].x, false, 'disabled party-follow stop call shape')
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'none', 'disabled party follow must release its own ownership')
+
+    set_active_profile({
+        follow = {
+            party = {
                 enabled = true,
                 leader_id = 0,
                 leader_name = 'Leader',
@@ -399,6 +421,9 @@ local function main()
     run_calls = {}
     _G.__TEST_NOW = 100
     set_active_profile({
+        ownership = {
+            domain_movement_enabled = true,
+        },
         movement = {
             path = {
                 recording = false,
@@ -419,11 +444,20 @@ local function main()
     pathing.tick()
     assert_true(#run_calls > 0, 'pathing tick must drive movement when active path-follow is enabled')
     assert_equal(run_calls[#run_calls].x, 1, 'pathing tick must use active path-follow enablement when flat value differs')
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'path', 'active path run must claim path ownership')
+    assert_true((tonumber(_G.UC_MOVEMENT_LOCK_UNTIL) or 0) > _G.__TEST_NOW,
+        'active path run must publish a short movement lock')
+    follow.prerender()
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'path',
+        'disabled party follow prerender must preserve path ownership from the earlier frame pass')
 
     run_calls = {}
     _G.__TEST_NOW = 101
     _G.UC_SETTINGS.path_follow_enabled = true
     set_active_profile({
+        ownership = {
+            domain_movement_enabled = true,
+        },
         movement = {
             path = {},
         },
@@ -436,6 +470,22 @@ local function main()
     })
     pathing.tick()
     assert_true(#run_calls > 0, 'pathing tick must preserve flat fallback when active path-follow setting is missing')
+
+    run_calls = {}
+    _G.__TEST_NOW = 102
+    set_active_profile({
+        ownership = {
+            domain_movement_enabled = false,
+        },
+    })
+    pathing.tick()
+    assert_equal(#run_calls, 1, 'disabling movement domain must stop a path-owned vector once')
+    assert_equal(run_calls[1].x, false, 'movement-domain stop call shape')
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'none', 'movement-domain stop must release path ownership')
+
+    _G.__TEST_NOW = 103
+    pathing.tick()
+    assert_equal(#run_calls, 1, 'disabled movement domain must not repeat the released path stop')
 
     if rawget(_G, 'UC_SCHED_P1_ENABLE_DISPATCHER_RUN_VECTOR_OWNERSHIP') ~= nil then
         error('movement arbitration test must not require ownership flags')

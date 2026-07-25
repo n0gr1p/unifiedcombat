@@ -82,9 +82,9 @@ local function main()
     assert_contains(ranker_source, "elseif not require_function(deps, 'priority_bypasses_engage')(proposal) then", "pending engage must admit globally high-priority bands")
     assert_contains(source, "if scheduler.p1_priority_bypasses_engage(top) then", "engage preemption must preserve globally high-priority bands")
 
-    assert_contains(source, "local brd_provider_active = main_job ~= 'COR' and (main_job == 'BRD' or sub_job == 'BRD')",
+    assert_contains(source, "and main_job ~= 'COR'",
         "BRD provider cadence must use the same job eligibility as maintenance collection")
-    assert_contains(source, "if brd_provider_active or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0) then",
+    assert_contains(source, "and (brd_provider_active or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0)) then",
         "BRD provider must be collected every scheduler tick")
     assert_contains(maintenance_provider, "brd_maintenance_priority,\n\t\t\t\t\t0,",
         "BRD proposal emission must not consume a speculative throttle")
@@ -108,8 +108,8 @@ local function main()
 
 	local process_tick = source:match("function scheduler%.process_tick%(cadence%)(.-)function scheduler%.on_ipc_message")
     assert_true(type(process_tick) == "string", "failed to capture scheduler process_tick")
-    assert_contains(process_tick, "'config.ownership.scheduler_dark_launch_defensive'",
-        "process_tick must enforce defensive scheduler ownership before legacy dispatch")
+    assert_contains(process_tick, "local defensive_domain_enabled = domain_ownership.is_enabled('defensive')",
+        "process_tick must enforce defensive domain enablement")
     assert_before(process_tick, "try_doom_water_emergency(s)", "scheduler.p1_try_dark_launch_dispatch(s)",
         "Doom must remain the sole hard prepass ahead of Bard scheduler arbitration")
     assert_contains(process_tick, "if not brd_lane_reserved then\n\t\tlocal target_ctx = nil",
@@ -118,16 +118,12 @@ local function main()
         "Bard lane target acquisition must use the tick-stable context")
     assert_contains(process_tick, "if not brd_lane_reserved then\n\t\tmove_acted, move_reason = run_movement_coordinator_tick()",
         "Bard lane must hold movement coordination")
-    assert_before(process_tick, "if brd_lane_reserved then\n\t\t_G.UC_LAST_SCHED_ACTION = '[p1]brd_lane_hold'", "try_internal_defensive_action()",
-        "Bard lane hold must prevent legacy defensive execution")
-    assert_contains(process_tick, "if scheduler_owns_defensive then",
-        "scheduler-owned defensive work must not fall through to the legacy direct executor")
-    assert_contains(process_tick, "DEF_SKIP reason=SCHEDULER_OWNS_DEFENSIVE",
-        "defensive ownership skip must remain observable in defensive diagnostics")
-    assert_before(process_tick, "if scheduler_owns_defensive then", "acted, reason = try_internal_defensive_action()",
-        "defensive ownership guard must precede the direct internal defensive executor")
-    assert_before(process_tick, "if scheduler_owns_defensive then", "acted, reason = try_delegate_healbot()",
-        "defensive ownership guard must precede the direct Healbot executor")
+    assert_not_contains(process_tick, "try_internal_defensive_action()",
+        "process_tick must not retain legacy internal defensive fallback execution")
+    assert_not_contains(process_tick, "try_delegate_healbot()",
+        "process_tick must not retain legacy HealBot fallback execution")
+    assert_not_contains(process_tick, "scheduler_dark_launch_defensive",
+        "process_tick must not branch on the compatibility-only defensive marker")
 
     io.stdout:write("selftest_scheduler_support_priority_bands: OK\n")
 end

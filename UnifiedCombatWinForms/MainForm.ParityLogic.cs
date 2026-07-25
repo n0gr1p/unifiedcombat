@@ -1860,15 +1860,15 @@ public partial class MainForm
 
     private void OnFormationEnableOwnership()
     {
-        if (!_boolChecks.TryGetValue("scheduler_dark_launch_movement", out var schedulerMovement))
+        if (!_boolChecks.TryGetValue("domain_movement_enabled", out var movementDomain))
         {
-            throw new InvalidOperationException("scheduler movement ownership control is unavailable");
+            throw new InvalidOperationException("movement domain control is unavailable");
         }
         var wasSuppressed = _suppressEvents;
         _suppressEvents = true;
         try
         {
-            schedulerMovement.Checked = true;
+            movementDomain.Checked = true;
         }
         finally
         {
@@ -1898,9 +1898,9 @@ public partial class MainForm
             error = "Select or enter the tank character.";
             return false;
         }
-        if (!_boolChecks.TryGetValue("scheduler_dark_launch_movement", out var schedulerMovement) || !schedulerMovement.Checked)
+        if (!_boolChecks.TryGetValue("domain_movement_enabled", out var movementDomain) || !movementDomain.Checked)
         {
-            error = "Scheduler movement ownership must be enabled.";
+            error = "Movement domain must be enabled.";
             return false;
         }
         if (_formationTankReturnRadius.Value <= _formationTankAcceptRadius.Value)
@@ -1924,12 +1924,12 @@ public partial class MainForm
         _formationValidation.Text = !enabled
             ? "Formation is disabled for this profile."
             : valid
-                ? "Ready to save. Movement domain and scheduler ownership are enabled."
+                ? "Ready to save. Movement domain is enabled."
                 : error;
         _formationValidation.ForeColor = !enabled || valid ? SystemColors.ControlText : Color.Firebrick;
-        var schedulerEnabled = _boolChecks.TryGetValue("scheduler_dark_launch_movement", out var schedulerMovement)
-            && schedulerMovement.Checked;
-        _formationEnableOwnership.Visible = enabled && !schedulerEnabled;
+        var movementEnabled = _boolChecks.TryGetValue("domain_movement_enabled", out var movementDomain)
+            && movementDomain.Checked;
+        _formationEnableOwnership.Visible = enabled && !movementEnabled;
     }
 
     private void OnReactionRuleAdd()

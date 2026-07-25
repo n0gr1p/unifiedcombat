@@ -105,7 +105,7 @@ local function mock_target_control(settings, pick)
 end
 
 local function mock_engage(settings, target)
-    if settings.engine_on ~= true or settings.scheduler_dark_launch_combat ~= true or settings.autotarget ~= true then
+    if settings.engine_on ~= true or settings.domain_combat_enabled ~= true or settings.autotarget ~= true then
         return nil
     end
     if type(target) ~= "table" then
@@ -185,7 +185,7 @@ local function main()
 
     local tank_engage = mock_engage({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         tank = true,
     }, {
@@ -246,7 +246,7 @@ local function main()
 
     assert_equal(mock_engage({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         tank = true,
     }, {
@@ -259,7 +259,7 @@ local function main()
 
     assert_equal(mock_engage({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         tank = true,
     }, {
@@ -272,7 +272,7 @@ local function main()
 
     assert_equal(mock_engage({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         tank = true,
     }, {
@@ -286,7 +286,7 @@ local function main()
 
     assert_equal(mock_engage({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         tank = true,
     }, {
@@ -299,7 +299,7 @@ local function main()
 
     local non_tank_engage = mock_engage({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         tank = false,
     }, {
@@ -328,7 +328,7 @@ local function main()
 
     assert_equal(mock_engage({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         tank = true,
     }, {

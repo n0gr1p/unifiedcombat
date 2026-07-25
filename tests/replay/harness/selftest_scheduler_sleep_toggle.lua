@@ -62,7 +62,7 @@ local function collect_sleep_mock(input)
     if input.engine_on ~= true then
         return nil
     end
-    if input.scheduler_dark_launch_combat ~= true then
+    if input.domain_combat_enabled ~= true then
         return nil
     end
     if input.sleep ~= true then
@@ -152,7 +152,18 @@ local function main()
 
     local none = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = false,
+        sleep = true,
+        sleep_spells = { "Sleep II" },
+        candidates = {
+            { eligible = true, target_id = 9, dist = 6, available_spell = "Sleep II" },
+        },
+    })
+    assert_equal(none, nil, "disabled combat domain must suppress Sleep proposals")
+
+    none = collect_sleep_mock({
+        engine_on = true,
+        domain_combat_enabled = true,
         sleep = false,
         sleep_spells = { "Sleep II" },
         candidates = {
@@ -163,7 +174,7 @@ local function main()
 
     none = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         sleep = true,
         sleep_spells = {},
         legacy_sleepspell = "",
@@ -175,7 +186,7 @@ local function main()
 
     local preengage = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         sleep = true,
         sleep_spells = { "Sleep II", "Sleep" },
         engaged = false,
@@ -188,7 +199,7 @@ local function main()
 
     none = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         sleep = true,
         sleep_spells = { "Sleep II", "Sleep" },
         engaged = false,
@@ -200,7 +211,7 @@ local function main()
 
     local engaged_add = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         sleep = true,
         sleep_spells = { "Sleep II" },
         engaged = true,
@@ -212,7 +223,7 @@ local function main()
 
     none = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         sleep = true,
         sleep_spells = { "Sleep II" },
         engaged = true,
@@ -224,7 +235,7 @@ local function main()
 
     local configured_range = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         sleep = true,
         sleep_max_target_range = 14.0,
         sleep_spells = { "Sleep II" },
@@ -236,7 +247,7 @@ local function main()
 
     none = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         sleep = true,
         sleep_max_target_range = 14.0,
         sleep_spells = { "Sleep II" },
@@ -278,7 +289,7 @@ local function main()
 
     local skip_slept = collect_sleep_mock({
         engine_on = true,
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         sleep = true,
         sleep_spells = { "Sleep II", "Sleep" },
         engaged = true,

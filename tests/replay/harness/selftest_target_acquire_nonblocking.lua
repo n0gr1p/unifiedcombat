@@ -40,7 +40,7 @@ local function select_target_nonblocking_mock(input)
     local now = tonumber(input.now) or 0
     local debounce_s = 0.20
     local candidate = input.candidate
-    if input.scheduler_dark_launch_combat ~= true or input.autotarget ~= true then
+    if input.domain_combat_enabled ~= true or input.autotarget ~= true then
         return false, "disabled", state
     end
     if type(candidate) ~= "table" then
@@ -103,8 +103,18 @@ local function main()
     assert_not_contains(target_block, "p1_record_legacy_dispatch(ctx)", "ranked target-control dispatch must also avoid creating a normal pending action lock")
     assert_not_contains(target_block, "action_mark_sent(", "target-control dispatch must not consume spell/JA/WS action economy")
 
+    local disabled_ok, disabled_reason = select_target_nonblocking_mock({
+        domain_combat_enabled = false,
+        autotarget = true,
+        now = 9.0,
+        state = {},
+        candidate = { target_id = 99, valid = true, hpp = 100, in_range = true, claim_ok = true },
+    })
+    assert_equal(disabled_ok, false, "disabled combat domain must suppress target acquisition")
+    assert_equal(disabled_reason, "disabled", "disabled combat domain reason mismatch")
+
     local ok, reason, state = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 10.0,
         state = {},
@@ -114,7 +124,7 @@ local function main()
     assert_equal(reason, "sent", "valid target should be sent immediately")
 
     ok, reason, state = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 10.05,
         state = state,
@@ -124,7 +134,7 @@ local function main()
     assert_equal(reason, "debounced", "repeat target acquire should debounce briefly")
 
     ok, reason = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 10.25,
         state = state,
@@ -134,7 +144,7 @@ local function main()
     assert_equal(reason, "sent", "target acquire should resend after the short debounce")
 
     ok, reason = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 11.0,
         state = {},
@@ -143,7 +153,7 @@ local function main()
     assert_equal(ok, true, "tank with maintenance buff pending should still set target promptly")
 
     ok, reason = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 12.0,
         state = {},
@@ -152,7 +162,7 @@ local function main()
     assert_equal(ok, true, "tank with Sleep proposal pending should still set target promptly")
 
     ok, reason = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 13.0,
         state = {},
@@ -161,14 +171,14 @@ local function main()
     assert_equal(ok, true, "tank with critical Cure pending should still set target promptly while Cure may still win action dispatch")
 
     local tank_ok = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 14.0,
         state = {},
         candidate = { target_id = 104, valid = true, hpp = 100, in_range = true, claim_ok = true },
     })
     local dps_ok = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 14.0,
         state = {},
@@ -177,7 +187,7 @@ local function main()
     assert_equal(tank_ok, dps_ok, "target acquisition should be role-neutral when the same valid target exists")
 
     ok, reason = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 15.0,
         state = {},
@@ -187,7 +197,7 @@ local function main()
     assert_equal(reason, "invalid", "invalid target reason mismatch")
 
     ok, reason = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 16.0,
         state = {},
@@ -197,7 +207,7 @@ local function main()
     assert_equal(reason, "dead", "dead target reason mismatch")
 
     ok, reason = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 17.0,
         state = {},
@@ -207,7 +217,7 @@ local function main()
     assert_equal(reason, "recent_death", "recent-death reason mismatch")
 
     ok, reason = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 18.0,
         state = {},
@@ -217,7 +227,7 @@ local function main()
     assert_equal(reason, "range", "range reason mismatch")
 
     ok, reason = select_target_nonblocking_mock({
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         now = 19.0,
         state = {},

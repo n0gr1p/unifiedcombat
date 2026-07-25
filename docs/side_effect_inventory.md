@@ -1,12 +1,11 @@
 # Side-Effect Inventory
 
-Status: **Phase 4 movement-ownership baseline**
-Verified: 2026-07-24 by replay/static validation and live reload, party-follow,
-combat movement/casting, and lifecycle-stop acceptance. Live path-follow was
-deferred with risk accepted.
-Runtime behavior intent: active UnifiedCombat movement effects use one
-dispatcher-backed movement API; legacy core movement remains explicitly
-inventoried for Phase 5.
+Status: **Phase 5 domain cutover complete**
+Verified: 2026-07-24 by replay/static validation and multibox field acceptance;
+live path-follow remains an explicitly accepted risk.
+Runtime behavior intent: active UnifiedCombat domains are scheduler-owned when
+enabled, with no engine core fallback. Legacy core side effects remain
+inventoried as unreachable Phase 6 cleanup scope.
 
 ## Purpose
 
@@ -55,11 +54,11 @@ that only constructs an intent is not thereby classified as a direct executor.
 
 | File | Current call sites | Domain / responsibility | Migration target |
 | --- | --- | --- | --- |
-| `unified_scheduler.lua` | `/ma`: 5262, 5360; `/ja`: 4456, 4969, 5039 | Dispatch-stage intent construction only; tracked action, target, turn, and movement execution is dispatcher-owned | Retain pure dispatch construction; no direct executor may return |
+| `unified_scheduler.lua` | `/ma`: 5277, 5375; `/ja`: 4471, 4984, 5054 | Dispatch-stage intent construction only; tracked action, target, turn, and movement execution is dispatcher-owned | Retain pure dispatch construction; no direct executor may return |
 | `uc_provider_combat.lua` | `/ws`: 183; `/ma`: 326; `/ja`: 622, 623 | Proposal `legacy_command` construction only; no execution | Retain only while proposal compatibility requires the field |
 | `uc_provider_tank_enmity.lua` | `/ma`: 125; `/ja`: 126 | Proposal `legacy_command` construction only; no execution | Retain only while proposal compatibility requires the field |
 | `uc_scheduler_party_state.lua` | injected `send_ipc_message`: 91 | Scheduler party-state IPC encoding, throttling, send, receive, and lookup | Retain as the explicit party-state IPC owner |
-| `unified_combat_core.lua` | `send_command`: 2020, 2041, 2207, 2218, 3275, 3289; `run`: 1626, 1635, 1640, 1993, 2012, 2095, 2121, 2130, 2181, 2287, 2290, 2293, 3532, 3548; `turn`: 2296, 2334; `select_by_id`: 2119, 2255; `send_ipc`: 352, 363; indirect attack wrappers: 2246, 2275, 3638, 3648, 3715, 3805; `/ws` construction: 4048 | Legacy/core combat, pull, tank, and movement; scheduler-owned skillchain WS and movement use injected dispatcher facades | Phase 5 legacy domain cutover; preserve only explicitly approved IPC ownership |
+| `unified_combat_core.lua` | `send_command`: 2020, 2041, 2340, 3336, 3350; `run`: 1626, 1635, 1640, 1993, 2012, 2328, 2331, 2348, 2351, 2354, 3593, 3609; `turn`: 2357, 2395; `select_by_id`: 2298, 2334; `send_ipc`: 352, 363; indirect attack wrappers remain; `/ws` construction: 4109 | Dormant legacy combat/tank/movement plus scheduler-facing decision helpers. Scheduler pull, skillchain WS, and movement require injected dispatcher-backed executors | Delete unreachable legacy execution in Phase 6; preserve scheduler helpers and explicitly approved IPC ownership |
 | `uc_attack.lua` | `packets.inject`: 54, 74, 101 | Engage, switch-target, and disengage packet executor | Dispatcher-owned attack adapter |
 | `uc_settarget.lua` | `packets.inject`: 31 | Target selection packet executor | Dispatcher-owned target adapter |
 | `uc_add_control.lua` | `send_command`: 433, 474, 476; `/attack`: 433 | Add-control retarget sequence | Dispatcher-owned target/attack sequence |
@@ -90,8 +89,8 @@ Detailed per-pattern counts for every row are pinned in the machine allowlist.
 
 ## Zero-match coverage
 
-The verification scan currently discovers 133 non-test Lua files. Nineteen
-contain one or more tracked patterns. The other 114 files are still scanned and
+The verification scan currently discovers 135 non-test Lua files. Nineteen
+contain one or more tracked patterns. The other 116 files are still scanned and
 must remain free of tracked side-effect surfaces unless the allowlist and this
 inventory are deliberately updated.
 
@@ -103,9 +102,13 @@ inventory are deliberately updated.
    reaches the injected Windower/mover adapter through
    `uc_movement_dispatcher.lua` and `uc_scheduler_dispatcher.lua`.
 3. Follow and pathing remain independent movement decision owners, but their
-   direct-run exceptions are removed. Legacy core movement remains explicitly
-   allowlisted for Phase 5 domain cutover.
-4. Scheduler-owned skillchain WS execution uses dispatcher commit validation
+   direct-run exceptions are removed. Pathing now also honors the movement
+   domain; follow honors the follow domain.
+4. `unified_engine.lua` has no call to `_G.UC_CoreCombatTickOnce`; the legacy
+   core side effects are not reachable through the active engine.
+5. Scheduler pull requires `uc_scheduler_pull_executor.lua`, so the core pull
+   decision helper cannot select an implicit direct executor.
+6. Scheduler-owned skillchain WS execution uses dispatcher commit validation
    and exactly-once post-send generation marking; core retains only command
    construction for that path.
 5. IPC is intentionally tracked but is not automatically assumed to belong to

@@ -1,16 +1,18 @@
 # Unified Scheduler Responsibility Map
 
-Status: **Phase 4 movement ownership complete and field verified**
-Verified: 2026-07-24 by replay/static validation and live reload, party-follow,
-combat movement/casting, and lifecycle-stop acceptance. Live path-follow was
-deferred with risk accepted.
+Status: **Phase 5 domain cutover complete**
+Verified: 2026-07-24 by replay/static validation and multibox field acceptance.
+Several full live combat/song/roll cycles passed without an observed regression.
+Phase 3/4 field evidence remains the baseline for defensive casting,
+Pianissimo, party follow, cast movement lockout, and lifecycle stop. Live
+path-follow remains deferred with risk accepted.
 Runtime behavior intent: selection behavior remains stable; scheduler-owned
 side effects cross one dispatcher contract, while domain providers append
 proposals only.
 
 ## Purpose
 
-This map records the current post-Phase-4 architecture. It replaces the
+This map records the completed Phase 5 cutover architecture. It replaces the
 2026-05-15 pre-extraction draft and records the movement ownership boundary
 selected in
 `RFC/UnifiedCombat_scheduler_refactor_phase4_movement_ownership_decision.md`.
@@ -19,11 +21,13 @@ Current primary sizes:
 
 | File | Lines | Current role |
 | --- | ---: | --- |
-| `unified_scheduler.lua` | 6,273 | Scheduler facade, provider wiring, dispatcher orchestration, movement coordination, lifecycle policy, and packet observation |
+| `unified_scheduler.lua` | 6,275 | Scheduler facade, provider wiring, dispatcher orchestration, movement coordination, lifecycle policy, and packet observation |
 | `uc_provider_*.lua` | 1,673 across six modules | Defensive, combat, tank, enemy-buff, maintenance, and target/pull proposal generation |
-| `unified_combat_core.lua` | 4,263 | Legacy/core combat and movement implementation plus scheduler-facing selection helpers and target-scoped skillchain state |
-| `unified_engine.lua` | 409 | 0.20-second lifecycle tick, overlay rendering, scheduler invocation, and conditional core fallback |
+| `unified_combat_core.lua` | 4,325 | Dormant legacy combat/movement implementation plus scheduler-facing selection helpers and target-scoped skillchain state |
+| `unified_engine.lua` | 359 | 0.20-second lifecycle tick, overlay rendering, and one scheduler invocation; no core fallback |
 | `uc_movement_dispatcher.lua` | 169 | Shared dispatcher-backed movement execution adapter |
+| `uc_domain_ownership.lua` | 62 | Strict active-config domain enablement and compatibility-marker diagnostics |
+| `uc_scheduler_pull_executor.lua` | 68 | Dispatcher-backed target, movement, command, and settle adapter for scheduler pull |
 
 The scheduler is larger than the approximately 5,300-line RFC snapshot because
 new runtime behavior was added while only selected responsibilities were
@@ -39,12 +43,14 @@ These modules are active and called by `unified_scheduler.lua`.
 | Action lifecycle | `uc_scheduler_action_state.lua` | `action_state`, `action_mark_sent`, packet start/end, acting/block checks, spell completion/interruption bridges |
 | Command construction | `uc_scheduler_command_builder.lua` | `build_action_command` |
 | Active config readers | `uc_scheduler_config.lua` | Scheduler/provider-facing ownership, combat, tank, and debug reads |
+| Domain ownership policy | `uc_domain_ownership.lua` | Authoritative combat, defensive, movement, and maintenance enablement; retained legacy-marker inspection |
 | Context leaf helpers | `uc_scheduler_context_utils.lua` | Settings, zone, partner target, and maintenance-city helpers |
 | Tick context | `uc_scheduler_context.lua` | `p1_build_ctx` wrapper; one cached context shared by target acquisition and proposal collection/ranking |
 | Defensive pure helpers | `uc_scheduler_defensive_utils.lua` | Buff, cure, debuff, priority, and danger calculations |
 | Dispatch-plan structure | `uc_scheduler_dispatch_plan.lua` | `p1_build_dispatch_plan`, `p1_revalidate_plan_commit` |
 | Dispatcher contract | `uc_scheduler_dispatcher.lua` | Intent validation, commit validation, exactly-once post-execution hooks, and injected-dependency execution |
 | Scheduler movement facade | `uc_scheduler_movement_facade.lua` | Dispatcher-backed stop, heading, forward, turn, move-towards, and move-away execution |
+| Scheduler pull executor | `uc_scheduler_pull_executor.lua` | Required dispatcher-backed target, movement, action, and settle dependencies for the core pull decision helper |
 | Dry-run publication | `uc_scheduler_dryrun_publish.lua` | Ranked queue/global publication |
 | Enemy-effect leaf helpers | `uc_scheduler_enemy_effect_utils.lua` | Labels, normalization, priority conversion, claim validation |
 | Enemy-effect state | `uc_scheduler_enemy_effect_state.lua` | Catalog loading, effect/attempt maps, raw ingestion, removal classification, and scheduler wrappers |
@@ -323,7 +329,8 @@ Status:
   injected dispatcher movement facade backed by `uc_movement_dispatcher.lua`;
 - independent follow, pathing, Nyzul, formation, and lifecycle decision owners
   execute movement through the same shared adapter;
-- legacy core movement remains a Phase 5 domain-cutover concern.
+- legacy core movement code remains present but is not reachable from
+  `unified_engine.lua`; deletion is Phase 6 cleanup.
 
 Priority/risk: **high / very high**
 
@@ -357,7 +364,9 @@ Status:
 
 - scheduler selects and plans;
 - dispatcher validates commits and is the only scheduler-owned action executor;
-- skillchain generation marking is an exactly-once post-execution hook.
+- skillchain generation marking is an exactly-once post-execution hook;
+- scheduler pull injects `uc_scheduler_pull_executor.lua`; the core helper has
+  no implicit direct executor.
 
 Priority/risk: **highest / very high**
 
@@ -444,20 +453,20 @@ Current:
 
 - runs the 0.20-second cadence;
 - calls `scheduler.process_tick`;
-- renders scheduler overlays;
-- calls `_G.UC_CoreCombatTickOnce` when combat is not scheduler-owned.
+- renders scheduler overlays.
 
 Target:
 
 - lifecycle and one scheduler call per tick;
-- remove core fallback only through domain cutover;
+- core fallback removed in Phase 5;
 - move overlay rendering only after observability extraction.
 
 ### `unified_combat_core.lua`
 
 Current:
 
-- owns legacy direct combat and movement execution;
+- retains legacy direct combat and movement code that is no longer invoked by
+  `unified_engine.lua`;
 - exposes scheduler-facing WS, tank, pull, target, and movement helpers;
 - owns target-scoped skillchain state while its scheduler-owned WS send and
   movement path execute through injected dispatcher contracts.
@@ -484,21 +493,24 @@ Execution:
 - all listed owners use `uc_movement_dispatcher.lua`;
 - no listed owner directly calls `windower.ffxi.run(...)`;
 - follow/pathing cadence and arbitration remain independent of ranked scheduler
-  proposals.
+  proposals;
+- active path movement publishes and releases owner `path`;
+- disabled or suppressed follow releases only follow-owned movement and does not
+  erase another owner's lock.
 
 ## Current highest-risk areas
 
-1. Phase 5 legacy core domain cutover without changing movement decisions.
-2. Packet/action observation fan-out.
-3. Defensive/tank spell and engage lifecycle state.
-4. Domain cutover while preserving provider, context, ranker, and dispatcher
-   contracts.
+1. Packet/action observation fan-out.
+2. Defensive/tank spell and engage lifecycle state.
+3. Phase 6 deletion of unreachable legacy branches without removing
+   scheduler-facing core helpers.
+4. Live path-follow parity remains an accepted, unclosed field risk.
 
-## Recommended next order after Phase 4 field acceptance
+## Recommended next order after Phase 5 completion
 
-1. Begin Phase 5 domain cutover one legacy domain at a time.
-2. Preserve proposal keys, priority bands, rejection taxonomy, provider order,
-   and public scheduler wrappers during cutover.
+1. Preserve proposal keys, priority bands, rejection taxonomy, provider order,
+   and public scheduler wrappers during Phase 6 cleanup.
+2. Delete unreachable legacy execution in small, independently verified cuts.
 3. Keep the dormant scheduler vector path disconnected unless a separate design
    explicitly reconnects it.
 

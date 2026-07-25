@@ -336,10 +336,9 @@ internal static class StructuredProfileV2Writer
 
     private static StructuredProfileNode BuildFormation(JsonObject flatProfile)
     {
-        if (!ReadFormationBool(flatProfile, "domain_movement_enabled", true)
-            || !ReadFormationBool(flatProfile, "scheduler_dark_launch_movement", false))
+        if (!ReadFormationBool(flatProfile, "domain_movement_enabled", true))
         {
-            throw new InvalidDataException("enabled formation requires movement domain and scheduler movement ownership");
+            throw new InvalidDataException("enabled formation requires movement domain");
         }
 
         var encounter = ReadString(flatProfile, "formation_encounter", "lilith_easy").ToLowerInvariant();

@@ -891,7 +891,7 @@ public partial class MainForm
             WrapContents = true,
         };
         _formationValidation = new Label { AutoSize = true, Padding = new Padding(0, 6, 10, 0) };
-        _formationEnableOwnership = new Button { Text = "Enable required movement ownership", AutoSize = true };
+        _formationEnableOwnership = new Button { Text = "Enable required movement domain", AutoSize = true };
         _formationEnableOwnership.Click += (_, _) => OnFormationEnableOwnership();
         formationOwnership.Controls.Add(_formationValidation);
         formationOwnership.Controls.Add(_formationEnableOwnership);
@@ -1367,15 +1367,29 @@ public partial class MainForm
         sch.Controls.Add(
             new Label
             {
-                Text = "Dark-launch toggles: opt into scheduler-owned dispatch paths per session.",
+                Text = "Runtime domains: these settings authoritatively enable participation. Save the profile and reload/apply profile v2 for changes to take effect.",
                 AutoSize = true,
                 Padding = new Padding(0, 0, 0, 8),
             }
         );
-        sch.Controls.Add(MkGlobal("scheduler_dark_launch_combat"));
-        sch.Controls.Add(MkGlobal("scheduler_dark_launch_defensive"));
-        sch.Controls.Add(MkGlobal("scheduler_dark_launch_movement"));
-        sch.Controls.Add(MkGlobal("scheduler_dark_launch_maintenance"));
+        sch.Controls.Add(MkGlobal("domain_combat_enabled"));
+        sch.Controls.Add(MkGlobal("domain_defensive_enabled"));
+        sch.Controls.Add(MkGlobal("domain_movement_enabled"));
+        sch.Controls.Add(MkGlobal("domain_maintenance_enabled"));
+        sch.Controls.Add(MkGlobal("domain_follow_enabled"));
+        sch.Controls.Add(
+            new Label
+            {
+                Text = "Legacy ownership markers are displayed for profile compatibility only and cannot change runtime execution.",
+                AutoSize = true,
+                ForeColor = SystemColors.GrayText,
+                Padding = new Padding(0, 10, 0, 4),
+            }
+        );
+        sch.Controls.Add(MkReadOnlyGlobal("scheduler_dark_launch_combat"));
+        sch.Controls.Add(MkReadOnlyGlobal("scheduler_dark_launch_defensive"));
+        sch.Controls.Add(MkReadOnlyGlobal("scheduler_dark_launch_movement"));
+        sch.Controls.Add(MkReadOnlyGlobal("scheduler_dark_launch_maintenance"));
         tabScheduler.Controls.Add(sch);
         _settingsTabs.TabPages.Add(tabScheduler);
 
@@ -1414,6 +1428,18 @@ public partial class MainForm
             var cb = new CheckBox { Text = HubUiConstants.BoolLabel(key), AutoSize = true };
             _boolChecks[key] = cb;
             cb.CheckedChanged += (_, _) => OnAnyBool(key, cb.Checked);
+            return cb;
+        }
+
+        CheckBox MkReadOnlyGlobal(string key)
+        {
+            var cb = new CheckBox
+            {
+                Text = HubUiConstants.BoolLabel(key),
+                AutoSize = true,
+                Enabled = false,
+            };
+            _boolChecks[key] = cb;
             return cb;
         }
     }

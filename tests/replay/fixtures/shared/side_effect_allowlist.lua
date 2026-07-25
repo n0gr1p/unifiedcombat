@@ -86,8 +86,8 @@ return {
             packet_inject = 1,
         },
         ["unified_combat_core.lua"] = {
-            direct_send_command = 6,
-            direct_run = 14,
+            direct_send_command = 5,
+            direct_run = 12,
             direct_turn = 2,
             direct_target_select = 2,
             direct_ipc_send = 2,

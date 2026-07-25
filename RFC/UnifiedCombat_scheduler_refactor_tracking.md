@@ -7,8 +7,8 @@ Canonical location: `RFC/UnifiedCombat_scheduler_refactor_tracking.md`
 ## 1) Authoritative Current Status
 
 Status date: 2026-07-24
-Audited state: current Phase 4 complete working tree based on Phase 3 commit
-`3fcbcd0`
+Audited state: current Phase 5 complete working tree based on Phase 4 commit
+`fe4de05`
 
 This compact board is the authoritative current status. The detailed task notes and
 older progress rows below are retained as implementation history and may describe
@@ -21,7 +21,7 @@ an earlier state.
 | Phase 2 — Dispatcher monopoly | `DONE / REPLAY VERIFIED` | Scheduler-owned command, target, turn, attack, skillchain WS, and movement execution is dispatcher-only; transitional flags and direct fallback execution are retired. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase2_exit_audit_2026-07-24.md`. |
 | Phase 3 — Provider purity | `DONE / FIELD VERIFIED` | Defensive, combat, tank-enmity, enemy-buff-removal, maintenance, and target/pull proposal collection is extracted into six fail-fast provider modules. Providers do not dispatch, acquire locks, move, turn, target, or attack. Multibox acceptance passed with Bard maintenance, tank, COR maintenance, and defensive spell casting active. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase3_exit_audit_2026-07-24.md`. |
 | Phase 4 — Movement ownership cleanup | `DONE / FIELD VERIFIED` | The ownership decision is recorded in `RFC/`; scheduler, formation, follow, pathing, Nyzul, and lifecycle movement execute through `uc_movement_dispatcher.lua`. Follow/pathing remain independent decision owners. Reload, party follow, combat approach/spacing/cast behavior, and lifecycle stop passed live acceptance. Live path-follow was explicitly deferred with risk accepted; its focused execution/arbitration tests pass. Legacy core movement is Phase 5. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase4_exit_audit_2026-07-24.md`. |
-| Phase 5 — Domain cutover | `PARTIAL` | Scheduler-owned paths are cut over without fallback, while legacy/core and independent subsystem direct paths remain. |
+| Phase 5 — Domain cutover | `DONE / FIELD VERIFIED WITH ACCEPTED PATH-FOLLOW RISK` | `domain_*_enabled` values are authoritative, legacy ownership markers are compatibility-only, the engine core fallback and scheduler-local defensive fallback are removed, scheduler pull uses an injected dispatcher executor, and pathing honors the movement domain. Five-character multibox testing completed several combat/song/roll cycles without an observed regression. Live path-follow remains deferred with risk accepted. Exit audit: `RFC/UnifiedCombat_scheduler_refactor_phase5_exit_audit_2026-07-24.md`. |
 | Phase 6 — Cleanup and simplification | `NOT STARTED` | Broad legacy retirement and scheduler simplification have not occurred. |
 
 ### Phase 0 acceptance record
@@ -160,11 +160,65 @@ Phase 4 verification:
 - exit audit:
   `RFC/UnifiedCombat_scheduler_refactor_phase4_exit_audit_2026-07-24.md`.
 
-Next architectural work: Phase 5 domain cutover. Possible movement settle-time
-fine tuning is an accepted follow-up, not a Phase 4 blocker.
+### Phase 5 acceptance record
+
+| Task | Status | Artifact / evidence |
+| --- | --- | --- |
+| T5.1 — Ownership terminology | `DONE` | `RFC/UnifiedCombat_scheduler_refactor_phase5_ownership_terminology.md` records `domain_*_enabled` as runtime authority, exposes those controls in WinForms, and retains `scheduler_dark_launch_*` as read-only compatibility markers until profile migration. |
+| T5.2 — Combat cutover | `DONE / FIELD VERIFIED` | `RFC/UnifiedCombat_scheduler_refactor_phase5_combat_cutover_checklist.md`; engine core fallback removed, scheduler pull requires `uc_scheduler_pull_executor.lua`, and the PLD/WAR plus MNK/WAR live profiles completed several full mob cycles without an observed regression. |
+| T5.3 — Defensive cutover | `DONE / FIELD VERIFIED` | `RFC/UnifiedCombat_scheduler_refactor_phase5_defensive_cutover_checklist.md`; ranked internal/HealBot paths remain, the post-ranking defensive fallback is removed, prior defensive-casting field acceptance remains green, and the current party reported no regression. |
+| T5.4 — Maintenance cutover | `DONE / FIELD VERIFIED` | `RFC/UnifiedCombat_scheduler_refactor_phase5_maintenance_cutover_checklist.md`; Redrogue BRD/WHM and Ponponponponpon COR/DNC completed several full song/roll cycles without an observed regression. GEO remains accurately recorded as a proposal-only scaffold; Niightsiide used an external GEO addon. |
+| T5.5 — Movement cutover | `DONE / FIELD VERIFIED WITH ACCEPTED PATH-FOLLOW RISK` | `RFC/UnifiedCombat_scheduler_refactor_phase5_movement_cutover_checklist.md`; live combat movement and the Phase 3/4 follow/cast/stop baseline pass. Path-follow was not tested live and remains an explicitly accepted risk backed by focused execution/arbitration/domain-stop coverage. |
+
+Phase 5 automated verification:
+
+- runtime parse: 86 runtime Lua files;
+- aggregate replay/static runner: 118/118 suites;
+- side-effect discovery guard: 135 non-test Lua files, 19 allowlisted files,
+  285 exact file-pattern assertions, and 236 observed tracked hits;
+- WinForms build: zero warnings and zero errors;
+- WinForms structured-profile self-test: pass.
+
+Phase 5 live acceptance:
+
+- Nyoourke PLD/WAR, Terrasjr MNK/WAR, Niightsiide GEO/RDM, Redrogue BRD/WHM,
+  and Ponponponponpon COR/DNC completed several full cycles of combat, mob
+  songs, and COR rolls with no observed regression or bug;
+- all five exact v2 files validate and have all five authoritative domains,
+  profile v2 autoload, and file-change auto-reload enabled;
+- Niightsiide was a passive participant using an external GEO addon and setting
+  camp; no UnifiedCombat GEO maintenance pass is claimed;
+- live path-follow remains deferred with risk accepted;
+- all five live profiles have true legacy compatibility markers, so
+  false-marker independence and the one-domain-at-a-time disable matrix rely on
+  focused automated evidence rather than an overstated live result.
+
+The consolidated field configuration and pass matrix are in
+`RFC/UnifiedCombat_scheduler_refactor_phase5_field_acceptance_plan.md`.
+The completion decision and limitations are in
+`RFC/UnifiedCombat_scheduler_refactor_phase5_exit_audit_2026-07-24.md`.
 
 ## Recent Historical Entries
 
+- 2026-07-24: Completed Phase 5 field acceptance. Nyoourke PLD/WAR, Terrasjr
+  MNK/WAR, Niightsiide GEO/RDM, Redrogue BRD/WHM, and Ponponponponpon COR/DNC
+  completed several full cycles of combat, mob songs, and COR rolls with no
+  observed regression or bug. The exact v2 profile files validate with all five
+  domains and v2 autoload/auto-reload enabled. Path-follow remains untested with
+  risk explicitly accepted; marker independence and disabled-domain cases are
+  supported by focused automated evidence. Phase 5 advanced to `DONE / FIELD
+  VERIFIED WITH ACCEPTED PATH-FOLLOW RISK`.
+- 2026-07-24: Implemented the Phase 5 domain-cutover candidate. Added strict
+  active-config domain ownership, removed the engine core fallback and
+  scheduler-local defensive fallback, routed scheduler pull through an injected
+  dispatcher-backed executor, made pathing honor the movement domain, and
+  changed WinForms ownership labels/formation validation to the domain model.
+  Retained all `scheduler_dark_launch_*` serialized fields for compatibility
+  and changed active combat behavior fixtures to model
+  `domain_combat_enabled` instead of the compatibility marker. The completion
+  audit also fixed path owner publication/release and prevented disabled party
+  follow from clearing another movement owner's lock.
+  Automated Lua and WinForms validation passes; field acceptance is pending.
 - 2026-07-24: Completed Phase 4 field acceptance. UnifiedCombat reloaded on the
   test characters without Lua errors; party follow passed; combat
   approach/spacing/casting passed with acceptable behavior; and `//uc stop`
@@ -1511,7 +1565,7 @@ Legend:
 | Dispatcher ownership migration | DONE / PHASE 2 | Scheduler-owned command, target, turn, attack, skillchain WS, and movement execution is dispatcher-only without transitional fallback execution. |
 | Provider extraction/cutover | DONE / PHASE 3 | Six fail-fast provider modules own defensive, combat, tank, enemy-buff-removal, maintenance, and target/pull proposal generation without execution side effects. |
 | Movement ownership runtime migration | DONE / PHASE 4 | Scheduler, formation, follow, pathing, Nyzul, and lifecycle movement use `uc_movement_dispatcher.lua`; legacy core movement remains explicitly scoped to Phase 5. |
-| Domain cutover checklists and fallback removal | PARTIAL / PHASE 5 | Scheduler-owned paths are cut over without fallback; legacy core domains remain for one-at-a-time Phase 5 cutover. |
+| Domain cutover checklists and fallback removal | IMPLEMENTED / PHASE 5 / FIELD PENDING | Engine and scheduler-local fallbacks are removed; domain enablement is authoritative; four RFC-folder checklists await field acceptance. |
 
 ### 2.1 T2.4n run_stop coverage audit
 

@@ -30,7 +30,7 @@ function M.new(deps)
 	local build_partner_target_set = require_function(deps, 'build_partner_target_set')
 	local select_ws_plan = require_function(deps, 'select_ws_plan')
 	local action_timeline_log = require_function(deps, 'action_timeline_log')
-	local scheduler_owns_combat = require_function(deps, 'scheduler_owns_combat')
+	local combat_domain_enabled = require_function(deps, 'combat_domain_enabled')
 	local sleep_enabled = require_function(deps, 'sleep_enabled')
 	local sleep_spell_list = require_function(deps, 'sleep_spell_list')
 	local is_live_actionable_target = require_function(deps, 'is_live_actionable_target')
@@ -228,7 +228,7 @@ function M.new(deps)
 		if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 			return
 		end
-		if not bool_setting(scheduler_owns_combat(ctx.settings), false) then
+		if not bool_setting(combat_domain_enabled(), false) then
 			return
 		end
 		if not bool_setting(sleep_enabled(ctx.settings), false) then
@@ -337,7 +337,7 @@ function M.new(deps)
 		if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 			return
 		end
-		if not bool_setting(scheduler_owns_combat(ctx.settings), false) then
+		if not bool_setting(combat_domain_enabled(), false) then
 			return
 		end
 		if not bool_setting(combat_autotarget(ctx.settings), false) then

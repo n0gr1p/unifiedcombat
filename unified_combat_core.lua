@@ -2079,7 +2079,20 @@ local function execute_tank_enmity(settings, player, violation)
 	return false
 end
 
-local function try_pull_action(settings, player, target)
+local function require_pull_executor(executor)
+	if type(executor) ~= 'table' then
+		error('pull executor must be a table')
+	end
+	for _, operation in ipairs({ 'stop', 'run_heading', 'select_target', 'sleep', 'send_command' }) do
+		if type(executor[operation]) ~= 'function' then
+			error('pull executor.' .. operation .. ' must be a function')
+		end
+	end
+	return executor
+end
+
+local function try_pull_action(settings, player, target, executor)
+	executor = require_pull_executor(executor)
 	set_preengage_approach_active(false)
 	if not should_use_pull_action(settings, player, target) then
 		return false
@@ -2092,7 +2105,7 @@ local function try_pull_action(settings, player, target)
 	if core.pull_spell_waiting == true then
 		if now < (tonumber(core.pull_spell_wait_until) or 0) then
 			-- Keep stationary until the spell action completion packet arrives.
-			windower.ffxi.run(false)
+			executor.stop({ reason = 'PULL_SPELL_WAITING' })
 			core.last_run_active = false
 			set_movement_owner('core', 0.6)
 			_G.UC_PULL_SPELL_WAITING = true
@@ -2116,18 +2129,22 @@ local function try_pull_action(settings, player, target)
 
 	local cur = get_current_target()
 	if not cur or cur.id ~= target.id then
-		local ok_set = uc_settarget.select_by_id(target.id)
+		local ok_set = executor.select_target(target.id, {
+			reason = 'PULL_TARGET_PREP',
+			action_type = action_type,
+			action_name = action_name,
+		})
 		if not ok_set then
-			windower.ffxi.run(false)
+			executor.stop({ reason = 'PULL_TARGET_SET_FAIL' })
 			core.last_run_active = false
 			_G.UC_LAST_BLOCK_REASON = 'PULL_TARGET_SET_FAIL'
 			_G.UC_WS_LAST_DIAG = ('core pull target-set fail tid=%d action=%s'):format(tonumber(target.id) or 0, action_name)
 			return true
 		end
-		coroutine.sleep(0.05)
+		executor.sleep(0.05)
 		cur = get_current_target()
 		if not cur or cur.id ~= target.id then
-			windower.ffxi.run(false)
+			executor.stop({ reason = 'PULL_TARGET_CONFIRM_FAIL' })
 			core.last_run_active = false
 			_G.UC_LAST_BLOCK_REASON = 'PULL_TARGET_SET_FAIL'
 			return true
@@ -2159,10 +2176,21 @@ local function try_pull_action(settings, player, target)
 		_G.UC_PULL_APPROACH_UNTIL = uc_now_s() + 0.8
 		_G.UC_LAST_BLOCK_REASON = 'PULL_MOVE_INTO_RANGE'
 		_G.UC_WS_LAST_DIAG = ('core pull move type=%s action=%s dist=%.2f cast_range=%.2f max=%.2f'):format(action_type, action_name, dist, cast_max_range, max_range)
-		local moved = move_toward_target_for_pull(cur)
-		if not moved then
+		local heading = uc_heading_to(cur.x, cur.y)
+		if heading == nil then
+			executor.stop({ reason = 'PULL_MOVE_VECTOR_FAIL' })
+			core.last_run_active = false
+			set_movement_owner('none', 0)
 			_G.UC_LAST_BLOCK_REASON = 'PULL_MOVE_VECTOR_FAIL'
 		else
+			executor.run_heading(heading, {
+				reason = 'PULL_MOVE_INTO_RANGE',
+				target_id = tonumber(cur.id) or 0,
+				action_type = action_type,
+				action_name = action_name,
+			})
+			core.last_run_active = true
+			set_movement_owner('core', 0.8)
 			set_preengage_approach_active(true)
 		end
 		return true
@@ -2178,7 +2206,12 @@ local function try_pull_action(settings, player, target)
 			core.pull_spell_halt_until = now_settle + 0.40
 		end
 		_G.UC_PULL_APPROACH_UNTIL = now_settle + 0.5
-		windower.ffxi.run(false)
+		executor.stop({
+			reason = 'PULL_PRECAST_SETTLE',
+			target_id = tonumber(cur.id) or 0,
+			action_type = action_type,
+			action_name = action_name,
+		})
 		core.last_run_active = false
 		set_movement_owner('core', 0.5)
 		_G.UC_MOVE_FREEZE_PREP_UNTIL = math.max(tonumber(rawget(_G, 'UC_MOVE_FREEZE_PREP_UNTIL')) or 0, now_settle + 0.45)
@@ -2204,7 +2237,12 @@ local function try_pull_action(settings, player, target)
 
 	local sent_key = tostring(action_type) .. ':' .. tostring(action_name)
 	if action_type == 'spell' then
-		windower.send_command('input /ma "' .. action_name .. '" ' .. tostring(cur.id))
+		executor.send_command('input /ma "' .. action_name .. '" ' .. tostring(cur.id), {
+			reason = 'PULL_ACTION_SEND',
+			target_id = tonumber(cur.id) or 0,
+			action_type = action_type,
+			action_name = action_name,
+		})
 		core.pull_lock_until = math.max(tonumber(core.pull_lock_until) or 0, now + 0.9)
 		core.pull_pending_type = 'spell'
 		core.pull_spell_waiting = true
@@ -2215,7 +2253,12 @@ local function try_pull_action(settings, player, target)
 		_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 2.5
 		_G.UC_PULL_APPROACH_UNTIL = uc_now_s() + 2.5
 	else
-		windower.send_command('input /ja "' .. action_name .. '" ' .. tostring(cur.id))
+		executor.send_command('input /ja "' .. action_name .. '" ' .. tostring(cur.id), {
+			reason = 'PULL_ACTION_SEND',
+			target_id = tonumber(cur.id) or 0,
+			action_type = action_type,
+			action_name = action_name,
+		})
 		core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
 		core.pull_lock_until = math.max(tonumber(core.pull_lock_until) or 0, now + 0.6)
 		core.pull_pending_type = 'ja'
@@ -2279,6 +2322,24 @@ local function ensure_target_and_attack(tid)
 	end
 	return true
 end
+
+core.legacy_pull_executor = {
+	stop = function()
+		windower.ffxi.run(false)
+	end,
+	run_heading = function(heading)
+		windower.ffxi.run(heading)
+	end,
+	select_target = function(target_id)
+		return uc_settarget.select_by_id(target_id)
+	end,
+	sleep = function(seconds)
+		coroutine.sleep(seconds)
+	end,
+	send_command = function(command)
+		windower.send_command(command)
+	end,
+}
 
 core.is_live_actionable_combat_target = is_live_actionable_combat_target
 
@@ -3775,7 +3836,7 @@ local function run_unified_combat()
 		core.hunter_acquire.started_at = 0
 	end
 	if tid > 0 and setting_enabled(s.autotarget) and (not setting_enabled(s.scheduler_dark_launch_combat)) then
-		local pull_handled = try_pull_action(s, p, target)
+		local pull_handled = try_pull_action(s, p, target, core.legacy_pull_executor)
 		if pull_handled then
 			if setting_enabled(s.tank) then
 				debug_tank(('tick bypass_tank reason=pull_handled tid=%d'):format(tonumber(tid) or 0), true)
@@ -4231,14 +4292,15 @@ function core.select_pull_for_scheduler(settings)
 	}
 end
 
-function core.dispatch_pull_for_scheduler(settings, target_id)
+function core.dispatch_pull_for_scheduler(settings, target_id, executor)
+	require_pull_executor(executor)
 	local s = settings or get_settings() or {}
 	local player = windower.ffxi.get_player()
 	local target = windower.ffxi.get_mob_by_id(tonumber(target_id) or 0)
 	if not player or not target then
 		return false, 'PULL_NO_CONTEXT'
 	end
-	local handled = try_pull_action(s, player, target)
+	local handled = try_pull_action(s, player, target, executor)
 	if handled then
 		return true, tostring(rawget(_G, 'UC_LAST_BLOCK_REASON') or 'PULL_HANDLED')
 	end

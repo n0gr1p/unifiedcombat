@@ -15,6 +15,7 @@ end
 local files = require('files')
 local res = require('resources')
 local uc_active_config = require('uc_active_config')
+local domain_ownership = require('uc_domain_ownership')
 local uc_party_follow = require('uc_party_follow')
 local uc_nyzul_runtime = require('uc_nyzul_runtime')
 local movement_dispatcher = require('uc_movement_dispatcher').build({
@@ -899,6 +900,10 @@ end
 
 local function stop_move()
 	movement_dispatcher.stop()
+	if tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or '') == 'path' then
+		_G.UC_MOVEMENT_OWNER = 'none'
+		_G.UC_MOVEMENT_LOCK_UNTIL = uc_now_s()
+	end
 end
 
 local function run_to_point(me, point)
@@ -909,6 +914,8 @@ local function run_to_point(me, point)
 		return false
 	end
 	movement_dispatcher.run_vector(dx / len, dy / len)
+	_G.UC_MOVEMENT_OWNER = 'path'
+	_G.UC_MOVEMENT_LOCK_UNTIL = uc_now_s() + 0.25
 	return true
 end
 
@@ -1103,6 +1110,17 @@ function mod.tick()
 
 	local s = rawget(_G, 'UC_SETTINGS')
 	if type(s) ~= 'table' then
+		hide_debug_overlay()
+		return
+	end
+	if not domain_ownership.is_enabled('movement') then
+		if tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or '') == 'path' then
+			stop_move()
+		end
+		follow_pause_reason = 'MOVEMENT_DOMAIN_DISABLED'
+		set_follow_paused(false)
+		last_recording = false
+		last_follow_enabled = false
 		hide_debug_overlay()
 		return
 	end

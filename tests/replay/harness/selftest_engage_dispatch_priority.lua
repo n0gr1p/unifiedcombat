@@ -69,7 +69,7 @@ local function sort_proposals(proposals)
 end
 
 local function mock_engage(settings, target)
-    if settings.scheduler_dark_launch_combat ~= true or settings.autotarget ~= true then
+    if settings.domain_combat_enabled ~= true or settings.autotarget ~= true then
         return nil
     end
     if type(target) ~= "table" then
@@ -183,7 +183,7 @@ local function main()
     assert_not_contains(helper_block, "windower.ffxi.run", "engage preemption helper must not introduce direct run side-effect calls")
 
     local settings = {
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         tank = true,
         defensive_critical_hpp = 35,
@@ -195,6 +195,12 @@ local function main()
         in_scope = true,
         in_range = true,
     }
+    assert_equal(mock_engage({
+        domain_combat_enabled = false,
+        autotarget = true,
+        tank = true,
+    }, target), nil, "disabled combat domain must suppress engage proposals")
+
     local engage = assert(mock_engage(settings, target), "expected engage candidate")
 
     local selected = pick_preemptive_engage(settings, {
@@ -222,7 +228,7 @@ local function main()
     assert_equal(selected.provider, "defensive_internal", "critical Cure must still outrank engage")
 
     local non_tank_settings = {
-        scheduler_dark_launch_combat = true,
+        domain_combat_enabled = true,
         autotarget = true,
         tank = false,
         defensive_critical_hpp = 35,
