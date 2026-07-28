@@ -2992,6 +2992,10 @@ local function select_smart_ws(settings, target_id)
 	local ws_mode = get_ws_mode(settings)
 	local primary_ws = tostring(settings.weaponskill or settings.ws1 or '')
 	if spam_on then
+		local aftermath_ws, aftermath_reason = select_aftermath_maintenance_ws(settings, player)
+		if aftermath_reason then
+			return aftermath_ws, aftermath_reason
+		end
 		if primary_ws == '' or not uc_ws_memory.valid_ws_name(primary_ws) then
 			return '', 'PRIMARY_WS_INVALID'
 		end

@@ -1565,6 +1565,31 @@ local function main()
 	assert_equal(#no_diff_state.open_calls, 0, 'structured profile apply should not write to disk on no-diff apply')
 	assert_equal(#no_diff_state.rename_calls, 0, 'structured profile apply should not rename files on no-diff apply')
 
+	no_diff_settings = deep_clone(profile)
+	no_diff_settings.config.follow.nyzul = nil
+	no_diff_deps = make_fake_fs({
+		[durable_path] = profile_v2.serialize_structured_profile(no_diff_settings),
+	})
+	no_diff_settings = deep_clone(flat)
+	no_diff_apply_result = exporter.apply_structured_profile_file_to_settings(no_diff_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, no_diff_deps)
+	assert_true(no_diff_apply_result.ok == true, 'structured profile without Nyzul config should replace stale runtime roster')
+	assert_nil(no_diff_apply_result.candidate.nyzul_coordinator_name, 'Nyzul removal must clear projected coordinator')
+	assert_nil(no_diff_apply_result.candidate.nyzul_anchor_name, 'Nyzul removal must clear projected anchor')
+	assert_nil(no_diff_apply_result.candidate.nyzul_parking_order, 'Nyzul removal must clear projected parking order')
+	assert_true(
+		type(no_diff_apply_result.candidate.follow) ~= 'table' or no_diff_apply_result.candidate.follow.nyzul == nil,
+		'Nyzul removal must clear projected nested roster'
+	)
+	assert_nil(no_diff_settings.nyzul_coordinator_name, 'Nyzul removal must clear applied coordinator')
+	assert_true(
+		type(no_diff_settings.follow) ~= 'table' or no_diff_settings.follow.nyzul == nil,
+		'Nyzul removal must clear applied nested roster'
+	)
+
 	local legacy_mirror_current = deep_clone(profile.config)
 	legacy_mirror_current.abilities.legacy_slots = { 'Hagakure', 'Meditate' }
 	legacy_mirror_current.follow.party.leader_id = 1234

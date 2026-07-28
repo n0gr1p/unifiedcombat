@@ -659,11 +659,11 @@ internal static class StructuredProfileV2Writer
     private static StructuredProfileNode BuildOwnership(JsonObject flatProfile)
     {
         var ownership = new StructuredProfileNode()
-            .Add("domain_combat_enabled", ReadBool(flatProfile, "domain_combat_enabled", true))
-            .Add("domain_defensive_enabled", ReadBool(flatProfile, "domain_defensive_enabled", true))
-            .Add("domain_movement_enabled", ReadBool(flatProfile, "domain_movement_enabled", true))
-            .Add("domain_maintenance_enabled", ReadBool(flatProfile, "domain_maintenance_enabled", true))
-            .Add("domain_follow_enabled", ReadBool(flatProfile, "domain_follow_enabled", true));
+            .Add("domain_combat_enabled", ReadRequiredBool(flatProfile, "domain_combat_enabled"))
+            .Add("domain_defensive_enabled", ReadRequiredBool(flatProfile, "domain_defensive_enabled"))
+            .Add("domain_movement_enabled", ReadRequiredBool(flatProfile, "domain_movement_enabled"))
+            .Add("domain_maintenance_enabled", ReadRequiredBool(flatProfile, "domain_maintenance_enabled"))
+            .Add("domain_follow_enabled", ReadRequiredBool(flatProfile, "domain_follow_enabled"));
 
         if (ReadBool(flatProfile, "profile_v2_autoload", false))
         {
@@ -972,6 +972,20 @@ internal static class StructuredProfileV2Writer
         }
 
         return defaultValue;
+    }
+
+    private static bool ReadRequiredBool(JsonObject flatProfile, string key)
+    {
+        if (!flatProfile.TryGetPropertyValue(key, out var node) || node is null)
+        {
+            throw new InvalidDataException($"required boolean profile field is missing: {key}");
+        }
+        if (node is JsonValue value && value.TryGetValue<bool>(out var boolValue))
+        {
+            return boolValue;
+        }
+
+        throw new InvalidDataException($"required boolean profile field is invalid: {key}");
     }
 
     private static int ReadInt(JsonObject flatProfile, string key, int defaultValue)

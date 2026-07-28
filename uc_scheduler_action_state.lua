@@ -1,6 +1,7 @@
 local M = {}
 local ENGAGE_ACTION_TAIL_S = 0.35
 local SPELL_SUCCESS_TAIL_S = 0.2
+local WS_RESULT_TAIL_S = 0.5
 
 local function timeline_log(event_code, fields, dedupe_key, interval)
 	local fn = rawget(_G, 'UC_ACTION_TIMELINE_LOG')
@@ -323,6 +324,30 @@ function M.action_mark_packet_end(scheduler, now_s, meta)
 		provider = tostring(st.last_action_provider or ''),
 		kind = tostring(st.last_send_kind or ''),
 	}, ('spell_packet_end:%s'):format(tostring(st.last_action_name or '')), 0.05)
+end
+
+function M.action_mark_ws_result(scheduler, now_s, meta)
+	local st = M.action_state(scheduler)
+	local start_at = tonumber(st.action_start) or 0
+	local end_at = tonumber(st.action_end) or 0
+	if tostring(st.last_send_kind or '') ~= 'ws' or start_at <= 0 or end_at >= start_at then
+		return false
+	end
+	local now = now_s()
+	meta = type(meta) == 'table' and meta or {}
+	st.action_end = now
+	st.last_action = now
+	st.action_delay = WS_RESULT_TAIL_S
+	st.cooldown_until = math.max(tonumber(st.cooldown_until) or 0, now + WS_RESULT_TAIL_S)
+	st.last_acting_state = false
+	timeline_log('WS_ACTION_STATE_RELEASE', {
+		category = tonumber(meta.category) or 0,
+		target_id = tonumber(meta.target_id) or 0,
+		since_sent_s = (tonumber(st.last_sent_at) or 0) > 0
+			and ('%.2f'):format(math.max(0, now - tonumber(st.last_sent_at)))
+			or '',
+	}, ('ws_action_state_release:%s'):format(tostring(tonumber(st.action_token) or 0)), 0.05)
+	return true
 end
 
 function M.clear_local_defensive_spell_interruption(scheduler, now_s, meta)

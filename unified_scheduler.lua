@@ -5683,6 +5683,13 @@ function scheduler.on_action(act)
 			targets_summary = scheduler.spell_lifecycle_probe_actions_summary(act),
 			actions_summary = scheduler.spell_lifecycle_probe_actions_summary(act),
 		})
+		local local_ws_result = category_value == 3 or category == 'weaponskill_finish'
+		if local_ws_result then
+			require('uc_scheduler_action_state').action_mark_ws_result(scheduler, now_s, {
+				category = category_value or 0,
+				target_id = tonumber(act and act.targets and act.targets[1] and act.targets[1].id) or 0,
+			})
+		end
 		-- HealBot-style actor-centric start lock, but scoped to real cast/action categories.
 		-- Do not treat generic/melee action traffic as lock-start signals.
 		if start_lock_categories[category_value] then

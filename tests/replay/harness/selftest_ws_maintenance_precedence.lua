@@ -297,6 +297,33 @@ local function test_satisfied_maintenance_allows_continuation()
 	assert_equal(selection.ws_name, 'Test Continuation', 'continuation WS mismatch')
 end
 
+local function test_aftermath_precedes_spam_until_buff_active()
+	ability_recasts[20] = 30
+	settings.spam = true
+	settings.aftermath_enabled = true
+	player.buffs = {}
+	player.vitals.tp = 2500
+	local selection, reason = select()
+	assert_equal(selection, nil, 'spam must not spend aftermath-reserved TP')
+	assert_equal(reason, 'AM_HOLD_TP', 'spam aftermath TP hold reason mismatch')
+
+	player.vitals.tp = 3000
+	selection, reason = select()
+	assert_true(type(selection) == 'table', 'ready aftermath must take priority over spam')
+	assert_equal(reason, 'AM_READY', 'spam aftermath ready reason mismatch')
+	assert_equal(selection.ws_name, 'Knights of Round', 'spam aftermath WS mismatch')
+	assert_equal(selection.skillchain_plan, nil, 'spam aftermath WS must not carry a skillchain plan')
+
+	player.buffs = { 273 }
+	player.vitals.tp = 1000
+	selection, reason = select()
+	assert_true(type(selection) == 'table', 'satisfied aftermath must restore spam selection')
+	assert_equal(reason, 'READY_SPAM', 'spam must resume after aftermath is active')
+	assert_equal(selection.ws_name, 'Savage Blade', 'restored spam must use the primary WS')
+	assert_equal(selection.skillchain_plan, nil, 'restored spam WS must not carry a skillchain plan')
+	settings.spam = false
+end
+
 local function test_spam_forces_primary_ws_across_active_resonance()
 	ability_recasts[20] = 30
 	settings.spam = true
@@ -324,6 +351,7 @@ local function main()
 	test_chivalry_reserves_tp_across_ready_boundary()
 	test_aftermath_reserves_tp_and_dispatches_before_continuation()
 	test_satisfied_maintenance_allows_continuation()
+	test_aftermath_precedes_spam_until_buff_active()
 	test_spam_forces_primary_ws_across_active_resonance()
 	end)
 	restore_test_environment()

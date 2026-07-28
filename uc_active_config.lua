@@ -608,6 +608,13 @@ local function apply_structured_config_to_candidate(candidate, config)
 				anchor_name = config.follow.nyzul.anchor_name,
 				parking_order = clone_value(config.follow.nyzul.parking_order),
 			}
+		else
+			candidate.nyzul_coordinator_name = nil
+			candidate.nyzul_anchor_name = nil
+			candidate.nyzul_parking_order = nil
+			if type(candidate.follow) == 'table' then
+				candidate.follow.nyzul = nil
+			end
 		end
 		if type(config.follow.fight) == 'table' then
 			candidate.follow = candidate.follow or {}

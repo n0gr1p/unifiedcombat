@@ -20,6 +20,10 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeIncludesProfileV2AutoReloadWhenEnabled();
             TestProfileV2AutoReloadIsPartOfPersistedBoolSet();
             TestDomainOwnershipUiContract();
+            TestDomainOwnershipRequiresExplicitBooleans();
+            TestProfileSchemaThreeMigratesMissingDomains();
+            TestProfileSchemaThreePreservesExplicitDomains();
+            TestProfileSchemaThreeRemovesRetiredDarkLaunchKeys();
             TestSerializeIncludesPullerNameWhenSelected();
 			TestSerializeCampLeashSourceWithoutPullerName();
 			TestSerializeIncludesPartnerNames();
@@ -78,6 +82,81 @@ internal static class StructuredProfileV2WriterTests
             path,
             @"C:\Program Files (x86)\Windower\addons\UnifiedCombat\data\profiles_v2\red_rogue_PLD_WAR.lua",
             "final v2 profile path mismatch"
+        );
+    }
+
+    private static void TestDomainOwnershipRequiresExplicitBooleans()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat.Remove("domain_follow_enabled");
+
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Terrasjr", "SMN", "SAM")
+            ),
+            "missing required domain ownership must fail instead of using a fallback"
+        );
+    }
+
+    private static void TestProfileSchemaThreeMigratesMissingDomains()
+    {
+        var profile = new JsonObject
+        {
+            ["profile_schema_version"] = 2,
+            ["domain_combat_enabled"] = false,
+        };
+
+        AssertTrue(MainForm.MigrateProfileInPlace(profile), "schema-two profile must migrate");
+        AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 3, "migrated schema version mismatch");
+        AssertTrue(!profile["domain_combat_enabled"]!.GetValue<bool>(), "explicit combat domain value must be preserved");
+        AssertTrue(profile["domain_defensive_enabled"]!.GetValue<bool>(), "missing defensive domain must migrate enabled");
+        AssertTrue(profile["domain_movement_enabled"]!.GetValue<bool>(), "missing movement domain must migrate enabled");
+        AssertTrue(profile["domain_maintenance_enabled"]!.GetValue<bool>(), "missing maintenance domain must migrate enabled");
+        AssertTrue(profile["domain_follow_enabled"]!.GetValue<bool>(), "missing follow domain must migrate enabled");
+    }
+
+    private static void TestProfileSchemaThreePreservesExplicitDomains()
+    {
+        var profile = new JsonObject
+        {
+            ["profile_schema_version"] = 2,
+            ["domain_combat_enabled"] = false,
+            ["domain_defensive_enabled"] = false,
+            ["domain_movement_enabled"] = false,
+            ["domain_maintenance_enabled"] = false,
+            ["domain_follow_enabled"] = false,
+        };
+
+        AssertTrue(MainForm.MigrateProfileInPlace(profile), "schema-two profile must migrate");
+        foreach (var key in new[]
+        {
+            "domain_combat_enabled",
+            "domain_defensive_enabled",
+            "domain_movement_enabled",
+            "domain_maintenance_enabled",
+            "domain_follow_enabled",
+        })
+        {
+            AssertTrue(!profile[key]!.GetValue<bool>(), $"explicit domain value must be preserved: {key}");
+        }
+    }
+
+    private static void TestProfileSchemaThreeRemovesRetiredDarkLaunchKeys()
+    {
+        var profile = new JsonObject
+        {
+            ["profile_schema_version"] = 2,
+            ["scheduler_dark_launch_combat"] = true,
+            ["scheduler_dark_launch_defensive"] = true,
+            ["scheduler_dark_launch_movement"] = true,
+            ["scheduler_dark_launch_maintenance"] = true,
+        };
+
+        AssertTrue(MainForm.MigrateProfileInPlace(profile), "retired scheduler flags must migrate");
+        AssertTrue(
+            !profile.Any(entry => entry.Key.StartsWith("scheduler_dark_launch_", StringComparison.Ordinal)),
+            "schema-three profile must not retain retired scheduler dark-launch keys"
         );
     }
 
@@ -843,8 +922,9 @@ internal static class StructuredProfileV2WriterTests
     private static void TestUiSaveIsFileOnly()
     {
         var source = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
-        AssertContains(source, "TrySaveProfileFromUi(sid);", "UI save must still write the legacy profile file");
-        AssertContains(source, "TrySaveStructuredProfileV2FromUi(sid);", "UI save must still write the structured profile file");
+        AssertContains(source, "TrySaveProfileFromUi(sid, profile, out var uiError)", "UI save must still write the legacy profile file");
+        AssertContains(source, "TrySaveStructuredProfileV2FromUi(sid, profile, out var v2Error)", "UI save must still write the structured profile file");
+        AssertContains(source, "SetProfileSaveStatus(\"Mirror: profile saved (UI + v2)\")", "UI save must report complete success");
         AssertNotContains(source, "[\"op\"] = \"save\"", "UI save must not send a runtime save command");
     }
 
@@ -1074,6 +1154,21 @@ internal static class StructuredProfileV2WriterTests
         {
             throw new InvalidOperationException(message);
         }
+    }
+
+    private static void AssertThrows<TException>(Action action, string message)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(message);
     }
 
     private static void AssertEqual(string actual, string expected, string message)

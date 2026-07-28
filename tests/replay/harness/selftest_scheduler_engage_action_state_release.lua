@@ -48,6 +48,10 @@ local function main()
     assert_contains(action_state_source, "st.cooldown_until = math.max(tonumber(st.cooldown_until) or 0, now + ENGAGE_ACTION_TAIL_S)", "engage helper must leave a short bounded cooldown tail")
     assert_contains(action_state_source, "st.last_send_kind = 'engage'", "engage helper must classify engage sends distinctly")
     assert_contains(scheduler_source, "require('uc_scheduler_action_state').action_mark_engage_sent(scheduler, now_s)", "scheduler engage dispatch must use engage-specific action-state release")
+    assert_contains(action_state_source, "function M.action_mark_ws_result", "WS result action-state helper must exist")
+    assert_contains(action_state_source, "local WS_RESULT_TAIL_S = 0.5", "WS result helper must keep its short tail explicit")
+    assert_contains(scheduler_source, "local local_ws_result = category_value == 3 or category == 'weaponskill_finish'", "scheduler must identify local WS result packets")
+    assert_contains(scheduler_source, "require('uc_scheduler_action_state').action_mark_ws_result(scheduler, now_s", "local WS results must release WS action state")
 
     local engage_scheduler = {}
     now_value = 10
@@ -93,6 +97,48 @@ local function main()
     assert_equal(action_state.action_is_acting(ws_scheduler, now_s), true, "WS send must still use the normal long timeout before expiry")
     now_value = 48.1
     assert_equal(action_state.action_is_acting(ws_scheduler, now_s), false, "WS send timeout fallback must still work")
+
+    local ws_result_scheduler = {}
+    now_value = 50
+    action_state.action_mark_sent(ws_result_scheduler, "ws", now_s)
+    assert_equal(action_state.action_is_acting(ws_result_scheduler, now_s), true, "WS result scenario must begin as acting")
+    now_value = 50.9
+    assert_equal(
+        action_state.action_mark_ws_result(ws_result_scheduler, now_s, { category = 3, target_id = 9001 }),
+        true,
+        "local WS result must release active WS action state"
+    )
+    assert_equal(action_state.action_is_acting(ws_result_scheduler, now_s), false, "WS result must end acting state immediately")
+    assert_close(
+        tonumber(action_state.action_state(ws_result_scheduler).cooldown_until) or 0,
+        51.4,
+        0.0001,
+        "WS result cooldown must be anchored to the result timestamp"
+    )
+    blocked, reason = action_state.action_dispatch_blocked(ws_result_scheduler, now_s, {})
+    assert_equal(blocked, true, "WS result must preserve the normal short post-action cooldown")
+    assert_equal(reason, "BLOCK_ACTION_COOLDOWN", "WS result tail must be cooldown-based")
+    now_value = 51.41
+    blocked, reason = action_state.action_dispatch_blocked(ws_result_scheduler, now_s, {})
+    assert_equal(blocked, false, "WS result cooldown must release without the long timeout")
+    assert_equal(reason, nil, "released WS result cooldown should not return a block reason")
+    assert_equal(
+        action_state.action_mark_ws_result(ws_result_scheduler, now_s, { category = 3, target_id = 9001 }),
+        false,
+        "duplicate WS result must not release action state twice"
+    )
+
+    local non_ws_scheduler = {}
+    now_value = 60
+    action_state.action_mark_sent(non_ws_scheduler, "spell", now_s)
+    assert_equal(action_state.action_is_acting(non_ws_scheduler, now_s), true, "non-WS scenario must begin as acting")
+    now_value = 60.9
+    assert_equal(
+        action_state.action_mark_ws_result(non_ws_scheduler, now_s, { category = 3, target_id = 9001 }),
+        false,
+        "WS result must not release a non-WS action state"
+    )
+    assert_equal(action_state.action_is_acting(non_ws_scheduler, now_s), true, "rejected WS result must leave non-WS state acting")
 
     io.stdout:write("selftest_scheduler_engage_action_state_release: OK\n")
 end

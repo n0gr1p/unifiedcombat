@@ -6,7 +6,15 @@ namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
-    private const int ProfileSchemaVersion = 2;
+    private const int ProfileSchemaVersion = 3;
+    private static readonly string[] RequiredDomainBoolKeys =
+    [
+        "domain_combat_enabled",
+        "domain_defensive_enabled",
+        "domain_movement_enabled",
+        "domain_maintenance_enabled",
+        "domain_follow_enabled",
+    ];
 
     private static string? FindAddonRootFrom(string startDir)
     {
@@ -388,6 +396,10 @@ public partial class MainForm
         {
             p[key] = false;
         }
+        foreach (var key in RequiredDomainBoolKeys)
+        {
+            p[key] = true;
+        }
 
         return p;
     }
@@ -464,21 +476,24 @@ public partial class MainForm
         }
     }
 
-    private void TrySaveProfileFromUi(string sid)
+    private bool TrySaveProfileFromUi(string sid, JsonObject profile, out string error)
     {
         try
         {
-            CaptureWorkingProfileFromUi(sid);
             if (!TryProfilePathForSid(sid, out var path))
             {
-                return;
+                error = "UI profile path unavailable";
+                return false;
             }
-            var obj = BuildProfileFromUi(sid);
-            File.WriteAllText(path, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(path, profile.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            _workingProfileBySid[sid] = profile.DeepClone().AsObject();
+            error = "";
+            return true;
         }
-        catch
+        catch (Exception ex)
         {
-            // keep UI responsive
+            error = ex.Message;
+            return false;
         }
     }
 
@@ -498,12 +513,13 @@ public partial class MainForm
         return true;
     }
 
-    private bool TrySaveStructuredProfileV2FromUi(string sid)
+    private bool TrySaveStructuredProfileV2FromUi(string sid, JsonObject flatProfile, out string error)
     {
         try
         {
             if (!_sessionMetaBySid.TryGetValue(sid, out var meta))
             {
+                error = "session metadata unavailable";
                 return false;
             }
 
@@ -512,33 +528,35 @@ public partial class MainForm
             var subJob = (meta.SubJob ?? "").Trim();
             if (string.IsNullOrWhiteSpace(charName) || string.IsNullOrWhiteSpace(mainJob) || string.IsNullOrWhiteSpace(subJob))
             {
+                error = "character, main job, or subjob unavailable";
                 return false;
             }
 
             if (!TryResolveStructuredProfileV2Root(out var addonRoot, out var rootErr))
             {
-                statusConnection.Text = $"Mirror: v2 save failed ({rootErr})";
+                error = rootErr;
                 return false;
             }
 
-            var flatProfile = BuildProfileFromUi(sid);
             var identity = new StructuredProfileV2Identity(charName, mainJob, subJob);
             var result = StructuredProfileV2Writer.TryWriteStructuredProfile(addonRoot, flatProfile, identity);
             if (!result.Ok)
             {
-                statusConnection.Text = $"Mirror: v2 save failed ({result.Error}: {result.Detail})";
+                error = $"{result.Error}: {result.Detail}";
                 return false;
             }
 
+            error = "";
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            error = ex.Message;
             return false;
         }
     }
 
-    private static bool MigrateProfileInPlace(JsonObject root)
+    internal static bool MigrateProfileInPlace(JsonObject root)
     {
         var changed = false;
         var schema = 0;
@@ -671,6 +689,32 @@ public partial class MainForm
             }
             root["sleep_spell_entries"] = string.Join("|", migratedSleep.Select((name, idx) => $"{idx + 1}:{name}"));
             changed = true;
+        }
+
+        if (schema < 3)
+        {
+            foreach (var key in RequiredDomainBoolKeys)
+            {
+                if (!root.ContainsKey(key))
+                {
+                    root[key] = true;
+                    changed = true;
+                }
+            }
+
+            foreach (var retiredKey in new[]
+            {
+                "scheduler_dark_launch_combat",
+                "scheduler_dark_launch_defensive",
+                "scheduler_dark_launch_movement",
+                "scheduler_dark_launch_maintenance",
+            })
+            {
+                if (root.Remove(retiredKey))
+                {
+                    changed = true;
+                }
+            }
         }
 
         if (!root.TryGetPropertyValue("profile_schema_version", out var sv) || sv is null || !(sv is JsonValue svv && svv.TryGetValue<int>(out var sver) && sver == ProfileSchemaVersion))

@@ -6,9 +6,10 @@ Canonical location: `RFC/UnifiedCombat_scheduler_refactor_tracking.md`
 
 ## 1) Authoritative Current Status
 
-Status date: 2026-07-24
-Audited state: current Phase 6 implementation working tree based on Phase 5
-commit `853bed49f9482a13a3918bbc8a15fc6288efa9a5`
+Status date: 2026-07-26
+Audited state: Phase 6 complete at commit
+`26cea4ea682c8643bdeb4ab3af3eff6d7758e192`, with post-closeout profile UI
+corrections in the current working tree
 
 This compact board is the authoritative current status. The detailed task notes and
 older progress rows below are retained as implementation history and may describe
@@ -209,6 +210,7 @@ The completion decision and limitations are in
 | Debug-global collapse | `CONDITION NOT MET — RETAINED` | Historical `_G.UC_SCHED_P1_DARKLAUNCH_*` validation payloads and block reasons remain because no bridge/UI replacement exists. This follows the RFC condition and is pinned by `selftest_phase6_cleanup.lua`. |
 | Documentation disposition | `DONE` | Current side-effect/ownership/replay/readiness docs use current names; material pre-cutover docs and the Phase 5 terminology decision are explicitly marked historical/superseded. |
 | Phase 6 live acceptance | `DONE / FIELD VERIFIED WITH ACCEPTED PATH-FOLLOW RISK` | The user reloaded UnifiedCombat on all active profiles and completed live testing. A stale-profile deployment regression on Ponponponponpon was isolated, repaired, and retested: after addon reload, Weaponskill Spam again used Savage Blade as configured. Live path-follow remains the explicitly accepted untested risk from Phases 4 and 5. |
+| Post-closeout new-profile save regression | `FIXED / DEPLOYED / AUTOMATED VERIFIED / LIVE RELOAD PENDING` | Terrasjr SMN/SAM reproduced the new-profile failure: new UI profiles defaulted scheduler-domain ownership off, save failures were swallowed/overwritten, and omitted Nyzul config did not clear a stale runtime roster during v2 conversion. UI profile schema 3 now explicitly migrates missing domain keys enabled, new profiles start with all five domains enabled, the writer requires explicit domain booleans, save results remain visible, and v2 projection clears omitted Nyzul state. The repaired exact `terrasjr_SMN_SAM.lua` validates, and the corrected self-contained UI is published in the normal location; addon reload and a short SMN/SAM live smoke remain. |
 
 Phase 6 automated verification:
 
@@ -229,6 +231,22 @@ Phase 6 artifacts:
 
 ## Recent Historical Entries
 
+- 2026-07-26: Fixed the Terrasjr SMN/SAM new-profile save/conversion
+  regression. Logs showed v2 auto-reload rejection first at
+  `config.combat.enabled` and then at `config.follow.nyzul`. The UI now creates
+  scheduler-only profiles with all five domain switches enabled, explicitly
+  migrates older UI profiles to schema 3, fails on missing/malformed domain
+  values instead of using writer defaults, and reports durable save success or
+  failure for ten seconds. Active-config projection now removes stale Nyzul
+  state when the replacement v2 profile omits that optional section. The
+  incomplete Terrasjr SMN Nyzul roster was cleared and an exact
+  `terrasjr_SMN_SAM.lua` was generated. Verification passed the WinForms build
+  and structured-profile self-test, exact SMN/SAM conversion with a seeded stale
+  Nyzul roster, Lua 5.1 parsing, and all 119 replay suites. After the old UI was
+  closed, the corrected self-contained build was published to the normal
+  `win-x64/publish` location and its deployed executable passed the
+  structured-profile self-test. Live addon reload and a short SMN/SAM smoke
+  remain.
 - 2026-07-24: Closed the Ponponponponpon field regression and restored Phase 6
   completion. After the clean v2 profile deployment, the user reloaded
   UnifiedCombat and confirmed that Weaponskill Spam again uses Savage Blade as

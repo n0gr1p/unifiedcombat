@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace UnifiedCombatWinForms;
 
@@ -3902,7 +3903,7 @@ public partial class MainForm
 
         if (!ValidateFormationConfiguration(out var formationError))
         {
-            statusConnection.Text = $"Mirror: profile save blocked ({formationError})";
+            SetProfileSaveStatus($"Mirror: profile save blocked ({formationError})");
             UpdateFormationUiState();
             return;
         }
@@ -3910,13 +3911,40 @@ public partial class MainForm
         _suppressUiSaveOutbound = true;
         try
         {
-            TrySaveProfileFromUi(sid);
-            TrySaveStructuredProfileV2FromUi(sid);
+            JsonObject profile;
+            try
+            {
+                profile = BuildProfileFromUi(sid);
+            }
+            catch (Exception ex)
+            {
+                SetProfileSaveStatus($"Mirror: profile save failed ({ex.Message})");
+                return;
+            }
+
+            if (!TrySaveStructuredProfileV2FromUi(sid, profile, out var v2Error))
+            {
+                SetProfileSaveStatus($"Mirror: v2 save failed ({v2Error})");
+                return;
+            }
+            if (!TrySaveProfileFromUi(sid, profile, out var uiError))
+            {
+                SetProfileSaveStatus($"Mirror: UI profile save failed ({uiError})");
+                return;
+            }
+
+            SetProfileSaveStatus("Mirror: profile saved (UI + v2)");
         }
         finally
         {
             _suppressUiSaveOutbound = false;
         }
+    }
+
+    private void SetProfileSaveStatus(string message)
+    {
+        statusConnection.Text = message;
+        _profileSaveStatusHoldUntilUtc = DateTime.UtcNow.AddSeconds(10);
     }
 
     private void ToggleEngine()

@@ -23,6 +23,8 @@ public partial class MainForm : Form
     private readonly Dictionary<string, JsonObject> _workingProfileBySid = new(StringComparer.Ordinal);
     /// <summary>Suppress outbound mirror traffic while a file-only UI save is in flight.</summary>
     private bool _suppressUiSaveOutbound;
+    /// <summary>Keep explicit profile-save results visible instead of replacing them with the next routine snapshot status.</summary>
+    private DateTime _profileSaveStatusHoldUntilUtc = DateTime.MinValue;
     private string? _selectedSid;
     private string? _lastFillSid;
 
@@ -392,7 +394,10 @@ public partial class MainForm : Form
         }
         TryApplyQueuedEngineReapply();
 
-        statusConnection.Text = $"Mirror: snapshot ({_listSids.Count} sessions)";
+        if (DateTime.UtcNow >= _profileSaveStatusHoldUntilUtc)
+        {
+            statusConnection.Text = $"Mirror: snapshot ({_listSids.Count} sessions)";
+        }
         statusLastUpdate.Text = "Last snapshot: " + DateTime.Now.ToString("T");
         if (!string.IsNullOrWhiteSpace(_selectedSid) && sessionsEl.TryGetProperty(_selectedSid, out var selectedState))
         {
