@@ -792,6 +792,10 @@ local function build_expected_config()
 				offensive_action = {
 					enabled = false,
 					usage = 'on_cooldown',
+					target_hpp_above_enabled = false,
+					target_hpp_above = 50,
+					pet_tp_above_enabled = false,
+					pet_tp_above = 2000,
 				},
 			},
 		},

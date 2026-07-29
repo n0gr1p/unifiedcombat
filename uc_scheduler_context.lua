@@ -199,6 +199,7 @@ function M.build(settings, phase1, deps)
 		me_id = tonumber(me.id) or 0,
 		me_name = tostring(me.name or ''),
 		pet_id = tonumber(pet.id) or 0,
+		pet_index = tonumber(pet.index) or 0,
 		pet_name = tostring(pet.name or ''),
 		pet_status = pet_status,
 		pet_target_index = pet_target_index,

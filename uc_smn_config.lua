@@ -43,6 +43,29 @@ local function require_optional_string(result, parent, key, path)
 	return true
 end
 
+local function validate_optional_gate(result, parent, enabled_key, value_key, path, maximum)
+	local enabled = parent[enabled_key]
+	local value = parent[value_key]
+	if enabled == nil and value == nil then
+		return
+	end
+	if type(enabled) ~= 'boolean' then
+		result.valid = false
+		add_issue(result.errors, 'summoner_shape_invalid', path .. '_enabled must be boolean.')
+	end
+	if type(value) ~= 'number'
+		or value % 1 ~= 0
+		or value < 0
+		or value > maximum then
+		result.valid = false
+		add_issue(
+			result.errors,
+			'summoner_shape_invalid',
+			('%s must be an integer from 0 to %d.'):format(path, maximum)
+		)
+	end
+end
+
 function M.validate(config)
 	local result = {
 		enabled = false,
@@ -108,6 +131,22 @@ function M.validate(config)
 			'summoner.pet_combat.offensive_action.usage must be a string.'
 		)
 	end
+	validate_optional_gate(
+		result,
+		offensive,
+		'target_hpp_above_enabled',
+		'target_hpp_above',
+		'summoner.pet_combat.offensive_action.target_hpp_above',
+		99
+	)
+	validate_optional_gate(
+		result,
+		offensive,
+		'pet_tp_above_enabled',
+		'pet_tp_above',
+		'summoner.pet_combat.offensive_action.pet_tp_above',
+		2999
+	)
 	result.enabled = config.enabled == true
 	if not result.valid or not result.enabled then
 		return result

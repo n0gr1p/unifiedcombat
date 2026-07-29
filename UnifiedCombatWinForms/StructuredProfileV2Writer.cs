@@ -659,6 +659,8 @@ internal static class StructuredProfileV2Writer
             || ReadString(flatProfile, "summoner_ward_action", "") != ""
             || ReadBool(flatProfile, "summoner_engage_on_combat_start", false)
             || ReadBool(flatProfile, "summoner_rage_enabled", false)
+            || ReadOptionalBool(flatProfile, "summoner_rage_target_hpp_above_enabled", false)
+            || ReadOptionalBool(flatProfile, "summoner_rage_pet_tp_above_enabled", false)
             || ReadString(flatProfile, "summoner_rage_action", "") != "";
     }
 
@@ -704,6 +706,22 @@ internal static class StructuredProfileV2Writer
                             .Add("enabled", ReadBool(flatProfile, "summoner_rage_enabled", false))
                             .Add("action", NullIfEmpty(ReadString(flatProfile, "summoner_rage_action", "")))
                             .Add("usage", ReadString(flatProfile, "summoner_rage_usage", "on_cooldown"))
+                            .Add(
+                                "target_hpp_above_enabled",
+                                ReadOptionalBool(flatProfile, "summoner_rage_target_hpp_above_enabled", false)
+                            )
+                            .Add(
+                                "target_hpp_above",
+                                ReadBoundedInt(flatProfile, "summoner_rage_target_hpp_above", 50, 0, 99)
+                            )
+                            .Add(
+                                "pet_tp_above_enabled",
+                                ReadOptionalBool(flatProfile, "summoner_rage_pet_tp_above_enabled", false)
+                            )
+                            .Add(
+                                "pet_tp_above",
+                                ReadBoundedInt(flatProfile, "summoner_rage_pet_tp_above", 2000, 0, 2999)
+                            )
                     )
             );
     }
@@ -1051,10 +1069,46 @@ internal static class StructuredProfileV2Writer
         throw new InvalidDataException($"required boolean profile field is invalid: {key}");
     }
 
+    private static bool ReadOptionalBool(JsonObject flatProfile, string key, bool defaultValue)
+    {
+        if (!flatProfile.TryGetPropertyValue(key, out var node) || node is null)
+        {
+            return defaultValue;
+        }
+        if (node is JsonValue value && value.TryGetValue<bool>(out var boolValue))
+        {
+            return boolValue;
+        }
+        throw new InvalidDataException($"optional boolean profile field is invalid: {key}");
+    }
+
     private static int ReadInt(JsonObject flatProfile, string key, int defaultValue)
     {
         var number = ReadDouble(flatProfile, key, defaultValue);
         return (int)Math.Round(number, MidpointRounding.AwayFromZero);
+    }
+
+    private static int ReadBoundedInt(
+        JsonObject flatProfile,
+        string key,
+        int defaultValue,
+        int minimum,
+        int maximum
+    )
+    {
+        if (!flatProfile.TryGetPropertyValue(key, out var node) || node is null)
+        {
+            return defaultValue;
+        }
+        if (node is not JsonValue value || !value.TryGetValue<int>(out var number))
+        {
+            throw new InvalidDataException($"setting {key} must be an integer");
+        }
+        if (number < minimum || number > maximum)
+        {
+            throw new InvalidDataException($"setting {key} is outside {minimum}..{maximum}: {number}");
+        }
+        return number;
     }
 
     private static double ReadDouble(JsonObject flatProfile, string key, double defaultValue)

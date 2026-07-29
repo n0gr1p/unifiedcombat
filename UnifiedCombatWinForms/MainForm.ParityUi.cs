@@ -133,6 +133,10 @@ public partial class MainForm
     private CheckBox _summonerEngage = null!;
     private CheckBox _summonerRageEnabled = null!;
     private ComboBox _summonerRageAction = null!;
+    private CheckBox _summonerRageTargetHppAboveEnabled = null!;
+    private NumericUpDown _summonerRageTargetHppAbove = null!;
+    private CheckBox _summonerRagePetTpAboveEnabled = null!;
+    private NumericUpDown _summonerRagePetTpAbove = null!;
     private Label _summonerValidation = null!;
     private CheckBox _reactionEnabled = null!;
     private ListBox _reactionRuleList = null!;
@@ -1199,6 +1203,55 @@ public partial class MainForm
         };
         _summonerRageAction.SelectedIndexChanged += (_, _) => OnSummonerActionChanged();
         summonerRoot.Controls.Add(_summonerRageAction, 1, summonerRow++);
+        _summonerRageTargetHppAboveEnabled = new CheckBox
+        {
+            Text = "Require target HP above",
+            AutoSize = true,
+        };
+        _summonerRageTargetHppAboveEnabled.CheckedChanged += (_, _) => OnSummonerSettingChanged();
+        summonerRoot.Controls.Add(_summonerRageTargetHppAboveEnabled, 0, summonerRow);
+        _summonerRageTargetHppAbove = new NumericUpDown
+        {
+            Minimum = 0,
+            Maximum = 99,
+            Value = 50,
+            Width = 90,
+            Anchor = AnchorStyles.Left,
+        };
+        _summonerRageTargetHppAbove.ValueChanged += (_, _) => OnSummonerSettingChanged();
+        var summonerTargetHppGate = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+        };
+        summonerTargetHppGate.Controls.Add(_summonerRageTargetHppAbove);
+        summonerTargetHppGate.Controls.Add(new Label
+        {
+            Text = "% (exclusive)",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Padding = new Padding(0, 5, 0, 0),
+        });
+        summonerRoot.Controls.Add(summonerTargetHppGate, 1, summonerRow++);
+        _summonerRagePetTpAboveEnabled = new CheckBox
+        {
+            Text = "Require pet TP above",
+            AutoSize = true,
+        };
+        _summonerRagePetTpAboveEnabled.CheckedChanged += (_, _) => OnSummonerSettingChanged();
+        summonerRoot.Controls.Add(_summonerRagePetTpAboveEnabled, 0, summonerRow);
+        _summonerRagePetTpAbove = new NumericUpDown
+        {
+            Minimum = 0,
+            Maximum = 2999,
+            Value = 2000,
+            Increment = 100,
+            Width = 90,
+            Anchor = AnchorStyles.Left,
+        };
+        _summonerRagePetTpAbove.ValueChanged += (_, _) => OnSummonerSettingChanged();
+        summonerRoot.Controls.Add(_summonerRagePetTpAbove, 1, summonerRow++);
         _summonerValidation = new Label
         {
             AutoSize = true,

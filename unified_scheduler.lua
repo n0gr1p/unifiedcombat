@@ -82,6 +82,7 @@ local scheduler = {
 		backoff_max = 8.0,
 	}),
 	pet_combat_state = require('uc_pet_combat_state').new(),
+	pet_tp_state = require('uc_pet_tp_state').new(),
 	action_state = {
 		action_start = 0,
 		action_end = 0,
@@ -3577,6 +3578,21 @@ local function p1_build_ctx(settings)
 		get_mob_array = windower.ffxi.get_mob_array,
 		now = now_s,
 	})
+	local pet_tp_state = require('uc_pet_tp_state')
+	local pet_tp_present = ctx.pet_present == true and ctx.pet_index > 0
+	pet_tp_state.observe_pet(
+		scheduler.pet_tp_state,
+		pet_tp_present,
+		ctx.pet_id,
+		ctx.pet_index
+	)
+	if pet_tp_present then
+		ctx.pet_tp = pet_tp_state.current_tp(
+			scheduler.pet_tp_state,
+			ctx.pet_id,
+			ctx.pet_index
+		)
+	end
 	local ability_recasts = windower.ffxi.get_ability_recasts()
 	ctx.ability_recasts_present = type(ability_recasts) == 'table'
 	if ctx.ability_recasts_present then
@@ -5780,11 +5796,26 @@ function scheduler.on_incoming_chunk(id, data)
 		scheduler.phase1.effectiveTargets = {}
 		pet_command_coordinator.reset(scheduler.pet_command_state, 'zone_change')
 		require('uc_pet_combat_state').reset(scheduler.pet_combat_state)
+		require('uc_pet_tp_state').reset(scheduler.pet_tp_state)
 		_G.UC_SMN_PET_COMMAND_STATE = nil
 		_G.UC_SMN_PET_COMBAT_STATUS = nil
 		_G.UC_SMN_MAINTENANCE_STATUS = nil
 		require('uc_brd_maintenance').reset('zone_change')
 		require('uc_party_buff_tracker').reset()
+		return
+	end
+	if (nid == 0x067 or nid == 0x068) and type(data) == 'string' then
+		local player = windower.ffxi.get_player()
+		local player_index = type(player) == 'table' and tonumber(player.index) or nil
+		if player_index ~= nil and player_index > 0 then
+			require('uc_pet_tp_state').ingest(
+				scheduler.pet_tp_state,
+				nid,
+				data,
+				player_index,
+				require('packets').parse
+			)
+		end
 		return
 	end
 	if nid == 0x076 and type(data) == 'string' then

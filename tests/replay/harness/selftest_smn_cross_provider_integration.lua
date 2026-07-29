@@ -31,6 +31,10 @@ local function context()
 			summoner_rage_enabled = true,
 			summoner_rage_action = 'Flaming Crush',
 			summoner_rage_usage = 'on_cooldown',
+			summoner_rage_target_hpp_above_enabled = false,
+			summoner_rage_target_hpp_above = 50,
+			summoner_rage_pet_tp_above_enabled = false,
+			summoner_rage_pet_tp_above = 2000,
 		},
 		player_present = true,
 		player = {
@@ -50,6 +54,7 @@ local function context()
 		pet_status = 0,
 		pet_target_id = 0,
 		pet_target_matches_current = false,
+		pet_tp = 3000,
 		pet = {
 			id = 200,
 			name = 'Ifrit',
@@ -201,7 +206,48 @@ local function test_shared_serialization()
 	assert_true(contains_kind(actions, 'rage'), 'Ward backoff must not starve Rage')
 end
 
+local function test_optional_rage_gates()
+	local ctx = context()
+	ctx.pet_tp = nil
+	assert_true(contains_kind(collect_all(ctx), 'rage'), 'disabled gates must not require pet TP')
+
+	ctx.pet_tp = 3000
+	ctx.settings.summoner_rage_target_hpp_above_enabled = true
+	ctx.target.hpp = 50
+	assert_equal(contains_kind(collect_all(ctx), 'rage'), false, 'target HPP equal to threshold must suppress Rage')
+	ctx.target.hpp = 51
+	assert_true(contains_kind(collect_all(ctx), 'rage'), 'target HPP above threshold must allow Rage')
+
+	ctx.settings.summoner_rage_target_hpp_above_enabled = false
+	ctx.settings.summoner_rage_pet_tp_above_enabled = true
+	ctx.settings.summoner_rage_pet_tp_above = 2000
+	ctx.pet_tp = 2000
+	assert_equal(contains_kind(collect_all(ctx), 'rage'), false, 'pet TP equal to threshold must suppress Rage')
+	ctx.pet_tp = 2001
+	assert_true(contains_kind(collect_all(ctx), 'rage'), 'pet TP above threshold must allow Rage')
+
+	ctx.settings.summoner_rage_target_hpp_above_enabled = true
+	ctx.settings.summoner_rage_target_hpp_above = 50
+	ctx.settings.summoner_rage_pet_tp_above = 2999
+	ctx.target.hpp = 51
+	ctx.pet_tp = 3000
+	assert_true(contains_kind(collect_all(ctx), 'rage'), 'both enabled gates must allow Rage when both pass')
+	ctx.target.hpp = 50
+	assert_equal(contains_kind(collect_all(ctx), 'rage'), false, 'both enabled gates must reject failed target HPP')
+	ctx.target.hpp = 51
+	ctx.pet_tp = 2999
+	assert_equal(contains_kind(collect_all(ctx), 'rage'), false, 'both enabled gates must reject failed pet TP')
+
+	ctx.pet_tp = nil
+	assert_equal(
+		contains_kind(collect_all(ctx), 'rage'),
+		false,
+		'enabled pet TP gate must suppress only Rage when live pet TP is unavailable'
+	)
+end
+
 test_priority_order()
 test_shared_serialization()
+test_optional_rage_gates()
 
 print('selftest_smn_cross_provider_integration: OK')

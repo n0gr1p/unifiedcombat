@@ -36,6 +36,10 @@ local function valid_summoner_config()
 				enabled = true,
 				action = 'Flaming Crush',
 				usage = 'on_cooldown',
+				target_hpp_above_enabled = false,
+				target_hpp_above = 50,
+				pet_tp_above_enabled = false,
+				pet_tp_above = 2000,
 			},
 		},
 	}
@@ -61,6 +65,10 @@ local function main()
 	assert_equal(missing.summoner.enabled, false, 'missing Summoner section must normalize disabled')
 	assert_true(missing.summoner.avatar == nil, 'missing Summoner avatar must remain nil')
 	assert_equal(missing.summoner.pet_combat.offensive_action.usage, 'on_cooldown', 'default Rage usage mismatch')
+	assert_equal(missing.summoner.pet_combat.offensive_action.target_hpp_above_enabled, false, 'default target HPP gate mismatch')
+	assert_equal(missing.summoner.pet_combat.offensive_action.target_hpp_above, 50, 'default target HPP threshold mismatch')
+	assert_equal(missing.summoner.pet_combat.offensive_action.pet_tp_above_enabled, false, 'default pet TP gate mismatch')
+	assert_equal(missing.summoner.pet_combat.offensive_action.pet_tp_above, 2000, 'default pet TP threshold mismatch')
 	assert_true(validator.validate(missing.summoner).valid, 'disabled Summoner configuration must be valid')
 	local malformed_normalize_ok = pcall(function()
 		normalizer.normalize({
@@ -78,6 +86,13 @@ local function main()
 		normalizer.normalize({ summoner = invalid }, { main_job = 'SMN' })
 	end)
 	assert_true(not malformed_boolean_ok, 'nested Summoner booleans must not use coercion fallbacks')
+	local malformed_flat_gate_ok = pcall(function()
+		normalizer.normalize({
+			summoner_rage_pet_tp_above_enabled = 'true',
+			summoner_rage_pet_tp_above = 2000,
+		}, { main_job = 'SMN' })
+	end)
+	assert_true(not malformed_flat_gate_ok, 'flat Summoner Rage gate booleans must not use coercion fallbacks')
 
 	local flat = normalizer.normalize({
 		summoner_enabled = true,
@@ -89,11 +104,32 @@ local function main()
 		summoner_rage_enabled = true,
 		summoner_rage_action = 'Flaming Crush',
 		summoner_rage_usage = 'on_cooldown',
+		summoner_rage_target_hpp_above_enabled = true,
+		summoner_rage_target_hpp_above = 50,
+		summoner_rage_pet_tp_above_enabled = true,
+		summoner_rage_pet_tp_above = 2999,
 	}, { main_job = 'SMN' })
 	local valid = validator.validate(flat.summoner)
 	assert_true(valid.valid, 'valid Summoner configuration must validate')
 	assert_true(valid.ward_valid, 'compatible Ward must validate')
 	assert_true(valid.rage_valid, 'compatible Rage must validate')
+	assert_equal(flat.summoner.pet_combat.offensive_action.target_hpp_above_enabled, true, 'flat target HPP gate mismatch')
+	assert_equal(flat.summoner.pet_combat.offensive_action.target_hpp_above, 50, 'flat target HPP threshold mismatch')
+	assert_equal(flat.summoner.pet_combat.offensive_action.pet_tp_above_enabled, true, 'flat pet TP gate mismatch')
+	assert_equal(flat.summoner.pet_combat.offensive_action.pet_tp_above, 2999, 'flat pet TP threshold mismatch')
+
+	local legacy_without_gates = valid_summoner_config()
+	legacy_without_gates.pet_combat.offensive_action.target_hpp_above_enabled = nil
+	legacy_without_gates.pet_combat.offensive_action.target_hpp_above = nil
+	legacy_without_gates.pet_combat.offensive_action.pet_tp_above_enabled = nil
+	legacy_without_gates.pet_combat.offensive_action.pet_tp_above = nil
+	assert_true(validator.validate(legacy_without_gates).valid, 'legacy Summoner config without optional Rage gates must validate')
+
+	local incomplete_gate = valid_summoner_config()
+	incomplete_gate.pet_combat.offensive_action.pet_tp_above = nil
+	local incomplete_gate_result = validator.validate(incomplete_gate)
+	assert_true(not incomplete_gate_result.valid, 'partial optional Rage gate must fail validation')
+	assert_true(find_issue(incomplete_gate_result.errors, 'summoner_shape_invalid') ~= nil, 'partial gate diagnostic mismatch')
 
 	local no_avatar = valid_summoner_config()
 	no_avatar.avatar = nil
@@ -154,7 +190,7 @@ local function main()
 		version = 2,
 		profile = payload.profile,
 		config = {
-			summoner = valid_summoner_config(),
+			summoner = legacy_without_gates,
 		},
 	}, { main_job = 'SMN', sub_job = 'RDM' })
 	local projected, projection_error = active_config.project_flat_settings(active_profile, {})
@@ -163,11 +199,17 @@ local function main()
 	assert_equal(projected.summoner_avatar, 'Ifrit', 'projected avatar mismatch')
 	assert_equal(projected.summoner_ward_action, 'Crimson Howl', 'projected Ward mismatch')
 	assert_equal(projected.summoner_rage_action, 'Flaming Crush', 'projected Rage mismatch')
+	assert_equal(projected.summoner_rage_target_hpp_above_enabled, false, 'projected target HPP gate mismatch')
+	assert_equal(projected.summoner_rage_target_hpp_above, 50, 'projected target HPP threshold mismatch')
+	assert_equal(projected.summoner_rage_pet_tp_above_enabled, false, 'projected pet TP gate mismatch')
+	assert_equal(projected.summoner_rage_pet_tp_above, 2000, 'projected pet TP threshold mismatch')
 
 	local round_trip = normalizer.normalize(projected, { main_job = 'SMN' })
 	assert_equal(round_trip.summoner.avatar, 'Ifrit', 'round-trip avatar mismatch')
 	assert_equal(round_trip.summoner.maintenance.ward.action, 'Crimson Howl', 'round-trip Ward mismatch')
 	assert_equal(round_trip.summoner.pet_combat.offensive_action.action, 'Flaming Crush', 'round-trip Rage mismatch')
+	assert_equal(round_trip.summoner.pet_combat.offensive_action.target_hpp_above, 50, 'round-trip target HPP mismatch')
+	assert_equal(round_trip.summoner.pet_combat.offensive_action.pet_tp_above, 2000, 'round-trip pet TP mismatch')
 
 	print('selftest_summoner_configuration: OK')
 end

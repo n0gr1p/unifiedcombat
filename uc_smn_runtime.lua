@@ -38,6 +38,28 @@ local function optional_string(value, name)
 	return value
 end
 
+local function optional_gate(settings, enabled_name, value_name, default_value, maximum)
+	local enabled = settings[enabled_name]
+	local value = settings[value_name]
+	if enabled == nil and value == nil then
+		return {
+			enabled = false,
+			value = default_value,
+		}
+	end
+	require_boolean(enabled, enabled_name)
+	if type(value) ~= 'number'
+		or value % 1 ~= 0
+		or value < 0
+		or value > maximum then
+		error(('%s must be an integer from 0 to %d'):format(value_name, maximum))
+	end
+	return {
+		enabled = enabled,
+		value = value,
+	}
+end
+
 function M.config_from_settings(settings)
 	settings = require_table(settings, 'Summoner runtime settings')
 	require_boolean(settings.summoner_enabled, 'summoner_enabled')
@@ -58,11 +80,29 @@ function M.config_from_settings(settings)
 					enabled = false,
 					action = nil,
 					usage = 'on_cooldown',
+					target_hpp_above_enabled = false,
+					target_hpp_above = 50,
+					pet_tp_above_enabled = false,
+					pet_tp_above = 2000,
 				},
 			},
 		}
 		return disabled, smn_config.validate(disabled)
 	end
+	local target_hpp_gate = optional_gate(
+		settings,
+		'summoner_rage_target_hpp_above_enabled',
+		'summoner_rage_target_hpp_above',
+		50,
+		99
+	)
+	local pet_tp_gate = optional_gate(
+		settings,
+		'summoner_rage_pet_tp_above_enabled',
+		'summoner_rage_pet_tp_above',
+		2000,
+		2999
+	)
 	local config = {
 		enabled = true,
 		avatar = optional_string(settings.summoner_avatar, 'summoner_avatar'),
@@ -85,6 +125,10 @@ function M.config_from_settings(settings)
 				enabled = require_boolean(settings.summoner_rage_enabled, 'summoner_rage_enabled'),
 				action = optional_string(settings.summoner_rage_action, 'summoner_rage_action'),
 				usage = optional_string(settings.summoner_rage_usage, 'summoner_rage_usage'),
+				target_hpp_above_enabled = target_hpp_gate.enabled,
+				target_hpp_above = target_hpp_gate.value,
+				pet_tp_above_enabled = pet_tp_gate.enabled,
+				pet_tp_above = pet_tp_gate.value,
 			},
 		},
 	}

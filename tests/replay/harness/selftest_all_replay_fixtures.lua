@@ -24,6 +24,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_profile_v2_autoload_lifecycle.lua",
     "tests/replay/harness/selftest_summoner_configuration.lua",
     "tests/replay/harness/selftest_pet_command_infrastructure.lua",
+    "tests/replay/harness/selftest_pet_tp_state.lua",
     "tests/replay/harness/selftest_smn_maintenance.lua",
     "tests/replay/harness/selftest_pet_combat_provider.lua",
     "tests/replay/harness/selftest_smn_cross_provider_integration.lua",

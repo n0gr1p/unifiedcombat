@@ -299,6 +299,29 @@ local function canonicalize_optional_control_ranges(current_config, target_confi
 		-- Profiles written before Summoner automation became a durable v2 domain
 		-- continue to mean "Summoner automation disabled".
 		current_config.summoner = nil
+	else
+		local function canonicalize_rage_gates(config)
+			local summoner = type(config.summoner) == 'table' and config.summoner or nil
+			local pet_combat = summoner and type(summoner.pet_combat) == 'table'
+				and summoner.pet_combat or nil
+			local offensive = pet_combat and type(pet_combat.offensive_action) == 'table'
+				and pet_combat.offensive_action or nil
+			if offensive == nil then
+				return
+			end
+			if offensive.target_hpp_above_enabled == nil
+				and offensive.target_hpp_above == nil then
+				offensive.target_hpp_above_enabled = false
+				offensive.target_hpp_above = 50
+			end
+			if offensive.pet_tp_above_enabled == nil
+				and offensive.pet_tp_above == nil then
+				offensive.pet_tp_above_enabled = false
+				offensive.pet_tp_above = 2000
+			end
+		end
+		canonicalize_rage_gates(current_config)
+		canonicalize_rage_gates(target_config)
 	end
 
 	return current_config, target_config

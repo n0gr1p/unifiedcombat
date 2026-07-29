@@ -95,6 +95,32 @@ function M.new(deps)
 		if configured.usage ~= 'on_cooldown' then
 			error('unsupported Summoner offensive action usage: ' .. tostring(configured.usage))
 		end
+		if configured.target_hpp_above_enabled == true then
+			local target_hpp = ctx.target_hpp
+			local target_hpp_above = configured.target_hpp_above
+			if type(target_hpp) ~= 'number' then
+				error('Summoner Rage target HPP must be numeric when the target HPP gate is enabled')
+			end
+			if type(target_hpp_above) ~= 'number' then
+				error('Summoner Rage target HPP threshold must be numeric when the target HPP gate is enabled')
+			end
+			if target_hpp <= target_hpp_above then
+				return nil
+			end
+		end
+		if configured.pet_tp_above_enabled == true then
+			local pet_tp = ctx.pet_tp
+			local pet_tp_above = configured.pet_tp_above
+			if pet_tp == nil then
+				return nil
+			end
+			if type(pet_tp_above) ~= 'number' then
+				error('Summoner pet TP threshold must be numeric when the pet TP gate is enabled')
+			end
+			if pet_tp <= pet_tp_above then
+				return nil
+			end
+		end
 		local ready = runtime.recast_ready(ctx, runtime.RECAST_RAGE)
 		if not ready then
 			return nil

@@ -362,6 +362,21 @@ local function sync_table_in_place(target, source)
 	return true
 end
 
+local function optional_summoner_gate(offensive, enabled_key, value_key, path, default_value, maximum)
+	local enabled = offensive[enabled_key]
+	local value = offensive[value_key]
+	if enabled == nil and value == nil then
+		return false, default_value
+	end
+	if type(enabled) ~= 'boolean' then
+		return nil, nil, path .. '_enabled must be boolean'
+	end
+	if type(value) ~= 'number' or value % 1 ~= 0 or value < 0 or value > maximum then
+		return nil, nil, ('%s must be an integer from 0 to %d'):format(path, maximum)
+	end
+	return enabled, value
+end
+
 local function apply_structured_config_to_candidate(candidate, config)
 	if type(candidate) ~= 'table' or type(config) ~= 'table' then
 		return false, 'candidate and config must be tables'
@@ -754,6 +769,28 @@ local function apply_structured_config_to_candidate(candidate, config)
 		if type(offensive.usage) ~= 'string' then
 			return false, 'config.summoner.pet_combat.offensive_action.usage must be a string'
 		end
+		local target_hpp_enabled, target_hpp_above, target_hpp_error = optional_summoner_gate(
+			offensive,
+			'target_hpp_above_enabled',
+			'target_hpp_above',
+			'config.summoner.pet_combat.offensive_action.target_hpp_above',
+			50,
+			99
+		)
+		if target_hpp_error ~= nil then
+			return false, target_hpp_error
+		end
+		local pet_tp_enabled, pet_tp_above, pet_tp_error = optional_summoner_gate(
+			offensive,
+			'pet_tp_above_enabled',
+			'pet_tp_above',
+			'config.summoner.pet_combat.offensive_action.pet_tp_above',
+			2000,
+			2999
+		)
+		if pet_tp_error ~= nil then
+			return false, pet_tp_error
+		end
 
 		candidate.summoner_enabled = summoner.enabled
 		candidate.summoner_avatar = summoner.avatar
@@ -773,6 +810,10 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.summoner_rage_action = ''
 		end
 		candidate.summoner_rage_usage = offensive.usage
+		candidate.summoner_rage_target_hpp_above_enabled = target_hpp_enabled
+		candidate.summoner_rage_target_hpp_above = target_hpp_above
+		candidate.summoner_rage_pet_tp_above_enabled = pet_tp_enabled
+		candidate.summoner_rage_pet_tp_above = pet_tp_above
 	end
 
 	if type(config.debug) == 'table' then

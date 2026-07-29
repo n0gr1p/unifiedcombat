@@ -20,6 +20,7 @@ local RUNTIME_LUA_FILES = {
     "uc_partner_list.lua",
     "uc_pet_combat_provider.lua",
     "uc_pet_combat_state.lua",
+    "uc_pet_tp_state.lua",
     "uc_pet_command_coordinator.lua",
     "uc_pet_commands.lua",
     "uc_party_buff_tracker.lua",

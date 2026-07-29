@@ -802,6 +802,10 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "avatar_favor = false", "disabled SMN profile Favor default mismatch");
         AssertContains(content, "engage_on_combat_start = false", "disabled SMN engage default mismatch");
         AssertContains(content, "usage = \"on_cooldown\"", "disabled SMN Rage usage default mismatch");
+        AssertContains(content, "target_hpp_above_enabled = false", "disabled target HPP gate default mismatch");
+        AssertContains(content, "target_hpp_above = 50", "target HPP threshold default mismatch");
+        AssertContains(content, "pet_tp_above_enabled = false", "disabled pet TP gate default mismatch");
+        AssertContains(content, "pet_tp_above = 2000", "pet TP threshold default mismatch");
     }
 
     private static void TestSummonerConfiguredRoundTripShape()
@@ -816,6 +820,10 @@ internal static class StructuredProfileV2WriterTests
         flat["summoner_rage_enabled"] = true;
         flat["summoner_rage_action"] = "Flaming Crush";
         flat["summoner_rage_usage"] = "on_cooldown";
+        flat["summoner_rage_target_hpp_above_enabled"] = true;
+        flat["summoner_rage_target_hpp_above"] = 50;
+        flat["summoner_rage_pet_tp_above_enabled"] = true;
+        flat["summoner_rage_pet_tp_above"] = 2999;
 
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
@@ -826,6 +834,10 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "action = \"Flaming Crush\"", "Rage action must serialize");
         AssertContains(content, "avatar_favor = true", "Favor policy must serialize");
         AssertContains(content, "engage_on_combat_start = true", "engagement policy must serialize");
+        AssertContains(content, "target_hpp_above_enabled = true", "target HPP gate must serialize");
+        AssertContains(content, "target_hpp_above = 50", "target HPP threshold must serialize");
+        AssertContains(content, "pet_tp_above_enabled = true", "pet TP gate must serialize");
+        AssertContains(content, "pet_tp_above = 2999", "pet TP threshold must serialize");
     }
 
     private static void TestSummonerPreservesIncompatibleSelections()
@@ -857,6 +869,8 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(ui, "SummonerCapabilities.Avatars", "avatar options must come from the static catalog");
         AssertContains(store, "[\"summoner_enabled\"] = _summonerEnabled.Checked", "Summoner enabled state must be captured");
         AssertContains(store, "[\"summoner_rage_action\"] = _summonerRageAction.SelectedItem", "Summoner Rage must be captured");
+        AssertContains(store, "[\"summoner_rage_target_hpp_above_enabled\"]", "target HPP gate must be captured");
+        AssertContains(store, "[\"summoner_rage_pet_tp_above_enabled\"]", "pet TP gate must be captured");
         AssertContains(logic, "BindSummonerActionCombo", "Summoner actions must be filtered from the catalog");
         AssertContains(logic, "incompatible with", "invalidated selections must be visibly diagnosed");
         AssertContains(project, "summoner_capabilities.tsv", "Summoner catalog must be embedded for offline UI use");

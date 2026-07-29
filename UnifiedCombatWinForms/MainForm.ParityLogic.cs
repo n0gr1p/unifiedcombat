@@ -440,6 +440,10 @@ public partial class MainForm
             _summonerEngage.Checked = false;
             _summonerRageEnabled.Checked = false;
             BindSummonerActionCombo(_summonerRageAction, [], "");
+            _summonerRageTargetHppAboveEnabled.Checked = false;
+            _summonerRageTargetHppAbove.Value = 50;
+            _summonerRagePetTpAboveEnabled.Checked = false;
+            _summonerRagePetTpAbove.Value = 2000;
             UpdateSummonerUiState();
             _reactionEnabled.Checked = false;
             _reactionRules.Clear();
@@ -1601,7 +1605,63 @@ public partial class MainForm
         {
             throw new InvalidDataException($"Unsupported Summoner Rage usage policy '{usage}'.");
         }
+        _summonerRageTargetHppAboveEnabled.Checked = ReadOptionalSummonerGateEnabled(
+            snapshot,
+            "summoner_rage_target_hpp_above_enabled"
+        );
+        _summonerRageTargetHppAbove.Value = ReadOptionalSummonerGateThreshold(
+            snapshot,
+            "summoner_rage_target_hpp_above",
+            50,
+            99
+        );
+        _summonerRagePetTpAboveEnabled.Checked = ReadOptionalSummonerGateEnabled(
+            snapshot,
+            "summoner_rage_pet_tp_above_enabled"
+        );
+        _summonerRagePetTpAbove.Value = ReadOptionalSummonerGateThreshold(
+            snapshot,
+            "summoner_rage_pet_tp_above",
+            2000,
+            2999
+        );
         UpdateSummonerUiState();
+    }
+
+    private static int ReadOptionalSummonerGateThreshold(
+        JsonElement snapshot,
+        string key,
+        int defaultValue,
+        int maximum
+    )
+    {
+        if (!snapshot.TryGetProperty(key, out var value))
+        {
+            return defaultValue;
+        }
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var threshold))
+        {
+            throw new InvalidDataException($"{key} must be an integer.");
+        }
+        if (threshold < 0 || threshold > maximum)
+        {
+            throw new InvalidDataException($"{key} must be from 0 to {maximum}.");
+        }
+        return threshold;
+    }
+
+    private static bool ReadOptionalSummonerGateEnabled(JsonElement snapshot, string key)
+    {
+        if (!snapshot.TryGetProperty(key, out var value))
+        {
+            return false;
+        }
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => throw new InvalidDataException($"{key} must be boolean."),
+        };
     }
 
     private void OnSummonerAvatarChanged()
@@ -1680,6 +1740,13 @@ public partial class MainForm
         _summonerEngage.Enabled = enabled && avatarValid;
         _summonerRageEnabled.Enabled = enabled && avatarValid;
         _summonerRageAction.Enabled = enabled && avatarValid && _summonerRageEnabled.Checked;
+        var rageGateControlsEnabled = enabled && avatarValid && _summonerRageEnabled.Checked;
+        _summonerRageTargetHppAboveEnabled.Enabled = rageGateControlsEnabled;
+        _summonerRageTargetHppAbove.Enabled =
+            rageGateControlsEnabled && _summonerRageTargetHppAboveEnabled.Checked;
+        _summonerRagePetTpAboveEnabled.Enabled = rageGateControlsEnabled;
+        _summonerRagePetTpAbove.Enabled =
+            rageGateControlsEnabled && _summonerRagePetTpAboveEnabled.Checked;
 
         if (!enabled)
         {

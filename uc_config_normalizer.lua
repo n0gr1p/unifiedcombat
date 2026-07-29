@@ -605,6 +605,10 @@ local function default_config(meta)
                     enabled = false,
                     action = nil,
                     usage = 'on_cooldown',
+                    target_hpp_above_enabled = false,
+                    target_hpp_above = 50,
+                    pet_tp_above_enabled = false,
+                    pet_tp_above = 2000,
                 },
             },
         },
@@ -1219,9 +1223,47 @@ local function normalize_summoner(source, config)
         if type(offensive.usage) ~= 'string' or trim_string(offensive.usage) == '' then
             error('summoner.pet_combat.offensive_action.usage must be a non-empty string')
         end
+        local target_hpp_gate_present = offensive.target_hpp_above_enabled ~= nil
+            or offensive.target_hpp_above ~= nil
+        if target_hpp_gate_present then
+            if type(offensive.target_hpp_above_enabled) ~= 'boolean' then
+                error('summoner.pet_combat.offensive_action.target_hpp_above_enabled must be boolean')
+            end
+            if type(offensive.target_hpp_above) ~= 'number'
+                or offensive.target_hpp_above % 1 ~= 0
+                or offensive.target_hpp_above < 0
+                or offensive.target_hpp_above > 99 then
+                error('summoner.pet_combat.offensive_action.target_hpp_above must be an integer from 0 to 99')
+            end
+        end
+        local pet_tp_gate_present = offensive.pet_tp_above_enabled ~= nil
+            or offensive.pet_tp_above ~= nil
+        if pet_tp_gate_present then
+            if type(offensive.pet_tp_above_enabled) ~= 'boolean' then
+                error('summoner.pet_combat.offensive_action.pet_tp_above_enabled must be boolean')
+            end
+            if type(offensive.pet_tp_above) ~= 'number'
+                or offensive.pet_tp_above % 1 ~= 0
+                or offensive.pet_tp_above < 0
+                or offensive.pet_tp_above > 2999 then
+                error('summoner.pet_combat.offensive_action.pet_tp_above must be an integer from 0 to 2999')
+            end
+        end
         summoner.pet_combat.offensive_action.enabled = offensive.enabled
         summoner.pet_combat.offensive_action.action = normalize_optional_string(offensive.action)
         summoner.pet_combat.offensive_action.usage = trim_string(offensive.usage)
+        if target_hpp_gate_present then
+            summoner.pet_combat.offensive_action.target_hpp_above_enabled =
+                offensive.target_hpp_above_enabled
+            summoner.pet_combat.offensive_action.target_hpp_above =
+                offensive.target_hpp_above
+        end
+        if pet_tp_gate_present then
+            summoner.pet_combat.offensive_action.pet_tp_above_enabled =
+                offensive.pet_tp_above_enabled
+            summoner.pet_combat.offensive_action.pet_tp_above =
+                offensive.pet_tp_above
+        end
     else
         summoner.enabled = normalize_boolean(
             first_path(source, { path('summoner_enabled') }),
@@ -1254,6 +1296,48 @@ local function normalize_summoner(source, config)
             first_path(source, { path('summoner_rage_usage') }),
             summoner.pet_combat.offensive_action.usage
         )
+        local flat_target_hpp_enabled = first_path(source, {
+            path('summoner_rage_target_hpp_above_enabled'),
+        })
+        local flat_target_hpp_above = first_path(source, {
+            path('summoner_rage_target_hpp_above'),
+        })
+        if flat_target_hpp_enabled ~= nil or flat_target_hpp_above ~= nil then
+            if type(flat_target_hpp_enabled) ~= 'boolean' then
+                error('summoner_rage_target_hpp_above_enabled must be boolean')
+            end
+            if type(flat_target_hpp_above) ~= 'number'
+                or flat_target_hpp_above % 1 ~= 0
+                or flat_target_hpp_above < 0
+                or flat_target_hpp_above > 99 then
+                error('summoner_rage_target_hpp_above must be an integer from 0 to 99')
+            end
+            summoner.pet_combat.offensive_action.target_hpp_above_enabled =
+                flat_target_hpp_enabled
+            summoner.pet_combat.offensive_action.target_hpp_above =
+                flat_target_hpp_above
+        end
+        local flat_pet_tp_enabled = first_path(source, {
+            path('summoner_rage_pet_tp_above_enabled'),
+        })
+        local flat_pet_tp_above = first_path(source, {
+            path('summoner_rage_pet_tp_above'),
+        })
+        if flat_pet_tp_enabled ~= nil or flat_pet_tp_above ~= nil then
+            if type(flat_pet_tp_enabled) ~= 'boolean' then
+                error('summoner_rage_pet_tp_above_enabled must be boolean')
+            end
+            if type(flat_pet_tp_above) ~= 'number'
+                or flat_pet_tp_above % 1 ~= 0
+                or flat_pet_tp_above < 0
+                or flat_pet_tp_above > 2999 then
+                error('summoner_rage_pet_tp_above must be an integer from 0 to 2999')
+            end
+            summoner.pet_combat.offensive_action.pet_tp_above_enabled =
+                flat_pet_tp_enabled
+            summoner.pet_combat.offensive_action.pet_tp_above =
+                flat_pet_tp_above
+        end
     end
 end
 
