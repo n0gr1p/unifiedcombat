@@ -51,10 +51,11 @@ local function main()
     assert_contains(action_state_source, "function M.clear_local_defensive_spell_success", "action-state helper for defensive spell success must exist")
     assert_contains(action_state_source, "function M.clear_local_spell_success", "generic action-state helper for local spell success must exist")
     assert_contains(action_state_source, "local SPELL_SUCCESS_TAIL_S = 0.2", "spell success helpers must keep the bounded post-cast tail constant explicit")
-    assert_contains(action_state_source, "st.cooldown_until = now + SPELL_SUCCESS_TAIL_S", "defensive spell success helper must shorten cooldown to a bounded tail")
-    assert_contains(action_state_source, "st.action_delay = SPELL_SUCCESS_TAIL_S", "defensive spell success helper must set a bounded post-cast tail")
+    assert_contains(action_state_source, "local SPELL_ACTION_PACKET_SUCCESS_TAIL_S = 3.0", "category-4 spell completion must keep an explicit animation-lock tail")
+    assert_contains(action_state_source, "st.cooldown_until = now + success_tail_s", "spell success helper must apply the selected bounded tail")
+    assert_contains(action_state_source, "st.action_delay = success_tail_s", "spell success helper must set the selected bounded action delay")
     assert_contains(action_state_source, "st.post_spell_tail_started_at = now", "spell success helper must record the tail start time")
-    assert_contains(action_state_source, "st.post_spell_tail_until = now + SPELL_SUCCESS_TAIL_S", "spell success helper must record the bounded tail deadline")
+    assert_contains(action_state_source, "st.post_spell_tail_until = now + success_tail_s", "spell success helper must record the selected tail deadline")
     assert_contains(action_state_source, "if last_send_kind ~= 'spell' then", "success clear must not clear JA/WS state")
     assert_contains(action_state_source, "if last_provider ~= 'defensive_internal' and last_provider ~= 'defensive_healbot' then", "success clear must stay scoped to defensive spell providers")
 
@@ -127,6 +128,44 @@ local function main()
     st = action_state.action_state(other_scheduler)
     assert_close(tonumber(st.cooldown_until) or 0, 50.2, 0.0001, "generic spell success helper must leave only a bounded cooldown tail for local combat spells")
     assert_close(tonumber(st.action_delay) or 0, 0.2, 0.0001, "generic spell success helper must leave only a bounded action delay tail for local combat spells")
+
+    now_value = 55
+    local packet_scheduler = {}
+    action_state.action_mark_sent_with_meta(packet_scheduler, "spell", now_s, {
+        action_name = "Cure IV",
+        provider = "defensive_internal",
+        def_action_type = "cure",
+    })
+    cleared = action_state.clear_local_defensive_spell_success(packet_scheduler, now_s, {
+        completion_reason = "cast_complete_action_packet",
+        release_reason = "cast_complete_action_packet",
+    })
+    assert_equal(cleared, true, "category-4 defensive spell completion must clear acting state")
+    st = action_state.action_state(packet_scheduler)
+    assert_close(tonumber(st.cooldown_until) or 0, 58.0, 0.0001, "category-4 completion must retain a three-second action lock")
+    assert_close(tonumber(st.action_delay) or 0, 3.0, 0.0001, "category-4 completion must record a three-second action delay")
+    now_value = 57.99
+    local blocked, reason = action_state.action_dispatch_blocked(packet_scheduler, now_s, {})
+    assert_equal(blocked, true, "category-4 action lock must remain active at 2.99 seconds")
+    assert_equal(reason, "BLOCK_ACTION_COOLDOWN", "category-4 action lock must report cooldown")
+    now_value = 58.0
+    blocked = action_state.action_dispatch_blocked(packet_scheduler, now_s, {})
+    assert_equal(blocked, false, "category-4 action lock must release at three seconds")
+
+    now_value = 59
+    local generic_packet_scheduler = {}
+    action_state.action_mark_sent_with_meta(generic_packet_scheduler, "spell", now_s, {
+        action_name = "Dia",
+        provider = "combat",
+        def_action_type = "",
+    })
+    cleared = action_state.clear_local_spell_success(generic_packet_scheduler, now_s, {
+        completion_reason = "cast_complete_action_packet",
+        release_reason = "cast_complete_action_packet",
+    })
+    assert_equal(cleared, true, "category-4 generic spell completion must clear acting state")
+    st = action_state.action_state(generic_packet_scheduler)
+    assert_close(tonumber(st.cooldown_until) or 0, 62.0, 0.0001, "generic category-4 completion must retain a three-second action lock")
 
     now_value = 60
     local timeout_scheduler = {}

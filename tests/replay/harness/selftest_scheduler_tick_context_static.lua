@@ -24,7 +24,7 @@ local source = read_file('unified_scheduler.lua')
 
 assert_contains(
 	source,
-	"return require('uc_scheduler_context').build(settings, scheduler.phase1, {",
+	"local ctx = require('uc_scheduler_context').build(settings, scheduler.phase1, {",
 	'scheduler context wrapper must use the extracted builder'
 )
 
@@ -55,6 +55,9 @@ local provider_files = {
 	'uc_provider_maintenance.lua',
 	'uc_provider_tank_enmity.lua',
 	'uc_provider_target_control.lua',
+	'uc_pet_combat_provider.lua',
+	'uc_smn_maintenance.lua',
+	'uc_smn_pet_combat_adapter.lua',
 }
 local provider_parts = {}
 for _, path in ipairs(provider_files) do

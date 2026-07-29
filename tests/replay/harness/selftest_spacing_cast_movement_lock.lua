@@ -32,12 +32,27 @@ local source = read_file('unified_scheduler.lua')
 local hold_body = function_body(
 	source,
 	'function scheduler.apply_cast_movement_hold(reason, at)',
+	'function scheduler.cast_movement_settle_blocked(selected)'
+)
+local settle_body = function_body(
+	source,
+	'function scheduler.cast_movement_settle_blocked(selected)',
 	'local function current_zone_id()'
 )
 local movement_body = function_body(
 	source,
 	'local function run_movement_coordinator_tick()',
 	'local function p1_number'
+)
+local combat_dispatch_body = function_body(
+	source,
+	'local function p1_dispatch_combat(selected, settings, phase)',
+	'local function p1_dispatch_summoner_maintenance(selected, settings)'
+)
+local selected_dispatch_body = function_body(
+	source,
+	'function scheduler.dispatch_selected_plan(settings)',
+	'function scheduler.process_tick(cadence)'
 )
 
 assert_contains(hold_body, "kind = 'run_stop'", 'cast movement hold must construct run_stop intent')
@@ -47,6 +62,23 @@ assert_contains(hold_body, "_G.UC_MOVEMENT_OWNER = 'scheduler'", 'cast movement 
 assert_contains(hold_body, "_G.UC_MOVEMENT_LOCK_UNTIL = math.max(current_lock_until, now_value + 0.6)", 'cast movement hold must refresh a bounded lock')
 assert_contains(hold_body, "current_owner ~= 'nyzul_hold'", 'cast movement hold must preserve an active Nyzul hold')
 assert_contains(hold_body, "'CAST_MOVEMENT_HOLD'", 'cast movement hold must publish timeline evidence')
+
+assert_contains(source, 'local CAST_MOVEMENT_SETTLE_SECONDS = 0.1', 'cast movement settle must remain 0.1 seconds')
+assert_contains(settle_body, "local actor = rawget(_G, 'UC_SCHED_CAST_LOCAL_ACTOR')", 'cast settle must retain movement observation state')
+assert_contains(settle_body, 'local moving = actor:is_moving() == true', 'cast settle must inspect actual player movement')
+assert_contains(settle_body, 'settle_until = now + CAST_MOVEMENT_SETTLE_SECONDS', 'movement observation must refresh the settle deadline')
+assert_contains(settle_body, "scheduler.apply_cast_movement_hold('MOVE_COORD_CAST_SETTLE', now)", 'cast settle must stop scheduler movement')
+assert_contains(settle_body, "return true, 'BLOCK_SCHED_CAST_MOVEMENT_SETTLE'", 'cast settle must defer spell dispatch')
+assert_before(
+	selected_dispatch_body,
+	'scheduler.cast_movement_settle_blocked(selected)',
+	"if provider == 'combat' then",
+	'all scheduler spell providers must pass through movement settle before dispatch'
+)
+if combat_dispatch_body:find('COMBAT_SPELL_SETTLE', 1, true)
+	or combat_dispatch_body:find('COMBAT_SPELL_PREP_WAIT', 1, true) then
+	error('combat dispatch must not retain the stale spell/target-keyed prep gate')
+end
 
 local cast_branches = {
 	{

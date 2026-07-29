@@ -589,6 +589,25 @@ local function default_config(meta)
             },
             geo = {},
         },
+        summoner = {
+            enabled = false,
+            avatar = nil,
+            maintenance = {
+                avatar_favor = false,
+                ward = {
+                    enabled = false,
+                    action = nil,
+                },
+            },
+            pet_combat = {
+                engage_on_combat_start = false,
+                offensive_action = {
+                    enabled = false,
+                    action = nil,
+                    usage = 'on_cooldown',
+                },
+            },
+        },
         debug = {
             enabled = false,
             combat_sched = false,
@@ -1147,6 +1166,97 @@ local function normalize_ownership(source, config)
     end
 end
 
+local function normalize_summoner(source, config)
+    local summoner = config.summoner
+    local nested = get_path(source, { 'summoner' })
+    if is_table(nested) then
+        if type(nested.enabled) ~= 'boolean' then
+            error('summoner.enabled must be boolean')
+        end
+        summoner.enabled = nested.enabled
+        if nested.avatar ~= nil and type(nested.avatar) ~= 'string' then
+            error('summoner.avatar must be a string or nil')
+        end
+        summoner.avatar = normalize_optional_string(nested.avatar)
+        if nested.maintenance == nil or not is_table(nested.maintenance) then
+            error('summoner.maintenance must be a table')
+        end
+        local maintenance = nested.maintenance
+        if type(maintenance.avatar_favor) ~= 'boolean' then
+            error('summoner.maintenance.avatar_favor must be boolean')
+        end
+        summoner.maintenance.avatar_favor = maintenance.avatar_favor
+        if maintenance.ward == nil or not is_table(maintenance.ward) then
+            error('summoner.maintenance.ward must be a table')
+        end
+        local ward = maintenance.ward
+        if type(ward.enabled) ~= 'boolean' then
+            error('summoner.maintenance.ward.enabled must be boolean')
+        end
+        if ward.action ~= nil and type(ward.action) ~= 'string' then
+            error('summoner.maintenance.ward.action must be a string or nil')
+        end
+        summoner.maintenance.ward.enabled = ward.enabled
+        summoner.maintenance.ward.action = normalize_optional_string(ward.action)
+        if nested.pet_combat == nil or not is_table(nested.pet_combat) then
+            error('summoner.pet_combat must be a table')
+        end
+        local pet_combat = nested.pet_combat
+        if type(pet_combat.engage_on_combat_start) ~= 'boolean' then
+            error('summoner.pet_combat.engage_on_combat_start must be boolean')
+        end
+        summoner.pet_combat.engage_on_combat_start = pet_combat.engage_on_combat_start
+        if pet_combat.offensive_action == nil or not is_table(pet_combat.offensive_action) then
+            error('summoner.pet_combat.offensive_action must be a table')
+        end
+        local offensive = pet_combat.offensive_action
+        if type(offensive.enabled) ~= 'boolean' then
+            error('summoner.pet_combat.offensive_action.enabled must be boolean')
+        end
+        if offensive.action ~= nil and type(offensive.action) ~= 'string' then
+            error('summoner.pet_combat.offensive_action.action must be a string or nil')
+        end
+        if type(offensive.usage) ~= 'string' or trim_string(offensive.usage) == '' then
+            error('summoner.pet_combat.offensive_action.usage must be a non-empty string')
+        end
+        summoner.pet_combat.offensive_action.enabled = offensive.enabled
+        summoner.pet_combat.offensive_action.action = normalize_optional_string(offensive.action)
+        summoner.pet_combat.offensive_action.usage = trim_string(offensive.usage)
+    else
+        summoner.enabled = normalize_boolean(
+            first_path(source, { path('summoner_enabled') }),
+            summoner.enabled
+        )
+        summoner.avatar = normalize_optional_string(first_path(source, { path('summoner_avatar') }))
+        summoner.maintenance.avatar_favor = normalize_boolean(
+            first_path(source, { path('summoner_avatar_favor') }),
+            summoner.maintenance.avatar_favor
+        )
+        summoner.maintenance.ward.enabled = normalize_boolean(
+            first_path(source, { path('summoner_ward_enabled') }),
+            summoner.maintenance.ward.enabled
+        )
+        summoner.maintenance.ward.action = normalize_optional_string(
+            first_path(source, { path('summoner_ward_action') })
+        )
+        summoner.pet_combat.engage_on_combat_start = normalize_boolean(
+            first_path(source, { path('summoner_engage_on_combat_start') }),
+            summoner.pet_combat.engage_on_combat_start
+        )
+        summoner.pet_combat.offensive_action.enabled = normalize_boolean(
+            first_path(source, { path('summoner_rage_enabled') }),
+            summoner.pet_combat.offensive_action.enabled
+        )
+        summoner.pet_combat.offensive_action.action = normalize_optional_string(
+            first_path(source, { path('summoner_rage_action') })
+        )
+        summoner.pet_combat.offensive_action.usage = normalize_string(
+            first_path(source, { path('summoner_rage_usage') }),
+            summoner.pet_combat.offensive_action.usage
+        )
+    end
+end
+
 local function normalize_reactions(source, config)
     local reactions = config.reactions
     local nested = get_path(source, { 'reactions' })
@@ -1205,6 +1315,7 @@ function M.normalize(settings, meta)
     normalize_sleep(source, config)
     normalize_spells(source, config)
     normalize_maintenance(source, config)
+    normalize_summoner(source, config)
     normalize_debug(source, config)
     normalize_ownership(source, config)
     normalize_legacy(source, config)

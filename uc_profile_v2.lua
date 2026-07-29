@@ -16,6 +16,7 @@ local DURABLE_CONFIG_DOMAINS = {
 	'sleep',
 	'spells',
 	'maintenance',
+	'summoner',
 	'debug',
 	'ownership',
 	'legacy',
@@ -292,6 +293,12 @@ local function canonicalize_optional_control_ranges(current_config, target_confi
 		if target_config.sleep.max_target_range == nil then
 			target_config.sleep.max_target_range = 6.0
 		end
+	end
+
+	if type(target_config.summoner) ~= 'table' then
+		-- Profiles written before Summoner automation became a durable v2 domain
+		-- continue to mean "Summoner automation disabled".
+		current_config.summoner = nil
 	end
 
 	return current_config, target_config

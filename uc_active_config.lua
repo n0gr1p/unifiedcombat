@@ -16,6 +16,7 @@ local DURABLE_CONFIG_DOMAINS = {
 	'sleep',
 	'spells',
 	'maintenance',
+	'summoner',
 	'debug',
 	'ownership',
 	'legacy',
@@ -706,6 +707,72 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.brd_targeted_songs = serialize_brd_targeted_songs(config.maintenance.brd.targeted_songs)
 		end
 		candidate.maintenance_geo = clone_value(config.maintenance.geo)
+	end
+
+	if type(config.summoner) == 'table' then
+		local summoner = config.summoner
+		if type(summoner.enabled) ~= 'boolean' then
+			return false, 'config.summoner.enabled must be boolean'
+		end
+		if summoner.avatar ~= nil and type(summoner.avatar) ~= 'string' then
+			return false, 'config.summoner.avatar must be a string or nil'
+		end
+		if type(summoner.maintenance) ~= 'table' then
+			return false, 'config.summoner.maintenance must be a table'
+		end
+		local maintenance = summoner.maintenance
+		if type(maintenance.avatar_favor) ~= 'boolean' then
+			return false, 'config.summoner.maintenance.avatar_favor must be boolean'
+		end
+		if type(maintenance.ward) ~= 'table' then
+			return false, 'config.summoner.maintenance.ward must be a table'
+		end
+		local ward = maintenance.ward
+		if type(ward.enabled) ~= 'boolean' then
+			return false, 'config.summoner.maintenance.ward.enabled must be boolean'
+		end
+		if ward.action ~= nil and type(ward.action) ~= 'string' then
+			return false, 'config.summoner.maintenance.ward.action must be a string or nil'
+		end
+		if type(summoner.pet_combat) ~= 'table' then
+			return false, 'config.summoner.pet_combat must be a table'
+		end
+		local pet_combat = summoner.pet_combat
+		if type(pet_combat.engage_on_combat_start) ~= 'boolean' then
+			return false, 'config.summoner.pet_combat.engage_on_combat_start must be boolean'
+		end
+		if type(pet_combat.offensive_action) ~= 'table' then
+			return false, 'config.summoner.pet_combat.offensive_action must be a table'
+		end
+		local offensive = pet_combat.offensive_action
+		if type(offensive.enabled) ~= 'boolean' then
+			return false, 'config.summoner.pet_combat.offensive_action.enabled must be boolean'
+		end
+		if offensive.action ~= nil and type(offensive.action) ~= 'string' then
+			return false, 'config.summoner.pet_combat.offensive_action.action must be a string or nil'
+		end
+		if type(offensive.usage) ~= 'string' then
+			return false, 'config.summoner.pet_combat.offensive_action.usage must be a string'
+		end
+
+		candidate.summoner_enabled = summoner.enabled
+		candidate.summoner_avatar = summoner.avatar
+		if candidate.summoner_avatar == nil then
+			candidate.summoner_avatar = ''
+		end
+		candidate.summoner_avatar_favor = maintenance.avatar_favor
+		candidate.summoner_ward_enabled = ward.enabled
+		candidate.summoner_ward_action = ward.action
+		if candidate.summoner_ward_action == nil then
+			candidate.summoner_ward_action = ''
+		end
+		candidate.summoner_engage_on_combat_start = pet_combat.engage_on_combat_start
+		candidate.summoner_rage_enabled = offensive.enabled
+		candidate.summoner_rage_action = offensive.action
+		if candidate.summoner_rage_action == nil then
+			candidate.summoner_rage_action = ''
+		end
+		candidate.summoner_rage_usage = offensive.usage
 	end
 
 	if type(config.debug) == 'table' then

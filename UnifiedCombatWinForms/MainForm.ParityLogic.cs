@@ -432,6 +432,15 @@ public partial class MainForm
             _corRangePartyPanel.Controls.Clear();
             _corRollOptions.Clear();
             _corPartyOptions.Clear();
+            _summonerEnabled.Checked = false;
+            _summonerAvatar.SelectedIndex = 0;
+            _summonerAvatarFavor.Checked = false;
+            _summonerWardEnabled.Checked = false;
+            BindSummonerActionCombo(_summonerWardAction, [], "");
+            _summonerEngage.Checked = false;
+            _summonerRageEnabled.Checked = false;
+            BindSummonerActionCombo(_summonerRageAction, [], "");
+            UpdateSummonerUiState();
             _reactionEnabled.Checked = false;
             _reactionRules.Clear();
             _reactionRuleList.Items.Clear();
@@ -767,6 +776,7 @@ public partial class MainForm
                 _brdMarcatoSong.Enabled = !subBrdOnly && _brdUseMarcato.Checked;
 				_brdTargetedSongs.Enabled = !subBrdOnly;
             }
+            ApplySummonerFromSnapshot(s);
             _reactionEnabled.Checked = SessionStateHelper.GetBool(s, "reaction_enabled", false);
             ApplyReactionRulesFromSnapshot(s);
 
@@ -1520,6 +1530,191 @@ public partial class MainForm
             {
                 _settingsTabs.SelectedIndex = 0;
             }
+        }
+    }
+
+    private static void BindSummonerActionCombo(
+        ComboBox combo,
+        IEnumerable<SummonerActionCapability> actions,
+        string selected
+    )
+    {
+        var names = actions.Select(action => action.Name).ToList();
+        if (selected.Length != 0 && !names.Contains(selected, StringComparer.Ordinal))
+        {
+            names.Insert(0, selected);
+        }
+        names.Insert(0, "");
+        combo.Items.Clear();
+        foreach (var name in names)
+        {
+            combo.Items.Add(name);
+        }
+        combo.SelectedIndex = names.FindIndex(name => string.Equals(name, selected, StringComparison.Ordinal));
+    }
+
+    private void BindSummonerAvatarCombo(string selected)
+    {
+        var names = SummonerCapabilities.Avatars.Select(avatar => avatar.Name).ToList();
+        if (selected.Length != 0 && !names.Contains(selected, StringComparer.Ordinal))
+        {
+            names.Insert(0, selected);
+        }
+        names.Insert(0, "");
+        _summonerAvatar.Items.Clear();
+        foreach (var name in names)
+        {
+            _summonerAvatar.Items.Add(name);
+        }
+        _summonerAvatar.SelectedIndex = names.FindIndex(
+            name => string.Equals(name, selected, StringComparison.Ordinal)
+        );
+    }
+
+    private void ApplySummonerFromSnapshot(JsonElement snapshot)
+    {
+        _summonerEnabled.Checked = SessionStateHelper.GetBool(snapshot, "summoner_enabled", false);
+        var avatarName = SessionStateHelper.GetString(snapshot, "summoner_avatar");
+        BindSummonerAvatarCombo(avatarName);
+        _summonerAvatarFavor.Checked = SessionStateHelper.GetBool(snapshot, "summoner_avatar_favor", false);
+        _summonerWardEnabled.Checked = SessionStateHelper.GetBool(snapshot, "summoner_ward_enabled", false);
+        _summonerEngage.Checked = SessionStateHelper.GetBool(
+            snapshot,
+            "summoner_engage_on_combat_start",
+            false
+        );
+        _summonerRageEnabled.Checked = SessionStateHelper.GetBool(snapshot, "summoner_rage_enabled", false);
+
+        var avatar = SummonerCapabilities.FindAvatar(avatarName);
+        BindSummonerActionCombo(
+            _summonerWardAction,
+            avatar is null ? [] : avatar.Wards,
+            SessionStateHelper.GetString(snapshot, "summoner_ward_action")
+        );
+        BindSummonerActionCombo(
+            _summonerRageAction,
+            avatar is null ? [] : avatar.Rages,
+            SessionStateHelper.GetString(snapshot, "summoner_rage_action")
+        );
+        var usage = SessionStateHelper.GetString(snapshot, "summoner_rage_usage", "on_cooldown");
+        if (!string.Equals(usage, "on_cooldown", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"Unsupported Summoner Rage usage policy '{usage}'.");
+        }
+        UpdateSummonerUiState();
+    }
+
+    private void OnSummonerAvatarChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var ward = _summonerWardAction.SelectedItem?.ToString() ?? "";
+        var rage = _summonerRageAction.SelectedItem?.ToString() ?? "";
+        var avatarName = _summonerAvatar.SelectedItem?.ToString() ?? "";
+        var avatar = SummonerCapabilities.FindAvatar(avatarName);
+        var wasSuppressed = _suppressEvents;
+        _suppressEvents = true;
+        try
+        {
+            BindSummonerActionCombo(_summonerWardAction, avatar is null ? [] : avatar.Wards, ward);
+            BindSummonerActionCombo(_summonerRageAction, avatar is null ? [] : avatar.Rages, rage);
+        }
+        finally
+        {
+            _suppressEvents = wasSuppressed;
+        }
+        UpdateSummonerUiState();
+        var sid = RequireSelectedSid();
+        if (sid is not null)
+        {
+            CaptureWorkingProfileFromUi(sid);
+        }
+    }
+
+    private void OnSummonerSettingChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        UpdateSummonerUiState();
+        var sid = RequireSelectedSid();
+        if (sid is not null)
+        {
+            CaptureWorkingProfileFromUi(sid);
+        }
+    }
+
+    private void OnSummonerActionChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        UpdateSummonerUiState();
+        var sid = RequireSelectedSid();
+        if (sid is not null)
+        {
+            CaptureWorkingProfileFromUi(sid);
+        }
+    }
+
+    private void UpdateSummonerUiState()
+    {
+        var enabled = _summonerEnabled.Checked;
+        var avatarName = _summonerAvatar.SelectedItem?.ToString() ?? "";
+        var avatarValid = SummonerCapabilities.FindAvatar(avatarName) is not null;
+        var wardAction = _summonerWardAction.SelectedItem?.ToString() ?? "";
+        var rageAction = _summonerRageAction.SelectedItem?.ToString() ?? "";
+        var wardValid = !_summonerWardEnabled.Checked
+            || SummonerCapabilities.IsCompatible(avatarName, "ward", wardAction);
+        var rageValid = !_summonerRageEnabled.Checked
+            || SummonerCapabilities.IsCompatible(avatarName, "rage", rageAction);
+
+        _summonerAvatar.Enabled = enabled;
+        _summonerAvatarFavor.Enabled = enabled && avatarValid;
+        _summonerWardEnabled.Enabled = enabled && avatarValid;
+        _summonerWardAction.Enabled = enabled && avatarValid && _summonerWardEnabled.Checked;
+        _summonerEngage.Enabled = enabled && avatarValid;
+        _summonerRageEnabled.Enabled = enabled && avatarValid;
+        _summonerRageAction.Enabled = enabled && avatarValid && _summonerRageEnabled.Checked;
+
+        if (!enabled)
+        {
+            _summonerValidation.ForeColor = SystemColors.GrayText;
+            _summonerValidation.Text = "Summoner automation is disabled.";
+        }
+        else if (!avatarValid)
+        {
+            _summonerValidation.ForeColor = Color.Firebrick;
+            _summonerValidation.Text = avatarName.Length == 0
+                ? "A desired avatar is required."
+                : $"Desired avatar '{avatarName}' is not supported.";
+        }
+        else if (!wardValid || !rageValid)
+        {
+            var issues = new List<string>();
+            if (!wardValid)
+            {
+                issues.Add(wardAction.Length == 0
+                    ? "Select a Ward action."
+                    : $"Ward '{wardAction}' is incompatible with {avatarName}.");
+            }
+            if (!rageValid)
+            {
+                issues.Add(rageAction.Length == 0
+                    ? "Select a Rage action."
+                    : $"Rage '{rageAction}' is incompatible with {avatarName}.");
+            }
+            _summonerValidation.ForeColor = Color.DarkGoldenrod;
+            _summonerValidation.Text = string.Join(" ", issues);
+        }
+        else
+        {
+            _summonerValidation.ForeColor = Color.DarkGreen;
+            _summonerValidation.Text = $"Summoner configuration is valid for {avatarName}.";
         }
     }
 

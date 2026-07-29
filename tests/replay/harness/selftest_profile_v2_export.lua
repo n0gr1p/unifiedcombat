@@ -779,6 +779,22 @@ local function build_expected_config()
 			legacy_primary = 'Horde Lullaby II',
 			max_target_range = 6.0,
 		},
+		summoner = {
+			enabled = false,
+			maintenance = {
+				avatar_favor = false,
+				ward = {
+					enabled = false,
+				},
+			},
+			pet_combat = {
+				engage_on_combat_start = false,
+				offensive_action = {
+					enabled = false,
+					usage = 'on_cooldown',
+				},
+			},
+		},
 		spells = {
 			enabled = true,
 			configured = 'Dia',

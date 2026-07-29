@@ -248,6 +248,7 @@ local function run_scheduler_lifecycle_tests()
     local old_sink = rawget(_G, "UC_ACTION_TIMELINE_LOG")
     local old_probe = rawget(_G, "UC_SPELL_LIFECYCLE_PROBE")
     local old_test_now = rawget(_G, "__TEST_NOW")
+    local old_movement_lock_until = rawget(_G, "UC_MOVEMENT_LOCK_UNTIL")
     local mobs = {
         [123] = { id = 123, name = "Redrogue" },
         [888] = { id = 888, name = "Tank" },
@@ -291,6 +292,7 @@ local function run_scheduler_lifecycle_tests()
     }
     _G.UC_SETTINGS = {}
     _G.UC_SPELL_LIFECYCLE_PROBE = true
+    _G.UC_MOVEMENT_LOCK_UNTIL = 200
     package.loaded["unified_scheduler"] = nil
     package.loaded["uc_scheduler_action_state"] = nil
     local scheduler = require("unified_scheduler")
@@ -323,7 +325,7 @@ local function run_scheduler_lifecycle_tests()
     })
     local before_start = #events + 1
     local before_start_record = #records + 1
-    scheduler.on_action({ actor_id = 123, category = 4 })
+    scheduler.on_action({ actor_id = 123, category = 8 })
     local st = action_state.action_state(scheduler)
     assert_equal(st.last_send_kind, "spell", "cast start must keep spell action-state")
     assert_equal(st.last_action_name, "Haste", "cast start must preserve active spell name")
@@ -331,9 +333,78 @@ local function run_scheduler_lifecycle_tests()
     assert_event_after(events, before_start, "SPELL_CAST_START_DETECTED", "local spell start must emit cast-start event")
     local start_probe = assert_record_after(records, before_start_record, "SPELL_LIFECYCLE_PROBE_LOCAL_EVENT", "active local action must emit probe event")
     assert_equal(start_probe.fields.source, "action_packet", "action probe must record source hook")
-    assert_equal(tostring(start_probe.fields.category), "4", "action probe must record category")
+    assert_equal(tostring(start_probe.fields.category), "8", "action probe must record category")
     assert_equal(tostring(start_probe.fields.action_token), tostring(st.action_token), "action probe must record active token")
 
+    clock = 101
+    scheduler.on_action({
+        actor_id = 123,
+        category = 4,
+        param = 2,
+        targets = {
+            {
+                id = 888,
+                actions = {
+                    { message = 7, param = 250 },
+                },
+            },
+        },
+    })
+    assert_equal(action_state.action_is_acting(scheduler, now_s), true, "different spell result packet must not release active spell")
+
+    scheduler.on_action({
+        actor_id = 123,
+        category = 4,
+        param = 1,
+        targets = {
+            {
+                id = 999,
+                actions = {
+                    { message = 7, param = 250 },
+                },
+            },
+        },
+    })
+    assert_equal(action_state.action_is_acting(scheduler, now_s), true, "different target result packet must not release active spell")
+
+    clock = 101.5
+    local before_packet_complete = #events + 1
+    scheduler.on_action({
+        actor_id = 123,
+        category = 4,
+        param = 1,
+        targets = {
+            {
+                id = 888,
+                actions = {
+                    { message = 7, param = 250 },
+                },
+            },
+        },
+    })
+    assert_event_after(events, before_packet_complete, "SPELL_CAST_COMPLETE_DETECTED", "matching local magic-result packet must emit cast-complete event")
+    assert_event_after(events, before_packet_complete, "SPELL_ACTION_STATE_RELEASE", "matching local magic-result packet must release action-state")
+    assert_event_after(events, before_packet_complete, "POST_SPELL_TAIL_START", "matching local magic-result packet must start post-spell tail")
+    assert_no_event_after(events, before_packet_complete, "SPELL_TIMEOUT_RELEASE", "matching local magic-result packet must avoid timeout release")
+    assert_equal(action_state.action_is_acting(scheduler, now_s), false, "matching local magic-result packet must end acting state")
+    st = action_state.action_state(scheduler)
+    assert_equal(st.terminal_outcome, "cast_complete", "magic-result packet terminal outcome must be cast_complete")
+    assert_close(
+        (tonumber(st.cooldown_until) or 0) - (tonumber(st.action_end) or 0),
+        3.0,
+        0.0001,
+        "magic-result packet must retain a three-second animation-lock tail"
+    )
+
+    clock = 105
+    action_state.action_mark_sent_with_meta(scheduler, "spell", now_s, {
+        action_name = "Haste",
+        provider = "defensive_internal",
+        def_action_type = "buff",
+        target_id = 888,
+        target_name = "Tank",
+        target_kind = "player",
+    })
     local before_complete = #events + 1
     scheduler.on_action_message({ actor_id = 123, target_id = 888, message_id = 2, param_1 = 0, spell_name = "Haste" })
     assert_event_after(events, before_complete, "SPELL_CAST_COMPLETE_DETECTED", "cast-complete message must emit cast-complete event")
@@ -526,6 +597,7 @@ local function run_scheduler_lifecycle_tests()
     _G.UC_SETTINGS = old_settings
     _G.UC_SPELL_LIFECYCLE_PROBE = old_probe
     _G.__TEST_NOW = old_test_now
+    _G.UC_MOVEMENT_LOCK_UNTIL = old_movement_lock_until
     restore_scheduler_stubs(stub_names, old_loaded)
 end
 
@@ -542,6 +614,9 @@ local function main()
     assert_contains(scheduler_source, "return mid == 16", "cast-interrupted matcher must use the pinned interruption message id")
     assert_contains(scheduler_source, "function scheduler.match_active_spell_token_to_cast_finish(msg, st)", "active token matching must be centralized")
     assert_contains(scheduler_source, "message_spell ~= '' and active_spell ~= message_spell", "spell-name mismatch must block cast-complete release when both names are available")
+    assert_contains(scheduler_source, "function scheduler.handle_local_spell_finish_action(act, player_id, observed_at)", "local magic-result packet completion handler must exist")
+    assert_contains(scheduler_source, "completion_reason = 'cast_complete_action_packet'", "local magic-result packet must use an explicit completion reason")
+    assert_not_contains(scheduler_source, "\t\t[4] = true,", "magic-result category 4 must not be treated as a cast-start signal")
     assert_not_contains(scheduler_source, "and not scheduler.is_spell_cast_start_message_id(message_id)\n\t\t\tand not scheduler.is_spell_cast_complete_message_id(message_id)", "broad defensive interrupt rule must remain absent")
     assert_contains(action_state_source, "SPELL_CAST_START_DETECTED", "cast-start lifecycle event must exist")
     assert_contains(action_state_source, "SPELL_CAST_COMPLETE_DETECTED", "cast-complete lifecycle event must exist")

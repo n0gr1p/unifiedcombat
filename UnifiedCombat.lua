@@ -114,6 +114,7 @@ local uc_camp_anchor = require('uc_camp_anchor')
 local uc_config_status_export = require('uc_config_status_export')
 local uc_active_config = require('uc_active_config')
 local uc_profile_v2 = require('uc_profile_v2')
+local uc_smn_config = require('uc_smn_config')
 local UC_PROFILE_CONTRACT = nil
 local UC_PROFILE_CONTRACT_LOAD_ERROR = nil
 local UC_CONFIG_NORMALIZER = nil
@@ -260,6 +261,15 @@ local function uc_new_settings_defaults()
 		cor_luzaf_range_override = false,
 		cor_roll_range_selected = '',
 		cor_roll_range_require_ids = {},
+		summoner_enabled = false,
+		summoner_avatar = '',
+		summoner_avatar_favor = false,
+		summoner_ward_enabled = false,
+		summoner_ward_action = '',
+		summoner_engage_on_combat_start = false,
+		summoner_rage_enabled = false,
+		summoner_rage_action = '',
+		summoner_rage_usage = 'on_cooldown',
 		path_recording = false,
 		path_follow_enabled = false,
 		path_file_name = '',
@@ -463,6 +473,10 @@ local PROFILE_KEYS = {
 	'defensive_targeted_buffs',
 	'engine_enabled', 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled',
 	'cor_roll_1', 'cor_roll_2', 'cor_crooked_roll_slot', 'cor_elevens', 'cor_luzaf_range_override', 'cor_roll_range_selected', 'cor_roll_range_require_ids',
+	'summoner_enabled', 'summoner_avatar', 'summoner_avatar_favor',
+	'summoner_ward_enabled', 'summoner_ward_action',
+	'summoner_engage_on_combat_start', 'summoner_rage_enabled',
+	'summoner_rage_action', 'summoner_rage_usage',
 	'path_recording', 'path_follow_enabled', 'path_file_name', 'path_route_type', 'path_distance_to_start', 'path_points', 'path_party_gate_yalms', 'path_resume_index_window', 'path_hunter_targets', 'path_hunter_max_z_delta', 'path_hunter_max_target_range', 'path_hunter_claim_timeout_s', 'path_hunter_ignore_cooldown_s', 'path_pull_action_type', 'path_pull_action_name',
 	'autotarget', 'spam', 'closer', 'manual', 'prime', 'static', 'spacing', 'face',
 	'spacing_band_min', 'spacing_band_max', 'spacing_use_prediction', 'spacing_lookahead_s',
@@ -529,6 +543,7 @@ local function uc_config_domain_names(config)
 		'sleep',
 		'spells',
 		'maintenance',
+		'summoner',
 		'debug',
 		'ownership',
 		'legacy',
@@ -620,7 +635,21 @@ local function uc_update_config_contract_status(context)
 	}
 	local ok, config = pcall(UC_CONFIG_NORMALIZER.normalize, settings, meta)
 	if ok and type(config) == 'table' then
-		status.ok = true
+		local summoner = uc_smn_config.validate(config.summoner)
+		status.ok = summoner.valid
+		status.summoner = {
+			enabled = summoner.enabled,
+			valid = summoner.valid,
+			avatar_valid = summoner.avatar_valid,
+			ward_valid = summoner.ward_valid,
+			rage_valid = summoner.rage_valid,
+		}
+		for _, issue in ipairs(summoner.errors) do
+			status.errors[#status.errors + 1] = issue.message
+		end
+		for _, issue in ipairs(summoner.warnings) do
+			status.warnings[#status.warnings + 1] = issue.message
+		end
 		status.domains = uc_config_domain_names(config)
 		if type(config.profile) == 'table' then
 			status.character = status.character or config.profile.character
@@ -2183,6 +2212,72 @@ windower.register_event('addon command', function(...)
 			return
 		end
 		windower.add_to_chat(207, '//uc configstatus export')
+		return
+	elseif a == 'smn' then
+		local sub = args[2] and tostring(args[2]):lower() or ''
+		if sub == 'pettarget' then
+			local op = args[3] and tostring(args[3]):lower() or 'status'
+			local context = require('uc_scheduler_context')
+			local status
+			if op == 'start' then
+				status = context.start_pet_target_diagnostic()
+				windower.add_to_chat(207, 'UC SMN pet-target diagnostic started; fight normally, then use status or stop.')
+			elseif op == 'stop' then
+				status = context.stop_pet_target_diagnostic()
+				windower.add_to_chat(207, 'UC SMN pet-target diagnostic stopped.')
+			elseif op == 'status' then
+				status = context.pet_target_diagnostic_status()
+			else
+				windower.add_to_chat(207, '//uc smn pettarget start|status|stop')
+				return
+			end
+			windower.add_to_chat(207, ('UC SMN pet-target samples: active=%s total=%d pet=%d engaged=%d transitions=%d'):format(
+				tostring(status.active == true),
+				status.samples,
+				status.pet_present_samples,
+				status.pet_engaged_samples,
+				status.transitions
+			))
+			windower.add_to_chat(207, ('UC SMN pet-target evidence: raw_index=%d resolved_id=%d same_current_target=%d engaged_no_index=%d engaged_no_id=%d'):format(
+				status.nonzero_target_index_samples,
+				status.resolved_target_id_samples,
+				status.matching_current_target_samples,
+				status.engaged_without_target_index_samples,
+				status.engaged_without_target_id_samples
+			))
+			windower.add_to_chat(207, ('UC SMN pet-target current: pet=%s/%d status=%d raw_index=%d resolved_id=%d target_index=%d target_id=%d match=%s'):format(
+				status.current_pet_name,
+				status.current_pet_id,
+				status.current_pet_status,
+				status.current_pet_target_index,
+				status.current_pet_target_id,
+				status.current_target_index,
+				status.current_target_id,
+				tostring(status.current_matches_target == true)
+			))
+			local combat_status = rawget(_G, 'UC_SMN_PET_COMBAT_STATUS')
+			if type(combat_status) == 'table' then
+				if combat_status.state == 'ready' then
+					local inferred_target_id = tonumber(combat_status.inferred_pet_target_id)
+					local inferred_target_at = tonumber(combat_status.inferred_pet_target_at)
+					local current_target_id = tonumber(combat_status.target_id)
+					if inferred_target_id == nil or inferred_target_at == nil or current_target_id == nil then
+						error('UC SMN ready combat status has invalid pet-action inference fields')
+					end
+					windower.add_to_chat(207, ('UC SMN pet-action inference: target_id=%d observed_at=%s current_target_id=%d match=%s'):format(
+						inferred_target_id,
+						tostring(inferred_target_at),
+						current_target_id,
+						tostring(inferred_target_id > 0 and inferred_target_id == current_target_id)
+					))
+				else
+					windower.add_to_chat(207, 'UC SMN pet-action inference unavailable: combat state='
+						.. tostring(combat_status.state))
+				end
+			end
+			return
+		end
+		windower.add_to_chat(207, '//uc smn pettarget start|status|stop')
 		return
 	elseif a == 'brd' then
 		local sub = args[2] and tostring(args[2]):lower() or ''

@@ -210,6 +210,11 @@ internal static class StructuredProfileV2Writer
         config.Add("sleep", BuildSleep(flatProfile));
         config.Add("spells", BuildSpells(flatProfile));
         config.Add("maintenance", BuildMaintenance(flatProfile, identity));
+        var summoner = BuildSummoner(flatProfile, identity);
+        if (summoner is not null)
+        {
+            config.Add("summoner", summoner);
+        }
         config.Add("debug", BuildDebug(flatProfile));
         config.Add("ownership", BuildOwnership(flatProfile));
         config.Add("legacy", BuildLegacy(flatProfile));
@@ -643,6 +648,64 @@ internal static class StructuredProfileV2Writer
 		maintenance.Add("geo", EmptyList());
 
         return maintenance;
+    }
+
+    private static bool HasConfiguredSummoner(JsonObject flatProfile)
+    {
+        return ReadBool(flatProfile, "summoner_enabled", false)
+            || ReadString(flatProfile, "summoner_avatar", "") != ""
+            || ReadBool(flatProfile, "summoner_avatar_favor", false)
+            || ReadBool(flatProfile, "summoner_ward_enabled", false)
+            || ReadString(flatProfile, "summoner_ward_action", "") != ""
+            || ReadBool(flatProfile, "summoner_engage_on_combat_start", false)
+            || ReadBool(flatProfile, "summoner_rage_enabled", false)
+            || ReadString(flatProfile, "summoner_rage_action", "") != "";
+    }
+
+    private static StructuredProfileNode? BuildSummoner(
+        JsonObject flatProfile,
+        StructuredProfileV2Identity identity
+    )
+    {
+        var isSummonerProfile = string.Equals(
+            SafeJobComponent(identity.MainJob),
+            "SMN",
+            StringComparison.Ordinal
+        );
+        if (!isSummonerProfile && !HasConfiguredSummoner(flatProfile))
+        {
+            return null;
+        }
+
+        return new StructuredProfileNode()
+            .Add("enabled", ReadBool(flatProfile, "summoner_enabled", false))
+            .Add("avatar", NullIfEmpty(ReadString(flatProfile, "summoner_avatar", "")))
+            .Add(
+                "maintenance",
+                new StructuredProfileNode()
+                    .Add("avatar_favor", ReadBool(flatProfile, "summoner_avatar_favor", false))
+                    .Add(
+                        "ward",
+                        new StructuredProfileNode()
+                            .Add("enabled", ReadBool(flatProfile, "summoner_ward_enabled", false))
+                            .Add("action", NullIfEmpty(ReadString(flatProfile, "summoner_ward_action", "")))
+                    )
+            )
+            .Add(
+                "pet_combat",
+                new StructuredProfileNode()
+                    .Add(
+                        "engage_on_combat_start",
+                        ReadBool(flatProfile, "summoner_engage_on_combat_start", false)
+                    )
+                    .Add(
+                        "offensive_action",
+                        new StructuredProfileNode()
+                            .Add("enabled", ReadBool(flatProfile, "summoner_rage_enabled", false))
+                            .Add("action", NullIfEmpty(ReadString(flatProfile, "summoner_rage_action", "")))
+                            .Add("usage", ReadString(flatProfile, "summoner_rage_usage", "on_cooldown"))
+                    )
+            );
     }
 
     private static StructuredProfileNode BuildDebug(JsonObject flatProfile)
@@ -1273,6 +1336,8 @@ internal static class StructuredProfileV2Writer
     }
 
     private static List<object?> EmptyList() => [];
+
+    private static string? NullIfEmpty(string value) => value.Length == 0 ? null : value;
 
     private sealed class StructuredProfileNode
     {

@@ -1,7 +1,15 @@
 local M = {}
 local ENGAGE_ACTION_TAIL_S = 0.35
 local SPELL_SUCCESS_TAIL_S = 0.2
+local SPELL_ACTION_PACKET_SUCCESS_TAIL_S = 3.0
 local WS_RESULT_TAIL_S = 0.5
+
+local function spell_success_tail_s(meta)
+	if tostring(meta.completion_reason or '') == 'cast_complete_action_packet' then
+		return SPELL_ACTION_PACKET_SUCCESS_TAIL_S
+	end
+	return SPELL_SUCCESS_TAIL_S
+end
 
 local function timeline_log(event_code, fields, dedupe_key, interval)
 	local fn = rawget(_G, 'UC_ACTION_TIMELINE_LOG')
@@ -492,13 +500,14 @@ function M.clear_local_defensive_spell_success(scheduler, now_s, meta)
 		log_late_completion_ignored(st, now, prior, 'cast_complete', meta)
 		return false
 	end
+	local success_tail_s = spell_success_tail_s(meta)
 	st.action_end = now
-	st.cooldown_until = now + SPELL_SUCCESS_TAIL_S
-	st.action_delay = SPELL_SUCCESS_TAIL_S
+	st.cooldown_until = now + success_tail_s
+	st.action_delay = success_tail_s
 	st.last_action = now
 	st.last_acting_state = false
 	st.post_spell_tail_started_at = now
-	st.post_spell_tail_until = now + SPELL_SUCCESS_TAIL_S
+	st.post_spell_tail_until = now + success_tail_s
 	if (tonumber(st.timeout_release_at) or 0) > 0 then
 		st.accepted_completion_after_timeout = true
 	end
@@ -511,7 +520,7 @@ function M.clear_local_defensive_spell_success(scheduler, now_s, meta)
 		completion_reason = tostring(meta.completion_reason or release_reason),
 		release_reason = release_reason,
 		old_kind = last_send_kind,
-		tail_s = ('%.2f'):format(SPELL_SUCCESS_TAIL_S),
+		tail_s = ('%.2f'):format(success_tail_s),
 	}), ('spell_cast_complete_detected:def:%s'):format(tostring(st.last_action_name or '')), 0.05)
 	timeline_log('SPELL_SUCCESS_DETECTED', spell_elapsed_fields(st, now, {
 		message_id = tonumber(meta.message_id) or 0,
@@ -520,7 +529,7 @@ function M.clear_local_defensive_spell_success(scheduler, now_s, meta)
 		completion_reason = tostring(meta.completion_reason or release_reason),
 		release_reason = release_reason,
 		old_kind = last_send_kind,
-		tail_s = ('%.2f'):format(SPELL_SUCCESS_TAIL_S),
+		tail_s = ('%.2f'):format(success_tail_s),
 	}), ('spell_success_detected:def:%s'):format(tostring(st.last_action_name or '')), 0.05)
 	emit_spell_action_release(st, now, release_reason, release_reason)
 	timeline_log('POST_SPELL_TAIL_START', spell_elapsed_fields(st, now, {
@@ -530,7 +539,7 @@ function M.clear_local_defensive_spell_success(scheduler, now_s, meta)
 		completion_reason = tostring(meta.completion_reason or release_reason),
 		release_reason = release_reason,
 		old_kind = last_send_kind,
-		tail_s = ('%.2f'):format(SPELL_SUCCESS_TAIL_S),
+		tail_s = ('%.2f'):format(success_tail_s),
 	}), ('post_spell_tail_start:def:%s'):format(tostring(st.last_action_name or '')), 0.05)
 	return true
 end
@@ -549,13 +558,14 @@ function M.clear_local_spell_success(scheduler, now_s, meta)
 		log_late_completion_ignored(st, now, prior, 'cast_complete', meta)
 		return false
 	end
+	local success_tail_s = spell_success_tail_s(meta)
 	st.action_end = now
-	st.cooldown_until = now + SPELL_SUCCESS_TAIL_S
-	st.action_delay = SPELL_SUCCESS_TAIL_S
+	st.cooldown_until = now + success_tail_s
+	st.action_delay = success_tail_s
 	st.last_action = now
 	st.last_acting_state = false
 	st.post_spell_tail_started_at = now
-	st.post_spell_tail_until = now + SPELL_SUCCESS_TAIL_S
+	st.post_spell_tail_until = now + success_tail_s
 	if (tonumber(st.timeout_release_at) or 0) > 0 then
 		st.accepted_completion_after_timeout = true
 	end
@@ -573,7 +583,7 @@ function M.clear_local_spell_success(scheduler, now_s, meta)
 		completion_reason = tostring(meta.completion_reason or release_reason),
 		release_reason = release_reason,
 		old_kind = last_send_kind,
-		tail_s = ('%.2f'):format(SPELL_SUCCESS_TAIL_S),
+		tail_s = ('%.2f'):format(success_tail_s),
 	}), ('spell_cast_complete_detected:%s'):format(tostring(st.last_action_name or '')), 0.05)
 	timeline_log('SPELL_SUCCESS_DETECTED', spell_elapsed_fields(st, now, {
 		message_id = tonumber(meta.message_id) or 0,
@@ -582,7 +592,7 @@ function M.clear_local_spell_success(scheduler, now_s, meta)
 		completion_reason = tostring(meta.completion_reason or release_reason),
 		release_reason = release_reason,
 		old_kind = last_send_kind,
-		tail_s = ('%.2f'):format(SPELL_SUCCESS_TAIL_S),
+		tail_s = ('%.2f'):format(success_tail_s),
 	}), ('spell_success_detected:%s'):format(tostring(st.last_action_name or '')), 0.05)
 	emit_spell_action_release(st, now, release_reason, release_reason)
 	timeline_log('POST_SPELL_TAIL_START', spell_elapsed_fields(st, now, {
@@ -592,7 +602,7 @@ function M.clear_local_spell_success(scheduler, now_s, meta)
 		completion_reason = tostring(meta.completion_reason or release_reason),
 		release_reason = release_reason,
 		old_kind = last_send_kind,
-		tail_s = ('%.2f'):format(SPELL_SUCCESS_TAIL_S),
+		tail_s = ('%.2f'):format(success_tail_s),
 	}), ('post_spell_tail_start:%s'):format(tostring(st.last_action_name or '')), 0.05)
 	return true
 end

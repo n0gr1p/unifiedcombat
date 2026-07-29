@@ -122,8 +122,18 @@ public partial class MainForm
     private Label _formationValidation = null!;
     private Button _formationEnableOwnership = null!;
     private TabControl _settingsTabs = null!;
+    private TabPage _tabSummoner = null!;
     private TabPage _tabCor = null!;
     private TabPage _tabBrd = null!;
+    private CheckBox _summonerEnabled = null!;
+    private ComboBox _summonerAvatar = null!;
+    private CheckBox _summonerAvatarFavor = null!;
+    private CheckBox _summonerWardEnabled = null!;
+    private ComboBox _summonerWardAction = null!;
+    private CheckBox _summonerEngage = null!;
+    private CheckBox _summonerRageEnabled = null!;
+    private ComboBox _summonerRageAction = null!;
+    private Label _summonerValidation = null!;
     private CheckBox _reactionEnabled = null!;
     private ListBox _reactionRuleList = null!;
     private ComboBox _reactionTriggerCombo = null!;
@@ -1107,6 +1117,98 @@ public partial class MainForm
         pathRow++;
         tabPathing.Controls.Add(path);
         _settingsTabs.TabPages.Add(tabPathing);
+
+        _tabSummoner = new TabPage("SMN") { AutoScroll = true };
+        var summonerRoot = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 2,
+            Padding = new Padding(8),
+        };
+        summonerRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
+        summonerRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        var summonerRow = 0;
+        _summonerEnabled = new CheckBox { Text = "Enable Summoner automation", AutoSize = true };
+        _summonerEnabled.CheckedChanged += (_, _) => OnSummonerSettingChanged();
+        summonerRoot.Controls.Add(_summonerEnabled, 0, summonerRow);
+        summonerRoot.SetColumnSpan(_summonerEnabled, 2);
+        summonerRow++;
+        summonerRoot.Controls.Add(
+            new Label { Text = "Desired avatar", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            summonerRow
+        );
+        _summonerAvatar = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 260,
+            Anchor = AnchorStyles.Left,
+        };
+        _summonerAvatar.Items.Add("");
+        foreach (var avatar in SummonerCapabilities.Avatars)
+        {
+            _summonerAvatar.Items.Add(avatar.Name);
+        }
+        _summonerAvatar.SelectedIndex = 0;
+        _summonerAvatar.SelectedIndexChanged += (_, _) => OnSummonerAvatarChanged();
+        summonerRoot.Controls.Add(_summonerAvatar, 1, summonerRow++);
+        _summonerAvatarFavor = new CheckBox { Text = "Maintain Avatar's Favor", AutoSize = true };
+        _summonerAvatarFavor.CheckedChanged += (_, _) => OnSummonerSettingChanged();
+        summonerRoot.Controls.Add(_summonerAvatarFavor, 0, summonerRow);
+        summonerRoot.SetColumnSpan(_summonerAvatarFavor, 2);
+        summonerRow++;
+        _summonerWardEnabled = new CheckBox { Text = "Maintain one Blood Pact: Ward effect", AutoSize = true };
+        _summonerWardEnabled.CheckedChanged += (_, _) => OnSummonerSettingChanged();
+        summonerRoot.Controls.Add(_summonerWardEnabled, 0, summonerRow);
+        summonerRoot.SetColumnSpan(_summonerWardEnabled, 2);
+        summonerRow++;
+        summonerRoot.Controls.Add(
+            new Label { Text = "Ward action", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            summonerRow
+        );
+        _summonerWardAction = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 260,
+            Anchor = AnchorStyles.Left,
+        };
+        _summonerWardAction.SelectedIndexChanged += (_, _) => OnSummonerActionChanged();
+        summonerRoot.Controls.Add(_summonerWardAction, 1, summonerRow++);
+        _summonerEngage = new CheckBox { Text = "Engage the combat target with Assault", AutoSize = true };
+        _summonerEngage.CheckedChanged += (_, _) => OnSummonerSettingChanged();
+        summonerRoot.Controls.Add(_summonerEngage, 0, summonerRow);
+        summonerRoot.SetColumnSpan(_summonerEngage, 2);
+        summonerRow++;
+        _summonerRageEnabled = new CheckBox { Text = "Use one Blood Pact: Rage on cooldown", AutoSize = true };
+        _summonerRageEnabled.CheckedChanged += (_, _) => OnSummonerSettingChanged();
+        summonerRoot.Controls.Add(_summonerRageEnabled, 0, summonerRow);
+        summonerRoot.SetColumnSpan(_summonerRageEnabled, 2);
+        summonerRow++;
+        summonerRoot.Controls.Add(
+            new Label { Text = "Rage action", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            summonerRow
+        );
+        _summonerRageAction = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 260,
+            Anchor = AnchorStyles.Left,
+        };
+        _summonerRageAction.SelectedIndexChanged += (_, _) => OnSummonerActionChanged();
+        summonerRoot.Controls.Add(_summonerRageAction, 1, summonerRow++);
+        _summonerValidation = new Label
+        {
+            AutoSize = true,
+            MaximumSize = new Size(620, 0),
+            Padding = new Padding(0, 8, 0, 0),
+        };
+        summonerRoot.Controls.Add(_summonerValidation, 0, summonerRow);
+        summonerRoot.SetColumnSpan(_summonerValidation, 2);
+        _tabSummoner.Controls.Add(summonerRoot);
+        _settingsTabs.TabPages.Add(_tabSummoner);
 
         _tabCor = new TabPage("COR");
         _tabCor.AutoScroll = true;

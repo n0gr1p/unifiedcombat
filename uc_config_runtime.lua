@@ -15,6 +15,7 @@ local STATUS_FIELDS = {
     'errors',
     'updated_at',
     'profile_v2',
+    'summoner',
 }
 
 local function legacy_ingame_ui_enabled(settings)
@@ -98,6 +99,7 @@ local function config_domain_names(config)
         'sleep',
         'spells',
         'maintenance',
+        'summoner',
         'debug',
         'ownership',
         'legacy',
@@ -209,7 +211,22 @@ function M.config_contract_status(settings, meta, normalizer, current_status)
     end
     local ok, config = pcall(resolved.normalize, settings, resolved_meta)
     if ok and type(config) == 'table' then
-        out.ok = true
+        local summoner_validator = require('uc_smn_config')
+        local summoner = summoner_validator.validate(config.summoner)
+        out.ok = summoner.valid
+        out.summoner = {
+            enabled = summoner.enabled,
+            valid = summoner.valid,
+            avatar_valid = summoner.avatar_valid,
+            ward_valid = summoner.ward_valid,
+            rage_valid = summoner.rage_valid,
+        }
+        for _, issue in ipairs(summoner.errors) do
+            out.errors[#out.errors + 1] = issue.message
+        end
+        for _, issue in ipairs(summoner.warnings) do
+            out.warnings[#out.warnings + 1] = issue.message
+        end
         out.domains = config_domain_names(config)
         if type(config.profile) == 'table' then
             out.character = out.character or config.profile.character

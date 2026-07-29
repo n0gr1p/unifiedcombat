@@ -140,6 +140,8 @@ local player = {
 	},
 }
 local ability_recasts = { [20] = 0 }
+local dispatch_target = nil
+local send_command_count = 0
 
 windower = {
 	addon_path = '',
@@ -153,6 +155,7 @@ windower = {
 	create_dir = function()
 	end,
 	send_command = function()
+		send_command_count = send_command_count + 1
 	end,
 	ffxi = {
 		get_player = function()
@@ -189,7 +192,10 @@ windower = {
 		get_mob_by_target = function()
 			return nil
 		end,
-		get_mob_by_id = function()
+		get_mob_by_id = function(id)
+			if dispatch_target and dispatch_target.id == id then
+				return dispatch_target
+			end
 			return nil
 		end,
 		get_mob_by_index = function()
@@ -338,6 +344,28 @@ local function test_spam_forces_primary_ws_across_active_resonance()
 	settings.spam = false
 end
 
+local function test_spam_ws_dispatch_rejects_out_of_range_target()
+	dispatch_target = {
+		id = 9001,
+		valid_target = true,
+		spawn_type = 16,
+		hpp = 100,
+		distance = {
+			sqrt = function()
+				return 5.51
+			end,
+		},
+	}
+	send_command_count = 0
+	local sent, reason = core.try_dispatch_ws_with_intent('Savage Blade', 9001, {
+		spam = true,
+	}, nil)
+	assert_equal(sent, false, 'spam WS dispatch must fail outside the WS range boundary')
+	assert_equal(reason, 'WS_OUT_OF_RANGE', 'out-of-range WS dispatch reason mismatch')
+	assert_equal(send_command_count, 0, 'out-of-range WS dispatch must not send a command')
+	dispatch_target = nil
+end
+
 local function restore_test_environment()
 	for _, module_name in ipairs(TEST_MODULE_NAMES) do
 		package.loaded[module_name] = saved_modules[module_name]
@@ -353,6 +381,7 @@ local function main()
 	test_satisfied_maintenance_allows_continuation()
 	test_aftermath_precedes_spam_until_buff_active()
 	test_spam_forces_primary_ws_across_active_resonance()
+	test_spam_ws_dispatch_rejects_out_of_range_target()
 	end)
 	restore_test_environment()
 	if not ok then

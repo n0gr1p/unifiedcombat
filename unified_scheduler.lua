@@ -15,10 +15,12 @@ local scheduler_locks = require('uc_scheduler_locks')
 local scheduler_pending = require('uc_scheduler_pending')
 local uc_scheduler_config = require('uc_scheduler_config')
 local domain_ownership = require('uc_domain_ownership')
+local pet_command_coordinator = require('uc_pet_command_coordinator')
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
 	or nil
 local time_source_error_reported = false
+local CAST_MOVEMENT_SETTLE_SECONDS = 0.1
 
 local action_buff_map = {}
 do
@@ -74,6 +76,12 @@ local scheduler = {
 		debuffs = {},
 		status_snapshot = {},
 	},
+	pet_command_state = pet_command_coordinator.new({
+		timeout = 2.5,
+		backoff_base = 1.0,
+		backoff_max = 8.0,
+	}),
+	pet_combat_state = require('uc_pet_combat_state').new(),
 	action_state = {
 		action_start = 0,
 		action_end = 0,
@@ -1205,6 +1213,79 @@ function scheduler.apply_cast_movement_hold(reason, at)
 		action = tostring((action_state() or {}).last_action_name or ''),
 		reason = block_reason,
 	}, ('cast_movement_hold:%s'):format(block_reason), 0.20)
+end
+
+function scheduler.cast_movement_settle_blocked(selected)
+	if type(selected) ~= 'table' then
+		error('cast movement settle requires a selected action')
+	end
+	if type(selected.action_type) ~= 'string' then
+		error('cast movement settle selected action_type must be a string')
+	end
+	if selected.action_type ~= 'spell' then
+		return false, nil
+	end
+	if type(selected.action_name) ~= 'string' or selected.action_name == '' then
+		error('cast movement settle selected spell requires an action name')
+	end
+	if type(selected.target_name) ~= 'string' then
+		error('cast movement settle selected spell requires a target name')
+	end
+	local target_id = tonumber(selected.target_id)
+	if target_id == nil then
+		error('cast movement settle selected spell requires a numeric target id')
+	end
+
+	local lor_actor_mod = require('lor/lor_actor')
+	if type(lor_actor_mod) ~= 'table'
+		or type(lor_actor_mod.Actor) ~= 'table'
+		or type(lor_actor_mod.Actor.new) ~= 'function' then
+		error('scheduler cast movement settle lor/lor_actor contract is invalid')
+	end
+	local actor = rawget(_G, 'UC_SCHED_CAST_LOCAL_ACTOR')
+	if actor == nil then
+		actor = lor_actor_mod.Actor.new()
+		rawset(_G, 'UC_SCHED_CAST_LOCAL_ACTOR', actor)
+	end
+	if type(actor) ~= 'table' or type(actor.is_moving) ~= 'function' then
+		error('scheduler cast movement settle local actor contract is invalid')
+	end
+
+	local now = now_s()
+	local settle_until_value = rawget(_G, 'UC_CAST_MOVEMENT_SETTLE_UNTIL')
+	if settle_until_value ~= nil and type(settle_until_value) ~= 'number' then
+		error('UC_CAST_MOVEMENT_SETTLE_UNTIL must be numeric when set')
+	end
+	local settle_until = 0
+	if settle_until_value ~= nil then
+		settle_until = settle_until_value
+	end
+	local moving = actor:is_moving() == true
+	if moving then
+		settle_until = now + CAST_MOVEMENT_SETTLE_SECONDS
+		_G.UC_CAST_MOVEMENT_SETTLE_UNTIL = settle_until
+	end
+	if moving or now < settle_until then
+		scheduler.apply_cast_movement_hold('MOVE_COORD_CAST_SETTLE', now)
+		_G.UC_LAST_SCHED_ACTION = ('[p1]cast_move_settle:%s->%s'):format(
+			selected.action_name,
+			selected.target_name
+		)
+		scheduler.action_timeline_log('CAST_MOVEMENT_SETTLE', {
+			action = selected.action_name,
+			target_id = target_id,
+			moving = tostring(moving),
+			remaining_s = ('%.2f'):format(math.max(0, settle_until - now)),
+		}, ('cast_movement_settle:%s:%d'):format(
+			selected.action_name,
+			target_id
+		), 0.10)
+		return true, 'BLOCK_SCHED_CAST_MOVEMENT_SETTLE'
+	end
+	if settle_until_value ~= nil then
+		_G.UC_CAST_MOVEMENT_SETTLE_UNTIL = nil
+	end
+	return false, nil
 end
 
 local function current_zone_id()
@@ -2753,6 +2834,110 @@ function scheduler.observe_local_sleep_action(act, player_id, at)
 	return marked
 end
 
+function scheduler.handle_local_spell_finish_action(act, player_id, observed_at)
+	if type(act) ~= 'table'
+		or tonumber(act.actor_id) ~= tonumber(player_id)
+		or tonumber(act.category) ~= 4 then
+		return false, 'not_local_spell_finish'
+	end
+	local st = action_state()
+	if type(st) ~= 'table' then
+		error('scheduler action state must be a table')
+	end
+	local active, active_reason = scheduler.local_spell_cast_token_active(st)
+	if not active then
+		return false, active_reason
+	end
+	local active_spell_name = tostring(st.last_action_name or '')
+	if active_spell_name == '' then
+		error('active scheduler spell name must not be empty')
+	end
+	local active_spell = get_spell_resource(active_spell_name)
+	if type(active_spell) ~= 'table' then
+		error('active scheduler spell resource missing: ' .. active_spell_name)
+	end
+	local packet_spell_id = tonumber(act.param)
+	if packet_spell_id == nil then
+		error('local spell finish action is missing a numeric spell id')
+	end
+	local active_spell_id = tonumber(active_spell.id)
+	if active_spell_id == nil then
+		error('active scheduler spell resource id must be numeric: ' .. active_spell_name)
+	end
+	if packet_spell_id ~= active_spell_id then
+		return false, 'spell_mismatch'
+	end
+	local active_target_id = tonumber(st.last_target_id)
+	if active_target_id == nil or active_target_id <= 0 then
+		error('active scheduler spell target id must be a positive number: ' .. active_spell_name)
+	end
+	if type(act.targets) ~= 'table' then
+		error('local spell finish action targets must be a table')
+	end
+	local target_matched = false
+	local result_message_id
+	local result_message_param
+	for _, target in ipairs(act.targets) do
+		if tonumber(target and target.id) == active_target_id then
+			target_matched = true
+			if type(target.actions) ~= 'table' or type(target.actions[1]) ~= 'table' then
+				error('matching local spell finish target is missing action results')
+			end
+			local result = target.actions[1]
+			result_message_id = tonumber(result.message)
+			result_message_param = tonumber(result.param)
+			if result_message_id == nil or result_message_param == nil then
+				error('local spell finish result message and param must be numeric')
+			end
+			break
+		end
+	end
+	if not target_matched then
+		return false, 'target_mismatch'
+	end
+	local now = tonumber(observed_at)
+	if now == nil then
+		error('local spell finish observation time must be numeric')
+	end
+	action_mark_packet_end({
+		message_id = result_message_id,
+		message_param = result_message_param,
+	})
+	local release_meta = {
+		message_id = result_message_id,
+		message_param = result_message_param,
+		spell_name = active_spell_name,
+		completion_reason = 'cast_complete_action_packet',
+		release_reason = 'cast_complete_action_packet',
+	}
+	local cleared = scheduler.clear_local_defensive_spell_success(release_meta)
+	if not cleared then
+		cleared = scheduler.clear_local_spell_success(release_meta)
+	end
+	if not cleared then
+		return false, require('uc_scheduler_action_state').last_completion_ignore_reason(scheduler)
+	end
+	scheduler.p1_pending_mark_complete(now, ('spell_action_packet_finish_%d'):format(packet_spell_id))
+	if tostring(_G.UC_MOVEMENT_OWNER or '') == 'scheduler' then
+		local current_lock_until = tonumber(_G.UC_MOVEMENT_LOCK_UNTIL)
+		if current_lock_until == nil then
+			error('scheduler-owned UC_MOVEMENT_LOCK_UNTIL must be numeric during local spell completion')
+		end
+		_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)
+	end
+	if scheduler.defensive_spell_waiting == true then
+		scheduler.clear_defensive_spell_wait_state()
+	end
+	local phase = scheduler.phase1
+	if type(phase) ~= 'table' then
+		error('scheduler phase1 state must be a table')
+	end
+	if tonumber(phase.tank_pending_target_id) and tonumber(phase.tank_pending_target_id) ~= 0 then
+		scheduler.p1_clear_tank_spell_wait_state(phase)
+	end
+	return true, 'cast_complete_action_packet'
+end
+
 function scheduler.is_sleep_spell_name(settings, spell_name)
 	local want = tostring(spell_name or ''):lower()
 	if want == '' then
@@ -3384,13 +3569,20 @@ local function p1_clamp_urgency(v)
 end
 
 local function p1_build_ctx(settings)
-	return require('uc_scheduler_context').build(settings, scheduler.phase1, {
+	local ctx = require('uc_scheduler_context').build(settings, scheduler.phase1, {
 		get_player = windower.ffxi.get_player,
 		get_mob_by_target = windower.ffxi.get_mob_by_target,
+		get_mob_by_index = windower.ffxi.get_mob_by_index,
 		get_party = windower.ffxi.get_party,
 		get_mob_array = windower.ffxi.get_mob_array,
 		now = now_s,
 	})
+	local ability_recasts = windower.ffxi.get_ability_recasts()
+	ctx.ability_recasts_present = type(ability_recasts) == 'table'
+	if ctx.ability_recasts_present then
+		ctx.ability_recasts = ability_recasts
+	end
+	return ctx
 end
 
 local p1_combat_helpers = {}
@@ -3417,6 +3609,7 @@ local function p1_collect_proposals(ctx)
 		scheduler.providers.combat.collect_sleep(ctx, out)
 		scheduler.providers.combat.collect_offense(ctx, out)
 		scheduler.providers.combat.collect_ja(ctx, out)
+		scheduler.providers.pet_combat.collect(ctx, out)
 	end
 	-- 2 Hz defensive
 	if domain_ownership.is_enabled('defensive')
@@ -3438,6 +3631,7 @@ local function p1_collect_proposals(ctx)
 	if maintenance_enabled
 		and (brd_provider_active or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0)) then
 		scheduler.providers.maintenance.collect(ctx, out)
+		scheduler.providers.summoner_maintenance.collect(ctx, out)
 	end
 	if brd_provider_active then
 		local lane_reserved, lane_reason = require('uc_brd_maintenance').action_lane_status()
@@ -3644,10 +3838,88 @@ function scheduler.p1_pending_mark_failed(now, result_code, retry_delay)
 	return scheduler_pending.p1_pending_mark_failed(scheduler, now, result_code, retry_delay)
 end
 
+local function p1_apply_pet_command_event(event)
+	if type(event) ~= 'table' then
+		return
+	end
+	if scheduler.providers and scheduler.providers.pet_combat then
+		scheduler.providers.pet_combat.observe_coordinator_event(event)
+	end
+	if event.outcome == 'complete' then
+		scheduler.p1_pending_mark_complete(event.at, 'pet_' .. tostring(event.reason))
+	elseif event.outcome == 'failed' then
+		scheduler.p1_pending_mark_failed(
+			event.at,
+			'pet_' .. tostring(event.reason),
+			tonumber(event.retry_delay) or 0
+		)
+	end
+	_G.UC_SMN_PET_COMMAND_STATE = {
+		outcome = tostring(event.outcome or ''),
+		reason = tostring(event.reason or ''),
+		kind = tostring(event.kind or ''),
+		action_name = tostring(event.action_name or ''),
+		pet_id = tonumber(event.pet_id) or 0,
+		target_id = tonumber(event.target_id) or 0,
+		combat_generation = tonumber(event.combat_generation) or 0,
+		retry_delay = tonumber(event.retry_delay) or 0,
+	}
+end
+
+local function p1_prepare_pet_context(ctx)
+	if type(ctx) ~= 'table' then
+		error('pet runtime requires scheduler context')
+	end
+	ctx.combat_domain_enabled = domain_ownership.is_enabled('combat')
+	scheduler.providers.pet_combat.observe_target(ctx)
+	local scheduler_pending_action = scheduler.phase1.pending
+	if type(scheduler_pending_action) == 'table'
+		and scheduler.p1_pending_is_live_state(tostring(scheduler_pending_action.state or ''))
+		and tostring(scheduler_pending_action.provider or '') == 'maintenance_summoner' then
+		local pending_action_type = tostring(scheduler_pending_action.action_type or '')
+		local pending_action_name = tostring(scheduler_pending_action.action_name or '')
+		if pending_action_type == 'spell'
+			and ctx.pet_present == true
+			and ctx.pet_name == pending_action_name then
+			scheduler.p1_pending_mark_complete(ctx.now, 'desired_avatar_observed')
+		elseif pending_action_type == 'ja'
+			and pending_action_name == 'Avatar\'s Favor'
+			and require('uc_smn_runtime').has_buff(ctx.player, require('uc_smn_runtime').BUFF_FAVOR) then
+			scheduler.p1_pending_mark_complete(ctx.now, 'avatar_favor_observed')
+		end
+	end
+	local inferred_pet_target_id = 0
+	if ctx.pet_present == true then
+		inferred_pet_target_id = require('uc_pet_combat_state').observed_pet_target(
+			scheduler.pet_combat_state,
+			ctx.pet_id
+		)
+	end
+	local observe_ctx = {
+		now = ctx.now,
+		pet_present = ctx.pet_present,
+		pet_id = ctx.pet_id,
+		pet_status = ctx.pet_status,
+		pet_target_id = ctx.pet_target_id,
+		pet_target_matches_current = ctx.pet_target_matches_current,
+		pet_inferred_target_id = inferred_pet_target_id,
+		player_buffs = ctx.player.buffs,
+		ability_recasts_present = ctx.ability_recasts_present,
+		ability_recasts = ctx.ability_recasts,
+		combat_generation = ctx.combat_generation,
+		target_id = ctx.target_id,
+		target_valid = ctx.target_valid,
+		target_hpp = ctx.target_hpp,
+	}
+	local event = pet_command_coordinator.observe(scheduler.pet_command_state, observe_ctx)
+	p1_apply_pet_command_event(event)
+end
+
 local function p1_run_dry(settings, ctx)
 	if type(ctx) ~= 'table' then
 		ctx = p1_build_ctx(settings)
 	end
+	p1_prepare_pet_context(ctx)
 	scheduler.p1_update_pending_state(ctx)
 	local proposals = p1_collect_proposals(ctx)
 	local ranked, reject_counts, locks, rejected = p1_rank(ctx, proposals)
@@ -4880,7 +5152,7 @@ local function p1_dispatch_combat(selected, settings, phase)
 			log_ja_sched(('dispatch_send name=\"%s\" mode=self'):format(tostring(ability)))
 		end
 		_G.UC_LAST_SCHED_ACTION = ('[p1]ja:%s->%s'):format(ability, tostring(selected.target_name or ''))
-elseif action_type == 'spell' then
+	elseif action_type == 'spell' then
 		local spell = tostring(selected.action_name or '')
 		if spell == '' then
 			log_combat_sched('dispatch_drop reason=SPELL_EMPTY')
@@ -4889,86 +5161,6 @@ elseif action_type == 'spell' then
 			end
 			return false, nil
 		end
-		local prep_now = now_s()
-		local prep_key = ('%s:%d'):format(spell, tonumber(selected.target_id) or 0)
-		local active_key = tostring(rawget(_G, 'UC_MOVE_FREEZE_PREP_KEY') or '')
-		local prep_until = tonumber(rawget(_G, 'UC_MOVE_FREEZE_PREP_UNTIL')) or 0
-		if active_key ~= prep_key then
-			_G.UC_MOVE_FREEZE_PREP_KEY = prep_key
-			_G.UC_MOVE_FREEZE_PREP_UNTIL = prep_now + 0.75
-			local intent = {
-				kind = 'run_stop',
-				source = 'unified_scheduler:T2.4l_darklaunch',
-				meta = {
-					reason = 'COMBAT_SPELL_SETTLE',
-					action_type = action_type,
-					action_name = spell,
-					target_id = selected.target_id,
-					target_kind = target_kind,
-					prep_key = prep_key,
-					freeze_prep_until = _G.UC_MOVE_FREEZE_PREP_UNTIL,
-				},
-			}
-			local dispatcher = require('uc_scheduler_dispatcher')
-			local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
-			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
-				dispatcher = dispatcher,
-				run = windower.ffxi.run,
-				intent = intent,
-			})
-			_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_COMBAT_SPELL_SETTLE_VALIDATE = {
-				ok = _intent_ok and true or false,
-				reason = _intent_reason,
-				kind = intent.kind,
-				source = intent.source,
-				ownership_enabled = run_stop_ownership_status.ownership_enabled,
-				dispatched = run_stop_ownership_status.dispatched,
-				dispatch_ok = run_stop_ownership_status.dispatch_ok,
-				dispatch_reason = run_stop_ownership_status.dispatch_reason,
-				fallback_used = run_stop_ownership_status.fallback_used,
-				stop = run_stop_ownership_status.stop,
-			}
-			_G.UC_LAST_SCHED_ACTION = ('[p1]spell_settle:%s->%s'):format(spell, tostring(selected.target_name or ''))
-			return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_SPELL_SETTLE'
-		end
-		if prep_now < prep_until then
-			local intent = {
-				kind = 'run_stop',
-				source = 'unified_scheduler:T2.4m_darklaunch',
-				meta = {
-					reason = 'COMBAT_SPELL_PREP_WAIT',
-					action_type = action_type,
-					action_name = spell,
-					target_id = selected.target_id,
-					target_kind = target_kind,
-					prep_key = prep_key,
-					freeze_prep_until = prep_until,
-				},
-			}
-			local dispatcher = require('uc_scheduler_dispatcher')
-			local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
-			local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
-				dispatcher = dispatcher,
-				run = windower.ffxi.run,
-				intent = intent,
-			})
-			_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_COMBAT_SPELL_PREP_WAIT_VALIDATE = {
-				ok = _intent_ok and true or false,
-				reason = _intent_reason,
-				kind = intent.kind,
-				source = intent.source,
-				ownership_enabled = run_stop_ownership_status.ownership_enabled,
-				dispatched = run_stop_ownership_status.dispatched,
-				dispatch_ok = run_stop_ownership_status.dispatch_ok,
-				dispatch_reason = run_stop_ownership_status.dispatch_reason,
-				fallback_used = run_stop_ownership_status.fallback_used,
-				stop = run_stop_ownership_status.stop,
-			}
-			_G.UC_LAST_SCHED_ACTION = ('[p1]spell_prep:%s->%s'):format(spell, tostring(selected.target_name or ''))
-			return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_SPELL_PREP'
-		end
-		_G.UC_MOVE_FREEZE_PREP_KEY = ''
-		_G.UC_MOVE_FREEZE_PREP_UNTIL = 0
 		local ok_ready, ready_reason, action_kind = action_ready(spell)
 		if action_kind ~= 'spell' or not ok_ready then
 			log_combat_sched(('dispatch_drop reason=SPELL_NOT_READY spell=\"%s\" ready_reason=%s kind=%s'):format(
@@ -5234,6 +5426,153 @@ elseif action_type == 'spell' then
 	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT'
 end
 
+local function p1_dispatch_summoner_maintenance(selected, settings)
+	if not domain_ownership.is_enabled('maintenance') then
+		return false, nil
+	end
+	local action_type = tostring(selected.action_type or '')
+	if action_type == 'pet' then
+		error('Summoner pet commands must use the shared pet dispatcher')
+	end
+	if action_type ~= 'spell' and action_type ~= 'ja' then
+		return false, nil
+	end
+	local blocked, block_reason = action_dispatch_blocked()
+	if blocked then
+		return true, block_reason
+	end
+	local ctx = p1_build_ctx(settings)
+	p1_prepare_pet_context(ctx)
+	local valid, reason = scheduler.providers.summoner_maintenance.revalidate(selected, ctx)
+	if not valid then
+		_G.UC_LAST_SCHED_ACTION = '[smn]commit_rejected:' .. tostring(reason)
+		return false, nil
+	end
+	local action_name = tostring(selected.action_name or '')
+	local ready, ready_reason, ready_kind = action_ready(action_name, tonumber(selected.target_id) or 0)
+	if not ready or ready_kind ~= action_type then
+		_G.UC_LAST_SCHED_ACTION = '[smn]not_ready:' .. tostring(ready_reason)
+		return false, nil
+	end
+	if action_name == '' or action_name:find('"', 1, true) then
+		error('Summoner maintenance action name is not command-safe')
+	end
+	local command_kind = action_type == 'spell' and 'ma' or 'ja'
+	local command = ('input /%s "%s" <me>'):format(command_kind, action_name)
+	local result = require('uc_scheduler_dispatcher').dispatch_intent({
+		kind = 'send_command',
+		source = 'unified_scheduler:summoner_maintenance',
+		command = command,
+		meta = {
+			action_type = action_type,
+			action_name = action_name,
+			provider = 'maintenance_summoner',
+			target_id = tonumber(selected.target_id) or 0,
+		},
+	}, {
+		execute = true,
+		send_command = windower.send_command,
+	})
+	if type(result) ~= 'table' or result.ok ~= true or result.executed ~= true then
+		return false, nil
+	end
+	action_mark_sent(action_type, {
+		action_name = action_name,
+		provider = 'maintenance_summoner',
+		target_id = tonumber(selected.target_id) or 0,
+		target_name = tostring(selected.target_name or ''),
+		target_kind = tostring(selected.target_kind or ''),
+	})
+	local dispatch_ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
+	scheduler.record_dispatch(dispatch_ctx)
+	scheduler.p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(
+		dispatch_ctx,
+		scheduler.p1_get_locks(dispatch_ctx)
+	)
+	_G.UC_LAST_SCHED_ACTION = ('[smn]%s:%s'):format(action_type, action_name)
+	return true, 'BLOCK_SCHED_P1_SUMMONER_MAINTENANCE'
+end
+
+local function p1_dispatch_pet_command(selected, settings)
+	local provider_name = tostring(selected.provider or '')
+	if provider_name == 'maintenance_summoner' then
+		if not domain_ownership.is_enabled('maintenance') then
+			return false, nil
+		end
+	elseif provider_name == 'pet_combat' then
+		if not domain_ownership.is_enabled('combat') then
+			return false, nil
+		end
+	else
+		error('shared pet dispatcher received an unsupported provider: ' .. provider_name)
+	end
+	if tostring(selected.action_type or '') ~= 'pet' then
+		error('shared pet dispatcher requires action_type pet')
+	end
+	local blocked, block_reason = action_dispatch_blocked()
+	if blocked then
+		return true, block_reason
+	end
+	local ctx = p1_build_ctx(settings)
+	p1_prepare_pet_context(ctx)
+	local valid, reason
+	if provider_name == 'maintenance_summoner' then
+		valid, reason = scheduler.providers.summoner_maintenance.revalidate(selected, ctx)
+	else
+		valid, reason = scheduler.providers.pet_combat.revalidate(selected, ctx)
+	end
+	if not valid then
+		_G.UC_LAST_SCHED_ACTION = '[pet]commit_rejected:' .. tostring(reason)
+		return false, nil
+	end
+	local detail = selected.detail
+	if type(detail) ~= 'table' or type(detail.pet_command) ~= 'table' then
+		error('pet proposal is missing captured command detail')
+	end
+	local command_spec = detail.pet_command
+	local allowed, retry_reason = pet_command_coordinator.can_attempt(
+		scheduler.pet_command_state,
+		command_spec.retry_key,
+		ctx.now
+	)
+	if not allowed then
+		_G.UC_LAST_SCHED_ACTION = '[pet]blocked:' .. tostring(retry_reason)
+		return false, nil
+	end
+	local command = require('uc_pet_commands').serialize(command_spec)
+	local result = require('uc_scheduler_dispatcher').dispatch_intent({
+		kind = 'send_command',
+		source = 'unified_scheduler:pet_command',
+		command = command,
+		meta = {
+			action_type = 'pet',
+			pet_command_kind = command_spec.kind,
+			action_name = command_spec.action_name,
+			provider = provider_name,
+			pet_id = command_spec.pet_id,
+			target_id = command_spec.target_id,
+			combat_generation = command_spec.combat_generation,
+		},
+	}, {
+		execute = true,
+		send_command = windower.send_command,
+	})
+	if type(result) ~= 'table' or result.ok ~= true or result.executed ~= true then
+		return false, nil
+	end
+	pet_command_coordinator.begin(scheduler.pet_command_state, command_spec, ctx.now)
+	local dispatch_ctx = { now = ctx.now, tick = p1_number(scheduler.phase1.tick, 0) }
+	scheduler.record_dispatch(dispatch_ctx)
+	scheduler.p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(
+		dispatch_ctx,
+		scheduler.p1_get_locks(dispatch_ctx)
+	)
+	_G.UC_LAST_SCHED_ACTION = ('[pet]%s:%s'):format(command_spec.kind, command_spec.action_name)
+	return true, 'BLOCK_SCHED_P1_PET_COMMAND'
+end
+
 function scheduler.dispatch_selected_plan(settings)
 	local phase = scheduler.phase1
 	local selected = phase.last_selected
@@ -5246,6 +5585,10 @@ function scheduler.dispatch_selected_plan(settings)
 			_G.UC_LAST_SCHED_ACTION = ('[p1]tank_spell_wait:%s'):format(tostring(phase.tank_pending_action or ''))
 			return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_SPELL_WAIT'
 		end
+	end
+	local cast_movement_blocked, cast_movement_reason = scheduler.cast_movement_settle_blocked(selected)
+	if cast_movement_blocked then
+		return true, cast_movement_reason
 	end
 	local provider = tostring(selected.provider or '')
 	if provider == 'target_control' then
@@ -5284,6 +5627,15 @@ function scheduler.dispatch_selected_plan(settings)
 	end
 	if provider == 'maintenance_brd' then
 		return scheduler.p1_dispatch_maintenance_brd(selected, settings)
+	end
+	if provider == 'maintenance_summoner' then
+		if tostring(selected.action_type or '') == 'pet' then
+			return p1_dispatch_pet_command(selected, settings)
+		end
+		return p1_dispatch_summoner_maintenance(selected, settings)
+	end
+	if provider == 'pet_combat' then
+		return p1_dispatch_pet_command(selected, settings)
 	end
 	return false, nil
 end
@@ -5426,6 +5778,11 @@ function scheduler.on_incoming_chunk(id, data)
 		require('uc_lilith_easy_formation_runtime').reset('zone_change_packet')
 		_G.UC_REACTION_LOCK = nil
 		scheduler.phase1.effectiveTargets = {}
+		pet_command_coordinator.reset(scheduler.pet_command_state, 'zone_change')
+		require('uc_pet_combat_state').reset(scheduler.pet_combat_state)
+		_G.UC_SMN_PET_COMMAND_STATE = nil
+		_G.UC_SMN_PET_COMBAT_STATUS = nil
+		_G.UC_SMN_MAINTENANCE_STATUS = nil
 		require('uc_brd_maintenance').reset('zone_change')
 		require('uc_party_buff_tracker').reset()
 		return
@@ -5522,6 +5879,15 @@ function scheduler.on_action(act)
 		local p = windower.ffxi.get_player()
 		local observed_at = now_s()
 		local player_id = tonumber(p and p.id) or 0
+		if scheduler.providers and scheduler.providers.pet_combat then
+			scheduler.providers.pet_combat.observe_pet_action(act, observed_at)
+		end
+		local pet_event = pet_command_coordinator.observe_action(
+			scheduler.pet_command_state,
+			act,
+			observed_at
+		)
+		p1_apply_pet_command_event(pet_event)
 		local _, brd_action_event = require('uc_brd_maintenance').on_action(act, player_id, observed_at)
 		if brd_action_event == 'pianissimo_confirmed' then
 			action_mark_packet_end({
@@ -5662,7 +6028,6 @@ function scheduler.on_action(act)
 	local category_value = tonumber(act and act.category)
 	local category = tostring(act and act.category or '')
 	local start_lock_categories = {
-		[4] = true,
 		[6] = true,
 		[8] = true,
 		[13] = true,
@@ -5683,6 +6048,7 @@ function scheduler.on_action(act)
 			targets_summary = scheduler.spell_lifecycle_probe_actions_summary(act),
 			actions_summary = scheduler.spell_lifecycle_probe_actions_summary(act),
 		})
+		local local_spell_finished = scheduler.handle_local_spell_finish_action(act, my_id, now_s())
 		local local_ws_result = category_value == 3 or category == 'weaponskill_finish'
 		if local_ws_result then
 			require('uc_scheduler_action_state').action_mark_ws_result(scheduler, now_s, {
@@ -5692,11 +6058,11 @@ function scheduler.on_action(act)
 		end
 		-- HealBot-style actor-centric start lock, but scoped to real cast/action categories.
 		-- Do not treat generic/melee action traffic as lock-start signals.
-		if start_lock_categories[category_value] then
+		if not local_spell_finished and start_lock_categories[category_value] then
 			require('uc_scheduler_action_state').note_local_spell_packet_start(scheduler, now_s, {
 				message_id = category_value or 0,
 			})
-		elseif start_lock_categories[category] then
+		elseif not local_spell_finished and start_lock_categories[category] then
 			action_mark_packet_start({
 				message_id = category_value or 0,
 			})
@@ -5711,6 +6077,9 @@ function scheduler.on_action(act)
 	local now = now_s()
 	local state_name = tostring(pending.state or '')
 	if not scheduler.p1_pending_is_live_state(state_name) then
+		return
+	end
+	if tostring(pending.action_type or '') == 'pet' then
 		return
 	end
 	if my_id ~= 0 and actor_id == my_id then
@@ -5798,6 +6167,13 @@ function scheduler.on_action_message(msg)
 	local message_id = tonumber(msg and msg.message_id) or 0
 	local message_param = tonumber(msg and msg.param_1) or tonumber(msg and msg.param) or 0
 	local now = now_s()
+	local pet_event = pet_command_coordinator.observe_action_message(
+		scheduler.pet_command_state,
+		msg,
+		my_id,
+		now
+	)
+	p1_apply_pet_command_event(pet_event)
 	local st = action_state() or {}
 	if message_id ~= 0 then
 		st.last_action_message_id = message_id
@@ -5827,6 +6203,16 @@ function scheduler.on_action_message(msg)
 	end
 	local pending = phase.pending
 	if type(pending) ~= 'table' then
+		return
+	end
+	if tostring(pending.provider or '') == 'maintenance_summoner'
+		and my_id ~= 0
+		and actor_id == my_id
+		and pet_command_coordinator.is_failure_message(message_id) then
+		scheduler.p1_pending_mark_failed(now, ('summoner_action_message_%d'):format(message_id), 1.0)
+		return
+	end
+	if tostring(pending.action_type or '') == 'pet' then
 		return
 	end
 	local state_name = tostring(pending.state or '')
@@ -5902,6 +6288,10 @@ function scheduler.get_debug_overlay()
 			return domain_ownership.is_enabled('maintenance')
 		elseif p == 'maintenance_brd' then
 			return domain_ownership.is_enabled('maintenance')
+		elseif p == 'maintenance_summoner' then
+			return domain_ownership.is_enabled('maintenance')
+		elseif p == 'pet_combat' then
+			return domain_ownership.is_enabled('combat')
 		elseif p == 'geo' then
 			return domain_ownership.is_enabled('maintenance')
 		end
@@ -5922,12 +6312,32 @@ function scheduler.reset_runtime_locks()
 	scheduler_locks.reset_runtime_locks(_G, action_state)
 	require('uc_reaction_runtime').reset('scheduler_lock_reset')
 	_G.UC_REACTION_LOCK = nil
+	_G.UC_CAST_MOVEMENT_SETTLE_UNTIL = nil
+	_G.UC_SCHED_CAST_LOCAL_ACTOR = nil
 end
 
 _G.UC_ResetSchedulerRuntimeLocks = function()
 	if scheduler and type(scheduler.reset_runtime_locks) == 'function' then
 		scheduler.reset_runtime_locks()
 	end
+end
+
+local function smn_player_is_moving()
+	local lor_actor_mod = require('lor/lor_actor')
+	if type(lor_actor_mod) ~= 'table'
+		or type(lor_actor_mod.Actor) ~= 'table'
+		or type(lor_actor_mod.Actor.new) ~= 'function' then
+		error('Summoner maintenance lor/lor_actor contract is invalid')
+	end
+	local actor = rawget(_G, 'UC_SCHED_SMN_LOCAL_ACTOR')
+	if actor == nil then
+		actor = lor_actor_mod.Actor.new()
+		rawset(_G, 'UC_SCHED_SMN_LOCAL_ACTOR', actor)
+	end
+	if type(actor) ~= 'table' or type(actor.is_moving) ~= 'function' then
+		error('Summoner maintenance local actor contract is invalid')
+	end
+	return actor:is_moving() == true
 end
 
 function scheduler.get_enemy_effect_table_overlay()
@@ -5942,6 +6352,27 @@ function scheduler.get_enemy_effect_table_overlay()
 end
 
 scheduler.providers = {}
+local smn_pet_combat_adapter = require('uc_smn_pet_combat_adapter').new({
+	get_ja_resource = get_ja_resource,
+	action_effective_range = action_effective_range,
+})
+scheduler.providers.pet_combat = require('uc_pet_combat_provider').new({
+	adapter = smn_pet_combat_adapter,
+	state = scheduler.pet_combat_state,
+	target_is_actionable = combat_core.is_live_actionable_combat_target,
+	coordinator_can_attempt = function(retry_key, at)
+		return pet_command_coordinator.can_attempt(scheduler.pet_command_state, retry_key, at)
+	end,
+})
+scheduler.providers.summoner_maintenance = require('uc_smn_maintenance').new({
+	action_ready = action_ready,
+	coordinator_can_attempt = function(retry_key, at)
+		return pet_command_coordinator.can_attempt(scheduler.pet_command_state, retry_key, at)
+	end,
+	player_is_moving = smn_player_is_moving,
+	get_ja_resource = get_ja_resource,
+	log = log_def_sched,
+})
 scheduler.providers.defensive = require('uc_provider_defensive').new({
 	bool_setting = bool_setting,
 	active_value_or_flat = scheduler.active_value_or_flat,

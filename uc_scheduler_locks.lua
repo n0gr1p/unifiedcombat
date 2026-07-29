@@ -29,6 +29,7 @@ function M.p1_get_locks(scheduler, ctx, p1_number, globals)
 	local phase = scheduler.phase1
 	local pending = phase.pending
 	local pending_live = type(pending) == 'table' and M.p1_pending_is_live_state(tostring(pending.state or ''))
+	local pet_pending_live = pending_live and tostring(pending.action_type or '') == 'pet'
 	local zone_suspend_until = rawget(globals, 'UC_ZONE_SUSPEND_UNTIL')
 	local zone_guard_active = type(zone_suspend_until) == 'number' and ctx.now < zone_suspend_until
 	local now = ctx.now
@@ -42,7 +43,7 @@ function M.p1_get_locks(scheduler, ctx, p1_number, globals)
 	return {
 		zone_guard_lock = { hard = zone_guard_active },
 		cast_lock = { hard = pending_live },
-		movement_lock = { hard = pending_live },
+		movement_lock = { hard = pending_live and not pet_pending_live },
 		target_lock = { hard = false },
 		duplicate_lock = { hard = duplicate_lock_until > now, until_ts = duplicate_lock_until },
 	}
@@ -53,7 +54,8 @@ function M.p1_hard_lock_reject(locks, proposal)
 	if locks.zone_guard_lock and locks.zone_guard_lock.hard and action_type ~= 'move' then
 		return 'zone_guard'
 	end
-	if (action_type == 'spell' or action_type == 'ja' or action_type == 'ws') and locks.cast_lock and locks.cast_lock.hard then
+	if (action_type == 'spell' or action_type == 'ja' or action_type == 'ws' or action_type == 'pet')
+		and locks.cast_lock and locks.cast_lock.hard then
 		return 'hard_locked'
 	end
 	if action_type == 'move' and locks.movement_lock and locks.movement_lock.hard then

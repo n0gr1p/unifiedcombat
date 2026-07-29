@@ -44,6 +44,12 @@ internal static class StructuredProfileV2WriterTests
             TestNonBrdOmitsHiddenBrdMaintenance();
             TestBrdUiEditsAreLocalUntilSave();
 			TestBrdRecoveryRangeUiProfilePersistenceContract();
+            TestSummonerCapabilityCatalog();
+            TestNonSummonerOmitsUnconfiguredSummoner();
+            TestSummonerDisabledShape();
+            TestSummonerConfiguredRoundTripShape();
+            TestSummonerPreservesIncompatibleSelections();
+            TestSummonerUiOfflineContract();
             TestSerializeReactionRules();
             TestDisabledEmptyReactionsAreOmitted();
             TestReactionUiEditsAreLocalUntilSave();
@@ -755,6 +761,113 @@ internal static class StructuredProfileV2WriterTests
 		AssertContains(ui, "_brdTargetedSongs = new TextBox", "BRD targeted song control must exist");
 		AssertContains(writer, ".Add(\"targeted_songs\"", "BRD targeted songs must serialize into structured profiles");
 	}
+
+    private static void TestSummonerCapabilityCatalog()
+    {
+        AssertEqual(SummonerCapabilities.Avatars.Count, 11, "supported Summoner avatar count mismatch");
+        var ifrit = SummonerCapabilities.FindAvatar("Ifrit")
+            ?? throw new InvalidOperationException("Ifrit capability missing");
+        AssertEqual(ifrit.SummonSpellId, 298, "Ifrit summon spell id mismatch");
+        AssertTrue(
+            ifrit.Wards.Any(action => action.Name == "Crimson Howl" && action.EffectId == 68),
+            "Crimson Howl Ward metadata missing"
+        );
+        AssertTrue(
+            ifrit.Rages.Any(action => action.Name == "Flaming Crush" && action.Id == 550),
+            "Flaming Crush Rage metadata missing"
+        );
+        AssertTrue(
+            !SummonerCapabilities.IsCompatible("Garuda", "rage", "Flaming Crush"),
+            "cross-avatar Rage must be incompatible"
+        );
+    }
+
+    private static void TestNonSummonerOmitsUnconfiguredSummoner()
+    {
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            BuildSampleFlatProfile(),
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+        AssertNotContains(content, "summoner = {", "unconfigured non-SMN profile must remain backward compatible");
+    }
+
+    private static void TestSummonerDisabledShape()
+    {
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            BuildSampleFlatProfile(),
+            new StructuredProfileV2Identity("Redrogue", "SMN", "RDM")
+        );
+        AssertContains(content, "summoner = {", "SMN profile must include the durable Summoner domain");
+        AssertContains(content, "avatar = nil", "disabled SMN profile must persist no desired avatar");
+        AssertContains(content, "avatar_favor = false", "disabled SMN profile Favor default mismatch");
+        AssertContains(content, "engage_on_combat_start = false", "disabled SMN engage default mismatch");
+        AssertContains(content, "usage = \"on_cooldown\"", "disabled SMN Rage usage default mismatch");
+    }
+
+    private static void TestSummonerConfiguredRoundTripShape()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["summoner_enabled"] = true;
+        flat["summoner_avatar"] = "Ifrit";
+        flat["summoner_avatar_favor"] = true;
+        flat["summoner_ward_enabled"] = true;
+        flat["summoner_ward_action"] = "Crimson Howl";
+        flat["summoner_engage_on_combat_start"] = true;
+        flat["summoner_rage_enabled"] = true;
+        flat["summoner_rage_action"] = "Flaming Crush";
+        flat["summoner_rage_usage"] = "on_cooldown";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "SMN", "RDM")
+        );
+        AssertContains(content, "avatar = \"Ifrit\"", "desired avatar must serialize");
+        AssertContains(content, "action = \"Crimson Howl\"", "Ward action must serialize");
+        AssertContains(content, "action = \"Flaming Crush\"", "Rage action must serialize");
+        AssertContains(content, "avatar_favor = true", "Favor policy must serialize");
+        AssertContains(content, "engage_on_combat_start = true", "engagement policy must serialize");
+    }
+
+    private static void TestSummonerPreservesIncompatibleSelections()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["summoner_enabled"] = true;
+        flat["summoner_avatar"] = "Garuda";
+        flat["summoner_ward_enabled"] = true;
+        flat["summoner_ward_action"] = "Crimson Howl";
+        flat["summoner_rage_enabled"] = true;
+        flat["summoner_rage_action"] = "Flaming Crush";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "SMN", "RDM")
+        );
+        AssertContains(content, "avatar = \"Garuda\"", "changed desired avatar must serialize");
+        AssertContains(content, "action = \"Crimson Howl\"", "incompatible Ward must be preserved");
+        AssertContains(content, "action = \"Flaming Crush\"", "incompatible Rage must be preserved");
+    }
+
+    private static void TestSummonerUiOfflineContract()
+    {
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        var project = ReadRepoFile("UnifiedCombatWinForms", "UnifiedCombatWinForms.csproj");
+        AssertContains(ui, "new TabPage(\"SMN\")", "Summoner tab must be available without runtime state");
+        AssertContains(ui, "SummonerCapabilities.Avatars", "avatar options must come from the static catalog");
+        AssertContains(store, "[\"summoner_enabled\"] = _summonerEnabled.Checked", "Summoner enabled state must be captured");
+        AssertContains(store, "[\"summoner_rage_action\"] = _summonerRageAction.SelectedItem", "Summoner Rage must be captured");
+        AssertContains(logic, "BindSummonerActionCombo", "Summoner actions must be filtered from the catalog");
+        AssertContains(logic, "incompatible with", "invalidated selections must be visibly diagnosed");
+        AssertContains(project, "summoner_capabilities.tsv", "Summoner catalog must be embedded for offline UI use");
+
+        var start = logic.IndexOf("private static void BindSummonerActionCombo", StringComparison.Ordinal);
+        var end = logic.IndexOf("private void EnsureBrdTabVisibility", start, StringComparison.Ordinal);
+        AssertTrue(start >= 0 && end > start, "Summoner UI handler source range missing");
+        var handlers = logic[start..end];
+        AssertContains(handlers, "CaptureWorkingProfileFromUi", "Summoner edits must update local working state");
+        AssertNotContains(handlers, "Forward(", "Summoner durable controls must not require a live addon connection");
+    }
 
     private static void TestSerializeReactionRules()
     {

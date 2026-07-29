@@ -125,6 +125,7 @@ local core = {
 		retreat_suppress_until = 0,
 	},
 }
+local WS_DISPATCH_MAX_DISTANCE = 5.5
 local stop_run
 local get_mover
 local resolve_mob_current_target
@@ -3130,7 +3131,7 @@ function core.revalidate_skillchain_plan(plan, settings, expected_target_id, exp
 			or tonumber(player.status) ~= 1
 			or status_blocks_actions(player.status)
 			or ws_actor_has_incapacitating_buff(player.buffs),
-		range_valid = target_valid and target_distance(target) <= 5.5 or false,
+		range_valid = target_valid and target_distance(target) <= WS_DISPATCH_MAX_DISTANCE or false,
 		reaction_hold = type(reaction_lock) == 'table',
 		intent_valid = target_id == tonumber(plan.target_id) and ws_name == tostring(plan.ws_name or ''),
 		actor_context = actor_context,
@@ -3145,6 +3146,20 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillcha
 	local tid = tonumber(target_id) or 0
 	if ws == '' or tid <= 0 then
 		return false, 'WS_INTENT_INVALID'
+	end
+	local target = windower.ffxi.get_mob_by_id(tid)
+	if not target
+		or tonumber(target.id) ~= tid
+		or target.valid_target ~= true
+		or tonumber(target.spawn_type) ~= 16
+		or (tonumber(target.hpp) or 0) <= 0 then
+		return false, 'WS_TARGET_INVALID'
+	end
+	if target.distance == nil then
+		return false, 'WS_TARGET_DISTANCE_UNAVAILABLE'
+	end
+	if target_distance(target) > WS_DISPATCH_MAX_DISTANCE then
+		return false, 'WS_OUT_OF_RANGE'
 	end
 	local ok, why = ws_intent_gate(settings or get_settings(), ws, tid)
 	if not ok then
