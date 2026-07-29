@@ -450,14 +450,14 @@ function M.clear_local_spell_interruption(scheduler, now_s, meta)
 	return true
 end
 
-function M.clear_local_brd_spell_failure(scheduler, now_s, meta)
+function M.clear_local_spell_prestart_rejection(scheduler, now_s, meta)
 	local st = M.action_state(scheduler)
 	local now = now_s()
 	meta = type(meta) == 'table' and meta or {}
-	if tostring(st.last_send_kind or '') ~= 'spell' or tostring(st.last_action_provider or '') ~= 'maintenance_brd' then
+	if tostring(st.last_send_kind or '') ~= 'spell' then
 		return false
 	end
-	if meta.require_prestart == true and (tonumber(st.packet_start_at) or 0) > 0 then
+	if (tonumber(st.packet_start_at) or 0) > 0 then
 		return false
 	end
 	local outcome = tostring(meta.terminal_outcome or 'server_reject_unable_cast')
@@ -480,6 +480,14 @@ function M.clear_local_brd_spell_failure(scheduler, now_s, meta)
 	}), ('spell_server_rejected:%s'):format(tostring(st.last_action_name or '')), 0.05)
 	emit_spell_action_release(st, now, outcome, outcome)
 	return true
+end
+
+function M.clear_local_brd_spell_failure(scheduler, now_s, meta)
+	local st = M.action_state(scheduler)
+	if tostring(st.last_action_provider or '') ~= 'maintenance_brd' then
+		return false
+	end
+	return M.clear_local_spell_prestart_rejection(scheduler, now_s, meta)
 end
 
 function M.clear_local_defensive_spell_success(scheduler, now_s, meta)

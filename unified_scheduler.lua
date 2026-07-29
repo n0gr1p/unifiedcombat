@@ -250,6 +250,10 @@ function scheduler.clear_local_brd_spell_failure(meta)
 	return require('uc_scheduler_action_state').clear_local_brd_spell_failure(scheduler, now_s, meta)
 end
 
+function scheduler.clear_local_spell_prestart_rejection(meta)
+	return require('uc_scheduler_action_state').clear_local_spell_prestart_rejection(scheduler, now_s, meta)
+end
+
 function scheduler.clear_local_defensive_spell_success(meta)
 	return require('uc_scheduler_action_state').clear_local_defensive_spell_success(scheduler, now_s, meta)
 end
@@ -1953,25 +1957,32 @@ function scheduler.handle_local_spell_action_message(phase, now, player, msg, st
 		return false, match_reason
 	end
 	if scheduler.is_spell_prestart_rejection_message_id(message_id) then
-		if tostring(st.last_action_provider or '') ~= 'maintenance_brd' or (tonumber(st.packet_start_at) or 0) > 0 then
-			return false, 'prestart_rejection_not_brd_pending'
+		if (tonumber(st.packet_start_at) or 0) > 0 then
+			return false, 'prestart_rejection_after_cast_start'
 		end
-		local cleared = scheduler.clear_local_brd_spell_failure({
+		local provider = tostring(st.last_action_provider or '')
+		local cleared = scheduler.clear_local_spell_prestart_rejection({
 			message_id = message_id,
 			message_param = message_param,
 			terminal_outcome = 'server_reject_unable_cast',
-			require_prestart = true,
 		})
 		if not cleared then
 			return false, require('uc_scheduler_action_state').last_completion_ignore_reason(scheduler)
 		end
-		require('uc_brd_maintenance').reject_pending_before_start(message_id, now)
+		if scheduler.defensive_spell_waiting == true then
+			scheduler.clear_defensive_spell_wait_state()
+		end
+		local current_lock_until = tonumber(_G.UC_MOVEMENT_LOCK_UNTIL) or 0
+		_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)
 		scheduler.p1_pending_mark_failed(now, ('spell_server_reject_%d'):format(message_id), 0.75)
-		phase.maintenance_next_at = phase.maintenance_next_at or {}
-		phase.maintenance_next_at.brd_songs = math.max(
-			tonumber(phase.maintenance_next_at.brd_songs) or 0,
-			now + 0.75
-		)
+		if provider == 'maintenance_brd' then
+			require('uc_brd_maintenance').reject_pending_before_start(message_id, now)
+			phase.maintenance_next_at = phase.maintenance_next_at or {}
+			phase.maintenance_next_at.brd_songs = math.max(
+				tonumber(phase.maintenance_next_at.brd_songs) or 0,
+				now + 0.75
+			)
+		end
 		return true, 'server_reject_unable_cast'
 	end
 	if scheduler.is_spell_cast_start_message_id(message_id) then

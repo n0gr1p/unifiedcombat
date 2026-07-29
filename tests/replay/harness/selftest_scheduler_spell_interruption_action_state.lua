@@ -39,6 +39,7 @@ local function main()
     assert_contains(action_state_source, "function M.clear_local_defensive_spell_interruption", "action-state helper for defensive spell interruption must exist")
     assert_contains(action_state_source, "if last_send_kind ~= 'spell' then", "interruption clear must not clear JA/WS state")
     assert_contains(action_state_source, "if last_provider ~= 'defensive_internal' and last_provider ~= 'defensive_healbot' then", "interruption clear must stay scoped to defensive spell providers")
+    assert_contains(action_state_source, "function M.clear_local_spell_prestart_rejection", "action-state helper for all pre-start spell rejections must exist")
     assert_contains(action_state_source, "function M.clear_local_brd_spell_failure", "action-state helper for BRD spell failure must exist")
 
     assert_contains(scheduler_source, "function scheduler.is_spell_cast_complete_message_id(message_id)", "scheduler must classify spell cast-complete message ids")
@@ -49,6 +50,8 @@ local function main()
     assert_contains(scheduler_source, "_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)", "scheduler interruption branch must only shorten scheduler-owned movement lock")
     assert_contains(scheduler_source, "p1_pending_mark_complete(now, ('spell_cast_interrupted_%d'):format(message_id))", "scheduler interruption branch must complete pending state with explicit interruption code")
     assert_contains(scheduler_source, "return mid == 17 or mid == 18", "scheduler must classify unable-cast message ids")
+    assert_contains(scheduler_source, "scheduler.clear_local_spell_prestart_rejection({", "unable-cast handling must release every active pre-start spell")
+    assert_contains(scheduler_source, "scheduler.p1_pending_mark_failed(now, ('spell_server_reject_%d'):format(message_id), 0.75)", "unable-cast handling must permit a prompt retry")
 
     local scheduler = {}
 
@@ -60,12 +63,42 @@ local function main()
     })
     assert_equal(action_state.action_is_acting(scheduler, now_s), true, "defensive spell must start as acting")
 
-    local cleared = action_state.clear_local_defensive_spell_interruption(scheduler, now_s)
+    local cleared = action_state.clear_local_spell_prestart_rejection(scheduler, now_s, {
+        message_id = 17,
+        terminal_outcome = "server_reject_unable_cast",
+    })
+    assert_equal(cleared, true, "unable-cast message must clear a pre-start defensive spell")
+    assert_equal(action_state.action_is_acting(scheduler, now_s), false, "defensive pre-start rejection must end acting state immediately")
+    assert_equal(action_state.action_state(scheduler).terminal_outcome, "server_reject_unable_cast", "defensive rejection terminal outcome mismatch")
+
+    now_value = 15
+    scheduler = {}
+    action_state.action_mark_sent_with_meta(scheduler, "spell", now_s, {
+        action_name = "Cure IV",
+        provider = "defensive_internal",
+        def_action_type = "cure",
+    })
+    action_state.action_mark_packet_start(scheduler, now_s, { message_id = 327 })
+    cleared = action_state.clear_local_spell_prestart_rejection(scheduler, now_s, {
+        message_id = 17,
+        terminal_outcome = "server_reject_unable_cast",
+    })
+    assert_equal(cleared, false, "pre-start rejection must not clear a spell after cast start")
+    assert_equal(action_state.action_is_acting(scheduler, now_s), true, "started defensive spell must remain acting")
+
+    now_value = 20
+    scheduler = {}
+    action_state.action_mark_sent_with_meta(scheduler, "spell", now_s, {
+        action_name = "Cure IV",
+        provider = "defensive_internal",
+        def_action_type = "cure",
+    })
+    cleared = action_state.clear_local_defensive_spell_interruption(scheduler, now_s)
     assert_equal(cleared, true, "local defensive spell interruption must clear defensive spell action state")
     assert_equal(action_state.action_is_acting(scheduler, now_s), false, "defensive spell interruption must end acting state immediately")
     assert_equal(action_state.action_state(scheduler).terminal_outcome, "cast_interrupted", "interruption helper must record cast_interrupted terminal outcome")
 
-    now_value = 20
+    now_value = 30
     local ja_scheduler = {}
     action_state.action_mark_sent_with_meta(ja_scheduler, "ja", now_s, {
         action_name = "Majesty",
@@ -75,7 +108,7 @@ local function main()
     cleared = action_state.clear_local_defensive_spell_interruption(ja_scheduler, now_s)
     assert_equal(cleared, false, "spell interruption must not clear JA state")
 
-    now_value = 30
+    now_value = 40
     local ws_scheduler = {}
     action_state.action_mark_sent_with_meta(ws_scheduler, "ws", now_s, {
         action_name = "Savage Blade",
@@ -85,7 +118,7 @@ local function main()
     cleared = action_state.clear_local_defensive_spell_interruption(ws_scheduler, now_s)
     assert_equal(cleared, false, "spell interruption must not clear WS state")
 
-    now_value = 40
+    now_value = 50
     local other_scheduler = {}
     action_state.action_mark_sent_with_meta(other_scheduler, "spell", now_s, {
         action_name = "Dia",
@@ -95,7 +128,7 @@ local function main()
     cleared = action_state.clear_local_defensive_spell_interruption(other_scheduler, now_s)
     assert_equal(cleared, false, "unrelated combat spell must not be cleared by defensive spell interruption helper")
 
-    now_value = 50
+    now_value = 60
     local brd_scheduler = {}
     action_state.action_mark_sent_with_meta(brd_scheduler, "spell", now_s, {
         action_name = "Honor March",
@@ -106,7 +139,7 @@ local function main()
     assert_equal(action_state.action_is_acting(brd_scheduler, now_s), false, "BRD server rejection must end acting state immediately")
     assert_equal(action_state.action_state(brd_scheduler).terminal_outcome, "server_reject_unable_cast", "BRD rejection terminal outcome mismatch")
 
-    now_value = 60
+    now_value = 70
     local started_brd_scheduler = {}
     action_state.action_mark_sent_with_meta(started_brd_scheduler, "spell", now_s, {
         action_name = "Honor March",
