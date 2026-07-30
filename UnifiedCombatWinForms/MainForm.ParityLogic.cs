@@ -411,6 +411,9 @@ public partial class MainForm
             _pathPullSpellOptions.Clear();
             _pathHunterList.Items.Clear();
             _pathHunterRows = [];
+            ResetGeoPullUi();
+            EnsureGeoTabVisibility(false);
+            EnsureSummonerTabVisibility(false);
             _tankEnmityList.Items.Clear();
             _tankEnmityRows = [];
             _tankEnmityTypeCombo.SelectedItem = "ja";
@@ -780,6 +783,13 @@ public partial class MainForm
                 _brdMarcatoSong.Enabled = !subBrdOnly && _brdUseMarcato.Checked;
 				_brdTargetedSongs.Enabled = !subBrdOnly;
             }
+            var geoVisible = string.Equals(mainJob, "GEO", StringComparison.Ordinal)
+                || string.Equals(subJob, "GEO", StringComparison.Ordinal);
+            EnsureGeoTabVisibility(geoVisible);
+            var summonerVisible = string.Equals(mainJob, "SMN", StringComparison.Ordinal)
+                || string.Equals(subJob, "SMN", StringComparison.Ordinal);
+            EnsureSummonerTabVisibility(summonerVisible);
+            ApplyGeoPullFromSnapshot(s);
             ApplySummonerFromSnapshot(s);
             _reactionEnabled.Checked = SessionStateHelper.GetBool(s, "reaction_enabled", false);
             ApplyReactionRulesFromSnapshot(s);
@@ -1530,6 +1540,39 @@ public partial class MainForm
         {
             var wasSelected = ReferenceEquals(_settingsTabs.SelectedTab, _tabCor);
             _settingsTabs.TabPages.Remove(_tabCor);
+            if (wasSelected && _settingsTabs.TabPages.Count > 0)
+            {
+                _settingsTabs.SelectedIndex = 0;
+            }
+        }
+    }
+
+    private void EnsureGeoTabVisibility(bool shouldShow)
+    {
+        EnsureJobTabVisibility(_tabGeo, shouldShow);
+    }
+
+    private void EnsureSummonerTabVisibility(bool shouldShow)
+    {
+        EnsureJobTabVisibility(_tabSummoner, shouldShow);
+    }
+
+    private void EnsureJobTabVisibility(TabPage tab, bool shouldShow)
+    {
+        if (_settingsTabs is null || tab is null)
+        {
+            return;
+        }
+        var hasTab = _settingsTabs.TabPages.Contains(tab);
+        if (shouldShow && !hasTab)
+        {
+            _settingsTabs.TabPages.Add(tab);
+            return;
+        }
+        if (!shouldShow && hasTab)
+        {
+            var wasSelected = ReferenceEquals(_settingsTabs.SelectedTab, tab);
+            _settingsTabs.TabPages.Remove(tab);
             if (wasSelected && _settingsTabs.TabPages.Count > 0)
             {
                 _settingsTabs.SelectedIndex = 0;

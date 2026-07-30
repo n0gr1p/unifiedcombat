@@ -62,6 +62,17 @@ local function assert_deep_equal(actual, expected, message)
     end
 end
 
+local function assert_error_contains(fn, expected_text, message)
+    local ok, err = pcall(fn)
+    if ok then
+        error(message or ('expected error containing: ' .. expected_text))
+    end
+    assert_true(
+        tostring(err):find(expected_text, 1, true) ~= nil,
+        (message or 'unexpected error') .. ': ' .. tostring(err)
+    )
+end
+
 local function snapshot_globals()
     local snapshot = {}
     for key in pairs(_G) do
@@ -456,7 +467,27 @@ local function build_nested_settings()
 				recovery_range_yalms = 17.5,
             },
             geo = {
-                bubble = 'Entrust',
+                enabled = true,
+                geo_spell = 'Geo-Frailty',
+                geo_target = {
+                    kind = 'current_enemy',
+                },
+                indi_spell = 'Indi-Haste',
+                ordering = 'geo_first',
+                require_camp = true,
+                camp_tolerance_yalms = 1.5,
+                unknown_existing_policy = 'wait_for_clear',
+                entrust = {
+                    enabled = false,
+                },
+                luopan = {
+                    use_blaze_of_glory = true,
+                    use_ecliptic_attrition = false,
+                    use_life_cycle = true,
+                    life_cycle_hpp = 45,
+                    replace_out_of_position = true,
+                    max_camp_distance_yalms = 7.0,
+                },
             },
         },
         debug = {
@@ -529,6 +560,11 @@ local function main()
     assert_equal(default_from_normalize.sleep.max_target_range, 6.0, 'default sleep target range mismatch')
     assert_true(type(default_from_normalize.spells) == 'table', 'spells domain missing')
     assert_true(type(default_from_normalize.maintenance) == 'table', 'maintenance domain missing')
+    assert_equal(default_from_normalize.maintenance.geo.enabled, false, 'default GEO maintenance must be disabled')
+    assert_equal(default_from_normalize.maintenance.geo.ordering, 'geo_first', 'default GEO ordering mismatch')
+    assert_equal(default_from_normalize.maintenance.geo.unknown_existing_policy, 'wait_for_clear', 'default GEO ownership policy mismatch')
+    assert_equal(default_from_normalize.combat.pulling.enabled, false, 'default camp pulling must be disabled')
+    assert_equal(default_from_normalize.combat.pulling.mode, 'camp', 'default camp pulling mode mismatch')
     assert_true(type(default_from_normalize.debug) == 'table', 'debug domain missing')
     assert_true(type(default_from_normalize.ownership) == 'table', 'ownership domain missing')
     assert_true(type(default_from_normalize.legacy) == 'table', 'legacy domain missing')
@@ -625,7 +661,10 @@ local function main()
 	assert_equal(nested_config.maintenance.brd.targeted_songs[1].priority_songs[1], "Mage's Ballad III", 'nested BRD targeted song mismatch')
     assert_equal(nested_config.maintenance.brd.marcato_song, 'Honor March', 'nested maintenance BRD Marcato mismatch')
 	assert_equal(nested_config.maintenance.brd.recovery_range_yalms, 17.5, 'nested maintenance BRD recovery range mismatch')
-    assert_equal(nested_config.maintenance.geo.bubble, 'Entrust', 'nested maintenance GEO mismatch')
+    assert_equal(nested_config.maintenance.geo.enabled, true, 'nested maintenance GEO enabled mismatch')
+    assert_equal(nested_config.maintenance.geo.geo_spell, 'Geo-Frailty', 'nested maintenance GEO spell mismatch')
+    assert_equal(nested_config.maintenance.geo.indi_spell, 'Indi-Haste', 'nested maintenance Indi spell mismatch')
+    assert_equal(nested_config.maintenance.geo.luopan.life_cycle_hpp, 45, 'nested GEO Life Cycle threshold mismatch')
     assert_equal(nested_config.follow.partner.puller_name, 'Niightsiide', 'nested puller name mismatch')
 	assert_equal(nested_config.follow.partner.leash_source, 'player', 'nested puller leash source mismatch')
 	assert_equal(nested_config.follow.partner.names[1], 'Ponponponponpon', 'nested primary partner name mismatch')
@@ -636,8 +675,93 @@ local function main()
 	assert_equal(nested_config.follow.nyzul.parking_order[2], 'Ponponponponp', 'nested Nyzul parking order mismatch')
     assert_equal(nested_config.sleep.max_target_range, 12.0, 'nested sleep target range mismatch')
 
-	local camp_config = normalizer.normalize({ puller_leash_source = 'camp' }, meta)
-	assert_equal(camp_config.follow.partner.leash_source, 'camp', 'camp puller leash source mismatch')
+    local camp_config = normalizer.normalize({ puller_leash_source = 'camp' }, meta)
+    assert_equal(camp_config.follow.partner.leash_source, 'camp', 'camp puller leash source mismatch')
+
+    local migrated_geo = normalizer.normalize({
+        maintenance_geo = { 'Geo-Frailty', 'Indi-Haste' },
+    }, meta).maintenance.geo
+    assert_equal(migrated_geo.enabled, false, 'legacy GEO list migration must not enable execution')
+    assert_equal(migrated_geo.geo_spell, 'Geo-Frailty', 'legacy GEO spell migration mismatch')
+    assert_equal(migrated_geo.indi_spell, 'Indi-Haste', 'legacy Indi spell migration mismatch')
+
+    assert_error_contains(function()
+        normalizer.normalize({
+            maintenance = {
+                geo = {
+                    enabled = true,
+                    geo_spell = 'Geo-Frailty',
+                },
+            },
+        }, meta)
+    end, 'maintenance.geo.indi_spell', 'enabled GEO config must require an Indi spell')
+
+    assert_error_contains(function()
+        normalizer.normalize({
+            maintenance_geo = { 'Geo-Frailty', 'Geo-Fury' },
+        }, meta)
+    end, 'more than one Geo-', 'ambiguous legacy GEO lists must fail')
+
+    assert_error_contains(function()
+        normalizer.normalize({
+            maintenance = {
+                geo = {
+                    enabled = false,
+                    camp_tolerance_yalms = 0 / 0,
+                },
+            },
+        }, meta)
+    end, 'finite number', 'non-finite GEO distances must fail')
+
+    local camp_pulling = normalizer.normalize({
+        combat = {
+            pulling = {
+                enabled = true,
+                mode = 'camp',
+                action = {
+                    type = 'spell',
+                    name = 'Dia II',
+                },
+                targets = {
+                    { name = 'Apex Crab', priority = 20 },
+                    { name = 'Apex Pugil', priority = 10 },
+                },
+                match_mode = 'exact',
+                max_active_mobs = 2,
+                replenish_below_hpp = 25,
+                leash_yalms = 40.0,
+                max_z_delta = 3.0,
+                cast_range_ratio = 0.85,
+                settle_seconds = 0.5,
+                reaction_timeout_seconds = 5.0,
+                retry_limit = 3,
+                retry_window_seconds = 3.0,
+                target_cooldown_seconds = 25.0,
+                camp_arrival_yalms = 1.0,
+            },
+        },
+    }, meta).combat.pulling
+    assert_equal(camp_pulling.enabled, true, 'camp pulling enabled mismatch')
+    assert_equal(camp_pulling.action.name, 'Dia II', 'camp pulling action mismatch')
+    assert_equal(camp_pulling.targets[1].priority, 20, 'camp pulling target priority mismatch')
+    assert_equal(camp_pulling.max_active_mobs, 2, 'camp pulling quota mismatch')
+
+    assert_error_contains(function()
+        normalizer.normalize({
+            combat = {
+                pulling = {
+                    enabled = true,
+                    action = {
+                        type = 'ranged',
+                        name = 'Longbow',
+                    },
+                    targets = {
+                        { name = 'Apex Crab', priority = 1 },
+                    },
+                },
+            },
+        }, meta)
+    end, 'combat.pulling.action.type', 'invalid pull action type must fail')
 
     nested_config.abilities.configured[1] = 'Changed'
     nested_config.targeting.targets[1] = 'Changed'

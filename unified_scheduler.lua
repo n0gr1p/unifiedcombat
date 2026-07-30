@@ -114,6 +114,8 @@ local doom_buff_id = nil
 local doom_last_item_at = 0
 local DOOM_ITEM_COOLDOWN = 1.2
 local choose_cure_spell
+local camp_pulling_config
+local p1_build_pull_executor
 local BRD_OVERWRITE_CLUSTER_SECONDS = 5
 local BRD_OVERWRITE_SAFETY_SECONDS = 6
 scheduler.PENDING_ENGAGE_TIMEOUT_S = 1.75
@@ -595,10 +597,19 @@ function scheduler.on_incoming_text(original, modified, mode, blocked)
 		if spell_text_begins_with(raw_text, prefix) then
 			release_meta.release_reason = 'cast_complete_text'
 			release_meta.completion_reason = 'cast_complete_text'
+			local cleared
 			if provider == 'defensive_internal' or provider == 'defensive_healbot' then
-				scheduler.clear_local_defensive_spell_success(release_meta)
+				cleared = scheduler.clear_local_defensive_spell_success(release_meta)
 			else
-				scheduler.clear_local_spell_success(release_meta)
+				cleared = scheduler.clear_local_spell_success(release_meta)
+			end
+			if cleared and provider == 'camp_puller' then
+				scheduler.p1_pending_mark_complete(now, 'spell_cast_complete_text')
+				scheduler.providers.camp_puller.note_action_result(
+					true,
+					now,
+					camp_pulling_config()
+				)
 			end
 			return
 		end
@@ -607,10 +618,19 @@ function scheduler.on_incoming_text(original, modified, mode, blocked)
 		if spell_text_begins_with(raw_text, prefix) then
 			release_meta.release_reason = 'cast_interrupted_text'
 			release_meta.completion_reason = 'cast_interrupted_text'
+			local cleared
 			if provider == 'defensive_internal' or provider == 'defensive_healbot' then
-				scheduler.clear_local_defensive_spell_interruption(release_meta)
+				cleared = scheduler.clear_local_defensive_spell_interruption(release_meta)
 			else
-				scheduler.clear_local_spell_interruption(release_meta)
+				cleared = scheduler.clear_local_spell_interruption(release_meta)
+			end
+			if cleared and provider == 'camp_puller' then
+				scheduler.p1_pending_mark_complete(now, 'spell_cast_interrupted_text')
+				scheduler.providers.camp_puller.note_action_result(
+					false,
+					now,
+					camp_pulling_config()
+				)
 			end
 			return
 		end
@@ -1468,6 +1488,15 @@ local function get_settings()
 	return require('uc_scheduler_context_utils').get_settings()
 end
 
+camp_pulling_config = function()
+	local settings = get_settings()
+	local config = settings.camp_pulling
+	if type(config) ~= 'table' then
+		error('normalized combat.pulling configuration is required')
+	end
+	return config
+end
+
 function scheduler.active_value_or_flat(path, flat_value)
 	return uc_scheduler_config.active_value_or_flat(path, flat_value)
 end
@@ -1956,11 +1985,13 @@ function scheduler.handle_local_spell_action_message(phase, now, player, msg, st
 	if not matched then
 		return false, match_reason
 	end
+	local active_provider = tostring(st.last_action_provider or '')
 	if scheduler.is_spell_prestart_rejection_message_id(message_id) then
 		if (tonumber(st.packet_start_at) or 0) > 0 then
 			return false, 'prestart_rejection_after_cast_start'
 		end
 		local provider = tostring(st.last_action_provider or '')
+		local action_name = tostring(st.last_action_name or '')
 		local cleared = scheduler.clear_local_spell_prestart_rejection({
 			message_id = message_id,
 			message_param = message_param,
@@ -1981,6 +2012,14 @@ function scheduler.handle_local_spell_action_message(phase, now, player, msg, st
 			phase.maintenance_next_at.brd_songs = math.max(
 				tonumber(phase.maintenance_next_at.brd_songs) or 0,
 				now + 0.75
+			)
+		elseif provider == 'maintenance_geo' then
+			scheduler.providers.geo_maintenance.note_failure(action_name, now)
+		elseif provider == 'camp_puller' then
+			scheduler.providers.camp_puller.note_action_result(
+				false,
+				now,
+				camp_pulling_config()
 			)
 		end
 		return true, 'server_reject_unable_cast'
@@ -2009,6 +2048,13 @@ function scheduler.handle_local_spell_action_message(phase, now, player, msg, st
 		end
 		if cleared then
 			scheduler.p1_pending_mark_complete(now, ('spell_cast_complete_%d'):format(message_id))
+			if active_provider == 'camp_puller' then
+				scheduler.providers.camp_puller.note_action_result(
+					true,
+					now,
+					camp_pulling_config()
+				)
+			end
 			local current_lock_until = tonumber(_G.UC_MOVEMENT_LOCK_UNTIL) or 0
 			_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)
 			if scheduler.defensive_spell_waiting == true then
@@ -2021,6 +2067,8 @@ function scheduler.handle_local_spell_action_message(phase, now, player, msg, st
 		return cleared == true, cleared and 'cast_complete' or require('uc_scheduler_action_state').last_completion_ignore_reason(scheduler)
 	end
 	if scheduler.is_spell_cast_interrupted_message_id(message_id) then
+		local provider = tostring(st.last_action_provider or '')
+		local action_name = tostring(st.last_action_name or '')
 		action_mark_packet_end({
 			message_id = message_id,
 			message_param = message_param,
@@ -2047,6 +2095,15 @@ function scheduler.handle_local_spell_action_message(phase, now, player, msg, st
 			_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)
 			scheduler.p1_pending_mark_complete(now, ('spell_cast_interrupted_%d'):format(message_id))
 			require('uc_brd_maintenance').cancel_pending('cast_interrupted')
+			if provider == 'maintenance_geo' then
+				scheduler.providers.geo_maintenance.note_failure(action_name, now)
+			elseif provider == 'camp_puller' then
+				scheduler.providers.camp_puller.note_action_result(
+					false,
+					now,
+					camp_pulling_config()
+				)
+			end
 		end
 		return cleared == true, cleared and 'cast_interrupted' or require('uc_scheduler_action_state').last_completion_ignore_reason(scheduler)
 	end
@@ -2174,6 +2231,36 @@ local function run_movement_coordinator_tick()
 		_G.UC_MOVEMENT_LOCK_UNTIL = math.huge
 		return false, reason
 	end
+	if scheduler.providers.camp_puller.movement_reserved(camp_pulling_config()) then
+		local pull_status = scheduler.providers.camp_puller.status_snapshot()
+		if pull_status.state == 'IDLE' then
+			if rawget(_G, 'UC_CAMP_PULL_IDLE_STOPPED') ~= true then
+				p1_build_pull_executor().stop({
+					reason = 'PULL_IDLE_MOVEMENT_HOLD',
+					provider = 'camp_puller',
+				})
+				_G.UC_CAMP_PULL_IDLE_STOPPED = true
+			end
+		else
+			_G.UC_CAMP_PULL_IDLE_STOPPED = false
+		end
+		_G.UC_MOVEMENT_MODE = 'CAMP_PULL'
+		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_CAMP_PULL_RESERVED'
+		_G.UC_MOVEMENT_OWNER = 'camp_puller'
+		scheduler.action_timeline_log('CAMP_PULL_MOVEMENT_RESERVED', {
+			state = pull_status.state,
+			reason = pull_status.reason,
+			target = pull_status.target_name,
+			target_id = pull_status.target_id,
+			camp_distance = pull_status.camp_distance,
+			target_distance = pull_status.target_distance,
+		}, ('camp_pull_movement_reserved:%s:%d'):format(
+			tostring(pull_status.state or ''),
+			tonumber(pull_status.target_id) or 0
+		), 0.5)
+		return false, 'MOVE_COORD_CAMP_PULL_RESERVED'
+	end
+	_G.UC_CAMP_PULL_IDLE_STOPPED = false
 	local p = windower.ffxi.get_player()
 	local status = tonumber(p and p.status) or -1
 	local engaged = (status == 1)
@@ -2861,6 +2948,7 @@ function scheduler.handle_local_spell_finish_action(act, player_id, observed_at)
 		return false, active_reason
 	end
 	local active_spell_name = tostring(st.last_action_name or '')
+	local active_provider = tostring(st.last_action_provider or '')
 	if active_spell_name == '' then
 		error('active scheduler spell name must not be empty')
 	end
@@ -2930,6 +3018,13 @@ function scheduler.handle_local_spell_finish_action(act, player_id, observed_at)
 		return false, require('uc_scheduler_action_state').last_completion_ignore_reason(scheduler)
 	end
 	scheduler.p1_pending_mark_complete(now, ('spell_action_packet_finish_%d'):format(packet_spell_id))
+	if active_provider == 'camp_puller' then
+		scheduler.providers.camp_puller.note_action_result(
+			true,
+			now,
+			camp_pulling_config()
+		)
+	end
 	if tostring(_G.UC_MOVEMENT_OWNER or '') == 'scheduler' then
 		local current_lock_until = tonumber(_G.UC_MOVEMENT_LOCK_UNTIL)
 		if current_lock_until == nil then
@@ -3632,6 +3727,7 @@ local function p1_collect_proposals(ctx)
 		scheduler.providers.target_control.collect_target(ctx, out)
 		scheduler.providers.combat.collect_engage(ctx, out)
 		scheduler.providers.target_control.collect_pull(ctx, out)
+		scheduler.providers.camp_puller.collect(ctx, out)
 		scheduler.providers.tank_enmity.collect(ctx, out)
 		scheduler.providers.combat.collect_sleep(ctx, out)
 		scheduler.providers.combat.collect_offense(ctx, out)
@@ -3659,6 +3755,30 @@ local function p1_collect_proposals(ctx)
 		and (brd_provider_active or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0)) then
 		scheduler.providers.maintenance.collect(ctx, out)
 		scheduler.providers.summoner_maintenance.collect(ctx, out)
+		scheduler.providers.geo_maintenance.collect(ctx, out)
+	end
+	if scheduler.providers.geo_maintenance.lane_reserved() then
+		local pull_for_enemy = scheduler.providers.geo_maintenance.pull_for_enemy_allowed()
+		for i = #out, 1, -1 do
+			local provider = tostring(out[i] and out[i].provider or '')
+			local allowed = (pull_for_enemy and provider == 'camp_puller')
+				or (not pull_for_enemy and provider == 'maintenance_geo')
+			if not allowed then
+				log_def_sched(('GEO_ATOMIC_LANE_HOLD provider=%s reason=%s'):format(
+					provider,
+					pull_for_enemy and 'awaiting_claimed_enemy' or 'consumable_sequence'
+				))
+				table.remove(out, i)
+			end
+		end
+	end
+	if scheduler.providers.camp_puller.active() then
+		for i = #out, 1, -1 do
+			if tostring(out[i] and out[i].provider or '') == 'pull_control' then
+				log_def_sched('CAMP_PULL_LANE_HOLD provider=pull_control reason=camp_journey_active')
+				table.remove(out, i)
+			end
+		end
 	end
 	if brd_provider_active then
 		local lane_reserved, lane_reason = require('uc_brd_maintenance').action_lane_status()
@@ -3956,7 +4076,7 @@ local function p1_run_dry(settings, ctx)
 		end
 		local provider = tostring(proposal.provider or '')
 		local action_type = tostring(proposal.action_type or '')
-		return action_type == 'spell' and (provider == 'maintenance' or provider == 'brd' or provider == 'geo' or provider == 'defensive_internal' or provider == 'defensive_healbot')
+		return action_type == 'spell' and (provider == 'maintenance' or provider == 'brd' or provider == 'maintenance_geo' or provider == 'defensive_internal' or provider == 'defensive_healbot')
 	end
 	local function best_maint_candidate(list)
 		if type(list) ~= 'table' then
@@ -4484,7 +4604,7 @@ local function p1_dispatch_combat_engage(selected, settings, phase, expected_tid
 	return true, nil
 end
 
-local function p1_build_pull_executor()
+p1_build_pull_executor = function()
 	return require('uc_scheduler_pull_executor').build({
 		dispatcher = require('uc_scheduler_dispatcher'),
 		run = windower.ffxi.run,
@@ -4531,6 +4651,95 @@ local function p1_dispatch_pull_control(selected, settings)
 		tostring(reason or '')
 	)
 	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_PULL'
+end
+
+local function p1_dispatch_camp_puller(selected, settings)
+	if not domain_ownership.is_enabled('combat') then
+		return false, nil
+	end
+	local ctx = p1_build_ctx(settings)
+	local valid, reason = scheduler.providers.camp_puller.revalidate(selected, ctx)
+	if not valid then
+		_G.UC_LAST_SCHED_ACTION = '[camp_pull]commit_rejected:' .. tostring(reason)
+		return false, nil
+	end
+	local config = ctx.settings.camp_pulling
+	if type(config) ~= 'table' then
+		error('camp pull dispatch requires normalized configuration')
+	end
+	local action_type = tostring(selected.action_type or '')
+	local executor = p1_build_pull_executor()
+	if action_type == 'camp_approach'
+		or action_type == 'camp_return'
+		or action_type == 'camp_recover' then
+		local detail = selected.detail
+		if type(detail) ~= 'table' or tonumber(detail.heading) == nil then
+			error('camp pull movement proposal requires a numeric heading')
+		end
+		executor.run_heading(tonumber(detail.heading), {
+			reason = tostring(selected.reason_code or ''),
+			target_id = tonumber(selected.target_id) or 0,
+		})
+		_G.UC_MOVEMENT_OWNER = 'camp_puller'
+		_G.UC_MOVEMENT_LOCK_UNTIL = ctx.now + 0.8
+		scheduler.providers.camp_puller.note_dispatch(selected, ctx.now, config)
+		_G.UC_LAST_SCHED_ACTION = '[camp_pull]' .. action_type
+		return true, 'BLOCK_SCHED_CAMP_PULL_MOVEMENT'
+	end
+	if action_type == 'camp_stop' then
+		executor.stop({
+			reason = tostring(selected.reason_code or ''),
+		})
+		_G.UC_MOVEMENT_OWNER = 'none'
+		_G.UC_MOVEMENT_LOCK_UNTIL = ctx.now
+		scheduler.providers.camp_puller.note_dispatch(selected, ctx.now, config)
+		_G.UC_LAST_SCHED_ACTION = '[camp_pull]stop'
+		return true, 'BLOCK_SCHED_CAMP_PULL_STOP'
+	end
+	if action_type ~= 'spell' and action_type ~= 'ja' then
+		error('camp pull dispatcher received unsupported action type: ' .. action_type)
+	end
+	local blocked, block_reason = action_dispatch_blocked()
+	if blocked then
+		return true, block_reason
+	end
+	local action_name = tostring(selected.action_name or '')
+	local ready, ready_reason, ready_kind = action_ready(action_name, tonumber(selected.target_id) or 0)
+	if not ready or ready_kind ~= action_type then
+		_G.UC_LAST_SCHED_ACTION = '[camp_pull]not_ready:' .. tostring(ready_reason)
+		return false, nil
+	end
+	local command = build_action_command(action_name, action_type, {
+		id = tonumber(selected.target_id) or 0,
+		name = tostring(selected.target_name or ''),
+		is_mob = true,
+	})
+	executor.send_command(command, {
+		action_type = action_type,
+		action_name = action_name,
+		provider = 'camp_puller',
+		target_id = tonumber(selected.target_id) or 0,
+	})
+	scheduler.providers.camp_puller.note_dispatch(selected, ctx.now, config)
+	action_mark_sent(action_type, {
+		action_name = action_name,
+		provider = 'camp_puller',
+		target_id = tonumber(selected.target_id) or 0,
+		target_name = tostring(selected.target_name or ''),
+		target_kind = 'mob',
+	})
+	local dispatch_ctx = {
+		now = ctx.now,
+		tick = p1_number(scheduler.phase1.tick, 0),
+	}
+	scheduler.record_dispatch(dispatch_ctx)
+	scheduler.p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(
+		dispatch_ctx,
+		scheduler.p1_get_locks(dispatch_ctx)
+	)
+	_G.UC_LAST_SCHED_ACTION = ('[camp_pull]%s:%s'):format(action_type, action_name)
+	return true, 'BLOCK_SCHED_CAMP_PULL_ACTION'
 end
 
 local function p1_dispatch_maintenance_cor(selected, settings, provider)
@@ -5521,6 +5730,100 @@ local function p1_dispatch_summoner_maintenance(selected, settings)
 	return true, 'BLOCK_SCHED_P1_SUMMONER_MAINTENANCE'
 end
 
+local function p1_dispatch_geo_maintenance(selected, settings)
+	if not domain_ownership.is_enabled('maintenance') then
+		return false, nil
+	end
+	local action_type = tostring(selected.action_type or '')
+	if action_type ~= 'spell' and action_type ~= 'ja' then
+		error('GEO maintenance dispatcher requires a spell or ja proposal')
+	end
+	local blocked, block_reason = action_dispatch_blocked()
+	if blocked then
+		return true, block_reason
+	end
+	local ctx = p1_build_ctx(settings)
+	local valid, reason = scheduler.providers.geo_maintenance.revalidate(selected, ctx)
+	if not valid then
+		_G.UC_LAST_SCHED_ACTION = '[geo]commit_rejected:' .. tostring(reason)
+		return false, nil
+	end
+	local action_name = tostring(selected.action_name or '')
+	local ready, ready_reason, ready_kind = action_ready(action_name, tonumber(selected.target_id) or 0)
+	if not ready or ready_kind ~= action_type then
+		_G.UC_LAST_SCHED_ACTION = '[geo]not_ready:' .. tostring(ready_reason)
+		return false, nil
+	end
+	if action_name == '' or action_name:find('"', 1, true) then
+		error('GEO maintenance action name is not command-safe')
+	end
+	local target_kind = tostring(selected.target_kind or '')
+	local detail = selected.detail
+	if type(detail) ~= 'table' then
+		error('GEO maintenance action requires proposal detail')
+	end
+	local geo_kind = tostring(detail.geo_kind or '')
+	local target_member = {
+		id = tonumber(selected.target_id) or 0,
+		name = tostring(selected.target_name or ''),
+		is_self = target_kind == 'self',
+		is_mob = target_kind == 'mob',
+	}
+	if geo_kind == 'entrust' then
+		if action_type ~= 'spell' or target_kind ~= 'party' then
+			error('GEO Entrust follow-up requires a party-targeted spell')
+		end
+		target_member.use_entity_id = true
+	end
+	local command = build_action_command(action_name, action_type, target_member)
+	local result = require('uc_scheduler_dispatcher').dispatch_intent({
+		kind = 'send_command',
+		source = 'unified_scheduler:geo_maintenance',
+		command = command,
+		meta = {
+			action_type = action_type,
+			action_name = action_name,
+			provider = 'maintenance_geo',
+			target_id = target_member.id,
+		},
+	}, {
+		execute = true,
+		send_command = windower.send_command,
+	})
+	if type(result) ~= 'table' or result.ok ~= true or result.executed ~= true then
+		return false, nil
+	end
+	if geo_kind == 'entrust' then
+		scheduler.action_timeline_log('GEO_ENTRUST_DISPATCH', {
+			action = action_name,
+			target = target_member.name,
+			target_id = target_member.id,
+			dispatch_method = 'entity_id',
+			entrust_buff = true,
+		}, ('geo_entrust_dispatch:%s:%d'):format(action_name, target_member.id), 0.05)
+	end
+	scheduler.providers.geo_maintenance.note_dispatch(selected, ctx.now)
+	action_mark_sent(action_type, {
+		action_name = action_name,
+		provider = 'maintenance_geo',
+		target_id = target_member.id,
+		target_name = target_member.name,
+		target_kind = target_kind,
+	})
+	local dispatch_ctx = {
+		now = ctx.now,
+		tick = p1_number(scheduler.phase1.tick, 0),
+	}
+	scheduler.record_dispatch(dispatch_ctx)
+	scheduler.p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(
+		dispatch_ctx,
+		scheduler.p1_get_locks(dispatch_ctx)
+	)
+	_G.UC_LAST_SCHED_ACTION = ('[geo]%s:%s'):format(action_type, action_name)
+	return true, 'BLOCK_SCHED_P1_GEO_MAINTENANCE'
+end
+
 local function p1_dispatch_pet_command(selected, settings)
 	local provider_name = tostring(selected.provider or '')
 	if provider_name == 'maintenance_summoner' then
@@ -5629,6 +5932,9 @@ function scheduler.dispatch_selected_plan(settings)
 	if provider == 'pull_control' then
 		return p1_dispatch_pull_control(selected, settings)
 	end
+	if provider == 'camp_puller' then
+		return p1_dispatch_camp_puller(selected, settings)
+	end
 	if provider == 'combat' then
 		return p1_dispatch_combat(selected, settings, phase)
 	end
@@ -5661,6 +5967,9 @@ function scheduler.dispatch_selected_plan(settings)
 		end
 		return p1_dispatch_summoner_maintenance(selected, settings)
 	end
+	if provider == 'maintenance_geo' then
+		return p1_dispatch_geo_maintenance(selected, settings)
+	end
 	if provider == 'pet_combat' then
 		return p1_dispatch_pet_command(selected, settings)
 	end
@@ -5692,6 +6001,16 @@ function scheduler.process_tick(cadence)
 	_G.UC_LOG_TANK_SCHED = uc_scheduler_config.debug_log_tank_sched(s)
 	ensure_diag_logs_initialized()
 	maybe_broadcast_party_state_ipc()
+	if not combat_domain_enabled and scheduler.providers.camp_puller.active() then
+		p1_build_pull_executor().stop({
+			reason = 'PULL_COMBAT_DOMAIN_DISABLED',
+			provider = 'camp_puller',
+		})
+		scheduler.providers.camp_puller.reset('PULL_COMBAT_DOMAIN_DISABLED')
+	end
+	if not maintenance_domain_enabled and scheduler.providers.geo_maintenance.runtime_active() then
+		scheduler.providers.geo_maintenance.reset('GEO_MAINTENANCE_DOMAIN_DISABLED')
+	end
 	if defensive_domain_enabled then
 		local doom_blocked, doom_reason = try_doom_water_emergency(s)
 		if doom_blocked then
@@ -5812,6 +6131,14 @@ function scheduler.on_incoming_chunk(id, data)
 		_G.UC_SMN_PET_COMBAT_STATUS = nil
 		_G.UC_SMN_MAINTENANCE_STATUS = nil
 		require('uc_brd_maintenance').reset('zone_change')
+		scheduler.providers.geo_maintenance.reset('GEO_ZONE_CHANGE')
+		if scheduler.providers.camp_puller.active() then
+			p1_build_pull_executor().stop({
+				reason = 'PULL_ZONE_CHANGE',
+				provider = 'camp_puller',
+			})
+		end
+		scheduler.providers.camp_puller.reset('PULL_ZONE_CHANGE')
 		require('uc_party_buff_tracker').reset()
 		return
 	end
@@ -6124,6 +6451,38 @@ function scheduler.on_action(act)
 	if tostring(pending.action_type or '') == 'pet' then
 		return
 	end
+	if tostring(pending.provider or '') == 'maintenance_geo'
+		and tostring(pending.action_type or '') == 'ja' then
+		local completed, completion_reason =
+			scheduler.providers.geo_maintenance.note_ja_action(act, my_id)
+		if completed then
+			scheduler.p1_pending_mark_complete(now, completion_reason)
+			scheduler.action_timeline_log('GEO_JA_COMPLETED', {
+				action = tostring(pending.action_name or ''),
+				actor_id = actor_id,
+				action_category = category_value or 0,
+				action_param = tonumber(act and act.param) or 0,
+				target_id = tonumber(act and act.targets and act.targets[1] and act.targets[1].id) or 0,
+				completion_reason = completion_reason,
+			}, ('geo_ja_completed:%s:%d'):format(
+				tostring(pending.action_name or ''),
+				tonumber(act and act.param) or 0
+			), 0.05)
+		elseif actor_id == my_id then
+			scheduler.action_timeline_log('GEO_JA_PACKET_IGNORED', {
+				action = tostring(pending.action_name or ''),
+				actor_id = actor_id,
+				action_category = category_value or 0,
+				action_param = tonumber(act and act.param) or 0,
+				reason = completion_reason,
+			}, ('geo_ja_ignored:%s:%s:%d'):format(
+				tostring(pending.action_name or ''),
+				tostring(completion_reason or ''),
+				tonumber(act and act.param) or 0
+			), 0.25)
+		end
+		return
+	end
 	if my_id ~= 0 and actor_id == my_id then
 		pending.state = 'acknowledged'
 		pending.ack_at = now
@@ -6132,6 +6491,14 @@ function scheduler.on_action(act)
 	if expected_tid ~= 0 and type(act and act.targets) == 'table' then
 		for _, t in ipairs(act.targets) do
 			if tonumber(t and t.id) == expected_tid then
+				if tostring(pending.provider or '') == 'camp_puller'
+					and tostring(pending.action_type or '') == 'ja' then
+					scheduler.providers.camp_puller.note_action_result(
+						true,
+						now,
+						camp_pulling_config()
+					)
+				end
 				scheduler.p1_pending_mark_complete(now, 'action_target_effect')
 				break
 			end
@@ -6254,6 +6621,29 @@ function scheduler.on_action_message(msg)
 		scheduler.p1_pending_mark_failed(now, ('summoner_action_message_%d'):format(message_id), 1.0)
 		return
 	end
+	if tostring(pending.provider or '') == 'maintenance_geo'
+		and my_id ~= 0
+		and actor_id == my_id
+		and pet_command_coordinator.is_failure_message(message_id) then
+		scheduler.providers.geo_maintenance.note_failure(
+			tostring(pending.action_name or ''),
+			now
+		)
+		scheduler.p1_pending_mark_failed(now, ('geo_action_message_%d'):format(message_id), 2.0)
+		return
+	end
+	if tostring(pending.provider or '') == 'camp_puller'
+		and my_id ~= 0
+		and actor_id == my_id
+		and pet_command_coordinator.is_failure_message(message_id) then
+		scheduler.providers.camp_puller.note_action_result(
+			false,
+			now,
+			camp_pulling_config()
+		)
+		scheduler.p1_pending_mark_failed(now, ('camp_pull_action_message_%d'):format(message_id), 2.0)
+		return
+	end
 	if tostring(pending.action_type or '') == 'pet' then
 		return
 	end
@@ -6322,6 +6712,8 @@ function scheduler.get_debug_overlay()
 		local p = tostring(provider or '')
 		if p == 'combat' then
 			return domain_ownership.is_enabled('combat')
+		elseif p == 'camp_puller' then
+			return domain_ownership.is_enabled('combat')
 		elseif p == 'defensive_internal' then
 			return domain_ownership.is_enabled('defensive')
 		elseif p == 'defensive_healbot' then
@@ -6332,10 +6724,10 @@ function scheduler.get_debug_overlay()
 			return domain_ownership.is_enabled('maintenance')
 		elseif p == 'maintenance_summoner' then
 			return domain_ownership.is_enabled('maintenance')
+		elseif p == 'maintenance_geo' then
+			return domain_ownership.is_enabled('maintenance')
 		elseif p == 'pet_combat' then
 			return domain_ownership.is_enabled('combat')
-		elseif p == 'geo' then
-			return domain_ownership.is_enabled('maintenance')
 		end
 		return false
 	end
@@ -6348,6 +6740,22 @@ function scheduler.get_debug_overlay()
 		get_party = windower.ffxi.get_party,
 		ensure_maintenance_state_tables = ensure_maintenance_state_tables,
 	})
+end
+
+function scheduler.geo_maintenance_status()
+	return scheduler.providers.geo_maintenance.status_snapshot()
+end
+
+function scheduler.geo_maintenance_reseed()
+	return scheduler.providers.geo_maintenance.reseed()
+end
+
+function scheduler.geo_maintenance_arm_bolster(armed)
+	return scheduler.providers.geo_maintenance.arm_bolster(armed)
+end
+
+function scheduler.camp_puller_status()
+	return scheduler.providers.camp_puller.status_snapshot()
 end
 
 function scheduler.reset_runtime_locks()
@@ -6414,6 +6822,43 @@ scheduler.providers.summoner_maintenance = require('uc_smn_maintenance').new({
 	player_is_moving = smn_player_is_moving,
 	get_ja_resource = get_ja_resource,
 	log = log_def_sched,
+})
+scheduler.providers.geo_maintenance = require('uc_geo_maintenance').new({
+	action_ready = action_ready,
+	get_spell_resource = get_spell_resource,
+	get_ja_resource = get_ja_resource,
+	get_party_members = get_party_members,
+	get_friendly_claims = function(ctx)
+		local _, claim_set = uc_targeting_common.get_friendly_combat_member_ids({
+			party = ctx.party,
+		})
+		return claim_set
+	end,
+	resolve_camp_anchor = require('uc_camp_anchor').resolve_current_anchor,
+	action_effective_range = action_effective_range,
+	target_is_actionable = combat_core.is_live_actionable_combat_target,
+	target_is_ignored = function(settings, mob)
+		return require('uc_target_ignore').is_mob_blocked(settings, mob)
+	end,
+	player_is_moving = smn_player_is_moving,
+	pull_active = function()
+		if scheduler.providers.camp_puller
+			and scheduler.providers.camp_puller.active() then
+			return true
+		end
+		local pending = scheduler.phase1 and scheduler.phase1.pending
+		if type(pending) == 'table'
+			and scheduler.p1_pending_is_live_state(tostring(pending.state or ''))
+			and tostring(pending.provider or '') == 'pull_control' then
+			return true
+		end
+		return rawget(_G, 'UC_PULL_SPELL_WAITING') == true
+			or (tonumber(rawget(_G, 'UC_PULL_APPROACH_UNTIL')) or 0) > now_s()
+	end,
+	log = log_def_sched,
+	action_timeline_log = function(...)
+		return scheduler.action_timeline_log(...)
+	end,
 })
 scheduler.providers.defensive = require('uc_provider_defensive').new({
 	bool_setting = bool_setting,
@@ -6512,6 +6957,34 @@ scheduler.providers.combat = require('uc_provider_combat').new({
 	default_engage_priority = scheduler.DEFAULT_ENGAGE_PRIORITY,
 	tank_engage_urgency = scheduler.TANK_ENGAGE_URGENCY,
 	default_engage_urgency = scheduler.DEFAULT_ENGAGE_URGENCY,
+})
+scheduler.providers.camp_puller = require('uc_camp_puller').new({
+	resolve_camp_anchor = require('uc_camp_anchor').resolve_current_anchor,
+	get_friendly_claims = function()
+		local _, id_set = uc_targeting_common.get_friendly_combat_member_ids()
+		return id_set
+	end,
+	ignored = function(settings, mob)
+		return require('uc_target_ignore').is_mob_blocked(settings, mob)
+	end,
+	get_spell_resource = get_spell_resource,
+	get_ja_resource = get_ja_resource,
+	action_effective_range = action_effective_range,
+	action_ready = action_ready,
+	log = log_combat_sched,
+	action_timeline_log = function(...)
+		return scheduler.action_timeline_log(...)
+	end,
+	pull_action_in_flight = function(target_id, action_type, action_name)
+		local st = action_state() or {}
+		if tostring(st.last_action_provider or '') ~= 'camp_puller'
+			or tonumber(st.last_target_id) ~= tonumber(target_id)
+			or tostring(st.last_send_kind or '') ~= tostring(action_type or '')
+			or tostring(st.last_action_name or '') ~= tostring(action_name or '') then
+			return false
+		end
+		return action_is_acting()
+	end,
 })
 scheduler.providers.maintenance = require('uc_provider_maintenance').new({
 	bool_setting = bool_setting,

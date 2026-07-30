@@ -412,6 +412,66 @@ local function main()
 	})
 	assert_equal(normalized.profile.source, 'UC_SETTINGS', 'normalizer source mismatch')
 
+	local migrated_profile, migrated_err = active_config.build_active_profile_from_v2_payload({
+		version = 2,
+		profile = {
+			schema_version = 2,
+			engine = 'UC',
+			character = 'Niightsiide',
+			main_job = 'GEO',
+			sub_job = 'RDM',
+			source = 'ui',
+		},
+		config = {
+			combat = {
+				enabled = true,
+			},
+			maintenance = {
+				geo = {},
+			},
+		},
+	}, {
+		character = 'Niightsiide',
+		main_job = 'GEO',
+		sub_job = 'RDM',
+		source = 'UC_PROFILE_V2',
+	})
+	assert_true(type(migrated_profile) == 'table', 'legacy GEO profile should receive new configuration defaults')
+	assert_true(migrated_err == nil, 'legacy GEO profile migration should not report an error')
+	assert_true(type(migrated_profile.config.combat.pulling) == 'table', 'legacy profile must receive normalized pulling configuration')
+	assert_false(migrated_profile.config.combat.pulling.enabled, 'migrated pulling configuration must remain disabled')
+	assert_true(type(migrated_profile.config.maintenance.geo) == 'table', 'legacy profile must receive normalized GEO configuration')
+	assert_false(migrated_profile.config.maintenance.geo.enabled, 'migrated GEO configuration must remain disabled')
+	local migrated_projected, migrated_project_err = active_config.project_flat_settings(migrated_profile, {})
+	assert_true(type(migrated_projected) == 'table', 'migrated GEO profile should project to runtime settings')
+	assert_true(migrated_project_err == nil, 'migrated GEO profile projection should not report an error')
+	assert_true(type(migrated_projected.camp_pulling) == 'table', 'migrated runtime settings must include camp pulling configuration')
+	assert_true(type(migrated_projected.maintenance_geo) == 'table', 'migrated runtime settings must include GEO configuration')
+
+	local invalid_pulling_profile, invalid_pulling_err = active_config.build_active_profile_from_v2_payload({
+		version = 2,
+		profile = {
+			schema_version = 2,
+			engine = 'UC',
+			character = 'Niightsiide',
+			main_job = 'GEO',
+			sub_job = 'RDM',
+			source = 'ui',
+		},
+		config = {
+			combat = {
+				pulling = 'invalid',
+			},
+		},
+	}, {
+		character = 'Niightsiide',
+		main_job = 'GEO',
+		sub_job = 'RDM',
+		source = 'UC_PROFILE_V2',
+	})
+	assert_true(invalid_pulling_profile == nil, 'malformed pulling configuration must fail profile activation')
+	assert_true(type(invalid_pulling_err) == 'string' and invalid_pulling_err:find('combat.pulling must be a table', 1, true) ~= nil, 'malformed pulling configuration must report the contract error')
+
 	local bad_profile, bad_err = active_config.build_active_profile_from_v2_payload({ version = 1 }, {
 		character = 'Redrogue',
 		main_job = 'PLD',

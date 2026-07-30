@@ -656,6 +656,26 @@ local function build_expected_config()
 				aftermath_enabled = true,
 				aftermath_ws = 'Atonement',
 			},
+			pulling = {
+				enabled = false,
+				mode = 'camp',
+				action = {
+					type = 'spell',
+				},
+				targets = {},
+				match_mode = 'exact',
+				max_active_mobs = 1,
+				replenish_below_hpp = 20,
+				leash_yalms = 35.0,
+				max_z_delta = 2.0,
+				cast_range_ratio = 0.90,
+				settle_seconds = 0.40,
+				reaction_timeout_seconds = 4.0,
+				retry_limit = 2,
+				retry_window_seconds = 2.5,
+				target_cooldown_seconds = 20.0,
+				camp_arrival_yalms = 0.75,
+			},
 		},
 		abilities = {
 			enabled = true,
@@ -806,7 +826,27 @@ local function build_expected_config()
 		},
 		maintenance = {
 			enabled = true,
-			geo = {},
+			geo = {
+				enabled = false,
+				geo_target = {
+					kind = 'current_enemy',
+				},
+				ordering = 'geo_first',
+				require_camp = true,
+				camp_tolerance_yalms = 1.0,
+				unknown_existing_policy = 'wait_for_clear',
+				entrust = {
+					enabled = false,
+				},
+				luopan = {
+					use_blaze_of_glory = false,
+					use_ecliptic_attrition = false,
+					use_life_cycle = false,
+					life_cycle_hpp = 50,
+					replace_out_of_position = false,
+					max_camp_distance_yalms = 6.0,
+				},
+			},
 		},
 		debug = {
 			enabled = true,

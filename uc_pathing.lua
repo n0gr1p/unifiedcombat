@@ -15,6 +15,7 @@ end
 local files = require('files')
 local res = require('resources')
 local uc_active_config = require('uc_active_config')
+local uc_camp_puller = require('uc_camp_puller')
 local domain_ownership = require('uc_domain_ownership')
 local uc_party_follow = require('uc_party_follow')
 local uc_nyzul_runtime = require('uc_nyzul_runtime')
@@ -838,9 +839,12 @@ local function render_debug_overlay(settings)
 	render_target_debug_overlay()
 end
 
-local function should_pause_for_combat()
+local function should_pause_for_combat(settings)
 	if not Start_Engine then
 		return false, 'ENGINE_OFF'
+	end
+	if uc_camp_puller.movement_reserved(settings.camp_pulling) then
+		return true, 'OWNER_camp_puller'
 	end
 	local now = uc_now_s()
 	local owner = tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or 'none')
@@ -1040,7 +1044,7 @@ local function tick_follow(settings)
 		set_follow_paused(true)
 		return
 	end
-	local combat_pause, combat_pause_why = should_pause_for_combat()
+	local combat_pause, combat_pause_why = should_pause_for_combat(settings)
 	if combat_pause then
 		local why = tostring(combat_pause_why or 'UNKNOWN')
 		local owner_pause = (why:find('^OWNER_', 1, false) ~= nil)

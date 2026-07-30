@@ -247,7 +247,55 @@ internal static class StructuredProfileV2Writer
                     .Add("wait_ignore_names", ParseNameList(ReadString(flatProfile, "ignore_entries", "")))
                     .Add("aftermath_enabled", ReadBool(flatProfile, "aftermath_enabled", false))
                     .Add("aftermath_ws", ReadString(flatProfile, "aftermath_ws", ""))
-            );
+            )
+            .Add("pulling", BuildCampPulling(flatProfile));
+    }
+
+    private static StructuredProfileNode BuildCampPulling(JsonObject flatProfile)
+    {
+        var enabled = ReadOptionalBool(flatProfile, "camp_pulling_enabled", false);
+        var actionType = ReadString(flatProfile, "camp_pulling_action_type", "spell");
+        if (actionType is not ("spell" or "ja"))
+        {
+            throw new InvalidDataException("Camp pulling action type must be spell or ja.");
+        }
+        var actionName = ReadString(flatProfile, "camp_pulling_action_name", "");
+        var targets = ParseCampPullTargets(ReadString(flatProfile, "camp_pulling_targets", ""));
+        var matchMode = ReadString(flatProfile, "camp_pulling_match_mode", "exact");
+        if (matchMode is not ("exact" or "substring"))
+        {
+            throw new InvalidDataException("Camp pulling match mode must be exact or substring.");
+        }
+        if (enabled && actionName.Length == 0)
+        {
+            throw new InvalidDataException("Enabled camp pulling requires an action name.");
+        }
+        if (enabled && targets.Count == 0)
+        {
+            throw new InvalidDataException("Enabled camp pulling requires at least one target.");
+        }
+        return new StructuredProfileNode()
+            .Add("enabled", enabled)
+            .Add("mode", "camp")
+            .Add(
+                "action",
+                new StructuredProfileNode()
+                    .Add("type", actionType)
+                    .Add("name", NullIfEmpty(actionName))
+            )
+            .Add("targets", targets)
+            .Add("match_mode", matchMode)
+            .Add("max_active_mobs", ReadBoundedInt(flatProfile, "camp_pulling_max_active_mobs", 1, 1, 20))
+            .Add("replenish_below_hpp", ReadBoundedInt(flatProfile, "camp_pulling_replenish_below_hpp", 20, 0, 100))
+            .Add("leash_yalms", ReadBoundedDouble(flatProfile, "camp_pulling_leash_yalms", 35.0, 1.0, 100.0))
+            .Add("max_z_delta", ReadBoundedDouble(flatProfile, "camp_pulling_max_z_delta", 2.0, 0.0, 20.0))
+            .Add("cast_range_ratio", ReadBoundedDouble(flatProfile, "camp_pulling_cast_range_ratio", 0.90, 0.1, 1.0))
+            .Add("settle_seconds", ReadBoundedDouble(flatProfile, "camp_pulling_settle_seconds", 0.40, 0.0, 3.0))
+            .Add("reaction_timeout_seconds", ReadBoundedDouble(flatProfile, "camp_pulling_reaction_timeout_seconds", 4.0, 0.5, 30.0))
+            .Add("retry_limit", ReadBoundedInt(flatProfile, "camp_pulling_retry_limit", 2, 0, 10))
+            .Add("retry_window_seconds", ReadBoundedDouble(flatProfile, "camp_pulling_retry_window_seconds", 2.5, 0.1, 30.0))
+            .Add("target_cooldown_seconds", ReadBoundedDouble(flatProfile, "camp_pulling_target_cooldown_seconds", 20.0, 0.0, 300.0))
+            .Add("camp_arrival_yalms", ReadBoundedDouble(flatProfile, "camp_pulling_camp_arrival_yalms", 0.75, 0.1, 10.0));
     }
 
     private static StructuredProfileNode BuildAbilities(JsonObject flatProfile)
@@ -645,9 +693,75 @@ internal static class StructuredProfileV2Writer
 			);
 		}
 
-		maintenance.Add("geo", EmptyList());
+		maintenance.Add("geo", BuildGeoMaintenance(flatProfile));
 
         return maintenance;
+    }
+
+    private static StructuredProfileNode BuildGeoMaintenance(JsonObject flatProfile)
+    {
+        var enabled = ReadOptionalBool(flatProfile, "geo_maintenance_enabled", false);
+        var geoSpell = ReadString(flatProfile, "geo_spell", "");
+        var indiSpell = ReadString(flatProfile, "indi_spell", "");
+        var targetKind = ReadString(flatProfile, "geo_target_kind", "current_enemy");
+        var targetName = ReadString(flatProfile, "geo_target_name", "");
+        var ordering = ReadString(flatProfile, "geo_ordering", "geo_first");
+        var entrustEnabled = ReadOptionalBool(flatProfile, "geo_entrust_enabled", false);
+        var entrustSpell = ReadString(flatProfile, "geo_entrust_spell", "");
+        var entrustTarget = ReadString(flatProfile, "geo_entrust_target_name", "");
+        if (enabled && (!geoSpell.StartsWith("Geo-", StringComparison.Ordinal)
+            || !indiSpell.StartsWith("Indi-", StringComparison.Ordinal)))
+        {
+            throw new InvalidDataException("Enabled GEO maintenance requires exact Geo- and Indi- spell names.");
+        }
+        if (targetKind is not ("current_enemy" or "self" or "party_member"))
+        {
+            throw new InvalidDataException("GEO target kind must be current_enemy, self, or party_member.");
+        }
+        if (ordering is not ("geo_first" or "indi_first"))
+        {
+            throw new InvalidDataException("GEO ordering must be geo_first or indi_first.");
+        }
+        if (targetKind == "party_member" && targetName.Length == 0)
+        {
+            throw new InvalidDataException("GEO party-member targeting requires a target name.");
+        }
+        if (entrustEnabled && (!entrustSpell.StartsWith("Indi-", StringComparison.Ordinal)
+            || entrustTarget.Length == 0))
+        {
+            throw new InvalidDataException("Enabled Entrust requires an Indi- spell and target name.");
+        }
+        return new StructuredProfileNode()
+            .Add("enabled", enabled)
+            .Add("geo_spell", NullIfEmpty(geoSpell))
+            .Add(
+                "geo_target",
+                new StructuredProfileNode()
+                    .Add("kind", targetKind)
+                    .Add("name", targetKind == "party_member" ? targetName : null)
+            )
+            .Add("indi_spell", NullIfEmpty(indiSpell))
+            .Add("ordering", ordering)
+            .Add("require_camp", ReadOptionalBool(flatProfile, "geo_require_camp", true))
+            .Add("camp_tolerance_yalms", ReadBoundedDouble(flatProfile, "geo_camp_tolerance_yalms", 1.0, 0.0, 50.0))
+            .Add("unknown_existing_policy", "wait_for_clear")
+            .Add(
+                "entrust",
+                new StructuredProfileNode()
+                    .Add("enabled", entrustEnabled)
+                    .Add("spell", NullIfEmpty(entrustSpell))
+                    .Add("target_name", NullIfEmpty(entrustTarget))
+            )
+            .Add(
+                "luopan",
+                new StructuredProfileNode()
+                    .Add("use_blaze_of_glory", ReadOptionalBool(flatProfile, "geo_use_blaze_of_glory", false))
+                    .Add("use_ecliptic_attrition", ReadOptionalBool(flatProfile, "geo_use_ecliptic_attrition", false))
+                    .Add("use_life_cycle", ReadOptionalBool(flatProfile, "geo_use_life_cycle", false))
+                    .Add("life_cycle_hpp", ReadBoundedInt(flatProfile, "geo_life_cycle_hpp", 50, 1, 99))
+                    .Add("replace_out_of_position", ReadOptionalBool(flatProfile, "geo_replace_out_of_position", false))
+                    .Add("max_camp_distance_yalms", ReadBoundedDouble(flatProfile, "geo_max_camp_distance_yalms", 6.0, 0.1, 50.0))
+            );
     }
 
     private static bool HasConfiguredSummoner(JsonObject flatProfile)
@@ -1250,6 +1364,36 @@ internal static class StructuredProfileV2Writer
             }
         }
 
+        return list;
+    }
+
+    internal static List<object?> ParseCampPullTargets(string value)
+    {
+        var list = new List<object?>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rawPart in value.Split('|', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var entry = rawPart.Trim();
+            var separator = entry.LastIndexOf(':');
+            if (separator <= 0 || separator >= entry.Length - 1)
+            {
+                throw new InvalidDataException($"Camp pull target '{entry}' must use Name:priority.");
+            }
+            var name = entry[..separator].Trim();
+            if (!int.TryParse(entry[(separator + 1)..].Trim(), out var priority)
+                || priority < -1000
+                || priority > 1000)
+            {
+                throw new InvalidDataException($"Camp pull target '{entry}' has an invalid priority.");
+            }
+            if (name.Length == 0 || !seen.Add(name))
+            {
+                throw new InvalidDataException($"Camp pull target '{entry}' is empty or duplicated.");
+            }
+            list.Add(new StructuredProfileNode()
+                .Add("name", name)
+                .Add("priority", priority));
+        }
         return list;
     }
 

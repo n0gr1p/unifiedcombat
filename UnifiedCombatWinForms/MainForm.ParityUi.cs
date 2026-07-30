@@ -122,9 +122,47 @@ public partial class MainForm
     private Label _formationValidation = null!;
     private Button _formationEnableOwnership = null!;
     private TabControl _settingsTabs = null!;
+    private TabPage _tabGeo = null!;
     private TabPage _tabSummoner = null!;
     private TabPage _tabCor = null!;
     private TabPage _tabBrd = null!;
+    private CheckBox _geoEnabled = null!;
+    private TextBox _geoSpell = null!;
+    private TextBox _indiSpell = null!;
+    private ComboBox _geoTargetKind = null!;
+    private TextBox _geoTargetName = null!;
+    private ComboBox _geoOrdering = null!;
+    private CheckBox _geoRequireCamp = null!;
+    private NumericUpDown _geoCampTolerance = null!;
+    private CheckBox _geoEntrustEnabled = null!;
+    private TextBox _geoEntrustSpell = null!;
+    private TextBox _geoEntrustTarget = null!;
+    private CheckBox _geoUseBlaze = null!;
+    private CheckBox _geoUseEcliptic = null!;
+    private CheckBox _geoUseLifeCycle = null!;
+    private NumericUpDown _geoLifeCycleHpp = null!;
+    private CheckBox _geoReplaceOutOfPosition = null!;
+    private NumericUpDown _geoMaxCampDistance = null!;
+    private Label _geoRuntimeStatus = null!;
+    private Label _geoHelp = null!;
+    private CheckBox _campPullEnabled = null!;
+    private ComboBox _campPullActionType = null!;
+    private TextBox _campPullActionName = null!;
+    private TextBox _campPullTargets = null!;
+    private ComboBox _campPullMatchMode = null!;
+    private NumericUpDown _campPullMaxActive = null!;
+    private NumericUpDown _campPullReplenishHpp = null!;
+    private NumericUpDown _campPullLeash = null!;
+    private NumericUpDown _campPullMaxZ = null!;
+    private NumericUpDown _campPullRangeRatio = null!;
+    private NumericUpDown _campPullSettle = null!;
+    private NumericUpDown _campPullReactionTimeout = null!;
+    private NumericUpDown _campPullRetryLimit = null!;
+    private NumericUpDown _campPullRetryWindow = null!;
+    private NumericUpDown _campPullCooldown = null!;
+    private NumericUpDown _campPullArrival = null!;
+    private Label _campPullRuntimeStatus = null!;
+    private Label _campPullHelp = null!;
     private CheckBox _summonerEnabled = null!;
     private ComboBox _summonerAvatar = null!;
     private CheckBox _summonerAvatarFavor = null!;
@@ -1121,6 +1159,8 @@ public partial class MainForm
         pathRow++;
         tabPathing.Controls.Add(path);
         _settingsTabs.TabPages.Add(tabPathing);
+
+        AddGeoPullTabs();
 
         _tabSummoner = new TabPage("SMN") { AutoScroll = true };
         var summonerRoot = new TableLayoutPanel

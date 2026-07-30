@@ -394,6 +394,83 @@ local function strip_non_applicable_maintenance(current_config, target_config, m
 			if target_maintenance then target_maintenance.brd = nil end
 		end
 	end
+	local function default_disabled_geo(value)
+		if value == nil then
+			return true
+		end
+		if type(value) ~= 'table' then
+			return false
+		end
+		if next(value) == nil then
+			return true
+		end
+		return value.enabled == false
+			and value.geo_spell == nil
+			and value.indi_spell == nil
+			and type(value.geo_target) == 'table'
+			and value.geo_target.kind == 'current_enemy'
+			and value.geo_target.name == nil
+			and value.ordering == 'geo_first'
+			and value.require_camp == true
+			and value.camp_tolerance_yalms == 1.0
+			and value.unknown_existing_policy == 'wait_for_clear'
+			and type(value.entrust) == 'table'
+			and value.entrust.enabled == false
+			and value.entrust.spell == nil
+			and value.entrust.target_name == nil
+			and type(value.luopan) == 'table'
+			and value.luopan.use_blaze_of_glory == false
+			and value.luopan.use_ecliptic_attrition == false
+			and value.luopan.use_life_cycle == false
+			and value.luopan.life_cycle_hpp == 50
+			and value.luopan.replace_out_of_position == false
+			and value.luopan.max_camp_distance_yalms == 6.0
+	end
+	local current_geo = current_maintenance and current_maintenance.geo or nil
+	local target_geo = target_maintenance and target_maintenance.geo or nil
+	if default_disabled_geo(current_geo) and default_disabled_geo(target_geo) then
+		if current_maintenance then current_maintenance.geo = nil end
+		if target_maintenance then target_maintenance.geo = nil end
+	end
+
+	local function default_disabled_camp_pulling(value)
+		if value == nil then
+			return true
+		end
+		if type(value) ~= 'table' then
+			return false
+		end
+		if next(value) == nil then
+			return true
+		end
+		return value.enabled == false
+			and value.mode == 'camp'
+			and type(value.action) == 'table'
+			and value.action.type == 'spell'
+			and value.action.name == nil
+			and type(value.targets) == 'table'
+			and #value.targets == 0
+			and value.match_mode == 'exact'
+			and value.max_active_mobs == 1
+			and value.replenish_below_hpp == 20
+			and value.leash_yalms == 35.0
+			and value.max_z_delta == 2.0
+			and value.cast_range_ratio == 0.90
+			and value.settle_seconds == 0.40
+			and value.reaction_timeout_seconds == 4.0
+			and value.retry_limit == 2
+			and value.retry_window_seconds == 2.5
+			and value.target_cooldown_seconds == 20.0
+			and value.camp_arrival_yalms == 0.75
+	end
+	local current_combat = type(current_config.combat) == 'table' and current_config.combat or nil
+	local target_combat = type(target_config.combat) == 'table' and target_config.combat or nil
+	local current_pulling = current_combat and current_combat.pulling or nil
+	local target_pulling = target_combat and target_combat.pulling or nil
+	if default_disabled_camp_pulling(current_pulling) and default_disabled_camp_pulling(target_pulling) then
+		if current_combat then current_combat.pulling = nil end
+		if target_combat then target_combat.pulling = nil end
+	end
 	return current_config, target_config
 end
 

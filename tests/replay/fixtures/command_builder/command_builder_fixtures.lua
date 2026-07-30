@@ -36,6 +36,20 @@ return {
         },
     },
     {
+        fixture_id = "command_builder_spell_self_only_explicit_entity_id",
+        helper = "build_action_command",
+        description = "explicit entity id bypasses self-only metadata for Entrust-enabled Indi",
+        input = {
+            deps = deps_with_mode("self_only"),
+            action_name = "Indi-Refresh",
+            action_kind = "spell",
+            target_member = { name = "Terrasjr", id = 400018, use_entity_id = true },
+        },
+        expected = {
+            result = "input /ma \"Indi-Refresh\" 400018",
+        },
+    },
+    {
         fixture_id = "command_builder_spell_target_self_flag",
         helper = "build_action_command",
         description = "explicit self target uses me",

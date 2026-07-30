@@ -64,6 +64,8 @@ local function main()
     assert_contains(scheduler_source, "scheduler.is_spell_cast_complete_message_id(message_id)", "scheduler cast-complete branch must use known cast-finish ids")
     assert_contains(scheduler_source, "scheduler.clear_local_spell_success({", "scheduler cast-complete branch must clear local spell action state")
     assert_contains(scheduler_source, "p1_pending_mark_complete(now, ('spell_cast_complete_%d'):format(message_id))", "scheduler cast-complete branch must mark pending complete with explicit code")
+    assert_contains(scheduler_source, "scheduler.p1_pending_mark_complete(now, 'spell_cast_complete_text')", "text-confirmed camp pull spell must complete scheduler pending state")
+    assert_contains(scheduler_source, "scheduler.p1_pending_mark_complete(now, 'spell_cast_interrupted_text')", "text-confirmed camp pull interruption must complete scheduler pending state")
     assert_contains(scheduler_source, "_G.UC_MOVEMENT_LOCK_UNTIL = math.min(current_lock_until, now + 0.2)", "scheduler success branch must only shorten scheduler-owned movement lock")
     assert_not_contains(scheduler_source, "\t\tspell_finish = true,", "scheduler start markers must no longer treat spell_finish as a start signal")
 

@@ -7,6 +7,7 @@
 local M = {}
 local packets = require('packets')
 local uc_active_config = require('uc_active_config')
+local uc_camp_puller = require('uc_camp_puller')
 local uc_nyzul_runtime = require('uc_nyzul_runtime')
 local movement_dispatcher = require('uc_movement_dispatcher').build({
 	dispatcher = require('uc_scheduler_dispatcher'),
@@ -774,6 +775,9 @@ end
 M.should_suppress_follow_or_path_return_now = should_suppress_follow_or_path_return_now
 
 local function combat_engine_suppresses_follow(s)
+	if uc_camp_puller.movement_reserved(s.camp_pulling) then
+		return true
+	end
 	local now = now_s()
 	local arbitration_suppress = should_suppress_follow_or_path_return_now(s, now)
 	if arbitration_suppress == true then

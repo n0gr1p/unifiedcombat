@@ -192,7 +192,7 @@ This RFC does not propose:
 | Standalone GEO behavior | Disposition in UnifiedCombat |
 | --- | --- |
 | Cast configured Geo spell when no luopan exists | Implement in dedicated GEO maintenance provider |
-| Enemy Geo targets use an active combat mob | Implement with explicit target policy and scheduler context |
+| Enemy Geo targets use an active combat mob | Track live party/alliance-claimed enemies in scheduler context, select by entity ID, and never depend on the selected game target |
 | Self or named-party Geo target | Implement only when resource target metadata permits it |
 | Maintain Indi when Indi-Colure is absent | Implement using local buff evidence plus exact runtime identity |
 | Entrust JA followed by configured Indi on a party member | Implement as an atomic, nonblocking sequence |
@@ -422,6 +422,7 @@ No state in this section is durable.
     owned_indi_spell = nil,
     owned_entrust_spell = nil,
     owned_entrust_target_id = 0,
+    enemy_target_id = 0,
     sequence = nil,
     next_retry_at = 0,
     last_result = "",
@@ -445,7 +446,6 @@ This is a deliberate fail-closed state, not an inferred match.
 ```text
 IDLE
   -> SELECT_TARGET
-  -> PREPARE_TARGET
   -> APPROACH
   -> SETTLE
   -> SEND_ACTION
@@ -499,39 +499,71 @@ to confirm exact casts and sequence progress.
    required bubble is confirmed.
 
 Before starting Entrust or Blaze of Glory, the GEO module asks whether a pull
-proposal/journey is active. Once one of those consumable buffs is observed, the
-paired spell owns an atomic GEO lane until success, explicit rejection, or
-timeout.
+proposal/journey is active. Blaze may start only after a live logical enemy ID
+has been resolved. Once one of those consumable buffs is observed, the paired
+spell owns an atomic GEO lane until success, explicit rejection, or timeout.
+
+`current_enemy` is a logical fight target, not Windower `<t>`. The GEO provider
+selects a live party/alliance-claimed enemy from the scheduler mob snapshot and
+retains its entity ID for the sequence. If that enemy dies after Blaze is
+consumed, the provider re-resolves another claimed fight target. When none
+exists, the atomic lane enters an explicit enemy-wait state and admits only the
+configured camp-puller workflow. The Geo spell is deferred while the
+replacement mob is unclaimed or the character is away from the configured camp.
+After the pull claims a replacement and returns the character to camp, the GEO
+provider resolves that claimed mob from the scheduler snapshot and dispatches
+the required spell directly by ID before normal actions resume.
 
 ### 10.3 Nonblocking sequences
 
 #### Enhanced Geo creation
 
 ```text
-optional Full Circle
+normal creation when no luopan exists and Blaze is unavailable
+  -> configured Geo spell
+
+Blaze upgrade when a normal owned luopan exists and Blaze becomes ready
+  -> Full Circle
   -> wait for luopan absence
-  -> optional Blaze of Glory
+  -> Blaze of Glory
   -> wait for JA success/buff
   -> configured Geo spell
   -> wait for spell success and luopan presence
   -> optional Ecliptic Attrition
 ```
 
+Enabling Blaze of Glory does not make its recast a prerequisite for ordinary
+luopan maintenance. A missing or expired luopan is replaced with the configured
+Geo spell immediately when Blaze is unavailable. The provider records whether
+the owned luopan was created with Blaze; when Blaze later becomes ready, it
+releases a normal owned luopan with Full Circle and runs the enhanced sequence.
+The provider resolves a valid replacement target before Full Circle so it does
+not discard a healthy luopan without somewhere to place the replacement.
+
 Each arrow crosses scheduler ticks. No loop waits for recast, buff gain, cast
 completion, or pet creation.
+
+GEO job-ability completion is actor-centric and identity-strict: the action
+packet must be emitted by the local player, use a job-ability category, and
+carry the exact resource ID of the pending ability. Completion does not require
+the packet target to equal the proposal target because luopan actions such as
+Ecliptic Attrition report the luopan as their action target.
 
 #### Entrust
 
 ```text
 Entrust
   -> wait for Entrust buff/action evidence
-  -> configured Indi spell on resolved party member
+  -> revalidate that the Entrust buff is still active
+  -> configured Indi spell sent directly to the resolved party member entity ID
   -> wait for spell result and party buff observation
 ```
 
 If the target leaves the party, dies, becomes unavailable, or exceeds legal
 spell range before the spell is sent, the sequence fails explicitly and enters
-backoff. The provider does not retarget Entrust to another member.
+backoff. A missing Entrust buff also fails the sequence before dispatch. The
+provider does not retarget Entrust to another member, and it does not allow
+generic self-only spell metadata to rewrite the configured target to `<me>`.
 
 ### 10.4 Luopan placement
 
@@ -602,8 +634,8 @@ Reuse the current pull-action path for:
 
 Required hardening while generalizing:
 
-- replace the current `coroutine.sleep(0.05)` target-confirm step with a
-  nonblocking `PREPARE_TARGET` state;
+- remove target-confirm preparation entirely; retain the candidate entity ID
+  internally and dispatch the configured action directly to that ID;
 - stop coercing invalid action types to `ja`;
 - stop substituting guessed action ranges;
 - consolidate core-local pull spell wait flags with scheduler action/pending
@@ -805,7 +837,7 @@ and retry/cooldown data where applicable.
 - Add structured `config.combat.pulling`.
 - Add pull demand and deterministic candidate selection.
 - Generalize current pull action execution without changing route mode.
-- Add nonblocking target preparation and scheduler-owned spell waiting.
+- Add direct entity-ID action dispatch and scheduler-owned spell waiting.
 - Add camp-relative leash validation and direct return.
 
 ### Phase 4 — Pull journey resilience
@@ -845,10 +877,14 @@ feature implementation.
 - Indi present/luopan absent;
 - pre-existing unidentified luopan/Indi after load;
 - enemy Geo target unavailable;
+- no selected game target while a party-claimed fight target is live;
 - named party target leaves before cast;
 - Entrust succeeds then Indi succeeds;
 - Entrust succeeds then Indi is rejected;
 - Blaze succeeds then Geo is interrupted;
+- Blaze succeeds, its original enemy dies, and the sequence admits only camp
+  pulling until a replacement enemy is claimed and the character returns to
+  camp, then retargets that enemy by entity ID;
 - Geo succeeds but luopan observation is delayed;
 - luopan below Life Cycle threshold;
 - luopan outside camp placement radius;

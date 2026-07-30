@@ -1653,6 +1653,27 @@ function uc_remote_tick()
 	if type(camp_last_op) ~= 'string' then
 		camp_last_op = ''
 	end
+	local geo_runtime = rawget(_G, 'UC_GEO_MAINTENANCE_STATUS')
+	if type(geo_runtime) ~= 'table' then
+		geo_runtime = {
+			state = 'unavailable',
+			reason = 'GEO_STATUS_UNAVAILABLE',
+			detail = '',
+		}
+	end
+	local pull_runtime = rawget(_G, 'UC_CAMP_PULLER_STATUS')
+	if type(pull_runtime) ~= 'table' then
+		pull_runtime = {
+			state = 'unavailable',
+			reason = 'PULL_STATUS_UNAVAILABLE',
+			detail = '',
+			target_id = 0,
+			target_name = '',
+			active_count = 0,
+			quota = 0,
+			last_intent = '',
+		}
+	end
 	local st = {
 		op = 'state',
 		session = session_id,
@@ -1668,6 +1689,17 @@ function uc_remote_tick()
 		camp_y = camp_status.y,
 		camp_set_by = camp_status.set_by,
 		camp_last_op = camp_last_op,
+		geo_runtime_state = geo_runtime.state,
+		geo_runtime_reason = geo_runtime.reason,
+		geo_runtime_detail = geo_runtime.detail,
+		camp_pull_runtime_state = pull_runtime.state,
+		camp_pull_runtime_reason = pull_runtime.reason,
+		camp_pull_runtime_detail = pull_runtime.detail,
+		camp_pull_runtime_target_id = pull_runtime.target_id,
+		camp_pull_runtime_target_name = pull_runtime.target_name,
+		camp_pull_runtime_active_count = pull_runtime.active_count,
+		camp_pull_runtime_quota = pull_runtime.quota,
+		camp_pull_runtime_intent = pull_runtime.last_intent,
 		profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS,
 		config_contract_status = uc_config_runtime.config_contract_status(_G.UC_SETTINGS),
 	}

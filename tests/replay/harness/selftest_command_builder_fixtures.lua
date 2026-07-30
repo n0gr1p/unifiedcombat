@@ -29,8 +29,8 @@ local function main()
 
     assert_true(result.ok, "command builder suite should fully pass")
     assert_equal(result.suite_id, "command_builder", "suite id mismatch")
-    assert_equal(result.total, 12, "fixture count mismatch")
-    assert_equal(result.passed, 12, "all fixtures should pass")
+    assert_equal(result.total, 13, "fixture count mismatch")
+    assert_equal(result.passed, 13, "all fixtures should pass")
     assert_equal(result.failed, 0, "no fixtures should fail")
 
     local name_entry = find_entry(result.entries, "command_builder_spell_target_name")
@@ -40,6 +40,14 @@ local function main()
     local id_entry = find_entry(result.entries, "command_builder_ja_mob_id_target")
     assert_true(id_entry ~= nil, "ja mob id fixture missing")
     assert_equal(id_entry.actual.result, "input /ja \"Animated Flourish\" 789", "ja mob id mismatch")
+
+    local entrust_entry = find_entry(result.entries, "command_builder_spell_self_only_explicit_entity_id")
+    assert_true(entrust_entry ~= nil, "Entrust entity-id fixture missing")
+    assert_equal(
+        entrust_entry.actual.result,
+        "input /ma \"Indi-Refresh\" 400018",
+        "Entrust entity-id target mismatch"
+    )
 
     local quote_entry = find_entry(result.entries, "command_builder_spell_target_name_quotes_stripped")
     assert_true(quote_entry ~= nil, "quote stripping fixture missing")

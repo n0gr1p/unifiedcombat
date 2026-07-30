@@ -405,6 +405,9 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.aftermath_ws = config.combat.weaponskill.aftermath_ws
 			candidate.ignore = resolve_party_member_ids_by_names(config.combat.weaponskill.wait_ignore_names)
 		end
+		if type(config.combat.pulling) == 'table' then
+			candidate.camp_pulling = clone_value(config.combat.pulling)
+		end
 	end
 
 	if type(config.abilities) == 'table' then
@@ -891,6 +894,29 @@ function M.build_active_profile_from_v2_payload(payload, context)
 	local meta = resolve_meta(context, 'UC_PROFILE_V2')
 	local profile = build_profile_record(payload.profile, meta, 'UC_PROFILE_V2')
 	local config = pick_durable_config_domains(payload.config)
+	local compatibility_source = {}
+	if type(config.combat) == 'table' then
+		compatibility_source.combat = {
+			pulling = config.combat.pulling,
+		}
+	end
+	if type(config.maintenance) == 'table' then
+		compatibility_source.maintenance = {
+			geo = config.maintenance.geo,
+		}
+	end
+	if next(compatibility_source) ~= nil then
+		local ok_normalized, normalized_or_err = pcall(uc_config_normalizer.normalize, compatibility_source, meta)
+		if ok_normalized ~= true then
+			return nil, tostring(normalized_or_err)
+		end
+		if type(config.combat) == 'table' then
+			config.combat.pulling = clone_value(normalized_or_err.combat.pulling)
+		end
+		if type(config.maintenance) == 'table' then
+			config.maintenance.geo = clone_value(normalized_or_err.maintenance.geo)
+		end
+	end
 	if type(config.maintenance) == 'table' and type(config.maintenance.brd) == 'table' then
 		local brd = config.maintenance.brd
 		if brd.recovery_range_yalms == nil then

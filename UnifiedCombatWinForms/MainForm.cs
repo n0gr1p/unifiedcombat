@@ -81,6 +81,8 @@ public partial class MainForm : Form
     {
         InitializeComponent();
         BuildParityEditor(panelEditorHost, flowSessionActions);
+        EnsureGeoTabVisibility(false);
+        EnsureSummonerTabVisibility(false);
         _mirror = new MirrorDuplex(_cts.Token);
         _mirror.SnapshotOrErrorLineReceived += OnMirrorLine;
         _mirror.Start();
@@ -403,6 +405,7 @@ public partial class MainForm : Form
         {
             ApplyOptionsFromSnapshotIfPresent(_selectedSid!, selectedState);
 			ApplyCampRuntimeStatus(selectedState);
+            ApplyGeoPullRuntimeStatus(selectedState);
         }
         // UI is authoritative after initial/manual session selection.
         // Do not force-refresh controls on every inbound snapshot.

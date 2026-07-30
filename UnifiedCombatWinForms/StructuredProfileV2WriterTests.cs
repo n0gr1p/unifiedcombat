@@ -26,6 +26,9 @@ internal static class StructuredProfileV2WriterTests
             TestProfileSchemaThreeRemovesRetiredDarkLaunchKeys();
             TestSerializeIncludesPullerNameWhenSelected();
 			TestSerializeCampLeashSourceWithoutPullerName();
+            TestSerializeGeoMaintenance();
+            TestSerializeCampPulling();
+            TestGeoPullUiOfflineContract();
 			TestSerializeIncludesPartnerNames();
             TestSerializeIncludesFightLeaderNameWhenSelected();
             TestSerializeOmitsFightLeaderNameWhenDisabled();
@@ -461,6 +464,123 @@ internal static class StructuredProfileV2WriterTests
 		AssertContains(logic, "Camp unavailable — reload UnifiedCombat addon", "missing runtime support must produce an actionable camp status");
 	}
 
+    private static void TestSerializeGeoMaintenance()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["geo_maintenance_enabled"] = true;
+        flat["geo_spell"] = "Geo-Frailty";
+        flat["indi_spell"] = "Indi-Haste";
+        flat["geo_target_kind"] = "party_member";
+        flat["geo_target_name"] = "Terrasjr";
+        flat["geo_ordering"] = "indi_first";
+        flat["geo_require_camp"] = true;
+        flat["geo_camp_tolerance_yalms"] = 1.5;
+        flat["geo_entrust_enabled"] = true;
+        flat["geo_entrust_spell"] = "Indi-Fury";
+        flat["geo_entrust_target_name"] = "Nyoourke";
+        flat["geo_use_blaze_of_glory"] = true;
+        flat["geo_use_ecliptic_attrition"] = true;
+        flat["geo_use_life_cycle"] = true;
+        flat["geo_life_cycle_hpp"] = 45;
+        flat["geo_replace_out_of_position"] = true;
+        flat["geo_max_camp_distance_yalms"] = 7.5;
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "GEO", "RDM")
+        );
+
+        AssertContains(content, "geo_spell = \"Geo-Frailty\"", "GEO spell must serialize");
+        AssertContains(content, "kind = \"party_member\"", "GEO target kind must serialize");
+        AssertContains(content, "name = \"Terrasjr\"", "GEO target name must serialize");
+        AssertContains(content, "indi_spell = \"Indi-Haste\"", "Indi spell must serialize");
+        AssertContains(content, "ordering = \"indi_first\"", "GEO ordering must serialize");
+        AssertContains(content, "spell = \"Indi-Fury\"", "Entrust spell must serialize");
+        AssertContains(content, "target_name = \"Nyoourke\"", "Entrust target must serialize");
+        AssertContains(content, "use_blaze_of_glory = true", "Blaze of Glory policy must serialize");
+        AssertContains(content, "life_cycle_hpp = 45", "Life Cycle threshold must serialize");
+        AssertContains(content, "max_camp_distance_yalms = 7.5", "luopan camp radius must serialize");
+
+        flat["geo_spell"] = "Frailty";
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Redrogue", "GEO", "RDM")
+            ),
+            "enabled GEO maintenance must reject a non-Geo spell name"
+        );
+    }
+
+    private static void TestSerializeCampPulling()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["camp_pulling_enabled"] = true;
+        flat["camp_pulling_action_type"] = "spell";
+        flat["camp_pulling_action_name"] = "Dia";
+        flat["camp_pulling_targets"] = "Apex Bat:20|Apex Crab:10";
+        flat["camp_pulling_match_mode"] = "exact";
+        flat["camp_pulling_max_active_mobs"] = 2;
+        flat["camp_pulling_replenish_below_hpp"] = 15;
+        flat["camp_pulling_leash_yalms"] = 40.0;
+        flat["camp_pulling_max_z_delta"] = 3.0;
+        flat["camp_pulling_cast_range_ratio"] = 0.85;
+        flat["camp_pulling_settle_seconds"] = 0.5;
+        flat["camp_pulling_reaction_timeout_seconds"] = 5.0;
+        flat["camp_pulling_retry_limit"] = 3;
+        flat["camp_pulling_retry_window_seconds"] = 3.0;
+        flat["camp_pulling_target_cooldown_seconds"] = 25.0;
+        flat["camp_pulling_camp_arrival_yalms"] = 1.0;
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "THF", "DNC")
+        );
+
+        AssertContains(content, "mode = \"camp\"", "camp pulling mode must serialize");
+        AssertContains(content, "type = \"spell\"", "camp pull action type must serialize");
+        AssertContains(content, "name = \"Dia\"", "camp pull action name must serialize");
+        AssertContains(content, "name = \"Apex Bat\"", "first camp pull target must serialize");
+        AssertContains(content, "priority = 20", "camp pull target priority must serialize");
+        AssertContains(content, "max_active_mobs = 2", "camp pull quota must serialize");
+        AssertContains(content, "cast_range_ratio = 0.85", "camp pull range ratio must serialize");
+        AssertContains(content, "camp_arrival_yalms = 1", "camp arrival radius must serialize");
+
+        flat["camp_pulling_targets"] = "Apex Bat";
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Redrogue", "THF", "DNC")
+            ),
+            "camp pulling must reject targets without an explicit priority"
+        );
+    }
+
+    private static void TestGeoPullUiOfflineContract()
+    {
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.GeoPullUi.cs");
+        var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+        var main = ReadRepoFile("UnifiedCombatWinForms", "MainForm.cs");
+        var bridge = ReadRepoFile("remote_bridge.lua");
+        AssertContains(ui, "OnGeoPullConfigChanged", "GEO and camp pulling controls need a durable edit handler");
+        AssertContains(ui, "CaptureWorkingProfileFromUi", "GEO and camp pulling edits must update local profile state");
+        AssertNotContains(ui, "Forward(", "GEO and camp pulling edits must not emit live mirror commands");
+        AssertContains(store, "[\"geo_maintenance_enabled\"]", "GEO enabled state must persist in flat UI profiles");
+        AssertContains(store, "[\"camp_pulling_enabled\"]", "camp pulling enabled state must persist in flat UI profiles");
+        AssertContains(store, "[\"camp_pulling_targets\"]", "camp pull targets must persist in flat UI profiles");
+        AssertContains(main, "ApplyGeoPullRuntimeStatus(selectedState)", "live snapshots must refresh GEO/pull status labels");
+        AssertContains(main, "EnsureGeoTabVisibility(false)", "GEO tab must start hidden before a job is selected");
+        AssertContains(ui, "_tabGeo = new TabPage(\"GEO\")", "GEO tab must have a stable job-gated tab instance");
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        AssertContains(
+            logic,
+            "EnsureGeoTabVisibility(geoVisible)",
+            "GEO tab visibility must follow main/sub job eligibility"
+        );
+        AssertContains(logic, "string.Equals(subJob, \"GEO\"", "GEO subjob must make the GEO tab visible");
+        AssertContains(bridge, "geo_runtime_state = geo_runtime.state", "bridge must publish GEO runtime status");
+        AssertContains(bridge, "camp_pull_runtime_state = pull_runtime.state", "bridge must publish camp-puller runtime status");
+    }
+
     private static void TestSerializeIncludesFightLeaderNameWhenSelected()
     {
         var flat = BuildSampleFlatProfile();
@@ -873,6 +993,13 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(store, "[\"summoner_rage_pet_tp_above_enabled\"]", "pet TP gate must be captured");
         AssertContains(logic, "BindSummonerActionCombo", "Summoner actions must be filtered from the catalog");
         AssertContains(logic, "incompatible with", "invalidated selections must be visibly diagnosed");
+        AssertContains(logic, "EnsureSummonerTabVisibility(summonerVisible)", "SMN tab visibility must follow main/sub job eligibility");
+        AssertContains(logic, "string.Equals(subJob, \"SMN\"", "SMN subjob must make the SMN tab visible");
+        AssertContains(
+            ReadRepoFile("UnifiedCombatWinForms", "MainForm.cs"),
+            "EnsureSummonerTabVisibility(false)",
+            "SMN tab must start hidden before a job is selected"
+        );
         AssertContains(project, "summoner_capabilities.tsv", "Summoner catalog must be embedded for offline UI use");
 
         var start = logic.IndexOf("private static void BindSummonerActionCombo", StringComparison.Ordinal);

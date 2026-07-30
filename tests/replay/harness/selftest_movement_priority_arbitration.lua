@@ -289,6 +289,9 @@ local function main()
         return true
     end
     _G.UC_SETTINGS = {
+        camp_pulling = {
+            enabled = false,
+        },
         party_follow = false,
         party_follow_id = 0,
         party_follow_leader_name = '',
@@ -323,6 +326,9 @@ local function main()
         },
     }
     _G.UC_SETTINGS = {
+        camp_pulling = {
+            enabled = false,
+        },
         party_follow = false,
         party_follow_id = 0,
         party_follow_leader_name = 'Leader',
@@ -405,6 +411,9 @@ local function main()
 
     Start_Engine = true
     _G.UC_SETTINGS = {
+        camp_pulling = {
+            enabled = false,
+        },
         path_recording = false,
         path_follow_enabled = false,
         path_file_name = expected_path_file_name,

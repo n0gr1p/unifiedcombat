@@ -2369,6 +2369,44 @@ windower.register_event('addon command', function(...)
 		end
 		windower.add_to_chat(ok and 207 or 167, 'UC Nyzul: ' .. tostring(message))
 		return
+	elseif a == 'geo' then
+		local scheduler = require('unified_scheduler')
+		local sub = args[2] and tostring(args[2]):lower() or 'status'
+		if sub == 'status' then
+			local status = scheduler.geo_maintenance_status()
+			local sequence = status.sequence
+			windower.add_to_chat(207, ('UC GEO: state=%s reason=%s detail=%s geo=%s indi=%s entrust=%s target=%d sequence=%s/%s atomic=%s bolster_armed=%s'):format(
+				tostring(status.state or ''),
+				tostring(status.reason or ''),
+				tostring(status.detail or ''),
+				tostring(status.owned_geo_spell or ''),
+				tostring(status.owned_indi_spell or ''),
+				tostring(status.owned_entrust_spell or ''),
+				tonumber(status.owned_entrust_target_id) or 0,
+				tostring(sequence and sequence.kind or 'none'),
+				tostring(sequence and sequence.step or 'none'),
+				tostring(sequence and sequence.atomic == true),
+				tostring(status.bolster_armed == true)
+			))
+			return
+		elseif sub == 'reseed' then
+			local ok, message = scheduler.geo_maintenance_reseed()
+			windower.add_to_chat(ok and 207 or 167, 'UC GEO: ' .. tostring(message))
+			return
+		elseif sub == 'bolster' then
+			local operation = args[3] and tostring(args[3]):lower() or ''
+			if operation == 'arm' then
+				local ok, message = scheduler.geo_maintenance_arm_bolster(true)
+				windower.add_to_chat(ok and 207 or 167, 'UC GEO: ' .. tostring(message))
+				return
+			elseif operation == 'disarm' then
+				local ok, message = scheduler.geo_maintenance_arm_bolster(false)
+				windower.add_to_chat(ok and 207 or 167, 'UC GEO: ' .. tostring(message))
+				return
+			end
+		end
+		windower.add_to_chat(207, '//uc geo status|reseed|bolster arm|bolster disarm')
+		return
 	elseif a == 'camp' then
 		local sub = args[2] and tostring(args[2]):lower() or 'status'
 		if sub == 'set' then
@@ -2392,8 +2430,29 @@ windower.register_event('addon command', function(...)
 				windower.add_to_chat(207, 'UC camp: active=false')
 			end
 			return
+		elseif sub == 'pullstatus' then
+			local status = require('unified_scheduler').camp_puller_status()
+			windower.add_to_chat(207, ('UC camp puller: state=%s target=%d:%s reason=%s detail=%s intent=%s active=%d/%d camp=%.2f target_camp=%.2f cast/action=%.2f/%.2f crumbs=%d recovery=%d retry=%d cooldown=%.2f'):format(
+				tostring(status.state or ''),
+				tonumber(status.target_id) or 0,
+				tostring(status.target_name or ''),
+				tostring(status.reason or ''),
+				tostring(status.detail or ''),
+				tostring(status.last_intent or ''),
+				tonumber(status.active_count) or 0,
+				tonumber(status.quota) or 0,
+				tonumber(status.camp_distance) or -1,
+				tonumber(status.target_camp_distance) or -1,
+				tonumber(status.cast_range) or -1,
+				tonumber(status.action_range) or -1,
+				tonumber(status.breadcrumb_count) or 0,
+				tonumber(status.recovery_count) or 0,
+				tonumber(status.retry_count) or 0,
+				tonumber(status.cooldown_until) or 0
+			))
+			return
 		end
-		windower.add_to_chat(207, '//uc camp set|clear|status')
+		windower.add_to_chat(207, '//uc camp set|clear|status|pullstatus')
 		return
 	elseif a == 'reaction' or a == 'reactions' then
 		local sub = args[2] and tostring(args[2]):lower() or 'status'

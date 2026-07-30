@@ -64,7 +64,6 @@ function M.new(deps)
 			log_def_sched('MAINT_SKIP reason=CITY_ZONE')
 			gate.cor_rolls = 0
 			gate.brd_songs = 0
-			gate.geo_buffs = 0
 			return
 		end
 		local now = ctx.now
@@ -286,31 +285,6 @@ function M.new(deps)
 				)
 			elseif failure == nil then
 				gate.brd_songs = 0
-			end
-		elseif job == 'GEO' then
-			local indi_count = count_matching_buffs(buff_list, maintenance_buff_cache.indi_ids)
-			local geo_count = count_matching_buffs(buff_list, maintenance_buff_cache.geo_ids)
-			local missing_indi = indi_count < 1
-			local missing_geo = geo_count < 1
-			if missing_indi or missing_geo then
-				local urgency = 0.45
-				if missing_indi and missing_geo then
-					urgency = 0.80
-				elseif missing_indi then
-					urgency = 0.65
-				end
-				maybe_emit('geo_buffs', 'geo', 'spell', 'maintenance_geo', 'geo_missing', urgency, 75, 2.0, {
-					job = job,
-					indi_count = indi_count,
-					geo_count = geo_count,
-					expected_indi = 1,
-					expected_geo = 1,
-				})
-			else
-				log_maint_candidate('MAINT_BUFF_CANDIDATE_SKIPPED', 'geo_buffs', 'maintenance_geo', 'geo', 'geo_satisfied', 0.45, 75, {
-					action_type = 'spell',
-				}, 2.0)
-				gate.geo_buffs = 0
 			end
 		end
 	end

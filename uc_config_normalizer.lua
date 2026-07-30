@@ -4,6 +4,55 @@ local CURRENT_CANONICAL_CONFIG_VERSION = 1
 
 local DEFAULT_SLEEP_ORDER = { 'Horde Lullaby II' }
 
+local DEFAULT_GEO_MAINTENANCE = {
+    enabled = false,
+    geo_spell = nil,
+    geo_target = {
+        kind = 'current_enemy',
+        name = nil,
+    },
+    indi_spell = nil,
+    ordering = 'geo_first',
+    require_camp = true,
+    camp_tolerance_yalms = 1.0,
+    unknown_existing_policy = 'wait_for_clear',
+    entrust = {
+        enabled = false,
+        spell = nil,
+        target_name = nil,
+    },
+    luopan = {
+        use_blaze_of_glory = false,
+        use_ecliptic_attrition = false,
+        use_life_cycle = false,
+        life_cycle_hpp = 50,
+        replace_out_of_position = false,
+        max_camp_distance_yalms = 6.0,
+    },
+}
+
+local DEFAULT_CAMP_PULLING = {
+    enabled = false,
+    mode = 'camp',
+    action = {
+        type = 'spell',
+        name = nil,
+    },
+    targets = {},
+    match_mode = 'exact',
+    max_active_mobs = 1,
+    replenish_below_hpp = 20,
+    leash_yalms = 35.0,
+    max_z_delta = 2.0,
+    cast_range_ratio = 0.90,
+    settle_seconds = 0.40,
+    reaction_timeout_seconds = 4.0,
+    retry_limit = 2,
+    retry_window_seconds = 2.5,
+    target_cooldown_seconds = 20.0,
+    camp_arrival_yalms = 0.75,
+}
+
 local function path(...)
     return { ... }
 end
@@ -349,6 +398,394 @@ local function table_has_any(value, keys)
     return false
 end
 
+local function strict_boolean(value, default_value, field_name)
+    if value == nil then
+        return default_value
+    end
+    if type(value) ~= 'boolean' then
+        error(field_name .. ' must be boolean')
+    end
+    return value
+end
+
+local function strict_optional_string(value, default_value, field_name)
+    if value == nil then
+        return default_value
+    end
+    if type(value) ~= 'string' then
+        error(field_name .. ' must be a string or nil')
+    end
+    local normalized = trim_string(value)
+    if normalized == '' then
+        return nil
+    end
+    return normalized
+end
+
+local function strict_number(value, default_value, field_name, min_value, max_value)
+    if value == nil then
+        return default_value
+    end
+    if type(value) ~= 'number' or value ~= value or value == math.huge or value == -math.huge then
+        error(field_name .. ' must be a finite number')
+    end
+    if value < min_value or value > max_value then
+        error(string.format('%s must be between %.1f and %.1f', field_name, min_value, max_value))
+    end
+    return value
+end
+
+local function strict_enum(value, default_value, field_name, allowed)
+    if value == nil then
+        return default_value
+    end
+    if type(value) ~= 'string' or allowed[value] ~= true then
+        error(field_name .. ' has an unsupported value')
+    end
+    return value
+end
+
+local function migrate_geo_maintenance_list(value)
+    local entries = {}
+    if type(value) == 'string' then
+        entries[1] = value
+    elseif type(value) == 'table' then
+        for key in pairs(value) do
+            if type(key) ~= 'number' or key < 1 or key ~= math.floor(key) then
+                error('maintenance.geo legacy configuration must be a list of spell names')
+            end
+        end
+        for i = 1, #value do
+            entries[i] = value[i]
+        end
+    else
+        error('maintenance.geo must be a structured table or legacy spell list')
+    end
+
+    local migrated = clone_value(DEFAULT_GEO_MAINTENANCE)
+    for i = 1, #entries do
+        local spell_name = entries[i]
+        if type(spell_name) ~= 'string' or trim_string(spell_name) == '' then
+            error('maintenance.geo legacy entries must be non-empty strings')
+        end
+        spell_name = trim_string(spell_name)
+        if spell_name:match('^Geo%-') then
+            if migrated.geo_spell ~= nil then
+                error('maintenance.geo legacy list contains more than one Geo- spell')
+            end
+            migrated.geo_spell = spell_name
+        elseif spell_name:match('^Indi%-') then
+            if migrated.indi_spell ~= nil then
+                error('maintenance.geo legacy list contains more than one Indi- spell')
+            end
+            migrated.indi_spell = spell_name
+        else
+            error('maintenance.geo legacy list contains an unrecognized spell: ' .. spell_name)
+        end
+    end
+
+    -- The legacy list was observational only. Migration must not silently make
+    -- GEO maintenance executable.
+    migrated.enabled = false
+    return migrated
+end
+
+local function normalize_geo_maintenance(value)
+    if value == nil then
+        return clone_value(DEFAULT_GEO_MAINTENANCE)
+    end
+    if type(value) == 'string' then
+        return migrate_geo_maintenance_list(value)
+    end
+    if type(value) ~= 'table' then
+        error('maintenance.geo must be a structured table or legacy spell list')
+    end
+
+    local structured_keys = {
+        'enabled',
+        'geo_spell',
+        'geo_target',
+        'indi_spell',
+        'ordering',
+        'require_camp',
+        'camp_tolerance_yalms',
+        'unknown_existing_policy',
+        'entrust',
+        'luopan',
+    }
+    if not table_has_any(value, structured_keys) then
+        if next(value) == nil then
+            return clone_value(DEFAULT_GEO_MAINTENANCE)
+        end
+        return migrate_geo_maintenance_list(value)
+    end
+
+    local out = clone_value(DEFAULT_GEO_MAINTENANCE)
+    out.enabled = strict_boolean(value.enabled, out.enabled, 'maintenance.geo.enabled')
+    out.geo_spell = strict_optional_string(value.geo_spell, out.geo_spell, 'maintenance.geo.geo_spell')
+    out.indi_spell = strict_optional_string(value.indi_spell, out.indi_spell, 'maintenance.geo.indi_spell')
+    out.ordering = strict_enum(value.ordering, out.ordering, 'maintenance.geo.ordering', {
+        geo_first = true,
+        indi_first = true,
+    })
+    out.require_camp = strict_boolean(value.require_camp, out.require_camp, 'maintenance.geo.require_camp')
+    out.camp_tolerance_yalms = strict_number(
+        value.camp_tolerance_yalms,
+        out.camp_tolerance_yalms,
+        'maintenance.geo.camp_tolerance_yalms',
+        0.0,
+        50.0
+    )
+    out.unknown_existing_policy = strict_enum(
+        value.unknown_existing_policy,
+        out.unknown_existing_policy,
+        'maintenance.geo.unknown_existing_policy',
+        { wait_for_clear = true }
+    )
+
+    if value.geo_target ~= nil and type(value.geo_target) ~= 'table' then
+        error('maintenance.geo.geo_target must be a table')
+    end
+    local geo_target = value.geo_target or {}
+    out.geo_target.kind = strict_enum(
+        geo_target.kind,
+        out.geo_target.kind,
+        'maintenance.geo.geo_target.kind',
+        {
+            current_enemy = true,
+            self = true,
+            party_member = true,
+        }
+    )
+    out.geo_target.name = strict_optional_string(
+        geo_target.name,
+        out.geo_target.name,
+        'maintenance.geo.geo_target.name'
+    )
+    if out.geo_target.kind == 'party_member' and out.geo_target.name == nil then
+        error('maintenance.geo.geo_target.name is required for party_member')
+    end
+    if out.geo_target.kind ~= 'party_member' and out.geo_target.name ~= nil then
+        error('maintenance.geo.geo_target.name is only valid for party_member')
+    end
+
+    if value.entrust ~= nil and type(value.entrust) ~= 'table' then
+        error('maintenance.geo.entrust must be a table')
+    end
+    local entrust = value.entrust or {}
+    out.entrust.enabled = strict_boolean(entrust.enabled, out.entrust.enabled, 'maintenance.geo.entrust.enabled')
+    out.entrust.spell = strict_optional_string(entrust.spell, out.entrust.spell, 'maintenance.geo.entrust.spell')
+    out.entrust.target_name = strict_optional_string(
+        entrust.target_name,
+        out.entrust.target_name,
+        'maintenance.geo.entrust.target_name'
+    )
+    if out.entrust.enabled and (out.entrust.spell == nil or out.entrust.target_name == nil) then
+        error('maintenance.geo.entrust requires spell and target_name when enabled')
+    end
+    if out.entrust.spell ~= nil and not out.entrust.spell:match('^Indi%-') then
+        error('maintenance.geo.entrust.spell must be an exact Indi- spell name')
+    end
+
+    if value.luopan ~= nil and type(value.luopan) ~= 'table' then
+        error('maintenance.geo.luopan must be a table')
+    end
+    local luopan = value.luopan or {}
+    out.luopan.use_blaze_of_glory = strict_boolean(
+        luopan.use_blaze_of_glory,
+        out.luopan.use_blaze_of_glory,
+        'maintenance.geo.luopan.use_blaze_of_glory'
+    )
+    out.luopan.use_ecliptic_attrition = strict_boolean(
+        luopan.use_ecliptic_attrition,
+        out.luopan.use_ecliptic_attrition,
+        'maintenance.geo.luopan.use_ecliptic_attrition'
+    )
+    out.luopan.use_life_cycle = strict_boolean(
+        luopan.use_life_cycle,
+        out.luopan.use_life_cycle,
+        'maintenance.geo.luopan.use_life_cycle'
+    )
+    out.luopan.life_cycle_hpp = strict_number(
+        luopan.life_cycle_hpp,
+        out.luopan.life_cycle_hpp,
+        'maintenance.geo.luopan.life_cycle_hpp',
+        1.0,
+        99.0
+    )
+    out.luopan.replace_out_of_position = strict_boolean(
+        luopan.replace_out_of_position,
+        out.luopan.replace_out_of_position,
+        'maintenance.geo.luopan.replace_out_of_position'
+    )
+    out.luopan.max_camp_distance_yalms = strict_number(
+        luopan.max_camp_distance_yalms,
+        out.luopan.max_camp_distance_yalms,
+        'maintenance.geo.luopan.max_camp_distance_yalms',
+        0.1,
+        50.0
+    )
+
+    if out.enabled then
+        if out.geo_spell == nil or not out.geo_spell:match('^Geo%-') then
+            error('maintenance.geo.geo_spell must be an exact Geo- spell name when enabled')
+        end
+        if out.indi_spell == nil or not out.indi_spell:match('^Indi%-') then
+            error('maintenance.geo.indi_spell must be an exact Indi- spell name when enabled')
+        end
+    elseif out.geo_spell ~= nil and not out.geo_spell:match('^Geo%-') then
+        error('maintenance.geo.geo_spell must be an exact Geo- spell name')
+    elseif out.indi_spell ~= nil and not out.indi_spell:match('^Indi%-') then
+        error('maintenance.geo.indi_spell must be an exact Indi- spell name')
+    end
+
+    return out
+end
+
+local function strict_integer(value, default_value, field_name, min_value, max_value)
+    local number = strict_number(value, default_value, field_name, min_value, max_value)
+    if number ~= math.floor(number) then
+        error(field_name .. ' must be an integer')
+    end
+    return number
+end
+
+local function normalize_pull_targets(value)
+    if value == nil then
+        return {}
+    end
+    if type(value) ~= 'table' then
+        error('combat.pulling.targets must be a list')
+    end
+    local out = {}
+    local seen = {}
+    for key in pairs(value) do
+        if type(key) ~= 'number' or key < 1 or key ~= math.floor(key) then
+            error('combat.pulling.targets must be a list')
+        end
+    end
+    for i = 1, #value do
+        local entry = value[i]
+        if type(entry) ~= 'table' then
+            error(('combat.pulling.targets[%d] must be a table'):format(i))
+        end
+        local name = strict_optional_string(entry.name, nil, ('combat.pulling.targets[%d].name'):format(i))
+        if name == nil then
+            error(('combat.pulling.targets[%d].name is required'):format(i))
+        end
+        local key = name:lower()
+        if seen[key] then
+            error('combat.pulling.targets contains duplicate name: ' .. name)
+        end
+        seen[key] = true
+        out[#out + 1] = {
+            name = name,
+            priority = strict_integer(
+                entry.priority,
+                0,
+                ('combat.pulling.targets[%d].priority'):format(i),
+                -1000,
+                1000
+            ),
+        }
+    end
+    return out
+end
+
+local function normalize_camp_pulling(value)
+    if value == nil then
+        return clone_value(DEFAULT_CAMP_PULLING)
+    end
+    if type(value) ~= 'table' then
+        error('combat.pulling must be a table')
+    end
+    local out = clone_value(DEFAULT_CAMP_PULLING)
+    out.enabled = strict_boolean(value.enabled, out.enabled, 'combat.pulling.enabled')
+    out.mode = strict_enum(value.mode, out.mode, 'combat.pulling.mode', { camp = true })
+    if value.action ~= nil and type(value.action) ~= 'table' then
+        error('combat.pulling.action must be a table')
+    end
+    local action = value.action or {}
+    out.action.type = strict_enum(action.type, out.action.type, 'combat.pulling.action.type', {
+        spell = true,
+        ja = true,
+    })
+    out.action.name = strict_optional_string(action.name, out.action.name, 'combat.pulling.action.name')
+    out.targets = normalize_pull_targets(value.targets)
+    out.match_mode = strict_enum(value.match_mode, out.match_mode, 'combat.pulling.match_mode', {
+        exact = true,
+        substring = true,
+    })
+    out.max_active_mobs = strict_integer(
+        value.max_active_mobs,
+        out.max_active_mobs,
+        'combat.pulling.max_active_mobs',
+        1,
+        20
+    )
+    out.replenish_below_hpp = strict_integer(
+        value.replenish_below_hpp,
+        out.replenish_below_hpp,
+        'combat.pulling.replenish_below_hpp',
+        0,
+        100
+    )
+    out.leash_yalms = strict_number(value.leash_yalms, out.leash_yalms, 'combat.pulling.leash_yalms', 1.0, 100.0)
+    out.max_z_delta = strict_number(value.max_z_delta, out.max_z_delta, 'combat.pulling.max_z_delta', 0.0, 20.0)
+    out.cast_range_ratio = strict_number(
+        value.cast_range_ratio,
+        out.cast_range_ratio,
+        'combat.pulling.cast_range_ratio',
+        0.1,
+        1.0
+    )
+    out.settle_seconds = strict_number(
+        value.settle_seconds,
+        out.settle_seconds,
+        'combat.pulling.settle_seconds',
+        0.0,
+        3.0
+    )
+    out.reaction_timeout_seconds = strict_number(
+        value.reaction_timeout_seconds,
+        out.reaction_timeout_seconds,
+        'combat.pulling.reaction_timeout_seconds',
+        0.5,
+        30.0
+    )
+    out.retry_limit = strict_integer(value.retry_limit, out.retry_limit, 'combat.pulling.retry_limit', 0, 10)
+    out.retry_window_seconds = strict_number(
+        value.retry_window_seconds,
+        out.retry_window_seconds,
+        'combat.pulling.retry_window_seconds',
+        0.1,
+        30.0
+    )
+    out.target_cooldown_seconds = strict_number(
+        value.target_cooldown_seconds,
+        out.target_cooldown_seconds,
+        'combat.pulling.target_cooldown_seconds',
+        0.0,
+        300.0
+    )
+    out.camp_arrival_yalms = strict_number(
+        value.camp_arrival_yalms,
+        out.camp_arrival_yalms,
+        'combat.pulling.camp_arrival_yalms',
+        0.1,
+        10.0
+    )
+    if out.enabled then
+        if out.action.name == nil then
+            error('combat.pulling.action.name is required when enabled')
+        end
+        if #out.targets == 0 then
+            error('combat.pulling.targets must not be empty when enabled')
+        end
+    end
+    return out
+end
+
 local function normalize_source(settings)
     if not is_table(settings) then
         return {}, {}
@@ -397,6 +834,7 @@ local function default_config(meta)
                 aftermath_enabled = false,
                 aftermath_ws = '',
             },
+            pulling = clone_value(DEFAULT_CAMP_PULLING),
         },
         abilities = {
             enabled = false,
@@ -587,7 +1025,7 @@ local function default_config(meta)
 				recovery_range_yalms = 9.9,
 				recovery_ignore_names = {},
             },
-            geo = {},
+            geo = clone_value(DEFAULT_GEO_MAINTENANCE),
         },
         summoner = {
             enabled = false,
@@ -693,7 +1131,7 @@ end
 local function normalize_combat(source, config)
     local combat = config.combat
     local nested = get_path(source, { 'combat' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'autotarget', 'spam', 'closer', 'manual', 'prime', 'static', 'face', 'weaponskill' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'autotarget', 'spam', 'closer', 'manual', 'prime', 'static', 'face', 'weaponskill', 'pulling' }) then
         combat.enabled = normalize_boolean(nested.enabled, combat.enabled)
         combat.autotarget = normalize_boolean(nested.autotarget, combat.autotarget)
         combat.spam = normalize_boolean(nested.spam, combat.spam)
@@ -709,6 +1147,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.wait_ignore_names = normalize_list(nested_ws.wait_ignore_names, combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(nested_ws.aftermath_enabled, combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(nested_ws.aftermath_ws, combat.weaponskill.aftermath_ws)
+        combat.pulling = normalize_camp_pulling(nested.pulling)
     else
         combat.enabled = normalize_boolean(first_path(source, { path('domain_combat_enabled') }), combat.enabled)
         combat.autotarget = normalize_boolean(first_path(source, { path('autotarget') }), combat.autotarget)
@@ -724,6 +1163,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.wait_ignore_names = normalize_list(first_path(source, { path('wait_ignore_names') }), combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(first_path(source, { path('aftermath_enabled') }), combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(first_path(source, { path('aftermath_ws') }), combat.weaponskill.aftermath_ws)
+        combat.pulling = normalize_camp_pulling(first_path(source, { path('camp_pulling') }))
     end
 end
 
@@ -1097,7 +1537,7 @@ local function normalize_maintenance(source, config)
 		maintenance.brd.targeted_songs = normalize_brd_targeted_songs(brd.targeted_songs, maintenance.brd.targeted_songs)
 		maintenance.brd.recovery_range_yalms = normalize_number(brd.recovery_range_yalms, maintenance.brd.recovery_range_yalms, { min = 1.0, max = 20.0 })
 		maintenance.brd.recovery_ignore_names = normalize_pipe_string_list(brd.recovery_ignore_names, maintenance.brd.recovery_ignore_names)
-        maintenance.geo = normalize_list(nested.geo, maintenance.geo)
+        maintenance.geo = normalize_geo_maintenance(nested.geo)
     else
         maintenance.enabled = normalize_boolean(first_path(source, { path('domain_maintenance_enabled') }), maintenance.enabled)
         maintenance.cor.roll_1 = normalize_string(first_path(source, { path('cor_roll_1') }), maintenance.cor.roll_1)
@@ -1118,7 +1558,7 @@ local function normalize_maintenance(source, config)
 		maintenance.brd.targeted_songs = normalize_brd_targeted_songs(first_path(source, { path('brd_targeted_songs') }), maintenance.brd.targeted_songs)
 		maintenance.brd.recovery_range_yalms = normalize_number(first_path(source, { path('brd_recovery_range_yalms') }), maintenance.brd.recovery_range_yalms, { min = 1.0, max = 20.0 })
 		maintenance.brd.recovery_ignore_names = normalize_pipe_string_list(first_path(source, { path('brd_recovery_ignore_names') }), maintenance.brd.recovery_ignore_names)
-        maintenance.geo = normalize_list(first_path(source, { path('maintenance_geo') }), maintenance.geo)
+        maintenance.geo = normalize_geo_maintenance(first_path(source, { path('maintenance_geo') }))
     end
 end
 
