@@ -90,6 +90,7 @@ function M.new(deps)
 	local log = require_function(deps, 'log')
 	local action_timeline_log = require_function(deps, 'action_timeline_log')
 	local pull_action_in_flight = require_function(deps, 'pull_action_in_flight')
+	local can_start_journey = require_function(deps, 'can_start_journey')
 
 	local provider = {
 		state = {
@@ -416,6 +417,50 @@ function M.new(deps)
 		return now - provider.state.last_progress_at >= 2.0
 	end
 
+	local function begin_journey(ctx, config, anchor, friendly_claims, demand)
+		local lane_available, lane_reason = can_start_journey()
+		if type(lane_available) ~= 'boolean' then
+			error('camp pull start-lane contract must return a boolean')
+		end
+		if lane_available ~= true then
+			if type(lane_reason) ~= 'string' or lane_reason == '' then
+				error('camp pull blocked start-lane contract requires a reason')
+			end
+			publish('PULL_WAIT_ACTION_LANE:' .. lane_reason, demand)
+			return false
+		end
+		local candidate, selection_reason = policy.select_candidate(
+			config,
+			ctx,
+			anchor,
+			friendly_claims,
+			provider.state.cooldowns,
+			function(mob)
+				return ignored(ctx.settings, mob)
+			end
+		)
+		if candidate == nil then
+			publish(selection_reason, demand)
+			return false
+		end
+		provider.state.target_id = candidate.id
+		provider.state.target_name = candidate.name
+		provider.state.target_camp_distance = candidate.camp_distance
+		provider.state.name = 'APPROACH'
+		provider.state.last_reason = selection_reason
+		update_target_observation(ctx)
+		provider.state.breadcrumbs = {}
+		provider.state.last_breadcrumb = nil
+		record_breadcrumb(ctx.me)
+		provider.state.last_progress_at = ctx.now
+		provider.state.last_progress_distance = nil
+		provider.state.recovery_count = 0
+		provider.state.retry_count = 0
+		provider.state.retry_window_started_at = 0
+		publish(selection_reason, demand)
+		return true
+	end
+
 	local function emit_recovery(ctx, out, destination, reason)
 		local heading = heading_to(ctx.me, destination)
 		if heading == nil then
@@ -525,6 +570,46 @@ function M.new(deps)
 		provider.state.last_intent = 'return'
 	end
 
+	function provider.acquire_lane(ctx)
+		require_table(ctx, 'ctx')
+		if provider.state.name ~= 'IDLE' then
+			return true
+		end
+		local config = config_from_context(ctx)
+		if config.enabled ~= true or rawget(_G, 'Start_Engine') ~= true then
+			return false
+		end
+		if ctx.player_present == false
+			or (type(ctx.player) == 'table'
+				and type(ctx.player.vitals) == 'table'
+				and tonumber(ctx.player.vitals.hpp) == 0) then
+			return false
+		end
+		local anchor, anchor_reason = resolve_camp_anchor()
+		if type(anchor) ~= 'table' then
+			if type(anchor_reason) ~= 'string' or anchor_reason == '' then
+				error('camp anchor contract requires a reason when unavailable')
+			end
+			publish(anchor_reason)
+			return false
+		end
+		provider.state.camp_distance = policy.distance_2d(ctx.me, anchor)
+		local action, action_reason = action_contract(config)
+		if action == nil then
+			publish(action_reason)
+			return false
+		end
+		provider.state.action_range = action.max_range
+		provider.state.cast_range = action.cast_range
+		local friendly_claims = get_friendly_claims()
+		local demanded, demand = policy.pull_demand(config, ctx.mob_array, friendly_claims)
+		if not demanded then
+			publish('PULL_QUOTA_SATISFIED', demand)
+			return false
+		end
+		return begin_journey(ctx, config, anchor, friendly_claims, demand)
+	end
+
 	function provider.collect(ctx, out)
 		require_table(ctx, 'ctx')
 		require_table(out, 'out')
@@ -587,34 +672,9 @@ function M.new(deps)
 				publish('PULL_QUOTA_SATISFIED', demand)
 				return
 			end
-			local candidate, selection_reason = policy.select_candidate(
-				config,
-				ctx,
-				anchor,
-				friendly_claims,
-				provider.state.cooldowns,
-				function(mob)
-					return ignored(ctx.settings, mob)
-				end
-			)
-			if candidate == nil then
-				publish(selection_reason, demand)
+			if not begin_journey(ctx, config, anchor, friendly_claims, demand) then
 				return
 			end
-			provider.state.target_id = candidate.id
-			provider.state.target_name = candidate.name
-			provider.state.target_camp_distance = candidate.camp_distance
-			provider.state.name = 'APPROACH'
-			provider.state.last_reason = selection_reason
-			update_target_observation(ctx)
-			provider.state.breadcrumbs = {}
-			provider.state.last_breadcrumb = nil
-			record_breadcrumb(ctx.me)
-			provider.state.last_progress_at = ctx.now
-			provider.state.last_progress_distance = nil
-			provider.state.recovery_count = 0
-			provider.state.retry_count = 0
-			provider.state.retry_window_started_at = 0
 		end
 
 		if provider.state.name == 'APPROACH' then

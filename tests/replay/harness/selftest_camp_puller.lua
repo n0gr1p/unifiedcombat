@@ -44,6 +44,8 @@ local config = {
 
 local timeline_events = {}
 local pull_action_active = false
+local start_lane_available = true
+local start_lane_reason = ''
 local provider = camp_puller.new({
 	resolve_camp_anchor = function()
 		return {
@@ -89,6 +91,9 @@ local provider = camp_puller.new({
 	pull_action_in_flight = function()
 		return pull_action_active
 	end,
+	can_start_journey = function()
+		return start_lane_available, start_lane_reason
+	end,
 })
 
 local mob = {
@@ -126,7 +131,23 @@ local original_engine = rawget(_G, 'Start_Engine')
 rawset(_G, 'Start_Engine', true)
 assert_true(provider.movement_reserved(ctx.settings.camp_pulling), 'enabled camp pulling must reserve movement while idle')
 
+start_lane_available = false
+start_lane_reason = 'BRD_LANE:brd_targeted_pianissimo'
+assert_true(not provider.acquire_lane(ctx), 'blocked action-lane handoff must not acquire the pull journey')
+assert_equal(provider.status_snapshot().state, 'IDLE', 'blocked pre-target handoff must remain idle')
 local out = {}
+provider.collect(ctx, out)
+assert_equal(#out, 0, 'blocked action-lane handoff must not emit a pull proposal')
+assert_equal(provider.status_snapshot().state, 'IDLE', 'blocked action-lane handoff must remain idle')
+assert_equal(
+	provider.status_snapshot().detail,
+	'PULL_WAIT_ACTION_LANE:BRD_LANE:brd_targeted_pianissimo',
+	'blocked action-lane handoff reason mismatch'
+)
+start_lane_available = true
+start_lane_reason = ''
+
+out = {}
 provider.collect(ctx, out)
 assert_equal(#out, 1, 'candidate selection must immediately emit an ID-based approach')
 assert_equal(out[1].action_type, 'camp_approach', 'direct candidate approach proposal mismatch')
@@ -281,6 +302,10 @@ assert_true(
 	'combat-domain disable must have an explicit camp-puller terminal reason'
 )
 assert_true(
+	scheduler_source:find('PULL_MOVEMENT_DOMAIN_DISABLED', 1, true) ~= nil,
+	'movement-domain disable must explicitly stop and release an active camp journey'
+)
+assert_true(
 	scheduler_source:find("p1_build_pull_executor().stop({", 1, true) ~= nil,
 	'combat-domain disable must dispatch an explicit movement stop'
 )
@@ -299,6 +324,46 @@ assert_true(
 assert_true(
 	scheduler_source:find('return action_is_acting()', 1, true) ~= nil,
 	'camp pull action timeout must reuse scheduler action-state waiting'
+)
+assert_true(
+	scheduler_source:find('scheduler.p1_camp_lane_blocks_proposal', 1, true) ~= nil,
+	'active camp journeys must have an explicit scheduler action-lane policy'
+)
+assert_true(
+	scheduler_source:find("return tostring(proposal.provider or '') ~= 'camp_puller'", 1, true) ~= nil,
+	'camp action-lane ownership must reject every competing provider'
+)
+assert_true(
+	scheduler_source:find('and not camp_journey_active', 1, true) ~= nil,
+	'maintenance collection must defer while a camp journey is active'
+)
+assert_true(
+	scheduler_source:find("return true, 'BLOCK_CAMP_PULL_ACTION_LANE'", 1, true) ~= nil,
+	'camp action-lane ownership must persist across proposal gaps'
+)
+assert_true(
+	scheduler_source:find('scheduler.providers.camp_puller.acquire_lane(acquisition_ctx)', 1, true) ~= nil,
+	'the camp puller must acquire its action lane before nonblocking target selection'
+)
+assert_true(
+	scheduler_source:find("return false, 'BRD_LANE:' .. tostring(brd_reason or '')", 1, true) ~= nil,
+	'a camp journey must not begin while Bard owns its atomic lane'
+)
+assert_true(
+	scheduler_source:find("return false, 'GEO_LANE'", 1, true) ~= nil,
+	'a camp journey must not begin during a non-pull GEO atomic sequence'
+)
+assert_true(
+	scheduler_source:find("return false, 'REACTION_LANE'", 1, true) ~= nil,
+	'a camp journey must not begin while a reaction sequence owns action or movement'
+)
+assert_true(
+	scheduler_source:find("return false, 'NYZUL_MOVEMENT_HOLD'", 1, true) ~= nil,
+	'a camp journey must not begin while Nyzul owns movement'
+)
+assert_true(
+	scheduler_source:find("if scheduler.providers.camp_puller.active() then\n\t\t\t\treturn nil", 1, true) ~= nil,
+	'an active camp journey must defer reaction proposal blocking until the journey completes'
 )
 assert_true(
 	scheduler_source:find("if action_type == 'camp_prepare_target'", 1, true) == nil,

@@ -95,6 +95,14 @@ local function main()
     assert_contains(lane_policy, "return true", "BRD lane reservation must hold every competing proposal")
     assert_not_contains(lane_policy, "priority_band", "BRD lane reservation must not admit a competing action based on priority")
     assert_not_contains(lane_policy, "action_type", "BRD lane reservation must not exempt movement, targeting, or engage proposals")
+	local camp_lane_policy = source:match("function scheduler%.p1_camp_lane_blocks_proposal%(proposal, lane_reserved%)(.-)\nend")
+	assert_true(type(camp_lane_policy) == "string", "failed to capture camp-puller action-lane policy")
+	assert_contains(camp_lane_policy, "provider or '') ~= 'camp_puller'",
+		"camp-puller proposals must be the only proposals eligible during an active journey")
+	assert_not_contains(camp_lane_policy, "priority_band",
+		"camp-puller action-lane ownership must not admit competing actions based on priority")
+	assert_not_contains(camp_lane_policy, "action_type",
+		"camp-puller action-lane ownership must cover actions, targeting, engage, and movement")
 	assert_contains(source, "local lane_reserved, lane_reason = require('uc_brd_maintenance').action_lane_status()",
 		"scheduler collection must consult authoritative BRD sequence state")
 	assert_contains(source, "local _, brd_action_event = require('uc_brd_maintenance').on_action(act, player_id, observed_at)",
@@ -112,12 +120,12 @@ local function main()
         "process_tick must enforce defensive domain enablement")
     assert_before(process_tick, "try_doom_water_emergency(s)", "scheduler.dispatch_selected_plan(s)",
         "Doom must remain the sole hard prepass ahead of Bard scheduler arbitration")
-    assert_contains(process_tick, "if not brd_lane_reserved then\n\t\tlocal target_ctx = nil",
-        "Bard lane must hold nonblocking target acquisition")
+    assert_contains(process_tick, "if not brd_lane_reserved and not camp_lane_reserved then\n\t\tlocal target_ctx = nil",
+        "Bard and camp-puller lanes must hold nonblocking target acquisition")
     assert_contains(process_tick, "scheduler.p1_try_nonblocking_target_acquire(s, target_ctx)",
         "Bard lane target acquisition must use the tick-stable context")
-    assert_contains(process_tick, "if not brd_lane_reserved then\n\t\tmove_acted, move_reason = run_movement_coordinator_tick()",
-        "Bard lane must hold movement coordination")
+    assert_contains(process_tick, "if camp_lane_reserved or not brd_lane_reserved then\n\t\tmove_acted, move_reason = run_movement_coordinator_tick()",
+        "Bard must hold movement coordination while camp-puller ownership retains its movement path")
     assert_not_contains(process_tick, "try_internal_defensive_action()",
         "process_tick must not retain legacy internal defensive fallback execution")
     assert_not_contains(process_tick, "try_delegate_healbot()",

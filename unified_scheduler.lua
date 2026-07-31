@@ -2179,11 +2179,13 @@ function scheduler.refresh_reaction_lock()
 	local target_id = tonumber(target and target.id) or 0
 	local effects = target_id > 0 and enemy_effect_tracker.get_effects(target_id) or {}
 	local lock, released_target_id = require('uc_reaction_runtime').evaluate(target_id, effects, now_s())
+	local camp_lane_reserved = scheduler.providers.camp_puller.active()
 	_G.UC_REACTION_LOCK = lock
-	if released_target_id and released_target_id > 0 and target_id > 0 then
+	if not camp_lane_reserved
+		and released_target_id and released_target_id > 0 and target_id > 0 then
 		scheduler.apply_reaction_turn({ actor_id = target_id }, false)
 	end
-	if lock and lock.turn_applied ~= true then
+	if not camp_lane_reserved and lock and lock.turn_applied ~= true then
 		scheduler.apply_reaction_response(lock)
 	end
 	return lock
@@ -2223,7 +2225,8 @@ local function run_movement_coordinator_tick()
 		return false, 'MOVE_COORD_DOMAIN_DISABLED'
 	end
 	local nyzul_runtime = require('uc_nyzul_runtime')
-	if nyzul_runtime.is_movement_held() then
+	if nyzul_runtime.is_movement_held()
+		and not scheduler.providers.camp_puller.active() then
 		local reason = nyzul_runtime.movement_hold_reason()
 		_G.UC_MOVEMENT_MODE = 'NYZUL_HOLD'
 		_G.UC_MOVEMENT_BLOCK_REASON = reason
@@ -3719,6 +3722,13 @@ function scheduler.p1_brd_lane_blocks_proposal(proposal, lane_reserved)
 	return true
 end
 
+function scheduler.p1_camp_lane_blocks_proposal(proposal, lane_reserved)
+	if lane_reserved ~= true or type(proposal) ~= 'table' then
+		return false
+	end
+	return tostring(proposal.provider or '') ~= 'camp_puller'
+end
+
 local function p1_collect_proposals(ctx)
 	local out = {}
 	local s = ctx.settings or {}
@@ -3751,13 +3761,27 @@ local function p1_collect_proposals(ctx)
 	local brd_provider_active = maintenance_enabled
 		and main_job ~= 'COR'
 		and (main_job == 'BRD' or sub_job == 'BRD')
+	local camp_journey_active = scheduler.providers.camp_puller.active()
 	if maintenance_enabled
+		and not camp_journey_active
 		and (brd_provider_active or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0)) then
 		scheduler.providers.maintenance.collect(ctx, out)
 		scheduler.providers.summoner_maintenance.collect(ctx, out)
 		scheduler.providers.geo_maintenance.collect(ctx, out)
 	end
-	if scheduler.providers.geo_maintenance.lane_reserved() then
+	if camp_journey_active then
+		for i = #out, 1, -1 do
+			local proposal = out[i]
+			if scheduler.p1_camp_lane_blocks_proposal(proposal, true) then
+				log_def_sched(('CAMP_PULL_ACTION_LANE_HOLD action="%s" provider=%s type=%s reason=camp_journey_active'):format(
+					tostring(proposal and proposal.action_name or ''),
+					tostring(proposal and proposal.provider or ''),
+					tostring(proposal and proposal.action_type or '')
+				))
+				table.remove(out, i)
+			end
+		end
+	elseif scheduler.providers.geo_maintenance.lane_reserved() then
 		local pull_for_enemy = scheduler.providers.geo_maintenance.pull_for_enemy_allowed()
 		for i = #out, 1, -1 do
 			local provider = tostring(out[i] and out[i].provider or '')
@@ -3772,15 +3796,7 @@ local function p1_collect_proposals(ctx)
 			end
 		end
 	end
-	if scheduler.providers.camp_puller.active() then
-		for i = #out, 1, -1 do
-			if tostring(out[i] and out[i].provider or '') == 'pull_control' then
-				log_def_sched('CAMP_PULL_LANE_HOLD provider=pull_control reason=camp_journey_active')
-				table.remove(out, i)
-			end
-		end
-	end
-	if brd_provider_active then
+	if brd_provider_active and not camp_journey_active then
 		local lane_reserved, lane_reason = require('uc_brd_maintenance').action_lane_status()
 		if lane_reserved then
 			for i = #out, 1, -1 do
@@ -3934,6 +3950,9 @@ local function p1_ranker_dependencies()
 		hard_lock_reject = scheduler.p1_hard_lock_reject,
 		reaction_blocks_proposal = require('uc_reaction_runtime').blocks_proposal,
 		get_reaction_lock = function()
+			if scheduler.providers.camp_puller.active() then
+				return nil
+			end
 			return rawget(_G, 'UC_REACTION_LOCK')
 		end,
 		debug_enabled = uc_scheduler_config.debug_enabled,
@@ -5981,6 +6000,7 @@ function scheduler.process_tick(cadence)
 	local s = get_settings()
 	local combat_domain_enabled = domain_ownership.is_enabled('combat')
 	local defensive_domain_enabled = domain_ownership.is_enabled('defensive')
+	local movement_domain_enabled = domain_ownership.is_enabled('movement')
 	local maintenance_domain_enabled = domain_ownership.is_enabled('maintenance')
 	local tick_ctx = nil
 	local function get_tick_ctx()
@@ -6008,10 +6028,18 @@ function scheduler.process_tick(cadence)
 		})
 		scheduler.providers.camp_puller.reset('PULL_COMBAT_DOMAIN_DISABLED')
 	end
+	if not movement_domain_enabled and scheduler.providers.camp_puller.active() then
+		p1_build_pull_executor().stop({
+			reason = 'PULL_MOVEMENT_DOMAIN_DISABLED',
+			provider = 'camp_puller',
+		})
+		scheduler.providers.camp_puller.reset('PULL_MOVEMENT_DOMAIN_DISABLED')
+	end
 	if not maintenance_domain_enabled and scheduler.providers.geo_maintenance.runtime_active() then
 		scheduler.providers.geo_maintenance.reset('GEO_MAINTENANCE_DOMAIN_DISABLED')
 	end
-	if defensive_domain_enabled then
+	local camp_lane_reserved = combat_domain_enabled and scheduler.providers.camp_puller.active()
+	if defensive_domain_enabled and not camp_lane_reserved then
 		local doom_blocked, doom_reason = try_doom_water_emergency(s)
 		if doom_blocked then
 			local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
@@ -6021,7 +6049,13 @@ function scheduler.process_tick(cadence)
 			return true, doom_reason
 		end
 	end
-	if combat_domain_enabled then
+	if combat_domain_enabled and not camp_lane_reserved then
+		local acquisition_ctx = get_tick_ctx()
+		scheduler.p1_update_pending_state(acquisition_ctx)
+		scheduler.providers.camp_puller.acquire_lane(acquisition_ctx)
+		camp_lane_reserved = scheduler.providers.camp_puller.active()
+	end
+	if combat_domain_enabled and not camp_lane_reserved then
 		local partner_blocked, partner_reason = scheduler.try_partner_tiebreak(s)
 		if partner_blocked then
 			return true, partner_reason
@@ -6032,7 +6066,7 @@ function scheduler.process_tick(cadence)
 	if maintenance_domain_enabled then
 		brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
 	end
-	if not brd_lane_reserved then
+	if not brd_lane_reserved and not camp_lane_reserved then
 		local target_ctx = nil
 		if combat_domain_enabled and type(rawget(_G, 'UC_REACTION_LOCK')) ~= 'table' then
 			target_ctx = get_tick_ctx()
@@ -6043,11 +6077,13 @@ function scheduler.process_tick(cadence)
 				return true, target_reason
 			end
 		end
-	else
+	elseif brd_lane_reserved and not camp_lane_reserved then
 		scheduler.refresh_brd_maintenance_movement_lock(brd_lane_reason, now_s())
 		_G.UC_TARGET_BLOCK_REASON = 'BRD_LANE:' .. tostring(brd_lane_reason or '')
+	elseif camp_lane_reserved then
+		_G.UC_TARGET_BLOCK_REASON = 'CAMP_PULL_ACTION_LANE'
 	end
-	if defensive_domain_enabled then
+	if defensive_domain_enabled and not camp_lane_reserved then
 		local defensive_spell_wait_locked = scheduler.refresh_defensive_spell_wait_lock(now_s())
 		if defensive_spell_wait_locked then
 			_G.UC_LAST_SCHED_ACTION = ('[def]spell_wait:%s'):format(tostring(scheduler.defensive_pending_action or ''))
@@ -6060,8 +6096,9 @@ function scheduler.process_tick(cadence)
 	if maintenance_domain_enabled then
 		brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
 	end
+	camp_lane_reserved = combat_domain_enabled and scheduler.providers.camp_puller.active()
 	local move_acted, move_reason = false, ''
-	if not brd_lane_reserved then
+	if camp_lane_reserved or not brd_lane_reserved then
 		move_acted, move_reason = run_movement_coordinator_tick()
 	else
 		scheduler.refresh_brd_maintenance_movement_lock(brd_lane_reason, now_s())
@@ -6077,6 +6114,10 @@ function scheduler.process_tick(cadence)
 	end
 	if move_acted then
 		_G.UC_LAST_SCHED_ACTION = '[move]coordinator_tick'
+	end
+	if camp_lane_reserved then
+		_G.UC_LAST_SCHED_ACTION = '[p1]camp_pull_lane_hold'
+		return true, 'BLOCK_CAMP_PULL_ACTION_LANE'
 	end
 	if brd_lane_reserved then
 		_G.UC_LAST_SCHED_ACTION = '[p1]brd_lane_hold'
@@ -6287,11 +6328,14 @@ function scheduler.on_action(act)
 			)
 			if type(reaction_event.activated) == 'table' then
 				_G.UC_REACTION_LOCK = reaction_event.activated
-				scheduler.apply_reaction_response(reaction_event.activated)
+				if not scheduler.providers.camp_puller.active() then
+					scheduler.apply_reaction_response(reaction_event.activated)
+				end
 			elseif (tonumber(reaction_event.released_target_id) or 0) > 0 then
 				_G.UC_REACTION_LOCK = nil
 				local current_target_id = tonumber(target and target.id) or 0
-				if current_target_id > 0 then
+				if current_target_id > 0
+					and not scheduler.providers.camp_puller.active() then
 					scheduler.apply_reaction_turn({ actor_id = current_target_id }, false)
 				end
 			end
@@ -6974,6 +7018,36 @@ scheduler.providers.camp_puller = require('uc_camp_puller').new({
 	log = log_combat_sched,
 	action_timeline_log = function(...)
 		return scheduler.action_timeline_log(...)
+	end,
+	can_start_journey = function()
+		if not domain_ownership.is_enabled('movement') then
+			return false, 'MOVEMENT_DOMAIN_DISABLED'
+		end
+		if require('uc_nyzul_runtime').is_movement_held() then
+			return false, 'NYZUL_MOVEMENT_HOLD'
+		end
+		if type(rawget(_G, 'UC_REACTION_LOCK')) == 'table' then
+			return false, 'REACTION_LANE'
+		end
+		local pending = scheduler.phase1 and scheduler.phase1.pending
+		if type(pending) == 'table'
+			and scheduler.p1_pending_is_live_state(tostring(pending.state or '')) then
+			return false, ('SCHEDULER_PENDING:%s:%s'):format(
+				tostring(pending.provider or ''),
+				tostring(pending.action_name or '')
+			)
+		end
+		if domain_ownership.is_enabled('maintenance') then
+			local brd_reserved, brd_reason = require('uc_brd_maintenance').action_lane_status()
+			if brd_reserved then
+				return false, 'BRD_LANE:' .. tostring(brd_reason or '')
+			end
+			if scheduler.providers.geo_maintenance.lane_reserved()
+				and not scheduler.providers.geo_maintenance.pull_for_enemy_allowed() then
+				return false, 'GEO_LANE'
+			end
+		end
+		return true, ''
 	end,
 	pull_action_in_flight = function(target_id, action_type, action_name)
 		local st = action_state() or {}

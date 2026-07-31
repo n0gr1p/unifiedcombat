@@ -422,6 +422,12 @@ function M.new(deps)
 		if engaged and fight_leader_force_target_id <= 0 then
 			return
 		end
+		if engaged and fight_leader_force_target_id > 0 then
+			local current_target_id = tonumber(ctx.target_present == true and ctx.target and ctx.target.id) or 0
+			if current_target_id == fight_leader_force_target_id then
+				return
+			end
+		end
 		local target = nil
 		if fight_leader_force_target_id > 0 then
 			target = ctx.mobs_by_id[fight_leader_force_target_id]
