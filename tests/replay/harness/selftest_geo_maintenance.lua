@@ -44,6 +44,7 @@ local camp_anchor = {
 
 local function new_provider()
 	return geo_maintenance.new({
+		geo_maintenance_priority = 143,
 		action_ready = function()
 			return true, 'ready', 'spell'
 		end,
@@ -122,6 +123,8 @@ local function context(now)
 		name = 'Apex Bat',
 		hpp = 100,
 		distance = 25,
+		x = 10,
+		y = 20,
 		valid_target = true,
 		spawn_type = 16,
 		claim_id = 900,
@@ -174,6 +177,7 @@ assert_equal(#out, 1, 'missing effects should emit one action')
 assert_equal(out[1].provider, 'maintenance_geo', 'GEO provider id mismatch')
 assert_equal(out[1].action_name, 'Geo-Frailty', 'geo_first should emit Geo spell')
 assert_equal(out[1].target_id, 200, 'Geo target id mismatch')
+assert_equal(out[1].priority_band, 143, 'Geo spell must use elevated GEO maintenance priority')
 
 provider.note_dispatch(out[1], 1.1)
 ctx.now = 2.0
@@ -181,12 +185,15 @@ ctx.pet_present = true
 ctx.pet = {
 	id = 300,
 	name = 'Luopan',
+	x = 10,
+	y = 20,
 }
 out = {}
 provider.collect(ctx, out)
 assert_equal(#out, 1, 'observed luopan should advance to Indi')
 assert_equal(out[1].action_name, 'Indi-Haste', 'Indi follow-up mismatch')
 assert_equal(out[1].target_id, 100, 'Indi must target self')
+assert_equal(out[1].priority_band, 143, 'Indi spell must use elevated GEO maintenance priority')
 
 provider.note_dispatch(out[1], 2.1)
 ctx.now = 3.0
@@ -217,6 +224,7 @@ assert_equal(#out, 0, 'GEO maintenance must hold outside camp tolerance')
 assert_equal(camp_provider.status.reason, 'GEO_AWAY_FROM_CAMP', 'camp hold reason mismatch')
 
 local moving_provider = geo_maintenance.new({
+	geo_maintenance_priority = 143,
 	action_ready = function()
 		return true, 'ready', 'spell'
 	end,

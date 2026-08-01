@@ -6,6 +6,7 @@ local BLAZE_OF_GLORY_BUFF_ID = 569
 local EFFECT_OBSERVATION_TIMEOUT = 8.0
 local SPELL_RANGE_EPSILON = 0.25
 local ENTRUST_SPELL_MAX_RANGE_YALMS = 20.9
+local ENEMY_LUOPAN_EFFECT_RADIUS_YALMS = 6.5
 local JOB_ABILITY_ACTION_CATEGORIES = {
 	[6] = true,
 	[13] = true,
@@ -24,6 +25,14 @@ local function require_function(deps, name)
 	local value = deps[name]
 	if type(value) ~= 'function' then
 		error(('uc_geo_maintenance deps.%s must be a function'):format(name))
+	end
+	return value
+end
+
+local function require_number(deps, name)
+	local value = tonumber(deps[name])
+	if value == nil then
+		error(('uc_geo_maintenance deps.%s must be numeric'):format(name))
 	end
 	return value
 end
@@ -87,6 +96,10 @@ local function proposal(ctx, spec)
 	if action_type ~= 'spell' and action_type ~= 'ja' then
 		error('GEO maintenance proposal action_type must be spell or ja')
 	end
+	local priority_band = finite_number(spec.priority_band)
+	if priority_band == nil then
+		error('GEO maintenance proposal requires a finite priority band')
+	end
 	return {
 		proposal_id = ('geo.maintenance.%s.%d'):format(spec.kind, math.floor(ctx.now * 1000)),
 		family_id = 'maintenance.geo.' .. spec.kind,
@@ -96,7 +109,7 @@ local function proposal(ctx, spec)
 		target_kind = spec.target_kind,
 		target_id = target_id,
 		target_name = target_name,
-		priority_band = 75,
+		priority_band = priority_band,
 		urgency = spec.urgency,
 		starvation_eligible = true,
 		created_at = ctx.now,
@@ -146,6 +159,7 @@ function M.new(deps)
 	local pull_active = require_function(deps, 'pull_active')
 	local log = require_function(deps, 'log')
 	local action_timeline_log = require_function(deps, 'action_timeline_log')
+	local geo_maintenance_priority = require_number(deps, 'geo_maintenance_priority')
 
 	local provider = {
 		status = {
@@ -345,7 +359,6 @@ function M.new(deps)
 		local required_abilities = {}
 		if config.luopan.use_blaze_of_glory == true then
 			required_abilities[#required_abilities + 1] = 'Blaze of Glory'
-			required_abilities[#required_abilities + 1] = 'Full Circle'
 		end
 		if config.luopan.use_ecliptic_attrition == true then
 			required_abilities[#required_abilities + 1] = 'Ecliptic Attrition'
@@ -353,7 +366,9 @@ function M.new(deps)
 		if config.luopan.use_life_cycle == true then
 			required_abilities[#required_abilities + 1] = 'Life Cycle'
 		end
-		if config.luopan.replace_out_of_position == true then
+		if config.luopan.use_blaze_of_glory == true
+			or config.luopan.replace_out_of_position == true
+			or target.kind == 'current_enemy' then
 			required_abilities[#required_abilities + 1] = 'Full Circle'
 		end
 		for i = 1, #required_abilities do
@@ -409,13 +424,13 @@ function M.new(deps)
 			if friendly_claims[claim_id] == true
 				and tracked_enemy_is_valid(ctx, mob, friendly_claims) then
 				local mob_hpp = tonumber(mob.hpp) or 0
-				local selected_hpp = tonumber(selected and selected.hpp) or -1
+				local selected_hpp = tonumber(selected and selected.hpp) or math.huge
 				local mob_distance = tonumber(mob.distance) or math.huge
 				local selected_distance = tonumber(selected and selected.distance) or math.huge
 				local mob_id = tonumber(mob.id) or 0
 				local selected_id = tonumber(selected and selected.id) or math.huge
 				if selected == nil
-					or mob_hpp > selected_hpp
+					or mob_hpp < selected_hpp
 					or (mob_hpp == selected_hpp and mob_distance < selected_distance)
 					or (mob_hpp == selected_hpp and mob_distance == selected_distance and mob_id < selected_id) then
 					selected = mob
@@ -591,6 +606,7 @@ function M.new(deps)
 			target_name = target.name,
 			max_range = max_range,
 			urgency = urgency,
+			priority_band = geo_maintenance_priority,
 			reason_code = 'geo_' .. kind .. '_missing',
 			expected_effect = kind == 'geo' and 'luopan_present' or 'indi_colure_present',
 			sequence_kind = sequence and sequence.kind or '',
@@ -615,6 +631,7 @@ function M.new(deps)
 			target_name = ctx.player_name,
 			max_range = 0.1,
 			urgency = urgency,
+			priority_band = geo_maintenance_priority,
 			reason_code = 'geo_' .. effect,
 			expected_effect = effect,
 			sequence_kind = sequence and sequence.kind or '',
@@ -640,6 +657,22 @@ function M.new(deps)
 			return false, 'luopan_geometry_unavailable'
 		end
 		return distance > tonumber(config.luopan.max_camp_distance_yalms), nil
+	end
+
+	local function luopan_outside_enemy_radius(ctx, config, target)
+		if tostring(config.geo_target.kind or '') ~= 'current_enemy'
+			or ctx.pet_present ~= true
+			or target == nil then
+			return false, nil, nil
+		end
+		if target.is_mob ~= true or type(target.mob) ~= 'table' then
+			error('enemy-targeted GEO placement requires a resolved mob target')
+		end
+		local distance = distance_between(ctx.pet, target.mob)
+		if distance == nil then
+			return false, 'luopan_target_geometry_unavailable', nil
+		end
+		return distance > ENEMY_LUOPAN_EFFECT_RADIUS_YALMS, nil, distance
 	end
 
 	local function blaze_upgrade_ready(ctx, config)
@@ -670,6 +703,7 @@ function M.new(deps)
 			kind = 'geo_create',
 			step = step,
 			atomic = blaze_consumed == true,
+			replacement = needs_full_circle == true,
 			blaze_enhanced = blaze_enhanced == true,
 			target_id = tonumber(target_id) or 0,
 			target_kind = tostring(config.geo_target.kind or ''),
@@ -951,6 +985,28 @@ function M.new(deps)
 		if misplaced then
 			begin_replacement()
 			return
+		end
+		if geo_satisfied then
+			local outside_radius, radius_reason, radius_distance =
+				luopan_outside_enemy_radius(ctx, config, geo_target)
+			if radius_reason ~= nil then
+				publish_status('blocked', radius_reason)
+				return
+			end
+			if outside_radius then
+				action_timeline_log('GEO_LUOPAN_REPOSITION_REQUIRED', {
+					luopan_id = tonumber(ctx.pet_id) or 0,
+					target_id = tonumber(geo_target.id) or 0,
+					target = tostring(geo_target.name or ''),
+					distance = ('%.2f'):format(radius_distance),
+					radius = ('%.2f'):format(ENEMY_LUOPAN_EFFECT_RADIUS_YALMS),
+				}, ('geo_luopan_reposition:%d:%d'):format(
+					tonumber(ctx.pet_id) or 0,
+					tonumber(geo_target.id) or 0
+				), 0.50)
+				begin_replacement()
+				return
+			end
 		end
 
 		local function emit_geo()
@@ -1316,6 +1372,7 @@ function M.new(deps)
 				kind = provider.state.sequence.kind,
 				step = provider.state.sequence.step,
 				atomic = provider.state.sequence.atomic == true,
+				replacement = provider.state.sequence.replacement == true,
 				target_id = tonumber(provider.state.sequence.target_id) or 0,
 				target_kind = tostring(provider.state.sequence.target_kind or ''),
 				awaiting_enemy_target = provider.state.sequence.awaiting_enemy_target == true,
@@ -1353,5 +1410,6 @@ end
 M.INDI_COLURE_BUFF_ID = INDI_COLURE_BUFF_ID
 M.ENTRUST_BUFF_ID = ENTRUST_BUFF_ID
 M.BLAZE_OF_GLORY_BUFF_ID = BLAZE_OF_GLORY_BUFF_ID
+M.ENEMY_LUOPAN_EFFECT_RADIUS_YALMS = ENEMY_LUOPAN_EFFECT_RADIUS_YALMS
 
 return M

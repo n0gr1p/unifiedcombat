@@ -1730,6 +1730,7 @@ scheduler.PRIORITY_BAND_AFTERMATH_WS = 108
 scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 200
 scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131
 scheduler.PRIORITY_BAND_SLEEP = 142
+scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 143
 scheduler.PRIORITY_BAND_CRITICAL_CURE = 153
 scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION
 scheduler.TARGET_ACQUIRE_DEBOUNCE_S = 0.20
@@ -6868,6 +6869,7 @@ scheduler.providers.summoner_maintenance = require('uc_smn_maintenance').new({
 	log = log_def_sched,
 })
 scheduler.providers.geo_maintenance = require('uc_geo_maintenance').new({
+	geo_maintenance_priority = scheduler.PRIORITY_BAND_GEO_MAINTENANCE,
 	action_ready = action_ready,
 	get_spell_resource = get_spell_resource,
 	get_ja_resource = get_ja_resource,

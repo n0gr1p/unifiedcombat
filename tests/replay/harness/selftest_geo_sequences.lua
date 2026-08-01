@@ -72,6 +72,8 @@ local function context(config)
 		name = 'Apex Bat',
 		hpp = 100,
 		distance = 25,
+		x = 10,
+		y = 20,
 		valid_target = true,
 		spawn_type = 16,
 		claim_id = 900,
@@ -116,6 +118,7 @@ end
 
 local function new_provider(party_members, pull_state, ability_ready)
 	return geo_maintenance.new({
+		geo_maintenance_priority = 143,
 		action_ready = function(name)
 			if resources[name] ~= nil then
 				return true, 'ready', 'spell'
@@ -212,6 +215,8 @@ local incoming_target = {
 	name = 'Apex Crab',
 	hpp = 100,
 	distance = 36,
+	x = 10,
+	y = 20,
 	valid_target = true,
 	spawn_type = 16,
 	claim_id = 0,
@@ -460,6 +465,57 @@ out = {}
 pull_provider.collect(pull_ctx, out)
 assert_equal(#out, 0, 'active pull must block ordinary GEO work')
 assert_equal(pull_provider.status.reason, 'pull_active', 'pull admission reason mismatch')
+
+local lowest_hpp_provider = new_provider({}, { active = false })
+local lowest_hpp_ctx = context(base_config())
+lowest_hpp_ctx.mobs_by_id[200].hpp = 70
+local low_hpp_target = {
+	id = 202,
+	name = 'Apex Low HP',
+	hpp = 25,
+	distance = 36,
+	x = 11,
+	y = 20,
+	valid_target = true,
+	spawn_type = 16,
+	claim_id = 900,
+}
+lowest_hpp_ctx.mob_array[#lowest_hpp_ctx.mob_array + 1] = low_hpp_target
+lowest_hpp_ctx.mobs_by_id[low_hpp_target.id] = low_hpp_target
+action = collect_one(lowest_hpp_provider, lowest_hpp_ctx)
+assert_equal(action.target_id, low_hpp_target.id, 'enemy-targeted Geo must select the lowest-HPP claimed mob')
+
+local radius_provider = new_provider({}, { active = false })
+local radius_ctx = context(base_config())
+action = collect_one(radius_provider, radius_ctx)
+radius_provider.note_dispatch(action, 1.1)
+radius_ctx.now = 2.0
+mark_luopan(radius_ctx, 315, 100, 10, 20)
+action = collect_one(radius_provider, radius_ctx)
+assert_equal(action.action_name, 'Indi-Haste', 'radius scenario must establish base GEO effects')
+radius_provider.note_dispatch(action, 2.1)
+radius_ctx.now = 3.0
+radius_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+radius_ctx.mobs_by_id[200].x = 16.5
+out = {}
+radius_provider.collect(radius_ctx, out)
+assert_equal(#out, 0, 'enemy at the 6.5-yalm boundary must remain covered')
+radius_ctx.now = 4.0
+radius_ctx.mobs_by_id[200].x = 16.6
+action = collect_one(radius_provider, radius_ctx)
+assert_equal(action.action_name, 'Full Circle', 'enemy outside the luopan radius must dismiss the luopan')
+assert_equal(action.priority_band, 143, 'radius-driven Full Circle must use reposition priority')
+assert_true(not radius_provider.lane_reserved(), 'replacement must not reserve the lane before luopan dismissal')
+radius_provider.note_dispatch(action, 4.1)
+radius_ctx.now = 5.0
+radius_ctx.pet_present = false
+radius_ctx.pet_id = 0
+radius_ctx.pet = {}
+action = collect_one(radius_provider, radius_ctx)
+assert_equal(action.action_name, 'Geo-Frailty', 'dismissed out-of-range luopan must be recast')
+assert_equal(action.target_id, 200, 'replacement Geo must target the current lowest-HPP claimed mob')
+assert_equal(action.priority_band, 143, 'replacement Geo must retain reposition priority')
+assert_true(not radius_provider.lane_reserved(), 'reposition must preserve emergency scheduler preemption')
 
 local life_config = base_config()
 life_config.luopan.use_life_cycle = true
