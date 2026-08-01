@@ -1023,6 +1023,7 @@ public partial class MainForm
                  {
                      "defensive_cure_enabled",
                      "defensive_doom_water",
+                     "def_charm_sleeper_enabled",
                      "defensive_na_enabled",
                      "defensive_buff_enabled",
                      "defensive_overwrite_enabled",

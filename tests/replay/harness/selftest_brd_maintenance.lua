@@ -458,8 +458,13 @@ seed_recovery_song('Honor March', 10000, 4)
 seed_recovery_song('Victory March', 11000, 4)
 seed_recovery_song('Valor Minuet V', 12000, 4)
 seed_recovery_song('Valor Minuet IV', 13000, 4)
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, false, false)
+assert_true(recovery_step == nil, 'four-to-five party recovery must remain idle while Clarion is unavailable')
+assert_true(party_song_state.is_recovery_active(), 'Clarion wait must preserve party recovery state')
+assert_true(not party_song_state.requires_action_lane(), 'Clarion wait must not hold the scheduler action lane')
 recovery_step = party_song_state.next_action(recovery_sequence_config, 5, false, true)
 assert_equal(recovery_step.action_name, 'Clarion Call', 'four-to-five party recovery must wait for Clarion before adding the fifth slot')
+assert_true(party_song_state.requires_action_lane(), 'actionable Clarion recovery must reclaim the scheduler action lane')
 recovery_step = party_song_state.next_action(recovery_sequence_config, 5, true, false)
 assert_equal(recovery_step.action_name, "Army's Paeon", 'four-to-five party recovery must add only one distinct dummy')
 assert_equal(recovery_step.cast_capacity, 5, 'fifth-slot recovery dummy must require five-song cast capacity')
@@ -1563,6 +1568,51 @@ action = brd.propose(targeted_config, {
 assert_equal(action.action_name, "Mage's Ballad III", 'scheduler cooldown rejection must retry the same targeted song')
 assert_equal(action.detail.target_id, 99, 'scheduler cooldown retry must preserve the same recipient')
 assert_true(brd.action_lane_status() == true, 'scheduler cooldown retry must retain the Bard action lane')
+
+local targeted_wait_started_at = brd._test.state.targeted_transaction.phase_started_at
+local targeted_spell_blocked = function(name)
+	if name == "Mage's Ballad III" then
+		return false, 'action_cooldown', 'spell'
+	end
+	return ready(name)
+end
+action = brd.propose(targeted_config, {
+	now = targeted_wait_started_at + 3.1,
+	player = player,
+	party_members = { targeted_member },
+	action_ready = targeted_spell_blocked,
+})
+assert_true(action == nil, 'targeted song dispatch timeout must not emit an unready song')
+assert_true(brd._test.state.targeted_transaction == nil, 'targeted song dispatch timeout must clear the Pianissimo transaction')
+assert_equal(brd._test.state.last_blocker, "targeted_song_dispatch_timeout:Mage's Ballad III", 'targeted song dispatch timeout blocker mismatch')
+assert_true(brd.action_lane_status() == false, 'targeted song dispatch timeout must release the Bard action lane')
+
+player.buffs = {}
+party_state.reset()
+party_state.observe({ targeted_member }, {}, { [100] = true, [104] = true }, os.time())
+party_state.record_delivery({ song_name = 'Honor March', status_id = 100, endtime = targeted_one, recipients = { 99 }, cast_capacity = 2 })
+party_state.record_delivery({ song_name = 'Victory March', status_id = 100, endtime = targeted_two, recipients = { 99 }, cast_capacity = 2 })
+action = brd.propose(targeted_config, {
+	now = os.time(),
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_equal(action.action_name, 'Pianissimo', 'targeted transaction must restart cleanly after a dispatch timeout')
+brd.note_dispatch(action, 'targeted-pianissimo-retry', os.time())
+brd.on_action({
+	actor_id = 77,
+	category = 6,
+	param = 229,
+	targets = { { id = 77, actions = {} } },
+}, 77, os.time())
+action = brd.propose(targeted_config, {
+	now = os.time(),
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_equal(action.action_name, "Mage's Ballad III", 'targeted transaction retry must reach the reserved song')
 player.buffs = { 409 }
 brd.note_dispatch(action, 'targeted-1', os.time())
 assert_equal(brd._test.state.targeted_transaction.phase, 'song_dispatched', 'successful dispatch must own the targeted transaction phase transition')
@@ -1582,6 +1632,57 @@ action = brd.propose(targeted_config, {
 })
 assert_true(action == nil, 'a consumed Pianissimo must clear before another targeted song can begin')
 assert_equal(brd._test.state.last_blocker, 'targeted_waiting_for_pianissimo_consumption', 'Pianissimo consumption wait blocker mismatch')
+
+brd.reset('targeted_troubadour_terminal_test')
+player.buffs = { 348 }
+local targeted_troubadour_now = os.time()
+local targeted_troubadour_endtime = brd._test.server_now_raw(targeted_troubadour_now) + 1200
+brd.on_status_snapshot({
+	[100] = { count = 2, endtimes = { targeted_one, targeted_two } },
+	[348] = { count = 1, endtimes = { targeted_troubadour_endtime } },
+}, targeted_troubadour_now)
+brd._test.state.owners['Honor March'] = { status_id = 100, endtime = targeted_one, recipients = { 77 } }
+brd._test.state.owners['Victory March'] = { status_id = 100, endtime = targeted_two, recipients = { 77 } }
+party_state.observe({ targeted_member }, {}, { [100] = true, [104] = true }, targeted_troubadour_now)
+party_state.record_delivery({
+	song_name = 'Honor March',
+	status_id = 100,
+	endtime = targeted_one,
+	recipients = { 99 },
+	troubadour_active = true,
+	cast_capacity = 2,
+})
+party_state.record_delivery({
+	song_name = 'Victory March',
+	status_id = 100,
+	endtime = targeted_two,
+	recipients = { 99 },
+	cast_capacity = 2,
+})
+action = brd.propose(targeted_config, {
+	now = targeted_troubadour_now,
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_equal(action.action_name, 'Pianissimo', 'safe Troubadour window must allow the targeted transaction to begin')
+brd.note_dispatch(action, 'targeted-troubadour-pianissimo', targeted_troubadour_now)
+brd.on_action({
+	actor_id = 77,
+	category = 6,
+	param = 229,
+	targets = { { id = 77, actions = {} } },
+}, 77, targeted_troubadour_now)
+action = brd.propose(targeted_config, {
+	now = targeted_troubadour_now + 13,
+	player = player,
+	party_members = { targeted_member },
+	action_ready = ready,
+})
+assert_true(action == nil, 'expired Troubadour safety window must abort instead of dispatching the reserved song')
+assert_equal(brd._test.state.last_blocker, "targeted_song_terminal:insufficient_troubadour_time:Mage's Ballad III", 'terminal targeted-song blocker mismatch')
+assert_true(brd._test.state.targeted_transaction == nil, 'terminal targeted-song blocker must clear the Pianissimo transaction')
+assert_true(brd.action_lane_status() == false, 'terminal targeted-song blocker must release the Bard action lane')
 
 party_state.reset()
 party_state._test.state.members[99] = {

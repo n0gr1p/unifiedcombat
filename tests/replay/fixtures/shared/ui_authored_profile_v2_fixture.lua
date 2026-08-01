@@ -52,6 +52,9 @@ return {
             doom = {
                 holy_water_enabled = true,
             },
+            charm_sleeper = {
+                enabled = false,
+            },
             na = {
                 enabled = true,
             },

@@ -1790,6 +1790,7 @@ scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131
 scheduler.PRIORITY_BAND_SLEEP = 142
 scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 143
 scheduler.PRIORITY_BAND_CRITICAL_CURE = 153
+scheduler.PRIORITY_BAND_CHARM_SLEEPER = 1000
 scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION
 scheduler.TARGET_ACQUIRE_DEBOUNCE_S = 0.20
 
@@ -2685,6 +2686,7 @@ local function get_party_members(ctx)
 				buffs = buffs,
 				source = source,
 				buff_source = buff_source,
+				charmed = entry.mob.charmed == true,
 			}
 		end
 	end
@@ -3809,6 +3811,7 @@ local function p1_collect_proposals(ctx)
 	-- 2 Hz defensive
 	if domain_ownership.is_enabled('defensive')
 		and ctx.now >= (tonumber(s._sched_next_defensive_at) or 0) then
+		scheduler.providers.charm_sleeper.collect(ctx, out)
 		scheduler.providers.enemy_buff_removal.collect(ctx, out)
 		scheduler.providers.defensive.collect_internal(ctx, out)
 		scheduler.providers.defensive.collect_healbot(ctx, out)
@@ -5065,6 +5068,11 @@ local function p1_dispatch_defensive_internal(selected, settings)
 		fallback_used = defensive_command_ownership_status.fallback_used,
 	}
 	local detail = selected.detail
+	if defensive_command_ownership_status.dispatch_ok == true
+		and type(detail) == 'table'
+		and detail.def_action_type == 'charm_sleep' then
+		scheduler.providers.charm_sleeper.note_dispatch(selected, now_gate)
+	end
 	local target_hpp = tonumber(type(detail) == 'table' and detail.target_hpp or -1) or -1
 	scheduler.p1_maybe_clear_pending_engage_for_selected_critical(settings, selected)
 	local can_apply_defensive_spell_lock = (
@@ -6057,6 +6065,38 @@ function scheduler.dispatch_selected_plan(settings)
 	return false, nil
 end
 
+local function try_charm_sleeper_emergency(settings, ctx)
+	local proposals = {}
+	scheduler.providers.charm_sleeper.collect(ctx, proposals)
+	if #proposals == 0 then
+		return false, nil
+	end
+	local ranked = p1_rank(ctx, proposals)
+	local selected = ranked[1]
+	if type(selected) ~= 'table' then
+		log_def_sched('CHARM_SLEEP_EMERGENCY_HOLD reason=GLOBAL_LOCK')
+		_G.UC_LAST_SCHED_ACTION = '[charm_sleep]blocked:global_lock'
+		return true, 'BLOCK_CHARM_SLEEPER_GLOBAL_LOCK'
+	end
+	local plan = p1_build_dispatch_plan(ctx, selected)
+	local commit_ok, commit_reason = p1_revalidate_plan_commit(ctx, selected, plan)
+	if not commit_ok then
+		log_def_sched(('CHARM_SLEEP_EMERGENCY_HOLD reason=%s'):format(tostring(commit_reason)))
+		_G.UC_LAST_SCHED_ACTION = '[charm_sleep]blocked:' .. tostring(commit_reason)
+		return true, 'BLOCK_CHARM_SLEEPER_COMMIT:' .. tostring(commit_reason)
+	end
+	scheduler.phase1.last_selected = selected
+	scheduler.phase1.last_plan = plan
+	_G.UC_SCHED_P1_SELECTED_PROVIDER = tostring(selected.provider or '')
+	_G.UC_SCHED_P1_SELECTED_FAMILY = tostring(selected.family_id or '')
+	local acted, reason = scheduler.dispatch_selected_plan(settings)
+	if acted then
+		return true, reason
+	end
+	_G.UC_LAST_SCHED_ACTION = '[charm_sleep]blocked:dispatch_revalidation'
+	return true, 'BLOCK_CHARM_SLEEPER_DISPATCH_REVALIDATION'
+end
+
 function scheduler.process_tick(cadence)
 	_G.UC_LAST_SCHED_ACTION = ''
 	local s = get_settings()
@@ -6101,6 +6141,12 @@ function scheduler.process_tick(cadence)
 		scheduler.providers.geo_maintenance.reset('GEO_MAINTENANCE_DOMAIN_DISABLED')
 	end
 	local camp_lane_reserved = combat_domain_enabled and scheduler.providers.camp_puller.active()
+	if defensive_domain_enabled then
+		local charm_blocked, charm_reason = try_charm_sleeper_emergency(s, get_tick_ctx())
+		if charm_blocked then
+			return true, charm_reason
+		end
+	end
 	if defensive_domain_enabled and not camp_lane_reserved then
 		local doom_blocked, doom_reason = try_doom_water_emergency(s)
 		if doom_blocked then
@@ -6222,6 +6268,7 @@ function scheduler.on_incoming_chunk(id, data)
 	local nid = tonumber(id) or 0
 	if nid == 0x00A or nid == 0x00B then
 		enemy_effect_tracker.clear_all()
+		scheduler.providers.charm_sleeper.reset('ZONE_CHANGE')
 		require('uc_reaction_runtime').reset('zone_change')
 		require('uc_lilith_easy_encounter').reset('zone_change_packet')
 		require('uc_lilith_easy_formation_runtime').reset('zone_change_packet')
@@ -6373,6 +6420,7 @@ function scheduler.on_action(act)
 			end
 		end
 		scheduler.observe_local_sleep_action(act, player_id, observed_at)
+		scheduler.providers.charm_sleeper.observe_action(act, player_id, observed_at)
 		if rawget(_G, 'Start_Engine') == true then
 			local get_target = windower.ffxi.get_mob_by_target
 			local target = type(get_target) == 'function' and get_target('t') or nil
@@ -6976,6 +7024,26 @@ scheduler.providers.defensive = require('uc_provider_defensive').new({
 	build_action_command = build_action_command,
 	clamp_urgency = p1_clamp_urgency,
 	critical_cure_priority = scheduler.PRIORITY_BAND_CRITICAL_CURE,
+})
+scheduler.providers.charm_sleeper = require('uc_provider_charm_sleeper').new({
+	bool_setting = bool_setting,
+	active_value_or_flat = scheduler.active_value_or_flat,
+	get_party_members = get_party_members,
+	get_mob_by_id = windower.ffxi.get_mob_by_id,
+	action_ready = action_ready,
+	get_spell_resource = get_spell_resource,
+	get_player = windower.ffxi.get_player,
+	get_mjob_data = windower.ffxi.get_mjob_data,
+	get_sjob_data = windower.ffxi.get_sjob_data,
+	action_effective_range = action_effective_range,
+	action_target_mode = action_target_mode,
+	build_action_command = build_action_command,
+	has_buff = has_buff,
+	clamp_urgency = p1_clamp_urgency,
+	log = log_def_sched,
+	policy = require('uc_charm_sleeper_policy').get(windower.addon_path),
+	spell_effect_gain_messages = scheduler.spell_effect_gain_messages,
+	priority_band = scheduler.PRIORITY_BAND_CHARM_SLEEPER,
 })
 scheduler.providers.enemy_buff_removal = require('uc_provider_enemy_buff_removal').new({
 	bool_setting = bool_setting,

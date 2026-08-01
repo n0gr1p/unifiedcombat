@@ -125,6 +125,7 @@ local function build_flat_settings()
         def_heal_min_missing_hp = 300,
         def_heal_ignore_trusts = false,
         defensive_doom_water = true,
+        def_charm_sleeper_enabled = true,
         def_remove_enemy_buffs = true,
         defensive_na_enabled = true,
         defensive_buff_enabled = true,
@@ -298,6 +299,9 @@ local function build_nested_settings()
             },
             doom = {
                 holy_water_enabled = true,
+            },
+            charm_sleeper = {
+                enabled = true,
             },
             na = {
                 enabled = true,
@@ -592,6 +596,7 @@ local function main()
     assert_equal(flat_config.defensive.cure.min_tier, 2, 'defensive cure min tier mismatch')
     assert_equal(flat_config.defensive.cure.max_tier, 5, 'defensive cure max tier mismatch')
     assert_equal(flat_config.defensive.cure.min_missing_hp, 300, 'defensive cure missing hp mismatch')
+    assert_equal(flat_config.defensive.charm_sleeper.enabled, true, 'flat charm sleeper mismatch')
     assert_equal(flat_config.defensive.enemy_buffs.remove, true, 'defensive enemy buffs mismatch')
     assert_equal(flat_config.defensive.buffs.list, 'Haste', 'defensive buffs mismatch')
     assert_equal(flat_config.defensive.buffs.targeted[1].character, 'Terrasjr', 'defensive targeted buff character mismatch')
@@ -649,6 +654,7 @@ local function main()
     assert_equal(nested_config.combat.enabled, false, 'nested combat enabled mismatch')
     assert_equal(nested_config.combat.weaponskill.enabled, true, 'nested combat ws enabled mismatch')
     assert_equal(nested_config.defensive.cure.min_tier, 5, 'nested defensive cure min tier mismatch')
+    assert_equal(nested_config.defensive.charm_sleeper.enabled, true, 'nested charm sleeper mismatch')
     assert_equal(nested_config.defensive.buffs.targeted[2].character, 'Nyoourke', 'nested targeted buff character mismatch')
     assert_equal(nested_config.defensive.buffs.targeted[2].buff, 'Valor Minuet V', 'nested targeted buff name mismatch')
     assert_equal(nested_config.movement.formation.enabled, true, 'nested formation enabled mismatch')

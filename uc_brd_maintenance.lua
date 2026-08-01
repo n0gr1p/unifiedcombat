@@ -9,6 +9,7 @@ local SONG_CAST_TIMEOUT_S = 20.0
 local SONG_CONFIRM_TIMEOUT_S = 2.0
 local JA_CONFIRM_RETRY_S = 0.5
 local PIANISSIMO_CONFIRM_TIMEOUT_S = 2.0
+local TARGETED_SONG_DISPATCH_TIMEOUT_S = 3.0
 local TARGETED_TROUBADOUR_SAFETY_S = 8.0
 local REFRESH_BASE_LEAD_S = 8.0
 local REFRESH_PER_SONG_LEAD_S = 4.0
@@ -152,7 +153,7 @@ local function sequence_requires_action_lane()
 		or state.clarion_reserved == true
 		or type(state.soul_voice_generation) == 'table'
 		or type(state.targeted_transaction) == 'table'
-		or party_song_state.is_recovery_active()
+		or party_song_state.requires_action_lane()
 end
 
 local function release_action_lane_if_idle(reason)
@@ -994,7 +995,7 @@ function M.on_action(act, player_id, now)
 		and (action_category == 6 or action_category == 13 or action_category == 14 or action_category == 15)
 		and tonumber(act and act.param) == JA.pianissimo.action_id then
 		state.targeted_transaction.phase = 'awaiting_song'
-		state.targeted_transaction.phase_started_at = 0
+		state.targeted_transaction.phase_started_at = tonumber(now) or os.time()
 		state.last_transition = 'pianissimo_confirmed_action:' .. state.targeted_transaction.recipient_name
 		state.last_blocker = ''
 		diagnostic_log('PIANISSIMO_ACTION_CONFIRMED', {
@@ -1411,22 +1412,22 @@ local function targeted_song_proposal(ctx, transaction, plan, song_limit)
 	local target_name = tostring(transaction and transaction.recipient_name or '')
 	if target_id <= 0 or target_name == '' then
 		state.last_blocker = 'invalid_targeted_transaction'
-		return nil
+		return nil, state.last_blocker, true
 	end
 	local ok, why = ready(ctx, transaction.song_name, 'spell', target_id)
 	if not ok then
 		state.last_blocker = 'not_ready:' .. transaction.song_name .. ':' .. why
-		return nil
+		return nil, state.last_blocker, false
 	end
 	if plan.requires_troubadour == true then
 		local endtime = status_endtime(JA.troubadour.buff_id, ctx.now)
 		if endtime == nil then
 			state.last_blocker = 'missing_troubadour_endtime'
-			return nil
+			return nil, state.last_blocker, true
 		end
 		if remaining_seconds(endtime, ctx.now) <= TARGETED_TROUBADOUR_SAFETY_S then
 			state.last_blocker = 'insufficient_troubadour_time:' .. transaction.song_name
-			return nil
+			return nil, state.last_blocker, true
 		end
 	end
 	return proposal('spell', transaction.song_name, 'brd_targeted_song', 0.735, {
@@ -1583,7 +1584,7 @@ local function targeted_transaction_action(config, ctx, song_limit)
 		if transaction.phase == 'confirming_pianissimo' then
 			if has_buff(ctx.player, JA.pianissimo.buff_id) then
 				transaction.phase = 'awaiting_song'
-				transaction.phase_started_at = 0
+				transaction.phase_started_at = tonumber(ctx.now) or os.time()
 			else
 				local confirmation_age = (tonumber(ctx.now) or os.time())
 					- (tonumber(transaction.phase_started_at) or 0)
@@ -1624,6 +1625,7 @@ local function targeted_transaction_action(config, ctx, song_limit)
 		if transaction.phase == 'awaiting_pianissimo' then
 			if has_buff(ctx.player, JA.pianissimo.buff_id) then
 				transaction.phase = 'awaiting_song'
+				transaction.phase_started_at = tonumber(ctx.now) or os.time()
 			else
 				local last_dispatch_at = tonumber(transaction.pianissimo_dispatched_at)
 				if last_dispatch_at ~= nil and last_dispatch_at > 0 then
@@ -1674,7 +1676,38 @@ local function targeted_transaction_action(config, ctx, song_limit)
 			end
 		end
 		if transaction.phase == 'awaiting_song' then
-			return targeted_song_proposal(ctx, transaction, plan, song_limit)
+			local targeted, proposal_reason, terminal = targeted_song_proposal(ctx, transaction, plan, song_limit)
+			if targeted ~= nil then
+				return targeted
+			end
+			local phase_started_at = tonumber(transaction.phase_started_at)
+			local now = tonumber(ctx.now) or os.time()
+			local dispatch_age = phase_started_at ~= nil and phase_started_at > 0
+				and now - phase_started_at or nil
+			if terminal == true or dispatch_age == nil or dispatch_age > TARGETED_SONG_DISPATCH_TIMEOUT_S then
+				local abort_reason
+				if terminal == true then
+					abort_reason = 'targeted_song_terminal:' .. tostring(proposal_reason)
+				elseif dispatch_age == nil then
+					abort_reason = 'targeted_song_invalid_phase_timestamp:' .. transaction.song_name
+				else
+					abort_reason = 'targeted_song_dispatch_timeout:' .. transaction.song_name
+				end
+				block(abort_reason)
+				diagnostic_log('TARGETED_SONG_ABORT', {
+					age = dispatch_age,
+					blocker = proposal_reason,
+					recipient_id = member.id,
+					recipient_name = member.name,
+					song = transaction.song_name,
+					terminal = terminal == true,
+				})
+				state.pianissimo_consumed_wait = true
+				state.targeted_transaction = nil
+				release_action_lane_if_idle(state.last_blocker)
+				return nil
+			end
+			return nil
 		end
 		return nil
 	end

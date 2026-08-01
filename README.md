@@ -23,10 +23,7 @@ Status of the current checkout (`3f78bf5`, 2026-07-31):
 - Maiden of the Dusk (Easy) encounter formation and reaction handling are implemented and tested in isolation. Their live encounter checklist is still open.
 - Nyzul ordered lamp parking has focused runtime coverage but no recorded live acceptance result.
 - Route/path following retains an accepted live-validation risk from the scheduler cutover; focused path execution and movement-arbitration tests pass.
-
-### Not implemented
-
-- The planned charmed-party-member emergency sleeper remains a checklist only; its settings, provider, and UI control are not implemented.
+- The defensive domain includes an opt-in highest-priority charmed-party-member sleeper, backed by the checked-in safe-spell policy and confirmed Sleep-state tracking.
 
 See the [scheduler RFC index](RFC/README.md), [phase-6 exit audit](RFC/UnifiedCombat_scheduler_refactor_phase6_exit_audit_2026-07-24.md), [Summoner implementation guide](SMN_RFC/summoner_v1_implementation.md), and [GEO/camp-puller tracker](GEO_PULLER_RFC/implementation_tracking.md) for detailed evidence and remaining field work.
 

@@ -323,6 +323,7 @@ internal static class StructuredProfileV2Writer
                     .Add("ignore_trusts", ReadBool(flatProfile, "def_heal_ignore_trusts", true))
             )
             .Add("doom", new StructuredProfileNode().Add("holy_water_enabled", ReadBool(flatProfile, "defensive_doom_water", false)))
+            .Add("charm_sleeper", new StructuredProfileNode().Add("enabled", ReadBool(flatProfile, "def_charm_sleeper_enabled", false)))
             .Add("na", new StructuredProfileNode().Add("enabled", ReadBool(flatProfile, "defensive_na_enabled", false)))
             .Add("enemy_buffs", new StructuredProfileNode().Add("remove", ReadBool(flatProfile, "def_remove_enemy_buffs", false)))
             .Add(

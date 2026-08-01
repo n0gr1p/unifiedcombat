@@ -283,6 +283,12 @@ local function run_scheduler_lifecycle_tests()
             get_spell_recasts = function()
                 return {}
             end,
+            get_mjob_data = function()
+                return { spells = {} }
+            end,
+            get_sjob_data = function()
+                return { spells = {} }
+            end,
         },
     }
     _G.socket = {

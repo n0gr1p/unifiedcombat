@@ -200,6 +200,9 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "targeted = {", "targeted defensive buff list missing");
         AssertContains(content, "character = \"Terrasjr\"", "targeted defensive buff character missing");
         AssertContains(content, "buff = \"Honor March\"", "targeted defensive buff name missing");
+        AssertContains(content, "charm_sleeper = {", "charm sleeper defensive config missing");
+        AssertContains(content, "enabled = true", "enabled charm sleeper value missing");
+        AssertTrue(HubUiConstants.BoolKeys.Contains("def_charm_sleeper_enabled"), "charm sleeper must be in the shared UI bool key set");
         AssertContains(content, "wait_ignore_names = {", "combat wait ignore list missing");
         AssertContains(content, "\"Ally One\"", "combat wait ignore names must be serialized");
         AssertContains(content, "target_ignore_names = {", "target ignore list missing");
@@ -1303,6 +1306,7 @@ internal static class StructuredProfileV2WriterTests
             ["def_heal_min_missing_hp"] = 250,
             ["def_heal_ignore_trusts"] = true,
             ["defensive_doom_water"] = true,
+            ["def_charm_sleeper_enabled"] = true,
             ["defensive_na_enabled"] = true,
             ["def_remove_enemy_buffs"] = false,
             ["defensive_buff_enabled"] = true,

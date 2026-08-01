@@ -1,125 +1,113 @@
 # Charmed Player Sleeper Implementation Checklist
 
+## Status
+
+Architecture validation and Phase 1 implementation completed on 2026-08-01.
+
+Manual in-game validation remains required because the replay harness cannot create a real Windower charmed-player entity or prove that every supported spell is accepted by the FFXI client against that entity.
+
 ## Goal
-Add a highest-priority emergency feature that detects charmed party members and keeps them slept until charm clears.
 
-## Scope (Phase 1)
-- Add a scheduler-driven `charm_sleeper` emergency lane.
-- Detection signal: player/member `charmed == true`.
-- Sleep strategy: strongest available sleep spell first (option 2).
-- Continuously retry only while target is charmed and not slept.
-- Track projected sleep wear-off to pre-clear and re-sleep promptly.
+Add a highest-priority defensive emergency feature that detects charmed party members and keeps them slept until charm clears.
 
-## Out of Scope (Phase 1)
-- Tier-1 then tier-2 overwrite ladder strategy.
-- Per-job custom sleep policy editor.
-- Per-zone behavior differences.
-- Crowd-control logic for non-charm scenarios.
+## Validated Architecture
 
-## Functional Requirements
+- Durable configuration is structured at `config.defensive.charm_sleeper.enabled`.
+- `def_charm_sleeper_enabled` is the flat runtime/UI compatibility mirror. It is not the durable profile shape.
+- The WinForms boolean registry in `HubUiConstants` owns toggle creation, hydration, persistence, and generic remote `set` forwarding. No feature-specific remote bridge operation is needed.
+- Party member collection is owned by `unified_scheduler.lua`. Charm comes directly from the current party mob object as `entry.mob.charmed`; it is revalidated from `get_mob_by_id(target_id).charmed` before proposal creation.
+- Party Sleep state comes from the existing local/IPC/0x076 buff snapshots. Sleep effect ids come from the checked-in policy data.
+- Proposal creation is owned by `uc_provider_charm_sleeper.lua`; normal casting uses the existing `defensive_internal` dispatch, action lock, movement-freeze, and target-id command path.
+- Doom Holy Water is still a legacy prepass rather than a ranked proposal. A narrow charm-sleeper emergency arbitration step therefore runs before that Doom prepass. The same charm proposal also participates in normal defensive collection.
+- The checked-in JSON policy is loaded by `uc_charm_sleeper_policy.lua` with fail-fast schema/field validation and no runtime fallback list.
 
-### R1. Settings + UI
-- Add toggle under Defensive:
-  - Label: `Charm sleeper`
-  - Setting key: `def_charm_sleeper_enabled`
-  - Default: `false`
-- Persist to profile and runtime state.
-- Must be wired in all runtime/UI key bridges (`KEYS`/parity mappings, remote bridge passthrough, UI hydrate/apply path), not profile-only.
+## Phase 1 Behavior
 
-### R2. Detection Rules
-- Candidate target is any monitored party member where:
-  - `member.charmed == true` (from Windower mob/player data charmed boolean)
-  - member is alive and valid
-  - member is in cast range
-- Source alignment requirement:
-  - read charm state from the same mob/player structures shown in debug metadata (`mob.charmed` / player charmed boolean), not inferred from claim/target state.
-- Self handling:
-  - if local player is charmed, skip dispatch (cannot reliably act).
+- The feature requires the defensive domain, Defensive master toggle, and `Charm sleeper` toggle to be enabled.
+- It works with either normal defensive provider selection (`internal` or `healbot`) because the emergency is provider-independent.
+- Local-player charm is observed but never dispatched because a charmed local player cannot act reliably.
+- Trusts/NPCs, dead members, cleared charm state, missing mobs, and out-of-range targets are rejected.
+- Safe spells are evaluated in `selector_policy.default_sort_order` from `docs/ffxi_charmed_player_sleep_spells.json`.
+- Spells listed in `exclude_by_default` are never selected. This excludes damage-bearing emergency actions such as Pinecone Bomb.
+- Yawn is excluded because its gaze/facing requirement cannot be verified by the current provider.
+- Blue Magic sleeps must be present in the active main-job or support-job BLU spell set.
+- Each spell must be learned, usable by the current main/sub job, recast-ready, affordable, targetable, and in range.
+- A live Sleep buff suppresses recasting. If the buff snapshot is present and Sleep disappears early, the provider retries after the one-second per-target/action attempt gate.
+- A successful local 0x028 spell result records the policy duration, projected end, and two-second pre-clear time. Projection suppresses only when live party buff data is unavailable; live buff state remains authoritative.
+- Charm clear removes attempt and projection state on the next scheduler scan.
 
-### R3. Sleep State Rules
-- Only attempt sleep when target is:
-  - charmed, and
-  - not currently slept (based on active sleep/lullaby buff ids tracked in member buffs/status snapshot).
-- If target is charmed and sleep breaks early, retry immediately (subject to minimal anti-spam gate).
+## Priority and Arbitration
 
-### R4. Spell Selection (Strongest-First)
-- Load spell policy from:
-  - `C:\Program Files (x86)\Windower\addons\UnifiedCombat\docs\ffxi_charmed_player_sleep_spells.json`
-- Build ordered candidate list from highest to lowest strength.
-- Pick first spell that passes:
-  - known/usable check
-  - recast ready
-  - MP check
-  - valid targeting/castability checks
+- Proposal family: `emergency.charm_sleep.primary`.
+- Priority band: `1000`.
+- This is higher than critical cure (`153`) and all other ranked actions.
+- The emergency arbitration step runs before Doom Holy Water, target acquisition, partner arbitration, and BRD/camp lane handling.
+- Existing global scheduler/action locks and commit revalidation still block dispatch.
 
-### R5. Priority and Arbitration
-- Introduce a new proposal family, e.g. `emergency.charm_sleep.primary`.
-- Priority must outrank all other actions:
-  - higher than doom-water emergency
-  - higher than critical cure
-- If charm-sleep proposal exists and is valid, it wins selection unless action dispatch is globally blocked.
+## Observability
 
-### R6. Duration Projection + Re-Sleep Scheduling
-- On successful sleep dispatch/ack, record projected wear-off for target:
-  - keyed by `(target_id, spell_name)`
-  - includes `projected_end_at`
-- Pre-clear window:
-  - shortly before projected end (small lead time) clear “satisfied/asleep” state so scheduler can re-attempt.
-- Preserve “attempt only while charmed and not slept” rule:
-  - if still slept, wait
-  - if charm cleared, immediately stop and clear state
+Defensive scheduler logging includes:
 
-### R7. Anti-Spam Controls
-- Add short per-target attempt throttle to prevent packet spam while still urgent.
-- Suggested keys:
-  - `(target_id, action_name)` for dispatch cooldown
-  - optional global emergency cadence guard
-- Throttle must not block post-break immediate retry beyond minimal guard.
+- charmed candidates;
+- selected spell, distance, and range;
+- `NO_CHARMED_TARGET`, `TARGET_ALREADY_SLEPT`, `NOT_READY`, `BLU_SPELL_NOT_SET`, `OUT_OF_RANGE`, `ATTEMPT_GATE`, invalid-target, and self-charm rejection states;
+- successful spell confirmation, projected end, pre-clear, dispatch, and stale-state cleanup.
 
-### R8. Dispatch Integration
-- Use existing spell dispatch path and movement/cast freeze coordination.
-- Target by member id where possible for deterministic control.
-- Respect current action locks but do not lower priority.
+The in-game diagnostic overlay includes a `CharmSleeper:` line backed by `UC_CHARM_SLEEPER_STATUS`.
 
-### R9. Debug / Observability
-- Defensive scheduler logs should include:
-  - candidate charmed targets
-  - selected sleep spell
-  - skip reasons (`NO_CHARMED_TARGET`, `TARGET_ALREADY_SLEPT`, `NOT_READY`, `OUT_OF_RANGE`, `ATTEMPT_GATE`)
-  - projected sleep end and pre-clear events
-- Add concise debug line in overlay state for active charm-sleeper decision.
+## Implementation Checklist
 
-## Integration Tasks
-- [ ] Add `def_charm_sleeper_enabled` to settings defaults and profile keys.
-- [ ] Add WinForms toggle + remote bridge key passthrough.
-- [ ] Add explicit `KEYS`/parity mapping so runtime receives UI state updates (prevent stale/unrecognized toggle state).
-- [ ] Add spell policy loader for `ffxi_charmed_player_sleep_spells.json`.
-- [ ] Add helper to detect “currently slept” state from member buffs/status snapshot.
-- [ ] Add phase-1 collector for charm sleeper proposals.
-- [ ] Add top-priority scoring band for charm sleeper proposal.
-- [ ] Add projected wear-off tracking and pre-clear handling.
-- [ ] Add retry throttles and stale-state cleanup.
-- [ ] Add defensive debug logging lines for charm sleeper.
+- [x] Add `config.defensive.charm_sleeper.enabled` with default `false`.
+- [x] Add `def_charm_sleeper_enabled` to addon defaults and flat profile/runtime keys.
+- [x] Project structured config back to the flat runtime mirror.
+- [x] Add the WinForms `Charm sleeper` toggle to shared boolean keys, labels, and Defensive card keys.
+- [x] Cover UI hydrate/apply/save and generic remote bridge forwarding through the shared boolean registry.
+- [x] Add fail-fast policy loading from `docs/ffxi_charmed_player_sleep_spells.json`.
+- [x] Exclude policy actions marked unsafe by default.
+- [x] Copy and revalidate the authoritative mob `charmed` flag.
+- [x] Detect Sleep from existing party buff snapshots.
+- [x] Add the charm-sleeper proposal provider and `emergency.charm_sleep.primary` family.
+- [x] Add priority band `1000` and arbitration ahead of Doom.
+- [x] Use the existing defensive spell dispatch, entity-id targeting, and movement/cast coordination.
+- [x] Add one-second per-target/action dispatch throttling.
+- [x] Track confirmed projections and two-second pre-clear events.
+- [x] Retry early breaks when live buff state shows Sleep removed.
+- [x] Clear state when charm clears, the feature is disabled, or zoning occurs.
+- [x] Add defensive logs and the overlay status line.
+- [x] Add focused provider tests and config/UI persistence coverage.
 
-## Acceptance Checklist
-- [ ] Toggle persists and controls behavior correctly.
-- [ ] With toggle OFF: no charm-sleeper proposals/actions.
-- [ ] With toggle ON and charmed target present: immediate sleep attempt occurs.
-- [ ] Charm sleeper outranks doom and critical cures.
-- [ ] While charmed + not slept: retries continue.
-- [ ] While charmed + slept: no spam recasts until break/pre-clear point.
-- [ ] On charm clear: sleeper logic stops immediately and clears state.
-- [ ] No regressions to existing defensive/maintenance scheduling.
+## Automated Acceptance
 
-## Test Plan (Manual)
-1. Enable `Debug` + `Log: defensive scheduler` + `Charm sleeper`.
-2. Reproduce charm on party member in sortie scenario.
-3. Confirm immediate highest-priority sleep proposal and cast.
-4. Confirm retries on early sleep break while charm remains.
-5. Confirm projected wear-off pre-clear triggers re-sleep timing behavior.
-6. Confirm no actions after charm clears.
-7. Verify doom/critical cure are preempted when active charm-sleep condition exists.
+- [x] Toggle defaults off and OFF emits no charm-sleeper proposal.
+- [x] Charmed, alive, non-self target emits an immediate proposal when a safe spell is available.
+- [x] Stronger unavailable spell advances to the next ready policy spell.
+- [x] Proposal priority is above critical cure and normal ranked actions.
+- [x] Live Sleep buff suppresses recasting.
+- [x] Confirmed projection suppresses while live buff data is unavailable.
+- [x] Projected pre-clear releases projection suppression.
+- [x] Early observed Sleep break retries after the minimal gate.
+- [x] Charm clear stops proposals and clears state.
+- [x] Self charm never dispatches.
+- [x] Structured and flat configuration round-trip through Lua and WinForms paths.
 
-## Notes
-- Phase 1 intentionally implements strongest-first only (agreed strategy).
-- Ladder overwrite strategy can be added later as optional mode if needed.
+## Manual In-Game Acceptance
+
+- [ ] Enable `Debug`, `Log: defensive scheduler`, Defensive, and `Charm sleeper`.
+- [ ] Reproduce charm on a party member.
+- [ ] Confirm the client accepts the target-id sleep command against the charmed player.
+- [ ] Confirm the first learned/usable policy spell is selected for the current job.
+- [ ] Confirm the charm sleeper preempts Doom Holy Water and a simultaneous critical cure.
+- [ ] Confirm no second cast while the target has Sleep in the party buff snapshot.
+- [ ] Break Sleep early while charm remains and confirm retry after the minimal gate.
+- [ ] Let Sleep approach projected wear-off and confirm the pre-clear log without recasting while the live Sleep buff remains.
+- [ ] Clear charm and confirm immediate stop/cleanup.
+- [ ] Repeat once with `defensive_provider=internal` and once with `defensive_provider=healbot`.
+
+## Out of Scope
+
+- Tier-1 then tier-2 overwrite ladders.
+- Per-job sleep policy editing.
+- Zone-specific behavior.
+- General non-charm crowd control.
+- Damage-bearing emergency sleep actions.
+- Summoner Blood Pact sleeps.

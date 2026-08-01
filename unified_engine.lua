@@ -154,6 +154,11 @@ local function render_sched_overlay()
 		last_sched_action = '(none)'
 	end
 	qlines[#qlines + 1] = ('LastSchedAction: %s'):format(last_sched_action)
+	local charm_sleeper_status = tostring(rawget(_G, 'UC_CHARM_SLEEPER_STATUS') or '')
+	if charm_sleeper_status == '' then
+		charm_sleeper_status = '(none)'
+	end
+	qlines[#qlines + 1] = ('CharmSleeper: %s'):format(charm_sleeper_status)
 	local spacing_diag = tostring(rawget(_G, 'UC_SPACING_DIAG') or '')
 	if spacing_diag ~= '' then
 		qlines[#qlines + 1] = ('Spacing: %s'):format(spacing_diag)

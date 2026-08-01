@@ -645,6 +645,7 @@ function M.next_action(config, song_limit, clarion_active, clarion_ready, trouba
 	if recovery.awaiting_count == true or type(member.pending_count) == 'table' then
 		return nil
 	end
+	recovery.phase = 'capacity'
 
 	local count = tonumber(member.observed_song_count)
 	if count == nil then
@@ -684,6 +685,7 @@ function M.next_action(config, song_limit, clarion_active, clarion_ready, trouba
 				}
 			end
 			state.last_blocker = 'degraded_fifth_waiting_for_clarion:' .. member.name
+			recovery.phase = 'waiting_clarion'
 			return nil
 		end
 		local dummy = first_capacity_dummy(member, config)
@@ -762,6 +764,10 @@ end
 
 function M.is_recovery_active()
 	return type(state.recovery) == 'table'
+end
+
+function M.requires_action_lane()
+	return type(state.recovery) == 'table' and state.recovery.phase ~= 'waiting_clarion'
 end
 
 function M.status_lines()
