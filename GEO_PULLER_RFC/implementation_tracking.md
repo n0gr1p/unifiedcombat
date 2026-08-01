@@ -58,6 +58,8 @@ terminal reasons include `PULL_COMBAT_DOMAIN_DISABLED`, `PULL_ZONE_CHANGE`,
   Circle when Blaze becomes ready.
 - [x] Track logical enemy fight targets independently of the selected game
   target and dispatch enemy Geo spells directly by entity ID.
+- [x] Add an explicit default-off enemy-Geo camp-radius policy that waits for
+  the selected mob at camp and revalidates its position before dispatch.
 - [x] Prevent Blaze from starting without a live logical enemy; when an atomic
   sequence loses its enemy, admit only camp pulling until a replacement is
   claimed and the character returns to camp.
@@ -79,6 +81,15 @@ terminal reasons include `PULL_COMBAT_DOMAIN_DISABLED`, `PULL_ZONE_CHANGE`,
   ignore-list, and cooldown eligibility.
 - [x] Add direct entity-ID targeting, approach, settle, action wait, reaction
   wait, and camp return states without changing the selected game target.
+- [x] Track reacted camp pulls by entity ID across friendly claim turnover so
+  unclaimed hostile pulls continue to occupy quota and retain FIFO cleanup
+  priority without depending on Prime aggression detection.
+- [x] Share the pull registry over IPC, exclude every tracked spawn from new
+  pull selection, and classify outside party/alliance claims as foreign-owned.
+- [x] Stop counting or targeting a foreign-owned mob while its outside claim is
+  active, then restore quota and combat cleanup eligibility if it becomes
+  yellow while still hostile. Keep an idle forfeited spawn pull-excluded until
+  death/despawn and confirmed fresh-spawn evidence.
 - [x] Reuse the shared camp anchor and scheduler pull/movement dispatchers.
 - [x] Leave the route hunter and follower pull-distance gate as separate
   workflows.

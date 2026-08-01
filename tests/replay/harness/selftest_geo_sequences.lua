@@ -49,6 +49,7 @@ local function base_config()
 		ordering = 'geo_first',
 		require_camp = true,
 		camp_tolerance_yalms = 1.0,
+		enemy_geo_requires_camp_radius = false,
 		unknown_existing_policy = 'wait_for_clear',
 		entrust = {
 			enabled = false,
@@ -484,6 +485,64 @@ lowest_hpp_ctx.mob_array[#lowest_hpp_ctx.mob_array + 1] = low_hpp_target
 lowest_hpp_ctx.mobs_by_id[low_hpp_target.id] = low_hpp_target
 action = collect_one(lowest_hpp_provider, lowest_hpp_ctx)
 assert_equal(action.target_id, low_hpp_target.id, 'enemy-targeted Geo must select the lowest-HPP claimed mob')
+
+local distant_target_provider = new_provider({}, { active = false })
+local distant_target_ctx = context(base_config())
+distant_target_ctx.mobs_by_id[200].x = 16.1
+action = collect_one(distant_target_provider, distant_target_ctx)
+assert_equal(action.action_name, 'Geo-Frailty', 'default policy must continue to allow distant enemy Geo')
+
+local camp_target_config = base_config()
+camp_target_config.enemy_geo_requires_camp_radius = true
+local camp_target_provider = new_provider({}, { active = false })
+local camp_target_ctx = context(camp_target_config)
+camp_target_ctx.mobs_by_id[200].x = 16.1
+out = {}
+camp_target_provider.collect(camp_target_ctx, out)
+assert_equal(#out, 0, 'camp-restricted enemy Geo must wait outside the configured radius')
+assert_equal(
+	camp_target_provider.status.reason,
+	'GEO_ENEMY_OUTSIDE_CAMP_RADIUS',
+	'outside-camp enemy Geo hold reason mismatch'
+)
+camp_target_ctx.now = 2.0
+camp_target_ctx.mobs_by_id[200].x = 16.0
+action = collect_one(camp_target_provider, camp_target_ctx)
+assert_equal(action.action_name, 'Geo-Frailty', 'enemy at the camp-radius boundary must admit Geo')
+camp_target_ctx.mobs_by_id[200].x = 16.1
+local camp_target_valid, camp_target_reason = camp_target_provider.revalidate(action, camp_target_ctx)
+assert_equal(camp_target_valid, false, 'enemy leaving camp radius before dispatch must reject Geo')
+assert_equal(camp_target_reason, 'enemy_outside_camp_radius', 'Geo revalidation camp-radius reason mismatch')
+
+local atomic_camp_config = base_config()
+atomic_camp_config.enemy_geo_requires_camp_radius = true
+atomic_camp_config.luopan.use_blaze_of_glory = true
+local atomic_camp_provider = new_provider({}, { active = false })
+local atomic_camp_ctx = context(atomic_camp_config)
+atomic_camp_ctx.mobs_by_id[200].x = 16.1
+out = {}
+atomic_camp_provider.collect(atomic_camp_ctx, out)
+assert_equal(#out, 0, 'Blaze must not start while its enemy is outside the camp radius')
+atomic_camp_ctx.now = 2.0
+atomic_camp_ctx.mobs_by_id[200].x = 16.0
+action = collect_one(atomic_camp_provider, atomic_camp_ctx)
+assert_equal(action.action_name, 'Blaze of Glory', 'inside-camp enemy must admit Blaze preparation')
+atomic_camp_provider.note_dispatch(action, 2.1)
+atomic_camp_ctx.now = 3.0
+atomic_camp_ctx.player.buffs = { geo_maintenance.BLAZE_OF_GLORY_BUFF_ID }
+atomic_camp_ctx.mobs_by_id[200].x = 16.1
+out = {}
+atomic_camp_provider.collect(atomic_camp_ctx, out)
+assert_equal(#out, 0, 'consumed Blaze sequence must wait when its enemy leaves the camp radius')
+assert_true(atomic_camp_provider.lane_reserved(), 'consumed Blaze must retain its atomic lane while waiting')
+assert_true(
+	atomic_camp_provider.pull_for_enemy_allowed(),
+	'atomic Geo wait outside camp radius must admit camp pulling'
+)
+atomic_camp_ctx.now = 4.0
+atomic_camp_ctx.mobs_by_id[200].x = 16.0
+action = collect_one(atomic_camp_provider, atomic_camp_ctx)
+assert_equal(action.action_name, 'Geo-Frailty', 'atomic Geo must resume after its enemy enters camp radius')
 
 local radius_provider = new_provider({}, { active = false })
 local radius_ctx = context(base_config())

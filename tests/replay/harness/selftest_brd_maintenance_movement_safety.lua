@@ -30,10 +30,21 @@ end
 
 local source = read_file('unified_scheduler.lua')
 local brd_source = read_file('uc_brd_maintenance.lua')
+local provider_source = read_file('uc_provider_maintenance.lua')
+local refresh_body = function_body(
+	source,
+	'function scheduler.refresh_brd_maintenance_movement_lock(reason, at)',
+	'function scheduler.apply_brd_maintenance_movement_lock(action_name, target_id, reason, at)'
+)
 local lock_body = function_body(
 	source,
 	'function scheduler.apply_brd_maintenance_movement_lock(action_name, target_id, reason, at)',
 	'local function current_zone_id()'
+)
+local lane_movement_body = function_body(
+	source,
+	'function scheduler.apply_brd_maintenance_lane_movement(reason, at)',
+	'function scheduler.apply_cast_movement_hold(reason, at)'
 )
 local dispatch_body = function_body(
 	source,
@@ -41,13 +52,22 @@ local dispatch_body = function_body(
 	'local function p1_dispatch_defensive_internal'
 )
 
-assert_contains(lock_body, "kind = 'run_stop'", 'Bard maintenance movement lock must construct run_stop intent')
-assert_contains(lock_body, "source = 'unified_scheduler:brd_maintenance_movement_lock'", 'Bard run_stop source mismatch')
-assert_contains(lock_body, "require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({", 'Bard movement lock must use dispatcher-owned run_stop')
-assert_contains(lock_body, "scheduler.refresh_brd_maintenance_movement_lock(reason, now_value)", 'Bard action stop must claim the bounded movement lock')
-assert_contains(source, "function scheduler.refresh_brd_maintenance_movement_lock(reason, at)", 'Bard lane movement-lock refresh helper missing')
-assert_contains(source, "_G.UC_MOVEMENT_LOCK_UNTIL = math.max(current_lock_until, now_value + 0.6)", 'Bard movement lock must remain refreshed while the action lane is reserved')
-assert_contains(source, "if current_owner == 'nyzul_hold' and current_lock_until > now_value then", 'Bard movement lock must not replace an active Nyzul hold')
+assert_contains(refresh_body, "kind = 'run_stop'", 'every Bard lane refresh must construct a run_stop intent')
+assert_contains(refresh_body, "source = 'unified_scheduler:brd_maintenance_movement_lock'", 'Bard run_stop source mismatch')
+assert_contains(refresh_body, "require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({", 'Bard lane refresh must use dispatcher-owned run_stop')
+assert_contains(refresh_body, "_G.UC_MOVEMENT_LOCK_UNTIL = math.max(current_lock_until, now_value + 0.6)", 'Bard movement lock must remain refreshed while the action lane is reserved')
+assert_contains(refresh_body, "if current_owner == 'nyzul_hold' and current_lock_until > now_value then", 'Bard movement lock must not replace an active Nyzul hold')
+assert_before(
+	refresh_body,
+	"if current_owner == 'nyzul_hold' and current_lock_until > now_value then",
+	"kind = 'run_stop'",
+	'Bard lane refresh must preserve an active Nyzul hold before dispatching run_stop'
+)
+assert_contains(lock_body, "scheduler.refresh_brd_maintenance_movement_lock(reason, now_value)", 'Bard action stop must reassert the physical and bounded lane lock')
+assert_contains(lane_movement_body, "require('uc_brd_positioning')", 'Bard lane movement must consume the positioning request')
+assert_contains(lane_movement_body, "source_prefix = 'scheduler_brd_positioning'", 'Bard reposition vectors must use dispatcher-owned movement')
+assert_contains(lane_movement_body, "_G.UC_MOVEMENT_OWNER = 'scheduler_brd'", 'Bard reposition must publish distinct movement ownership')
+assert_contains(lane_movement_body, "return scheduler.refresh_brd_maintenance_movement_lock(", 'non-running Bard positioning phases must reassert a physical stop')
 
 assert_contains(dispatch_body, 'scheduler.apply_brd_maintenance_movement_lock(', 'Bard dispatch must stop movement')
 assert_before(
@@ -64,9 +84,13 @@ assert_before(
 )
 assert_contains(
 	source,
-	'scheduler.refresh_brd_maintenance_movement_lock(brd_lane_reason, now_s())',
-	'Bard action-lane holds must refresh movement ownership while scheduler movement is suppressed'
+	'scheduler.apply_brd_maintenance_lane_movement(brd_lane_reason, now_s())',
+	'Bard action-lane holds must drive positioning or refresh movement stops while scheduler movement is suppressed'
 )
+assert_contains(provider_source, "require('uc_brd_positioning')", 'Bard maintenance provider must load the positioning planner')
+assert_contains(provider_source, 'brd_positioning.prepare({', 'Bard maintenance proposals must pass through positioning readiness')
+assert_contains(provider_source, 'brd_maintenance.defer_positioning(positioning_reason)', 'waiting positioning must release the Bard action lane')
+assert_contains(provider_source, 'member.x = ctx.me.x', 'Bard positioning must use the current local-player coordinates')
 assert_contains(source, "'BRD_MOVEMENT_HOLD'", 'Bard movement stops must be visible in the action timeline')
 assert_contains(brd_source, "local PIANISSIMO_CONFIRM_TIMEOUT_S = 2.0", 'Pianissimo confirmation must have a bounded late-packet window')
 assert_contains(brd_source, "block('pianissimo_confirmation_pending_recast:' .. member.name)", 'consumed Pianissimo recast must retain the targeted transaction')

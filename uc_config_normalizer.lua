@@ -15,6 +15,7 @@ local DEFAULT_GEO_MAINTENANCE = {
     ordering = 'geo_first',
     require_camp = true,
     camp_tolerance_yalms = 1.0,
+    enemy_geo_requires_camp_radius = false,
     unknown_existing_policy = 'wait_for_clear',
     entrust = {
         enabled = false,
@@ -509,6 +510,7 @@ local function normalize_geo_maintenance(value)
         'ordering',
         'require_camp',
         'camp_tolerance_yalms',
+        'enemy_geo_requires_camp_radius',
         'unknown_existing_policy',
         'entrust',
         'luopan',
@@ -535,6 +537,11 @@ local function normalize_geo_maintenance(value)
         'maintenance.geo.camp_tolerance_yalms',
         0.0,
         50.0
+    )
+    out.enemy_geo_requires_camp_radius = strict_boolean(
+        value.enemy_geo_requires_camp_radius,
+        out.enemy_geo_requires_camp_radius,
+        'maintenance.geo.enemy_geo_requires_camp_radius'
     )
     out.unknown_existing_policy = strict_enum(
         value.unknown_existing_policy,
@@ -1024,6 +1031,7 @@ local function default_config(meta)
 				targeted_songs = {},
 				recovery_range_yalms = 9.9,
 				recovery_ignore_names = {},
+				reposition_for_party_songs = false,
             },
             geo = clone_value(DEFAULT_GEO_MAINTENANCE),
         },
@@ -1537,6 +1545,7 @@ local function normalize_maintenance(source, config)
 		maintenance.brd.targeted_songs = normalize_brd_targeted_songs(brd.targeted_songs, maintenance.brd.targeted_songs)
 		maintenance.brd.recovery_range_yalms = normalize_number(brd.recovery_range_yalms, maintenance.brd.recovery_range_yalms, { min = 1.0, max = 20.0 })
 		maintenance.brd.recovery_ignore_names = normalize_pipe_string_list(brd.recovery_ignore_names, maintenance.brd.recovery_ignore_names)
+		maintenance.brd.reposition_for_party_songs = normalize_boolean(brd.reposition_for_party_songs, maintenance.brd.reposition_for_party_songs)
         maintenance.geo = normalize_geo_maintenance(nested.geo)
     else
         maintenance.enabled = normalize_boolean(first_path(source, { path('domain_maintenance_enabled') }), maintenance.enabled)
@@ -1558,6 +1567,7 @@ local function normalize_maintenance(source, config)
 		maintenance.brd.targeted_songs = normalize_brd_targeted_songs(first_path(source, { path('brd_targeted_songs') }), maintenance.brd.targeted_songs)
 		maintenance.brd.recovery_range_yalms = normalize_number(first_path(source, { path('brd_recovery_range_yalms') }), maintenance.brd.recovery_range_yalms, { min = 1.0, max = 20.0 })
 		maintenance.brd.recovery_ignore_names = normalize_pipe_string_list(first_path(source, { path('brd_recovery_ignore_names') }), maintenance.brd.recovery_ignore_names)
+		maintenance.brd.reposition_for_party_songs = normalize_boolean(first_path(source, { path('brd_reposition_for_party_songs') }), maintenance.brd.reposition_for_party_songs)
         maintenance.geo = normalize_geo_maintenance(first_path(source, { path('maintenance_geo') }))
     end
 end

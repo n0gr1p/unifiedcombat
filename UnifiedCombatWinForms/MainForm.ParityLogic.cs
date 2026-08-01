@@ -773,6 +773,7 @@ public partial class MainForm
                 _brdUseMarcato.Checked = SessionStateHelper.GetBool(s, "brd_use_marcato", false);
                 RefreshBrdMarcatoOptions(SessionStateHelper.GetString(s, "brd_marcato_song"));
 				ApplyBrdRecoveryRange(s);
+				_brdRepositionForPartySongs.Checked = SessionStateHelper.GetBool(s, "brd_reposition_for_party_songs", false);
 				_brdRecoveryIgnoreNames.Text = SessionStateHelper.GetString(s, "brd_recovery_ignore_names");
 				_brdTargetedSongs.Text = SessionStateHelper.GetString(s, "brd_targeted_songs");
                 var subBrdOnly = !string.Equals(mainJob, "BRD", StringComparison.Ordinal) && string.Equals(subJob, "BRD", StringComparison.Ordinal);

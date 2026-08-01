@@ -326,6 +326,7 @@ config.maintenance.geo = {
     ordering = "geo_first",     -- geo_first | indi_first
     require_camp = true,
     camp_tolerance_yalms = 1.0,
+    enemy_geo_requires_camp_radius = false,
     unknown_existing_policy = "wait_for_clear",
     entrust = {
         enabled = true,
@@ -571,6 +572,9 @@ When `require_camp=true`:
 
 - ordinary Geo casts are eligible only while the player is within
   `camp_tolerance_yalms` of `uc_camp_anchor`;
+- when `enemy_geo_requires_camp_radius=true`, an enemy-targeted Geo spell waits
+  until its selected mob is within `max_camp_distance_yalms` of the shared camp
+  anchor; the same check is repeated immediately before dispatch;
 - an existing luopan farther than `max_camp_distance_yalms` from the anchor is
   considered misplaced only when `replace_out_of_position=true`;
 - replacement waits until the player is back at camp;

@@ -182,6 +182,34 @@ local function main()
     set_state({
         flag = true,
         now = 10,
+        intent_until = 0,
+        owner = 'scheduler',
+        lock_until = 15,
+        fight_follow_until = 0,
+        preengage = false,
+        target = nil,
+    })
+    suppress, reason = follow.should_suppress_follow_or_path_return_now({ combat_participant = false }, _G.__TEST_NOW)
+    assert_equal(suppress, true, 'scheduler ownership must prevent party follow from starting during a Bard lane hold')
+    assert_equal(reason, 'scheduler_movement_lock', 'scheduler movement lock reason mismatch')
+
+    set_state({
+        flag = true,
+        now = 10,
+        intent_until = 0,
+        owner = 'scheduler_brd',
+        lock_until = 15,
+        fight_follow_until = 0,
+        preengage = false,
+        target = nil,
+    })
+    suppress, reason = follow.should_suppress_follow_or_path_return_now({ combat_participant = false }, _G.__TEST_NOW)
+    assert_equal(suppress, true, 'Bard reposition ownership must prevent party follow from replacing its vector')
+    assert_equal(reason, 'bard_reposition_movement_lock', 'Bard reposition movement lock reason mismatch')
+
+    set_state({
+        flag = true,
+        now = 10,
         intent_until = 20,
         owner = 'none',
         lock_until = 0,
@@ -375,6 +403,16 @@ local function main()
     follow.prerender()
     assert_equal(_G.UC_MOVEMENT_OWNER, 'follow', 'party follow prerender must resolve a named leader even when leader_id is runtime-owned')
     assert_true(#run_calls > 0, 'party follow prerender must issue movement for a named leader with no durable id')
+
+    run_calls = {}
+    _G.UC_MOVEMENT_OWNER = 'scheduler'
+    _G.UC_MOVEMENT_LOCK_UNTIL = _G.__TEST_NOW + 5
+    follow.prerender()
+    assert_equal(#run_calls, 1, 'active scheduler ownership must stop the existing party-follow vector')
+    assert_equal(run_calls[1].x, false, 'scheduler ownership party-follow stop call shape')
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'scheduler', 'party-follow suppression must preserve scheduler ownership')
+    follow.prerender()
+    assert_equal(#run_calls, 1, 'party follow must not start or repeatedly stop movement while scheduler ownership remains active')
 
     run_calls = {}
     _G.UC_ZONE_SUSPEND_UNTIL = _G.__TEST_NOW + 10

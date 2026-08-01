@@ -245,8 +245,14 @@ function M.new(deps)
 		elseif job == 'BRD' or tostring(player.sub_job or '') == 'BRD' then
 			local brd_config = require('uc_active_config').get_path('config.maintenance.brd')
 			local brd_maintenance = require('uc_brd_maintenance')
+			local brd_positioning = require('uc_brd_positioning')
 			local brd_party_members = get_party_members(ctx)
 			for _, member in ipairs(brd_party_members) do
+				if member.is_self == true then
+					member.x = ctx.me.x
+					member.y = ctx.me.y
+					member.z = ctx.me.z
+				end
 				member.in_song_range, member.song_distance = require('uc_brd_party_song_state').in_recovery_range(
 					member,
 					brd_config.recovery_range_yalms,
@@ -261,6 +267,32 @@ function M.new(deps)
 				party_members = brd_party_members,
 				action_ready = action_ready,
 			})
+			if type(action) == 'table' and tostring(action.action_name or '') ~= '' then
+				local camp_anchor = require('uc_camp_anchor').resolve_current_anchor()
+				local pulling_config = require('uc_active_config').get_path('config.combat.pulling')
+				if type(pulling_config) ~= 'table' or tonumber(pulling_config.leash_yalms) == nil then
+					error('Bard positioning requires normalized combat.pulling configuration')
+				end
+				local ready_to_emit, positioning_reason = brd_positioning.prepare({
+					enabled = brd_config.reposition_for_party_songs,
+					now = now,
+					action = action,
+					me = ctx.me,
+					party_members = brd_party_members,
+					ignore_names = brd_config.recovery_ignore_names,
+					radius = brd_config.recovery_range_yalms,
+					camp_anchor = camp_anchor,
+					camp_leash_yalms = camp_anchor and pulling_config.leash_yalms or nil,
+				})
+				if ready_to_emit ~= true then
+					brd_maintenance.note_positioning_block(positioning_reason)
+					local positioning_status = brd_positioning.status()
+					if positioning_status.phase == 'waiting' or positioning_status.phase == 'failed' then
+						brd_maintenance.defer_positioning(positioning_reason)
+					end
+					action = nil
+				end
+			end
 			local failure = brd_maintenance.take_scheduler_failure()
 			if type(failure) == 'table' then
 				clear_local_brd_spell_failure({

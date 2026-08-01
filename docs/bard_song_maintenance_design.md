@@ -89,6 +89,7 @@ The tab will own durable user intent such as:
 - whether Marcato is enabled;
 - the exact configured song assigned to Marcato;
 - the maximum party-member distance eligible to trigger recovery;
+- whether group-song maintenance may reposition the Bard to cover the party;
 - the player names excluded from recovery eligibility.
 
 The UI will not expose or serialize expected duration, current duration, expiration timestamps, active song slots, current JA buffs, recast timers, packet confidence, or runtime entity IDs.
@@ -119,6 +120,7 @@ config.maintenance.brd = {
     use_marcato = true,
     marcato_song = "Honor March",
 	recovery_range_yalms = 9.9,
+	reposition_for_party_songs = true,
 	recovery_ignore_names = {},
 }
 ```
@@ -502,6 +504,10 @@ Party recovery uses the same alignment rule when a desired song is shorter than 
 Dead recipients, trusts, ignored names, out-of-range players, and unavailable party members do not start recovery. Leaving range invalidates confidence but does not block the Bard's local setup. When a live player returns to range, their current observed count determines whether slot recovery begins.
 
 Recovery range is durable per-profile policy at `config.maintenance.brd.recovery_range_yalms`. The allowed range is `1.0` through `20.0` yalms and the migration/default value is `9.9`. The scheduler compares each party member's current mob distance directly against this value using a dedicated Bard predicate; it does not reuse the 20.9-yalm cure/status-removal casting window. `9.9` is the conservative ordinary-horn setting. A profile using a tested string-instrument radius may configure a larger value, up to 20.0. This setting controls only which live player recipients may trigger recovery; successful `0x028` action recipients remain authoritative for who actually received each song.
+
+When `config.maintenance.brd.reposition_for_party_songs` is enabled, a ready non-targeted Bard maintenance action first evaluates the living, non-ignored player roster as fixed-radius coverage geometry. If the Bard's current position does not cover everyone but a shared position exists, the provider reserves the Bard lane and the scheduler moves to the least-travel viable candidate within the active camp leash. It stops, settles, and verifies coverage before admitting the song or setup action. Party follow and pathing may not replace the distinct `scheduler_brd` movement owner.
+
+If no full-party point exists, ordinary maintenance releases the Bard lane and waits for the party to reconverge. An urgently expiring group song may use the largest viable cluster, but job abilities, dummy songs, and Clarion/capacity work always require full coverage. A reposition that makes no measurable progress for two seconds or runs longer than eight seconds fails closed with a physical stop; the same unchanged geometry is not retried.
 
 ## Provider Priorities
 

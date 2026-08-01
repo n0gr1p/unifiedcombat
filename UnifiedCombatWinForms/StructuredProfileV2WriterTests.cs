@@ -483,6 +483,7 @@ internal static class StructuredProfileV2WriterTests
         flat["geo_use_life_cycle"] = true;
         flat["geo_life_cycle_hpp"] = 45;
         flat["geo_replace_out_of_position"] = true;
+        flat["geo_enemy_requires_camp_radius"] = true;
         flat["geo_max_camp_distance_yalms"] = 7.5;
 
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
@@ -499,6 +500,7 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "target_name = \"Nyoourke\"", "Entrust target must serialize");
         AssertContains(content, "use_blaze_of_glory = true", "Blaze of Glory policy must serialize");
         AssertContains(content, "life_cycle_hpp = 45", "Life Cycle threshold must serialize");
+        AssertContains(content, "enemy_geo_requires_camp_radius = true", "enemy Geo camp-radius policy must serialize");
         AssertContains(content, "max_camp_distance_yalms = 7.5", "luopan camp radius must serialize");
 
         flat["geo_spell"] = "Frailty";
@@ -562,9 +564,11 @@ internal static class StructuredProfileV2WriterTests
         var main = ReadRepoFile("UnifiedCombatWinForms", "MainForm.cs");
         var bridge = ReadRepoFile("remote_bridge.lua");
         AssertContains(ui, "OnGeoPullConfigChanged", "GEO and camp pulling controls need a durable edit handler");
+        AssertContains(ui, "Only cast enemy Geo within the camp radius", "GEO UI must expose the enemy camp-radius policy");
         AssertContains(ui, "CaptureWorkingProfileFromUi", "GEO and camp pulling edits must update local profile state");
         AssertNotContains(ui, "Forward(", "GEO and camp pulling edits must not emit live mirror commands");
         AssertContains(store, "[\"geo_maintenance_enabled\"]", "GEO enabled state must persist in flat UI profiles");
+        AssertContains(store, "[\"geo_enemy_requires_camp_radius\"]", "enemy Geo camp-radius policy must persist in flat UI profiles");
         AssertContains(store, "[\"camp_pulling_enabled\"]", "camp pulling enabled state must persist in flat UI profiles");
         AssertContains(store, "[\"camp_pulling_targets\"]", "camp pull targets must persist in flat UI profiles");
         AssertContains(main, "ApplyGeoPullRuntimeStatus(selectedState)", "live snapshots must refresh GEO/pull status labels");
@@ -740,6 +744,7 @@ internal static class StructuredProfileV2WriterTests
         flat["brd_marcato_song"] = "Honor March";
 		flat["brd_targeted_songs"] = "Tankone,Tanktwo:Mage's Ballad III,Mage's Ballad II";
 		flat["brd_recovery_range_yalms"] = 14.5;
+		flat["brd_reposition_for_party_songs"] = true;
 		flat["brd_recovery_ignore_names"] = "PullerOne|PullerTwo";
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
@@ -761,6 +766,7 @@ internal static class StructuredProfileV2WriterTests
 		AssertContains(content, "priority_songs = {", "BRD targeted priority songs missing");
 		AssertContains(content, "\"Mage's Ballad II\"", "BRD targeted priority song identity missing");
 		AssertContains(content, "recovery_range_yalms = 14.5", "BRD recovery range missing");
+		AssertContains(content, "reposition_for_party_songs = true", "BRD party reposition policy missing");
 		AssertContains(content, "recovery_ignore_names = {", "BRD recovery ignore list missing");
 		AssertContains(content, "\"PullerTwo\"", "BRD recovery ignore player missing");
         AssertNotContains(content, "duration", "BRD runtime duration must not be durable");
@@ -876,6 +882,11 @@ internal static class StructuredProfileV2WriterTests
 		AssertContains(store, "[\"brd_recovery_range_yalms\"] = 9.9", "BRD recovery range must have a durable UI default");
 		AssertContains(logic, "ApplyBrdRecoveryRange(s);", "BRD recovery range must restore from UI profiles");
 		AssertContains(writer, ".Add(\"recovery_range_yalms\"", "BRD recovery range must serialize into structured profiles");
+		AssertContains(ui, "_brdRepositionForPartySongs = new CheckBox", "BRD party reposition control must exist");
+		AssertContains(store, "[\"brd_reposition_for_party_songs\"] = _brdRepositionForPartySongs.Checked", "BRD party reposition policy must be captured from the UI");
+		AssertContains(store, "[\"brd_reposition_for_party_songs\"] = false", "BRD party reposition policy must have a durable UI default");
+		AssertContains(logic, "_brdRepositionForPartySongs.Checked = SessionStateHelper.GetBool", "BRD party reposition policy must restore from UI profiles");
+		AssertContains(writer, ".Add(\"reposition_for_party_songs\"", "BRD party reposition policy must serialize into structured profiles");
 		AssertContains(ui, "_brdUseSoulVoice = new CheckBox", "BRD Soul Voice control must exist");
 		AssertContains(store, "[\"brd_use_soul_voice\"] = _brdUseSoulVoice.Checked", "BRD Soul Voice policy must be captured from the UI");
 		AssertContains(ui, "_brdTargetedSongs = new TextBox", "BRD targeted song control must exist");

@@ -102,6 +102,7 @@ local function config()
 		ordering = 'geo_first',
 		require_camp = true,
 		camp_tolerance_yalms = 1.0,
+		enemy_geo_requires_camp_radius = false,
 		unknown_existing_policy = 'wait_for_clear',
 		entrust = {
 			enabled = false,

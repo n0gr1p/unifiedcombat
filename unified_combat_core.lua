@@ -25,6 +25,7 @@ local uc_targeting_common = require('uc_targeting_common')
 local uc_path_hunter = require('uc_path_hunter')
 local uc_skillchain_state = require('uc_skillchain_state')
 local uc_camp_anchor = require('uc_camp_anchor')
+local uc_camp_pull_registry = require('uc_camp_pull_registry')
 local aftermath_table = dofile(windower.addon_path .. 'docs/aftermath_table.lua')
 
 if type(os.clock) ~= 'function' then
@@ -1272,8 +1273,9 @@ local function find_candidate_target(settings)
 		end
 		local hunter_ok = uc_path_hunter.matches_mob(settings, cur.name or '')
 		local cur_prime_party_aggressive = prime_unclaimed_party_aggressive_ok(cur, claims_set)
-		-- Prime party-aggressive targets should not be blocked by hunter name filters.
-		if (not hunter_ok) and cur_prime_party_aggressive then
+		local cur_camp_pull_order = uc_camp_pull_registry.combat_order(cur, claims_set)
+		-- Prime party-aggressive and tracked camp-pull targets should not be blocked by hunter name filters.
+		if (not hunter_ok) and (cur_prime_party_aggressive or cur_camp_pull_order ~= nil) then
 			hunter_ok = true
 		end
 		if hunter_ok and me and me.z ~= nil and cur.z ~= nil then
@@ -1289,7 +1291,10 @@ local function find_candidate_target(settings)
 			local allow_prime_unclaimed = (not engaged) or allow_engaged_retarget
 			local prime_unclaimed_ok = (allow_prime_unclaimed and prime_unclaimed_party_aggressive_ok(cur, claims_set))
 			local hunter_idle_unclaimed_ok = (cur.claim_id == 0 and cur.status == 0)
-			local claim_ok = claims_set[cur.claim_id] == true or prime_unclaimed_ok or hunter_idle_unclaimed_ok
+			local claim_ok = claims_set[cur.claim_id] == true
+				or cur_camp_pull_order ~= nil
+				or prime_unclaimed_ok
+				or hunter_idle_unclaimed_ok
 			if claim_ok then
 				return cur
 			end
@@ -1299,6 +1304,7 @@ local function find_candidate_target(settings)
 	local best = nil
 	local best_dist = 1e9
 	local best_hpp = -1
+	local best_camp_pull_order = nil
 	local tank_mode = setting_enabled(settings.tank)
 	for _, mob in pairs(marray) do
 		local partner_on_mob = false
@@ -1312,8 +1318,9 @@ local function find_candidate_target(settings)
 			if not uc_target_ignore.is_mob_blocked(settings, mob) then
 				local hunter_ok = (not path_hunter_filter_active) or uc_path_hunter.matches_mob(settings, mob.name or '')
 				local mob_prime_party_aggressive = prime_unclaimed_party_aggressive_ok(mob, claims_set)
-				-- Prime party-aggressive targets should not be blocked by hunter name filters.
-				if (not hunter_ok) and mob_prime_party_aggressive then
+				local camp_pull_order = uc_camp_pull_registry.combat_order(mob, claims_set)
+				-- Prime party-aggressive and tracked camp-pull targets should not be blocked by hunter name filters.
+				if (not hunter_ok) and (mob_prime_party_aggressive or camp_pull_order ~= nil) then
 					hunter_ok = true
 				end
 				if hunter_ok then
@@ -1338,25 +1345,35 @@ local function find_candidate_target(settings)
 					local allow_prime_unclaimed = (not engaged) or allow_engaged_retarget
 					local prime_unclaimed_ok = (allow_prime_unclaimed and prime_unclaimed_party_aggressive_ok(mob, claims_set))
 					local hunter_idle_unclaimed_ok = (path_hunter_filter_active and mob.claim_id == 0 and mob.status == 0)
-					local claim_ok = claims_set[mob.claim_id] == true or prime_unclaimed_ok or hunter_idle_unclaimed_ok
+					local claim_ok = claims_set[mob.claim_id] == true
+						or camp_pull_order ~= nil
+						or prime_unclaimed_ok
+						or hunter_idle_unclaimed_ok
 					if claim_ok then
 						local d = target_distance(mob)
 						local hp = tonumber(mob.hpp) or 0
 						local replace = false
-						if not tank_mode then
-							replace = d < best_dist
-						else
-							if hp ~= best_hpp then
-								replace = hp > best_hpp
-							elseif d ~= best_dist then
+						if best == nil
+							or (camp_pull_order ~= nil and best_camp_pull_order == nil)
+							or (camp_pull_order ~= nil and best_camp_pull_order ~= nil and camp_pull_order < best_camp_pull_order) then
+							replace = true
+						elseif camp_pull_order == best_camp_pull_order then
+							if not tank_mode then
 								replace = d < best_dist
 							else
-								replace = (tonumber(mob.id) or 0) < (tonumber(best and best.id) or 0)
+								if hp ~= best_hpp then
+									replace = hp > best_hpp
+								elseif d ~= best_dist then
+									replace = d < best_dist
+								else
+									replace = (tonumber(mob.id) or 0) < (tonumber(best and best.id) or 0)
+								end
 							end
 						end
 						if replace then
 							best_dist = d
 							best_hpp = hp
+							best_camp_pull_order = camp_pull_order
 							best = mob
 						end
 					end
@@ -2764,6 +2781,7 @@ function core.on_action_message(msg)
 		core.last_death_target_id = tid
 		core.last_death_at = uc_now_s()
 		skillchain_runtime:clear_target(tid, 'death')
+		uc_camp_pull_registry.note_death(tid)
 	end
 	if core.pull_spell_waiting == true then
 		local my_id = tonumber((windower.ffxi.get_player() or {}).id) or 0

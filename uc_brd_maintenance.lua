@@ -405,6 +405,7 @@ local function config_signature(config, player)
 		join(config.dummy_songs),
 		tostring(config.recovery_range_yalms),
 		join(config.recovery_ignore_names),
+		tostring(config.reposition_for_party_songs),
 		tostring(config.use_nitro),
 		tostring(config.use_soul_voice),
 		tostring(config.use_clarion_call),
@@ -434,6 +435,7 @@ local function effective_config(config, player)
 		dummy_songs = config.dummy_songs,
 		recovery_range_yalms = config.recovery_range_yalms,
 		recovery_ignore_names = config.recovery_ignore_names,
+		reposition_for_party_songs = config.reposition_for_party_songs,
 		use_nitro = config.use_nitro,
 		use_soul_voice = config.use_soul_voice,
 		use_clarion_call = config.use_clarion_call,
@@ -454,6 +456,9 @@ local function validate_config(config, player)
 	if type(config.recovery_range_yalms) ~= 'number'
 		or config.recovery_range_yalms < 1.0 or config.recovery_range_yalms > 20.0 then
 		return false, 'invalid_recovery_range_yalms'
+	end
+	if type(config.reposition_for_party_songs) ~= 'boolean' then
+		return false, 'invalid_reposition_for_party_songs'
 	end
 	if type(config.use_nitro) ~= 'boolean' or type(config.use_soul_voice) ~= 'boolean'
 		or type(config.use_clarion_call) ~= 'boolean' or type(config.use_marcato) ~= 'boolean'
@@ -2518,6 +2523,26 @@ function M.note_scheduler_rejection(reason, action_name)
 	trace(state.last_blocker)
 end
 
+function M.note_positioning_block(reason)
+	if type(reason) ~= 'string' or reason == '' then
+		error('Bard positioning blocker requires a non-empty reason')
+	end
+	state.last_blocker = reason
+	if state.log_last_blocker ~= reason then
+		diagnostic_log('POSITIONING_BLOCKED', { reason = reason })
+		state.log_last_blocker = reason
+	end
+end
+
+function M.defer_positioning(reason)
+	if type(reason) ~= 'string' or reason == '' then
+		error('Bard positioning defer requires a non-empty reason')
+	end
+	state.last_blocker = reason
+	release_action_lane(reason)
+	return true
+end
+
 function M.cancel_pending(reason)
 	if type(state.pending) ~= 'table' then
 		return false
@@ -2593,6 +2618,15 @@ function M.status_lines()
 			state.log_error ~= '' and state.log_error or 'none'
 		),
 	}
+	local positioning = require('uc_brd_positioning').status()
+	lines[#lines + 1] = ('BRD positioning=%s reason=%s coverage=%d/%d target=%s,%s'):format(
+		tostring(positioning.phase or 'idle'),
+		tostring(positioning.reason or 'none'),
+		tonumber(positioning.coverage_count) or 0,
+		tonumber(positioning.recipient_count) or 0,
+		positioning.target_x == nil and 'none' or ('%.2f'):format(positioning.target_x),
+		positioning.target_y == nil and 'none' or ('%.2f'):format(positioning.target_y)
+	)
 	for name, owner in pairs(state.owners) do
 		lines[#lines + 1] = ('BRD owner=%s status=%d remaining=%.1fs recipients=%s troubadour=%s soul_voice=%s pianissimo=%s normalized=%s aligned=%s'):format(
 			name,

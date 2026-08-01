@@ -142,6 +142,7 @@ public partial class MainForm
     private CheckBox _geoUseLifeCycle = null!;
     private NumericUpDown _geoLifeCycleHpp = null!;
     private CheckBox _geoReplaceOutOfPosition = null!;
+    private CheckBox _geoEnemyRequiresCampRadius = null!;
     private NumericUpDown _geoMaxCampDistance = null!;
     private Label _geoRuntimeStatus = null!;
     private Label _geoHelp = null!;
@@ -213,6 +214,7 @@ public partial class MainForm
     private ComboBox _brdMarcatoSong = null!;
 	private NumericUpDown _brdRecoveryRangeYalms = null!;
 	private TextBox _brdRecoveryIgnoreNames = null!;
+	private CheckBox _brdRepositionForPartySongs = null!;
 	private TextBox _brdTargetedSongs = null!;
     private Label _pathFileValue = null!;
     private Label _pathRouteTypeValue = null!;
@@ -1466,6 +1468,15 @@ public partial class MainForm
 		recoveryRangeRow.Controls.Add(_brdRecoveryRangeYalms);
 		brdRoot.Controls.Add(recoveryRangeRow);
 		brdRoot.Controls.Add(new Label { Text = "Set to the equipped song instrument's actual area radius. Ordinary horn setups use 9.9; string instruments may support a larger tested radius.", AutoSize = true });
+		_brdRepositionForPartySongs = new CheckBox
+		{
+			Text = "Reposition to cover the party for group songs",
+			AutoSize = true,
+			Padding = new Padding(0, 8, 0, 0),
+		};
+		_brdRepositionForPartySongs.CheckedChanged += (_, _) => OnBrdConfigChanged();
+		brdRoot.Controls.Add(_brdRepositionForPartySongs);
+		brdRoot.Controls.Add(new Label { Text = "Moves to a camp-safe shared casting point before group maintenance. Waits when no full-party point exists unless a song is urgently expiring; capacity and dummy work always requires full coverage.", AutoSize = true });
 		var recoveryIgnoreRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 8, 0, 0) };
 		recoveryIgnoreRow.Controls.Add(new Label { Text = "Recovery ignore players", AutoSize = true, Padding = new Padding(0, 5, 8, 0) });
 		_brdRecoveryIgnoreNames = new TextBox { Width = 280 };

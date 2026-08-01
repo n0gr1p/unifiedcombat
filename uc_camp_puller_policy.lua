@@ -64,21 +64,27 @@ local function match_target(name, config, exact, substring)
 	return matched
 end
 
-function M.pull_demand(config, mobs, friendly_claims)
-	if type(config) ~= 'table' or type(mobs) ~= 'table' or type(friendly_claims) ~= 'table' then
-		error('camp pull demand requires config, mobs, and friendly_claims tables')
+function M.pull_demand(config, mobs, friendly_claims, pull_registry)
+	if type(config) ~= 'table'
+		or type(mobs) ~= 'table'
+		or type(friendly_claims) ~= 'table'
+		or type(pull_registry) ~= 'table'
+		or type(pull_registry.quota_eligible) ~= 'function' then
+		error('camp pull demand requires config, mobs, friendly_claims, and pull_registry contracts')
 	end
 	local active_count = 0
 	local low_hpp_active = false
 	for _, mob in pairs(mobs) do
+		local id = tonumber(mob and mob.id) or 0
 		local claim_id = tonumber(mob and mob.claim_id) or 0
 		local hpp = tonumber(mob and mob.hpp) or 0
 		local spawn_type = tonumber(mob and mob.spawn_type) or 0
+		local friendly_claimed = claim_id > 0 and friendly_claims[claim_id] == true
+		local tracked_active = id > 0 and pull_registry.quota_eligible(mob, friendly_claims)
 		if mob.valid_target == true
 			and spawn_type == 16
 			and hpp > 0
-			and claim_id > 0
-			and friendly_claims[claim_id] == true then
+			and (friendly_claimed or tracked_active) then
 			active_count = active_count + 1
 			if hpp <= config.replenish_below_hpp then
 				low_hpp_active = true

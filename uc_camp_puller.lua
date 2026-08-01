@@ -1,4 +1,5 @@
 local policy = require('uc_camp_puller_policy')
+local pull_registry = require('uc_camp_pull_registry')
 
 local M = {}
 
@@ -91,6 +92,8 @@ function M.new(deps)
 	local action_timeline_log = require_function(deps, 'action_timeline_log')
 	local pull_action_in_flight = require_function(deps, 'pull_action_in_flight')
 	local can_start_journey = require_function(deps, 'can_start_journey')
+	local get_zone_id = require_function(deps, 'get_zone_id')
+	local send_ipc_message = require_function(deps, 'send_ipc_message')
 
 	local provider = {
 		state = {
@@ -175,6 +178,7 @@ function M.new(deps)
 			provider.state.active_count = demand.active_count
 			provider.state.quota = demand.quota
 		end
+		local registry_summary = pull_registry.summary()
 		_G.UC_CAMP_PULLER_STATUS = {
 			state = provider.state.name,
 			target_id = provider.state.target_id,
@@ -197,6 +201,10 @@ function M.new(deps)
 			breadcrumb_count = #provider.state.breadcrumbs,
 			recovery_count = provider.state.recovery_count,
 			retry_count = provider.state.retry_count,
+			tracked_count = registry_summary.tracked_count,
+			foreign_claimed_count = registry_summary.foreign_claimed_count,
+			orphaned_hostile_count = registry_summary.orphaned_hostile_count,
+			forfeited_idle_count = registry_summary.forfeited_idle_count,
 		}
 		local signature = table.concat({
 			provider.state.name,
@@ -347,6 +355,15 @@ function M.new(deps)
 		return math.sqrt(squared)
 	end
 
+	local function observe_pull_registry(ctx, friendly_claims)
+		local zone_id = tonumber(get_zone_id())
+		if zone_id == nil or zone_id <= 0 or zone_id % 1 ~= 0 then
+			error('camp pull registry requires the current zone id')
+		end
+		pull_registry.observe(ctx.mob_array, friendly_claims, zone_id, send_ipc_message)
+		return zone_id
+	end
+
 	local function update_target_observation(ctx)
 		local mob = current_target(ctx)
 		provider.state.target_distance = target_distance(mob)
@@ -436,7 +453,7 @@ function M.new(deps)
 			friendly_claims,
 			provider.state.cooldowns,
 			function(mob)
-				return ignored(ctx.settings, mob)
+				return ignored(ctx.settings, mob) or pull_registry.candidate_excluded(mob.id)
 			end
 		)
 		if candidate == nil then
@@ -602,7 +619,8 @@ function M.new(deps)
 		provider.state.action_range = action.max_range
 		provider.state.cast_range = action.cast_range
 		local friendly_claims = get_friendly_claims()
-		local demanded, demand = policy.pull_demand(config, ctx.mob_array, friendly_claims)
+		observe_pull_registry(ctx, friendly_claims)
+		local demanded, demand = policy.pull_demand(config, ctx.mob_array, friendly_claims, pull_registry)
 		if not demanded then
 			publish('PULL_QUOTA_SATISFIED', demand)
 			return false
@@ -659,7 +677,8 @@ function M.new(deps)
 		provider.state.cast_range = action.cast_range
 		update_target_observation(ctx)
 		local friendly_claims = get_friendly_claims()
-		local demanded, demand = policy.pull_demand(config, ctx.mob_array, friendly_claims)
+		local zone_id = observe_pull_registry(ctx, friendly_claims)
+		local demanded, demand = policy.pull_demand(config, ctx.mob_array, friendly_claims, pull_registry)
 
 		if action_not_dispatched() and not demanded then
 			provider.state.name = 'RETURN_TO_CAMP'
@@ -685,7 +704,7 @@ function M.new(deps)
 				anchor,
 				provider.state.cooldowns,
 				function(candidate)
-					return ignored(ctx.settings, candidate)
+					return ignored(ctx.settings, candidate) or pull_registry.candidate_excluded(candidate.id)
 				end,
 				mob
 			)
@@ -769,6 +788,9 @@ function M.new(deps)
 				or (claim_id > 0 and friendly_claims[claim_id] == true)
 				or tonumber(mob.status) == 1
 			if reacted then
+				if mob ~= nil then
+					pull_registry.register_reacted(mob, friendly_claims, zone_id, send_ipc_message)
+				end
 				provider.state.name = 'RETURN_TO_CAMP'
 				provider.state.last_reason = 'PULL_TARGET_REACTED'
 				provider.state.last_progress_distance = nil
@@ -930,6 +952,7 @@ function M.new(deps)
 	end
 
 	function provider.status_snapshot()
+		local registry_summary = pull_registry.summary()
 		return {
 			state = provider.state.name,
 			target_id = provider.state.target_id,
@@ -952,6 +975,10 @@ function M.new(deps)
 			breadcrumb_count = #provider.state.breadcrumbs,
 			recovery_count = provider.state.recovery_count,
 			retry_count = provider.state.retry_count,
+			tracked_count = registry_summary.tracked_count,
+			foreign_claimed_count = registry_summary.foreign_claimed_count,
+			orphaned_hostile_count = registry_summary.orphaned_hostile_count,
+			forfeited_idle_count = registry_summary.forfeited_idle_count,
 		}
 	end
 

@@ -1176,6 +1176,22 @@ function scheduler.refresh_brd_maintenance_movement_lock(reason, at)
 	if current_owner == 'nyzul_hold' and current_lock_until > now_value then
 		return false
 	end
+	-- A reserved Bard lane can spend multiple ticks without an actionable proposal.
+	-- Reassert the physical stop here so no earlier follow/path vector survives that wait.
+	local intent = {
+		kind = 'run_stop',
+		source = 'unified_scheduler:brd_maintenance_movement_lock',
+		meta = {
+			reason = 'BRD_MAINTENANCE_LANE_LOCK',
+			lane_reason = tostring(reason or 'brd_sequence'),
+		},
+	}
+	local dispatcher = require('uc_scheduler_dispatcher')
+	require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+		dispatcher = dispatcher,
+		run = windower.ffxi.run,
+		intent = intent,
+	})
 	_G.UC_MOVEMENT_OWNER = 'scheduler'
 	_G.UC_MOVEMENT_LOCK_UNTIL = math.max(current_lock_until, now_value + 0.6)
 	_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
@@ -1185,28 +1201,70 @@ end
 
 function scheduler.apply_brd_maintenance_movement_lock(action_name, target_id, reason, at)
 	local now_value = tonumber(at) or now_s()
-	local intent = {
-		kind = 'run_stop',
-		source = 'unified_scheduler:brd_maintenance_movement_lock',
-		meta = {
-			reason = 'BRD_MAINTENANCE_ACTION_LOCK',
-			lane_reason = tostring(reason or 'brd_sequence'),
-			action_name = tostring(action_name or ''),
-			target_id = tonumber(target_id) or 0,
-		},
-	}
-	local dispatcher = require('uc_scheduler_dispatcher')
-	require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
-		dispatcher = dispatcher,
-		run = windower.ffxi.run,
-		intent = intent,
-	})
-	scheduler.refresh_brd_maintenance_movement_lock(reason, now_value)
+	if not scheduler.refresh_brd_maintenance_movement_lock(reason, now_value) then
+		return false
+	end
 	scheduler.action_timeline_log('BRD_MOVEMENT_HOLD', {
 		action = tostring(action_name or ''),
 		target_id = tonumber(target_id) or 0,
 		reason = tostring(reason or 'brd_sequence'),
 	}, ('brd_movement_hold:%s'):format(tostring(action_name or '')), 0.05)
+	return true
+end
+
+function scheduler.apply_brd_maintenance_lane_movement(reason, at)
+	local now_value = tonumber(at) or now_s()
+	local current_owner = tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or 'none')
+	local current_lock_until = tonumber(rawget(_G, 'UC_MOVEMENT_LOCK_UNTIL')) or 0
+	if current_owner == 'nyzul_hold' and current_lock_until > now_value then
+		return false
+	end
+	local positioning = require('uc_brd_positioning')
+	local positioning_status = positioning.status()
+	if positioning_status.phase == 'moving' and not domain_ownership.is_enabled('movement') then
+		positioning.fail('BRD_REPOSITION_MOVEMENT_DOMAIN_DISABLED')
+	end
+	local me = windower.ffxi.get_mob_by_target('me')
+	if type(me) ~= 'table' or tonumber(me.x) == nil or tonumber(me.y) == nil then
+		error('Bard positioning requires the local player coordinates')
+	end
+	local request = positioning.movement_request(me, now_value)
+	if request == nil or request.kind == 'stop' then
+		return scheduler.refresh_brd_maintenance_movement_lock(
+			request and request.reason or reason,
+			now_value
+		)
+	end
+	if request.kind ~= 'run' then
+		error('unsupported Bard positioning movement request: ' .. tostring(request.kind))
+	end
+	local movement = require('uc_movement_dispatcher').build({
+		dispatcher = require('uc_scheduler_dispatcher'),
+		run = windower.ffxi.run,
+		source_prefix = 'scheduler_brd_positioning',
+	})
+	movement.run_vector(request.run_x, request.run_y, {
+		reason = request.reason,
+		target_x = request.target_x,
+		target_y = request.target_y,
+		coverage_count = request.coverage_count,
+		recipient_count = request.recipient_count,
+		full_coverage = request.full_coverage,
+	})
+	_G.UC_MOVEMENT_OWNER = 'scheduler_brd'
+	_G.UC_MOVEMENT_LOCK_UNTIL = now_value + 0.40
+	_G.UC_MOVEMENT_MODE = 'BRD_REPOSITION'
+	_G.UC_MOVEMENT_BLOCK_REASON = tostring(request.reason or 'BRD_REPOSITION')
+	scheduler.action_timeline_log('BRD_REPOSITION_MOVE', {
+		reason = tostring(request.reason or ''),
+		remaining = ('%.2f'):format(tonumber(request.remaining) or 0),
+		coverage = ('%d/%d'):format(
+			tonumber(request.coverage_count) or 0,
+			tonumber(request.recipient_count) or 0
+		),
+		full = request.full_coverage == true,
+	}, 'brd_reposition_move', 0.50)
+	return true
 end
 
 function scheduler.apply_cast_movement_hold(reason, at)
@@ -2612,6 +2670,9 @@ local function get_party_members(ctx)
 			out[#out + 1] = {
 				id = entry.mob.id,
 				name = entry.mob.name,
+				x = entry.mob.x,
+				y = entry.mob.y,
+				z = entry.mob.z,
 				is_self = is_self,
 				spawn_type = entry.mob.spawn_type,
 				is_npc = entry.mob.is_npc == true,
@@ -6079,7 +6140,7 @@ function scheduler.process_tick(cadence)
 			end
 		end
 	elseif brd_lane_reserved and not camp_lane_reserved then
-		scheduler.refresh_brd_maintenance_movement_lock(brd_lane_reason, now_s())
+		scheduler.apply_brd_maintenance_lane_movement(brd_lane_reason, now_s())
 		_G.UC_TARGET_BLOCK_REASON = 'BRD_LANE:' .. tostring(brd_lane_reason or '')
 	elseif camp_lane_reserved then
 		_G.UC_TARGET_BLOCK_REASON = 'CAMP_PULL_ACTION_LANE'
@@ -6102,7 +6163,7 @@ function scheduler.process_tick(cadence)
 	if camp_lane_reserved or not brd_lane_reserved then
 		move_acted, move_reason = run_movement_coordinator_tick()
 	else
-		scheduler.refresh_brd_maintenance_movement_lock(brd_lane_reason, now_s())
+		scheduler.apply_brd_maintenance_lane_movement(brd_lane_reason, now_s())
 		_G.UC_MOVEMENT_BLOCK_REASON = 'BRD_LANE:' .. tostring(brd_lane_reason or '')
 	end
 	if p1_acted then
@@ -7006,6 +7067,8 @@ scheduler.providers.combat = require('uc_provider_combat').new({
 })
 scheduler.providers.camp_puller = require('uc_camp_puller').new({
 	resolve_camp_anchor = require('uc_camp_anchor').resolve_current_anchor,
+	get_zone_id = current_zone_id,
+	send_ipc_message = windower.send_ipc_message,
 	get_friendly_claims = function()
 		local _, id_set = uc_targeting_common.get_friendly_combat_member_ids()
 		return id_set

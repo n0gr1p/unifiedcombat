@@ -204,6 +204,7 @@ local function build_flat_settings()
         brd_marcato_song = 'Honor March',
 		brd_targeted_songs = "Tankone,Tanktwo:Mage's Ballad III,Mage's Ballad II",
 		brd_recovery_range_yalms = 12.4,
+		brd_reposition_for_party_songs = true,
         path_recording = true,
         path_follow_enabled = true,
         path_file_name = 'route.json',
@@ -465,6 +466,7 @@ local function build_nested_settings()
 					{ recipients = { 'Tankone', 'Tanktwo' }, priority_songs = { "Mage's Ballad III", "Mage's Ballad II" } },
 				},
 				recovery_range_yalms = 17.5,
+				reposition_for_party_songs = true,
             },
             geo = {
                 enabled = true,
@@ -476,6 +478,7 @@ local function build_nested_settings()
                 ordering = 'geo_first',
                 require_camp = true,
                 camp_tolerance_yalms = 1.5,
+                enemy_geo_requires_camp_radius = true,
                 unknown_existing_policy = 'wait_for_clear',
                 entrust = {
                     enabled = false,
@@ -625,6 +628,7 @@ local function main()
 	assert_equal(#malformed_targeted_config.maintenance.brd.targeted_songs[1].recipients, 0, 'malformed BRD targeted config must not normalize into a valid empty policy')
     assert_equal(flat_config.maintenance.brd.marcato_song, 'Honor March', 'flat BRD Marcato song mismatch')
 	assert_equal(flat_config.maintenance.brd.recovery_range_yalms, 12.4, 'flat BRD recovery range mismatch')
+	assert_equal(flat_config.maintenance.brd.reposition_for_party_songs, true, 'flat BRD reposition policy mismatch')
     assert_equal(flat_config.debug.ja_debug, true, 'debug flag mismatch')
     assert_equal(flat_config.ownership.domain_maintenance_enabled, false, 'maintenance domain mismatch')
     assert_equal(flat_config.legacy.command, true, 'legacy ambiguous flag mismatch')
@@ -661,9 +665,11 @@ local function main()
 	assert_equal(nested_config.maintenance.brd.targeted_songs[1].priority_songs[1], "Mage's Ballad III", 'nested BRD targeted song mismatch')
     assert_equal(nested_config.maintenance.brd.marcato_song, 'Honor March', 'nested maintenance BRD Marcato mismatch')
 	assert_equal(nested_config.maintenance.brd.recovery_range_yalms, 17.5, 'nested maintenance BRD recovery range mismatch')
+	assert_equal(nested_config.maintenance.brd.reposition_for_party_songs, true, 'nested BRD reposition policy mismatch')
     assert_equal(nested_config.maintenance.geo.enabled, true, 'nested maintenance GEO enabled mismatch')
     assert_equal(nested_config.maintenance.geo.geo_spell, 'Geo-Frailty', 'nested maintenance GEO spell mismatch')
     assert_equal(nested_config.maintenance.geo.indi_spell, 'Indi-Haste', 'nested maintenance Indi spell mismatch')
+    assert_equal(nested_config.maintenance.geo.enemy_geo_requires_camp_radius, true, 'nested enemy Geo camp-radius policy mismatch')
     assert_equal(nested_config.maintenance.geo.luopan.life_cycle_hpp, 45, 'nested GEO Life Cycle threshold mismatch')
     assert_equal(nested_config.follow.partner.puller_name, 'Niightsiide', 'nested puller name mismatch')
 	assert_equal(nested_config.follow.partner.leash_source, 'player', 'nested puller leash source mismatch')

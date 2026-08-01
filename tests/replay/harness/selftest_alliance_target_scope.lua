@@ -177,6 +177,7 @@ package.loaded['unified_combat_core'] = nil
 local targeting_common = dofile('uc_targeting_common.lua')
 package.loaded['uc_targeting_common'] = targeting_common
 local core = dofile('unified_combat_core.lua')
+local camp_pull_registry = require('uc_camp_pull_registry')
 
 local function assert_equal(actual, expected, message)
     if actual ~= expected then
@@ -327,6 +328,53 @@ local function test_prime_aggressive_scope()
     _G.UC_ENABLE_ALLIANCE_TARGET_SCOPE = true
     selected = core.select_target_for_scheduler({ autotarget = true, prime = true, hunter = false, path_follow_enabled = false })
 	assert_true(type(selected) == 'table' and selected.target_id == 7002, 'flag-on should treat alliance aggro target as prime-valid')
+end
+
+local function test_camp_pull_cleanup_order()
+	set_party(make_party_fixture())
+	_G.UC_ENABLE_ALLIANCE_TARGET_SCOPE = true
+	_G.__TEST_ME = { id = 101, x = 0, y = 0 }
+	_G.__TEST_TARGET = nil
+	local older = make_mob({
+		id = 7200,
+		name = 'Older Pull',
+		claim_id = 0,
+		status = 1,
+		distance = 100,
+	})
+	local newer = make_mob({
+		id = 7201,
+		name = 'Newer Pull',
+		claim_id = 101,
+		status = 1,
+		distance = 1,
+	})
+	local _, friendly_claims = targeting_common.build_friendly_claims()
+	camp_pull_registry.reset('alliance_target_scope_camp_pull_order')
+	camp_pull_registry.register_reacted(older, friendly_claims, 50, function()
+	end)
+	camp_pull_registry.register_reacted(newer, friendly_claims, 50, function()
+	end)
+	set_mob_array({ newer, older })
+	set_mob_by_id({ [older.id] = older, [newer.id] = newer })
+	local selected = core.select_target_for_scheduler({ autotarget = true, prime = false, hunter = false, path_follow_enabled = false })
+	assert_true(type(selected) == 'table' and selected.target_id == older.id,
+		'oldest tracked camp pull must outrank a nearer newly claimed pull')
+
+	older.claim_id = 909
+	camp_pull_registry.observe({ newer, older }, friendly_claims, 50, function()
+	end)
+	selected = core.select_target_for_scheduler({ autotarget = true, prime = false, hunter = false, path_follow_enabled = false })
+	assert_true(type(selected) == 'table' and selected.target_id == newer.id,
+		'foreign-claimed older pull must yield to an eligible friendly pull')
+
+	older.claim_id = 0
+	camp_pull_registry.observe({ newer, older }, friendly_claims, 50, function()
+	end)
+	selected = core.select_target_for_scheduler({ autotarget = true, prime = false, hunter = false, path_follow_enabled = false })
+	assert_true(type(selected) == 'table' and selected.target_id == older.id,
+		'orphaned hostile must resume its original cleanup order without Prime')
+	camp_pull_registry.reset('alliance_target_scope_camp_pull_complete')
 end
 
 local function test_friendly_aggression_evidence()
@@ -584,6 +632,7 @@ local function main()
     test_helper_flag_off_and_on()
     test_claim_validity_scope()
     test_prime_aggressive_scope()
+	test_camp_pull_cleanup_order()
 	test_friendly_aggression_evidence()
     test_tank_victim_scope()
     test_zero_hp_and_recent_death_preserved()

@@ -1,3 +1,5 @@
+local camp_pull_registry = require('uc_camp_pull_registry')
+
 local M = {}
 
 local function require_table(value, name)
@@ -470,16 +472,19 @@ function M.new(deps)
 		local claim_id = tonumber(target.claim_id) or 0
 		local party_ids = build_party_id_set()
 		local party_claimed_ok = claims_set[claim_id] == true
+		local camp_pull_order = camp_pull_registry.combat_order(target, claims_set)
+		local camp_pull_ok = camp_pull_order ~= nil
 		local prime_unclaimed_ok = prime_unclaimed_party_aggressive_ok(ctx.settings, target, party_ids)
 		local force_leader_engage = fight_leader_force_target_id > 0
 			and fight_leader_force_target_id == (tonumber(target.id) or 0)
-		local claim_check = ('party_claimed=%s,prime_unclaimed=%s,force_leader=%s,claim_id=%d'):format(
+		local claim_check = ('party_claimed=%s,camp_pull=%s,prime_unclaimed=%s,force_leader=%s,claim_id=%d'):format(
 			party_claimed_ok and '1' or '0',
+			camp_pull_ok and tostring(camp_pull_order) or '0',
 			prime_unclaimed_ok and '1' or '0',
 			force_leader_engage and '1' or '0',
 			claim_id
 		)
-		if not party_claimed_ok and not prime_unclaimed_ok and not force_leader_engage then
+		if not party_claimed_ok and not camp_pull_ok and not prime_unclaimed_ok and not force_leader_engage then
 			if debug_enabled(ctx.settings) then
 				_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:policy claim=%d st=%d prime=%s'):format(
 					claim_id,

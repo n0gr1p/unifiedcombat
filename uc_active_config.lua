@@ -717,6 +717,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.brd_dummy_songs = clone_value(config.maintenance.brd.dummy_songs)
 			candidate.brd_recovery_range_yalms = config.maintenance.brd.recovery_range_yalms
 			candidate.brd_recovery_ignore_names = clone_value(config.maintenance.brd.recovery_ignore_names)
+			candidate.brd_reposition_for_party_songs = config.maintenance.brd.reposition_for_party_songs
 			candidate.brd_use_nitro = config.maintenance.brd.use_nitro
 			candidate.brd_use_soul_voice = config.maintenance.brd.use_soul_voice
 			candidate.brd_use_clarion_call = config.maintenance.brd.use_clarion_call

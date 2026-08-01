@@ -111,6 +111,7 @@ require('actions')
 local uc_partner_list = require('uc_partner_list')
 local uc_add_priority = require('uc_add_priority')
 local uc_camp_anchor = require('uc_camp_anchor')
+local uc_camp_pull_registry = require('uc_camp_pull_registry')
 local uc_config_status_export = require('uc_config_status_export')
 local uc_active_config = require('uc_active_config')
 local uc_profile_v2 = require('uc_profile_v2')
@@ -293,6 +294,7 @@ local function uc_new_settings_defaults()
 			ordering = 'geo_first',
 			require_camp = true,
 			camp_tolerance_yalms = 1.0,
+			enemy_geo_requires_camp_radius = false,
 			unknown_existing_policy = 'wait_for_clear',
 			entrust = {
 				enabled = false,
@@ -2076,6 +2078,8 @@ end)
 
 windower.register_event('ipc message', function(msg)
 	uc_camp_anchor.on_ipc_message(msg)
+	local info = windower.ffxi.get_info()
+	uc_camp_pull_registry.on_ipc_message(msg, info and info.zone)
 	if UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_ipc_message) == 'function' then
 		pcall(function()
 			UC_COMBAT_CORE.on_ipc_message(msg)
@@ -2122,6 +2126,7 @@ end)
 
 windower.register_event('zone change', function()
 	uc_camp_anchor.clear()
+	uc_camp_pull_registry.reset('zone_change')
 	uc_nyzul_runtime.reset('zone_change')
 	require('uc_brd_maintenance').reset('zone_change')
 	require('uc_reaction_runtime').reset('zone_change')
@@ -2136,6 +2141,7 @@ end)
 
 windower.register_event('unload', function()
 	uc_camp_anchor.clear()
+	uc_camp_pull_registry.reset('unload')
 	uc_nyzul_runtime.reset('unload')
 	require('uc_brd_maintenance').reset('unload')
 	require('uc_reaction_runtime').reset('unload')
@@ -2157,6 +2163,7 @@ end)
 
 windower.register_event('logout', function()
 	uc_camp_anchor.clear()
+	uc_camp_pull_registry.reset('logout')
 	uc_nyzul_runtime.reset('logout')
 	require('uc_lilith_easy_encounter').reset('logout')
 	require('uc_lilith_easy_formation_runtime').reset('logout')
@@ -2479,7 +2486,7 @@ windower.register_event('addon command', function(...)
 			return
 		elseif sub == 'pullstatus' then
 			local status = require('unified_scheduler').camp_puller_status()
-			windower.add_to_chat(207, ('UC camp puller: state=%s target=%d:%s reason=%s detail=%s intent=%s active=%d/%d camp=%.2f target_camp=%.2f cast/action=%.2f/%.2f crumbs=%d recovery=%d retry=%d cooldown=%.2f'):format(
+			windower.add_to_chat(207, ('UC camp puller: state=%s target=%d:%s reason=%s detail=%s intent=%s active=%d/%d tracked=%d foreign=%d orphaned=%d forfeited=%d camp=%.2f target_camp=%.2f cast/action=%.2f/%.2f crumbs=%d recovery=%d retry=%d cooldown=%.2f'):format(
 				tostring(status.state or ''),
 				tonumber(status.target_id) or 0,
 				tostring(status.target_name or ''),
@@ -2488,6 +2495,10 @@ windower.register_event('addon command', function(...)
 				tostring(status.last_intent or ''),
 				tonumber(status.active_count) or 0,
 				tonumber(status.quota) or 0,
+				tonumber(status.tracked_count) or 0,
+				tonumber(status.foreign_claimed_count) or 0,
+				tonumber(status.orphaned_hostile_count) or 0,
+				tonumber(status.forfeited_idle_count) or 0,
 				tonumber(status.camp_distance) or -1,
 				tonumber(status.target_camp_distance) or -1,
 				tonumber(status.cast_range) or -1,

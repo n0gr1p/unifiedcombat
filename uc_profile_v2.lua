@@ -349,6 +349,9 @@ local function strip_non_applicable_maintenance(current_config, target_config, m
 				if value.recovery_ignore_names == nil then
 					value.recovery_ignore_names = {}
 				end
+				if value.reposition_for_party_songs == nil then
+					value.reposition_for_party_songs = false
+				end
 				if value.use_soul_voice == nil then
 					value.use_soul_voice = false
 				end
@@ -365,6 +368,7 @@ local function strip_non_applicable_maintenance(current_config, target_config, m
 			if next(value) == nil or (
 				value.recovery_range_yalms == 9.9
 				and type(value.recovery_ignore_names) == 'table' and #value.recovery_ignore_names == 0
+				and value.reposition_for_party_songs == false
 				and value.enabled == nil and value.songs == nil and value.dummy_songs == nil
 				and value.use_nitro == nil and value.use_soul_voice == false
 				and value.use_clarion_call == nil and value.use_marcato == nil
@@ -378,6 +382,7 @@ local function strip_non_applicable_maintenance(current_config, target_config, m
 				and type(value.dummy_songs) == 'table' and #value.dummy_songs == 0
 				and value.recovery_range_yalms == 9.9
 				and type(value.recovery_ignore_names) == 'table' and #value.recovery_ignore_names == 0
+				and value.reposition_for_party_songs == false
 				and value.use_nitro == false
 				and value.use_soul_voice == false
 				and value.use_clarion_call == false
@@ -413,6 +418,7 @@ local function strip_non_applicable_maintenance(current_config, target_config, m
 			and value.ordering == 'geo_first'
 			and value.require_camp == true
 			and value.camp_tolerance_yalms == 1.0
+			and value.enemy_geo_requires_camp_radius == false
 			and value.unknown_existing_policy == 'wait_for_clear'
 			and type(value.entrust) == 'table'
 			and value.entrust.enabled == false

@@ -24,7 +24,14 @@ local config = {
 	max_z_delta = 2.0,
 }
 
-local demanded, demand = policy.pull_demand(config, {}, { [100] = true })
+local tracked_active_ids = {}
+local pull_registry = {
+	quota_eligible = function(mob)
+		return tracked_active_ids[tonumber(mob and mob.id) or 0] == true
+	end,
+}
+
+local demanded, demand = policy.pull_demand(config, {}, { [100] = true }, pull_registry)
 assert_equal(demanded, true, 'empty quota should demand a pull')
 assert_equal(demand.active_count, 0, 'empty quota active count mismatch')
 
@@ -36,7 +43,7 @@ demanded, demand = policy.pull_demand(config, {
 		hpp = 80,
 		claim_id = 100,
 	},
-}, { [100] = true })
+}, { [100] = true }, pull_registry)
 assert_equal(demanded, false, 'full healthy quota must not demand a pull')
 
 demanded = policy.pull_demand(config, {
@@ -47,8 +54,22 @@ demanded = policy.pull_demand(config, {
 		hpp = 20,
 		claim_id = 100,
 	},
-}, { [100] = true })
+}, { [100] = true }, pull_registry)
 assert_equal(demanded, true, 'low-HPP active mob should permit early replenish')
+
+tracked_active_ids[2] = true
+demanded, demand = policy.pull_demand(config, {
+	{
+		id = 2,
+		valid_target = true,
+		spawn_type = 16,
+		hpp = 100,
+		status = 1,
+		claim_id = 0,
+	},
+}, { [100] = true }, pull_registry)
+assert_equal(demanded, false, 'tracked unclaimed hostile mob must occupy a quota slot')
+assert_equal(demand.active_count, 1, 'tracked unclaimed hostile active count mismatch')
 
 local ctx = {
 	now = 10,

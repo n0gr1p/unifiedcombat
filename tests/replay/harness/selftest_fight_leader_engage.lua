@@ -1,6 +1,7 @@
 package.path = './?.lua;' .. package.path
 
 local combat_provider = require('uc_provider_combat')
+local camp_pull_registry = require('uc_camp_pull_registry')
 
 local function assert_equal(actual, expected, message)
 	if actual ~= expected then
@@ -12,7 +13,7 @@ local function bool_setting(value)
 	return value == true
 end
 
-local function make_provider(leader_target_id)
+local function make_provider(leader_target_id, leader_enabled, friendly_claims)
 	return combat_provider.new({
 		bool_setting = bool_setting,
 		clamp_urgency = function(value)
@@ -39,7 +40,7 @@ local function make_provider(leader_target_id)
 			return true
 		end,
 		build_friendly_claims = function()
-			return {}, {}
+			return {}, friendly_claims
 		end,
 		mob_targets_friendly_member = function()
 			return false
@@ -66,7 +67,7 @@ local function make_provider(leader_target_id)
 			return false
 		end,
 		fight_leader_enabled = function()
-			return true
+			return leader_enabled
 		end,
 		fight_leader_id = function()
 			return 500
@@ -147,7 +148,7 @@ local function main()
 	_G.Start_Engine = true
 
 	local leader_target = make_target(300, 'Leader Target')
-	local provider = make_provider(leader_target.id)
+	local provider = make_provider(leader_target.id, true, {})
 
 	local out = {}
 	provider.collect_engage(make_context(leader_target, leader_target), out)
@@ -159,6 +160,35 @@ local function main()
 	assert_equal(#out, 1, 'different leader target must preserve the retarget engage proposal')
 	assert_equal(out[1].action_type, 'engage', 'retarget proposal action type')
 	assert_equal(out[1].target_id, leader_target.id, 'retarget proposal target id')
+
+	camp_pull_registry.reset('fight_leader_engage_camp_pull_test')
+	local friendly_claims = { [100] = true }
+	local tracked_target = make_target(302, 'Tracked Pull')
+	tracked_target.status = 1
+	camp_pull_registry.register_reacted(tracked_target, friendly_claims, 50, function()
+	end)
+	provider = make_provider(0, false, friendly_claims)
+	local tracked_ctx = make_context(tracked_target, tracked_target)
+	tracked_ctx.player.status = 0
+	out = {}
+	provider.collect_engage(tracked_ctx, out)
+	assert_equal(#out, 1, 'tracked yellow camp pull must engage without Prime')
+	assert_equal(out[1].target_id, tracked_target.id, 'tracked yellow camp pull engage target id')
+
+	tracked_target.claim_id = 900
+	camp_pull_registry.observe({ tracked_target }, friendly_claims, 50, function()
+	end)
+	out = {}
+	provider.collect_engage(tracked_ctx, out)
+	assert_equal(#out, 0, 'foreign-claimed tracked pull must not engage')
+
+	tracked_target.claim_id = 0
+	camp_pull_registry.observe({ tracked_target }, friendly_claims, 50, function()
+	end)
+	out = {}
+	provider.collect_engage(tracked_ctx, out)
+	assert_equal(#out, 1, 'orphaned hostile must re-enter combat cleanup without Prime')
+	camp_pull_registry.reset('fight_leader_engage_complete')
 
 	io.stdout:write('selftest_fight_leader_engage: OK\n')
 end

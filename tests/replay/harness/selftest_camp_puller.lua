@@ -1,6 +1,8 @@
 package.path = package.path .. ';./?.lua'
 
 local camp_puller = require('uc_camp_puller')
+local pull_registry = require('uc_camp_pull_registry')
+pull_registry.reset('selftest_start')
 
 local function assert_equal(actual, expected, message)
 	if actual ~= expected then
@@ -46,6 +48,7 @@ local timeline_events = {}
 local pull_action_active = false
 local start_lane_available = true
 local start_lane_reason = ''
+local ipc_messages = {}
 local provider = camp_puller.new({
 	resolve_camp_anchor = function()
 		return {
@@ -93,6 +96,12 @@ local provider = camp_puller.new({
 	end,
 	can_start_journey = function()
 		return start_lane_available, start_lane_reason
+	end,
+	get_zone_id = function()
+		return 100
+	end,
+	send_ipc_message = function(message)
+		ipc_messages[#ipc_messages + 1] = message
 	end,
 })
 
@@ -230,6 +239,9 @@ assert_equal(#out, 1, 'camp arrival must emit explicit stop')
 assert_equal(out[1].action_type, 'camp_stop', 'camp arrival stop mismatch')
 provider.note_dispatch(out[1], ctx.now, config)
 assert_equal(provider.status_snapshot().state, 'IDLE', 'camp stop must complete journey')
+assert_equal(provider.status_snapshot().tracked_count, 1, 'successful reacted pull must remain tracked after return')
+assert_true(#ipc_messages > 0, 'successful reacted pull must publish registry state over IPC')
+pull_registry.reset('selftest_next_scenario')
 
 mob.hpp = 100
 mob.status = 0

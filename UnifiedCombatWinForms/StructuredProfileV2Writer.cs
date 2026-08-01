@@ -689,6 +689,7 @@ internal static class StructuredProfileV2Writer
 					.Add("marcato_song", ReadString(flatProfile, "brd_marcato_song", ""))
 					.Add("targeted_songs", BuildBardTargetedSongs(ReadString(flatProfile, "brd_targeted_songs", "")))
 					.Add("recovery_range_yalms", ReadBoundedDouble(flatProfile, "brd_recovery_range_yalms", 9.9, 1.0, 20.0))
+					.Add("reposition_for_party_songs", ReadBool(flatProfile, "brd_reposition_for_party_songs", false))
 					.Add("recovery_ignore_names", SplitPipeList(ReadString(flatProfile, "brd_recovery_ignore_names", "")))
 			);
 		}
@@ -744,6 +745,7 @@ internal static class StructuredProfileV2Writer
             .Add("ordering", ordering)
             .Add("require_camp", ReadOptionalBool(flatProfile, "geo_require_camp", true))
             .Add("camp_tolerance_yalms", ReadBoundedDouble(flatProfile, "geo_camp_tolerance_yalms", 1.0, 0.0, 50.0))
+            .Add("enemy_geo_requires_camp_radius", ReadOptionalBool(flatProfile, "geo_enemy_requires_camp_radius", false))
             .Add("unknown_existing_policy", "wait_for_clear")
             .Add(
                 "entrust",

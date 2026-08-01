@@ -223,6 +223,7 @@ local function main()
 					dummy_songs = {},
 					recovery_range_yalms = 14.5,
 					recovery_ignore_names = { 'Niightsiide' },
+					reposition_for_party_songs = true,
 					use_nitro = true,
 					use_soul_voice = true,
 					use_clarion_call = false,
@@ -287,6 +288,7 @@ local function main()
 	assert_equal(active_config.get_path('config.maintenance.brd.songs')[1], 'Honor March', 'active BRD maintenance list mismatch')
 	assert_equal(active_config.get_path('config.maintenance.brd.recovery_range_yalms'), 14.5, 'active BRD recovery range mismatch')
 	assert_equal(active_config.get_path('config.maintenance.brd.recovery_ignore_names')[1], 'Niightsiide', 'active BRD recovery ignore list mismatch')
+	assert_equal(active_config.get_path('config.maintenance.brd.reposition_for_party_songs'), true, 'active BRD reposition policy mismatch')
 	assert_equal(active_config.get_path('config.maintenance.brd.use_soul_voice'), true, 'active BRD Soul Voice mismatch')
 	assert_equal(active_config.get_path('config.maintenance.brd.targeted_songs')[1].recipients[1], 'Target', 'active BRD targeted recipient mismatch')
 	assert_equal(active_config.get_path('config.maintenance.geo.geo_spell'), 'Geo-Frailty', 'active GEO maintenance migration mismatch')
@@ -321,6 +323,7 @@ local function main()
 	assert_equal(projected.brd_songs[2], 'Victory March', 'projected BRD flat song list mismatch')
 	assert_equal(projected.brd_recovery_range_yalms, 14.5, 'projected BRD recovery range mismatch')
 	assert_equal(projected.brd_recovery_ignore_names[1], 'Niightsiide', 'projected BRD recovery ignore list mismatch')
+	assert_equal(projected.brd_reposition_for_party_songs, true, 'projected BRD reposition policy mismatch')
 	assert_equal(projected.brd_use_soul_voice, true, 'projected BRD Soul Voice mismatch')
 	assert_equal(projected.brd_targeted_songs, 'Target:Victory March', 'projected BRD targeted songs mismatch')
 	assert_equal(projected.maintenance_geo.geo_spell, 'Geo-Frailty', 'projected GEO maintenance migration mismatch')

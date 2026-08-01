@@ -182,7 +182,9 @@ function M.new(deps)
 	}
 
 	local function canonical_reason(state, detail)
-		if state == 'invalid_config' then
+		if detail == 'enemy_outside_camp_radius' then
+			return 'GEO_ENEMY_OUTSIDE_CAMP_RADIUS'
+		elseif state == 'invalid_config' then
 			return 'GEO_CONFIG_INVALID'
 		elseif state == 'not_geomancer' or state == 'no_player' then
 			return 'GEO_JOB_INELIGIBLE'
@@ -550,6 +552,28 @@ function M.new(deps)
 		return true, nil
 	end
 
+	local function enemy_geo_camp_ready(ctx, config, target)
+		if config.enemy_geo_requires_camp_radius ~= true
+			or tostring(config.geo_target.kind or '') ~= 'current_enemy' then
+			return true, nil, nil
+		end
+		if type(target) ~= 'table' or target.is_mob ~= true or type(target.mob) ~= 'table' then
+			error('camp-restricted enemy Geo requires a resolved mob target')
+		end
+		local anchor, reason = resolve_camp_anchor()
+		if type(anchor) ~= 'table' then
+			return false, tostring(reason or 'camp_unavailable'), nil
+		end
+		local distance = distance_between(target.mob, anchor)
+		if distance == nil then
+			return false, 'enemy_camp_geometry_unavailable', nil
+		end
+		if distance > tonumber(config.luopan.max_camp_distance_yalms) then
+			return false, 'enemy_outside_camp_radius', distance
+		end
+		return true, nil, distance
+	end
+
 	local function observe_identity(ctx)
 		local geo_present = ctx.pet_present == true
 		local indi_present = has_buff(ctx.player, INDI_COLURE_BUFF_ID)
@@ -789,6 +813,13 @@ function M.new(deps)
 					publish_status('sequence_blocked', reason)
 					return true
 				end
+				local target_at_camp, target_camp_reason = enemy_geo_camp_ready(ctx, config, target)
+				if not target_at_camp then
+					set_sequence_enemy_wait(sequence, true, target_camp_reason)
+					publish_status('sequence_blocked', target_camp_reason)
+					return true
+				end
+				set_sequence_enemy_wait(sequence, false, 'enemy_inside_camp_radius')
 				emit_ja(ctx, out, 'Blaze of Glory', 'blaze_buff', 0.95, sequence)
 				return true
 			end
@@ -799,7 +830,13 @@ function M.new(deps)
 					publish_status('sequence_blocked', reason)
 					return true
 				end
-				set_sequence_enemy_wait(sequence, false, 'claimed_enemy_at_camp')
+				local target_at_camp, target_camp_reason = enemy_geo_camp_ready(ctx, config, target)
+				if not target_at_camp then
+					set_sequence_enemy_wait(sequence, true, target_camp_reason)
+					publish_status('sequence_blocked', target_camp_reason)
+					return true
+				end
+				set_sequence_enemy_wait(sequence, false, 'enemy_inside_camp_radius')
 				emit_spell(
 					ctx,
 					out,
@@ -919,7 +956,12 @@ function M.new(deps)
 			elseif not at_camp then
 				set_sequence_enemy_wait(sequence, true, camp_reason)
 			else
-				set_sequence_enemy_wait(sequence, false, 'claimed_enemy_at_camp')
+				local target_at_camp, target_camp_reason = enemy_geo_camp_ready(ctx, config, target)
+				set_sequence_enemy_wait(
+					sequence,
+					not target_at_camp,
+					target_at_camp and 'enemy_inside_camp_radius' or target_camp_reason
+				)
 			end
 		end
 		if player_is_moving() then
@@ -964,9 +1006,20 @@ function M.new(deps)
 		local geo_satisfied = geo_present and provider.state.owned_geo_spell == config.geo_spell
 		local indi_satisfied = indi_present and provider.state.owned_indi_spell == config.indi_spell
 		local geo_target, geo_target_kind, geo_target_reason = resolve_geo_target(ctx, config, nil)
-		local function begin_replacement()
+		local function geo_target_is_ready()
 			if geo_target == nil then
 				publish_status('geo_blocked', geo_target_reason)
+				return false
+			end
+			local target_at_camp, target_camp_reason = enemy_geo_camp_ready(ctx, config, geo_target)
+			if not target_at_camp then
+				publish_status('geo_blocked', target_camp_reason)
+				return false
+			end
+			return true
+		end
+		local function begin_replacement()
+			if not geo_target_is_ready() then
 				return
 			end
 			local enhance, consumed = blaze_upgrade_ready(ctx, config)
@@ -994,6 +1047,9 @@ function M.new(deps)
 				return
 			end
 			if outside_radius then
+				if not geo_target_is_ready() then
+					return
+				end
 				action_timeline_log('GEO_LUOPAN_REPOSITION_REQUIRED', {
 					luopan_id = tonumber(ctx.pet_id) or 0,
 					target_id = tonumber(geo_target.id) or 0,
@@ -1010,8 +1066,7 @@ function M.new(deps)
 		end
 
 		local function emit_geo()
-			if geo_target == nil then
-				publish_status('geo_blocked', geo_target_reason)
+			if not geo_target_is_ready() then
 				return
 			end
 			local enhance, consumed = blaze_upgrade_ready(ctx, config)
@@ -1068,8 +1123,7 @@ function M.new(deps)
 		if geo_present
 			and provider.state.owned_geo_blaze_enhanced ~= true
 			and blaze_ready then
-			if geo_target == nil then
-				publish_status('geo_blocked', geo_target_reason)
+			if not geo_target_is_ready() then
 				return
 			end
 			begin_geo_creation(config, true, geo_target.id, true, blaze_consumed)
@@ -1201,6 +1255,10 @@ function M.new(deps)
 			if tostring(target_kind) ~= tostring(selected.target_kind)
 				or tonumber(target.id) ~= tonumber(selected.target_id) then
 				return false, 'geo_target_changed'
+			end
+			local target_at_camp, target_camp_reason = enemy_geo_camp_ready(ctx, config, target)
+			if not target_at_camp then
+				return false, target_camp_reason
 			end
 			local in_range, range_reason = target_in_range(ctx, target, contracts.geo.max_range)
 			return in_range, range_reason or 'stale_geo'

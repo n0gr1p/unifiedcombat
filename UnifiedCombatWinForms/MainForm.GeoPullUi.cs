@@ -74,7 +74,10 @@ public partial class MainForm
         _geoUseLifeCycle.Enabled = geoEnabled;
         _geoLifeCycleHpp.Enabled = geoEnabled && _geoUseLifeCycle.Checked;
         _geoReplaceOutOfPosition.Enabled = geoEnabled;
-        _geoMaxCampDistance.Enabled = geoEnabled && _geoReplaceOutOfPosition.Checked;
+        _geoEnemyRequiresCampRadius.Enabled = geoEnabled
+            && string.Equals(_geoTargetKind.SelectedItem?.ToString(), "current_enemy", StringComparison.Ordinal);
+        _geoMaxCampDistance.Enabled = geoEnabled
+            && (_geoReplaceOutOfPosition.Checked || _geoEnemyRequiresCampRadius.Checked);
 
         var pullEnabled = _campPullEnabled.Checked;
         _campPullActionType.Enabled = pullEnabled;
@@ -112,6 +115,7 @@ public partial class MainForm
         _geoUseLifeCycle.Checked = false;
         _geoLifeCycleHpp.Value = 50m;
         _geoReplaceOutOfPosition.Checked = false;
+        _geoEnemyRequiresCampRadius.Checked = false;
         _geoMaxCampDistance.Value = 6m;
 
         _campPullEnabled.Checked = false;
@@ -163,6 +167,11 @@ public partial class MainForm
         _geoReplaceOutOfPosition.Checked = ReadProfileBool(
             snapshot,
             "geo_replace_out_of_position",
+            false
+        );
+        _geoEnemyRequiresCampRadius.Checked = ReadProfileBool(
+            snapshot,
+            "geo_enemy_requires_camp_radius",
             false
         );
         SetProfileNumber(
@@ -305,7 +314,13 @@ public partial class MainForm
         _geoLifeCycleHpp = AddNumber(geo, "Life Cycle below luopan HP %", 1m, 99m, 50m, 1m, 0, ref geoRow);
         _geoReplaceOutOfPosition = new CheckBox { Text = "Replace a luopan outside the camp radius", AutoSize = true };
         AddWide(geo, _geoReplaceOutOfPosition, ref geoRow);
-        _geoMaxCampDistance = AddNumber(geo, "Luopan camp radius (yalms)", 0.1m, 50m, 6m, 0.1m, 1, ref geoRow);
+        _geoEnemyRequiresCampRadius = new CheckBox
+        {
+            Text = "Only cast enemy Geo within the camp radius",
+            AutoSize = true,
+        };
+        AddWide(geo, _geoEnemyRequiresCampRadius, ref geoRow);
+        _geoMaxCampDistance = AddNumber(geo, "Camp placement radius (yalms)", 0.1m, 50m, 6m, 0.1m, 1, ref geoRow);
         _geoRuntimeStatus = new Label
         {
             AutoSize = true,
@@ -340,6 +355,7 @@ public partial class MainForm
             _geoUseLifeCycle,
             _geoLifeCycleHpp,
             _geoReplaceOutOfPosition,
+            _geoEnemyRequiresCampRadius,
             _geoMaxCampDistance
         );
         _tabGeo.Controls.Add(geo);

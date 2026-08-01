@@ -84,8 +84,8 @@ See the [scheduler RFC index](RFC/README.md), [phase-6 exit audit](RFC/UnifiedCo
 ### Job maintenance
 
 - COR: two-roll maintenance, Double-Up/Eleven handling, Fold, Crooked Cards selection, Luzaf range override, and required-member range policy.
-- BRD: exact song-identity tracking, packet/timer-driven refresh, dummy-song capacity setup/recovery, Nightingale/Troubadour, Soul Voice, Clarion Call, Marcato, and Pianissimo-targeted songs.
-- GEO: Geo/Indi upkeep, camp requirements, Entrust sequencing, Full Circle replacement, Blaze of Glory, optional Ecliptic Attrition/Life Cycle, luopan positioning, and explicitly armed Bolster.
+- BRD: exact song-identity tracking, packet/timer-driven refresh, dummy-song capacity setup/recovery, Nightingale/Troubadour, Soul Voice, Clarion Call, Marcato, Pianissimo-targeted songs, and optional party-coverage repositioning before group-song cycles. Repositioning finds a shared in-range casting point, waits when full coverage is unavailable, permits an urgent largest-cluster cast, and never spends dummy/Clarion capacity work on a partial cluster.
+- GEO: Geo/Indi upkeep, character and optional enemy camp-radius requirements, Entrust sequencing, Full Circle replacement, Blaze of Glory, optional Ecliptic Attrition/Life Cycle, luopan positioning, and explicitly armed Bolster.
 - SMN: desired-avatar convergence, Favor, one Ward, Assault-on-combat-start, one configured Rage, per-command backoff, and shared pet-command coordination.
 
 ### Movement and special workflows
