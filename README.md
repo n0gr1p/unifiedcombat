@@ -1,303 +1,352 @@
 # UnifiedCombat
 
-UnifiedCombat is a Windower addon + WinForms desktop UI for multibox combat automation in FFXI.
+UnifiedCombat is a Windower 4 addon and .NET WinForms desktop UI for coordinating multibox combat automation in Final Fantasy XI.
 
-Current runtime is centered on a single UC combat path (`unified_engine` + `unified_combat_core`) with direct WinForms-to-addon connectivity (no Python middleware required for normal operation).
+The current runtime has one engine and one scheduler-owned action path. The scheduler arbitrates combat, defensive support, maintenance, and coordinated movement; the former `melee`/`dd2` loops and the transitional scheduler dark-launch settings are no longer runtime choices. The desktop UI hosts a local TCP server and writes durable profile-v2 configuration without requiring Python middleware.
 
-## Table of Contents
+## Current status
 
-1. Overview
-2. Architecture
-3. Core Functionality
-4. Runtime Flow
-5. Configuration and Profiles
-6. Installation
-7. Running the UI
-8. Build and Release
-9. Commands
-10. Dependencies
-11. Repository Layout
-12. Troubleshooting
-13. Additional Docs
+Status of the current checkout (`3f78bf5`, 2026-07-31):
 
-## Overview
+### Complete and established
 
-UnifiedCombat provides:
+- The six-phase scheduler refactor is complete. Phase 6 removed the legacy core combat loop, retired the four `scheduler_dark_launch_*` settings, and made the five `domain_*_enabled` settings authoritative.
+- The scheduler owns target/action selection and dispatch. `unified_combat_core.lua` remains a side-effect-light combat policy and intent helper; it is not a second tick loop.
+- Combat, defensive support, COR/BRD maintenance, movement coordination, profile-v2 consumption, reactions, and scheduler diagnostics have broad replay/self-test coverage.
+- The scheduler cutover was field-tested on a five-character party on 2026-07-24 with no reported regression. Party follow, combat movement/casting, and lifecycle stop were included in that acceptance pass.
+- Structured profile v2 is the durable UI-authored configuration source. The addon validates and consumes it through reload, optional startup autoload, or optional file-change auto-reload.
 
-- Single UC engine execution path for combat tick logic.
-- Party-claim-aware targeting with fight leader and add-control support.
-- Spacing + close-range movement with puller gating support.
-- Smart WS selection and skillchain-aware WS behavior.
-  - Aftermath hold logic is weapon-table driven via `docs/aftermath_table.lua` and validates `aftermath_ws` against mapped ultimate-weapon WS entries.
-  - In scheduler combat ownership mode, `AM_READY` aftermath WS intents are prioritized above defensive buffs/non-critical cures, while critical cures and doom emergency still preempt.
-- Ordered JA execution pipeline.
-- Party-follow with zone replay behavior.
-- Ordered Nyzul lamp parking with a persistent exit anchor and one-command regroup.
-- Defensive scheduler integration path.
-  - Majesty is treated as a high-priority defensive buff and is cast before non-critical cures.
-  - Defensive spell casts are deferred while pre-engage combat approach movement is active.
-  - In scheduler combat ownership mode, target selection dispatch is lane-separated from action-block gates and is prioritized above engage dispatch.
-- Real-time multi-session WinForms control and state sync.
+### Implemented, with field acceptance still open
+
+- Summoner v1 is implemented through its six RFC phases: avatar convergence, Avatar's Favor, one Ward, Assault, Rage, pet-command serialization, optional target-HP and pet-TP gates, diagnostics, and profile/UI support. Automated coverage is extensive; further live packet/command validation is still recommended.
+- GEO maintenance and independent camp pulling are code-complete, default-off, and covered by focused automated tests. GEO/Indi, Entrust, luopan replacement/enhancement, optional Life Cycle/Ecliptic Attrition, Bolster arming, pull quotas, breadcrumbs, recovery, and return-to-camp are awaiting a clean field-acceptance pass.
+- Maiden of the Dusk (Easy) encounter formation and reaction handling are implemented and tested in isolation. Their live encounter checklist is still open.
+- Nyzul ordered lamp parking has focused runtime coverage but no recorded live acceptance result.
+- Route/path following retains an accepted live-validation risk from the scheduler cutover; focused path execution and movement-arbitration tests pass.
+
+### Not implemented
+
+- The planned charmed-party-member emergency sleeper remains a checklist only; its settings, provider, and UI control are not implemented.
+
+See the [scheduler RFC index](RFC/README.md), [phase-6 exit audit](RFC/UnifiedCombat_scheduler_refactor_phase6_exit_audit_2026-07-24.md), [Summoner implementation guide](SMN_RFC/summoner_v1_implementation.md), and [GEO/camp-puller tracker](GEO_PULLER_RFC/implementation_tracking.md) for detailed evidence and remaining field work.
 
 ## Architecture
 
-### High-level Components
+### Main runtime components
 
-- `UnifiedCombat.lua`
-  - Addon entrypoint, event registration, profile load/save, command parsing.
-- `unified_engine.lua`
-  - UC engine loop (`tick_interval = 0.25`), scheduler + core combat orchestration.
-- `unified_scheduler.lua`
-  - Scheduler layer (defensive arbitration / blocking decisions before combat tick).
-- `unified_combat_core.lua`
-  - Primary combat logic: target selection, engage/switch, movement, abilities, WS.
-- `uc_party_follow.lua`
-  - Party-follow movement in prerender loop + IPC position/zone replay.
-- `uc_nyzul_runtime.lua`
-  - Runtime-only Nyzul parking queue, IPC targeting, and movement holds.
-- `remote_bridge.lua`
-  - UI hub endpoint and settings/state bridge between addon and WinForms app.
-- `UnifiedCombatWinForms/`
-  - Desktop UI (direct connect to addon hub).
+- `UnifiedCombat.lua` — addon entrypoint, defaults, Windower events, commands, profile lifecycle, and domain predicates.
+- `unified_engine.lua` — 0.20-second engine loop, cadence control, and scheduler debug overlay.
+- `unified_scheduler.lua` — proposal collection, ranking, dispatch, pending/action state, locks, defensive arbitration, maintenance integration, and movement coordination.
+- `unified_combat_core.lua` — combat policy, target/WS/tank/pull selection, skillchain state, and scheduler-facing intent helpers.
+- `uc_provider_*.lua` — extracted combat, target-control, tank-enmity, defensive, enemy-dispel, and maintenance proposal providers.
+- `uc_scheduler_*.lua` — scheduler context, proposal, ranker, dispatcher, pending, lock, ownership, observability, and utility modules.
+- `uc_movement_dispatcher.lua` — shared movement side-effect boundary used by scheduler, formation, party follow, pathing, Nyzul, and lifecycle stops.
+- `uc_party_follow.lua` / `uc_pathing.lua` — frame-level party follow, zone replay, route recording, and route traversal.
+- `remote_bridge.lua` — TCP client that connects each addon session to the WinForms hub.
+- `UnifiedCombatWinForms/` — .NET 9 desktop UI, profile writer, and loopback session hub.
 
-### Runtime Split (Important)
+### Runtime flow
 
-- Engine tick loop (every ~0.25s): scheduler + core combat (`unified_engine`).
-- Prerender loop (frame-level): party-follow updates + bridge servicing.
+1. On addon load, UnifiedCombat initializes compatibility settings and canonical active config, loads the character profile, queues optional profile-v2 autoload, seeds packet-derived state, and registers events.
+2. `//uc start` starts the unified engine. Every 0.20 seconds the engine calls `unified_scheduler.process_tick()`.
+3. The scheduler builds one tick-stable world snapshot, collects enabled-domain proposals, ranks and revalidates the selected plan, dispatches through the owned executor boundary, and updates pending/action state from packet and text evidence.
+4. Combat proposals run at engine cadence, defensive collection is throttled to 2 Hz, and most maintenance collection is throttled to 1 Hz. BRD sequencing can participate every engine tick while its action lane is reserved.
+5. The movement coordinator runs after action selection subject to action, cast, BRD, camp-puller, reaction, formation, and domain ownership rules.
+6. The prerender event services route traversal/recording, party-position IPC, the UI bridge, party follow, profile-v2 autoload, and optional file-change reload.
 
-The system explicitly coordinates these loops with shared state flags (for example, combat intent and puller-gated movement handoff).
+`domain_combat_enabled`, `domain_defensive_enabled`, `domain_movement_enabled`, `domain_maintenance_enabled`, and `domain_follow_enabled` determine participation. The engine must be running for combat, defensive, movement, and maintenance domains; party follow is independently domain-gated and can operate with the engine stopped.
 
-### Legacy Files
+### Legacy/reference files
 
-`dd2_engine.lua`, `dd2_module.lua`, and `melee_engine.lua` are kept in-repo as legacy/reference material.  
-Active runtime uses UC engine path from `UnifiedCombat.lua` and does not require those files for normal operation.
+`dd2_engine.lua`, `dd2_module.lua`, and `melee_engine.lua` remain for compatibility/reference and parse coverage. They are not active engine choices. `unified_combat_ui.py` is historical development material; the normal UI path is the WinForms application.
 
-## Core Functionality
+## Functionality
 
-### Targeting and Engagement
+### Combat and target control
 
-- Party claim aware target eligibility.
-- Prime mode behavior for unclaimed aggressive targets.
-- Fight leader target preference (`fight_leader` + `fight_leader_id`).
-- Add-control lane for controlled engaged retarget behavior.
-- Target-ignore list support (name-based exclusion).
-- Sticky engaged target behavior to prevent mid-fight churn.
-- Death-event-assisted switch-target flow for faster post-kill transitions.
+- Party/alliance-claim-aware target selection, prime behavior, sticky targets, death transitions, manual mode, fight-leader preference, partner exclusions, and name-based target ignores.
+- Add control restricted to configured priority targets; when no configured add is eligible, fight-leader combat remains on the leader target.
+- Scheduler-owned engage retry/debounce, stale action-state release, zero-HP target rejection, and packet-confirmed transitions.
+- Smart or primary-only weaponskill selection, skillchain planning/revalidation, party WS holds, aftermath handling, and ordered configured job abilities.
+- Tank enmity recovery using a prioritized mixed list of job abilities and spells.
+- Configured sleep spell ordering for eligible hostile adds, including active-sleep suppression and range checks.
 
-### Movement
+### Defensive support and reactions
 
-- Approach/retreat comfort band around target.
-- Optional spacing behavior against nearby party members.
-- Puller distance gate:
-  - Blocks approach movement when configured conditions fail.
-  - Hands movement back to party-follow while puller gate is active to prevent orphan/stale run-vector behavior.
-	- Supports an explicit player anchor or a shared runtime camp coordinate.
-	- Use `//uc camp set`, `//uc camp clear`, and `//uc camp status` to manage the shared camp point.
-- Party-follow min/max + fight-follow min override window after combat activity.
+- Internal defensive provider for cures, status removal, configured buffs, overwrite timing, Doom water, and Majesty-aware ordering.
+- Optional HealBot provider adapter within scheduler arbitration.
+- Packet-fed enemy-effect tracking and Dispel/Magic Finale proposals for eligible party/alliance-claimed enemies.
+- Profile-defined reactions:
+  - `ability_window` + `turn_away` for actions such as Cold Stare or Fatal Allure.
+  - `enemy_buff` + `stop_attacking` for effects such as Dread Spikes.
+- Reaction holds preserve self/party support work while suppressing conflicting enemy-facing combat work.
 
-### Combat Actions
+### Job maintenance
 
-- Ordered JA execution (`uc_ability_pipeline.lua`).
-- WS gate logic (`uc_ws_gate.lua`) and remembered valid WS fallback (`uc_ws_memory.lua`).
-- Smart WS candidate selection with skillchain timing support.
-- Party WS-ready hold behavior to reduce cross-party WS overlap.
-- Aftermath support via UI-configurable WS selection and buff-state checks.
+- COR: two-roll maintenance, Double-Up/Eleven handling, Fold, Crooked Cards selection, Luzaf range override, and required-member range policy.
+- BRD: exact song-identity tracking, packet/timer-driven refresh, dummy-song capacity setup/recovery, Nightingale/Troubadour, Soul Voice, Clarion Call, Marcato, and Pianissimo-targeted songs.
+- GEO: Geo/Indi upkeep, camp requirements, Entrust sequencing, Full Circle replacement, Blaze of Glory, optional Ecliptic Attrition/Life Cycle, luopan positioning, and explicitly armed Bolster.
+- SMN: desired-avatar convergence, Favor, one Ward, Assault-on-combat-start, one configured Rage, per-command backoff, and shared pet-command coordination.
 
-### UI / Bridge
+### Movement and special workflows
 
-- Direct WinForms connectivity to addon hub (`127.0.0.1:27182` by default).
-- Session list and per-session settings/state.
-- Dirty-state/signature style update flow to reduce redundant redraw churn.
-- Request/reply + push-update model via `remote_bridge.lua`.
-
-## Runtime Flow
-
-1. Addon load:
-  - Initialize settings defaults, load profile, register events/listeners.
-2. Engine start:
-  - `unified_engine.start()` schedules tick loop.
-3. Each engine tick:
-  - Run scheduler (`unified_scheduler.process_tick()`).
-  - The scheduler owns combat, defensive, maintenance, and scheduler/path
-    movement execution according to the corresponding `domain_*_enabled`
-    settings.
-  - The removed legacy core combat tick has no runtime entrypoint.
-4. Each prerender frame:
-  - Broadcast own follow IPC position.
-  - Tick remote bridge.
-  - Run party-follow movement pass.
-5. State/events:
-  - Action packets + action messages feed combat memory and retarget/WS timing behavior.
-
-## Configuration and Profiles
-
-Profiles are character-scoped files with job sub-profiles:
-
-- Path: `data/profiles/<character>.lua`
-- Structure: `return { version = 1, profiles = { UC = { JOB = {...} } } }`
-
-Notes:
-
-- New/canonical UC settings are persisted under UC profile tree.
-- Durable UI edits remain local until Save writes the profile files.
-- The addon consumes saved v2 changes through profile reload, startup autoload, or opt-in file-change auto-reload.
-- In-game command `//uc save` writes active profile.
+- Target approach/retreat, predictive spacing, facing, puller distance/leash policy, shared camp anchors, and cast movement freezes.
+- Party-follow min/max distance, combat hold windows, IPC position sharing, and zone replay.
+- Route recording, loop/patrol traversal, party-cohesion gating, hunter filters, and spell/JA route pulling.
+- Independent camp pulling with target matching, quota/replenishment policy, camp leash, direct entity-ID actions, breadcrumbs, bounded recovery, cooldowns, and return-to-camp.
+- Nyzul lamp parking with coordinator, persistent anchor, ordered parkers, undo, regroup, and runtime-only movement holds.
+- Maiden of the Dusk (Easy) formation roles for tank center tether, DPS flank positioning, and healer safety/coverage geometry.
 
 ## Installation
 
-1. Place addon folder at:
-   - `Windower/addons/UnifiedCombat`
-2. In Windower:
-   - `//lua load UnifiedCombat`
-3. Start engine when desired:
-   - `//uc start`
+1. Place this directory at `Windower/addons/UnifiedCombat`.
+2. Load the addon on each character:
 
-## Running the UI
+   ```text
+   //lua load UnifiedCombat
+   ```
 
-Use WinForms desktop UI (direct hub):
+3. Configure and save the selected character/job profile in the desktop UI.
+4. Apply the saved v2 profile with `//uc profilev2 reload`, or enable profile-v2 autoload/auto-reload in the profile.
+5. Start the engine when ready:
 
-- Build/publish output executable:
-  - `UnifiedCombatWinForms\bin\Release\net9.0-windows\win-x64\publish\UnifiedCombatWinForms.exe`
+   ```text
+   //uc start
+   ```
 
-Important:
+Automation features are default-off or require explicit configuration. The five runtime domains default enabled, but the engine and feature-specific behavior toggles do not.
 
-- Python middleware is not required for normal operation.
-- `unified_combat_ui.py` remains in repo for historical/dev utility context only.
+## Desktop UI
 
-## Build and Release
+The UI is a .NET 9 Windows application. Its local TCP server listens on `127.0.0.1:27182`; addon sessions reconnect every two seconds when disconnected. The UI can be started before or after the addon.
 
-From repo root (`.../addons/UnifiedCombat`):
-
-Release build:
+Build:
 
 ```powershell
 dotnet build .\UnifiedCombatWinForms\UnifiedCombatWinForms.csproj -c Release
 ```
 
-Release publish (`win-x64`, single-file, framework-dependent):
+Publish a framework-dependent, single-file `win-x64` executable:
 
 ```powershell
 dotnet publish .\UnifiedCombatWinForms\UnifiedCombatWinForms.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
 ```
 
-See also:
+Published executable:
 
-- [build_commands.md](C:\Program Files (x86)\Windower\addons\UnifiedCombat\docs\build_commands.md)
+```text
+UnifiedCombatWinForms\bin\Release\net9.0-windows\win-x64\publish\UnifiedCombatWinForms.exe
+```
+
+The published build requires the .NET 9 Desktop Runtime. Building requires the .NET 9 SDK.
+
+The UI exposes general combat/defensive settings plus spacing, encounter formation, pathing, reactions, scheduler domains, camp pulling, and job-relevant COR/BRD/GEO/SMN configuration. Durable edits remain local until Save. Despite the current button label `Save (XML)`, Save writes the UI JSON profile and structured Lua profile v2; it does not push the form into the running addon.
+
+## Configuration and profiles
+
+### Structured profile v2
+
+The UI-owned durable runtime configuration is stored per character/main-job/sub-job:
+
+```text
+data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua
+```
+
+Its top-level shape is:
+
+```lua
+return {
+  version = 2,
+  profile = {
+    schema_version = 2,
+    source = "ui",
+    character = "Character",
+    main_job = "PLD",
+    sub_job = "WAR",
+  },
+  config = {
+    -- durable ownership, combat, defensive, movement, follow,
+    -- maintenance, tank, reactions, summoner, and UI policy
+  },
+}
+```
+
+The UI is the normal v2 writer. The addon is the consumer and keeps the applied canonical profile in `_G.UC_ACTIVE_PROFILE`; `_G.UC_SETTINGS` is a compatibility projection. Runtime state—engine running state, selected targets, resolved IDs, locks, pending actions, current path file, camp journey, pet state, song timers, and Nyzul queue progress—is deliberately not durable.
+
+Normal workflow:
+
+1. Edit a profile in WinForms.
+2. Click Save to write `data/profiles_v2/...lua` and the UI's local `data/ui_profiles/...json` file.
+3. Run `//uc profilev2 reload`, reload the addon with v2 autoload enabled, or use opt-in file-change auto-reload.
+4. Use `//uc profilev2 status` or `//uc profilev2 diff detail` to confirm the running durable config matches the file.
+
+### Version-1 compatibility profile
+
+The addon retains the character-scoped compatibility format:
+
+```text
+data/profiles/<lowercase-character>.lua
+```
+
+```lua
+return { version = 1, profiles = { UC = { JOB = { } } } }
+```
+
+`//uc save` and `//uc reload` operate on this compatibility profile. `//uc profilev2 export` can seed a v2 migration/bootstrap file from the current compatibility settings, but it is not the normal profile editor.
 
 ## Commands
 
-Primary addon commands:
+The addon accepts both `//uc` and `//unifiedcombat` prefixes.
 
-- `//uc start` - start engine
-- `//uc stop` - stop engine
-- `//uc save` - save active profile
-- `//uc reload` - reload active profile
-- `//uc host <ip>` - set bridge host
-- `//uc port <port>` - set bridge port
-- `//uc engine` - print active engine label
+### Engine and connection
 
-Fight leader:
+- `//uc start` — start the unified scheduler engine.
+- `//uc stop` — stop the engine and release runtime movement/action state.
+- `//uc engine` — print the active engine label (`UC`).
+- `//uc host <ip>` — change the UI server host for the current session.
+- `//uc port <port>` — change the UI server port for the current session.
+- `//uc save` / `//uc reload` — save or reload the version-1 compatibility profile.
+
+### Profile v2 and config diagnostics
+
+- `//uc profilev2 status`
+- `//uc profilev2 validate`
+- `//uc profilev2 diff [detail]`
+- `//uc profilev2 reload`
+- `//uc profilev2 apply`
+- `//uc profilev2 export`
+- `//uc profilev2 autoreload status`
+- `//uc configstatus export`
+
+### Runtime controls
 
 - `//uc fight_leader on|off|clear|<party name>`
+- `//uc add_priority add <mob name>|remove <index>|list|clear`
+- `//uc sleep on|off|list|clear|set <spell>|add <spell>|remove <index>|move <index> up|down`
+- `//uc camp set|clear|status|pullstatus`
+- `//uc reactions status`
+- `//uc formation status`
+- `//uc geo status|reseed|bolster arm|bolster disarm`
+- `//uc smn pettarget start|status|stop`
+- `//uc brd status|options|trace once|capture once|log start|stop|status`
+- `//uc nyzul begin|park|regroup|undo|status|end`
 
-Add priority list:
+Most durable settings should be edited in WinForms. Slash commands primarily control runtime/session state or provide diagnostics.
 
-Only listed mobs are eligible for add-control overrides. When no listed mob is valid, combat stays on the fight leader's target.
+## Verification
 
-- `//uc add_priority add <mob name>`
-- `//uc add_priority remove <index>`
-- `//uc add_priority list`
-- `//uc add_priority clear`
+Run the aggregate Lua replay/self-test suite:
 
-Nyzul lamp parking:
+```powershell
+lua .\tests\replay\harness\selftest_all_replay_fixtures.lua
+```
 
-Configure the coordinator, persistent anchor, and ordered parker names in the coordinator character's UI profile. The durable profile stores names only at `config.follow.nyzul`; the active run, queue position, and movement holds are runtime state.
+Build and test the profile-v2 writer:
 
-- `//uc nyzul begin` - start a run and park the configured anchor
-- `//uc nyzul park` - park the next present character in configured order
-- `//uc nyzul regroup` - release lamp parkers, reset the queue, and keep the anchor parked
-- `//uc nyzul undo` - release the most recently parked lamp character
-- `//uc nyzul status` - show local role and coordinator queue state
-- `//uc nyzul end` - release the anchor and all lamp parkers
+```powershell
+dotnet build .\UnifiedCombatWinForms\UnifiedCombatWinForms.csproj -c Debug --no-restore
+dotnet run --project .\UnifiedCombatWinForms\UnifiedCombatWinForms.csproj -c Debug --no-build -- --selftest-profile-v2
+```
 
-Typical flow:
+Current checkout result:
 
-1. Run `//uc nyzul begin` once at the start of the investigation.
-2. Run `//uc nyzul park` once at each lamp; no character name is required.
-3. Run `//uc nyzul regroup` after completing the lamp objective.
-4. Run `//uc nyzul end` when the investigation ends.
+- Runtime Lua parse: 99/99 files pass.
+- Aggregate replay/self-test: 131/131 suites pass.
+- WinForms Debug build: pass with zero warnings and zero errors.
+- Structured profile-v2 writer self-test: pass.
 
-Parking blocks UnifiedCombat party-follow, path, formation, and combat movement without changing durable follow settings or starting/stopping the engine.
-
-Most settings should be managed in WinForms UI for consistency and discoverability.
+Automated tests cannot reproduce all Windower packet timing, server responses, collision, or multi-client behavior. Consult the feature trackers before enabling functionality whose field acceptance is still pending.
 
 ## Dependencies
 
-### Windower / Lua-side
+### Runtime
 
-- Standard Windower runtime APIs/events.
-- `ActionPacket` listener usage from Windower environment.
-- Vendored `lor` library in `./lor` (addon-local path preferred at startup).
+- Windower 4 with Lua 5.1-compatible addon runtime.
+- Windower `resources`, `files`, `actions`, `ActionPacket`, socket, packet, and text APIs used by the addon.
+- Vendored `lor` modules under `lor/`.
+- .NET 9 Desktop Runtime for the framework-dependent WinForms UI.
 
-### External addon dependencies
+GearSwap, SetTarget, Python, and the legacy `dd2`/`melee` engines are not required by the active runtime.
 
-UnifiedCombat does not require GearSwap or SetTarget for core targeting/engage behavior in current UC runtime path.
+### Development
 
-## Repository Layout
+- Lua 5.1 to run the replay/self-test harness.
+- .NET 9 SDK to build and run WinForms tests.
+- Git for change review and release workflows.
 
-- `UnifiedCombat.lua` - entrypoint, events, command parsing, profile handling.
-- `remote_bridge.lua` - bridge protocol/state mapping for UI.
-- `unified_engine.lua` - UC engine loop and scheduler hook.
-- `unified_scheduler.lua` - scheduler logic.
-- `unified_combat_core.lua` - targeting/combat/movement/action core.
-- `uc_*` modules - focused helpers (attack, targeting, follow, ignore, add control, etc.).
-- `UnifiedCombatWinForms/` - C# desktop UI.
-- `docs/` - architecture notes, feature bundles, build commands, legal notices.
-- `data/` - runtime persisted profiles/settings.
-- `lor/` - vendored third-party library.
+## Repository layout
+
+- `UnifiedCombat.lua` — entrypoint, events, profiles, commands, and lifecycle.
+- `unified_engine.lua` — engine cadence and overlay.
+- `unified_scheduler.lua` — scheduler orchestration and active dispatch path.
+- `unified_combat_core.lua` — combat policy and scheduler-facing intent helpers.
+- `uc_provider_*.lua` — action proposal providers.
+- `uc_scheduler_*.lua` — scheduler subsystems.
+- `uc_brd_*`, `uc_cor_maintenance.lua`, `uc_geo_maintenance.lua`, `uc_smn_*`, and `uc_pet_*` — job maintenance and pet systems.
+- `uc_camp_*`, `uc_pathing.lua`, `uc_party_follow.lua`, `uc_nyzul_runtime.lua`, and `uc_*formation*` — movement and special workflows.
+- `UnifiedCombatWinForms/` — desktop UI and structured profile writer.
+- `tests/replay/` — deterministic fixtures, runners, and integration self-tests.
+- `docs/` — current design, audit, field packet, and test-result documents.
+- `docs/old/` — superseded pre-cutover documentation.
+- `RFC/`, `SMN_RFC/`, and `GEO_PULLER_RFC/` — architecture and feature RFC records.
+- `data/` — static catalogs plus ignored runtime profiles, paths, status exports, and logs.
+- `TargetBar/` — bundled target-bar code and assets.
+- `lor/` — vendored third-party Lua library.
 
 ## Troubleshooting
 
-### UI opens but sessions do not appear immediately
+### The UI shows no sessions
 
-- Wait briefly after UI startup; session snapshots depend on addon bridge heartbeat/state flow.
-- Verify addon is loaded on characters (`//lua load UnifiedCombat`).
-- Verify bridge host/port are consistent (`//uc host`, `//uc port`).
+- Confirm the UI is running and listening on `127.0.0.1:27182`.
+- Confirm UnifiedCombat is loaded on each character.
+- Confirm the session's `host` and `port` match the UI server.
+- Allow a few seconds for the addon's reconnect interval and initial state snapshot.
 
-### Session appears but controls seem stale
+### Saved UI settings are not active in game
 
-- Trigger a profile reload for that character (`//uc reload`).
-- Toggle engine and confirm status reflects in session list.
-- Check that UI is connected to correct local hub endpoint.
+- Save writes files only; it does not mutate the running durable config.
+- Run `//uc profilev2 reload`, or confirm v2 autoload/auto-reload is enabled.
+- Run `//uc profilev2 status`; use `//uc profilev2 diff detail` to locate remaining durable differences.
+- Verify the selected UI session has the expected character, main job, and subjob because those values determine the v2 filename.
 
-### Character engages but does not move to target
+### A domain does not run
 
-- Verify puller settings and puller-distance gate behavior.
-- If puller gate blocks approach, UC now allows follow movement handoff to avoid orphaned/stale movement behavior.
+- Confirm the engine is running for combat, defensive, movement, and maintenance work.
+- Check the matching `domain_*_enabled` setting on the Scheduler tab.
+- Confirm the feature-level toggle and configuration are valid.
+- Use the scheduler overlay/logs and feature status command to inspect rejection, pending, lock, and ownership reasons.
 
-### WS or ability behavior seems gated unexpectedly
+### A character does not move
 
-- Check:
-  - `weaponskill` / `weaponskill_active`
-  - TP threshold and range conditions
-  - WS hold conditions (party readying behavior)
-  - `abilities` order and `ability_active`
+- Check the movement domain plus `move`, spacing, puller, party-follow, path, formation, and camp-puller settings relevant to that character.
+- Inspect movement owner/mode/block diagnostics for cast freeze, reaction hold, BRD lane reservation, camp-puller ownership, Nyzul parking, zone suspension, or an invalid target/camp.
 
-### Profile value type warnings in chat
+### A WS, spell, JA, or pet command does not fire
 
-- Occur when old or mismatched profile value types are loaded.
-- Save from current UI/settings to normalize profile schema (`//uc save`).
+- Verify the configured action exists for the current job/avatar and is enabled.
+- Check recast, MP/TP, target/range, action-state, pending, duplicate-suppression, and domain gates.
+- For WS, inspect skillchain/party-hold diagnostics; for SMN use `//uc smn pettarget status`; for BRD/GEO use their status/trace commands.
+- Prefer the explicit rejection/block reason over adding an implicit fallback action.
 
-## Additional Docs
+### Camp pulling behaves unexpectedly
 
-- [canonical_settings.md](C:\Program Files (x86)\Windower\addons\UnifiedCombat\docs\canonical_settings.md)
-- [engine_feature_matrix.md](C:\Program Files (x86)\Windower\addons\UnifiedCombat\docs\engine_feature_matrix.md)
-- [feature_bundle_tracking.md](C:\Program Files (x86)\Windower\addons\UnifiedCombat\docs\feature_bundle_tracking.md)
-- [build_commands.md](C:\Program Files (x86)\Windower\addons\UnifiedCombat\docs\build_commands.md)
-- [THIRD_PARTY_NOTICES.md](C:\Program Files (x86)\Windower\addons\UnifiedCombat\docs\THIRD_PARTY_NOTICES.md)
+- Keep it disabled until the pending field-acceptance work is complete.
+- Use `//uc camp status` and `//uc camp pullstatus` plus action-timeline logging to capture the journey state, target, quota, geometry, retry, and cooldown evidence.
 
-Scheduler design drafts:
+## Documentation
 
-- [unified_scheduler_design.md](C:\Program Files (x86)\Windower\addons\UnifiedCombat\docs\unified_scheduler_design.md)
-- [unified_scheduler_rfc.md](C:\Program Files (x86)\Windower\addons\UnifiedCombat\docs\unified_scheduler_rfc.md)
-- [unified_scheduler_phase1_amendment.md](C:\Program Files (x86)\Windower\addons\UnifiedCombat\docs\unified_scheduler_phase1_amendment.md)
+- [Scheduler RFC index](RFC/README.md)
+- [Active scheduler tracking log](RFC/UnifiedCombat_scheduler_refactor_tracking.md)
+- [Phase-6 scheduler exit audit](RFC/UnifiedCombat_scheduler_refactor_phase6_exit_audit_2026-07-24.md)
+- [Scheduler responsibility map](docs/scheduler_responsibility_map.md)
+- [Profile runtime ownership contract](docs/profile_runtime_ownership_contract.md)
+- [Profile-v2 structured shape](docs/profile_v2_structured_config_shape.md)
+- [Summoner implementation and operations](SMN_RFC/summoner_v1_implementation.md)
+- [GEO and camp-pulling implementation tracker](GEO_PULLER_RFC/implementation_tracking.md)
+- [Bard maintenance design](docs/bard_song_maintenance_design.md)
+- [Reaction runtime design](docs/reaction_runtime_design.md)
+- [Maiden of the Dusk formation design](docs/lilith_easy_formation_design.md)
+- [Movement coordinator checklist](docs/movement_coordinator_implementation_checklist.md)
+- [Enemy buff removal checklist](docs/enemy_buff_removal_implementation_checklist.md)
+- [Charm sleeper checklist](docs/charm_sleeper_implementation_checklist.md)
+- [Third-party notices (archived location)](docs/old/THIRD_PARTY_NOTICES.md)

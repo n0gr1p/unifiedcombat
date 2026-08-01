@@ -362,7 +362,10 @@ assert_true(
 	'a camp journey must not begin while Nyzul owns movement'
 )
 assert_true(
-	scheduler_source:find("if scheduler.providers.camp_puller.active() then\n\t\t\t\treturn nil", 1, true) ~= nil,
+	scheduler_source:match(
+		'get_reaction_lock%s*=%s*function%(%)%s*'
+			.. 'if%s+scheduler%.providers%.camp_puller%.active%(%)%s*then%s*return%s+nil'
+	) ~= nil,
 	'an active camp journey must defer reaction proposal blocking until the journey completes'
 )
 assert_true(
