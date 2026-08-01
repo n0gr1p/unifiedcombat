@@ -12,16 +12,17 @@ local function uc_now_s()
 	return s.gettime()
 end
 
--- Add control: when fight leader is active, prefer a non-leader mob (add) other than the leader target.
+-- Add control: when fight leader is active, prefer a listed non-leader mob (add) over the leader target.
 -- Requires settings.add_control, settings.fight_leader, and a resolved leader_mid > 0.
 -- Fight-adds only considers mobs within ADD_PICK_MAX_YALM (see below); unclaimed adds still need settings.prime
 -- with the same mob filters as Find_Nearest_Target prime, except range uses ADD_PICK_MAX_YALM not prime melee (8).
 -- Optional settings.add_priority_names: ordered strings, top = highest priority (exact name, case-insensitive).
--- When non-empty, pick prefers lower list index over nearer distance; empty list = legacy nearest / tank-hpp only.
+-- Only listed mobs are eligible; empty list = no add override. Lower list index wins before distance / tank hpp.
 -- Verbose evaluation: set settings.debug = true → append to per-character file under data/logs/.
 
 local uc_target_ignore = require('uc_target_ignore')
 local uc_add_priority = require('uc_add_priority')
+local uc_runtime_overrides = require('uc_runtime_overrides')
 
 local M = {}
 
@@ -98,7 +99,7 @@ function M.enabled(s)
 	if not s then
 		return false
 	end
-	return truthy(s.add_control) and truthy(s.fight_leader)
+	return truthy(s.add_control) and uc_runtime_overrides.fight_leader_enabled(s)
 end
 
 local function has_value(tab, val)
@@ -137,16 +138,10 @@ end
 -- Fight-adds scan radius (yalms); stricter than prime autotarget melee (8) on purpose.
 local ADD_PICK_MAX_YALM = 25
 
---- When settings.add_priority_names is non-empty, lower rank wins; ties use tank hpp / nearest distance.
-local function add_pick_replace_best(use_prio, tank_mode, rank, hp, dist_sq, best_id, best_rank, best_hpp, best_dist)
+--- Lower priority-list rank wins; ties use tank hpp / nearest distance.
+local function add_pick_replace_best(tank_mode, rank, hp, dist_sq, best_id, best_rank, best_hpp, best_dist)
 	if best_id == 0 then
 		return true
-	end
-	if not use_prio then
-		if tank_mode then
-			return best_hpp == nil or hp > best_hpp
-		end
-		return best_dist == nil or dist_sq < best_dist
 	end
 	if rank < best_rank then
 		return true
@@ -229,7 +224,12 @@ function M.pick(settings, claims, marray, leader_mid, opts)
 	end
 
 	local prio_list = uc_add_priority.as_ordered_names(settings)
-	local use_prio = #prio_list > 0
+	if #prio_list == 0 then
+		if emit then
+			file_log(settings, '[UC add] pick SKIP: add priority list empty')
+		end
+		return 0
+	end
 
 	if emit then
 		L('[UC add] === pick start leader_mid=%d hunter_in_claim=%s prime=%s tank=%s melee_style=%s manual=%s add_max_yalm=%d add_priority=%d',
@@ -348,23 +348,23 @@ function M.pick(settings, claims, marray, leader_mid, opts)
 								else
 									local rank = uc_add_priority.rank_for_mob_name(settings, mob['name'])
 									local dist_sq = mob['distance']
-									if add_pick_replace_best(use_prio, tank, rank, hp, dist_sq, best_id, best_rank, best_hpp, best_dist) then
-										best_id = mid
-										best_dist = dist_sq
-										best_hpp = hp
-										if use_prio then
+									if rank > #prio_list then
+										if emit and n_logged < MAX_ROWS then
+											n_logged = n_logged + 1
+											L('[UC add]   id=%d %s -> GATE:not_in_add_priority', mid, label)
+										end
+									else
+										if add_pick_replace_best(tank, rank, hp, dist_sq, best_id, best_rank, best_hpp, best_dist) then
+											best_id = mid
+											best_dist = dist_sq
+											best_hpp = hp
 											best_rank = rank
 										end
-									end
-									if emit and n_logged < MAX_ROWS then
-										n_logged = n_logged + 1
-										if use_prio then
+										if emit and n_logged < MAX_ROWS then
+											n_logged = n_logged + 1
 											L('[UC add]   id=%d %s dist=%s yalms=%.2f hpp=%s prio_rank=%s -> CANDIDATE (tank_pick=%s)', mid,
 												label, tostring(mob['distance']), yalm, tostring(hp),
-												rank and tostring(rank) .. '/' .. tostring(#prio_list + 1) or '?', tostring(tank))
-										else
-											L('[UC add]   id=%d %s dist=%s yalms=%.2f hpp=%s -> CANDIDATE (tank_pick=%s)', mid, label,
-												tostring(mob['distance']), yalm, tostring(hp), tostring(tank))
+												tostring(rank) .. '/' .. tostring(#prio_list), tostring(tank))
 										end
 									end
 								end
@@ -378,9 +378,9 @@ function M.pick(settings, claims, marray, leader_mid, opts)
 
 	if emit then
 		local pr = '-'
-		if use_prio and best_id ~= 0 and best_rank ~= nil then
-			pr = tostring(best_rank) .. '/' .. tostring(#prio_list + 1)
-		elseif use_prio then
+		if best_id ~= 0 and best_rank ~= nil then
+			pr = tostring(best_rank) .. '/' .. tostring(#prio_list)
+		else
 			pr = 'none'
 		end
 		L('[UC add] === pick result add_mid=%d prio_rank=%s (mobs_seen=%d rows=%d)', best_id, pr, n_seen, n_logged)

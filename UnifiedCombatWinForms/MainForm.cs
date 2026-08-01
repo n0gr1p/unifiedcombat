@@ -21,6 +21,10 @@ public partial class MainForm : Form
     private readonly Dictionary<string, DateTime> _engineReapplyAttemptBySid = new(StringComparer.Ordinal);
     /// <summary>In-memory per-session working profiles. Session switching reads from here first; disk remains explicit-save only.</summary>
     private readonly Dictionary<string, JsonObject> _workingProfileBySid = new(StringComparer.Ordinal);
+    /// <summary>Suppress outbound mirror traffic while a file-only UI save is in flight.</summary>
+    private bool _suppressUiSaveOutbound;
+    /// <summary>Keep explicit profile-save results visible instead of replacing them with the next routine snapshot status.</summary>
+    private DateTime _profileSaveStatusHoldUntilUtc = DateTime.MinValue;
     private string? _selectedSid;
     private string? _lastFillSid;
 
@@ -39,6 +43,7 @@ public partial class MainForm : Form
     private readonly Dictionary<string, CheckBox> _boolChecks = new(StringComparer.Ordinal);
     private readonly List<string> _abilityOptions = [];
     private readonly List<string> _corRollOptions = [];
+    private readonly List<string> _brdSongOptions = [];
     private readonly List<string> _corPartyOptions = [];
     private readonly List<string> _partyOptions = [];
     private readonly List<string> _selectedAbilities = [];
@@ -53,8 +58,10 @@ public partial class MainForm : Form
     private List<(int Id, string Name)> _partnerRows = [];
     private List<(int Slot, string Name)> _targetIgnoreRows = [];
     private List<(int Slot, string Name)> _addPriorityRows = [];
+    private List<(int Slot, string Name)> _sleepSpellRows = [];
     private List<(int Id, string Name)> _pathHunterRows = [];
     private List<string> _tankEnmityRows = [];
+	private readonly List<string> _nyzulParkingOrder = [];
     private sealed record SessionMeta(string Sid, string CharName, string Job, string SubJob, string Engine);
 
     private void LogDefSync(string message)
@@ -74,6 +81,8 @@ public partial class MainForm : Form
     {
         InitializeComponent();
         BuildParityEditor(panelEditorHost, flowSessionActions);
+        EnsureGeoTabVisibility(false);
+        EnsureSummonerTabVisibility(false);
         _mirror = new MirrorDuplex(_cts.Token);
         _mirror.SnapshotOrErrorLineReceived += OnMirrorLine;
         _mirror.Start();
@@ -152,6 +161,7 @@ public partial class MainForm : Form
         {
             _selectedSid = li.Sid;
             RefreshEditorFromSnapshot();
+			RefreshCampRuntimeStatus();
         }
         else
         {
@@ -176,54 +186,36 @@ public partial class MainForm : Form
         return null;
     }
 
+    private static bool IsRuntimeSessionOutboundOp(string op)
+    {
+        return string.Equals(op, "start_engine", StringComparison.Ordinal)
+            || string.Equals(op, "stop_engine", StringComparison.Ordinal)
+            || string.Equals(op, "addon_reload", StringComparison.Ordinal)
+			|| string.Equals(op, "camp_set", StringComparison.Ordinal)
+			|| string.Equals(op, "camp_clear", StringComparison.Ordinal)
+            || string.Equals(op, "request_state", StringComparison.Ordinal)
+            || string.Equals(op, "request_options", StringComparison.Ordinal);
+    }
+
     private void Forward(string sid, Dictionary<string, object?> msg)
     {
-        if (msg.TryGetValue("op", out var opObj)
-            && string.Equals(Convert.ToString(opObj), "set", StringComparison.Ordinal))
+        if (_suppressUiSaveOutbound)
         {
-            var path = msg.TryGetValue("path", out var pObj) ? (Convert.ToString(pObj) ?? string.Empty) : string.Empty;
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                return;
-            }
-
-            if (!msg.TryGetValue("value", out var valObj) || valObj is null)
-            {
-                return;
-            }
-
-            // UI-authoritative delta sync:
-            // send config writes only when value actually changes for a session/path.
-            var valText = Convert.ToString(valObj) ?? string.Empty;
-            if (!_lastSentSetBySidPath.TryGetValue(sid, out var byPath))
-            {
-                byPath = new Dictionary<string, string>(StringComparer.Ordinal);
-                _lastSentSetBySidPath[sid] = byPath;
-            }
-            var bypassDedupe =
-                string.Equals(path, "def_remove_enemy_buffs", StringComparison.Ordinal);
-            if (!bypassDedupe && byPath.TryGetValue(path, out var prev) &&
-                string.Equals(prev, valText, StringComparison.Ordinal))
-            {
-                return;
-            }
-            byPath[path] = valText;
-
-            var nextVersion = (_cfgVersionBySid.TryGetValue(sid, out var ver) ? ver : 0L) + 1L;
-            _cfgVersionBySid[sid] = nextVersion;
-            msg["cfg_version"] = nextVersion;
-            if (string.Equals(path, "def_remove_enemy_buffs", StringComparison.Ordinal))
-            {
-                msg["trace_id"] = $"dre_{sid}_{nextVersion}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-            }
+            return;
         }
+
+        var op = msg.TryGetValue("op", out var ov) ? Convert.ToString(ov) ?? "" : "";
+        if (!IsRuntimeSessionOutboundOp(op))
+        {
+            return;
+        }
+
         _mirror?.EnqueueForward(sid, msg);
         if (!string.Equals(_selectedSid, sid, StringComparison.Ordinal))
         {
             return;
         }
 
-        var op = msg.TryGetValue("op", out var ov) ? Convert.ToString(ov) ?? "" : "";
         if (
             string.Equals(op, "request_state", StringComparison.Ordinal)
             || string.Equals(op, "request_options", StringComparison.Ordinal)
@@ -374,7 +366,8 @@ public partial class MainForm : Form
                 continue;
             }
 
-            if (!string.Equals(oldMeta.Job, kv.Value.Job, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(oldMeta.Job, kv.Value.Job, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(oldMeta.SubJob, kv.Value.SubJob, StringComparison.OrdinalIgnoreCase))
             {
                 _optionsHydratedJobBySid.Remove(kv.Key);
                 _optionsRequestInFlightBySid.Remove(kv.Key);
@@ -403,11 +396,16 @@ public partial class MainForm : Form
         }
         TryApplyQueuedEngineReapply();
 
-        statusConnection.Text = $"Mirror: snapshot ({_listSids.Count} sessions)";
+        if (DateTime.UtcNow >= _profileSaveStatusHoldUntilUtc)
+        {
+            statusConnection.Text = $"Mirror: snapshot ({_listSids.Count} sessions)";
+        }
         statusLastUpdate.Text = "Last snapshot: " + DateTime.Now.ToString("T");
         if (!string.IsNullOrWhiteSpace(_selectedSid) && sessionsEl.TryGetProperty(_selectedSid, out var selectedState))
         {
             ApplyOptionsFromSnapshotIfPresent(_selectedSid!, selectedState);
+			ApplyCampRuntimeStatus(selectedState);
+            ApplyGeoPullRuntimeStatus(selectedState);
         }
         // UI is authoritative after initial/manual session selection.
         // Do not force-refresh controls on every inbound snapshot.
@@ -480,7 +478,8 @@ public partial class MainForm : Form
         {
             return false;
         }
-        return string.Equals(hydratedJob, meta.Job, StringComparison.OrdinalIgnoreCase);
+        var currentJobs = $"{meta.Job}/{meta.SubJob}";
+        return string.Equals(hydratedJob, currentJobs, StringComparison.OrdinalIgnoreCase);
     }
 
     private void EnsureOptionsHydrated(string sid, bool force = false)

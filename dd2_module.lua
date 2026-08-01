@@ -475,7 +475,7 @@ local _uc_last_ui_w = 0
 local _uc_last_ui_h = 0
 
 local function uc_ingame_ui_enabled()
-	return settings.show_ingame_ui ~= false
+	return require('uc_config_runtime').ingame_ui_enabled(_G.UC_SETTINGS)
 end
 
 local function uc_get_ui_resolution()

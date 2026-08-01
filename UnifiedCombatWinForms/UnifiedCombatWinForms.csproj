@@ -11,4 +11,9 @@
     <NoWarn>$(NoWarn);WFO5001</NoWarn>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\data\summoner_capabilities.tsv"
+                      Link="data\summoner_capabilities.tsv"
+                      LogicalName="UnifiedCombatWinForms.summoner_capabilities.tsv" />
+  </ItemGroup>
 </Project>

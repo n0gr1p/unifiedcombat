@@ -1,3 +1,5 @@
+local uc_active_config = require('uc_active_config')
+
 local function uc_now_s()
 	local s = rawget(_G, 'socket')
 	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
@@ -14,7 +16,7 @@ end
 
 local mod = {}
 
-local default_roll_pair = { "Ninja Roll", "Corsair's Roll" }
+local default_roll_pair = { "Corsair's Roll", "Samurai Roll" }
 
 local rolls = {
 	[98] = { id = 98, buff = 310, en = "Fighter's Roll", lucky = 5, unlucky = 9 },
@@ -98,6 +100,38 @@ local function normalize_roll_name(name)
 	return s:lower()
 end
 
+local function active_value_or_flat(path, flat_value)
+	local active_value = uc_active_config.get_path(path)
+	if active_value ~= nil then
+		return active_value
+	end
+	return flat_value
+end
+
+local function cor_roll_1(settings)
+	return active_value_or_flat('config.maintenance.cor.roll_1', settings and settings.cor_roll_1)
+end
+
+local function cor_roll_2(settings)
+	return active_value_or_flat('config.maintenance.cor.roll_2', settings and settings.cor_roll_2)
+end
+
+local function cor_crooked_roll_slot(settings)
+	return active_value_or_flat('config.maintenance.cor.crooked_roll_slot', settings and settings.cor_crooked_roll_slot)
+end
+
+local function cor_elevens(settings)
+	return active_value_or_flat('config.maintenance.cor.elevens', settings and settings.cor_elevens)
+end
+
+local function cor_luzaf_range_override(settings)
+	return active_value_or_flat('config.maintenance.cor.luzaf_range_override', settings and settings.cor_luzaf_range_override)
+end
+
+local function cor_roll_range_require_ids(settings)
+	return active_value_or_flat('config.maintenance.cor.range_require_ids', settings and settings.cor_roll_range_require_ids)
+end
+
 local roll_by_name = {}
 for _, info in pairs(rolls) do
 	local n = tostring(info.en or "")
@@ -129,8 +163,8 @@ local function make_action(ja_name, reason_code, urgency, detail)
 end
 
 local function resolve_roll_pair(settings)
-	local r1_raw = tostring(settings and settings.cor_roll_1 or "")
-	local r2_raw = tostring(settings and settings.cor_roll_2 or "")
+	local r1_raw = tostring(cor_roll_1(settings) or "")
+	local r2_raw = tostring(cor_roll_2(settings) or "")
 	local r1 = roll_by_name[normalize_roll_name(r1_raw)]
 	local r2 = roll_by_name[normalize_roll_name(r2_raw)]
 	if r1 and r2 then
@@ -168,14 +202,14 @@ local function has_luzaf_ring_anywhere()
 end
 
 local function roll_aoe_range(settings)
-	if settings and settings.cor_luzaf_range_override == true then
+	if cor_luzaf_range_override(settings) == true then
 		return 16
 	end
 	return has_luzaf_ring_anywhere() and 16 or 8
 end
 
 local function in_required_roll_range(settings, max_range)
-	local req = settings and settings.cor_roll_range_require_ids or {}
+	local req = cor_roll_range_require_ids(settings) or {}
 	if type(req) ~= 'table' or #req == 0 then
 		return true, nil
 	end
@@ -282,7 +316,7 @@ function mod.propose(settings)
 	local roll1, roll2, source = resolve_roll_pair(settings or {})
 	local infos = { roll_by_name[normalize_roll_name(roll1)], roll_by_name[normalize_roll_name(roll2)] }
 	local roll_count = (main == "COR") and 2 or 1
-	local crooked_slot = tonumber(settings and settings.cor_crooked_roll_slot) or 0
+	local crooked_slot = tonumber(cor_crooked_roll_slot(settings)) or 0
 	-- Crooked Cards is main-COR only; completely disable for sub-COR path.
 	if main ~= "COR" then
 		crooked_slot = 0
@@ -291,7 +325,7 @@ function mod.propose(settings)
 	if crooked_slot < 0 or crooked_slot > 2 then
 		crooked_slot = 0
 	end
-	local elevens = settings and settings.cor_elevens == true
+	local elevens = cor_elevens(settings) == true
 	local has_bust = has_buff(p, 309)
 	cor_diag(
 		("cfg:%s|%s|slot=%d|e11=%s|max=%.1f|r96=%d|r193=%d"):format(

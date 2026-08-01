@@ -267,52 +267,6 @@ local function assert_core_no_job_branch()
 	return true
 end
 
-local function do_active_combat_tick()
-	if type(_G.UC_CoreCombatTickOnce) == 'function' then
-		_G.UC_CoreCombatTickOnce()
-	else
-		_G.UC_LAST_BLOCK_REASON = 'CORE_TICK_MISSING'
-	end
-end
-
-local function truthy(v)
-	if v == true or v == 1 then
-		return true
-	end
-	if type(v) == 'string' then
-		local s = v:lower()
-		return s == 'true' or s == 'on' or s == '1' or s == 'yes'
-	end
-	return false
-end
-
-local function scheduler_owns_all_domains()
-	local s = rawget(_G, 'UC_SETTINGS') or {}
-	return truthy(s.scheduler_dark_launch_combat)
-		and truthy(s.scheduler_dark_launch_defensive)
-		and truthy(s.scheduler_dark_launch_movement)
-		and truthy(s.scheduler_dark_launch_maintenance)
-end
-
-local function domain_enabled(v)
-	return truthy(v)
-end
-
-local function scheduler_owns_any_domain()
-	local s = rawget(_G, 'UC_SETTINGS') or {}
-	return domain_enabled(s.scheduler_dark_launch_combat)
-		or domain_enabled(s.scheduler_dark_launch_defensive)
-		or domain_enabled(s.scheduler_dark_launch_movement)
-		or domain_enabled(s.scheduler_dark_launch_maintenance)
-end
-
-local function core_tick_allowed_for_domain(s)
-	-- Domain short-circuiting:
-	-- if scheduler owns combat, avoid running heavy core combat loop;
-	-- keep core as fallback only when combat is not scheduler-owned.
-	return not domain_enabled(s and s.scheduler_dark_launch_combat)
-end
-
 local function tick()
 	if engine.processing then
 		return
@@ -350,7 +304,6 @@ local function tick()
 	end
 	engine.tick_seq = engine.tick_seq + 1
 	_G.UC_SCHED_TICK_SEQ = engine.tick_seq
-	local s = get_settings()
 	now = socket_gettime()
 	local blocked, reason = scheduler.process_tick({
 		now = now,
@@ -371,9 +324,6 @@ local function tick()
 		_G.UC_LAST_BLOCK_REASON = reason or 'BLOCK_DEFENSIVE'
 	else
 		_G.UC_LAST_BLOCK_REASON = ''
-		if core_tick_allowed_for_domain(s) and not scheduler_owns_all_domains() then
-			do_active_combat_tick()
-		end
 	end
 	engine.processing = false
 	if engine.running and _G.Start_Engine then
@@ -400,6 +350,10 @@ function engine.stop()
 	engine.running = false
 	engine.processing = false
 	hide_sched_overlay()
+end
+
+function engine.seed_cached_status_snapshot()
+	return scheduler.seed_cached_status_snapshot()
 end
 
 return engine

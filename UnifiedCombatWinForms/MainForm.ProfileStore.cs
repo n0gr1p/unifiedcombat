@@ -6,7 +6,15 @@ namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
-    private const int ProfileSchemaVersion = 2;
+    private const int ProfileSchemaVersion = 3;
+    private static readonly string[] RequiredDomainBoolKeys =
+    [
+        "domain_combat_enabled",
+        "domain_defensive_enabled",
+        "domain_movement_enabled",
+        "domain_maintenance_enabled",
+        "domain_follow_enabled",
+    ];
 
     private static string? FindAddonRootFrom(string startDir)
     {
@@ -108,6 +116,11 @@ public partial class MainForm
     {
         var partyNames = CurrentPartyNameOptions();
         var running = _sessionRunningBySid.TryGetValue(sid, out var rv) && rv;
+		var leashSource = _pullerLeashSource.SelectedItem?.ToString();
+		if (leashSource is not ("Player" or "Camp"))
+		{
+			throw new InvalidOperationException("Puller leash source must be Player or Camp.");
+		}
         var profile = new JsonObject
         {
             ["profile_schema_version"] = ProfileSchemaVersion,
@@ -123,6 +136,39 @@ public partial class MainForm
             ["aftermath_ws"] = (_aftermathCombo.Text ?? "").Trim(),
             ["path_pull_action_type"] = _pathPullActionType.SelectedItem?.ToString() ?? "ja",
             ["path_pull_action_name"] = (_pathPullActionName.Text ?? "").Trim(),
+            ["geo_maintenance_enabled"] = _geoEnabled.Checked,
+            ["geo_spell"] = _geoSpell.Text.Trim(),
+            ["indi_spell"] = _indiSpell.Text.Trim(),
+            ["geo_target_kind"] = _geoTargetKind.SelectedItem?.ToString() ?? "current_enemy",
+            ["geo_target_name"] = _geoTargetName.Text.Trim(),
+            ["geo_ordering"] = _geoOrdering.SelectedItem?.ToString() ?? "geo_first",
+            ["geo_require_camp"] = _geoRequireCamp.Checked,
+            ["geo_camp_tolerance_yalms"] = decimal.ToDouble(_geoCampTolerance.Value),
+            ["geo_entrust_enabled"] = _geoEntrustEnabled.Checked,
+            ["geo_entrust_spell"] = _geoEntrustSpell.Text.Trim(),
+            ["geo_entrust_target_name"] = _geoEntrustTarget.Text.Trim(),
+            ["geo_use_blaze_of_glory"] = _geoUseBlaze.Checked,
+            ["geo_use_ecliptic_attrition"] = _geoUseEcliptic.Checked,
+            ["geo_use_life_cycle"] = _geoUseLifeCycle.Checked,
+            ["geo_life_cycle_hpp"] = decimal.ToInt32(_geoLifeCycleHpp.Value),
+            ["geo_replace_out_of_position"] = _geoReplaceOutOfPosition.Checked,
+            ["geo_max_camp_distance_yalms"] = decimal.ToDouble(_geoMaxCampDistance.Value),
+            ["camp_pulling_enabled"] = _campPullEnabled.Checked,
+            ["camp_pulling_action_type"] = _campPullActionType.SelectedItem?.ToString() ?? "spell",
+            ["camp_pulling_action_name"] = _campPullActionName.Text.Trim(),
+            ["camp_pulling_targets"] = _campPullTargets.Text.Trim(),
+            ["camp_pulling_match_mode"] = _campPullMatchMode.SelectedItem?.ToString() ?? "exact",
+            ["camp_pulling_max_active_mobs"] = decimal.ToInt32(_campPullMaxActive.Value),
+            ["camp_pulling_replenish_below_hpp"] = decimal.ToInt32(_campPullReplenishHpp.Value),
+            ["camp_pulling_leash_yalms"] = decimal.ToDouble(_campPullLeash.Value),
+            ["camp_pulling_max_z_delta"] = decimal.ToDouble(_campPullMaxZ.Value),
+            ["camp_pulling_cast_range_ratio"] = decimal.ToDouble(_campPullRangeRatio.Value),
+            ["camp_pulling_settle_seconds"] = decimal.ToDouble(_campPullSettle.Value),
+            ["camp_pulling_reaction_timeout_seconds"] = decimal.ToDouble(_campPullReactionTimeout.Value),
+            ["camp_pulling_retry_limit"] = decimal.ToInt32(_campPullRetryLimit.Value),
+            ["camp_pulling_retry_window_seconds"] = decimal.ToDouble(_campPullRetryWindow.Value),
+            ["camp_pulling_target_cooldown_seconds"] = decimal.ToDouble(_campPullCooldown.Value),
+            ["camp_pulling_camp_arrival_yalms"] = decimal.ToDouble(_campPullArrival.Value),
             ["path_file_name"] = _pathFileValue.Text ?? "",
             ["path_route_type"] = _pathRouteTypeValue.Text ?? "unknown",
             ["path_distance_to_start"] = ParseDouble(_pathDistanceValue.Text, 0),
@@ -136,12 +182,17 @@ public partial class MainForm
             ["path_hunter_entries"] = string.Join("|", _pathHunterRows.Select(r => $"{r.Id}:{r.Name}")),
             ["tank_enmity_actions"] = string.Join("|", _tankEnmityRows),
             ["puller_selected"] = SelectedPartyName(_pullerCombo),
+			["puller_leash_source"] = leashSource.ToLowerInvariant(),
+            ["puller_engage_range"] = Math.Clamp(ParseDouble(_pullerEngageRange.Text, 6), 0.1, 50.0),
             ["fight_leader_selected"] = SelectedPartyName(_fightLeaderCombo),
             ["party_follow_selected"] = SelectedPartyName(_partyFollowCombo),
             ["party_follow_min"] = ParseDouble(_pfFollowMinYalms.Text, 0.5),
             ["party_follow_max"] = ParseDouble(_pfFollowMaxYalms.Text, 50),
             ["fight_follow_min"] = ParseDouble(_pfFightFollowMinYalms.Text, 3),
             ["fight_follow_hold_s"] = ParseDouble(_pfFightFollowHoldS.Text, 8),
+			["nyzul_coordinator_name"] = SelectedPartyName(_nyzulCoordinatorCombo),
+			["nyzul_anchor_name"] = SelectedPartyName(_nyzulAnchorCombo),
+			["nyzul_parking_order"] = string.Join("|", _nyzulParkingOrder),
             ["spacing_use_prediction"] = _spUsePrediction.Checked,
             ["spacing_band_min"] = ParseDouble(_spBandMin.Text, -0.9),
             ["spacing_band_max"] = ParseDouble(_spBandMax.Text, 0.4),
@@ -151,6 +202,25 @@ public partial class MainForm
             ["spacing_overlap_deadband"] = ParseDouble(_spEmergencyMargin.Text, 0.1),
             ["spacing_repel_weight"] = ParseDouble(_spSwitchMargin.Text, 0.35),
             ["spacing_band_deadband"] = ParseDouble(_spArrivalTolerance.Text, 0.2),
+            ["formation_enabled"] = _formationEnabled.Checked,
+            ["formation_encounter"] = FormationEncounterValue(),
+            ["formation_role"] = FormationRoleValue(),
+            ["formation_tank_name"] = SelectedPartyName(_formationTankName),
+            ["formation_required_party_names"] = string.Join("|", SelectedFormationRequiredPartyNames()),
+            ["formation_capture_stable_s"] = (double)_formationCaptureStable.Value,
+            ["formation_capture_tolerance"] = (double)_formationCaptureTolerance.Value,
+            ["formation_safe_radius"] = (double)_formationSafeRadius.Value,
+            ["formation_tank_accept_radius"] = (double)_formationTankAcceptRadius.Value,
+            ["formation_tank_return_radius"] = (double)_formationTankReturnRadius.Value,
+            ["formation_dps_flank_angle_deg"] = (double)_formationDpsFlankAngle.Value,
+            ["formation_dps_melee_radius"] = (double)_formationDpsMeleeRadius.Value,
+            ["formation_dps_position_tolerance"] = (double)_formationDpsPositionTolerance.Value,
+            ["formation_healer_preferred_radius"] = (double)_formationHealerPreferredRadius.Value,
+            ["formation_healer_minimum_boss_distance"] = (double)_formationHealerMinimumBossDistance.Value,
+            ["formation_healer_maximum_party_range"] = (double)_formationHealerMaximumPartyRange.Value,
+            ["formation_healer_cone_half_angle_deg"] = (double)_formationHealerConeHalfAngle.Value,
+            ["formation_healer_cone_safety_margin_deg"] = (double)_formationHealerConeSafetyMargin.Value,
+            ["formation_healer_sample_step_deg"] = (double)_formationHealerSampleStep.Value,
             ["defensive_provider"] = _defProviderCombo.SelectedItem?.ToString() ?? "internal",
             ["defensive_critical_hpp"] = ParseInt(_defCrit.Text, 35),
             ["defensive_medium_hpp"] = ParseInt(_defMed.Text, 55),
@@ -175,10 +245,39 @@ public partial class MainForm
                     .Where(n => !string.IsNullOrWhiteSpace(n))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
             ),
+            ["brd_maintenance_enabled"] = _brdEnabled.Checked,
+            ["brd_songs"] = string.Join("|", _brdSongList.Items.Cast<object>().Select(x => x.ToString() ?? "")),
+            ["brd_dummy_songs"] = string.Join("|", _brdDummyList.Items.Cast<object>().Select(x => x.ToString() ?? "")),
+            ["brd_song_options"] = string.Join("|", _brdSongOptions),
+            ["brd_use_nitro"] = _brdUseNitro.Checked,
+			["brd_use_soul_voice"] = _brdUseSoulVoice.Checked,
+            ["brd_use_clarion_call"] = _brdUseClarion.Checked,
+            ["brd_use_marcato"] = _brdUseMarcato.Checked,
+            ["brd_marcato_song"] = _brdUseMarcato.Checked ? (_brdMarcatoSong.SelectedItem?.ToString() ?? "") : "",
+			["brd_targeted_songs"] = _brdTargetedSongs.Text,
+			["brd_recovery_range_yalms"] = decimal.ToDouble(_brdRecoveryRangeYalms.Value),
+            ["brd_recovery_ignore_names"] = _brdRecoveryIgnoreNames.Text,
+            ["summoner_enabled"] = _summonerEnabled.Checked,
+            ["summoner_avatar"] = _summonerAvatar.SelectedItem?.ToString() ?? "",
+            ["summoner_avatar_favor"] = _summonerAvatarFavor.Checked,
+            ["summoner_ward_enabled"] = _summonerWardEnabled.Checked,
+            ["summoner_ward_action"] = _summonerWardAction.SelectedItem?.ToString() ?? "",
+            ["summoner_engage_on_combat_start"] = _summonerEngage.Checked,
+            ["summoner_rage_enabled"] = _summonerRageEnabled.Checked,
+            ["summoner_rage_action"] = _summonerRageAction.SelectedItem?.ToString() ?? "",
+            ["summoner_rage_usage"] = "on_cooldown",
+            ["summoner_rage_target_hpp_above_enabled"] = _summonerRageTargetHppAboveEnabled.Checked,
+            ["summoner_rage_target_hpp_above"] = decimal.ToInt32(_summonerRageTargetHppAbove.Value),
+            ["summoner_rage_pet_tp_above_enabled"] = _summonerRagePetTpAboveEnabled.Checked,
+            ["summoner_rage_pet_tp_above"] = decimal.ToInt32(_summonerRagePetTpAbove.Value),
+            ["reaction_enabled"] = _reactionEnabled.Checked,
+            ["reaction_rules"] = BuildReactionRulesJson(),
             ["ignore_entries"] = string.Join("|", _ignoreRows.Select(r => $"{r.Id}:{r.Name}")),
             ["partner_entries"] = string.Join("|", _partnerRows.Select(r => $"{r.Id}:{r.Name}")),
             ["target_ignore_entries"] = string.Join("|", _targetIgnoreRows.Select(r => $"{r.Slot}:{r.Name}")),
             ["add_priority_entries"] = string.Join("|", _addPriorityRows.Select(r => $"{r.Slot}:{r.Name}")),
+            ["sleep_spell_entries"] = string.Join("|", _sleepSpellRows.Select(r => $"{r.Slot}:{r.Name}")),
+            ["sleep_max_target_range"] = Math.Clamp(ParseDouble(_sleepMaxTargetRange.Text, 6), 0.1, 50.0),
             ["weaponskill"] = (_wsCombo.Text ?? "").Trim(),
             ["ws1"] = (_wsCombo.Text ?? "").Trim(),
             ["ws_mode"] = string.Equals(_wsModeCombo.SelectedItem?.ToString(), "Primary Only (No SC)", StringComparison.Ordinal) ? "primary_no_sc" : "smart",
@@ -189,7 +288,37 @@ public partial class MainForm
             profile[key] = _boolChecks.TryGetValue(key, out var cb) && cb.Checked;
         }
 
+        if (profile.TryGetPropertyValue("profile_v2_autoload", out var autoloadValue)
+            && autoloadValue is JsonValue autoloadJson
+            && autoloadJson.TryGetValue<bool>(out var autoloadEnabled)
+            && autoloadEnabled == false)
+        {
+            profile.Remove("profile_v2_autoload");
+        }
+        if (profile.TryGetPropertyValue("profile_v2_auto_reload_on_change", out var autoReloadValue)
+            && autoReloadValue is JsonValue autoReloadJson
+            && autoReloadJson.TryGetValue<bool>(out var autoReloadEnabled)
+            && autoReloadEnabled == false)
+        {
+            profile.Remove("profile_v2_auto_reload_on_change");
+        }
+
         return profile;
+    }
+
+    private JsonArray BuildReactionRulesJson()
+    {
+        var rules = new JsonArray();
+        foreach (var rule in _reactionRules)
+        {
+            rules.Add(new JsonObject
+            {
+                ["trigger"] = rule.Trigger,
+                ["name"] = rule.Name,
+                ["response"] = rule.Response,
+            });
+        }
+        return rules;
     }
 
     private static int ParseInt(string? text, int fallback)
@@ -235,6 +364,11 @@ public partial class MainForm
             ["party_follow_max"] = 50,
             ["fight_follow_min"] = 3,
             ["fight_follow_hold_s"] = 8,
+			["nyzul_coordinator_name"] = "",
+			["nyzul_anchor_name"] = "",
+			["nyzul_parking_order"] = "",
+            ["puller_engage_range"] = 6,
+			["puller_leash_source"] = "player",
             ["path_route_type"] = "unknown",
             ["path_distance_to_start"] = 0,
             ["path_points_count"] = 0,
@@ -246,12 +380,47 @@ public partial class MainForm
             ["path_hunter_ignore_cooldown_s"] = 20,
             ["path_pull_action_type"] = "ja",
             ["path_pull_action_name"] = "",
+            ["geo_maintenance_enabled"] = false,
+            ["geo_spell"] = "",
+            ["indi_spell"] = "",
+            ["geo_target_kind"] = "current_enemy",
+            ["geo_target_name"] = "",
+            ["geo_ordering"] = "geo_first",
+            ["geo_require_camp"] = true,
+            ["geo_camp_tolerance_yalms"] = 1.0,
+            ["geo_entrust_enabled"] = false,
+            ["geo_entrust_spell"] = "",
+            ["geo_entrust_target_name"] = "",
+            ["geo_use_blaze_of_glory"] = false,
+            ["geo_use_ecliptic_attrition"] = false,
+            ["geo_use_life_cycle"] = false,
+            ["geo_life_cycle_hpp"] = 50,
+            ["geo_replace_out_of_position"] = false,
+            ["geo_max_camp_distance_yalms"] = 6.0,
+            ["camp_pulling_enabled"] = false,
+            ["camp_pulling_action_type"] = "spell",
+            ["camp_pulling_action_name"] = "",
+            ["camp_pulling_targets"] = "",
+            ["camp_pulling_match_mode"] = "exact",
+            ["camp_pulling_max_active_mobs"] = 1,
+            ["camp_pulling_replenish_below_hpp"] = 20,
+            ["camp_pulling_leash_yalms"] = 35.0,
+            ["camp_pulling_max_z_delta"] = 2.0,
+            ["camp_pulling_cast_range_ratio"] = 0.9,
+            ["camp_pulling_settle_seconds"] = 0.4,
+            ["camp_pulling_reaction_timeout_seconds"] = 4.0,
+            ["camp_pulling_retry_limit"] = 2,
+            ["camp_pulling_retry_window_seconds"] = 2.5,
+            ["camp_pulling_target_cooldown_seconds"] = 20.0,
+            ["camp_pulling_camp_arrival_yalms"] = 0.75,
             ["path_hunter_entries"] = "",
             ["tank_enmity_actions"] = "",
             ["ignore_entries"] = "",
             ["partner_entries"] = "",
             ["target_ignore_entries"] = "",
             ["add_priority_entries"] = "",
+            ["sleep_spell_entries"] = "1:Horde Lullaby II",
+            ["sleep_max_target_range"] = 6,
             ["cor_roll_1"] = "",
             ["cor_roll_2"] = "",
             ["cor_roll_options"] = "",
@@ -259,6 +428,33 @@ public partial class MainForm
             ["cor_elevens"] = false,
             ["cor_luzaf_range_override"] = false,
             ["cor_roll_range_selected"] = "",
+            ["brd_maintenance_enabled"] = false,
+            ["brd_songs"] = "",
+            ["brd_dummy_songs"] = "",
+            ["brd_song_options"] = "",
+            ["brd_use_nitro"] = false,
+			["brd_use_soul_voice"] = false,
+            ["brd_use_clarion_call"] = false,
+            ["brd_use_marcato"] = false,
+            ["brd_marcato_song"] = "",
+			["brd_targeted_songs"] = "",
+			["brd_recovery_range_yalms"] = 9.9,
+			["brd_recovery_ignore_names"] = "",
+            ["summoner_enabled"] = false,
+            ["summoner_avatar"] = "",
+            ["summoner_avatar_favor"] = false,
+            ["summoner_ward_enabled"] = false,
+            ["summoner_ward_action"] = "",
+            ["summoner_engage_on_combat_start"] = false,
+            ["summoner_rage_enabled"] = false,
+            ["summoner_rage_action"] = "",
+            ["summoner_rage_usage"] = "on_cooldown",
+            ["summoner_rage_target_hpp_above_enabled"] = false,
+            ["summoner_rage_target_hpp_above"] = 50,
+            ["summoner_rage_pet_tp_above_enabled"] = false,
+            ["summoner_rage_pet_tp_above"] = 2000,
+            ["reaction_enabled"] = false,
+            ["reaction_rules"] = new JsonArray(),
             ["spacing_band_min"] = -0.9,
             ["spacing_band_max"] = 0.4,
             ["spacing_model_size_floor"] = 0.9,
@@ -268,10 +464,33 @@ public partial class MainForm
             ["spacing_overlap_deadband"] = 0.1,
             ["spacing_repel_weight"] = 0.35,
             ["spacing_band_deadband"] = 0.2,
+            ["formation_enabled"] = false,
+            ["formation_encounter"] = "lilith_easy",
+            ["formation_role"] = "disabled",
+            ["formation_tank_name"] = "",
+            ["formation_required_party_names"] = "",
+            ["formation_capture_stable_s"] = 0.5,
+            ["formation_capture_tolerance"] = 0.1,
+            ["formation_safe_radius"] = 16.0,
+            ["formation_tank_accept_radius"] = 1.5,
+            ["formation_tank_return_radius"] = 3.0,
+            ["formation_dps_flank_angle_deg"] = 90.0,
+            ["formation_dps_melee_radius"] = 3.0,
+            ["formation_dps_position_tolerance"] = 1.5,
+            ["formation_healer_preferred_radius"] = 12.0,
+            ["formation_healer_minimum_boss_distance"] = 8.0,
+            ["formation_healer_maximum_party_range"] = 18.0,
+            ["formation_healer_cone_half_angle_deg"] = 50.0,
+            ["formation_healer_cone_safety_margin_deg"] = 15.0,
+            ["formation_healer_sample_step_deg"] = 10.0,
         };
         foreach (var key in HubUiConstants.BoolKeys)
         {
             p[key] = false;
+        }
+        foreach (var key in RequiredDomainBoolKeys)
+        {
+            p[key] = true;
         }
 
         return p;
@@ -349,25 +568,87 @@ public partial class MainForm
         }
     }
 
-    private void TrySaveProfileFromUi(string sid)
+    private bool TrySaveProfileFromUi(string sid, JsonObject profile, out string error)
     {
         try
         {
-            CaptureWorkingProfileFromUi(sid);
             if (!TryProfilePathForSid(sid, out var path))
             {
-                return;
+                error = "UI profile path unavailable";
+                return false;
             }
-            var obj = BuildProfileFromUi(sid);
-            File.WriteAllText(path, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(path, profile.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            _workingProfileBySid[sid] = profile.DeepClone().AsObject();
+            error = "";
+            return true;
         }
-        catch
+        catch (Exception ex)
         {
-            // keep UI responsive
+            error = ex.Message;
+            return false;
         }
     }
 
-    private static bool MigrateProfileInPlace(JsonObject root)
+    private bool TryResolveStructuredProfileV2Root(out string addonRoot, out string error)
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var resolved = StructuredProfileV2Writer.FindAddonRootFrom(baseDir);
+        if (resolved is null)
+        {
+            addonRoot = "";
+            error = "addon root unavailable";
+            return false;
+        }
+
+        addonRoot = resolved;
+        error = "";
+        return true;
+    }
+
+    private bool TrySaveStructuredProfileV2FromUi(string sid, JsonObject flatProfile, out string error)
+    {
+        try
+        {
+            if (!_sessionMetaBySid.TryGetValue(sid, out var meta))
+            {
+                error = "session metadata unavailable";
+                return false;
+            }
+
+            var charName = (meta.CharName ?? "").Trim();
+            var mainJob = (meta.Job ?? "").Trim();
+            var subJob = (meta.SubJob ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(charName) || string.IsNullOrWhiteSpace(mainJob) || string.IsNullOrWhiteSpace(subJob))
+            {
+                error = "character, main job, or subjob unavailable";
+                return false;
+            }
+
+            if (!TryResolveStructuredProfileV2Root(out var addonRoot, out var rootErr))
+            {
+                error = rootErr;
+                return false;
+            }
+
+            var identity = new StructuredProfileV2Identity(charName, mainJob, subJob);
+            var result = StructuredProfileV2Writer.TryWriteStructuredProfile(addonRoot, flatProfile, identity);
+            if (!result.Ok)
+            {
+                error = $"{result.Error}: {result.Detail}";
+                return false;
+            }
+
+            error = "";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    internal static bool MigrateProfileInPlace(JsonObject root)
     {
         var changed = false;
         var schema = 0;
@@ -468,6 +749,64 @@ public partial class MainForm
         {
             root["spacing_band_deadband"] = 0.2;
             changed = true;
+        }
+
+        if (!root.ContainsKey("sleep_spell_entries"))
+        {
+            var migratedSleep = new List<string>();
+            if (root.TryGetPropertyValue("sleepspells", out var sleepListNode) && sleepListNode is JsonArray sleepArray)
+            {
+                for (var i = 0; i < sleepArray.Count; i++)
+                {
+                    var raw = sleepArray[i]?.GetValue<string>() ?? "";
+                    var trimmed = raw.Trim();
+                    if (trimmed.Length > 0)
+                    {
+                        migratedSleep.Add(trimmed);
+                    }
+                }
+            }
+            if (migratedSleep.Count == 0 && root.TryGetPropertyValue("sleepspell", out var sleepNode) && sleepNode is not null)
+            {
+                var raw = sleepNode.GetValue<string>() ?? "";
+                var trimmed = raw.Trim();
+                if (trimmed.Length > 0)
+                {
+                    migratedSleep.Add(trimmed);
+                }
+            }
+            if (migratedSleep.Count == 0)
+            {
+                migratedSleep.Add("Horde Lullaby II");
+            }
+            root["sleep_spell_entries"] = string.Join("|", migratedSleep.Select((name, idx) => $"{idx + 1}:{name}"));
+            changed = true;
+        }
+
+        if (schema < 3)
+        {
+            foreach (var key in RequiredDomainBoolKeys)
+            {
+                if (!root.ContainsKey(key))
+                {
+                    root[key] = true;
+                    changed = true;
+                }
+            }
+
+            foreach (var retiredKey in new[]
+            {
+                "scheduler_dark_launch_combat",
+                "scheduler_dark_launch_defensive",
+                "scheduler_dark_launch_movement",
+                "scheduler_dark_launch_maintenance",
+            })
+            {
+                if (root.Remove(retiredKey))
+                {
+                    changed = true;
+                }
+            }
         }
 
         if (!root.TryGetPropertyValue("profile_schema_version", out var sv) || sv is null || !(sv is JsonValue svv && svv.TryGetValue<int>(out var sver) && sver == ProfileSchemaVersion))

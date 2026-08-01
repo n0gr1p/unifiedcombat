@@ -1,0 +1,173 @@
+local SELFTESTS = {
+    "tests/replay/harness/selftest_replay_harness.lua",
+    "tests/replay/harness/selftest_fixture_validator.lua",
+    "tests/replay/harness/selftest_fixture_runner.lua",
+    "tests/replay/harness/selftest_fixture_suite_runner.lua",
+    "tests/replay/harness/selftest_runtime_parse.lua",
+	"tests/replay/harness/selftest_camp_anchor.lua",
+	"tests/replay/harness/selftest_camp_puller_policy.lua",
+	"tests/replay/harness/selftest_camp_puller.lua",
+    "tests/replay/harness/selftest_config_normalizer.lua",
+    "tests/replay/harness/selftest_active_config.lua",
+    "tests/replay/harness/selftest_active_config_consumer_migration.lua",
+    "tests/replay/harness/selftest_active_config_defensive_maintenance_readers.lua",
+    "tests/replay/harness/selftest_profile_v2_runtime_consumers.lua",
+    "tests/replay/harness/selftest_configurable_control_ranges.lua",
+    "tests/replay/harness/selftest_profile_v2_source_of_truth_contract.lua",
+    "tests/replay/harness/selftest_runtime_overrides.lua",
+    "tests/replay/harness/selftest_add_control_priority_eligibility.lua",
+    "tests/replay/harness/selftest_scheduler_config_readers.lua",
+    "tests/replay/harness/selftest_config_status.lua",
+    "tests/replay/harness/selftest_config_status_export.lua",
+    "tests/replay/harness/selftest_config_first_consumer.lua",
+    "tests/replay/harness/selftest_bridge_config_status_consumer.lua",
+    "tests/replay/harness/selftest_structured_profile_config.lua",
+    "tests/replay/harness/selftest_profile_v2_export.lua",
+    "tests/replay/harness/selftest_profile_v2_autoload_lifecycle.lua",
+    "tests/replay/harness/selftest_summoner_configuration.lua",
+    "tests/replay/harness/selftest_pet_command_infrastructure.lua",
+    "tests/replay/harness/selftest_pet_tp_state.lua",
+    "tests/replay/harness/selftest_smn_maintenance.lua",
+    "tests/replay/harness/selftest_geo_maintenance.lua",
+    "tests/replay/harness/selftest_geo_sequences.lua",
+    "tests/replay/harness/selftest_pet_combat_provider.lua",
+    "tests/replay/harness/selftest_smn_cross_provider_integration.lua",
+    "tests/replay/harness/selftest_smn_replay_fixtures.lua",
+    "tests/replay/harness/selftest_side_effect_inventory.lua",
+	"tests/replay/harness/selftest_scheduler_proposals.lua",
+	"tests/replay/harness/selftest_scheduler_ranker.lua",
+	"tests/replay/harness/selftest_scheduler_context.lua",
+	"tests/replay/harness/selftest_scheduler_tick_context_static.lua",
+	"tests/replay/harness/selftest_scheduler_enemy_effect_state.lua",
+	"tests/replay/harness/selftest_scheduler_enemy_effect_state_static.lua",
+	"tests/replay/harness/selftest_scheduler_observability.lua",
+	"tests/replay/harness/selftest_scheduler_observability_static.lua",
+	"tests/replay/harness/selftest_scheduler_party_state.lua",
+	"tests/replay/harness/selftest_scheduler_party_state_static.lua",
+	"tests/replay/harness/selftest_skillchain_state.lua",
+	"tests/replay/harness/selftest_scheduler_skillchain_integration.lua",
+	"tests/replay/harness/selftest_ws_maintenance_precedence.lua",
+    "tests/replay/harness/selftest_dispatcher_fixtures.lua",
+    "tests/replay/harness/selftest_scheduler_dispatcher_phase2.lua",
+    "tests/replay/harness/selftest_scheduler_movement_facade.lua",
+    "tests/replay/harness/selftest_scheduler_pull_executor.lua",
+    "tests/replay/harness/selftest_movement_dispatcher_phase4.lua",
+    "tests/replay/harness/selftest_formation_movement_dispatcher_phase4.lua",
+    "tests/replay/harness/selftest_scheduler_providers_phase3.lua",
+    "tests/replay/harness/selftest_spacing_cast_movement_lock.lua",
+    "tests/replay/harness/selftest_movement_priority_arbitration.lua",
+	"tests/replay/harness/selftest_nyzul_runtime.lua",
+    "tests/replay/harness/selftest_zero_hp_actionable_target.lua",
+    "tests/replay/harness/selftest_alliance_target_scope.lua",
+    "tests/replay/harness/selftest_hb_buff_maint_majesty_priority.lua",
+    "tests/replay/harness/selftest_defensive_cure_priority.lua",
+    "tests/replay/harness/selftest_tank_engage_priority.lua",
+    "tests/replay/harness/selftest_fight_leader_engage.lua",
+    "tests/replay/harness/selftest_tank_configured_ja_starvation.lua",
+    "tests/replay/harness/selftest_engage_dispatch_priority.lua",
+    "tests/replay/harness/selftest_engage_duplicate_suppression.lua",
+    "tests/replay/harness/selftest_engage_action_state_bypass.lua",
+    "tests/replay/harness/selftest_action_economy_timeline_logging.lua",
+    "tests/replay/harness/selftest_target_acquire_nonblocking.lua",
+    "tests/replay/harness/selftest_stale_spell_lockout_target_transition.lua",
+    "tests/replay/harness/selftest_pending_engage_confirmation.lua",
+    "tests/replay/harness/selftest_engage_rejection_retry.lua",
+    "tests/replay/harness/selftest_defensive_ja_to_cure_followup.lua",
+    "tests/replay/harness/selftest_defensive_cure_weave_policy.lua",
+    "tests/replay/harness/selftest_scheduler_engage_action_state_release.lua",
+    "tests/replay/harness/selftest_scheduler_spell_success_action_state.lua",
+    "tests/replay/harness/selftest_scheduler_spell_interruption_action_state.lua",
+    "tests/replay/harness/selftest_profile_contract.lua",
+    "tests/replay/harness/selftest_sleep_spell_selection.lua",
+    "tests/replay/harness/selftest_scheduler_sleep_toggle.lua",
+    "tests/replay/harness/selftest_scheduler_support_priority_bands.lua",
+    "tests/replay/harness/selftest_sleep_target_state_suppression.lua",
+    "tests/replay/harness/selftest_bard_song_identity_tracking.lua",
+    "tests/replay/harness/selftest_brd_maintenance.lua",
+    "tests/replay/harness/selftest_brd_maintenance_movement_safety.lua",
+    "tests/replay/harness/selftest_party_buff_tracker.lua",
+    "tests/replay/harness/selftest_scheduler_default_off_ownership_branches.lua",
+    "tests/replay/harness/selftest_scheduler_defensive_cure_movement_lock.lua",
+    "tests/replay/harness/selftest_scheduler_tank_spell_movement_lock.lua",
+    "tests/replay/harness/selftest_scheduler_partner_arbitration.lua",
+    "tests/replay/harness/selftest_scheduler_ownership_closure_static.lua",
+    "tests/replay/harness/selftest_scheduler_ownership_promotion_static.lua",
+    "tests/replay/harness/selftest_scheduler_ownership_flags_static.lua",
+    "tests/replay/harness/selftest_scheduler_ownership_field_docs_static.lua",
+    "tests/replay/harness/selftest_phase5_domain_cutover.lua",
+    "tests/replay/harness/selftest_phase6_cleanup.lua",
+    "tests/replay/harness/selftest_run_ownership_static.lua",
+    "tests/replay/harness/selftest_run_ownership_runtime.lua",
+    "tests/replay/harness/selftest_run_stop_ownership_static.lua",
+    "tests/replay/harness/selftest_run_stop_ownership_runtime.lua",
+    "tests/replay/harness/selftest_turn_ownership_static.lua",
+    "tests/replay/harness/selftest_turn_ownership_runtime.lua",
+    "tests/replay/harness/selftest_target_ownership_static.lua",
+    "tests/replay/harness/selftest_target_ownership_runtime.lua",
+    "tests/replay/harness/selftest_command_ownership_static.lua",
+    "tests/replay/harness/selftest_command_ownership_runtime.lua",
+    "tests/replay/harness/selftest_status_snapshot_063_fixtures.lua",
+    "tests/replay/harness/selftest_enemy_effect_utils_fixtures.lua",
+    "tests/replay/harness/selftest_text_utils_fixtures.lua",
+    "tests/replay/harness/selftest_action_metadata_fixtures.lua",
+    "tests/replay/harness/selftest_reaction_runtime.lua",
+    "tests/replay/harness/selftest_lilith_easy_encounter.lua",
+    "tests/replay/harness/selftest_combat_formation.lua",
+    "tests/replay/harness/selftest_command_builder_fixtures.lua",
+    "tests/replay/harness/selftest_numeric_utils_fixtures.lua",
+    "tests/replay/harness/selftest_proposal_keys_fixtures.lua",
+    "tests/replay/harness/selftest_maintenance_utils_fixtures.lua",
+    "tests/replay/harness/selftest_defensive_utils_fixtures.lua",
+    "tests/replay/harness/selftest_action_predicates_fixtures.lua",
+    "tests/replay/harness/selftest_geometry_fixtures.lua",
+    "tests/replay/harness/selftest_context_utils_fixtures.lua",
+    "tests/replay/harness/selftest_target_utils_fixtures.lua",
+    "tests/replay/harness/selftest_rank_output_fixtures.lua",
+    "tests/replay/harness/selftest_pending_record_fixtures.lua",
+    "tests/replay/harness/selftest_reject_history_fixtures.lua",
+    "tests/replay/harness/selftest_action_state_fixtures.lua",
+    "tests/replay/harness/selftest_locks_fixtures.lua",
+    "tests/replay/harness/selftest_dispatch_plan_fixtures.lua",
+    "tests/replay/harness/selftest_pending_fixtures.lua",
+    "tests/replay/harness/selftest_dryrun_publish_fixtures.lua",
+}
+
+local function run_one(path)
+    local ok, err = pcall(function()
+        dofile(path)
+    end)
+    return ok, err
+end
+
+local function main()
+    local failures = {}
+
+    io.stdout:write("selftest_all_replay_fixtures: running " .. tostring(#SELFTESTS) .. " suites\n")
+
+    for i, path in ipairs(SELFTESTS) do
+        io.stdout:write(string.format("[%02d/%02d] %s\n", i, #SELFTESTS, path))
+        local ok, err = run_one(path)
+        if ok then
+            io.stdout:write("  PASS\n")
+        else
+            failures[#failures + 1] = {
+                path = path,
+                err = tostring(err),
+            }
+            io.stdout:write("  FAIL\n")
+        end
+    end
+
+    if #failures > 0 then
+        io.stdout:write("selftest_all_replay_fixtures: FAIL\n")
+        for _, failure in ipairs(failures) do
+            io.stdout:write("- " .. failure.path .. "\n")
+            io.stdout:write("  " .. failure.err .. "\n")
+        end
+        error("aggregate replay selftest failed: " .. tostring(#failures) .. " suite(s) failed")
+    end
+
+    io.stdout:write("selftest_all_replay_fixtures: OK\n")
+end
+
+main()

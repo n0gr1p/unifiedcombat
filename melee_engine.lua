@@ -341,7 +341,7 @@ local smartws = {
 			local player = windower.ffxi.get_player()
 			local my_id = player and player.id or 0
 			for index, value in ipairs(GetPartyTp()) do
-				if value.id ~= my_id and not uc_ignore.has_id(_G.UC_SETTINGS, value.id) then
+				if value.id ~= my_id and not uc_ignore.is_name_blocked(_G.UC_SETTINGS, value.name) then
 					-- Don't hard-block forever: only wait if ally is actually WS-ready and materially ahead.
 					local ally_ws_ready = (value.tp or 0) >= 1000
 					local ally_far_ahead = (value.tp or 0) >= (my_tp + 300)
@@ -489,7 +489,7 @@ function GetPartyTp()
 		local mob = TestParty(party[v])
 		if mob ~= nil then
 			table.insert(temptps,
-				{ id = mob.id, target = GetMobIdByIndex(mob.target_index), tp = party[v].tp, status = mob.status })
+				{ id = mob.id, name = mob.name or '', target = GetMobIdByIndex(mob.target_index), tp = party[v].tp, status = mob.status })
 		end
 	end
 	return temptps
@@ -969,7 +969,7 @@ local display_box2 = function()
 end
 
 local function uc_ingame_ui_enabled()
-	return settings.show_ingame_ui ~= false
+	return require('uc_config_runtime').ingame_ui_enabled(_G.UC_SETTINGS)
 end
 
 local _status = texts.new(display_box(), settings.default_text_settings)

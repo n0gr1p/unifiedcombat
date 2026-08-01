@@ -1,0 +1,20 @@
+-- Local-only ownership and diagnostic flags.
+-- Leave this file mostly empty so source defaults are the normal behavior.
+--
+-- Use this file only for temporary local opt-outs, one-off experiments, or
+-- diagnostic toggles while field testing. Changes take effect after addon
+-- reload / a new Windower session.
+--
+-- Normal baseline:
+-- - promoted default-on ownership flags should stay unset
+-- - default-off / deferred ownership flags should stay unset
+-- - debug / probe flags should stay unset
+--
+-- Temporary examples only; keep them commented out unless actively bisecting:
+-- _G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ACTION_SETTLE_RUN_STOP_OWNERSHIP = false
+-- _G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_SPELL_SETTLE_RUN_STOP_OWNERSHIP = false
+-- _G.UC_SCHED_P1_ENABLE_DISPATCHER_TANK_ENMITY_SPELL_TARGET_RUN_STOP_OWNERSHIP = true
+_G.UC_DEBUG_ACTION_TIMELINE = true
+-- _G.UC_SPELL_LIFECYCLE_PROBE = true
+_G.UC_ENABLE_ALLIANCE_TARGET_SCOPE = true
+_G.UC_BRD_DIAGNOSTIC_LOG = true

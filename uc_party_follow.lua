@@ -6,6 +6,14 @@
 
 local M = {}
 local packets = require('packets')
+local uc_active_config = require('uc_active_config')
+local uc_camp_puller = require('uc_camp_puller')
+local uc_nyzul_runtime = require('uc_nyzul_runtime')
+local movement_dispatcher = require('uc_movement_dispatcher').build({
+	dispatcher = require('uc_scheduler_dispatcher'),
+	run = windower.ffxi.run,
+	source_prefix = 'party_follow',
+})
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime or nil
 
@@ -58,7 +66,43 @@ end
 
 local function debug_enabled()
 	local s = rawget(_G, 'UC_SETTINGS')
+	local active_value = uc_active_config.get_path('config.debug.enabled')
+	if active_value ~= nil then
+		return active_value == true
+	end
 	return s and truthy(s.debug) or false
+end
+
+local function active_value_or_flat(path, flat_value)
+	local active_value = uc_active_config.get_path(path)
+	if active_value ~= nil then
+		return active_value
+	end
+	return flat_value
+end
+
+local function party_follow_enabled(s)
+	return active_value_or_flat('config.follow.party.enabled', s and s.party_follow) == true
+end
+
+local function party_follow_id(s)
+	return tonumber(active_value_or_flat('config.follow.party.leader_id', s and s.party_follow_id)) or 0
+end
+
+local function party_follow_leader_name(s)
+	return active_value_or_flat('config.follow.party.leader_name', s and s.party_follow_leader_name)
+end
+
+local function party_follow_min(s)
+	return tonumber(active_value_or_flat('config.follow.party.min', s and s.party_follow_min)) or 0.5
+end
+
+local function party_follow_max(s)
+	return tonumber(active_value_or_flat('config.follow.party.max', s and s.party_follow_max)) or 50
+end
+
+local function fight_follow_min(s)
+	return tonumber(active_value_or_flat('config.follow.fight.min', s and s.fight_follow_min))
 end
 
 local function path_sep()
@@ -151,7 +195,7 @@ local function state_snapshot(extra)
 		('self_zone=%s'):format(tostring(info and info.zone or '?')),
 		('self_x=%.3f'):format(tonumber(me and me.x) or -999),
 		('self_y=%.3f'):format(tonumber(me and me.y) or -999),
-		('party_follow=%s'):format(tostring(rawget(_G, 'UC_SETTINGS') and rawget(_G, 'UC_SETTINGS').party_follow or false)),
+		('party_follow=%s'):format(tostring(party_follow_enabled(rawget(_G, 'UC_SETTINGS')))),
 		('ff_following=%s'):format(tostring(ff_following or '')),
 		('ff_target_zone=%s'):format(tostring(ff_target and ff_target.zone or '')),
 		('ff_target_x=%.3f'):format(tonumber(ff_target and ff_target.x) or -999),
@@ -227,6 +271,16 @@ local function set_follow_needs_catchup(active)
 	_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP = false
 end
 
+local function stop_and_release_follow_movement()
+	if tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or '') ~= 'follow' then
+		return false
+	end
+	movement_dispatcher.stop()
+	_G.UC_MOVEMENT_OWNER = 'none'
+	_G.UC_MOVEMENT_LOCK_UNTIL = now_s()
+	return true
+end
+
 local function trim(s)
 	if not s then
 		return ''
@@ -235,7 +289,7 @@ local function trim(s)
 end
 
 local function leader_name_lower(s, lid)
-	local n = trim(s and s.party_follow_leader_name)
+	local n = trim(party_follow_leader_name(s))
 	if n ~= '' then
 		return n:lower()
 	end
@@ -263,12 +317,12 @@ end
 
 local function refresh_ff_following_from_settings()
 	local s = _G.UC_SETTINGS
-	if not s or s.party_follow ~= true then
+	if not s or not party_follow_enabled(s) then
 		ff_following = nil
 		ff_target = nil
 		return
 	end
-	local lname = leader_name_lower(s, s.party_follow_id or 0)
+	local lname = leader_name_lower(s, party_follow_id(s))
 	if lname == '' then
 		ff_following = nil
 		ff_target = nil
@@ -536,7 +590,7 @@ function M.outgoing_chunk(id, data, blocked, injected)
 		return false
 	end
 	local s = _G.UC_SETTINGS
-	if s and s.party_follow == true then
+	if s and party_follow_enabled(s) then
 		local okp, pktp = pcall(function()
 			return packets.parse('outgoing', data)
 		end)
@@ -618,15 +672,15 @@ if not M._ipc_registered then
 end
 
 local function follow_dist_sq_bounds(s)
-	local mn = tonumber(s and s.party_follow_min) or 0.5
-	local mx = tonumber(s and s.party_follow_max) or 50
+	local mn = party_follow_min(s)
+	local mx = party_follow_max(s)
 	local ff_until = tonumber(rawget(_G, 'UC_FIGHT_FOLLOW_ACTIVE_UNTIL')) or 0
 	local allow_fight_follow = false
 	if type(rawget(_G, 'UC_IsCombatParticipant')) == 'function' then
 		allow_fight_follow = _G.UC_IsCombatParticipant(s) == true
 	end
 	if allow_fight_follow and now_s() < ff_until then
-		local fight_min = tonumber(s and s.fight_follow_min) or mn
+		local fight_min = fight_follow_min(s) or mn
 		if fight_min >= 0.01 and fight_min <= 99 then
 			mn = fight_min
 		end
@@ -652,8 +706,83 @@ local function follow_dist_sq_bounds(s)
 	return mn * mn, mx * mx
 end
 
+local function movement_arbitration_enabled()
+	return rawget(_G, 'UC_ENABLE_COMBAT_TRANSITION_MOVEMENT_ARBITRATION') == true
+end
+
+local function combat_participant_active(s)
+	if type(rawget(_G, 'UC_IsCombatParticipant')) == 'function' then
+		return _G.UC_IsCombatParticipant(s) == true
+	end
+	return false
+end
+
+local function live_combat_transition_target_exists()
+	local ffxi = windower and windower.ffxi
+	if type(ffxi) ~= 'table' or type(ffxi.get_mob_by_target) ~= 'function' then
+		return false
+	end
+	local target = ffxi.get_mob_by_target('t')
+	if not target or target.valid_target ~= true then
+		return false
+	end
+	if tonumber(target.spawn_type) ~= 16 then
+		return false
+	end
+	if (tonumber(target.hpp) or 0) <= 0 then
+		return false
+	end
+	return true
+end
+
+local function should_suppress_follow_or_path_return_now(s, now)
+	if not movement_arbitration_enabled() then
+		return false, 'flag_off'
+	end
+	now = tonumber(now) or now_s()
+	local owner = tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or 'none')
+	local lock_until = tonumber(rawget(_G, 'UC_MOVEMENT_LOCK_UNTIL')) or 0
+	if owner == 'scheduler_formation' and now < lock_until then
+		return true, 'formation_movement_lock'
+	end
+	if not combat_participant_active(s) then
+		return false, 'not_combat_participant'
+	end
+	if owner == 'core' and now < lock_until then
+		return true, 'movement_lock'
+	end
+	if rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true then
+		return true, 'preengage'
+	end
+	local have_live_transition_target = live_combat_transition_target_exists()
+	local intent_until = tonumber(rawget(_G, 'UC_COMBAT_INTENT_UNTIL')) or 0
+	if now < intent_until then
+		if have_live_transition_target then
+			return true, 'combat_intent_target'
+		end
+		return false, 'combat_intent_stale'
+	end
+	local fight_follow_until = tonumber(rawget(_G, 'UC_FIGHT_FOLLOW_ACTIVE_UNTIL')) or 0
+	if now < fight_follow_until then
+		if have_live_transition_target then
+			return true, 'fight_follow_hold_target'
+		end
+		return false, 'fight_follow_hold_stale'
+	end
+	return false, 'none'
+end
+
+M.should_suppress_follow_or_path_return_now = should_suppress_follow_or_path_return_now
+
 local function combat_engine_suppresses_follow(s)
+	if uc_camp_puller.movement_reserved(s.camp_pulling) then
+		return true
+	end
 	local now = now_s()
+	local arbitration_suppress = should_suppress_follow_or_path_return_now(s, now)
+	if arbitration_suppress == true then
+		return true
+	end
 	-- Hard engage suppression for combat participants:
 	-- prevents follow from re-asserting between short movement lock refresh windows.
 	local combat_participant = false
@@ -754,20 +883,24 @@ function M.prerender()
 		end, zone_post_snapshot_delay_s)
 	end
 	refresh_ff_following_from_settings()
-	local s = _G.UC_SETTINGS
-	if not s or not s.party_follow or (s.party_follow_id or 0) == 0 then
+	if uc_nyzul_runtime.enforce_movement_hold() then
 		set_follow_run_active(false)
 		set_follow_needs_catchup(false)
-		_G.UC_MOVEMENT_OWNER = 'none'
-		_G.UC_MOVEMENT_LOCK_UNTIL = now_s()
+		last_follow_suppressed = false
+		return
+	end
+	local s = _G.UC_SETTINGS
+	if not s or not party_follow_enabled(s) then
+		set_follow_run_active(false)
+		set_follow_needs_catchup(false)
+		stop_and_release_follow_movement()
 		last_follow_suppressed = false
 		return
 	end
 	if type(rawget(_G, 'UC_IsFollowParticipant')) == 'function' and not _G.UC_IsFollowParticipant(s) then
 		set_follow_run_active(false)
 		set_follow_needs_catchup(false)
-		_G.UC_MOVEMENT_OWNER = 'none'
-		_G.UC_MOVEMENT_LOCK_UNTIL = now_s()
+		stop_and_release_follow_movement()
 		last_follow_suppressed = false
 		return
 	end
@@ -775,7 +908,7 @@ function M.prerender()
 		local p = windower.ffxi.get_player()
 		local out_of_combat = (tonumber(p and p.status) or 0) ~= 1
 		if out_of_combat then
-			local lid = s.party_follow_id or 0
+			local lid = party_follow_id(s)
 			local self_mob = windower.ffxi.get_mob_by_target('me')
 			local info = windower.ffxi.get_info()
 			local zone_self = info and info.zone
@@ -797,29 +930,30 @@ function M.prerender()
 		-- Transition hard-stop: prevent stale run vector drift when follow yields to
 		-- combat-owned movement.
 		if not last_follow_suppressed then
-			windower.ffxi.run(false)
+			if not stop_and_release_follow_movement() then
+				movement_dispatcher.stop()
+			end
 		end
 		set_follow_run_active(false)
 		last_follow_suppressed = true
 		return
 	end
 	last_follow_suppressed = false
-	if zone_suspend_active() then
-		set_follow_run_active(false)
-		return
-	end
 	local p = windower.ffxi.get_player()
 	if not p then
+		stop_and_release_follow_movement()
 		set_follow_run_active(false)
 		return
 	end
-	local lid = s.party_follow_id or 0
+	local lid = party_follow_id(s)
 	if lid == p.id then
+		stop_and_release_follow_movement()
 		set_follow_run_active(false)
 		return
 	end
 	local self_mob = windower.ffxi.get_mob_by_target('me')
 	if not self_mob or not self_mob.x or not self_mob.y then
+		stop_and_release_follow_movement()
 		set_follow_run_active(false)
 		return
 	end
@@ -828,7 +962,7 @@ function M.prerender()
 	local lname = leader_name_lower(s, lid)
 	local lx, ly = resolve_leader_xy(s, lid, lname, zone_self)
 	if not lx or not ly then
-		windower.ffxi.run(false)
+		movement_dispatcher.stop()
 		set_follow_run_active(false)
 		_G.UC_MOVEMENT_OWNER = 'follow'
 		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.20
@@ -838,7 +972,7 @@ function M.prerender()
 		return windower.ffxi.get_mob_by_id(lid)
 	end)
 	if ok and leader_mob and leader_mob.id and leader_mob.id ~= 0 and leader_mob.hpp ~= nil and leader_mob.hpp <= 0 then
-		windower.ffxi.run(false)
+		movement_dispatcher.stop()
 		set_follow_run_active(false)
 		_G.UC_MOVEMENT_OWNER = 'follow'
 		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.20
@@ -851,17 +985,17 @@ function M.prerender()
 		if len < 1 then
 			len = 1
 		end
-		windower.ffxi.run((lx - self_mob.x) / len, (ly - self_mob.y) / len)
+		movement_dispatcher.run_vector((lx - self_mob.x) / len, (ly - self_mob.y) / len)
 		set_follow_run_active(true)
 		_G.UC_MOVEMENT_OWNER = 'follow'
 		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.25
 	elseif d2 <= min_dist then
-		windower.ffxi.run(false)
+		movement_dispatcher.stop()
 		set_follow_run_active(false)
 		_G.UC_MOVEMENT_OWNER = 'follow'
 		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.20
 	else
-		windower.ffxi.run(false)
+		movement_dispatcher.stop()
 		set_follow_run_active(false)
 		_G.UC_MOVEMENT_OWNER = 'follow'
 		_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.20

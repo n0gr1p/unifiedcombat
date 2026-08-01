@@ -26,6 +26,8 @@ local uc_partner_list = require('uc_partner_list')
 local uc_target_ignore = require('uc_target_ignore')
 local uc_add_priority = require('uc_add_priority')
 local uc_path_hunter = require('uc_path_hunter')
+local uc_config_runtime = require('uc_config_runtime')
+local uc_camp_anchor = require('uc_camp_anchor')
 
 local function uc_trim(s)
 	if not s then
@@ -753,6 +755,10 @@ local function uc_get_roll_ability_names()
 	return uc_unique_sorted(out)
 end
 
+local function uc_get_bard_song_names()
+	return require('uc_brd_song_options').collect(res, windower.ffxi.get_spells(), windower.ffxi.get_player())
+end
+
 local function uc_get_enemy_spell_names()
 	local function spell_known_flag(v)
 		return v == true or v == 1 or v == 'true'
@@ -998,11 +1004,14 @@ local function process_line(line)
 			job = p.main_job,
 			sub_job = p.sub_job,
 			engine = _G.UC_ENGINE,
+			profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS,
+			config_contract_status = uc_config_runtime.config_contract_status(_G.UC_SETTINGS),
 			ability_options = uc_get_cached_ability_options(),
 			weaponskill_options = uc_join_pipe(uc_get_weaponskill_names()),
 			path_pull_ja_options = select(1, uc_get_cached_pull_action_options()),
 			path_pull_spell_options = select(2, uc_get_cached_pull_action_options()),
 			cor_roll_options = uc_join_pipe(uc_get_roll_ability_names()),
+			brd_song_options = uc_join_pipe(uc_get_bard_song_names()),
 			party_options = uc_join_pipe(select(1, uc_get_party_name_maps(false))),
 		}
 		safe_send_line(json_encode_simple(st))
@@ -1065,6 +1074,7 @@ local function process_line(line)
 				if name ~= '' and id == 0 then
 					_G.UC_LAST_PARTNER_OP = 'PULLER_NAME_NOT_IN_PARTY:' .. name
 				end
+				s.puller_name = name
 				s.puller_id = id
 			else
 				_G.UC_LAST_PARTNER_OP = 'PARTNER_SET_LEGACY_IGNORED:' .. slot
@@ -1187,13 +1197,22 @@ local function process_line(line)
 		local s = _G.UC_SETTINGS
 		if s then
 			local vals = uc_split_pipe(msg.value)
+			local out = {}
+			local seen_name = {}
 			s.ignore = {}
 			for _, name in ipairs(vals) do
-				local tid = uc_resolve_target_id_by_name(name)
+				local n = uc_trim(name)
+				local nk = n:lower()
+				if n ~= '' and not seen_name[nk] then
+					seen_name[nk] = true
+					out[#out + 1] = n
+				end
+				local tid = uc_resolve_target_id_by_name(n)
 				if tid and tid ~= 0 then
 					uc_ignore.append_id(s, tid)
 				end
 			end
+			s.wait_ignore_names = out
 		end
 		last_state_send = 0
 	elseif op == 'partner_replace_names' then
@@ -1268,6 +1287,14 @@ local function process_line(line)
 				end
 			end
 			s.add_priority_names = out
+		end
+		last_state_send = 0
+	elseif op == 'sleep_replace_spells' then
+		local s = _G.UC_SETTINGS
+		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
+		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.replace_names) == 'function' then
+			local vals = uc_split_pipe(msg.value)
+			sleep_cfg.replace_names(s, vals)
 		end
 		last_state_send = 0
 	elseif op == 'path_hunter_replace_names' then
@@ -1466,6 +1493,32 @@ local function process_line(line)
 			end
 		end
 		last_state_send = 0
+	elseif op == 'sleep_add_spell' then
+		local s = _G.UC_SETTINGS
+		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
+		local name = uc_trim(msg.name)
+		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.append_name) == 'function' and name ~= '' then
+			sleep_cfg.append_name(s, name)
+		end
+		last_state_send = 0
+	elseif op == 'sleep_remove_spell' then
+		local s = _G.UC_SETTINGS
+		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
+		local idx = uc_remote_list_index(msg, line)
+		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.remove_index) == 'function' and idx then
+			sleep_cfg.remove_index(s, math.floor(idx + 0.5))
+		end
+		last_state_send = 0
+	elseif op == 'sleep_move_spell' then
+		local s = _G.UC_SETTINGS
+		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
+		local idx = uc_remote_list_index(msg, line)
+		local dir = tostring(uc_trim(tostring(msg.direction or msg.Direction or msg.dir or msg.Dir or ''))):lower()
+		local delta = (dir == 'up' or dir == '-1') and -1 or ((dir == 'down' or dir == '1') and 1 or nil)
+		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.move_index) == 'function' and idx and delta then
+			sleep_cfg.move_index(s, math.floor(idx + 0.5), delta)
+		end
+		last_state_send = 0
 	elseif op == 'path_hunter_add' then
 		local s = _G.UC_SETTINGS
 		local name = uc_trim(msg.name)
@@ -1505,6 +1558,9 @@ local function process_line(line)
 		if was_running and (not Start_Engine) and type(_G.UC_ResetMovementLocksForFollow) == 'function' then
 			_G.UC_ResetMovementLocksForFollow()
 		end
+		if was_running and (not Start_Engine) and type(_G.UC_StopUnifiedEngine) == 'function' then
+			_G.UC_StopUnifiedEngine('engine_stop')
+		end
 		if (not was_running) and Start_Engine then
 			maybe_start_active_engine()
 		end
@@ -1525,10 +1581,23 @@ local function process_line(line)
 		if type(_G.UC_ResetMovementLocksForFollow) == 'function' then
 			_G.UC_ResetMovementLocksForFollow()
 		end
-	elseif op == 'save' then
-		if type(_G.UC_SaveActiveProfile) == 'function' then
-			_G.UC_SaveActiveProfile()
+		if type(_G.UC_StopUnifiedEngine) == 'function' then
+			_G.UC_StopUnifiedEngine('engine_stop')
 		end
+	elseif op == 'camp_set' then
+		local ok, reason = uc_camp_anchor.set_current_position()
+		_G.UC_LAST_CAMP_OP = tostring(reason)
+		if not ok then
+			windower.add_to_chat(167, 'UC camp: ' .. tostring(reason))
+		end
+		last_state_send = 0
+	elseif op == 'camp_clear' then
+		local ok, reason = uc_camp_anchor.clear_shared()
+		_G.UC_LAST_CAMP_OP = tostring(reason)
+		if not ok then
+			windower.add_to_chat(167, 'UC camp: ' .. tostring(reason))
+		end
+		last_state_send = 0
 	elseif op == 'reload' then
 		if type(_G.UC_ReloadActiveProfile) == 'function' then
 			_G.UC_ReloadActiveProfile()
@@ -1579,6 +1648,32 @@ function uc_remote_tick()
 	end
 	local zu = rawget(_G, 'UC_ZONE_SUSPEND_UNTIL')
 	local zone_suspend_active = type(zu) == 'number' and uc_now_s() < zu
+	local camp_status = uc_camp_anchor.status()
+	local camp_last_op = rawget(_G, 'UC_LAST_CAMP_OP')
+	if type(camp_last_op) ~= 'string' then
+		camp_last_op = ''
+	end
+	local geo_runtime = rawget(_G, 'UC_GEO_MAINTENANCE_STATUS')
+	if type(geo_runtime) ~= 'table' then
+		geo_runtime = {
+			state = 'unavailable',
+			reason = 'GEO_STATUS_UNAVAILABLE',
+			detail = '',
+		}
+	end
+	local pull_runtime = rawget(_G, 'UC_CAMP_PULLER_STATUS')
+	if type(pull_runtime) ~= 'table' then
+		pull_runtime = {
+			state = 'unavailable',
+			reason = 'PULL_STATUS_UNAVAILABLE',
+			detail = '',
+			target_id = 0,
+			target_name = '',
+			active_count = 0,
+			quota = 0,
+			last_intent = '',
+		}
+	end
 	local st = {
 		op = 'state',
 		session = session_id,
@@ -1588,6 +1683,25 @@ function uc_remote_tick()
 		engine = _G.UC_ENGINE,
 		Start_Engine = Start_Engine,
 		zone_suspend_active = zone_suspend_active,
+		camp_active = camp_status.active,
+		camp_zone_id = camp_status.zone_id,
+		camp_x = camp_status.x,
+		camp_y = camp_status.y,
+		camp_set_by = camp_status.set_by,
+		camp_last_op = camp_last_op,
+		geo_runtime_state = geo_runtime.state,
+		geo_runtime_reason = geo_runtime.reason,
+		geo_runtime_detail = geo_runtime.detail,
+		camp_pull_runtime_state = pull_runtime.state,
+		camp_pull_runtime_reason = pull_runtime.reason,
+		camp_pull_runtime_detail = pull_runtime.detail,
+		camp_pull_runtime_target_id = pull_runtime.target_id,
+		camp_pull_runtime_target_name = pull_runtime.target_name,
+		camp_pull_runtime_active_count = pull_runtime.active_count,
+		camp_pull_runtime_quota = pull_runtime.quota,
+		camp_pull_runtime_intent = pull_runtime.last_intent,
+		profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS,
+		config_contract_status = uc_config_runtime.config_contract_status(_G.UC_SETTINGS),
 	}
 	if not safe_send_line(json_encode_simple(st)) then
 		return

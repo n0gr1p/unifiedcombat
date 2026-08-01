@@ -1,10 +1,13 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
+    private sealed record ReactionRuleRow(string Trigger, string Name, string Response);
+
     private static bool SequenceEqualOrdinal(IReadOnlyList<string> a, IReadOnlyList<string> b)
     {
         if (a.Count != b.Count)
@@ -313,6 +316,7 @@ public partial class MainForm
         RenderPartnerList(s);
         RenderTargetIgnoreList(s);
         RenderAddPriorityList(s);
+        RenderSleepSpellList(s);
         RenderPathHunterList(s);
     }
 
@@ -334,8 +338,15 @@ public partial class MainForm
             _wsCombo.Items.Clear();
             _wsModeCombo.SelectedItem = "Smart";
             _pullerCombo.Items.Clear();
+			_pullerLeashSource.SelectedItem = "Player";
+			_campStatus.Text = "Camp not set";
             _fightLeaderCombo.Items.Clear();
             _partyFollowCombo.Items.Clear();
+			_nyzulCoordinatorCombo.Items.Clear();
+			_nyzulAnchorCombo.Items.Clear();
+			_nyzulParkerCombo.Items.Clear();
+			_nyzulParkingList.Items.Clear();
+			_nyzulParkingOrder.Clear();
             _aftermathCombo.Items.Clear();
             _aftermathCombo.Enabled = false;
             _defProviderCombo.SelectedIndex = _defProviderCombo.Items.IndexOf("internal");
@@ -353,6 +364,8 @@ public partial class MainForm
             _pfFollowMaxYalms.Text = "50";
             _pfFightFollowMinYalms.Text = "3";
             _pfFightFollowHoldS.Text = "8";
+            _pullerEngageRange.Text = "6";
+            _sleepMaxTargetRange.Text = "6";
             _spUsePrediction.Checked = true;
             _spBandMin.Text = "-0.9";
             _spBandMax.Text = "0.4";
@@ -362,6 +375,26 @@ public partial class MainForm
             _spEmergencyMargin.Text = "0.1";
             _spSwitchMargin.Text = "0.35";
             _spArrivalTolerance.Text = "0.2";
+            _formationEnabled.Checked = false;
+            _formationEncounter.SelectedItem = "Lady Lilith — Easy";
+            _formationRole.SelectedItem = "Disabled";
+            _formationTankName.Items.Clear();
+            _formationTankName.Text = "";
+            _formationRequiredParty.Items.Clear();
+            _formationCaptureStable.Value = 0.50m;
+            _formationCaptureTolerance.Value = 0.10m;
+            _formationSafeRadius.Value = 16.0m;
+            _formationTankAcceptRadius.Value = 1.5m;
+            _formationTankReturnRadius.Value = 3.0m;
+            _formationDpsFlankAngle.Value = 90.0m;
+            _formationDpsMeleeRadius.Value = 3.0m;
+            _formationDpsPositionTolerance.Value = 1.5m;
+            _formationHealerPreferredRadius.Value = 12.0m;
+            _formationHealerMinimumBossDistance.Value = 8.0m;
+            _formationHealerMaximumPartyRange.Value = 18.0m;
+            _formationHealerConeHalfAngle.Value = 50.0m;
+            _formationHealerConeSafetyMargin.Value = 15.0m;
+            _formationHealerSampleStep.Value = 10.0m;
             _pathFileValue.Text = "";
             _pathRouteTypeValue.Text = "unknown";
             _pathDistanceValue.Text = "0.0";
@@ -378,6 +411,9 @@ public partial class MainForm
             _pathPullSpellOptions.Clear();
             _pathHunterList.Items.Clear();
             _pathHunterRows = [];
+            ResetGeoPullUi();
+            EnsureGeoTabVisibility(false);
+            EnsureSummonerTabVisibility(false);
             _tankEnmityList.Items.Clear();
             _tankEnmityRows = [];
             _tankEnmityTypeCombo.SelectedItem = "ja";
@@ -399,12 +435,32 @@ public partial class MainForm
             _corRangePartyPanel.Controls.Clear();
             _corRollOptions.Clear();
             _corPartyOptions.Clear();
+            _summonerEnabled.Checked = false;
+            _summonerAvatar.SelectedIndex = 0;
+            _summonerAvatarFavor.Checked = false;
+            _summonerWardEnabled.Checked = false;
+            BindSummonerActionCombo(_summonerWardAction, [], "");
+            _summonerEngage.Checked = false;
+            _summonerRageEnabled.Checked = false;
+            BindSummonerActionCombo(_summonerRageAction, [], "");
+            _summonerRageTargetHppAboveEnabled.Checked = false;
+            _summonerRageTargetHppAbove.Value = 50;
+            _summonerRagePetTpAboveEnabled.Checked = false;
+            _summonerRagePetTpAbove.Value = 2000;
+            UpdateSummonerUiState();
+            _reactionEnabled.Checked = false;
+            _reactionRules.Clear();
+            _reactionRuleList.Items.Clear();
+            _reactionName.Text = "";
+            _reactionTriggerCombo.SelectedItem = "ability_window";
+            RefreshReactionResponseOptions();
             _partyOptions.Clear();
             _partyFollowModeWarning.Visible = false;
             _partyFollowModeWarning.Text = "";
             _ignoreName.Text = "";
             _targetIgnName.Text = "";
             _addPriName.Text = "";
+            _sleepSpellName.Text = "";
             _partnerName.Text = "";
             _abilityList.Items.Clear();
             _abilityPickCombo.Items.Clear();
@@ -412,10 +468,12 @@ public partial class MainForm
             _partnerList.Items.Clear();
             _targetIgnList.Items.Clear();
             _addPriList.Items.Clear();
+            _sleepSpellList.Items.Clear();
             _ignoreRows = [];
             _partnerRows = [];
             _targetIgnoreRows = [];
             _addPriorityRows = [];
+            _sleepSpellRows = [];
             _selectedAbilities.Clear();
             _abilityOptions.Clear();
             _ignoreCurTarget.Enabled = false;
@@ -423,12 +481,15 @@ public partial class MainForm
             _addPriCurTarget.Enabled = false;
             _partnerCurTarget.Enabled = false;
             _pullerCombo.Enabled = false;
+            _pullerEngageRange.Enabled = false;
+            _sleepMaxTargetRange.Enabled = false;
             _fightLeaderCombo.Enabled = false;
             _partyFollowCombo.Enabled = false;
             _pfFollowMinYalms.Enabled = false;
             _pfFollowMaxYalms.Enabled = false;
             _pfFightFollowMinYalms.Enabled = false;
             _pfFightFollowHoldS.Enabled = false;
+            UpdateFormationUiState();
             UpdateBooleanCardVisuals();
         }
         finally
@@ -446,6 +507,8 @@ public partial class MainForm
             _partnerRows = [];
             _targetIgnoreRows = [];
             _addPriorityRows = [];
+            _sleepSpellRows = [];
+			_nyzulParkingOrder.Clear();
         }
 
         var eng = SessionStateHelper.GetString(s, "engine", "melee");
@@ -532,9 +595,22 @@ public partial class MainForm
 
             var pullOn = SessionStateHelper.GetBool(s, "puller", false);
             var selPull = NormalizePartyName(SessionStateHelper.GetString(s, "puller_selected"));
+			var leashSource = SessionStateHelper.GetString(s, "puller_leash_source", "player").Trim().ToLowerInvariant();
+			if (leashSource is not ("player" or "camp"))
+			{
+				throw new InvalidDataException($"Invalid puller leash source '{leashSource}'.");
+			}
+			_pullerLeashSource.SelectedItem = leashSource == "camp" ? "Camp" : "Player";
 
             BindPartyCombo(_pullerCombo, pullerOpts, selPull);
-            _pullerCombo.Enabled = pullOn;
+			_pullerCombo.Enabled = pullOn && leashSource == "player";
+			_pullerLeashSource.Enabled = pullOn;
+            _pullerEngageRange.Text = SessionStateHelper.GetString(s, "puller_engage_range", "6");
+            _pullerEngageRange.Enabled = pullOn;
+			_campSet.Enabled = pullOn && leashSource == "camp";
+			_campClear.Enabled = pullOn && leashSource == "camp";
+			_campStatus.Text = leashSource == "camp" ? "Waiting for addon state…" : "Camp mode inactive";
+            _sleepMaxTargetRange.Text = SessionStateHelper.GetString(s, "sleep_max_target_range", "6");
 
             var flOn = SessionStateHelper.GetBool(s, "fight_leader", false);
             var selFl = NormalizePartyName(SessionStateHelper.GetString(s, "fight_leader_selected"));
@@ -549,12 +625,24 @@ public partial class MainForm
             _partyFollowCombo.Enabled = pfOn;
             UpdatePartyFollowModeWarning(sid);
 
+			var nyzulCoordinator = NormalizePartyName(SessionStateHelper.GetString(s, "nyzul_coordinator_name"));
+			var nyzulAnchor = NormalizePartyName(SessionStateHelper.GetString(s, "nyzul_anchor_name"));
+			BindPartyCombo(_nyzulCoordinatorCombo, partnerOpts, nyzulCoordinator);
+			BindPartyCombo(_nyzulAnchorCombo, partnerOpts, nyzulAnchor);
+			BindPartyCombo(_nyzulParkerCombo, partnerOpts, "");
+			_nyzulParkingOrder.Clear();
+			_nyzulParkingOrder.AddRange(SessionStateHelper.SplitOptions(
+				s.TryGetProperty("nyzul_parking_order", out var nyzulOrder) ? nyzulOrder : default
+			));
+			RebindNyzulParkingList();
+
             _pfFollowMinYalms.Enabled = pfOn;
             _pfFollowMaxYalms.Enabled = pfOn;
             _pfFightFollowMinYalms.Enabled = pfOn;
             _pfFightFollowHoldS.Enabled = pfOn;
             ApplyPartyFollowDistancesFromSnapshot(sid, s);
             ApplySpacingTuningFromSnapshot(sid, s);
+            ApplyFormationConfigFromSnapshot(s, partnerOpts);
 
             var prov = SessionStateHelper.GetString(s, "defensive_provider", "internal");
             if (prov != "internal" && prov != "healbot")
@@ -672,6 +760,39 @@ public partial class MainForm
                 var selectedNames = SessionStateHelper.SplitOptions(s.TryGetProperty("cor_roll_range_selected", out var crs) ? crs : default);
                 RenderCorRangePartyChecks(sid, selectedNames);
             }
+            var brdVisible = string.Equals(mainJob, "BRD", StringComparison.Ordinal) || string.Equals(subJob, "BRD", StringComparison.Ordinal);
+            EnsureBrdTabVisibility(brdVisible);
+            if (brdVisible)
+            {
+                _brdEnabled.Checked = SessionStateHelper.GetBool(s, "brd_maintenance_enabled", false);
+                ApplyBrdList(_brdSongList, SessionStateHelper.GetString(s, "brd_songs"));
+                ApplyBrdList(_brdDummyList, SessionStateHelper.GetString(s, "brd_dummy_songs"));
+                _brdUseNitro.Checked = SessionStateHelper.GetBool(s, "brd_use_nitro", false);
+				_brdUseSoulVoice.Checked = SessionStateHelper.GetBool(s, "brd_use_soul_voice", false);
+                _brdUseClarion.Checked = SessionStateHelper.GetBool(s, "brd_use_clarion_call", false);
+                _brdUseMarcato.Checked = SessionStateHelper.GetBool(s, "brd_use_marcato", false);
+                RefreshBrdMarcatoOptions(SessionStateHelper.GetString(s, "brd_marcato_song"));
+				ApplyBrdRecoveryRange(s);
+				_brdRecoveryIgnoreNames.Text = SessionStateHelper.GetString(s, "brd_recovery_ignore_names");
+				_brdTargetedSongs.Text = SessionStateHelper.GetString(s, "brd_targeted_songs");
+                var subBrdOnly = !string.Equals(mainJob, "BRD", StringComparison.Ordinal) && string.Equals(subJob, "BRD", StringComparison.Ordinal);
+                _brdUseNitro.Enabled = !subBrdOnly;
+				_brdUseSoulVoice.Enabled = !subBrdOnly;
+                _brdUseClarion.Enabled = !subBrdOnly;
+                _brdUseMarcato.Enabled = !subBrdOnly;
+                _brdMarcatoSong.Enabled = !subBrdOnly && _brdUseMarcato.Checked;
+				_brdTargetedSongs.Enabled = !subBrdOnly;
+            }
+            var geoVisible = string.Equals(mainJob, "GEO", StringComparison.Ordinal)
+                || string.Equals(subJob, "GEO", StringComparison.Ordinal);
+            EnsureGeoTabVisibility(geoVisible);
+            var summonerVisible = string.Equals(mainJob, "SMN", StringComparison.Ordinal)
+                || string.Equals(subJob, "SMN", StringComparison.Ordinal);
+            EnsureSummonerTabVisibility(summonerVisible);
+            ApplyGeoPullFromSnapshot(s);
+            ApplySummonerFromSnapshot(s);
+            _reactionEnabled.Checked = SessionStateHelper.GetBool(s, "reaction_enabled", false);
+            ApplyReactionRulesFromSnapshot(s);
 
             foreach (var key in HubUiConstants.BoolKeys)
             {
@@ -691,6 +812,7 @@ public partial class MainForm
             }
 
             RenderAuxLists(s);
+            UpdateFormationUiState();
             UpdateBooleanCardVisuals();
         }
         finally
@@ -706,8 +828,9 @@ public partial class MainForm
         var hasPullJa = s.TryGetProperty("path_pull_ja_options", out var pjo) && pjo.ValueKind == JsonValueKind.String;
         var hasPullSpell = s.TryGetProperty("path_pull_spell_options", out var pso) && pso.ValueKind == JsonValueKind.String;
         var hasCorRolls = s.TryGetProperty("cor_roll_options", out var cro) && cro.ValueKind == JsonValueKind.String;
+        var hasBrdSongs = s.TryGetProperty("brd_song_options", out var bso) && bso.ValueKind == JsonValueKind.String;
         var hasPartyOpts = s.TryGetProperty("party_options", out var po) && po.ValueKind == JsonValueKind.String;
-        if (!hasAbility && !hasWs && !hasPullJa && !hasPullSpell && !hasCorRolls && !hasPartyOpts)
+        if (!hasAbility && !hasWs && !hasPullJa && !hasPullSpell && !hasCorRolls && !hasBrdSongs && !hasPartyOpts)
         {
             return;
         }
@@ -717,6 +840,7 @@ public partial class MainForm
         var pullJaOpts = SessionStateHelper.SplitOptions(hasPullJa ? pjo : default);
         var pullSpellOpts = SessionStateHelper.SplitOptions(hasPullSpell ? pso : default);
         var corRollOpts = SessionStateHelper.SplitOptions(hasCorRolls ? cro : default);
+        var brdSongOpts = SessionStateHelper.SplitOptions(hasBrdSongs ? bso : default);
         var partyOpts = SessionStateHelper.SplitOptions(hasPartyOpts ? po : default);
         var changed = false;
 
@@ -793,6 +917,16 @@ public partial class MainForm
                 EnsureCorRollOptions(_corRoll2Combo);
                 changed = true;
             }
+
+            _sleepMaxTargetRange.Enabled = _boolChecks.TryGetValue("sleep", out var sleepCheck) && sleepCheck.Checked;
+            if (hasBrdSongs && !SequenceEqualOrdinal(_brdSongOptions, brdSongOpts))
+            {
+                _brdSongOptions.Clear();
+                _brdSongOptions.AddRange(brdSongOpts);
+                RefreshBrdSongPickOptions(_brdSongCombo);
+                RefreshBrdSongPickOptions(_brdDummyCombo);
+                changed = true;
+            }
             if (hasPartyOpts && !SequenceEqualOrdinal(_corPartyOptions, partyOpts))
             {
                 _corPartyOptions.Clear();
@@ -813,6 +947,9 @@ public partial class MainForm
                 var keepPuller = SelectedPartyName(_pullerCombo);
                 var keepFightLeader = SelectedPartyName(_fightLeaderCombo);
                 var keepPartyFollow = SelectedPartyName(_partyFollowCombo);
+				var keepNyzulCoordinator = SelectedPartyName(_nyzulCoordinatorCombo);
+				var keepNyzulAnchor = SelectedPartyName(_nyzulAnchorCombo);
+				var keepNyzulParker = SelectedPartyName(_nyzulParkerCombo);
                 if (string.IsNullOrWhiteSpace(snapPuller) && !string.IsNullOrWhiteSpace(keepPuller))
                 {
                     snapPuller = keepPuller;
@@ -828,6 +965,9 @@ public partial class MainForm
                 BindPartyCombo(_pullerCombo, pullerOpts, snapPuller);
                 BindPartyCombo(_fightLeaderCombo, partnerOpts, snapFightLeader);
                 BindPartyCombo(_partyFollowCombo, partnerOpts, snapPartyFollow);
+				BindPartyCombo(_nyzulCoordinatorCombo, partnerOpts, keepNyzulCoordinator);
+				BindPartyCombo(_nyzulAnchorCombo, partnerOpts, keepNyzulAnchor);
+				BindPartyCombo(_nyzulParkerCombo, partnerOpts, keepNyzulParker);
                 UpdatePartyFollowModeWarning(sid);
                 var selectedNames = SessionStateHelper.SplitOptions(s.TryGetProperty("cor_roll_range_selected", out var crs2) ? crs2 : default);
                 RenderCorRangePartyChecks(sid, selectedNames);
@@ -853,7 +993,8 @@ public partial class MainForm
             : SessionStateHelper.GetString(s, "job", "");
         if (!string.IsNullOrWhiteSpace(job))
         {
-            _optionsHydratedJobBySid[sid] = job;
+            var subJob = meta?.SubJob ?? SessionStateHelper.GetString(s, "sub_job", "");
+            _optionsHydratedJobBySid[sid] = $"{job}/{subJob}";
         }
         _optionsRequestInFlightBySid.Remove(sid);
         if (changed && string.Equals(_selectedSid, sid, StringComparison.Ordinal))
@@ -1103,6 +1244,45 @@ public partial class MainForm
         }
     }
 
+    private void RenderSleepSpellList(JsonElement s)
+    {
+        var newRows = SessionStateHelper.ParseIgnoreEntriesFrom(s, "sleep_spell_entries");
+        if (newRows.Count == 0)
+        {
+            var legacyPrimary = SessionStateHelper.GetString(s, "sleepspell");
+            if (!string.IsNullOrWhiteSpace(legacyPrimary))
+            {
+                newRows = [(1, legacyPrimary)];
+            }
+        }
+
+        if (newRows.SequenceEqual(_sleepSpellRows) && _sleepSpellList.Items.Count == newRows.Count)
+        {
+            return;
+        }
+
+        string? preserved = null;
+        if (_sleepSpellList.SelectedIndex >= 0 && _sleepSpellRows.Count > 0 && _sleepSpellList.SelectedIndex < _sleepSpellRows.Count)
+        {
+            preserved = _sleepSpellRows[_sleepSpellList.SelectedIndex].Name;
+        }
+
+        _sleepSpellRows = newRows;
+        RebindSleepSpellListUi();
+
+        if (preserved != null)
+        {
+            for (var i = 0; i < _sleepSpellRows.Count; i++)
+            {
+                if (_sleepSpellRows[i].Name == preserved)
+                {
+                    _sleepSpellList.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+    }
+
     private void OnAnyBool(string key, bool val)
     {
         if (_suppressEvents)
@@ -1137,13 +1317,23 @@ public partial class MainForm
 
         if (key == "puller")
         {
-            _pullerCombo.Enabled = val;
+			var campSource = string.Equals(_pullerLeashSource.SelectedItem?.ToString(), "Camp", StringComparison.Ordinal);
+			_pullerLeashSource.Enabled = val;
+			_pullerCombo.Enabled = val && !campSource;
+            _pullerEngageRange.Enabled = val;
+			_campSet.Enabled = val && campSource;
+			_campClear.Enabled = val && campSource;
             var ps = SelectedPartyName(_pullerCombo);
             if (val && !string.IsNullOrEmpty(ps) && !ComboContainsPartyName(_pullerCombo, ps))
             {
                 _pullerCombo.SelectedIndex = 0;
                 OnPullerSelected();
             }
+        }
+
+        if (key == "sleep")
+        {
+            _sleepMaxTargetRange.Enabled = val;
         }
 
         if (key == "fight_leader")
@@ -1355,6 +1545,821 @@ public partial class MainForm
                 _settingsTabs.SelectedIndex = 0;
             }
         }
+    }
+
+    private void EnsureGeoTabVisibility(bool shouldShow)
+    {
+        EnsureJobTabVisibility(_tabGeo, shouldShow);
+    }
+
+    private void EnsureSummonerTabVisibility(bool shouldShow)
+    {
+        EnsureJobTabVisibility(_tabSummoner, shouldShow);
+    }
+
+    private void EnsureJobTabVisibility(TabPage tab, bool shouldShow)
+    {
+        if (_settingsTabs is null || tab is null)
+        {
+            return;
+        }
+        var hasTab = _settingsTabs.TabPages.Contains(tab);
+        if (shouldShow && !hasTab)
+        {
+            _settingsTabs.TabPages.Add(tab);
+            return;
+        }
+        if (!shouldShow && hasTab)
+        {
+            var wasSelected = ReferenceEquals(_settingsTabs.SelectedTab, tab);
+            _settingsTabs.TabPages.Remove(tab);
+            if (wasSelected && _settingsTabs.TabPages.Count > 0)
+            {
+                _settingsTabs.SelectedIndex = 0;
+            }
+        }
+    }
+
+    private static void BindSummonerActionCombo(
+        ComboBox combo,
+        IEnumerable<SummonerActionCapability> actions,
+        string selected
+    )
+    {
+        var names = actions.Select(action => action.Name).ToList();
+        if (selected.Length != 0 && !names.Contains(selected, StringComparer.Ordinal))
+        {
+            names.Insert(0, selected);
+        }
+        names.Insert(0, "");
+        combo.Items.Clear();
+        foreach (var name in names)
+        {
+            combo.Items.Add(name);
+        }
+        combo.SelectedIndex = names.FindIndex(name => string.Equals(name, selected, StringComparison.Ordinal));
+    }
+
+    private void BindSummonerAvatarCombo(string selected)
+    {
+        var names = SummonerCapabilities.Avatars.Select(avatar => avatar.Name).ToList();
+        if (selected.Length != 0 && !names.Contains(selected, StringComparer.Ordinal))
+        {
+            names.Insert(0, selected);
+        }
+        names.Insert(0, "");
+        _summonerAvatar.Items.Clear();
+        foreach (var name in names)
+        {
+            _summonerAvatar.Items.Add(name);
+        }
+        _summonerAvatar.SelectedIndex = names.FindIndex(
+            name => string.Equals(name, selected, StringComparison.Ordinal)
+        );
+    }
+
+    private void ApplySummonerFromSnapshot(JsonElement snapshot)
+    {
+        _summonerEnabled.Checked = SessionStateHelper.GetBool(snapshot, "summoner_enabled", false);
+        var avatarName = SessionStateHelper.GetString(snapshot, "summoner_avatar");
+        BindSummonerAvatarCombo(avatarName);
+        _summonerAvatarFavor.Checked = SessionStateHelper.GetBool(snapshot, "summoner_avatar_favor", false);
+        _summonerWardEnabled.Checked = SessionStateHelper.GetBool(snapshot, "summoner_ward_enabled", false);
+        _summonerEngage.Checked = SessionStateHelper.GetBool(
+            snapshot,
+            "summoner_engage_on_combat_start",
+            false
+        );
+        _summonerRageEnabled.Checked = SessionStateHelper.GetBool(snapshot, "summoner_rage_enabled", false);
+
+        var avatar = SummonerCapabilities.FindAvatar(avatarName);
+        BindSummonerActionCombo(
+            _summonerWardAction,
+            avatar is null ? [] : avatar.Wards,
+            SessionStateHelper.GetString(snapshot, "summoner_ward_action")
+        );
+        BindSummonerActionCombo(
+            _summonerRageAction,
+            avatar is null ? [] : avatar.Rages,
+            SessionStateHelper.GetString(snapshot, "summoner_rage_action")
+        );
+        var usage = SessionStateHelper.GetString(snapshot, "summoner_rage_usage", "on_cooldown");
+        if (!string.Equals(usage, "on_cooldown", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"Unsupported Summoner Rage usage policy '{usage}'.");
+        }
+        _summonerRageTargetHppAboveEnabled.Checked = ReadOptionalSummonerGateEnabled(
+            snapshot,
+            "summoner_rage_target_hpp_above_enabled"
+        );
+        _summonerRageTargetHppAbove.Value = ReadOptionalSummonerGateThreshold(
+            snapshot,
+            "summoner_rage_target_hpp_above",
+            50,
+            99
+        );
+        _summonerRagePetTpAboveEnabled.Checked = ReadOptionalSummonerGateEnabled(
+            snapshot,
+            "summoner_rage_pet_tp_above_enabled"
+        );
+        _summonerRagePetTpAbove.Value = ReadOptionalSummonerGateThreshold(
+            snapshot,
+            "summoner_rage_pet_tp_above",
+            2000,
+            2999
+        );
+        UpdateSummonerUiState();
+    }
+
+    private static int ReadOptionalSummonerGateThreshold(
+        JsonElement snapshot,
+        string key,
+        int defaultValue,
+        int maximum
+    )
+    {
+        if (!snapshot.TryGetProperty(key, out var value))
+        {
+            return defaultValue;
+        }
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var threshold))
+        {
+            throw new InvalidDataException($"{key} must be an integer.");
+        }
+        if (threshold < 0 || threshold > maximum)
+        {
+            throw new InvalidDataException($"{key} must be from 0 to {maximum}.");
+        }
+        return threshold;
+    }
+
+    private static bool ReadOptionalSummonerGateEnabled(JsonElement snapshot, string key)
+    {
+        if (!snapshot.TryGetProperty(key, out var value))
+        {
+            return false;
+        }
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => throw new InvalidDataException($"{key} must be boolean."),
+        };
+    }
+
+    private void OnSummonerAvatarChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var ward = _summonerWardAction.SelectedItem?.ToString() ?? "";
+        var rage = _summonerRageAction.SelectedItem?.ToString() ?? "";
+        var avatarName = _summonerAvatar.SelectedItem?.ToString() ?? "";
+        var avatar = SummonerCapabilities.FindAvatar(avatarName);
+        var wasSuppressed = _suppressEvents;
+        _suppressEvents = true;
+        try
+        {
+            BindSummonerActionCombo(_summonerWardAction, avatar is null ? [] : avatar.Wards, ward);
+            BindSummonerActionCombo(_summonerRageAction, avatar is null ? [] : avatar.Rages, rage);
+        }
+        finally
+        {
+            _suppressEvents = wasSuppressed;
+        }
+        UpdateSummonerUiState();
+        var sid = RequireSelectedSid();
+        if (sid is not null)
+        {
+            CaptureWorkingProfileFromUi(sid);
+        }
+    }
+
+    private void OnSummonerSettingChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        UpdateSummonerUiState();
+        var sid = RequireSelectedSid();
+        if (sid is not null)
+        {
+            CaptureWorkingProfileFromUi(sid);
+        }
+    }
+
+    private void OnSummonerActionChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        UpdateSummonerUiState();
+        var sid = RequireSelectedSid();
+        if (sid is not null)
+        {
+            CaptureWorkingProfileFromUi(sid);
+        }
+    }
+
+    private void UpdateSummonerUiState()
+    {
+        var enabled = _summonerEnabled.Checked;
+        var avatarName = _summonerAvatar.SelectedItem?.ToString() ?? "";
+        var avatarValid = SummonerCapabilities.FindAvatar(avatarName) is not null;
+        var wardAction = _summonerWardAction.SelectedItem?.ToString() ?? "";
+        var rageAction = _summonerRageAction.SelectedItem?.ToString() ?? "";
+        var wardValid = !_summonerWardEnabled.Checked
+            || SummonerCapabilities.IsCompatible(avatarName, "ward", wardAction);
+        var rageValid = !_summonerRageEnabled.Checked
+            || SummonerCapabilities.IsCompatible(avatarName, "rage", rageAction);
+
+        _summonerAvatar.Enabled = enabled;
+        _summonerAvatarFavor.Enabled = enabled && avatarValid;
+        _summonerWardEnabled.Enabled = enabled && avatarValid;
+        _summonerWardAction.Enabled = enabled && avatarValid && _summonerWardEnabled.Checked;
+        _summonerEngage.Enabled = enabled && avatarValid;
+        _summonerRageEnabled.Enabled = enabled && avatarValid;
+        _summonerRageAction.Enabled = enabled && avatarValid && _summonerRageEnabled.Checked;
+        var rageGateControlsEnabled = enabled && avatarValid && _summonerRageEnabled.Checked;
+        _summonerRageTargetHppAboveEnabled.Enabled = rageGateControlsEnabled;
+        _summonerRageTargetHppAbove.Enabled =
+            rageGateControlsEnabled && _summonerRageTargetHppAboveEnabled.Checked;
+        _summonerRagePetTpAboveEnabled.Enabled = rageGateControlsEnabled;
+        _summonerRagePetTpAbove.Enabled =
+            rageGateControlsEnabled && _summonerRagePetTpAboveEnabled.Checked;
+
+        if (!enabled)
+        {
+            _summonerValidation.ForeColor = SystemColors.GrayText;
+            _summonerValidation.Text = "Summoner automation is disabled.";
+        }
+        else if (!avatarValid)
+        {
+            _summonerValidation.ForeColor = Color.Firebrick;
+            _summonerValidation.Text = avatarName.Length == 0
+                ? "A desired avatar is required."
+                : $"Desired avatar '{avatarName}' is not supported.";
+        }
+        else if (!wardValid || !rageValid)
+        {
+            var issues = new List<string>();
+            if (!wardValid)
+            {
+                issues.Add(wardAction.Length == 0
+                    ? "Select a Ward action."
+                    : $"Ward '{wardAction}' is incompatible with {avatarName}.");
+            }
+            if (!rageValid)
+            {
+                issues.Add(rageAction.Length == 0
+                    ? "Select a Rage action."
+                    : $"Rage '{rageAction}' is incompatible with {avatarName}.");
+            }
+            _summonerValidation.ForeColor = Color.DarkGoldenrod;
+            _summonerValidation.Text = string.Join(" ", issues);
+        }
+        else
+        {
+            _summonerValidation.ForeColor = Color.DarkGreen;
+            _summonerValidation.Text = $"Summoner configuration is valid for {avatarName}.";
+        }
+    }
+
+    private void EnsureBrdTabVisibility(bool shouldShow)
+    {
+        if (_settingsTabs is null || _tabBrd is null)
+        {
+            return;
+        }
+
+        var hasTab = _settingsTabs.TabPages.Contains(_tabBrd);
+        if (shouldShow && !hasTab)
+        {
+            _settingsTabs.TabPages.Add(_tabBrd);
+        }
+        else if (!shouldShow && hasTab)
+        {
+            var wasSelected = ReferenceEquals(_settingsTabs.SelectedTab, _tabBrd);
+            _settingsTabs.TabPages.Remove(_tabBrd);
+            if (wasSelected && _settingsTabs.TabPages.Count > 0)
+            {
+                _settingsTabs.SelectedIndex = 0;
+            }
+        }
+    }
+
+    private void OnPullerEngageRangeChanged()
+    {
+        CommitDurableRange(_pullerEngageRange, 6.0);
+    }
+
+	private void OnPullerLeashSourceChanged()
+	{
+		if (_suppressEvents || string.IsNullOrWhiteSpace(_selectedSid))
+		{
+			return;
+		}
+		if (_pullerLeashSource.SelectedItem?.ToString() is not ("Player" or "Camp"))
+		{
+			throw new InvalidOperationException("Puller leash source must be Player or Camp.");
+		}
+		var campSource = string.Equals(_pullerLeashSource.SelectedItem.ToString(), "Camp", StringComparison.Ordinal);
+		_pullerCombo.Enabled = _chkPuller.Checked && !campSource;
+		_campSet.Enabled = _chkPuller.Checked && campSource;
+		_campClear.Enabled = _chkPuller.Checked && campSource;
+		CaptureWorkingProfileFromUi(_selectedSid);
+	}
+
+    private void OnSleepMaxTargetRangeChanged()
+    {
+        CommitDurableRange(_sleepMaxTargetRange, 6.0);
+    }
+
+    private void CommitDurableRange(TextBox control, double defaultValue)
+    {
+        if (_suppressEvents || string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            return;
+        }
+
+        if (!double.TryParse((control.Text ?? "").Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            value = defaultValue;
+        }
+        value = Math.Clamp(value, 0.1, 50.0);
+        control.Text = value.ToString("0.###", CultureInfo.InvariantCulture);
+        CaptureWorkingProfileFromUi(_selectedSid);
+    }
+
+    private static void ApplyBrdList(ListBox list, string raw)
+    {
+        var incoming = raw.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var current = list.Items.Cast<object>().Select(x => x.ToString() ?? "").ToArray();
+        if (current.SequenceEqual(incoming, StringComparer.Ordinal))
+        {
+            return;
+        }
+        list.Items.Clear();
+        list.Items.AddRange(incoming.Cast<object>().ToArray());
+    }
+
+	private void ApplyBrdRecoveryRange(JsonElement snapshot)
+	{
+		var raw = SessionStateHelper.GetString(snapshot, "brd_recovery_range_yalms", "9.9");
+		if (!decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+		{
+			throw new InvalidDataException($"BRD recovery range is not numeric: {raw}");
+		}
+		if (value < _brdRecoveryRangeYalms.Minimum || value > _brdRecoveryRangeYalms.Maximum)
+		{
+			throw new InvalidDataException($"BRD recovery range is outside 1.0..20.0: {value}");
+		}
+		_brdRecoveryRangeYalms.Value = value;
+	}
+
+    private void RefreshBrdSongPickOptions(ComboBox combo)
+    {
+        var selected = combo.SelectedItem?.ToString() ?? "";
+        combo.Items.Clear();
+        combo.Items.AddRange(_brdSongOptions.Cast<object>().ToArray());
+        var index = combo.Items.Cast<object>().ToList().FindIndex(x => string.Equals(x?.ToString(), selected, StringComparison.Ordinal));
+        combo.SelectedIndex = index >= 0 ? index : (combo.Items.Count > 0 ? 0 : -1);
+    }
+
+    private void RefreshBrdMarcatoOptions(string selected = "")
+    {
+        var wasSuppressed = _suppressEvents;
+        _suppressEvents = true;
+        try
+        {
+            if (string.IsNullOrEmpty(selected))
+            {
+                selected = _brdMarcatoSong.SelectedItem?.ToString() ?? "";
+            }
+            _brdMarcatoSong.Items.Clear();
+            foreach (var item in _brdSongList.Items.Cast<object>().Select(x => x.ToString() ?? ""))
+            {
+                _brdMarcatoSong.Items.Add(item);
+            }
+            var index = _brdMarcatoSong.Items.Cast<object>().ToList().FindIndex(x => string.Equals(x?.ToString(), selected, StringComparison.Ordinal));
+            _brdMarcatoSong.SelectedIndex = index >= 0 ? index : (_brdMarcatoSong.Items.Count > 0 ? 0 : -1);
+            _brdMarcatoSong.Enabled = _brdUseMarcato.Enabled && _brdUseMarcato.Checked;
+        }
+        finally
+        {
+            _suppressEvents = wasSuppressed;
+        }
+    }
+
+    private void OnBrdConfigChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        RefreshBrdMarcatoOptions();
+        if (!string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            CaptureWorkingProfileFromUi(_selectedSid);
+        }
+    }
+
+    private void ApplyReactionRulesFromSnapshot(JsonElement snapshot)
+    {
+        _reactionRules.Clear();
+        if (snapshot.TryGetProperty("reaction_rules", out var rules) && rules.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in rules.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+                var trigger = SessionStateHelper.GetString(item, "trigger").Trim();
+                var name = SessionStateHelper.GetString(item, "name").Trim();
+                var response = SessionStateHelper.GetString(item, "response").Trim();
+                var valid = (trigger == "ability_window" && response == "turn_away")
+                    || (trigger == "enemy_buff" && response == "stop_attacking");
+                if (valid && name.Length > 0)
+                {
+                    _reactionRules.Add(new ReactionRuleRow(trigger, name, response));
+                }
+            }
+        }
+        RebindReactionRuleList();
+    }
+
+    private void RebindReactionRuleList(int selectedIndex = -1)
+    {
+        _reactionRuleList.Items.Clear();
+        foreach (var rule in _reactionRules)
+        {
+            _reactionRuleList.Items.Add($"{rule.Trigger} | {rule.Name} | {rule.Response}");
+        }
+        if (_reactionRuleList.Items.Count > 0 && selectedIndex >= 0)
+        {
+            _reactionRuleList.SelectedIndex = Math.Min(selectedIndex, _reactionRuleList.Items.Count - 1);
+        }
+    }
+
+    private void RefreshReactionResponseOptions()
+    {
+        var response = string.Equals(_reactionTriggerCombo.SelectedItem?.ToString(), "enemy_buff", StringComparison.Ordinal)
+            ? "stop_attacking"
+            : "turn_away";
+        _reactionResponseCombo.Items.Clear();
+        _reactionResponseCombo.Items.Add(response);
+        _reactionResponseCombo.SelectedIndex = 0;
+    }
+
+    private void OnReactionTriggerChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        RefreshReactionResponseOptions();
+    }
+
+    private void OnReactionConfigChanged()
+    {
+        if (_suppressEvents || string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            return;
+        }
+        CaptureWorkingProfileFromUi(_selectedSid);
+    }
+
+    private string FormationEncounterValue()
+    {
+        if (string.Equals(_formationEncounter.SelectedItem?.ToString(), "Lady Lilith — Easy", StringComparison.Ordinal))
+        {
+            return "lilith_easy";
+        }
+        throw new InvalidOperationException("unsupported formation encounter selection");
+    }
+
+    private string FormationRoleValue()
+    {
+        return _formationRole.SelectedItem?.ToString() switch
+        {
+            "Disabled" => "disabled",
+            "Tank" => "tank",
+            "DPS" => "dps",
+            "Healer" => "healer",
+            _ => throw new InvalidOperationException("unsupported formation role selection"),
+        };
+    }
+
+    private List<string> SelectedFormationRequiredPartyNames()
+    {
+        return _formationRequiredParty.CheckedItems
+            .Cast<object>()
+            .Select(item => NormalizePartyName(item?.ToString() ?? ""))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void ApplyFormationConfigFromSnapshot(JsonElement snapshot, IReadOnlyList<string> partyOptions)
+    {
+        _formationEnabled.Checked = SessionStateHelper.GetBool(snapshot, "formation_enabled", false);
+        var encounter = SessionStateHelper.GetString(snapshot, "formation_encounter", "lilith_easy");
+        if (!string.Equals(encounter, "lilith_easy", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"unsupported formation encounter in UI profile: {encounter}");
+        }
+        _formationEncounter.SelectedItem = "Lady Lilith — Easy";
+
+        var role = SessionStateHelper.GetString(snapshot, "formation_role", "disabled");
+        _formationRole.SelectedItem = role switch
+        {
+            "disabled" => "Disabled",
+            "tank" => "Tank",
+            "dps" => "DPS",
+            "healer" => "Healer",
+            _ => throw new InvalidDataException($"unsupported formation role in UI profile: {role}"),
+        };
+
+        var tankName = NormalizePartyName(SessionStateHelper.GetString(snapshot, "formation_tank_name"));
+        var required = SessionStateHelper.SplitOptions(
+            snapshot.TryGetProperty("formation_required_party_names", out var requiredNode) ? requiredNode : default
+        );
+        var names = partyOptions
+            .Concat(required)
+            .Append(tankName)
+            .Select(NormalizePartyName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        BindPartyCombo(_formationTankName, names, tankName);
+        _formationRequiredParty.Items.Clear();
+        foreach (var name in names)
+        {
+            var check = required.Any(selected => string.Equals(NormalizePartyName(selected), name, StringComparison.OrdinalIgnoreCase));
+            _formationRequiredParty.Items.Add(name, check);
+        }
+
+        ApplyFormationNumber(snapshot, "formation_capture_stable_s", _formationCaptureStable, "0.5");
+        ApplyFormationNumber(snapshot, "formation_capture_tolerance", _formationCaptureTolerance, "0.1");
+        ApplyFormationNumber(snapshot, "formation_safe_radius", _formationSafeRadius, "16");
+        ApplyFormationNumber(snapshot, "formation_tank_accept_radius", _formationTankAcceptRadius, "1.5");
+        ApplyFormationNumber(snapshot, "formation_tank_return_radius", _formationTankReturnRadius, "3");
+        ApplyFormationNumber(snapshot, "formation_dps_flank_angle_deg", _formationDpsFlankAngle, "90");
+        ApplyFormationNumber(snapshot, "formation_dps_melee_radius", _formationDpsMeleeRadius, "3");
+        ApplyFormationNumber(snapshot, "formation_dps_position_tolerance", _formationDpsPositionTolerance, "1.5");
+        ApplyFormationNumber(snapshot, "formation_healer_preferred_radius", _formationHealerPreferredRadius, "12");
+        ApplyFormationNumber(snapshot, "formation_healer_minimum_boss_distance", _formationHealerMinimumBossDistance, "8");
+        ApplyFormationNumber(snapshot, "formation_healer_maximum_party_range", _formationHealerMaximumPartyRange, "18");
+        ApplyFormationNumber(snapshot, "formation_healer_cone_half_angle_deg", _formationHealerConeHalfAngle, "50");
+        ApplyFormationNumber(snapshot, "formation_healer_cone_safety_margin_deg", _formationHealerConeSafetyMargin, "15");
+        ApplyFormationNumber(snapshot, "formation_healer_sample_step_deg", _formationHealerSampleStep, "10");
+    }
+
+    private static void ApplyFormationNumber(JsonElement snapshot, string key, NumericUpDown control, string defaultValue)
+    {
+        var raw = SessionStateHelper.GetString(snapshot, key, defaultValue);
+        if (!decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            throw new InvalidDataException($"formation setting {key} is not numeric: {raw}");
+        }
+        if (value < control.Minimum || value > control.Maximum)
+        {
+            throw new InvalidDataException($"formation setting {key} is outside {control.Minimum}..{control.Maximum}: {value}");
+        }
+        control.Value = value;
+    }
+
+    private void OnFormationRequiredPartyItemCheck()
+    {
+        if (_suppressEvents || !IsHandleCreated)
+        {
+            return;
+        }
+        BeginInvoke(
+            () =>
+            {
+                if (!IsDisposed)
+                {
+                    OnFormationConfigChanged();
+                }
+            }
+        );
+    }
+
+    private void OnFormationConfigChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        UpdateFormationUiState();
+        if (!string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            CaptureWorkingProfileFromUi(_selectedSid);
+        }
+    }
+
+    private void OnFormationEnableOwnership()
+    {
+        if (!_boolChecks.TryGetValue("domain_movement_enabled", out var movementDomain))
+        {
+            throw new InvalidOperationException("movement domain control is unavailable");
+        }
+        var wasSuppressed = _suppressEvents;
+        _suppressEvents = true;
+        try
+        {
+            movementDomain.Checked = true;
+        }
+        finally
+        {
+            _suppressEvents = wasSuppressed;
+        }
+        UpdateFormationUiState();
+        if (!string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            CaptureWorkingProfileFromUi(_selectedSid);
+        }
+    }
+
+    private bool ValidateFormationConfiguration(out string error)
+    {
+        error = "";
+        if (!_formationEnabled.Checked)
+        {
+            return true;
+        }
+        if (FormationRoleValue() == "disabled")
+        {
+            error = "Choose Tank, DPS, or Healer for this character.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(SelectedPartyName(_formationTankName)))
+        {
+            error = "Select or enter the tank character.";
+            return false;
+        }
+        if (!_boolChecks.TryGetValue("domain_movement_enabled", out var movementDomain) || !movementDomain.Checked)
+        {
+            error = "Movement domain must be enabled.";
+            return false;
+        }
+        if (_formationTankReturnRadius.Value <= _formationTankAcceptRadius.Value)
+        {
+            error = "Tank return radius must be greater than the centered radius.";
+            return false;
+        }
+        if (_formationHealerPreferredRadius.Value >= _formationSafeRadius.Value)
+        {
+            error = "Healer preferred radius must be inside the arena safe radius.";
+            return false;
+        }
+        return true;
+    }
+
+    private void UpdateFormationUiState()
+    {
+        var enabled = _formationEnabled.Checked;
+        _formationConfigPanel.Enabled = enabled;
+        var valid = ValidateFormationConfiguration(out var error);
+        _formationValidation.Text = !enabled
+            ? "Formation is disabled for this profile."
+            : valid
+                ? "Ready to save. Movement domain is enabled."
+                : error;
+        _formationValidation.ForeColor = !enabled || valid ? SystemColors.ControlText : Color.Firebrick;
+        var movementEnabled = _boolChecks.TryGetValue("domain_movement_enabled", out var movementDomain)
+            && movementDomain.Checked;
+        _formationEnableOwnership.Visible = enabled && !movementEnabled;
+    }
+
+    private void OnReactionRuleAdd()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var trigger = _reactionTriggerCombo.SelectedItem?.ToString() ?? "";
+        var name = (_reactionName.Text ?? "").Trim();
+        var response = _reactionResponseCombo.SelectedItem?.ToString() ?? "";
+        var valid = (trigger == "ability_window" && response == "turn_away")
+            || (trigger == "enemy_buff" && response == "stop_attacking");
+        if (!valid || name.Length == 0)
+        {
+            return;
+        }
+        if (_reactionRules.Any(x => string.Equals(x.Trigger, trigger, StringComparison.Ordinal)
+            && string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+        _reactionRules.Add(new ReactionRuleRow(trigger, name, response));
+        _reactionName.Text = "";
+        RebindReactionRuleList(_reactionRules.Count - 1);
+        OnReactionConfigChanged();
+    }
+
+    private void OnReactionRuleRemove()
+    {
+        var index = _reactionRuleList.SelectedIndex;
+        if (_suppressEvents || index < 0 || index >= _reactionRules.Count)
+        {
+            return;
+        }
+        _reactionRules.RemoveAt(index);
+        RebindReactionRuleList(Math.Min(index, _reactionRules.Count - 1));
+        OnReactionConfigChanged();
+    }
+
+    private void OnReactionRuleMove(int direction)
+    {
+        var index = _reactionRuleList.SelectedIndex;
+        var next = index + direction;
+        if (_suppressEvents || index < 0 || next < 0 || next >= _reactionRules.Count)
+        {
+            return;
+        }
+        (_reactionRules[index], _reactionRules[next]) = (_reactionRules[next], _reactionRules[index]);
+        RebindReactionRuleList(next);
+        OnReactionConfigChanged();
+    }
+
+    private void OnBrdListAdd(bool dummy)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var combo = dummy ? _brdDummyCombo : _brdSongCombo;
+        var list = dummy ? _brdDummyList : _brdSongList;
+        var other = dummy ? _brdSongList : _brdDummyList;
+        var name = combo.SelectedItem?.ToString() ?? "";
+        if (string.IsNullOrWhiteSpace(name)
+            || list.Items.Cast<object>().Any(x => string.Equals(x?.ToString(), name, StringComparison.Ordinal))
+            || other.Items.Cast<object>().Any(x => string.Equals(x?.ToString(), name, StringComparison.Ordinal)))
+        {
+            return;
+        }
+        if (!dummy && !string.IsNullOrWhiteSpace(_selectedSid) && _sessionMetaBySid.TryGetValue(_selectedSid, out var meta))
+        {
+            var subOnly = !string.Equals(meta.Job, "BRD", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(meta.SubJob, "BRD", StringComparison.OrdinalIgnoreCase);
+            if (subOnly && list.Items.Count >= 1)
+            {
+                return;
+            }
+        }
+        list.Items.Add(name);
+        list.SelectedIndex = list.Items.Count - 1;
+        RefreshBrdMarcatoOptions();
+        OnBrdConfigChanged();
+    }
+
+    private void OnBrdListRemove(bool dummy)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var list = dummy ? _brdDummyList : _brdSongList;
+        var index = list.SelectedIndex;
+        if (index < 0)
+        {
+            return;
+        }
+        list.Items.RemoveAt(index);
+        if (list.Items.Count > 0)
+        {
+            list.SelectedIndex = Math.Min(index, list.Items.Count - 1);
+        }
+        RefreshBrdMarcatoOptions();
+        OnBrdConfigChanged();
+    }
+
+    private void OnBrdListMove(bool dummy, int direction)
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var list = dummy ? _brdDummyList : _brdSongList;
+        var from = list.SelectedIndex;
+        var to = from + direction;
+        if (from < 0 || to < 0 || to >= list.Items.Count)
+        {
+            return;
+        }
+        var item = list.Items[from];
+        list.Items.RemoveAt(from);
+        list.Items.Insert(to, item);
+        list.SelectedIndex = to;
+        RefreshBrdMarcatoOptions();
+        OnBrdConfigChanged();
     }
 
     private void ApplyCorRollFromSnapshot(ComboBox combo, string value)
@@ -1951,6 +2956,92 @@ public partial class MainForm
         PushTankEnmityActions(sid);
     }
 
+	private void OnCampSet()
+	{
+		var sid = RequireSelectedSid();
+		if (sid is null)
+		{
+			return;
+		}
+		if (!SelectedSessionSupportsCampRuntime())
+		{
+			_campStatus.Text = "Camp unavailable — reload UnifiedCombat addon";
+			return;
+		}
+		Forward(sid, new Dictionary<string, object?> { ["op"] = "camp_set" });
+		_campStatus.Text = "Setting camp…";
+	}
+
+	private void OnCampClear()
+	{
+		var sid = RequireSelectedSid();
+		if (sid is null)
+		{
+			return;
+		}
+		if (!SelectedSessionSupportsCampRuntime())
+		{
+			_campStatus.Text = "Camp unavailable — reload UnifiedCombat addon";
+			return;
+		}
+		Forward(sid, new Dictionary<string, object?> { ["op"] = "camp_clear" });
+		_campStatus.Text = "Clearing camp…";
+	}
+
+	private bool TryGetSelectedRuntimeState(out JsonElement state)
+	{
+		state = default;
+		if (string.IsNullOrWhiteSpace(_selectedSid) || _snapshotDoc is null)
+		{
+			return false;
+		}
+		var root = _snapshotDoc.RootElement;
+		return root.TryGetProperty("sessions", out var sessions)
+			&& sessions.ValueKind == JsonValueKind.Object
+			&& sessions.TryGetProperty(_selectedSid, out state);
+	}
+
+	private bool SelectedSessionSupportsCampRuntime()
+	{
+		return TryGetSelectedRuntimeState(out var state) && state.TryGetProperty("camp_active", out _);
+	}
+
+	private void RefreshCampRuntimeStatus()
+	{
+		if (TryGetSelectedRuntimeState(out var state))
+		{
+			ApplyCampRuntimeStatus(state);
+		}
+	}
+
+	private void ApplyCampRuntimeStatus(JsonElement state)
+	{
+		if (!state.TryGetProperty("camp_active", out _))
+		{
+			_campStatus.Text = "Camp unavailable — reload UnifiedCombat addon";
+			return;
+		}
+		if (SessionStateHelper.GetBool(state, "camp_active", false))
+		{
+			_campStatus.Text = string.Format(
+				CultureInfo.InvariantCulture,
+				"Zone {0} ({1}, {2}) by {3}",
+				SessionStateHelper.GetString(state, "camp_zone_id", "?"),
+				SessionStateHelper.GetString(state, "camp_x", "?"),
+				SessionStateHelper.GetString(state, "camp_y", "?"),
+				SessionStateHelper.GetString(state, "camp_set_by", "?")
+			);
+			return;
+		}
+		var lastOperation = SessionStateHelper.GetString(state, "camp_last_op", "");
+		if (lastOperation != "" && lastOperation != "CAMP_CLEARED")
+		{
+			_campStatus.Text = "Camp failed: " + lastOperation;
+			return;
+		}
+		_campStatus.Text = "Camp not set";
+	}
+
     private void OnPullerSelected()
     {
         if (_suppressEvents)
@@ -2362,6 +3453,76 @@ public partial class MainForm
         ApplyNumericTextIfChanged(_spSwitchMargin, repelWeightSrv);
         ApplyNumericTextIfChanged(_spArrivalTolerance, bandDeadbandSrv);
     }
+
+	private void RebindNyzulParkingList()
+	{
+		var selected = _nyzulParkingList.SelectedIndex;
+		_nyzulParkingList.Items.Clear();
+		for (var i = 0; i < _nyzulParkingOrder.Count; i++)
+		{
+			_nyzulParkingList.Items.Add($"{i + 1}. {FormatPartyDisplayName(_nyzulParkingOrder[i])}");
+		}
+		if (_nyzulParkingOrder.Count > 0)
+		{
+			_nyzulParkingList.SelectedIndex = Math.Clamp(selected, 0, _nyzulParkingOrder.Count - 1);
+		}
+	}
+
+	private void OnNyzulConfigChanged()
+	{
+		if (_suppressEvents || string.IsNullOrWhiteSpace(_selectedSid))
+		{
+			return;
+		}
+		CaptureWorkingProfileFromUi(_selectedSid);
+	}
+
+	private void NyzulParkerAdd()
+	{
+		var name = SelectedPartyName(_nyzulParkerCombo);
+		if (string.IsNullOrWhiteSpace(name))
+		{
+			return;
+		}
+		var coordinator = SelectedPartyName(_nyzulCoordinatorCombo);
+		var anchor = SelectedPartyName(_nyzulAnchorCombo);
+		if (string.Equals(name, coordinator, StringComparison.OrdinalIgnoreCase)
+			|| string.Equals(name, anchor, StringComparison.OrdinalIgnoreCase)
+			|| _nyzulParkingOrder.Any(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase)))
+		{
+			return;
+		}
+		_nyzulParkingOrder.Add(name);
+		RebindNyzulParkingList();
+		_nyzulParkingList.SelectedIndex = _nyzulParkingOrder.Count - 1;
+		OnNyzulConfigChanged();
+	}
+
+	private void NyzulParkerRemove()
+	{
+		var index = _nyzulParkingList.SelectedIndex;
+		if (index < 0 || index >= _nyzulParkingOrder.Count)
+		{
+			return;
+		}
+		_nyzulParkingOrder.RemoveAt(index);
+		RebindNyzulParkingList();
+		OnNyzulConfigChanged();
+	}
+
+	private void NyzulParkerMove(int delta)
+	{
+		var index = _nyzulParkingList.SelectedIndex;
+		var next = index + delta;
+		if (index < 0 || next < 0 || next >= _nyzulParkingOrder.Count)
+		{
+			return;
+		}
+		(_nyzulParkingOrder[index], _nyzulParkingOrder[next]) = (_nyzulParkingOrder[next], _nyzulParkingOrder[index]);
+		RebindNyzulParkingList();
+		_nyzulParkingList.SelectedIndex = next;
+		OnNyzulConfigChanged();
+	}
 
     private void OnDefProviderSelected()
     {
@@ -2888,7 +4049,7 @@ public partial class MainForm
         );
     }
 
-    private async void SaveRemote()
+    private void SleepSpellSetOnly()
     {
         var sid = RequireSelectedSid();
         if (sid is null)
@@ -2896,16 +4057,199 @@ public partial class MainForm
             return;
         }
 
-        TrySaveProfileFromUi(sid);
-        // Force a full config reapply on explicit Save so addon runtime
-        // cannot stay stale behind UI-side set dedupe.
-        _lastSentSetBySidPath.Remove(sid);
-        PushFullFormState(sid);
-        await Task.Delay(200).ConfigureAwait(true);
-        if (!IsDisposed)
+        var name = _sleepSpellName.Text.Trim();
+        if (name.Length == 0)
         {
-            Forward(sid, new Dictionary<string, object?> { ["op"] = "save" });
+            return;
         }
+
+        _sleepSpellRows = [(1, name)];
+        RebindSleepSpellListUi();
+        _sleepSpellList.SelectedIndex = 0;
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = name });
+    }
+
+    private void SleepSpellAddByName()
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var name = _sleepSpellName.Text.Trim();
+        if (name.Length == 0)
+        {
+            return;
+        }
+        if (!HasName(_sleepSpellRows, name))
+        {
+            _sleepSpellRows.Add((NextSlot(_sleepSpellRows), name));
+            RebindSleepSpellListUi();
+            _sleepSpellList.SelectedIndex = _sleepSpellRows.Count - 1;
+        }
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_add_spell", ["name"] = name });
+    }
+
+    private void SleepSpellRemove()
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var idx = _sleepSpellList.SelectedIndex;
+        if (idx < 0)
+        {
+            return;
+        }
+
+        var slot = idx < _sleepSpellRows.Count ? _sleepSpellRows[idx].Slot : SessionStateHelper.ParseTrailingBracketId(_sleepSpellList.Items[idx]?.ToString() ?? "");
+        if (!slot.HasValue || slot.Value < 1)
+        {
+            return;
+        }
+        if (idx < _sleepSpellRows.Count)
+        {
+            _sleepSpellRows.RemoveAt(idx);
+            for (var i = 0; i < _sleepSpellRows.Count; i++)
+            {
+                _sleepSpellRows[i] = (i + 1, _sleepSpellRows[i].Name);
+            }
+            RebindSleepSpellListUi();
+        }
+
+        Forward(
+            sid,
+            new Dictionary<string, object?>
+            {
+                ["op"] = "sleep_remove_spell",
+                ["index"] = slot.Value,
+                ["slot"] = slot.Value,
+            }
+        );
+    }
+
+    private void SleepSpellClear()
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        _sleepSpellRows = [];
+        RebindSleepSpellListUi();
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = "" });
+    }
+
+    private void SleepSpellMove(string direction)
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var idx = _sleepSpellList.SelectedIndex;
+        if (idx < 0)
+        {
+            return;
+        }
+        var localSlot = idx + 1;
+        if (idx < _sleepSpellRows.Count)
+        {
+            var next = string.Equals(direction, "up", StringComparison.OrdinalIgnoreCase) ? idx - 1 : idx + 1;
+            if (next >= 0 && next < _sleepSpellRows.Count)
+            {
+                (_sleepSpellRows[next], _sleepSpellRows[idx]) = (_sleepSpellRows[idx], _sleepSpellRows[next]);
+                for (var i = 0; i < _sleepSpellRows.Count; i++)
+                {
+                    _sleepSpellRows[i] = (i + 1, _sleepSpellRows[i].Name);
+                }
+                RebindSleepSpellListUi();
+                _sleepSpellList.SelectedIndex = next;
+                localSlot = idx + 1;
+            }
+        }
+
+        int? slot = localSlot;
+        if (idx >= _sleepSpellRows.Count)
+        {
+            slot = SessionStateHelper.ParseTrailingBracketId(_sleepSpellList.Items[idx]?.ToString() ?? "") ?? 0;
+        }
+        if (!slot.HasValue || slot.Value < 1)
+        {
+            return;
+        }
+
+        Forward(
+            sid,
+            new Dictionary<string, object?>
+            {
+                ["op"] = "sleep_move_spell",
+                ["index"] = slot.Value,
+                ["slot"] = slot.Value,
+                ["direction"] = direction,
+            }
+        );
+    }
+
+    private void SaveRemote()
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        if (!ValidateFormationConfiguration(out var formationError))
+        {
+            SetProfileSaveStatus($"Mirror: profile save blocked ({formationError})");
+            UpdateFormationUiState();
+            return;
+        }
+
+        _suppressUiSaveOutbound = true;
+        try
+        {
+            JsonObject profile;
+            try
+            {
+                profile = BuildProfileFromUi(sid);
+            }
+            catch (Exception ex)
+            {
+                SetProfileSaveStatus($"Mirror: profile save failed ({ex.Message})");
+                return;
+            }
+
+            if (!TrySaveStructuredProfileV2FromUi(sid, profile, out var v2Error))
+            {
+                SetProfileSaveStatus($"Mirror: v2 save failed ({v2Error})");
+                return;
+            }
+            if (!TrySaveProfileFromUi(sid, profile, out var uiError))
+            {
+                SetProfileSaveStatus($"Mirror: UI profile save failed ({uiError})");
+                return;
+            }
+
+            SetProfileSaveStatus("Mirror: profile saved (UI + v2)");
+        }
+        finally
+        {
+            _suppressUiSaveOutbound = false;
+        }
+    }
+
+    private void SetProfileSaveStatus(string message)
+    {
+        statusConnection.Text = message;
+        _profileSaveStatusHoldUntilUtc = DateTime.UtcNow.AddSeconds(10);
     }
 
     private void ToggleEngine()
@@ -3022,6 +4366,15 @@ public partial class MainForm
         }
     }
 
+    private void RebindSleepSpellListUi()
+    {
+        _sleepSpellList.Items.Clear();
+        foreach (var (slot, name) in _sleepSpellRows)
+        {
+            _sleepSpellList.Items.Add($"{name} [{slot}]");
+        }
+    }
+
     private void RebindPathHunterListUi()
     {
         _pathHunterList.Items.Clear();
@@ -3052,6 +4405,7 @@ public partial class MainForm
         Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "target_ignore_replace_names", ["value"] = string.Join("|", _targetIgnoreRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "add_priority_replace_names", ["value"] = string.Join("|", _addPriorityRows.Select(r => r.Name)) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = string.Join("|", _sleepSpellRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_replace_names", ["value"] = string.Join("|", _pathHunterRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "tank_enmity_replace_actions", ["value"] = string.Join("|", _tankEnmityRows) });
         foreach (var key in HubUiConstants.BoolKeys)

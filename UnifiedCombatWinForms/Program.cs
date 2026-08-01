@@ -7,8 +7,14 @@ namespace UnifiedCombatWinForms;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
+        if (args.Any(arg => string.Equals(arg, "--selftest-profile-v2", StringComparison.Ordinal)))
+        {
+            Environment.ExitCode = StructuredProfileV2WriterTests.Run();
+            return;
+        }
+
         ApplicationConfiguration.Initialize();
         // Follow Windows Settings → Personalization → mode (light / dark). Requires WinForms + OS support (e.g. Windows 11).
         Application.SetColorMode(SystemColorMode.System);

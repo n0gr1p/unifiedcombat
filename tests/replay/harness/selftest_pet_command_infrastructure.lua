@@ -1,0 +1,267 @@
+package.path = './?.lua;' .. package.path
+
+local commands = require('uc_pet_commands')
+local coordinator = require('uc_pet_command_coordinator')
+local context_builder = require('uc_scheduler_context')
+local locks = require('uc_scheduler_locks')
+
+local function assert_equal(actual, expected, message)
+	if actual ~= expected then
+		error(('%s: expected %s, got %s'):format(message, tostring(expected), tostring(actual)))
+	end
+end
+
+local function assert_true(value, message)
+	if value ~= true then
+		error(message)
+	end
+end
+
+local function assert_error(fn, expected_fragment)
+	local ok, message = pcall(fn)
+	if ok then
+		error('expected error containing: ' .. expected_fragment)
+	end
+	if not tostring(message):find(expected_fragment, 1, true) then
+		error(('expected error containing %q, got %q'):format(expected_fragment, tostring(message)))
+	end
+end
+
+local function new_state()
+	return coordinator.new({
+		timeout = 2.5,
+		backoff_base = 1.0,
+		backoff_max = 8.0,
+	})
+end
+
+local function base_command(kind)
+	local command = {
+		kind = kind,
+		action_name = kind == 'release' and 'Release' or 'Assault',
+		pet_id = 200,
+		retry_key = 'smn:' .. kind,
+	}
+	if kind == 'assault' or kind == 'rage' then
+		command.target_id = 300
+		command.combat_generation = 4
+	end
+	if kind == 'ward' or kind == 'rage' then
+		command.action_name = kind == 'ward' and 'Crimson Howl' or 'Flaming Crush'
+		command.action_id = kind == 'ward' and 323 or 164
+		command.recast_id = kind == 'ward' and 174 or 173
+		command.recast_before = 0
+	end
+	if kind == 'ward' then
+		command.expected_effect_id = 68
+	end
+	return command
+end
+
+local function context(now)
+	return {
+		now = now,
+		pet_present = true,
+		pet_id = 200,
+		pet_status = 0,
+		pet_target_id = 0,
+		pet_inferred_target_id = 0,
+		player_buffs = {},
+		ability_recasts_present = true,
+		ability_recasts = {
+			[173] = 0,
+			[174] = 0,
+		},
+		combat_generation = 4,
+		target_id = 300,
+		target_valid = true,
+		target_hpp = 100,
+	}
+end
+
+local function test_command_contract()
+	local assault = base_command('assault')
+	local action_type, kind = commands.classify(assault)
+	assert_equal(action_type, 'pet', 'pet action classification')
+	assert_equal(kind, 'assault', 'pet command kind')
+	assert_equal(commands.serialize(assault), 'input /pet "Assault" 300', 'Assault command serialization')
+	assert_equal(
+		commands.serialize(base_command('ward')),
+		'input /pet "Crimson Howl" <me>',
+		'Ward command serialization'
+	)
+	assert_error(function()
+		commands.serialize({
+			kind = 'rage',
+			action_name = 'Flaming Crush',
+			pet_id = 200,
+			target_id = 300,
+			action_id = 164,
+			recast_id = 173,
+		})
+	end, 'combat_generation')
+end
+
+local function test_context_capture()
+	local mobs = {
+		{ id = 100, index = 10, name = 'Tester' },
+		{ id = 200, index = 20, name = 'Ifrit', target_index = 30 },
+		{ id = 300, index = 30, name = 'Enemy', hpp = 100, valid_target = true },
+	}
+	local by_target = {
+		me = mobs[1],
+		t = mobs[3],
+		pet = mobs[2],
+	}
+	local built = context_builder.build({}, { tick = 0 }, {
+		get_player = function()
+			return { id = 100, name = 'Tester', status = 1 }
+		end,
+		get_mob_by_target = function(target)
+			return by_target[target]
+		end,
+		get_mob_by_index = function(index)
+			for _, mob in ipairs(mobs) do
+				if mob.index == index then
+					return mob
+				end
+			end
+			return nil
+		end,
+		get_party = function()
+			return {}
+		end,
+		get_mob_array = function()
+			return mobs
+		end,
+		now = function()
+			return 12.5
+		end,
+	})
+	assert_true(built.pet_present, 'context must capture the live pet')
+	assert_equal(built.pet_id, 200, 'context pet server id')
+	assert_equal(built.pet_name, 'Ifrit', 'context pet name')
+	assert_equal(built.pet_target_id, 300, 'context pet target server id')
+	assert_equal(built.pet_target_matches_current, true, 'context pet/current target index match')
+end
+
+local function test_serialization_and_completion()
+	local state = new_state()
+	coordinator.begin(state, base_command('release'), 1)
+	assert_true(coordinator.is_pending(state), 'Release must reserve the shared pet channel')
+	assert_error(function()
+		coordinator.begin(state, base_command('assault'), 1.1)
+	end, 'another pet command')
+	local release_ctx = context(1.2)
+	release_ctx.pet_present = false
+	release_ctx.pet_id = 0
+	local release_event = coordinator.observe(state, release_ctx)
+	assert_equal(release_event.outcome, 'complete', 'Release completion outcome')
+	assert_equal(release_event.reason, 'pet_disappeared', 'Release completion evidence')
+
+	coordinator.begin(state, base_command('assault'), 2)
+	local assault_ctx = context(2.1)
+	assault_ctx.pet_target_id = 0
+	assault_ctx.pet_status = 1
+	local assault_event = coordinator.observe(state, assault_ctx)
+	assert_equal(assault_event.reason, 'pet_engaged_observed', 'Assault engaged-state observation')
+
+	coordinator.begin(state, base_command('assault'), 2.2)
+	local inferred_other_ctx = context(2.3)
+	inferred_other_ctx.pet_status = 1
+	inferred_other_ctx.pet_inferred_target_id = 301
+	assert_equal(coordinator.observe(state, inferred_other_ctx), nil, 'different inferred pet target must not satisfy Assault')
+	local inferred_target_event = coordinator.observe_action(state, {
+		category = 1,
+		actor_id = 200,
+		targets = { { id = 300 } },
+	}, 2.4)
+	assert_equal(inferred_target_event.reason, 'pet_action_on_target', 'pet action target completes Assault')
+
+	coordinator.begin(state, base_command('ward'), 3)
+	local ward_ctx = context(3.1)
+	ward_ctx.player_buffs = { 68 }
+	local ward_event = coordinator.observe(state, ward_ctx)
+	assert_equal(ward_event.reason, 'ward_effect_observed', 'Ward effect observation')
+
+	coordinator.begin(state, base_command('rage'), 4)
+	local rage_ctx = context(4.1)
+	rage_ctx.ability_recasts[173] = 45
+	local rage_event = coordinator.observe(state, rage_ctx)
+	assert_equal(rage_event.reason, 'rage_recast_consumed', 'Rage recast observation')
+end
+
+local function test_action_events_and_stale_identity()
+	local state = new_state()
+	coordinator.begin(state, base_command('rage'), 1)
+	local event = coordinator.observe_action(state, {
+		actor_id = 200,
+		param = 164,
+		targets = { { id = 300 } },
+	}, 1.2)
+	assert_equal(event.reason, 'pet_action_completed', 'pet action packet completion')
+
+	coordinator.begin(state, base_command('rage'), 2)
+	local stale_pet = context(2.1)
+	stale_pet.pet_id = 201
+	local stale_pet_event = coordinator.observe(state, stale_pet)
+	assert_equal(stale_pet_event.reason, 'stale_pet', 'stale pet cancellation')
+
+	local allowed, reason = coordinator.can_attempt(state, 'smn:rage', 2.2)
+	assert_equal(allowed, false, 'failed action must enter backoff')
+	assert_equal(reason, 'retry_backoff', 'failed action backoff reason')
+end
+
+local function test_failure_timeout_and_backoff()
+	local state = new_state()
+	coordinator.begin(state, base_command('assault'), 1)
+	local interrupted = coordinator.observe_action_message(state, {
+		actor_id = 100,
+		target_id = 300,
+		message_id = 16,
+	}, 100, 1.1)
+	assert_equal(interrupted.reason, 'interrupted', 'interruption recognition')
+	assert_equal(interrupted.retry_delay, 1, 'first failure backoff')
+
+	local allowed = coordinator.can_attempt(state, 'smn:assault', 2.1)
+	assert_equal(allowed, true, 'first backoff expiry')
+	coordinator.begin(state, base_command('assault'), 2.1)
+	local timed_out = coordinator.observe(state, context(4.6))
+	assert_equal(timed_out.reason, 'timeout', 'watchdog timeout')
+	assert_equal(timed_out.retry_delay, 2, 'exponential retry backoff')
+
+	allowed = coordinator.can_attempt(state, 'smn:assault', 6.59)
+	assert_equal(allowed, false, 'second backoff must remain active')
+	allowed = coordinator.can_attempt(state, 'smn:assault', 6.6)
+	assert_equal(allowed, true, 'second backoff expiry')
+end
+
+local function test_pet_pending_does_not_lock_movement()
+	local scheduler = {
+		phase1 = {
+			pending = {
+				state = 'sent',
+				action_type = 'pet',
+			},
+			recent_duplicate_until = {},
+		},
+	}
+	local state = locks.p1_get_locks(scheduler, { now = 1 }, function(value, default)
+		local number = tonumber(value)
+		if number == nil then
+			return default
+		end
+		return number
+	end, {})
+	assert_true(state.cast_lock.hard, 'pet pending must serialize the action channel')
+	assert_equal(state.movement_lock.hard, false, 'pet pending must not lock movement')
+end
+
+test_command_contract()
+test_context_capture()
+test_serialization_and_completion()
+test_action_events_and_stale_identity()
+test_failure_timeout_and_backoff()
+test_pet_pending_does_not_lock_movement()
+
+print('selftest_pet_command_infrastructure: OK')
