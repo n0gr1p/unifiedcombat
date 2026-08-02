@@ -761,6 +761,7 @@ function M.new(deps)
 				provider.state.pending = nil
 				if config.luopan.use_ecliptic_attrition == true then
 					sequence.step = 'ecliptic'
+					sequence.atomic = false
 				else
 					provider.state.sequence = nil
 				end

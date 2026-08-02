@@ -287,6 +287,7 @@ public partial class MainForm
             _wsCombo.SelectedIndex = idx >= 0 ? idx : (list.Count > 0 ? 0 : -1);
             var wsMode = SessionStateHelper.GetString(s, "ws_mode", "smart");
             _wsModeCombo.SelectedItem = WsModeRuntimeToUi(wsMode);
+            _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
             var amVal = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amVal) && !list.Contains(amVal))
             {
@@ -337,6 +338,7 @@ public partial class MainForm
 
             _wsCombo.Items.Clear();
             _wsModeCombo.SelectedItem = "Smart";
+            _wsMinimumTp.Value = 1000;
             _pullerCombo.Items.Clear();
 			_pullerLeashSource.SelectedItem = "Player";
 			_campStatus.Text = "Camp not set";
@@ -576,6 +578,7 @@ public partial class MainForm
             _wsCombo.SelectedIndex = wsIdx >= 0 ? wsIdx : (wsDisplay.Count > 0 ? 0 : -1);
             var wsMode = SessionStateHelper.GetString(s, "ws_mode", "smart");
             _wsModeCombo.SelectedItem = WsModeRuntimeToUi(wsMode);
+            _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
             var amDisplay = new List<string>(wsOpts);
             var amRaw = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amRaw) && !amDisplay.Contains(amRaw))
@@ -1421,6 +1424,44 @@ public partial class MainForm
 
         var mode = WsModeUiToRuntime(_wsModeCombo.SelectedItem?.ToString() ?? "Smart");
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "ws_mode", ["value"] = mode });
+    }
+
+    private void OnWsMinimumTpChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "weaponskill_min_tp",
+            ["value"] = decimal.ToInt32(_wsMinimumTp.Value),
+        });
+    }
+
+    private static decimal ReadWeaponskillMinimumTp(JsonElement state)
+    {
+        if (!state.TryGetProperty("weaponskill_min_tp", out var raw))
+        {
+            return 1000;
+        }
+        if (raw.ValueKind != JsonValueKind.Number || !raw.TryGetInt32(out var value))
+        {
+            throw new InvalidDataException("weaponskill_min_tp must be an integer from 1000 to 3000.");
+        }
+        if (value < 1000 || value > 3000)
+        {
+            throw new InvalidDataException("weaponskill_min_tp must be an integer from 1000 to 3000.");
+        }
+        return value;
     }
 
     private void SendWsUpdate(string sid, string eng, string val)
@@ -4402,6 +4443,12 @@ public partial class MainForm
         SendWsUpdate(sid, eng, wsVal);
         var wsMode = WsModeUiToRuntime(_wsModeCombo.SelectedItem?.ToString() ?? "Smart");
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "ws_mode", ["value"] = wsMode });
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "weaponskill_min_tp",
+            ["value"] = decimal.ToInt32(_wsMinimumTp.Value),
+        });
         SendAbilitiesUpdate();
         Forward(sid, new Dictionary<string, object?> { ["op"] = "ignore_replace_names", ["value"] = string.Join("|", _ignoreRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });

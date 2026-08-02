@@ -248,6 +248,7 @@ local settings = {
 	abilities = { 'Chivalry' },
 	weaponskill = 'Savage Blade',
 	ws_mode = 'smart',
+	weaponskill_min_tp = 1000,
 	spam = false,
 	solo = false,
 	aftermath_enabled = false,
@@ -276,6 +277,7 @@ end
 
 local function test_aftermath_reserves_tp_and_dispatches_before_continuation()
 	ability_recasts[20] = 30
+	settings.weaponskill_min_tp = 2000
 	settings.aftermath_enabled = true
 	player.buffs = {}
 	player.vitals.tp = 2500
@@ -289,18 +291,66 @@ local function test_aftermath_reserves_tp_and_dispatches_before_continuation()
 	assert_equal(reason, 'AM_READY', 'aftermath ready reason mismatch')
 	assert_equal(selection.ws_name, 'Knights of Round', 'aftermath WS mismatch')
 	assert_equal(selection.skillchain_plan, nil, 'aftermath maintenance must not be mislabeled as a continuation')
+	assert_equal(selection.required_tp, 3000, 'aftermath dispatch requirement must remain 3000 TP')
+	settings.weaponskill_min_tp = 1000
 end
 
-local function test_satisfied_maintenance_allows_continuation()
+local function test_satisfied_maintenance_applies_minimum_tp_to_continuation()
 	ability_recasts[20] = 30
+	settings.weaponskill_min_tp = 2000
 	settings.aftermath_enabled = true
 	player.buffs = { 273 }
 	player.vitals.tp = 1000
 	local selection, reason = select()
-	assert_true(type(selection) == 'table', 'satisfied maintenance must allow a continuation')
+	assert_equal(selection, nil, 'continuation must hold below configured minimum TP')
+	assert_equal(reason, 'WS_MIN_TP_HOLD', 'continuation minimum TP hold reason mismatch')
+
+	player.vitals.tp = 2000
+	selection, reason = select()
+	assert_true(type(selection) == 'table', 'satisfied maintenance must allow a continuation at configured minimum TP')
 	assert_equal(reason, 'SC_READY', 'continuation reason mismatch after maintenance is satisfied')
 	assert_true(type(selection.skillchain_plan) == 'table', 'continuation plan must remain structured')
 	assert_equal(selection.ws_name, 'Test Continuation', 'continuation WS mismatch')
+	assert_equal(selection.required_tp, 2000, 'continuation dispatch requirement must use configured minimum TP')
+	settings.weaponskill_min_tp = 1000
+end
+
+local function test_ordinary_smart_ws_observes_minimum_tp()
+	ability_recasts[20] = 30
+	settings.ws_mode = 'smart'
+	settings.spam = false
+	settings.aftermath_enabled = false
+	settings.weaponskill_min_tp = 2000
+	player.buffs = {}
+	core.resonating[9001] = nil
+	player.vitals.tp = 1999
+	local selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
+	assert_equal(selection, nil, 'ordinary smart WS must hold below configured minimum TP')
+	assert_equal(reason, 'WS_MIN_TP_HOLD', 'ordinary smart WS minimum TP hold reason mismatch')
+
+	player.vitals.tp = 2000
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
+	assert_true(type(selection) == 'table', 'ordinary smart WS must select at configured minimum TP')
+	assert_equal(reason, 'READY', 'ordinary smart WS ready reason mismatch')
+	assert_equal(selection.required_tp, 2000, 'ordinary smart WS dispatch requirement mismatch')
+	settings.weaponskill_min_tp = 1000
+end
+
+local function test_primary_only_ws_retains_base_tp_requirement()
+	ability_recasts[20] = 30
+	settings.ws_mode = 'primary_no_sc'
+	settings.spam = false
+	settings.aftermath_enabled = false
+	settings.weaponskill_min_tp = 2000
+	player.buffs = {}
+	core.resonating[9001] = nil
+	player.vitals.tp = 1000
+	local selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
+	assert_true(type(selection) == 'table', 'primary-only WS must retain its existing 1000 TP eligibility')
+	assert_equal(reason, 'WS_MODE_PRIMARY_ONLY_READY', 'primary-only WS ready reason mismatch')
+	assert_equal(selection.required_tp, 1000, 'primary-only WS dispatch requirement must remain 1000 TP')
+	settings.ws_mode = 'smart'
+	settings.weaponskill_min_tp = 1000
 end
 
 local function test_aftermath_precedes_spam_until_buff_active()
@@ -344,6 +394,26 @@ local function test_spam_forces_primary_ws_across_active_resonance()
 	settings.spam = false
 end
 
+local function test_spam_ws_observes_minimum_tp()
+	ability_recasts[20] = 30
+	settings.spam = true
+	settings.aftermath_enabled = false
+	settings.weaponskill_min_tp = 2000
+	player.buffs = {}
+	player.vitals.tp = 1999
+	local selection, reason = select()
+	assert_equal(selection, nil, 'spam WS must hold below configured minimum TP')
+	assert_equal(reason, 'WS_MIN_TP_HOLD', 'spam WS minimum TP hold reason mismatch')
+
+	player.vitals.tp = 2000
+	selection, reason = select()
+	assert_true(type(selection) == 'table', 'spam WS must select at configured minimum TP')
+	assert_equal(reason, 'READY_SPAM', 'spam WS ready reason mismatch at configured minimum TP')
+	assert_equal(selection.required_tp, 2000, 'spam WS dispatch requirement mismatch')
+	settings.spam = false
+	settings.weaponskill_min_tp = 1000
+end
+
 local function test_spam_ws_dispatch_rejects_out_of_range_target()
 	dispatch_target = {
 		id = 9001,
@@ -378,9 +448,12 @@ local function main()
 	local ok, err = pcall(function()
 	test_chivalry_reserves_tp_across_ready_boundary()
 	test_aftermath_reserves_tp_and_dispatches_before_continuation()
-	test_satisfied_maintenance_allows_continuation()
+	test_satisfied_maintenance_applies_minimum_tp_to_continuation()
+	test_ordinary_smart_ws_observes_minimum_tp()
+	test_primary_only_ws_retains_base_tp_requirement()
 	test_aftermath_precedes_spam_until_buff_active()
 	test_spam_forces_primary_ws_across_active_resonance()
+	test_spam_ws_observes_minimum_tp()
 	test_spam_ws_dispatch_rejects_out_of_range_target()
 	end)
 	restore_test_environment()

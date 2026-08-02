@@ -11,6 +11,7 @@ internal static class StructuredProfileV2WriterTests
         {
             TestBuildFinalPath();
             TestSerializeShapeAndEscaping();
+            TestWeaponskillMinimumTpValidation();
             TestSerializeOmitsRetiredOwnershipMarkers();
             TestParseTargetedBuffs();
             TestSerializeOmitsProfileV2AutoloadWhenDisabled();
@@ -195,6 +196,7 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "sub_job = \"WAR\"", "profile sub job missing");
         AssertContains(content, "show_ingame_ui = true", "ui domain missing");
         AssertContains(content, "autotarget = true", "combat domain missing");
+        AssertContains(content, "minimum_tp = 2000", "weaponskill minimum TP missing");
         AssertContains(content, "configured = {", "abilities domain missing");
         AssertContains(content, "list = \"Bar\\\"Spell\\\\Line\\nNext\"", "string escaping mismatch");
         AssertContains(content, "targeted = {", "targeted defensive buff list missing");
@@ -244,6 +246,19 @@ internal static class StructuredProfileV2WriterTests
         AssertNotContains(content, "sleepspells", "legacy sleep list must not be serialized");
         AssertNotContains(content, "sleepspell", "legacy sleep singleton must not be serialized");
         AssertNotContains(content, "profile_v2_autoload", "autoload must be omitted unless explicitly enabled");
+    }
+
+    private static void TestWeaponskillMinimumTpValidation()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["weaponskill_min_tp"] = 999;
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+            ),
+            "out-of-range weaponskill minimum TP must fail"
+        );
     }
 
 	private static void TestSerializeIncludesPartnerNames()
@@ -1296,6 +1311,7 @@ internal static class StructuredProfileV2WriterTests
             ["weaponskill_active"] = true,
             ["weaponskill"] = "Savage Blade",
             ["ws_mode"] = "smart",
+            ["weaponskill_min_tp"] = 2000,
             ["aftermath_enabled"] = true,
             ["aftermath_ws"] = "Atonement",
             ["defensive_enabled"] = true,

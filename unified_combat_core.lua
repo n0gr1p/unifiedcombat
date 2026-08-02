@@ -2983,6 +2983,23 @@ local function get_ws_mode(settings)
 	return 'smart'
 end
 
+local function require_weaponskill_minimum_tp(settings)
+	local minimum_tp = settings and settings.weaponskill_min_tp
+	if type(minimum_tp) ~= 'number'
+		or minimum_tp % 1 ~= 0
+		or minimum_tp < 1000
+		or minimum_tp > 3000 then
+		error('weaponskill_min_tp must be an integer from 1000 to 3000')
+	end
+	return minimum_tp
+end
+
+local function ordinary_weaponskill_tp_ready(settings, player)
+	local minimum_tp = require_weaponskill_minimum_tp(settings)
+	local tp = tonumber(player and player.vitals and player.vitals.tp) or 0
+	return tp >= minimum_tp
+end
+
 local function select_smart_ws(settings, target_id)
 	local tid = tonumber(target_id) or 0
 	if tid <= 0 then
@@ -3018,6 +3035,9 @@ local function select_smart_ws(settings, target_id)
 		if primary_ws == '' or not uc_ws_memory.valid_ws_name(primary_ws) then
 			return '', 'PRIMARY_WS_INVALID'
 		end
+		if not ordinary_weaponskill_tp_ready(settings, player) then
+			return '', 'WS_MIN_TP_HOLD'
+		end
 		return primary_ws, 'READY_SPAM'
 	end
 	local actor_context = local_skillchain_actor_context()
@@ -3045,6 +3065,9 @@ local function select_smart_ws(settings, target_id)
 	local aftermath_ws, aftermath_reason = select_aftermath_maintenance_ws(settings, player)
 	if aftermath_reason then
 		return aftermath_ws, aftermath_reason
+	end
+	if not ordinary_weaponskill_tp_ready(settings, player) then
+		return '', 'WS_MIN_TP_HOLD'
 	end
 	if resonance_active then
 		local plan, plan_reason = skillchain_runtime:plan_continuation(
@@ -3109,10 +3132,26 @@ function core.select_ws_plan_for_scheduler(settings, target_id)
 	if tostring(ws_name or '') == '' then
 		return nil, tostring(ws_reason or '')
 	end
+	local required_tp = nil
+	if ws_reason == 'READY'
+		or ws_reason == 'READY_SPAM'
+		or ws_reason == 'SC_READY'
+		or ws_reason == 'SC_WINDOW_HIGH_RISK'
+		or ws_reason == 'SC_NOT_READY'
+		or ws_reason == 'SC_DISPATCH_PENDING_RESULT' then
+		required_tp = require_weaponskill_minimum_tp(settings)
+	elseif ws_reason == 'AM_READY' then
+		required_tp = 3000
+	elseif ws_reason == 'WS_MODE_PRIMARY_ONLY_READY' then
+		required_tp = 1000
+	else
+		error('unsupported ready weaponskill reason: ' .. tostring(ws_reason))
+	end
 	return {
 		ws_name = tostring(ws_name),
 		reason = tostring(ws_reason or ''),
 		skillchain_plan = skillchain_plan,
+		required_tp = required_tp,
 	}, tostring(ws_reason or '')
 end
 

@@ -244,6 +244,7 @@ internal static class StructuredProfileV2Writer
                     .Add("enabled", ReadBool(flatProfile, "weaponskill_active", false))
                     .Add("primary", ReadString(flatProfile, "weaponskill", ""))
                     .Add("mode", ReadString(flatProfile, "ws_mode", "smart"))
+                    .Add("minimum_tp", ReadBoundedInt(flatProfile, "weaponskill_min_tp", 1000, 1000, 3000))
                     .Add("wait_ignore_names", ParseNameList(ReadString(flatProfile, "ignore_entries", "")))
                     .Add("aftermath_enabled", ReadBool(flatProfile, "aftermath_enabled", false))
                     .Add("aftermath_ws", ReadString(flatProfile, "aftermath_ws", ""))

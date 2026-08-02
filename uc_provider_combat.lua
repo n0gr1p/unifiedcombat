@@ -104,6 +104,16 @@ function M.new(deps)
 		if ws == '' then
 			return
 		end
+		local required_tp = ws_selection.required_tp
+		if type(required_tp) ~= 'number'
+			or required_tp % 1 ~= 0
+			or required_tp < 1000
+			or required_tp > 3000 then
+			error('combat WS selection required_tp must be an integer from 1000 to 3000')
+		end
+		if tp < required_tp then
+			return
+		end
 		local skillchain_plan = ws_selection.skillchain_plan
 		local urgency = (tp - 1000) / 2000
 		if urgency < 0 then
@@ -172,6 +182,7 @@ function M.new(deps)
 			can_preempt_movement = false,
 			can_preempt_same_band = false,
 			reason_code = reason_code,
+			required_tp = required_tp,
 			skillchain_plan = skillchain_plan,
 			detail = {
 				tp = tp,

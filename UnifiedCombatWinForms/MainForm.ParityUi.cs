@@ -12,6 +12,7 @@ public partial class MainForm
     private CheckBox _chkPuller = null!;
     private ComboBox _wsCombo = null!;
     private ComboBox _wsModeCombo = null!;
+    private NumericUpDown _wsMinimumTp = null!;
     private ComboBox _aftermathCombo = null!;
     private ComboBox _pullerCombo = null!;
 	private ComboBox _pullerLeashSource = null!;
@@ -352,6 +353,21 @@ public partial class MainForm
         _wsModeCombo.SelectedIndex = 0;
         _wsModeCombo.SelectedIndexChanged += (_, _) => OnWsModeSelected();
         leftCol.Controls.Add(_wsModeCombo, 1, lr);
+        lr++;
+
+        leftCol.Controls.Add(new Label { Text = "Minimum WS TP", AutoSize = true, Anchor = AnchorStyles.Left }, 0, lr);
+        _wsMinimumTp = new NumericUpDown
+        {
+            Minimum = 1000,
+            Maximum = 3000,
+            Increment = 100,
+            Value = 1000,
+            DecimalPlaces = 0,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(120, 0),
+        };
+        _wsMinimumTp.ValueChanged += (_, _) => OnWsMinimumTpChanged();
+        leftCol.Controls.Add(_wsMinimumTp, 1, lr);
         lr++;
 
         _chkAftermath = MkCtx("aftermath_enabled");

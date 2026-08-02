@@ -204,6 +204,7 @@ local function build_flat_settings()
 		weaponskill_active = true,
 		weaponskill = 'Savage Blade',
 		ws_mode = 'smart',
+		weaponskill_min_tp = 2000,
 		aftermath_enabled = true,
 		aftermath_ws = 'Atonement',
 		autotarget = true,
@@ -385,6 +386,7 @@ local function main()
 	assert_equal(projected.ignore[1], nil, 'wait ignore names should not invent runtime ids when they are not resolvable')
 	assert_equal(projected.profile_v2_auto_reload_on_change, true, 'auto-reload flag must round-trip in the projected settings')
 	assert_equal(projected.aftermath_ws, 'Atonement', 'weaponskill aftermath ws must round-trip')
+	assert_equal(projected.weaponskill_min_tp, 2000, 'weaponskill minimum TP must round-trip')
 	assert_equal(projected.defensive_overwrite_interval, 150, 'defensive overwrite interval must round-trip')
 	assert_equal(projected.defensive_critical_hpp, 35, 'defensive critical threshold must round-trip')
 	assert_equal(projected.defensive_medium_hpp, 55, 'defensive medium threshold must round-trip')

@@ -283,6 +283,7 @@ public partial class MainForm
             ["weaponskill"] = (_wsCombo.Text ?? "").Trim(),
             ["ws1"] = (_wsCombo.Text ?? "").Trim(),
             ["ws_mode"] = string.Equals(_wsModeCombo.SelectedItem?.ToString(), "Primary Only (No SC)", StringComparison.Ordinal) ? "primary_no_sc" : "smart",
+            ["weaponskill_min_tp"] = decimal.ToInt32(_wsMinimumTp.Value),
         };
 
         foreach (var key in HubUiConstants.BoolKeys)
@@ -351,6 +352,7 @@ public partial class MainForm
             ["weaponskill"] = "",
             ["ws1"] = "",
             ["ws_mode"] = "smart",
+            ["weaponskill_min_tp"] = 1000,
             ["aftermath_ws"] = "",
             ["defensive_provider"] = "internal",
             ["defensive_critical_hpp"] = 35,

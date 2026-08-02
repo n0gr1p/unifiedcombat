@@ -91,6 +91,7 @@ local function build_flat_settings()
         weaponskill_active = true,
         weaponskill = "Savage Blade",
         ws_mode = "smart",
+        weaponskill_min_tp = 2000,
         defensive_enabled = true,
         defensive_cure_enabled = true,
         def_heal_min_tier_cure = 3,
@@ -160,6 +161,7 @@ local function build_structured_payload()
                     enabled = true,
                     primary = "Savage Blade",
                     mode = "smart",
+                    minimum_tp = 2000,
                 },
             },
             defensive = {
@@ -263,6 +265,7 @@ local function assert_common_config(config, source)
     assert_equal(config.combat.weaponskill.enabled, true, source .. " WS enabled mismatch")
     assert_equal(config.combat.weaponskill.primary, "Savage Blade", source .. " WS primary mismatch")
     assert_equal(config.combat.weaponskill.mode, "smart", source .. " WS mode mismatch")
+    assert_equal(config.combat.weaponskill.minimum_tp, 2000, source .. " WS minimum TP mismatch")
     assert_equal(config.defensive.enabled, true, source .. " defensive enabled mismatch")
     assert_equal(config.defensive.cure.enabled, true, source .. " cure enabled mismatch")
     assert_equal(config.defensive.cure.min_tier, 3, source .. " cure min tier mismatch")
@@ -364,6 +367,7 @@ local function main()
     local missing = normalizer.normalize({ version = 2, profile = { character = "Redrogue" }, config = {} })
     assert_equal(missing.profile.character, "Redrogue", "missing structured profile character mismatch")
     assert_equal(missing.combat.weaponskill.enabled, false, "missing structured WS default mismatch")
+    assert_equal(missing.combat.weaponskill.minimum_tp, 1000, "missing structured WS minimum TP default mismatch")
     assert_equal(missing.defensive.cure.min_tier, 3, "missing structured cure default mismatch")
     assert_equal(missing.maintenance.cor.roll_1, "", "missing structured COR default mismatch")
 
@@ -372,6 +376,13 @@ local function main()
         assert_equal(type(malformed), "table", "malformed normalized output should be a table")
         assert_equal(malformed.profile.source, "UC_SETTINGS", "malformed source should use default")
     end), "malformed structured input should not throw")
+
+    local invalid_minimum_tp_ok = pcall(function()
+        local invalid = build_structured_payload()
+        invalid.config.combat.weaponskill.minimum_tp = 999
+        normalizer.normalize(invalid)
+    end)
+    assert_equal(invalid_minimum_tp_ok, false, "invalid explicit WS minimum TP must fail normalization")
 
     local ui_fixture = load_lua_fixture("tests/replay/fixtures/shared/ui_authored_profile_v2_fixture.lua")
     local ui_fixture_snapshot = deep_clone(ui_fixture)

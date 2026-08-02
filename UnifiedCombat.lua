@@ -167,6 +167,7 @@ local function uc_new_settings_defaults()
 		ws1 = '',
 		weaponskill_active = false,
 		ws_mode = 'smart',
+		weaponskill_min_tp = 1000,
 		aftermath_enabled = false,
 		aftermath_ws = '',
 		autotarget = false,
@@ -517,7 +518,7 @@ end
 local PROFILE_KEYS = {
 	'ability1', 'ability2', 'ability3', 'ability4', 'ability5', 'ability6',
 	'ability_active', 'abilities', 'wsabilities',
-	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode',
+	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode', 'weaponskill_min_tp',
 	'aftermath_enabled', 'aftermath_ws',
 	'engine_mode',
 	'show_ingame_ui',
@@ -1462,6 +1463,14 @@ local function uc_normalize_ws_for_engine(s, eng)
 	local ws = s.weaponskill or s.ws1 or ''
 	s.weaponskill = ws
 	s.ws1 = ws
+	if s.weaponskill_min_tp == nil then
+		s.weaponskill_min_tp = 1000
+	elseif type(s.weaponskill_min_tp) ~= 'number'
+		or s.weaponskill_min_tp % 1 ~= 0
+		or s.weaponskill_min_tp < 1000
+		or s.weaponskill_min_tp > 3000 then
+		error('weaponskill_min_tp must be an integer from 1000 to 3000')
+	end
 	s.engine_mode = eng
 end
 

@@ -5035,6 +5035,19 @@ local function p1_dispatch_defensive_internal(selected, settings)
 			tostring(selected.action_name or ''),
 			tostring(selected.target_name or '')
 		)
+		scheduler.action_timeline_log('DEFENSIVE_FOLLOW_MOVE_BLOCKED', {
+			action = tostring(selected.action_name or ''),
+			target = tostring(selected.target_name or ''),
+			target_id = tonumber(selected.target_id) or 0,
+			reason = 'BLOCK_DEFENSIVE_FOLLOW_MOVE_ACTIVE',
+			follow_run_active = tostring(follow_run_active),
+			follow_needs_catchup = tostring(follow_needs_catchup),
+			follow_run_remaining_s = ('%.2f'):format(math.max(0, follow_run_until - now_gate)),
+			follow_catchup_remaining_s = ('%.2f'):format(math.max(0, follow_catchup_until - now_gate)),
+		}, ('defensive_follow_move_block:%s:%d'):format(
+			tostring(selected.action_name or ''),
+			tonumber(selected.target_id) or 0
+		), 0.25)
 		return true, 'BLOCK_DEFENSIVE_FOLLOW_MOVE_ACTIVE'
 	end
 	local intent = {
@@ -5297,7 +5310,14 @@ local function p1_dispatch_combat(selected, settings, phase)
 			return false, nil
 		end
 		local tp = tonumber(player.vitals and player.vitals.tp) or 0
-		if tp < 1000 then
+		local required_tp = selected.required_tp
+		if type(required_tp) ~= 'number'
+			or required_tp % 1 ~= 0
+			or required_tp < 1000
+			or required_tp > 3000 then
+			error('scheduler combat WS proposal required_tp must be an integer from 1000 to 3000')
+		end
+		if tp < required_tp then
 			return false, nil
 		end
 		local target = windower.ffxi.get_mob_by_target('t')

@@ -404,6 +404,19 @@ local function main()
     assert_equal(_G.UC_MOVEMENT_OWNER, 'follow', 'party follow prerender must resolve a named leader even when leader_id is runtime-owned')
     assert_true(#run_calls > 0, 'party follow prerender must issue movement for a named leader with no durable id')
 
+    _G.Start_Engine = true
+    _G.UC_SETTINGS.camp_pulling.enabled = true
+    _G.UC_PARTY_FOLLOW_NEEDS_CATCHUP = true
+    _G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL = _G.__TEST_NOW + 0.4
+    follow.prerender()
+    assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP, false,
+        'camp-puller movement ownership must clear party-follow catch-up intent')
+    assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL, 0,
+        'camp-puller movement ownership must clear the party-follow catch-up hold window')
+    _G.UC_SETTINGS.camp_pulling.enabled = false
+    _G.Start_Engine = false
+    follow.prerender()
+
     run_calls = {}
     _G.UC_MOVEMENT_OWNER = 'scheduler'
     _G.UC_MOVEMENT_LOCK_UNTIL = _G.__TEST_NOW + 5

@@ -271,6 +271,11 @@ local function set_follow_needs_catchup(active)
 	_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP = false
 end
 
+local function clear_follow_needs_catchup()
+	_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP = false
+	_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL = 0
+end
+
 local function stop_and_release_follow_movement()
 	if tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or '') ~= 'follow' then
 		return false
@@ -782,7 +787,7 @@ M.should_suppress_follow_or_path_return_now = should_suppress_follow_or_path_ret
 
 local function combat_engine_suppresses_follow(s)
 	if uc_camp_puller.movement_reserved(s.camp_pulling) then
-		return true
+		return true, 'camp_puller'
 	end
 	local now = now_s()
 	local arbitration_suppress = should_suppress_follow_or_path_return_now(s, now)
@@ -931,7 +936,7 @@ function M.prerender()
 			set_follow_needs_catchup(false)
 		end
 	end
-	local suppressed = combat_engine_suppresses_follow(s)
+	local suppressed, suppression_owner = combat_engine_suppresses_follow(s)
 	if suppressed then
 		-- Transition hard-stop: prevent stale run vector drift when follow yields to
 		-- combat-owned movement.
@@ -941,6 +946,9 @@ function M.prerender()
 			end
 		end
 		set_follow_run_active(false)
+		if suppression_owner == 'camp_puller' then
+			clear_follow_needs_catchup()
+		end
 		last_follow_suppressed = true
 		return
 	end

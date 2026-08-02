@@ -560,6 +560,7 @@ local function build_flat_settings()
 		weaponskill_active = true,
 		weaponskill = 'Savage Blade',
 		ws_mode = 'smart',
+		weaponskill_min_tp = 2000,
 		aftermath_enabled = true,
 		aftermath_ws = 'Atonement',
 		autotarget = true,
@@ -653,6 +654,7 @@ local function build_expected_config()
 				enabled = true,
 				primary = 'Savage Blade',
 				mode = 'smart',
+				minimum_tp = 2000,
 				wait_ignore_names = { 'Ally One', 'Ally Two' },
 				aftermath_enabled = true,
 				aftermath_ws = 'Atonement',
@@ -925,6 +927,7 @@ local function main()
 	assert_equal(profile.profile.profile_key, 'Redrogue|PLD|WAR', 'structured profile key mismatch')
 	assert_equal(profile.config.ui.show_ingame_ui, true, 'ui domain mismatch')
 	assert_equal(profile.config.combat.weaponskill.primary, 'Savage Blade', 'combat domain mismatch')
+	assert_equal(profile.config.combat.weaponskill.minimum_tp, 2000, 'combat WS minimum TP mismatch')
 	assert_true(profile.config.maintenance.cor == nil, 'non-COR structured profile must omit maintenance.cor')
 	assert_equal(profile.config.legacy.hunter, true, 'legacy domain mismatch')
 	assert_equal(profile.config.targeting.targets[1], 'Apex Bat', 'exported config add priority target mismatch')
@@ -962,6 +965,7 @@ local function main()
 	})
 	assert_equal(normalized.profile.character, 'Redrogue', 'round-tripped normalized character mismatch')
 	assert_equal(normalized.combat.weaponskill.primary, 'Savage Blade', 'round-tripped normalized combat mismatch')
+	assert_equal(normalized.combat.weaponskill.minimum_tp, 2000, 'round-tripped normalized WS minimum TP mismatch')
 	assert_equal(normalized.maintenance.cor.roll_2, '', 'round-tripped normalized non-COR maintenance mismatch')
 	assert_equal(normalized.legacy.hunter, true, 'round-tripped normalized legacy mismatch')
 
@@ -1020,6 +1024,7 @@ local function main()
 	assert_nil(ui_fixture_payload.profile.exported_at, 'UI-authored fixture should omit exported_at metadata')
 	assert_nil(ui_fixture_payload.profile.profile_key, 'UI-authored fixture should omit profile_key metadata')
 	assert_equal(ui_fixture_payload.config.combat.weaponskill.wait_ignore_names[1], 'Ally One', 'UI-authored fixture wait ignore name mismatch')
+	assert_equal(ui_fixture_payload.config.combat.weaponskill.minimum_tp, 2000, 'UI-authored fixture WS minimum TP mismatch')
 	assert_equal(ui_fixture_payload.config.follow.fight.leader_name, 'Niightsiide', 'UI-authored fixture fight leader name mismatch')
 	assert_equal(ui_fixture_payload.config.follow.partner.puller_name, 'Niightsiide', 'UI-authored fixture puller name mismatch')
 	assert_equal(ui_fixture_payload.config.targeting.target_ignore_names[1], 'Mob One', 'UI-authored fixture target ignore name mismatch')

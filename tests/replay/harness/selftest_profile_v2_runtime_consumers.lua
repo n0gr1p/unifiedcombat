@@ -179,6 +179,7 @@ local function main()
 					enabled = true,
 					primary = 'Savage Blade',
 					mode = 'smart',
+					minimum_tp = 2000,
 					wait_ignore_names = { 'Niightsiide' },
 					aftermath_enabled = true,
 					aftermath_ws = 'Energy Steal',
@@ -270,6 +271,7 @@ local function main()
 	assert_equal(active_config.get_path('config.defensive.thresholds.critical_hpp'), 40, 'active defensive critical threshold mismatch')
 	assert_equal(active_config.get_path('config.defensive.thresholds.medium_hpp'), 60, 'active defensive medium threshold mismatch')
 	assert_equal(active_config.get_path('config.combat.weaponskill.aftermath_ws'), 'Energy Steal', 'active aftermath ws mismatch')
+	assert_equal(active_config.get_path('config.combat.weaponskill.minimum_tp'), 2000, 'active WS minimum TP mismatch')
 	assert_equal(active_config.get_path('config.defensive.cure.max_tier'), 4, 'active defensive cure max tier mismatch')
 	assert_equal(active_config.get_path('config.defensive.cure.min_missing_hp'), 250, 'active defensive cure missing hp mismatch')
 	assert_equal(active_config.get_path('config.defensive.buffs.overwrite_interval'), 150, 'active defensive overwrite interval mismatch')
@@ -297,6 +299,7 @@ local function main()
 	assert_true(projected ~= nil, 'project_flat_settings should succeed')
 	assert_true(project_err == nil, 'project_flat_settings should not report an error')
 	assert_equal(projected.aftermath_ws, 'Energy Steal', 'projected aftermath ws mismatch')
+	assert_equal(projected.weaponskill_min_tp, 2000, 'projected WS minimum TP mismatch')
 	assert_equal(projected.def_heal_max_tier_cure, 4, 'projected defensive cure max tier mismatch')
 	assert_equal(projected.def_heal_min_missing_hp, 250, 'projected defensive cure missing hp mismatch')
 	assert_equal(projected.defensive_overwrite_interval, 150, 'projected defensive overwrite interval mismatch')
@@ -360,6 +363,7 @@ local function main()
 					enabled = true,
 					primary = 'Savage Blade',
 					mode = 'smart',
+					minimum_tp = 2000,
 					aftermath_enabled = true,
 					aftermath_ws = 'Energy Steal',
 				},
@@ -414,6 +418,7 @@ local function main()
 	assert_true(exact_projected ~= nil, 'exact roundtrip project_flat_settings should succeed')
 	assert_true(exact_project_err == nil, 'exact roundtrip project_flat_settings should not report an error')
 	assert_equal(exact_projected.aftermath_ws, 'Energy Steal', 'exact roundtrip aftermath ws mismatch')
+	assert_equal(exact_projected.weaponskill_min_tp, 2000, 'exact roundtrip WS minimum TP mismatch')
 	assert_equal(exact_projected.def_heal_max_tier_cure, 4, 'exact roundtrip cure max tier mismatch')
 	assert_equal(exact_projected.def_heal_min_missing_hp, 250, 'exact roundtrip cure missing hp mismatch')
 	assert_equal(exact_projected.defensive_overwrite_interval, 150, 'exact roundtrip overwrite interval mismatch')
@@ -424,6 +429,7 @@ local function main()
 		sub_job = 'BRD',
 	})
 	assert_equal(exact_normalized.combat.weaponskill.aftermath_ws, 'Energy Steal', 'exact normalized aftermath ws mismatch')
+	assert_equal(exact_normalized.combat.weaponskill.minimum_tp, 2000, 'exact normalized WS minimum TP mismatch')
 	assert_equal(exact_normalized.defensive.cure.max_tier, 4, 'exact normalized cure max tier mismatch')
 	assert_equal(exact_normalized.defensive.cure.min_missing_hp, 250, 'exact normalized cure missing hp mismatch')
 	assert_equal(exact_normalized.defensive.buffs.overwrite_interval, 150, 'exact normalized overwrite interval mismatch')
@@ -435,6 +441,7 @@ local function main()
 		sub_job = 'BRD',
 	})
 	assert_equal(normalized.combat.weaponskill.aftermath_ws, 'Energy Steal', 'normalized aftermath ws mismatch')
+	assert_equal(normalized.combat.weaponskill.minimum_tp, 2000, 'normalized WS minimum TP mismatch')
 	assert_equal(normalized.defensive.cure.max_tier, 4, 'normalized cure max tier mismatch')
 	assert_equal(normalized.defensive.cure.min_missing_hp, 250, 'normalized cure missing hp mismatch')
 	assert_equal(normalized.defensive.buffs.overwrite_interval, 150, 'normalized overwrite interval mismatch')

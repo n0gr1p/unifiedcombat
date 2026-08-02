@@ -400,6 +400,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.weaponskill = config.combat.weaponskill.primary
 			candidate.ws1 = config.combat.weaponskill.primary
 			candidate.ws_mode = config.combat.weaponskill.mode
+			candidate.weaponskill_min_tp = config.combat.weaponskill.minimum_tp
 			candidate.wait_ignore_names = clone_value(config.combat.weaponskill.wait_ignore_names)
 			candidate.aftermath_enabled = config.combat.weaponskill.aftermath_enabled
 			candidate.aftermath_ws = config.combat.weaponskill.aftermath_ws

@@ -18,7 +18,7 @@ A canonical validated `config` object is worth adding, and `T3.7e` now adds the 
 | Area | Current fields |
 | --- | --- |
 | Profile root | `profiles` |
-| Combat and WS | `engine_mode`, `ability_active`, `abilities`, `ability1` through `ability6`, `wsabilities`, `weaponskill`, `ws1`, `weaponskill_active`, `ws_mode`, `aftermath_enabled`, `aftermath_ws`, `autotarget`, `spam`, `closer`, `manual`, `prime`, `static`, `face` |
+| Combat and WS | `engine_mode`, `ability_active`, `abilities`, `ability1` through `ability6`, `wsabilities`, `weaponskill`, `ws1`, `weaponskill_active`, `ws_mode`, `weaponskill_min_tp`, `aftermath_enabled`, `aftermath_ws`, `autotarget`, `spam`, `closer`, `manual`, `prime`, `static`, `face` |
 | Movement and spacing | `move`, `spacing`, `spacing_band_min`, `spacing_band_max`, `spacing_model_size_floor`, `spacing_use_prediction`, `spacing_lookahead_s`, `spacing_repel_hold_ticks`, `spacing_overlap_deadband`, `spacing_repel_weight`, `spacing_band_deadband` |
 | Follow and party roles | `partner`, `partner2`, `puller`, `puller_name`, `puller_distance_only`, `partner_id`, `partner_id2`, `partner_ids`, `puller_id`, `fight_leader`, `fight_leader_id`, `party_follow`, `party_follow_id`, `party_follow_leader_name`, `party_follow_min`, `party_follow_max`, `fight_follow_min`, `fight_follow_hold_s` |
 | Add control and targeting | `add_control`, `add_priority_names`, `target1`, `target2`, `target3`, `targets`, `targetability`, `targetability_active`, `ignore`, `target_ignore_names` |
@@ -98,6 +98,7 @@ config = {
       enabled = false,
       primary = "",
       mode = "smart",
+      minimum_tp = 1000,
       aftermath_enabled = false,
       aftermath_ws = "",
     },

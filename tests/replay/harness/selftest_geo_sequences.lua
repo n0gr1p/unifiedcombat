@@ -333,7 +333,11 @@ assert_equal(
 local ecliptic_config = base_config()
 ecliptic_config.luopan.use_blaze_of_glory = true
 ecliptic_config.luopan.use_ecliptic_attrition = true
-local ecliptic_provider = new_provider({}, { active = false })
+local ecliptic_pull_state = { active = false }
+local ecliptic_abilities = {
+	['Ecliptic Attrition'] = false,
+}
+local ecliptic_provider = new_provider({}, ecliptic_pull_state, ecliptic_abilities)
 local ecliptic_ctx = context(ecliptic_config)
 action = collect_one(ecliptic_provider, ecliptic_ctx)
 ecliptic_provider.note_dispatch(action, 1.1)
@@ -344,9 +348,35 @@ assert_equal(action.action_name, 'Geo-Frailty', 'Ecliptic sequence must create t
 ecliptic_provider.note_dispatch(action, 2.1)
 ecliptic_ctx.now = 3.0
 mark_luopan(ecliptic_ctx, 305, 100, 10, 20)
+local ecliptic_out = {}
+ecliptic_provider.collect(ecliptic_ctx, ecliptic_out)
+assert_equal(#ecliptic_out, 0, 'Ecliptic on recast must not emit a proposal')
+assert_equal(ecliptic_provider.status.state, 'ja_blocked', 'Ecliptic recast blocker state mismatch')
+assert_equal(ecliptic_provider.status.detail, 'recast', 'Ecliptic recast blocker detail mismatch')
+assert_equal(
+	ecliptic_provider.lane_reserved(),
+	false,
+	'confirmed enhanced Geo must release the atomic lane while Ecliptic is on recast'
+)
+ecliptic_pull_state.active = true
+ecliptic_ctx.now = 4.0
+ecliptic_out = {}
+ecliptic_provider.collect(ecliptic_ctx, ecliptic_out)
+assert_equal(#ecliptic_out, 0, 'active pull must defer the non-atomic Ecliptic follow-up')
+assert_equal(ecliptic_provider.status.state, 'sequence_held', 'active-pull Ecliptic hold state mismatch')
+assert_equal(ecliptic_provider.status.detail, 'pull_active', 'active-pull Ecliptic hold detail mismatch')
+assert_equal(
+	ecliptic_provider.lane_reserved(),
+	false,
+	'non-atomic Ecliptic follow-up must not reserve the GEO lane during a pull'
+)
+ecliptic_pull_state.active = false
+ecliptic_abilities['Ecliptic Attrition'] = true
+ecliptic_ctx.now = 5.0
 action = collect_one(ecliptic_provider, ecliptic_ctx)
-assert_equal(action.action_name, 'Ecliptic Attrition', 'enhanced luopan must advance to Ecliptic Attrition')
-ecliptic_provider.note_dispatch(action, 3.1)
+assert_equal(action.action_name, 'Ecliptic Attrition', 'ready Ecliptic must resume after cooldown and pulling clear')
+assert_equal(ecliptic_provider.lane_reserved(), false, 'ready Ecliptic proposal must remain non-atomic')
+ecliptic_provider.note_dispatch(action, 5.1)
 local completed, completion_reason = ecliptic_provider.note_ja_action({
 	actor_id = 999,
 	category = 6,
@@ -387,8 +417,8 @@ completed, completion_reason = ecliptic_provider.note_ja_action({
 }, ecliptic_ctx.player_id)
 assert_equal(completed, true, 'exact Ecliptic action identity must complete despite its luopan target')
 assert_equal(completion_reason, 'geo_ja_action_identity', 'GEO JA completion reason mismatch')
-assert_equal(ecliptic_provider.lane_reserved(), false, 'Ecliptic completion must release the atomic GEO lane')
-ecliptic_ctx.now = 4.0
+assert_equal(ecliptic_provider.lane_reserved(), false, 'Ecliptic completion must leave the GEO lane released')
+ecliptic_ctx.now = 6.0
 action = collect_one(ecliptic_provider, ecliptic_ctx)
 assert_equal(action.action_name, 'Indi-Haste', 'Ecliptic completion must advance ordinary maintenance')
 

@@ -79,6 +79,10 @@ local function main()
     assert_contains(source, "scheduler.apply_defensive_spell_movement_lock(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0, now_gate)", "ranked defensive sender must apply spell movement lock at send point")
     assert_contains(source, "scheduler.begin_defensive_spell_wait(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0, now_gate)", "ranked defensive sender must begin defensive spell wait")
 
+    assert_contains(source, "scheduler.action_timeline_log('DEFENSIVE_FOLLOW_MOVE_BLOCKED'", "follow movement deferrals must be written to the action timeline")
+    assert_contains(source, "reason = 'BLOCK_DEFENSIVE_FOLLOW_MOVE_ACTIVE'", "follow movement timeline event must include the dispatcher block reason")
+    assert_contains(source, "follow_needs_catchup = tostring(follow_needs_catchup)", "follow movement timeline event must identify catch-up intent")
+
     assert_contains(source, "(tostring(type(detail) == 'table' and detail.def_action_type or '') ~= 'cure' or target_hpp > 0)", "ranked defensive sender must avoid stale cure lock on dead/invalid targets")
     assert_not_contains(source, "local function try_internal_defensive_action()", "legacy direct defensive sender must be removed")
     assert_not_contains(source, "local function try_delegate_healbot()", "legacy direct HealBot sender must be removed")
