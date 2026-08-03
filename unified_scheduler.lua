@@ -7436,6 +7436,41 @@ scheduler.providers.summoner_maintenance = require('uc_smn_maintenance').new({
 	get_ja_resource = get_ja_resource,
 	log = log_def_sched,
 })
+function scheduler.sch_sublimation_safety(ctx, proposals)
+	if type(ctx) ~= 'table' then
+		error('Scholar Sublimation safety requires scheduler context')
+	end
+	if type(ctx.settings) ~= 'table' then
+		error('Scholar Sublimation safety requires scheduler settings')
+	end
+	if type(ctx.player) ~= 'table' then
+		error('Scholar Sublimation safety requires the player snapshot')
+	end
+	if type(proposals) ~= 'table' then
+		error('Scholar Sublimation safety requires the current proposal set')
+	end
+	local critical_defensive_present = false
+	local dangerous_local_pressure_present = player_has_doom(ctx.player)
+	for i = 1, #proposals do
+		local proposal = proposals[i]
+		if type(proposal) ~= 'table' then
+			error('Scholar Sublimation safety proposal must be a table')
+		end
+		if scheduler.p1_is_critical_defensive_proposal(ctx.settings, proposal) then
+			critical_defensive_present = true
+		end
+		if proposal.provider == 'charm_sleeper' then
+			dangerous_local_pressure_present = true
+		end
+	end
+	return {
+		confidence = 'confirmed',
+		model_key = require('uc_sch_sublimation').SAFETY_MODEL_KEY,
+		source = 'unified_scheduler:existing_critical_defense_doom_charm_signals',
+		critical_defensive_present = critical_defensive_present,
+		dangerous_local_pressure_present = dangerous_local_pressure_present,
+	}
+end
 scheduler.providers.sch_maintenance = require('uc_provider_sch_maintenance').new({
 	get_party_members = get_party_members,
 	resolve_spell_name = function(id)
@@ -7461,6 +7496,9 @@ scheduler.providers.sch_maintenance = require('uc_provider_sch_maintenance').new
 	get_action_result_catalog = require('uc_sch_action_results').production_catalog,
 	get_charge_catalog = require('uc_sch_charge_model').production_catalog,
 	get_area_mechanics = require('uc_sch_area_planner').production_mechanics,
+	action_ready = action_ready,
+	get_sublimation_safety = scheduler.sch_sublimation_safety,
+	get_sublimation_release_mechanics = require('uc_sch_sublimation').production_release_mechanics,
 	log = log_def_sched,
 })
 scheduler.providers.geo_maintenance = require('uc_geo_maintenance').new({

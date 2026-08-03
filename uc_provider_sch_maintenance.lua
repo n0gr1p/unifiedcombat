@@ -121,6 +121,15 @@ function M.new(deps)
 	)
 	local get_charge_catalog = require_function(deps.get_charge_catalog, 'deps.get_charge_catalog')
 	local get_area_mechanics = require_function(deps.get_area_mechanics, 'deps.get_area_mechanics')
+	local action_ready = require_function(deps.action_ready, 'deps.action_ready')
+	local get_sublimation_safety = require_function(
+		deps.get_sublimation_safety,
+		'deps.get_sublimation_safety'
+	)
+	local get_sublimation_release_mechanics = require_function(
+		deps.get_sublimation_release_mechanics,
+		'deps.get_sublimation_release_mechanics'
+	)
 	local log = require_function(deps.log, 'deps.log')
 	local runtime = deps.runtime or sch_runtime
 	local provider = {
@@ -196,6 +205,11 @@ function M.new(deps)
 			player = player,
 			party_members = observed_party_members,
 			area_mechanics = get_area_mechanics(),
+			action_ready = action_ready,
+			ability_recasts_present = ctx.ability_recasts_present,
+			ability_recasts = ctx.ability_recasts,
+			sublimation_safety = get_sublimation_safety(ctx, out),
+			sublimation_release_mechanics = get_sublimation_release_mechanics(),
 		}, runtime_snapshot)
 		provider.status = evaluation
 		provider.status.runtime = runtime_snapshot

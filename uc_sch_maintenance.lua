@@ -516,6 +516,15 @@ local function evaluate_sublimation(config, ctx, runtime_snapshot)
 		return result
 	end
 	local purpose = activation_requested and 'sublimation_activate' or 'sublimation_release'
+	local environment = require_table(
+		runtime_snapshot.environment,
+		'Scholar runtime environment'
+	)
+	if type(environment.party_generation) ~= 'number'
+		or environment.party_generation < 0
+		or environment.party_generation % 1 ~= 0 then
+		error('Scholar runtime party generation must be a non-negative integer')
+	end
 	result.plan = {
 		purpose = purpose,
 		domain = 'maintenance',
@@ -524,19 +533,18 @@ local function evaluate_sublimation(config, ctx, runtime_snapshot)
 		target_id = player.id,
 		target_name = player.name,
 		observed_state = observed,
-		party_generation = runtime_snapshot.environment.party_generation,
+		party_generation = environment.party_generation,
 		safety_model_key = result.safety.model_key,
 		safety_source = result.safety.source,
 		recast_id = readiness.recast_id,
 		observed_recast = readiness.observed_recast,
-		release_capacity_model_key = result.release_capacity
-			and result.release_capacity.model_key or '',
-		release_capacity_source = result.release_capacity
-			and result.release_capacity.source or '',
-		minimum_missing_mp = result.release_capacity
-			and result.release_capacity.minimum_missing_mp or 0,
 		missing_mp = max_mp - mp,
 	}
+	if result.release_capacity ~= nil then
+		result.plan.release_capacity_model_key = result.release_capacity.model_key
+		result.plan.release_capacity_source = result.release_capacity.source
+		result.plan.minimum_missing_mp = result.release_capacity.minimum_missing_mp
+	end
 	result.candidate = action(
 		'job_ability',
 		'Sublimation',
