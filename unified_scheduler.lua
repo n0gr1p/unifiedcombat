@@ -3976,6 +3976,7 @@ end
 local function p1_collect_proposals(ctx)
 	local out = {}
 	local s = ctx.settings or {}
+	local defensive_evidence_current = false
 	-- 5 Hz domains
 	if domain_ownership.is_enabled('combat') then
 		scheduler.providers.target_control.collect_target(ctx, out)
@@ -3992,6 +3993,7 @@ local function p1_collect_proposals(ctx)
 	-- 2 Hz defensive
 	if domain_ownership.is_enabled('defensive')
 		and ctx.now >= (tonumber(s._sched_next_defensive_at) or 0) then
+		defensive_evidence_current = true
 		scheduler.providers.charm_sleeper.collect(ctx, out)
 		scheduler.providers.sleep_waker.collect(ctx, out)
 		scheduler.providers.enemy_buff_removal.collect(ctx, out)
@@ -4019,6 +4021,7 @@ local function p1_collect_proposals(ctx)
 			or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0)) then
 		scheduler.providers.maintenance.collect(ctx, out)
 		scheduler.providers.summoner_maintenance.collect(ctx, out)
+		ctx.sch_defensive_evidence_current = defensive_evidence_current
 		scheduler.providers.sch_maintenance.collect(ctx, out)
 		scheduler.providers.geo_maintenance.collect(ctx, out)
 	end
@@ -7449,27 +7452,15 @@ function scheduler.sch_sublimation_safety(ctx, proposals)
 	if type(proposals) ~= 'table' then
 		error('Scholar Sublimation safety requires the current proposal set')
 	end
-	local critical_defensive_present = false
-	local dangerous_local_pressure_present = player_has_doom(ctx.player)
-	for i = 1, #proposals do
-		local proposal = proposals[i]
-		if type(proposal) ~= 'table' then
-			error('Scholar Sublimation safety proposal must be a table')
-		end
-		if scheduler.p1_is_critical_defensive_proposal(ctx.settings, proposal) then
-			critical_defensive_present = true
-		end
-		if proposal.provider == 'charm_sleeper' then
-			dangerous_local_pressure_present = true
-		end
-	end
-	return {
-		confidence = 'confirmed',
-		model_key = require('uc_sch_sublimation').SAFETY_MODEL_KEY,
+	return require('uc_sch_sublimation').scheduler_safety({
+		proposals = proposals,
+		player_doom_present = player_has_doom(ctx.player),
+		defensive_evidence_current = ctx.sch_defensive_evidence_current,
+		is_critical_defensive = function(proposal)
+			return scheduler.p1_is_critical_defensive_proposal(ctx.settings, proposal)
+		end,
 		source = 'unified_scheduler:existing_critical_defense_doom_charm_signals',
-		critical_defensive_present = critical_defensive_present,
-		dangerous_local_pressure_present = dangerous_local_pressure_present,
-	}
+	})
 end
 scheduler.providers.sch_maintenance = require('uc_provider_sch_maintenance').new({
 	get_party_members = get_party_members,

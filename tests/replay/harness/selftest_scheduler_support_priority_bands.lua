@@ -129,6 +129,20 @@ local function main()
 		"Scholar diagnostics must identify unchanged existing cure and status-removal proposals")
 	assert_contains(source, "source=existing_defensive",
 		"Scholar defensive comparison diagnostics must name the existing defensive source")
+	assert_contains(source, "function scheduler.sch_sublimation_safety(ctx, proposals)",
+		"Scholar Sublimation must derive safety from the current scheduler proposal set")
+	assert_contains(source, "ctx.sch_defensive_evidence_current = defensive_evidence_current",
+		"Scholar Sublimation safety must know whether defensive proposals were refreshed this tick")
+	assert_contains(source, "defensive_evidence_current = ctx.sch_defensive_evidence_current",
+		"Scholar Sublimation safety must fail closed on stale defensive proposal evidence")
+	assert_contains(source, "player_doom_present = player_has_doom(ctx.player)",
+		"Scholar Sublimation safety must reuse the existing Doom observation")
+	assert_contains(source, "return scheduler.p1_is_critical_defensive_proposal(ctx.settings, proposal)",
+		"Scholar Sublimation safety must reuse the established critical-cure classifier")
+	assert_contains(source, "get_sublimation_safety = scheduler.sch_sublimation_safety",
+		"Scholar provider must receive the scheduler-owned safety evidence boundary")
+	assert_contains(source, "get_sublimation_release_mechanics = require('uc_sch_sublimation').production_release_mechanics",
+		"Scholar provider must retain the explicit production-unknown release-capacity gate")
 	assert_before(source, "local function p1_collect_proposals(ctx)", "SCH_DEFENSIVE_PARITY provider=%s",
 		"Scholar defensive comparison diagnostics must remain inside scheduler proposal collection")
 	assert_before(source, "SCH_DEFENSIVE_PARITY provider=%s", "local sch_lane_policy = require('uc_sch_lane_policy')",

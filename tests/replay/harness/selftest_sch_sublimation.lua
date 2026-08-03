@@ -32,6 +32,46 @@ local function main()
 	})
 	assert_true(dangerous.critical_defensive_present, 'critical safety signal mismatch')
 	assert_true(dangerous.dangerous_local_pressure_present, 'local pressure signal mismatch')
+	local scheduler_safe = sublimation.scheduler_safety({
+		proposals = {
+			{ provider = 'defensive_internal', critical = true },
+			{ provider = 'charm_sleeper', critical = false },
+		},
+		player_doom_present = false,
+		defensive_evidence_current = true,
+		is_critical_defensive = function(proposal)
+			return proposal.critical
+		end,
+		source = 'fixture:scheduler_signal_scan',
+	})
+	assert_true(scheduler_safe.critical_defensive_present,
+		'scheduler critical defensive scan mismatch')
+	assert_true(scheduler_safe.dangerous_local_pressure_present,
+		'scheduler charm pressure scan mismatch')
+	local doom_safety = sublimation.scheduler_safety({
+		proposals = {},
+		player_doom_present = true,
+		defensive_evidence_current = true,
+		is_critical_defensive = function()
+			return false
+		end,
+		source = 'fixture:scheduler_signal_scan',
+	})
+	assert_true(doom_safety.dangerous_local_pressure_present,
+		'scheduler Doom pressure scan mismatch')
+	local stale_safety = sublimation.scheduler_safety({
+		proposals = {},
+		player_doom_present = false,
+		defensive_evidence_current = false,
+		is_critical_defensive = function()
+			return false
+		end,
+		source = 'fixture:scheduler_signal_scan',
+	})
+	assert_equal(stale_safety.confidence, 'unknown',
+		'stale defensive proposal evidence must remain unknown')
+	assert_equal(stale_safety.reason, 'scheduler_defensive_evidence_not_current',
+		'stale defensive proposal blocker mismatch')
 
 	local production = sublimation.evaluate_release_capacity({
 		mp = 500,

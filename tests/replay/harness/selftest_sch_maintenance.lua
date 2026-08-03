@@ -80,6 +80,34 @@ local function unknown_area_mechanics()
 	return require('uc_sch_area_planner').production_mechanics()
 end
 
+local function sublimation_safety(critical_defensive_present, dangerous_local_pressure_present)
+	return {
+		confidence = 'confirmed',
+		model_key = 'scheduler_support_safety|v1',
+		source = 'fixture:existing_scheduler_signals',
+		critical_defensive_present = critical_defensive_present,
+		dangerous_local_pressure_present = dangerous_local_pressure_present,
+	}
+end
+
+local function sublimation_context(test_player, recast, safety, release_mechanics, ready)
+	return {
+		now = 100,
+		player = test_player,
+		party_members = members(),
+		ability_recasts_present = true,
+		ability_recasts = { [228] = 0, [234] = recast },
+		sublimation_safety = safety,
+		sublimation_release_mechanics = release_mechanics,
+		action_ready = ready,
+		action_readiness_source = 'unified_scheduler:action_ready',
+	}
+end
+
+local function sublimation_ready()
+	return true, '', 'ja'
+end
+
 local function main()
 	package.loaded.uc_sch_maintenance = nil
 	package.loaded.uc_provider_sch_maintenance = nil
@@ -93,9 +121,46 @@ local function main()
 		now = 100,
 		player = player(),
 		party_members = members(),
+		ability_recasts_present = true,
+		ability_recasts = { [228] = 0 },
+		action_readiness_source = 'fixture:scheduler_action_ready',
+		action_ready = function(action_name, target_id)
+			assert_equal(action_name, 'Light Arts', 'Arts readiness action mismatch')
+			assert_equal(target_id, 1001, 'Arts readiness target mismatch')
+			return true, '', 'ja'
+		end,
 	}, runtime_snapshot('none', 'unknown', 0))
 	assert_equal(arts_result.candidate.action_name, 'Light Arts', 'missing Arts candidate mismatch')
 	assert_true(arts_result.candidate.observe_only, 'Arts candidate must remain observe-only')
+	assert_equal(arts_result.arts.plan.purpose, 'ensure_light_arts', 'Arts plan purpose mismatch')
+	assert_equal(arts_result.arts.plan.expected_buff_id, 358, 'Arts expected buff mismatch')
+	assert_equal(arts_result.arts.plan.recast_id, 228, 'Arts recast id mismatch')
+	assert_equal(arts_result.arts.plan.readiness_source, 'fixture:scheduler_action_ready',
+		'Arts readiness source mismatch')
+	assert_true(arts_result.candidate.plan == arts_result.arts.plan,
+		'Arts candidate must carry the exact plan')
+	local unknown_arts_result = maintenance.evaluate(arts_config, {
+		now = 100,
+		player = player(),
+		party_members = members(),
+	}, runtime_snapshot('unknown', 'unknown', 0))
+	assert_true(unknown_arts_result.candidate == nil,
+		'unknown Arts state must not authorize Light Arts')
+	assert_equal(unknown_arts_result.first_blocker, 'arts_state_unknown',
+		'unknown Arts blocker mismatch')
+	local arts_recast_result = maintenance.evaluate(arts_config, {
+		now = 100,
+		player = player(),
+		party_members = members(),
+		ability_recasts_present = true,
+		ability_recasts = { [228] = 12 },
+		action_readiness_source = 'fixture:scheduler_action_ready',
+		action_ready = function()
+			error('Light Arts action_ready must not run while recast is unavailable')
+		end,
+	}, runtime_snapshot('dark', 'unknown', 0))
+	assert_equal(arts_recast_result.first_blocker, 'arts_recast_unavailable',
+		'Light Arts recast blocker mismatch')
 
 	local storm_config = base_config()
 	storm_config.support.storms.enabled = true
@@ -120,10 +185,27 @@ local function main()
 		'storm duration model key mismatch')
 	assert_true(storm_result.candidate.plan == storm_result.storms.plan,
 		'storm candidate must carry the selected exact plan')
+	local unknown_arts_storm = maintenance.evaluate(storm_config, {
+		now = 100,
+		player = player(),
+		party_members = members(),
+	}, runtime_snapshot('unknown', 'unknown', 0))
+	assert_true(unknown_arts_storm.candidate == nil,
+		'unknown Arts state must suppress an otherwise actionable storm')
+	assert_equal(unknown_arts_storm.first_blocker, 'arts_state_unknown',
+		'unknown Arts must remain the first storm-plan blocker')
+	assert_equal(unknown_arts_storm.storms.plan.spell, 'Thunderstorm II',
+		'blocked Arts state must preserve downstream storm diagnostics')
 	local storm_without_arts = maintenance.evaluate(storm_config, {
 		now = 100,
 		player = player(),
 		party_members = members(),
+		ability_recasts_present = true,
+		ability_recasts = { [228] = 0 },
+		action_readiness_source = 'fixture:scheduler_action_ready',
+		action_ready = function()
+			return true, '', 'ja'
+		end,
 	}, runtime_snapshot('none', 'unknown', 0))
 	assert_equal(storm_without_arts.candidate.action_name, 'Light Arts',
 		'Light Arts must retain priority over an actionable storm')
@@ -184,6 +266,175 @@ local function main()
 		party_members = invalid_storm_members,
 	}, runtime_snapshot('light', 'unknown', 0))
 	assert_true(not invalid_storm_ok, 'storm party evidence must reject coerced HPP values')
+
+	local sublimation_config = base_config()
+	sublimation_config.sublimation.enabled = true
+	local activation_player = player()
+	activation_player.vitals.mpp = 80
+	activation_player.vitals.mp = 1200
+	local activation_snapshot = runtime_snapshot('light', 'unknown', 0)
+	activation_snapshot.sublimation.observed = 'none'
+	local activation_result = maintenance.evaluate(
+		sublimation_config,
+		sublimation_context(
+			activation_player,
+			0,
+			sublimation_safety(false, false),
+			require('uc_sch_sublimation').production_release_mechanics(),
+			sublimation_ready
+		),
+		activation_snapshot
+	)
+	assert_equal(activation_result.sublimation.state, 'actionable',
+		'Sublimation activation state mismatch')
+	assert_equal(activation_result.candidate.action_name, 'Sublimation',
+		'Sublimation activation candidate mismatch')
+	assert_equal(activation_result.sublimation.plan.purpose, 'sublimation_activate',
+		'Sublimation activation plan purpose mismatch')
+	assert_equal(activation_result.sublimation.plan.safety_source,
+		'fixture:existing_scheduler_signals', 'Sublimation safety evidence mismatch')
+	assert_equal(activation_result.sublimation.plan.observed_recast, 0,
+		'Sublimation activation recast evidence mismatch')
+	assert_equal(activation_result.sublimation.plan.readiness_source,
+		'unified_scheduler:action_ready', 'Sublimation readiness source mismatch')
+	assert_true(activation_result.candidate.observe_only,
+		'Sublimation activation candidate must remain observe-only')
+
+	local unsafe_activation = maintenance.evaluate(
+		sublimation_config,
+		sublimation_context(
+			activation_player,
+			0,
+			sublimation_safety(true, false),
+			require('uc_sch_sublimation').production_release_mechanics(),
+			sublimation_ready
+		),
+		activation_snapshot
+	)
+	assert_equal(unsafe_activation.sublimation.blocker, 'sublimation_critical_defensive_pending',
+		'critical defense must block Sublimation activation')
+	local pressured_activation = maintenance.evaluate(
+		sublimation_config,
+		sublimation_context(
+			activation_player,
+			0,
+			sublimation_safety(false, true),
+			require('uc_sch_sublimation').production_release_mechanics(),
+			sublimation_ready
+		),
+		activation_snapshot
+	)
+	assert_equal(pressured_activation.sublimation.blocker, 'sublimation_dangerous_local_pressure',
+		'hard emergency pressure must block Sublimation activation')
+	local recast_activation = maintenance.evaluate(
+		sublimation_config,
+		sublimation_context(
+			activation_player,
+			12,
+			sublimation_safety(false, false),
+			require('uc_sch_sublimation').production_release_mechanics(),
+			sublimation_ready
+		),
+		activation_snapshot
+	)
+	assert_equal(recast_activation.sublimation.blocker, 'sublimation_recast_unavailable',
+		'Sublimation recast blocker mismatch')
+	local unavailable_activation = maintenance.evaluate(
+		sublimation_config,
+		sublimation_context(
+			activation_player,
+			0,
+			sublimation_safety(false, false),
+			require('uc_sch_sublimation').production_release_mechanics(),
+			function()
+				return false, 'BLOCK_DEFENSIVE_JA_NOT_OWNED', 'ja'
+			end
+		),
+		activation_snapshot
+	)
+	assert_equal(unavailable_activation.sublimation.blocker,
+		'sublimation_action_unavailable:BLOCK_DEFENSIVE_JA_NOT_OWNED',
+		'unlearned Sublimation blocker mismatch')
+	local unknown_safety_context = sublimation_context(
+		activation_player,
+		0,
+		{
+			confidence = 'unknown',
+			reason = 'scheduler_safety_unavailable',
+		},
+		require('uc_sch_sublimation').production_release_mechanics(),
+		sublimation_ready
+	)
+	local unknown_safety_activation = maintenance.evaluate(
+		sublimation_config,
+		unknown_safety_context,
+		activation_snapshot
+	)
+	assert_equal(unknown_safety_activation.sublimation.blocker, 'scheduler_safety_unavailable',
+		'unknown Sublimation safety must block activation')
+
+	local release_player = player()
+	release_player.vitals.mpp = 40
+	release_player.vitals.mp = 600
+	local release_snapshot = runtime_snapshot('light', 'unknown', 0)
+	release_snapshot.sublimation.observed = 'complete'
+	local unknown_release = maintenance.evaluate(
+		sublimation_config,
+		sublimation_context(
+			release_player,
+			0,
+			sublimation_safety(false, false),
+			require('uc_sch_sublimation').production_release_mechanics(),
+			sublimation_ready
+		),
+		release_snapshot
+	)
+	assert_equal(unknown_release.sublimation.blocker,
+		'phase0_sublimation_release_capacity_unvalidated',
+		'unknown Sublimation release capacity must block')
+	local confirmed_release_mechanics = {
+		confidence = 'confirmed',
+		model_key = 'Sublimation|release_capacity',
+		source = 'fixture:validated_release_capacity',
+		minimum_missing_mp = 300,
+	}
+	local ready_release = maintenance.evaluate(
+		sublimation_config,
+		sublimation_context(
+			release_player,
+			0,
+			sublimation_safety(false, false),
+			confirmed_release_mechanics,
+			sublimation_ready
+		),
+		release_snapshot
+	)
+	assert_equal(ready_release.sublimation.state, 'actionable',
+		'Sublimation release state mismatch')
+	assert_equal(ready_release.sublimation.plan.purpose, 'sublimation_release',
+		'Sublimation release plan purpose mismatch')
+	assert_equal(ready_release.sublimation.plan.release_capacity_model_key,
+		'Sublimation|release_capacity', 'Sublimation release capacity model mismatch')
+	assert_equal(ready_release.sublimation.plan.missing_mp, 900,
+		'Sublimation release missing MP mismatch')
+
+	local arts_before_sublimation = runtime_snapshot('none', 'unknown', 0)
+	arts_before_sublimation.sublimation.observed = 'none'
+	local arts_priority_result = maintenance.evaluate(
+		sublimation_config,
+		sublimation_context(
+			activation_player,
+			0,
+			sublimation_safety(false, false),
+			require('uc_sch_sublimation').production_release_mechanics(),
+			sublimation_ready
+		),
+		arts_before_sublimation
+	)
+	assert_equal(arts_priority_result.candidate.action_name, 'Light Arts',
+		'Light Arts must retain priority over Sublimation activation')
+	assert_equal(arts_priority_result.sublimation.plan.purpose, 'sublimation_activate',
+		'Sublimation plan must remain visible while Arts has priority')
 
 	local regen_config = base_config()
 	regen_config.support.regen.enabled = true
@@ -313,6 +564,24 @@ local function main()
 				}
 			end
 			return unknown_area_mechanics()
+		end,
+		action_ready = function(action_name, target_id)
+			assert_true(action_name == 'Sublimation' or action_name == 'Light Arts',
+				'provider readiness action mismatch')
+			assert_equal(target_id, provider_player.id, 'provider readiness target mismatch')
+			return true, '', 'ja'
+		end,
+		get_sublimation_safety = function()
+			return {
+				confidence = 'confirmed',
+				model_key = 'scheduler_support_safety|v1',
+				source = 'fixture:provider_scheduler_safety',
+				critical_defensive_present = false,
+				dangerous_local_pressure_present = false,
+			}
+		end,
+		get_sublimation_release_mechanics = function()
+			return require('uc_sch_sublimation').production_release_mechanics()
 		end,
 		log = function(message)
 			logs[#logs + 1] = message
@@ -527,6 +796,68 @@ local function main()
 		1,
 		true
 	) ~= nil, 'provider status must expose the complete observe-only Regen plan')
+
+	provider_player.buffs = { 358 }
+	provider_player.vitals.mpp = 80
+	provider_player.vitals.mp = 1200
+	provider_player.vitals.max_mp = 1500
+	runtime.reset('observe_only_sublimation_activation', 259)
+	local sublimation_out = {}
+	provider.collect({
+		now = 260,
+		settings = { sch = sublimation_config },
+		player = provider_player,
+		engine_enabled = true,
+		maintenance_enabled = true,
+		ability_recasts_present = true,
+		ability_recasts = { [231] = 0, [234] = 0 },
+	}, sublimation_out)
+	local sublimation_status = provider.status_snapshot()
+	assert_equal(#sublimation_out, 0,
+		'ready observe-only Sublimation activation must emit zero proposals')
+	assert_equal(sublimation_status.candidate.action_name, 'Sublimation',
+		'provider Sublimation candidate mismatch')
+	assert_equal(sublimation_status.sublimation.plan.purpose, 'sublimation_activate',
+		'provider Sublimation plan purpose mismatch')
+	assert_equal(sublimation_status.sublimation.plan.safety_source,
+		'fixture:provider_scheduler_safety', 'provider Sublimation safety source mismatch')
+	assert_equal(sublimation_status.proposals_emitted, 0,
+		'provider ready Sublimation proposal count mismatch')
+	local sublimation_status_lines = provider.status_lines(260)
+	assert_true(sublimation_status_lines[8]:find(
+		'plan=sublimation_activate recast=234/0 readiness=unified_scheduler:action_ready',
+		1,
+		true
+	) ~= nil, 'provider status must expose the complete Sublimation activation plan')
+
+	provider_player.buffs = {}
+	runtime.reset('observe_only_light_arts', 269)
+	local arts_out = {}
+	provider.collect({
+		now = 270,
+		settings = { sch = arts_config },
+		player = provider_player,
+		engine_enabled = true,
+		maintenance_enabled = true,
+		ability_recasts_present = true,
+		ability_recasts = { [228] = 0, [231] = 0 },
+	}, arts_out)
+	local arts_status = provider.status_snapshot()
+	assert_equal(#arts_out, 0, 'ready observe-only Light Arts plan must emit zero proposals')
+	assert_equal(arts_status.candidate.action_name, 'Light Arts',
+		'provider Light Arts candidate mismatch')
+	assert_equal(arts_status.arts.plan.purpose, 'ensure_light_arts',
+		'provider Light Arts plan purpose mismatch')
+	assert_equal(arts_status.arts.plan.recast_id, 228,
+		'provider Light Arts recast id mismatch')
+	assert_equal(arts_status.proposals_emitted, 0,
+		'provider ready Light Arts proposal count mismatch')
+	local arts_status_lines = provider.status_lines(270)
+	assert_true(arts_status_lines[3]:find(
+		'plan=ensure_light_arts recast=228/0 readiness=unified_scheduler:action_ready',
+		1,
+		true
+	) ~= nil, 'provider status must expose the complete Light Arts plan')
 
 	print('selftest_sch_maintenance: OK')
 end

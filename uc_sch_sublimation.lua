@@ -27,6 +27,65 @@ local function require_finite_number(value, name)
 	return value
 end
 
+function M.scheduler_safety(input)
+	input = require_table(input, 'Scholar scheduler safety input')
+	local proposals = require_table(
+		input.proposals,
+		'Scholar scheduler safety proposals'
+	)
+	if type(input.is_critical_defensive) ~= 'function' then
+		error('Scholar scheduler safety critical classifier must be a function')
+	end
+	if type(input.player_doom_present) ~= 'boolean' then
+		error('Scholar scheduler safety Doom signal must be boolean')
+	end
+	if type(input.defensive_evidence_current) ~= 'boolean' then
+		error('Scholar scheduler defensive-evidence freshness must be boolean')
+	end
+	local source = require_non_empty_string(
+		input.source,
+		'Scholar scheduler safety source'
+	)
+	for key in pairs(proposals) do
+		if type(key) ~= 'number' or key < 1 or key > #proposals or key % 1 ~= 0 then
+			error('Scholar scheduler safety proposals must be a contiguous array')
+		end
+	end
+	for i = 1, #proposals do
+		if type(proposals[i]) ~= 'table' then
+			error('Scholar scheduler safety proposal must be a table')
+		end
+	end
+	if not input.defensive_evidence_current then
+		return {
+			confidence = 'unknown',
+			reason = 'scheduler_defensive_evidence_not_current',
+		}
+	end
+	local critical_defensive_present = false
+	local dangerous_local_pressure_present = input.player_doom_present
+	for i = 1, #proposals do
+		local proposal = proposals[i]
+		local critical = input.is_critical_defensive(proposal)
+		if type(critical) ~= 'boolean' then
+			error('Scholar scheduler safety critical classifier must return a boolean')
+		end
+		if critical then
+			critical_defensive_present = true
+		end
+		if proposal.provider == 'charm_sleeper' then
+			dangerous_local_pressure_present = true
+		end
+	end
+	return {
+		confidence = 'confirmed',
+		model_key = M.SAFETY_MODEL_KEY,
+		source = source,
+		critical_defensive_present = critical_defensive_present,
+		dangerous_local_pressure_present = dangerous_local_pressure_present,
+	}
+end
+
 function M.validate_safety(evidence)
 	evidence = require_table(evidence, 'Scholar Sublimation safety evidence')
 	if evidence.confidence == 'unknown' then

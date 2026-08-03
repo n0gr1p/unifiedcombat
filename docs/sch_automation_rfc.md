@@ -36,10 +36,13 @@ The following reviewable slices now exist:
 - observe-only Regen evaluation that distinguishes confirmed owned presence from unowned existing Regen and exposes the geometry blocker without assuming a radius, distance metric, or coordinate-freshness window;
 - a complete observe-only Regen ready path that, with injected confirmed charge and geometry evidence, selects the exact anchor and recipient set, builds the strict Accession + Perpetuance + Regen plan, exposes it in status, and still emits zero scheduler proposals;
 - deterministic observe-only Storm II assignment planning that validates exact party identity and buff evidence, treats matching but unowned Storm II presence as blocked rather than satisfied, exposes the exact target/recipient plan, preserves Arts-before-storm priority, and still emits zero scheduler proposals;
+- deterministic observe-only Sublimation activation planning that requires exact buff state, configured HP/MP thresholds, recast ID 234 readiness, learned JA readiness, and confirmed safety evidence derived from the scheduler's existing critical-cure, Doom, and charm signals; the provider exposes the complete plan while emitting zero proposals;
+- deterministic observe-only Light Arts planning that blocks contradictory/unknown Arts state, requires exact recast ID 228 and scheduler JA ownership/readiness, exposes the expected buff and evidence source, preserves downstream diagnostics without admitting downstream candidates, and emits zero scheduler proposals;
+- an evidence-keyed Sublimation release-capacity boundary that rejects invented thresholds and keeps production release explicitly blocked until a documented minimum-useful missing-MP rule is validated;
 - an isolated evidence-keyed duration model that records the exact spell/modifier model key, rejects mismatched or invented evidence, and leaves production ownership explicitly unknown with no claimed end time until field validation exists;
 - deterministic per-recipient ownership status lines exposing exact spell, presence, duration confidence/end time, evidence reason, model key, source, and last observation;
 - atomic successful-recipient recording that validates the complete unique numeric recipient set before committing any ownership, preventing malformed or duplicate target evidence from leaving partial state;
-- all 146 Lua replay suites, Lua 5.1 parsing for 115 runtime files, the WinForms build, and WinForms writer tests passing for the implemented slice.
+- all 147 Lua replay suites, Lua 5.1 parsing for 116 runtime files, the WinForms build, and WinForms writer tests passing for the implemented slice.
 
 Live Arts, Sublimation, storm, and multi-stratagem dispatch remain disabled. The lane and abort integration is safety infrastructure only; the observe-only provider cannot create an active sequence or emit an executable Scholar proposal. Phase 0 field gates for charge decoding, production action-result rules, area geometry/freshness, and exact duration still apply.
 
@@ -578,6 +581,8 @@ The complete system may support:
 
 Phase 1 implements only `support`. Unsupported modes are rejected when Scholar automation is enabled.
 
+The observe-only support planner now treats `light` and `addendum_white` as confirmed compatible states. `none`, `dark`, and `addendum_black` may produce one exact `ensure_light_arts` plan only when recast ID 228 is present and zero and the scheduler confirms the Light Arts JA is owned and usable. Contradictory `unknown` Arts state blocks with `arts_state_unknown`; it never authorizes Light Arts or a downstream Regen, storm, or Sublimation candidate. Downstream subsystem plans remain visible for diagnosis while Arts is actionable or blocked, but Light Arts retains admission priority. The provider remains diagnostic-only and emits no scheduler proposal.
+
 ### 10.2 Hysteresis
 
 Later hybrid modes require commitment windows to prevent Arts thrashing. The runtime owns `commit_until`; an individual provider opportunity may not flip Arts by itself.
@@ -684,6 +689,8 @@ Release requires:
 - no critical action or prepared sequence conflict.
 
 Unknown Sublimation state blocks activation and release until reconciled. Repeated release attempts without a state transition enter explicit backoff and diagnostics.
+
+The observe-only planner now produces a complete activation plan only after a defensive proposal set refreshed on the same scheduler tick proves no established critical cure is pending, the existing Doom/charm signals prove no hard local emergency, recast ID 234 is exactly zero, and the scheduler confirms that the local player owns and can currently use the Sublimation JA. A fast trace tick without refreshed defensive evidence reports `scheduler_defensive_evidence_not_current`; an empty stale proposal set is never interpreted as safe. Activation remains lower priority than Light Arts and all candidates remain diagnostic-only. Release planning additionally passes current and maximum MP through `uc_sch_sublimation.lua`; production mechanics deliberately report `phase0_sublimation_release_capacity_unvalidated`, so no release candidate is authorized until field evidence documents a minimum-useful missing-MP rule. Synthetic confirmed mechanics exercise the complete release-plan path offline.
 
 ### 12.2 Group Regen
 

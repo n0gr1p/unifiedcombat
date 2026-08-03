@@ -206,6 +206,7 @@ function M.new(deps)
 			party_members = observed_party_members,
 			area_mechanics = get_area_mechanics(),
 			action_ready = action_ready,
+			action_readiness_source = 'unified_scheduler:action_ready',
 			ability_recasts_present = ctx.ability_recasts_present,
 			ability_recasts = ctx.ability_recasts,
 			sublimation_safety = get_sublimation_safety(ctx, out),

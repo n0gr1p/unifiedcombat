@@ -33,6 +33,7 @@ local SELFTESTS = {
 	"tests/replay/harness/selftest_sch_charge_model.lua",
 	"tests/replay/harness/selftest_sch_diagnostics.lua",
 	"tests/replay/harness/selftest_sch_duration.lua",
+	"tests/replay/harness/selftest_sch_sublimation.lua",
 	"tests/replay/harness/selftest_sch_party.lua",
 	"tests/replay/harness/selftest_sch_lane_policy.lua",
     "tests/replay/harness/selftest_sch_runtime.lua",

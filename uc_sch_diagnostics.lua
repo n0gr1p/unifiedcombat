@@ -190,6 +190,7 @@ function M.status_lines(status, at)
 	local now = require_number(at, 'Scholar diagnostic status time')
 	local runtime = type(status.runtime) == 'table' and status.runtime or {}
 	local arts = type(runtime.arts) == 'table' and runtime.arts or {}
+	local arts_evaluation = type(status.arts) == 'table' and status.arts or {}
 	local charge = type(runtime.stratagem) == 'table' and runtime.stratagem or {}
 	local sequence = type(runtime.active_sequence) == 'table' and runtime.active_sequence or nil
 	local pending = type(runtime.pending) == 'table' and runtime.pending or nil
@@ -223,11 +224,17 @@ function M.status_lines(status, at)
 		display(runtime.environment and runtime.environment.player_hpp),
 		display_age(now, runtime.environment and runtime.environment.observed_at)
 	)
-	lines[#lines + 1] = ('UC SCH arts observed=%s desired=%s age_s=%s commit_until=%s sublimation_observed=%s sublimation_age_s=%s'):format(
+	lines[#lines + 1] = ('UC SCH arts observed=%s desired=%s age_s=%s commit_until=%s state=%s blocker=%s plan=%s recast=%s/%s readiness=%s sublimation_observed=%s sublimation_age_s=%s'):format(
 		display(arts.observed),
 		display(arts.desired),
 		display_age(now, arts.observed_at),
 		display(arts.commit_until),
+		display(arts_evaluation.state),
+		display(arts_evaluation.blocker),
+		display(arts_evaluation.plan and arts_evaluation.plan.purpose or 'none'),
+		display(arts_evaluation.plan and arts_evaluation.plan.recast_id or 'none'),
+		display(arts_evaluation.plan and arts_evaluation.plan.observed_recast or 'none'),
+		display(arts_evaluation.plan and arts_evaluation.plan.readiness_source or 'none'),
 		display(runtime.sublimation and runtime.sublimation.observed),
 		display_age(now, runtime.sublimation and runtime.sublimation.observed_at)
 	)
@@ -284,10 +291,19 @@ function M.status_lines(status, at)
 		display(storms.plan and storms.plan.duration_confidence or 'none'),
 		display(storms.plan and storms.plan.duration_model_key or 'none')
 	)
-	lines[#lines + 1] = ('UC SCH sublimation state=%s blocker=%s enabled=%s owned=%s unexpected=%s'):format(
+	lines[#lines + 1] = ('UC SCH sublimation state=%s blocker=%s enabled=%s plan=%s recast=%s/%s readiness=%s safety=%s/%s release_capacity=%s/%s missing_mp=%s owned=%s unexpected=%s'):format(
 		display(sublimation.state),
 		display(sublimation.blocker),
 		display(sublimation.enabled),
+		display(sublimation.plan and sublimation.plan.purpose or 'none'),
+		display(sublimation.plan and sublimation.plan.recast_id or 'none'),
+		display(sublimation.plan and sublimation.plan.observed_recast or 'none'),
+		display(sublimation.plan and sublimation.plan.readiness_source or 'none'),
+		display(sublimation.plan and sublimation.plan.safety_model_key or 'none'),
+		display(sublimation.plan and sublimation.plan.safety_source or 'none'),
+		display(sublimation.plan and sublimation.plan.release_capacity_model_key or 'none'),
+		display(sublimation.plan and sublimation.plan.minimum_missing_mp or 'none'),
+		display(sublimation.plan and sublimation.plan.missing_mp or 'none'),
 		owned_summary(runtime.owned_buffs),
 		number_list(runtime.unexpected_recipients)
 	)

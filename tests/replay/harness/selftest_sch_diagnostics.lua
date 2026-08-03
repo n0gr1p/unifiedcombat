@@ -67,6 +67,16 @@ local function status(runtime)
 		main_job_level = 99,
 		job_points_present = true,
 		job_points_spent = 2100,
+		arts = {
+			state = 'actionable',
+			blocker = '',
+			plan = {
+				purpose = 'ensure_light_arts',
+				recast_id = 228,
+				observed_recast = 0,
+				readiness_source = 'unified_scheduler:action_ready',
+			},
+		},
 		regen = {
 			state = 'blocked',
 			blocker = 'charge_confidence_unknown',
@@ -99,7 +109,22 @@ local function status(runtime)
 				},
 			},
 		},
-		sublimation = { enabled = true, state = 'none', blocker = '' },
+		sublimation = {
+			enabled = true,
+			state = 'actionable',
+			blocker = '',
+			plan = {
+				purpose = 'sublimation_release',
+				recast_id = 234,
+				observed_recast = 0,
+				readiness_source = 'unified_scheduler:action_ready',
+				safety_model_key = 'scheduler_support_safety|v1',
+				safety_source = 'fixture:existing_scheduler_signals',
+				release_capacity_model_key = 'Sublimation|release_capacity',
+				minimum_missing_mp = 300,
+				missing_mp = 900,
+			},
+		},
 		trace_armed = false,
 		trace_phase = 'idle',
 		last_trace = nil,
@@ -115,6 +140,9 @@ local function main()
 	assert_equal(#lines, 9, 'Scholar status line count mismatch')
 	assert_true(contains(lines, 'profile_generation=3'), 'profile generation missing from status')
 	assert_true(contains(lines, 'jp_spent=2100'), 'job-point context missing from status')
+	assert_true(contains(lines,
+		'state=actionable blocker=none plan=ensure_light_arts recast=228/0 readiness=unified_scheduler:action_ready'),
+		'Arts exact plan diagnostic missing')
 	assert_true(contains(lines, 'available=2 maximum=5 confidence=confirmed'), 'charge state missing from status')
 	assert_true(contains(lines, 'model=SCH|99|true|2100|231 source=fixture:diagnostic_charge_state'),
 		'charge model evidence missing from status')
@@ -126,6 +154,12 @@ local function main()
 		'storm exact plan diagnostic missing')
 	assert_true(contains(lines, 'duration=unknown/storm|Thunderstorm II|'),
 		'storm duration diagnostic missing')
+	assert_true(contains(lines,
+		'plan=sublimation_release recast=234/0 readiness=unified_scheduler:action_ready safety=scheduler_support_safety|v1/fixture:existing_scheduler_signals'),
+		'Sublimation plan safety diagnostic missing')
+	assert_true(contains(lines,
+		'release_capacity=Sublimation|release_capacity/300 missing_mp=900'),
+		'Sublimation release-capacity diagnostic missing')
 	local result_status = status(runtime)
 	result_status.last_action_result = {
 		action_name = 'Regen V',

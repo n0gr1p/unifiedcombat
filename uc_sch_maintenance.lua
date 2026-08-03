@@ -382,57 +382,161 @@ local function evaluate_storms(config, members, runtime_snapshot)
 	return result
 end
 
-local function sublimation_action_readiness(ctx, player)
-	if type(ctx.ability_recasts_present) ~= 'boolean' then
-		error('Scholar Sublimation ability_recasts_present must be a boolean')
+local function job_ability_readiness(ctx, player, ability)
+	if type(ability) ~= 'table'
+		or type(ability.name) ~= 'string' or ability.name == ''
+		or type(ability.recast_id) ~= 'number'
+		or ability.recast_id <= 0 or ability.recast_id % 1 ~= 0 then
+		error('Scholar JA readiness requires an exact ability identity')
 	end
-	if not ctx.ability_recasts_present then
-		return nil, 'sublimation_recast_state_unknown'
-	end
-	local recasts = require_table(
-		ctx.ability_recasts,
-		'Scholar Sublimation ability recasts'
-	)
-	local recast = recasts[capabilities.abilities.sublimation.recast_id]
-	if type(recast) ~= 'number' or recast < 0 then
-		error('Scholar Sublimation recast 234 must be a non-negative number')
-	end
-	if recast > 0 then
-		return {
-			recast_id = capabilities.abilities.sublimation.recast_id,
-			observed_recast = recast,
-		}, 'sublimation_recast_unavailable'
+	if type(player.id) ~= 'number' or player.id <= 0 or player.id % 1 ~= 0 then
+		error('Scholar JA readiness player id must be a positive integer')
 	end
 	local action_ready = require_function(
 		ctx.action_ready,
-		'Scholar Sublimation action_ready'
+		'Scholar JA action_ready'
 	)
-	local ready, reason, kind = action_ready('Sublimation', player.id)
+	if type(ctx.action_readiness_source) ~= 'string' or ctx.action_readiness_source == '' then
+		error('Scholar JA action readiness source must be a non-empty string')
+	end
+	if type(ctx.ability_recasts_present) ~= 'boolean' then
+		error('Scholar JA ability_recasts_present must be a boolean')
+	end
+	if not ctx.ability_recasts_present then
+		return {
+			recast_present = false,
+			recast_id = ability.recast_id,
+			observed_recast = nil,
+			source = ctx.action_readiness_source,
+		}, 'recast_state_unknown'
+	end
+	local recasts = require_table(
+		ctx.ability_recasts,
+		'Scholar JA ability recasts'
+	)
+	local recast = recasts[ability.recast_id]
+	if type(recast) ~= 'number' or recast < 0 then
+		error(('Scholar %s recast %d must be a non-negative number'):format(
+			ability.name,
+			ability.recast_id
+		))
+	end
+	if recast > 0 then
+		return {
+			recast_present = true,
+			recast_id = ability.recast_id,
+			observed_recast = recast,
+			source = ctx.action_readiness_source,
+		}, 'recast_unavailable'
+	end
+	local ready, reason, kind = action_ready(ability.name, player.id)
 	if type(ready) ~= 'boolean' then
-		error('Scholar Sublimation action_ready must return a boolean')
+		error('Scholar JA action_ready must return a boolean')
 	end
 	if type(reason) ~= 'string' then
-		error('Scholar Sublimation action_ready reason must be a string')
+		error('Scholar JA action_ready reason must be a string')
 	end
 	if kind ~= 'ja' then
-		error('Scholar Sublimation action_ready must classify Sublimation as a JA')
+		error('Scholar JA action_ready must classify the ability as a JA')
 	end
 	if not ready then
 		if reason == '' then
-			error('Scholar unavailable Sublimation action requires a reason')
+			error('Scholar unavailable JA requires a reason')
 		end
 		return {
-			recast_id = capabilities.abilities.sublimation.recast_id,
+			recast_present = true,
+			recast_id = ability.recast_id,
 			observed_recast = recast,
-		}, 'sublimation_action_unavailable:' .. reason
+			source = ctx.action_readiness_source,
+		}, 'action_unavailable:' .. reason
 	end
 	if reason ~= '' then
-		error('Scholar ready Sublimation action must not include a blocker')
+		error('Scholar ready JA must not include a blocker')
 	end
 	return {
-		recast_id = capabilities.abilities.sublimation.recast_id,
+		recast_present = true,
+		recast_id = ability.recast_id,
 		observed_recast = recast,
+		source = ctx.action_readiness_source,
 	}, ''
+end
+
+local function evaluate_arts(ctx, runtime_snapshot)
+	local observed = runtime_snapshot.arts.observed
+	local valid_states = {
+		unknown = true,
+		none = true,
+		light = true,
+		dark = true,
+		addendum_white = true,
+		addendum_black = true,
+	}
+	if valid_states[observed] ~= true then
+		error('Scholar observed Arts state is invalid')
+	end
+	local result = {
+		state = observed,
+		blocker = '',
+		candidate = nil,
+		plan = nil,
+		readiness = nil,
+	}
+	if observed == 'light' or observed == 'addendum_white' then
+		result.state = 'satisfied'
+		return result
+	end
+	if observed == 'unknown' then
+		result.state = 'blocked'
+		result.blocker = 'arts_state_unknown'
+		return result
+	end
+	local player = require_table(ctx.player, 'Scholar maintenance player')
+	local readiness, readiness_blocker = job_ability_readiness(
+		ctx,
+		player,
+		capabilities.abilities.light_arts
+	)
+	result.readiness = readiness
+	if readiness_blocker ~= '' then
+		result.state = 'blocked'
+		result.blocker = 'arts_' .. readiness_blocker
+		return result
+	end
+	local environment = require_table(
+		runtime_snapshot.environment,
+		'Scholar runtime environment'
+	)
+	if type(environment.party_generation) ~= 'number'
+		or environment.party_generation < 0
+		or environment.party_generation % 1 ~= 0 then
+		error('Scholar runtime party generation must be a non-negative integer')
+	end
+	result.plan = {
+		purpose = 'ensure_light_arts',
+		domain = 'maintenance',
+		action_type = 'job_ability',
+		action_name = 'Light Arts',
+		target_id = player.id,
+		target_name = player.name,
+		observed_art = observed,
+		desired_art = 'light',
+		expected_buff_id = capabilities.abilities.light_arts.buff_id,
+		party_generation = environment.party_generation,
+		recast_id = readiness.recast_id,
+		observed_recast = readiness.observed_recast,
+		readiness_source = readiness.source,
+	}
+	result.candidate = action(
+		'job_ability',
+		'Light Arts',
+		player.id,
+		player.name,
+		'sch_light_arts_missing',
+		'arts'
+	)
+	result.candidate.plan = result.plan
+	result.state = 'actionable'
+	return result
 end
 
 local function evaluate_sublimation(config, ctx, runtime_snapshot)
@@ -508,11 +612,15 @@ local function evaluate_sublimation(config, ctx, runtime_snapshot)
 			return result
 		end
 	end
-	local readiness, readiness_blocker = sublimation_action_readiness(ctx, player)
+	local readiness, readiness_blocker = job_ability_readiness(
+		ctx,
+		player,
+		capabilities.abilities.sublimation
+	)
 	result.readiness = readiness
 	if readiness_blocker ~= '' then
 		result.state = 'blocked'
-		result.blocker = readiness_blocker
+		result.blocker = 'sublimation_' .. readiness_blocker
 		return result
 	end
 	local purpose = activation_requested and 'sublimation_activate' or 'sublimation_release'
@@ -538,6 +646,7 @@ local function evaluate_sublimation(config, ctx, runtime_snapshot)
 		safety_source = result.safety.source,
 		recast_id = readiness.recast_id,
 		observed_recast = readiness.observed_recast,
+		readiness_source = readiness.source,
 		missing_mp = max_mp - mp,
 	}
 	if result.release_capacity ~= nil then
@@ -600,18 +709,8 @@ function M.evaluate(config, ctx, runtime_snapshot)
 		return result
 	end
 	local members = require_table(ctx.party_members, 'Scholar maintenance party members')
-	local arts_observed = runtime_snapshot.arts.observed
-	if arts_observed ~= 'light' and arts_observed ~= 'addendum_white' then
-		result.arts.state = 'actionable'
-		result.candidate = action(
-			'job_ability',
-			'Light Arts',
-			ctx.player.id,
-			ctx.player.name,
-			'sch_light_arts_missing',
-			'arts'
-		)
-	end
+	result.arts = evaluate_arts(ctx, runtime_snapshot)
+	result.candidate = result.arts.candidate
 	result.regen = evaluate_regen(
 		config.support.regen,
 		members,
@@ -622,13 +721,14 @@ function M.evaluate(config, ctx, runtime_snapshot)
 	)
 	result.storms = evaluate_storms(config.support.storms, members, runtime_snapshot)
 	result.sublimation = evaluate_sublimation(config.sublimation, ctx, runtime_snapshot)
-	if result.candidate == nil and result.regen.candidate ~= nil then
+	local arts_confirmed = result.arts.state == 'satisfied'
+	if arts_confirmed and result.candidate == nil and result.regen.candidate ~= nil then
 		result.candidate = result.regen.candidate
 	end
-	if result.candidate == nil and result.storms.candidate ~= nil then
+	if arts_confirmed and result.candidate == nil and result.storms.candidate ~= nil then
 		result.candidate = result.storms.candidate
 	end
-	if result.candidate == nil and result.sublimation.candidate ~= nil then
+	if arts_confirmed and result.candidate == nil and result.sublimation.candidate ~= nil then
 		result.candidate = result.sublimation.candidate
 	end
 	local blockers = {
