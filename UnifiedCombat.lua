@@ -394,6 +394,20 @@ local function uc_new_settings_defaults()
 		summoner_rage_target_hpp_above = 50,
 		summoner_rage_pet_tp_above_enabled = false,
 		summoner_rage_pet_tp_above = 2000,
+		sch_enabled = false,
+		sch_arts_minimum_commit_s = 12,
+		sch_arts_emergency_off_art_casts = true,
+		sch_regen_enabled = false,
+		sch_regen_minimum_coverage = 4,
+		sch_regen_refresh_before_s = 25,
+		sch_storms_enabled = false,
+		sch_storm_assignments = '',
+		sch_storms_refresh_before_s = 30,
+		sch_sublimation_enabled = false,
+		sch_sublimation_activate_when_mpp_at_least = 70,
+		sch_sublimation_release_when_mpp_at_most = 45,
+		sch_sublimation_release_when_complete = false,
+		sch_sublimation_minimum_hpp_to_activate = 75,
 		path_recording = false,
 		path_follow_enabled = false,
 		path_file_name = '',
@@ -614,6 +628,12 @@ local PROFILE_KEYS = {
 	'summoner_rage_action', 'summoner_rage_usage',
 	'summoner_rage_target_hpp_above_enabled', 'summoner_rage_target_hpp_above',
 	'summoner_rage_pet_tp_above_enabled', 'summoner_rage_pet_tp_above',
+	'sch_enabled', 'sch_arts_minimum_commit_s', 'sch_arts_emergency_off_art_casts',
+	'sch_regen_enabled', 'sch_regen_minimum_coverage', 'sch_regen_refresh_before_s',
+	'sch_storms_enabled', 'sch_storm_assignments', 'sch_storms_refresh_before_s',
+	'sch_sublimation_enabled', 'sch_sublimation_activate_when_mpp_at_least',
+	'sch_sublimation_release_when_mpp_at_most', 'sch_sublimation_release_when_complete',
+	'sch_sublimation_minimum_hpp_to_activate',
 	'path_recording', 'path_follow_enabled', 'path_file_name', 'path_route_type', 'path_distance_to_start', 'path_points', 'path_party_gate_yalms', 'path_resume_index_window', 'path_hunter_targets', 'path_hunter_max_z_delta', 'path_hunter_max_target_range', 'path_hunter_claim_timeout_s', 'path_hunter_ignore_cooldown_s', 'path_pull_action_type', 'path_pull_action_name',
 	'autotarget', 'spam', 'closer', 'manual', 'prime', 'static', 'spacing', 'face',
 	'spacing_band_min', 'spacing_band_max', 'spacing_use_prediction', 'spacing_lookahead_s',
@@ -2333,6 +2353,7 @@ windower.register_event('job change', function(job, lvl)
 	local jname = res.jobs:with('id', job).english_short
 	uc_nyzul_runtime.reset('job_change')
 	require('uc_brd_maintenance').reset('job_change')
+	require('uc_sch_runtime').reset('job_change', uc_now_s())
 	uc_reset_reaction_runtime('job_change')
 	uc_encounter_runtime.reset('job_change')
 	require('uc_lilith_easy_encounter').reset('job_change')
@@ -2349,6 +2370,7 @@ windower.register_event('zone change', function()
 	uc_camp_pull_registry.reset('zone_change')
 	uc_nyzul_runtime.reset('zone_change')
 	require('uc_brd_maintenance').reset('zone_change')
+	require('uc_sch_runtime').reset('zone_change', uc_now_s())
 	uc_reset_reaction_runtime('zone_change')
 	uc_encounter_runtime.reset('zone_change')
 	require('uc_lilith_easy_encounter').reset('zone_change')
@@ -2364,6 +2386,8 @@ windower.register_event('unload', function()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('unload')
 	uc_nyzul_runtime.reset('unload')
+	require('uc_brd_maintenance').reset('unload')
+	require('uc_sch_runtime').reset('unload', uc_now_s())
 	uc_reset_reaction_runtime('unload')
 	uc_encounter_runtime.reset('unload')
 	require('uc_lilith_easy_encounter').reset('unload')
@@ -2387,6 +2411,7 @@ windower.register_event('logout', function()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('logout')
 	uc_nyzul_runtime.reset('logout')
+	require('uc_sch_runtime').reset('logout', uc_now_s())
 	uc_reset_reaction_runtime('logout')
 	uc_encounter_runtime.reset('logout')
 	require('uc_lilith_easy_encounter').reset('logout')
@@ -2438,6 +2463,7 @@ windower.register_event('addon command', function(...)
 		return
 	elseif a == 'stop' then
 		Start_Engine = false
+		require('uc_sch_runtime').reset('engine_stop', uc_now_s())
 		uc_encounter_runtime.reset('engine_stop')
 		require('uc_lilith_easy_encounter').reset('engine_stop')
 		require('uc_formation_runtime').reset('engine_stop')
@@ -2659,6 +2685,32 @@ windower.register_event('addon command', function(...)
 			return
 		end
 		windower.add_to_chat(ok and 207 or 167, 'UC Nyzul: ' .. tostring(message))
+		return
+	elseif a == 'sch' then
+		local scheduler = require('unified_scheduler')
+		local sub = args[2] and tostring(args[2]):lower() or 'status'
+		if sub == 'status' then
+			local lines = scheduler.sch_maintenance_status_lines()
+			for i = 1, #lines do
+				windower.add_to_chat(207, lines[i])
+			end
+			return
+		elseif sub == 'trace' and tostring(args[3] or ''):lower() == 'once' then
+			local ok, message = scheduler.sch_maintenance_trace_once()
+			windower.add_to_chat(ok and 207 or 167, 'UC SCH: ' .. tostring(message))
+			return
+		elseif sub == 'trace' and tostring(args[3] or ''):lower() == 'show' then
+			local lines = scheduler.sch_maintenance_trace_lines()
+			if type(lines) ~= 'table' then
+				windower.add_to_chat(207, 'UC SCH: no transaction trace is available.')
+				return
+			end
+			for i = 1, #lines do
+				windower.add_to_chat(207, lines[i])
+			end
+			return
+		end
+		windower.add_to_chat(207, '//uc sch status|trace once|trace show')
 		return
 	elseif a == 'geo' then
 		local scheduler = require('unified_scheduler')

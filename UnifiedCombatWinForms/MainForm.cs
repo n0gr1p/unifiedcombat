@@ -90,6 +90,7 @@ public partial class MainForm : Form
         RefreshActivityList();
         EnsureGeoTabVisibility(false);
         EnsureSummonerTabVisibility(false);
+        EnsureScholarTabVisibility(false);
         _mirror = new MirrorDuplex(_cts.Token);
         _mirror.SnapshotOrErrorLineReceived += OnMirrorLine;
         _mirror.Start();

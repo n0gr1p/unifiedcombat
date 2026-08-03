@@ -464,6 +464,7 @@ public partial class MainForm
             ResetGeoPullUi();
             EnsureGeoTabVisibility(false);
             EnsureSummonerTabVisibility(false);
+            EnsureScholarTabVisibility(false);
             _tankEnmityList.Items.Clear();
             _tankEnmityRows = [];
             _tankEnmityTypeCombo.SelectedItem = "ja";
@@ -498,6 +499,21 @@ public partial class MainForm
             _summonerRagePetTpAboveEnabled.Checked = false;
             _summonerRagePetTpAbove.Value = 2000;
             UpdateSummonerUiState();
+            _schEnabled.Checked = false;
+            _schArtsMinimumCommit.Value = 12;
+            _schArtsEmergencyOffArtCasts.Checked = true;
+            _schRegenEnabled.Checked = false;
+            _schRegenMinimumCoverage.Value = 4;
+            _schRegenRefreshBefore.Value = 25;
+            _schStormsEnabled.Checked = false;
+            _schStormAssignments.Text = "";
+            _schStormsRefreshBefore.Value = 30;
+            _schSublimationEnabled.Checked = false;
+            _schSublimationActivateMpp.Value = 70;
+            _schSublimationReleaseMpp.Value = 45;
+            _schSublimationReleaseComplete.Checked = false;
+            _schSublimationMinimumHpp.Value = 75;
+            UpdateScholarUiState();
             _reactionEnabled.Checked = false;
             _reactionRules.Clear();
             _reactionRuleList.Items.Clear();
@@ -855,8 +871,11 @@ public partial class MainForm
             var summonerVisible = string.Equals(mainJob, "SMN", StringComparison.Ordinal)
                 || string.Equals(subJob, "SMN", StringComparison.Ordinal);
             EnsureSummonerTabVisibility(summonerVisible);
+            var scholarVisible = string.Equals(mainJob, "SCH", StringComparison.Ordinal);
+            EnsureScholarTabVisibility(scholarVisible);
             ApplyGeoPullFromSnapshot(s);
             ApplySummonerFromSnapshot(s);
+            ApplyScholarFromSnapshot(s);
             _reactionEnabled.Checked = SessionStateHelper.GetBool(s, "reaction_enabled", false);
             ApplyReactionRulesFromSnapshot(s);
 
@@ -1701,6 +1720,11 @@ public partial class MainForm
         EnsureJobTabVisibility(_tabSummoner, shouldShow);
     }
 
+    private void EnsureScholarTabVisibility(bool shouldShow)
+    {
+        EnsureJobTabVisibility(_tabScholar, shouldShow);
+    }
+
     private void EnsureJobTabVisibility(TabPage tab, bool shouldShow)
     {
         if (_settingsTabs is null || tab is null)
@@ -2029,6 +2053,174 @@ public partial class MainForm
             _summonerValidation.ForeColor = Color.DarkGreen;
             _summonerValidation.Text = $"Summoner configuration is valid for {avatarName}.";
         }
+    }
+
+    private static bool ReadOptionalScholarBool(JsonElement snapshot, string key, bool defaultValue)
+    {
+        if (!snapshot.TryGetProperty(key, out var value))
+        {
+            return defaultValue;
+        }
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => throw new InvalidDataException($"{key} must be boolean."),
+        };
+    }
+
+    private static decimal ReadOptionalScholarInteger(
+        JsonElement snapshot,
+        string key,
+        int defaultValue,
+        int minimum,
+        int maximum
+    )
+    {
+        if (!snapshot.TryGetProperty(key, out var value))
+        {
+            return defaultValue;
+        }
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var number))
+        {
+            throw new InvalidDataException($"{key} must be an integer.");
+        }
+        if (number < minimum || number > maximum)
+        {
+            throw new InvalidDataException($"{key} must be from {minimum} to {maximum}.");
+        }
+        return number;
+    }
+
+    private void ApplyScholarFromSnapshot(JsonElement snapshot)
+    {
+        _schEnabled.Checked = ReadOptionalScholarBool(snapshot, "sch_enabled", false);
+        _schArtsMinimumCommit.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_arts_minimum_commit_s",
+            12,
+            0,
+            120
+        );
+        _schArtsEmergencyOffArtCasts.Checked = ReadOptionalScholarBool(
+            snapshot,
+            "sch_arts_emergency_off_art_casts",
+            true
+        );
+        _schRegenEnabled.Checked = ReadOptionalScholarBool(snapshot, "sch_regen_enabled", false);
+        _schRegenMinimumCoverage.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_regen_minimum_coverage",
+            4,
+            1,
+            6
+        );
+        _schRegenRefreshBefore.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_regen_refresh_before_s",
+            25,
+            1,
+            300
+        );
+        _schStormsEnabled.Checked = ReadOptionalScholarBool(snapshot, "sch_storms_enabled", false);
+        _schStormAssignments.Text = SessionStateHelper.GetString(snapshot, "sch_storm_assignments");
+        _schStormsRefreshBefore.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_storms_refresh_before_s",
+            30,
+            1,
+            300
+        );
+        _schSublimationEnabled.Checked = ReadOptionalScholarBool(
+            snapshot,
+            "sch_sublimation_enabled",
+            false
+        );
+        _schSublimationActivateMpp.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_sublimation_activate_when_mpp_at_least",
+            70,
+            0,
+            100
+        );
+        _schSublimationReleaseMpp.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_sublimation_release_when_mpp_at_most",
+            45,
+            0,
+            100
+        );
+        _schSublimationReleaseComplete.Checked = ReadOptionalScholarBool(
+            snapshot,
+            "sch_sublimation_release_when_complete",
+            false
+        );
+        _schSublimationMinimumHpp.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_sublimation_minimum_hpp_to_activate",
+            75,
+            1,
+            100
+        );
+        UpdateScholarUiState();
+    }
+
+    private void OnScholarSettingChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        UpdateScholarUiState();
+        var sid = RequireSelectedSid();
+        if (sid is not null)
+        {
+            CaptureWorkingProfileFromUi(sid);
+        }
+    }
+
+    private void UpdateScholarUiState()
+    {
+        var enabled = _schEnabled.Checked;
+        _schArtsMinimumCommit.Enabled = enabled;
+        _schArtsEmergencyOffArtCasts.Enabled = enabled;
+        _schRegenEnabled.Enabled = enabled;
+        _schRegenMinimumCoverage.Enabled = enabled && _schRegenEnabled.Checked;
+        _schRegenRefreshBefore.Enabled = enabled && _schRegenEnabled.Checked;
+        _schStormsEnabled.Enabled = enabled;
+        _schStormAssignments.Enabled = enabled && _schStormsEnabled.Checked;
+        _schStormsRefreshBefore.Enabled = enabled && _schStormsEnabled.Checked;
+        _schSublimationEnabled.Enabled = enabled;
+        _schSublimationActivateMpp.Enabled = enabled && _schSublimationEnabled.Checked;
+        _schSublimationReleaseMpp.Enabled = enabled && _schSublimationEnabled.Checked;
+        _schSublimationReleaseComplete.Enabled = enabled && _schSublimationEnabled.Checked;
+        _schSublimationMinimumHpp.Enabled = enabled && _schSublimationEnabled.Checked;
+
+        if (!enabled)
+        {
+            _schValidation.ForeColor = SystemColors.GrayText;
+            _schValidation.Text = "Scholar automation is disabled.";
+            return;
+        }
+        if (_schSublimationReleaseMpp.Value >= _schSublimationActivateMpp.Value)
+        {
+            _schValidation.ForeColor = Color.Firebrick;
+            _schValidation.Text = "Sublimation release MPP must be lower than activation MPP.";
+            return;
+        }
+        try
+        {
+            StructuredProfileV2Writer.ParseScholarStormAssignments(_schStormAssignments.Text.Trim());
+        }
+        catch (InvalidDataException ex)
+        {
+            _schValidation.ForeColor = Color.Firebrick;
+            _schValidation.Text = ex.Message;
+            return;
+        }
+        _schValidation.ForeColor = Color.DarkGreen;
+        _schValidation.Text =
+            "Scholar Phase 1 configuration is valid. Runtime execution remains observe-only until field-evidence gates pass.";
     }
 
     private void EnsureBrdTabVisibility(bool shouldShow)

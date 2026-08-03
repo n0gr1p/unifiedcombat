@@ -22,6 +22,7 @@ internal sealed record StructuredProfileV2WriteResult(
 
 internal sealed record TargetedBuffEntry(string Character, string Buff);
 internal sealed record BardTargetedSongSet(IReadOnlyList<string> Recipients, IReadOnlyList<string> PrioritySongs);
+internal sealed record ScholarStormAssignment(string Spell, IReadOnlyList<string> Targets);
 
 internal interface IStructuredProfileV2FileSystem
 {
@@ -215,6 +216,11 @@ internal static class StructuredProfileV2Writer
         if (summoner is not null)
         {
             config.Add("summoner", summoner);
+        }
+        var scholar = BuildScholar(flatProfile, identity);
+        if (scholar is not null)
+        {
+            config.Add("sch", scholar);
         }
         config.Add("debug", BuildDebug(flatProfile));
         config.Add("ownership", BuildOwnership(flatProfile));
@@ -1170,6 +1176,256 @@ internal static class StructuredProfileV2Writer
                             )
                     )
             );
+    }
+
+    private static bool HasConfiguredScholar(JsonObject flatProfile)
+    {
+        return ReadOptionalBool(flatProfile, "sch_enabled", false)
+            || ReadOptionalBool(flatProfile, "sch_regen_enabled", false)
+            || ReadOptionalBool(flatProfile, "sch_storms_enabled", false)
+            || ReadOptionalBool(flatProfile, "sch_sublimation_enabled", false)
+            || ReadString(flatProfile, "sch_storm_assignments", "") != ""
+            || ReadBoundedInt(flatProfile, "sch_arts_minimum_commit_s", 12, 0, 120) != 12
+            || !ReadOptionalBool(flatProfile, "sch_arts_emergency_off_art_casts", true)
+            || ReadBoundedInt(flatProfile, "sch_regen_minimum_coverage", 4, 1, 6) != 4
+            || ReadBoundedInt(flatProfile, "sch_regen_refresh_before_s", 25, 1, 300) != 25
+            || ReadBoundedInt(flatProfile, "sch_storms_refresh_before_s", 30, 1, 300) != 30
+            || ReadBoundedInt(flatProfile, "sch_sublimation_activate_when_mpp_at_least", 70, 0, 100) != 70
+            || ReadBoundedInt(flatProfile, "sch_sublimation_release_when_mpp_at_most", 45, 0, 100) != 45
+            || ReadOptionalBool(flatProfile, "sch_sublimation_release_when_complete", false)
+            || ReadBoundedInt(flatProfile, "sch_sublimation_minimum_hpp_to_activate", 75, 1, 100) != 75;
+    }
+
+    private static StructuredProfileNode? BuildScholar(
+        JsonObject flatProfile,
+        StructuredProfileV2Identity identity
+    )
+    {
+        var isScholarProfile = string.Equals(
+            SafeJobComponent(identity.MainJob),
+            "SCH",
+            StringComparison.Ordinal
+        );
+        if (!isScholarProfile)
+        {
+            if (HasConfiguredScholar(flatProfile))
+            {
+                throw new InvalidDataException("Scholar automation configuration requires main job SCH.");
+            }
+            return null;
+        }
+
+        var sublimationActivate = ReadBoundedInt(
+            flatProfile,
+            "sch_sublimation_activate_when_mpp_at_least",
+            70,
+            0,
+            100
+        );
+        var sublimationRelease = ReadBoundedInt(
+            flatProfile,
+            "sch_sublimation_release_when_mpp_at_most",
+            45,
+            0,
+            100
+        );
+        if (sublimationRelease >= sublimationActivate)
+        {
+            throw new InvalidDataException(
+                "Scholar Sublimation release MPP must be less than activation MPP."
+            );
+        }
+
+        return new StructuredProfileNode()
+            .Add("enabled", ReadOptionalBool(flatProfile, "sch_enabled", false))
+            .Add("mode", "support")
+            .Add(
+                "arts",
+                new StructuredProfileNode()
+                    .Add("default", "light")
+                    .Add(
+                        "minimum_commit_s",
+                        ReadBoundedInt(flatProfile, "sch_arts_minimum_commit_s", 12, 0, 120)
+                    )
+                    .Add(
+                        "emergency_off_art_casts",
+                        ReadOptionalBool(flatProfile, "sch_arts_emergency_off_art_casts", true)
+                    )
+            )
+            .Add(
+                "sublimation",
+                new StructuredProfileNode()
+                    .Add("enabled", ReadOptionalBool(flatProfile, "sch_sublimation_enabled", false))
+                    .Add("activate_when_mpp_at_least", sublimationActivate)
+                    .Add("release_when_mpp_at_most", sublimationRelease)
+                    .Add(
+                        "release_when_complete",
+                        ReadOptionalBool(flatProfile, "sch_sublimation_release_when_complete", false)
+                    )
+                    .Add(
+                        "minimum_hpp_to_activate",
+                        ReadBoundedInt(
+                            flatProfile,
+                            "sch_sublimation_minimum_hpp_to_activate",
+                            75,
+                            1,
+                            100
+                        )
+                    )
+            )
+            .Add(
+                "support",
+                new StructuredProfileNode()
+                    .Add(
+                        "regen",
+                        new StructuredProfileNode()
+                            .Add("enabled", ReadOptionalBool(flatProfile, "sch_regen_enabled", false))
+                            .Add("spell", "Regen V")
+                            .Add("recipients", new List<object?> { "party" })
+                            .Add("stratagems", new List<object?> { "Accession", "Perpetuance" })
+                            .Add(
+                                "minimum_coverage",
+                                ReadBoundedInt(flatProfile, "sch_regen_minimum_coverage", 4, 1, 6)
+                            )
+                            .Add(
+                                "refresh_before_s",
+                                ReadBoundedInt(flatProfile, "sch_regen_refresh_before_s", 25, 1, 300)
+                            )
+                            .Add("unknown_existing_policy", "wait_for_clear")
+                    )
+                    .Add(
+                        "storms",
+                        new StructuredProfileNode()
+                            .Add("enabled", ReadOptionalBool(flatProfile, "sch_storms_enabled", false))
+                            .Add(
+                                "assignments",
+                                BuildScholarStormAssignments(
+                                    ReadString(flatProfile, "sch_storm_assignments", "")
+                                )
+                            )
+                            .Add(
+                                "refresh_before_s",
+                                ReadBoundedInt(flatProfile, "sch_storms_refresh_before_s", 30, 1, 300)
+                            )
+                            .Add("unknown_existing_policy", "wait_for_clear")
+                    )
+                    .Add(
+                        "embrava",
+                        new StructuredProfileNode()
+                            .Add("enabled", false)
+                            .Add("manual_arm_required", true)
+                    )
+            )
+            .Add(
+                "defensive",
+                new StructuredProfileNode()
+                    .Add(
+                        "accession_cure",
+                        new StructuredProfileNode()
+                            .Add("enabled", false)
+                            .Add("minimum_members", 3)
+                            .Add("member_hpp_at_most", 75)
+                            .Add("minimum_total_missing_hp", 2500)
+                    )
+                    .Add(
+                        "accession_status_removal",
+                        new StructuredProfileNode()
+                            .Add("enabled", false)
+                            .Add("minimum_members", 2)
+                    )
+                    .Add(
+                        "rapture",
+                        new StructuredProfileNode()
+                            .Add("enabled", false)
+                            .Add("minimum_missing_hp", 1800)
+                    )
+                    .Add(
+                        "penury",
+                        new StructuredProfileNode()
+                            .Add("enabled", false)
+                            .Add("maximum_mpp", 45)
+                    )
+            )
+            .Add(
+                "offense",
+                new StructuredProfileNode()
+                    .Add(
+                        "magic_burst",
+                        new StructuredProfileNode()
+                            .Add("enabled", false)
+                            .Add("minimum_mpp", 35)
+                            .Add("minimum_target_hpp", 10)
+                            .Add("spells", EmptyList())
+                    )
+                    .Add(
+                        "skillchain",
+                        new StructuredProfileNode()
+                            .Add("enabled", false)
+                            .Add("allow_party_close", false)
+                            .Add("plans", EmptyList())
+                    )
+            );
+    }
+
+    internal static List<ScholarStormAssignment> ParseScholarStormAssignments(string value)
+    {
+        var assignments = new List<ScholarStormAssignment>();
+        var assignedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rawEntry in value.Split('|', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var entry = rawEntry.Trim();
+            var separatorIndex = entry.IndexOf(':');
+            if (separatorIndex <= 0 || separatorIndex >= entry.Length - 1)
+            {
+                throw new InvalidDataException(
+                    $"Scholar storm assignment must be Spell:Target,Target: {entry}"
+                );
+            }
+            var spell = entry[..separatorIndex].Trim();
+            if (!ScholarCapabilities.StormNames.Contains(spell, StringComparer.Ordinal))
+            {
+                throw new InvalidDataException($"Unsupported Scholar storm spell: {spell}");
+            }
+            var targets = entry[(separatorIndex + 1)..]
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (targets.Length == 0)
+            {
+                throw new InvalidDataException($"Scholar storm assignment requires a target: {entry}");
+            }
+            if (targets.Distinct(StringComparer.OrdinalIgnoreCase).Count() != targets.Length)
+            {
+                throw new InvalidDataException($"Scholar storm assignment repeats a target: {entry}");
+            }
+            foreach (var target in targets)
+            {
+                if (!assignedTargets.Add(target))
+                {
+                    throw new InvalidDataException(
+                        $"Scholar storm target appears more than once: {target}"
+                    );
+                }
+            }
+            assignments.Add(new ScholarStormAssignment(spell, targets));
+        }
+        if (!string.IsNullOrWhiteSpace(value) && assignments.Count == 0)
+        {
+            throw new InvalidDataException("Scholar storm assignments contain no valid entries.");
+        }
+        return assignments;
+    }
+
+    private static List<object?> BuildScholarStormAssignments(string value)
+    {
+        var list = new List<object?>();
+        foreach (var assignment in ParseScholarStormAssignments(value))
+        {
+            list.Add(
+                new StructuredProfileNode()
+                    .Add("spell", assignment.Spell)
+                    .Add("targets", assignment.Targets.Cast<object?>().ToList())
+            );
+        }
+        return list;
     }
 
     private static StructuredProfileNode BuildDebug(JsonObject flatProfile)

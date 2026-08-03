@@ -1276,6 +1276,47 @@ function scheduler.apply_brd_maintenance_lane_movement(reason, at)
 	return true
 end
 
+function scheduler.apply_sch_lane_movement(reason, at)
+	if type(reason) ~= 'string' or reason == '' then
+		error('Scholar lane movement hold requires a non-empty reason')
+	end
+	if type(at) ~= 'number' then
+		error('Scholar lane movement hold requires a numeric time')
+	end
+	local current_owner = rawget(_G, 'UC_MOVEMENT_OWNER')
+	local current_lock_until = rawget(_G, 'UC_MOVEMENT_LOCK_UNTIL')
+	if current_owner == 'scheduler_sch'
+		and type(current_lock_until) == 'number'
+		and current_lock_until > at then
+		_G.UC_MOVEMENT_LOCK_UNTIL = at + 0.6
+		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
+		_G.UC_MOVEMENT_BLOCK_REASON = 'SCH_LANE:' .. reason
+		return true
+	end
+	local intent = {
+		kind = 'run_stop',
+		source = 'unified_scheduler:sch_lane_movement_hold',
+		meta = {
+			reason = 'SCH_LANE_MOVEMENT_HOLD',
+			lane_reason = reason,
+		},
+	}
+	local dispatcher = require('uc_scheduler_dispatcher')
+	require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
+		dispatcher = dispatcher,
+		run = windower.ffxi.run,
+		intent = intent,
+	})
+	_G.UC_MOVEMENT_OWNER = 'scheduler_sch'
+	_G.UC_MOVEMENT_LOCK_UNTIL = at + 0.6
+	_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
+	_G.UC_MOVEMENT_BLOCK_REASON = 'SCH_LANE:' .. reason
+	scheduler.action_timeline_log('SCH_MOVEMENT_HOLD', {
+		reason = reason,
+	}, 'sch_movement_hold:' .. reason, 0.25)
+	return true
+end
+
 function scheduler.apply_cast_movement_hold(reason, at)
 	local now_value = tonumber(at) or now_s()
 	local block_reason = tostring(reason or 'MOVE_COORD_CASTING_ACTION')
@@ -1629,6 +1670,19 @@ local function try_doom_water_emergency(settings)
 		return true, 'BLOCK_DOOM_WATER_HOLD'
 	end
 	doom_last_item_at = now
+	local sch_lane = require('uc_sch_runtime').lane_status()
+	if sch_lane.reserved then
+		local preempted, preempt_reason = require('uc_sch_runtime').preempt(
+			'doom_emergency_preemption',
+			now
+		)
+		if preempted or preempt_reason ~= 'doom_emergency_preemption' then
+			error('Scholar Doom preemption did not abort the active sequence')
+		end
+		log_def_sched(('SCH_LANE_PREEMPT emergency=doom lane=%s'):format(
+			tostring(sch_lane.class)
+		))
+	end
 	local doom_holy_water_command = 'input /item "Holy Water" <me>'
 	local intent = {
 		kind = 'send_command',
@@ -3895,6 +3949,8 @@ local function p1_build_ctx(settings)
 	if ctx.ability_recasts_present then
 		ctx.ability_recasts = ability_recasts
 	end
+	ctx.engine_enabled = rawget(_G, 'Start_Engine') == true
+	ctx.maintenance_enabled = domain_ownership.is_enabled('maintenance')
 	return ctx
 end
 
@@ -3952,12 +4008,18 @@ local function p1_collect_proposals(ctx)
 	local brd_provider_active = maintenance_enabled
 		and main_job ~= 'COR'
 		and (main_job == 'BRD' or sub_job == 'BRD')
+	local sch_fast_tick_active = maintenance_enabled
+		and main_job == 'SCH'
+		and (require('uc_sch_runtime').requires_fast_tick()
+			or scheduler.providers.sch_maintenance.trace_active())
 	local camp_journey_active = scheduler.providers.camp_puller.active()
 	if maintenance_enabled
 		and not camp_journey_active
-		and (brd_provider_active or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0)) then
+		and (brd_provider_active or sch_fast_tick_active
+			or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0)) then
 		scheduler.providers.maintenance.collect(ctx, out)
 		scheduler.providers.summoner_maintenance.collect(ctx, out)
+		scheduler.providers.sch_maintenance.collect(ctx, out)
 		scheduler.providers.geo_maintenance.collect(ctx, out)
 	end
 	if camp_journey_active then
@@ -4001,6 +4063,58 @@ local function p1_collect_proposals(ctx)
 					))
 					table.remove(out, i)
 				end
+			end
+		end
+	end
+	local sch_lane = require('uc_sch_runtime').lane_status()
+	if main_job == 'SCH' and type(s.sch) == 'table' and s.sch.enabled == true then
+		for i = 1, #out do
+			local proposal = out[i]
+			local provider = tostring(proposal and proposal.provider or '')
+			local detail = type(proposal and proposal.detail) == 'table' and proposal.detail or nil
+			local defensive_type = detail and tostring(detail.def_action_type or '') or ''
+			if (provider == 'defensive_internal' or provider == 'defensive_healbot')
+				and (defensive_type == 'cure' or defensive_type == 'debuff') then
+				log_def_sched(('SCH_DEFENSIVE_PARITY provider=%s type=%s action="%s" target="%s" target_id=%d band=%d lane=%s source=existing_defensive'):format(
+					provider,
+					defensive_type,
+					tostring(proposal.action_name or ''),
+					tostring(proposal.target_name or ''),
+					tonumber(proposal.target_id) or 0,
+					tonumber(proposal.priority_band) or 0,
+					tostring(sch_lane.class)
+				))
+			end
+		end
+	end
+	if sch_lane.reserved then
+		local sch_lane_policy = require('uc_sch_lane_policy')
+		for i = #out, 1, -1 do
+			local proposal = out[i]
+			local provider = tostring(proposal and proposal.provider or '')
+			local decision = sch_lane_policy.decide(
+				sch_lane,
+				proposal,
+				scheduler.p1_is_critical_defensive_proposal(ctx.settings, proposal),
+				provider == 'charm_sleeper'
+			)
+			if not decision.allowed then
+				log_def_sched(('SCH_LANE_HOLD action="%s" provider=%s type=%s lane=%s reason=%s'):format(
+					tostring(proposal.action_name or ''),
+					provider,
+					tostring(proposal.action_type or ''),
+					tostring(sch_lane.class),
+					decision.reason
+				))
+				table.remove(out, i)
+			elseif decision.preempt then
+				proposal._sch_lane_preempt_reason = decision.reason
+				log_def_sched(('SCH_LANE_PREEMPT_ELIGIBLE action="%s" provider=%s lane=%s reason=%s'):format(
+					tostring(proposal.action_name or ''),
+					provider,
+					tostring(sch_lane.class),
+					decision.reason
+				))
 			end
 		end
 	end
@@ -6218,6 +6332,28 @@ function scheduler.dispatch_selected_plan(settings)
 	if cast_movement_blocked then
 		return true, cast_movement_reason
 	end
+	local sch_preempt_reason = selected._sch_lane_preempt_reason
+	if sch_preempt_reason ~= nil then
+		if type(sch_preempt_reason) ~= 'string' or sch_preempt_reason == '' then
+			error('Scholar lane preemption marker must be a non-empty string')
+		end
+		local sch_lane = require('uc_sch_runtime').lane_status()
+		if sch_lane.reserved then
+			local preempted, preempt_reason = require('uc_sch_runtime').preempt(
+				sch_preempt_reason,
+				now_s()
+			)
+			if preempted or preempt_reason ~= sch_preempt_reason then
+				error('Scholar selected-action preemption did not abort the active sequence')
+			end
+			log_def_sched(('SCH_LANE_PREEMPT_DISPATCH action="%s" provider=%s lane=%s reason=%s'):format(
+				tostring(selected.action_name or ''),
+				tostring(selected.provider or ''),
+				tostring(sch_lane.class),
+				sch_preempt_reason
+			))
+		end
+	end
 	local provider = tostring(selected.provider or '')
 	if provider == 'target_control' then
 		if not domain_ownership.is_enabled('combat') then
@@ -6298,6 +6434,13 @@ local function try_charm_sleeper_emergency(settings, ctx)
 	scheduler.phase1.last_plan = plan
 	_G.UC_SCHED_P1_SELECTED_PROVIDER = tostring(selected.provider or '')
 	_G.UC_SCHED_P1_SELECTED_FAMILY = tostring(selected.family_id or '')
+	local sch_lane = require('uc_sch_runtime').lane_status()
+	if sch_lane.reserved then
+		selected._sch_lane_preempt_reason = 'charm_sleeper_preemption'
+		log_def_sched(('SCH_LANE_PREEMPT_ELIGIBLE emergency=charm_sleeper lane=%s'):format(
+			tostring(sch_lane.class)
+		))
+	end
 	local acted, reason = scheduler.dispatch_selected_plan(settings)
 	if acted then
 		return true, reason
@@ -6379,6 +6522,10 @@ function scheduler.process_tick(cadence)
 	if not maintenance_domain_enabled and scheduler.providers.geo_maintenance.runtime_active() then
 		scheduler.providers.geo_maintenance.reset('GEO_MAINTENANCE_DOMAIN_DISABLED')
 	end
+	if not maintenance_domain_enabled
+		and require('uc_sch_runtime').snapshot().active_sequence ~= nil then
+		require('uc_sch_runtime').cancel('maintenance_domain_disabled', now_s(), 0)
+	end
 	local camp_lane_reserved = combat_domain_enabled and scheduler.providers.camp_puller.active()
 	if defensive_domain_enabled then
 		local charm_blocked, charm_reason = try_charm_sleeper_emergency(s, get_tick_ctx())
@@ -6413,7 +6560,9 @@ function scheduler.process_tick(cadence)
 	if maintenance_domain_enabled then
 		brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
 	end
-	if not brd_lane_reserved and not camp_lane_reserved then
+	local sch_lane = require('uc_sch_runtime').lane_status()
+	local sch_lane_holds = require('uc_sch_lane_policy').holds_movement_and_targeting(sch_lane)
+	if not brd_lane_reserved and not camp_lane_reserved and not sch_lane_holds then
 		local target_ctx = nil
 		if combat_domain_enabled and type(rawget(_G, 'UC_REACTION_LOCK')) ~= 'table' then
 			target_ctx = get_tick_ctx()
@@ -6427,6 +6576,9 @@ function scheduler.process_tick(cadence)
 	elseif brd_lane_reserved and not camp_lane_reserved then
 		scheduler.apply_brd_maintenance_lane_movement(brd_lane_reason, now_s())
 		_G.UC_TARGET_BLOCK_REASON = 'BRD_LANE:' .. tostring(brd_lane_reason or '')
+	elseif sch_lane_holds and not camp_lane_reserved then
+		scheduler.apply_sch_lane_movement(sch_lane.reason, now_s())
+		_G.UC_TARGET_BLOCK_REASON = 'SCH_LANE:' .. sch_lane.reason
 	elseif camp_lane_reserved then
 		_G.UC_TARGET_BLOCK_REASON = 'CAMP_PULL_ACTION_LANE'
 	end
@@ -6443,13 +6595,18 @@ function scheduler.process_tick(cadence)
 	if maintenance_domain_enabled then
 		brd_lane_reserved, brd_lane_reason = require('uc_brd_maintenance').action_lane_status()
 	end
+	sch_lane = require('uc_sch_runtime').lane_status()
+	sch_lane_holds = require('uc_sch_lane_policy').holds_movement_and_targeting(sch_lane)
 	camp_lane_reserved = combat_domain_enabled and scheduler.providers.camp_puller.active()
 	local move_acted, move_reason = false, ''
-	if camp_lane_reserved or not brd_lane_reserved then
+	if camp_lane_reserved or (not brd_lane_reserved and not sch_lane_holds) then
 		move_acted, move_reason = run_movement_coordinator_tick()
-	else
+	elseif brd_lane_reserved then
 		scheduler.apply_brd_maintenance_lane_movement(brd_lane_reason, now_s())
 		_G.UC_MOVEMENT_BLOCK_REASON = 'BRD_LANE:' .. tostring(brd_lane_reason or '')
+	elseif sch_lane_holds then
+		scheduler.apply_sch_lane_movement(sch_lane.reason, now_s())
+		_G.UC_MOVEMENT_BLOCK_REASON = 'SCH_LANE:' .. sch_lane.reason
 	end
 	if p1_acted then
 		if move_acted then
@@ -6469,6 +6626,10 @@ function scheduler.process_tick(cadence)
 	if brd_lane_reserved then
 		_G.UC_LAST_SCHED_ACTION = '[p1]brd_lane_hold'
 		return true, 'BLOCK_BRD_ACTION_LANE:' .. tostring(brd_lane_reason or '')
+	end
+	if sch_lane_holds then
+		_G.UC_LAST_SCHED_ACTION = '[p1]sch_lane_hold'
+		return true, 'BLOCK_SCH_ACTION_LANE:' .. sch_lane.reason
 	end
 	return false, nil
 end
@@ -6523,6 +6684,7 @@ function scheduler.on_incoming_chunk(id, data)
 		_G.UC_SMN_PET_COMBAT_STATUS = nil
 		_G.UC_SMN_MAINTENANCE_STATUS = nil
 		require('uc_brd_maintenance').reset('zone_change')
+		require('uc_sch_runtime').reset('zone_change_packet', now_s())
 		scheduler.providers.geo_maintenance.reset('GEO_ZONE_CHANGE')
 		if scheduler.providers.camp_puller.active() then
 			p1_build_pull_executor().stop({
@@ -6650,6 +6812,9 @@ function scheduler.on_action(act)
 		)
 		p1_apply_pet_command_event(pet_event)
 		local _, brd_action_event = require('uc_brd_maintenance').on_action(act, player_id, observed_at)
+		if player_id > 0 then
+			scheduler.providers.sch_maintenance.observe_action(act, player_id, observed_at)
+		end
 		if brd_action_event == 'pianissimo_confirmed' then
 			action_mark_packet_end({
 				message_id = tonumber(act.category) or 0,
@@ -6984,6 +7149,7 @@ function scheduler.on_action_message(msg)
 	local message_id = tonumber(msg and msg.message_id) or 0
 	local message_param = tonumber(msg and msg.param_1) or tonumber(msg and msg.param) or 0
 	local now = now_s()
+	scheduler.providers.sch_maintenance.observe_action_message(msg, my_id, now)
 	local pet_event = pet_command_coordinator.observe_action_message(
 		scheduler.pet_command_state,
 		msg,
@@ -7132,6 +7298,8 @@ function scheduler.get_debug_overlay()
 			return domain_ownership.is_enabled('maintenance')
 		elseif p == 'maintenance_summoner' then
 			return domain_ownership.is_enabled('maintenance')
+		elseif p == 'maintenance_sch' then
+			return domain_ownership.is_enabled('maintenance')
 		elseif p == 'maintenance_geo' then
 			return domain_ownership.is_enabled('maintenance')
 		elseif p == 'pet_combat' then
@@ -7154,6 +7322,41 @@ function scheduler.geo_maintenance_status()
 	return scheduler.providers.geo_maintenance.status_snapshot()
 end
 
+function scheduler.sch_maintenance_status()
+	return scheduler.providers.sch_maintenance.status_snapshot()
+end
+
+function scheduler.sch_maintenance_status_lines()
+	return scheduler.providers.sch_maintenance.status_lines(now_s())
+end
+
+function scheduler.sch_maintenance_trace_once()
+	local player = windower.ffxi.get_player()
+	if type(player) ~= 'table' or tostring(player.main_job or '') ~= 'SCH' then
+		return false, 'Scholar trace requires SCH as the current main job.'
+	end
+	if rawget(_G, 'Start_Engine') ~= true then
+		return false, 'Scholar trace requires the UnifiedCombat engine to be running.'
+	end
+	if not domain_ownership.is_enabled('maintenance') then
+		return false, 'Scholar trace requires the maintenance domain to be enabled.'
+	end
+	return scheduler.providers.sch_maintenance.arm_trace_once(now_s())
+end
+
+function scheduler.sch_maintenance_trace_snapshot()
+	return scheduler.providers.sch_maintenance.trace_snapshot()
+end
+
+function scheduler.sch_maintenance_trace_lines()
+	local trace = scheduler.sch_maintenance_trace_snapshot()
+	local record = type(trace.active) == 'table' and trace.active or trace.last
+	if type(record) ~= 'table' then
+		return nil
+	end
+	return require('uc_sch_diagnostics').trace_lines(record)
+end
+
 function scheduler.geo_maintenance_reseed()
 	return scheduler.providers.geo_maintenance.reseed()
 end
@@ -7170,6 +7373,7 @@ function scheduler.reset_runtime_locks()
 	scheduler_locks.reset_runtime_locks(_G, action_state)
 	scheduler.release_reaction_movement(rawget(_G, 'UC_REACTION_LOCK'), 'REACTION_SCHEDULER_LOCK_RESET')
 	require('uc_reaction_runtime').reset('scheduler_lock_reset')
+	require('uc_sch_runtime').reset('scheduler_lock_reset', now_s())
 	_G.UC_REACTION_LOCK = nil
 	_G.UC_CAST_MOVEMENT_SETTLE_UNTIL = nil
 	_G.UC_SCHED_CAST_LOCAL_ACTOR = nil
@@ -7230,6 +7434,33 @@ scheduler.providers.summoner_maintenance = require('uc_smn_maintenance').new({
 	end,
 	player_is_moving = smn_player_is_moving,
 	get_ja_resource = get_ja_resource,
+	log = log_def_sched,
+})
+scheduler.providers.sch_maintenance = require('uc_provider_sch_maintenance').new({
+	get_party_members = get_party_members,
+	resolve_spell_name = function(id)
+		local spell = res.spells[id]
+		if spell == nil then
+			return nil
+		end
+		if type(spell.en) ~= 'string' or spell.en == '' then
+			error('Scholar spell resource is missing its English name')
+		end
+		return spell.en
+	end,
+	resolve_ability_name = function(id)
+		local ability = res.job_abilities[id]
+		if ability == nil then
+			return nil
+		end
+		if type(ability.en) ~= 'string' or ability.en == '' then
+			error('Scholar job ability resource is missing its English name')
+		end
+		return ability.en
+	end,
+	get_action_result_catalog = require('uc_sch_action_results').production_catalog,
+	get_charge_catalog = require('uc_sch_charge_model').production_catalog,
+	get_area_mechanics = require('uc_sch_area_planner').production_mechanics,
 	log = log_def_sched,
 })
 scheduler.providers.geo_maintenance = require('uc_geo_maintenance').new({

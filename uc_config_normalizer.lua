@@ -1,4 +1,5 @@
 local M = {}
+local uc_sch_config = require('uc_sch_config')
 
 local CURRENT_CANONICAL_CONFIG_VERSION = 1
 
@@ -1155,6 +1156,7 @@ local function default_config(meta)
                 },
             },
         },
+        sch = uc_sch_config.default_config(),
         debug = {
             enabled = false,
             combat_sched = false,
@@ -2540,6 +2542,18 @@ local function normalize_summoner(source, config)
     end
 end
 
+local function normalize_sch(source, config)
+    local nested = get_path(source, { 'sch' })
+    if nested == nil then
+        return
+    end
+    local copied, validation = uc_sch_config.copy_validated(nested, config.profile)
+    if validation.valid ~= true then
+        error('Scholar configuration validation failed')
+    end
+    config.sch = copied
+end
+
 local function normalize_reactions(source, config)
     local reactions = config.reactions
     local nested = get_path(source, { 'reactions' })
@@ -2617,6 +2631,7 @@ function M.normalize(settings, meta)
     normalize_spells(source, config)
     normalize_maintenance(source, config)
     normalize_summoner(source, config)
+    normalize_sch(source, config)
     normalize_debug(source, config)
     normalize_ownership(source, config)
     normalize_legacy(source, config)

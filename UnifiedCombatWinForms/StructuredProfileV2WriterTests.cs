@@ -61,6 +61,12 @@ internal static class StructuredProfileV2WriterTests
             TestSummonerConfiguredRoundTripShape();
             TestSummonerPreservesIncompatibleSelections();
             TestSummonerUiOfflineContract();
+            TestNonScholarOmitsUnconfiguredScholar();
+            TestNonScholarRejectsConfiguredScholar();
+            TestScholarDisabledShape();
+            TestScholarConfiguredRoundTripShape();
+            TestScholarStormAssignmentValidation();
+            TestScholarUiOfflineContract();
             TestSerializeReactionRules();
             TestRejectInvalidRunAwayDistance();
             TestDisabledEmptyReactionsAreOmitted();
@@ -1251,6 +1257,131 @@ internal static class StructuredProfileV2WriterTests
         var handlers = logic[start..end];
         AssertContains(handlers, "CaptureWorkingProfileFromUi", "Summoner edits must update local working state");
         AssertNotContains(handlers, "Forward(", "Summoner durable controls must not require a live addon connection");
+    }
+
+    private static void TestNonScholarOmitsUnconfiguredScholar()
+    {
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            BuildSampleFlatProfile(),
+            new StructuredProfileV2Identity("Redrogue", "PLD", "SCH")
+        );
+        AssertNotContains(content, "sch = {", "non-SCH main profile must omit default Scholar config");
+    }
+
+    private static void TestNonScholarRejectsConfiguredScholar()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["sch_enabled"] = true;
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Redrogue", "PLD", "SCH")
+            ),
+            "configured Scholar automation must require SCH main job"
+        );
+    }
+
+    private static void TestScholarDisabledShape()
+    {
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            BuildSampleFlatProfile(),
+            new StructuredProfileV2Identity("Redrogue", "SCH", "RDM")
+        );
+        AssertContains(content, "sch = {", "SCH profile must include the durable Scholar domain");
+        AssertContains(content, "mode = \"support\"", "Scholar support mode default missing");
+        AssertContains(content, "default = \"light\"", "Scholar Light Arts default missing");
+        AssertContains(content, "spell = \"Regen V\"", "Scholar exact Regen spell missing");
+        AssertContains(content, "\"Accession\"", "Scholar Accession policy missing");
+        AssertContains(content, "\"Perpetuance\"", "Scholar Perpetuance policy missing");
+        AssertContains(content, "manual_arm_required = true", "Scholar Embrava safety gate missing");
+        AssertContains(content, "allow_party_close = false", "deferred skillchain policy must remain disabled");
+    }
+
+    private static void TestScholarConfiguredRoundTripShape()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["sch_enabled"] = true;
+        flat["sch_arts_minimum_commit_s"] = 20;
+        flat["sch_arts_emergency_off_art_casts"] = false;
+        flat["sch_regen_enabled"] = true;
+        flat["sch_regen_minimum_coverage"] = 5;
+        flat["sch_regen_refresh_before_s"] = 30;
+        flat["sch_storms_enabled"] = true;
+        flat["sch_storm_assignments"] = "Sandstorm II:Tank,Healer|Hailstorm II:Wizard";
+        flat["sch_storms_refresh_before_s"] = 40;
+        flat["sch_sublimation_enabled"] = true;
+        flat["sch_sublimation_activate_when_mpp_at_least"] = 80;
+        flat["sch_sublimation_release_when_mpp_at_most"] = 35;
+        flat["sch_sublimation_release_when_complete"] = true;
+        flat["sch_sublimation_minimum_hpp_to_activate"] = 85;
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "SCH", "RDM")
+        );
+        AssertContains(content, "minimum_commit_s = 20", "Scholar Arts commitment must serialize");
+        AssertContains(content, "emergency_off_art_casts = false", "Scholar off-Art policy must serialize");
+        AssertContains(content, "minimum_coverage = 5", "Scholar Regen coverage must serialize");
+        AssertContains(content, "spell = \"Sandstorm II\"", "Scholar storm assignment spell missing");
+        AssertContains(content, "\"Tank\"", "Scholar storm target missing");
+        AssertContains(content, "release_when_complete = true", "Scholar Sublimation release policy missing");
+        AssertContains(content, "minimum_hpp_to_activate = 85", "Scholar Sublimation HPP gate missing");
+    }
+
+    private static void TestScholarStormAssignmentValidation()
+    {
+        var assignments = StructuredProfileV2Writer.ParseScholarStormAssignments(
+            "Sandstorm II:Tank,Healer|Hailstorm II:Wizard"
+        );
+        AssertEqual(assignments.Count, 2, "Scholar storm assignment count mismatch");
+        AssertEqual(assignments[0].Targets.Count, 2, "Scholar first assignment target count mismatch");
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.ParseScholarStormAssignments("Sandstorm:Tank"),
+            "base-tier storm must be rejected"
+        );
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.ParseScholarStormAssignments(
+                "Sandstorm II:Tank|Hailstorm II:tank"
+            ),
+            "Scholar storm targets must be globally unique"
+        );
+
+        var conflicting = BuildSampleFlatProfile();
+        conflicting["sch_sublimation_activate_when_mpp_at_least"] = 45;
+        conflicting["sch_sublimation_release_when_mpp_at_most"] = 45;
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                conflicting,
+                new StructuredProfileV2Identity("Redrogue", "SCH", "RDM")
+            ),
+            "Scholar Sublimation threshold conflict must fail"
+        );
+    }
+
+    private static void TestScholarUiOfflineContract()
+    {
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        AssertContains(ui, "new TabPage(\"SCH\")", "Scholar tab must be available offline");
+        AssertContains(ui, "Sandstorm II:Tank,Healer", "Scholar storm assignment format must be visible");
+        AssertContains(store, "[\"sch_enabled\"] = _schEnabled.Checked", "Scholar enabled state must be captured");
+        AssertContains(store, "[\"sch_storm_assignments\"]", "Scholar storm assignments must be captured");
+        AssertContains(logic, "string.Equals(mainJob, \"SCH\"", "Scholar tab requires SCH main job");
+        AssertContains(logic, "ApplyScholarFromSnapshot(s);", "Scholar settings must restore from local state");
+        AssertContains(logic, "Runtime execution remains observe-only", "Scholar field gate must remain visible");
+        AssertContains(
+            ReadRepoFile("UnifiedCombatWinForms", "MainForm.cs"),
+            "EnsureScholarTabVisibility(false)",
+            "Scholar tab must start hidden"
+        );
+
+        var start = logic.IndexOf("private static bool ReadOptionalScholarBool", StringComparison.Ordinal);
+        var end = logic.IndexOf("private void EnsureBrdTabVisibility", start, StringComparison.Ordinal);
+        AssertTrue(start >= 0 && end > start, "Scholar UI handler source range missing");
+        var handlers = logic[start..end];
+        AssertContains(handlers, "CaptureWorkingProfileFromUi", "Scholar edits must update local working state");
+        AssertNotContains(handlers, "Forward(", "Scholar durable controls must not require a live addon connection");
     }
 
     private static void TestSerializeReactionRules()
