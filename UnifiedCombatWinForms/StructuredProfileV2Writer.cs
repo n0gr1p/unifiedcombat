@@ -775,6 +775,7 @@ internal static class StructuredProfileV2Writer
             || ReadBool(flatProfile, "summoner_avatar_favor", false)
             || ReadBool(flatProfile, "summoner_ward_enabled", false)
             || ReadString(flatProfile, "summoner_ward_action", "") != ""
+			|| ReadString(flatProfile, "summoner_ward_actions", "") != ""
             || ReadBool(flatProfile, "summoner_engage_on_combat_start", false)
             || ReadBool(flatProfile, "summoner_rage_enabled", false)
             || ReadOptionalBool(flatProfile, "summoner_rage_target_hpp_above_enabled", false)
@@ -796,6 +797,21 @@ internal static class StructuredProfileV2Writer
         {
             return null;
         }
+		var wardActionsText = ReadString(flatProfile, "summoner_ward_actions", "");
+		var legacyWardAction = ReadString(flatProfile, "summoner_ward_action", "");
+		if (wardActionsText.Length == 0 && legacyWardAction.Length != 0)
+		{
+			wardActionsText = legacyWardAction;
+		}
+		var wardActions = SplitPipeList(wardActionsText);
+		if (legacyWardAction.Length != 0
+			&& wardActions.Count > 0
+			&& !string.Equals(wardActions[0]?.ToString(), legacyWardAction, StringComparison.Ordinal))
+		{
+			throw new InvalidDataException(
+				"summoner_ward_action must match the first summoner_ward_actions entry."
+			);
+		}
 
         return new StructuredProfileNode()
             .Add("enabled", ReadBool(flatProfile, "summoner_enabled", false))
@@ -808,7 +824,7 @@ internal static class StructuredProfileV2Writer
                         "ward",
                         new StructuredProfileNode()
                             .Add("enabled", ReadBool(flatProfile, "summoner_ward_enabled", false))
-                            .Add("action", NullIfEmpty(ReadString(flatProfile, "summoner_ward_action", "")))
+							.Add("actions", wardActions)
                     )
             )
             .Add(

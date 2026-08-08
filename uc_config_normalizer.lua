@@ -220,6 +220,57 @@ local function normalize_pipe_string_list(value, default_value)
     return clone_value(default_value or {})
 end
 
+local function normalize_summoner_ward_actions(value, path_name)
+	if value == nil then
+		return {}
+	end
+	local raw_actions = {}
+	if type(value) == 'table' then
+		local count = 0
+		for key in pairs(value) do
+			count = count + 1
+			if type(key) ~= 'number' or key % 1 ~= 0 or key < 1 then
+				error(path_name .. ' must be a contiguous array of strings')
+			end
+		end
+		if count ~= #value then
+			error(path_name .. ' must be a contiguous array of strings')
+		end
+		for i = 1, #value do
+			raw_actions[#raw_actions + 1] = value[i]
+		end
+	elseif type(value) == 'string' then
+		if value == '' then
+			return {}
+		end
+		if value:sub(1, 1) == '|' or value:sub(-1) == '|' or value:find('||', 1, true) then
+			error(path_name .. ' contains an empty action')
+		end
+		for action in value:gmatch('[^|]+') do
+			raw_actions[#raw_actions + 1] = action
+		end
+	else
+		error(path_name .. ' must be an array or pipe-delimited string')
+	end
+	local actions = {}
+	local seen = {}
+	for i = 1, #raw_actions do
+		if type(raw_actions[i]) ~= 'string' then
+			error(path_name .. ' entries must be strings')
+		end
+		local action = trim_string(raw_actions[i])
+		if action == '' then
+			error(path_name .. ' entries must be non-empty strings')
+		end
+		if seen[action] then
+			error(('%s duplicates %q'):format(path_name, action))
+		end
+		seen[action] = true
+		actions[#actions + 1] = action
+	end
+	return actions
+end
+
 local function normalize_targeted_buffs(value, default_value)
     if value == nil then
         return clone_value(default_value)
@@ -1046,7 +1097,7 @@ local function default_config(meta)
                 avatar_favor = false,
                 ward = {
                     enabled = false,
-                    action = nil,
+					actions = {},
                 },
             },
             pet_combat = {
@@ -1669,11 +1720,22 @@ local function normalize_summoner(source, config)
         if type(ward.enabled) ~= 'boolean' then
             error('summoner.maintenance.ward.enabled must be boolean')
         end
-        if ward.action ~= nil and type(ward.action) ~= 'string' then
-            error('summoner.maintenance.ward.action must be a string or nil')
-        end
+		if ward.actions ~= nil and ward.action ~= nil then
+			error('summoner.maintenance.ward must define actions or legacy action, not both')
+		end
+		if ward.actions == nil and ward.action ~= nil and type(ward.action) ~= 'string' then
+			error('summoner.maintenance.ward.action must be a string or nil')
+		end
         summoner.maintenance.ward.enabled = ward.enabled
-        summoner.maintenance.ward.action = normalize_optional_string(ward.action)
+		if ward.actions ~= nil then
+			summoner.maintenance.ward.actions = normalize_summoner_ward_actions(
+				ward.actions,
+				'summoner.maintenance.ward.actions'
+			)
+		else
+			local legacy_action = normalize_optional_string(ward.action)
+			summoner.maintenance.ward.actions = legacy_action and { legacy_action } or {}
+		end
         if nested.pet_combat == nil or not is_table(nested.pet_combat) then
             error('summoner.pet_combat must be a table')
         end
@@ -1750,9 +1812,21 @@ local function normalize_summoner(source, config)
             first_path(source, { path('summoner_ward_enabled') }),
             summoner.maintenance.ward.enabled
         )
-        summoner.maintenance.ward.action = normalize_optional_string(
-            first_path(source, { path('summoner_ward_action') })
-        )
+		local flat_ward_actions = first_path(source, { path('summoner_ward_actions') })
+		local legacy_ward_action = normalize_optional_string(
+			first_path(source, { path('summoner_ward_action') })
+		)
+		summoner.maintenance.ward.actions = normalize_summoner_ward_actions(
+			flat_ward_actions,
+			'summoner_ward_actions'
+		)
+		if legacy_ward_action ~= nil then
+			if #summoner.maintenance.ward.actions == 0 then
+				summoner.maintenance.ward.actions[1] = legacy_ward_action
+			elseif summoner.maintenance.ward.actions[1] ~= legacy_ward_action then
+				error('summoner_ward_action must match the first summoner_ward_actions entry')
+			end
+		end
         summoner.pet_combat.engage_on_combat_start = normalize_boolean(
             first_path(source, { path('summoner_engage_on_combat_start') }),
             summoner.pet_combat.engage_on_combat_start

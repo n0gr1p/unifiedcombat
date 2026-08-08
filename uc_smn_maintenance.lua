@@ -87,6 +87,72 @@ function M.new(deps)
 		}
 	end
 
+	local function ward_satisfied(player, ward)
+		local effect_ids = require_table(ward.effect_ids, 'Summoner Ward effect_ids')
+		if #effect_ids == 0 then
+			error('Summoner Ward maintenance requires at least one effect id: ' .. tostring(ward.name))
+		end
+		for i = 1, #effect_ids do
+			if not runtime.has_buff(player, effect_ids[i]) then
+				return false
+			end
+		end
+		return true
+	end
+
+	local function ward_readiness(config, validation, ctx)
+		if config.maintenance.ward.enabled ~= true then
+			return nil, 'disabled', nil
+		end
+		if validation.ward_valid ~= true then
+			return nil, 'invalid', nil
+		end
+		local wards = validation.wards or {}
+		for i = 1, #wards do
+			local ward = wards[i]
+			if not ward_satisfied(ctx.player, ward) then
+				local ready, recast_reason = runtime.recast_ready(ctx, runtime.RECAST_WARD)
+				if not ready then
+					return nil, recast_reason, nil
+				end
+				local retry_key = ('smn:ward:%s'):format(ward.name)
+				local allowed, retry_reason = coordinator_can_attempt(retry_key, ctx.now)
+				if not allowed then
+					return nil, retry_reason, nil
+				end
+				local resource = get_ja_resource(ward.name)
+				if resource == nil then
+					error('Summoner Ward resource missing: ' .. ward.name)
+				end
+				local mp_cost = tonumber(resource.mp_cost)
+				if mp_cost == nil then
+					error('Summoner Ward MP cost must be numeric')
+				end
+				if runtime.player_mp(ctx.player) < mp_cost then
+					return nil, 'insufficient_mp', nil
+				end
+				return ward, 'eligible', resource
+			end
+		end
+		return nil, 'satisfied', nil
+	end
+
+	local function desired_avatar(config, validation, ctx)
+		local primary = capabilities.avatar(config.avatar)
+		if primary == nil then
+			error('validated Summoner primary avatar is missing from capabilities')
+		end
+		local due_ward, ward_state, ward_resource = ward_readiness(config, validation, ctx)
+		if due_ward == nil then
+			return primary, nil, ward_state, ward_resource
+		end
+		local ward_avatar = capabilities.avatar(due_ward.avatar)
+		if ward_avatar == nil then
+			error('validated Summoner Ward avatar is missing from capabilities: ' .. tostring(due_ward.avatar))
+		end
+		return ward_avatar, due_ward, ward_state, ward_resource
+	end
+
 	function provider.collect(ctx, out)
 		require_table(ctx, 'ctx')
 		require_table(out, 'out')
@@ -113,20 +179,18 @@ function M.new(deps)
 			log(('SMN_MAINT_SKIP state=invalid_avatar reason=%s'):format(provider.status.reason))
 			return
 		end
-		local avatar = capabilities.avatar(config.avatar)
+		local primary_avatar = capabilities.avatar(config.avatar)
+		local avatar, due_ward, ward_state, ward_resource = desired_avatar(config, validation, ctx)
 		provider.status.desired_avatar = avatar.name
 		provider.status.current_pet = ''
 		if ctx.pet_present == true then
 			provider.status.current_pet = ctx.pet_name
 		end
 		provider.status.favor = 'disabled'
-		if config.maintenance.avatar_favor then
+		if config.maintenance.avatar_favor and avatar.name == primary_avatar.name then
 			provider.status.favor = 'missing'
 		end
-		provider.status.ward = 'disabled'
-		if config.maintenance.ward.enabled then
-			provider.status.ward = 'unsatisfied'
-		end
+		provider.status.ward = ward_state
 		local player_id = tonumber(ctx.player_id) or 0
 		local player_name = tostring(ctx.player_name or '')
 		if player_id <= 0 or player_name == '' then
@@ -203,13 +267,14 @@ function M.new(deps)
 		end
 
 		set_status('avatar_converged', avatar.name)
-		if config.maintenance.avatar_favor then
+		if config.maintenance.avatar_favor and avatar.name == primary_avatar.name then
 			provider.status.favor = 'eligible'
 			if runtime.has_buff(ctx.player, runtime.BUFF_FAVOR) then
 				provider.status.favor = 'satisfied'
 			end
 		end
 		if config.maintenance.avatar_favor
+			and avatar.name == primary_avatar.name
 			and not runtime.has_buff(ctx.player, runtime.BUFF_FAVOR) then
 			local ready, reason, action_kind = action_ready('Avatar\'s Favor', player_id)
 			if ready and action_kind == 'ja' then
@@ -235,69 +300,38 @@ function M.new(deps)
 			end
 		end
 
-		local ward_config = config.maintenance.ward
-		if ward_config.enabled and validation.ward_valid ~= true then
-			provider.status.ward = 'invalid'
+		if due_ward ~= nil and ctx.pet_name == due_ward.avatar then
+			local retry_key = ('smn:ward:%s'):format(due_ward.name)
+			provider.status.ward = 'eligible'
 			set_status('avatar_converged', avatar.name)
-		elseif ward_config.enabled and validation.ward_valid then
-			local ward = validation.ward
-			if runtime.has_buff(ctx.player, ward.effect_id) then
-				provider.status.ward = 'satisfied'
-				set_status('avatar_converged', avatar.name)
-			else
-				local ready, recast_reason = runtime.recast_ready(ctx, runtime.RECAST_WARD)
-				local retry_key = ('smn:ward:%s'):format(ward.name)
-				local allowed, retry_reason = coordinator_can_attempt(retry_key, ctx.now)
-				local resource = get_ja_resource(ward.name)
-				if resource == nil then
-					error('Summoner Ward resource missing: ' .. ward.name)
-				end
-				local player_mp = runtime.player_mp(ctx.player)
-				local mp_cost = tonumber(resource.mp_cost)
-				if mp_cost == nil then
-					error('Summoner Ward MP cost must be numeric')
-				end
-				if ready and allowed and player_mp >= mp_cost then
-					provider.status.ward = 'eligible'
-					set_status('avatar_converged', avatar.name)
-					out[#out + 1] = proposal(ctx, {
-						key = 'ward',
-						action_type = 'pet',
-						action_name = ward.name,
-						target_kind = 'self',
-						target_id = player_id,
-						target_name = player_name,
-						priority_band = runtime.PRIORITY_WARD,
-						urgency = 0.72,
-						expected_ack = 'pet_action_start',
-						expected_effect = 'ward_effect',
-						reason_code = 'smn_ward_effect_missing',
-						detail = {
-							smn_kind = 'ward',
-							desired_avatar = avatar.name,
-							pet_command = {
-								kind = 'ward',
-								action_name = ward.name,
-								action_id = ward.id,
-								recast_id = runtime.RECAST_WARD,
-								recast_before = ctx.ability_recasts[runtime.RECAST_WARD],
-								expected_effect_id = ward.effect_id,
-								pet_id = ctx.pet_id,
-								retry_key = retry_key,
-							},
-						},
-					})
-				elseif not ready then
-					provider.status.ward = recast_reason
-					set_status('avatar_converged', avatar.name)
-				elseif not allowed then
-					provider.status.ward = retry_reason
-					set_status('avatar_converged', avatar.name)
-				elseif player_mp < mp_cost then
-					provider.status.ward = 'insufficient_mp'
-					set_status('avatar_converged', avatar.name)
-				end
-			end
+			out[#out + 1] = proposal(ctx, {
+				key = 'ward',
+				action_type = 'pet',
+				action_name = due_ward.name,
+				target_kind = 'self',
+				target_id = player_id,
+				target_name = player_name,
+				priority_band = runtime.PRIORITY_WARD,
+				urgency = 0.72,
+				expected_ack = 'pet_action_start',
+				expected_effect = 'ward_effect',
+				reason_code = 'smn_ward_effect_missing',
+				detail = {
+					smn_kind = 'ward',
+					desired_avatar = avatar.name,
+					mp_cost = tonumber(ward_resource.mp_cost),
+					pet_command = {
+						kind = 'ward',
+						action_name = due_ward.name,
+						action_id = due_ward.id,
+						recast_id = runtime.RECAST_WARD,
+						recast_before = ctx.ability_recasts[runtime.RECAST_WARD],
+						expected_effect_ids = due_ward.effect_ids,
+						pet_id = ctx.pet_id,
+						retry_key = retry_key,
+					},
+				},
+			})
 		end
 	end
 
@@ -313,6 +347,7 @@ function M.new(deps)
 			return false, 'not_summoner'
 		end
 		local kind = tostring(detail.smn_kind or '')
+		local current_desired, due_ward = desired_avatar(config, validation, ctx)
 		if kind == 'summon' then
 			if ctx.pet_present == true then
 				return false, 'pet_present'
@@ -320,7 +355,7 @@ function M.new(deps)
 			if player_is_moving() then
 				return false, 'player_moving'
 			end
-			return tostring(selected.action_name or '') == validation.avatar.summon_spell, 'stale_summon'
+			return tostring(selected.action_name or '') == current_desired.summon_spell, 'stale_summon'
 		end
 		if kind == 'release' then
 			local command = require_table(detail.pet_command, 'selected.detail.pet_command')
@@ -328,27 +363,29 @@ function M.new(deps)
 			return release_ready
 				and ctx.pet_present == true
 				and ctx.pet_id == command.pet_id
-				and ctx.pet_name ~= validation.avatar.name,
+				and ctx.pet_name ~= current_desired.name,
 				'stale_release'
 		end
-		if ctx.pet_present ~= true or ctx.pet_name ~= validation.avatar.name then
+		if ctx.pet_present ~= true or ctx.pet_name ~= current_desired.name then
 			return false, 'avatar_mismatch'
 		end
 		if kind == 'favor' then
-			return not runtime.has_buff(ctx.player, runtime.BUFF_FAVOR), 'favor_satisfied'
+			return current_desired.name == validation.avatar.name
+				and not runtime.has_buff(ctx.player, runtime.BUFF_FAVOR),
+				'favor_satisfied'
 		end
 		if kind == 'ward' then
-			if validation.ward_valid ~= true or validation.ward == nil then
+			if validation.ward_valid ~= true or due_ward == nil then
 				return false, 'ward_invalid'
 			end
 			local ward_ready = runtime.recast_ready(ctx, runtime.RECAST_WARD)
 			if not ward_ready then
 				return false, 'ward_recast_unavailable'
 			end
-			if tostring(selected.action_name or '') ~= validation.ward.name then
+			if tostring(selected.action_name or '') ~= due_ward.name then
 				return false, 'ward_configuration_changed'
 			end
-			return not runtime.has_buff(ctx.player, validation.ward.effect_id), 'ward_satisfied'
+			return not ward_satisfied(ctx.player, due_ward), 'ward_satisfied'
 		end
 		return false, 'unknown_summoner_maintenance_kind'
 	end

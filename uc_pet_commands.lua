@@ -29,6 +29,25 @@ local function require_positive_integer(value, name)
 	return number
 end
 
+local function require_positive_integer_list(value, name)
+	local list = require_table(value, name)
+	if #list == 0 then
+		error(name .. ' must contain at least one positive integer')
+	end
+	local seen = {}
+	for key, item in pairs(list) do
+		if type(key) ~= 'number' or key % 1 ~= 0 or key < 1 or key > #list then
+			error(name .. ' must be a contiguous array')
+		end
+		local number = require_positive_integer(item, ('%s[%d]'):format(name, key))
+		if seen[number] then
+			error(name .. ' must not contain duplicate effect ids')
+		end
+		seen[number] = true
+	end
+	return list
+end
+
 function M.validate(command)
 	command = require_table(command, 'pet command')
 	local kind = require_nonempty_string(command.kind, 'pet command kind')
@@ -47,7 +66,7 @@ function M.validate(command)
 		require_positive_integer(command.recast_id, 'pet command recast_id')
 	end
 	if kind == 'ward' then
-		require_positive_integer(command.expected_effect_id, 'pet command expected_effect_id')
+		require_positive_integer_list(command.expected_effect_ids, 'pet command expected_effect_ids')
 	end
 	return true
 end

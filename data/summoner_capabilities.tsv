@@ -1,82 +1,108 @@
-# UnifiedCombat Summoner capability catalog v1
-avatar	summon_spell_id	summon_spell	action_category	action_id	action_name	effect_id	effect_name
+# UnifiedCombat Summoner capability catalog v2; "-" effect fields mark actions that are not eligible for maintained-buff rotation
+avatar	summon_spell_id	summon_spell	action_category	action_id	action_name	effect_ids	effect_names
+Carbuncle	296	Carbuncle	ward	512	Healing Ruby	-	-
 Carbuncle	296	Carbuncle	ward	514	Shining Ruby	154	Shining Ruby
-Carbuncle	296	Carbuncle	rage	513	Poison Nails		
-Carbuncle	296	Carbuncle	rage	516	Meteorite		
-Carbuncle	296	Carbuncle	rage	519	Holy Mist		
-Fenrir	297	Fenrir	rage	528	Moonlit Charge		
-Fenrir	297	Fenrir	rage	529	Crescent Fang		
-Fenrir	297	Fenrir	rage	534	Eclipse Bite		
-Fenrir	297	Fenrir	rage	537	Lunar Bay		
-Fenrir	297	Fenrir	rage	539	Impact		
+Carbuncle	296	Carbuncle	ward	515	Glittering Ruby	-	-
+Carbuncle	296	Carbuncle	ward	517	Healing Ruby II	-	-
+Carbuncle	296	Carbuncle	ward	520	Soothing Ruby	-	-
+Carbuncle	296	Carbuncle	ward	773	Pacifying Ruby	-	-
+Carbuncle	296	Carbuncle	rage	513	Poison Nails	-	-
+Carbuncle	296	Carbuncle	rage	516	Meteorite	-	-
+Carbuncle	296	Carbuncle	rage	519	Holy Mist	-	-
+Fenrir	297	Fenrir	ward	530	Lunar Cry	-	-
+Fenrir	297	Fenrir	ward	531	Lunar Roar	-	-
+Fenrir	297	Fenrir	ward	532	Ecliptic Growl	119|120|121|122|123|124|125	STR Boost|DEX Boost|VIT Boost|AGI Boost|INT Boost|MND Boost|CHR Boost
+Fenrir	297	Fenrir	ward	533	Ecliptic Howl	90|92	Accuracy Boost|Evasion Boost
+Fenrir	297	Fenrir	ward	538	Heavenward Howl	-	-
+Fenrir	297	Fenrir	rage	528	Moonlit Charge	-	-
+Fenrir	297	Fenrir	rage	529	Crescent Fang	-	-
+Fenrir	297	Fenrir	rage	534	Eclipse Bite	-	-
+Fenrir	297	Fenrir	rage	537	Lunar Bay	-	-
+Fenrir	297	Fenrir	rage	539	Impact	-	-
 Ifrit	298	Ifrit	ward	548	Crimson Howl	68	Warcry
 Ifrit	298	Ifrit	ward	553	Inferno Howl	94	Enfire
-Ifrit	298	Ifrit	rage	544	Punch		
-Ifrit	298	Ifrit	rage	545	Fire II		
-Ifrit	298	Ifrit	rage	546	Burning Strike		
-Ifrit	298	Ifrit	rage	547	Double Punch		
-Ifrit	298	Ifrit	rage	549	Fire IV		
-Ifrit	298	Ifrit	rage	550	Flaming Crush		
-Ifrit	298	Ifrit	rage	551	Meteor Strike		
-Ifrit	298	Ifrit	rage	554	Conflag Strike		
+Ifrit	298	Ifrit	rage	544	Punch	-	-
+Ifrit	298	Ifrit	rage	545	Fire II	-	-
+Ifrit	298	Ifrit	rage	546	Burning Strike	-	-
+Ifrit	298	Ifrit	rage	547	Double Punch	-	-
+Ifrit	298	Ifrit	rage	549	Fire IV	-	-
+Ifrit	298	Ifrit	rage	550	Flaming Crush	-	-
+Ifrit	298	Ifrit	rage	551	Meteor Strike	-	-
+Ifrit	298	Ifrit	rage	554	Conflag Strike	-	-
 Titan	299	Titan	ward	564	Earthen Ward	37	Stoneskin
 Titan	299	Titan	ward	569	Earthen Armor	458	Earthen Armor
-Titan	299	Titan	rage	560	Rock Throw		
-Titan	299	Titan	rage	561	Stone II		
-Titan	299	Titan	rage	562	Rock Buster		
-Titan	299	Titan	rage	563	Megalith Throw		
-Titan	299	Titan	rage	565	Stone IV		
-Titan	299	Titan	rage	566	Mountain Buster		
-Titan	299	Titan	rage	567	Geocrush		
-Titan	299	Titan	rage	570	Crag Throw		
+Titan	299	Titan	rage	560	Rock Throw	-	-
+Titan	299	Titan	rage	561	Stone II	-	-
+Titan	299	Titan	rage	562	Rock Buster	-	-
+Titan	299	Titan	rage	563	Megalith Throw	-	-
+Titan	299	Titan	rage	565	Stone IV	-	-
+Titan	299	Titan	rage	566	Mountain Buster	-	-
+Titan	299	Titan	rage	567	Geocrush	-	-
+Titan	299	Titan	rage	570	Crag Throw	-	-
+Leviathan	300	Leviathan	ward	579	Spring Water	-	-
+Leviathan	300	Leviathan	ward	580	Slowga	-	-
+Leviathan	300	Leviathan	ward	585	Tidal Roar	-	-
 Leviathan	300	Leviathan	ward	586	Soothing Current	586	Curing Conduit
-Leviathan	300	Leviathan	rage	576	Barracuda Dive		
-Leviathan	300	Leviathan	rage	577	Water II		
-Leviathan	300	Leviathan	rage	578	Tail Whip		
-Leviathan	300	Leviathan	rage	581	Water IV		
-Leviathan	300	Leviathan	rage	582	Spinning Dive		
-Leviathan	300	Leviathan	rage	583	Grand Fall		
+Leviathan	300	Leviathan	rage	576	Barracuda Dive	-	-
+Leviathan	300	Leviathan	rage	577	Water II	-	-
+Leviathan	300	Leviathan	rage	578	Tail Whip	-	-
+Leviathan	300	Leviathan	rage	581	Water IV	-	-
+Leviathan	300	Leviathan	rage	582	Spinning Dive	-	-
+Leviathan	300	Leviathan	rage	583	Grand Fall	-	-
+Garuda	301	Garuda	ward	594	Whispering Wind	-	-
 Garuda	301	Garuda	ward	595	Hastega	33	Haste
 Garuda	301	Garuda	ward	596	Aerial Armor	36	Blink
 Garuda	301	Garuda	ward	601	Fleet Wind	176	quickening
 Garuda	301	Garuda	ward	602	Hastega II	33	Haste
-Garuda	301	Garuda	rage	592	Claw		
-Garuda	301	Garuda	rage	593	Aero II		
-Garuda	301	Garuda	rage	597	Aero IV		
-Garuda	301	Garuda	rage	598	Predator Claws		
-Garuda	301	Garuda	rage	599	Wind Blade		
+Garuda	301	Garuda	rage	592	Claw	-	-
+Garuda	301	Garuda	rage	593	Aero II	-	-
+Garuda	301	Garuda	rage	597	Aero IV	-	-
+Garuda	301	Garuda	rage	598	Predator Claws	-	-
+Garuda	301	Garuda	rage	599	Wind Blade	-	-
 Shiva	302	Shiva	ward	610	Frost Armor	35	Ice Spikes
+Shiva	302	Shiva	ward	611	Sleepga	-	-
+Shiva	302	Shiva	ward	617	Diamond Storm	-	-
 Shiva	302	Shiva	ward	618	Crystal Blessing	587	TP Bonus
-Shiva	302	Shiva	rage	608	Axe Kick		
-Shiva	302	Shiva	rage	609	Blizzard II		
-Shiva	302	Shiva	rage	612	Double Slap		
-Shiva	302	Shiva	rage	613	Blizzard IV		
-Shiva	302	Shiva	rage	614	Rush		
-Shiva	302	Shiva	rage	615	Heavenly Strike		
+Shiva	302	Shiva	rage	608	Axe Kick	-	-
+Shiva	302	Shiva	rage	609	Blizzard II	-	-
+Shiva	302	Shiva	rage	612	Double Slap	-	-
+Shiva	302	Shiva	rage	613	Blizzard IV	-	-
+Shiva	302	Shiva	rage	614	Rush	-	-
+Shiva	302	Shiva	rage	615	Heavenly Strike	-	-
 Ramuh	303	Ramuh	ward	626	Rolling Thunder	98	Enthunder
 Ramuh	303	Ramuh	ward	628	Lightning Armor	38	Shock Spikes
-Ramuh	303	Ramuh	rage	624	Shock Strike		
-Ramuh	303	Ramuh	rage	625	Thunder II		
-Ramuh	303	Ramuh	rage	627	Thunderspark		
-Ramuh	303	Ramuh	rage	629	Thunder IV		
-Ramuh	303	Ramuh	rage	630	Chaotic Strike		
-Ramuh	303	Ramuh	rage	631	Thunderstorm		
-Ramuh	303	Ramuh	rage	634	Volt Strike		
+Ramuh	303	Ramuh	ward	633	Shock Squall	-	-
+Ramuh	303	Ramuh	rage	624	Shock Strike	-	-
+Ramuh	303	Ramuh	rage	625	Thunder II	-	-
+Ramuh	303	Ramuh	rage	627	Thunderspark	-	-
+Ramuh	303	Ramuh	rage	629	Thunder IV	-	-
+Ramuh	303	Ramuh	rage	630	Chaotic Strike	-	-
+Ramuh	303	Ramuh	rage	631	Thunderstorm	-	-
+Ramuh	303	Ramuh	rage	634	Volt Strike	-	-
+Diabolos	304	Diabolos	ward	657	Somnolence	-	-
+Diabolos	304	Diabolos	ward	658	Nightmare	-	-
+Diabolos	304	Diabolos	ward	659	Ultimate Terror	-	-
 Diabolos	304	Diabolos	ward	660	Noctoshield	116	Phalanx
 Diabolos	304	Diabolos	ward	661	Dream Shroud	190	Magic Atk. Boost
-Diabolos	304	Diabolos	rage	656	Camisado		
-Diabolos	304	Diabolos	rage	662	Nether Blast		
-Diabolos	304	Diabolos	rage	665	Night Terror		
-Diabolos	304	Diabolos	rage	667	Blindside		
+Diabolos	304	Diabolos	ward	666	Pavor Nocturnus	-	-
+Diabolos	304	Diabolos	rage	656	Camisado	-	-
+Diabolos	304	Diabolos	rage	662	Nether Blast	-	-
+Diabolos	304	Diabolos	rage	665	Night Terror	-	-
+Diabolos	304	Diabolos	rage	667	Blindside	-	-
+Cait Sith	307	Cait Sith	ward	522	Mewing Lullaby	-	-
+Cait Sith	307	Cait Sith	ward	523	Eerie Eye	-	-
+Cait Sith	307	Cait Sith	ward	525	Raise II	-	-
 Cait Sith	307	Cait Sith	ward	526	Reraise II	113	Reraise
-Cait Sith	307	Cait Sith	rage	521	Regal Scratch		
-Cait Sith	307	Cait Sith	rage	524	Level ? Holy		
-Cait Sith	307	Cait Sith	rage	780	Regal Gash		
+Cait Sith	307	Cait Sith	rage	521	Regal Scratch	-	-
+Cait Sith	307	Cait Sith	rage	524	Level ? Holy	-	-
+Cait Sith	307	Cait Sith	rage	780	Regal Gash	-	-
 Siren	355	Siren	ward	962	Katabatic Blades	96	Enaero
+Siren	355	Siren	ward	963	Lunatic Voice	-	-
 Siren	355	Siren	ward	965	Chinook	39	Aquaveil
+Siren	355	Siren	ward	966	Bitter Elegy	-	-
 Siren	355	Siren	ward	969	Wind's Blessing	152	Magic Shield
-Siren	355	Siren	rage	961	Welt		
-Siren	355	Siren	rage	964	Roundhouse		
-Siren	355	Siren	rage	967	Sonic Buffet		
-Siren	355	Siren	rage	968	Tornado II		
-Siren	355	Siren	rage	970	Hysteric Assault		
+Siren	355	Siren	rage	961	Welt	-	-
+Siren	355	Siren	rage	964	Roundhouse	-	-
+Siren	355	Siren	rage	967	Sonic Buffet	-	-
+Siren	355	Siren	rage	968	Tornado II	-	-
+Siren	355	Siren	rage	970	Hysteric Assault	-	-

@@ -188,7 +188,7 @@ local function test_shared_serialization()
 		action_id = 548,
 		recast_id = 174,
 		recast_before = 0,
-		expected_effect_id = 68,
+		expected_effect_ids = { 68 },
 		pet_id = 200,
 		retry_key = 'smn:ward:Crimson Howl',
 	}, ctx.now)

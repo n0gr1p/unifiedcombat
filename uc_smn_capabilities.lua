@@ -7,8 +7,8 @@ local EXPECTED_HEADER = table.concat({
 	'action_category',
 	'action_id',
 	'action_name',
-	'effect_id',
-	'effect_name',
+	'effect_ids',
+	'effect_names',
 }, '\t')
 
 local function module_directory()
@@ -53,6 +53,52 @@ local function required_integer(value, field, line_number)
 	return number
 end
 
+local function split_effect_list(value, field, line_number)
+	local values = {}
+	local start_at = 1
+	while true do
+		local separator_at = value:find('|', start_at, true)
+		local item = separator_at == nil and value:sub(start_at) or value:sub(start_at, separator_at - 1)
+		if item == '' then
+			error(('Summoner capability catalog line %d: %s contains an empty entry'):format(line_number, field))
+		end
+		values[#values + 1] = item
+		if separator_at == nil then
+			return values
+		end
+		start_at = separator_at + 1
+	end
+end
+
+local function effect_lists(effect_ids_value, effect_names_value, line_number)
+	if effect_ids_value == '-' and effect_names_value == '-' then
+		return {}, {}
+	end
+	if effect_ids_value == '-' or effect_names_value == '-' then
+		error(('Summoner capability catalog line %d: effect_ids and effect_names must both be populated or "-"'):format(
+			line_number
+		))
+	end
+	local raw_ids = split_effect_list(effect_ids_value, 'effect_ids', line_number)
+	local names = split_effect_list(effect_names_value, 'effect_names', line_number)
+	if #raw_ids ~= #names then
+		error(('Summoner capability catalog line %d: effect_ids and effect_names must have equal lengths'):format(
+			line_number
+		))
+	end
+	local ids = {}
+	local seen_ids = {}
+	for i = 1, #raw_ids do
+		local effect_id = required_integer(raw_ids[i], ('effect_ids[%d]'):format(i), line_number)
+		if seen_ids[effect_id] then
+			error(('Summoner capability catalog line %d: duplicate effect id %d'):format(line_number, effect_id))
+		end
+		seen_ids[effect_id] = true
+		ids[i] = effect_id
+	end
+	return ids, names
+end
+
 local function load_catalog()
 	local path = module_directory() .. 'data/summoner_capabilities.tsv'
 	local file, open_error = io.open(path, 'r')
@@ -65,6 +111,8 @@ local function load_catalog()
 		avatars = {},
 		avatar_order = {},
 		actions_by_id = {},
+		ward_actions_by_name = {},
+		wards_by_name = {},
 	}
 	local header_seen = false
 	local line_number = 0
@@ -95,14 +143,13 @@ local function load_catalog()
 				end
 				local action_id = required_integer(fields[5], 'action_id', line_number)
 				local action_name = required_text(fields[6], 'action_name', line_number)
-				local effect_id = nil
-				local effect_name = nil
+				local effect_ids = {}
+				local effect_names = {}
 				if category == 'ward' then
-					effect_id = required_integer(fields[7], 'effect_id', line_number)
-					effect_name = required_text(fields[8], 'effect_name', line_number)
-				elseif fields[7] ~= '' or fields[8] ~= '' then
+					effect_ids, effect_names = effect_lists(fields[7], fields[8], line_number)
+				elseif fields[7] ~= '-' or fields[8] ~= '-' then
 					file:close()
-					error(('Summoner capability catalog line %d: Rage rows must not define a maintained effect'):format(line_number))
+					error(('Summoner capability catalog line %d: Rage rows must not define maintained effects'):format(line_number))
 				end
 
 				local avatar = catalog.avatars[avatar_name]
@@ -112,6 +159,7 @@ local function load_catalog()
 						summon_spell_id = summon_spell_id,
 						summon_spell = summon_spell,
 						wards = {},
+						maintainable_wards = {},
 						rages = {},
 						ward_by_name = {},
 						rage_by_name = {},
@@ -143,13 +191,32 @@ local function load_catalog()
 					name = action_name,
 					category = category,
 					avatar = avatar_name,
-					effect_id = effect_id,
-					effect_name = effect_name,
+					effect_ids = effect_ids,
+					effect_names = effect_names,
+					maintainable = #effect_ids > 0,
 				}
+				if #effect_ids == 1 then
+					action.effect_id = effect_ids[1]
+					action.effect_name = effect_names[1]
+				end
 				local actions = category == 'ward' and avatar.wards or avatar.rages
 				actions[#actions + 1] = action
 				by_name[action_name] = action
 				catalog.actions_by_id[action_id] = action
+				if category == 'ward' then
+					if catalog.ward_actions_by_name[action_name] ~= nil then
+						file:close()
+						error(('Summoner capability catalog line %d: duplicate Ward name %s'):format(
+							line_number,
+							action_name
+						))
+					end
+					catalog.ward_actions_by_name[action_name] = action
+					if action.maintainable then
+						avatar.maintainable_wards[#avatar.maintainable_wards + 1] = action
+						catalog.wards_by_name[action_name] = action
+					end
+				end
 			end
 		end
 	end
@@ -189,6 +256,13 @@ function M.action(avatar_name, category, action_name)
 		return avatar.rage_by_name[action_name]
 	end
 	error('Summoner capability lookup: category must be ward or rage')
+end
+
+function M.ward(action_name)
+	if type(action_name) ~= 'string' then
+		return nil
+	end
+	return CATALOG.wards_by_name[action_name]
 end
 
 return M

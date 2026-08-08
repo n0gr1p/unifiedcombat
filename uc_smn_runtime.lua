@@ -38,6 +38,45 @@ local function optional_string(value, name)
 	return value
 end
 
+local function parse_ward_actions(settings)
+	local actions_value = settings.summoner_ward_actions
+	local legacy_value = settings.summoner_ward_action
+	if actions_value ~= nil and type(actions_value) ~= 'string' then
+		error('summoner_ward_actions must be a pipe-delimited string')
+	end
+	if legacy_value ~= nil and type(legacy_value) ~= 'string' then
+		error('summoner_ward_action must be a string or nil')
+	end
+	local actions = {}
+	local seen = {}
+	local raw = actions_value or ''
+	if raw ~= '' then
+		if raw:sub(1, 1) == '|' or raw:sub(-1) == '|' or raw:find('||', 1, true) then
+			error('summoner_ward_actions contains an empty action')
+		end
+		for name in raw:gmatch('[^|]+') do
+			if name == '' or name:match('^%s*$') then
+				error('summoner_ward_actions contains an empty action')
+			end
+			name = name:match('^%s*(.-)%s*$')
+			if seen[name] then
+				error(('summoner_ward_actions duplicates %q'):format(name))
+			end
+			seen[name] = true
+			actions[#actions + 1] = name
+		end
+	end
+	local legacy = optional_string(legacy_value, 'summoner_ward_action')
+	if legacy ~= nil then
+		if #actions == 0 then
+			actions[1] = legacy
+		elseif actions[1] ~= legacy then
+			error('summoner_ward_action must match the first summoner_ward_actions entry')
+		end
+	end
+	return actions
+end
+
 local function optional_gate(settings, enabled_name, value_name, default_value, maximum)
 	local enabled = settings[enabled_name]
 	local value = settings[value_name]
@@ -71,7 +110,7 @@ function M.config_from_settings(settings)
 				avatar_favor = false,
 				ward = {
 					enabled = false,
-					action = nil,
+					actions = {},
 				},
 			},
 			pet_combat = {
@@ -113,7 +152,7 @@ function M.config_from_settings(settings)
 			),
 			ward = {
 				enabled = require_boolean(settings.summoner_ward_enabled, 'summoner_ward_enabled'),
-				action = optional_string(settings.summoner_ward_action, 'summoner_ward_action'),
+				actions = parse_ward_actions(settings),
 			},
 		},
 		pet_combat = {

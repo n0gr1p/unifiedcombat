@@ -242,6 +242,48 @@ local function serialize_brd_targeted_songs(entries)
 	return table.concat(out, '|')
 end
 
+local function summoner_ward_actions(ward)
+	if ward.actions ~= nil and ward.action ~= nil then
+		return nil, 'config.summoner.maintenance.ward must define actions or legacy action, not both'
+	end
+	if ward.actions == nil then
+		if ward.action == nil or ward.action == '' then
+			return {}, nil
+		end
+		if type(ward.action) ~= 'string' then
+			return nil, 'config.summoner.maintenance.ward.action must be a string or nil'
+		end
+		return { ward.action }, nil
+	end
+	if type(ward.actions) ~= 'table' then
+		return nil, 'config.summoner.maintenance.ward.actions must be an array of strings'
+	end
+	local count = 0
+	for key in pairs(ward.actions) do
+		count = count + 1
+		if type(key) ~= 'number' or key % 1 ~= 0 or key < 1 then
+			return nil, 'config.summoner.maintenance.ward.actions must be a contiguous array'
+		end
+	end
+	if count ~= #ward.actions then
+		return nil, 'config.summoner.maintenance.ward.actions must be a contiguous array'
+	end
+	local actions = {}
+	local seen = {}
+	for i = 1, #ward.actions do
+		local action = ward.actions[i]
+		if type(action) ~= 'string' or action == '' then
+			return nil, 'config.summoner.maintenance.ward.actions entries must be non-empty strings'
+		end
+		if seen[action] then
+			return nil, ('config.summoner.maintenance.ward.actions duplicates %q'):format(action)
+		end
+		seen[action] = true
+		actions[#actions + 1] = action
+	end
+	return actions, nil
+end
+
 local function current_meta()
 	local meta = {
 		source = 'UC_SETTINGS',
@@ -754,8 +796,9 @@ local function apply_structured_config_to_candidate(candidate, config)
 		if type(ward.enabled) ~= 'boolean' then
 			return false, 'config.summoner.maintenance.ward.enabled must be boolean'
 		end
-		if ward.action ~= nil and type(ward.action) ~= 'string' then
-			return false, 'config.summoner.maintenance.ward.action must be a string or nil'
+		local ward_actions, ward_actions_error = summoner_ward_actions(ward)
+		if ward_actions_error ~= nil then
+			return false, ward_actions_error
 		end
 		if type(summoner.pet_combat) ~= 'table' then
 			return false, 'config.summoner.pet_combat must be a table'
@@ -807,10 +850,8 @@ local function apply_structured_config_to_candidate(candidate, config)
 		end
 		candidate.summoner_avatar_favor = maintenance.avatar_favor
 		candidate.summoner_ward_enabled = ward.enabled
-		candidate.summoner_ward_action = ward.action
-		if candidate.summoner_ward_action == nil then
-			candidate.summoner_ward_action = ''
-		end
+		candidate.summoner_ward_actions = table.concat(ward_actions, '|')
+		candidate.summoner_ward_action = ward_actions[1] or ''
 		candidate.summoner_engage_on_combat_start = pet_combat.engage_on_combat_start
 		candidate.summoner_rage_enabled = offensive.enabled
 		candidate.summoner_rage_action = offensive.action
