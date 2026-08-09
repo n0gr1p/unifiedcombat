@@ -1616,6 +1616,8 @@ public partial class MainForm
         form.Controls.Add(_settingsTabs);
         root.Controls.Add(form, 0, 1);
 
+        BuildGlobalActivityControls(sessionActionsFooter);
+
         _btnSave = new Button { Text = "Save (XML)", AutoSize = false };
         _btnSave.Click += (_, _) => SaveRemote();
         _btnToggleEngine = new Button { Text = "Toggle engine run", AutoSize = false };

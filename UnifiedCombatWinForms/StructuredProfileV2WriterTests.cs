@@ -22,6 +22,7 @@ internal static class StructuredProfileV2WriterTests
             TestProfileV2AutoReloadIsPartOfPersistedBoolSet();
             TestDomainOwnershipUiContract();
             TestDomainOwnershipRequiresExplicitBooleans();
+            TestDomainEnabledSectionsMatchOwnership();
             TestProfileSchemaThreeMigratesMissingDomains();
             TestProfileSchemaThreePreservesExplicitDomains();
             TestProfileSchemaThreeRemovesRetiredDarkLaunchKeys();
@@ -107,6 +108,48 @@ internal static class StructuredProfileV2WriterTests
             ),
             "missing required domain ownership must fail instead of using a fallback"
         );
+    }
+
+    private static void TestDomainEnabledSectionsMatchOwnership()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["domain_combat_enabled"] = false;
+        flat["domain_movement_enabled"] = false;
+        flat["domain_maintenance_enabled"] = false;
+        flat["domain_follow_enabled"] = false;
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Niightsiide", "GEO", "RDM")
+        );
+
+        AssertContains(
+            content,
+            "combat = {\n            enabled = false,",
+            "combat config must serialize the selected combat-domain state"
+        );
+        AssertContains(
+            content,
+            "movement = {\n            enabled = false,",
+            "movement config must serialize the selected movement-domain state"
+        );
+        AssertContains(
+            content,
+            "follow = {\n            enabled = false,",
+            "follow config must serialize the selected follow-domain state"
+        );
+        AssertContains(
+            content,
+            "maintenance = {\n            enabled = false,",
+            "maintenance config must serialize the selected maintenance-domain state"
+        );
+        AssertContains(
+            content,
+            "ownership = {\n            domain_combat_enabled = false,",
+            "combat ownership must retain the same selected state"
+        );
+        AssertContains(content, "domain_movement_enabled = false,", "movement ownership must retain the same selected state");
+        AssertContains(content, "domain_maintenance_enabled = false,", "maintenance ownership must retain the same selected state");
+        AssertContains(content, "domain_follow_enabled = false,", "follow ownership must retain the same selected state");
     }
 
     private static void TestProfileSchemaThreeMigratesMissingDomains()

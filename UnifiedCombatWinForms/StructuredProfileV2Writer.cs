@@ -230,7 +230,7 @@ internal static class StructuredProfileV2Writer
     private static StructuredProfileNode BuildCombat(JsonObject flatProfile)
     {
         return new StructuredProfileNode()
-            .Add("enabled", true)
+            .Add("enabled", ReadRequiredBool(flatProfile, "domain_combat_enabled"))
             .Add("autotarget", ReadBool(flatProfile, "autotarget", false))
             .Add("spam", ReadBool(flatProfile, "spam", false))
             .Add("closer", ReadBool(flatProfile, "closer", false))
@@ -349,7 +349,7 @@ internal static class StructuredProfileV2Writer
     private static StructuredProfileNode BuildMovement(JsonObject flatProfile)
     {
         var movement = new StructuredProfileNode()
-            .Add("enabled", true)
+            .Add("enabled", ReadRequiredBool(flatProfile, "domain_movement_enabled"))
             .Add("move", ReadBool(flatProfile, "move", false))
             .Add(
                 "spacing",
@@ -497,7 +497,7 @@ internal static class StructuredProfileV2Writer
         }
 
         var follow = new StructuredProfileNode()
-            .Add("enabled", true)
+            .Add("enabled", ReadRequiredBool(flatProfile, "domain_follow_enabled"))
             .Add(
                 "party",
                 new StructuredProfileNode()
@@ -651,7 +651,7 @@ internal static class StructuredProfileV2Writer
     private static StructuredProfileNode BuildMaintenance(JsonObject flatProfile, StructuredProfileV2Identity identity)
     {
         var maintenance = new StructuredProfileNode()
-            .Add("enabled", true);
+            .Add("enabled", ReadRequiredBool(flatProfile, "domain_maintenance_enabled"));
 
         var isCorProfile = string.Equals(SafeJobComponent(identity.MainJob), "COR", StringComparison.Ordinal);
         if (isCorProfile || HasConfiguredCorMaintenance(flatProfile))

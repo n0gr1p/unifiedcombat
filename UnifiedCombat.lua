@@ -637,6 +637,7 @@ local function uc_update_profile_v2_contract_status(context)
 		main_job = context.main_job,
 		sub_job = context.sub_job,
 		source = context.source or 'UC_SETTINGS',
+		addon_path = context.addon_path,
 	}
 	if not settings or meta.character == nil or meta.character == '' or meta.main_job == nil or meta.main_job == '' or meta.sub_job == nil or meta.sub_job == '' then
 		return {
@@ -1215,6 +1216,114 @@ local function uc_autoload_profile_v2_file()
 	}
 end
 
+local function uc_reload_profile_v2_for_current_identity()
+	local p = windower.ffxi.get_player()
+	if not p or not p.name or not p.main_job or not p.sub_job then
+		return {
+			ok = false,
+			error = 'missing player identity',
+			diff_count = -1,
+		}
+	end
+	if not _G.UC_SETTINGS then
+		return {
+			ok = false,
+			character = p.name,
+			main_job = p.main_job,
+			sub_job = p.sub_job,
+			error = 'missing settings',
+			diff_count = -1,
+		}
+	end
+
+	local meta = {
+		character = p.name,
+		main_job = p.main_job,
+		sub_job = p.sub_job,
+		addon_path = uc_addon_path(),
+	}
+	local ok_reload, path, reload_err, reload_count = uc_apply_profile_v2_file(meta, _G.UC_SETTINGS)
+	if not ok_reload then
+		return {
+			ok = false,
+			character = p.name,
+			main_job = p.main_job,
+			sub_job = p.sub_job,
+			path = path,
+			error = tostring(reload_err or 'unknown error'),
+			diff_count = tonumber(reload_count) or -1,
+		}
+	end
+
+	uc_profile_v2_auto_reload_note_applied(meta, uc_profile_v2_session_key(p), path)
+	local status = uc_update_profile_v2_contract_status({
+		settings = _G.UC_SETTINGS,
+		source = 'UC_SETTINGS',
+		character = p.name,
+		main_job = p.main_job,
+		sub_job = p.sub_job,
+		addon_path = meta.addon_path,
+		profile_key = uc_profile_v2_session_key(p),
+		updated_at = uc_now_s(),
+	})
+	local diff_count = tonumber(status and (status.diff_count or status.count)) or -1
+	if type(status) ~= 'table' then
+		return {
+			ok = false,
+			character = p.name,
+			main_job = p.main_job,
+			sub_job = p.sub_job,
+			path = path,
+			error = 'post-reload verification returned an invalid status result',
+			diff_count = diff_count,
+		}
+	end
+	if status.valid ~= true then
+		return {
+			ok = false,
+			character = p.name,
+			main_job = p.main_job,
+			sub_job = p.sub_job,
+			path = path,
+			error = 'post-reload profile status is invalid: ' .. tostring(status.reason or status.error or 'reason missing'),
+			diff_count = diff_count,
+		}
+	end
+	if diff_count ~= 0 then
+		local first_difference = status.first_difference
+		local verification_error
+		if type(first_difference) == 'table' then
+			verification_error = 'post-reload mismatch: '
+				.. uc_profile_v2.format_structured_profile_diff_detail(first_difference)
+		else
+			verification_error = 'post-reload verification reported '
+				.. tostring(diff_count)
+				.. ' differences but omitted first-difference detail'
+		end
+		return {
+			ok = false,
+			character = p.name,
+			main_job = p.main_job,
+			sub_job = p.sub_job,
+			path = path,
+			error = verification_error,
+			diff_count = diff_count,
+		}
+	end
+
+	return {
+		ok = true,
+		character = p.name,
+		main_job = p.main_job,
+		sub_job = p.sub_job,
+		path = path,
+		error = '',
+		diff_count = 0,
+	}
+end
+
+_G.UC_ReloadProfileV2ForCurrentIdentity = uc_reload_profile_v2_for_current_identity
+
 local function uc_run_queued_profile_v2_autoload()
 	local p = windower.ffxi.get_player()
 	if not p or not p.name or not _G.UC_SETTINGS then
@@ -1241,6 +1350,7 @@ local function uc_run_queued_profile_v2_autoload()
 			character = p.name,
 			main_job = p.main_job,
 			sub_job = p.sub_job,
+			addon_path = uc_addon_path(),
 			profile_key = tostring(p.name or '') .. '|' .. tostring(p.main_job or '') .. '|' .. tostring(p.sub_job or ''),
 			updated_at = uc_now_s(),
 		})
@@ -1777,6 +1887,7 @@ local function uc_load_profiles_for_character(char_name)
 		character = profile_character,
 		main_job = profile_main_job,
 		sub_job = profile_sub_job,
+		addon_path = uc_addon_path(),
 		profile_key = profile_key,
 		updated_at = uc_now_s(),
 	})
@@ -1883,6 +1994,7 @@ local function uc_reload_active_profile(job_for_defaults)
 			character = p.name,
 			main_job = main_job,
 			sub_job = p.sub_job,
+			addon_path = uc_addon_path(),
 			profile_key = profile_key,
 			updated_at = uc_now_s(),
 		})
@@ -1907,6 +2019,7 @@ local function uc_reload_active_profile(job_for_defaults)
 		character = p.name,
 		main_job = main_job,
 		sub_job = p.sub_job,
+		addon_path = uc_addon_path(),
 		profile_key = profile_key,
 		updated_at = uc_now_s(),
 	})
@@ -2274,6 +2387,7 @@ windower.register_event('addon command', function(...)
 					character = p.name,
 					main_job = p.main_job,
 					sub_job = p.sub_job,
+					addon_path = uc_addon_path(),
 					profile_key = profile_key,
 					updated_at = uc_now_s(),
 				})
