@@ -16,6 +16,8 @@ local scheduler_pending = require('uc_scheduler_pending')
 local uc_scheduler_config = require('uc_scheduler_config')
 local domain_ownership = require('uc_domain_ownership')
 local pet_command_coordinator = require('uc_pet_command_coordinator')
+local sleep_status = require('uc_sleep_status')
+sleep_status.validate_resources(res.buffs)
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
 	or nil
@@ -1789,6 +1791,7 @@ scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 200
 scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131
 scheduler.PRIORITY_BAND_SLEEP = 142
 scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 143
+scheduler.PRIORITY_BAND_SLEEP_WAKE = 149
 scheduler.PRIORITY_BAND_CRITICAL_CURE = 153
 scheduler.PRIORITY_BAND_CHARM_SLEEPER = 1000
 scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION
@@ -2693,6 +2696,27 @@ local function get_party_members(ctx)
 	return out
 end
 
+local function get_live_party_member_by_id(target_id)
+	local tid = tonumber(target_id) or 0
+	if tid <= 0 then
+		return nil
+	end
+	for _, member in ipairs(get_party_members()) do
+		if tonumber(member.id) == tid then
+			return member
+		end
+	end
+	return nil
+end
+
+function scheduler.validate_cure_target(selected)
+	return require('uc_cure_target_safety').validate(selected, {
+		get_mob_by_id = windower.ffxi.get_mob_by_id,
+		get_party_member_by_id = get_live_party_member_by_id,
+		sleep_status = sleep_status,
+	})
+end
+
 local function p1_build_party_id_set()
 	local _, id_set = require('uc_targeting_common').get_friendly_combat_member_ids()
 	return id_set
@@ -3529,7 +3553,10 @@ local function build_defensive_candidates(ctx)
 	for _, m in ipairs(members) do
 		if not (ignore_trusts and tonumber(m.spawn_type) == 14) then
 			local active_counts = count_buff_occurrences(m.buffs or {})
-			if m.hpp > 0 and m.hpp < 95 and bool_setting(scheduler.active_value_or_flat('config.defensive.cure.enabled', s.defensive_cure_enabled), true) and in_party_cast_range(m) then
+			if m.charmed == true then
+				log_def_sched(('CURE_REJECT target="%s" reason=CHARMED_TARGET'):format(tostring(m.name or '?')))
+			end
+			if m.charmed ~= true and m.hpp > 0 and m.hpp < 95 and bool_setting(scheduler.active_value_or_flat('config.defensive.cure.enabled', s.defensive_cure_enabled), true) and in_party_cast_range(m) then
 			local missing_hp = estimate_missing_hp(m)
 			local missing_gate = tonumber(scheduler.active_value_or_flat('config.defensive.cure.min_missing_hp', s.def_heal_min_missing_hp)) or 250
 			missing_gate = math.max(0, missing_gate)
@@ -3812,6 +3839,7 @@ local function p1_collect_proposals(ctx)
 	if domain_ownership.is_enabled('defensive')
 		and ctx.now >= (tonumber(s._sched_next_defensive_at) or 0) then
 		scheduler.providers.charm_sleeper.collect(ctx, out)
+		scheduler.providers.sleep_waker.collect(ctx, out)
 		scheduler.providers.enemy_buff_removal.collect(ctx, out)
 		scheduler.providers.defensive.collect_internal(ctx, out)
 		scheduler.providers.defensive.collect_healbot(ctx, out)
@@ -3886,9 +3914,12 @@ local function p1_collect_proposals(ctx)
 			local detail = type(proposal.detail) == 'table' and proposal.detail or {}
 			if provider == 'defensive_internal' or provider == 'defensive_healbot' then
 				if action_type == 'spell' and tostring(detail.def_action_type or '') == 'cure' then
-					local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings and ctx.settings.defensive_critical_hpp)) or 35
-					local target_hpp = tonumber(detail.target_hpp or -1) or -1
-					local event_code = (target_hpp > 0 and target_hpp <= critical_hpp) and 'CRITICAL_CURE_PROPOSED' or 'NONCRITICAL_CURE_PROPOSED'
+					local event_code = 'SLEEP_WAKE_PROPOSED'
+					if tostring(detail.cure_intent or '') ~= 'sleep_wake' then
+						local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings and ctx.settings.defensive_critical_hpp)) or 35
+						local target_hpp = tonumber(detail.target_hpp or -1) or -1
+						event_code = (target_hpp > 0 and target_hpp <= critical_hpp) and 'CRITICAL_CURE_PROPOSED' or 'NONCRITICAL_CURE_PROPOSED'
+					end
 					scheduler.action_timeline_log(event_code, {
 						spell = tostring(proposal.action_name or ''),
 						target = tostring(proposal.target_name or ''),
@@ -4046,7 +4077,19 @@ local function p1_build_dispatch_plan(ctx, selected)
 end
 
 local function p1_revalidate_plan_commit(ctx, selected, plan)
-	return require('uc_scheduler_dispatch_plan').p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, windower, combat_core)
+	local valid, reason = require('uc_scheduler_dispatch_plan').p1_revalidate_plan_commit(
+		scheduler,
+		ctx,
+		selected,
+		plan,
+		p1_number,
+		windower,
+		combat_core
+	)
+	if not valid then
+		return false, reason
+	end
+	return scheduler.validate_cure_target(selected)
 end
 
 function scheduler.p1_set_pending_globals()
@@ -5011,6 +5054,16 @@ local function p1_dispatch_defensive_internal(selected, settings)
 	if cmd == '' then
 		return false, nil
 	end
+	local cure_target_ok, cure_target_reason = scheduler.validate_cure_target(selected)
+	if not cure_target_ok then
+		log_def_sched(('DEFENSIVE_CURE_DISPATCH_REJECT action="%s" target="%s" target_id=%d reason=%s'):format(
+			tostring(selected.action_name or ''),
+			tostring(selected.target_name or ''),
+			tonumber(selected.target_id) or 0,
+			tostring(cure_target_reason)
+		))
+		return true, cure_target_reason
+	end
 	local ok_ready, _, action_kind = action_ready(tostring(selected.action_name or ''), tonumber(selected.target_id) or 0)
 	if action_kind == 'none' or not ok_ready then
 		return false, nil
@@ -5086,6 +5139,11 @@ local function p1_dispatch_defensive_internal(selected, settings)
 		and detail.def_action_type == 'charm_sleep' then
 		scheduler.providers.charm_sleeper.note_dispatch(selected, now_gate)
 	end
+	if defensive_command_ownership_status.dispatch_ok == true
+		and type(detail) == 'table'
+		and detail.cure_intent == 'sleep_wake' then
+		scheduler.providers.sleep_waker.note_dispatch(selected, now_gate)
+	end
 	local target_hpp = tonumber(type(detail) == 'table' and detail.target_hpp or -1) or -1
 	scheduler.p1_maybe_clear_pending_engage_for_selected_critical(settings, selected)
 	local can_apply_defensive_spell_lock = (
@@ -5110,7 +5168,11 @@ local function p1_dispatch_defensive_internal(selected, settings)
 		local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', settings and settings.defensive_critical_hpp)) or 35
 		local event_code = 'MAINT_BUFF_DISPATCHED'
 		if is_cure then
-			event_code = (target_hpp > 0 and target_hpp <= critical_hpp) and 'CRITICAL_CURE_DISPATCHED' or 'NONCRITICAL_CURE_DISPATCHED'
+			if tostring(type(detail) == 'table' and detail.cure_intent or '') == 'sleep_wake' then
+				event_code = 'SLEEP_WAKE_DISPATCHED'
+			else
+				event_code = (target_hpp > 0 and target_hpp <= critical_hpp) and 'CRITICAL_CURE_DISPATCHED' or 'NONCRITICAL_CURE_DISPATCHED'
+			end
 		end
 		scheduler.action_timeline_log(event_code, {
 			spell = tostring(selected.action_name or ''),
@@ -5150,6 +5212,16 @@ end
 local function p1_dispatch_defensive_healbot(selected, settings)
 	if not domain_ownership.is_enabled('defensive') then
 		return false, nil
+	end
+	local cure_target_ok, cure_target_reason = scheduler.validate_cure_target(selected)
+	if not cure_target_ok then
+		log_def_sched(('DEFENSIVE_CURE_DISPATCH_REJECT action="%s" target="%s" target_id=%d reason=%s'):format(
+			tostring(selected.action_name or ''),
+			tostring(selected.target_name or ''),
+			tonumber(selected.target_id) or 0,
+			tostring(cure_target_reason)
+		))
+		return true, cure_target_reason
 	end
 	local blocked, block_reason = action_dispatch_blocked()
 	if blocked then
@@ -6143,6 +6215,9 @@ function scheduler.process_tick(cadence)
 	_G.UC_LOG_TANK_SCHED = uc_scheduler_config.debug_log_tank_sched(s)
 	ensure_diag_logs_initialized()
 	maybe_broadcast_party_state_ipc()
+	if not defensive_domain_enabled then
+		scheduler.providers.sleep_waker.reset('DEFENSIVE_DOMAIN_DISABLED')
+	end
 	if not combat_domain_enabled and scheduler.providers.camp_puller.active() then
 		p1_build_pull_executor().stop({
 			reason = 'PULL_COMBAT_DOMAIN_DISABLED',
@@ -6289,6 +6364,7 @@ function scheduler.on_incoming_chunk(id, data)
 	if nid == 0x00A or nid == 0x00B then
 		enemy_effect_tracker.clear_all()
 		scheduler.providers.charm_sleeper.reset('ZONE_CHANGE')
+		scheduler.providers.sleep_waker.reset('ZONE_CHANGE')
 		require('uc_reaction_runtime').reset('zone_change')
 		require('uc_lilith_easy_encounter').reset('zone_change_packet')
 		require('uc_lilith_easy_formation_runtime').reset('zone_change_packet')
@@ -7042,6 +7118,13 @@ scheduler.providers.defensive = require('uc_provider_defensive').new({
 	choose_defensive_action = choose_defensive_action,
 	action_ready = action_ready,
 	build_action_command = build_action_command,
+	cure_target_allowed = function(target_id, target_kind)
+		if tostring(target_kind or '') == 'self' then
+			return true
+		end
+		local mob = windower.ffxi.get_mob_by_id(tonumber(target_id) or 0)
+		return type(mob) == 'table' and mob.charmed ~= true
+	end,
 	clamp_urgency = p1_clamp_urgency,
 	critical_cure_priority = scheduler.PRIORITY_BAND_CRITICAL_CURE,
 })
@@ -7064,6 +7147,19 @@ scheduler.providers.charm_sleeper = require('uc_provider_charm_sleeper').new({
 	policy = require('uc_charm_sleeper_policy').get(windower.addon_path),
 	spell_effect_gain_messages = scheduler.spell_effect_gain_messages,
 	priority_band = scheduler.PRIORITY_BAND_CHARM_SLEEPER,
+})
+scheduler.providers.sleep_waker = require('uc_provider_sleep_waker').new({
+	bool_setting = bool_setting,
+	active_value_or_flat = scheduler.active_value_or_flat,
+	get_party_members = get_party_members,
+	get_mob_by_id = windower.ffxi.get_mob_by_id,
+	in_party_cast_range = in_party_cast_range,
+	action_ready = action_ready,
+	build_action_command = build_action_command,
+	clamp_urgency = p1_clamp_urgency,
+	log = log_def_sched,
+	sleep_status = sleep_status,
+	priority_band = scheduler.PRIORITY_BAND_SLEEP_WAKE,
 })
 scheduler.providers.enemy_buff_removal = require('uc_provider_enemy_buff_removal').new({
 	bool_setting = bool_setting,

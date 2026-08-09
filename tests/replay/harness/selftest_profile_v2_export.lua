@@ -583,6 +583,7 @@ local function build_flat_settings()
 		def_heal_ignore_trusts = true,
 		defensive_doom_water = true,
 		def_charm_sleeper_enabled = false,
+		def_sleep_waker_enabled = false,
 		defensive_na_enabled = true,
 		defensive_buff_enabled = true,
 		defensive_buffs = 'Barspell',
@@ -700,6 +701,9 @@ local function build_expected_config()
 				holy_water_enabled = true,
 			},
 			charm_sleeper = {
+				enabled = false,
+			},
+			sleep_waker = {
 				enabled = false,
 			},
 			na = {

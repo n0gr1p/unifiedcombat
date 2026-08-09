@@ -24,6 +24,7 @@ Status of the current checkout (`3f78bf5`, 2026-07-31):
 - Nyzul ordered lamp parking has focused runtime coverage but no recorded live acceptance result.
 - Route/path following retains an accepted live-validation risk from the scheduler cutover; focused path execution and movement-arbitration tests pass.
 - The defensive domain includes an opt-in highest-priority charmed-party-member sleeper, backed by the checked-in safe-spell policy and confirmed Sleep-state tracking.
+- The defensive domain includes an opt-in sleeping-party-member waker that casts `Cure` only after authoritative Sleep detection and explicit non-Charm validation; all internal and HealBot allied Cure dispatches reject currently charmed targets.
 
 See the [scheduler RFC index](RFC/README.md), [phase-6 exit audit](RFC/UnifiedCombat_scheduler_refactor_phase6_exit_audit_2026-07-24.md), [Summoner implementation guide](SMN_RFC/summoner_v1_implementation.md), and [GEO/camp-puller tracker](GEO_PULLER_RFC/implementation_tracking.md) for detailed evidence and remaining field work.
 
@@ -346,4 +347,5 @@ GearSwap, SetTarget, Python, and the legacy `dd2`/`melee` engines are not requir
 - [Movement coordinator checklist](docs/movement_coordinator_implementation_checklist.md)
 - [Enemy buff removal checklist](docs/enemy_buff_removal_implementation_checklist.md)
 - [Charm sleeper checklist](docs/charm_sleeper_implementation_checklist.md)
+- [Sleep waker checklist](docs/sleep_waker_implementation_checklist.md)
 - [Third-party notices (archived location)](docs/old/THIRD_PARTY_NOTICES.md)

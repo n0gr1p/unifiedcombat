@@ -67,6 +67,8 @@ The file is append-mode and emits a `SESSION_START` marker on first use after lo
 - `MAINT_BUFF_DISPATCHED`
 - `SLEEP_PROPOSED`
 - `SLEEP_DISPATCHED`
+- `SLEEP_WAKE_PROPOSED`
+- `SLEEP_WAKE_DISPATCHED`
 
 ### Spell / action-state
 

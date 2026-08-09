@@ -437,6 +437,9 @@ local function apply_structured_config_to_candidate(candidate, config)
 		if type(config.defensive.charm_sleeper) == 'table' then
 			candidate.def_charm_sleeper_enabled = config.defensive.charm_sleeper.enabled
 		end
+		if type(config.defensive.sleep_waker) == 'table' then
+			candidate.def_sleep_waker_enabled = config.defensive.sleep_waker.enabled
+		end
 		if type(config.defensive.na) == 'table' then
 			candidate.defensive_na_enabled = config.defensive.na.enabled
 		end

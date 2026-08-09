@@ -866,6 +866,9 @@ local function default_config(meta)
             charm_sleeper = {
                 enabled = false,
             },
+            sleep_waker = {
+                enabled = false,
+            },
             na = {
                 enabled = false,
             },
@@ -1197,7 +1200,7 @@ end
 local function normalize_defensive(source, config)
     local defensive = config.defensive
     local nested = get_path(source, { 'defensive' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'provider', 'cure', 'doom', 'charm_sleeper', 'na', 'enemy_buffs', 'buffs', 'thresholds' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'provider', 'cure', 'doom', 'charm_sleeper', 'sleep_waker', 'na', 'enemy_buffs', 'buffs', 'thresholds' }) then
         defensive.enabled = normalize_boolean(nested.enabled, defensive.enabled)
         defensive.provider = normalize_string(nested.provider, defensive.provider)
         local cure = is_table(nested.cure) and nested.cure or {}
@@ -1210,6 +1213,8 @@ local function normalize_defensive(source, config)
         defensive.doom.holy_water_enabled = normalize_boolean(doom.holy_water_enabled, defensive.doom.holy_water_enabled)
         local charm_sleeper = is_table(nested.charm_sleeper) and nested.charm_sleeper or {}
         defensive.charm_sleeper.enabled = normalize_boolean(charm_sleeper.enabled, defensive.charm_sleeper.enabled)
+        local sleep_waker = is_table(nested.sleep_waker) and nested.sleep_waker or {}
+        defensive.sleep_waker.enabled = normalize_boolean(sleep_waker.enabled, defensive.sleep_waker.enabled)
         local na = is_table(nested.na) and nested.na or {}
         defensive.na.enabled = normalize_boolean(na.enabled, defensive.na.enabled)
         local enemy_buffs = is_table(nested.enemy_buffs) and nested.enemy_buffs or {}
@@ -1234,6 +1239,7 @@ local function normalize_defensive(source, config)
         defensive.cure.ignore_trusts = normalize_boolean(first_path(source, { path('def_heal_ignore_trusts') }), defensive.cure.ignore_trusts)
         defensive.doom.holy_water_enabled = normalize_boolean(first_path(source, { path('defensive_doom_water') }), defensive.doom.holy_water_enabled)
         defensive.charm_sleeper.enabled = normalize_boolean(first_path(source, { path('def_charm_sleeper_enabled') }), defensive.charm_sleeper.enabled)
+        defensive.sleep_waker.enabled = normalize_boolean(first_path(source, { path('def_sleep_waker_enabled') }), defensive.sleep_waker.enabled)
         defensive.na.enabled = normalize_boolean(first_path(source, { path('defensive_na_enabled') }), defensive.na.enabled)
         defensive.enemy_buffs.remove = normalize_boolean(first_path(source, { path('def_remove_enemy_buffs') }), defensive.enemy_buffs.remove)
         defensive.buffs.enabled = normalize_boolean(first_path(source, { path('defensive_buff_enabled') }), defensive.buffs.enabled)

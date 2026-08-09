@@ -107,6 +107,7 @@ local function build_flat_settings()
 		defensive_enabled = true,
 		defensive_cure_enabled = true,
 		def_charm_sleeper_enabled = true,
+		def_sleep_waker_enabled = true,
 		def_heal_min_tier_cure = 3,
 		def_heal_max_tier_cure = 4,
 		def_heal_min_missing_hp = 250,
@@ -278,6 +279,7 @@ local function main()
 	assert_equal(projected.sleepspells[1], 'Horde Lullaby II', 'projected sleep list mismatch')
 	assert_equal(projected.sleep_max_target_range, 14.0, 'projected sleep target range mismatch')
 	assert_equal(projected.def_charm_sleeper_enabled, true, 'projected charm sleeper mirror mismatch')
+	assert_equal(projected.def_sleep_waker_enabled, true, 'projected sleep waker mirror mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'projected targeted buff mirror mismatch')
 	assert_equal(projected.wait_ignore_names[1], 'Niightsiide', 'projected wait ignore names mismatch')
 	assert_equal(projected.ignore[1], 77, 'projected compatibility ignore id mismatch')
