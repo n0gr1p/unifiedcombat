@@ -317,6 +317,7 @@ local function uc_new_settings_defaults()
 		summoner_avatar_favor = false,
 		summoner_ward_enabled = false,
 		summoner_ward_action = '',
+		summoner_ward_actions = '',
 		summoner_engage_on_combat_start = false,
 		summoner_rage_enabled = false,
 		summoner_rage_action = '',
@@ -442,20 +443,28 @@ local function uc_start_active_engine_if_running()
 	if not Start_Engine then
 		return
 	end
+	require('uc_brd_maintenance').resume('engine_start')
 	if UC_UNIFIED_ENGINE and type(UC_UNIFIED_ENGINE.start) == 'function' then
 		UC_UNIFIED_ENGINE.start()
 	end
 end
 
 _G.UC_StartUnifiedEngine = function()
+	require('uc_brd_maintenance').resume('engine_start')
 	if UC_UNIFIED_ENGINE and type(UC_UNIFIED_ENGINE.start) == 'function' then
 		UC_UNIFIED_ENGINE.start()
 	end
 end
 
 _G.UC_StopUnifiedEngine = function(reason)
+	local stop_reason = tostring(reason or 'engine_stop')
+	if stop_reason == 'engine_stop' then
+		require('uc_brd_maintenance').suspend(stop_reason)
+	else
+		require('uc_brd_maintenance').reset(stop_reason)
+	end
 	if UC_COMBAT_CORE and type(UC_COMBAT_CORE.reset_skillchain_state) == 'function' then
-		UC_COMBAT_CORE.reset_skillchain_state(tostring(reason or 'engine_stop'))
+		UC_COMBAT_CORE.reset_skillchain_state(stop_reason)
 	end
 	if UC_UNIFIED_ENGINE and type(UC_UNIFIED_ENGINE.stop) == 'function' then
 		UC_UNIFIED_ENGINE.stop()
@@ -529,7 +538,7 @@ local PROFILE_KEYS = {
 	'engine_enabled', 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled',
 	'cor_roll_1', 'cor_roll_2', 'cor_crooked_roll_slot', 'cor_elevens', 'cor_luzaf_range_override', 'cor_roll_range_selected', 'cor_roll_range_require_ids',
 	'summoner_enabled', 'summoner_avatar', 'summoner_avatar_favor',
-	'summoner_ward_enabled', 'summoner_ward_action',
+	'summoner_ward_enabled', 'summoner_ward_action', 'summoner_ward_actions',
 	'summoner_engage_on_combat_start', 'summoner_rage_enabled',
 	'summoner_rage_action', 'summoner_rage_usage',
 	'summoner_rage_target_hpp_above_enabled', 'summoner_rage_target_hpp_above',
@@ -2153,7 +2162,6 @@ windower.register_event('unload', function()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('unload')
 	uc_nyzul_runtime.reset('unload')
-	require('uc_brd_maintenance').reset('unload')
 	require('uc_reaction_runtime').reset('unload')
 	require('uc_lilith_easy_encounter').reset('unload')
 	require('uc_lilith_easy_formation_runtime').reset('unload')
@@ -2224,7 +2232,6 @@ windower.register_event('addon command', function(...)
 		return
 	elseif a == 'stop' then
 		Start_Engine = false
-		require('uc_brd_maintenance').reset('engine_stop')
 		require('uc_lilith_easy_encounter').reset('engine_stop')
 		require('uc_lilith_easy_formation_runtime').reset('engine_stop')
 		if _G.UC_SETTINGS then

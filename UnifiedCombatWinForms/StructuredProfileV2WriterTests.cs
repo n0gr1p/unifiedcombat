@@ -921,6 +921,23 @@ internal static class StructuredProfileV2WriterTests
             ifrit.Wards.Any(action => action.Name == "Crimson Howl" && action.EffectId == 68),
             "Crimson Howl Ward metadata missing"
         );
+		AssertEqual(
+			SummonerCapabilities.FindWard("Hastega II")?.Avatar ?? "",
+			"Garuda",
+			"global Ward ownership mismatch"
+		);
+		var growl = SummonerCapabilities.FindWard("Ecliptic Growl")
+			?? throw new InvalidOperationException("Ecliptic Growl capability missing");
+		AssertEqual(growl.Avatar, "Fenrir", "Ecliptic Growl owner mismatch");
+		AssertEqual(growl.EffectIds.Count, 7, "Ecliptic Growl effect count mismatch");
+		AssertEqual(growl.EffectIds[6], 125, "Ecliptic Growl final effect mismatch");
+		var howl = SummonerCapabilities.FindWard("Ecliptic Howl")
+			?? throw new InvalidOperationException("Ecliptic Howl capability missing");
+		AssertEqual(howl.EffectIds.Count, 2, "Ecliptic Howl effect count mismatch");
+		AssertTrue(
+			SummonerCapabilities.FindWard("Lunar Cry") is null,
+			"enemy-targeted Fenrir Ward must not be offered for maintenance"
+		);
         AssertTrue(
             ifrit.Rages.Any(action => action.Name == "Flaming Crush" && action.Id == 550),
             "Flaming Crush Rage metadata missing"
@@ -965,6 +982,7 @@ internal static class StructuredProfileV2WriterTests
         flat["summoner_avatar_favor"] = true;
         flat["summoner_ward_enabled"] = true;
         flat["summoner_ward_action"] = "Crimson Howl";
+		flat["summoner_ward_actions"] = "Crimson Howl|Hastega II";
         flat["summoner_engage_on_combat_start"] = true;
         flat["summoner_rage_enabled"] = true;
         flat["summoner_rage_action"] = "Flaming Crush";
@@ -979,7 +997,9 @@ internal static class StructuredProfileV2WriterTests
             new StructuredProfileV2Identity("Redrogue", "SMN", "RDM")
         );
         AssertContains(content, "avatar = \"Ifrit\"", "desired avatar must serialize");
-        AssertContains(content, "action = \"Crimson Howl\"", "Ward action must serialize");
+		AssertContains(content, "actions = {", "Ward action list must serialize");
+		AssertContains(content, "\"Crimson Howl\"", "primary-avatar Ward must serialize");
+		AssertContains(content, "\"Hastega II\"", "cross-avatar Ward must serialize");
         AssertContains(content, "action = \"Flaming Crush\"", "Rage action must serialize");
         AssertContains(content, "avatar_favor = true", "Favor policy must serialize");
         AssertContains(content, "engage_on_combat_start = true", "engagement policy must serialize");
@@ -995,7 +1015,8 @@ internal static class StructuredProfileV2WriterTests
         flat["summoner_enabled"] = true;
         flat["summoner_avatar"] = "Garuda";
         flat["summoner_ward_enabled"] = true;
-        flat["summoner_ward_action"] = "Crimson Howl";
+		flat["summoner_ward_action"] = "Not a Ward";
+		flat["summoner_ward_actions"] = "Not a Ward";
         flat["summoner_rage_enabled"] = true;
         flat["summoner_rage_action"] = "Flaming Crush";
 
@@ -1004,7 +1025,7 @@ internal static class StructuredProfileV2WriterTests
             new StructuredProfileV2Identity("Redrogue", "SMN", "RDM")
         );
         AssertContains(content, "avatar = \"Garuda\"", "changed desired avatar must serialize");
-        AssertContains(content, "action = \"Crimson Howl\"", "incompatible Ward must be preserved");
+		AssertContains(content, "\"Not a Ward\"", "unsupported Ward must be preserved");
         AssertContains(content, "action = \"Flaming Crush\"", "incompatible Rage must be preserved");
     }
 
@@ -1017,10 +1038,11 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(ui, "new TabPage(\"SMN\")", "Summoner tab must be available without runtime state");
         AssertContains(ui, "SummonerCapabilities.Avatars", "avatar options must come from the static catalog");
         AssertContains(store, "[\"summoner_enabled\"] = _summonerEnabled.Checked", "Summoner enabled state must be captured");
+		AssertContains(store, "[\"summoner_ward_actions\"]", "Summoner Ward rotation must be captured");
         AssertContains(store, "[\"summoner_rage_action\"] = _summonerRageAction.SelectedItem", "Summoner Rage must be captured");
         AssertContains(store, "[\"summoner_rage_target_hpp_above_enabled\"]", "target HPP gate must be captured");
         AssertContains(store, "[\"summoner_rage_pet_tp_above_enabled\"]", "pet TP gate must be captured");
-        AssertContains(logic, "BindSummonerActionCombo", "Summoner actions must be filtered from the catalog");
+		AssertContains(logic, "BindSummonerWardList", "Summoner Ward rotation must come from the catalog");
         AssertContains(logic, "incompatible with", "invalidated selections must be visibly diagnosed");
         AssertContains(logic, "EnsureSummonerTabVisibility(summonerVisible)", "SMN tab visibility must follow main/sub job eligibility");
         AssertContains(logic, "string.Equals(subJob, \"SMN\"", "SMN subjob must make the SMN tab visible");

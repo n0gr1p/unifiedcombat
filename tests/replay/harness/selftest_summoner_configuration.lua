@@ -27,7 +27,7 @@ local function valid_summoner_config()
 			avatar_favor = true,
 			ward = {
 				enabled = true,
-				action = 'Crimson Howl',
+				actions = { 'Crimson Howl' },
 			},
 		},
 		pet_combat = {
@@ -58,6 +58,15 @@ local function main()
 	assert_equal(#catalog.avatar_order, 11, 'supported avatar count mismatch')
 	assert_equal(capabilities.avatar('Ifrit').summon_spell_id, 298, 'Ifrit summon spell id mismatch')
 	assert_equal(capabilities.action('Ifrit', 'ward', 'Crimson Howl').effect_id, 68, 'Crimson Howl effect mismatch')
+	assert_equal(capabilities.ward('Hastega II').avatar, 'Garuda', 'global Ward ownership mismatch')
+	assert_equal(#capabilities.ward('Ecliptic Growl').effect_ids, 7, 'Ecliptic Growl effect count mismatch')
+	assert_equal(capabilities.ward('Ecliptic Growl').effect_ids[7], 125, 'Ecliptic Growl final effect mismatch')
+	assert_equal(#capabilities.ward('Ecliptic Howl').effect_ids, 2, 'Ecliptic Howl effect count mismatch')
+	assert_true(capabilities.ward('Lunar Cry') == nil, 'enemy-targeted Ward must not be maintainable')
+	assert_true(
+		capabilities.action('Fenrir', 'ward', 'Lunar Cry').maintainable == false,
+		'non-maintainable Ward metadata must remain cataloged'
+	)
 	assert_equal(capabilities.action('Ifrit', 'rage', 'Flaming Crush').id, 550, 'Flaming Crush resource id mismatch')
 	assert_true(capabilities.action('Garuda', 'rage', 'Flaming Crush') == nil, 'cross-avatar Rage must be incompatible')
 
@@ -112,11 +121,24 @@ local function main()
 	local valid = validator.validate(flat.summoner)
 	assert_true(valid.valid, 'valid Summoner configuration must validate')
 	assert_true(valid.ward_valid, 'compatible Ward must validate')
+	assert_equal(valid.wards[1].name, 'Crimson Howl', 'configured Ward list mismatch')
 	assert_true(valid.rage_valid, 'compatible Rage must validate')
 	assert_equal(flat.summoner.pet_combat.offensive_action.target_hpp_above_enabled, true, 'flat target HPP gate mismatch')
 	assert_equal(flat.summoner.pet_combat.offensive_action.target_hpp_above, 50, 'flat target HPP threshold mismatch')
 	assert_equal(flat.summoner.pet_combat.offensive_action.pet_tp_above_enabled, true, 'flat pet TP gate mismatch')
 	assert_equal(flat.summoner.pet_combat.offensive_action.pet_tp_above, 2999, 'flat pet TP threshold mismatch')
+
+	local legacy_single_ward = valid_summoner_config()
+	legacy_single_ward.maintenance.ward.actions = nil
+	legacy_single_ward.maintenance.ward.action = 'Crimson Howl'
+	local legacy_single_result = validator.validate(legacy_single_ward)
+	assert_true(legacy_single_result.ward_valid, 'legacy single-Ward configuration must remain valid')
+	local normalized_legacy_single = normalizer.normalize({ summoner = legacy_single_ward }, { main_job = 'SMN' })
+	assert_equal(
+		normalized_legacy_single.summoner.maintenance.ward.actions[1],
+		'Crimson Howl',
+		'legacy single-Ward configuration must migrate to the Ward list'
+	)
 
 	local legacy_without_gates = valid_summoner_config()
 	legacy_without_gates.pet_combat.offensive_action.target_hpp_above_enabled = nil
@@ -152,15 +174,21 @@ local function main()
 	assert_true(find_issue(malformed.errors, 'summoner_shape_invalid') ~= nil, 'malformed shape diagnostic mismatch')
 
 	local incompatible = valid_summoner_config()
-	incompatible.avatar = 'Garuda'
+	incompatible.maintenance.ward.actions = { 'Not a Ward' }
 	local incompatible_result = validator.validate(incompatible)
 	assert_true(incompatible_result.valid, 'compatible desired avatar must remain globally valid')
-	assert_true(not incompatible_result.ward_valid, 'incompatible Ward must be suppressed')
-	assert_true(not incompatible_result.rage_valid, 'incompatible Rage must be suppressed')
-	assert_equal(incompatible.maintenance.ward.action, 'Crimson Howl', 'invalid Ward value must be preserved')
+	assert_true(not incompatible_result.ward_valid, 'unsupported Ward must be suppressed')
+	assert_true(incompatible_result.rage_valid, 'valid primary-avatar Rage must remain available')
+	assert_equal(incompatible.maintenance.ward.actions[1], 'Not a Ward', 'invalid Ward value must be preserved')
 	assert_equal(incompatible.pet_combat.offensive_action.action, 'Flaming Crush', 'invalid Rage value must be preserved')
-	assert_true(find_issue(incompatible_result.warnings, 'ward_incompatible') ~= nil, 'incompatible Ward diagnostic mismatch')
-	assert_true(find_issue(incompatible_result.warnings, 'rage_incompatible') ~= nil, 'incompatible Rage diagnostic mismatch')
+	assert_true(find_issue(incompatible_result.warnings, 'ward_unsupported') ~= nil, 'unsupported Ward diagnostic mismatch')
+
+	local rotation = valid_summoner_config()
+	rotation.maintenance.ward.actions = { 'Crimson Howl', 'Hastega II', 'Ecliptic Growl' }
+	local rotation_result = validator.validate(rotation)
+	assert_true(rotation_result.ward_valid, 'cross-avatar Ward rotation must validate')
+	assert_equal(rotation_result.wards[2].avatar, 'Garuda', 'cross-avatar Ward ownership mismatch')
+	assert_equal(rotation_result.wards[3].avatar, 'Fenrir', 'multi-effect Fenrir Ward ownership mismatch')
 
 	local payload = {
 		version = 2,
@@ -178,8 +206,8 @@ local function main()
 	local contract_result = contract.validate_structured_profile_config(payload)
 	assert_true(contract_result.ok, 'isolated Summoner incompatibility must not invalidate the profile container')
 	assert_true(contract_result.configuration_valid, 'valid desired avatar must keep the configuration globally valid')
-	assert_true(not contract_result.summoner.ward_valid, 'contract must expose incompatible Ward state')
-	assert_true(not contract_result.summoner.rage_valid, 'contract must expose incompatible Rage state')
+	assert_true(not contract_result.summoner.ward_valid, 'contract must expose unsupported Ward state')
+	assert_true(contract_result.summoner.rage_valid, 'contract must preserve valid Rage state')
 
 	payload.config.summoner = no_avatar
 	local no_avatar_contract = contract.validate_structured_profile_config(payload)
@@ -198,6 +226,7 @@ local function main()
 	assert_equal(projected.summoner_enabled, true, 'projected enabled mismatch')
 	assert_equal(projected.summoner_avatar, 'Ifrit', 'projected avatar mismatch')
 	assert_equal(projected.summoner_ward_action, 'Crimson Howl', 'projected Ward mismatch')
+	assert_equal(projected.summoner_ward_actions, 'Crimson Howl', 'projected Ward list mismatch')
 	assert_equal(projected.summoner_rage_action, 'Flaming Crush', 'projected Rage mismatch')
 	assert_equal(projected.summoner_rage_target_hpp_above_enabled, false, 'projected target HPP gate mismatch')
 	assert_equal(projected.summoner_rage_target_hpp_above, 50, 'projected target HPP threshold mismatch')
@@ -206,7 +235,7 @@ local function main()
 
 	local round_trip = normalizer.normalize(projected, { main_job = 'SMN' })
 	assert_equal(round_trip.summoner.avatar, 'Ifrit', 'round-trip avatar mismatch')
-	assert_equal(round_trip.summoner.maintenance.ward.action, 'Crimson Howl', 'round-trip Ward mismatch')
+	assert_equal(round_trip.summoner.maintenance.ward.actions[1], 'Crimson Howl', 'round-trip Ward mismatch')
 	assert_equal(round_trip.summoner.pet_combat.offensive_action.action, 'Flaming Crush', 'round-trip Rage mismatch')
 	assert_equal(round_trip.summoner.pet_combat.offensive_action.target_hpp_above, 50, 'round-trip target HPP mismatch')
 	assert_equal(round_trip.summoner.pet_combat.offensive_action.pet_tp_above, 2000, 'round-trip pet TP mismatch')

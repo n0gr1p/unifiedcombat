@@ -811,6 +811,7 @@ local function build_expected_config()
 				avatar_favor = false,
 				ward = {
 					enabled = false,
+					actions = {},
 				},
 			},
 			pet_combat = {

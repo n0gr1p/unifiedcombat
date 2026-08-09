@@ -16,7 +16,7 @@ summoner = {
         avatar_favor = true,
         ward = {
             enabled = true,
-            action = "Crimson Howl",
+            actions = { "Crimson Howl", "Hastega II" },
         },
     },
     pet_combat = {
@@ -30,7 +30,7 @@ summoner = {
 }
 ```
 
-The WinForms Summoner tab is always available, including while the addon is disconnected, the player is not on Summoner, and no pet exists. Its avatar, Ward, and Rage choices come from `data/summoner_capabilities.tsv`.
+The WinForms Summoner tab is always available, including while the addon is disconnected, the player is not on Summoner, and no pet exists. Its avatar, maintainable Ward, and Rage choices come from `data/summoner_capabilities.tsv`. Ward rows with empty effect lists remain cataloged but are not offered for maintained-buff rotation.
 
 Changing the desired avatar does not replace an incompatible Ward or Rage. The stored choice remains visible, the UI diagnoses the incompatibility, and runtime suppresses only that invalid behavior.
 
@@ -52,7 +52,7 @@ Malformed Summoner structures fail validation or normalization explicitly. Runti
 
 1. Desired-avatar convergence.
 2. Avatar's Favor.
-3. One maintained Ward effect.
+3. An ordered rotation of maintained Ward effects across supported avatars.
 
 The convergence state machine is observation-driven:
 
@@ -75,7 +75,7 @@ Summoning uses the normal spell readiness and lifecycle path. Avatar appearance 
 
 Favor uses the normal player job-ability lifecycle and is considered satisfied when buff ID `431` is present.
 
-Ward is self-targeted. It is eligible only when its configured maintained effect is absent, its action is compatible with the desired avatar, Blood Pact: Ward recast `174` is ready, and MP is sufficient. V1 does not pre-refresh.
+Ward is self-targeted. It is eligible only when at least one effect in its configured maintained-effect set is absent, Blood Pact: Ward recast `174` is ready, and MP is sufficient. The scheduler temporarily converges on the Ward's owning avatar, then returns to the configured primary avatar. V1 does not pre-refresh.
 
 ### Shared pet-command channel
 
@@ -98,7 +98,7 @@ Completion is based on runtime evidence:
 
 - Release: captured pet disappears or changes.
 - Assault: captured pet is observed targeting the captured enemy, or performs an action on it.
-- Ward: configured effect appears, Ward recast is consumed, or the matching pet action completes.
+- Ward: every configured effect appears or the matching pet action completes. Ward recast consumption acknowledges dispatch but does not permit Release before action resolution.
 - Rage: Rage recast is consumed or the matching pet action completes.
 
 Pet disappearance, target invalidation, server failure messages, interruption, and the centralized 2.5-second watchdog resolve pending state. Failures use exponential per-command backoff starting at one second and capped at eight seconds.

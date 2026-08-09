@@ -441,7 +441,7 @@ public partial class MainForm
             _summonerAvatar.SelectedIndex = 0;
             _summonerAvatarFavor.Checked = false;
             _summonerWardEnabled.Checked = false;
-            BindSummonerActionCombo(_summonerWardAction, [], "");
+			BindSummonerWardList([]);
             _summonerEngage.Checked = false;
             _summonerRageEnabled.Checked = false;
             BindSummonerActionCombo(_summonerRageAction, [], "");
@@ -1643,6 +1643,43 @@ public partial class MainForm
         combo.SelectedIndex = names.FindIndex(name => string.Equals(name, selected, StringComparison.Ordinal));
     }
 
+	private sealed record SummonerWardListItem(string Name, string Avatar)
+	{
+		public override string ToString() => Avatar.Length == 0 ? Name : $"{Avatar} — {Name}";
+	}
+
+	private void BindSummonerWardList(IEnumerable<string> selectedActions)
+	{
+		var selected = selectedActions
+			.Where(name => !string.IsNullOrWhiteSpace(name))
+			.Distinct(StringComparer.Ordinal)
+			.ToList();
+		var supported = SummonerCapabilities.Wards
+			.Select(action => new SummonerWardListItem(action.Name, action.Avatar))
+			.ToList();
+		foreach (var name in selected)
+		{
+			if (SummonerCapabilities.FindWard(name) is null)
+			{
+				supported.Insert(0, new SummonerWardListItem(name, ""));
+			}
+		}
+		_summonerWardActions.Items.Clear();
+		foreach (var item in supported)
+		{
+			_summonerWardActions.Items.Add(item, selected.Contains(item.Name, StringComparer.Ordinal));
+		}
+	}
+
+	private List<string> SelectedSummonerWardActions()
+	{
+		return _summonerWardActions.CheckedItems
+			.Cast<SummonerWardListItem>()
+			.Select(item => item.Name)
+			.Distinct(StringComparer.Ordinal)
+			.ToList();
+	}
+
     private void BindSummonerAvatarCombo(string selected)
     {
         var names = SummonerCapabilities.Avatars.Select(avatar => avatar.Name).ToList();
@@ -1675,12 +1712,18 @@ public partial class MainForm
         );
         _summonerRageEnabled.Checked = SessionStateHelper.GetBool(snapshot, "summoner_rage_enabled", false);
 
-        var avatar = SummonerCapabilities.FindAvatar(avatarName);
-        BindSummonerActionCombo(
-            _summonerWardAction,
-            avatar is null ? [] : avatar.Wards,
-            SessionStateHelper.GetString(snapshot, "summoner_ward_action")
-        );
+		var wardActions = SessionStateHelper.SplitOptions(
+			snapshot.TryGetProperty("summoner_ward_actions", out var wardActionsNode)
+				? wardActionsNode
+				: default
+		);
+		var legacyWardAction = SessionStateHelper.GetString(snapshot, "summoner_ward_action");
+		if (wardActions.Count == 0 && legacyWardAction.Length != 0)
+		{
+			wardActions.Add(legacyWardAction);
+		}
+		BindSummonerWardList(wardActions);
+		var avatar = SummonerCapabilities.FindAvatar(avatarName);
         BindSummonerActionCombo(
             _summonerRageAction,
             avatar is null ? [] : avatar.Rages,
@@ -1756,7 +1799,6 @@ public partial class MainForm
         {
             return;
         }
-        var ward = _summonerWardAction.SelectedItem?.ToString() ?? "";
         var rage = _summonerRageAction.SelectedItem?.ToString() ?? "";
         var avatarName = _summonerAvatar.SelectedItem?.ToString() ?? "";
         var avatar = SummonerCapabilities.FindAvatar(avatarName);
@@ -1764,7 +1806,6 @@ public partial class MainForm
         _suppressEvents = true;
         try
         {
-            BindSummonerActionCombo(_summonerWardAction, avatar is null ? [] : avatar.Wards, ward);
             BindSummonerActionCombo(_summonerRageAction, avatar is null ? [] : avatar.Rages, rage);
         }
         finally
@@ -1807,22 +1848,39 @@ public partial class MainForm
         }
     }
 
+	private void OnSummonerWardItemCheck()
+	{
+		if (_suppressEvents || !IsHandleCreated)
+		{
+			return;
+		}
+		BeginInvoke(
+			() =>
+			{
+				if (!IsDisposed)
+				{
+					OnSummonerActionChanged();
+				}
+			}
+		);
+	}
+
     private void UpdateSummonerUiState()
     {
         var enabled = _summonerEnabled.Checked;
         var avatarName = _summonerAvatar.SelectedItem?.ToString() ?? "";
         var avatarValid = SummonerCapabilities.FindAvatar(avatarName) is not null;
-        var wardAction = _summonerWardAction.SelectedItem?.ToString() ?? "";
+		var wardActions = SelectedSummonerWardActions();
         var rageAction = _summonerRageAction.SelectedItem?.ToString() ?? "";
         var wardValid = !_summonerWardEnabled.Checked
-            || SummonerCapabilities.IsCompatible(avatarName, "ward", wardAction);
+			|| (wardActions.Count > 0 && wardActions.All(action => SummonerCapabilities.FindWard(action) is not null));
         var rageValid = !_summonerRageEnabled.Checked
             || SummonerCapabilities.IsCompatible(avatarName, "rage", rageAction);
 
         _summonerAvatar.Enabled = enabled;
         _summonerAvatarFavor.Enabled = enabled && avatarValid;
         _summonerWardEnabled.Enabled = enabled && avatarValid;
-        _summonerWardAction.Enabled = enabled && avatarValid && _summonerWardEnabled.Checked;
+		_summonerWardActions.Enabled = enabled && avatarValid && _summonerWardEnabled.Checked;
         _summonerEngage.Enabled = enabled && avatarValid;
         _summonerRageEnabled.Enabled = enabled && avatarValid;
         _summonerRageAction.Enabled = enabled && avatarValid && _summonerRageEnabled.Checked;
@@ -1843,17 +1901,18 @@ public partial class MainForm
         {
             _summonerValidation.ForeColor = Color.Firebrick;
             _summonerValidation.Text = avatarName.Length == 0
-                ? "A desired avatar is required."
-                : $"Desired avatar '{avatarName}' is not supported.";
+				? "A primary avatar is required."
+				: $"Primary avatar '{avatarName}' is not supported.";
         }
         else if (!wardValid || !rageValid)
         {
             var issues = new List<string>();
             if (!wardValid)
             {
-                issues.Add(wardAction.Length == 0
-                    ? "Select a Ward action."
-                    : $"Ward '{wardAction}' is incompatible with {avatarName}.");
+				var unsupported = wardActions.FirstOrDefault(action => SummonerCapabilities.FindWard(action) is null);
+				issues.Add(wardActions.Count == 0
+					? "Select at least one Ward action."
+					: $"Ward '{unsupported}' is not supported.");
             }
             if (!rageValid)
             {

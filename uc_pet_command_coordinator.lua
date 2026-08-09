@@ -41,7 +41,14 @@ end
 local function copy_command(command)
 	local copy = {}
 	for key, value in pairs(command) do
-		copy[key] = value
+		if key == 'expected_effect_ids' then
+			copy[key] = {}
+			for i = 1, #value do
+				copy[key][i] = value[i]
+			end
+		else
+			copy[key] = value
+		end
 	end
 	return copy
 end
@@ -97,14 +104,22 @@ local function recast_consumed(pending, ctx)
 	return current > pending.recast_before
 end
 
-local function player_has_effect(ctx, effect_id)
+local function player_has_all_effects(ctx, effect_ids)
 	local buffs = require_table(ctx.player_buffs, 'pet command context player_buffs')
-	for i = 1, #buffs do
-		if tonumber(buffs[i]) == effect_id then
-			return true
+	for effect_index = 1, #effect_ids do
+		local expected = effect_ids[effect_index]
+		local found = false
+		for buff_index = 1, #buffs do
+			if tonumber(buffs[buff_index]) == expected then
+				found = true
+				break
+			end
+		end
+		if not found then
+			return false
 		end
 	end
-	return false
+	return true
 end
 
 local function target_is_current_and_live(pending, ctx)
@@ -249,11 +264,14 @@ function M.observe(state, ctx)
 			return finish(state, now, 'complete', 'pet_engaged_observed')
 		end
 	elseif pending.kind == 'ward' then
-		if player_has_effect(ctx, pending.expected_effect_id) then
+		if player_has_all_effects(ctx, pending.expected_effect_ids) then
 			return finish(state, now, 'complete', 'ward_effect_observed')
 		end
 		if recast_consumed(pending, ctx) then
-			return finish(state, now, 'complete', 'ward_recast_consumed')
+			if pending.recast_consumed_at == nil then
+				pending.recast_consumed_at = now
+				pending.deadline = now + state.timeout
+			end
 		end
 	elseif pending.kind == 'rage' then
 		if not target_is_current_and_live(pending, ctx) then

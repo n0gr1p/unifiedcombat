@@ -43,6 +43,82 @@ local function require_optional_string(result, parent, key, path)
 	return true
 end
 
+local function configured_ward_names(result, ward)
+	if ward.actions ~= nil and ward.action ~= nil then
+		result.valid = false
+		add_issue(
+			result.errors,
+			'summoner_shape_invalid',
+			'summoner.maintenance.ward must define actions or legacy action, not both.'
+		)
+		return {}
+	end
+	if ward.actions == nil then
+		require_optional_string(result, ward, 'action', 'summoner.maintenance.ward.action')
+		if type(ward.action) == 'string' and ward.action ~= '' then
+			return { ward.action }
+		end
+		return {}
+	end
+	if type(ward.actions) ~= 'table' then
+		result.valid = false
+		add_issue(
+			result.errors,
+			'summoner_shape_invalid',
+			'summoner.maintenance.ward.actions must be an array of strings.'
+		)
+		return {}
+	end
+	local names = {}
+	local seen = {}
+	local count = 0
+	for key, value in pairs(ward.actions) do
+		count = count + 1
+		if type(key) ~= 'number' or key % 1 ~= 0 or key < 1 then
+			result.valid = false
+			add_issue(
+				result.errors,
+				'summoner_shape_invalid',
+				'summoner.maintenance.ward.actions must be a contiguous array.'
+			)
+			return {}
+		end
+		if type(value) ~= 'string' or value == '' then
+			result.valid = false
+			add_issue(
+				result.errors,
+				'summoner_shape_invalid',
+				'summoner.maintenance.ward.actions entries must be non-empty strings.'
+			)
+			return {}
+		end
+	end
+	if count ~= #ward.actions then
+		result.valid = false
+		add_issue(
+			result.errors,
+			'summoner_shape_invalid',
+			'summoner.maintenance.ward.actions must be a contiguous array.'
+		)
+		return {}
+	end
+	for i = 1, #ward.actions do
+		local name = ward.actions[i]
+		if seen[name] then
+			result.valid = false
+			add_issue(
+				result.errors,
+				'summoner_shape_invalid',
+				('summoner.maintenance.ward.actions duplicates %q.'):format(name)
+			)
+			return {}
+		end
+		seen[name] = true
+		names[#names + 1] = name
+	end
+	return names
+end
+
 local function validate_optional_gate(result, parent, enabled_key, value_key, path, maximum)
 	local enabled = parent[enabled_key]
 	local value = parent[value_key]
@@ -109,7 +185,7 @@ function M.validate(config)
 	require_optional_string(result, config, 'avatar', 'summoner.avatar')
 	require_boolean(result, maintenance, 'avatar_favor', 'summoner.maintenance.avatar_favor')
 	require_boolean(result, ward, 'enabled', 'summoner.maintenance.ward.enabled')
-	require_optional_string(result, ward, 'action', 'summoner.maintenance.ward.action')
+	local ward_names = configured_ward_names(result, ward)
 	require_boolean(
 		result,
 		pet_combat,
@@ -170,20 +246,34 @@ function M.validate(config)
 	result.avatar = avatar
 
 	if ward.enabled == true then
-		local action = capabilities.action(avatar.name, 'ward', ward.action)
-		if action == nil then
+		result.wards = {}
+		result.ward_by_name = {}
+		if #ward_names == 0 then
 			result.ward_valid = false
-			if ward.action == nil or ward.action == '' then
-				add_issue(result.warnings, 'ward_action_required', 'Enabled Summoner Ward maintenance requires an action.')
-			else
-				add_issue(
-					result.warnings,
-					'ward_incompatible',
-					('Ward %q is not compatible with desired avatar %s.'):format(tostring(ward.action), avatar.name)
-				)
-			end
+			add_issue(
+				result.warnings,
+				'ward_actions_required',
+				'Enabled Summoner Ward maintenance requires at least one action.'
+			)
 		else
-			result.ward = action
+			for i = 1, #ward_names do
+				local action_name = ward_names[i]
+				local action = capabilities.ward(action_name)
+				if action == nil then
+					result.ward_valid = false
+					add_issue(
+						result.warnings,
+						'ward_unsupported',
+						('Ward %q is not supported.'):format(action_name)
+					)
+				else
+					result.wards[#result.wards + 1] = action
+					result.ward_by_name[action.name] = action
+				end
+			end
+			if result.ward_valid and #result.wards > 0 then
+				result.ward = result.wards[1]
+			end
 		end
 	end
 

@@ -53,7 +53,7 @@ local function base_command(kind)
 		command.recast_before = 0
 	end
 	if kind == 'ward' then
-		command.expected_effect_id = 68
+		command.expected_effect_ids = { 68, 69 }
 	end
 	return command
 end
@@ -180,9 +180,35 @@ local function test_serialization_and_completion()
 
 	coordinator.begin(state, base_command('ward'), 3)
 	local ward_ctx = context(3.1)
-	ward_ctx.player_buffs = { 68 }
-	local ward_event = coordinator.observe(state, ward_ctx)
-	assert_equal(ward_event.reason, 'ward_effect_observed', 'Ward effect observation')
+	ward_ctx.ability_recasts[174] = 45
+	assert_equal(
+		coordinator.observe(state, ward_ctx),
+		nil,
+		'Ward recast consumption must not complete the pact before its action resolves'
+	)
+	assert_true(coordinator.is_pending(state), 'Ward must remain pending during its action animation')
+	local release_allowed, release_reason = coordinator.can_attempt(state, 'smn:release:200', 3.2)
+	assert_equal(release_allowed, false, 'Release must remain blocked until the Ward action resolves')
+	assert_equal(release_reason, 'pet_command_pending', 'Release must remain on the shared pet-command lock')
+	local partial_effect_ctx = context(3.3)
+	partial_effect_ctx.player_buffs = { 68 }
+	assert_equal(
+		coordinator.observe(state, partial_effect_ctx),
+		nil,
+		'Ward must remain pending until every maintained effect is present'
+	)
+	local ward_event = coordinator.observe_action(state, {
+		actor_id = 200,
+		param = 323,
+		targets = { { id = 100 } },
+	}, 3.4)
+	assert_equal(ward_event.reason, 'pet_action_completed', 'Ward action packet completion')
+
+	coordinator.begin(state, base_command('ward'), 3.5)
+	local complete_effect_ctx = context(3.6)
+	complete_effect_ctx.player_buffs = { 68, 69 }
+	ward_event = coordinator.observe(state, complete_effect_ctx)
+	assert_equal(ward_event.reason, 'ward_effect_observed', 'all Ward effects complete the command')
 
 	coordinator.begin(state, base_command('rage'), 4)
 	local rage_ctx = context(4.1)

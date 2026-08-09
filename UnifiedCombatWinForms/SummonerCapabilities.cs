@@ -9,9 +9,14 @@ internal sealed record SummonerActionCapability(
     string Name,
     string Category,
     string Avatar,
-    int? EffectId,
-    string? EffectName
-);
+    IReadOnlyList<int> EffectIds,
+    IReadOnlyList<string> EffectNames
+)
+{
+	internal bool IsMaintainable => EffectIds.Count > 0;
+	internal int? EffectId => EffectIds.Count == 1 ? EffectIds[0] : null;
+	internal string? EffectName => EffectNames.Count == 1 ? EffectNames[0] : null;
+}
 
 internal sealed class SummonerAvatarCapability
 {
@@ -26,6 +31,7 @@ internal sealed class SummonerAvatarCapability
     internal int SummonSpellId { get; }
     internal string SummonSpell { get; }
     internal List<SummonerActionCapability> Wards { get; } = [];
+	internal List<SummonerActionCapability> MaintainableWards { get; } = [];
     internal List<SummonerActionCapability> Rages { get; } = [];
 }
 
@@ -33,15 +39,24 @@ internal static class SummonerCapabilities
 {
     private const string ResourceName = "UnifiedCombatWinForms.summoner_capabilities.tsv";
     private const string ExpectedHeader =
-        "avatar\tsummon_spell_id\tsummon_spell\taction_category\taction_id\taction_name\teffect_id\teffect_name";
+        "avatar\tsummon_spell_id\tsummon_spell\taction_category\taction_id\taction_name\teffect_ids\teffect_names";
 
     private static readonly IReadOnlyList<SummonerAvatarCapability> LoadedAvatars = Load();
     private static readonly IReadOnlyDictionary<string, SummonerAvatarCapability> LoadedByName =
         new ReadOnlyDictionary<string, SummonerAvatarCapability>(
             LoadedAvatars.ToDictionary(avatar => avatar.Name, StringComparer.Ordinal)
         );
+	private static readonly IReadOnlyList<SummonerActionCapability> LoadedWards = LoadedAvatars
+		.SelectMany(avatar => avatar.MaintainableWards)
+		.ToList()
+		.AsReadOnly();
+	private static readonly IReadOnlyDictionary<string, SummonerActionCapability> LoadedWardsByName =
+		new ReadOnlyDictionary<string, SummonerActionCapability>(
+			LoadedWards.ToDictionary(action => action.Name, StringComparer.Ordinal)
+		);
 
     internal static IReadOnlyList<SummonerAvatarCapability> Avatars => LoadedAvatars;
+	internal static IReadOnlyList<SummonerActionCapability> Wards => LoadedWards;
 
     internal static SummonerAvatarCapability? FindAvatar(string? name)
     {
@@ -51,6 +66,15 @@ internal static class SummonerCapabilities
         }
         return LoadedByName.TryGetValue(name, out var avatar) ? avatar : null;
     }
+
+	internal static SummonerActionCapability? FindWard(string? name)
+	{
+		if (string.IsNullOrEmpty(name))
+		{
+			return null;
+		}
+		return LoadedWardsByName.TryGetValue(name, out var ward) ? ward : null;
+	}
 
     internal static bool IsCompatible(string? avatarName, string category, string? actionName)
     {
@@ -116,17 +140,16 @@ internal static class SummonerCapabilities
             }
             var actionId = RequiredPositiveInteger(fields[4], "action_id", lineNumber);
             var actionName = RequiredText(fields[5], "action_name", lineNumber);
-            int? effectId = null;
-            string? effectName = null;
+            IReadOnlyList<int> effectIds = Array.Empty<int>();
+            IReadOnlyList<string> effectNames = Array.Empty<string>();
             if (category == "ward")
             {
-                effectId = RequiredPositiveInteger(fields[6], "effect_id", lineNumber);
-                effectName = RequiredText(fields[7], "effect_name", lineNumber);
+                (effectIds, effectNames) = ParseEffects(fields[6], fields[7], lineNumber);
             }
-            else if (fields[6].Length != 0 || fields[7].Length != 0)
+            else if (fields[6] != "-" || fields[7] != "-")
             {
                 throw new InvalidDataException(
-                    $"Summoner capability catalog line {lineNumber} defines a maintained effect for a Rage."
+                    $"Summoner capability catalog line {lineNumber} defines maintained effects for a Rage."
                 );
             }
 
@@ -157,14 +180,19 @@ internal static class SummonerCapabilities
                     $"Summoner capability catalog line {lineNumber} duplicates {category} '{actionName}' for {avatarName}."
                 );
             }
-            destination.Add(new SummonerActionCapability(
+            var action = new SummonerActionCapability(
                 actionId,
                 actionName,
                 category,
                 avatarName,
-                effectId,
-                effectName
-            ));
+                effectIds,
+                effectNames
+            );
+            destination.Add(action);
+            if (category == "ward" && action.IsMaintainable)
+            {
+				avatar.MaintainableWards.Add(action);
+			}
         }
 
         if (!headerSeen)
@@ -177,6 +205,52 @@ internal static class SummonerCapabilities
         }
         return avatars.AsReadOnly();
     }
+
+	private static (IReadOnlyList<int> Ids, IReadOnlyList<string> Names) ParseEffects(
+		string effectIdsValue,
+		string effectNamesValue,
+		int lineNumber
+	)
+	{
+		if (effectIdsValue == "-" && effectNamesValue == "-")
+		{
+			return (Array.Empty<int>(), Array.Empty<string>());
+		}
+		if (effectIdsValue == "-" || effectNamesValue == "-")
+		{
+			throw new InvalidDataException(
+				$"Summoner capability catalog line {lineNumber} requires effect_ids and effect_names to both be populated or '-'."
+			);
+		}
+		var rawIds = effectIdsValue.Split('|');
+		var names = effectNamesValue.Split('|');
+		if (rawIds.Any(value => value.Length == 0) || names.Any(value => value.Length == 0))
+		{
+			throw new InvalidDataException(
+				$"Summoner capability catalog line {lineNumber} contains an empty maintained-effect entry."
+			);
+		}
+		if (rawIds.Length != names.Length)
+		{
+			throw new InvalidDataException(
+				$"Summoner capability catalog line {lineNumber} requires equal effect_ids and effect_names lengths."
+			);
+		}
+		var ids = new List<int>(rawIds.Length);
+		var seenIds = new HashSet<int>();
+		for (var index = 0; index < rawIds.Length; index++)
+		{
+			var effectId = RequiredPositiveInteger(rawIds[index], $"effect_ids[{index + 1}]", lineNumber);
+			if (!seenIds.Add(effectId))
+			{
+				throw new InvalidDataException(
+					$"Summoner capability catalog line {lineNumber} duplicates effect id {effectId}."
+				);
+			}
+			ids.Add(effectId);
+		}
+		return (ids.AsReadOnly(), Array.AsReadOnly(names));
+	}
 
     private static string RequiredText(string value, string field, int lineNumber)
     {

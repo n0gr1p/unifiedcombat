@@ -121,6 +121,7 @@ public partial class MainForm
 		{
 			throw new InvalidOperationException("Puller leash source must be Player or Camp.");
 		}
+		var summonerWardActions = SelectedSummonerWardActions();
         var profile = new JsonObject
         {
             ["profile_schema_version"] = ProfileSchemaVersion,
@@ -263,7 +264,8 @@ public partial class MainForm
             ["summoner_avatar"] = _summonerAvatar.SelectedItem?.ToString() ?? "",
             ["summoner_avatar_favor"] = _summonerAvatarFavor.Checked,
             ["summoner_ward_enabled"] = _summonerWardEnabled.Checked,
-            ["summoner_ward_action"] = _summonerWardAction.SelectedItem?.ToString() ?? "",
+			["summoner_ward_action"] = summonerWardActions.FirstOrDefault() ?? "",
+			["summoner_ward_actions"] = string.Join("|", summonerWardActions),
             ["summoner_engage_on_combat_start"] = _summonerEngage.Checked,
             ["summoner_rage_enabled"] = _summonerRageEnabled.Checked,
             ["summoner_rage_action"] = _summonerRageAction.SelectedItem?.ToString() ?? "",
@@ -451,6 +453,7 @@ public partial class MainForm
             ["summoner_avatar_favor"] = false,
             ["summoner_ward_enabled"] = false,
             ["summoner_ward_action"] = "",
+			["summoner_ward_actions"] = "",
             ["summoner_engage_on_combat_start"] = false,
             ["summoner_rage_enabled"] = false,
             ["summoner_rage_action"] = "",

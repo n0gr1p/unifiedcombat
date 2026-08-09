@@ -169,7 +169,7 @@ public partial class MainForm
     private ComboBox _summonerAvatar = null!;
     private CheckBox _summonerAvatarFavor = null!;
     private CheckBox _summonerWardEnabled = null!;
-    private ComboBox _summonerWardAction = null!;
+	private CheckedListBox _summonerWardActions = null!;
     private CheckBox _summonerEngage = null!;
     private CheckBox _summonerRageEnabled = null!;
     private ComboBox _summonerRageAction = null!;
@@ -1197,7 +1197,7 @@ public partial class MainForm
         summonerRoot.SetColumnSpan(_summonerEnabled, 2);
         summonerRow++;
         summonerRoot.Controls.Add(
-            new Label { Text = "Desired avatar", AutoSize = true, Anchor = AnchorStyles.Left },
+			new Label { Text = "Primary avatar", AutoSize = true, Anchor = AnchorStyles.Left },
             0,
             summonerRow
         );
@@ -1220,24 +1220,35 @@ public partial class MainForm
         summonerRoot.Controls.Add(_summonerAvatarFavor, 0, summonerRow);
         summonerRoot.SetColumnSpan(_summonerAvatarFavor, 2);
         summonerRow++;
-        _summonerWardEnabled = new CheckBox { Text = "Maintain one Blood Pact: Ward effect", AutoSize = true };
+		_summonerWardEnabled = new CheckBox
+		{
+			Text = "Maintain selected Blood Pact: Ward effects",
+			AutoSize = true,
+		};
         _summonerWardEnabled.CheckedChanged += (_, _) => OnSummonerSettingChanged();
         summonerRoot.Controls.Add(_summonerWardEnabled, 0, summonerRow);
         summonerRoot.SetColumnSpan(_summonerWardEnabled, 2);
         summonerRow++;
         summonerRoot.Controls.Add(
-            new Label { Text = "Ward action", AutoSize = true, Anchor = AnchorStyles.Left },
+			new Label
+			{
+				Text = "Ward rotation",
+				AutoSize = true,
+				Anchor = AnchorStyles.Left | AnchorStyles.Top,
+				Padding = new Padding(0, 5, 0, 0),
+			},
             0,
             summonerRow
         );
-        _summonerWardAction = new ComboBox
+		_summonerWardActions = new CheckedListBox
         {
-            DropDownStyle = ComboBoxStyle.DropDownList,
+			CheckOnClick = true,
+			Height = 110,
             Width = 260,
-            Anchor = AnchorStyles.Left,
+			IntegralHeight = false,
         };
-        _summonerWardAction.SelectedIndexChanged += (_, _) => OnSummonerActionChanged();
-        summonerRoot.Controls.Add(_summonerWardAction, 1, summonerRow++);
+		_summonerWardActions.ItemCheck += (_, _) => OnSummonerWardItemCheck();
+		summonerRoot.Controls.Add(_summonerWardActions, 1, summonerRow++);
         _summonerEngage = new CheckBox { Text = "Engage the combat target with Assault", AutoSize = true };
         _summonerEngage.CheckedChanged += (_, _) => OnSummonerSettingChanged();
         summonerRoot.Controls.Add(_summonerEngage, 0, summonerRow);
