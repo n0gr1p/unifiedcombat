@@ -35,6 +35,8 @@ return {
         min_missing_hp = 250,
         ignore_trusts = true,
       },
+      charm_sleeper = { enabled = false },
+      sleep_waker = { enabled = false },
     },
     tank = {
       enabled = true,

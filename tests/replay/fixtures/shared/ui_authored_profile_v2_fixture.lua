@@ -56,6 +56,9 @@ return {
             charm_sleeper = {
                 enabled = false,
             },
+            sleep_waker = {
+                enabled = false,
+            },
             na = {
                 enabled = true,
             },

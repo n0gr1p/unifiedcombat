@@ -23,6 +23,7 @@ function M.new(deps)
 	local choose_defensive_action = require_function(deps, 'choose_defensive_action')
 	local action_ready = require_function(deps, 'action_ready')
 	local build_action_command = require_function(deps, 'build_action_command')
+	local cure_target_allowed = require_function(deps, 'cure_target_allowed')
 	local clamp_urgency = require_function(deps, 'clamp_urgency')
 	local critical_cure_priority = tonumber(deps.critical_cure_priority)
 	if critical_cure_priority == nil then
@@ -128,6 +129,9 @@ function M.new(deps)
 			target_name = tostring(ctx.player_name or '')
 		end
 		local target_kind = (target_id ~= 0 and target_id ~= tonumber(ctx.player_id or 0)) and 'ally' or 'self'
+		if atype == 'cure' and not cure_target_allowed(target_id, target_kind) then
+			return
+		end
 		local target_hpp = tonumber(target_obj.hpp) or -1
 		local critical_hpp = tonumber(active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings.defensive_critical_hpp)) or 35
 		local priority_band = 100

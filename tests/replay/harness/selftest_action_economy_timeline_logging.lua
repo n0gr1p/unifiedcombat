@@ -120,6 +120,8 @@ local function install_scheduler_stubs()
         }),
         job_abilities = resource_set({}),
         buffs = resource_set({
+            [2] = { id = 2, en = "sleep" },
+            [19] = { id = 19, en = "sleep" },
             [33] = { id = 33, en = "Haste" },
             [214] = { id = 214, en = "Ballad" },
         }),

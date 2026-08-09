@@ -130,6 +130,7 @@ end
 
 local function assert_defensive_proposal_shape()
     package.loaded.uc_provider_defensive = nil
+    local cure_allowed = true
     local provider = require("uc_provider_defensive").new({
         bool_setting = function(value) return value == true end,
         active_value_or_flat = function(_, flat_value) return flat_value end,
@@ -148,6 +149,7 @@ local function assert_defensive_proposal_shape()
         end,
         action_ready = function() return true, "READY", "spell" end,
         build_action_command = function() return "input /ma Cure IV 77" end,
+        cure_target_allowed = function() return cure_allowed end,
         clamp_urgency = function(value) return value end,
         critical_cure_priority = 153,
     })
@@ -173,6 +175,44 @@ local function assert_defensive_proposal_shape()
     assert_equal(proposal.lock_class, "support_action", "defensive lock class")
     assert_equal(proposal.reason_code, "critical_cure", "defensive reason")
     assert_equal(proposal.legacy_command, "input /ma Cure IV 77", "defensive compatibility command")
+
+    local old_actions = rawget(_G, "actions")
+    local old_healer = rawget(_G, "healer")
+    _G.actions = {
+        get_defensive_action = function()
+            return {
+                type = "cure",
+                action = { en = "Cure IV" },
+                target = { id = 77, name = "Ally", hpp = 20 },
+            }
+        end,
+    }
+    _G.healer = {
+        take_action = function() end,
+    }
+    cure_allowed = false
+    proposals = {}
+    provider.collect_healbot({
+        now = 13,
+        player_id = 1,
+        settings = {
+            defensive_enabled = true,
+            defensive_provider = "healbot",
+        },
+    }, proposals)
+    assert_equal(#proposals, 0, "HealBot Cure must reject a disallowed charmed target")
+    cure_allowed = true
+    provider.collect_healbot({
+        now = 14,
+        player_id = 1,
+        settings = {
+            defensive_enabled = true,
+            defensive_provider = "healbot",
+        },
+    }, proposals)
+    assert_equal(#proposals, 1, "HealBot Cure must emit when target safety allows it")
+    _G.actions = old_actions
+    _G.healer = old_healer
 end
 
 local function assert_tank_proposal_shape()
