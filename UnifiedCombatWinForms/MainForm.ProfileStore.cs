@@ -81,15 +81,56 @@ public partial class MainForm
 
         var chRaw = (meta.CharName ?? "").Trim();
         var jobRaw = (meta.Job ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(chRaw) || string.IsNullOrWhiteSpace(jobRaw))
+        var subJobRaw = (meta.SubJob ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(chRaw) || string.IsNullOrWhiteSpace(jobRaw) || string.IsNullOrWhiteSpace(subJobRaw))
         {
             return false;
         }
 
         var ch = SafeToken(chRaw);
         var job = SafeToken(jobRaw);
-        path = Path.Combine(ProfileRootDir, $"{ch}_{job}.json");
+        var subJob = SafeToken(subJobRaw);
+        path = Path.Combine(ProfileRootDir, $"{ch}_{job}_{subJob}.json");
         return true;
+    }
+
+    private bool TryMigrateLegacyUiProfileForSid(string sid, string exactPath, out string error)
+    {
+        error = "";
+        if (File.Exists(exactPath))
+        {
+            return true;
+        }
+        if (!_sessionMetaBySid.TryGetValue(sid, out var meta))
+        {
+            error = "session metadata unavailable";
+            return false;
+        }
+
+        var chRaw = (meta.CharName ?? "").Trim();
+        var jobRaw = (meta.Job ?? "").Trim();
+        if (chRaw.Length == 0 || jobRaw.Length == 0)
+        {
+            error = "legacy UI profile identity unavailable";
+            return false;
+        }
+
+        var legacyPath = Path.Combine(ProfileRootDir, $"{SafeToken(chRaw)}_{SafeToken(jobRaw)}.json");
+        if (!File.Exists(legacyPath))
+        {
+            return true;
+        }
+
+        try
+        {
+            File.Copy(legacyPath, exactPath, overwrite: false);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"legacy UI profile migration failed: {ex.Message}";
+            return false;
+        }
     }
 
     private string GetEngineForSid(string sid)
@@ -514,6 +555,11 @@ public partial class MainForm
         }
         try
         {
+            if (!TryMigrateLegacyUiProfileForSid(sid, path, out _))
+            {
+                doc = null!;
+                return false;
+            }
             if (File.Exists(path))
             {
                 var text = File.ReadAllText(path);

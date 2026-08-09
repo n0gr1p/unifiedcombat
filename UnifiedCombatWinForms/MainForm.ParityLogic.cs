@@ -224,8 +224,8 @@ public partial class MainForm
             ClearForm();
             return;
         }
-        if (!TryLoadProfileForSid(_selectedSid, out var profileDoc)
-            && !TryLoadWorkingProfileForSid(_selectedSid, out profileDoc))
+        if (!TryLoadWorkingProfileForSid(_selectedSid, out var profileDoc)
+            && !TryLoadProfileForSid(_selectedSid, out profileDoc))
         {
             ClearForm();
             return;

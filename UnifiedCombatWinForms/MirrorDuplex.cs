@@ -5,8 +5,20 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using System.IO;
+using System.Collections.Concurrent;
 
 namespace UnifiedCombatWinForms;
+
+internal sealed record ProfileV2ReloadResult(
+    string Sid,
+    string RequestId,
+    bool Ok,
+    string Character,
+    string MainJob,
+    string SubJob,
+    int DiffCount,
+    string Error
+);
 
 /// <summary>
 /// In-process hub for UnifiedCombat addon sessions.
@@ -25,6 +37,7 @@ internal sealed class MirrorDuplex : IDisposable
     );
     private readonly object _sessionsGate = new();
     private readonly Dictionary<string, SessionConn> _sessions = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, PendingProfileReload> _pendingProfileReloads = new(StringComparer.Ordinal);
     private TcpListener? _listener;
     private Task? _acceptTask;
     private Task? _writeTask;
@@ -39,6 +52,11 @@ internal sealed class MirrorDuplex : IDisposable
         public required StreamWriter Writer { get; init; }
         public JsonObject State { get; } = new();
     }
+
+    private sealed record PendingProfileReload(
+        string Sid,
+        TaskCompletionSource<ProfileV2ReloadResult> Completion
+    );
 
     public MirrorDuplex(CancellationToken appCt)
     {
@@ -91,6 +109,52 @@ internal sealed class MirrorDuplex : IDisposable
             // debug logging must never impact flow
         }
         _outbound.Writer.TryWrite((sid, line));
+    }
+
+    public async Task<ProfileV2ReloadResult> ReloadProfileV2Async(
+        string sid,
+        TimeSpan timeout,
+        CancellationToken cancellationToken
+    )
+    {
+        lock (_sessionsGate)
+        {
+            if (!_sessions.ContainsKey(sid))
+            {
+                throw new InvalidOperationException($"Profile-v2 reload session is not connected: {sid}");
+            }
+        }
+
+        var requestId = Guid.NewGuid().ToString("N");
+        var completion = new TaskCompletionSource<ProfileV2ReloadResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_pendingProfileReloads.TryAdd(requestId, new PendingProfileReload(sid, completion)))
+        {
+            throw new InvalidOperationException("Duplicate profile-v2 reload request id.");
+        }
+
+        EnqueueForward(
+            sid,
+            new Dictionary<string, object?>
+            {
+                ["op"] = "profile_v2_reload",
+                ["request_id"] = requestId,
+            }
+        );
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _linkedCts.Token);
+        timeoutCts.CancelAfter(timeout);
+        try
+        {
+            return await completion.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_linkedCts.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Timed out waiting for profile-v2 reload result from session {sid}.");
+        }
+        finally
+        {
+            _pendingProfileReloads.TryRemove(requestId, out _);
+        }
     }
 
     private async Task AcceptLoopAsync()
@@ -188,6 +252,12 @@ internal sealed class MirrorDuplex : IDisposable
                     {
                         UpdateSessionState(sid!, msg);
                         EmitSnapshot();
+                        continue;
+                    }
+
+                    if (op == "profile_v2_reload_result" && !string.IsNullOrWhiteSpace(sid))
+                    {
+                        CompleteProfileV2Reload(sid!, msg);
                     }
                 }
             }
@@ -264,6 +334,43 @@ internal sealed class MirrorDuplex : IDisposable
         lock (_sessionsGate)
         {
             _sessions.Remove(sid);
+        }
+    }
+
+    private void CompleteProfileV2Reload(string sid, JsonObject incoming)
+    {
+        var requestId = incoming["request_id"]?.GetValue<string>() ?? "";
+        if (requestId.Length == 0 || !_pendingProfileReloads.TryGetValue(requestId, out var pending))
+        {
+            return;
+        }
+        if (!string.Equals(pending.Sid, sid, StringComparison.Ordinal))
+        {
+            pending.Completion.TrySetException(
+                new InvalidOperationException("Profile-v2 reload result came from the wrong session.")
+            );
+            return;
+        }
+
+        try
+        {
+            var result = new ProfileV2ReloadResult(
+                sid,
+                requestId,
+                incoming["ok"]?.GetValue<bool>() == true,
+                incoming["character"]?.GetValue<string>() ?? "",
+                incoming["main_job"]?.GetValue<string>() ?? "",
+                incoming["sub_job"]?.GetValue<string>() ?? "",
+                incoming["diff_count"]?.GetValue<int>() ?? -1,
+                incoming["error"]?.GetValue<string>() ?? ""
+            );
+            pending.Completion.TrySetResult(result);
+        }
+        catch (Exception ex)
+        {
+            pending.Completion.TrySetException(
+                new InvalidOperationException("Profile-v2 reload result is malformed.", ex)
+            );
         }
     }
 
@@ -400,6 +507,12 @@ internal sealed class MirrorDuplex : IDisposable
             // ignore
         }
         CloseAllSessions();
+
+        foreach (var pending in _pendingProfileReloads.Values)
+        {
+            pending.Completion.TrySetCanceled(_linkedCts.Token);
+        }
+        _pendingProfileReloads.Clear();
 
         _linkedCts.Dispose();
     }

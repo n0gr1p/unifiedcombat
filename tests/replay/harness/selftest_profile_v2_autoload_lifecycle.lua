@@ -43,11 +43,32 @@ local function deep_clone(value)
 	return out
 end
 
+local function test_bridge_diagnostic_json_encoding()
+	local bridge = read_file('remote_bridge.lua')
+	local block = extract_source_block(
+		bridge,
+		'local function json_escape_simple',
+		'\n\nlocal sock = nil'
+	)
+	local chunk, load_err = loadstring(block .. '\nreturn json_encode_simple', '@selftest_bridge_diagnostic_json.lua')
+	assert_true(type(chunk) == 'function', 'unable to load bridge JSON encoder: ' .. tostring(load_err))
+	local encode = chunk()
+	local encoded = encode({
+		error = 'config.path: file="C:\\Addon"\nruntime=false',
+	})
+	assert_contains(encoded, 'file=\\"C:\\\\Addon\\"', 'bridge diagnostic JSON must escape quotes and backslashes')
+	assert_contains(encoded, '\\nruntime=false', 'bridge diagnostic JSON must escape control characters')
+end
+
 local function load_autoload_scope(state, status_result, autoload_result)
 	local addon = read_file('UnifiedCombat.lua')
 	assert_contains(addon, 'local function uc_queue_profile_v2_autoload()', 'addon must define the queued autoload helper')
 	assert_contains(addon, 'local function uc_run_queued_profile_v2_autoload()', 'addon must define the queued autoload runner')
 	assert_contains(addon, 'local function uc_run_profile_v2_auto_reload()', 'addon must define the file-change auto-reload runner')
+	assert_contains(addon, 'local function uc_reload_profile_v2_for_current_identity()', 'addon must define acknowledged activity reload helper')
+	local bridge = read_file('remote_bridge.lua')
+	assert_contains(bridge, "elseif op == 'profile_v2_reload' then", 'bridge must accept activity profile reload requests')
+	assert_contains(bridge, "op = 'profile_v2_reload_result'", 'bridge must acknowledge activity profile reload results')
 	assert_contains(addon, 'local UC_PROFILE_V2_AUTO_RELOAD_POLL_SEC = 1', 'auto-reload must poll once per second')
 	assert_contains(addon, 'local UC_PROFILE_V2_AUTO_RELOAD_STABLE_SEC = 1', 'auto-reload must retain a one-second stable-file window')
 
@@ -68,6 +89,7 @@ local function load_autoload_scope(state, status_result, autoload_result)
 		'  auto_reload = uc_run_profile_v2_auto_reload,',
 		'  auto_reload_status = uc_profile_v2_auto_reload_status,',
 		'  autoload = uc_autoload_profile_v2_file,',
+		'  activity_reload = uc_reload_profile_v2_for_current_identity,',
 		'}',
 	}, '\n')
 
@@ -100,6 +122,11 @@ local function load_autoload_scope(state, status_result, autoload_result)
 			}
 		end,
 		uc_profile_v2 = {
+			format_structured_profile_diff_detail = function(detail)
+				return tostring(detail.path)
+					.. ': file=' .. tostring(detail.file_value) .. ' [' .. tostring(detail.file_type) .. ']'
+					.. ' runtime=' .. tostring(detail.runtime_value) .. ' [' .. tostring(detail.runtime_type) .. ']'
+			end,
 			validate_structured_profile_file = function(meta)
 				state.validate_calls = state.validate_calls + 1
 				if type(state.validate_result) == 'table' then
@@ -297,9 +324,11 @@ local function assert_chat_contains(state, needle, message)
 end
 
 local function main()
+	test_bridge_diagnostic_json_encoding()
 	local previous_settings = rawget(_G, 'UC_SETTINGS')
 	local previous_active_profile = rawget(_G, 'UC_ACTIVE_PROFILE')
 	local previous_reload_active_profile = rawget(_G, 'UC_ReloadActiveProfile')
+	local previous_activity_reload = rawget(_G, 'UC_ReloadProfileV2ForCurrentIdentity')
 
 	local success_state = make_state()
 	_G.UC_SETTINGS = success_state.settings
@@ -660,9 +689,67 @@ local function main()
 	assert_equal(warning_state.settings.engine_enabled, false, 'warning case must not enable the engine')
 	assert_equal(warning_state.start_calls, 0, 'warning case must not start the engine')
 
+	local activity_state = make_state()
+	local activity_status = {
+		ok = true,
+		valid = true,
+		diff_count = 0,
+		count = 0,
+		path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
+	}
+	local activity_scope = load_autoload_scope(
+		activity_state,
+		activity_status,
+		{
+			ok = true,
+			count = 4,
+			diff_count = 4,
+		}
+	)
+	_G.UC_SETTINGS = activity_state.settings
+	local activity_result = activity_scope.activity_reload()
+	assert_true(type(activity_result) == 'table' and activity_result.ok == true, 'activity reload helper should acknowledge success')
+	assert_equal(activity_result.character, 'Terrasjr', 'activity reload acknowledgement character mismatch')
+	assert_equal(activity_result.main_job, 'PLD', 'activity reload acknowledgement main job mismatch')
+	assert_equal(activity_result.sub_job, 'RDM', 'activity reload acknowledgement subjob mismatch')
+	assert_equal(activity_result.diff_count, 0, 'activity reload must acknowledge only a zero post-apply diff')
+	assert_equal(activity_state.autoload_calls, 1, 'activity reload must apply exactly once')
+	assert_equal(activity_state.status_calls, 1, 'activity reload must verify the post-apply profile status')
+	assert_equal(activity_state.status_context.addon_path, 'C:\\Addon', 'activity reload verification must use the addon root')
+
+	local activity_mismatch_state = make_state()
+	local activity_mismatch_scope = load_autoload_scope(
+		activity_mismatch_state,
+		{
+			ok = true,
+			valid = true,
+			diff_count = 1,
+			count = 1,
+			first_difference = {
+				path = 'config.defensive.thresholds.critical_hpp',
+				file_value = 35,
+				file_type = 'number',
+				runtime_value = 40,
+				runtime_type = 'number',
+			},
+		},
+		{
+			ok = true,
+			count = 0,
+			diff_count = 0,
+		}
+	)
+	_G.UC_SETTINGS = activity_mismatch_state.settings
+	local activity_mismatch_result = activity_mismatch_scope.activity_reload()
+	assert_true(type(activity_mismatch_result) == 'table' and activity_mismatch_result.ok == false, 'activity reload mismatch should reject the acknowledgement')
+	assert_contains(activity_mismatch_result.error, 'config.defensive.thresholds.critical_hpp', 'activity reload mismatch must report the first difference path')
+	assert_contains(activity_mismatch_result.error, 'file=35 [number]', 'activity reload mismatch must report the file value')
+	assert_contains(activity_mismatch_result.error, 'runtime=40 [number]', 'activity reload mismatch must report the runtime value')
+
 	_G.UC_SETTINGS = previous_settings
 	_G.UC_ACTIVE_PROFILE = previous_active_profile
 	rawset(_G, 'UC_ReloadActiveProfile', previous_reload_active_profile)
+	rawset(_G, 'UC_ReloadProfileV2ForCurrentIdentity', previous_activity_reload)
 	io.stdout:write('selftest_profile_v2_autoload_lifecycle: OK\n')
 end
 

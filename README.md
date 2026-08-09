@@ -192,6 +192,23 @@ return { version = 1, profiles = { UC = { JOB = { } } } }
 
 `//uc save` and `//uc reload` operate on this compatibility profile. `//uc profilev2 export` can seed a v2 migration/bootstrap file from the current compatibility settings, but it is not the normal profile editor.
 
+### Activity profiles
+
+The WinForms sidebar has one global activity selector for all connected
+sessions. Create and Update capture every active session's exact
+character/main-job/sub-job profile. An activity can retain multiple job
+variants for the same character, and activation selects the exact variant that
+matches each session's current jobs. Dropdown selection is management-only;
+**Apply to all sessions** is the explicit activation action.
+
+Activity activation is cohort-wide: every active session must have a valid
+exact variant. Running engines do not block an explicitly confirmed change;
+the confirmation warns that changes take effect immediately and already-issued
+actions are not cancelled. The UI stages all canonical v2 files, requests an
+acknowledged profile-v2 reload from every session, verifies zero durable
+differences, and rolls the files back if the cohort does not complete
+successfully. See [Activity profiles](docs/activity_profiles.md).
+
 ## Commands
 
 The addon accepts both `//uc` and `//unifiedcombat` prefixes.

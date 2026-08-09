@@ -134,19 +134,40 @@ local function uc_current_target_snapshot()
 	return tostring(t.name or ''), t.id
 end
 
+local function json_escape_simple(value)
+	local text = tostring(value)
+	text = text:gsub('\\', '\\\\')
+	text = text:gsub('"', '\\"')
+	text = text:gsub('[%c]', function(char)
+		if char == '\b' then
+			return '\\b'
+		elseif char == '\f' then
+			return '\\f'
+		elseif char == '\n' then
+			return '\\n'
+		elseif char == '\r' then
+			return '\\r'
+		elseif char == '\t' then
+			return '\\t'
+		end
+		return string.format('\\u%04x', char:byte())
+	end)
+	return text
+end
+
 local function json_encode_simple(t)
 	local parts = {}
 	for k, v in pairs(t) do
-		local ks = '"' .. tostring(k) .. '":'
+		local ks = '"' .. json_escape_simple(k) .. '":'
 		local vs
 		if type(v) == 'string' then
-			vs = '"' .. tostring(v):gsub('"', '\\"') .. '"'
+			vs = '"' .. json_escape_simple(v) .. '"'
 		elseif type(v) == 'boolean' then
 			vs = v and 'true' or 'false'
 		elseif type(v) == 'number' then
 			vs = tostring(v)
 		else
-			vs = '"' .. tostring(v):gsub('"', '\\"') .. '"'
+			vs = '"' .. json_escape_simple(v) .. '"'
 		end
 		parts[#parts + 1] = ks .. vs
 	end
@@ -1597,6 +1618,37 @@ local function process_line(line)
 		if not ok then
 			windower.add_to_chat(167, 'UC camp: ' .. tostring(reason))
 		end
+		last_state_send = 0
+	elseif op == 'profile_v2_reload' then
+		local request_id = uc_trim(uc_msg_get(msg, 'request_id'))
+		local response = {
+			op = 'profile_v2_reload_result',
+			request_id = request_id,
+			ok = false,
+			character = '',
+			main_job = '',
+			sub_job = '',
+			diff_count = -1,
+			error = '',
+		}
+		if request_id == '' then
+			response.error = 'missing request id'
+		elseif type(_G.UC_ReloadProfileV2ForCurrentIdentity) ~= 'function' then
+			response.error = 'profile v2 reload unavailable'
+		else
+			local ok_call, result = pcall(_G.UC_ReloadProfileV2ForCurrentIdentity)
+			if not ok_call or type(result) ~= 'table' then
+				response.error = ok_call and 'invalid profile v2 reload result' or tostring(result)
+			else
+				response.ok = result.ok == true
+				response.character = tostring(result.character or '')
+				response.main_job = tostring(result.main_job or '')
+				response.sub_job = tostring(result.sub_job or '')
+				response.diff_count = tonumber(result.diff_count) or -1
+				response.error = tostring(result.error or '')
+			end
+		end
+		safe_send_line(json_encode_simple(response))
 		last_state_send = 0
 	elseif op == 'reload' then
 		if type(_G.UC_ReloadActiveProfile) == 'function' then

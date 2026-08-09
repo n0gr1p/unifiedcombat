@@ -80,7 +80,9 @@ public partial class MainForm : Form
     public MainForm()
     {
         InitializeComponent();
+        InitializeActivityProfiles();
         BuildParityEditor(panelEditorHost, flowSessionActions);
+        RefreshActivityList();
         EnsureGeoTabVisibility(false);
         EnsureSummonerTabVisibility(false);
         _mirror = new MirrorDuplex(_cts.Token);
@@ -388,7 +390,16 @@ public partial class MainForm : Form
         {
             _sessionRunningBySid[kv.Key] = kv.Value;
         }
-        // Reapply after metadata is committed so profile path resolves as Character_Job.json, not sid fallback.
+
+        // Rebuilding the list can select a row before the new session metadata is committed.
+        // Reload the selected editor after metadata and job-change working-state cleanup complete.
+        if (listChanged && !string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            RefreshEditorFromSnapshot();
+        }
+
+        RefreshActivityCohortStatus();
+        // Reapply after metadata is committed so profile path resolves as Character_MainJob_SubJob.json.
         foreach (var sid in newlyAddedSids)
         {
             _lastSentSetBySidPath.Remove(sid);
