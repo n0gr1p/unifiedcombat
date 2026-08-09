@@ -2,9 +2,7 @@
 
 ## Status
 
-Phase 1 implementation and automated validation completed on 2026-08-09.
-
-Manual in-game validation remains required because the replay harness cannot prove live client acceptance of a zero-HP `Cure` result or reproduce every packet-order transition between Sleep and Charm.
+Implementation, automated validation, and manual in-game acceptance completed on 2026-08-09.
 
 ## Goal
 
@@ -59,14 +57,14 @@ Detect a sleeping, uncharmed party member and wake that player with `Cure` witho
 
 ## Manual In-Game Acceptance
 
-- [ ] Enable `Debug`, `Log: defensive scheduler`, Defensive, and `Sleep waker`.
-- [ ] Disable ordinary Cures and confirm an enemy Sleep still produces `Cure` after the observation gate.
-- [ ] Confirm `Cure` wakes a full-HP player when the result restores zero HP.
-- [ ] Confirm a sleeping charmed player is never cured by internal or HealBot provider selection.
-- [ ] Break Charm while Sleep remains and confirm the player is cured after the observation gate.
-- [ ] Clear Sleep before commit and confirm dispatch is cancelled.
-- [ ] Confirm no duplicate Cure inside the `2.5` second attempt gate.
-- [ ] Repeat with buff snapshots sourced from `0x076` and from another UnifiedCombat IPC client.
+- [x] Enable `Debug`, `Log: defensive scheduler`, Defensive, and `Sleep waker`.
+- [x] Disable ordinary Cures and confirm an enemy Sleep still produces `Cure` after the observation gate.
+- [x] Confirm `Cure` wakes a full-HP player when the result restores zero HP.
+- [x] Confirm a sleeping charmed player is never cured by internal or HealBot provider selection.
+- [x] Break Charm while Sleep remains and confirm the player is cured after the observation gate.
+- [x] Clear Sleep before commit and confirm dispatch is cancelled.
+- [x] Confirm no duplicate Cure inside the `2.5` second attempt gate.
+- [x] Repeat with buff snapshots sourced from `0x076` and from another UnifiedCombat IPC client.
 
 ## Known Boundary
 
