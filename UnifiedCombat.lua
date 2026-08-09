@@ -443,20 +443,28 @@ local function uc_start_active_engine_if_running()
 	if not Start_Engine then
 		return
 	end
+	require('uc_brd_maintenance').resume('engine_start')
 	if UC_UNIFIED_ENGINE and type(UC_UNIFIED_ENGINE.start) == 'function' then
 		UC_UNIFIED_ENGINE.start()
 	end
 end
 
 _G.UC_StartUnifiedEngine = function()
+	require('uc_brd_maintenance').resume('engine_start')
 	if UC_UNIFIED_ENGINE and type(UC_UNIFIED_ENGINE.start) == 'function' then
 		UC_UNIFIED_ENGINE.start()
 	end
 end
 
 _G.UC_StopUnifiedEngine = function(reason)
+	local stop_reason = tostring(reason or 'engine_stop')
+	if stop_reason == 'engine_stop' then
+		require('uc_brd_maintenance').suspend(stop_reason)
+	else
+		require('uc_brd_maintenance').reset(stop_reason)
+	end
 	if UC_COMBAT_CORE and type(UC_COMBAT_CORE.reset_skillchain_state) == 'function' then
-		UC_COMBAT_CORE.reset_skillchain_state(tostring(reason or 'engine_stop'))
+		UC_COMBAT_CORE.reset_skillchain_state(stop_reason)
 	end
 	if UC_UNIFIED_ENGINE and type(UC_UNIFIED_ENGINE.stop) == 'function' then
 		UC_UNIFIED_ENGINE.stop()
@@ -2154,7 +2162,6 @@ windower.register_event('unload', function()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('unload')
 	uc_nyzul_runtime.reset('unload')
-	require('uc_brd_maintenance').reset('unload')
 	require('uc_reaction_runtime').reset('unload')
 	require('uc_lilith_easy_encounter').reset('unload')
 	require('uc_lilith_easy_formation_runtime').reset('unload')
@@ -2225,7 +2232,6 @@ windower.register_event('addon command', function(...)
 		return
 	elseif a == 'stop' then
 		Start_Engine = false
-		require('uc_brd_maintenance').reset('engine_stop')
 		require('uc_lilith_easy_encounter').reset('engine_stop')
 		require('uc_lilith_easy_formation_runtime').reset('engine_stop')
 		if _G.UC_SETTINGS then

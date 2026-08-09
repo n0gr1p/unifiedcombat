@@ -547,10 +547,40 @@ An actionable Bard proposal starts a runtime-only action-lane reservation for th
 
 ## State Invalidation and Cleanup
 
-The Bard runtime module must explicitly invalidate or reset affected state on:
+The Bard runtime distinguishes an engine actuation pause from authoritative-state
+invalidation. Turning the engine off releases every Bard action and movement lane
+and cancels controller-only sequences, but it preserves packet-derived song
+ownership so turning the engine back on does not rebuild songs that are still
+active.
+
+An engine stop preserves:
+
+- the latest local `0x063` snapshot and server-clock calibration;
+- exact local song owners, endtimes, recipients, and potency metadata;
+- confirmed per-recipient song identities and endtimes;
+- the latest party `0x076` buff cache;
+- character/job/config identity used to validate the preserved ledger; and
+- a correlation transaction for a song that was already dispatched before the
+  stop, allowing its `0x028` and `0x063` evidence to finish passively.
+
+An engine stop clears:
+
+- the Bard action lane and positioning state;
+- NITRO forced-refresh progression and Soul Voice generation sequencing;
+- Marcato and Clarion reservations;
+- undispatched Pianissimo/targeted controller transactions;
+- party recovery control state; and
+- scheduler failure/control state.
+
+On engine start, the provider reconciles preserved ownership against the latest
+local snapshot and party buff observations before proposing work. Missing or
+contradictory evidence lowers confidence or invalidates the affected ownership;
+it is never replaced by an estimated duration or an assumed empty buff list.
+
+The Bard runtime module must fully invalidate affected state on:
 
 - addon unload or reload;
-- engine stop;
+- logout;
 - zone change;
 - character, main-job, or support-job change;
 - K.O. or recipient disappearance;
@@ -682,7 +712,8 @@ The completed subsystem must prove:
 - Marcato unavailability does not delay a NITRO refresh cycle;
 - urgent expiration does not wait for NITRO;
 - Clarion-dependent persisted capacity is maintained without expiration;
-- zone, death, job change, engine stop, and contradictory observations clean runtime state;
+- engine stop clears actuation state while preserving authoritative song tracking;
+- zone, death, job change, logout, and contradictory observations invalidate affected tracking state;
 - no Bard migration breaks COR maintenance or non-song `defensive_internal` behavior;
 - profilev2 reload, autoload, status, and diff remain clean;
 - the engine is never started automatically by profile or Bard maintenance initialization.

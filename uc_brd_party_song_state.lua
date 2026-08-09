@@ -114,6 +114,15 @@ function M.reset()
 	state.last_blocker = 'reset'
 end
 
+function M.suspend(reason)
+	state.recovery = nil
+	state.last_blocker = tostring(reason or 'suspended')
+end
+
+function M.resume(reason)
+	state.last_blocker = tostring(reason or 'resumed')
+end
+
 function M.observe(members, ignore_names, song_status_ids, now)
 	local seen = {}
 	state.order = {}

@@ -74,6 +74,7 @@ local state = {
 	scheduler_failure = nil,
 	action_lane_reserved = false,
 	action_lane_reason = '',
+	suspended = false,
 }
 
 local spell_by_name = nil
@@ -576,6 +577,7 @@ local function reset_runtime(reason, preserve_trace)
 	state.snapshot_source = 'none'
 	state.pending = nil
 	state.scheduler_failure = nil
+	state.suspended = false
 	release_action_lane(reason)
 	state.owners = {}
 	state.force = nil
@@ -596,6 +598,7 @@ local function reset_runtime(reason, preserve_trace)
 	state.last_blocker = tostring(reason or 'reset')
 	state.last_transition = ''
 	state.manual_capture = nil
+	require('uc_brd_positioning').reset(reason)
 	if preserve_trace ~= true then
 		state.trace_armed = false
 		state.trace_lines = {}
@@ -606,6 +609,55 @@ function M.reset(reason)
 	reset_runtime(reason, false)
 	state.config_signature = ''
 	state.identity = ''
+end
+
+function M.suspend(reason)
+	local suspend_reason = tostring(reason or 'engine_stop')
+	diagnostic_log('SUSPEND', {
+		reason = suspend_reason,
+		pending = type(state.pending) == 'table' and state.pending.name or '',
+		owners = owner_summary(),
+	})
+	state.suspended = true
+	state.scheduler_failure = nil
+	release_action_lane(suspend_reason)
+	state.force = nil
+	party_song_state.suspend(suspend_reason)
+	state.nitro_armed = false
+	state.nitro_was_active = false
+	state.nitro_phase = ''
+	state.nitro_phase_started_at = 0
+	state.marcato_reservation = ''
+	state.clarion_reserved = false
+	state.clarion_dispatched_at = 0
+	state.soul_voice_generation = nil
+	state.targeted_transaction = nil
+	state.targeted_completed = {}
+	state.targeted_skip_reasons = {}
+	state.targeted_blocker = ''
+	state.pianissimo_consumed_wait = false
+	state.last_blocker = 'suspended:' .. suspend_reason
+	state.last_transition = 'suspended:' .. suspend_reason
+	require('uc_brd_positioning').reset(suspend_reason)
+	return true
+end
+
+function M.resume(reason)
+	local resume_reason = tostring(reason or 'engine_start')
+	state.suspended = false
+	party_song_state.resume(resume_reason)
+	if type(state.snapshot) == 'table' then
+		prune_owners()
+	end
+	state.last_blocker = 'resumed:' .. resume_reason
+	state.last_transition = 'resumed:' .. resume_reason
+	diagnostic_log('RESUME', {
+		reason = resume_reason,
+		pending = type(state.pending) == 'table' and state.pending.name or '',
+		owners = owner_summary(),
+		snapshot_count = snapshot_song_count(state.snapshot),
+	})
+	return true
 end
 
 local function proposal(action_type, action_name, reason_code, urgency, detail)
@@ -1933,6 +1985,9 @@ end
 
 function M.propose(config, ctx)
 	ctx = type(ctx) == 'table' and ctx or {}
+	if state.suspended == true then
+		error('Bard maintenance propose called while actuation is suspended')
+	end
 	local player = ctx.player
 	if type(player) == 'table' and type(player.vitals) == 'table' and tonumber(player.vitals.hpp) == 0 then
 		reset_runtime('player_ko', true)
@@ -2616,7 +2671,12 @@ end
 
 function M.status_lines()
 	local lines = {
-		('BRD identity=%s blocker=%s transition=%s'):format(state.identity, state.last_blocker, state.last_transition),
+		('BRD identity=%s lifecycle=%s blocker=%s transition=%s'):format(
+			state.identity,
+			state.suspended and 'suspended' or 'active',
+			state.last_blocker,
+			state.last_transition
+		),
 		('BRD snapshot=%s source=%s count=%d pending=%s'):format(
 			type(state.snapshot) == 'table' and 'yes' or 'no',
 			state.snapshot_source,

@@ -229,6 +229,114 @@ assert_true(brd._test.state.owners['Honor March'] ~= nil, 'refreshing one same-f
 assert_true(brd._test.state.owners['Victory March'] ~= nil, 'refreshing a same-family song must retain its exact owner')
 assert_equal(brd._test.state.owners['Victory March'].endtime, refreshed_victory, 'refresh must assign the unmatched new timer to the cast song')
 
+-- Engine stop is an actuation pause, not a loss of authoritative song evidence.
+brd._test.state.owners['Honor March'].soul_voice_applied = true
+brd._test.state.force = { complete = {} }
+brd._test.state.nitro_armed = true
+brd._test.state.marcato_reservation = 'Honor March'
+brd._test.state.clarion_reserved = true
+brd._test.state.soul_voice_generation = { phase = 'group_refresh' }
+brd._test.state.targeted_transaction = { phase = 'awaiting_pianissimo' }
+brd._test.state.scheduler_failure = { reason = 'test_failure' }
+local preserved_clock_offset = brd._test.state.server_time_offset
+local preserved_config_signature = brd._test.state.config_signature
+local preserved_identity = brd._test.state.identity
+local party_song_state = require('uc_brd_party_song_state')
+party_song_state._test.state.members[88] = {
+	id = 88,
+	name = 'PauseRecipient',
+	effects = {
+		['Honor March'] = {
+			status_id = 100,
+			endtime = jitter_honor,
+			soul_voice_applied = true,
+		},
+	},
+	observed_song_count = 1,
+	unknown_count = 0,
+	confidence = 'confirmed',
+	blocked_signature = '5:1',
+}
+party_song_state._test.state.order = { 88 }
+party_song_state._test.state.recovery = { member_id = 88, member_name = 'PauseRecipient', phase = 'capacity' }
+brd.suspend('engine_stop')
+assert_true(brd._test.state.suspended == true, 'engine stop must suspend Bard actuation')
+assert_true(brd.action_lane_status() == false, 'engine stop must immediately release the Bard action lane')
+assert_true(brd._test.state.owners['Honor March'] ~= nil, 'engine stop must preserve exact local song ownership')
+assert_true(brd._test.state.owners['Honor March'].soul_voice_applied == true, 'engine stop must preserve Soul Voice song metadata')
+assert_equal(brd._test.state.server_time_offset, preserved_clock_offset, 'engine stop must preserve server-clock calibration')
+assert_equal(brd._test.state.config_signature, preserved_config_signature, 'engine stop must preserve the validated Bard config identity')
+assert_equal(brd._test.state.identity, preserved_identity, 'engine stop must preserve character/job identity')
+assert_true(party_song_state._test.state.members[88].effects['Honor March'] ~= nil, 'engine stop must preserve recipient song ownership')
+assert_equal(party_song_state._test.state.members[88].blocked_signature, '5:1', 'engine stop must preserve failed recovery safety evidence')
+assert_true(party_song_state._test.state.recovery == nil, 'engine stop must clear party recovery control state')
+assert_true(brd._test.state.force == nil, 'engine stop must clear forced-refresh execution state')
+assert_true(brd._test.state.nitro_armed == false, 'engine stop must clear NITRO execution state')
+assert_equal(brd._test.state.marcato_reservation, '', 'engine stop must clear Marcato reservation')
+assert_true(brd._test.state.clarion_reserved == false, 'engine stop must clear Clarion reservation')
+assert_true(brd._test.state.soul_voice_generation == nil, 'engine stop must clear Soul Voice generation control state')
+assert_true(brd._test.state.targeted_transaction == nil, 'engine stop must clear targeted-song controller state')
+assert_true(brd._test.state.scheduler_failure == nil, 'engine stop must clear scheduler failure state')
+brd.resume('engine_start')
+assert_true(brd._test.state.suspended == false, 'engine start must resume Bard actuation')
+party_song_state.observe({ {
+	id = 88,
+	name = 'PauseRecipient',
+	spawn_type = 1,
+	is_npc = false,
+	in_song_range = true,
+	hpp = 100,
+	buffs = {},
+} }, {}, { [100] = true }, 3.75)
+assert_true(party_song_state._test.state.members[88].effects['Honor March'] == nil, 'latest party buff count must invalidate an expired recipient song on resume')
+action = brd.propose(config, { now = 3.8, player = player, action_ready = ready })
+assert_true(action == nil, 'resume with preserved long-duration songs must not rebuild the configured song set')
+
+local preserved_victory_endtime = brd._test.state.owners['Victory March'].endtime
+brd.suspend('engine_stop')
+brd.on_status_snapshot({ [100] = { count = 1, endtimes = { preserved_victory_endtime } } }, 3.9)
+assert_true(brd._test.state.owners['Honor March'] == nil, 'local song loss observed while stopped must prune its exact owner')
+assert_true(brd._test.state.owners['Victory March'] ~= nil, 'local song loss must preserve the still-matching same-family owner')
+brd.resume('engine_start')
+action = brd.propose(config, { now = 4.0, player = player, action_ready = ready })
+assert_equal(action.action_name, 'Honor March', 'resume must rebuild only the song actually lost while stopped')
+
+-- A dispatched cast remains a passive observation transaction after actuation stops.
+brd.reset('mid_cast_engine_stop_test')
+local single_song_config = {
+	enabled = true,
+	songs = { 'Honor March' },
+	dummy_songs = {},
+	recovery_range_yalms = 9.9,
+	recovery_ignore_names = {},
+	reposition_for_party_songs = false,
+	use_nitro = false,
+	use_soul_voice = false,
+	use_clarion_call = false,
+	use_marcato = false,
+	marcato_song = '',
+	targeted_songs = {},
+}
+brd.on_status_snapshot({}, 90)
+action = brd.propose(single_song_config, { now = 90, player = player, action_ready = ready })
+brd.note_dispatch(action, 'pause-mid-cast', 90)
+brd.suspend('engine_stop')
+assert_true(type(brd._test.state.pending) == 'table', 'engine stop must preserve already-dispatched cast correlation')
+assert_true(brd.action_lane_status() == false, 'passive cast correlation must not retain the Bard action lane while stopped')
+brd.on_action({
+	actor_id = 77,
+	category = 4,
+	param = 1,
+	targets = { { id = 77, actions = { { message = 230, param = 100 } } } },
+}, 77, 90.2)
+local paused_cast_endtime = brd._test.server_now_raw(os.time()) + 36000
+brd.on_status_snapshot({ [100] = { count = 1, endtimes = { paused_cast_endtime } } }, 90.3)
+assert_true(brd._test.state.pending == nil, 'passive packets must finish cast correlation while the engine is stopped')
+assert_true(brd._test.state.owners['Honor March'] ~= nil, 'song completing after engine stop must retain exact ownership')
+brd.resume('engine_start')
+action = brd.propose(single_song_config, { now = 90.4, player = player, action_ready = ready })
+assert_true(action == nil, 'confirmed in-flight song must not be rebuilt after resume')
+
 brd.reset('confirmation_phase_timeout_test')
 brd.on_status_snapshot({}, 100)
 action = brd.propose(config, { now = 100, player = player, action_ready = ready })
@@ -312,7 +420,6 @@ action = brd.propose(capacity_config, { now = 5, player = player, action_ready =
 assert_equal(action.action_name, "Army's Paeon", 'capacity build must use the first configured dummy song')
 assert_equal(action.reason_code, 'brd_build_capacity_dummy', 'capacity build proposal reason mismatch')
 
-local party_song_state = require('uc_brd_party_song_state')
 local range_distance = {
 	sqrt = function() return 9.9 end,
 }
@@ -1979,6 +2086,9 @@ addon_file:close()
 assert_true(addon_source:find("a == 'brd'", 1, true) ~= nil, 'addon must expose focused BRD diagnostics')
 assert_true(addon_source:find("arm_trace_once", 1, true) ~= nil, 'addon must expose one-shot BRD packet tracing')
 assert_true(addon_source:find("arm_manual_capture_once", 1, true) ~= nil, 'addon must expose passive manual-cast capture')
+assert_true(addon_source:find("require('uc_brd_maintenance').suspend(stop_reason)", 1, true) ~= nil, 'central engine stop must suspend Bard actuation without discarding tracking')
+assert_true(addon_source:find("require('uc_brd_maintenance').reset('engine_stop')", 1, true) == nil, 'engine stop must not fully reset Bard tracking')
+assert_true(addon_source:find("require('uc_brd_maintenance').resume('engine_start')", 1, true) ~= nil, 'central engine start must resume and reconcile Bard tracking')
 
 brd.stop_diagnostic_log()
 local log_file = assert(io.open(log_path, 'r'))
