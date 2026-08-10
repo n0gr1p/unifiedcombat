@@ -98,10 +98,10 @@ Completion is based on runtime evidence:
 
 - Release: captured pet disappears or changes.
 - Assault: captured pet is observed targeting the captured enemy, or performs an action on it.
-- Ward: every configured effect appears or the matching pet action completes. Ward recast consumption acknowledges dispatch but does not permit Release before action resolution.
+- Ward: every configured effect for the in-flight pact appears. Recast consumption and matching ready/finish packets acknowledge dispatch but do not permit Release before effect observation.
 - Rage: Rage recast is consumed or the matching pet action completes.
 
-Pet disappearance, target invalidation, server failure messages, interruption, and the centralized 2.5-second watchdog resolve pending state. Failures use exponential per-command backoff starting at one second and capped at eight seconds.
+Pet disappearance, target invalidation, server failure messages, interruption, and watchdog expiry resolve pending state. General pet commands use a 2.5-second watchdog; an acknowledged Ward waits up to eight seconds for its configured effects. Failures use exponential per-command backoff starting at one second and capped at eight seconds.
 
 Pet pending state keeps the scheduler action channel serialized but does not assert a player movement lock. Pet commands use `movement_policy = "none"` and do not stop, face, or reposition the player.
 

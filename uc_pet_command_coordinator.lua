@@ -133,6 +133,10 @@ function M.new(options)
 	options = require_table(options, 'pet command coordinator options')
 	return {
 		timeout = require_positive_number(options.timeout, 'pet command timeout'),
+		ward_effect_timeout = require_positive_number(
+			options.ward_effect_timeout,
+			'pet command ward_effect_timeout'
+		),
 		backoff_base = require_positive_number(options.backoff_base, 'pet command backoff_base'),
 		backoff_max = require_positive_number(options.backoff_max, 'pet command backoff_max'),
 		pending = nil,
@@ -270,7 +274,7 @@ function M.observe(state, ctx)
 		if recast_consumed(pending, ctx) then
 			if pending.recast_consumed_at == nil then
 				pending.recast_consumed_at = now
-				pending.deadline = now + state.timeout
+				pending.deadline = now + state.ward_effect_timeout
 			end
 		end
 	elseif pending.kind == 'rage' then
@@ -314,6 +318,11 @@ function M.observe_action(state, act, now)
 		return nil
 	end
 	if tonumber(act.param) ~= pending.action_id then
+		return nil
+	end
+	if pending.kind == 'ward' then
+		pending.action_observed_at = now
+		pending.deadline = now + state.ward_effect_timeout
 		return nil
 	end
 	return finish(state, now, 'complete', 'pet_action_completed')
