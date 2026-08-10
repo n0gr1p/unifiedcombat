@@ -4056,6 +4056,7 @@ local function p1_ranker_dependencies()
 			_G.UC_LAST_SCHED_ACTION = value
 		end,
 		is_critical_defensive_proposal = scheduler.p1_is_critical_defensive_proposal,
+		encounter_validate_proposal = require('uc_encounter_runtime').validate_proposal,
 		engage_dispatch_method = scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON,
 	}
 end
@@ -4077,6 +4078,10 @@ local function p1_build_dispatch_plan(ctx, selected)
 end
 
 local function p1_revalidate_plan_commit(ctx, selected, plan)
+	local policy_ok, policy_reason = require('uc_encounter_runtime').validate_proposal(ctx, selected)
+	if policy_ok ~= true then
+		return false, policy_reason
+	end
 	local valid, reason = require('uc_scheduler_dispatch_plan').p1_revalidate_plan_commit(
 		scheduler,
 		ctx,
@@ -6191,6 +6196,7 @@ end
 
 function scheduler.process_tick(cadence)
 	_G.UC_LAST_SCHED_ACTION = ''
+	require('uc_encounter_runtime').observe(now_s())
 	local s = get_settings()
 	local combat_domain_enabled = domain_ownership.is_enabled('combat')
 	local defensive_domain_enabled = domain_ownership.is_enabled('defensive')
@@ -6366,6 +6372,7 @@ function scheduler.on_incoming_chunk(id, data)
 		scheduler.providers.charm_sleeper.reset('ZONE_CHANGE')
 		scheduler.providers.sleep_waker.reset('ZONE_CHANGE')
 		require('uc_reaction_runtime').reset('zone_change')
+		require('uc_encounter_runtime').reset('zone_change_packet')
 		require('uc_lilith_easy_encounter').reset('zone_change_packet')
 		require('uc_lilith_easy_formation_runtime').reset('zone_change_packet')
 		_G.UC_REACTION_LOCK = nil

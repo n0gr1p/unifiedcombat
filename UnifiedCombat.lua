@@ -114,6 +114,7 @@ local uc_camp_anchor = require('uc_camp_anchor')
 local uc_camp_pull_registry = require('uc_camp_pull_registry')
 local uc_config_status_export = require('uc_config_status_export')
 local uc_active_config = require('uc_active_config')
+local uc_encounter_runtime = require('uc_encounter_runtime')
 local uc_profile_v2 = require('uc_profile_v2')
 local uc_smn_config = require('uc_smn_config')
 local UC_PROFILE_CONTRACT = nil
@@ -2148,6 +2149,9 @@ local function uc_register_action_listener()
 	end
 	ap_listener_id = ActionPacket.open_listener(function(act_org, act_mod)
 		local act = act_org
+		local observed_at = uc_now_s()
+		uc_encounter_runtime.observe(observed_at)
+		uc_encounter_runtime.on_action(act, observed_at)
 		if UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_action) == 'function' then
 			UC_COMBAT_CORE.on_action(act)
 		end
@@ -2248,6 +2252,7 @@ windower.register_event('job change', function(job, lvl)
 	uc_nyzul_runtime.reset('job_change')
 	require('uc_brd_maintenance').reset('job_change')
 	require('uc_reaction_runtime').reset('job_change')
+	uc_encounter_runtime.reset('job_change')
 	require('uc_lilith_easy_encounter').reset('job_change')
 	require('uc_lilith_easy_formation_runtime').reset('job_change')
 	uc_update_engine()
@@ -2263,6 +2268,7 @@ windower.register_event('zone change', function()
 	uc_nyzul_runtime.reset('zone_change')
 	require('uc_brd_maintenance').reset('zone_change')
 	require('uc_reaction_runtime').reset('zone_change')
+	uc_encounter_runtime.reset('zone_change')
 	require('uc_lilith_easy_encounter').reset('zone_change')
 	require('uc_lilith_easy_formation_runtime').reset('zone_change')
 	UC_COMBAT_CORE.reset_skillchain_state('zone_change')
@@ -2277,6 +2283,7 @@ windower.register_event('unload', function()
 	uc_camp_pull_registry.reset('unload')
 	uc_nyzul_runtime.reset('unload')
 	require('uc_reaction_runtime').reset('unload')
+	uc_encounter_runtime.reset('unload')
 	require('uc_lilith_easy_encounter').reset('unload')
 	require('uc_lilith_easy_formation_runtime').reset('unload')
 	uc_profile_v2_autoload_pending_key = nil
@@ -2297,6 +2304,7 @@ windower.register_event('logout', function()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('logout')
 	uc_nyzul_runtime.reset('logout')
+	uc_encounter_runtime.reset('logout')
 	require('uc_lilith_easy_encounter').reset('logout')
 	require('uc_lilith_easy_formation_runtime').reset('logout')
 	_G.UC_ZONE_SUSPEND_UNTIL = nil
@@ -2346,6 +2354,7 @@ windower.register_event('addon command', function(...)
 		return
 	elseif a == 'stop' then
 		Start_Engine = false
+		uc_encounter_runtime.reset('engine_stop')
 		require('uc_lilith_easy_encounter').reset('engine_stop')
 		require('uc_lilith_easy_formation_runtime').reset('engine_stop')
 		if _G.UC_SETTINGS then
@@ -2358,6 +2367,18 @@ windower.register_event('addon command', function(...)
 			_G.UC_StopUnifiedEngine('engine_stop')
 		end
 		windower.add_to_chat(207, 'UnifiedCombat: engine stopped')
+		return
+	elseif a == 'encounter' then
+		local sub = args[2] and tostring(args[2]):lower() or ''
+		if sub == 'status' then
+			uc_encounter_runtime.observe(uc_now_s())
+			local lines = uc_encounter_runtime.status_lines()
+			for i = 1, #lines do
+				windower.add_to_chat(207, 'UC ' .. tostring(lines[i]))
+			end
+			return
+		end
+		windower.add_to_chat(207, '//uc encounter status')
 		return
 	elseif a == 'save' then
 		if type(_G.UC_SaveActiveProfile) == 'function' then

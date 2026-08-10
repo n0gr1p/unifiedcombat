@@ -63,6 +63,12 @@ local deps = {
 	is_critical_defensive_proposal = function()
 		return false
 	end,
+	encounter_validate_proposal = function(_, candidate)
+		if candidate.fixture_encounter_reject == true then
+			return false, 'encounter_water_damage'
+		end
+		return true, ''
+	end,
 	engage_dispatch_method = 'attack_on',
 }
 
@@ -103,6 +109,12 @@ stale.created_at = 99
 local stale_ok, stale_reason = ranker.validate_proposal(ctx, stale, deps)
 assert_equal(stale_ok, false, 'stale proposal rejected')
 assert_equal(stale_reason, 'stale_snapshot', 'stale rejection reason')
+
+local encounter_rejected = proposal('encounter_rejected', 'combat', 70, 0, 101)
+encounter_rejected.fixture_encounter_reject = true
+local encounter_ok, encounter_reason = ranker.validate_proposal(ctx, encounter_rejected, deps)
+assert_equal(encounter_ok, false, 'encounter policy proposal rejected')
+assert_equal(encounter_reason, 'encounter_water_damage', 'encounter policy rejection reason')
 
 phase1.pending = { state = 'sent', lock_class = 'support_action' }
 local conflict = proposal('conflict', 'combat', 70, 0, 101)

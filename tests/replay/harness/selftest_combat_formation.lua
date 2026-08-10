@@ -72,6 +72,37 @@ assert_equal(proposal.goal.x, 0, 'tank goal x mismatch')
 assert_equal(proposal.goal.y, 0, 'tank goal y mismatch')
 
 proposal = formation.evaluate({
+	config = config('tank'),
+	center = center,
+	boss = boss,
+	me = { id = 1, x = 2, y = 0 },
+	party_members = members,
+	was_moving = false,
+})
+assert_equal(proposal.action, 'hold', 'stationary tank inside return radius should hold')
+assert_equal(proposal.reason, 'FORMATION_TANK_HYSTERESIS', 'tank hysteresis reason mismatch')
+
+proposal = formation.evaluate({
+	config = config('tank'),
+	center = center,
+	boss = boss,
+	me = { id = 1, x = 2, y = 0 },
+	party_members = members,
+	was_moving = true,
+})
+assert_equal(proposal.action, 'move', 'moving tank outside accept radius should keep correcting')
+
+proposal = formation.evaluate({
+	config = config('tank'),
+	center = center,
+	boss = boss,
+	me = { id = 1, x = 3, y = 0 },
+	party_members = members,
+	was_moving = false,
+})
+assert_equal(proposal.action, 'move', 'tank at return boundary should move')
+
+proposal = formation.evaluate({
 	config = config('dps'),
 	center = center,
 	boss = boss,
@@ -82,6 +113,17 @@ proposal = formation.evaluate({
 assert_equal(proposal.action, 'move', 'mispositioned DPS should move')
 assert_true(math.abs(proposal.goal.x) < 0.0001, 'DPS flank goal x mismatch')
 assert_true(math.abs(proposal.goal.y + 3) < 0.0001, 'DPS flank goal y mismatch')
+
+proposal = formation.evaluate({
+	config = config('dps'),
+	center = center,
+	boss = boss,
+	me = { id = 2, x = 0, y = -3 },
+	party_members = members,
+	was_moving = false,
+})
+assert_equal(proposal.action, 'hold', 'DPS at translated generic goal should hold')
+assert_equal(proposal.reason, 'FORMATION_DPS_FLANK_OK', 'DPS hold reason mismatch')
 
 proposal = formation.evaluate({
 	config = config('dps'),

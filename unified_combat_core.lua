@@ -2699,6 +2699,23 @@ function core.on_action(act)
 		chain_affinity_success = chain_affinity_success and true or false,
 		chainbound_level = message_id == 529 and param or 0,
 	})
+	local encounter_action_class = nil
+	if resource == 'weapon_skills' then
+		encounter_action_class = 'ws'
+	elseif category == 'avatar_tp_finish' then
+		encounter_action_class = 'bp'
+	end
+	if encounter_action_class ~= nil then
+		require('uc_encounter_runtime').observe_action_result({
+			action_class = encounter_action_class,
+			action_key = tostring(action_id),
+			action_name = tostring((ability and (ability.en or ability.name)) or ''),
+			actor_id = tonumber(actor) or 0,
+			target_id = tonumber(target and target.id) or 0,
+			observed_at = uc_now_s(),
+			success = action_success == true and interrupted ~= true,
+		})
+	end
 	local should_observe_skillchain = uc_skillchain_state.should_observe_action({
 		source_resource = resource,
 		has_properties = has_properties and true or false,
@@ -2780,6 +2797,7 @@ function core.on_action_message(msg)
 	if tid > 0 and death_message_ids[mid] then
 		core.last_death_target_id = tid
 		core.last_death_at = uc_now_s()
+		require('uc_encounter_runtime').observe_boss_defeat(tid)
 		skillchain_runtime:clear_target(tid, 'death')
 		uc_camp_pull_registry.note_death(tid)
 	end
