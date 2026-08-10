@@ -204,10 +204,12 @@ matches each session's current jobs. Dropdown selection is management-only;
 Activity activation is cohort-wide: every active session must have a valid
 exact variant. Running engines do not block an explicitly confirmed change;
 the confirmation warns that changes take effect immediately and already-issued
-actions are not cancelled. The UI stages all canonical v2 files, requests an
-acknowledged profile-v2 reload from every session, verifies zero durable
-differences, and rolls the files back if the cohort does not complete
-successfully. See [Activity profiles](docs/activity_profiles.md).
+actions are not cancelled. The UI stages both canonical v2 files and exact-job
+UI JSON snapshots, requests an acknowledged profile-v2 reload from every
+session, verifies zero durable differences, and rolls both representations back
+if the cohort does not complete successfully. After success, the selected
+session editor immediately reflects the applied activity. See
+[Activity profiles](docs/activity_profiles.md).
 
 ## Commands
 
