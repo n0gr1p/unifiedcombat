@@ -17,7 +17,11 @@ internal sealed record ActivityProfileIdentity(string Character, string MainJob,
     internal StructuredProfileV2Identity ToStructuredIdentity() => new(Character.Trim(), MainJob.Trim(), SubJob.Trim());
 }
 
-internal sealed record ActivityProfileCapture(ActivityProfileIdentity Identity, string ProfileContent);
+internal sealed record ActivityProfileCapture(
+    ActivityProfileIdentity Identity,
+    string ProfileContent,
+    string UiProfileContent
+);
 
 internal sealed record ActivitySessionIdentity(string Sid, ActivityProfileIdentity Identity);
 
@@ -26,7 +30,10 @@ internal sealed record ActivityActivationEntry(
     ActivityProfileIdentity Identity,
     string SourcePath,
     string DestinationPath,
-    string ProfileContent
+    string ProfileContent,
+    string UiSourcePath,
+    string UiDestinationPath,
+    string UiProfileContent
 );
 
 internal sealed record ActivityActivationPlan(
@@ -40,7 +47,7 @@ internal sealed record ActivityProfileSummary(string Id, string Name, int Charac
 internal sealed class ActivityProfileManifest
 {
     [JsonPropertyName("schema_version")]
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
 
     [JsonPropertyName("id")]
     public string Id { get; set; } = "";
@@ -77,6 +84,12 @@ internal sealed class ActivityProfileVariant
 
     [JsonPropertyName("sha256")]
     public string Sha256 { get; set; } = "";
+
+    [JsonPropertyName("ui_profile_file")]
+    public string UiProfileFile { get; set; } = "";
+
+    [JsonPropertyName("ui_sha256")]
+    public string UiSha256 { get; set; } = "";
 }
 
 internal sealed class ActivityProfileException : Exception
@@ -159,7 +172,8 @@ internal sealed class ActivityProfileDeployment : IDisposable
 
 internal sealed class ActivityProfileStore
 {
-    private const int SchemaVersion = 1;
+    private const int LegacySchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private const string ManifestFileName = "activity.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -303,14 +317,39 @@ internal sealed class ActivityProfileStore
                 throw new ActivityProfileException($"Activity profile snapshot checksum failed: {variant.ProfileFile}");
             }
 
+            if (variant.UiProfileFile.Trim().Length == 0 || variant.UiSha256.Trim().Length != 64)
+            {
+                throw new ActivityProfileException(
+                    $"Activity '{manifest.Name}' has no UI snapshot for "
+                    + $"{session.Identity.Character} {session.Identity.MainJob}/{session.Identity.SubJob}. "
+                    + "Select the activity and click Update while that character/job is active."
+                );
+            }
+            var uiSourcePath = ResolveContainedPath(activityDirectory, variant.UiProfileFile);
+            if (!File.Exists(uiSourcePath))
+            {
+                throw new ActivityProfileException($"Activity UI snapshot is missing: {variant.UiProfileFile}");
+            }
+            var uiContent = File.ReadAllText(uiSourcePath, Encoding.UTF8);
+            var actualUiHash = Sha256(uiContent);
+            if (!string.Equals(actualUiHash, variant.UiSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ActivityProfileException($"Activity UI snapshot checksum failed: {variant.UiProfileFile}");
+            }
+            ValidateUiProfileContent(uiContent, session.Identity);
+
             var destination = StructuredProfileV2Writer.BuildFinalPath(_addonRoot, session.Identity.ToStructuredIdentity());
+            var uiDestination = BuildUiFinalPath(_addonRoot, session.Identity);
             entries.Add(
                 new ActivityActivationEntry(
                     session.Sid,
                     session.Identity,
                     sourcePath,
                     destination,
-                    content
+                    content,
+                    uiSourcePath,
+                    uiDestination,
+                    uiContent
                 )
             );
         }
@@ -325,7 +364,14 @@ internal sealed class ActivityProfileStore
             throw new ActivityProfileException("Activity activation plan contains no sessions.");
         }
 
-        var duplicateDestination = plan.Entries
+        var deploymentFiles = plan.Entries
+            .SelectMany(entry => new[]
+            {
+                (DestinationPath: entry.DestinationPath, Content: entry.ProfileContent),
+                (DestinationPath: entry.UiDestinationPath, Content: entry.UiProfileContent),
+            })
+            .ToList();
+        var duplicateDestination = deploymentFiles
             .GroupBy(x => Path.GetFullPath(x.DestinationPath), StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(x => x.Count() > 1);
         if (duplicateDestination is not null)
@@ -334,39 +380,39 @@ internal sealed class ActivityProfileStore
         }
 
         var operationId = Guid.NewGuid().ToString("N");
-        var staged = new List<(ActivityActivationEntry entry, string tempPath, string backupPath)>();
+        var staged = new List<(string destinationPath, string tempPath, string backupPath)>();
         var deployed = new List<(string destinationPath, string backupPath, bool hadOriginal)>();
         try
         {
-            foreach (var entry in plan.Entries)
+            foreach (var file in deploymentFiles)
             {
-                var directory = Path.GetDirectoryName(entry.DestinationPath)
+                var directory = Path.GetDirectoryName(file.DestinationPath)
                     ?? throw new ActivityProfileException("Activity destination directory is unavailable.");
                 Directory.CreateDirectory(directory);
-                var tempPath = entry.DestinationPath + $".activity.{operationId}.tmp";
-                var backupPath = entry.DestinationPath + $".activity.{operationId}.bak";
+                var tempPath = file.DestinationPath + $".activity.{operationId}.tmp";
+                var backupPath = file.DestinationPath + $".activity.{operationId}.bak";
                 if (File.Exists(tempPath) || File.Exists(backupPath))
                 {
                     throw new ActivityProfileException("Activity deployment staging path already exists.");
                 }
 
-                File.WriteAllText(tempPath, entry.ProfileContent, new UTF8Encoding(false));
-                staged.Add((entry, tempPath, backupPath));
+                File.WriteAllText(tempPath, file.Content, new UTF8Encoding(false));
+                staged.Add((file.DestinationPath, tempPath, backupPath));
             }
 
             foreach (var item in staged)
             {
-                var hadOriginal = File.Exists(item.entry.DestinationPath);
+                var hadOriginal = File.Exists(item.destinationPath);
                 if (hadOriginal)
                 {
-                    File.Replace(item.tempPath, item.entry.DestinationPath, item.backupPath, ignoreMetadataErrors: true);
+                    File.Replace(item.tempPath, item.destinationPath, item.backupPath, ignoreMetadataErrors: true);
                 }
                 else
                 {
-                    File.Move(item.tempPath, item.entry.DestinationPath);
+                    File.Move(item.tempPath, item.destinationPath);
                 }
 
-                deployed.Add((item.entry.DestinationPath, item.backupPath, hadOriginal));
+                deployed.Add((item.destinationPath, item.backupPath, hadOriginal));
             }
 
             return new ActivityProfileDeployment(deployed);
@@ -443,22 +489,30 @@ internal sealed class ActivityProfileStore
             }
 
             var profilesDirectory = Path.Combine(stagingDirectory, "profiles");
+            var uiProfilesDirectory = Path.Combine(stagingDirectory, "ui_profiles");
             Directory.CreateDirectory(profilesDirectory);
+            Directory.CreateDirectory(uiProfilesDirectory);
             var variantMap = BuildVariantMap(manifest);
             foreach (var capture in captures)
             {
                 var identity = capture.Identity;
-                var fileName = $"{StructuredProfileV2Writer.SafeCharacterComponent(identity.Character)}_"
+                var fileStem = $"{StructuredProfileV2Writer.SafeCharacterComponent(identity.Character)}_"
                     + $"{StructuredProfileV2Writer.SafeJobComponent(identity.MainJob)}_"
-                    + $"{StructuredProfileV2Writer.SafeJobComponent(identity.SubJob)}.lua";
+                    + $"{StructuredProfileV2Writer.SafeJobComponent(identity.SubJob)}";
+                var fileName = fileStem + ".lua";
+                var uiFileName = fileStem + ".json";
                 var relativePath = Path.Combine("profiles", fileName).Replace('\\', '/');
+                var uiRelativePath = Path.Combine("ui_profiles", uiFileName).Replace('\\', '/');
                 File.WriteAllText(Path.Combine(profilesDirectory, fileName), capture.ProfileContent, new UTF8Encoding(false));
+                File.WriteAllText(Path.Combine(uiProfilesDirectory, uiFileName), capture.UiProfileContent, new UTF8Encoding(false));
                 variantMap[identity.Key] = new ActivityProfileVariant
                 {
                     MainJob = identity.MainJob.Trim().ToUpperInvariant(),
                     SubJob = identity.SubJob.Trim().ToUpperInvariant(),
                     ProfileFile = relativePath,
                     Sha256 = Sha256(capture.ProfileContent),
+                    UiProfileFile = uiRelativePath,
+                    UiSha256 = Sha256(capture.UiProfileContent),
                 };
             }
 
@@ -564,6 +618,12 @@ internal sealed class ActivityProfileStore
                 {
                     throw new ActivityProfileException($"Activity manifest contains invalid profile metadata for {identity.Key}.");
                 }
+                var hasUiProfileFile = variant.UiProfileFile.Trim().Length > 0;
+                var hasUiHash = variant.UiSha256.Trim().Length > 0;
+                if (hasUiProfileFile != hasUiHash || (hasUiHash && variant.UiSha256.Trim().Length != 64))
+                {
+                    throw new ActivityProfileException($"Activity manifest contains invalid UI profile metadata for {identity.Key}.");
+                }
                 if (!output.TryAdd(identity.Key, variant))
                 {
                     throw new ActivityProfileException($"Activity manifest contains duplicate profile identity: {identity.Key}");
@@ -586,7 +646,8 @@ internal sealed class ActivityProfileStore
             throw new ActivityProfileException($"Activity manifest is invalid: {path}", ex);
         }
 
-        if (manifest is null || manifest.SchemaVersion != SchemaVersion)
+        if (manifest is null
+            || (manifest.SchemaVersion != LegacySchemaVersion && manifest.SchemaVersion != SchemaVersion))
         {
             throw new ActivityProfileException($"Activity manifest schema is unsupported: {path}");
         }
@@ -599,7 +660,27 @@ internal sealed class ActivityProfileStore
         return manifest;
     }
 
+    internal static string BuildUiFinalPath(string addonRoot, ActivityProfileIdentity identity)
+    {
+        var root = Path.GetFullPath(addonRoot);
+        var character = SafeUiComponent(identity.Character);
+        var mainJob = StructuredProfileV2Writer.SafeJobComponent(identity.MainJob);
+        var subJob = StructuredProfileV2Writer.SafeJobComponent(identity.SubJob);
+        return Path.Combine(root, "data", "ui_profiles", $"{character}_{mainJob}_{subJob}.json");
+    }
+
     private string ActivityDirectory(string id) => Path.Combine(_root, RequireId(id));
+
+    private static string SafeUiComponent(string value)
+    {
+        var clean = value.Trim();
+        if (clean.Length == 0)
+        {
+            throw new ActivityProfileException("Activity UI profile identity is empty.");
+        }
+        var invalid = Path.GetInvalidFileNameChars();
+        return new string(clean.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
+    }
 
     private static string RequireId(string id)
     {
@@ -641,10 +722,35 @@ internal sealed class ActivityProfileStore
             {
                 throw new ActivityProfileException($"Activity capture is empty for {capture.Identity.Key}.");
             }
+            if (capture.UiProfileContent.Length == 0)
+            {
+                throw new ActivityProfileException($"Activity UI capture is empty for {capture.Identity.Key}.");
+            }
+            ValidateUiProfileContent(capture.UiProfileContent, capture.Identity);
             if (!seen.Add(capture.Identity.Key))
             {
                 throw new ActivityProfileException($"Activity capture contains duplicate identity: {capture.Identity.Key}");
             }
+        }
+    }
+
+    private static void ValidateUiProfileContent(string content, ActivityProfileIdentity identity)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new ActivityProfileException($"Activity UI snapshot is not an object for {identity.Key}.");
+            }
+        }
+        catch (ActivityProfileException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new ActivityProfileException($"Activity UI snapshot is invalid for {identity.Key}.", ex);
         }
     }
 

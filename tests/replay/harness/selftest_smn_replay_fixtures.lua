@@ -35,6 +35,7 @@ end
 local function replay_pet_command(fixture)
 	local state = coordinator.new({
 		timeout = 2.5,
+		ward_effect_timeout = 8.0,
 		backoff_base = 1,
 		backoff_max = 8,
 	})

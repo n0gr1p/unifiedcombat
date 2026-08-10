@@ -1,10 +1,12 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
+    private static readonly JsonSerializerOptions ActivityUiJsonOptions = new() { WriteIndented = true };
     private ActivityProfileStore _activityStore = null!;
     private ComboBox _activityCombo = null!;
     private Button _activityCreate = null!;
@@ -213,7 +215,7 @@ public partial class MainForm
             var captures = BuildAndPersistActivityCaptures();
             var manifest = _activityStore.Create(
                 name,
-                captures.Select(x => new ActivityProfileCapture(x.Identity, x.StructuredContent)).ToList()
+                captures.Select(BuildActivityProfileCapture).ToList()
             );
             RefreshActivityList(manifest.Id);
             _activityStatus.Text = $"{manifest.Name} created from {captures.Count} active sessions; click Apply to activate";
@@ -237,7 +239,7 @@ public partial class MainForm
             var captures = BuildAndPersistActivityCaptures();
             var manifest = _activityStore.Update(
                 selected.Id,
-                captures.Select(x => new ActivityProfileCapture(x.Identity, x.StructuredContent)).ToList()
+                captures.Select(BuildActivityProfileCapture).ToList()
             );
             RefreshActivityList(manifest.Id);
             _activeActivityCohortBySid.Clear();
@@ -343,6 +345,15 @@ public partial class MainForm
         return captures;
     }
 
+    private static ActivityProfileCapture BuildActivityProfileCapture(ActivityCaptureSource source)
+    {
+        return new ActivityProfileCapture(
+            source.Identity,
+            source.StructuredContent,
+            source.FlatProfile.ToJsonString(ActivityUiJsonOptions)
+        );
+    }
+
     private JsonObject ReadExistingUiProfileForActivityCapture(string sid)
     {
         if (!TryProfilePathForSid(sid, out var path))
@@ -397,7 +408,7 @@ public partial class MainForm
                 .OrderBy(x => x.Value.CharName, StringComparer.OrdinalIgnoreCase)
                 .Select(x => new ActivitySessionIdentity(x.Key, RequireActivityIdentity(x.Value)))
                 .ToList();
-            var plan = _activityStore.BuildActivationPlan(selected.Id, sessions);
+            var plan = PreserveRuntimeUiState(_activityStore.BuildActivationPlan(selected.Id, sessions));
             if (confirm)
             {
                 var confirmationMessage = $"Apply '{plan.ActivityName}' to all {plan.Entries.Count} active sessions?";
@@ -448,6 +459,16 @@ public partial class MainForm
                 );
             }
 
+            foreach (var entry in plan.Entries)
+            {
+                _workingProfileBySid.Remove(entry.Sid);
+            }
+            if (!string.IsNullOrWhiteSpace(_selectedSid)
+                && plan.Entries.Any(entry => string.Equals(entry.Sid, _selectedSid, StringComparison.Ordinal)))
+            {
+                RefreshEditorFromSnapshot();
+            }
+
             _activeActivityId = plan.ActivityId;
             _activeActivityName = plan.ActivityName;
             _activeActivityCohortBySid.Clear();
@@ -455,7 +476,7 @@ public partial class MainForm
             {
                 _activeActivityCohortBySid[entry.Sid] = entry.Identity.Key;
             }
-            _activityStatus.Text = $"{plan.ActivityName} active on {plan.Entries.Count} sessions";
+            _activityStatus.Text = $"{plan.ActivityName} active on {plan.Entries.Count} sessions; UI synchronized";
             statusConnection.Text = $"Mirror: activity applied ({plan.ActivityName}, {plan.Entries.Count} sessions)";
         }
         catch (Exception ex)
@@ -513,6 +534,35 @@ public partial class MainForm
         {
             return "runtime restoration acknowledgement failed: " + ex.Message;
         }
+    }
+
+    private ActivityActivationPlan PreserveRuntimeUiState(ActivityActivationPlan plan)
+    {
+        var entries = new List<ActivityActivationEntry>(plan.Entries.Count);
+        foreach (var entry in plan.Entries)
+        {
+            if (!_sessionRunningBySid.TryGetValue(entry.Sid, out var running))
+            {
+                throw new ActivityProfileException($"Runtime engine state is unavailable for session {entry.Sid}.");
+            }
+            entries.Add(entry with
+            {
+                UiProfileContent = BuildAppliedUiProfileContent(entry.UiProfileContent, entry.Identity, running),
+            });
+        }
+        return plan with { Entries = entries };
+    }
+
+    internal static string BuildAppliedUiProfileContent(
+        string content,
+        ActivityProfileIdentity identity,
+        bool running
+    )
+    {
+        var uiProfile = JsonNode.Parse(content) as JsonObject
+            ?? throw new ActivityProfileException($"Activity UI snapshot is not an object for {identity.Key}.");
+        uiProfile["Start_Engine"] = running;
+        return uiProfile.ToJsonString(ActivityUiJsonOptions);
     }
 
     private static void ValidateReloadResults(

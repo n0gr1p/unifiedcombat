@@ -30,6 +30,7 @@ end
 local function new_state()
 	return coordinator.new({
 		timeout = 2.5,
+		ward_effect_timeout = 8.0,
 		backoff_base = 1.0,
 		backoff_max = 8.0,
 	})
@@ -198,20 +199,37 @@ local function test_serialization_and_completion()
 		'Ward must remain pending until every maintained effect is present'
 	)
 	local ward_event = coordinator.observe_action(state, {
+		category = 7,
 		actor_id = 200,
 		param = 323,
 		targets = { { id = 100 } },
 	}, 3.4)
-	assert_equal(ward_event.reason, 'pet_action_completed', 'Ward action packet completion')
-
-	coordinator.begin(state, base_command('ward'), 3.5)
-	local complete_effect_ctx = context(3.6)
+	assert_equal(ward_event, nil, 'Ward readying packet must only acknowledge the action')
+	assert_true(coordinator.is_pending(state), 'Ward readying packet must keep Release blocked')
+	ward_event = coordinator.observe_action(state, {
+		category = 13,
+		actor_id = 200,
+		param = 323,
+		targets = { { id = 100 } },
+	}, 5.9)
+	assert_equal(ward_event, nil, 'Ward finish packet must wait for maintained effects')
+	assert_true(coordinator.is_pending(state), 'Ward finish packet must keep Release blocked until effects appear')
+	local extended_wait_ctx = context(6.0)
+	assert_equal(
+		coordinator.observe(state, extended_wait_ctx),
+		nil,
+		'Ward-specific effect timeout must outlive the generic pet-command timeout'
+	)
+	release_allowed, release_reason = coordinator.can_attempt(state, 'smn:release:200', 6.1)
+	assert_equal(release_allowed, false, 'Release must remain blocked after the Ward finish packet')
+	assert_equal(release_reason, 'pet_command_pending', 'Ward effect wait must retain the shared pet-command lock')
+	local complete_effect_ctx = context(6.2)
 	complete_effect_ctx.player_buffs = { 68, 69 }
 	ward_event = coordinator.observe(state, complete_effect_ctx)
 	assert_equal(ward_event.reason, 'ward_effect_observed', 'all Ward effects complete the command')
 
-	coordinator.begin(state, base_command('rage'), 4)
-	local rage_ctx = context(4.1)
+	coordinator.begin(state, base_command('rage'), 7)
+	local rage_ctx = context(7.1)
 	rage_ctx.ability_recasts[173] = 45
 	local rage_event = coordinator.observe(state, rage_ctx)
 	assert_equal(rage_event.reason, 'rage_recast_consumed', 'Rage recast observation')

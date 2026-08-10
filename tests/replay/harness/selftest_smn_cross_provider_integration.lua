@@ -83,6 +83,7 @@ end
 
 local command_state = coordinator.new({
 	timeout = 2.5,
+	ward_effect_timeout = 8.0,
 	backoff_base = 1,
 	backoff_max = 8,
 })

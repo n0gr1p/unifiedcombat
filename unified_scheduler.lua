@@ -80,6 +80,7 @@ local scheduler = {
 	},
 	pet_command_state = pet_command_coordinator.new({
 		timeout = 2.5,
+		ward_effect_timeout = 8.0,
 		backoff_base = 1.0,
 		backoff_max = 8.0,
 	}),
