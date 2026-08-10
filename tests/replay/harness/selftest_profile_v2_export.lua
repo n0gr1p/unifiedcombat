@@ -1994,6 +1994,24 @@ local function main()
 
 	run_profile_v2_autoload_selftest(profile_v2, active_config, contract, flat, durable_path)
 
+	local encounter_settings = deep_clone(flat)
+	encounter_settings.encounter_enabled = true
+	encounter_settings.encounter_id = 'sortie_ghatjot'
+	encounter_settings.encounter_water_damage = 'enforce'
+	encounter_settings.encounter_water_skillchain = 'warn'
+	encounter_settings.encounter_repeat_action_wall = 'off'
+	encounter_settings.encounter_repeat_action_guard_s = 10.0
+	local encounter_profile = profile_v2.build_structured_profile(encounter_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		source = 'test',
+	})
+	assert_equal(encounter_profile.config.encounter.enabled, true, 'profile v2 encounter enabled mismatch')
+	assert_equal(encounter_profile.config.encounter.id, 'sortie_ghatjot', 'profile v2 encounter ID mismatch')
+	assert_equal(encounter_profile.config.encounter.policy.water_skillchain, 'warn', 'profile v2 encounter policy mismatch')
+	assert_equal(encounter_profile.config.encounter.tuning.repeat_action_guard_s, 10.0, 'profile v2 encounter tuning mismatch')
+
 	_G.UC_normalize_settings_table = previous_global_uc_normalize_settings_table
 	_G.uc_normalize_settings_table = previous_global_uc_normalize_settings_table_lower
 	_G.uc_sync_table_in_place = previous_global_uc_sync_table_in_place

@@ -4,7 +4,8 @@
 
 This procedure gathers the live evidence required before Phase 4 may promote
 Dhartok hazard candidates into movement constraints. It also validates the Phase 1
-zone, ability, target, and WS/BP observation contracts.
+zone, ability, target, and WS/BP observation contracts. Dhartok's gate is independent
+of Ghatjot's completed durable policy path.
 
 The raw capture path is intentionally independent of `config.encounter`. It only
 recognizes exact `Ghatjot` or `Dhartok` actors in the exact resource-derived zone
@@ -96,5 +97,7 @@ rg -n "ENCOUNTER_RAW_(ABILITY|ACTION_RESULT)_CANDIDATE" data\logs\action_timelin
       are not accepted as repeat-wall timestamps.
 - [ ] No raw candidate changed policy, movement, or durable configuration.
 
-Phase 4 remains gated until these items are reviewed and recorded under
-`docs/TestResults/`.
+Phase 4 remains gated for Dhartok until these items are reviewed and recorded under
+`docs/TestResults/`. Ghatjot does not create a dynamic spatial hazard, and its hard
+policies do not depend on a named boss ability, so this gate does not prevent
+Ghatjot from being enabled through durable configuration.

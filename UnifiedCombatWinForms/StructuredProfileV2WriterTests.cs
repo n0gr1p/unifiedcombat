@@ -58,6 +58,9 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeReactionRules();
             TestDisabledEmptyReactionsAreOmitted();
             TestReactionUiEditsAreLocalUntilSave();
+            TestSerializeGhatjotEncounter();
+            TestEncounterValidation();
+            TestEncounterUiProfilePersistenceContract();
             TestDisabledFormationIsOmitted();
             TestSerializeLilithEasyFormation();
             TestEnabledFormationRequiresMovementDomain();
@@ -1151,6 +1154,72 @@ internal static class StructuredProfileV2WriterTests
         var reactionHandlers = source[start..end];
         AssertNotContains(reactionHandlers, "Forward(", "reaction durable controls must not emit live bridge traffic");
         AssertContains(reactionHandlers, "CaptureWorkingProfileFromUi", "reaction durable controls must update local working state");
+    }
+
+    private static void TestSerializeGhatjotEncounter()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["encounter_enabled"] = true;
+        flat["encounter_id"] = "sortie_ghatjot";
+        flat["encounter_water_damage"] = "enforce";
+        flat["encounter_water_skillchain"] = "warn";
+        flat["encounter_repeat_action_wall"] = "off";
+        flat["encounter_repeat_action_guard_s"] = 10.0;
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Nyoourke", "SAM", "WAR")
+        );
+
+        AssertContains(content, "encounter = {", "encounter domain missing");
+        AssertContains(content, "id = \"sortie_ghatjot\"", "Ghatjot encounter ID missing");
+        AssertContains(content, "water_damage = \"enforce\"", "direct Water policy missing");
+        AssertContains(content, "water_skillchain = \"warn\"", "Water skillchain policy missing");
+        AssertContains(content, "repeat_action_wall = \"off\"", "Ghatjot repeat policy must be off");
+        AssertContains(content, "repeat_action_guard_s = 10", "encounter tuning missing");
+    }
+
+    private static void TestEncounterValidation()
+    {
+        var missingId = BuildSampleFlatProfile();
+        missingId["encounter_enabled"] = true;
+        missingId["encounter_id"] = "";
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                missingId,
+                new StructuredProfileV2Identity("Nyoourke", "SAM", "WAR")
+            ),
+            "enabled encounter without identity must fail"
+        );
+
+        var invalidMode = BuildSampleFlatProfile();
+        invalidMode["encounter_enabled"] = true;
+        invalidMode["encounter_id"] = "sortie_ghatjot";
+        invalidMode["encounter_water_damage"] = "maybe";
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                invalidMode,
+                new StructuredProfileV2Identity("Nyoourke", "SAM", "WAR")
+            ),
+            "invalid encounter policy must fail"
+        );
+    }
+
+    private static void TestEncounterUiProfilePersistenceContract()
+    {
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        AssertContains(ui, "new TabPage(\"Encounter Policy\")", "encounter policy tab must exist");
+        AssertContains(store, "[\"encounter_enabled\"] = _encounterEnabled.Checked", "encounter enable state must be captured");
+        AssertContains(store, "[\"encounter_id\"] = EncounterIdValue()", "encounter identity must be captured");
+        AssertContains(store, "[\"encounter_water_damage\"]", "direct Water mode must be captured");
+        AssertContains(logic, "ApplyEncounterConfigFromSnapshot(s);", "encounter settings must restore from UI profiles");
+        var start = logic.IndexOf("private string EncounterIdValue", StringComparison.Ordinal);
+        var end = logic.IndexOf("private string FormationEncounterValue", start, StringComparison.Ordinal);
+        AssertTrue(start >= 0 && end > start, "encounter UI handler source range missing");
+        var handlers = logic[start..end];
+        AssertNotContains(handlers, "Forward(", "encounter durable controls must not emit live bridge traffic");
+        AssertContains(handlers, "CaptureWorkingProfileFromUi", "encounter durable controls must update local working state");
     }
 
     private static void TestDisabledFormationIsOmitted()

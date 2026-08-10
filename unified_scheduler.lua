@@ -4078,10 +4078,6 @@ local function p1_build_dispatch_plan(ctx, selected)
 end
 
 local function p1_revalidate_plan_commit(ctx, selected, plan)
-	local policy_ok, policy_reason = require('uc_encounter_runtime').validate_proposal(ctx, selected)
-	if policy_ok ~= true then
-		return false, policy_reason
-	end
 	local valid, reason = require('uc_scheduler_dispatch_plan').p1_revalidate_plan_commit(
 		scheduler,
 		ctx,
@@ -4093,6 +4089,10 @@ local function p1_revalidate_plan_commit(ctx, selected, plan)
 	)
 	if not valid then
 		return false, reason
+	end
+	local policy_ok, policy_reason = require('uc_encounter_runtime').validate_proposal(ctx, selected)
+	if policy_ok ~= true then
+		return false, policy_reason
 	end
 	return scheduler.validate_cure_target(selected)
 end

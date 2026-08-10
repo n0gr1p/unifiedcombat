@@ -491,6 +491,7 @@ public partial class MainForm
             _pfFollowMaxYalms.Enabled = false;
             _pfFightFollowMinYalms.Enabled = false;
             _pfFightFollowHoldS.Enabled = false;
+            UpdateEncounterUiState();
             UpdateFormationUiState();
             UpdateBooleanCardVisuals();
         }
@@ -645,6 +646,7 @@ public partial class MainForm
             _pfFightFollowHoldS.Enabled = pfOn;
             ApplyPartyFollowDistancesFromSnapshot(sid, s);
             ApplySpacingTuningFromSnapshot(sid, s);
+            ApplyEncounterConfigFromSnapshot(s);
             ApplyFormationConfigFromSnapshot(s, partnerOpts);
 
             var prov = SessionStateHelper.GetString(s, "defensive_provider", "internal");
@@ -2134,6 +2136,134 @@ public partial class MainForm
             return;
         }
         CaptureWorkingProfileFromUi(_selectedSid);
+    }
+
+    private string EncounterIdValue()
+    {
+        return _encounterId.SelectedItem?.ToString() switch
+        {
+            "Ghatjot — Sortie Area A" => "sortie_ghatjot",
+            "Dhartok — Sortie Area E (validation pending)" => "sortie_dhartok",
+            _ => throw new InvalidOperationException("unsupported encounter selection"),
+        };
+    }
+
+    private static string EncounterPolicyValue(ComboBox combo)
+    {
+        return combo.SelectedItem?.ToString() switch
+        {
+            "Enforce" => "enforce",
+            "Warn" => "warn",
+            "Off" => "off",
+            _ => throw new InvalidOperationException("unsupported encounter policy selection"),
+        };
+    }
+
+    private static string EncounterPolicyDisplay(string mode, string field)
+    {
+        return mode switch
+        {
+            "enforce" => "Enforce",
+            "warn" => "Warn",
+            "off" => "Off",
+            _ => throw new InvalidDataException($"unsupported {field} encounter policy: {mode}"),
+        };
+    }
+
+    private void ApplyEncounterConfigFromSnapshot(JsonElement snapshot)
+    {
+        _encounterEnabled.Checked = SessionStateHelper.GetBool(snapshot, "encounter_enabled", false);
+        var encounterId = SessionStateHelper.GetString(snapshot, "encounter_id", "sortie_ghatjot");
+        _encounterId.SelectedItem = encounterId switch
+        {
+            "sortie_ghatjot" => "Ghatjot — Sortie Area A",
+            "sortie_dhartok" => "Dhartok — Sortie Area E (validation pending)",
+            _ => throw new InvalidDataException($"unsupported encounter ID in UI profile: {encounterId}"),
+        };
+        var repeatDefault = encounterId == "sortie_dhartok" ? "warn" : "off";
+        _encounterWaterDamage.SelectedItem = EncounterPolicyDisplay(
+            SessionStateHelper.GetString(snapshot, "encounter_water_damage", "enforce"),
+            "direct Water"
+        );
+        _encounterWaterSkillchain.SelectedItem = EncounterPolicyDisplay(
+            SessionStateHelper.GetString(snapshot, "encounter_water_skillchain", "enforce"),
+            "Water skillchain"
+        );
+        _encounterRepeatActionWall.SelectedItem = EncounterPolicyDisplay(
+            SessionStateHelper.GetString(snapshot, "encounter_repeat_action_wall", repeatDefault),
+            "repeat-action"
+        );
+        var repeatGuardRaw = SessionStateHelper.GetString(snapshot, "encounter_repeat_action_guard_s", "10");
+        if (!decimal.TryParse(repeatGuardRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out var repeatGuard))
+        {
+            throw new InvalidDataException($"encounter repeat-action guard is not numeric: {repeatGuardRaw}");
+        }
+        if (repeatGuard < _encounterRepeatActionGuard.Minimum || repeatGuard > _encounterRepeatActionGuard.Maximum)
+        {
+            throw new InvalidDataException(
+                $"encounter repeat-action guard is outside {_encounterRepeatActionGuard.Minimum}..{_encounterRepeatActionGuard.Maximum}: {repeatGuard}"
+            );
+        }
+        _encounterRepeatActionGuard.Value = repeatGuard;
+        UpdateEncounterUiState();
+    }
+
+    private void OnEncounterSelectionChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        _encounterRepeatActionWall.SelectedItem = EncounterIdValue() == "sortie_dhartok" ? "Warn" : "Off";
+        OnEncounterConfigChanged();
+    }
+
+    private void OnEncounterConfigChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        UpdateEncounterUiState();
+        if (!string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            CaptureWorkingProfileFromUi(_selectedSid);
+        }
+    }
+
+    private bool ValidateEncounterConfiguration(out string error)
+    {
+        error = "";
+        if (!_encounterEnabled.Checked)
+        {
+            return true;
+        }
+        var encounterId = EncounterIdValue();
+        if (encounterId == "sortie_ghatjot" && EncounterPolicyValue(_encounterRepeatActionWall) != "off")
+        {
+            error = "Ghatjot does not use the repeated WS/BP policy; set it to Off.";
+            return false;
+        }
+        return true;
+    }
+
+    private void UpdateEncounterUiState()
+    {
+        var enabled = _encounterEnabled.Checked;
+        _encounterConfigPanel.Enabled = enabled;
+        var isDhartok = EncounterIdValue() == "sortie_dhartok";
+        _encounterRepeatActionWall.Enabled = enabled && isDhartok;
+        _encounterRepeatActionGuard.Enabled = enabled && isDhartok;
+        var valid = ValidateEncounterConfiguration(out var error);
+        _encounterValidation.Text = !enabled
+            ? "Encounter safeguards are disabled for this profile."
+            : !valid
+                ? error
+                : isDhartok
+                    ? "Dhartok policy is available, but spatial hazard handling remains blocked pending field validation."
+                    : "Ghatjot safeguards are ready to save."
+            ;
+        _encounterValidation.ForeColor = !enabled || valid ? SystemColors.ControlText : Color.Firebrick;
     }
 
     private string FormationEncounterValue()
@@ -4306,6 +4436,13 @@ public partial class MainForm
         var sid = RequireSelectedSid();
         if (sid is null)
         {
+            return;
+        }
+
+        if (!ValidateEncounterConfiguration(out var encounterError))
+        {
+            SetProfileSaveStatus($"Mirror: profile save blocked ({encounterError})");
+            UpdateEncounterUiState();
             return;
         }
 

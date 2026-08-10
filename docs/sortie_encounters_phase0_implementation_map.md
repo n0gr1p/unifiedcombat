@@ -91,13 +91,15 @@ Implementation branch: `codex/encounters-rfc`.
 
 ## Configuration boundary
 
-`uc_encounter_runtime` consumes the planned `config.encounter.enabled` and
-`config.encounter.id` shape, but this phase intentionally does not add a Profile V2,
-normalizer, export, or UI producer. With current profiles the consumer therefore
-remains disabled. This preserves the RFC ordering: durable profile/UI integration is
-Phase 5, after observation and policy contracts are field-accepted.
+The Ghatjot-safe Phase 5 slice now provides the durable `config.encounter` domain,
+strict normalizer validation, Profile V2 round-tripping, flat snapshot projection,
+and WinForms controls for encounter identity, policy modes, and repeat-action tuning.
+The UI defaults to disabled and makes `sortie_ghatjot` explicitly selectable. No
+legacy formation key is reused as an encounter activation fallback.
 
-No legacy formation key is reused as an encounter activation fallback.
+The same contract can represent `sortie_dhartok`, but Dhartok spatial hazards remain
+disabled and untrusted. Durable activation does not promote hazard candidates or
+enable any hazard movement behavior.
 
 ## Phase 2 policy boundary
 
@@ -125,10 +127,10 @@ No legacy formation key is reused as an encounter activation fallback.
   incomplete actor clears the active binding; policy never runs against stale boss
   identity.
 
-Phase 2 remains inactive in current profiles because the durable `config.encounter`
-producer is intentionally deferred to Phase 5. Replay verification proves the
-policy contract and scheduler seams, but it is not a substitute for the Phase 1
-field-validation items below.
+Phase 2 can now be activated explicitly through Profile V2 or the WinForms Encounter
+Policy tab. Profiles remain disabled by default. Replay verification proves the
+policy contract and scheduler seams; Ghatjot live evidence and residual limitations
+are recorded in `docs/TestResults/sortie_ghatjot_acceptance_2026-08-10.md`.
 
 ## Phase 3 generic formation boundary
 
@@ -170,14 +172,16 @@ Dhartok hazard activation remains blocked on the field evidence required by Phas
 ## Remaining Phase 1 validation
 
 - Field-confirm the resource zone name in a live Sortie instance.
-- Field-capture Ghatjot and Dhartok ability packets and confirm category/name mapping.
+- Field-capture named ability packets and confirm category/name mapping. This remains
+  diagnostic-only for Ghatjot because no Ghatjot policy depends on a TP-move name.
 - Field-confirm whether the completed Dhartok action carries exactly one authoritative
   target for cloud-location telemetry.
 - Field-confirm the Cesspool double-TP sequence before promoting candidates to hazards.
 - Field-confirm WS and Blood Pact success observations from local and remote actors.
 
-Until those checks are complete, Cesspool timing, pair interpretation, and candidate
-hazard positions remain telemetry-only.
+Until the Dhartok checks are complete, Cesspool timing, pair interpretation, and
+candidate hazard positions remain telemetry-only. They do not gate Ghatjot's actor-
+scoped Water safeguards or Poison/Taint facts.
 
 The capture procedure and acceptance checklist are in
 `docs/sortie_encounters_field_validation.md`. The corresponding log summarizer is

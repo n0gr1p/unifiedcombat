@@ -137,6 +137,12 @@ local function build_flat_settings()
         defensive_buff_self_only = false,
         defensive_buffs = 'Haste',
         defensive_targeted_buffs = 'Terrasjr:Honor March|Nyoourke:Valor Minuet V',
+        encounter_enabled = true,
+        encounter_id = 'sortie_ghatjot',
+        encounter_water_damage = 'enforce',
+        encounter_water_skillchain = 'warn',
+        encounter_repeat_action_wall = 'off',
+        encounter_repeat_action_guard_s = 12.5,
         move = true,
         spacing = true,
         spacing_band_min = -1.2,
@@ -327,6 +333,18 @@ local function build_nested_settings()
             thresholds = {
                 critical_hpp = 20,
                 medium_hpp = 30,
+            },
+        },
+        encounter = {
+            enabled = true,
+            id = 'sortie_ghatjot',
+            policy = {
+                water_damage = 'enforce',
+                water_skillchain = 'enforce',
+                repeat_action_wall = 'off',
+            },
+            tuning = {
+                repeat_action_guard_s = 10.0,
             },
         },
         movement = {
@@ -561,6 +579,8 @@ local function main()
     assert_true(type(default_from_normalize.combat) == 'table', 'combat domain missing')
     assert_true(type(default_from_normalize.abilities) == 'table', 'abilities domain missing')
     assert_true(type(default_from_normalize.defensive) == 'table', 'defensive domain missing')
+    assert_true(type(default_from_normalize.encounter) == 'table', 'encounter domain missing')
+    assert_equal(default_from_normalize.encounter.enabled, false, 'encounter must default disabled')
     assert_true(type(default_from_normalize.movement) == 'table', 'movement domain missing')
     assert_true(type(default_from_normalize.follow) == 'table', 'follow domain missing')
     assert_true(type(default_from_normalize.targeting) == 'table', 'targeting domain missing')
@@ -606,6 +626,10 @@ local function main()
     assert_equal(flat_config.defensive.buffs.list, 'Haste', 'defensive buffs mismatch')
     assert_equal(flat_config.defensive.buffs.targeted[1].character, 'Terrasjr', 'defensive targeted buff character mismatch')
     assert_equal(flat_config.defensive.buffs.targeted[1].buff, 'Honor March', 'defensive targeted buff name mismatch')
+    assert_equal(flat_config.encounter.enabled, true, 'flat encounter enabled mismatch')
+    assert_equal(flat_config.encounter.id, 'sortie_ghatjot', 'flat encounter ID mismatch')
+    assert_equal(flat_config.encounter.policy.water_skillchain, 'warn', 'flat encounter policy mismatch')
+    assert_equal(flat_config.encounter.tuning.repeat_action_guard_s, 12.5, 'flat encounter tuning mismatch')
     assert_equal(flat_config.movement.spacing.band_min, -1.2, 'spacing band min mismatch')
     assert_equal(flat_config.movement.path.file_name, 'route.json', 'path file mismatch')
     assert_equal(flat_config.movement.path.hunter_targets[1], 'Target A', 'path hunter targets mismatch')
@@ -663,6 +687,9 @@ local function main()
     assert_equal(nested_config.defensive.sleep_waker.enabled, true, 'nested sleep waker mismatch')
     assert_equal(nested_config.defensive.buffs.targeted[2].character, 'Nyoourke', 'nested targeted buff character mismatch')
     assert_equal(nested_config.defensive.buffs.targeted[2].buff, 'Valor Minuet V', 'nested targeted buff name mismatch')
+    assert_equal(nested_config.encounter.enabled, true, 'nested encounter enabled mismatch')
+    assert_equal(nested_config.encounter.id, 'sortie_ghatjot', 'nested encounter ID mismatch')
+    assert_equal(nested_config.encounter.policy.water_damage, 'enforce', 'nested encounter policy mismatch')
     assert_equal(nested_config.movement.formation.enabled, true, 'nested formation enabled mismatch')
     assert_equal(nested_config.movement.formation.role, 'healer', 'nested formation role mismatch')
     assert_equal(nested_config.movement.formation.tank_name, 'Terrasjr', 'nested formation tank name mismatch')
@@ -692,6 +719,34 @@ local function main()
 	assert_equal(nested_config.follow.nyzul.anchor_name, 'Terrasjr', 'nested Nyzul anchor mismatch')
 	assert_equal(nested_config.follow.nyzul.parking_order[2], 'Ponponponponp', 'nested Nyzul parking order mismatch')
     assert_equal(nested_config.sleep.max_target_range, 12.0, 'nested sleep target range mismatch')
+
+    assert_error_contains(function()
+        normalizer.normalize({ encounter = { enabled = true, id = '' } }, meta)
+    end, 'requires config.encounter.id', 'enabled encounter without identity must fail')
+
+    assert_error_contains(function()
+        normalizer.normalize({ encounter = { enabled = true, id = 'ghatjot' } }, meta)
+    end, 'must be sortie_ghatjot or sortie_dhartok', 'unsupported encounter identity must fail')
+
+    assert_error_contains(function()
+        normalizer.normalize({
+            encounter = {
+                enabled = true,
+                id = 'sortie_ghatjot',
+                policy = { water_damage = 'maybe' },
+            },
+        }, meta)
+    end, 'must be enforce, warn, or off', 'invalid encounter policy mode must fail')
+
+    assert_error_contains(function()
+        normalizer.normalize({
+            encounter = {
+                enabled = true,
+                id = 'sortie_ghatjot',
+                tuning = { repeat_action_guard_s = 0 },
+            },
+        }, meta)
+    end, 'must be a positive number', 'invalid encounter tuning must fail')
 
     local camp_config = normalizer.normalize({ puller_leash_source = 'camp' }, meta)
     assert_equal(camp_config.follow.partner.leash_source, 'camp', 'camp puller leash source mismatch')

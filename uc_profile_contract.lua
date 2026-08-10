@@ -45,6 +45,7 @@ local OWNERSHIP_BY_FIELD = {
 local PREFIX_CLASSIFICATION = {
     defensive_ = "profile_owned_by_ui",
     domain_ = "profile_owned_by_ui",
+    encounter_ = "profile_owned_by_ui",
     cor_ = "profile_owned_by_ui",
     path_ = "profile_owned_by_ui",
     target_ = "profile_owned_by_ui",

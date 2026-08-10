@@ -8,6 +8,7 @@ local DURABLE_CONFIG_DOMAINS = {
 	'combat',
 	'abilities',
 	'defensive',
+	'encounter',
 	'movement',
 	'follow',
 	'targeting',
@@ -344,6 +345,9 @@ local function pick_durable_config_domains(config)
 		and #out.reactions.rules == 0 then
 		out.reactions = nil
 	end
+	if type(out.encounter) == 'table' and out.encounter.enabled ~= true then
+		out.encounter = nil
+	end
 	if type(out.ownership) == 'table' and out.ownership.profile_v2_autoload ~= true then
 		out.ownership.profile_v2_autoload = nil
 	end
@@ -500,6 +504,31 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.defensive_critical_hpp = config.defensive.thresholds.critical_hpp
 			candidate.defensive_medium_hpp = config.defensive.thresholds.medium_hpp
 		end
+	end
+
+	if type(config.encounter) == 'table' then
+		local encounter = config.encounter
+		local definition = require('uc_encounter_registry').get(encounter.id)
+		if encounter.enabled == true and definition == nil then
+			error('enabled config.encounter has an unsupported id')
+		end
+		candidate.encounter_enabled = encounter.enabled == true
+		candidate.encounter_id = encounter.id
+		if definition ~= nil then
+			local policy = type(encounter.policy) == 'table' and encounter.policy or {}
+			local tuning = type(encounter.tuning) == 'table' and encounter.tuning or {}
+			candidate.encounter_water_damage = policy.water_damage or definition.policy.water_damage
+			candidate.encounter_water_skillchain = policy.water_skillchain or definition.policy.water_skillchain
+			candidate.encounter_repeat_action_wall = policy.repeat_action_wall or definition.policy.repeat_action_wall
+			candidate.encounter_repeat_action_guard_s = tuning.repeat_action_guard_s or definition.tuning.repeat_action_guard_s
+		end
+	else
+		candidate.encounter_enabled = false
+		candidate.encounter_id = 'sortie_ghatjot'
+		candidate.encounter_water_damage = 'enforce'
+		candidate.encounter_water_skillchain = 'enforce'
+		candidate.encounter_repeat_action_wall = 'off'
+		candidate.encounter_repeat_action_guard_s = 10.0
 	end
 
 	if type(config.movement) == 'table' then

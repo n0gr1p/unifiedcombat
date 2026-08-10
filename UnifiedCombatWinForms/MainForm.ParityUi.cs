@@ -100,6 +100,14 @@ public partial class MainForm
     private TextBox _spEmergencyMargin = null!;
     private TextBox _spSwitchMargin = null!;
     private TextBox _spArrivalTolerance = null!;
+    private CheckBox _encounterEnabled = null!;
+    private ComboBox _encounterId = null!;
+    private ComboBox _encounterWaterDamage = null!;
+    private ComboBox _encounterWaterSkillchain = null!;
+    private ComboBox _encounterRepeatActionWall = null!;
+    private NumericUpDown _encounterRepeatActionGuard = null!;
+    private TableLayoutPanel _encounterConfigPanel = null!;
+    private Label _encounterValidation = null!;
     private CheckBox _formationEnabled = null!;
     private ComboBox _formationEncounter = null!;
     private ComboBox _formationRole = null!;
@@ -935,6 +943,54 @@ public partial class MainForm
         tabSpacing.Controls.Add(sp);
         _settingsTabs.TabPages.Add(tabSpacing);
 
+        var tabEncounter = new TabPage("Encounter Policy") { AutoScroll = true };
+        var encounterRoot = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 1,
+            Padding = new Padding(8),
+        };
+        _encounterEnabled = new CheckBox { Text = "Enable encounter safeguards", AutoSize = true };
+        _encounterEnabled.CheckedChanged += (_, _) => OnEncounterConfigChanged();
+        encounterRoot.Controls.Add(_encounterEnabled);
+        encounterRoot.Controls.Add(new Label
+        {
+            Text = "Profile-scoped safeguards for Sortie bosses. Ghatjot is ready; Dhartok spatial hazards remain disabled pending field validation.",
+            AutoSize = true,
+            MaximumSize = new Size(760, 0),
+            Padding = new Padding(0, 4, 0, 8),
+        });
+        _encounterValidation = new Label { AutoSize = true, Padding = new Padding(0, 4, 0, 8) };
+        encounterRoot.Controls.Add(_encounterValidation);
+
+        _encounterConfigPanel = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 2,
+        };
+        _encounterConfigPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
+        _encounterConfigPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 320));
+        var encounterRow = 0;
+        _encounterConfigPanel.Controls.Add(new Label { Text = "Encounter", AutoSize = true, Anchor = AnchorStyles.Left }, 0, encounterRow);
+        _encounterId = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
+        _encounterId.Items.AddRange(["Ghatjot — Sortie Area A", "Dhartok — Sortie Area E (validation pending)"]);
+        _encounterId.SelectedIndex = 0;
+        _encounterId.SelectedIndexChanged += (_, _) => OnEncounterSelectionChanged();
+        _encounterConfigPanel.Controls.Add(_encounterId, 1, encounterRow++);
+
+        _encounterWaterDamage = AddEncounterPolicyRow(_encounterConfigPanel, "Direct Water damage", "Enforce", ref encounterRow);
+        _encounterWaterSkillchain = AddEncounterPolicyRow(_encounterConfigPanel, "Water-bearing skillchains", "Enforce", ref encounterRow);
+        _encounterRepeatActionWall = AddEncounterPolicyRow(_encounterConfigPanel, "Repeated WS/BP wall (Dhartok)", "Off", ref encounterRow);
+        _encounterRepeatActionGuard = CreateFormationNumber(0.1m, 120.0m, 10.0m, 0.5m, 1);
+        AddFormationNumberRow(_encounterConfigPanel, "Repeat-action guard (seconds)", _encounterRepeatActionGuard, ref encounterRow);
+        _encounterRepeatActionGuard.ValueChanged += (_, _) => OnEncounterConfigChanged();
+        encounterRoot.Controls.Add(_encounterConfigPanel);
+        tabEncounter.Controls.Add(encounterRoot);
+        _settingsTabs.TabPages.Add(tabEncounter);
+        UpdateEncounterUiState();
+
         var tabFormation = new TabPage("Encounter Formation") { AutoScroll = true };
         var formationRoot = new TableLayoutPanel
         {
@@ -1688,6 +1744,17 @@ public partial class MainForm
             Width = 100,
             ThousandsSeparator = false,
         };
+    }
+
+    private ComboBox AddEncounterPolicyRow(TableLayoutPanel panel, string label, string selected, ref int row)
+    {
+        panel.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        var combo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
+        combo.Items.AddRange(["Enforce", "Warn", "Off"]);
+        combo.SelectedItem = selected;
+        combo.SelectedIndexChanged += (_, _) => OnEncounterConfigChanged();
+        panel.Controls.Add(combo, 1, row++);
+        return combo;
     }
 
     private static void AddFormationNumberRow(TableLayoutPanel panel, string label, NumericUpDown control, ref int row)

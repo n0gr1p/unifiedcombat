@@ -198,6 +198,7 @@ internal static class StructuredProfileV2Writer
         config.Add("combat", BuildCombat(flatProfile));
         config.Add("abilities", BuildAbilities(flatProfile));
         config.Add("defensive", BuildDefensive(flatProfile));
+        config.Add("encounter", BuildEncounter(flatProfile));
         config.Add("movement", BuildMovement(flatProfile));
         config.Add("follow", BuildFollow(flatProfile));
         config.Add("targeting", BuildTargeting(flatProfile));
@@ -344,6 +345,58 @@ internal static class StructuredProfileV2Writer
                     .Add("critical_hpp", ReadInt(flatProfile, "defensive_critical_hpp", 35))
                     .Add("medium_hpp", ReadInt(flatProfile, "defensive_medium_hpp", 55))
             );
+    }
+
+    private static StructuredProfileNode BuildEncounter(JsonObject flatProfile)
+    {
+        var enabled = ReadBool(flatProfile, "encounter_enabled", false);
+        var encounterId = ReadString(flatProfile, "encounter_id", "").Trim().ToLowerInvariant();
+        if (encounterId.Length == 0)
+        {
+            if (enabled)
+            {
+                throw new InvalidDataException("enabled encounter requires an encounter ID");
+            }
+        }
+        else if (encounterId is not ("sortie_ghatjot" or "sortie_dhartok"))
+        {
+            throw new InvalidDataException($"unsupported encounter ID: {encounterId}");
+        }
+
+        var waterDamage = ReadEncounterPolicyMode(flatProfile, "encounter_water_damage", "enforce");
+        var waterSkillchain = ReadEncounterPolicyMode(flatProfile, "encounter_water_skillchain", "enforce");
+        var repeatDefault = encounterId == "sortie_dhartok" ? "warn" : "off";
+        var repeatActionWall = ReadEncounterPolicyMode(flatProfile, "encounter_repeat_action_wall", repeatDefault);
+        if (encounterId == "sortie_ghatjot" && repeatActionWall != "off")
+        {
+            throw new InvalidDataException("Ghatjot repeat-action policy must be off");
+        }
+
+        return new StructuredProfileNode()
+            .Add("enabled", enabled)
+            .Add("id", encounterId)
+            .Add(
+                "policy",
+                new StructuredProfileNode()
+                    .Add("water_damage", waterDamage)
+                    .Add("water_skillchain", waterSkillchain)
+                    .Add("repeat_action_wall", repeatActionWall)
+            )
+            .Add(
+                "tuning",
+                new StructuredProfileNode()
+                    .Add("repeat_action_guard_s", ReadBoundedDouble(flatProfile, "encounter_repeat_action_guard_s", 10.0, 0.1, 120.0))
+            );
+    }
+
+    private static string ReadEncounterPolicyMode(JsonObject flatProfile, string key, string defaultValue)
+    {
+        var mode = ReadString(flatProfile, key, defaultValue).Trim().ToLowerInvariant();
+        if (mode is not ("enforce" or "warn" or "off"))
+        {
+            throw new InvalidDataException($"{key} must be enforce, warn, or off");
+        }
+        return mode;
     }
 
     private static StructuredProfileNode BuildMovement(JsonObject flatProfile)

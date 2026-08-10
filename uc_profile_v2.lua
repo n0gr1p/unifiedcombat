@@ -8,6 +8,7 @@ local DURABLE_CONFIG_DOMAINS = {
 	'combat',
 	'abilities',
 	'defensive',
+	'encounter',
 	'movement',
 	'follow',
 	'targeting',
@@ -216,6 +217,9 @@ local function pick_durable_config_domains(config, meta)
 		and type(out.reactions.rules) == 'table'
 		and #out.reactions.rules == 0 then
 		out.reactions = nil
+	end
+	if type(out.encounter) == 'table' and out.encounter.enabled ~= true then
+		out.encounter = nil
 	end
 	if type(out.movement) == 'table'
 		and type(out.movement.formation) == 'table'

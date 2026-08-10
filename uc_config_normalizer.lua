@@ -939,6 +939,12 @@ local function default_config(meta)
                 medium_hpp = 55,
             },
         },
+        encounter = {
+            enabled = false,
+            id = '',
+            policy = {},
+            tuning = {},
+        },
         movement = {
             enabled = true,
             move = false,
@@ -1143,6 +1149,120 @@ local function default_config(meta)
             profiles = {},
         },
     }
+end
+
+local ENCOUNTER_IDS = {
+    sortie_ghatjot = true,
+    sortie_dhartok = true,
+}
+
+local ENCOUNTER_POLICY_MODES = {
+    enforce = true,
+    warn = true,
+    off = true,
+}
+
+local function normalize_encounter_boolean(value, path_name, default_value)
+    if value == nil then
+        return default_value
+    end
+    if type(value) ~= 'boolean' then
+        error(path_name .. ' must be a boolean')
+    end
+    return value
+end
+
+local function normalize_encounter_id(value, enabled)
+    if value == nil then
+        if enabled then
+            error('enabled encounter requires config.encounter.id')
+        end
+        return ''
+    end
+    if type(value) ~= 'string' then
+        error('config.encounter.id must be a string')
+    end
+    local encounter_id = value:match('^%s*(.-)%s*$')
+    if encounter_id == '' then
+        if enabled then
+            error('enabled encounter requires config.encounter.id')
+        end
+        return ''
+    end
+    if ENCOUNTER_IDS[encounter_id] ~= true then
+        error('config.encounter.id must be sortie_ghatjot or sortie_dhartok')
+    end
+    return encounter_id
+end
+
+local function normalize_encounter_policy_mode(value, path_name)
+    if value == nil then
+        return nil
+    end
+    if type(value) ~= 'string' or ENCOUNTER_POLICY_MODES[value] ~= true then
+        error(path_name .. ' must be enforce, warn, or off')
+    end
+    return value
+end
+
+local function normalize_encounter(source, config)
+    local nested = get_path(source, { 'encounter' })
+    local enabled_value
+    local id_value
+    local policy_value
+    local tuning_value
+    if nested ~= nil then
+        if type(nested) ~= 'table' then
+            error('config.encounter must be a table')
+        end
+        enabled_value = nested.enabled
+        id_value = nested.id
+        policy_value = nested.policy
+        tuning_value = nested.tuning
+    else
+        enabled_value = first_path(source, { path('encounter_enabled') })
+        id_value = first_path(source, { path('encounter_id') })
+        policy_value = {
+            water_damage = first_path(source, { path('encounter_water_damage') }),
+            water_skillchain = first_path(source, { path('encounter_water_skillchain') }),
+            repeat_action_wall = first_path(source, { path('encounter_repeat_action_wall') }),
+        }
+        tuning_value = {
+            repeat_action_guard_s = first_path(source, { path('encounter_repeat_action_guard_s') }),
+        }
+    end
+
+    local encounter = config.encounter
+    encounter.enabled = normalize_encounter_boolean(enabled_value, 'config.encounter.enabled', encounter.enabled)
+    encounter.id = normalize_encounter_id(id_value, encounter.enabled)
+
+    if policy_value ~= nil and type(policy_value) ~= 'table' then
+        error('config.encounter.policy must be a table')
+    end
+    local policy = policy_value or {}
+    encounter.policy.water_damage = normalize_encounter_policy_mode(
+        policy.water_damage,
+        'config.encounter.policy.water_damage'
+    )
+    encounter.policy.water_skillchain = normalize_encounter_policy_mode(
+        policy.water_skillchain,
+        'config.encounter.policy.water_skillchain'
+    )
+    encounter.policy.repeat_action_wall = normalize_encounter_policy_mode(
+        policy.repeat_action_wall,
+        'config.encounter.policy.repeat_action_wall'
+    )
+
+    if tuning_value ~= nil and type(tuning_value) ~= 'table' then
+        error('config.encounter.tuning must be a table')
+    end
+    local repeat_guard = tuning_value and tuning_value.repeat_action_guard_s or nil
+    if repeat_guard ~= nil then
+        if type(repeat_guard) ~= 'number' or repeat_guard <= 0 then
+            error('config.encounter.tuning.repeat_action_guard_s must be a positive number')
+        end
+        encounter.tuning.repeat_action_guard_s = repeat_guard
+    end
 end
 
 local function normalize_profile(source, meta, config)
@@ -1943,6 +2063,7 @@ function M.normalize(settings, meta)
     normalize_combat(source, config)
     normalize_list_domain(source, config)
     normalize_defensive(source, config)
+    normalize_encounter(source, config)
     normalize_movement(source, config)
     normalize_follow(source, config)
     normalize_targeting(source, config)

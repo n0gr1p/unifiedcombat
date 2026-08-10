@@ -75,6 +75,12 @@ local function main()
 	assert_contains(combat_provider, "action_timeline_log('SC_CONTINUATION_PROPOSED'", 'proposal telemetry must include scheduler band')
 	assert_contains(scheduler, "scheduler.action_timeline_log('SC_WS_DISPATCHED'", 'dispatch telemetry must exist')
 	assert_contains(scheduler, 'selected.skillchain_plan)', 'atomic dispatch must carry the selected plan')
+	assert_before(
+		scheduler,
+		"local valid, reason = require('uc_scheduler_dispatch_plan').p1_revalidate_plan_commit(",
+		"local policy_ok, policy_reason = require('uc_encounter_runtime').validate_proposal(ctx, selected)",
+		'encounter commit policy must run only after nil/malformed plans are rejected structurally'
+	)
 	assert_not_contains(scheduler, "source = 'unified_scheduler:T2.3d_darklaunch'", 'direct WS fallback dispatch must be removed')
 
 	assert_contains(dispatch_plan, 'skillchain_plan = selected.skillchain_plan', 'dispatch plan must preserve structured continuation')

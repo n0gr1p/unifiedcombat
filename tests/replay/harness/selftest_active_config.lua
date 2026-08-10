@@ -364,6 +364,45 @@ local function main()
 	assert_equal(active_config.get_path('profile.source'), 'ui', 'active profile path access should reach metadata')
 	assert_equal(active_config.get_path('config.movement.path.file_name'), 'route-a', 'active profile path access should reach config')
 
+	local encounter_fixture = deep_clone(ui_fixture)
+	encounter_fixture.config.encounter = {
+		enabled = true,
+		id = 'sortie_ghatjot',
+		policy = {
+			water_damage = 'enforce',
+			water_skillchain = 'warn',
+			repeat_action_wall = 'off',
+		},
+		tuning = {
+			repeat_action_guard_s = 10.0,
+		},
+	}
+	local encounter_profile = active_config.build_active_profile_from_v2_payload(encounter_fixture, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		source = 'UC_PROFILE_V2',
+	})
+	assert_equal(encounter_profile.config.encounter.enabled, true, 'encounter domain enabled mismatch')
+	assert_equal(encounter_profile.config.encounter.id, 'sortie_ghatjot', 'encounter domain ID mismatch')
+	local encounter_projected = active_config.project_flat_settings(encounter_profile, {})
+	assert_equal(encounter_projected.encounter_enabled, true, 'projected encounter enabled mismatch')
+	assert_equal(encounter_projected.encounter_id, 'sortie_ghatjot', 'projected encounter ID mismatch')
+	assert_equal(encounter_projected.encounter_water_skillchain, 'warn', 'projected encounter policy mismatch')
+	assert_equal(encounter_projected.encounter_repeat_action_guard_s, 10.0, 'projected encounter tuning mismatch')
+	local disabled_encounter_profile = active_config.build_active_profile_from_v2_payload(ui_fixture, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		source = 'UC_PROFILE_V2',
+	})
+	local disabled_encounter_projected = active_config.project_flat_settings(disabled_encounter_profile, {
+		encounter_enabled = true,
+		encounter_id = 'sortie_dhartok',
+	})
+	assert_equal(disabled_encounter_projected.encounter_enabled, false, 'disabled encounter projection must clear stale enabled state')
+	assert_equal(disabled_encounter_projected.encounter_id, 'sortie_ghatjot', 'disabled encounter projection identity mismatch')
+
 	local formation_fixture = deep_clone(ui_fixture)
 	formation_fixture.config.movement.formation = {
 		enabled = true,
