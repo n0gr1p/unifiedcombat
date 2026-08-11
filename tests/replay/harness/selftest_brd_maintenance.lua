@@ -739,6 +739,49 @@ assert_true(party_song_state.next_action(recovery_sequence_config, 5, false, fal
 assert_true(party_song_state.last_blocker():find('dummy_duration_normalization_failed', 1, true) ~= nil,
 	'failed dummy normalization must expose an explicit terminal blocker')
 
+-- A later capacity dummy starts a new alignment generation. Attempts made
+-- against an earlier dummy must not strand the new dummy until song expiry.
+party_song_state.reset()
+observe_recovery_member(4, 37.7)
+for _, delivery in ipairs({
+	{ name = 'Victory March', endtime = 4000, status_id = 100, aligned = true },
+	{ name = "Mage's Ballad III", endtime = 4200, status_id = 104 },
+	{ name = 'Valor Minuet V', endtime = 5000, status_id = 103 },
+	{ name = 'Honor March', endtime = 6000, status_id = 100 },
+}) do
+	party_song_state.record_delivery({
+		song_name = delivery.name,
+		status_id = delivery.status_id,
+		endtime = delivery.endtime,
+		recipients = { 88 },
+		confirmed_at = 37.7,
+		is_dummy = false,
+		aligns_final = delivery.aligned == true,
+		cast_capacity = 2,
+		song_limit = 5,
+	})
+end
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, true, false, false)
+assert_equal(recovery_step.action_name, "Army's Paeon",
+	'new alignment generation setup must request a fifth-slot dummy')
+party_song_state.record_delivery({
+	song_name = recovery_step.action_name,
+	status_id = 101,
+	endtime = 8000,
+	recipients = { 88 },
+	confirmed_at = 37.8,
+	is_dummy = true,
+	cast_capacity = 5,
+	song_limit = 5,
+	recovery_member_id = 88,
+})
+observe_recovery_member(5, 37.9)
+recovery_step = party_song_state.next_action(recovery_sequence_config, 5, false, false, false)
+assert_equal(recovery_step.action_name, 'Victory March',
+	'a later capacity dummy must allow a fresh alignment pass')
+assert_equal(recovery_step.reason_code, 'brd_recovery_align_shortest',
+	'later capacity dummy alignment reason mismatch')
+
 -- Normalization is allowed only when every eligible AoE recipient already has
 -- the exact dummy. Otherwise the same cast could overwrite a protected song.
 party_song_state.reset()

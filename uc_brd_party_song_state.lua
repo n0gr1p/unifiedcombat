@@ -479,6 +479,12 @@ local function apply_delivery(member, delivery)
 	return victim ~= nil and ('replaced:' .. victim) or reason
 end
 
+local function reset_alignment_attempts(member)
+	for _, effect in pairs(member.effects or {}) do
+		effect.alignment_attempted = false
+	end
+end
+
 function M.record_delivery(delivery)
 	if type(delivery) ~= 'table' or tostring(delivery.song_name or '') == '' then
 		return false
@@ -488,6 +494,12 @@ function M.record_delivery(delivery)
 		local id = tonumber(delivery.recipients[i]) or 0
 		local member = state.members[id]
 		if type(member) == 'table' then
+			-- Each newly delivered capacity dummy establishes a new overwrite
+			-- ordering. Alignment attempts from an earlier dummy generation do
+			-- not prove that this dummy can be replaced safely.
+			if delivery.is_dummy == true and delivery.normalizes_dummy ~= true then
+				reset_alignment_attempts(member)
+			end
 			local outcome = apply_delivery(member, delivery)
 			if id == recovery_member_id and delivery.is_dummy == true and delivery.normalizes_dummy ~= true
 				and type(state.recovery) == 'table' then
