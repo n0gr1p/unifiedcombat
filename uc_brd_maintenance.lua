@@ -745,6 +745,12 @@ local function recipients_cover(required, actual)
 	return true
 end
 
+local function reset_alignment_attempts()
+	for _, owner in pairs(state.owners) do
+		owner.alignment_attempted = false
+	end
+end
+
 local function resolve_pending_from_snapshot()
 	local pending = state.pending
 	if type(pending) ~= 'table' or pending.success ~= true or type(state.snapshot) ~= 'table' then
@@ -787,6 +793,10 @@ local function resolve_pending_from_snapshot()
 	local replaced = ''
 	if #removed == 1 then
 		replaced = remove_owner_by_endtime(pending.status_id, removed[1])
+	end
+	if pending.is_dummy == true and pending.normalizes_dummy ~= true then
+		reset_alignment_attempts()
+		diagnostic_log('ALIGNMENT_GENERATION_RESET', { song = pending.name })
 	end
 	state.owners[pending.name] = {
 		status_id = pending.status_id,
