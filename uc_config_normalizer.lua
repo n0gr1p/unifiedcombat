@@ -951,6 +951,10 @@ local function default_config(meta)
             formation = {
                 enabled = false,
                 encounter = 'lilith_easy',
+                mock = {
+                    enabled = false,
+                    mob_name = '',
+                },
                 role = 'disabled',
                 tank_name = '',
                 required_party_names = {},
@@ -1424,6 +1428,299 @@ local function normalize_defensive(source, config)
     end
 end
 
+local function require_formation_table(value, path_name)
+    if type(value) ~= 'table' then
+        error(path_name .. ' must be a table')
+    end
+    return value
+end
+
+local function require_formation_string(value, path_name)
+    if type(value) ~= 'string' then
+        error(path_name .. ' must be a string')
+    end
+    local normalized = value:match('^%s*(.-)%s*$')
+    if normalized == '' then
+        error(path_name .. ' must be a non-empty string')
+    end
+    return normalized
+end
+
+local function require_formation_number(value, path_name, minimum, maximum, positive)
+    if type(value) ~= 'number' or value ~= value or value == math.huge or value == -math.huge then
+        error(path_name .. ' must be a finite number')
+    end
+    if positive and value <= 0 then
+        error(path_name .. ' must be a positive number')
+    end
+    if minimum ~= nil and value < minimum then
+        error(path_name .. ' must be >= ' .. tostring(minimum))
+    end
+    if maximum ~= nil and value > maximum then
+        error(path_name .. ' must be <= ' .. tostring(maximum))
+    end
+    return value
+end
+
+local function optional_formation_number(value, path_name, minimum, maximum, positive)
+    if value == nil then
+        return nil
+    end
+    return require_formation_number(value, path_name, minimum, maximum, positive)
+end
+
+local function optional_generic_formation_flat_number(source, key)
+    local value = first_path(source, { path(key) })
+    if value == 0 then
+        return nil
+    end
+    return value
+end
+
+local function generic_formation_flat_source(source)
+    return {
+        placement = {
+            mode = first_path(source, { path('formation_placement_mode') }),
+            anchor = first_path(source, { path('formation_anchor') }),
+            anchor_member = first_path(source, { path('formation_anchor_member') }),
+            axis = {
+                type = first_path(source, { path('formation_axis_type') }),
+                member = first_path(source, { path('formation_axis_member') }),
+            },
+            preferred_radius = first_path(source, { path('formation_preferred_radius') }),
+            minimum_radius = first_path(source, { path('formation_minimum_radius') }),
+            maximum_radius = first_path(source, { path('formation_maximum_radius') }),
+            preferred_angle_deg = first_path(source, { path('formation_preferred_angle_deg') }),
+            allowed_angle_half_width_deg = first_path(source, { path('formation_allowed_angle_half_width_deg') }),
+            radius_step = first_path(source, { path('formation_radius_step') }),
+            angle_step_deg = first_path(source, { path('formation_angle_step_deg') }),
+        },
+        hysteresis = {
+            start_distance = first_path(source, { path('formation_hysteresis_start_distance') }),
+            stop_distance = first_path(source, { path('formation_hysteresis_stop_distance') }),
+        },
+        constraints = {
+            avoid_encounter_hazards = first_path(source, { path('formation_avoid_encounter_hazards') }),
+            hazard_margin = first_path(source, { path('formation_hazard_margin') }),
+            safe_origin_radius = optional_generic_formation_flat_number(source, 'formation_safe_origin_radius'),
+            minimum_boss_distance = optional_generic_formation_flat_number(source, 'formation_minimum_boss_distance'),
+            maximum_boss_distance = optional_generic_formation_flat_number(source, 'formation_maximum_boss_distance'),
+            maximum_party_range = optional_generic_formation_flat_number(source, 'formation_maximum_party_range'),
+            required_party_names = first_path(source, { path('formation_required_party_names') }),
+        },
+    }
+end
+
+local function normalize_formation_mock(source, target)
+    if source == nil then
+        return
+    end
+    if type(source) ~= 'table' then
+        error('config.movement.formation.mock must be a table')
+    end
+    if source.enabled ~= nil and type(source.enabled) ~= 'boolean' then
+        error('config.movement.formation.mock.enabled must be boolean')
+    end
+    if source.mob_name ~= nil and type(source.mob_name) ~= 'string' then
+        error('config.movement.formation.mock.mob_name must be a string')
+    end
+    target.enabled = source.enabled == true
+    target.mob_name = source.mob_name == nil and '' or (source.mob_name:match('^%s*(.-)%s*$'))
+    if target.enabled and target.mob_name == '' then
+        error('enabled config.movement.formation.mock requires mob_name')
+    end
+end
+
+local function normalize_generic_formation(source, target)
+    local placement = require_formation_table(source.placement, 'config.movement.formation.placement')
+    local mode = require_formation_string(placement.mode, 'config.movement.formation.placement.mode')
+    if mode ~= 'radial_band' and mode ~= 'polar_band' then
+        error('config.movement.formation.placement.mode must be radial_band or polar_band')
+    end
+    local anchor = require_formation_string(placement.anchor, 'config.movement.formation.placement.anchor')
+    if anchor ~= 'boss' and anchor ~= 'encounter_origin' and anchor ~= 'member' then
+        error('config.movement.formation.placement.anchor must be boss, encounter_origin, or member')
+    end
+    local normalized_placement = {
+        mode = mode,
+        anchor = anchor,
+        preferred_radius = require_formation_number(
+            placement.preferred_radius,
+            'config.movement.formation.placement.preferred_radius',
+            0,
+            nil,
+            false
+        ),
+        minimum_radius = require_formation_number(
+            placement.minimum_radius,
+            'config.movement.formation.placement.minimum_radius',
+            0,
+            nil,
+            false
+        ),
+        maximum_radius = require_formation_number(
+            placement.maximum_radius,
+            'config.movement.formation.placement.maximum_radius',
+            0,
+            nil,
+            false
+        ),
+        radius_step = require_formation_number(
+            placement.radius_step,
+            'config.movement.formation.placement.radius_step',
+            nil,
+            nil,
+            true
+        ),
+        angle_step_deg = require_formation_number(
+            placement.angle_step_deg,
+            'config.movement.formation.placement.angle_step_deg',
+            nil,
+            360,
+            true
+        ),
+    }
+    if normalized_placement.maximum_radius < normalized_placement.minimum_radius then
+        error('config.movement.formation.placement.maximum_radius must be >= minimum_radius')
+    end
+    if normalized_placement.preferred_radius < normalized_placement.minimum_radius
+        or normalized_placement.preferred_radius > normalized_placement.maximum_radius then
+        error('config.movement.formation.placement.preferred_radius must be inside the radius band')
+    end
+    if anchor == 'member' then
+        normalized_placement.anchor_member = require_formation_string(
+            placement.anchor_member,
+            'config.movement.formation.placement.anchor_member'
+        )
+    end
+    if mode == 'polar_band' then
+        local axis = require_formation_table(placement.axis, 'config.movement.formation.placement.axis')
+        if axis.type ~= 'boss_to_member' then
+            error('config.movement.formation.placement.axis.type must be boss_to_member')
+        end
+        normalized_placement.axis = {
+            type = 'boss_to_member',
+            member = require_formation_string(
+                axis.member,
+                'config.movement.formation.placement.axis.member'
+            ),
+        }
+        normalized_placement.preferred_angle_deg = require_formation_number(
+            placement.preferred_angle_deg,
+            'config.movement.formation.placement.preferred_angle_deg',
+            nil,
+            nil,
+            false
+        )
+        normalized_placement.allowed_angle_half_width_deg = require_formation_number(
+            placement.allowed_angle_half_width_deg,
+            'config.movement.formation.placement.allowed_angle_half_width_deg',
+            0,
+            180,
+            false
+        )
+    end
+
+    local hysteresis = require_formation_table(source.hysteresis, 'config.movement.formation.hysteresis')
+    local normalized_hysteresis = {
+        start_distance = require_formation_number(
+            hysteresis.start_distance,
+            'config.movement.formation.hysteresis.start_distance',
+            0,
+            nil,
+            false
+        ),
+        stop_distance = require_formation_number(
+            hysteresis.stop_distance,
+            'config.movement.formation.hysteresis.stop_distance',
+            0,
+            nil,
+            false
+        ),
+    }
+    if normalized_hysteresis.start_distance < normalized_hysteresis.stop_distance then
+        error('config.movement.formation.hysteresis.start_distance must be >= stop_distance')
+    end
+
+    local constraints = require_formation_table(source.constraints, 'config.movement.formation.constraints')
+    if type(constraints.avoid_encounter_hazards) ~= 'boolean' then
+        error('config.movement.formation.constraints.avoid_encounter_hazards must be a boolean')
+    end
+    local normalized_constraints = {
+        avoid_encounter_hazards = constraints.avoid_encounter_hazards,
+        hazard_margin = require_formation_number(
+            constraints.hazard_margin,
+            'config.movement.formation.constraints.hazard_margin',
+            0,
+            nil,
+            false
+        ),
+    }
+    normalized_constraints.safe_origin_radius = optional_formation_number(
+        constraints.safe_origin_radius,
+        'config.movement.formation.constraints.safe_origin_radius',
+        nil,
+        nil,
+        true
+    )
+    normalized_constraints.minimum_boss_distance = optional_formation_number(
+        constraints.minimum_boss_distance,
+        'config.movement.formation.constraints.minimum_boss_distance',
+        0,
+        nil,
+        false
+    )
+    normalized_constraints.maximum_boss_distance = optional_formation_number(
+        constraints.maximum_boss_distance,
+        'config.movement.formation.constraints.maximum_boss_distance',
+        nil,
+        nil,
+        true
+    )
+    if normalized_constraints.minimum_boss_distance ~= nil
+        and normalized_constraints.maximum_boss_distance ~= nil
+        and normalized_constraints.maximum_boss_distance < normalized_constraints.minimum_boss_distance then
+        error('config.movement.formation.constraints.maximum_boss_distance must be >= minimum_boss_distance')
+    end
+    normalized_constraints.maximum_party_range = optional_formation_number(
+        constraints.maximum_party_range,
+        'config.movement.formation.constraints.maximum_party_range',
+        nil,
+        nil,
+        true
+    )
+    if normalized_constraints.maximum_party_range ~= nil then
+        normalized_constraints.required_party_names = normalize_list(constraints.required_party_names, {})
+        if #normalized_constraints.required_party_names == 0 then
+            error('config.movement.formation.constraints.required_party_names must not be empty when maximum_party_range is set')
+        end
+        for i = 1, #normalized_constraints.required_party_names do
+            normalized_constraints.required_party_names[i] = require_formation_string(
+                normalized_constraints.required_party_names[i],
+                ('config.movement.formation.constraints.required_party_names[%d]'):format(i)
+            )
+        end
+    elseif constraints.required_party_names ~= nil then
+        local names = normalize_list(constraints.required_party_names, {})
+        if #names > 0 then
+            error('config.movement.formation.constraints.maximum_party_range is required with required_party_names')
+        end
+    end
+
+    target.placement = normalized_placement
+    target.hysteresis = normalized_hysteresis
+    target.constraints = normalized_constraints
+    target.role = nil
+    target.tank_name = nil
+    target.required_party_names = nil
+    target.capture_stable_s = nil
+    target.capture_tolerance = nil
+    target.safe_radius = nil
+    target.tank = nil
+    target.dps = nil
+    target.healer = nil
+end
+
 local function normalize_movement(source, config)
     local movement = config.movement
     local nested = get_path(source, { 'movement' })
@@ -1433,6 +1730,7 @@ local function normalize_movement(source, config)
         local formation = is_table(nested.formation) and nested.formation or {}
         movement.formation.enabled = normalize_boolean(formation.enabled, movement.formation.enabled)
         movement.formation.encounter = normalize_string(formation.encounter, movement.formation.encounter)
+        normalize_formation_mock(formation.mock, movement.formation.mock)
         movement.formation.role = normalize_string(formation.role, movement.formation.role):lower()
         movement.formation.tank_name = normalize_string(formation.tank_name, movement.formation.tank_name)
         movement.formation.required_party_names = normalize_list(formation.required_party_names, movement.formation.required_party_names)
@@ -1453,6 +1751,9 @@ local function normalize_movement(source, config)
         movement.formation.healer.cone_half_angle_deg = normalize_number(formation_healer.cone_half_angle_deg, movement.formation.healer.cone_half_angle_deg, { min = 1.0, max = 89.0 })
         movement.formation.healer.cone_safety_margin_deg = normalize_number(formation_healer.cone_safety_margin_deg, movement.formation.healer.cone_safety_margin_deg, { min = 1.0, max = 45.0 })
         movement.formation.healer.sample_step_deg = normalize_number(formation_healer.sample_step_deg, movement.formation.healer.sample_step_deg, { min = 1.0, max = 45.0 })
+        if movement.formation.enabled and movement.formation.encounter ~= 'lilith_easy' then
+            normalize_generic_formation(formation, movement.formation)
+        end
         local spacing = is_table(nested.spacing) and nested.spacing or {}
         movement.spacing.enabled = normalize_boolean(spacing.enabled, movement.spacing.enabled)
         movement.spacing.band_min = normalize_number(spacing.band_min, movement.spacing.band_min)
@@ -1485,6 +1786,10 @@ local function normalize_movement(source, config)
         movement.move = normalize_boolean(first_path(source, { path('move') }), movement.move)
         movement.formation.enabled = normalize_boolean(first_path(source, { path('formation_enabled') }), movement.formation.enabled)
         movement.formation.encounter = normalize_string(first_path(source, { path('formation_encounter') }), movement.formation.encounter)
+        normalize_formation_mock({
+            enabled = first_path(source, { path('formation_mock_enabled') }),
+            mob_name = first_path(source, { path('formation_mock_mob_name') }),
+        }, movement.formation.mock)
         movement.formation.role = normalize_string(first_path(source, { path('formation_role') }), movement.formation.role):lower()
         movement.formation.tank_name = normalize_string(first_path(source, { path('formation_tank_name') }), movement.formation.tank_name)
         movement.formation.required_party_names = normalize_list(first_path(source, { path('formation_required_party_names') }), movement.formation.required_party_names)
@@ -1502,6 +1807,9 @@ local function normalize_movement(source, config)
         movement.formation.healer.cone_half_angle_deg = normalize_number(first_path(source, { path('formation_healer_cone_half_angle_deg') }), movement.formation.healer.cone_half_angle_deg, { min = 1.0, max = 89.0 })
         movement.formation.healer.cone_safety_margin_deg = normalize_number(first_path(source, { path('formation_healer_cone_safety_margin_deg') }), movement.formation.healer.cone_safety_margin_deg, { min = 1.0, max = 45.0 })
         movement.formation.healer.sample_step_deg = normalize_number(first_path(source, { path('formation_healer_sample_step_deg') }), movement.formation.healer.sample_step_deg, { min = 1.0, max = 45.0 })
+        if movement.formation.enabled and movement.formation.encounter ~= 'lilith_easy' then
+            normalize_generic_formation(generic_formation_flat_source(source), movement.formation)
+        end
         movement.spacing.enabled = normalize_boolean(first_path(source, { path('spacing') }), movement.spacing.enabled)
         movement.spacing.band_min = normalize_number(first_path(source, { path('spacing_band_min') }), movement.spacing.band_min)
         movement.spacing.band_max = normalize_number(first_path(source, { path('spacing_band_max') }), movement.spacing.band_max)
@@ -1527,6 +1835,34 @@ local function normalize_movement(source, config)
         movement.path.hunter_ignore_cooldown_s = normalize_number(first_path(source, { path('path_hunter_ignore_cooldown_s') }), movement.path.hunter_ignore_cooldown_s)
         movement.path.pull_action_type = normalize_string(first_path(source, { path('path_pull_action_type') }), movement.path.pull_action_type)
         movement.path.pull_action_name = normalize_string(first_path(source, { path('path_pull_action_name') }), movement.path.pull_action_name)
+    end
+end
+
+local function validate_formation_activation(config)
+    local formation = config.movement.formation
+    if formation.mock.enabled == true and formation.enabled ~= true then
+        error('enabled formation mock requires config.movement.formation.enabled')
+    end
+    if formation.enabled ~= true then
+        return
+    end
+    if formation.encounter == 'lilith_easy' then
+        if formation.mock.enabled == true then
+            error('formation mock is supported only for generic formation')
+        end
+        return
+    end
+    if ENCOUNTER_IDS[formation.encounter] ~= true then
+        error('enabled config.movement.formation.encounter must be lilith_easy, sortie_ghatjot, or sortie_dhartok')
+    end
+    if config.movement.enabled ~= true then
+        error('enabled generic formation requires config.movement.enabled')
+    end
+    if config.encounter.enabled ~= true then
+        error('enabled generic formation requires config.encounter.enabled')
+    end
+    if config.encounter.id ~= formation.encounter then
+        error('generic formation encounter must match config.encounter.id')
     end
 end
 
@@ -2065,6 +2401,7 @@ function M.normalize(settings, meta)
     normalize_defensive(source, config)
     normalize_encounter(source, config)
     normalize_movement(source, config)
+    validate_formation_activation(config)
     normalize_follow(source, config)
     normalize_targeting(source, config)
     normalize_reactions(source, config)

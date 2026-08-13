@@ -13,7 +13,7 @@ Git baseline before implementation:
 - pre-existing dirty path: untracked `RFC_Encounters/`;
 - no tracked modifications were present.
 
-Implementation branch: `codex/encounters-rfc`.
+Implementation branch: `codex/encounter-work`.
 
 ## Current integration points
 
@@ -72,14 +72,26 @@ Implementation branch: `codex/encounters-rfc`.
 
 ### Movement ownership and Lilith compatibility
 
-- `unified_scheduler.lua::run_movement_coordinator_tick` observes Lilith formation,
-  honors reaction and cast locks, then invokes
-  `uc_lilith_easy_formation_runtime.run_tick`.
-- `uc_lilith_easy_formation_runtime.lua` remains the dispatcher-backed runtime owner.
+- `unified_scheduler.lua::run_movement_coordinator_tick` observes the selected
+  formation runtime, honors reaction and cast locks, then invokes
+  `uc_formation_runtime.run_tick` in the existing formation priority slot.
+- `uc_formation_runtime.lua` selects disabled, Lilith compatibility, or generic
+  formation. Lilith still delegates unchanged to
+  `uc_lilith_easy_formation_runtime.lua`; Sortie delegates to
+  `uc_generic_formation_runtime.lua`.
 - `uc_combat_formation.lua` remains the existing pure Lilith-specific geometry owner.
-- Phase 3 should introduce generic geometry beside these modules, then translate
-  legacy Lilith configuration through a compatibility adapter after parity tests.
-- Phase 1 does not change formation evaluation, movement priority, or dispatch.
+- `uc_lilith_formation_adapter.lua` continues to translate the durable Lilith role
+  keys into the generic solver where parity has been established, while healer cone
+  behavior remains in the compatibility evaluator.
+- Generic formation uses the same dispatcher-backed movement intent path and does
+  not bypass reaction holds, cast freezes, Doom handling, Nyzul holds, camp-puller
+  reservation, or other higher-priority movement ownership.
+- `uc_formation_mock_state.lua` provides an explicit formation-only test source for
+  generic profiles. Each client explicitly binds its current target after verifying
+  the configured exact name, then tracks that actor ID. It owns only transient mock
+  boss/origin observations and never writes to
+  `uc_encounter_state`, so the mock actor cannot activate encounter policies,
+  mechanic telemetry, or hazards.
 
 ### Lifecycle and diagnostics
 
@@ -100,6 +112,25 @@ legacy formation key is reused as an encounter activation fallback.
 The same contract can represent `sortie_dhartok`, but Dhartok spatial hazards remain
 disabled and untrusted. Durable activation does not promote hazard candidates or
 enable any hazard movement behavior.
+
+`config.movement.formation` now selects `lilith_easy`, `sortie_ghatjot`, or
+`sortie_dhartok`. Lilith retains its existing role/capture/tank/DPS/healer keys.
+Sortie selections instead require the role-free solver-native contract:
+
+- `placement`: `radial_band|polar_band`, `boss|encounter_origin|member` anchor,
+  optional member anchor, `boss_to_member` polar axis, radius/angle bands, and
+  deterministic sample steps;
+- `hysteresis`: correction start and stop distances;
+- `constraints`: optional encounter-origin, boss-distance, and required-party range
+  bounds plus the durable future hazard-avoidance preference and margin.
+- optional `mock`: an explicit `enabled` flag and exact `mob_name` used only as the
+  generic formation's boss-position/status source during field testing.
+
+An enabled generic formation must match the enabled durable `config.encounter.id`.
+WinForms exposes this contract without tank/DPS/healer semantics and writes the same
+Profile V2 structure. Its formation tab labels mock mode as formation-only and tells
+the user to target the exact named mob once on each client. No encounter strategy, party
+composition, or world coordinate is supplied by code.
 
 ## Phase 2 policy boundary
 
@@ -147,18 +178,49 @@ are recorded in `docs/TestResults/sortie_ghatjot_acceptance_2026-08-10.md`.
   constraints are never relaxed by hysteresis.
 - `uc_generic_formation_runtime.lua` turns solver move/hold/error results into the
   existing dispatcher-backed run/stop intents. It exposes both an injectable test
-  factory and a strict lazy Windower singleton, but is not yet selected by profile
-  configuration or the scheduler movement coordinator.
+  factory and a strict lazy Windower singleton and is selected for configured Sortie
+  formation through `uc_formation_runtime.lua`.
 - `uc_lilith_formation_adapter.lua` translates current Lilith tank and DPS settings
   into generic geometry while preserving existing proposal reasons and hysteresis.
   Lilith's healer threat-cone evaluator stays behind the compatibility adapter and
   is not imposed on the generic model.
 - Existing Lilith runtime ownership and reaction/cast-lock ordering are unchanged.
   The existing `uc_combat_formation.evaluate` public wrapper remains stable.
+- Generic formation can replace the live encounter snapshot with the isolated mock
+  snapshot when `formation.mock.enabled` is true. Idle mock status exercises the
+  normal `FORMATION_WAITING_FOR_ENGAGE` gate; after engagement, live actor movement
+  feeds the same solver and scheduler coordinator used by the real encounter.
+- Mock binding fails closed when the configured target is absent, name-mismatched,
+  incomplete, or no longer visible. Encounter-origin geometry can be tested by
+  targeting the mock mob while it is idle and stable for the normal 0.50-second
+  origin capture before engaging it.
 
-Phase 3's pure solver and runtime ownership seam are replay-tested. Activating
-per-client Sortie geometry still belongs to Phase 5's durable configuration work;
-Dhartok hazard activation remains blocked on the field evidence required by Phase 4.
+Phase 3's pure solver and runtime ownership seam and Phase 5's per-client activation
+path are replay-tested. Coverage includes Profile V2 round-trip, disabled behavior,
+unsatisfied geometry, scheduler ownership/precedence, Lilith compatibility, isolated
+mock binding, idle/engaged transitions, origin capture, actor movement, same-name
+actor stability, and explicit retargeting after actor loss.
+
+## Remaining work blocked solely on Dhartok field evidence
+
+Generic formation activation is complete for both Sortie encounter identities, but
+the runtime passes an explicitly empty active-hazard list to the solver. The durable
+`avoid_encounter_hazards` preference is stored for future use; it does not promote or
+consume `hazard_candidates` today.
+
+Only the following Phase 4 work remains blocked on the checklist in
+`docs/sortie_encounters_field_validation.md`:
+
+- prove the Cesspool/double-TP packet sequence across repeat observations;
+- prove the authoritative cloud target and world position across clients;
+- confirm in game that the cloud appears at that resolved position;
+- define trusted hazard lifetime/radius from reviewed evidence;
+- promote validated clouds from diagnostic `hazard_candidates` to a distinct active
+  hazard list consumed by generic formation.
+
+Until that evidence is recorded and reviewed, Dhartok candidates remain diagnostic
+telemetry only. This gate does not block Ghatjot formation, Dhartok role-free static
+geometry, encounter policy, or transient encounter-origin use.
 
 ## Phase 1 safety properties
 

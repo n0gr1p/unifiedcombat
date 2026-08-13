@@ -110,6 +110,8 @@ public partial class MainForm
     private Label _encounterValidation = null!;
     private CheckBox _formationEnabled = null!;
     private ComboBox _formationEncounter = null!;
+    private CheckBox _formationMockEnabled = null!;
+    private TextBox _formationMockMobName = null!;
     private ComboBox _formationRole = null!;
     private ComboBox _formationTankName = null!;
     private CheckedListBox _formationRequiredParty = null!;
@@ -127,6 +129,26 @@ public partial class MainForm
     private NumericUpDown _formationHealerConeHalfAngle = null!;
     private NumericUpDown _formationHealerConeSafetyMargin = null!;
     private NumericUpDown _formationHealerSampleStep = null!;
+    private ComboBox _formationPlacementMode = null!;
+    private ComboBox _formationAnchor = null!;
+    private ComboBox _formationAnchorMember = null!;
+    private ComboBox _formationAxisType = null!;
+    private ComboBox _formationAxisMember = null!;
+    private NumericUpDown _formationPreferredRadius = null!;
+    private NumericUpDown _formationMinimumRadius = null!;
+    private NumericUpDown _formationMaximumRadius = null!;
+    private NumericUpDown _formationPreferredAngle = null!;
+    private NumericUpDown _formationAllowedAngleHalfWidth = null!;
+    private NumericUpDown _formationRadiusStep = null!;
+    private NumericUpDown _formationAngleStep = null!;
+    private NumericUpDown _formationHysteresisStart = null!;
+    private NumericUpDown _formationHysteresisStop = null!;
+    private CheckBox _formationAvoidEncounterHazards = null!;
+    private NumericUpDown _formationHazardMargin = null!;
+    private NumericUpDown _formationSafeOriginRadius = null!;
+    private NumericUpDown _formationMinimumBossDistance = null!;
+    private NumericUpDown _formationMaximumBossDistance = null!;
+    private NumericUpDown _formationMaximumPartyRange = null!;
     private TableLayoutPanel _formationConfigPanel = null!;
     private Label _formationValidation = null!;
     private Button _formationEnableOwnership = null!;
@@ -1036,10 +1058,42 @@ public partial class MainForm
 
         _formationConfigPanel.Controls.Add(new Label { Text = "Encounter", AutoSize = true, Anchor = AnchorStyles.Left }, 0, formationRow);
         _formationEncounter = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
-        _formationEncounter.Items.Add("Lady Lilith — Easy");
+        _formationEncounter.Items.AddRange([
+            "Lady Lilith — Easy",
+            "Ghatjot — Generic geometry",
+            "Dhartok — Generic geometry (hazards pending validation)",
+        ]);
         _formationEncounter.SelectedIndex = 0;
         _formationEncounter.SelectedIndexChanged += (_, _) => OnFormationConfigChanged();
         _formationConfigPanel.Controls.Add(_formationEncounter, 1, formationRow++);
+
+        AddFormationSectionLabel(_formationConfigPanel, "Formation-only mock testing", ref formationRow);
+        _formationMockEnabled = new CheckBox
+        {
+            Text = "Use a normal mob as the formation boss",
+            AutoSize = true,
+        };
+        _formationMockEnabled.CheckedChanged += (_, _) => OnFormationConfigChanged();
+        _formationConfigPanel.Controls.Add(_formationMockEnabled, 1, formationRow++);
+        _formationConfigPanel.Controls.Add(new Label
+        {
+            Text = "Mock mob name (exact)",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+        }, 0, formationRow);
+        _formationMockMobName = new TextBox { Width = 230 };
+        _formationMockMobName.TextChanged += (_, _) => OnFormationConfigChanged();
+        _formationConfigPanel.Controls.Add(_formationMockMobName, 1, formationRow++);
+        var mockHelp = new Label
+        {
+            Text = "Formation only. Target the exact named mob once on each client to bind it; encounter policies and hazards do not bind to it.",
+            AutoSize = true,
+            MaximumSize = new Size(490, 0),
+            ForeColor = SystemColors.GrayText,
+        };
+        _formationConfigPanel.Controls.Add(mockHelp, 0, formationRow);
+        _formationConfigPanel.SetColumnSpan(mockHelp, 2);
+        formationRow++;
 
         _formationConfigPanel.Controls.Add(new Label { Text = "Character role", AutoSize = true, Anchor = AnchorStyles.Left }, 0, formationRow);
         _formationRole = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
@@ -1106,6 +1160,68 @@ public partial class MainForm
         AddFormationNumberRow(_formationConfigPanel, "Cone safety margin (degrees)", _formationHealerConeSafetyMargin, ref formationRow);
         _formationHealerSampleStep = CreateFormationNumber(1.0m, 45.0m, 10.0m, 1.0m, 1);
         AddFormationNumberRow(_formationConfigPanel, "Search sample step (degrees)", _formationHealerSampleStep, ref formationRow);
+
+        AddFormationSectionLabel(_formationConfigPanel, "Generic geometry (Sortie profiles)", ref formationRow);
+        _formationPlacementMode = AddFormationChoiceRow(
+            _formationConfigPanel,
+            "Placement mode",
+            ["Radial band", "Polar band"],
+            "Radial band",
+            ref formationRow
+        );
+        _formationAnchor = AddFormationChoiceRow(
+            _formationConfigPanel,
+            "Anchor",
+            ["Boss", "Encounter origin", "Party member"],
+            "Boss",
+            ref formationRow
+        );
+        _formationAnchorMember = AddFormationPartyRow(_formationConfigPanel, "Anchor member", ref formationRow);
+        _formationAxisType = AddFormationChoiceRow(
+            _formationConfigPanel,
+            "Polar axis",
+            ["Boss to member"],
+            "Boss to member",
+            ref formationRow
+        );
+        _formationAxisMember = AddFormationPartyRow(_formationConfigPanel, "Axis member", ref formationRow);
+        _formationPreferredRadius = CreateFormationNumber(0.0m, 50.0m, 3.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Preferred radius (yalms)", _formationPreferredRadius, ref formationRow);
+        _formationMinimumRadius = CreateFormationNumber(0.0m, 50.0m, 2.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Minimum radius (yalms)", _formationMinimumRadius, ref formationRow);
+        _formationMaximumRadius = CreateFormationNumber(0.0m, 50.0m, 4.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Maximum radius (yalms)", _formationMaximumRadius, ref formationRow);
+        _formationPreferredAngle = CreateFormationNumber(-360.0m, 360.0m, 180.0m, 5.0m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Preferred polar angle (degrees)", _formationPreferredAngle, ref formationRow);
+        _formationAllowedAngleHalfWidth = CreateFormationNumber(0.0m, 180.0m, 60.0m, 5.0m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Allowed angle half-width (degrees)", _formationAllowedAngleHalfWidth, ref formationRow);
+        _formationRadiusStep = CreateFormationNumber(0.1m, 10.0m, 0.5m, 0.1m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Radius sample step (yalms)", _formationRadiusStep, ref formationRow);
+        _formationAngleStep = CreateFormationNumber(1.0m, 360.0m, 10.0m, 1.0m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Angle sample step (degrees)", _formationAngleStep, ref formationRow);
+
+        AddFormationSectionLabel(_formationConfigPanel, "Generic hysteresis and constraints", ref formationRow);
+        _formationHysteresisStart = CreateFormationNumber(0.0m, 20.0m, 1.0m, 0.1m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Start correction distance (yalms)", _formationHysteresisStart, ref formationRow);
+        _formationHysteresisStop = CreateFormationNumber(0.0m, 20.0m, 0.5m, 0.1m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Stop correction distance (yalms)", _formationHysteresisStop, ref formationRow);
+        _formationAvoidEncounterHazards = new CheckBox
+        {
+            Text = "Avoid trusted encounter hazards (future gate)",
+            AutoSize = true,
+        };
+        _formationAvoidEncounterHazards.CheckedChanged += (_, _) => OnFormationConfigChanged();
+        _formationConfigPanel.Controls.Add(_formationAvoidEncounterHazards, 1, formationRow++);
+        _formationHazardMargin = CreateFormationNumber(0.0m, 20.0m, 0.0m, 0.1m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Hazard margin (yalms)", _formationHazardMargin, ref formationRow);
+        _formationSafeOriginRadius = CreateFormationNumber(0.0m, 50.0m, 0.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Safe origin radius (0 = off)", _formationSafeOriginRadius, ref formationRow);
+        _formationMinimumBossDistance = CreateFormationNumber(0.0m, 50.0m, 0.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Minimum boss distance (0 = off)", _formationMinimumBossDistance, ref formationRow);
+        _formationMaximumBossDistance = CreateFormationNumber(0.0m, 50.0m, 0.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Maximum boss distance (0 = off)", _formationMaximumBossDistance, ref formationRow);
+        _formationMaximumPartyRange = CreateFormationNumber(0.0m, 50.0m, 0.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Maximum required-party range (0 = off)", _formationMaximumPartyRange, ref formationRow);
 
         foreach (var numeric in FormationNumericControls())
         {
@@ -1729,7 +1845,48 @@ public partial class MainForm
             _formationHealerConeHalfAngle,
             _formationHealerConeSafetyMargin,
             _formationHealerSampleStep,
+            _formationPreferredRadius,
+            _formationMinimumRadius,
+            _formationMaximumRadius,
+            _formationPreferredAngle,
+            _formationAllowedAngleHalfWidth,
+            _formationRadiusStep,
+            _formationAngleStep,
+            _formationHysteresisStart,
+            _formationHysteresisStop,
+            _formationHazardMargin,
+            _formationSafeOriginRadius,
+            _formationMinimumBossDistance,
+            _formationMaximumBossDistance,
+            _formationMaximumPartyRange,
         ];
+    }
+
+    private ComboBox AddFormationChoiceRow(
+        TableLayoutPanel panel,
+        string label,
+        string[] choices,
+        string selected,
+        ref int row
+    )
+    {
+        panel.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        var combo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
+        combo.Items.AddRange(choices);
+        combo.SelectedItem = selected;
+        combo.SelectedIndexChanged += (_, _) => OnFormationConfigChanged();
+        panel.Controls.Add(combo, 1, row++);
+        return combo;
+    }
+
+    private ComboBox AddFormationPartyRow(TableLayoutPanel panel, string label, ref int row)
+    {
+        panel.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        var combo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Width = 230 };
+        combo.SelectedIndexChanged += (_, _) => OnFormationConfigChanged();
+        combo.Leave += (_, _) => OnFormationConfigChanged();
+        panel.Controls.Add(combo, 1, row++);
+        return combo;
     }
 
     private static NumericUpDown CreateFormationNumber(decimal minimum, decimal maximum, decimal value, decimal increment, int decimalPlaces)

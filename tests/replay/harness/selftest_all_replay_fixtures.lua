@@ -124,6 +124,8 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_combat_formation.lua",
 	"tests/replay/harness/selftest_generic_formation.lua",
 	"tests/replay/harness/selftest_generic_formation_runtime.lua",
+	"tests/replay/harness/selftest_formation_mock_state.lua",
+	"tests/replay/harness/selftest_formation_activation.lua",
     "tests/replay/harness/selftest_command_builder_fixtures.lua",
     "tests/replay/harness/selftest_numeric_utils_fixtures.lua",
     "tests/replay/harness/selftest_proposal_keys_fixtures.lua",

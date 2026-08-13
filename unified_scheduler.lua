@@ -2347,14 +2347,15 @@ local function run_movement_coordinator_tick()
 	end
 	_G.UC_MOVEMENT_MODE = mode
 	_G.UC_MOVEMENT_BLOCK_REASON = ''
-	local formation_observation = require('uc_lilith_easy_formation_runtime').observe(now)
+	local formation_runtime = require('uc_formation_runtime')
+	local formation_observation = formation_runtime.observe(now)
 	local reaction_lock = rawget(_G, 'UC_REACTION_LOCK')
 	if type(reaction_lock) == 'table' then
 		if reaction_lock.turn_applied ~= true then
 			scheduler.apply_reaction_response(reaction_lock)
 		end
 		if require('uc_reaction_runtime').blocks_movement(reaction_lock) then
-			require('uc_lilith_easy_formation_runtime').stop('FORMATION_REACTION_HOLD')
+			formation_runtime.stop('FORMATION_REACTION_HOLD')
 			_G.UC_MOVEMENT_MODE = 'REACTION_HOLD'
 			_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_REACTION_HOLD'
 			return false, 'MOVE_COORD_REACTION_HOLD'
@@ -2371,7 +2372,7 @@ local function run_movement_coordinator_tick()
 	end
 	local freeze_prep_until = tonumber(rawget(_G, 'UC_MOVE_FREEZE_PREP_UNTIL')) or 0
 	if now < freeze_prep_until then
-		require('uc_lilith_easy_formation_runtime').stop('FORMATION_CAST_FREEZE_PREP')
+		formation_runtime.stop('FORMATION_CAST_FREEZE_PREP')
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_CAST_FREEZE_PREP'
 		local intent = {
@@ -2406,7 +2407,7 @@ local function run_movement_coordinator_tick()
 	end
 	local pull_cast_hold_until = tonumber(rawget(_G, 'UC_PULL_CAST_HOLD_UNTIL')) or 0
 	if now < pull_cast_hold_until then
-		require('uc_lilith_easy_formation_runtime').stop('FORMATION_PULL_CAST_HOLD')
+		formation_runtime.stop('FORMATION_PULL_CAST_HOLD')
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_PULL_CAST_HOLD'
 		local intent = {
@@ -2440,7 +2441,7 @@ local function run_movement_coordinator_tick()
 		return false, 'MOVE_COORD_PULL_CAST_HOLD'
 	end
 	if rawget(_G, 'UC_PULL_SPELL_WAITING') == true then
-		require('uc_lilith_easy_formation_runtime').stop('FORMATION_PULL_SPELL_WAIT')
+		formation_runtime.stop('FORMATION_PULL_SPELL_WAIT')
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_PULL_SPELL_WAIT'
 		local intent = {
@@ -2501,22 +2502,22 @@ local function run_movement_coordinator_tick()
 	end
 	-- Do not move while spellcasting/channeling.
 	if status == 4 then
-		require('uc_lilith_easy_formation_runtime').stop('FORMATION_CASTING_STATUS')
+		formation_runtime.stop('FORMATION_CASTING_STATUS')
 		scheduler.apply_cast_movement_hold('MOVE_COORD_CASTING_STATUS', now)
 		return false, 'MOVE_COORD_CASTING_STATUS'
 	end
 	local ast = action_state()
 	if tostring(ast.last_send_kind or '') == 'spell' and now < (tonumber(ast.cooldown_until) or 0) then
-		require('uc_lilith_easy_formation_runtime').stop('FORMATION_CAST_FREEZE_COOLDOWN')
+		formation_runtime.stop('FORMATION_CAST_FREEZE_COOLDOWN')
 		scheduler.apply_cast_movement_hold('MOVE_COORD_CAST_FREEZE_COOLDOWN', now)
 		return false, 'MOVE_COORD_CAST_FREEZE_COOLDOWN'
 	end
 	if action_is_acting() and tostring(ast.last_send_kind or '') == 'spell' then
-		require('uc_lilith_easy_formation_runtime').stop('FORMATION_CASTING_ACTION')
+		formation_runtime.stop('FORMATION_CASTING_ACTION')
 		scheduler.apply_cast_movement_hold('MOVE_COORD_CASTING_ACTION', now)
 		return false, 'MOVE_COORD_CASTING_ACTION'
 	end
-	local formation_acted, formation_reason, formation_owns = require('uc_lilith_easy_formation_runtime').run_tick(formation_observation)
+	local formation_acted, formation_reason, formation_owns = formation_runtime.run_tick(formation_observation)
 	if formation_owns then
 		_G.UC_MOVEMENT_MODE = 'FORMATION'
 		_G.UC_MOVEMENT_BLOCK_REASON = formation_reason
@@ -6375,7 +6376,7 @@ function scheduler.on_incoming_chunk(id, data)
 		require('uc_reaction_runtime').reset('zone_change')
 		require('uc_encounter_runtime').reset('zone_change_packet')
 		require('uc_lilith_easy_encounter').reset('zone_change_packet')
-		require('uc_lilith_easy_formation_runtime').reset('zone_change_packet')
+		require('uc_formation_runtime').reset('zone_change_packet')
 		_G.UC_REACTION_LOCK = nil
 		scheduler.phase1.effectiveTargets = {}
 		pet_command_coordinator.reset(scheduler.pet_command_state, 'zone_change')

@@ -400,6 +400,7 @@ local function uc_is_combat_participant(s)
 	end
 	return uc_truthy(st.autotarget)
 		or uc_truthy(st.move)
+		or uc_truthy(st.formation_enabled)
 		or uc_truthy(st.tank)
 		or (uc_truthy(st.hunter) and uc_truthy(st.path_follow_enabled))
 		or uc_truthy(st.puller)
@@ -2261,7 +2262,7 @@ windower.register_event('job change', function(job, lvl)
 	require('uc_reaction_runtime').reset('job_change')
 	uc_encounter_runtime.reset('job_change')
 	require('uc_lilith_easy_encounter').reset('job_change')
-	require('uc_lilith_easy_formation_runtime').reset('job_change')
+	require('uc_formation_runtime').reset('job_change')
 	uc_update_engine()
 	uc_reload_active_profile(jname)
 	uc_queue_profile_v2_autoload()
@@ -2277,7 +2278,7 @@ windower.register_event('zone change', function()
 	require('uc_reaction_runtime').reset('zone_change')
 	uc_encounter_runtime.reset('zone_change')
 	require('uc_lilith_easy_encounter').reset('zone_change')
-	require('uc_lilith_easy_formation_runtime').reset('zone_change')
+	require('uc_formation_runtime').reset('zone_change')
 	UC_COMBAT_CORE.reset_skillchain_state('zone_change')
 	_G.UC_REACTION_LOCK = nil
 	_G.UC_LAST_ZONE_CHANGE_AT = uc_now_s()
@@ -2292,7 +2293,7 @@ windower.register_event('unload', function()
 	require('uc_reaction_runtime').reset('unload')
 	uc_encounter_runtime.reset('unload')
 	require('uc_lilith_easy_encounter').reset('unload')
-	require('uc_lilith_easy_formation_runtime').reset('unload')
+	require('uc_formation_runtime').reset('unload')
 	uc_profile_v2_autoload_pending_key = nil
 	uc_profile_v2_autoload_completed_key = nil
 	uc_profile_v2_startup_reload_completed_key = nil
@@ -2313,7 +2314,7 @@ windower.register_event('logout', function()
 	uc_nyzul_runtime.reset('logout')
 	uc_encounter_runtime.reset('logout')
 	require('uc_lilith_easy_encounter').reset('logout')
-	require('uc_lilith_easy_formation_runtime').reset('logout')
+	require('uc_formation_runtime').reset('logout')
 	_G.UC_ZONE_SUSPEND_UNTIL = nil
 	uc_profile_v2_autoload_pending_key = nil
 	uc_profile_v2_autoload_completed_key = nil
@@ -2363,7 +2364,7 @@ windower.register_event('addon command', function(...)
 		Start_Engine = false
 		uc_encounter_runtime.reset('engine_stop')
 		require('uc_lilith_easy_encounter').reset('engine_stop')
-		require('uc_lilith_easy_formation_runtime').reset('engine_stop')
+		require('uc_formation_runtime').reset('engine_stop')
 		if _G.UC_SETTINGS then
 			_G.UC_SETTINGS.engine_enabled = false
 		end

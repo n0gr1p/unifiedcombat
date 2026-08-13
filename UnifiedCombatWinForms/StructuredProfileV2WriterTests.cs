@@ -63,6 +63,8 @@ internal static class StructuredProfileV2WriterTests
             TestEncounterUiProfilePersistenceContract();
             TestDisabledFormationIsOmitted();
             TestSerializeLilithEasyFormation();
+            TestSerializeGenericSortieFormation();
+            TestFormationMockRejectsLilith();
             TestEnabledFormationRequiresMovementDomain();
             TestFormationUiEditsAreLocalUntilSave();
             TestFormationUiProfilePersistenceContract();
@@ -1259,6 +1261,97 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "cone_safety_margin_deg = 15", "healer cone safety margin missing");
     }
 
+    private static void TestSerializeGenericSortieFormation()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["domain_movement_enabled"] = true;
+        flat["encounter_enabled"] = true;
+        flat["encounter_id"] = "sortie_ghatjot";
+        flat["encounter_water_damage"] = "enforce";
+        flat["encounter_water_skillchain"] = "enforce";
+        flat["encounter_repeat_action_wall"] = "off";
+        flat["encounter_repeat_action_guard_s"] = 10.0;
+        flat["formation_enabled"] = true;
+        flat["formation_encounter"] = "sortie_ghatjot";
+        flat["formation_mock_enabled"] = true;
+        flat["formation_mock_mob_name"] = "Apex Crab";
+        flat["formation_placement_mode"] = "polar_band";
+        flat["formation_anchor"] = "encounter_origin";
+        flat["formation_anchor_member"] = "";
+        flat["formation_axis_type"] = "boss_to_member";
+        flat["formation_axis_member"] = "Terrasjr [UC]";
+        flat["formation_preferred_radius"] = 3.0;
+        flat["formation_minimum_radius"] = 2.0;
+        flat["formation_maximum_radius"] = 4.0;
+        flat["formation_preferred_angle_deg"] = 180.0;
+        flat["formation_allowed_angle_half_width_deg"] = 45.0;
+        flat["formation_radius_step"] = 0.5;
+        flat["formation_angle_step_deg"] = 10.0;
+        flat["formation_hysteresis_start_distance"] = 1.0;
+        flat["formation_hysteresis_stop_distance"] = 0.5;
+        flat["formation_avoid_encounter_hazards"] = true;
+        flat["formation_hazard_margin"] = 0.25;
+        flat["formation_safe_origin_radius"] = 16.0;
+        flat["formation_minimum_boss_distance"] = 1.0;
+        flat["formation_maximum_boss_distance"] = 6.0;
+        flat["formation_maximum_party_range"] = 12.0;
+        flat["formation_required_party_names"] = "Terrasjr [UC]|Etamame";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "THF", "WAR")
+        );
+
+        AssertContains(content, "encounter = \"sortie_ghatjot\"", "generic formation encounter missing");
+        AssertContains(content, "mock = {", "generic formation mock config missing");
+        AssertContains(content, "mob_name = \"Apex Crab\"", "generic formation mock target missing");
+        AssertContains(content, "mode = \"polar_band\"", "generic placement mode missing");
+        AssertContains(content, "anchor = \"encounter_origin\"", "generic anchor missing");
+        AssertContains(content, "type = \"boss_to_member\"", "generic axis type missing");
+        AssertContains(content, "member = \"Terrasjr\"", "generic axis member missing");
+        AssertContains(content, "preferred_angle_deg = 180", "generic preferred angle missing");
+        AssertContains(content, "start_distance = 1", "generic hysteresis missing");
+        AssertContains(content, "avoid_encounter_hazards = true", "generic hazard preference missing");
+        AssertContains(content, "safe_origin_radius = 16", "generic origin constraint missing");
+        AssertContains(content, "maximum_party_range = 12", "generic party constraint missing");
+        AssertNotContains(content, "role = \"healer\"", "generic formation must not serialize Lilith role semantics");
+        AssertNotContains(content, "tank_name =", "generic formation must not serialize Lilith tank semantics");
+
+        flat["formation_mock_mob_name"] = "";
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Redrogue", "THF", "WAR")
+            ),
+            "enabled generic formation mock without a mob name must fail"
+        );
+        flat["formation_mock_mob_name"] = "Apex Crab";
+
+        flat["encounter_id"] = "sortie_dhartok";
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Redrogue", "THF", "WAR")
+            ),
+            "generic formation encounter mismatch must fail"
+        );
+    }
+
+    private static void TestFormationMockRejectsLilith()
+    {
+        var flat = BuildSampleFlatProfile();
+        EnableSampleFormation(flat);
+        flat["formation_mock_enabled"] = true;
+        flat["formation_mock_mob_name"] = "Apex Crab";
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Niightsiide", "WHM", "RDM")
+            ),
+            "Lilith compatibility formation must reject mock mode"
+        );
+    }
+
     private static void TestEnabledFormationRequiresMovementDomain()
     {
         var flat = BuildSampleFlatProfile();
@@ -1299,9 +1392,21 @@ internal static class StructuredProfileV2WriterTests
         var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
         AssertContains(ui, "new TabPage(\"Encounter Formation\")", "formation tab must exist");
         AssertContains(store, "[\"formation_enabled\"] = _formationEnabled.Checked", "formation enable state must be captured");
+        AssertContains(store, "[\"formation_mock_enabled\"] = _formationMockEnabled.Checked", "formation mock enable state must be captured");
+        AssertContains(store, "[\"formation_mock_mob_name\"]", "formation mock mob name must be captured");
+        AssertContains(store, "[\"formation_mock_enabled\"] = false", "new profiles must default formation mock mode off");
         AssertContains(store, "[\"formation_role\"] = FormationRoleValue()", "formation role must be captured");
         AssertContains(store, "[\"formation_required_party_names\"]", "formation coverage members must be captured");
         AssertContains(store, "[\"formation_healer_sample_step_deg\"]", "formation advanced settings must be captured");
+        AssertContains(store, "[\"formation_placement_mode\"]", "generic placement mode must be captured");
+        AssertContains(store, "[\"formation_avoid_encounter_hazards\"]", "generic hazard preference must be captured");
+        AssertContains(ui, "Ghatjot — Generic geometry", "Ghatjot generic formation selection must be exposed");
+        AssertContains(ui, "Dhartok — Generic geometry", "Dhartok generic formation selection must be exposed");
+        AssertContains(ui, "Use a normal mob as the formation boss", "formation mock UI must be exposed");
+        AssertContains(ui, "Target the exact named mob once", "formation mock target-binding instructions must be visible");
+        AssertContains(ui, "encounter policies and hazards do not bind to it", "formation mock safety boundary must be visible");
+        AssertContains(logic, "Generic formation requires enabled encounter policy", "generic formation UI identity validation missing");
+        AssertContains(logic, "formation_mock_enabled", "formation mock settings must restore from UI profiles");
         AssertContains(logic, "ApplyFormationConfigFromSnapshot(s, partnerOpts);", "formation settings must restore from UI profiles");
         AssertContains(logic, "profile save blocked", "invalid formation settings must block profile save");
     }

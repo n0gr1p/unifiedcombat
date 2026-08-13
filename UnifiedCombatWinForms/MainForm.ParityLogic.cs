@@ -379,6 +379,8 @@ public partial class MainForm
             _spArrivalTolerance.Text = "0.2";
             _formationEnabled.Checked = false;
             _formationEncounter.SelectedItem = "Lady Lilith — Easy";
+            _formationMockEnabled.Checked = false;
+            _formationMockMobName.Text = "";
             _formationRole.SelectedItem = "Disabled";
             _formationTankName.Items.Clear();
             _formationTankName.Text = "";
@@ -397,6 +399,28 @@ public partial class MainForm
             _formationHealerConeHalfAngle.Value = 50.0m;
             _formationHealerConeSafetyMargin.Value = 15.0m;
             _formationHealerSampleStep.Value = 10.0m;
+            _formationPlacementMode.SelectedItem = "Radial band";
+            _formationAnchor.SelectedItem = "Boss";
+            _formationAnchorMember.Items.Clear();
+            _formationAnchorMember.Text = "";
+            _formationAxisType.SelectedItem = "Boss to member";
+            _formationAxisMember.Items.Clear();
+            _formationAxisMember.Text = "";
+            _formationPreferredRadius.Value = 3.0m;
+            _formationMinimumRadius.Value = 2.0m;
+            _formationMaximumRadius.Value = 4.0m;
+            _formationPreferredAngle.Value = 180.0m;
+            _formationAllowedAngleHalfWidth.Value = 60.0m;
+            _formationRadiusStep.Value = 0.5m;
+            _formationAngleStep.Value = 10.0m;
+            _formationHysteresisStart.Value = 1.0m;
+            _formationHysteresisStop.Value = 0.5m;
+            _formationAvoidEncounterHazards.Checked = false;
+            _formationHazardMargin.Value = 0.0m;
+            _formationSafeOriginRadius.Value = 0.0m;
+            _formationMinimumBossDistance.Value = 0.0m;
+            _formationMaximumBossDistance.Value = 0.0m;
+            _formationMaximumPartyRange.Value = 0.0m;
             _pathFileValue.Text = "";
             _pathRouteTypeValue.Text = "unknown";
             _pathDistanceValue.Text = "0.0";
@@ -2268,11 +2292,43 @@ public partial class MainForm
 
     private string FormationEncounterValue()
     {
-        if (string.Equals(_formationEncounter.SelectedItem?.ToString(), "Lady Lilith — Easy", StringComparison.Ordinal))
+        return _formationEncounter.SelectedItem?.ToString() switch
         {
-            return "lilith_easy";
-        }
-        throw new InvalidOperationException("unsupported formation encounter selection");
+            "Lady Lilith — Easy" => "lilith_easy",
+            "Ghatjot — Generic geometry" => "sortie_ghatjot",
+            "Dhartok — Generic geometry (hazards pending validation)" => "sortie_dhartok",
+            _ => throw new InvalidOperationException("unsupported formation encounter selection"),
+        };
+    }
+
+    private string FormationPlacementModeValue()
+    {
+        return _formationPlacementMode.SelectedItem?.ToString() switch
+        {
+            "Radial band" => "radial_band",
+            "Polar band" => "polar_band",
+            _ => throw new InvalidOperationException("unsupported formation placement mode"),
+        };
+    }
+
+    private string FormationAnchorValue()
+    {
+        return _formationAnchor.SelectedItem?.ToString() switch
+        {
+            "Boss" => "boss",
+            "Encounter origin" => "encounter_origin",
+            "Party member" => "member",
+            _ => throw new InvalidOperationException("unsupported formation anchor"),
+        };
+    }
+
+    private string FormationAxisTypeValue()
+    {
+        return _formationAxisType.SelectedItem?.ToString() switch
+        {
+            "Boss to member" => "boss_to_member",
+            _ => throw new InvalidOperationException("unsupported formation axis"),
+        };
     }
 
     private string FormationRoleValue()
@@ -2301,11 +2357,15 @@ public partial class MainForm
     {
         _formationEnabled.Checked = SessionStateHelper.GetBool(snapshot, "formation_enabled", false);
         var encounter = SessionStateHelper.GetString(snapshot, "formation_encounter", "lilith_easy");
-        if (!string.Equals(encounter, "lilith_easy", StringComparison.Ordinal))
+        _formationEncounter.SelectedItem = encounter switch
         {
-            throw new InvalidDataException($"unsupported formation encounter in UI profile: {encounter}");
-        }
-        _formationEncounter.SelectedItem = "Lady Lilith — Easy";
+            "lilith_easy" => "Lady Lilith — Easy",
+            "sortie_ghatjot" => "Ghatjot — Generic geometry",
+            "sortie_dhartok" => "Dhartok — Generic geometry (hazards pending validation)",
+            _ => throw new InvalidDataException($"unsupported formation encounter in UI profile: {encounter}"),
+        };
+        _formationMockEnabled.Checked = SessionStateHelper.GetBool(snapshot, "formation_mock_enabled", false);
+        _formationMockMobName.Text = SessionStateHelper.GetString(snapshot, "formation_mock_mob_name", "").Trim();
 
         var role = SessionStateHelper.GetString(snapshot, "formation_role", "disabled");
         _formationRole.SelectedItem = role switch
@@ -2318,18 +2378,24 @@ public partial class MainForm
         };
 
         var tankName = NormalizePartyName(SessionStateHelper.GetString(snapshot, "formation_tank_name"));
+        var anchorMember = NormalizePartyName(SessionStateHelper.GetString(snapshot, "formation_anchor_member"));
+        var axisMember = NormalizePartyName(SessionStateHelper.GetString(snapshot, "formation_axis_member"));
         var required = SessionStateHelper.SplitOptions(
             snapshot.TryGetProperty("formation_required_party_names", out var requiredNode) ? requiredNode : default
         );
         var names = partyOptions
             .Concat(required)
             .Append(tankName)
+            .Append(anchorMember)
+            .Append(axisMember)
             .Select(NormalizePartyName)
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToList();
         BindPartyCombo(_formationTankName, names, tankName);
+        BindPartyCombo(_formationAnchorMember, names, anchorMember);
+        BindPartyCombo(_formationAxisMember, names, axisMember);
         _formationRequiredParty.Items.Clear();
         foreach (var name in names)
         {
@@ -2351,6 +2417,43 @@ public partial class MainForm
         ApplyFormationNumber(snapshot, "formation_healer_cone_half_angle_deg", _formationHealerConeHalfAngle, "50");
         ApplyFormationNumber(snapshot, "formation_healer_cone_safety_margin_deg", _formationHealerConeSafetyMargin, "15");
         ApplyFormationNumber(snapshot, "formation_healer_sample_step_deg", _formationHealerSampleStep, "10");
+        _formationPlacementMode.SelectedItem = SessionStateHelper.GetString(snapshot, "formation_placement_mode", "radial_band") switch
+        {
+            "radial_band" => "Radial band",
+            "polar_band" => "Polar band",
+            var value => throw new InvalidDataException($"unsupported formation placement mode in UI profile: {value}"),
+        };
+        _formationAnchor.SelectedItem = SessionStateHelper.GetString(snapshot, "formation_anchor", "boss") switch
+        {
+            "boss" => "Boss",
+            "encounter_origin" => "Encounter origin",
+            "member" => "Party member",
+            var value => throw new InvalidDataException($"unsupported formation anchor in UI profile: {value}"),
+        };
+        _formationAxisType.SelectedItem = SessionStateHelper.GetString(snapshot, "formation_axis_type", "boss_to_member") switch
+        {
+            "boss_to_member" => "Boss to member",
+            var value => throw new InvalidDataException($"unsupported formation axis in UI profile: {value}"),
+        };
+        ApplyFormationNumber(snapshot, "formation_preferred_radius", _formationPreferredRadius, "3");
+        ApplyFormationNumber(snapshot, "formation_minimum_radius", _formationMinimumRadius, "2");
+        ApplyFormationNumber(snapshot, "formation_maximum_radius", _formationMaximumRadius, "4");
+        ApplyFormationNumber(snapshot, "formation_preferred_angle_deg", _formationPreferredAngle, "180");
+        ApplyFormationNumber(snapshot, "formation_allowed_angle_half_width_deg", _formationAllowedAngleHalfWidth, "60");
+        ApplyFormationNumber(snapshot, "formation_radius_step", _formationRadiusStep, "0.5");
+        ApplyFormationNumber(snapshot, "formation_angle_step_deg", _formationAngleStep, "10");
+        ApplyFormationNumber(snapshot, "formation_hysteresis_start_distance", _formationHysteresisStart, "1");
+        ApplyFormationNumber(snapshot, "formation_hysteresis_stop_distance", _formationHysteresisStop, "0.5");
+        _formationAvoidEncounterHazards.Checked = SessionStateHelper.GetBool(
+            snapshot,
+            "formation_avoid_encounter_hazards",
+            false
+        );
+        ApplyFormationNumber(snapshot, "formation_hazard_margin", _formationHazardMargin, "0");
+        ApplyFormationNumber(snapshot, "formation_safe_origin_radius", _formationSafeOriginRadius, "0");
+        ApplyFormationNumber(snapshot, "formation_minimum_boss_distance", _formationMinimumBossDistance, "0");
+        ApplyFormationNumber(snapshot, "formation_maximum_boss_distance", _formationMaximumBossDistance, "0");
+        ApplyFormationNumber(snapshot, "formation_maximum_party_range", _formationMaximumPartyRange, "0");
     }
 
     private static void ApplyFormationNumber(JsonElement snapshot, string key, NumericUpDown control, string defaultValue)
@@ -2427,29 +2530,88 @@ public partial class MainForm
         {
             return true;
         }
-        if (FormationRoleValue() == "disabled")
-        {
-            error = "Choose Tank, DPS, or Healer for this character.";
-            return false;
-        }
-        if (string.IsNullOrWhiteSpace(SelectedPartyName(_formationTankName)))
-        {
-            error = "Select or enter the tank character.";
-            return false;
-        }
         if (!_boolChecks.TryGetValue("domain_movement_enabled", out var movementDomain) || !movementDomain.Checked)
         {
             error = "Movement domain must be enabled.";
             return false;
         }
-        if (_formationTankReturnRadius.Value <= _formationTankAcceptRadius.Value)
+        var encounter = FormationEncounterValue();
+        if (_formationMockEnabled.Checked && encounter == "lilith_easy")
         {
-            error = "Tank return radius must be greater than the centered radius.";
+            error = "Formation mock testing is available only for generic formations.";
             return false;
         }
-        if (_formationHealerPreferredRadius.Value >= _formationSafeRadius.Value)
+        if (_formationMockEnabled.Checked && string.IsNullOrWhiteSpace(_formationMockMobName.Text))
         {
-            error = "Healer preferred radius must be inside the arena safe radius.";
+            error = "Enter the exact normal-mob name for formation mock testing.";
+            return false;
+        }
+        if (encounter == "lilith_easy")
+        {
+            if (FormationRoleValue() == "disabled")
+            {
+                error = "Choose Tank, DPS, or Healer for this character.";
+                return false;
+            }
+            if (string.IsNullOrWhiteSpace(SelectedPartyName(_formationTankName)))
+            {
+                error = "Select or enter the tank character.";
+                return false;
+            }
+            if (_formationTankReturnRadius.Value <= _formationTankAcceptRadius.Value)
+            {
+                error = "Tank return radius must be greater than the centered radius.";
+                return false;
+            }
+            if (_formationHealerPreferredRadius.Value >= _formationSafeRadius.Value)
+            {
+                error = "Healer preferred radius must be inside the arena safe radius.";
+                return false;
+            }
+            return true;
+        }
+        if (!_encounterEnabled.Checked || EncounterIdValue() != encounter)
+        {
+            error = "Generic formation requires enabled encounter policy with the same Sortie encounter.";
+            return false;
+        }
+        if (FormationAnchorValue() == "member"
+            && string.IsNullOrWhiteSpace(SelectedPartyName(_formationAnchorMember)))
+        {
+            error = "Member anchor requires an anchor character.";
+            return false;
+        }
+        if (FormationPlacementModeValue() == "polar_band"
+            && string.IsNullOrWhiteSpace(SelectedPartyName(_formationAxisMember)))
+        {
+            error = "Polar placement requires an axis character.";
+            return false;
+        }
+        if (_formationMaximumRadius.Value < _formationMinimumRadius.Value)
+        {
+            error = "Maximum radius must be at least minimum radius.";
+            return false;
+        }
+        if (_formationPreferredRadius.Value < _formationMinimumRadius.Value
+            || _formationPreferredRadius.Value > _formationMaximumRadius.Value)
+        {
+            error = "Preferred radius must be inside the configured radius band.";
+            return false;
+        }
+        if (_formationHysteresisStart.Value < _formationHysteresisStop.Value)
+        {
+            error = "Hysteresis start distance must be at least stop distance.";
+            return false;
+        }
+        if (_formationMaximumBossDistance.Value > 0
+            && _formationMaximumBossDistance.Value < _formationMinimumBossDistance.Value)
+        {
+            error = "Maximum boss distance must be at least minimum boss distance.";
+            return false;
+        }
+        if (_formationMaximumPartyRange.Value > 0 && SelectedFormationRequiredPartyNames().Count == 0)
+        {
+            error = "Maximum party range requires at least one checked party member.";
             return false;
         }
         return true;
@@ -2459,11 +2621,55 @@ public partial class MainForm
     {
         var enabled = _formationEnabled.Checked;
         _formationConfigPanel.Enabled = enabled;
+        var generic = FormationEncounterValue() != "lilith_easy";
+        _formationMockEnabled.Enabled = enabled && generic;
+        _formationMockMobName.Enabled = enabled && generic && _formationMockEnabled.Checked;
+        _formationRole.Enabled = enabled && !generic;
+        _formationTankName.Enabled = enabled && !generic;
+        _formationCaptureStable.Enabled = enabled && !generic;
+        _formationCaptureTolerance.Enabled = enabled && !generic;
+        _formationSafeRadius.Enabled = enabled && !generic;
+        _formationTankAcceptRadius.Enabled = enabled && !generic;
+        _formationTankReturnRadius.Enabled = enabled && !generic;
+        _formationDpsFlankAngle.Enabled = enabled && !generic;
+        _formationDpsMeleeRadius.Enabled = enabled && !generic;
+        _formationDpsPositionTolerance.Enabled = enabled && !generic;
+        _formationHealerPreferredRadius.Enabled = enabled && !generic;
+        _formationHealerMinimumBossDistance.Enabled = enabled && !generic;
+        _formationHealerMaximumPartyRange.Enabled = enabled && !generic;
+        _formationHealerConeHalfAngle.Enabled = enabled && !generic;
+        _formationHealerConeSafetyMargin.Enabled = enabled && !generic;
+        _formationHealerSampleStep.Enabled = enabled && !generic;
+        _formationPlacementMode.Enabled = enabled && generic;
+        _formationAnchor.Enabled = enabled && generic;
+        _formationAnchorMember.Enabled = enabled && generic && FormationAnchorValue() == "member";
+        _formationAxisType.Enabled = enabled && generic && FormationPlacementModeValue() == "polar_band";
+        _formationAxisMember.Enabled = enabled && generic && FormationPlacementModeValue() == "polar_band";
+        _formationPreferredRadius.Enabled = enabled && generic;
+        _formationMinimumRadius.Enabled = enabled && generic;
+        _formationMaximumRadius.Enabled = enabled && generic;
+        _formationPreferredAngle.Enabled = enabled && generic && FormationPlacementModeValue() == "polar_band";
+        _formationAllowedAngleHalfWidth.Enabled = enabled && generic && FormationPlacementModeValue() == "polar_band";
+        _formationRadiusStep.Enabled = enabled && generic;
+        _formationAngleStep.Enabled = enabled && generic;
+        _formationHysteresisStart.Enabled = enabled && generic;
+        _formationHysteresisStop.Enabled = enabled && generic;
+        _formationAvoidEncounterHazards.Enabled = enabled && generic;
+        _formationHazardMargin.Enabled = enabled && generic;
+        _formationSafeOriginRadius.Enabled = enabled && generic;
+        _formationMinimumBossDistance.Enabled = enabled && generic;
+        _formationMaximumBossDistance.Enabled = enabled && generic;
+        _formationMaximumPartyRange.Enabled = enabled && generic;
+        _formationRequiredParty.Enabled = enabled && (!generic || _formationMaximumPartyRange.Value > 0);
         var valid = ValidateFormationConfiguration(out var error);
         _formationValidation.Text = !enabled
             ? "Formation is disabled for this profile."
             : valid
-                ? "Ready to save. Movement domain is enabled."
+                ? _formationMockEnabled.Checked
+                    ? "Ready to save. Mock mode drives formation only; encounter policies and hazards remain on live encounter state."
+                    : generic && FormationEncounterValue() == "sortie_dhartok"
+                    ? "Ready to save. Dhartok hazard candidates remain telemetry-only pending field validation."
+                    : "Ready to save. Movement domain is enabled."
                 : error;
         _formationValidation.ForeColor = !enabled || valid ? SystemColors.ControlText : Color.Firebrick;
         var movementEnabled = _boolChecks.TryGetValue("domain_movement_enabled", out var movementDomain)

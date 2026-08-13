@@ -538,6 +538,10 @@ local function apply_structured_config_to_candidate(candidate, config)
 			local formation = config.movement.formation
 			candidate.formation_enabled = formation.enabled
 			candidate.formation_encounter = formation.encounter
+			if type(formation.mock) == 'table' then
+				candidate.formation_mock_enabled = formation.mock.enabled
+				candidate.formation_mock_mob_name = formation.mock.mob_name
+			end
 			candidate.formation_role = formation.role
 			candidate.formation_tank_name = formation.tank_name
 			candidate.formation_required_party_names = clone_value(formation.required_party_names)
@@ -560,6 +564,39 @@ local function apply_structured_config_to_candidate(candidate, config)
 				candidate.formation_healer_cone_half_angle_deg = formation.healer.cone_half_angle_deg
 				candidate.formation_healer_cone_safety_margin_deg = formation.healer.cone_safety_margin_deg
 				candidate.formation_healer_sample_step_deg = formation.healer.sample_step_deg
+			end
+			if type(formation.placement) == 'table' then
+				local placement = formation.placement
+				candidate.formation_placement_mode = placement.mode
+				candidate.formation_anchor = placement.anchor
+				candidate.formation_anchor_member = placement.anchor_member
+				candidate.formation_preferred_radius = placement.preferred_radius
+				candidate.formation_minimum_radius = placement.minimum_radius
+				candidate.formation_maximum_radius = placement.maximum_radius
+				candidate.formation_preferred_angle_deg = placement.preferred_angle_deg
+				candidate.formation_allowed_angle_half_width_deg = placement.allowed_angle_half_width_deg
+				candidate.formation_radius_step = placement.radius_step
+				candidate.formation_angle_step_deg = placement.angle_step_deg
+				if type(placement.axis) == 'table' then
+					candidate.formation_axis_type = placement.axis.type
+					candidate.formation_axis_member = placement.axis.member
+				end
+			end
+			if type(formation.hysteresis) == 'table' then
+				candidate.formation_hysteresis_start_distance = formation.hysteresis.start_distance
+				candidate.formation_hysteresis_stop_distance = formation.hysteresis.stop_distance
+			end
+			if type(formation.constraints) == 'table' then
+				local constraints = formation.constraints
+				candidate.formation_avoid_encounter_hazards = constraints.avoid_encounter_hazards
+				candidate.formation_hazard_margin = constraints.hazard_margin
+				candidate.formation_safe_origin_radius = constraints.safe_origin_radius
+				candidate.formation_minimum_boss_distance = constraints.minimum_boss_distance
+				candidate.formation_maximum_boss_distance = constraints.maximum_boss_distance
+				candidate.formation_maximum_party_range = constraints.maximum_party_range
+				if type(constraints.required_party_names) == 'table' then
+					candidate.formation_required_party_names = clone_value(constraints.required_party_names)
+				end
 			end
 		end
 		if type(config.movement.spacing) == 'table' then
