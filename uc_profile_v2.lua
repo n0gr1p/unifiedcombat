@@ -227,6 +227,13 @@ local function pick_durable_config_domains(config, meta)
 		out.movement.formation = nil
 	end
 	if type(out.movement) == 'table'
+		and type(out.movement.named_formations) == 'table'
+		and out.movement.named_formations.enabled ~= true
+		and type(out.movement.named_formations.entries) == 'table'
+		and #out.movement.named_formations.entries == 0 then
+		out.movement.named_formations = nil
+	end
+	if type(out.movement) == 'table'
 		and type(out.movement.formation) == 'table'
 		and type(out.movement.formation.mock) == 'table'
 		and out.movement.formation.mock.enabled ~= true then

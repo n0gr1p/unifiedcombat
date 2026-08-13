@@ -251,7 +251,18 @@ public partial class MainForm
             ["encounter_water_skillchain"] = EncounterPolicyValue(_encounterWaterSkillchain),
             ["encounter_repeat_action_wall"] = EncounterPolicyValue(_encounterRepeatActionWall),
             ["encounter_repeat_action_guard_s"] = (double)_encounterRepeatActionGuard.Value,
+            ["kei_elemental_dealer_name"] = SelectedPartyName(_keiElementalDealer),
+            ["kei_water_probe_spell"] = _keiWaterProbeSpell.Text.Trim(),
+            ["kei_water_damage_spell"] = _keiWaterDamageSpell.Text.Trim(),
+            ["kei_ice_probe_spell"] = _keiIceProbeSpell.Text.Trim(),
+            ["kei_ice_damage_spell"] = _keiIceDamageSpell.Text.Trim(),
+            ["kei_sustain_interval_s"] = (double)_keiSustainInterval.Value,
+            ["kei_probe_timeout_s"] = (double)_keiProbeTimeout.Value,
+            ["kei_fullers_run_away_distance"] = (double)_keiFullersRunAwayDistance.Value,
+            ["kei_fullers_prearm_hpp_margin"] = (double)_keiFullersPrearmMargin.Value,
             ["formation_enabled"] = _formationEnabled.Checked,
+            ["named_formations_enabled"] = _namedFormationsEnabled.Checked,
+            ["named_formation_entries"] = BuildNamedFormationEntriesJson(),
             ["formation_encounter"] = FormationEncounterValue(),
             ["formation_mock_enabled"] = _formationMockEnabled.Checked,
             ["formation_mock_mob_name"] = _formationMockMobName.Text.Trim(),
@@ -385,14 +396,35 @@ public partial class MainForm
         var rules = new JsonArray();
         foreach (var rule in _reactionRules)
         {
-            rules.Add(new JsonObject
+            var serialized = new JsonObject
             {
                 ["trigger"] = rule.Trigger,
                 ["name"] = rule.Name,
                 ["response"] = rule.Response,
-            });
+            };
+            if (rule.Response == "run_away")
+            {
+                if (!rule.Distance.HasValue || !double.IsFinite(rule.Distance.Value) || rule.Distance.Value <= 0)
+                {
+                    throw new InvalidDataException("run_away reaction requires a positive finite distance");
+                }
+                serialized["distance"] = rule.Distance.Value;
+            }
+            rules.Add(serialized);
         }
         return rules;
+    }
+
+    private JsonArray BuildNamedFormationEntriesJson()
+    {
+        var entries = new JsonArray();
+        foreach (var formation in _namedFormations)
+        {
+            var serialized = (JsonObject)formation.Geometry.DeepClone();
+            serialized["mob_name"] = formation.MobName;
+            entries.Add(serialized);
+        }
+        return entries;
     }
 
     private static int ParseInt(string? text, int fallback)
@@ -548,7 +580,18 @@ public partial class MainForm
             ["encounter_water_skillchain"] = "enforce",
             ["encounter_repeat_action_wall"] = "off",
             ["encounter_repeat_action_guard_s"] = 10.0,
+            ["kei_elemental_dealer_name"] = "",
+            ["kei_water_probe_spell"] = "Water",
+            ["kei_water_damage_spell"] = "Water III",
+            ["kei_ice_probe_spell"] = "Blizzard",
+            ["kei_ice_damage_spell"] = "Blizzard III",
+            ["kei_sustain_interval_s"] = 2.5,
+            ["kei_probe_timeout_s"] = 3.0,
+            ["kei_fullers_run_away_distance"] = 12.0,
+            ["kei_fullers_prearm_hpp_margin"] = 1.0,
             ["formation_enabled"] = false,
+            ["named_formations_enabled"] = false,
+            ["named_formation_entries"] = new JsonArray(),
             ["formation_encounter"] = "lilith_easy",
             ["formation_mock_enabled"] = false,
             ["formation_mock_mob_name"] = "",

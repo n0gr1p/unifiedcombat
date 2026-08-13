@@ -35,6 +35,8 @@ end
 function M.build(opts)
 	opts = require_table(opts, 'uc_formation_runtime opts')
 	local get_config = require_function(opts.get_config, 'opts.get_config')
+	local get_named_formations = require_function(opts.get_named_formations, 'opts.get_named_formations')
+	local get_target = require_function(opts.get_target, 'opts.get_target')
 	local encounter_runtime = require_table(opts.encounter_runtime, 'opts.encounter_runtime')
 	require_function(encounter_runtime.snapshot, 'opts.encounter_runtime.snapshot')
 	local encounter_registry = require_table(opts.encounter_registry, 'opts.encounter_registry')
@@ -65,6 +67,15 @@ function M.build(opts)
 		reason = 'FORMATION_DISABLED',
 	}
 	local runtime = {}
+	local named_origin_actor_id = 0
+	local named_origin = nil
+
+	local function canonical(value)
+		if type(value) ~= 'string' then
+			return ''
+		end
+		return (value:match('^%s*(.-)%s*$') or ''):lower()
+	end
 
 	local function publish(value)
 		status = copy_table(require_table(value, 'formation runtime status'))
@@ -96,7 +107,50 @@ function M.build(opts)
 		if selected_source == 'mock' then
 			mock_runtime.reset('FORMATION_MOCK_SOURCE_CHANGED')
 		end
+		if selected_source == 'named_mob' then
+			named_origin_actor_id = 0
+			named_origin = nil
+		end
 		selected_source = source
+	end
+
+	local function selected_named_formation()
+		local named = get_named_formations()
+		if named == nil then
+			return nil, nil
+		end
+		require_table(named, 'config.movement.named_formations')
+		if type(named.enabled) ~= 'boolean' then
+			error('config.movement.named_formations.enabled must be boolean')
+		end
+		if type(named.entries) ~= 'table' then
+			error('config.movement.named_formations.entries must be a table')
+		end
+		if named.enabled ~= true then
+			return nil, nil
+		end
+		local target = get_target()
+		if type(target) ~= 'table'
+			or target.valid_target ~= true
+			or tonumber(target.spawn_type) ~= 16
+			or (tonumber(target.hpp) or 0) <= 0
+			or tonumber(target.status) == 0 then
+			return nil, nil
+		end
+		local target_name = canonical(target.name)
+		for i = 1, #named.entries do
+			local entry = require_table(
+				named.entries[i],
+				('config.movement.named_formations.entries[%d]'):format(i)
+			)
+			if canonical(entry.mob_name) == target_name then
+				local selected = copy_table(entry)
+				selected.enabled = true
+				selected.encounter = 'named_mob'
+				return selected, target
+			end
+		end
+		return nil, nil
 	end
 
 	local function selected_config()
@@ -119,6 +173,9 @@ function M.build(opts)
 		if encounter_id == 'lilith_easy' then
 			return 'lilith'
 		end
+		if encounter_id == 'named_mob' then
+			return 'generic'
+		end
 		if encounter_registry.get(encounter_id) ~= nil then
 			return 'generic'
 		end
@@ -129,7 +186,10 @@ function M.build(opts)
 		if tonumber(now) == nil then
 			error('uc_formation_runtime.observe requires now')
 		end
-		local config = selected_config()
+		local config, named_target = selected_named_formation()
+		if config == nil then
+			config = selected_config()
+		end
 		local kind = selection_kind(config)
 		transition_to(kind)
 		if kind == 'disabled' then
@@ -148,6 +208,45 @@ function M.build(opts)
 				kind = kind,
 				config = config,
 				observation = lilith_runtime.observe(now),
+			}
+		end
+
+		if named_target ~= nil then
+			transition_source('named_mob')
+			local actor_id = tonumber(named_target.id) or 0
+			if actor_id <= 0 or tonumber(named_target.x) == nil or tonumber(named_target.y) == nil then
+				error('engaged named formation target requires actor id and coordinates')
+			end
+			if named_origin_actor_id ~= actor_id then
+				named_origin_actor_id = actor_id
+				named_origin = { x = tonumber(named_target.x), y = tonumber(named_target.y) }
+			end
+			local snapshot = {
+				enabled = true,
+				configured_id = 'named_mob',
+				resolved_id = 'named_mob',
+				phase = 'active',
+				error = '',
+				boss = copy_table(named_target),
+				origin = copy_table(named_origin),
+			}
+			publish({
+				enabled = true,
+				kind = kind,
+				source = 'named_mob',
+				mob_name = tostring(named_target.name or ''),
+				encounter = 'named_mob',
+				phase = 'active',
+				reason = '',
+				boss_id = actor_id,
+				origin = copy_table(named_origin),
+				active_hazard_count = 0,
+			})
+			return {
+				kind = kind,
+				config = config,
+				snapshot = snapshot,
+				source = 'named_mob',
 			}
 		end
 
@@ -247,6 +346,7 @@ function M.build(opts)
 			source = tostring(observation.source or 'encounter'),
 			mock_mob_name = observation.source == 'mock'
 				and tostring(config.mock and config.mock.mob_name or '') or '',
+			mob_name = observation.source == 'named_mob' and tostring(config.mob_name or '') or '',
 			encounter = config.encounter,
 			phase = tostring(snapshot.phase or ''),
 			reason = reason,
@@ -287,6 +387,8 @@ function M.build(opts)
 		lilith_runtime.reset(reason)
 		generic_runtime.reset(reason)
 		mock_runtime.reset(reason)
+		named_origin_actor_id = 0
+		named_origin = nil
 		selected_kind = 'disabled'
 		selected_source = 'disabled'
 		publish({
@@ -341,6 +443,12 @@ local function get_default_runtime()
 		default_runtime = M.build({
 			get_config = function()
 				return require('uc_active_config').get_path('config.movement.formation')
+			end,
+			get_named_formations = function()
+				return require('uc_active_config').get_path('config.movement.named_formations')
+			end,
+			get_target = function()
+				return windower.ffxi.get_mob_by_target('t')
 			end,
 			encounter_runtime = require('uc_encounter_runtime'),
 			encounter_registry = require('uc_encounter_registry'),

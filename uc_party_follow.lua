@@ -759,6 +759,9 @@ local function should_suppress_follow_or_path_return_now(s, now)
 	if owner == 'scheduler_formation' and now < lock_until then
 		return true, 'formation_movement_lock'
 	end
+	if owner == 'scheduler_reaction' and now < lock_until then
+		return true, 'reaction_movement_lock'
+	end
 	if not movement_arbitration_enabled() then
 		return false, 'flag_off'
 	end

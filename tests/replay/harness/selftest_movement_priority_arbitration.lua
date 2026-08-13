@@ -194,6 +194,34 @@ local function main()
     assert_equal(reason, 'formation_movement_lock', 'unconditional formation movement lock reason mismatch')
 
     set_state({
+        flag = false,
+        now = 10,
+        intent_until = 0,
+        owner = 'scheduler_reaction',
+        lock_until = 15,
+        fight_follow_until = 0,
+        preengage = false,
+        target = nil,
+    })
+    suppress, reason = follow.should_suppress_follow_or_path_return_now({ combat_participant = false }, _G.__TEST_NOW)
+    assert_equal(suppress, true, 'run-away ownership must unconditionally suppress Party Follow')
+    assert_equal(reason, 'reaction_movement_lock', 'run-away movement lock reason mismatch')
+
+    set_state({
+        flag = false,
+        now = 16,
+        intent_until = 0,
+        owner = 'scheduler_reaction',
+        lock_until = 15,
+        fight_follow_until = 0,
+        preengage = false,
+        target = nil,
+    })
+    suppress, reason = follow.should_suppress_follow_or_path_return_now({ combat_participant = false }, _G.__TEST_NOW)
+    assert_equal(suppress, false, 'expired run-away ownership must allow normal movement to resume')
+    assert_equal(reason, 'flag_off', 'expired run-away ownership release reason mismatch')
+
+    set_state({
         flag = true,
         now = 10,
         intent_until = 0,

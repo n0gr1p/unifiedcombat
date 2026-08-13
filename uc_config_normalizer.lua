@@ -398,16 +398,28 @@ local function normalize_reaction_rules(value)
             local trigger = normalize_optional_string(entry.trigger)
             local name = normalize_optional_string(entry.name)
             local response = normalize_optional_string(entry.response)
-            local valid = (trigger == 'ability_window' and response == 'turn_away')
+            local valid = (trigger == 'ability_window'
+                    and (response == 'turn_away' or response == 'run_away'))
                 or (trigger == 'enemy_buff' and response == 'stop_attacking')
             local key = trigger and name and (trigger .. ':' .. name:lower()) or nil
             if valid and name ~= nil and key ~= nil and not seen[key] then
                 seen[key] = true
-                out[#out + 1] = {
+                local normalized = {
                     trigger = trigger,
                     name = name,
                     response = response,
                 }
+                if response == 'run_away' then
+                    if type(entry.distance) ~= 'number'
+                        or entry.distance ~= entry.distance
+                        or entry.distance == math.huge
+                        or entry.distance == -math.huge
+                        or entry.distance <= 0 then
+                        error(('reactions.rules[%d].distance must be a finite number greater than zero for run_away'):format(i))
+                    end
+                    normalized.distance = entry.distance
+                end
+                out[#out + 1] = normalized
             end
         end
     end
@@ -979,6 +991,10 @@ local function default_config(meta)
                     sample_step_deg = 10.0,
                 },
             },
+            named_formations = {
+                enabled = false,
+                entries = {},
+            },
             spacing = {
                 enabled = false,
                 band_min = -0.9,
@@ -1158,6 +1174,12 @@ end
 local ENCOUNTER_IDS = {
     sortie_ghatjot = true,
     sortie_dhartok = true,
+    kei = true,
+}
+
+local GENERIC_FORMATION_ENCOUNTER_IDS = {
+    sortie_ghatjot = true,
+    sortie_dhartok = true,
 }
 
 local ENCOUNTER_POLICY_MODES = {
@@ -1194,7 +1216,7 @@ local function normalize_encounter_id(value, enabled)
         return ''
     end
     if ENCOUNTER_IDS[encounter_id] ~= true then
-        error('config.encounter.id must be sortie_ghatjot or sortie_dhartok')
+        error('config.encounter.id must be sortie_ghatjot, sortie_dhartok, or kei')
     end
     return encounter_id
 end
@@ -1215,6 +1237,7 @@ local function normalize_encounter(source, config)
     local id_value
     local policy_value
     local tuning_value
+    local kei_value
     if nested ~= nil then
         if type(nested) ~= 'table' then
             error('config.encounter must be a table')
@@ -1223,6 +1246,7 @@ local function normalize_encounter(source, config)
         id_value = nested.id
         policy_value = nested.policy
         tuning_value = nested.tuning
+        kei_value = nested.kei
     else
         enabled_value = first_path(source, { path('encounter_enabled') })
         id_value = first_path(source, { path('encounter_id') })
@@ -1233,6 +1257,25 @@ local function normalize_encounter(source, config)
         }
         tuning_value = {
             repeat_action_guard_s = first_path(source, { path('encounter_repeat_action_guard_s') }),
+        }
+        kei_value = {
+            elemental_damage = {
+                dealer_name = first_path(source, { path('kei_elemental_dealer_name') }),
+                water = {
+                    probe_spell = first_path(source, { path('kei_water_probe_spell') }),
+                    damage_spell = first_path(source, { path('kei_water_damage_spell') }),
+                },
+                ice = {
+                    probe_spell = first_path(source, { path('kei_ice_probe_spell') }),
+                    damage_spell = first_path(source, { path('kei_ice_damage_spell') }),
+                },
+                sustain_interval_s = first_path(source, { path('kei_sustain_interval_s') }),
+                probe_timeout_s = first_path(source, { path('kei_probe_timeout_s') }),
+            },
+            fullers = {
+                run_away_distance = first_path(source, { path('kei_fullers_run_away_distance') }),
+                prearm_hpp_margin = first_path(source, { path('kei_fullers_prearm_hpp_margin') }),
+            },
         }
     end
 
@@ -1266,6 +1309,67 @@ local function normalize_encounter(source, config)
             error('config.encounter.tuning.repeat_action_guard_s must be a positive number')
         end
         encounter.tuning.repeat_action_guard_s = repeat_guard
+    end
+
+    if encounter.id == 'kei' and encounter.enabled == true then
+        if type(kei_value) ~= 'table' then
+            error('enabled Kei encounter requires config.encounter.kei')
+        end
+        local elemental = kei_value.elemental_damage
+        if type(elemental) ~= 'table' or type(elemental.water) ~= 'table' or type(elemental.ice) ~= 'table' then
+            error('enabled Kei encounter requires elemental_damage water and ice spell tables')
+        end
+        local dealer_name = normalize_optional_string(elemental.dealer_name)
+        local water_probe = normalize_optional_string(elemental.water.probe_spell)
+        local water_damage = normalize_optional_string(elemental.water.damage_spell)
+        local ice_probe = normalize_optional_string(elemental.ice.probe_spell)
+        local ice_damage = normalize_optional_string(elemental.ice.damage_spell)
+        if dealer_name == nil then
+            error('config.encounter.kei.elemental_damage.dealer_name must not be empty')
+        end
+        if water_probe == nil or water_damage == nil or ice_probe == nil or ice_damage == nil then
+            error('config.encounter.kei requires all four configured elemental spells')
+        end
+        local sustain_interval = elemental.sustain_interval_s
+        if type(sustain_interval) ~= 'number' or sustain_interval < 0.5 or sustain_interval > 30 then
+            error('config.encounter.kei.elemental_damage.sustain_interval_s must be 0.5..30')
+        end
+        local probe_timeout = elemental.probe_timeout_s
+        if type(probe_timeout) ~= 'number' or probe_timeout < 0.5 or probe_timeout > 30 then
+            error('config.encounter.kei.elemental_damage.probe_timeout_s must be 0.5..30')
+        end
+        if type(kei_value.fullers) ~= 'table' then
+            error('config.encounter.kei.fullers must be a table')
+        end
+        local run_away_distance = kei_value.fullers.run_away_distance
+        if type(run_away_distance) ~= 'number' or run_away_distance <= 0 or run_away_distance > 50 then
+            error('config.encounter.kei.fullers.run_away_distance must be > 0 and <= 50')
+        end
+        local prearm_margin = kei_value.fullers.prearm_hpp_margin
+        if type(prearm_margin) ~= 'number' or prearm_margin < 0 or prearm_margin > 10 then
+            error('config.encounter.kei.fullers_prearm_hpp_margin must be 0..10')
+        end
+        encounter.kei = {
+            elemental_damage = {
+                dealer_name = dealer_name,
+                water = {
+                    probe_spell = water_probe,
+                    damage_spell = water_damage,
+                },
+                ice = {
+                    probe_spell = ice_probe,
+                    damage_spell = ice_damage,
+                },
+                sustain_interval_s = sustain_interval,
+                probe_timeout_s = probe_timeout,
+            },
+            fullers = {
+                run_away_distance = run_away_distance,
+                prearm_hpp_margin = prearm_margin,
+            },
+        }
+    else
+        encounter.kei = nil
     end
 end
 
@@ -1723,10 +1827,58 @@ local function normalize_generic_formation(source, target)
     target.healer = nil
 end
 
+local function normalize_named_formations(source, target)
+    if source == nil then
+        return
+    end
+    if type(source) ~= 'table' then
+        error('config.movement.named_formations must be a table')
+    end
+    target.enabled = normalize_boolean(source.enabled, target.enabled)
+    local entries = source.entries
+    if entries == nil then
+        entries = {}
+    end
+    if type(entries) ~= 'table' then
+        error('config.movement.named_formations.entries must be a table')
+    end
+    local count = #entries
+    for key in pairs(entries) do
+        if type(key) ~= 'number' or key < 1 or key > count or key % 1 ~= 0 then
+            error('config.movement.named_formations.entries must be a contiguous array')
+        end
+    end
+    local normalized_entries = {}
+    local seen_names = {}
+    for i = 1, count do
+        local entry = require_formation_table(
+            entries[i],
+            ('config.movement.named_formations.entries[%d]'):format(i)
+        )
+        local mob_name = require_formation_string(
+            entry.mob_name,
+            ('config.movement.named_formations.entries[%d].mob_name'):format(i)
+        )
+        local name_key = mob_name:lower()
+        if seen_names[name_key] then
+            error('config.movement.named_formations contains duplicate mob name: ' .. mob_name)
+        end
+        seen_names[name_key] = true
+        local normalized = { mob_name = mob_name }
+        local geometry = type(entry.placement) == 'table' and entry or generic_formation_flat_source(entry)
+        normalize_generic_formation(geometry, normalized)
+        normalized_entries[#normalized_entries + 1] = normalized
+    end
+    if target.enabled and #normalized_entries == 0 then
+        error('enabled config.movement.named_formations requires at least one entry')
+    end
+    target.entries = normalized_entries
+end
+
 local function normalize_movement(source, config)
     local movement = config.movement
     local nested = get_path(source, { 'movement' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'move', 'formation', 'spacing', 'path' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'move', 'formation', 'named_formations', 'spacing', 'path' }) then
         movement.enabled = normalize_boolean(nested.enabled, movement.enabled)
         movement.move = normalize_boolean(nested.move, movement.move)
         local formation = is_table(nested.formation) and nested.formation or {}
@@ -1756,6 +1908,7 @@ local function normalize_movement(source, config)
         if movement.formation.enabled and movement.formation.encounter ~= 'lilith_easy' then
             normalize_generic_formation(formation, movement.formation)
         end
+        normalize_named_formations(nested.named_formations, movement.named_formations)
         local spacing = is_table(nested.spacing) and nested.spacing or {}
         movement.spacing.enabled = normalize_boolean(spacing.enabled, movement.spacing.enabled)
         movement.spacing.band_min = normalize_number(spacing.band_min, movement.spacing.band_min)
@@ -1812,6 +1965,10 @@ local function normalize_movement(source, config)
         if movement.formation.enabled and movement.formation.encounter ~= 'lilith_easy' then
             normalize_generic_formation(generic_formation_flat_source(source), movement.formation)
         end
+        normalize_named_formations({
+            enabled = first_path(source, { path('named_formations_enabled') }),
+            entries = first_path(source, { path('named_formation_entries') }),
+        }, movement.named_formations)
         movement.spacing.enabled = normalize_boolean(first_path(source, { path('spacing') }), movement.spacing.enabled)
         movement.spacing.band_min = normalize_number(first_path(source, { path('spacing_band_min') }), movement.spacing.band_min)
         movement.spacing.band_max = normalize_number(first_path(source, { path('spacing_band_max') }), movement.spacing.band_max)
@@ -1842,6 +1999,10 @@ end
 
 local function validate_formation_activation(config)
     local formation = config.movement.formation
+    local named = config.movement.named_formations
+    if named.enabled == true and config.movement.enabled ~= true then
+        error('enabled named formations require config.movement.enabled')
+    end
     if formation.mock.enabled == true and formation.enabled ~= true then
         error('enabled formation mock requires config.movement.formation.enabled')
     end
@@ -1854,7 +2015,7 @@ local function validate_formation_activation(config)
         end
         return
     end
-    if ENCOUNTER_IDS[formation.encounter] ~= true then
+    if GENERIC_FORMATION_ENCOUNTER_IDS[formation.encounter] ~= true then
         error('enabled config.movement.formation.encounter must be lilith_easy, sortie_ghatjot, or sortie_dhartok')
     end
     if config.movement.enabled ~= true then
@@ -2363,6 +2524,21 @@ local function normalize_reactions(source, config)
     end
 end
 
+local function validate_kei_reaction_configuration(config)
+    if config.encounter.enabled ~= true or config.encounter.id ~= 'kei'
+        or config.reactions.enabled ~= true then
+        return
+    end
+    for i = 1, #config.reactions.rules do
+        local rule = config.reactions.rules[i]
+        if rule.trigger == 'ability_window'
+            and type(rule.name) == 'string'
+            and rule.name:lower() == 'dancing fullers' then
+            error('Kei Fullers reaction is owned by config.encounter.kei.fullers; remove the duplicate reaction rule')
+        end
+    end
+end
+
 local function normalize_legacy(source, config)
     local legacy = config.legacy
     local nested = get_path(source, { 'legacy' })
@@ -2407,6 +2583,7 @@ function M.normalize(settings, meta)
     normalize_follow(source, config)
     normalize_targeting(source, config)
     normalize_reactions(source, config)
+    validate_kei_reaction_configuration(config)
     normalize_tank(source, config)
     normalize_sleep(source, config)
     normalize_spells(source, config)

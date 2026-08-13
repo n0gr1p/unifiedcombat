@@ -25,6 +25,18 @@ local uc_lifecycle_movement = require('uc_movement_dispatcher').build({
 	source_prefix = 'lifecycle',
 })
 
+local function uc_reset_reaction_runtime(reason)
+	local lock = rawget(_G, 'UC_REACTION_LOCK')
+	if type(lock) == 'table' and lock.response == 'run_away' then
+		uc_lifecycle_movement.stop({
+			reason = 'REACTION_RUN_AWAY_LIFECYCLE_RESET',
+			lifecycle_reason = reason,
+		})
+	end
+	require('uc_reaction_runtime').reset(reason)
+	_G.UC_REACTION_LOCK = nil
+end
+
 local function uc_now_s()
 	local s = rawget(_G, 'socket')
 	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
@@ -214,6 +226,17 @@ local function uc_new_settings_defaults()
 		encounter_water_skillchain = 'enforce',
 		encounter_repeat_action_wall = 'off',
 		encounter_repeat_action_guard_s = 10.0,
+		kei_elemental_dealer_name = '',
+		kei_water_probe_spell = 'Water',
+		kei_water_damage_spell = 'Water III',
+		kei_ice_probe_spell = 'Blizzard',
+		kei_ice_damage_spell = 'Blizzard III',
+		kei_sustain_interval_s = 2.5,
+		kei_probe_timeout_s = 3.0,
+		kei_fullers_run_away_distance = 12.0,
+		kei_fullers_prearm_hpp_margin = 1.0,
+		named_formations_enabled = false,
+		named_formation_entries = {},
 		face = false,
 		partner = false,
 		partner2 = false,
@@ -401,6 +424,7 @@ local function uc_is_combat_participant(s)
 	return uc_truthy(st.autotarget)
 		or uc_truthy(st.move)
 		or uc_truthy(st.formation_enabled)
+		or uc_truthy(st.named_formations_enabled)
 		or uc_truthy(st.tank)
 		or (uc_truthy(st.hunter) and uc_truthy(st.path_follow_enabled))
 		or uc_truthy(st.puller)
@@ -417,6 +441,7 @@ local function uc_is_movement_participant(s)
 	return uc_domain_enabled(st, 'movement') and (
 		uc_truthy(st.move)
 		or uc_truthy(st.formation_enabled)
+		or uc_truthy(st.named_formations_enabled)
 		or uc_truthy(st.spacing)
 		or uc_truthy(st.autotarget)
 		or (uc_truthy(st.hunter) and uc_truthy(st.path_follow_enabled))
@@ -558,6 +583,9 @@ local PROFILE_KEYS = {
 	'spacing_model_size_floor',
 	'spacing_repel_hold_ticks', 'spacing_overlap_deadband', 'spacing_repel_weight', 'spacing_band_deadband',
 	'encounter_enabled', 'encounter_id', 'encounter_water_damage', 'encounter_water_skillchain', 'encounter_repeat_action_wall', 'encounter_repeat_action_guard_s',
+	'kei_elemental_dealer_name', 'kei_water_probe_spell', 'kei_water_damage_spell', 'kei_ice_probe_spell', 'kei_ice_damage_spell',
+	'kei_sustain_interval_s', 'kei_probe_timeout_s', 'kei_fullers_run_away_distance', 'kei_fullers_prearm_hpp_margin',
+	'named_formations_enabled', 'named_formation_entries',
 	'partner', 'partner2', 'puller', 'puller_name', 'puller_leash_source', 'puller_engage_range', 'puller_distance_only', 'partner_id', 'partner_id2', 'partner_ids', 'puller_id',
 	'fight_leader', 'fight_leader_id', 'party_follow', 'party_follow_id', 'party_follow_leader_name', 'party_follow_min', 'party_follow_max', 'fight_follow_min', 'fight_follow_hold_s',
 	'nyzul_coordinator_name', 'nyzul_anchor_name', 'nyzul_parking_order',
@@ -2259,7 +2287,7 @@ windower.register_event('job change', function(job, lvl)
 	local jname = res.jobs:with('id', job).english_short
 	uc_nyzul_runtime.reset('job_change')
 	require('uc_brd_maintenance').reset('job_change')
-	require('uc_reaction_runtime').reset('job_change')
+	uc_reset_reaction_runtime('job_change')
 	uc_encounter_runtime.reset('job_change')
 	require('uc_lilith_easy_encounter').reset('job_change')
 	require('uc_formation_runtime').reset('job_change')
@@ -2275,12 +2303,11 @@ windower.register_event('zone change', function()
 	uc_camp_pull_registry.reset('zone_change')
 	uc_nyzul_runtime.reset('zone_change')
 	require('uc_brd_maintenance').reset('zone_change')
-	require('uc_reaction_runtime').reset('zone_change')
+	uc_reset_reaction_runtime('zone_change')
 	uc_encounter_runtime.reset('zone_change')
 	require('uc_lilith_easy_encounter').reset('zone_change')
 	require('uc_formation_runtime').reset('zone_change')
 	UC_COMBAT_CORE.reset_skillchain_state('zone_change')
-	_G.UC_REACTION_LOCK = nil
 	_G.UC_LAST_ZONE_CHANGE_AT = uc_now_s()
 	_G.UC_ZONE_SUSPEND_UNTIL = uc_now_s() + UC_ZONE_SUSPEND_SEC
 	_G.UC_LAST_BLOCK_REASON = 'ZONE_SUSPEND'
@@ -2290,7 +2317,7 @@ windower.register_event('unload', function()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('unload')
 	uc_nyzul_runtime.reset('unload')
-	require('uc_reaction_runtime').reset('unload')
+	uc_reset_reaction_runtime('unload')
 	uc_encounter_runtime.reset('unload')
 	require('uc_lilith_easy_encounter').reset('unload')
 	require('uc_formation_runtime').reset('unload')
@@ -2312,6 +2339,7 @@ windower.register_event('logout', function()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('logout')
 	uc_nyzul_runtime.reset('logout')
+	uc_reset_reaction_runtime('logout')
 	uc_encounter_runtime.reset('logout')
 	require('uc_lilith_easy_encounter').reset('logout')
 	require('uc_formation_runtime').reset('logout')
@@ -2685,11 +2713,22 @@ windower.register_event('addon command', function(...)
 			))
 			for i = 1, #(status.active or {}) do
 				local lock = status.active[i]
-				windower.add_to_chat(207, ('  %s %s actor=%d response=%s'):format(
+				local movement_detail = ''
+				if lock.response == 'run_away' then
+					local current_distance = type(lock.current_distance) == 'number'
+						and ('%.2f'):format(lock.current_distance) or 'unavailable'
+					movement_detail = (' target_distance=%.2f current_distance=%s phase=%s'):format(
+						lock.distance,
+						current_distance,
+						lock.run_away_phase
+					)
+				end
+				windower.add_to_chat(207, ('  %s %s actor=%d response=%s%s'):format(
 					tostring(lock.trigger or ''),
 					tostring(lock.name or ''),
 					tonumber(lock.actor_id) or 0,
-					tostring(lock.response or '')
+					tostring(lock.response or ''),
+					movement_detail
 				))
 			end
 			if #(status.unresolved_enemy_buffs or {}) > 0 then

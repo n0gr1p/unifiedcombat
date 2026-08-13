@@ -6,7 +6,8 @@ namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
-    private sealed record ReactionRuleRow(string Trigger, string Name, string Response);
+    private sealed record ReactionRuleRow(string Trigger, string Name, string Response, double? Distance);
+    private sealed record NamedFormationRow(string MobName, JsonObject Geometry);
 
     private static bool SequenceEqualOrdinal(IReadOnlyList<string> a, IReadOnlyList<string> b)
     {
@@ -377,7 +378,27 @@ public partial class MainForm
             _spEmergencyMargin.Text = "0.1";
             _spSwitchMargin.Text = "0.35";
             _spArrivalTolerance.Text = "0.2";
+            _encounterEnabled.Checked = false;
+            _encounterId.SelectedItem = "Ghatjot — Sortie Area A";
+            _encounterWaterDamage.SelectedItem = "Enforce";
+            _encounterWaterSkillchain.SelectedItem = "Enforce";
+            _encounterRepeatActionWall.SelectedItem = "Off";
+            _encounterRepeatActionGuard.Value = 10.0m;
+            _keiElementalDealer.Items.Clear();
+            _keiElementalDealer.Text = "";
+            _keiWaterProbeSpell.Text = "Water";
+            _keiWaterDamageSpell.Text = "Water III";
+            _keiIceProbeSpell.Text = "Blizzard";
+            _keiIceDamageSpell.Text = "Blizzard III";
+            _keiSustainInterval.Value = 2.5m;
+            _keiProbeTimeout.Value = 3.0m;
+            _keiFullersRunAwayDistance.Value = 12.0m;
+            _keiFullersPrearmMargin.Value = 1.0m;
             _formationEnabled.Checked = false;
+            _namedFormationsEnabled.Checked = false;
+            _namedFormationMobName.Text = "";
+            _namedFormations.Clear();
+            _namedFormationList.Items.Clear();
             _formationEncounter.SelectedItem = "Lady Lilith — Easy";
             _formationMockEnabled.Checked = false;
             _formationMockMobName.Text = "";
@@ -478,6 +499,7 @@ public partial class MainForm
             _reactionRules.Clear();
             _reactionRuleList.Items.Clear();
             _reactionName.Text = "";
+            _reactionDistance.Value = 12m;
             _reactionTriggerCombo.SelectedItem = "ability_window";
             RefreshReactionResponseOptions();
             _partyOptions.Clear();
@@ -739,6 +761,7 @@ public partial class MainForm
             {
                 _pathPullSpellOptions.Clear();
                 _pathPullSpellOptions.AddRange(pullSpellOpts);
+                RefreshKeiSpellOptions();
             }
             if (!SequenceEqualOrdinal(_tankEnmityRows, tankEnmityActions))
             {
@@ -937,6 +960,7 @@ public partial class MainForm
             {
                 _pathPullSpellOptions.Clear();
                 _pathPullSpellOptions.AddRange(pullSpellOpts);
+                RefreshKeiSpellOptions();
                 changed = true;
             }
             if (hasCorRolls && !SequenceEqualOrdinal(_corRollOptions, corRollOpts))
@@ -980,6 +1004,7 @@ public partial class MainForm
 				var keepNyzulCoordinator = SelectedPartyName(_nyzulCoordinatorCombo);
 				var keepNyzulAnchor = SelectedPartyName(_nyzulAnchorCombo);
 				var keepNyzulParker = SelectedPartyName(_nyzulParkerCombo);
+                var keepKeiDealer = SelectedPartyName(_keiElementalDealer);
                 if (string.IsNullOrWhiteSpace(snapPuller) && !string.IsNullOrWhiteSpace(keepPuller))
                 {
                     snapPuller = keepPuller;
@@ -998,6 +1023,7 @@ public partial class MainForm
 				BindPartyCombo(_nyzulCoordinatorCombo, partnerOpts, keepNyzulCoordinator);
 				BindPartyCombo(_nyzulAnchorCombo, partnerOpts, keepNyzulAnchor);
 				BindPartyCombo(_nyzulParkerCombo, partnerOpts, keepNyzulParker);
+                BindPartyCombo(_keiElementalDealer, partnerOpts, keepKeiDealer);
                 UpdatePartyFollowModeWarning(sid);
                 var selectedNames = SessionStateHelper.SplitOptions(s.TryGetProperty("cor_roll_range_selected", out var crs2) ? crs2 : default);
                 RenderCorRangePartyChecks(sid, selectedNames);
@@ -2110,11 +2136,24 @@ public partial class MainForm
                 var trigger = SessionStateHelper.GetString(item, "trigger").Trim();
                 var name = SessionStateHelper.GetString(item, "name").Trim();
                 var response = SessionStateHelper.GetString(item, "response").Trim();
-                var valid = (trigger == "ability_window" && response == "turn_away")
+                var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away"))
                     || (trigger == "enemy_buff" && response == "stop_attacking");
+                double? distance = null;
+                if (response == "run_away")
+                {
+                    if (!item.TryGetProperty("distance", out var distanceNode)
+                        || distanceNode.ValueKind != JsonValueKind.Number
+                        || !distanceNode.TryGetDouble(out var parsedDistance)
+                        || !double.IsFinite(parsedDistance)
+                        || parsedDistance <= 0)
+                    {
+                        throw new InvalidDataException("run_away reaction requires a positive finite distance");
+                    }
+                    distance = parsedDistance;
+                }
                 if (valid && name.Length > 0)
                 {
-                    _reactionRules.Add(new ReactionRuleRow(trigger, name, response));
+                    _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance));
                 }
             }
         }
@@ -2126,7 +2165,8 @@ public partial class MainForm
         _reactionRuleList.Items.Clear();
         foreach (var rule in _reactionRules)
         {
-            _reactionRuleList.Items.Add($"{rule.Trigger} | {rule.Name} | {rule.Response}");
+            var distance = rule.Distance.HasValue ? $" | {rule.Distance.Value:0.0}y" : "";
+            _reactionRuleList.Items.Add($"{rule.Trigger} | {rule.Name} | {rule.Response}{distance}");
         }
         if (_reactionRuleList.Items.Count > 0 && selectedIndex >= 0)
         {
@@ -2136,12 +2176,26 @@ public partial class MainForm
 
     private void RefreshReactionResponseOptions()
     {
-        var response = string.Equals(_reactionTriggerCombo.SelectedItem?.ToString(), "enemy_buff", StringComparison.Ordinal)
-            ? "stop_attacking"
-            : "turn_away";
         _reactionResponseCombo.Items.Clear();
-        _reactionResponseCombo.Items.Add(response);
+        if (string.Equals(_reactionTriggerCombo.SelectedItem?.ToString(), "enemy_buff", StringComparison.Ordinal))
+        {
+            _reactionResponseCombo.Items.Add("stop_attacking");
+        }
+        else
+        {
+            _reactionResponseCombo.Items.AddRange(["turn_away", "run_away"]);
+        }
         _reactionResponseCombo.SelectedIndex = 0;
+        RefreshReactionDistanceState();
+    }
+
+    private void RefreshReactionDistanceState()
+    {
+        _reactionDistance.Enabled = string.Equals(
+            _reactionResponseCombo.SelectedItem?.ToString(),
+            "run_away",
+            StringComparison.Ordinal
+        );
     }
 
     private void OnReactionTriggerChanged()
@@ -2168,6 +2222,7 @@ public partial class MainForm
         {
             "Ghatjot — Sortie Area A" => "sortie_ghatjot",
             "Dhartok — Sortie Area E (validation pending)" => "sortie_dhartok",
+            "Kei — Omen" => "kei",
             _ => throw new InvalidOperationException("unsupported encounter selection"),
         };
     }
@@ -2202,6 +2257,7 @@ public partial class MainForm
         {
             "sortie_ghatjot" => "Ghatjot — Sortie Area A",
             "sortie_dhartok" => "Dhartok — Sortie Area E (validation pending)",
+            "kei" => "Kei — Omen",
             _ => throw new InvalidDataException($"unsupported encounter ID in UI profile: {encounterId}"),
         };
         var repeatDefault = encounterId == "sortie_dhartok" ? "warn" : "off";
@@ -2229,6 +2285,17 @@ public partial class MainForm
             );
         }
         _encounterRepeatActionGuard.Value = repeatGuard;
+        var dealerName = SessionStateHelper.GetString(snapshot, "kei_elemental_dealer_name", "");
+        BindPartyCombo(_keiElementalDealer, _partyOptions, dealerName);
+        _keiWaterProbeSpell.Text = SessionStateHelper.GetString(snapshot, "kei_water_probe_spell", "Water");
+        _keiWaterDamageSpell.Text = SessionStateHelper.GetString(snapshot, "kei_water_damage_spell", "Water III");
+        _keiIceProbeSpell.Text = SessionStateHelper.GetString(snapshot, "kei_ice_probe_spell", "Blizzard");
+        _keiIceDamageSpell.Text = SessionStateHelper.GetString(snapshot, "kei_ice_damage_spell", "Blizzard III");
+        ApplyFormationNumber(snapshot, "kei_sustain_interval_s", _keiSustainInterval, "2.5");
+        ApplyFormationNumber(snapshot, "kei_probe_timeout_s", _keiProbeTimeout, "3");
+        ApplyFormationNumber(snapshot, "kei_fullers_run_away_distance", _keiFullersRunAwayDistance, "12");
+        ApplyFormationNumber(snapshot, "kei_fullers_prearm_hpp_margin", _keiFullersPrearmMargin, "1");
+        RefreshKeiSpellOptions();
         UpdateEncounterUiState();
     }
 
@@ -2238,7 +2305,10 @@ public partial class MainForm
         {
             return;
         }
-        _encounterRepeatActionWall.SelectedItem = EncounterIdValue() == "sortie_dhartok" ? "Warn" : "Off";
+        if (EncounterIdValue() != "kei")
+        {
+            _encounterRepeatActionWall.SelectedItem = EncounterIdValue() == "sortie_dhartok" ? "Warn" : "Off";
+        }
         OnEncounterConfigChanged();
     }
 
@@ -2263,6 +2333,37 @@ public partial class MainForm
             return true;
         }
         var encounterId = EncounterIdValue();
+        if (encounterId == "kei")
+        {
+            if (string.IsNullOrWhiteSpace(SelectedPartyName(_keiElementalDealer)))
+            {
+                error = "Kei requires an Elemental Damage Dealer.";
+                return false;
+            }
+            var spells = new[]
+            {
+                _keiWaterProbeSpell.Text,
+                _keiWaterDamageSpell.Text,
+                _keiIceProbeSpell.Text,
+                _keiIceDamageSpell.Text,
+            };
+            if (spells.Any(string.IsNullOrWhiteSpace))
+            {
+                error = "Kei requires all four elemental spell selections.";
+                return false;
+            }
+            var selectedCharacter = _sessionMetaBySid.TryGetValue(_selectedSid ?? "", out var meta)
+                ? meta.CharName
+                : "";
+            if (string.Equals(selectedCharacter, SelectedPartyName(_keiElementalDealer), StringComparison.OrdinalIgnoreCase)
+                && _pathPullSpellOptions.Count > 0
+                && spells.Any(spell => !_pathPullSpellOptions.Contains(spell.Trim(), StringComparer.OrdinalIgnoreCase)))
+            {
+                error = "One or more Kei spells are unavailable to the configured dealer's current job.";
+                return false;
+            }
+            return true;
+        }
         if (encounterId == "sortie_ghatjot" && EncounterPolicyValue(_encounterRepeatActionWall) != "off")
         {
             error = "Ghatjot does not use the repeated WS/BP policy; set it to Off.";
@@ -2276,13 +2377,20 @@ public partial class MainForm
         var enabled = _encounterEnabled.Checked;
         _encounterConfigPanel.Enabled = enabled;
         var isDhartok = EncounterIdValue() == "sortie_dhartok";
+        var isKei = EncounterIdValue() == "kei";
+        _keiConfigPanel.Visible = isKei;
         _encounterRepeatActionWall.Enabled = enabled && isDhartok;
         _encounterRepeatActionGuard.Enabled = enabled && isDhartok;
+        _encounterWaterDamage.Enabled = enabled && !isKei;
+        _encounterWaterSkillchain.Enabled = enabled && !isKei;
+        _keiConfigPanel.Enabled = enabled && isKei;
         var valid = ValidateEncounterConfiguration(out var error);
         _encounterValidation.Text = !enabled
             ? "Encounter safeguards are disabled for this profile."
             : !valid
                 ? error
+                : isKei
+                    ? "Kei elemental maintenance and Dancing Fullers reaction are ready to save."
                 : isDhartok
                     ? "Dhartok policy is available, but spatial hazard handling remains blocked pending field validation."
                     : "Ghatjot safeguards are ready to save."
@@ -2299,6 +2407,20 @@ public partial class MainForm
             "Dhartok — Generic geometry (hazards pending validation)" => "sortie_dhartok",
             _ => throw new InvalidOperationException("unsupported formation encounter selection"),
         };
+    }
+
+    private void RefreshKeiSpellOptions()
+    {
+        foreach (var combo in new[] { _keiWaterProbeSpell, _keiWaterDamageSpell, _keiIceProbeSpell, _keiIceDamageSpell })
+        {
+            var selected = combo.Text;
+            combo.Items.Clear();
+            foreach (var spell in _pathPullSpellOptions)
+            {
+                combo.Items.Add(spell);
+            }
+            combo.Text = selected;
+        }
     }
 
     private string FormationPlacementModeValue()
@@ -2354,9 +2476,242 @@ public partial class MainForm
             .ToList();
     }
 
+    private JsonObject CaptureNamedFormationGeometry()
+    {
+        var geometry = new JsonObject
+        {
+            ["formation_placement_mode"] = FormationPlacementModeValue(),
+            ["formation_anchor"] = FormationAnchorValue(),
+            ["formation_anchor_member"] = SelectedPartyName(_formationAnchorMember),
+            ["formation_axis_type"] = FormationAxisTypeValue(),
+            ["formation_axis_member"] = SelectedPartyName(_formationAxisMember),
+            ["formation_preferred_radius"] = (double)_formationPreferredRadius.Value,
+            ["formation_minimum_radius"] = (double)_formationMinimumRadius.Value,
+            ["formation_maximum_radius"] = (double)_formationMaximumRadius.Value,
+            ["formation_preferred_angle_deg"] = (double)_formationPreferredAngle.Value,
+            ["formation_allowed_angle_half_width_deg"] = (double)_formationAllowedAngleHalfWidth.Value,
+            ["formation_radius_step"] = (double)_formationRadiusStep.Value,
+            ["formation_angle_step_deg"] = (double)_formationAngleStep.Value,
+            ["formation_hysteresis_start_distance"] = (double)_formationHysteresisStart.Value,
+            ["formation_hysteresis_stop_distance"] = (double)_formationHysteresisStop.Value,
+            ["formation_avoid_encounter_hazards"] = _formationAvoidEncounterHazards.Checked,
+            ["formation_hazard_margin"] = (double)_formationHazardMargin.Value,
+            ["formation_safe_origin_radius"] = (double)_formationSafeOriginRadius.Value,
+            ["formation_minimum_boss_distance"] = (double)_formationMinimumBossDistance.Value,
+            ["formation_maximum_boss_distance"] = (double)_formationMaximumBossDistance.Value,
+            ["formation_maximum_party_range"] = (double)_formationMaximumPartyRange.Value,
+            ["formation_required_party_names"] = string.Join("|", SelectedFormationRequiredPartyNames()),
+        };
+        return geometry;
+    }
+
+    private void ApplyNamedFormationGeometry(JsonObject geometry)
+    {
+        using var document = JsonDocument.Parse(geometry.ToJsonString());
+        var root = document.RootElement;
+        _formationPlacementMode.SelectedItem = SessionStateHelper.GetString(root, "formation_placement_mode", "radial_band") == "polar_band"
+            ? "Polar band" : "Radial band";
+        _formationAnchor.SelectedItem = SessionStateHelper.GetString(root, "formation_anchor", "boss") switch
+        {
+            "boss" => "Boss",
+            "encounter_origin" => "Encounter origin",
+            "member" => "Party member",
+            var value => throw new InvalidDataException($"unsupported named formation anchor: {value}"),
+        };
+        _formationAxisType.SelectedItem = SessionStateHelper.GetString(root, "formation_axis_type", "boss_to_member") == "boss_heading"
+            ? "Boss heading" : "Boss to member";
+        _formationAnchorMember.Text = SessionStateHelper.GetString(root, "formation_anchor_member", "");
+        _formationAxisMember.Text = SessionStateHelper.GetString(root, "formation_axis_member", "");
+        var requiredNames = SessionStateHelper.SplitOptions(
+            root.TryGetProperty("formation_required_party_names", out var requiredNode) ? requiredNode : default
+        );
+        for (var i = 0; i < _formationRequiredParty.Items.Count; i++)
+        {
+            var partyName = NormalizePartyName(_formationRequiredParty.Items[i]?.ToString() ?? "");
+            _formationRequiredParty.SetItemChecked(
+                i,
+                requiredNames.Any(name => string.Equals(NormalizePartyName(name), partyName, StringComparison.OrdinalIgnoreCase))
+            );
+        }
+        ApplyFormationNumber(root, "formation_preferred_radius", _formationPreferredRadius, "3");
+        ApplyFormationNumber(root, "formation_minimum_radius", _formationMinimumRadius, "2");
+        ApplyFormationNumber(root, "formation_maximum_radius", _formationMaximumRadius, "4");
+        ApplyFormationNumber(root, "formation_preferred_angle_deg", _formationPreferredAngle, "180");
+        ApplyFormationNumber(root, "formation_allowed_angle_half_width_deg", _formationAllowedAngleHalfWidth, "60");
+        ApplyFormationNumber(root, "formation_radius_step", _formationRadiusStep, "0.5");
+        ApplyFormationNumber(root, "formation_angle_step_deg", _formationAngleStep, "10");
+        ApplyFormationNumber(root, "formation_hysteresis_start_distance", _formationHysteresisStart, "1");
+        ApplyFormationNumber(root, "formation_hysteresis_stop_distance", _formationHysteresisStop, "0.5");
+        _formationAvoidEncounterHazards.Checked = SessionStateHelper.GetBool(root, "formation_avoid_encounter_hazards", false);
+        ApplyFormationNumber(root, "formation_hazard_margin", _formationHazardMargin, "0");
+        ApplyFormationNumber(root, "formation_safe_origin_radius", _formationSafeOriginRadius, "0");
+        ApplyFormationNumber(root, "formation_minimum_boss_distance", _formationMinimumBossDistance, "0");
+        ApplyFormationNumber(root, "formation_maximum_boss_distance", _formationMaximumBossDistance, "0");
+        ApplyFormationNumber(root, "formation_maximum_party_range", _formationMaximumPartyRange, "0");
+    }
+
+    private void RebindNamedFormationList(int selectedIndex = -1)
+    {
+        _namedFormationList.Items.Clear();
+        foreach (var entry in _namedFormations)
+        {
+            _namedFormationList.Items.Add(entry.MobName);
+        }
+        if (selectedIndex >= 0 && selectedIndex < _namedFormationList.Items.Count)
+        {
+            _namedFormationList.SelectedIndex = selectedIndex;
+        }
+    }
+
+    private void OnNamedFormationAddUpdate()
+    {
+        var mobName = _namedFormationMobName.Text.Trim();
+        if (mobName.Length == 0)
+        {
+            _formationValidation.Text = "Enter the exact named mob or boss name.";
+            _formationValidation.ForeColor = Color.Firebrick;
+            return;
+        }
+        if (!ValidateGenericFormationGeometry(out var error))
+        {
+            _formationValidation.Text = error;
+            _formationValidation.ForeColor = Color.Firebrick;
+            return;
+        }
+        var index = _namedFormations.FindIndex(x => string.Equals(x.MobName, mobName, StringComparison.OrdinalIgnoreCase));
+        var row = new NamedFormationRow(mobName, CaptureNamedFormationGeometry());
+        if (index >= 0)
+        {
+            _namedFormations[index] = row;
+        }
+        else
+        {
+            _namedFormations.Add(row);
+            index = _namedFormations.Count - 1;
+        }
+        _namedFormationsEnabled.Checked = true;
+        RebindNamedFormationList(index);
+        OnFormationConfigChanged();
+    }
+
+    private void OnNamedFormationRemove()
+    {
+        var index = _namedFormationList.SelectedIndex;
+        if (index < 0 || index >= _namedFormations.Count)
+        {
+            return;
+        }
+        _namedFormations.RemoveAt(index);
+        if (_namedFormations.Count == 0)
+        {
+            _namedFormationsEnabled.Checked = false;
+        }
+        RebindNamedFormationList(Math.Min(index, _namedFormations.Count - 1));
+        OnFormationConfigChanged();
+    }
+
+    private void OnNamedFormationSelectionChanged()
+    {
+        var index = _namedFormationList.SelectedIndex;
+        if (index < 0 || index >= _namedFormations.Count)
+        {
+            return;
+        }
+        _namedFormationMobName.Text = _namedFormations[index].MobName;
+        UpdateFormationUiState();
+    }
+
+    private void OnNamedFormationEditEncounter()
+    {
+        var index = _namedFormationList.SelectedIndex;
+        if (index < 0 || index >= _namedFormations.Count)
+        {
+            return;
+        }
+        _suppressEvents = true;
+        try
+        {
+            ApplyNamedFormationGeometry(_namedFormations[index].Geometry);
+        }
+        finally
+        {
+            _suppressEvents = false;
+        }
+        UpdateFormationUiState();
+    }
+
+    private bool ValidateGenericFormationGeometry(out string error)
+    {
+        error = "";
+        if (_formationMaximumRadius.Value < _formationMinimumRadius.Value)
+        {
+            error = "Maximum radius must be at least minimum radius.";
+            return false;
+        }
+        if (_formationPreferredRadius.Value < _formationMinimumRadius.Value
+            || _formationPreferredRadius.Value > _formationMaximumRadius.Value)
+        {
+            error = "Preferred radius must be inside the minimum/maximum band.";
+            return false;
+        }
+        if (FormationAnchorValue() == "member" && string.IsNullOrWhiteSpace(SelectedPartyName(_formationAnchorMember)))
+        {
+            error = "Choose an anchor party member.";
+            return false;
+        }
+        if (FormationPlacementModeValue() == "polar_band"
+            && FormationAxisTypeValue() == "boss_to_member"
+            && string.IsNullOrWhiteSpace(SelectedPartyName(_formationAxisMember)))
+        {
+            error = "Choose a party member for the polar axis.";
+            return false;
+        }
+        if (_formationHysteresisStart.Value < _formationHysteresisStop.Value)
+        {
+            error = "Formation start distance must be at least stop distance.";
+            return false;
+        }
+        if (_formationMaximumBossDistance.Value > 0
+            && _formationMaximumBossDistance.Value < _formationMinimumBossDistance.Value)
+        {
+            error = "Maximum boss distance must be at least minimum boss distance.";
+            return false;
+        }
+        if (_formationMaximumPartyRange.Value > 0 && SelectedFormationRequiredPartyNames().Count == 0)
+        {
+            error = "Maximum party range requires at least one checked party member.";
+            return false;
+        }
+        return true;
+    }
+
     private void ApplyFormationConfigFromSnapshot(JsonElement snapshot, IReadOnlyList<string> partyOptions)
     {
         _formationEnabled.Checked = SessionStateHelper.GetBool(snapshot, "formation_enabled", false);
+        _namedFormationsEnabled.Checked = SessionStateHelper.GetBool(snapshot, "named_formations_enabled", false);
+        _namedFormations.Clear();
+        if (snapshot.TryGetProperty("named_formation_entries", out var namedEntries)
+            && namedEntries.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in namedEntries.EnumerateArray())
+            {
+                if (entry.ValueKind != JsonValueKind.Object)
+                {
+                    throw new InvalidDataException("named formation entries must be objects");
+                }
+                var mobName = SessionStateHelper.GetString(entry, "mob_name", "").Trim();
+                if (mobName.Length == 0)
+                {
+                    throw new InvalidDataException("named formation entry is missing mob_name");
+                }
+                var geometry = JsonNode.Parse(entry.GetRawText())?.AsObject()
+                    ?? throw new InvalidDataException("named formation entry could not be parsed");
+                geometry.Remove("mob_name");
+                _namedFormations.Add(new NamedFormationRow(mobName, geometry));
+            }
+        }
+        RebindNamedFormationList();
+        _namedFormationMobName.Text = "";
         var encounter = SessionStateHelper.GetString(snapshot, "formation_encounter", "lilith_easy");
         _formationEncounter.SelectedItem = encounter switch
         {
@@ -2528,7 +2883,7 @@ public partial class MainForm
     private bool ValidateFormationConfiguration(out string error)
     {
         error = "";
-        if (!_formationEnabled.Checked)
+        if (!_formationEnabled.Checked && !_namedFormationsEnabled.Checked)
         {
             return true;
         }
@@ -2536,6 +2891,15 @@ public partial class MainForm
         {
             error = "Movement domain must be enabled.";
             return false;
+        }
+        if (_namedFormationsEnabled.Checked && _namedFormations.Count == 0)
+        {
+            error = "Add at least one exact named mob or boss formation.";
+            return false;
+        }
+        if (!_formationEnabled.Checked)
+        {
+            return true;
         }
         var encounter = FormationEncounterValue();
         if (_formationMockEnabled.Checked && encounter == "lilith_easy")
@@ -2577,54 +2941,22 @@ public partial class MainForm
             error = "Generic formation requires enabled encounter policy with the same Sortie encounter.";
             return false;
         }
-        if (FormationAnchorValue() == "member"
-            && string.IsNullOrWhiteSpace(SelectedPartyName(_formationAnchorMember)))
-        {
-            error = "Member anchor requires an anchor character.";
-            return false;
-        }
-        if (FormationPlacementModeValue() == "polar_band"
-            && FormationAxisTypeValue() == "boss_to_member"
-            && string.IsNullOrWhiteSpace(SelectedPartyName(_formationAxisMember)))
-        {
-            error = "Polar placement requires an axis character.";
-            return false;
-        }
-        if (_formationMaximumRadius.Value < _formationMinimumRadius.Value)
-        {
-            error = "Maximum radius must be at least minimum radius.";
-            return false;
-        }
-        if (_formationPreferredRadius.Value < _formationMinimumRadius.Value
-            || _formationPreferredRadius.Value > _formationMaximumRadius.Value)
-        {
-            error = "Preferred radius must be inside the configured radius band.";
-            return false;
-        }
-        if (_formationHysteresisStart.Value < _formationHysteresisStop.Value)
-        {
-            error = "Hysteresis start distance must be at least stop distance.";
-            return false;
-        }
-        if (_formationMaximumBossDistance.Value > 0
-            && _formationMaximumBossDistance.Value < _formationMinimumBossDistance.Value)
-        {
-            error = "Maximum boss distance must be at least minimum boss distance.";
-            return false;
-        }
-        if (_formationMaximumPartyRange.Value > 0 && SelectedFormationRequiredPartyNames().Count == 0)
-        {
-            error = "Maximum party range requires at least one checked party member.";
-            return false;
-        }
-        return true;
+        return ValidateGenericFormationGeometry(out error);
     }
 
     private void UpdateFormationUiState()
     {
         var enabled = _formationEnabled.Checked;
-        _formationConfigPanel.Enabled = enabled;
+        var namedEnabled = _namedFormationsEnabled.Checked;
+        var anyEnabled = enabled || namedEnabled;
+        _formationConfigPanel.Enabled = anyEnabled;
         var generic = FormationEncounterValue() != "lilith_easy";
+        _namedFormationMobName.Enabled = namedEnabled;
+        _namedFormationAddUpdate.Enabled = namedEnabled;
+        _namedFormationList.Enabled = namedEnabled;
+        _namedFormationRemove.Enabled = namedEnabled && _namedFormationList.SelectedIndex >= 0;
+        _namedFormationEditEncounter.Enabled = namedEnabled && _namedFormationList.SelectedIndex >= 0;
+        _formationEncounter.Enabled = enabled;
         _formationMockEnabled.Enabled = enabled && generic;
         _formationMockMobName.Enabled = enabled && generic && _formationMockEnabled.Checked;
         _formationRole.Enabled = enabled && !generic;
@@ -2643,33 +2975,33 @@ public partial class MainForm
         _formationHealerConeHalfAngle.Enabled = enabled && !generic;
         _formationHealerConeSafetyMargin.Enabled = enabled && !generic;
         _formationHealerSampleStep.Enabled = enabled && !generic;
-        _formationPlacementMode.Enabled = enabled && generic;
-        _formationAnchor.Enabled = enabled && generic;
-        _formationAnchorMember.Enabled = enabled && generic && FormationAnchorValue() == "member";
-        _formationAxisType.Enabled = enabled && generic && FormationPlacementModeValue() == "polar_band";
-        _formationAxisMember.Enabled = enabled
-            && generic
+        var geometryEnabled = namedEnabled || (enabled && generic);
+        _formationPlacementMode.Enabled = geometryEnabled;
+        _formationAnchor.Enabled = geometryEnabled;
+        _formationAnchorMember.Enabled = geometryEnabled && FormationAnchorValue() == "member";
+        _formationAxisType.Enabled = geometryEnabled && FormationPlacementModeValue() == "polar_band";
+        _formationAxisMember.Enabled = geometryEnabled
             && FormationPlacementModeValue() == "polar_band"
             && FormationAxisTypeValue() == "boss_to_member";
-        _formationPreferredRadius.Enabled = enabled && generic;
-        _formationMinimumRadius.Enabled = enabled && generic;
-        _formationMaximumRadius.Enabled = enabled && generic;
-        _formationPreferredAngle.Enabled = enabled && generic && FormationPlacementModeValue() == "polar_band";
-        _formationAllowedAngleHalfWidth.Enabled = enabled && generic && FormationPlacementModeValue() == "polar_band";
-        _formationRadiusStep.Enabled = enabled && generic;
-        _formationAngleStep.Enabled = enabled && generic;
-        _formationHysteresisStart.Enabled = enabled && generic;
-        _formationHysteresisStop.Enabled = enabled && generic;
-        _formationAvoidEncounterHazards.Enabled = enabled && generic;
-        _formationHazardMargin.Enabled = enabled && generic;
-        _formationSafeOriginRadius.Enabled = enabled && generic;
-        _formationMinimumBossDistance.Enabled = enabled && generic;
-        _formationMaximumBossDistance.Enabled = enabled && generic;
-        _formationMaximumPartyRange.Enabled = enabled && generic;
-        _formationRequiredParty.Enabled = enabled && (!generic || _formationMaximumPartyRange.Value > 0);
+        _formationPreferredRadius.Enabled = geometryEnabled;
+        _formationMinimumRadius.Enabled = geometryEnabled;
+        _formationMaximumRadius.Enabled = geometryEnabled;
+        _formationPreferredAngle.Enabled = geometryEnabled && FormationPlacementModeValue() == "polar_band";
+        _formationAllowedAngleHalfWidth.Enabled = geometryEnabled && FormationPlacementModeValue() == "polar_band";
+        _formationRadiusStep.Enabled = geometryEnabled;
+        _formationAngleStep.Enabled = geometryEnabled;
+        _formationHysteresisStart.Enabled = geometryEnabled;
+        _formationHysteresisStop.Enabled = geometryEnabled;
+        _formationAvoidEncounterHazards.Enabled = geometryEnabled;
+        _formationHazardMargin.Enabled = geometryEnabled;
+        _formationSafeOriginRadius.Enabled = geometryEnabled;
+        _formationMinimumBossDistance.Enabled = geometryEnabled;
+        _formationMaximumBossDistance.Enabled = geometryEnabled;
+        _formationMaximumPartyRange.Enabled = geometryEnabled;
+        _formationRequiredParty.Enabled = geometryEnabled && _formationMaximumPartyRange.Value > 0;
         var valid = ValidateFormationConfiguration(out var error);
-        _formationValidation.Text = !enabled
-            ? "Formation is disabled for this profile."
+        _formationValidation.Text = !anyEnabled
+            ? "Encounter and named formations are disabled for this profile."
             : valid
                 ? _formationMockEnabled.Checked
                     ? "Ready to save. Mock mode drives formation only; encounter policies and hazards remain on live encounter state."
@@ -2677,10 +3009,10 @@ public partial class MainForm
                     ? "Ready to save. Dhartok hazard candidates remain telemetry-only pending field validation."
                     : "Ready to save. Movement domain is enabled."
                 : error;
-        _formationValidation.ForeColor = !enabled || valid ? SystemColors.ControlText : Color.Firebrick;
+        _formationValidation.ForeColor = !anyEnabled || valid ? SystemColors.ControlText : Color.Firebrick;
         var movementEnabled = _boolChecks.TryGetValue("domain_movement_enabled", out var movementDomain)
             && movementDomain.Checked;
-        _formationEnableOwnership.Visible = enabled && !movementEnabled;
+        _formationEnableOwnership.Visible = anyEnabled && !movementEnabled;
     }
 
     private void OnReactionRuleAdd()
@@ -2692,7 +3024,7 @@ public partial class MainForm
         var trigger = _reactionTriggerCombo.SelectedItem?.ToString() ?? "";
         var name = (_reactionName.Text ?? "").Trim();
         var response = _reactionResponseCombo.SelectedItem?.ToString() ?? "";
-        var valid = (trigger == "ability_window" && response == "turn_away")
+        var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away"))
             || (trigger == "enemy_buff" && response == "stop_attacking");
         if (!valid || name.Length == 0)
         {
@@ -2703,7 +3035,8 @@ public partial class MainForm
         {
             return;
         }
-        _reactionRules.Add(new ReactionRuleRow(trigger, name, response));
+        var distance = response == "run_away" ? decimal.ToDouble(_reactionDistance.Value) : (double?)null;
+        _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance));
         _reactionName.Text = "";
         RebindReactionRuleList(_reactionRules.Count - 1);
         OnReactionConfigChanged();

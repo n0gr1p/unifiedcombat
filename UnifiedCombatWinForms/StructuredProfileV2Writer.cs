@@ -358,9 +358,48 @@ internal static class StructuredProfileV2Writer
                 throw new InvalidDataException("enabled encounter requires an encounter ID");
             }
         }
-        else if (encounterId is not ("sortie_ghatjot" or "sortie_dhartok"))
+        else if (encounterId is not ("sortie_ghatjot" or "sortie_dhartok" or "kei"))
         {
             throw new InvalidDataException($"unsupported encounter ID: {encounterId}");
+        }
+
+        if (encounterId == "kei")
+        {
+            var dealerName = StripTrailingDisplayIndex(ReadString(flatProfile, "kei_elemental_dealer_name", ""));
+            var waterProbe = ReadString(flatProfile, "kei_water_probe_spell", "").Trim();
+            var waterDamageSpell = ReadString(flatProfile, "kei_water_damage_spell", "").Trim();
+            var iceProbe = ReadString(flatProfile, "kei_ice_probe_spell", "").Trim();
+            var iceDamage = ReadString(flatProfile, "kei_ice_damage_spell", "").Trim();
+            if (enabled && string.IsNullOrWhiteSpace(dealerName))
+            {
+                throw new InvalidDataException("enabled Kei encounter requires an elemental damage dealer");
+            }
+            if (enabled && new[] { waterProbe, waterDamageSpell, iceProbe, iceDamage }.Any(string.IsNullOrWhiteSpace))
+            {
+                throw new InvalidDataException("enabled Kei encounter requires all four elemental spell selections");
+            }
+            return new StructuredProfileNode()
+                .Add("enabled", enabled)
+                .Add("id", encounterId)
+                .Add(
+                    "kei",
+                    new StructuredProfileNode()
+                        .Add(
+                            "elemental_damage",
+                            new StructuredProfileNode()
+                                .Add("dealer_name", dealerName)
+                                .Add("water", new StructuredProfileNode().Add("probe_spell", waterProbe).Add("damage_spell", waterDamageSpell))
+                                .Add("ice", new StructuredProfileNode().Add("probe_spell", iceProbe).Add("damage_spell", iceDamage))
+                                .Add("sustain_interval_s", ReadBoundedDouble(flatProfile, "kei_sustain_interval_s", 2.5, 0.5, 30.0))
+                                .Add("probe_timeout_s", ReadBoundedDouble(flatProfile, "kei_probe_timeout_s", 3.0, 0.5, 30.0))
+                        )
+                        .Add(
+                            "fullers",
+                            new StructuredProfileNode()
+                                .Add("run_away_distance", ReadBoundedDouble(flatProfile, "kei_fullers_run_away_distance", 12.0, 0.1, 50.0))
+                                .Add("prearm_hpp_margin", ReadBoundedDouble(flatProfile, "kei_fullers_prearm_hpp_margin", 1.0, 0.0, 10.0))
+                        )
+                );
         }
 
         var waterDamage = ReadEncounterPolicyMode(flatProfile, "encounter_water_damage", "enforce");
@@ -440,7 +479,58 @@ internal static class StructuredProfileV2Writer
         {
             movement.Add("formation", BuildFormation(flatProfile));
         }
+        var namedFormations = BuildNamedFormations(flatProfile);
+        if (namedFormations is not null)
+        {
+            movement.Add("named_formations", namedFormations);
+        }
         return movement;
+    }
+
+    private static StructuredProfileNode? BuildNamedFormations(JsonObject flatProfile)
+    {
+        var enabled = ReadBool(flatProfile, "named_formations_enabled", false);
+        var entries = new List<object?>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (flatProfile.TryGetPropertyValue("named_formation_entries", out var node) && node is not null)
+        {
+            if (node is not JsonArray configuredEntries)
+            {
+                throw new InvalidDataException("named_formation_entries must be an array");
+            }
+            foreach (var item in configuredEntries)
+            {
+                if (item is not JsonObject entry)
+                {
+                    throw new InvalidDataException("named formation entries must be objects");
+                }
+                var mobName = ReadString(entry, "mob_name", "").Trim();
+                if (mobName.Length == 0)
+                {
+                    throw new InvalidDataException("named formation requires an exact mob name");
+                }
+                if (!seen.Add(mobName))
+                {
+                    throw new InvalidDataException($"duplicate named formation mob: {mobName}");
+                }
+                entries.Add(BuildGenericFormationGeometry(entry).Add("mob_name", mobName));
+            }
+        }
+        if (enabled && entries.Count == 0)
+        {
+            throw new InvalidDataException("enabled named formations require at least one mob entry");
+        }
+        if (!enabled && entries.Count == 0)
+        {
+            return null;
+        }
+        if (enabled && !ReadRequiredBool(flatProfile, "domain_movement_enabled"))
+        {
+            throw new InvalidDataException("enabled named formations require movement domain");
+        }
+        return new StructuredProfileNode()
+            .Add("enabled", enabled)
+            .Add("entries", entries);
     }
 
     private static StructuredProfileNode BuildFormation(JsonObject flatProfile)
@@ -546,6 +636,28 @@ internal static class StructuredProfileV2Writer
             throw new InvalidDataException("generic formation encounter must match encounter policy identity");
         }
 
+        var formation = BuildGenericFormationGeometry(flatProfile)
+            .Add("enabled", true)
+            .Add("encounter", encounter);
+        if (ReadFormationBool(flatProfile, "formation_mock_enabled", false))
+        {
+            var mockMobName = ReadString(flatProfile, "formation_mock_mob_name", "").Trim();
+            if (string.IsNullOrWhiteSpace(mockMobName))
+            {
+                throw new InvalidDataException("enabled formation mock requires an exact mob name");
+            }
+            formation.Add(
+                "mock",
+                new StructuredProfileNode()
+                    .Add("enabled", true)
+                    .Add("mob_name", mockMobName)
+            );
+        }
+        return formation;
+    }
+
+    private static StructuredProfileNode BuildGenericFormationGeometry(JsonObject flatProfile)
+    {
         var mode = ReadString(flatProfile, "formation_placement_mode", "").Trim().ToLowerInvariant();
         if (mode is not ("radial_band" or "polar_band"))
         {
@@ -654,9 +766,7 @@ internal static class StructuredProfileV2Writer
                 .Add("required_party_names", requiredParty);
         }
 
-        var formation = new StructuredProfileNode()
-            .Add("enabled", true)
-            .Add("encounter", encounter)
+        return new StructuredProfileNode()
             .Add("placement", placement)
             .Add(
                 "hysteresis",
@@ -665,21 +775,6 @@ internal static class StructuredProfileV2Writer
                     .Add("stop_distance", hysteresisStop)
             )
             .Add("constraints", constraints);
-        if (ReadFormationBool(flatProfile, "formation_mock_enabled", false))
-        {
-            var mockMobName = ReadString(flatProfile, "formation_mock_mob_name", "").Trim();
-            if (string.IsNullOrWhiteSpace(mockMobName))
-            {
-                throw new InvalidDataException("enabled formation mock requires an exact mob name");
-            }
-            formation.Add(
-                "mock",
-                new StructuredProfileNode()
-                    .Add("enabled", true)
-                    .Add("mob_name", mockMobName)
-            );
-        }
-        return formation;
     }
 
     private static StructuredProfileNode BuildFollow(JsonObject flatProfile)
@@ -1758,16 +1853,29 @@ internal static class StructuredProfileV2Writer
             var trigger = ReadString(rule, "trigger", "").Trim();
             var name = ReadString(rule, "name", "").Trim();
             var response = ReadString(rule, "response", "").Trim();
-            var valid = (trigger == "ability_window" && response == "turn_away")
+            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away"))
                 || (trigger == "enemy_buff" && response == "stop_attacking");
             if (!valid || name.Length == 0)
             {
                 continue;
             }
-            list.Add(new StructuredProfileNode()
+            var serialized = new StructuredProfileNode()
                 .Add("trigger", trigger)
                 .Add("name", name)
-                .Add("response", response));
+                .Add("response", response);
+            if (response == "run_away")
+            {
+                if (!rule.TryGetPropertyValue("distance", out var distanceNode)
+                    || distanceNode is not JsonValue distanceValue
+                    || !distanceValue.TryGetValue<double>(out var distance)
+                    || !double.IsFinite(distance)
+                    || distance <= 0)
+                {
+                    throw new InvalidDataException("run_away reaction requires a positive finite distance");
+                }
+                serialized.Add("distance", distance);
+            }
+            list.Add(serialized);
         }
         return list;
     }

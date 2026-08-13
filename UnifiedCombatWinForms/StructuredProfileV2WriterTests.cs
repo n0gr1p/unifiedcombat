@@ -56,14 +56,17 @@ internal static class StructuredProfileV2WriterTests
             TestSummonerPreservesIncompatibleSelections();
             TestSummonerUiOfflineContract();
             TestSerializeReactionRules();
+            TestRejectInvalidRunAwayDistance();
             TestDisabledEmptyReactionsAreOmitted();
             TestReactionUiEditsAreLocalUntilSave();
             TestSerializeGhatjotEncounter();
+            TestSerializeKeiEncounter();
             TestEncounterValidation();
             TestEncounterUiProfilePersistenceContract();
             TestDisabledFormationIsOmitted();
             TestSerializeLilithEasyFormation();
             TestSerializeGenericSortieFormation();
+            TestSerializeNamedMobFormations();
             TestFormationMockRejectsLilith();
             TestEnabledFormationRequiresMovementDomain();
             TestFormationUiEditsAreLocalUntilSave();
@@ -1119,6 +1122,13 @@ internal static class StructuredProfileV2WriterTests
         {
             new JsonObject { ["trigger"] = "ability_window", ["name"] = "Cold Stare", ["response"] = "turn_away" },
             new JsonObject { ["trigger"] = "enemy_buff", ["name"] = "Dread Spikes", ["response"] = "stop_attacking" },
+            new JsonObject
+            {
+                ["trigger"] = "ability_window",
+                ["name"] = "Dancing Fullers",
+                ["response"] = "run_away",
+                ["distance"] = 12.0,
+            },
         };
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
@@ -1131,8 +1141,40 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "response = \"turn_away\"", "turn-away response missing");
         AssertContains(content, "name = \"Dread Spikes\"", "enemy-buff rule missing");
         AssertContains(content, "response = \"stop_attacking\"", "stop-attacking response missing");
+        AssertContains(content, "name = \"Dancing Fullers\"", "run-away ability missing");
+        AssertContains(content, "response = \"run_away\"", "run-away response missing");
+        AssertContains(content, "distance = 12", "run-away raw target distance missing");
         AssertNotContains(content, "actor_id", "runtime actor ids must not be durable reaction config");
         AssertNotContains(content, "effect_id", "resolved runtime effect ids must not be durable reaction config");
+    }
+
+    private static void TestRejectInvalidRunAwayDistance()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["reaction_enabled"] = true;
+        flat["reaction_rules"] = new JsonArray
+        {
+            new JsonObject
+            {
+                ["trigger"] = "ability_window",
+                ["name"] = "Dancing Fullers",
+                ["response"] = "run_away",
+                ["distance"] = 0.0,
+            },
+        };
+        var rejected = false;
+        try
+        {
+            StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+            );
+        }
+        catch (InvalidDataException ex)
+        {
+            rejected = ex.Message.Contains("positive finite distance", StringComparison.Ordinal);
+        }
+        AssertTrue(rejected, "run-away distance zero must fail durable profile serialization");
     }
 
     private static void TestDisabledEmptyReactionsAreOmitted()
@@ -1156,6 +1198,8 @@ internal static class StructuredProfileV2WriterTests
         var reactionHandlers = source[start..end];
         AssertNotContains(reactionHandlers, "Forward(", "reaction durable controls must not emit live bridge traffic");
         AssertContains(reactionHandlers, "CaptureWorkingProfileFromUi", "reaction durable controls must update local working state");
+        AssertContains(reactionHandlers, "run_away", "reaction UI must expose run-away ability-window rules");
+        AssertContains(reactionHandlers, "_reactionDistance", "reaction UI must persist the run-away target distance");
     }
 
     private static void TestSerializeGhatjotEncounter()
@@ -1178,6 +1222,37 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "water_skillchain = \"warn\"", "Water skillchain policy missing");
         AssertContains(content, "repeat_action_wall = \"off\"", "Ghatjot repeat policy must be off");
         AssertContains(content, "repeat_action_guard_s = 10", "encounter tuning missing");
+    }
+
+    private static void TestSerializeKeiEncounter()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["encounter_enabled"] = true;
+        flat["encounter_id"] = "kei";
+        flat["kei_elemental_dealer_name"] = "Nyoo [UC]";
+        flat["kei_water_probe_spell"] = "Water";
+        flat["kei_water_damage_spell"] = "Water III";
+        flat["kei_ice_probe_spell"] = "Blizzard";
+        flat["kei_ice_damage_spell"] = "Blizzard III";
+        flat["kei_sustain_interval_s"] = 2.5;
+        flat["kei_probe_timeout_s"] = 3.0;
+        flat["kei_fullers_run_away_distance"] = 12.0;
+        flat["kei_fullers_prearm_hpp_margin"] = 1.0;
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Nyoo", "BLM", "RDM")
+        );
+
+        AssertContains(content, "id = \"kei\"", "Kei encounter ID missing");
+        AssertContains(content, "dealer_name = \"Nyoo\"", "Kei dealer name missing");
+        AssertContains(content, "probe_spell = \"Water\"", "Kei Water probe missing");
+        AssertContains(content, "damage_spell = \"Water III\"", "Kei Water damage spell missing");
+        AssertContains(content, "probe_spell = \"Blizzard\"", "Kei Ice probe missing");
+        AssertContains(content, "damage_spell = \"Blizzard III\"", "Kei Ice damage spell missing");
+        AssertContains(content, "sustain_interval_s = 2.5", "Kei sustain interval missing");
+        AssertContains(content, "probe_timeout_s = 3", "Kei probe timeout missing");
+        AssertContains(content, "run_away_distance = 12", "Kei Fullers distance missing");
+        AssertContains(content, "prearm_hpp_margin = 1", "Kei Fullers prearm margin missing");
     }
 
     private static void TestEncounterValidation()
@@ -1215,6 +1290,10 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(store, "[\"encounter_enabled\"] = _encounterEnabled.Checked", "encounter enable state must be captured");
         AssertContains(store, "[\"encounter_id\"] = EncounterIdValue()", "encounter identity must be captured");
         AssertContains(store, "[\"encounter_water_damage\"]", "direct Water mode must be captured");
+        AssertContains(store, "[\"kei_elemental_dealer_name\"]", "Kei elemental dealer must be captured");
+        AssertContains(store, "[\"kei_fullers_run_away_distance\"]", "Kei Fullers distance must be captured");
+        AssertContains(ui, "Water Probe Spell", "Kei Water probe selector must exist");
+        AssertContains(ui, "Dancing Fullers Run-Away Distance", "Kei Fullers distance control must exist");
         AssertContains(logic, "ApplyEncounterConfigFromSnapshot(s);", "encounter settings must restore from UI profiles");
         var start = logic.IndexOf("private string EncounterIdValue", StringComparison.Ordinal);
         var end = logic.IndexOf("private string FormationEncounterValue", start, StringComparison.Ordinal);
@@ -1361,6 +1440,61 @@ internal static class StructuredProfileV2WriterTests
         );
     }
 
+    private static void TestSerializeNamedMobFormations()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["domain_movement_enabled"] = true;
+        flat["formation_enabled"] = false;
+        flat["named_formations_enabled"] = true;
+        flat["named_formation_entries"] = new JsonArray
+        {
+            new JsonObject
+            {
+                ["mob_name"] = "Kei",
+                ["formation_placement_mode"] = "polar_band",
+                ["formation_anchor"] = "boss",
+                ["formation_anchor_member"] = "",
+                ["formation_axis_type"] = "boss_heading",
+                ["formation_axis_member"] = "",
+                ["formation_preferred_radius"] = 12.0,
+                ["formation_minimum_radius"] = 10.0,
+                ["formation_maximum_radius"] = 14.0,
+                ["formation_preferred_angle_deg"] = 180.0,
+                ["formation_allowed_angle_half_width_deg"] = 45.0,
+                ["formation_radius_step"] = 0.5,
+                ["formation_angle_step_deg"] = 10.0,
+                ["formation_hysteresis_start_distance"] = 1.0,
+                ["formation_hysteresis_stop_distance"] = 0.5,
+                ["formation_avoid_encounter_hazards"] = false,
+                ["formation_hazard_margin"] = 0.0,
+                ["formation_safe_origin_radius"] = 0.0,
+                ["formation_minimum_boss_distance"] = 10.0,
+                ["formation_maximum_boss_distance"] = 14.0,
+                ["formation_maximum_party_range"] = 0.0,
+                ["formation_required_party_names"] = "",
+            },
+        };
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Niightsiide", "GEO", "WHM")
+        );
+        AssertContains(content, "named_formations = {", "named formations domain missing");
+        AssertContains(content, "mob_name = \"Kei\"", "named formation exact mob name missing");
+        AssertContains(content, "type = \"boss_heading\"", "named formation boss-heading geometry missing");
+        AssertContains(content, "minimum_boss_distance = 10", "named formation constraints missing");
+        AssertNotContains(content, "encounter = \"kei\"", "named formation must not create an encounter-policy identity");
+        AssertNotContains(content, "role =", "named formation must remain role-free");
+
+        flat["named_formation_entries"] = new JsonArray();
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Niightsiide", "GEO", "WHM")
+            ),
+            "enabled named formations without entries must fail"
+        );
+    }
+
     private static void TestEnabledFormationRequiresMovementDomain()
     {
         var flat = BuildSampleFlatProfile();
@@ -1401,6 +1535,8 @@ internal static class StructuredProfileV2WriterTests
         var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
         AssertContains(ui, "new TabPage(\"Encounter Formation\")", "formation tab must exist");
         AssertContains(store, "[\"formation_enabled\"] = _formationEnabled.Checked", "formation enable state must be captured");
+        AssertContains(store, "[\"named_formations_enabled\"] = _namedFormationsEnabled.Checked", "named formation enable state must be captured");
+        AssertContains(store, "BuildNamedFormationEntriesJson()", "named formation entries must be captured");
         AssertContains(store, "[\"formation_mock_enabled\"] = _formationMockEnabled.Checked", "formation mock enable state must be captured");
         AssertContains(store, "[\"formation_mock_mob_name\"]", "formation mock mob name must be captured");
         AssertContains(store, "[\"formation_mock_enabled\"] = false", "new profiles must default formation mock mode off");
@@ -1412,11 +1548,14 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(ui, "Ghatjot — Generic geometry", "Ghatjot generic formation selection must be exposed");
         AssertContains(ui, "Dhartok — Generic geometry", "Dhartok generic formation selection must be exposed");
         AssertContains(ui, "Use a normal mob as the formation boss", "formation mock UI must be exposed");
+        AssertContains(ui, "Enable automatic named mob / boss formations", "named formation UI must be exposed");
+        AssertContains(ui, "Configured named formations", "named formation list must be exposed");
         AssertContains(ui, "Target the exact named mob once", "formation mock target-binding instructions must be visible");
         AssertContains(ui, "encounter policies and hazards do not bind to it", "formation mock safety boundary must be visible");
         AssertContains(logic, "Generic formation requires enabled encounter policy", "generic formation UI identity validation missing");
         AssertContains(logic, "formation_mock_enabled", "formation mock settings must restore from UI profiles");
         AssertContains(logic, "ApplyFormationConfigFromSnapshot(s, partnerOpts);", "formation settings must restore from UI profiles");
+        AssertContains(logic, "named_formation_entries", "named formation settings must restore from UI profiles");
         AssertContains(logic, "profile save blocked", "invalid formation settings must block profile save");
     }
 

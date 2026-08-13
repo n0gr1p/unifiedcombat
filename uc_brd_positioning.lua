@@ -22,6 +22,7 @@ local state = {
 	settle_until = 0,
 	last_progress_at = 0,
 	last_progress_distance = nil,
+	partial_mode = '',
 }
 
 local function finite_number(value)
@@ -388,15 +389,22 @@ local function reset_state(reason)
 	state.settle_until = 0
 	state.last_progress_at = 0
 	state.last_progress_distance = nil
+	state.partial_mode = ''
 end
 
 function M.reset(reason)
 	reset_state(reason)
 end
 
-local function install_plan(plan, signature, now)
+local function install_plan(plan, signature, now, partial_mode)
+	if type(partial_mode) ~= 'string' then
+		error('Bard positioning partial mode must be a string')
+	end
 	state.phase = plan.move_distance <= ARRIVAL_YALMS and 'settling' or 'moving'
-	state.reason = plan.full_coverage and 'BRD_REPOSITION_FULL_PARTY' or 'BRD_REPOSITION_URGENT_CLUSTER'
+	state.partial_mode = partial_mode
+	state.reason = plan.full_coverage and 'BRD_REPOSITION_FULL_PARTY'
+		or state.partial_mode == 'formation' and 'BRD_REPOSITION_FORMATION_CLUSTER'
+		or 'BRD_REPOSITION_URGENT_CLUSTER'
 	state.target_x = plan.x
 	state.target_y = plan.y
 	state.coverage_count = plan.coverage_count
@@ -414,6 +422,9 @@ function M.prepare(opts)
 	opts = require_table(opts, 'opts')
 	if type(opts.enabled) ~= 'boolean' then
 		error('opts.enabled must be boolean')
+	end
+	if type(opts.allow_formation_partial) ~= 'boolean' then
+		error('opts.allow_formation_partial must be boolean')
 	end
 	local action = require_table(opts.action, 'opts.action')
 	if opts.enabled ~= true or action_is_targeted(action) then
@@ -446,7 +457,9 @@ function M.prepare(opts)
 		return false, state.reason
 	end
 	local signature = plan.geometry_signature
-	if plan.full_coverage ~= true and not partial_coverage_allowed(action) then
+	if plan.full_coverage ~= true
+		and opts.allow_formation_partial ~= true
+		and not partial_coverage_allowed(action) then
 		state.phase = 'waiting'
 		state.reason = action_requires_full_coverage(action)
 			and 'BRD_REPOSITION_WAIT_FULL_PARTY_RESOURCE'
@@ -461,12 +474,17 @@ function M.prepare(opts)
 		return false, state.reason
 	end
 	local me = point(opts.me, 'opts.me')
+	local partial_mode = plan.full_coverage and ''
+		or opts.allow_formation_partial == true and 'formation'
+		or 'urgent'
 	if plan.move_distance <= ARRIVAL_YALMS and state.phase ~= 'settling' then
 		if plan.move_distance <= GEOMETRY_EPSILON then
-			reset_state(plan.full_coverage and 'BRD_REPOSITION_ALREADY_COVERED' or 'BRD_REPOSITION_URGENT_CLUSTER_CURRENT')
+			reset_state(plan.full_coverage and 'BRD_REPOSITION_ALREADY_COVERED'
+				or partial_mode == 'formation' and 'BRD_REPOSITION_FORMATION_CLUSTER_CURRENT'
+				or 'BRD_REPOSITION_URGENT_CLUSTER_CURRENT')
 			return true, state.reason
 		end
-		install_plan(plan, signature, now)
+		install_plan(plan, signature, now, partial_mode)
 		return false, state.reason
 	end
 	if state.phase == 'failed' and state.geometry_signature == signature then
@@ -483,13 +501,16 @@ function M.prepare(opts)
 		end
 		local target = { x = state.target_x, y = state.target_y }
 		if distance(me, target) > ARRIVAL_YALMS then
-			install_plan(plan, signature, now)
+			install_plan(plan, signature, now, partial_mode)
 			return false, 'BRD_REPOSITION_RANGE_CHANGED'
 		end
-		reset_state(plan.full_coverage and 'BRD_REPOSITION_READY_FULL_PARTY' or 'BRD_REPOSITION_READY_URGENT_CLUSTER')
+		local settled_partial_mode = state.partial_mode
+		reset_state(plan.full_coverage and 'BRD_REPOSITION_READY_FULL_PARTY'
+			or settled_partial_mode == 'formation' and 'BRD_REPOSITION_READY_FORMATION_CLUSTER'
+			or 'BRD_REPOSITION_READY_URGENT_CLUSTER')
 		return true, state.reason
 	end
-	install_plan(plan, signature, now)
+	install_plan(plan, signature, now, partial_mode)
 	return false, state.reason
 end
 

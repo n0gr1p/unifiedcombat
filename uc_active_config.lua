@@ -509,12 +509,32 @@ local function apply_structured_config_to_candidate(candidate, config)
 	if type(config.encounter) == 'table' then
 		local encounter = config.encounter
 		local definition = require('uc_encounter_registry').get(encounter.id)
-		if encounter.enabled == true and definition == nil then
+		if encounter.enabled == true and definition == nil and encounter.id ~= 'kei' then
 			error('enabled config.encounter has an unsupported id')
 		end
 		candidate.encounter_enabled = encounter.enabled == true
 		candidate.encounter_id = encounter.id
-		if definition ~= nil then
+		if encounter.id == 'kei' and encounter.enabled == true then
+			if type(encounter.kei) ~= 'table' or type(encounter.kei.elemental_damage) ~= 'table' then
+				error('enabled Kei encounter is missing elemental configuration')
+			end
+			local elemental = encounter.kei.elemental_damage
+			if type(elemental.water) ~= 'table' or type(elemental.ice) ~= 'table' then
+				error('enabled Kei encounter is missing water or ice configuration')
+			end
+			candidate.kei_elemental_dealer_name = elemental.dealer_name
+			candidate.kei_water_probe_spell = elemental.water.probe_spell
+			candidate.kei_water_damage_spell = elemental.water.damage_spell
+			candidate.kei_ice_probe_spell = elemental.ice.probe_spell
+			candidate.kei_ice_damage_spell = elemental.ice.damage_spell
+			candidate.kei_sustain_interval_s = elemental.sustain_interval_s
+			candidate.kei_probe_timeout_s = elemental.probe_timeout_s
+			if type(encounter.kei.fullers) ~= 'table' then
+				error('enabled Kei encounter is missing Fullers configuration')
+			end
+			candidate.kei_fullers_run_away_distance = encounter.kei.fullers.run_away_distance
+			candidate.kei_fullers_prearm_hpp_margin = encounter.kei.fullers.prearm_hpp_margin
+		elseif definition ~= nil then
 			local policy = type(encounter.policy) == 'table' and encounter.policy or {}
 			local tuning = type(encounter.tuning) == 'table' and encounter.tuning or {}
 			candidate.encounter_water_damage = policy.water_damage or definition.policy.water_damage
@@ -529,11 +549,61 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.encounter_water_skillchain = 'enforce'
 		candidate.encounter_repeat_action_wall = 'off'
 		candidate.encounter_repeat_action_guard_s = 10.0
+		candidate.kei_elemental_dealer_name = ''
+		candidate.kei_water_probe_spell = 'Water'
+		candidate.kei_water_damage_spell = 'Water III'
+		candidate.kei_ice_probe_spell = 'Blizzard'
+		candidate.kei_ice_damage_spell = 'Blizzard III'
+		candidate.kei_sustain_interval_s = 2.5
+		candidate.kei_probe_timeout_s = 3.0
+		candidate.kei_fullers_run_away_distance = 12.0
+		candidate.kei_fullers_prearm_hpp_margin = 1.0
 	end
 
 	if type(config.movement) == 'table' then
 		candidate.domain_movement_enabled = config.movement.enabled
 		candidate.move = config.movement.move
+		if type(config.movement.named_formations) == 'table' then
+			local named_formations = config.movement.named_formations
+			if type(named_formations.entries) ~= 'table' then
+				error('config.movement.named_formations.entries must be a table')
+			end
+			candidate.named_formations_enabled = named_formations.enabled
+			candidate.named_formation_entries = {}
+			for i = 1, #named_formations.entries do
+				local entry = named_formations.entries[i]
+				local placement = entry.placement
+				local constraints = entry.constraints
+				local axis = placement.axis or {}
+				candidate.named_formation_entries[#candidate.named_formation_entries + 1] = {
+					mob_name = entry.mob_name,
+					formation_placement_mode = placement.mode,
+					formation_anchor = placement.anchor,
+					formation_anchor_member = placement.anchor_member,
+					formation_axis_type = axis.type,
+					formation_axis_member = axis.member,
+					formation_preferred_radius = placement.preferred_radius,
+					formation_minimum_radius = placement.minimum_radius,
+					formation_maximum_radius = placement.maximum_radius,
+					formation_preferred_angle_deg = placement.preferred_angle_deg,
+					formation_allowed_angle_half_width_deg = placement.allowed_angle_half_width_deg,
+					formation_radius_step = placement.radius_step,
+					formation_angle_step_deg = placement.angle_step_deg,
+					formation_hysteresis_start_distance = entry.hysteresis.start_distance,
+					formation_hysteresis_stop_distance = entry.hysteresis.stop_distance,
+					formation_avoid_encounter_hazards = constraints.avoid_encounter_hazards,
+					formation_hazard_margin = constraints.hazard_margin,
+					formation_safe_origin_radius = constraints.safe_origin_radius or 0,
+					formation_minimum_boss_distance = constraints.minimum_boss_distance or 0,
+					formation_maximum_boss_distance = constraints.maximum_boss_distance or 0,
+					formation_maximum_party_range = constraints.maximum_party_range or 0,
+					formation_required_party_names = table.concat(constraints.required_party_names or {}, '|'),
+				}
+			end
+		else
+			candidate.named_formations_enabled = false
+			candidate.named_formation_entries = {}
+		end
 		if type(config.movement.formation) == 'table' then
 			local formation = config.movement.formation
 			candidate.formation_enabled = formation.enabled

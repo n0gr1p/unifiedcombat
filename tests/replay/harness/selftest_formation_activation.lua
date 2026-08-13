@@ -106,6 +106,73 @@ local round_trip = profile_v2.build_durable_config(projected, meta)
 local diff = profile_v2.diff_durable_config(durable, round_trip)
 assert_equal(diff.count, 0, 'generic formation Profile V2 round-trip mismatch')
 
+local named_entry = {
+	mob_name = 'Kei',
+	placement = {
+		mode = 'polar_band',
+		anchor = 'boss',
+		axis = { type = 'boss_heading' },
+		preferred_radius = 12,
+		minimum_radius = 10,
+		maximum_radius = 14,
+		preferred_angle_deg = 180,
+		allowed_angle_half_width_deg = 45,
+		radius_step = 0.5,
+		angle_step_deg = 10,
+	},
+	hysteresis = { start_distance = 1, stop_distance = 0.5 },
+	constraints = {
+		avoid_encounter_hazards = false,
+		hazard_margin = 0,
+		minimum_boss_distance = 10,
+		maximum_boss_distance = 14,
+	},
+}
+local named_flat = generic_flat()
+named_flat.formation_enabled = false
+named_flat.formation_mock_enabled = false
+named_flat.named_formations_enabled = true
+named_flat.named_formation_entries = { named_entry }
+local named_durable = profile_v2.build_durable_config(named_flat, meta)
+assert_true(named_durable.movement.formation == nil, 'named formations must not require the legacy encounter formation')
+assert_true(named_durable.movement.named_formations.enabled, 'named formation enable flag must be durable')
+assert_equal(named_durable.movement.named_formations.entries[1].mob_name, 'Kei', 'named mob identity must be durable')
+assert_equal(
+	named_durable.movement.named_formations.entries[1].placement.axis.type,
+	'boss_heading',
+	'named formation geometry must be role-free and durable'
+)
+local named_projected = assert(active_config.project_flat_settings({
+	version = 2,
+	profile = {
+		schema_version = 2,
+		engine = 'UC',
+		character = 'Tester',
+		main_job = 'WAR',
+		sub_job = 'SAM',
+		source = 'selftest',
+	},
+	config = named_durable,
+}, {}))
+assert_true(named_projected.named_formations_enabled, 'named formation enable flag must project to UI state')
+assert_equal(named_projected.named_formation_entries[1].mob_name, 'Kei', 'named formation entries must project to UI state')
+assert_equal(
+	profile_v2.diff_durable_config(named_durable, profile_v2.build_durable_config(named_projected, meta)).count,
+	0,
+	'named formations must round-trip through Profile V2'
+)
+local duplicate_named = generic_flat()
+duplicate_named.formation_enabled = false
+duplicate_named.formation_mock_enabled = false
+duplicate_named.named_formations_enabled = true
+duplicate_named.named_formation_entries = { named_entry, named_entry }
+local duplicate_ok, duplicate_error = pcall(profile_v2.build_durable_config, duplicate_named, meta)
+assert_false(duplicate_ok, 'duplicate named mob formations must fail normalization')
+assert_true(
+	tostring(duplicate_error):find('duplicate mob name: Kei', 1, true) ~= nil,
+	'duplicate named mob formation error mismatch'
+)
+
 local boss_heading_flat = generic_flat()
 boss_heading_flat.formation_axis_type = 'boss_heading'
 boss_heading_flat.formation_axis_member = ''
@@ -230,9 +297,17 @@ local mock_snapshot = {
 	boss = { id = 901, name = 'Apex Crab', x = 5, y = 0, hpp = 100, status = 1 },
 	origin = { x = 5, y = 0 },
 }
+local named_formations = { enabled = false, entries = {} }
+local engaged_target = nil
 local runtime = formation_runtime.build({
 	get_config = function()
 		return selected_config
+	end,
+	get_named_formations = function()
+		return named_formations
+	end,
+	get_target = function()
+		return engaged_target
 	end,
 	encounter_runtime = {
 		snapshot = function()
@@ -307,6 +382,62 @@ assert_true(owns, 'moving generic formation must own scheduler movement')
 assert_equal(#intents, 1, 'generic activation must emit exactly one dispatcher-backed movement intent')
 assert_equal(intents[1].kind, 'run', 'generic activation must use the existing run intent')
 assert_equal(intents[1].source, 'formation_activation_test:run_heading', 'generic activation dispatcher source mismatch')
+
+local named_runtime_entry = {
+	mob_name = 'Kei',
+	placement = {
+		mode = 'radial_band',
+		anchor = 'encounter_origin',
+		preferred_radius = 2,
+		minimum_radius = 2,
+		maximum_radius = 2,
+		radius_step = 1,
+		angle_step_deg = 90,
+	},
+	hysteresis = { start_distance = 0.5, stop_distance = 0.25 },
+	constraints = { avoid_encounter_hazards = false, hazard_margin = 0 },
+}
+named_formations = { enabled = true, entries = { named_runtime_entry } }
+engaged_target = {
+	id = 950,
+	name = 'Kei',
+	x = 10,
+	y = 0,
+	hpp = 80,
+	status = 1,
+	valid_target = true,
+	spawn_type = 16,
+}
+local encounter_calls_before_named = encounter_snapshot_calls
+observation = runtime.observe(10.6)
+assert_equal(observation.source, 'named_mob', 'engaged exact-name target must select named formation automatically')
+assert_equal(observation.config.mob_name, 'Kei', 'named formation must select the matching durable entry')
+assert_equal(observation.snapshot.origin.x, 10, 'named formation must capture a transient origin on engagement')
+assert_equal(encounter_snapshot_calls, encounter_calls_before_named, 'named formation must not require encounter-policy state')
+acted, reason, owns = runtime.run_tick(observation)
+assert_true(acted, 'engaged named mob must drive the existing generic movement runtime')
+assert_equal(reason, 'FORMATION_REPOSITION', 'named mob movement reason mismatch')
+assert_true(owns, 'named mob formation must own movement through the scheduler formation lane')
+
+engaged_target.x = 12
+observation = runtime.observe(10.65)
+assert_equal(observation.snapshot.boss.x, 12, 'named formation boss coordinates must follow the moving mob')
+assert_equal(observation.snapshot.origin.x, 10, 'named formation encounter origin must remain transiently anchored')
+
+engaged_target.status = 0
+selected_config.enabled = false
+observation = runtime.observe(10.7)
+acted, reason, owns = runtime.run_tick(observation)
+assert_false(acted, 'unengaged named mob must not activate formation')
+assert_equal(reason, 'FORMATION_DISABLED', 'unengaged named mob must release named formation selection')
+assert_false(owns, 'unengaged named mob must not retain movement ownership')
+selected_config.enabled = true
+engaged_target = nil
+named_formations = { enabled = false, entries = {} }
+
+observation = runtime.observe(10.68)
+acted, reason, owns = runtime.run_tick(observation)
+assert_true(acted, 'live generic formation must resume after named target disengages')
 
 local live_snapshot_calls = encounter_snapshot_calls
 selected_config.mock = { enabled = true, mob_name = 'Apex Crab' }

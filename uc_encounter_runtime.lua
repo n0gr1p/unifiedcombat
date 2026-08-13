@@ -1,6 +1,7 @@
 local res = require('resources')
 local uc_active_config = require('uc_active_config')
 local encounter_state = require('uc_encounter_state')
+local kei_encounter = require('uc_kei_encounter')
 local party_buff_tracker = require('uc_party_buff_tracker')
 
 local M = {}
@@ -10,6 +11,7 @@ local last_snapshot_signature = ''
 local RAW_ACTOR_NAMES = {
 	Ghatjot = true,
 	Dhartok = true,
+	Kei = true,
 }
 
 local SORTIE_ZONE_NAME = "Outer Ra'Kaznar [U3]"
@@ -51,6 +53,12 @@ local function encounter_config()
 			repeat_action_guard_s = config.tuning.repeat_action_guard_s,
 		}
 	end
+	if config.kei ~= nil then
+		if type(config.kei) ~= 'table' then
+			error('config.encounter.kei must be a table')
+		end
+		out.kei = config.kei
+	end
 	return out
 end
 
@@ -69,7 +77,7 @@ local function encounter_actors()
 	end
 	for _, mob in pairs(mob_array) do
 		local name = tostring(mob and mob.name or '')
-		if name == 'Ghatjot' or name == 'Dhartok' then
+		if name == 'Ghatjot' or name == 'Dhartok' or name == 'Kei' then
 			actors[#actors + 1] = {
 				id = mob.id,
 				name = name,
@@ -157,7 +165,23 @@ function M.observe(now)
 	if observed_at == nil then
 		error('uc_encounter_runtime.observe requires now')
 	end
-	local configured, configure_reason = encounter_state.configure(encounter_config(), 'active_config_changed')
+	local config = encounter_config()
+	if config.enabled == true and config.id == 'kei' then
+		encounter_state.configure({ enabled = false, id = '' }, 'kei_encounter_selected')
+		local configured, configure_reason = kei_encounter.configure(config)
+		if not configured then
+			return false, configure_reason
+		end
+		local player = windower.ffxi.get_player()
+		return kei_encounter.observe_snapshot({
+			now = observed_at,
+			actors = encounter_actors(),
+			player_id = tonumber(player and player.id) or 0,
+			player_name = tostring(player and player.name or ''),
+		})
+	end
+	kei_encounter.configure({ enabled = false, id = '' })
+	local configured, configure_reason = encounter_state.configure(config, 'active_config_changed')
 	if not configured then
 		local snapshot = encounter_state.snapshot()
 		local signature = snapshot_signature(snapshot, configure_reason)
@@ -303,16 +327,20 @@ function M.on_action(act, now)
 		error('uc_encounter_runtime.on_action requires act')
 	end
 	local category = tonumber(act.category) or 0
+	local observed_at = tonumber(now)
+	if observed_at == nil then
+		error('uc_encounter_runtime.on_action requires now')
+	end
+	local kei_ok, kei_reason = kei_encounter.on_action(act, observed_at)
+	if kei_encounter.snapshot().enabled == true then
+		return kei_ok, kei_reason
+	end
 	if category ~= 7 and category ~= 11 then
-		return false, 'ACTION_NOT_ENCOUNTER_ABILITY'
+		return kei_ok, kei_ok and kei_reason or 'ACTION_NOT_ENCOUNTER_ABILITY'
 	end
 	local ability_name, ability_id = ability_name_from_action(act, category)
 	if ability_name == '' then
 		return false, 'ABILITY_RESOURCE_UNRESOLVED'
-	end
-	local observed_at = tonumber(now)
-	if observed_at == nil then
-		error('uc_encounter_runtime.on_action requires now')
 	end
 	emit_raw_encounter_candidate(act, category, ability_name, ability_id, observed_at)
 	local target_id, target_position, target_count = authoritative_target(act)
@@ -375,6 +403,11 @@ function M.observe_action_result(event)
 end
 
 function M.observe_boss_defeat(target_id)
+	local kei_ok, kei_reason = kei_encounter.observe_boss_defeat(target_id)
+	if kei_ok then
+		emit('ENCOUNTER_BOSS_DEFEATED', { target_id = tonumber(target_id) or 0 })
+		return true, kei_reason
+	end
 	local ok, reason = encounter_state.observe_boss_defeat(target_id)
 	if ok then
 		emit('ENCOUNTER_BOSS_DEFEATED', {
@@ -385,6 +418,9 @@ function M.observe_boss_defeat(target_id)
 end
 
 function M.validate_proposal(ctx, proposal)
+	if kei_encounter.snapshot().enabled == true then
+		return true, ''
+	end
 	local ok, reason, policy_decision = require('uc_encounter_policy').validate(
 		ctx,
 		proposal,
@@ -406,9 +442,14 @@ end
 function M.reset(reason)
 	last_snapshot_signature = ''
 	encounter_state.reset(reason)
+	kei_encounter.reset(reason)
 end
 
 function M.snapshot()
+	local kei_snapshot = kei_encounter.snapshot()
+	if kei_snapshot.enabled == true then
+		return kei_snapshot
+	end
 	return encounter_state.snapshot()
 end
 
@@ -429,6 +470,57 @@ local function point_text(point)
 end
 
 function M.status_lines()
+	local kei = kei_encounter.snapshot()
+	if kei.enabled == true then
+		local boss = kei.boss or {}
+		local pending = kei.pending_spell or {}
+		local fullers = kei.fullers or {}
+		local consumed = fullers.consumed or {}
+		local now = tonumber(kei.last_observed_at) or 0
+		local last_age = kei.last_correct_element_hit_at and math.max(0, now - kei.last_correct_element_hit_at) or nil
+		local deadline = kei.last_correct_element_hit_at
+			and math.max(0, (kei.last_correct_element_hit_at + kei.sustain_interval_s) - now) or nil
+		local reaction = require('uc_reaction_runtime').status()
+		local pet = windower.ffxi.get_mob_by_target('pet')
+		return {
+			('encounter enabled=true configured=kei phase=%s error=%s'):format(
+				tostring(kei.phase or ''), tostring(kei.error or '')
+			),
+			('boss name=%s id=%d hpp=%s status=%s'):format(
+				tostring(boss.name or ''), tonumber(boss.id) or 0,
+				tostring(boss.hpp or ''), tostring(boss.status or '')
+			),
+			('element_dealer=%s local=%s spike_mode=%s weak_element=%s source=%s'):format(
+				tostring(kei.elemental_dealer_name or ''),
+				tostring(tostring(kei.player_name or ''):lower() == tostring(kei.elemental_dealer_name or ''):lower()),
+				tostring(kei.spike_mode or ''), tostring(kei.weak_element or ''), tostring(kei.element_source or '')
+			),
+			('last_correct_hit spell=%s age_s=%s sustain_deadline_in_s=%s'):format(
+				tostring(kei.last_correct_element_spell or ''),
+				last_age and ('%.2f'):format(last_age) or 'none',
+				deadline and ('%.2f'):format(deadline) or 'none'
+			),
+			('pending=%s spell=%s element=%s purpose=%s expires_at=%s'):format(
+				tostring(kei.pending_spell ~= nil), tostring(pending.spell_name or ''),
+				tostring(pending.element or ''), tostring(pending.purpose or ''), tostring(pending.expires_at or '')
+			),
+			('fullers consumed=75:%s,50:%s,25:%s,10:%s next=%s prearmed=%s in_progress=%s reaction_active=%s'):format(
+				tostring(consumed[75] == true), tostring(consumed[50] == true),
+				tostring(consumed[25] == true), tostring(consumed[10] == true),
+				tostring(fullers.next_threshold or 'none'), tostring(fullers.prearmed == true),
+				tostring(fullers.in_progress == true), tostring(#(reaction.active or {}) > 0)
+			),
+			('local_pet present=%s id=%d name=%s fullers_pet_warning=%s'):format(
+				tostring(type(pet) == 'table'), tonumber(pet and pet.id) or 0,
+				tostring(pet and pet.name or ''),
+				tostring(fullers.prearmed == true and type(pet) == 'table')
+			),
+			('last_benediction_at=%s last_transition=%s last_reset_reason=%s'):format(
+				tostring(kei.last_benediction_at or ''), tostring(kei.last_transition or ''),
+				tostring(kei.last_reset_reason or '')
+			),
+		}
+	end
 	local snapshot = encounter_state.snapshot()
 	local boss = snapshot.boss or {}
 	local last_ability = snapshot.last_ability or {}

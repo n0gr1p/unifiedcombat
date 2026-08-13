@@ -16,6 +16,7 @@ package.preload.resources = function()
         monster_abilities = {
             [284] = { id = 284, en = 'Cold Stare' },
             [1563] = { id = 1563, en = 'Cold Stare' },
+            [999] = { id = 999, en = 'Dancing Fullers' },
         },
         buffs = {
             [33] = { id = 33, en = 'Haste' },
@@ -33,6 +34,7 @@ local reactions = require('uc_reaction_runtime')
 local rules = {
     { trigger = 'ability_window', name = 'Cold Stare', response = 'turn_away' },
     { trigger = 'enemy_buff', name = 'Dread Spikes', response = 'stop_attacking' },
+    { trigger = 'ability_window', name = 'Dancing Fullers', response = 'run_away', distance = 12.0 },
 }
 local meta = { character = 'Redrogue', main_job = 'BRD', sub_job = 'WHM' }
 local normalized = normalizer.normalize({
@@ -42,8 +44,21 @@ local normalized = normalizer.normalize({
     },
 }, meta)
 assert_true(normalized.reactions.enabled, 'structured reaction enabled flag must normalize')
-assert_equal(#normalized.reactions.rules, 2, 'structured reaction rules must normalize')
+assert_equal(#normalized.reactions.rules, 3, 'structured reaction rules must normalize')
 assert_equal(normalized.reactions.rules[1].name, 'Cold Stare', 'ability rule name must survive normalize')
+assert_equal(normalized.reactions.rules[3].distance, 12.0, 'run-away target distance must survive normalize')
+
+local invalid_distance_ok, invalid_distance_error = pcall(normalizer.normalize, {
+    reactions = {
+        enabled = true,
+        rules = {
+            { trigger = 'ability_window', name = 'Dancing Fullers', response = 'run_away', distance = 0 },
+        },
+    },
+}, meta)
+assert_true(not invalid_distance_ok, 'run-away distance zero must fail configuration normalization')
+assert_true(tostring(invalid_distance_error):find('distance must be a finite number greater than zero', 1, true) ~= nil,
+    'invalid run-away distance must produce an actionable validation error')
 
 local payload = {
     version = 2,
@@ -70,6 +85,7 @@ local projected, projection_error = active_config.project_flat_settings(active, 
 assert_true(type(projected) == 'table', projection_error or 'reaction compatibility projection must build')
 assert_true(projected.reaction_enabled, 'reaction enabled flag must project')
 assert_equal(projected.reaction_rules[2].name, 'Dread Spikes', 'reaction rule list must project')
+assert_equal(projected.reaction_rules[3].distance, 12.0, 'run-away distance must project through compatibility settings')
 local durable = profile_v2.build_durable_config(projected, meta)
 local diff = profile_v2.diff_durable_config(durable.reactions, payload.config.reactions)
 assert_equal(diff.count, 0, 'reaction config must round-trip without durable diffs')
@@ -127,6 +143,104 @@ local complete = reactions.on_action({ actor_id = 900, category = 11, param = 28
 assert_equal(complete.released_target_id, 900, 'matching completion must release Cold Stare lock')
 local after_complete = reactions.evaluate(900, {}, 3.1)
 assert_true(after_complete == nil, 'Cold Stare lock must be gone after completion')
+
+local run_ready = reactions.on_action({
+    actor_id = 910,
+    category = 7,
+    targets = { { actions = { { param = 999 } } } },
+}, 900, 3.2, true)
+assert_equal(run_ready.activated.response, 'run_away', 'Dancing Fullers must activate run-away response')
+assert_equal(run_ready.activated.distance, 12.0, 'active run-away lock must carry configured raw distance')
+assert_true(reactions.blocks_movement(run_ready.activated), 'run-away must own movement above normal positioning')
+
+local run_request = reactions.run_away_request(run_ready.activated, { x = 4, y = 0 }, { x = 0, y = 0 })
+assert_equal(run_request.kind, 'run', 'inside run-away distance must begin outward movement')
+assert_equal(run_request.run_x, 1, 'outward vector must point from enemy toward player')
+assert_equal(run_request.run_y, 0, 'outward vector y component mismatch')
+assert_equal(run_request.current_distance, 4, 'run-away must report raw coordinate distance')
+run_request = reactions.run_away_request(run_ready.activated, { x = 8, y = 0 }, { x = 0, y = 0 })
+assert_equal(run_request.kind, 'run', 'outward movement must continue below target distance')
+
+run_request = reactions.run_away_request(run_ready.activated, { x = 8, y = 0 }, { x = 8, y = 4 })
+assert_equal(run_request.kind, 'run', 'moving enemy must retain active escape movement below target')
+assert_equal(run_request.run_x, 0, 'moving enemy must recalculate the escape x component')
+assert_equal(run_request.run_y, -1, 'moving enemy must recalculate the escape y component')
+
+run_request = reactions.run_away_request(run_ready.activated, nil, { x = 8, y = 4 })
+assert_equal(run_request.kind, 'stop', 'missing player position must stop an active outward vector')
+assert_equal(run_request.reason, 'REACTION_RUN_AWAY_POSITION_UNAVAILABLE', 'missing-position reason mismatch')
+run_request = reactions.run_away_request(run_ready.activated, nil, { x = 8, y = 4 })
+assert_equal(run_request.kind, 'hold', 'repeated missing positions must remain stopped without movement spam')
+run_request = reactions.run_away_request(run_ready.activated, { x = 8, y = 0 }, { x = 0, y = 0 })
+assert_equal(run_request.kind, 'run', 'run-away must resume when position data returns')
+
+local superseded_run = reactions.on_action({
+    actor_id = 910,
+    category = 7,
+    targets = { { actions = { { param = 284 } } } },
+}, 900, 3.25, true)
+assert_equal(superseded_run.released.response, 'run_away', 'a superseding ability must expose prior run-away ownership for cleanup')
+assert_equal(superseded_run.activated.response, 'turn_away', 'superseding ability must activate its configured response')
+reactions.on_action({ actor_id = 910, category = 11, param = 284 }, 900, 3.26)
+
+run_ready = reactions.on_action({
+    actor_id = 910,
+    category = 7,
+    targets = { { actions = { { param = 999 } } } },
+}, 900, 3.27, true)
+run_request = reactions.run_away_request(run_ready.activated, { x = 8, y = 0 }, { x = 0, y = 0 })
+assert_equal(run_request.kind, 'run', 'early-completion setup must own outward movement')
+
+local run_complete_early = reactions.on_action({ actor_id = 910, category = 11, param = 999 }, 900, 3.3)
+assert_equal(run_complete_early.released.response, 'run_away', 'early completion must expose released movement ownership')
+assert_true(reactions.evaluate(900, {}, 3.4) == nil, 'early completion must clear run-away state immediately')
+
+run_ready = reactions.on_action({
+    actor_id = 910,
+    category = 7,
+    targets = { { actions = { { param = 999 } } } },
+}, 900, 3.5, true)
+run_request = reactions.run_away_request(run_ready.activated, { x = 13, y = 0 }, { x = 0, y = 0 })
+assert_equal(run_request.kind, 'stop', 'player starting beyond target must not move farther outward')
+assert_equal(run_request.reason, 'REACTION_RUN_AWAY_REACHED', 'beyond-target stop reason mismatch')
+run_request = reactions.run_away_request(run_ready.activated, { x = 4, y = 0 }, { x = 3, y = 0 })
+assert_equal(run_request.kind, 'hold', 'satisfied run-away distance must remain sticky for the ability window')
+local run_complete_reached = reactions.on_action({ actor_id = 910, category = 11, param = 999 }, 900, 3.6)
+assert_equal(run_complete_reached.released.run_away_phase, 'reached', 'completion after target must clean reached state')
+
+run_ready = reactions.on_action({
+    actor_id = 910,
+    category = 7,
+    targets = { { actions = { { param = 999 } } } },
+}, 900, 3.7, true)
+run_request = reactions.run_away_request(run_ready.activated, { x = 11.9, y = 0 }, { x = 0, y = 0 })
+assert_equal(run_request.kind, 'stop', 'small stop tolerance must avoid overshooting the configured distance')
+assert_equal(run_request.reason, 'REACTION_RUN_AWAY_REACHED', 'near-target tolerance reason mismatch')
+local cancelled_run, replacement_run = reactions.cancel(run_ready.activated.key, 'enemy_despawn')
+assert_equal(cancelled_run.response, 'run_away', 'enemy despawn cancellation must release run-away ownership')
+assert_true(replacement_run == nil, 'enemy despawn cancellation must not leave stale reaction state')
+
+run_ready = reactions.on_action({
+    actor_id = 910,
+    category = 7,
+    targets = { { actions = { { param = 999 } } } },
+}, 900, 3.8, true)
+local reduced_payload = {
+    version = 2,
+    profile = payload.profile,
+    config = {
+        reactions = {
+            enabled = true,
+            rules = { rules[1], rules[2] },
+        },
+    },
+}
+local reduced_active = assert(active_config.build_active_profile_from_v2_payload(reduced_payload, meta))
+assert_true(active_config.set_active_profile(reduced_active), 'reduced reaction profile must install')
+local after_rule_reload, reload_released_target = reactions.evaluate(900, {}, 3.9)
+assert_true(after_rule_reload == nil, 'profile reload must remove a reaction lock whose rule is no longer configured')
+assert_equal(reload_released_target, 910, 'profile reload must expose the released movement actor to scheduler cleanup')
+assert_true(active_config.set_active_profile(active), 'full reaction profile must reinstall after reload cleanup test')
 
 local watch = reactions.effect_watch_set()
 assert_true(watch[173] == true, 'configured enemy buff must resolve to the live Dread Spikes effect id')
@@ -267,6 +381,9 @@ assert_true(source:find("is_dispellable = require('uc_scheduler_enemy_effect_sta
 assert_true(enemy_buff_provider_source:find('if is_dispellable(eid) then', 1, true) ~= nil, 'enemy dispel collection must require explicit JSON catalog membership')
 assert_true(ranker_source:find("reject_reason = 'reaction_hold'", 1, true) ~= nil, 'ranker must reject blocked proposals through reaction hold')
 assert_true(source:find("UC_MOVEMENT_MODE = 'REACTION_HOLD'", 1, true) ~= nil, 'movement coordinator must hold while turned away')
+assert_true(source:find("UC_MOVEMENT_MODE = 'REACTION_RUN_AWAY'", 1, true) ~= nil, 'movement coordinator must publish run-away ownership')
+assert_true(source:find("UC_MOVEMENT_OWNER = 'scheduler_reaction'", 1, true) ~= nil, 'run-away must use scheduler movement ownership')
+assert_true(source:find('reaction_movement_executor().stop({', 1, true) ~= nil, 'run-away completion must dispatch an explicit movement stop')
 assert_true(source:find("if rawget(_G, 'Start_Engine') == true then", 1, true) ~= nil, 'ability reactions must not activate while the engine is stopped')
 assert_true(source:find('scheduler.apply_reaction_response(reaction_event.activated)', 1, true) ~= nil, 'ready event must use response-specific scheduler ownership')
 assert_true(source:find('scheduler.apply_reaction_turn({ actor_id = current_target_id }, false)', 1, true) ~= nil, 'completion must restore scheduler facing toward the current target')

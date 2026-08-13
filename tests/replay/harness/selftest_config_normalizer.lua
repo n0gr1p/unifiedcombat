@@ -726,7 +726,7 @@ local function main()
 
     assert_error_contains(function()
         normalizer.normalize({ encounter = { enabled = true, id = 'ghatjot' } }, meta)
-    end, 'must be sortie_ghatjot or sortie_dhartok', 'unsupported encounter identity must fail')
+    end, 'must be sortie_ghatjot, sortie_dhartok, or kei', 'unsupported encounter identity must fail')
 
     assert_error_contains(function()
         normalizer.normalize({

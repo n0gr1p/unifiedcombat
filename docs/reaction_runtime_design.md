@@ -31,6 +31,12 @@ config.reactions = {
             name = "Dread Spikes",
             response = "stop_attacking",
         },
+        {
+            trigger = "ability_window",
+            name = "Dancing Fullers",
+            response = "run_away",
+            distance = 12.0,
+        },
     },
 }
 ```
@@ -42,12 +48,16 @@ The disabled, empty domain is optional so profiles created before reactions exis
 ### Ability Window
 
 - `trigger = "ability_window"`
-- `response = "turn_away"`
+- `response = "turn_away"` or `response = "run_away"`
+- `run_away` requires a positive numeric `distance` in raw coordinate yalms.
 - Windower action category `7` is authoritative ready evidence.
 - The ready ability is resolved from the first target action parameter through `resources.monster_abilities`.
 - Windower action category `11` is authoritative completion evidence.
 - Completion is correlated by actor ID and canonical ability name.
 - The rule activates for any valid live enemy actor observed readying the configured ability; target selection does not determine whether the ability can affect the player.
+- `run_away` recalculates the vector from the enemy's current X/Y position toward the player's current X/Y position every movement tick.
+- Its distance is raw center-coordinate distance. Player and enemy model sizes are not added or subtracted.
+- It stops at `distance - 0.15` yalms or farther, then remains stopped for the rest of that ability window so a moving enemy cannot drive overshoot after satisfaction.
 
 ### Enemy Buff
 
@@ -61,11 +71,14 @@ The disabled, empty domain is optional so profiles created before reactions exis
 ## Scheduler Behavior
 
 - Reaction turns use the existing scheduler turn dispatcher and turn-ownership module.
+- Run-away vectors and stops use the existing scheduler movement facade and dispatcher under `scheduler_reaction` ownership.
 - The scheduler holds movement and suppresses ordinary face-to-target while a reaction is active.
 - Enemy-targeted, combat, pull, target-control, movement, engage, disengage, target-switch, and weapon-skill proposals are rejected with `reaction_hold`.
 - Party/self support proposals remain eligible, including cures, defensive buffs, songs, and rolls that do not target the enemy.
 - UnifiedCombat does not disengage or change targets. Facing away stops melee while preserving combat state.
 - When the final lock for the actor clears, scheduler-owned facing is restored toward the still-valid current target.
+- Run-away completion, cancellation, invalid actors, and lifecycle resets issue an explicit dispatcher-owned movement stop before releasing ownership.
+- Party Follow, formation, and routine combat positioning yield while the run-away owner is active; they resume after the ability-window lock releases.
 - Doom emergency handling remains above reaction handling.
 
 ## Runtime Lifecycle

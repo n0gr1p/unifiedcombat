@@ -76,6 +76,7 @@ See the [scheduler RFC index](RFC/README.md), [phase-6 exit audit](RFC/UnifiedCo
 - Packet-fed enemy-effect tracking and Dispel/Magic Finale proposals for eligible party/alliance-claimed enemies.
 - Profile-defined reactions:
   - `ability_window` + `turn_away` for actions such as Cold Stare or Fatal Allure.
+  - `ability_window` + `run_away` with a positive raw-coordinate target distance for bounded AoE escape movement.
   - `enemy_buff` + `stop_attacking` for effects such as Dread Spikes.
 - Reaction holds preserve self/party support work while suppressing conflicting enemy-facing combat work.
 
@@ -94,6 +95,7 @@ See the [scheduler RFC index](RFC/README.md), [phase-6 exit audit](RFC/UnifiedCo
 - Independent camp pulling with target matching, quota/replenishment policy, camp leash, direct entity-ID actions, breadcrumbs, bounded recovery, cooldowns, and return-to-camp.
 - Nyzul lamp parking with coordinator, persistent anchor, ordered parkers, undo, regroup, and runtime-only movement holds.
 - Maiden of the Dusk (Easy) formation roles for tank center tether, DPS flank positioning, and healer safety/coverage geometry.
+- Profile-scoped, role-free formations keyed by exact named-mob or boss name, selected automatically when that enemy is the engaged current target. See [named mob formations](docs/named_mob_formations.md).
 
 ## Installation
 
