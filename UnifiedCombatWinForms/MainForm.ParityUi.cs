@@ -1180,7 +1180,7 @@ public partial class MainForm
         _formationAxisType = AddFormationChoiceRow(
             _formationConfigPanel,
             "Polar axis",
-            ["Boss to member"],
+            ["Boss to member", "Boss heading"],
             "Boss to member",
             ref formationRow
         );

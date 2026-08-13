@@ -118,7 +118,7 @@ enable any hazard movement behavior.
 Sortie selections instead require the role-free solver-native contract:
 
 - `placement`: `radial_band|polar_band`, `boss|encounter_origin|member` anchor,
-  optional member anchor, `boss_to_member` polar axis, radius/angle bands, and
+  optional member anchor, `boss_to_member` or live `boss_heading` polar axis, radius/angle bands, and
   deterministic sample steps;
 - `hysteresis`: correction start and stop distances;
 - `constraints`: optional encounter-origin, boss-distance, and required-party range
@@ -167,7 +167,7 @@ are recorded in `docs/TestResults/sortie_ghatjot_acceptance_2026-08-10.md`.
 
 - `uc_generic_formation.lua` is a pure, role-free solver for `radial_band` and
   `polar_band` placement. It resolves `boss`, `encounter_origin`, or named-member
-  anchors and the RFC's initial `boss_to_member` axis.
+  anchors and the RFC's `boss_to_member` and live `boss_heading` axes.
 - The solver applies strict radius/angle bands, encounter-origin and boss-distance
   limits, required-party range, and optional supplied hazard constraints. Phase 3
   does not promote encounter hazard candidates into those supplied constraints.

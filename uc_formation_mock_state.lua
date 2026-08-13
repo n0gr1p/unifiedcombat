@@ -66,6 +66,7 @@ local function normalize_actor(actor, expected_name)
 		x = tonumber(actor.x),
 		y = tonumber(actor.y),
 		z = tonumber(actor.z),
+		facing = tonumber(actor.facing),
 		hpp = tonumber(actor.hpp),
 		status = tonumber(actor.status),
 	}

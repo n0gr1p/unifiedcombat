@@ -106,6 +106,45 @@ local round_trip = profile_v2.build_durable_config(projected, meta)
 local diff = profile_v2.diff_durable_config(durable, round_trip)
 assert_equal(diff.count, 0, 'generic formation Profile V2 round-trip mismatch')
 
+local boss_heading_flat = generic_flat()
+boss_heading_flat.formation_axis_type = 'boss_heading'
+boss_heading_flat.formation_axis_member = ''
+local boss_heading_durable = profile_v2.build_durable_config(boss_heading_flat, meta)
+assert_equal(
+	boss_heading_durable.movement.formation.placement.axis.type,
+	'boss_heading',
+	'boss heading axis must be durable'
+)
+assert_equal(
+	boss_heading_durable.movement.formation.placement.axis.member,
+	nil,
+	'boss heading axis must not acquire member semantics'
+)
+local boss_heading_projected, boss_heading_projection_error = active_config.project_flat_settings({
+	version = 2,
+	profile = {
+		schema_version = 2,
+		engine = 'UC',
+		character = 'Tester',
+		main_job = 'WAR',
+		sub_job = 'SAM',
+		source = 'selftest',
+	},
+	config = boss_heading_durable,
+}, {})
+assert_true(
+	type(boss_heading_projected) == 'table',
+	'boss heading structured profile projection failed: ' .. tostring(boss_heading_projection_error)
+)
+assert_equal(boss_heading_projected.formation_axis_type, 'boss_heading', 'boss heading flat projection mismatch')
+assert_equal(boss_heading_projected.formation_axis_member, nil, 'boss heading flat projection must omit axis member')
+local boss_heading_round_trip = profile_v2.build_durable_config(boss_heading_projected, meta)
+assert_equal(
+	profile_v2.diff_durable_config(boss_heading_durable, boss_heading_round_trip).count,
+	0,
+	'boss heading Profile V2 round-trip mismatch'
+)
+
 local disabled_mock_flat = generic_flat()
 disabled_mock_flat.formation_mock_enabled = false
 local disabled_mock_durable = profile_v2.build_durable_config(disabled_mock_flat, meta)

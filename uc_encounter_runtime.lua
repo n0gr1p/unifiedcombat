@@ -76,6 +76,7 @@ local function encounter_actors()
 				x = mob.x,
 				y = mob.y,
 				z = mob.z,
+				facing = mob.facing,
 				hpp = mob.hpp,
 				status = mob.status,
 			}

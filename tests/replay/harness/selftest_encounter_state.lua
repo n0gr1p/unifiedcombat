@@ -20,7 +20,7 @@ local function assert_equal(actual, expected, message)
 	end
 end
 
-local function boss(id, name, status, hpp, x, y)
+local function boss(id, name, status, hpp, x, y, facing)
 	return {
 		id = id,
 		name = name,
@@ -29,6 +29,7 @@ local function boss(id, name, status, hpp, x, y)
 		x = x,
 		y = y,
 		z = 0,
+		facing = facing,
 	}
 end
 
@@ -68,7 +69,7 @@ ok, reason = observe(4.0, { boss(1001, 'Ghatjot', 0, 100, 10, 20) }, {
 assert_true(ok, 'single configured actor in Sortie should bind')
 assert_equal(reason, 'ORIGIN_CAPTURE_STABILIZING', 'first origin sample reason mismatch')
 
-ok, reason = observe(4.6, { boss(1001, 'Ghatjot', 0, 100, 10, 20) }, {
+ok, reason = observe(4.6, { boss(1001, 'Ghatjot', 0, 100, 10, 20, 0.75) }, {
 	{ id = 2001, name = 'MemberA', source = 'party_packet_0x076', buff_names = { 'Poison' } },
 	{ id = 2002, name = 'MemberB', source = 'local_player', buff_names = { 'Taint' } },
 })
@@ -79,6 +80,7 @@ assert_equal(snapshot.resolved_id, 'sortie_ghatjot', 'resolved encounter mismatc
 assert_equal(snapshot.policy_modes.water_damage, 'enforce', 'Ghatjot Water policy default mismatch')
 assert_equal(snapshot.policy_modes.repeat_action_wall, 'off', 'Ghatjot repeat policy default mismatch')
 assert_equal(snapshot.origin.x, 10, 'origin x mismatch')
+assert_equal(snapshot.boss.facing, 0.75, 'live encounter boss heading must be preserved')
 assert_true(snapshot.status_context[1].poison, 'Poison observation missing')
 assert_true(snapshot.status_context[2].taint, 'Taint observation missing')
 

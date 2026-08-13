@@ -2327,6 +2327,7 @@ public partial class MainForm
         return _formationAxisType.SelectedItem?.ToString() switch
         {
             "Boss to member" => "boss_to_member",
+            "Boss heading" => "boss_heading",
             _ => throw new InvalidOperationException("unsupported formation axis"),
         };
     }
@@ -2433,6 +2434,7 @@ public partial class MainForm
         _formationAxisType.SelectedItem = SessionStateHelper.GetString(snapshot, "formation_axis_type", "boss_to_member") switch
         {
             "boss_to_member" => "Boss to member",
+            "boss_heading" => "Boss heading",
             var value => throw new InvalidDataException($"unsupported formation axis in UI profile: {value}"),
         };
         ApplyFormationNumber(snapshot, "formation_preferred_radius", _formationPreferredRadius, "3");
@@ -2582,6 +2584,7 @@ public partial class MainForm
             return false;
         }
         if (FormationPlacementModeValue() == "polar_band"
+            && FormationAxisTypeValue() == "boss_to_member"
             && string.IsNullOrWhiteSpace(SelectedPartyName(_formationAxisMember)))
         {
             error = "Polar placement requires an axis character.";
@@ -2644,7 +2647,10 @@ public partial class MainForm
         _formationAnchor.Enabled = enabled && generic;
         _formationAnchorMember.Enabled = enabled && generic && FormationAnchorValue() == "member";
         _formationAxisType.Enabled = enabled && generic && FormationPlacementModeValue() == "polar_band";
-        _formationAxisMember.Enabled = enabled && generic && FormationPlacementModeValue() == "polar_band";
+        _formationAxisMember.Enabled = enabled
+            && generic
+            && FormationPlacementModeValue() == "polar_band"
+            && FormationAxisTypeValue() == "boss_to_member";
         _formationPreferredRadius.Enabled = enabled && generic;
         _formationMinimumRadius.Enabled = enabled && generic;
         _formationMaximumRadius.Enabled = enabled && generic;

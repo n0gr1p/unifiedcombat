@@ -190,13 +190,15 @@ local function validate_placement(config)
 	}
 	if mode == 'polar_band' then
 		local axis = require_table(placement.axis, 'config.placement.axis')
-		if axis.type ~= 'boss_to_member' then
-			error('config.placement.axis.type must be boss_to_member')
+		if axis.type ~= 'boss_to_member' and axis.type ~= 'boss_heading' then
+			error('config.placement.axis.type must be boss_to_member or boss_heading')
 		end
 		validated.axis = {
-			type = 'boss_to_member',
-			member = nonempty_string(axis.member, 'config.placement.axis.member'),
+			type = axis.type,
 		}
+		if axis.type == 'boss_to_member' then
+			validated.axis.member = nonempty_string(axis.member, 'config.placement.axis.member')
+		end
 		validated.preferred_angle_deg = finite_number(
 			placement.preferred_angle_deg,
 			'config.placement.preferred_angle_deg'
@@ -306,9 +308,19 @@ local function resolve_anchor(ctx, placement, members, boss, origin)
 	return member, nil
 end
 
-local function resolve_axis(placement, members, boss)
+local function resolve_axis(placement, members, boss, boss_heading)
 	if placement.mode ~= 'polar_band' then
 		return nil, nil
+	end
+	if placement.axis.type == 'boss_heading' then
+		local heading = tonumber(boss_heading)
+		if heading == nil or heading ~= heading or heading == math.huge or heading == -math.huge then
+			return nil, 'FORMATION_BOSS_HEADING_UNAVAILABLE'
+		end
+		return {
+			x = math.cos(heading),
+			y = -math.sin(heading),
+		}, nil
 	end
 	local member, reason = find_member(members, placement.axis.member)
 	if member == nil then
@@ -556,6 +568,7 @@ function M.evaluate(ctx)
 	end
 	local me = point(ctx.me, 'ctx.me')
 	local boss = point(ctx.boss, 'ctx.boss')
+	local boss_heading = ctx.boss.facing
 	local members = require_array(ctx.party_members, 'ctx.party_members')
 	local hazards = require_array(ctx.encounter_hazards, 'ctx.encounter_hazards')
 	if type(ctx.was_moving) ~= 'boolean' then
@@ -572,7 +585,7 @@ function M.evaluate(ctx)
 	if anchor == nil then
 		return error_result(anchor_reason)
 	end
-	local axis, axis_reason = resolve_axis(placement, members, boss)
+	local axis, axis_reason = resolve_axis(placement, members, boss, boss_heading)
 	if placement.mode == 'polar_band' and axis == nil then
 		return error_result(axis_reason)
 	end

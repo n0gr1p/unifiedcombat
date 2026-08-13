@@ -136,6 +136,7 @@ local function normalize_boss(actor)
 		x = tonumber(actor.x),
 		y = tonumber(actor.y),
 		z = tonumber(actor.z),
+		facing = tonumber(actor.facing),
 		hpp = tonumber(actor.hpp),
 		status = tonumber(actor.status),
 	}

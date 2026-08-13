@@ -1317,6 +1317,15 @@ internal static class StructuredProfileV2WriterTests
         AssertNotContains(content, "role = \"healer\"", "generic formation must not serialize Lilith role semantics");
         AssertNotContains(content, "tank_name =", "generic formation must not serialize Lilith tank semantics");
 
+        flat["formation_axis_type"] = "boss_heading";
+        flat["formation_axis_member"] = "";
+        var bossHeadingContent = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "WHM", "SCH")
+        );
+        AssertContains(bossHeadingContent, "type = \"boss_heading\"", "boss heading axis type missing");
+        AssertNotContains(bossHeadingContent, "member =", "boss heading axis must not serialize member semantics");
+
         flat["formation_mock_mob_name"] = "";
         AssertThrows<InvalidDataException>(
             () => StructuredProfileV2Writer.BuildStructuredProfileFile(

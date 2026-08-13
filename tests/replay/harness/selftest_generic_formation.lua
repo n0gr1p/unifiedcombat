@@ -100,6 +100,52 @@ assert_true(proposal.detail.selected_angle_deg <= 225, 'polar candidate above al
 assert_true(proposal.detail.selected_radius >= 2, 'polar candidate below radius band')
 assert_true(proposal.detail.selected_radius <= 4, 'polar candidate above radius band')
 
+local boss_heading = radial_config()
+boss_heading.placement = {
+	mode = 'polar_band',
+	anchor = 'boss',
+	axis = {
+		type = 'boss_heading',
+	},
+	preferred_radius = 12.0,
+	minimum_radius = 10.0,
+	maximum_radius = 14.0,
+	preferred_angle_deg = 180.0,
+	allowed_angle_half_width_deg = 130.0,
+	radius_step = 1.0,
+	angle_step_deg = 10.0,
+}
+local boss_heading_ctx = context(boss_heading, { id = 1, name = 'Me', x = -12, y = 0 })
+boss_heading_ctx.boss.facing = 0
+proposal = formation.evaluate(boss_heading_ctx)
+assert_equal(proposal.action, 'hold', 'ranged position behind boss heading must hold')
+assert_near(proposal.detail.resolved_axis.x, 1, 0.0001, 'boss heading axis x mismatch')
+assert_near(proposal.detail.resolved_axis.y, 0, 0.0001, 'boss heading axis y mismatch')
+
+boss_heading_ctx.me = { id = 1, name = 'Me', x = 12, y = 0 }
+proposal = formation.evaluate(boss_heading_ctx)
+assert_equal(proposal.action, 'move', 'ranged position inside boss front cone must move')
+assert_true(
+	math.abs(math.atan2(proposal.goal.y, proposal.goal.x)) >= math.rad(50) - 0.0001,
+	'boss heading formation must select a point outside the configured front cone'
+)
+
+boss_heading_ctx.boss.facing = math.pi / 2
+boss_heading_ctx.me = { id = 1, name = 'Me', x = 0, y = 12 }
+proposal = formation.evaluate(boss_heading_ctx)
+assert_equal(proposal.action, 'hold', 'boss heading axis must rotate with live boss facing')
+assert_near(proposal.detail.resolved_axis.x, 0, 0.0001, 'quarter-turn boss heading axis x mismatch')
+assert_near(proposal.detail.resolved_axis.y, -1, 0.0001, 'quarter-turn boss heading axis y mismatch')
+
+boss_heading_ctx.me = { id = 1, name = 'Me', x = 0, y = -12 }
+proposal = formation.evaluate(boss_heading_ctx)
+assert_equal(proposal.action, 'move', 'Windower-facing front position must move after a quarter turn')
+
+boss_heading_ctx.boss.facing = nil
+proposal = formation.evaluate(boss_heading_ctx)
+assert_equal(proposal.action, 'error', 'missing boss heading must fail closed')
+assert_equal(proposal.reason, 'FORMATION_BOSS_HEADING_UNAVAILABLE', 'missing boss heading reason mismatch')
+
 local missing_axis = context(polar)
 missing_axis.party_members = {
 	{ id = 1, name = 'Me', x = 2, y = 0 },

@@ -13,7 +13,7 @@ local function assert_equal(actual, expected, message)
 end
 
 local actors = {
-	{ id = 700, name = 'Apex Crab', x = 10, y = 20, z = 0, hpp = 100, status = 0 },
+	{ id = 700, name = 'Apex Crab', x = 10, y = 20, z = 0, facing = 0.5, hpp = 100, status = 0 },
 }
 local target = actors[1]
 local runtime = mock_state_factory.build({
@@ -39,15 +39,18 @@ snapshot, reason = runtime.observe(1.6, config)
 assert_equal(reason, 'FORMATION_MOCK_ORIGIN_CAPTURED', 'stable idle mock must capture origin')
 assert_equal(snapshot.origin.x, 10, 'captured mock origin x mismatch')
 assert_equal(snapshot.origin.y, 20, 'captured mock origin y mismatch')
+assert_equal(snapshot.boss.facing, 0.5, 'mock boss heading must be preserved')
 
 actors[1].status = 1
 actors[1].x = 14
 actors[1].y = 22
+actors[1].facing = 1.25
 target = nil
 snapshot, reason = runtime.observe(2.0, config)
 assert_equal(snapshot.phase, 'active', 'engaged mock phase mismatch')
 assert_equal(snapshot.boss.x, 14, 'mock boss must track live movement')
 assert_equal(snapshot.boss.y, 22, 'mock boss live y mismatch')
+assert_equal(snapshot.boss.facing, 1.25, 'mock boss heading must track live facing')
 assert_equal(snapshot.origin.x, 10, 'mock origin must remain at pre-engage capture')
 assert_equal(snapshot.resolved_id, 'sortie_ghatjot', 'mock must retain selected geometry identity')
 assert_true(snapshot.mock, 'mock snapshot must identify its source')

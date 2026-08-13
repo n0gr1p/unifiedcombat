@@ -699,15 +699,18 @@ Do not call it `arena_center` for Sortie unless the code has proof it is actuall
 
 A polar formation may need a directional axis.
 
-Initial supported axis source:
+Supported axis sources:
 
 ```text
 boss_to_member
+boss_heading
 ```
 
 This covers the important "relative to the boss/reference-member line" geometry without the encounter declaring that the member is a tank.
 
 The profile chooses the reference member.
+
+`boss_heading` uses the live Windower boss facing as the zero-degree polar direction, converting the heading to world coordinates with `(cos(heading), -sin(heading))`. It allows ranged characters to remain inside a configured radius band while avoiding a boss-facing cone without assigning party-role semantics. For example, a preferred angle of `180` and an allowed half-width of `130` permits every direction except a 50-degree front cone.
 
 Additional axes should be added only when a real encounter requires them.
 

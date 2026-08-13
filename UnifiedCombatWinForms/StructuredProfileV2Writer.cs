@@ -589,22 +589,22 @@ internal static class StructuredProfileV2Writer
         if (mode == "polar_band")
         {
             var axisType = ReadString(flatProfile, "formation_axis_type", "").Trim().ToLowerInvariant();
-            if (axisType != "boss_to_member")
+            if (axisType is not ("boss_to_member" or "boss_heading"))
             {
-                throw new InvalidDataException("polar formation axis must be boss_to_member");
+                throw new InvalidDataException("polar formation axis must be boss_to_member or boss_heading");
             }
-            var axisMember = StripTrailingDisplayIndex(ReadString(flatProfile, "formation_axis_member", ""));
-            if (string.IsNullOrWhiteSpace(axisMember))
+            var axis = new StructuredProfileNode().Add("type", axisType);
+            if (axisType == "boss_to_member")
             {
-                throw new InvalidDataException("polar formation requires an axis member");
+                var axisMember = StripTrailingDisplayIndex(ReadString(flatProfile, "formation_axis_member", ""));
+                if (string.IsNullOrWhiteSpace(axisMember))
+                {
+                    throw new InvalidDataException("boss-to-member polar formation requires an axis member");
+                }
+                axis.Add("member", axisMember);
             }
             placement
-                .Add(
-                    "axis",
-                    new StructuredProfileNode()
-                        .Add("type", axisType)
-                        .Add("member", axisMember)
-                )
+                .Add("axis", axis)
                 .Add("preferred_angle_deg", ReadRequiredFormationNumber(flatProfile, "formation_preferred_angle_deg", -360, 360))
                 .Add("allowed_angle_half_width_deg", ReadRequiredFormationNumber(flatProfile, "formation_allowed_angle_half_width_deg", 0, 180));
         }

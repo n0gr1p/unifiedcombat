@@ -276,6 +276,18 @@ local function clear_follow_needs_catchup()
 	_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL = 0
 end
 
+local function formation_movement_active()
+	local status = rawget(_G, 'UC_FORMATION_STATUS')
+	local formation = uc_active_config.get_path('config.movement.formation')
+	local movement_domain_enabled = uc_active_config.get_path('config.ownership.domain_movement_enabled')
+	return movement_domain_enabled == true
+		and type(formation) == 'table'
+		and formation.enabled == true
+		and type(status) == 'table'
+		and status.enabled == true
+		and tostring(status.phase or '') == 'active'
+end
+
 local function stop_and_release_follow_movement()
 	if tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or '') ~= 'follow' then
 		return false
@@ -915,7 +927,9 @@ function M.prerender()
 		last_follow_suppressed = false
 		return
 	end
-	do
+	if formation_movement_active() then
+		clear_follow_needs_catchup()
+	else
 		local p = windower.ffxi.get_player()
 		local out_of_combat = (tonumber(p and p.status) or 0) ~= 1
 		if out_of_combat then

@@ -1595,16 +1595,18 @@ local function normalize_generic_formation(source, target)
     end
     if mode == 'polar_band' then
         local axis = require_formation_table(placement.axis, 'config.movement.formation.placement.axis')
-        if axis.type ~= 'boss_to_member' then
-            error('config.movement.formation.placement.axis.type must be boss_to_member')
+        if axis.type ~= 'boss_to_member' and axis.type ~= 'boss_heading' then
+            error('config.movement.formation.placement.axis.type must be boss_to_member or boss_heading')
         end
         normalized_placement.axis = {
-            type = 'boss_to_member',
-            member = require_formation_string(
+            type = axis.type,
+        }
+        if axis.type == 'boss_to_member' then
+            normalized_placement.axis.member = require_formation_string(
                 axis.member,
                 'config.movement.formation.placement.axis.member'
-            ),
-        }
+            )
+        end
         normalized_placement.preferred_angle_deg = require_formation_number(
             placement.preferred_angle_deg,
             'config.movement.formation.placement.preferred_angle_deg',
