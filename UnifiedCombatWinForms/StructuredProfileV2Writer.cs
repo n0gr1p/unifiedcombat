@@ -246,6 +246,7 @@ internal static class StructuredProfileV2Writer
                     .Add("primary", ReadString(flatProfile, "weaponskill", ""))
                     .Add("mode", ReadString(flatProfile, "ws_mode", "smart"))
                     .Add("minimum_tp", ReadBoundedInt(flatProfile, "weaponskill_min_tp", 1000, 1000, 3000))
+                    .Add("allow_aoe", ReadBool(flatProfile, "weaponskill_allow_aoe", true))
                     .Add("wait_ignore_names", ParseNameList(ReadString(flatProfile, "ignore_entries", "")))
                     .Add("aftermath_enabled", ReadBool(flatProfile, "aftermath_enabled", false))
                     .Add("aftermath_ws", ReadString(flatProfile, "aftermath_ws", ""))
@@ -396,7 +397,7 @@ internal static class StructuredProfileV2Writer
                         .Add(
                             "fullers",
                             new StructuredProfileNode()
-                                .Add("run_away_distance", ReadBoundedDouble(flatProfile, "kei_fullers_run_away_distance", 12.0, 0.1, 50.0))
+                                .Add("target_distance", ReadBoundedDouble(flatProfile, "kei_fullers_target_distance", 12.0, 0.1, 50.0))
                                 .Add("prearm_hpp_margin", ReadBoundedDouble(flatProfile, "kei_fullers_prearm_hpp_margin", 1.0, 0.0, 10.0))
                         )
                 );
@@ -1853,7 +1854,7 @@ internal static class StructuredProfileV2Writer
             var trigger = ReadString(rule, "trigger", "").Trim();
             var name = ReadString(rule, "name", "").Trim();
             var response = ReadString(rule, "response", "").Trim();
-            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away"))
+            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range"))
                 || (trigger == "enemy_buff" && response == "stop_attacking");
             if (!valid || name.Length == 0)
             {
@@ -1863,7 +1864,7 @@ internal static class StructuredProfileV2Writer
                 .Add("trigger", trigger)
                 .Add("name", name)
                 .Add("response", response);
-            if (response == "run_away")
+            if (response is "run_away" or "move_to_range")
             {
                 if (!rule.TryGetPropertyValue("distance", out var distanceNode)
                     || distanceNode is not JsonValue distanceValue
@@ -1871,7 +1872,7 @@ internal static class StructuredProfileV2Writer
                     || !double.IsFinite(distance)
                     || distance <= 0)
                 {
-                    throw new InvalidDataException("run_away reaction requires a positive finite distance");
+                    throw new InvalidDataException($"{response} reaction requires a positive finite distance");
                 }
                 serialized.Add("distance", distance);
             }

@@ -23,14 +23,14 @@ encounter = {
             probe_timeout_s = 3.0,
         },
         fullers = {
-            run_away_distance = 12.0,
+            target_distance = 12.0,
             prearm_hpp_margin = 1.0,
         },
     },
 }
 ```
 
-`fullers.run_away_distance` is presented to `uc_reaction_runtime` as the normal generic rule `ability_window / Dancing Fullers / run_away`. The reaction runtime and movement coordinator retain execution ownership. A duplicate hand-authored Dancing Fullers rule is rejected by configuration normalization so two durable sources cannot disagree.
+`fullers.target_distance` is presented to `uc_reaction_runtime` as the normal generic rule `ability_window / Dancing Fullers / move_to_range`. The reaction runtime and movement coordinator retain execution ownership. A duplicate hand-authored Dancing Fullers rule is rejected by configuration normalization so two durable sources cannot disagree. Profiles written with the earlier `fullers.run_away_distance` or flat `kei_fullers_run_away_distance` name normalize to the canonical target-distance field; conflicting old and new values fail validation.
 
 Runtime state (boss actor ID, inferred or confirmed element, pending spell correlation, hit cadence, Fullers history, and Benediction observations) is never written to the profile.
 
@@ -40,9 +40,11 @@ Runtime state (boss actor ID, inferred or confirmed element, pending spell corre
 - `uc_provider_kei.lua` decides whether to propose a probe, damage spell, or cheap keepalive.
 - `unified_scheduler.lua` ranks, validates, dispatches, and correlates the selected spell through its existing action economy.
 - `uc_reaction_runtime.lua` owns the Dancing Fullers Ability Window lifecycle.
-- The existing movement coordinator owns `run_away` movement.
+- The existing movement coordinator owns `move_to_range` movement under `scheduler_reaction`.
 
 The provider sends no commands. It emits ordinary enemy-targeted `spell` proposals with target-ID dispatch explicitly allowed through the existing combat dispatcher.
+
+Normal ranged/support formation may hold a character outside approximately 15 yalms. During Dancing Fullers, `move_to_range(12)` moves a ranged character inward or a melee character outward and keeps reevaluating Kei's live position. While the character is within 0.15 yalms of 12, physical movement stops but reaction ownership continues to suppress formation and follow. Category-11 Fullers completion releases the reaction so normal formation can resume.
 
 ## Structured action evidence
 
@@ -73,7 +75,7 @@ The provider begins considering the preferred configured damage spell 1.25 secon
 
 ## Fullers and Benediction
 
-The runtime tracks 75, 50, 25, and 10 percent thresholds independently. The next threshold is consumed by actual Dancing Fullers ready/completion evidence. HP increases do not restore consumed thresholds, so Benediction cannot re-arm 75 after that Fullers has occurred. Benediction is recorded but does not clear confirmed elemental state.
+The runtime tracks 75, 50, 25, and 10 percent thresholds independently. The next threshold is consumed by actual Dancing Fullers ready/completion evidence. When the addon binds to a fight already in progress, thresholds below which Kei has already moved beyond the configured pre-arm margin are initialized as skipped so a reload cannot permanently pre-arm a past Fullers. After that one-time bind initialization, only real Dancing Fullers evidence advances threshold history. HP increases do not restore consumed thresholds, so Benediction cannot re-arm 75 after that Fullers has occurred. Benediction is recorded but does not clear confirmed elemental state.
 
 ## Existing status handling and current gaps
 

@@ -2216,7 +2216,7 @@ function scheduler.apply_reaction_response(lock)
 	if response == 'turn_away' then
 		return scheduler.apply_reaction_turn(lock, true)
 	end
-	if response == 'run_away' then
+	if response == 'run_away' or response == 'move_to_range' then
 		require('uc_reaction_runtime').mark_turn_applied(lock.key)
 		lock.turn_applied = true
 		return true
@@ -2252,7 +2252,7 @@ local function reaction_movement_executor()
 end
 
 function scheduler.pause_reaction_movement(lock, reason)
-	if type(lock) ~= 'table' or lock.response ~= 'run_away' then
+	if not require('uc_reaction_runtime').owns_movement(lock) then
 		return false
 	end
 	if rawget(_G, 'UC_MOVEMENT_OWNER') ~= 'scheduler_reaction' then
@@ -2269,11 +2269,12 @@ function scheduler.pause_reaction_movement(lock, reason)
 end
 
 function scheduler.release_reaction_movement(lock, reason)
-	if type(lock) ~= 'table' or tostring(lock.response or '') ~= 'run_away' then
+	if not require('uc_reaction_runtime').owns_movement(lock) then
 		return false
 	end
+	local response = tostring(lock.response or '')
 	reaction_movement_executor().stop({
-		reason = tostring(reason or 'REACTION_RUN_AWAY_RELEASED'),
+		reason = tostring(reason or 'REACTION_MOVEMENT_RELEASED'),
 		ability = tostring(lock.name or ''),
 		actor_id = tonumber(lock.actor_id) or 0,
 	})
@@ -2283,31 +2284,40 @@ function scheduler.release_reaction_movement(lock, reason)
 	end
 	scheduler.action_timeline_log('REACTION_CLEARED', {
 		ability = tostring(lock.name or ''),
-		response = 'run_away',
+		response = response,
 		target_distance = tonumber(lock.distance),
 		reason = tostring(reason or 'released'),
 	}, ('reaction_cleared:%s:%d'):format(tostring(lock.name or ''), tonumber(lock.actor_id) or 0), 0)
 	return true
 end
 
-function scheduler.apply_reaction_run_away(lock, formation_runtime)
-	if type(lock) ~= 'table' or tostring(lock.response or '') ~= 'run_away' then
-		error('run-away scheduler movement requires a run_away reaction lock')
+function scheduler.apply_reaction_movement(lock, formation_runtime)
+	local reaction_runtime = require('uc_reaction_runtime')
+	if not reaction_runtime.owns_movement(lock) then
+		error('reaction scheduler movement requires a movement-owning reaction lock')
 	end
+	local response = tostring(lock.response or '')
 	local actor_id = tonumber(lock.actor_id) or 0
 	local enemy = actor_id > 0 and windower.ffxi.get_mob_by_id(actor_id) or nil
 	if type(enemy) ~= 'table'
 		or enemy.valid_target ~= true
 		or tonumber(enemy.spawn_type) ~= 16
 		or (tonumber(enemy.hpp) or 0) <= 0 then
-		local released, replacement = require('uc_reaction_runtime').cancel(lock.key, 'actor_unavailable')
-		scheduler.release_reaction_movement(released, 'REACTION_RUN_AWAY_ACTOR_UNAVAILABLE')
+		local released, replacement = reaction_runtime.cancel(lock.key, 'actor_unavailable')
+		scheduler.release_reaction_movement(released, 'REACTION_MOVEMENT_ACTOR_UNAVAILABLE')
 		_G.UC_REACTION_LOCK = replacement
 		return false, 'MOVE_COORD_REACTION_ACTOR_UNAVAILABLE'
 	end
 	local me = windower.ffxi.get_mob_by_target('me')
-	local request = require('uc_reaction_runtime').run_away_request(lock, me, enemy)
-	formation_runtime.stop('FORMATION_REACTION_RUN_AWAY')
+	local request
+	if response == 'run_away' then
+		request = reaction_runtime.run_away_request(lock, me, enemy)
+	elseif response == 'move_to_range' then
+		request = reaction_runtime.move_to_range_request(lock, me, enemy)
+	else
+		error('unsupported reaction movement response: ' .. response)
+	end
+	formation_runtime.stop('FORMATION_REACTION_MOVEMENT')
 	local movement = reaction_movement_executor()
 	if request.kind == 'run' then
 		movement.run_vector(request.run_x, request.run_y, {
@@ -2326,26 +2336,33 @@ function scheduler.apply_reaction_run_away(lock, formation_runtime)
 			target_distance = request.target_distance,
 		})
 	elseif request.kind ~= 'hold' then
-		error('unsupported run-away movement request: ' .. tostring(request.kind))
+		error('unsupported reaction movement request: ' .. tostring(request.kind))
 	end
-	_G.UC_MOVEMENT_MODE = 'REACTION_RUN_AWAY'
+	_G.UC_MOVEMENT_MODE = response == 'run_away' and 'REACTION_RUN_AWAY' or 'REACTION_MOVE_TO_RANGE'
 	_G.UC_MOVEMENT_BLOCK_REASON = request.reason
 	_G.UC_MOVEMENT_OWNER = 'scheduler_reaction'
 	_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.40
 	if request.phase_changed == true then
 		scheduler.action_timeline_log(request.reason, {
 			ability = tostring(lock.name or ''),
-			response = 'run_away',
+			response = response,
 			actor_id = actor_id,
 			current_distance = request.current_distance,
 			target_distance = request.target_distance,
-		}, ('reaction_run_away:%s:%d:%s'):format(
+		}, ('reaction_movement:%s:%d:%s'):format(
 			tostring(lock.name or ''),
 			actor_id,
 			tostring(request.reason)
 		), 0)
 	end
 	return request.kind ~= 'hold', request.reason
+end
+
+function scheduler.apply_reaction_run_away(lock, formation_runtime)
+	if type(lock) ~= 'table' or tostring(lock.response or '') ~= 'run_away' then
+		error('run-away scheduler movement requires a run_away reaction lock')
+	end
+	return scheduler.apply_reaction_movement(lock, formation_runtime)
 end
 
 function scheduler.refresh_reaction_lock()
@@ -2356,10 +2373,9 @@ function scheduler.refresh_reaction_lock()
 	local lock, released_target_id = require('uc_reaction_runtime').evaluate(target_id, effects, now_s())
 	local camp_lane_reserved = scheduler.providers.camp_puller.active()
 	_G.UC_REACTION_LOCK = lock
-	if type(previous_lock) == 'table'
-		and tostring(previous_lock.response or '') == 'run_away'
+	if require('uc_reaction_runtime').owns_movement(previous_lock)
 		and (type(lock) ~= 'table' or tostring(lock.key or '') ~= tostring(previous_lock.key or '')) then
-		scheduler.release_reaction_movement(previous_lock, 'REACTION_RUN_AWAY_EVALUATION_RELEASE')
+		scheduler.release_reaction_movement(previous_lock, 'REACTION_MOVEMENT_EVALUATION_RELEASE')
 	end
 	if not camp_lane_reserved
 		and released_target_id and released_target_id > 0 and target_id > 0 then
@@ -2403,7 +2419,7 @@ local function run_movement_coordinator_tick()
 	if not domain_ownership.is_enabled('movement') then
 		scheduler.pause_reaction_movement(
 			rawget(_G, 'UC_REACTION_LOCK'),
-			'REACTION_RUN_AWAY_MOVEMENT_DOMAIN_DISABLED'
+			'REACTION_MOVEMENT_DOMAIN_DISABLED'
 		)
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_DOMAIN_DISABLED'
 		return false, 'MOVE_COORD_DOMAIN_DISABLED'
@@ -2413,7 +2429,7 @@ local function run_movement_coordinator_tick()
 		and not scheduler.providers.camp_puller.active() then
 		scheduler.pause_reaction_movement(
 			rawget(_G, 'UC_REACTION_LOCK'),
-			'REACTION_RUN_AWAY_NYZUL_HOLD'
+			'REACTION_MOVEMENT_NYZUL_HOLD'
 		)
 		local reason = nyzul_runtime.movement_hold_reason()
 		_G.UC_MOVEMENT_MODE = 'NYZUL_HOLD'
@@ -2478,8 +2494,8 @@ local function run_movement_coordinator_tick()
 		if reaction_lock.turn_applied ~= true then
 			scheduler.apply_reaction_response(reaction_lock)
 		end
-		if tostring(reaction_lock.response or '') == 'run_away' then
-			return scheduler.apply_reaction_run_away(reaction_lock, formation_runtime)
+		if require('uc_reaction_runtime').owns_movement(reaction_lock) then
+			return scheduler.apply_reaction_movement(reaction_lock, formation_runtime)
 		end
 		if require('uc_reaction_runtime').blocks_movement(reaction_lock) then
 			formation_runtime.stop('FORMATION_REACTION_HOLD')

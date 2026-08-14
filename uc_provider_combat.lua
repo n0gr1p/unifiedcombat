@@ -184,6 +184,7 @@ function M.new(deps)
 			reason_code = reason_code,
 			required_tp = required_tp,
 			skillchain_plan = skillchain_plan,
+			smart_aoe_guard = ws_selection.smart_aoe_guard == true,
 			detail = {
 				tp = tp,
 				ws_pick_reason = tostring(ws_pick_reason or ''),

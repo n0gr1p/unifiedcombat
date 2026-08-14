@@ -160,6 +160,7 @@ local function new_state()
 		fullers = {
 			consumed = { [75] = false, [50] = false, [25] = false, [10] = false },
 			next_threshold = 75,
+			thresholds_initialized = false,
 			prearmed = false,
 			in_progress = false,
 			last_completed_at = 0,
@@ -289,6 +290,37 @@ function M.configure(config)
 	return true, 'CONFIGURED'
 end
 
+local function initialize_fullers_thresholds(boss_hpp)
+	if state.fullers.thresholds_initialized == true then
+		return
+	end
+	local hpp = tonumber(boss_hpp)
+	if hpp == nil then
+		error('Kei Fullers threshold initialization requires boss HPP')
+	end
+	local skipped = {}
+	for i = 1, #FULLERS_THRESHOLDS do
+		local threshold = FULLERS_THRESHOLDS[i]
+		if hpp < (threshold - state.config.fullers_prearm_hpp_margin) then
+			state.fullers.consumed[threshold] = true
+			skipped[#skipped + 1] = threshold
+		end
+	end
+	state.fullers.thresholds_initialized = true
+	state.fullers.next_threshold = next_threshold(state.fullers.consumed)
+	if #skipped > 0 then
+		transition(
+			('late bind skipped passed Fullers thresholds: %s'):format(table.concat(skipped, ',')),
+			'KEI_FULLERS_THRESHOLDS_SKIPPED_ON_BIND',
+			{
+				boss_hpp = hpp,
+				skipped_thresholds = table.concat(skipped, ','),
+				next_threshold = state.fullers.next_threshold,
+			}
+		)
+	end
+end
+
 local function update_prearm()
 	local threshold = next_threshold(state.fullers.consumed)
 	state.fullers.next_threshold = threshold
@@ -368,6 +400,7 @@ function M.observe_snapshot(snapshot)
 		clear_combat('kei_defeated')
 		return false, 'KEI_DEFEATED'
 	end
+	initialize_fullers_thresholds(boss.hpp)
 	state.phase = 'active'
 	state.error = ''
 	M.expire_pending(now)

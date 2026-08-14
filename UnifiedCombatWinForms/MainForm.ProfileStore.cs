@@ -6,7 +6,7 @@ namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
-    private const int ProfileSchemaVersion = 3;
+    private const int ProfileSchemaVersion = 4;
     private static readonly string[] RequiredDomainBoolKeys =
     [
         "domain_combat_enabled",
@@ -258,7 +258,7 @@ public partial class MainForm
             ["kei_ice_damage_spell"] = _keiIceDamageSpell.Text.Trim(),
             ["kei_sustain_interval_s"] = (double)_keiSustainInterval.Value,
             ["kei_probe_timeout_s"] = (double)_keiProbeTimeout.Value,
-            ["kei_fullers_run_away_distance"] = (double)_keiFullersRunAwayDistance.Value,
+            ["kei_fullers_target_distance"] = (double)_keiFullersTargetDistance.Value,
             ["kei_fullers_prearm_hpp_margin"] = (double)_keiFullersPrearmMargin.Value,
             ["formation_enabled"] = _formationEnabled.Checked,
             ["named_formations_enabled"] = _namedFormationsEnabled.Checked,
@@ -366,6 +366,7 @@ public partial class MainForm
             ["ws1"] = (_wsCombo.Text ?? "").Trim(),
             ["ws_mode"] = string.Equals(_wsModeCombo.SelectedItem?.ToString(), "Primary Only (No SC)", StringComparison.Ordinal) ? "primary_no_sc" : "smart",
             ["weaponskill_min_tp"] = decimal.ToInt32(_wsMinimumTp.Value),
+            ["weaponskill_allow_aoe"] = _chkWsAllowAoe.Checked,
         };
 
         foreach (var key in HubUiConstants.BoolKeys)
@@ -402,11 +403,11 @@ public partial class MainForm
                 ["name"] = rule.Name,
                 ["response"] = rule.Response,
             };
-            if (rule.Response == "run_away")
+            if (rule.Response is "run_away" or "move_to_range")
             {
                 if (!rule.Distance.HasValue || !double.IsFinite(rule.Distance.Value) || rule.Distance.Value <= 0)
                 {
-                    throw new InvalidDataException("run_away reaction requires a positive finite distance");
+                    throw new InvalidDataException($"{rule.Response} reaction requires a positive finite distance");
                 }
                 serialized["distance"] = rule.Distance.Value;
             }
@@ -456,6 +457,7 @@ public partial class MainForm
             ["ws1"] = "",
             ["ws_mode"] = "smart",
             ["weaponskill_min_tp"] = 1000,
+            ["weaponskill_allow_aoe"] = true,
             ["aftermath_ws"] = "",
             ["defensive_provider"] = "internal",
             ["defensive_critical_hpp"] = 35,
@@ -587,7 +589,7 @@ public partial class MainForm
             ["kei_ice_damage_spell"] = "Blizzard III",
             ["kei_sustain_interval_s"] = 2.5,
             ["kei_probe_timeout_s"] = 3.0,
-            ["kei_fullers_run_away_distance"] = 12.0,
+            ["kei_fullers_target_distance"] = 12.0,
             ["kei_fullers_prearm_hpp_margin"] = 1.0,
             ["formation_enabled"] = false,
             ["named_formations_enabled"] = false,
@@ -841,6 +843,25 @@ public partial class MainForm
         MoveIfMissing(root, "spacing_slot_switch_margin", "spacing_repel_weight", ref changed);
         MoveIfMissing(root, "spacing_emergency_margin", "spacing_overlap_deadband", ref changed);
         MoveIfMissing(root, "spacing_anchor_invalid_ticks", "spacing_repel_hold_ticks", ref changed);
+
+        if (root.TryGetPropertyValue("kei_fullers_run_away_distance", out var legacyFullersDistance)
+            && legacyFullersDistance is not null)
+        {
+            if (root.TryGetPropertyValue("kei_fullers_target_distance", out var targetFullersDistance)
+                && targetFullersDistance is not null
+                && !JsonNode.DeepEquals(targetFullersDistance, legacyFullersDistance))
+            {
+                throw new InvalidDataException(
+                    "kei_fullers_target_distance conflicts with legacy alias kei_fullers_run_away_distance"
+                );
+            }
+            if (!root.ContainsKey("kei_fullers_target_distance"))
+            {
+                root["kei_fullers_target_distance"] = legacyFullersDistance.DeepClone();
+            }
+            root.Remove("kei_fullers_run_away_distance");
+            changed = true;
+        }
 
         if (root.Remove("spacing_slot_switch_penalty"))
         {

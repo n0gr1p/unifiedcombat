@@ -289,6 +289,7 @@ public partial class MainForm
             var wsMode = SessionStateHelper.GetString(s, "ws_mode", "smart");
             _wsModeCombo.SelectedItem = WsModeRuntimeToUi(wsMode);
             _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
+            _chkWsAllowAoe.Checked = SessionStateHelper.GetBool(s, "weaponskill_allow_aoe", true);
             var amVal = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amVal) && !list.Contains(amVal))
             {
@@ -340,6 +341,7 @@ public partial class MainForm
             _wsCombo.Items.Clear();
             _wsModeCombo.SelectedItem = "Smart";
             _wsMinimumTp.Value = 1000;
+            _chkWsAllowAoe.Checked = true;
             _pullerCombo.Items.Clear();
 			_pullerLeashSource.SelectedItem = "Player";
 			_campStatus.Text = "Camp not set";
@@ -392,7 +394,7 @@ public partial class MainForm
             _keiIceDamageSpell.Text = "Blizzard III";
             _keiSustainInterval.Value = 2.5m;
             _keiProbeTimeout.Value = 3.0m;
-            _keiFullersRunAwayDistance.Value = 12.0m;
+            _keiFullersTargetDistance.Value = 12.0m;
             _keiFullersPrearmMargin.Value = 1.0m;
             _formationEnabled.Checked = false;
             _namedFormationsEnabled.Checked = false;
@@ -626,6 +628,7 @@ public partial class MainForm
             var wsMode = SessionStateHelper.GetString(s, "ws_mode", "smart");
             _wsModeCombo.SelectedItem = WsModeRuntimeToUi(wsMode);
             _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
+            _chkWsAllowAoe.Checked = SessionStateHelper.GetBool(s, "weaponskill_allow_aoe", true);
             var amDisplay = new List<string>(wsOpts);
             var amRaw = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amRaw) && !amDisplay.Contains(amRaw))
@@ -762,6 +765,7 @@ public partial class MainForm
                 _pathPullSpellOptions.Clear();
                 _pathPullSpellOptions.AddRange(pullSpellOpts);
                 RefreshKeiSpellOptions();
+                UpdateEncounterUiState();
             }
             if (!SequenceEqualOrdinal(_tankEnmityRows, tankEnmityActions))
             {
@@ -961,6 +965,7 @@ public partial class MainForm
                 _pathPullSpellOptions.Clear();
                 _pathPullSpellOptions.AddRange(pullSpellOpts);
                 RefreshKeiSpellOptions();
+                UpdateEncounterUiState();
                 changed = true;
             }
             if (hasCorRolls && !SequenceEqualOrdinal(_corRollOptions, corRollOpts))
@@ -1515,6 +1520,27 @@ public partial class MainForm
             throw new InvalidDataException("weaponskill_min_tp must be an integer from 1000 to 3000.");
         }
         return value;
+    }
+
+    private void OnWsAllowAoeChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "weaponskill_allow_aoe",
+            ["value"] = _chkWsAllowAoe.Checked,
+        });
     }
 
     private void SendWsUpdate(string sid, string eng, string val)
@@ -2136,10 +2162,10 @@ public partial class MainForm
                 var trigger = SessionStateHelper.GetString(item, "trigger").Trim();
                 var name = SessionStateHelper.GetString(item, "name").Trim();
                 var response = SessionStateHelper.GetString(item, "response").Trim();
-                var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away"))
+                var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range"))
                     || (trigger == "enemy_buff" && response == "stop_attacking");
                 double? distance = null;
-                if (response == "run_away")
+                if (response is "run_away" or "move_to_range")
                 {
                     if (!item.TryGetProperty("distance", out var distanceNode)
                         || distanceNode.ValueKind != JsonValueKind.Number
@@ -2147,7 +2173,7 @@ public partial class MainForm
                         || !double.IsFinite(parsedDistance)
                         || parsedDistance <= 0)
                     {
-                        throw new InvalidDataException("run_away reaction requires a positive finite distance");
+                        throw new InvalidDataException($"{response} reaction requires a positive finite distance");
                     }
                     distance = parsedDistance;
                 }
@@ -2183,7 +2209,7 @@ public partial class MainForm
         }
         else
         {
-            _reactionResponseCombo.Items.AddRange(["turn_away", "run_away"]);
+            _reactionResponseCombo.Items.AddRange(["turn_away", "run_away", "move_to_range"]);
         }
         _reactionResponseCombo.SelectedIndex = 0;
         RefreshReactionDistanceState();
@@ -2191,11 +2217,8 @@ public partial class MainForm
 
     private void RefreshReactionDistanceState()
     {
-        _reactionDistance.Enabled = string.Equals(
-            _reactionResponseCombo.SelectedItem?.ToString(),
-            "run_away",
-            StringComparison.Ordinal
-        );
+        var response = _reactionResponseCombo.SelectedItem?.ToString();
+        _reactionDistance.Enabled = response is "run_away" or "move_to_range";
     }
 
     private void OnReactionTriggerChanged()
@@ -2293,7 +2316,7 @@ public partial class MainForm
         _keiIceDamageSpell.Text = SessionStateHelper.GetString(snapshot, "kei_ice_damage_spell", "Blizzard III");
         ApplyFormationNumber(snapshot, "kei_sustain_interval_s", _keiSustainInterval, "2.5");
         ApplyFormationNumber(snapshot, "kei_probe_timeout_s", _keiProbeTimeout, "3");
-        ApplyFormationNumber(snapshot, "kei_fullers_run_away_distance", _keiFullersRunAwayDistance, "12");
+        ApplyFormationNumber(snapshot, "kei_fullers_target_distance", _keiFullersTargetDistance, "12");
         ApplyFormationNumber(snapshot, "kei_fullers_prearm_hpp_margin", _keiFullersPrearmMargin, "1");
         RefreshKeiSpellOptions();
         UpdateEncounterUiState();
@@ -3024,7 +3047,7 @@ public partial class MainForm
         var trigger = _reactionTriggerCombo.SelectedItem?.ToString() ?? "";
         var name = (_reactionName.Text ?? "").Trim();
         var response = _reactionResponseCombo.SelectedItem?.ToString() ?? "";
-        var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away"))
+        var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range"))
             || (trigger == "enemy_buff" && response == "stop_attacking");
         if (!valid || name.Length == 0)
         {
@@ -3035,7 +3058,7 @@ public partial class MainForm
         {
             return;
         }
-        var distance = response == "run_away" ? decimal.ToDouble(_reactionDistance.Value) : (double?)null;
+        var distance = response is "run_away" or "move_to_range" ? decimal.ToDouble(_reactionDistance.Value) : (double?)null;
         _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance));
         _reactionName.Text = "";
         RebindReactionRuleList(_reactionRules.Count - 1);
@@ -5185,6 +5208,12 @@ public partial class MainForm
         SendWsUpdate(sid, eng, wsVal);
         var wsMode = WsModeUiToRuntime(_wsModeCombo.SelectedItem?.ToString() ?? "Smart");
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "ws_mode", ["value"] = wsMode });
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "weaponskill_allow_aoe",
+            ["value"] = _chkWsAllowAoe.Checked,
+        });
         Forward(sid, new Dictionary<string, object?>
         {
             ["op"] = "set",

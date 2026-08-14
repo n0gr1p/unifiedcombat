@@ -17,6 +17,7 @@ package.preload.resources = function()
             [284] = { id = 284, en = 'Cold Stare' },
             [1563] = { id = 1563, en = 'Cold Stare' },
             [999] = { id = 999, en = 'Dancing Fullers' },
+            [1000] = { id = 1000, en = 'Range Pulse' },
         },
         buffs = {
             [33] = { id = 33, en = 'Haste' },
@@ -35,6 +36,7 @@ local rules = {
     { trigger = 'ability_window', name = 'Cold Stare', response = 'turn_away' },
     { trigger = 'enemy_buff', name = 'Dread Spikes', response = 'stop_attacking' },
     { trigger = 'ability_window', name = 'Dancing Fullers', response = 'run_away', distance = 12.0 },
+    { trigger = 'ability_window', name = 'Range Pulse', response = 'move_to_range', distance = 12.0 },
 }
 local meta = { character = 'Redrogue', main_job = 'BRD', sub_job = 'WHM' }
 local normalized = normalizer.normalize({
@@ -44,9 +46,10 @@ local normalized = normalizer.normalize({
     },
 }, meta)
 assert_true(normalized.reactions.enabled, 'structured reaction enabled flag must normalize')
-assert_equal(#normalized.reactions.rules, 3, 'structured reaction rules must normalize')
+assert_equal(#normalized.reactions.rules, 4, 'structured reaction rules must normalize')
 assert_equal(normalized.reactions.rules[1].name, 'Cold Stare', 'ability rule name must survive normalize')
 assert_equal(normalized.reactions.rules[3].distance, 12.0, 'run-away target distance must survive normalize')
+assert_equal(normalized.reactions.rules[4].distance, 12.0, 'move-to-range target distance must survive normalize')
 
 local invalid_distance_ok, invalid_distance_error = pcall(normalizer.normalize, {
     reactions = {
@@ -59,6 +62,18 @@ local invalid_distance_ok, invalid_distance_error = pcall(normalizer.normalize, 
 assert_true(not invalid_distance_ok, 'run-away distance zero must fail configuration normalization')
 assert_true(tostring(invalid_distance_error):find('distance must be a finite number greater than zero', 1, true) ~= nil,
     'invalid run-away distance must produce an actionable validation error')
+
+local invalid_move_distance_ok, invalid_move_distance_error = pcall(normalizer.normalize, {
+    reactions = {
+        enabled = true,
+        rules = {
+            { trigger = 'ability_window', name = 'Range Pulse', response = 'move_to_range', distance = 0 },
+        },
+    },
+}, meta)
+assert_true(not invalid_move_distance_ok, 'move-to-range distance zero must fail configuration normalization')
+assert_true(tostring(invalid_move_distance_error):find('greater than zero for move_to_range', 1, true) ~= nil,
+    'invalid move-to-range distance must produce an actionable validation error')
 
 local payload = {
     version = 2,
@@ -86,6 +101,7 @@ assert_true(type(projected) == 'table', projection_error or 'reaction compatibil
 assert_true(projected.reaction_enabled, 'reaction enabled flag must project')
 assert_equal(projected.reaction_rules[2].name, 'Dread Spikes', 'reaction rule list must project')
 assert_equal(projected.reaction_rules[3].distance, 12.0, 'run-away distance must project through compatibility settings')
+assert_equal(projected.reaction_rules[4].distance, 12.0, 'move-to-range distance must project through compatibility settings')
 local durable = profile_v2.build_durable_config(projected, meta)
 local diff = profile_v2.diff_durable_config(durable.reactions, payload.config.reactions)
 assert_equal(diff.count, 0, 'reaction config must round-trip without durable diffs')
@@ -242,6 +258,67 @@ assert_true(after_rule_reload == nil, 'profile reload must remove a reaction loc
 assert_equal(reload_released_target, 910, 'profile reload must expose the released movement actor to scheduler cleanup')
 assert_true(active_config.set_active_profile(active), 'full reaction profile must reinstall after reload cleanup test')
 
+local move_ready = reactions.on_action({
+    actor_id = 920,
+    category = 7,
+    targets = { { actions = { { param = 1000 } } } },
+}, 900, 4.0, true)
+assert_equal(move_ready.activated.response, 'move_to_range', 'range ability must activate move-to-range response')
+assert_equal(move_ready.activated.distance, 12.0, 'move-to-range lock must carry configured raw distance')
+assert_true(reactions.owns_movement(move_ready.activated), 'move-to-range must use reaction movement ownership')
+
+local move_request = reactions.move_to_range_request(move_ready.activated, { x = 4, y = 0 }, { x = 0, y = 0 })
+assert_equal(move_request.kind, 'run', 'inside target range must move outward')
+assert_equal(move_request.reason, 'REACTION_MOVE_TO_RANGE_MOVING_OUTWARD', 'outward move-to-range reason mismatch')
+assert_equal(move_request.run_x, 1, 'inside target range must use outward coordinate vector')
+
+move_request = reactions.move_to_range_request(move_ready.activated, { x = 17, y = 0 }, { x = 0, y = 0 })
+assert_equal(move_request.kind, 'run', 'outside target range must move inward')
+assert_equal(move_request.reason, 'REACTION_MOVE_TO_RANGE_MOVING_INWARD', 'inward move-to-range reason mismatch')
+assert_equal(move_request.run_x, -1, 'outside target range must reverse the outward coordinate vector')
+
+move_request = reactions.move_to_range_request(move_ready.activated, { x = 11.9, y = 0 }, { x = 0, y = 0 })
+assert_equal(move_request.kind, 'stop', 'entering target tolerance must stop once')
+assert_equal(move_request.reason, 'REACTION_MOVE_TO_RANGE_REACHED', 'target-range hold reason mismatch')
+assert_equal(move_request.move_to_range_phase, nil, 'request must not expose mutable internal phase fields')
+move_request = reactions.move_to_range_request(move_ready.activated, { x = 12.1, y = 0 }, { x = 0, y = 0 })
+assert_equal(move_request.kind, 'hold', 'remaining inside target tolerance must not spam stop')
+
+move_request = reactions.move_to_range_request(move_ready.activated, { x = 12, y = 0 }, { x = 2, y = 0 })
+assert_equal(move_request.kind, 'run', 'enemy movement inward must resume outward correction after holding')
+assert_equal(move_request.run_x, 1, 'post-hold outward correction vector mismatch')
+move_request = reactions.move_to_range_request(move_ready.activated, { x = 12, y = 0 }, { x = -2, y = 0 })
+assert_equal(move_request.kind, 'run', 'enemy movement outward must resume inward correction after holding')
+assert_equal(move_request.run_x, -1, 'post-hold inward correction vector mismatch')
+
+move_request = reactions.move_to_range_request(move_ready.activated, nil, { x = 0, y = 0 })
+assert_equal(move_request.kind, 'stop', 'first unavailable move-to-range position must stop')
+move_request = reactions.move_to_range_request(move_ready.activated, nil, { x = 0, y = 0 })
+assert_equal(move_request.kind, 'hold', 'repeated unavailable move-to-range position must not spam stop')
+move_request = reactions.move_to_range_request(move_ready.activated, { x = 17, y = 0 }, { x = 0, y = 0 })
+assert_equal(move_request.kind, 'run', 'restored position must resume move-to-range convergence')
+local move_complete_early = reactions.on_action({ actor_id = 920, category = 11, param = 1000 }, 900, 4.1)
+assert_equal(move_complete_early.released.response, 'move_to_range', 'completion while moving must release move-to-range ownership')
+
+move_ready = reactions.on_action({
+    actor_id = 920,
+    category = 7,
+    targets = { { actions = { { param = 1000 } } } },
+}, 900, 4.2, true)
+move_request = reactions.move_to_range_request(move_ready.activated, { x = 12, y = 0 }, { x = 0, y = 0 })
+assert_equal(move_request.kind, 'stop', 'starting at target range must enter holding state')
+local move_complete_holding = reactions.on_action({ actor_id = 920, category = 11, param = 1000 }, 900, 4.3)
+assert_equal(move_complete_holding.released.move_to_range_phase, 'holding', 'completion while holding must release hold state')
+
+move_ready = reactions.on_action({
+    actor_id = 920,
+    category = 7,
+    targets = { { actions = { { param = 1000 } } } },
+}, 900, 4.4, true)
+local cancelled_move, replacement_move = reactions.cancel(move_ready.activated.key, 'enemy_despawn')
+assert_equal(cancelled_move.response, 'move_to_range', 'cancellation must release move-to-range ownership')
+assert_true(replacement_move == nil, 'cancellation must leave no stale move-to-range state')
+
 local watch = reactions.effect_watch_set()
 assert_true(watch[173] == true, 'configured enemy buff must resolve to the live Dread Spikes effect id')
 local buff_lock = reactions.evaluate(900, { { effect_id = 173 } }, 4)
@@ -381,9 +458,24 @@ assert_true(source:find("is_dispellable = require('uc_scheduler_enemy_effect_sta
 assert_true(enemy_buff_provider_source:find('if is_dispellable(eid) then', 1, true) ~= nil, 'enemy dispel collection must require explicit JSON catalog membership')
 assert_true(ranker_source:find("reject_reason = 'reaction_hold'", 1, true) ~= nil, 'ranker must reject blocked proposals through reaction hold')
 assert_true(source:find("UC_MOVEMENT_MODE = 'REACTION_HOLD'", 1, true) ~= nil, 'movement coordinator must hold while turned away')
-assert_true(source:find("UC_MOVEMENT_MODE = 'REACTION_RUN_AWAY'", 1, true) ~= nil, 'movement coordinator must publish run-away ownership')
-assert_true(source:find("UC_MOVEMENT_OWNER = 'scheduler_reaction'", 1, true) ~= nil, 'run-away must use scheduler movement ownership')
-assert_true(source:find('reaction_movement_executor().stop({', 1, true) ~= nil, 'run-away completion must dispatch an explicit movement stop')
+assert_true(source:find("'REACTION_RUN_AWAY'", 1, true) ~= nil, 'movement coordinator must publish run-away ownership mode')
+assert_true(source:find("'REACTION_MOVE_TO_RANGE'", 1, true) ~= nil, 'movement coordinator must publish move-to-range ownership mode')
+assert_true(source:find("UC_MOVEMENT_OWNER = 'scheduler_reaction'", 1, true) ~= nil, 'distance reactions must use scheduler movement ownership')
+assert_true(source:find('scheduler.apply_reaction_movement', 1, true) ~= nil, 'distance reactions must share one scheduler movement path')
+assert_true(source:find('reaction_movement_executor().stop({', 1, true) ~= nil, 'reaction movement completion must dispatch an explicit movement stop')
+local movement_start = assert(source:find('function scheduler.apply_reaction_movement(lock, formation_runtime)', 1, true))
+local movement_end = assert(source:find('function scheduler.apply_reaction_run_away(lock, formation_runtime)', movement_start, true))
+local movement_path = source:sub(movement_start, movement_end)
+assert_true(movement_path:find("request = reaction_runtime.move_to_range_request(lock, me, enemy)", 1, true) ~= nil,
+    'scheduler reaction movement must dispatch move-to-range geometry through the shared executor')
+assert_true(movement_path:find("formation_runtime.stop('FORMATION_REACTION_MOVEMENT')", 1, true) ~= nil,
+    'reaction movement must stop formation before executing or holding')
+assert_true(movement_path:find("elseif request.kind ~= 'hold'", 1, true) ~= nil,
+    'holding target range must remain a valid no-command reaction movement state')
+assert_true(movement_path:find("_G.UC_MOVEMENT_OWNER = 'scheduler_reaction'", 1, true) ~= nil,
+    'holding target range must refresh scheduler reaction ownership')
+assert_true(movement_path:find("_G.UC_MOVEMENT_OWNER = 'none'", 1, true) == nil,
+    'satisfied move-to-range must not release reaction ownership')
 assert_true(source:find("if rawget(_G, 'Start_Engine') == true then", 1, true) ~= nil, 'ability reactions must not activate while the engine is stopped')
 assert_true(source:find('scheduler.apply_reaction_response(reaction_event.activated)', 1, true) ~= nil, 'ready event must use response-specific scheduler ownership')
 assert_true(source:find('scheduler.apply_reaction_turn({ actor_id = current_target_id }, false)', 1, true) ~= nil, 'completion must restore scheduler facing toward the current target')
@@ -391,6 +483,21 @@ assert_true(source:find('mark_enemy_dispel_attempt(tostring(dispel_detail.enemy_
 assert_true(enemy_buff_provider_source:find('for _, tracked_target in ipairs(tracked_targets) do', 1, true) ~= nil, 'enemy dispel collection must use the authoritative effect tracker')
 assert_true(source:find('enemy_effect_tracker.sweep_invalid()', 1, true) ~= nil, 'every scheduler tick must sweep dead or despawned enemy effect targets')
 assert_true(source:find('enemy_effect_tracker.observe_effect(target_id, effect_id, source, observed_effect_set)', 1, true) ~= nil, 'TargetBar catalog observations must feed the authoritative enemy effect tracker')
+
+local addon_source = assert(io.open('UnifiedCombat.lua', 'rb')):read('*a')
+local lifecycle_start = assert(addon_source:find('local function uc_reset_reaction_runtime(reason)', 1, true))
+local lifecycle_end = assert(addon_source:find('local function uc_now_s()', lifecycle_start, true))
+local lifecycle = addon_source:sub(lifecycle_start, lifecycle_end)
+assert_true(lifecycle:find("require('uc_reaction_runtime').owns_movement(lock)", 1, true) ~= nil,
+    'lifecycle cleanup must recognize every movement-owning reaction response')
+assert_true(lifecycle:find("reason = 'REACTION_MOVEMENT_LIFECYCLE_RESET'", 1, true) ~= nil,
+    'lifecycle cleanup must explicitly stop reaction movement')
+assert_true(lifecycle:find("_G.UC_MOVEMENT_OWNER = 'none'", 1, true) ~= nil,
+    'lifecycle cleanup must clear scheduler reaction ownership')
+assert_true(lifecycle:find('_G.UC_MOVEMENT_LOCK_UNTIL = 0', 1, true) ~= nil,
+    'lifecycle cleanup must clear the reaction movement lock')
+assert_true(lifecycle:find('_G.UC_REACTION_LOCK = nil', 1, true) ~= nil,
+    'lifecycle cleanup must clear the active reaction lock')
 
 local before_reset_config = active_config.get_path({ 'config', 'reactions', 'rules', 1, 'name' })
 reactions.reset('test')

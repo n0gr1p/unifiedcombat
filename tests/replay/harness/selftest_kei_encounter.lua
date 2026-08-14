@@ -84,12 +84,22 @@ local config = {
 			probe_timeout_s = 3.0,
 		},
 		fullers = {
-			run_away_distance = 12.0,
+			target_distance = 12.0,
 			prearm_hpp_margin = 1.0,
 		},
 	},
 }
 active_config = config
+
+local kei_reaction = require('uc_reaction_runtime')
+local fullers_rule = kei_reaction.on_action({
+	actor_id = 3001,
+	category = 7,
+	targets = { { actions = { { param = 900 } } } },
+}, 3001, 0.5, true)
+assert_equal(fullers_rule.activated.response, 'move_to_range', 'Kei must generate a move-to-range Fullers reaction')
+assert_equal(fullers_rule.activated.distance, 12.0, 'Kei generated Fullers rule must carry target distance')
+kei_reaction.reset('kei_generated_rule_test')
 
 local function actor(id, hpp)
 	return { id = id or 3001, name = 'Kei', hpp = hpp or 100, status = 1, x = 1, y = 2, z = 0 }
@@ -250,7 +260,7 @@ local reaction_event = reaction.on_action({
 	category = 7,
 	targets = { { id = 4001, actions = { { param = 900 } } } },
 }, 3001, 40.2, true)
-check(29, reaction_event.activated ~= nil and reaction_event.activated.response == 'run_away', 'Dancing Fullers ready activates generic reaction path')
+check(29, reaction_event.activated ~= nil and reaction_event.activated.response == 'move_to_range', 'Dancing Fullers ready activates generic move-to-range path')
 kei.on_action({ actor_id = 3001, category = 7, targets = { { id = 4001, actions = { { param = 900 } } } } }, 40.2)
 check(30, kei.snapshot().fullers.consumed[75] == true, 'Fullers evidence consumes 75 threshold')
 check(31, kei.snapshot().fullers.next_threshold == 50, 'next Fullers threshold becomes 50')
@@ -265,19 +275,34 @@ _G.UC_TEST_KEI_REACTION_ACTIVE = true
 check(34, #proposals(41.4) == 0, 'active Fullers reaction takes precedence over Kei work')
 _G.UC_TEST_KEI_REACTION_ACTIVE = nil
 
+activate(42, 43)
+local late_bind_fullers = kei.snapshot().fullers
+check(
+	35,
+	late_bind_fullers.thresholds_initialized == true
+		and late_bind_fullers.consumed[75] == true
+		and late_bind_fullers.consumed[50] == true
+		and late_bind_fullers.consumed[25] == false
+		and late_bind_fullers.next_threshold == 25
+		and late_bind_fullers.prearmed == false,
+	'late bind below passed thresholds advances to the next future Fullers threshold'
+)
+ready = { Water = true }
+check(36, #proposals(42.1) == 1, 'late bind at 43 percent does not suppress elemental damage for the passed 75 threshold')
+
 local reaction_source = assert(io.open('uc_reaction_runtime.lua', 'r'))
 local reaction_text = reaction_source:read('*a')
 reaction_source:close()
-check(35, reaction_text:find("response = 'run_away'", 1, true) ~= nil, 'generic reaction behavior remains configured through reaction runtime')
+check(37, reaction_text:find("response = 'move_to_range'", 1, true) ~= nil, 'Kei Fullers remains configured through generic reaction runtime')
 local lilith_source = assert(io.open('uc_lilith_easy_encounter.lua', 'r'))
 local lilith_text = lilith_source:read('*a')
 lilith_source:close()
-check(36, lilith_text:find("require('uc_kei_encounter')", 1, true) == nil, 'Lilith encounter remains independent')
+check(38, lilith_text:find("require('uc_kei_encounter')", 1, true) == nil, 'Lilith encounter remains independent')
 kei.configure({ enabled = false, id = '' })
 ready = { Water = true }
-check(37, #proposals(50) == 0 and kei.snapshot().pending_spell == nil, 'disabled Kei support leaves normal scheduler behavior untouched')
+check(39, #proposals(50) == 0 and kei.snapshot().pending_spell == nil, 'disabled Kei support leaves normal scheduler behavior untouched')
 
-assert_equal(checks, 37, 'required Kei replay coverage count')
+assert_equal(checks, 39, 'required Kei replay coverage count')
 
 reaction.reset('test_complete')
 package.loaded.resources = saved_resources
@@ -288,4 +313,4 @@ package.loaded.uc_reaction_runtime = saved_reaction
 _G.UC_ACTION_TIMELINE_LOG = saved_timeline
 _G.UC_TEST_KEI_REACTION_ACTIVE = nil
 
-io.stdout:write('selftest_kei_encounter: OK (37 checks)\n')
+io.stdout:write('selftest_kei_encounter: OK (39 checks)\n')

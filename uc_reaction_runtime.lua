@@ -11,7 +11,12 @@ local watch_cache_names = {}
 local watch_cache_unresolved = {}
 local last_transition = 'none'
 local RUN_AWAY_STOP_TOLERANCE = 0.15
+local MOVE_TO_RANGE_TOLERANCE = 0.15
 local POSITION_EPSILON = 0.000001
+
+local function response_owns_movement(response)
+	return response == 'run_away' or response == 'move_to_range'
+end
 
 local function trim(value)
 	if type(value) ~= 'string' then
@@ -40,14 +45,14 @@ local function configured()
 		if type(encounter.kei) ~= 'table' or type(encounter.kei.fullers) ~= 'table' then
 			error('enabled Kei encounter requires Fullers reaction configuration')
 		end
-		local distance = encounter.kei.fullers.run_away_distance
+		local distance = encounter.kei.fullers.target_distance
 		if type(distance) ~= 'number' or distance <= 0 then
-			error('Kei Fullers run-away distance must be positive')
+			error('Kei Fullers target distance must be positive')
 		end
 		configured_rules[#configured_rules + 1] = {
 			trigger = 'ability_window',
 			name = 'Dancing Fullers',
-			response = 'run_away',
+			response = 'move_to_range',
 			distance = distance,
 		}
 	end
@@ -193,7 +198,7 @@ local function prune_unconfigured_locks(rules)
 		local active_distance = tonumber(lock.distance)
 		if rule == nil
 			or rule.response ~= lock.response
-			or (lock.response == 'run_away' and configured_distance ~= active_distance) then
+			or (response_owns_movement(lock.response) and configured_distance ~= active_distance) then
 			locks[key] = nil
 		end
 	end
@@ -280,9 +285,13 @@ function M.on_action(act, current_target_id, now, actor_is_valid_enemy)
 			rule_index = rule_index,
 			turn_applied = false,
 		}
-		if rule.response == 'run_away' then
+		if response_owns_movement(rule.response) then
 			locks[key].distance = rule.distance
-			locks[key].run_away_phase = 'pending'
+			if rule.response == 'run_away' then
+				locks[key].run_away_phase = 'pending'
+			else
+				locks[key].move_to_range_phase = 'pending'
+			end
 			locks[key].current_distance = nil
 		end
 		last_active_target_id = actor_id
@@ -391,7 +400,10 @@ local function lock_response(lock)
 		return ''
 	end
 	local response = tostring(lock.response or '')
-	if response ~= 'turn_away' and response ~= 'stop_attacking' and response ~= 'run_away' then
+	if response ~= 'turn_away'
+		and response ~= 'stop_attacking'
+		and response ~= 'run_away'
+		and response ~= 'move_to_range' then
 		error('uc_reaction_runtime received unsupported reaction response: ' .. response)
 	end
 	return response
@@ -399,7 +411,14 @@ end
 
 function M.blocks_movement(lock)
 	local response = lock_response(lock)
-	return response == 'turn_away' or response == 'run_away'
+	return response == 'turn_away' or response_owns_movement(response)
+end
+
+function M.owns_movement(lock)
+	if type(lock) ~= 'table' then
+		return false
+	end
+	return response_owns_movement(lock_response(lock))
 end
 
 local function finite_coordinate(value)
@@ -486,6 +505,88 @@ function M.run_away_request(lock_value, me_value, enemy_value)
 		target_distance = target_distance,
 		current_distance = current_distance,
 		phase_changed = set_run_away_phase(lock, 'moving', current_distance),
+	}
+end
+
+local function set_move_to_range_phase(lock, phase, current_distance)
+	local changed = lock.move_to_range_phase ~= phase
+	lock.move_to_range_phase = phase
+	lock.current_distance = current_distance
+	if changed then
+		last_transition = ('move_to_range:%s:%s'):format(phase, lock.name)
+	end
+	return changed
+end
+
+function M.move_to_range_request(lock_value, me_value, enemy_value)
+	if lock_response(lock_value) ~= 'move_to_range' then
+		error('move-to-range movement requires a move_to_range reaction lock')
+	end
+	local key = tostring(lock_value.key or '')
+	local lock = locks[key]
+	if type(lock) ~= 'table' then
+		error('move-to-range movement requires an active authoritative reaction lock')
+	end
+	local target_distance = tonumber(lock.distance)
+	if target_distance == nil or target_distance <= 0 then
+		error('active move-to-range reaction requires a positive target distance')
+	end
+	local me_x = type(me_value) == 'table' and finite_coordinate(me_value.x) or nil
+	local me_y = type(me_value) == 'table' and finite_coordinate(me_value.y) or nil
+	local enemy_x = type(enemy_value) == 'table' and finite_coordinate(enemy_value.x) or nil
+	local enemy_y = type(enemy_value) == 'table' and finite_coordinate(enemy_value.y) or nil
+	if me_x == nil or me_y == nil or enemy_x == nil or enemy_y == nil then
+		local phase_changed = set_move_to_range_phase(lock, 'position_unavailable', nil)
+		return {
+			kind = phase_changed and 'stop' or 'hold',
+			reason = 'REACTION_MOVE_TO_RANGE_POSITION_UNAVAILABLE',
+			target_distance = target_distance,
+			current_distance = nil,
+			phase_changed = phase_changed,
+		}
+	end
+	local dx = me_x - enemy_x
+	local dy = me_y - enemy_y
+	local current_distance = math.sqrt(dx * dx + dy * dy)
+	if math.abs(current_distance - target_distance) <= MOVE_TO_RANGE_TOLERANCE then
+		local phase_changed = set_move_to_range_phase(lock, 'holding', current_distance)
+		return {
+			kind = phase_changed and 'stop' or 'hold',
+			reason = 'REACTION_MOVE_TO_RANGE_REACHED',
+			target_distance = target_distance,
+			current_distance = current_distance,
+			phase_changed = phase_changed,
+		}
+	end
+	if current_distance <= POSITION_EPSILON then
+		local phase_changed = set_move_to_range_phase(lock, 'zero_vector', current_distance)
+		return {
+			kind = phase_changed and 'stop' or 'hold',
+			reason = 'REACTION_MOVE_TO_RANGE_ZERO_VECTOR',
+			target_distance = target_distance,
+			current_distance = current_distance,
+			phase_changed = phase_changed,
+		}
+	end
+	if current_distance < target_distance then
+		return {
+			kind = 'run',
+			reason = 'REACTION_MOVE_TO_RANGE_MOVING_OUTWARD',
+			run_x = dx / current_distance,
+			run_y = dy / current_distance,
+			target_distance = target_distance,
+			current_distance = current_distance,
+			phase_changed = set_move_to_range_phase(lock, 'moving_outward', current_distance),
+		}
+	end
+	return {
+		kind = 'run',
+		reason = 'REACTION_MOVE_TO_RANGE_MOVING_INWARD',
+		run_x = -dx / current_distance,
+		run_y = -dy / current_distance,
+		target_distance = target_distance,
+		current_distance = current_distance,
+		phase_changed = set_move_to_range_phase(lock, 'moving_inward', current_distance),
 	}
 end
 

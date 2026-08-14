@@ -27,11 +27,13 @@ local uc_lifecycle_movement = require('uc_movement_dispatcher').build({
 
 local function uc_reset_reaction_runtime(reason)
 	local lock = rawget(_G, 'UC_REACTION_LOCK')
-	if type(lock) == 'table' and lock.response == 'run_away' then
+	if require('uc_reaction_runtime').owns_movement(lock) then
 		uc_lifecycle_movement.stop({
-			reason = 'REACTION_RUN_AWAY_LIFECYCLE_RESET',
+			reason = 'REACTION_MOVEMENT_LIFECYCLE_RESET',
 			lifecycle_reason = reason,
 		})
+		_G.UC_MOVEMENT_OWNER = 'none'
+		_G.UC_MOVEMENT_LOCK_UNTIL = 0
 	end
 	require('uc_reaction_runtime').reset(reason)
 	_G.UC_REACTION_LOCK = nil
@@ -181,6 +183,7 @@ local function uc_new_settings_defaults()
 		weaponskill_active = false,
 		ws_mode = 'smart',
 		weaponskill_min_tp = 1000,
+		weaponskill_allow_aoe = true,
 		aftermath_enabled = false,
 		aftermath_ws = '',
 		autotarget = false,
@@ -233,7 +236,7 @@ local function uc_new_settings_defaults()
 		kei_ice_damage_spell = 'Blizzard III',
 		kei_sustain_interval_s = 2.5,
 		kei_probe_timeout_s = 3.0,
-		kei_fullers_run_away_distance = 12.0,
+		kei_fullers_target_distance = 12.0,
 		kei_fullers_prearm_hpp_margin = 1.0,
 		named_formations_enabled = false,
 		named_formation_entries = {},
@@ -561,7 +564,7 @@ end
 local PROFILE_KEYS = {
 	'ability1', 'ability2', 'ability3', 'ability4', 'ability5', 'ability6',
 	'ability_active', 'abilities', 'wsabilities',
-	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode', 'weaponskill_min_tp',
+	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode', 'weaponskill_min_tp', 'weaponskill_allow_aoe',
 	'aftermath_enabled', 'aftermath_ws',
 	'engine_mode',
 	'show_ingame_ui',
@@ -584,7 +587,7 @@ local PROFILE_KEYS = {
 	'spacing_repel_hold_ticks', 'spacing_overlap_deadband', 'spacing_repel_weight', 'spacing_band_deadband',
 	'encounter_enabled', 'encounter_id', 'encounter_water_damage', 'encounter_water_skillchain', 'encounter_repeat_action_wall', 'encounter_repeat_action_guard_s',
 	'kei_elemental_dealer_name', 'kei_water_probe_spell', 'kei_water_damage_spell', 'kei_ice_probe_spell', 'kei_ice_damage_spell',
-	'kei_sustain_interval_s', 'kei_probe_timeout_s', 'kei_fullers_run_away_distance', 'kei_fullers_prearm_hpp_margin',
+	'kei_sustain_interval_s', 'kei_probe_timeout_s', 'kei_fullers_target_distance', 'kei_fullers_run_away_distance', 'kei_fullers_prearm_hpp_margin',
 	'named_formations_enabled', 'named_formation_entries',
 	'partner', 'partner2', 'puller', 'puller_name', 'puller_leash_source', 'puller_engage_range', 'puller_distance_only', 'partner_id', 'partner_id2', 'partner_ids', 'puller_id',
 	'fight_leader', 'fight_leader_id', 'party_follow', 'party_follow_id', 'party_follow_leader_name', 'party_follow_min', 'party_follow_max', 'fight_follow_min', 'fight_follow_hold_s',
@@ -1627,6 +1630,11 @@ local function uc_normalize_ws_for_engine(s, eng)
 		or s.weaponskill_min_tp < 1000
 		or s.weaponskill_min_tp > 3000 then
 		error('weaponskill_min_tp must be an integer from 1000 to 3000')
+	end
+	if s.weaponskill_allow_aoe == nil then
+		s.weaponskill_allow_aoe = true
+	elseif type(s.weaponskill_allow_aoe) ~= 'boolean' then
+		error('weaponskill_allow_aoe must be a boolean')
 	end
 	s.engine_mode = eng
 end
@@ -2714,13 +2722,13 @@ windower.register_event('addon command', function(...)
 			for i = 1, #(status.active or {}) do
 				local lock = status.active[i]
 				local movement_detail = ''
-				if lock.response == 'run_away' then
+				if require('uc_reaction_runtime').owns_movement(lock) then
 					local current_distance = type(lock.current_distance) == 'number'
 						and ('%.2f'):format(lock.current_distance) or 'unavailable'
 					movement_detail = (' target_distance=%.2f current_distance=%s phase=%s'):format(
 						lock.distance,
 						current_distance,
-						lock.run_away_phase
+						tostring(lock.run_away_phase or lock.move_to_range_phase or 'pending')
 					)
 				end
 				windower.add_to_chat(207, ('  %s %s actor=%d response=%s%s'):format(

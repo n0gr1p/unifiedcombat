@@ -399,7 +399,7 @@ local function normalize_reaction_rules(value)
             local name = normalize_optional_string(entry.name)
             local response = normalize_optional_string(entry.response)
             local valid = (trigger == 'ability_window'
-                    and (response == 'turn_away' or response == 'run_away'))
+                    and (response == 'turn_away' or response == 'run_away' or response == 'move_to_range'))
                 or (trigger == 'enemy_buff' and response == 'stop_attacking')
             local key = trigger and name and (trigger .. ':' .. name:lower()) or nil
             if valid and name ~= nil and key ~= nil and not seen[key] then
@@ -409,13 +409,13 @@ local function normalize_reaction_rules(value)
                     name = name,
                     response = response,
                 }
-                if response == 'run_away' then
+                if response == 'run_away' or response == 'move_to_range' then
                     if type(entry.distance) ~= 'number'
                         or entry.distance ~= entry.distance
                         or entry.distance == math.huge
                         or entry.distance == -math.huge
                         or entry.distance <= 0 then
-                        error(('reactions.rules[%d].distance must be a finite number greater than zero for run_away'):format(i))
+                        error(('reactions.rules[%d].distance must be a finite number greater than zero for %s'):format(i, response))
                     end
                     normalized.distance = entry.distance
                 end
@@ -448,6 +448,16 @@ local function first_path(root, candidates)
         end
     end
     return nil
+end
+
+local function canonical_alias_value(canonical_value, legacy_value, canonical_path, legacy_path)
+    if canonical_value ~= nil and legacy_value ~= nil and canonical_value ~= legacy_value then
+        error(('%s conflicts with legacy alias %s'):format(canonical_path, legacy_path))
+    end
+    if canonical_value ~= nil then
+        return canonical_value
+    end
+    return legacy_value
 end
 
 local function table_has_any(value, keys)
@@ -901,6 +911,7 @@ local function default_config(meta)
                 primary = '',
                 mode = 'smart',
                 minimum_tp = 1000,
+                allow_aoe = true,
                 wait_ignore_names = {},
                 aftermath_enabled = false,
                 aftermath_ws = '',
@@ -1273,6 +1284,7 @@ local function normalize_encounter(source, config)
                 probe_timeout_s = first_path(source, { path('kei_probe_timeout_s') }),
             },
             fullers = {
+                target_distance = first_path(source, { path('kei_fullers_target_distance') }),
                 run_away_distance = first_path(source, { path('kei_fullers_run_away_distance') }),
                 prearm_hpp_margin = first_path(source, { path('kei_fullers_prearm_hpp_margin') }),
             },
@@ -1341,9 +1353,14 @@ local function normalize_encounter(source, config)
         if type(kei_value.fullers) ~= 'table' then
             error('config.encounter.kei.fullers must be a table')
         end
-        local run_away_distance = kei_value.fullers.run_away_distance
-        if type(run_away_distance) ~= 'number' or run_away_distance <= 0 or run_away_distance > 50 then
-            error('config.encounter.kei.fullers.run_away_distance must be > 0 and <= 50')
+        local target_distance = canonical_alias_value(
+            kei_value.fullers.target_distance,
+            kei_value.fullers.run_away_distance,
+            'config.encounter.kei.fullers.target_distance',
+            'config.encounter.kei.fullers.run_away_distance'
+        )
+        if type(target_distance) ~= 'number' or target_distance <= 0 or target_distance > 50 then
+            error('config.encounter.kei.fullers.target_distance must be > 0 and <= 50')
         end
         local prearm_margin = kei_value.fullers.prearm_hpp_margin
         if type(prearm_margin) ~= 'number' or prearm_margin < 0 or prearm_margin > 10 then
@@ -1364,7 +1381,7 @@ local function normalize_encounter(source, config)
                 probe_timeout_s = probe_timeout,
             },
             fullers = {
-                run_away_distance = run_away_distance,
+                target_distance = target_distance,
                 prearm_hpp_margin = prearm_margin,
             },
         }
@@ -1452,6 +1469,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.primary = normalize_string(nested_ws.primary or nested_ws.ws1 or nested_ws.weaponskill, combat.weaponskill.primary)
         combat.weaponskill.mode = normalize_string(nested_ws.mode, combat.weaponskill.mode)
         combat.weaponskill.minimum_tp = normalize_weaponskill_minimum_tp(nested_ws.minimum_tp, combat.weaponskill.minimum_tp)
+        combat.weaponskill.allow_aoe = normalize_boolean(nested_ws.allow_aoe, combat.weaponskill.allow_aoe)
         combat.weaponskill.wait_ignore_names = normalize_list(nested_ws.wait_ignore_names, combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(nested_ws.aftermath_enabled, combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(nested_ws.aftermath_ws, combat.weaponskill.aftermath_ws)
@@ -1469,6 +1487,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.primary = normalize_string(first_path(source, { path('weaponskill'), path('ws1') }), combat.weaponskill.primary)
         combat.weaponskill.mode = normalize_string(first_path(source, { path('ws_mode') }), combat.weaponskill.mode)
         combat.weaponskill.minimum_tp = normalize_weaponskill_minimum_tp(first_path(source, { path('weaponskill_min_tp') }), combat.weaponskill.minimum_tp)
+        combat.weaponskill.allow_aoe = normalize_boolean(first_path(source, { path('weaponskill_allow_aoe') }), combat.weaponskill.allow_aoe)
         combat.weaponskill.wait_ignore_names = normalize_list(first_path(source, { path('wait_ignore_names') }), combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(first_path(source, { path('aftermath_enabled') }), combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(first_path(source, { path('aftermath_ws') }), combat.weaponskill.aftermath_ws)

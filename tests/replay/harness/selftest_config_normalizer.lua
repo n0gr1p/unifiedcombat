@@ -107,6 +107,7 @@ local function build_flat_settings()
         weaponskill = 'Leaden Salute',
         ws1 = 'Wildfire',
         weaponskill_active = true,
+        weaponskill_allow_aoe = false,
         ws_mode = 'always',
         aftermath_enabled = true,
         aftermath_ws = 'Aftermath WS',
@@ -284,6 +285,7 @@ local function build_nested_settings()
                 enabled = true,
                 primary = 'Savage Blade',
                 mode = 'smart',
+                allow_aoe = false,
                 aftermath_enabled = true,
                 aftermath_ws = 'Aftermath WS',
             },
@@ -595,6 +597,7 @@ local function main()
     assert_equal(default_from_normalize.maintenance.geo.ordering, 'geo_first', 'default GEO ordering mismatch')
     assert_equal(default_from_normalize.maintenance.geo.unknown_existing_policy, 'wait_for_clear', 'default GEO ownership policy mismatch')
     assert_equal(default_from_normalize.combat.pulling.enabled, false, 'default camp pulling must be disabled')
+	assert_equal(default_from_normalize.combat.weaponskill.allow_aoe, true, 'Smart WS AoE preference must default true')
     assert_equal(default_from_normalize.combat.pulling.mode, 'camp', 'default camp pulling mode mismatch')
     assert_true(type(default_from_normalize.debug) == 'table', 'debug domain missing')
     assert_true(type(default_from_normalize.ownership) == 'table', 'ownership domain missing')
@@ -611,6 +614,7 @@ local function main()
     assert_equal(flat_config.combat.autotarget, true, 'combat autotarget mismatch')
     assert_equal(flat_config.combat.weaponskill.primary, 'Leaden Salute', 'combat ws primary mismatch')
     assert_equal(flat_config.combat.weaponskill.enabled, true, 'combat ws enabled mismatch')
+	assert_equal(flat_config.combat.weaponskill.allow_aoe, false, 'flat Smart WS AoE preference mismatch')
     assert_equal(flat_config.abilities.enabled, true, 'abilities enabled mismatch')
     assert_equal(flat_config.abilities.configured[1], 'Savage Blade', 'abilities list mismatch')
     assert_equal(flat_config.abilities.legacy_slots[6], 'Consume Mana', 'legacy ability slot mismatch')
@@ -682,6 +686,7 @@ local function main()
     assert_equal(nested_config.profile.source, 'bridge', 'nested profile source mismatch')
     assert_equal(nested_config.combat.enabled, false, 'nested combat enabled mismatch')
     assert_equal(nested_config.combat.weaponskill.enabled, true, 'nested combat ws enabled mismatch')
+	assert_equal(nested_config.combat.weaponskill.allow_aoe, false, 'nested Smart WS AoE preference mismatch')
     assert_equal(nested_config.defensive.cure.min_tier, 5, 'nested defensive cure min tier mismatch')
     assert_equal(nested_config.defensive.charm_sleeper.enabled, true, 'nested charm sleeper mismatch')
     assert_equal(nested_config.defensive.sleep_waker.enabled, true, 'nested sleep waker mismatch')

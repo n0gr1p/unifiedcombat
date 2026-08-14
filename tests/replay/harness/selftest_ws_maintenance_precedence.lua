@@ -24,6 +24,16 @@ end
 local saved_socket = rawget(_G, 'socket')
 local saved_windower = rawget(_G, 'windower')
 
+local actual_skills = dofile('skills.lua')
+local function actual_ws_by_name(name)
+	for _, skill in pairs(actual_skills.weapon_skills) do
+		if skill.en == name then
+			return skill
+		end
+	end
+	return nil
+end
+
 package.loaded['socket'] = {
 	gettime = function()
 		return os.clock()
@@ -46,7 +56,10 @@ end
 
 package.loaded['resources'] = {
 	weapon_skills = make_resource_list({
-		[10] = { id = 10, en = 'Test Continuation' },
+		[10] = { id = 10, en = 'Test Single Continuation' },
+		[11] = { id = 11, en = 'Test AoE Continuation' },
+		[30] = { id = 30, en = 'Aeolian Edge' },
+		[42] = { id = 42, en = 'Savage Blade' },
 	}),
 	job_abilities = make_resource_list({
 		[20] = { id = 20, en = 'Chivalry', recast_id = 20, targets = '{Self}' },
@@ -59,6 +72,9 @@ package.loaded['resources'] = {
 package.loaded['skills'] = {
 	weapon_skills = {
 		[10] = { skillchain = { 'Transfixion' } },
+		[11] = { skillchain = { 'Transfixion' }, aoe = true },
+		[30] = { aoe = true },
+		[42] = {},
 	},
 }
 package.loaded['uc_ws_gate'] = {}
@@ -66,7 +82,9 @@ package.loaded['uc_ws_memory'] = {
 	valid_ws_name = function(name)
 		return name == 'Savage Blade'
 			or name == 'Knights of Round'
-			or name == 'Test Continuation'
+			or name == 'Aeolian Edge'
+			or name == 'Test Single Continuation'
+			or name == 'Test AoE Continuation'
 	end,
 }
 package.loaded['uc_ignore'] = {
@@ -142,6 +160,7 @@ local player = {
 local ability_recasts = { [20] = 0 }
 local dispatch_target = nil
 local send_command_count = 0
+local learned_weapon_skills = { 10, 11, 30, 42 }
 
 windower = {
 	addon_path = '',
@@ -164,7 +183,7 @@ windower = {
 		get_abilities = function()
 			return {
 				job_abilities = { 20 },
-				weapon_skills = { 10 },
+				weapon_skills = learned_weapon_skills,
 			}
 		end,
 		get_ability_recasts = function()
@@ -213,7 +232,29 @@ windower = {
 	},
 }
 
+local native_dofile = dofile
+dofile = function(path)
+	if tostring(path) == 'docs/aftermath_table.lua' then
+		return {
+			get_weapon_by_ws = function(ws_name)
+				if ws_name ~= 'Knights of Round' and ws_name ~= 'Aeolian Edge' then
+					return nil, nil
+				end
+				return 'Test Weapon', {
+					minimum_aftermath_stage = 3,
+					aftermath = {
+						tp = {
+							[3] = { buff_id = 273 },
+						},
+					},
+				}
+			end,
+		}
+	end
+	return native_dofile(path)
+end
 local core = dofile('unified_combat_core.lua')
+dofile = native_dofile
 
 local function assert_equal(actual, expected, message)
 	if actual ~= expected then
@@ -249,6 +290,7 @@ local settings = {
 	weaponskill = 'Savage Blade',
 	ws_mode = 'smart',
 	weaponskill_min_tp = 1000,
+	weaponskill_allow_aoe = true,
 	spam = false,
 	solo = false,
 	aftermath_enabled = false,
@@ -310,9 +352,175 @@ local function test_satisfied_maintenance_applies_minimum_tp_to_continuation()
 	assert_true(type(selection) == 'table', 'satisfied maintenance must allow a continuation at configured minimum TP')
 	assert_equal(reason, 'SC_READY', 'continuation reason mismatch after maintenance is satisfied')
 	assert_true(type(selection.skillchain_plan) == 'table', 'continuation plan must remain structured')
-	assert_equal(selection.ws_name, 'Test Continuation', 'continuation WS mismatch')
+	assert_equal(selection.ws_name, 'Test AoE Continuation', 'continuation WS mismatch')
 	assert_equal(selection.required_tp, 2000, 'continuation dispatch requirement must use configured minimum TP')
 	settings.weaponskill_min_tp = 1000
+end
+
+local function test_aoe_metadata_classification()
+	for _, name in ipairs({
+		'Spinning Attack',
+		'Cyclone',
+		'Aeolian Edge',
+		'Circle Blade',
+		'Shockwave',
+		'Fell Cleave',
+		'Spinning Scythe',
+		'Sonic Thrust',
+		'Earth Crusher',
+		'Cataclysm',
+		'Glory Slash',
+		'Uriel Blade',
+	}) do
+		local skill = actual_ws_by_name(name)
+		assert_true(type(skill) == 'table', name .. ' metadata entry must exist')
+		assert_equal(skill.aoe, true, name .. ' must be classified as AoE')
+	end
+	for _, name in ipairs({ 'Savage Blade', 'Tachi: Fudo', 'Shijin Spiral', 'Victory Smite' }) do
+		local skill = actual_ws_by_name(name)
+		assert_true(type(skill) == 'table', name .. ' metadata entry must exist')
+		assert_true(skill.aoe ~= true, name .. ' must remain non-AoE')
+	end
+end
+
+local function test_smart_continuation_candidate_filtering()
+	ability_recasts[20] = 30
+	settings.ws_mode = 'smart'
+	settings.spam = false
+	settings.solo = false
+	settings.aftermath_enabled = false
+	settings.weaponskill_min_tp = 1000
+	player.buffs = {}
+	player.vitals.tp = 1000
+	learned_weapon_skills = { 10, 11, 30, 42 }
+
+	settings.weaponskill_allow_aoe = true
+	local selection, reason = select()
+	assert_true(type(selection) == 'table', 'AoE-enabled Smart mode must retain continuation candidates')
+	assert_equal(reason, 'SC_READY', 'AoE-enabled continuation reason mismatch')
+	assert_equal(selection.ws_name, 'Test AoE Continuation', 'AoE-enabled candidates must preserve existing planner choice')
+
+	settings.weaponskill_allow_aoe = false
+	selection, reason = select()
+	assert_true(type(selection) == 'table', 'single-target continuation must remain available when AoE is disabled')
+	assert_equal(reason, 'SC_READY', 'single-target continuation reason mismatch')
+	assert_equal(selection.ws_name, 'Test Single Continuation', 'AoE continuation must be filtered before planning')
+
+	learned_weapon_skills = { 11 }
+	selection, reason = select()
+	assert_equal(selection, nil, 'AoE-only continuation set must not produce a Smart WS selection')
+	assert_equal(reason, 'SC_NO_CONTINUATION', 'AoE-only continuation set must hold with the planner reason')
+
+	learned_weapon_skills = { 10, 11, 30, 42 }
+	settings.weaponskill_allow_aoe = true
+end
+
+local function test_smart_primary_and_aftermath_aoe_restriction()
+	ability_recasts[20] = 30
+	settings.ws_mode = 'smart'
+	settings.spam = false
+	settings.solo = false
+	settings.aftermath_enabled = false
+	settings.weaponskill_min_tp = 1000
+	settings.weaponskill_allow_aoe = false
+	player.buffs = {}
+	player.vitals.tp = 1000
+	core.resonating[9001] = nil
+
+	settings.weaponskill = 'Aeolian Edge'
+	local selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
+	assert_equal(selection, nil, 'Smart AoE primary must not produce a proposal when disabled')
+	assert_equal(reason, 'PRIMARY_WS_AOE_BLOCKED', 'Smart AoE primary block reason mismatch')
+
+	settings.weaponskill = 'Savage Blade'
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
+	assert_true(type(selection) == 'table', 'Smart single-target primary must remain selectable')
+	assert_equal(reason, 'READY', 'Smart single-target primary reason mismatch')
+	assert_equal(selection.smart_aoe_guard, true, 'normal Smart proposals must carry the commit guard')
+
+	settings.weaponskill_allow_aoe = true
+	settings.weaponskill = 'Aeolian Edge'
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
+	assert_true(type(selection) == 'table', 'AoE-enabled Smart primary must retain existing READY behavior')
+	assert_equal(reason, 'READY', 'AoE-enabled Smart primary reason mismatch')
+
+	settings.weaponskill_allow_aoe = false
+	settings.weaponskill = 'Savage Blade'
+	settings.aftermath_enabled = true
+	settings.aftermath_ws = 'Aeolian Edge'
+	player.vitals.tp = 3000
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
+	assert_equal(selection, nil, 'Smart aftermath maintenance must not select an AoE WS when disabled')
+	assert_equal(reason, 'AFTERMATH_WS_AOE_BLOCKED', 'Smart aftermath AoE block reason mismatch')
+
+	settings.aftermath_enabled = false
+	settings.weaponskill_allow_aoe = true
+	player.vitals.tp = 1000
+end
+
+local function test_aoe_restriction_scope_and_revalidation()
+	ability_recasts[20] = 30
+	settings.weaponskill = 'Aeolian Edge'
+	settings.weaponskill_allow_aoe = false
+	settings.aftermath_enabled = false
+	settings.weaponskill_min_tp = 1000
+	player.vitals.tp = 1000
+	core.resonating[9001] = nil
+
+	settings.ws_mode = 'primary_no_sc'
+	settings.spam = false
+	local selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
+	assert_true(type(selection) == 'table', 'primary_no_sc must remain outside the Smart AoE restriction')
+	assert_equal(reason, 'WS_MODE_PRIMARY_ONLY_READY', 'primary_no_sc scope reason mismatch')
+	assert_equal(selection.smart_aoe_guard, false, 'primary_no_sc proposal must not carry the Smart guard')
+
+	settings.ws_mode = 'smart'
+	settings.spam = true
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
+	assert_true(type(selection) == 'table', 'spam must remain outside the Smart AoE restriction')
+	assert_equal(reason, 'READY_SPAM', 'spam scope reason mismatch')
+	assert_equal(selection.smart_aoe_guard, false, 'spam proposal must not carry the Smart guard')
+
+	local allowed, block_reason = core.revalidate_smart_ws_aoe(settings, 'Aeolian Edge')
+	assert_equal(allowed, false, 'Smart AoE commit helper must reject a newly disabled AoE WS')
+	assert_equal(block_reason, 'SMART_WS_AOE_BLOCKED', 'Smart AoE commit reason mismatch')
+	allowed, block_reason = core.revalidate_skillchain_plan({ ws_id = 11 }, settings, 9001, 'Test AoE Continuation', 'test')
+	assert_equal(allowed, false, 'stale Smart AoE continuation must fail revalidation')
+	assert_equal(block_reason, 'SMART_WS_AOE_BLOCKED', 'stale continuation block reason mismatch')
+
+	dispatch_target = {
+		id = 9001,
+		valid_target = true,
+		spawn_type = 16,
+		hpp = 100,
+		distance = { sqrt = function() return 5 end },
+	}
+	local dispatch_plan = require('uc_scheduler_dispatch_plan')
+	local ctx = { now = 1, tick = 1, settings = settings }
+	local guarded = {
+		proposal_id = 'guarded',
+		action_name = 'Aeolian Edge',
+		target_kind = 'mob',
+		target_id = 9001,
+		expires_at = 2,
+		commit_deadline = 2,
+		smart_aoe_guard = true,
+	}
+	local plan = dispatch_plan.p1_build_dispatch_plan({}, ctx, guarded, function(value) return value end)
+	allowed, block_reason = dispatch_plan.p1_revalidate_plan_commit({}, ctx, guarded, plan, function(value) return value end, windower, core)
+	assert_equal(allowed, false, 'stale Smart AoE primary proposal must fail scheduler commit')
+	assert_equal(block_reason, 'SMART_WS_AOE_BLOCKED', 'stale primary commit reason mismatch')
+
+	guarded.smart_aoe_guard = false
+	plan = dispatch_plan.p1_build_dispatch_plan({}, ctx, guarded, function(value) return value end)
+	allowed, block_reason = dispatch_plan.p1_revalidate_plan_commit({}, ctx, guarded, plan, function(value) return value end, windower, core)
+	assert_equal(allowed, true, 'explicit/manual proposal without the Smart guard must remain unaffected')
+	dispatch_target = nil
+
+	settings.ws_mode = 'smart'
+	settings.spam = false
+	settings.weaponskill = 'Savage Blade'
+	settings.weaponskill_allow_aoe = true
 end
 
 local function test_ordinary_smart_ws_observes_minimum_tp()
@@ -446,6 +654,7 @@ end
 
 local function main()
 	local ok, err = pcall(function()
+	test_aoe_metadata_classification()
 	test_chivalry_reserves_tp_across_ready_boundary()
 	test_aftermath_reserves_tp_and_dispatches_before_continuation()
 	test_satisfied_maintenance_applies_minimum_tp_to_continuation()
@@ -455,6 +664,9 @@ local function main()
 	test_spam_forces_primary_ws_across_active_resonance()
 	test_spam_ws_observes_minimum_tp()
 	test_spam_ws_dispatch_rejects_out_of_range_target()
+	test_smart_continuation_candidate_filtering()
+	test_smart_primary_and_aftermath_aoe_restriction()
+	test_aoe_restriction_scope_and_revalidation()
 	end)
 	restore_test_environment()
 	if not ok then

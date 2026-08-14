@@ -13,6 +13,8 @@ public partial class MainForm
     private ComboBox _wsCombo = null!;
     private ComboBox _wsModeCombo = null!;
     private NumericUpDown _wsMinimumTp = null!;
+    private CheckBox _chkWsAllowAoe = null!;
+    private ToolTip _smartWsToolTip = null!;
     private ComboBox _aftermathCombo = null!;
     private ComboBox _pullerCombo = null!;
 	private ComboBox _pullerLeashSource = null!;
@@ -116,7 +118,7 @@ public partial class MainForm
     private ComboBox _keiIceDamageSpell = null!;
     private NumericUpDown _keiSustainInterval = null!;
     private NumericUpDown _keiProbeTimeout = null!;
-    private NumericUpDown _keiFullersRunAwayDistance = null!;
+    private NumericUpDown _keiFullersTargetDistance = null!;
     private NumericUpDown _keiFullersPrearmMargin = null!;
     private CheckBox _formationEnabled = null!;
     private CheckBox _namedFormationsEnabled = null!;
@@ -416,6 +418,22 @@ public partial class MainForm
         };
         _wsMinimumTp.ValueChanged += (_, _) => OnWsMinimumTpChanged();
         leftCol.Controls.Add(_wsMinimumTp, 1, lr);
+        lr++;
+
+        _chkWsAllowAoe = new CheckBox
+        {
+            Text = "Allow AoE WS in Smart mode",
+            AutoSize = true,
+            Checked = true,
+        };
+        _smartWsToolTip = new ToolTip();
+        _smartWsToolTip.SetToolTip(
+            _chkWsAllowAoe,
+            "When disabled, Smart WS will not select area-of-effect weapon skills."
+        );
+        _chkWsAllowAoe.CheckedChanged += (_, _) => OnWsAllowAoeChanged();
+        leftCol.Controls.Add(_chkWsAllowAoe, 0, lr);
+        leftCol.SetColumnSpan(_chkWsAllowAoe, 2);
         lr++;
 
         _chkAftermath = MkCtx("aftermath_enabled");
@@ -1052,9 +1070,9 @@ public partial class MainForm
         _keiProbeTimeout = CreateFormationNumber(0.5m, 30.0m, 3.0m, 0.1m, 1);
         AddFormationNumberRow(_keiConfigPanel, "Probe Timeout (seconds)", _keiProbeTimeout, ref keiRow);
         _keiProbeTimeout.ValueChanged += (_, _) => OnEncounterConfigChanged();
-        _keiFullersRunAwayDistance = CreateFormationNumber(0.1m, 50.0m, 12.0m, 0.5m, 1);
-        AddFormationNumberRow(_keiConfigPanel, "Dancing Fullers Run-Away Distance", _keiFullersRunAwayDistance, ref keiRow);
-        _keiFullersRunAwayDistance.ValueChanged += (_, _) => OnEncounterConfigChanged();
+        _keiFullersTargetDistance = CreateFormationNumber(0.1m, 50.0m, 12.0m, 0.5m, 1);
+        AddFormationNumberRow(_keiConfigPanel, "Dancing Fullers Target Distance", _keiFullersTargetDistance, ref keiRow);
+        _keiFullersTargetDistance.ValueChanged += (_, _) => OnEncounterConfigChanged();
         _keiFullersPrearmMargin = CreateFormationNumber(0.0m, 10.0m, 1.0m, 0.5m, 1);
         AddFormationNumberRow(_keiConfigPanel, "Fullers Pre-Arm HP Margin", _keiFullersPrearmMargin, ref keiRow);
         _keiFullersPrearmMargin.ValueChanged += (_, _) => OnEncounterConfigChanged();
@@ -1871,7 +1889,7 @@ public partial class MainForm
         reactionRoot.Controls.Add(reactionButtons);
         reactionRoot.Controls.Add(new Label
         {
-            Text = "ability_window supports turn_away or run_away to the configured raw coordinate distance. enemy_buff holds attacks while the named enemy effect is active.",
+            Text = "ability_window supports turn_away, run_away to a minimum raw distance, or move_to_range to continuously maintain a raw distance. enemy_buff holds attacks while the named enemy effect is active.",
             AutoSize = true,
             Padding = new Padding(0, 8, 0, 0),
         });

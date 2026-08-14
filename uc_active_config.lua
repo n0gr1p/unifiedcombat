@@ -447,6 +447,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.ws1 = config.combat.weaponskill.primary
 			candidate.ws_mode = config.combat.weaponskill.mode
 			candidate.weaponskill_min_tp = config.combat.weaponskill.minimum_tp
+			candidate.weaponskill_allow_aoe = config.combat.weaponskill.allow_aoe
 			candidate.wait_ignore_names = clone_value(config.combat.weaponskill.wait_ignore_names)
 			candidate.aftermath_enabled = config.combat.weaponskill.aftermath_enabled
 			candidate.aftermath_ws = config.combat.weaponskill.aftermath_ws
@@ -515,6 +516,10 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.encounter_enabled = encounter.enabled == true
 		candidate.encounter_id = encounter.id
 		if encounter.id == 'kei' and encounter.enabled == true then
+			candidate.encounter_water_damage = nil
+			candidate.encounter_water_skillchain = nil
+			candidate.encounter_repeat_action_wall = nil
+			candidate.encounter_repeat_action_guard_s = nil
 			if type(encounter.kei) ~= 'table' or type(encounter.kei.elemental_damage) ~= 'table' then
 				error('enabled Kei encounter is missing elemental configuration')
 			end
@@ -532,7 +537,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			if type(encounter.kei.fullers) ~= 'table' then
 				error('enabled Kei encounter is missing Fullers configuration')
 			end
-			candidate.kei_fullers_run_away_distance = encounter.kei.fullers.run_away_distance
+			candidate.kei_fullers_target_distance = encounter.kei.fullers.target_distance
 			candidate.kei_fullers_prearm_hpp_margin = encounter.kei.fullers.prearm_hpp_margin
 		elseif definition ~= nil then
 			local policy = type(encounter.policy) == 'table' and encounter.policy or {}
@@ -556,7 +561,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.kei_ice_damage_spell = 'Blizzard III'
 		candidate.kei_sustain_interval_s = 2.5
 		candidate.kei_probe_timeout_s = 3.0
-		candidate.kei_fullers_run_away_distance = 12.0
+		candidate.kei_fullers_target_distance = 12.0
 		candidate.kei_fullers_prearm_hpp_margin = 1.0
 	end
 
@@ -611,6 +616,9 @@ local function apply_structured_config_to_candidate(candidate, config)
 			if type(formation.mock) == 'table' then
 				candidate.formation_mock_enabled = formation.mock.enabled
 				candidate.formation_mock_mob_name = formation.mock.mob_name
+			else
+				candidate.formation_mock_enabled = false
+				candidate.formation_mock_mob_name = ''
 			end
 			candidate.formation_role = formation.role
 			candidate.formation_tank_name = formation.tank_name
@@ -668,6 +676,10 @@ local function apply_structured_config_to_candidate(candidate, config)
 					candidate.formation_required_party_names = clone_value(constraints.required_party_names)
 				end
 			end
+		else
+			candidate.formation_enabled = false
+			candidate.formation_mock_enabled = false
+			candidate.formation_mock_mob_name = ''
 		end
 		if type(config.movement.spacing) == 'table' then
 			candidate.spacing = config.movement.spacing.enabled
@@ -1229,6 +1241,13 @@ function M.project_flat_settings(active_profile, base_settings)
 		return nil, 'base settings must be a table'
 	end
 	local candidate = clone_value(base_settings)
+	-- The projected result is the legacy flat settings view. Canonical config
+	-- sources left by a previous job would take precedence over these mirrors
+	-- when the candidate is normalized, so they must not survive replacement.
+	candidate.config = nil
+	for i = 1, #DURABLE_CONFIG_DOMAINS do
+		candidate[DURABLE_CONFIG_DOMAINS[i]] = nil
+	end
 	local ok, err = apply_structured_config_to_candidate(candidate, active_profile.config)
 	if ok ~= true then
 		return nil, err

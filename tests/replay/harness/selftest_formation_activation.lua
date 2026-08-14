@@ -153,9 +153,16 @@ local named_projected = assert(active_config.project_flat_settings({
 		source = 'selftest',
 	},
 	config = named_durable,
-}, {}))
+}, {
+	formation_enabled = true,
+	formation_mock_enabled = true,
+	formation_mock_mob_name = 'Apex Crab',
+}))
 assert_true(named_projected.named_formations_enabled, 'named formation enable flag must project to UI state')
 assert_equal(named_projected.named_formation_entries[1].mob_name, 'Kei', 'named formation entries must project to UI state')
+assert_false(named_projected.formation_enabled, 'named-only profile must clear stale encounter-scoped formation')
+assert_false(named_projected.formation_mock_enabled, 'named-only profile must clear stale formation mock mode')
+assert_equal(named_projected.formation_mock_mob_name, '', 'named-only profile must clear stale mock mob name')
 assert_equal(
 	profile_v2.diff_durable_config(named_durable, profile_v2.build_durable_config(named_projected, meta)).count,
 	0,
@@ -216,6 +223,33 @@ local disabled_mock_flat = generic_flat()
 disabled_mock_flat.formation_mock_enabled = false
 local disabled_mock_durable = profile_v2.build_durable_config(disabled_mock_flat, meta)
 assert_equal(disabled_mock_durable.movement.formation.mock, nil, 'disabled mock config must remain optional')
+local stale_mock_flat = generic_flat()
+local disabled_mock_projected, disabled_mock_projection_error = active_config.project_flat_settings({
+	version = 2,
+	profile = {
+		schema_version = 2,
+		engine = 'UC',
+		character = 'Tester',
+		main_job = 'WAR',
+		sub_job = 'SAM',
+		source = 'selftest',
+	},
+	config = disabled_mock_durable,
+}, stale_mock_flat)
+assert_true(
+	type(disabled_mock_projected) == 'table',
+	'disabled mock structured profile projection failed: ' .. tostring(disabled_mock_projection_error)
+)
+assert_false(disabled_mock_projected.formation_mock_enabled, 'omitted mock config must clear stale enabled state')
+assert_equal(disabled_mock_projected.formation_mock_mob_name, '', 'omitted mock config must clear stale mob name')
+assert_equal(
+	profile_v2.diff_durable_config(
+		disabled_mock_durable,
+		profile_v2.build_durable_config(disabled_mock_projected, meta)
+	).count,
+	0,
+	'omitted mock config must round-trip after clearing stale runtime state'
+)
 local invalid_mock_flat = generic_flat()
 invalid_mock_flat.formation_mock_mob_name = ''
 local invalid_mock_ok, invalid_mock_error = pcall(profile_v2.build_durable_config, invalid_mock_flat, meta)
@@ -495,11 +529,13 @@ local coordinator = scheduler_source:sub(coordinator_start, coordinator_end)
 local nyzul_at = assert(coordinator:find("nyzul_runtime.is_movement_held()", 1, true))
 local camp_at = assert(coordinator:find("movement_reserved(camp_pulling_config())", 1, true))
 local observe_at = assert(coordinator:find('formation_runtime.observe(now)', 1, true))
+local reaction_movement_at = assert(coordinator:find('scheduler.apply_reaction_movement(reaction_lock, formation_runtime)', 1, true))
 local reaction_at = assert(coordinator:find("formation_runtime.stop('FORMATION_REACTION_HOLD')", 1, true))
 local cast_at = assert(coordinator:find("formation_runtime.stop('FORMATION_CAST_FREEZE_PREP')", 1, true))
 local formation_at = assert(coordinator:find('formation_runtime.run_tick(formation_observation)', 1, true))
 assert_true(nyzul_at < observe_at, 'Nyzul movement ownership must remain above formation')
 assert_true(camp_at < observe_at, 'camp-puller movement ownership must remain above formation')
+assert_true(reaction_movement_at < formation_at, 'reaction range movement must remain above formation execution')
 assert_true(reaction_at < formation_at, 'reaction holds must remain above formation execution')
 assert_true(cast_at < formation_at, 'cast freezes must remain above formation execution')
 assert_true(

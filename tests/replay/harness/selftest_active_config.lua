@@ -97,6 +97,7 @@ local function build_flat_settings()
 		weaponskill_active = true,
 		weaponskill = 'Savage Blade',
 		ws_mode = 'smart',
+		weaponskill_allow_aoe = false,
 		autotarget = true,
 		spam = true,
 		closer = true,
@@ -274,6 +275,7 @@ local function main()
 	assert_true(projected ~= flat, 'projected settings must be a new table')
 	assert_equal(projected.weaponskill, 'Savage Blade', 'projected weaponskill mismatch')
 	assert_equal(projected.ws1, 'Savage Blade', 'projected ws1 mismatch')
+	assert_equal(projected.weaponskill_allow_aoe, false, 'projected Smart WS AoE preference mismatch')
 	assert_equal(projected.sleep, true, 'projected sleep mismatch')
 	assert_equal(projected.sleepspell, 'Horde Lullaby II', 'projected sleep mirror mismatch')
 	assert_equal(projected.sleepspells[1], 'Horde Lullaby II', 'projected sleep list mismatch')
@@ -315,6 +317,40 @@ local function main()
 	assert_true(no_nyzul_projected.nyzul_anchor_name == nil, 'omitted Nyzul config must clear stale anchor')
 	assert_true(no_nyzul_projected.nyzul_parking_order == nil, 'omitted Nyzul config must clear stale parking order')
 	assert_true(no_nyzul_projected.follow.nyzul == nil, 'omitted Nyzul config must clear stale nested roster')
+	local stale_canonical_base = deep_clone(flat)
+	stale_canonical_base.config = deep_clone(active_profile.config)
+	stale_canonical_base.config.combat.weaponskill.minimum_tp = 3000
+	stale_canonical_base.config.encounter = {
+		enabled = true,
+		id = 'sortie_ghatjot',
+		policy = {
+			water_damage = 'enforce',
+			water_skillchain = 'enforce',
+			repeat_action_wall = 'off',
+		},
+		tuning = {
+			repeat_action_guard_s = 10,
+		},
+	}
+	stale_canonical_base.combat = deep_clone(stale_canonical_base.config.combat)
+	stale_canonical_base.encounter = deep_clone(stale_canonical_base.config.encounter)
+	local replacement_profile = deep_clone(active_profile)
+	replacement_profile.config.combat.weaponskill.minimum_tp = 2000
+	replacement_profile.config.encounter = nil
+	local replacement_projected, replacement_error = active_config.project_flat_settings(replacement_profile, stale_canonical_base)
+	assert_true(replacement_projected ~= nil and replacement_error == nil, 'profile replacement should discard stale canonical config sources')
+	assert_true(replacement_projected.config == nil, 'flat profile projection must remove a stale config wrapper')
+	assert_true(replacement_projected.combat == nil, 'flat profile projection must remove a stale canonical combat domain')
+	assert_true(replacement_projected.encounter == nil, 'flat profile projection must remove a stale canonical encounter domain')
+	assert_equal(replacement_projected.weaponskill_min_tp, 2000, 'replacement profile must own the projected WS minimum TP')
+	assert_equal(replacement_projected.encounter_enabled, false, 'omitted replacement encounter must disable the stale encounter')
+	local replacement_config = normalizer.normalize(replacement_projected, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	})
+	assert_equal(replacement_config.combat.weaponskill.minimum_tp, 2000, 'replacement WS minimum TP must survive canonical normalization')
+	assert_equal(replacement_config.encounter.enabled, false, 'stale encounter must remain disabled after canonical normalization')
 	assert_equal(projected.targets[1], 'Apex Bat', 'projected add priority targets mismatch')
 	assert_equal(projected.add_priority_names[1], 'Apex Bat', 'projected add priority compatibility names mismatch')
 	assert_equal(projected.partner_names[1], 'Ponponponponpon', 'projected primary partner name mismatch')
@@ -348,6 +384,7 @@ local function main()
 	assert_equal(ui_profile.profile.main_job, 'PLD', 'UI active profile main job mismatch')
 	assert_equal(ui_profile.profile.sub_job, 'WAR', 'UI active profile sub job mismatch')
 	assert_equal(ui_profile.config.combat.weaponskill.primary, 'Savage Blade', 'UI active combat mismatch')
+	assert_equal(ui_profile.config.combat.weaponskill.allow_aoe, false, 'UI active Smart WS AoE preference mismatch')
 	assert_equal(ui_profile.config.movement.path.file_name, 'route-a', 'UI active path mismatch')
 	assert_equal(ui_profile.config.follow.party.leader_name, 'Leader', 'UI active follow mismatch')
 	assert_equal(ui_profile.config.follow.partner.puller_name, 'Niightsiide', 'UI active puller mismatch')

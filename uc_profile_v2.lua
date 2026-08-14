@@ -221,6 +221,12 @@ local function pick_durable_config_domains(config, meta)
 	if type(out.encounter) == 'table' and out.encounter.enabled ~= true then
 		out.encounter = nil
 	end
+	if type(out.encounter) == 'table'
+		and out.encounter.enabled == true
+		and out.encounter.id == 'kei' then
+		out.encounter.policy = nil
+		out.encounter.tuning = nil
+	end
 	if type(out.movement) == 'table'
 		and type(out.movement.formation) == 'table'
 		and out.movement.formation.enabled ~= true then

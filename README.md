@@ -77,6 +77,7 @@ See the [scheduler RFC index](RFC/README.md), [phase-6 exit audit](RFC/UnifiedCo
 - Profile-defined reactions:
   - `ability_window` + `turn_away` for actions such as Cold Stare or Fatal Allure.
   - `ability_window` + `run_away` with a positive raw-coordinate target distance for bounded AoE escape movement.
+  - `ability_window` + `move_to_range` to continuously maintain a raw radial distance by moving inward or outward while the window remains active.
   - `enemy_buff` + `stop_attacking` for effects such as Dread Spikes.
 - Reaction holds preserve self/party support work while suppressing conflicting enemy-facing combat work.
 

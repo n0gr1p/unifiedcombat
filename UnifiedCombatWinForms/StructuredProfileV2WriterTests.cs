@@ -12,6 +12,8 @@ internal static class StructuredProfileV2WriterTests
             TestBuildFinalPath();
             TestSerializeShapeAndEscaping();
             TestWeaponskillMinimumTpValidation();
+            TestSmartWsAoePreferenceRoundTrip();
+            TestSmartWsAoeUiPersistenceContract();
             TestSerializeOmitsRetiredOwnershipMarkers();
             TestParseTargetedBuffs();
             TestSerializeOmitsProfileV2AutoloadWhenDisabled();
@@ -26,6 +28,7 @@ internal static class StructuredProfileV2WriterTests
             TestProfileSchemaThreeMigratesMissingDomains();
             TestProfileSchemaThreePreservesExplicitDomains();
             TestProfileSchemaThreeRemovesRetiredDarkLaunchKeys();
+            TestProfileSchemaFourMigratesKeiFullersDistance();
             TestSerializeIncludesPullerNameWhenSelected();
 			TestSerializeCampLeashSourceWithoutPullerName();
             TestSerializeGeoMaintenance();
@@ -63,6 +66,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeKeiEncounter();
             TestEncounterValidation();
             TestEncounterUiProfilePersistenceContract();
+            TestKeiSpellOptionRefreshRevalidatesEncounter();
             TestDisabledFormationIsOmitted();
             TestSerializeLilithEasyFormation();
             TestSerializeGenericSortieFormation();
@@ -169,7 +173,7 @@ internal static class StructuredProfileV2WriterTests
         };
 
         AssertTrue(MainForm.MigrateProfileInPlace(profile), "schema-two profile must migrate");
-        AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 3, "migrated schema version mismatch");
+        AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 4, "migrated schema version mismatch");
         AssertTrue(!profile["domain_combat_enabled"]!.GetValue<bool>(), "explicit combat domain value must be preserved");
         AssertTrue(profile["domain_defensive_enabled"]!.GetValue<bool>(), "missing defensive domain must migrate enabled");
         AssertTrue(profile["domain_movement_enabled"]!.GetValue<bool>(), "missing movement domain must migrate enabled");
@@ -221,6 +225,30 @@ internal static class StructuredProfileV2WriterTests
         );
     }
 
+    private static void TestProfileSchemaFourMigratesKeiFullersDistance()
+    {
+        var profile = new JsonObject
+        {
+            ["profile_schema_version"] = 3,
+            ["kei_fullers_run_away_distance"] = 12.0,
+        };
+        AssertTrue(MainForm.MigrateProfileInPlace(profile), "schema-three Kei profile must migrate");
+        AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 4, "Kei migration schema version mismatch");
+        AssertTrue(profile["kei_fullers_target_distance"]!.GetValue<double>() == 12.0, "Kei target distance migration mismatch");
+        AssertTrue(!profile.ContainsKey("kei_fullers_run_away_distance"), "Kei legacy distance must be removed after migration");
+
+        var conflict = new JsonObject
+        {
+            ["profile_schema_version"] = 3,
+            ["kei_fullers_target_distance"] = 12.0,
+            ["kei_fullers_run_away_distance"] = 15.0,
+        };
+        AssertThrows<InvalidDataException>(
+            () => MainForm.MigrateProfileInPlace(conflict),
+            "conflicting Kei target-distance aliases must fail migration"
+        );
+    }
+
     private static void TestSerializeShapeAndEscaping()
     {
         var flat = BuildSampleFlatProfile();
@@ -248,6 +276,7 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "show_ingame_ui = true", "ui domain missing");
         AssertContains(content, "autotarget = true", "combat domain missing");
         AssertContains(content, "minimum_tp = 2000", "weaponskill minimum TP missing");
+        AssertContains(content, "allow_aoe = false", "Smart WS AoE preference missing");
         AssertContains(content, "configured = {", "abilities domain missing");
         AssertContains(content, "list = \"Bar\\\"Spell\\\\Line\\nNext\"", "string escaping mismatch");
         AssertContains(content, "targeted = {", "targeted defensive buff list missing");
@@ -1129,6 +1158,13 @@ internal static class StructuredProfileV2WriterTests
                 ["response"] = "run_away",
                 ["distance"] = 12.0,
             },
+            new JsonObject
+            {
+                ["trigger"] = "ability_window",
+                ["name"] = "Range Pulse",
+                ["response"] = "move_to_range",
+                ["distance"] = 17.5,
+            },
         };
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
@@ -1144,37 +1180,81 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "name = \"Dancing Fullers\"", "run-away ability missing");
         AssertContains(content, "response = \"run_away\"", "run-away response missing");
         AssertContains(content, "distance = 12", "run-away raw target distance missing");
+        AssertContains(content, "response = \"move_to_range\"", "move-to-range response missing");
+        AssertContains(content, "distance = 17.5", "move-to-range raw target distance missing");
         AssertNotContains(content, "actor_id", "runtime actor ids must not be durable reaction config");
         AssertNotContains(content, "effect_id", "resolved runtime effect ids must not be durable reaction config");
     }
 
-    private static void TestRejectInvalidRunAwayDistance()
+    private static void TestSmartWsAoePreferenceRoundTrip()
     {
         var flat = BuildSampleFlatProfile();
-        flat["reaction_enabled"] = true;
-        flat["reaction_rules"] = new JsonArray
+        flat["weaponskill_allow_aoe"] = false;
+        var disabled = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+        AssertContains(disabled, "allow_aoe = false", "disabled Smart WS AoE preference must serialize false");
+
+        flat["weaponskill_allow_aoe"] = true;
+        var enabled = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+        AssertContains(enabled, "allow_aoe = true", "enabled Smart WS AoE preference must serialize true");
+
+        flat.Remove("weaponskill_allow_aoe");
+        var missing = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+        AssertContains(missing, "allow_aoe = true", "missing Smart WS AoE preference must default true");
+    }
+
+    private static void TestSmartWsAoeUiPersistenceContract()
+    {
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+
+        AssertContains(ui, "Allow AoE WS in Smart mode", "Smart WS AoE checkbox label missing");
+        AssertContains(ui, "When disabled, Smart WS will not select area-of-effect weapon skills.", "Smart WS AoE tooltip missing");
+        AssertContains(logic, "SessionStateHelper.GetBool(s, \"weaponskill_allow_aoe\", true)", "Smart WS AoE UI load must default true");
+        AssertContains(logic, "[\"path\"] = \"weaponskill_allow_aoe\"", "Smart WS AoE live update path missing");
+        AssertContains(store, "[\"weaponskill_allow_aoe\"] = _chkWsAllowAoe.Checked", "Smart WS AoE UI save path missing");
+        AssertContains(store, "[\"weaponskill_allow_aoe\"] = true", "Smart WS AoE UI profile default must be true");
+    }
+
+    private static void TestRejectInvalidRunAwayDistance()
+    {
+        foreach (var response in new[] { "run_away", "move_to_range" })
         {
-            new JsonObject
+            var flat = BuildSampleFlatProfile();
+            flat["reaction_enabled"] = true;
+            flat["reaction_rules"] = new JsonArray
             {
-                ["trigger"] = "ability_window",
-                ["name"] = "Dancing Fullers",
-                ["response"] = "run_away",
-                ["distance"] = 0.0,
-            },
-        };
-        var rejected = false;
-        try
-        {
-            StructuredProfileV2Writer.BuildStructuredProfileFile(
-                flat,
-                new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
-            );
+                new JsonObject
+                {
+                    ["trigger"] = "ability_window",
+                    ["name"] = "Range Test",
+                    ["response"] = response,
+                    ["distance"] = 0.0,
+                },
+            };
+            var rejected = false;
+            try
+            {
+                StructuredProfileV2Writer.BuildStructuredProfileFile(
+                    flat,
+                    new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+                );
+            }
+            catch (InvalidDataException ex)
+            {
+                rejected = ex.Message.Contains("positive finite distance", StringComparison.Ordinal);
+            }
+            AssertTrue(rejected, $"{response} distance zero must fail durable profile serialization");
         }
-        catch (InvalidDataException ex)
-        {
-            rejected = ex.Message.Contains("positive finite distance", StringComparison.Ordinal);
-        }
-        AssertTrue(rejected, "run-away distance zero must fail durable profile serialization");
     }
 
     private static void TestDisabledEmptyReactionsAreOmitted()
@@ -1199,7 +1279,8 @@ internal static class StructuredProfileV2WriterTests
         AssertNotContains(reactionHandlers, "Forward(", "reaction durable controls must not emit live bridge traffic");
         AssertContains(reactionHandlers, "CaptureWorkingProfileFromUi", "reaction durable controls must update local working state");
         AssertContains(reactionHandlers, "run_away", "reaction UI must expose run-away ability-window rules");
-        AssertContains(reactionHandlers, "_reactionDistance", "reaction UI must persist the run-away target distance");
+        AssertContains(reactionHandlers, "move_to_range", "reaction UI must expose move-to-range ability-window rules");
+        AssertContains(reactionHandlers, "_reactionDistance", "reaction UI must persist distance-bearing response targets");
     }
 
     private static void TestSerializeGhatjotEncounter()
@@ -1236,7 +1317,7 @@ internal static class StructuredProfileV2WriterTests
         flat["kei_ice_damage_spell"] = "Blizzard III";
         flat["kei_sustain_interval_s"] = 2.5;
         flat["kei_probe_timeout_s"] = 3.0;
-        flat["kei_fullers_run_away_distance"] = 12.0;
+        flat["kei_fullers_target_distance"] = 12.0;
         flat["kei_fullers_prearm_hpp_margin"] = 1.0;
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
@@ -1251,7 +1332,8 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "damage_spell = \"Blizzard III\"", "Kei Ice damage spell missing");
         AssertContains(content, "sustain_interval_s = 2.5", "Kei sustain interval missing");
         AssertContains(content, "probe_timeout_s = 3", "Kei probe timeout missing");
-        AssertContains(content, "run_away_distance = 12", "Kei Fullers distance missing");
+        AssertContains(content, "target_distance = 12", "Kei Fullers target distance missing");
+        AssertNotContains(content, "run_away_distance", "new Kei profiles must not write the legacy distance name");
         AssertContains(content, "prearm_hpp_margin = 1", "Kei Fullers prearm margin missing");
     }
 
@@ -1291,9 +1373,9 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(store, "[\"encounter_id\"] = EncounterIdValue()", "encounter identity must be captured");
         AssertContains(store, "[\"encounter_water_damage\"]", "direct Water mode must be captured");
         AssertContains(store, "[\"kei_elemental_dealer_name\"]", "Kei elemental dealer must be captured");
-        AssertContains(store, "[\"kei_fullers_run_away_distance\"]", "Kei Fullers distance must be captured");
+        AssertContains(store, "[\"kei_fullers_target_distance\"]", "Kei Fullers target distance must be captured");
         AssertContains(ui, "Water Probe Spell", "Kei Water probe selector must exist");
-        AssertContains(ui, "Dancing Fullers Run-Away Distance", "Kei Fullers distance control must exist");
+        AssertContains(ui, "Dancing Fullers Target Distance", "Kei Fullers target-distance control must exist");
         AssertContains(logic, "ApplyEncounterConfigFromSnapshot(s);", "encounter settings must restore from UI profiles");
         var start = logic.IndexOf("private string EncounterIdValue", StringComparison.Ordinal);
         var end = logic.IndexOf("private string FormationEncounterValue", start, StringComparison.Ordinal);
@@ -1338,6 +1420,18 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "flank_angle_deg = 90", "DPS flank angle missing");
         AssertContains(content, "preferred_radius = 12", "healer preferred radius missing");
         AssertContains(content, "cone_safety_margin_deg = 15", "healer cone safety margin missing");
+    }
+
+    private static void TestKeiSpellOptionRefreshRevalidatesEncounter()
+    {
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs")
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+        const string refreshAndValidate = "RefreshKeiSpellOptions();\n                UpdateEncounterUiState();";
+        var occurrences = logic.Split(refreshAndValidate, StringSplitOptions.None).Length - 1;
+        AssertTrue(
+            occurrences >= 2,
+            "Kei encounter validation must rerun when full-session or incremental spell options replace another session's options"
+        );
     }
 
     private static void TestSerializeGenericSortieFormation()
@@ -1701,6 +1795,7 @@ internal static class StructuredProfileV2WriterTests
             ["weaponskill"] = "Savage Blade",
             ["ws_mode"] = "smart",
             ["weaponskill_min_tp"] = 2000,
+            ["weaponskill_allow_aoe"] = false,
             ["aftermath_enabled"] = true,
             ["aftermath_ws"] = "Atonement",
             ["defensive_enabled"] = true,

@@ -29,6 +29,7 @@ return {
                 primary = "Savage Blade",
                 mode = "smart",
                 minimum_tp = 2000,
+                allow_aoe = false,
                 wait_ignore_names = { "Ally One", "Ally Two" },
                 aftermath_enabled = true,
                 aftermath_ws = "Atonement",

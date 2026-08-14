@@ -204,8 +204,8 @@ local function main()
         target = nil,
     })
     suppress, reason = follow.should_suppress_follow_or_path_return_now({ combat_participant = false }, _G.__TEST_NOW)
-    assert_equal(suppress, true, 'run-away ownership must unconditionally suppress Party Follow')
-    assert_equal(reason, 'reaction_movement_lock', 'run-away movement lock reason mismatch')
+    assert_equal(suppress, true, 'active or holding reaction range ownership must unconditionally suppress Party Follow')
+    assert_equal(reason, 'reaction_movement_lock', 'reaction range movement lock reason mismatch')
 
     set_state({
         flag = false,
@@ -218,8 +218,8 @@ local function main()
         target = nil,
     })
     suppress, reason = follow.should_suppress_follow_or_path_return_now({ combat_participant = false }, _G.__TEST_NOW)
-    assert_equal(suppress, false, 'expired run-away ownership must allow normal movement to resume')
-    assert_equal(reason, 'flag_off', 'expired run-away ownership release reason mismatch')
+    assert_equal(suppress, false, 'expired reaction range ownership must allow normal movement to resume')
+    assert_equal(reason, 'flag_off', 'expired reaction range ownership release reason mismatch')
 
     set_state({
         flag = true,
