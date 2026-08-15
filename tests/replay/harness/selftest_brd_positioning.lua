@@ -83,6 +83,7 @@ local normal_action = {
 }
 local ready, prepare_reason = positioning.prepare({
 	enabled = true,
+	allow_formation_partial = false,
 	now = 10,
 	action = normal_action,
 	me = { x = 0, y = 0 },
@@ -102,6 +103,7 @@ local urgent_action = {
 }
 ready, prepare_reason = positioning.prepare({
 	enabled = true,
+	allow_formation_partial = false,
 	now = 11,
 	action = urgent_action,
 	me = { x = 0, y = 0 },
@@ -121,6 +123,7 @@ local capacity_action = {
 }
 ready, prepare_reason = positioning.prepare({
 	enabled = true,
+	allow_formation_partial = false,
 	now = 12,
 	action = capacity_action,
 	me = { x = 0, y = 0 },
@@ -140,6 +143,7 @@ local ability_action = {
 }
 ready, prepare_reason = positioning.prepare({
 	enabled = true,
+	allow_formation_partial = false,
 	now = 13,
 	action = ability_action,
 	me = { x = 0, y = 0 },
@@ -149,6 +153,87 @@ ready, prepare_reason = positioning.prepare({
 })
 assert_equal(ready, false, 'Bard resource abilities must not begin for a partial cluster')
 assert_equal(prepare_reason, 'BRD_REPOSITION_WAIT_FULL_PARTY_RESOURCE', 'ability split-party wait reason mismatch')
+
+positioning.reset('formation_partial_song')
+ready, prepare_reason = positioning.prepare({
+	enabled = true,
+	allow_formation_partial = true,
+	now = 14,
+	action = normal_action,
+	me = { x = 0, y = 0 },
+	party_members = separated_party,
+	ignore_names = {},
+	radius = 9.9,
+})
+assert_true(ready, 'active generic formation must maintain songs for the largest reachable cluster')
+assert_equal(prepare_reason, 'BRD_REPOSITION_FORMATION_CLUSTER_CURRENT', 'formation song cluster reason mismatch')
+
+positioning.reset('formation_partial_capacity')
+ready, prepare_reason = positioning.prepare({
+	enabled = true,
+	allow_formation_partial = true,
+	now = 15,
+	action = capacity_action,
+	me = { x = 0, y = 0 },
+	party_members = separated_party,
+	ignore_names = {},
+	radius = 9.9,
+})
+assert_true(ready, 'active generic formation must allow capacity work for the largest reachable cluster')
+assert_equal(prepare_reason, 'BRD_REPOSITION_FORMATION_CLUSTER_CURRENT', 'formation capacity cluster reason mismatch')
+
+positioning.reset('formation_partial_ability')
+ready, prepare_reason = positioning.prepare({
+	enabled = true,
+	allow_formation_partial = true,
+	now = 16,
+	action = ability_action,
+	me = { x = 0, y = 0 },
+	party_members = separated_party,
+	ignore_names = {},
+	radius = 9.9,
+})
+assert_true(ready, 'active generic formation must allow Bard setup abilities for the largest reachable cluster')
+assert_equal(prepare_reason, 'BRD_REPOSITION_FORMATION_CLUSTER_CURRENT', 'formation ability cluster reason mismatch')
+
+local formation_move_party = {
+	member(1, 'Bard', 0, 0, true),
+	member(2, 'CampTank', 0, 1),
+	member(3, 'RemoteTank', 30, 0),
+	member(4, 'RemoteMelee', 30, 1),
+	member(5, 'RemoteHealer', 30, -1),
+}
+positioning.reset('formation_partial_movement')
+ready, prepare_reason = positioning.prepare({
+	enabled = true,
+	allow_formation_partial = true,
+	now = 17,
+	action = normal_action,
+	me = { x = 0, y = 0 },
+	party_members = formation_move_party,
+	ignore_names = {},
+	radius = 9.9,
+})
+assert_equal(ready, false, 'active generic formation must reposition toward the largest reachable cluster')
+assert_equal(prepare_reason, 'BRD_REPOSITION_FORMATION_CLUSTER', 'formation movement reason mismatch')
+local formation_request = positioning.movement_request({ x = 0, y = 0 }, 17)
+assert_equal(formation_request.kind, 'run', 'formation cluster plan must use Bard movement ownership')
+assert_true(formation_request.run_x > 0, 'formation cluster movement must point toward the larger remote group')
+assert_equal(formation_request.coverage_count, 3, 'formation cluster movement must maximize reachable recipients')
+local formation_arrival = { x = formation_request.target_x, y = formation_request.target_y }
+assert_equal(positioning.movement_request(formation_arrival, 17.2).kind, 'stop', 'formation cluster arrival must stop movement')
+ready, prepare_reason = positioning.prepare({
+	enabled = true,
+	allow_formation_partial = true,
+	now = 17.6,
+	action = normal_action,
+	me = formation_arrival,
+	party_members = formation_move_party,
+	ignore_names = {},
+	radius = 9.9,
+})
+assert_true(ready, 'settled formation cluster must release the song proposal')
+assert_equal(prepare_reason, 'BRD_REPOSITION_READY_FORMATION_CLUSTER', 'settled formation cluster reason mismatch')
 
 local camp_blocked_plan, camp_blocked_reason = positioning.select_position({
 	me = { x = 0, y = 0 },
@@ -167,6 +252,7 @@ assert_equal(camp_blocked_reason, 'BRD_REPOSITION_NO_CAMP_VIABLE_POSITION', 'cam
 positioning.reset('movement_test')
 ready = positioning.prepare({
 	enabled = true,
+	allow_formation_partial = false,
 	now = 20,
 	action = normal_action,
 	me = { x = 0, y = 0 },
@@ -189,6 +275,7 @@ local halfway_party = {
 }
 ready = positioning.prepare({
 	enabled = true,
+	allow_formation_partial = false,
 	now = 20.2,
 	action = normal_action,
 	me = { x = original_target_x / 2, y = 0 },
@@ -204,6 +291,7 @@ request = positioning.movement_request(arrival, 21)
 assert_equal(request.kind, 'stop', 'arrival must emit a physical stop')
 ready, prepare_reason = positioning.prepare({
 	enabled = true,
+	allow_formation_partial = false,
 	now = 21.2,
 	action = normal_action,
 	me = arrival,
@@ -214,6 +302,7 @@ ready, prepare_reason = positioning.prepare({
 assert_equal(ready, false, 'arrival must honor movement settle time')
 ready, prepare_reason = positioning.prepare({
 	enabled = true,
+	allow_formation_partial = false,
 	now = 21.4,
 	action = normal_action,
 	me = arrival,
@@ -227,6 +316,7 @@ assert_equal(prepare_reason, 'BRD_REPOSITION_READY_FULL_PARTY', 'settled midpoin
 positioning.reset('stall_test')
 positioning.prepare({
 	enabled = true,
+	allow_formation_partial = false,
 	now = 30,
 	action = normal_action,
 	me = { x = 0, y = 0 },
@@ -241,6 +331,7 @@ assert_equal(stalled.reason, 'BRD_REPOSITION_STALLED', 'stalled movement reason 
 
 local targeted_ready, targeted_reason = positioning.prepare({
 	enabled = true,
+	allow_formation_partial = false,
 	now = 40,
 	action = {
 		action_name = 'Pianissimo',

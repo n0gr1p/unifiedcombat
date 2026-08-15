@@ -33,6 +33,10 @@ function M.validate_proposal(ctx, proposal, deps)
 	if proposals.created_age(ctx, proposal) > 0.8 then
 		return false, 'stale_snapshot'
 	end
+	local encounter_ok, encounter_reason = require_function(deps, 'encounter_validate_proposal')(ctx, proposal)
+	if encounter_ok ~= true then
+		return false, tostring(encounter_reason or 'encounter_policy_rejected')
+	end
 
 	local phase = require_value(deps, 'phase1')
 	local pending_engage_live = require_function(deps, 'pending_engage_live')

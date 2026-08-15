@@ -2621,13 +2621,25 @@ function M.note_scheduler_rejection(reason, action_name)
 	trace(state.last_blocker)
 end
 
-function M.note_positioning_block(reason)
+function M.note_positioning_block(reason, positioning_status)
 	if type(reason) ~= 'string' or reason == '' then
 		error('Bard positioning blocker requires a non-empty reason')
 	end
+	if type(positioning_status) ~= 'table' then
+		error('Bard positioning blocker requires positioning status')
+	end
+	if type(positioning_status.coverage_count) ~= 'number'
+		or type(positioning_status.recipient_count) ~= 'number' then
+		error('Bard positioning blocker status requires numeric coverage counts')
+	end
 	state.last_blocker = reason
 	if state.log_last_blocker ~= reason then
-		diagnostic_log('POSITIONING_BLOCKED', { reason = reason })
+		diagnostic_log('POSITIONING_BLOCKED', {
+			reason = reason,
+			coverage = positioning_status.coverage_count,
+			recipients = positioning_status.recipient_count,
+			full_coverage = positioning_status.full_coverage == true,
+		})
 		state.log_last_blocker = reason
 	end
 end

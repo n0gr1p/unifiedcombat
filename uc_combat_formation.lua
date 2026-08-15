@@ -1,4 +1,5 @@
 local geometry = require('uc_scheduler_geometry')
+local lilith_adapter = require('uc_lilith_formation_adapter')
 
 local M = {}
 
@@ -84,24 +85,6 @@ local function find_member_by_name(members, wanted)
 	return nil
 end
 
-local function evaluate_tank(ctx, config)
-	local center = point(ctx.center, 'ctx.center')
-	local me = point(ctx.me, 'ctx.me')
-	local accept_radius = positive_number(config.tank.accept_radius, 'tank.accept_radius')
-	local return_radius = positive_number(config.tank.return_radius, 'tank.return_radius')
-	if return_radius <= accept_radius then
-		return failure('TANK_RADIUS_ORDER_INVALID')
-	end
-	local center_distance = distance(me, center)
-	if center_distance <= accept_radius then
-		return hold('FORMATION_TANK_CENTERED', { distance = center_distance })
-	end
-	if ctx.was_moving == true or center_distance >= return_radius then
-		return move(center, 'FORMATION_TANK_RETURN', { distance = center_distance })
-	end
-	return hold('FORMATION_TANK_HYSTERESIS', { distance = center_distance })
-end
-
 local function dps_goal(ctx, config, center, boss, tank)
 	local boss_to_tank = direction(boss, tank)
 	if boss_to_tank == nil then
@@ -110,27 +93,6 @@ local function dps_goal(ctx, config, center, boss, tank)
 	local angle = math.rad(tonumber(config.dps.flank_angle_deg))
 	local radius = positive_number(config.dps.melee_radius, 'dps.melee_radius')
 	return projected(center, rotate(boss_to_tank, -angle), radius), nil
-end
-
-local function evaluate_dps(ctx, config, members)
-	local me = point(ctx.me, 'ctx.me')
-	local center = point(ctx.center, 'ctx.center')
-	local boss = point(ctx.boss, 'ctx.boss')
-	local tank = find_member_by_name(members, config.tank_name)
-	if tank == nil then
-		return failure('TANK_MEMBER_UNRESOLVED')
-	end
-	tank = point(tank, 'tank member')
-	local goal, goal_error = dps_goal(ctx, config, center, boss, tank)
-	if goal == nil then
-		return failure(goal_error)
-	end
-	local tolerance = positive_number(config.dps.position_tolerance, 'dps.position_tolerance')
-	local goal_distance = distance(me, goal)
-	if goal_distance <= tolerance then
-		return hold('FORMATION_DPS_FLANK_OK', { distance = goal_distance, goal = goal })
-	end
-	return move(goal, 'FORMATION_DPS_FLANK', { distance = goal_distance })
 end
 
 local function candidate_in_cone(candidate, boss, axis_point, half_angle)
@@ -272,36 +234,9 @@ local function evaluate_healer(ctx, config, members)
 end
 
 function M.evaluate(ctx)
-	if type(ctx) ~= 'table' then
-		error('uc_combat_formation.evaluate requires ctx')
-	end
-	if type(ctx.config) ~= 'table' then
-		error('ctx.config must be a table')
-	end
-	if type(ctx.party_members) ~= 'table' then
-		error('ctx.party_members must be a table')
-	end
-	local config = ctx.config
-	if config.enabled ~= true then
-		return hold('FORMATION_DISABLED')
-	end
-	if config.encounter ~= 'lilith_easy' then
-		return failure('UNSUPPORTED_ENCOUNTER')
-	end
-	local role = tostring(config.role)
-	if role == 'disabled' then
-		return hold('FORMATION_ROLE_DISABLED')
-	end
-	if role == 'tank' then
-		return evaluate_tank(ctx, config)
-	end
-	if role == 'dps' then
-		return evaluate_dps(ctx, config, ctx.party_members)
-	end
-	if role == 'healer' then
-		return evaluate_healer(ctx, config, ctx.party_members)
-	end
-	return failure('FORMATION_ROLE_INVALID')
+	return lilith_adapter.evaluate(ctx, {
+		evaluate_healer = evaluate_healer,
+	})
 end
 
 return M

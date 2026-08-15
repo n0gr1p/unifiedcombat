@@ -8,6 +8,7 @@ local DURABLE_CONFIG_DOMAINS = {
 	'combat',
 	'abilities',
 	'defensive',
+	'encounter',
 	'movement',
 	'follow',
 	'targeting',
@@ -344,6 +345,9 @@ local function pick_durable_config_domains(config)
 		and #out.reactions.rules == 0 then
 		out.reactions = nil
 	end
+	if type(out.encounter) == 'table' and out.encounter.enabled ~= true then
+		out.encounter = nil
+	end
 	if type(out.ownership) == 'table' and out.ownership.profile_v2_autoload ~= true then
 		out.ownership.profile_v2_autoload = nil
 	end
@@ -443,6 +447,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.ws1 = config.combat.weaponskill.primary
 			candidate.ws_mode = config.combat.weaponskill.mode
 			candidate.weaponskill_min_tp = config.combat.weaponskill.minimum_tp
+			candidate.weaponskill_allow_aoe = config.combat.weaponskill.allow_aoe
 			candidate.wait_ignore_names = clone_value(config.combat.weaponskill.wait_ignore_names)
 			candidate.aftermath_enabled = config.combat.weaponskill.aftermath_enabled
 			candidate.aftermath_ws = config.combat.weaponskill.aftermath_ws
@@ -502,13 +507,119 @@ local function apply_structured_config_to_candidate(candidate, config)
 		end
 	end
 
+	if type(config.encounter) == 'table' then
+		local encounter = config.encounter
+		local definition = require('uc_encounter_registry').get(encounter.id)
+		if encounter.enabled == true and definition == nil and encounter.id ~= 'kei' then
+			error('enabled config.encounter has an unsupported id')
+		end
+		candidate.encounter_enabled = encounter.enabled == true
+		candidate.encounter_id = encounter.id
+		if encounter.id == 'kei' and encounter.enabled == true then
+			candidate.encounter_water_damage = nil
+			candidate.encounter_water_skillchain = nil
+			candidate.encounter_repeat_action_wall = nil
+			candidate.encounter_repeat_action_guard_s = nil
+			if type(encounter.kei) ~= 'table' or type(encounter.kei.elemental_damage) ~= 'table' then
+				error('enabled Kei encounter is missing elemental configuration')
+			end
+			local elemental = encounter.kei.elemental_damage
+			if type(elemental.water) ~= 'table' or type(elemental.ice) ~= 'table' then
+				error('enabled Kei encounter is missing water or ice configuration')
+			end
+			candidate.kei_elemental_dealer_name = elemental.dealer_name
+			candidate.kei_water_probe_spell = elemental.water.probe_spell
+			candidate.kei_water_damage_spell = elemental.water.damage_spell
+			candidate.kei_ice_probe_spell = elemental.ice.probe_spell
+			candidate.kei_ice_damage_spell = elemental.ice.damage_spell
+			candidate.kei_sustain_interval_s = elemental.sustain_interval_s
+			candidate.kei_probe_timeout_s = elemental.probe_timeout_s
+			if type(encounter.kei.fullers) ~= 'table' then
+				error('enabled Kei encounter is missing Fullers configuration')
+			end
+			candidate.kei_fullers_target_distance = encounter.kei.fullers.target_distance
+			candidate.kei_fullers_prearm_hpp_margin = encounter.kei.fullers.prearm_hpp_margin
+		elseif definition ~= nil then
+			local policy = type(encounter.policy) == 'table' and encounter.policy or {}
+			local tuning = type(encounter.tuning) == 'table' and encounter.tuning or {}
+			candidate.encounter_water_damage = policy.water_damage or definition.policy.water_damage
+			candidate.encounter_water_skillchain = policy.water_skillchain or definition.policy.water_skillchain
+			candidate.encounter_repeat_action_wall = policy.repeat_action_wall or definition.policy.repeat_action_wall
+			candidate.encounter_repeat_action_guard_s = tuning.repeat_action_guard_s or definition.tuning.repeat_action_guard_s
+		end
+	else
+		candidate.encounter_enabled = false
+		candidate.encounter_id = 'sortie_ghatjot'
+		candidate.encounter_water_damage = 'enforce'
+		candidate.encounter_water_skillchain = 'enforce'
+		candidate.encounter_repeat_action_wall = 'off'
+		candidate.encounter_repeat_action_guard_s = 10.0
+		candidate.kei_elemental_dealer_name = ''
+		candidate.kei_water_probe_spell = 'Water'
+		candidate.kei_water_damage_spell = 'Water III'
+		candidate.kei_ice_probe_spell = 'Blizzard'
+		candidate.kei_ice_damage_spell = 'Blizzard III'
+		candidate.kei_sustain_interval_s = 2.5
+		candidate.kei_probe_timeout_s = 3.0
+		candidate.kei_fullers_target_distance = 12.0
+		candidate.kei_fullers_prearm_hpp_margin = 1.0
+	end
+
 	if type(config.movement) == 'table' then
 		candidate.domain_movement_enabled = config.movement.enabled
 		candidate.move = config.movement.move
+		if type(config.movement.named_formations) == 'table' then
+			local named_formations = config.movement.named_formations
+			if type(named_formations.entries) ~= 'table' then
+				error('config.movement.named_formations.entries must be a table')
+			end
+			candidate.named_formations_enabled = named_formations.enabled
+			candidate.named_formation_entries = {}
+			for i = 1, #named_formations.entries do
+				local entry = named_formations.entries[i]
+				local placement = entry.placement
+				local constraints = entry.constraints
+				local axis = placement.axis or {}
+				candidate.named_formation_entries[#candidate.named_formation_entries + 1] = {
+					mob_name = entry.mob_name,
+					formation_placement_mode = placement.mode,
+					formation_anchor = placement.anchor,
+					formation_anchor_member = placement.anchor_member,
+					formation_axis_type = axis.type,
+					formation_axis_member = axis.member,
+					formation_preferred_radius = placement.preferred_radius,
+					formation_minimum_radius = placement.minimum_radius,
+					formation_maximum_radius = placement.maximum_radius,
+					formation_preferred_angle_deg = placement.preferred_angle_deg,
+					formation_allowed_angle_half_width_deg = placement.allowed_angle_half_width_deg,
+					formation_radius_step = placement.radius_step,
+					formation_angle_step_deg = placement.angle_step_deg,
+					formation_hysteresis_start_distance = entry.hysteresis.start_distance,
+					formation_hysteresis_stop_distance = entry.hysteresis.stop_distance,
+					formation_avoid_encounter_hazards = constraints.avoid_encounter_hazards,
+					formation_hazard_margin = constraints.hazard_margin,
+					formation_safe_origin_radius = constraints.safe_origin_radius or 0,
+					formation_minimum_boss_distance = constraints.minimum_boss_distance or 0,
+					formation_maximum_boss_distance = constraints.maximum_boss_distance or 0,
+					formation_maximum_party_range = constraints.maximum_party_range or 0,
+					formation_required_party_names = table.concat(constraints.required_party_names or {}, '|'),
+				}
+			end
+		else
+			candidate.named_formations_enabled = false
+			candidate.named_formation_entries = {}
+		end
 		if type(config.movement.formation) == 'table' then
 			local formation = config.movement.formation
 			candidate.formation_enabled = formation.enabled
 			candidate.formation_encounter = formation.encounter
+			if type(formation.mock) == 'table' then
+				candidate.formation_mock_enabled = formation.mock.enabled
+				candidate.formation_mock_mob_name = formation.mock.mob_name
+			else
+				candidate.formation_mock_enabled = false
+				candidate.formation_mock_mob_name = ''
+			end
 			candidate.formation_role = formation.role
 			candidate.formation_tank_name = formation.tank_name
 			candidate.formation_required_party_names = clone_value(formation.required_party_names)
@@ -532,6 +643,43 @@ local function apply_structured_config_to_candidate(candidate, config)
 				candidate.formation_healer_cone_safety_margin_deg = formation.healer.cone_safety_margin_deg
 				candidate.formation_healer_sample_step_deg = formation.healer.sample_step_deg
 			end
+			if type(formation.placement) == 'table' then
+				local placement = formation.placement
+				candidate.formation_placement_mode = placement.mode
+				candidate.formation_anchor = placement.anchor
+				candidate.formation_anchor_member = placement.anchor_member
+				candidate.formation_preferred_radius = placement.preferred_radius
+				candidate.formation_minimum_radius = placement.minimum_radius
+				candidate.formation_maximum_radius = placement.maximum_radius
+				candidate.formation_preferred_angle_deg = placement.preferred_angle_deg
+				candidate.formation_allowed_angle_half_width_deg = placement.allowed_angle_half_width_deg
+				candidate.formation_radius_step = placement.radius_step
+				candidate.formation_angle_step_deg = placement.angle_step_deg
+				if type(placement.axis) == 'table' then
+					candidate.formation_axis_type = placement.axis.type
+					candidate.formation_axis_member = placement.axis.member
+				end
+			end
+			if type(formation.hysteresis) == 'table' then
+				candidate.formation_hysteresis_start_distance = formation.hysteresis.start_distance
+				candidate.formation_hysteresis_stop_distance = formation.hysteresis.stop_distance
+			end
+			if type(formation.constraints) == 'table' then
+				local constraints = formation.constraints
+				candidate.formation_avoid_encounter_hazards = constraints.avoid_encounter_hazards
+				candidate.formation_hazard_margin = constraints.hazard_margin
+				candidate.formation_safe_origin_radius = constraints.safe_origin_radius
+				candidate.formation_minimum_boss_distance = constraints.minimum_boss_distance
+				candidate.formation_maximum_boss_distance = constraints.maximum_boss_distance
+				candidate.formation_maximum_party_range = constraints.maximum_party_range
+				if type(constraints.required_party_names) == 'table' then
+					candidate.formation_required_party_names = clone_value(constraints.required_party_names)
+				end
+			end
+		else
+			candidate.formation_enabled = false
+			candidate.formation_mock_enabled = false
+			candidate.formation_mock_mob_name = ''
 		end
 		if type(config.movement.spacing) == 'table' then
 			candidate.spacing = config.movement.spacing.enabled
@@ -947,6 +1095,7 @@ function M.build_active_profile_from_v2_payload(payload, context)
 	if type(config.combat) == 'table' then
 		compatibility_source.combat = {
 			pulling = config.combat.pulling,
+			weaponskill = config.combat.weaponskill,
 		}
 	end
 	if type(config.maintenance) == 'table' then
@@ -961,6 +1110,7 @@ function M.build_active_profile_from_v2_payload(payload, context)
 		end
 		if type(config.combat) == 'table' then
 			config.combat.pulling = clone_value(normalized_or_err.combat.pulling)
+			config.combat.weaponskill = clone_value(normalized_or_err.combat.weaponskill)
 		end
 		if type(config.maintenance) == 'table' then
 			config.maintenance.geo = clone_value(normalized_or_err.maintenance.geo)
@@ -1093,6 +1243,13 @@ function M.project_flat_settings(active_profile, base_settings)
 		return nil, 'base settings must be a table'
 	end
 	local candidate = clone_value(base_settings)
+	-- The projected result is the legacy flat settings view. Canonical config
+	-- sources left by a previous job would take precedence over these mirrors
+	-- when the candidate is normalized, so they must not survive replacement.
+	candidate.config = nil
+	for i = 1, #DURABLE_CONFIG_DOMAINS do
+		candidate[DURABLE_CONFIG_DOMAINS[i]] = nil
+	end
 	local ok, err = apply_structured_config_to_candidate(candidate, active_profile.config)
 	if ok ~= true then
 		return nil, err

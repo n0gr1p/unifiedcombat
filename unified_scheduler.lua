@@ -2216,6 +2216,11 @@ function scheduler.apply_reaction_response(lock)
 	if response == 'turn_away' then
 		return scheduler.apply_reaction_turn(lock, true)
 	end
+	if response == 'run_away' or response == 'move_to_range' then
+		require('uc_reaction_runtime').mark_turn_applied(lock.key)
+		lock.turn_applied = true
+		return true
+	end
 	if response ~= 'stop_attacking' then
 		error('unified_scheduler received unsupported reaction response: ' .. response)
 	end
@@ -2238,13 +2243,140 @@ function scheduler.apply_reaction_response(lock)
 	return true
 end
 
+local function reaction_movement_executor()
+	return require('uc_scheduler_movement_facade').build({
+		dispatcher = require('uc_scheduler_dispatcher'),
+		run = windower.ffxi.run,
+		turn = windower.ffxi.turn,
+	})
+end
+
+function scheduler.pause_reaction_movement(lock, reason)
+	if not require('uc_reaction_runtime').owns_movement(lock) then
+		return false
+	end
+	if rawget(_G, 'UC_MOVEMENT_OWNER') ~= 'scheduler_reaction' then
+		return false
+	end
+	reaction_movement_executor().stop({
+		reason = reason,
+		ability = lock.name,
+		actor_id = lock.actor_id,
+	})
+	_G.UC_MOVEMENT_OWNER = 'none'
+	_G.UC_MOVEMENT_LOCK_UNTIL = now_s()
+	return true
+end
+
+function scheduler.release_reaction_movement(lock, reason)
+	if not require('uc_reaction_runtime').owns_movement(lock) then
+		return false
+	end
+	local response = tostring(lock.response or '')
+	reaction_movement_executor().stop({
+		reason = tostring(reason or 'REACTION_MOVEMENT_RELEASED'),
+		ability = tostring(lock.name or ''),
+		actor_id = tonumber(lock.actor_id) or 0,
+	})
+	if tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or '') == 'scheduler_reaction' then
+		_G.UC_MOVEMENT_OWNER = 'none'
+		_G.UC_MOVEMENT_LOCK_UNTIL = now_s()
+	end
+	scheduler.action_timeline_log('REACTION_CLEARED', {
+		ability = tostring(lock.name or ''),
+		response = response,
+		target_distance = tonumber(lock.distance),
+		reason = tostring(reason or 'released'),
+	}, ('reaction_cleared:%s:%d'):format(tostring(lock.name or ''), tonumber(lock.actor_id) or 0), 0)
+	return true
+end
+
+function scheduler.apply_reaction_movement(lock, formation_runtime)
+	local reaction_runtime = require('uc_reaction_runtime')
+	if not reaction_runtime.owns_movement(lock) then
+		error('reaction scheduler movement requires a movement-owning reaction lock')
+	end
+	local response = tostring(lock.response or '')
+	local actor_id = tonumber(lock.actor_id) or 0
+	local enemy = actor_id > 0 and windower.ffxi.get_mob_by_id(actor_id) or nil
+	if type(enemy) ~= 'table'
+		or enemy.valid_target ~= true
+		or tonumber(enemy.spawn_type) ~= 16
+		or (tonumber(enemy.hpp) or 0) <= 0 then
+		local released, replacement = reaction_runtime.cancel(lock.key, 'actor_unavailable')
+		scheduler.release_reaction_movement(released, 'REACTION_MOVEMENT_ACTOR_UNAVAILABLE')
+		_G.UC_REACTION_LOCK = replacement
+		return false, 'MOVE_COORD_REACTION_ACTOR_UNAVAILABLE'
+	end
+	local me = windower.ffxi.get_mob_by_target('me')
+	local request
+	if response == 'run_away' then
+		request = reaction_runtime.run_away_request(lock, me, enemy)
+	elseif response == 'move_to_range' then
+		request = reaction_runtime.move_to_range_request(lock, me, enemy)
+	else
+		error('unsupported reaction movement response: ' .. response)
+	end
+	formation_runtime.stop('FORMATION_REACTION_MOVEMENT')
+	local movement = reaction_movement_executor()
+	if request.kind == 'run' then
+		movement.run_vector(request.run_x, request.run_y, {
+			reason = request.reason,
+			ability = tostring(lock.name or ''),
+			actor_id = actor_id,
+			current_distance = request.current_distance,
+			target_distance = request.target_distance,
+		})
+	elseif request.kind == 'stop' then
+		movement.stop({
+			reason = request.reason,
+			ability = tostring(lock.name or ''),
+			actor_id = actor_id,
+			current_distance = request.current_distance,
+			target_distance = request.target_distance,
+		})
+	elseif request.kind ~= 'hold' then
+		error('unsupported reaction movement request: ' .. tostring(request.kind))
+	end
+	_G.UC_MOVEMENT_MODE = response == 'run_away' and 'REACTION_RUN_AWAY' or 'REACTION_MOVE_TO_RANGE'
+	_G.UC_MOVEMENT_BLOCK_REASON = request.reason
+	_G.UC_MOVEMENT_OWNER = 'scheduler_reaction'
+	_G.UC_MOVEMENT_LOCK_UNTIL = now_s() + 0.40
+	if request.phase_changed == true then
+		scheduler.action_timeline_log(request.reason, {
+			ability = tostring(lock.name or ''),
+			response = response,
+			actor_id = actor_id,
+			current_distance = request.current_distance,
+			target_distance = request.target_distance,
+		}, ('reaction_movement:%s:%d:%s'):format(
+			tostring(lock.name or ''),
+			actor_id,
+			tostring(request.reason)
+		), 0)
+	end
+	return request.kind ~= 'hold', request.reason
+end
+
+function scheduler.apply_reaction_run_away(lock, formation_runtime)
+	if type(lock) ~= 'table' or tostring(lock.response or '') ~= 'run_away' then
+		error('run-away scheduler movement requires a run_away reaction lock')
+	end
+	return scheduler.apply_reaction_movement(lock, formation_runtime)
+end
+
 function scheduler.refresh_reaction_lock()
 	local target = windower.ffxi.get_mob_by_target('t')
 	local target_id = tonumber(target and target.id) or 0
 	local effects = target_id > 0 and enemy_effect_tracker.get_effects(target_id) or {}
+	local previous_lock = rawget(_G, 'UC_REACTION_LOCK')
 	local lock, released_target_id = require('uc_reaction_runtime').evaluate(target_id, effects, now_s())
 	local camp_lane_reserved = scheduler.providers.camp_puller.active()
 	_G.UC_REACTION_LOCK = lock
+	if require('uc_reaction_runtime').owns_movement(previous_lock)
+		and (type(lock) ~= 'table' or tostring(lock.key or '') ~= tostring(previous_lock.key or '')) then
+		scheduler.release_reaction_movement(previous_lock, 'REACTION_MOVEMENT_EVALUATION_RELEASE')
+	end
 	if not camp_lane_reserved
 		and released_target_id and released_target_id > 0 and target_id > 0 then
 		scheduler.apply_reaction_turn({ actor_id = target_id }, false)
@@ -2285,12 +2417,20 @@ local function run_movement_coordinator_tick()
 	local s = get_settings()
 	local now = now_s()
 	if not domain_ownership.is_enabled('movement') then
+		scheduler.pause_reaction_movement(
+			rawget(_G, 'UC_REACTION_LOCK'),
+			'REACTION_MOVEMENT_DOMAIN_DISABLED'
+		)
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_DOMAIN_DISABLED'
 		return false, 'MOVE_COORD_DOMAIN_DISABLED'
 	end
 	local nyzul_runtime = require('uc_nyzul_runtime')
 	if nyzul_runtime.is_movement_held()
 		and not scheduler.providers.camp_puller.active() then
+		scheduler.pause_reaction_movement(
+			rawget(_G, 'UC_REACTION_LOCK'),
+			'REACTION_MOVEMENT_NYZUL_HOLD'
+		)
 		local reason = nyzul_runtime.movement_hold_reason()
 		_G.UC_MOVEMENT_MODE = 'NYZUL_HOLD'
 		_G.UC_MOVEMENT_BLOCK_REASON = reason
@@ -2347,14 +2487,18 @@ local function run_movement_coordinator_tick()
 	end
 	_G.UC_MOVEMENT_MODE = mode
 	_G.UC_MOVEMENT_BLOCK_REASON = ''
-	local formation_observation = require('uc_lilith_easy_formation_runtime').observe(now)
+	local formation_runtime = require('uc_formation_runtime')
+	local formation_observation = formation_runtime.observe(now)
 	local reaction_lock = rawget(_G, 'UC_REACTION_LOCK')
 	if type(reaction_lock) == 'table' then
 		if reaction_lock.turn_applied ~= true then
 			scheduler.apply_reaction_response(reaction_lock)
 		end
+		if require('uc_reaction_runtime').owns_movement(reaction_lock) then
+			return scheduler.apply_reaction_movement(reaction_lock, formation_runtime)
+		end
 		if require('uc_reaction_runtime').blocks_movement(reaction_lock) then
-			require('uc_lilith_easy_formation_runtime').stop('FORMATION_REACTION_HOLD')
+			formation_runtime.stop('FORMATION_REACTION_HOLD')
 			_G.UC_MOVEMENT_MODE = 'REACTION_HOLD'
 			_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_REACTION_HOLD'
 			return false, 'MOVE_COORD_REACTION_HOLD'
@@ -2371,7 +2515,7 @@ local function run_movement_coordinator_tick()
 	end
 	local freeze_prep_until = tonumber(rawget(_G, 'UC_MOVE_FREEZE_PREP_UNTIL')) or 0
 	if now < freeze_prep_until then
-		require('uc_lilith_easy_formation_runtime').stop('FORMATION_CAST_FREEZE_PREP')
+		formation_runtime.stop('FORMATION_CAST_FREEZE_PREP')
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_CAST_FREEZE_PREP'
 		local intent = {
@@ -2406,7 +2550,7 @@ local function run_movement_coordinator_tick()
 	end
 	local pull_cast_hold_until = tonumber(rawget(_G, 'UC_PULL_CAST_HOLD_UNTIL')) or 0
 	if now < pull_cast_hold_until then
-		require('uc_lilith_easy_formation_runtime').stop('FORMATION_PULL_CAST_HOLD')
+		formation_runtime.stop('FORMATION_PULL_CAST_HOLD')
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_PULL_CAST_HOLD'
 		local intent = {
@@ -2440,7 +2584,7 @@ local function run_movement_coordinator_tick()
 		return false, 'MOVE_COORD_PULL_CAST_HOLD'
 	end
 	if rawget(_G, 'UC_PULL_SPELL_WAITING') == true then
-		require('uc_lilith_easy_formation_runtime').stop('FORMATION_PULL_SPELL_WAIT')
+		formation_runtime.stop('FORMATION_PULL_SPELL_WAIT')
 		_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
 		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_PULL_SPELL_WAIT'
 		local intent = {
@@ -2501,22 +2645,22 @@ local function run_movement_coordinator_tick()
 	end
 	-- Do not move while spellcasting/channeling.
 	if status == 4 then
-		require('uc_lilith_easy_formation_runtime').stop('FORMATION_CASTING_STATUS')
+		formation_runtime.stop('FORMATION_CASTING_STATUS')
 		scheduler.apply_cast_movement_hold('MOVE_COORD_CASTING_STATUS', now)
 		return false, 'MOVE_COORD_CASTING_STATUS'
 	end
 	local ast = action_state()
 	if tostring(ast.last_send_kind or '') == 'spell' and now < (tonumber(ast.cooldown_until) or 0) then
-		require('uc_lilith_easy_formation_runtime').stop('FORMATION_CAST_FREEZE_COOLDOWN')
+		formation_runtime.stop('FORMATION_CAST_FREEZE_COOLDOWN')
 		scheduler.apply_cast_movement_hold('MOVE_COORD_CAST_FREEZE_COOLDOWN', now)
 		return false, 'MOVE_COORD_CAST_FREEZE_COOLDOWN'
 	end
 	if action_is_acting() and tostring(ast.last_send_kind or '') == 'spell' then
-		require('uc_lilith_easy_formation_runtime').stop('FORMATION_CASTING_ACTION')
+		formation_runtime.stop('FORMATION_CASTING_ACTION')
 		scheduler.apply_cast_movement_hold('MOVE_COORD_CASTING_ACTION', now)
 		return false, 'MOVE_COORD_CASTING_ACTION'
 	end
-	local formation_acted, formation_reason, formation_owns = require('uc_lilith_easy_formation_runtime').run_tick(formation_observation)
+	local formation_acted, formation_reason, formation_owns = formation_runtime.run_tick(formation_observation)
 	if formation_owns then
 		_G.UC_MOVEMENT_MODE = 'FORMATION'
 		_G.UC_MOVEMENT_BLOCK_REASON = formation_reason
@@ -3835,6 +3979,7 @@ local function p1_collect_proposals(ctx)
 		scheduler.providers.combat.collect_offense(ctx, out)
 		scheduler.providers.combat.collect_ja(ctx, out)
 		scheduler.providers.pet_combat.collect(ctx, out)
+		scheduler.providers.kei.collect(ctx, out)
 	end
 	-- 2 Hz defensive
 	if domain_ownership.is_enabled('defensive')
@@ -4057,6 +4202,7 @@ local function p1_ranker_dependencies()
 			_G.UC_LAST_SCHED_ACTION = value
 		end,
 		is_critical_defensive_proposal = scheduler.p1_is_critical_defensive_proposal,
+		encounter_validate_proposal = require('uc_encounter_runtime').validate_proposal,
 		engage_dispatch_method = scheduler.ENGAGE_DISPATCH_METHOD_ATTACK_ON,
 	}
 end
@@ -4089,6 +4235,10 @@ local function p1_revalidate_plan_commit(ctx, selected, plan)
 	)
 	if not valid then
 		return false, reason
+	end
+	local policy_ok, policy_reason = require('uc_encounter_runtime').validate_proposal(ctx, selected)
+	if policy_ok ~= true then
+		return false, policy_reason
 	end
 	return scheduler.validate_cure_target(selected)
 end
@@ -5707,16 +5857,20 @@ local function p1_dispatch_combat(selected, settings, phase)
 				dispatch_reason = command_ownership_status.dispatch_reason,
 				fallback_used = command_ownership_status.fallback_used,
 			}
+			if tostring(selected.provider or '') == 'encounter_kei'
+				and (command_ownership_status.dispatched ~= true or command_ownership_status.dispatch_ok ~= true) then
+				return false, nil
+			end
 			action_mark_sent('spell', {
 				action_name = spell,
-				provider = 'combat',
+				provider = tostring(selected.provider or ''),
 				target_id = expected_tid,
 				target_name = tostring(selected.target_name or ''),
 				target_kind = tostring(target_kind or ''),
 			})
 			scheduler.action_timeline_log('SPELL_SENT', {
 				spell = tostring(spell or ''),
-				provider = 'combat',
+				provider = tostring(selected.provider or ''),
 				tid = expected_tid,
 				name = tostring(selected.target_name or ''),
 				kind = 'spell',
@@ -5726,7 +5880,7 @@ local function p1_dispatch_combat(selected, settings, phase)
 				action_token = tostring(tonumber((action_state() or {}).action_token) or 0),
 			}, ('spell_sent:%s:%d'):format(tostring(spell or ''), expected_tid), 0.05)
 			scheduler.action_timeline_note_spell_sent({
-				provider = 'combat',
+				provider = tostring(selected.provider or ''),
 				spell = tostring(spell or ''),
 				action_token = tostring(tonumber((action_state() or {}).action_token) or 0),
 			})
@@ -5736,6 +5890,13 @@ local function p1_dispatch_combat(selected, settings, phase)
 					tid = expected_tid,
 					name = tostring(selected.target_name or ''),
 				}, ('sleep_dispatched:%d:%s'):format(expected_tid, tostring(spell or '')), 0.05)
+			end
+			if tostring(selected.provider or '') == 'encounter_kei' then
+				require('uc_kei_encounter').note_spell_dispatched(
+					selected,
+					now_s(),
+					(windower.ffxi.get_player() or {}).id
+				)
 			end
 			if tank_enmity then
 				scheduler.p1_begin_tank_spell_wait(phase, spell, expected_tid, now_s())
@@ -6117,7 +6278,7 @@ function scheduler.dispatch_selected_plan(settings)
 	if provider == 'camp_puller' then
 		return p1_dispatch_camp_puller(selected, settings)
 	end
-	if provider == 'combat' then
+	if provider == 'combat' or provider == 'encounter_kei' then
 		return p1_dispatch_combat(selected, settings, phase)
 	end
 	if provider == 'defensive_internal' then
@@ -6192,6 +6353,7 @@ end
 
 function scheduler.process_tick(cadence)
 	_G.UC_LAST_SCHED_ACTION = ''
+	require('uc_encounter_runtime').observe(now_s())
 	local s = get_settings()
 	local combat_domain_enabled = domain_ownership.is_enabled('combat')
 	local defensive_domain_enabled = domain_ownership.is_enabled('defensive')
@@ -6366,9 +6528,11 @@ function scheduler.on_incoming_chunk(id, data)
 		enemy_effect_tracker.clear_all()
 		scheduler.providers.charm_sleeper.reset('ZONE_CHANGE')
 		scheduler.providers.sleep_waker.reset('ZONE_CHANGE')
+		scheduler.release_reaction_movement(rawget(_G, 'UC_REACTION_LOCK'), 'REACTION_ZONE_CHANGE_PACKET')
 		require('uc_reaction_runtime').reset('zone_change')
+		require('uc_encounter_runtime').reset('zone_change_packet')
 		require('uc_lilith_easy_encounter').reset('zone_change_packet')
-		require('uc_lilith_easy_formation_runtime').reset('zone_change_packet')
+		require('uc_formation_runtime').reset('zone_change_packet')
 		_G.UC_REACTION_LOCK = nil
 		scheduler.phase1.effectiveTargets = {}
 		pet_command_coordinator.reset(scheduler.pet_command_state, 'zone_change')
@@ -6533,8 +6697,20 @@ function scheduler.on_action(act)
 				observed_at,
 				reaction_actor_is_valid_enemy
 			)
+			if type(reaction_event.released) == 'table' then
+				scheduler.release_reaction_movement(reaction_event.released, 'REACTION_ABILITY_WINDOW_COMPLETE')
+			end
 			if type(reaction_event.activated) == 'table' then
 				_G.UC_REACTION_LOCK = reaction_event.activated
+				scheduler.action_timeline_log('REACTION_ACTIVATED', {
+					ability = tostring(reaction_event.activated.name or ''),
+					response = tostring(reaction_event.activated.response or ''),
+					actor_id = tonumber(reaction_event.activated.actor_id) or 0,
+					target_distance = tonumber(reaction_event.activated.distance),
+				}, ('reaction_activated:%s:%d'):format(
+					tostring(reaction_event.activated.name or ''),
+					tonumber(reaction_event.activated.actor_id) or 0
+				), 0)
 				if not scheduler.providers.camp_puller.active() then
 					scheduler.apply_reaction_response(reaction_event.activated)
 				end
@@ -7011,6 +7187,7 @@ end
 
 function scheduler.reset_runtime_locks()
 	scheduler_locks.reset_runtime_locks(_G, action_state)
+	scheduler.release_reaction_movement(rawget(_G, 'UC_REACTION_LOCK'), 'REACTION_SCHEDULER_LOCK_RESET')
 	require('uc_reaction_runtime').reset('scheduler_lock_reset')
 	_G.UC_REACTION_LOCK = nil
 	_G.UC_CAST_MOVEMENT_SETTLE_UNTIL = nil
@@ -7230,6 +7407,7 @@ scheduler.providers.combat = require('uc_provider_combat').new({
 	fight_leader_enabled = require('uc_runtime_overrides').fight_leader_enabled,
 	fight_leader_id = require('uc_runtime_overrides').fight_leader_id,
 	fight_leader_target_id = uc_fight_leader.leader_target_id,
+	add_control_enabled = combat_core.add_control_enabled_for_scheduler,
 	select_pull = combat_core.select_pull_for_scheduler,
 	build_party_id_set = p1_build_party_id_set,
 	prime_unclaimed_party_aggressive_ok = p1_prime_unclaimed_party_aggressive_ok,
@@ -7249,6 +7427,17 @@ scheduler.providers.combat = require('uc_provider_combat').new({
 	default_engage_priority = scheduler.DEFAULT_ENGAGE_PRIORITY,
 	tank_engage_urgency = scheduler.TANK_ENGAGE_URGENCY,
 	default_engage_urgency = scheduler.DEFAULT_ENGAGE_URGENCY,
+})
+scheduler.providers.kei = require('uc_provider_kei').new({
+	snapshot = require('uc_kei_encounter').snapshot,
+	spell_for = require('uc_kei_encounter').spell_for,
+	action_ready = action_ready,
+	clamp_urgency = p1_clamp_urgency,
+	reaction_active = function()
+		return type(rawget(_G, 'UC_REACTION_LOCK')) == 'table'
+	end,
+	keepalive_priority = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION,
+	opportunistic_priority = 70,
 })
 scheduler.providers.camp_puller = require('uc_camp_puller').new({
 	resolve_camp_anchor = require('uc_camp_anchor').resolve_current_anchor,

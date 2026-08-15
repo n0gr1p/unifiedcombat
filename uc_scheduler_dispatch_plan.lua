@@ -8,7 +8,7 @@ function M.p1_build_dispatch_plan(scheduler, ctx, selected, p1_number)
 	if tostring(selected.movement_policy or '') == 'must_stop' then
 		prelude_type = 'stop'
 	end
-	return {
+	local plan = {
 		plan_id = ('plan.%d.%d'):format(math.floor(ctx.now * 1000), math.floor(ctx.tick)),
 		selected_proposal_id = tostring(selected.proposal_id or ''),
 		prelude = {
@@ -26,6 +26,10 @@ function M.p1_build_dispatch_plan(scheduler, ctx, selected, p1_number)
 		commit_deadline = p1_number(selected.commit_deadline, ctx.now + 0.25),
 		created_at = ctx.now,
 	}
+	if selected.smart_aoe_guard == true then
+		plan.smart_aoe_guard = true
+	end
+	return plan
 end
 
 function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, windower, combat_core)
@@ -37,6 +41,18 @@ function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, 
 	end
 	if p1_number(plan.commit_deadline, 0) < ctx.now then
 		return false, 'commit_deadline'
+	end
+	if plan.smart_aoe_guard == true then
+		if type(combat_core) ~= 'table' or type(combat_core.revalidate_smart_ws_aoe) ~= 'function' then
+			error('Smart WS dispatch plan requires AoE commit revalidation')
+		end
+		local aoe_allowed, aoe_reason = combat_core.revalidate_smart_ws_aoe(
+			ctx.settings or {},
+			selected.action_name
+		)
+		if not aoe_allowed then
+			return false, aoe_reason
+		end
 	end
 	if type(plan.skillchain_plan) == 'table' then
 		if type(combat_core) ~= 'table' or type(combat_core.revalidate_skillchain_plan) ~= 'function' then

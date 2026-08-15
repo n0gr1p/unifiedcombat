@@ -25,6 +25,20 @@ local uc_lifecycle_movement = require('uc_movement_dispatcher').build({
 	source_prefix = 'lifecycle',
 })
 
+local function uc_reset_reaction_runtime(reason)
+	local lock = rawget(_G, 'UC_REACTION_LOCK')
+	if require('uc_reaction_runtime').owns_movement(lock) then
+		uc_lifecycle_movement.stop({
+			reason = 'REACTION_MOVEMENT_LIFECYCLE_RESET',
+			lifecycle_reason = reason,
+		})
+		_G.UC_MOVEMENT_OWNER = 'none'
+		_G.UC_MOVEMENT_LOCK_UNTIL = 0
+	end
+	require('uc_reaction_runtime').reset(reason)
+	_G.UC_REACTION_LOCK = nil
+end
+
 local function uc_now_s()
 	local s = rawget(_G, 'socket')
 	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
@@ -114,6 +128,7 @@ local uc_camp_anchor = require('uc_camp_anchor')
 local uc_camp_pull_registry = require('uc_camp_pull_registry')
 local uc_config_status_export = require('uc_config_status_export')
 local uc_active_config = require('uc_active_config')
+local uc_encounter_runtime = require('uc_encounter_runtime')
 local uc_profile_v2 = require('uc_profile_v2')
 local uc_smn_config = require('uc_smn_config')
 local UC_PROFILE_CONTRACT = nil
@@ -168,6 +183,7 @@ local function uc_new_settings_defaults()
 		weaponskill_active = false,
 		ws_mode = 'smart',
 		weaponskill_min_tp = 1000,
+		weaponskill_allow_aoe = true,
 		aftermath_enabled = false,
 		aftermath_ws = '',
 		autotarget = false,
@@ -207,6 +223,23 @@ local function uc_new_settings_defaults()
 		spacing_overlap_deadband = 0.10,
 		spacing_repel_weight = 0.35,
 		spacing_band_deadband = 0.20,
+		encounter_enabled = false,
+		encounter_id = 'sortie_ghatjot',
+		encounter_water_damage = 'enforce',
+		encounter_water_skillchain = 'enforce',
+		encounter_repeat_action_wall = 'off',
+		encounter_repeat_action_guard_s = 10.0,
+		kei_elemental_dealer_name = '',
+		kei_water_probe_spell = 'Water',
+		kei_water_damage_spell = 'Water III',
+		kei_ice_probe_spell = 'Blizzard',
+		kei_ice_damage_spell = 'Blizzard III',
+		kei_sustain_interval_s = 2.5,
+		kei_probe_timeout_s = 3.0,
+		kei_fullers_target_distance = 12.0,
+		kei_fullers_prearm_hpp_margin = 1.0,
+		named_formations_enabled = false,
+		named_formation_entries = {},
 		face = false,
 		partner = false,
 		partner2 = false,
@@ -393,6 +426,8 @@ local function uc_is_combat_participant(s)
 	end
 	return uc_truthy(st.autotarget)
 		or uc_truthy(st.move)
+		or uc_truthy(st.formation_enabled)
+		or uc_truthy(st.named_formations_enabled)
 		or uc_truthy(st.tank)
 		or (uc_truthy(st.hunter) and uc_truthy(st.path_follow_enabled))
 		or uc_truthy(st.puller)
@@ -409,6 +444,7 @@ local function uc_is_movement_participant(s)
 	return uc_domain_enabled(st, 'movement') and (
 		uc_truthy(st.move)
 		or uc_truthy(st.formation_enabled)
+		or uc_truthy(st.named_formations_enabled)
 		or uc_truthy(st.spacing)
 		or uc_truthy(st.autotarget)
 		or (uc_truthy(st.hunter) and uc_truthy(st.path_follow_enabled))
@@ -528,7 +564,7 @@ end
 local PROFILE_KEYS = {
 	'ability1', 'ability2', 'ability3', 'ability4', 'ability5', 'ability6',
 	'ability_active', 'abilities', 'wsabilities',
-	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode', 'weaponskill_min_tp',
+	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode', 'weaponskill_min_tp', 'weaponskill_allow_aoe',
 	'aftermath_enabled', 'aftermath_ws',
 	'engine_mode',
 	'show_ingame_ui',
@@ -549,6 +585,10 @@ local PROFILE_KEYS = {
 	'spacing_band_min', 'spacing_band_max', 'spacing_use_prediction', 'spacing_lookahead_s',
 	'spacing_model_size_floor',
 	'spacing_repel_hold_ticks', 'spacing_overlap_deadband', 'spacing_repel_weight', 'spacing_band_deadband',
+	'encounter_enabled', 'encounter_id', 'encounter_water_damage', 'encounter_water_skillchain', 'encounter_repeat_action_wall', 'encounter_repeat_action_guard_s',
+	'kei_elemental_dealer_name', 'kei_water_probe_spell', 'kei_water_damage_spell', 'kei_ice_probe_spell', 'kei_ice_damage_spell',
+	'kei_sustain_interval_s', 'kei_probe_timeout_s', 'kei_fullers_target_distance', 'kei_fullers_run_away_distance', 'kei_fullers_prearm_hpp_margin',
+	'named_formations_enabled', 'named_formation_entries',
 	'partner', 'partner2', 'puller', 'puller_name', 'puller_leash_source', 'puller_engage_range', 'puller_distance_only', 'partner_id', 'partner_id2', 'partner_ids', 'puller_id',
 	'fight_leader', 'fight_leader_id', 'party_follow', 'party_follow_id', 'party_follow_leader_name', 'party_follow_min', 'party_follow_max', 'fight_follow_min', 'fight_follow_hold_s',
 	'nyzul_coordinator_name', 'nyzul_anchor_name', 'nyzul_parking_order',
@@ -1591,6 +1631,11 @@ local function uc_normalize_ws_for_engine(s, eng)
 		or s.weaponskill_min_tp > 3000 then
 		error('weaponskill_min_tp must be an integer from 1000 to 3000')
 	end
+	if s.weaponskill_allow_aoe == nil then
+		s.weaponskill_allow_aoe = true
+	elseif type(s.weaponskill_allow_aoe) ~= 'boolean' then
+		error('weaponskill_allow_aoe must be a boolean')
+	end
 	s.engine_mode = eng
 end
 
@@ -2148,6 +2193,9 @@ local function uc_register_action_listener()
 	end
 	ap_listener_id = ActionPacket.open_listener(function(act_org, act_mod)
 		local act = act_org
+		local observed_at = uc_now_s()
+		uc_encounter_runtime.observe(observed_at)
+		uc_encounter_runtime.on_action(act, observed_at)
 		if UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_action) == 'function' then
 			UC_COMBAT_CORE.on_action(act)
 		end
@@ -2247,9 +2295,10 @@ windower.register_event('job change', function(job, lvl)
 	local jname = res.jobs:with('id', job).english_short
 	uc_nyzul_runtime.reset('job_change')
 	require('uc_brd_maintenance').reset('job_change')
-	require('uc_reaction_runtime').reset('job_change')
+	uc_reset_reaction_runtime('job_change')
+	uc_encounter_runtime.reset('job_change')
 	require('uc_lilith_easy_encounter').reset('job_change')
-	require('uc_lilith_easy_formation_runtime').reset('job_change')
+	require('uc_formation_runtime').reset('job_change')
 	uc_update_engine()
 	uc_reload_active_profile(jname)
 	uc_queue_profile_v2_autoload()
@@ -2262,11 +2311,11 @@ windower.register_event('zone change', function()
 	uc_camp_pull_registry.reset('zone_change')
 	uc_nyzul_runtime.reset('zone_change')
 	require('uc_brd_maintenance').reset('zone_change')
-	require('uc_reaction_runtime').reset('zone_change')
+	uc_reset_reaction_runtime('zone_change')
+	uc_encounter_runtime.reset('zone_change')
 	require('uc_lilith_easy_encounter').reset('zone_change')
-	require('uc_lilith_easy_formation_runtime').reset('zone_change')
+	require('uc_formation_runtime').reset('zone_change')
 	UC_COMBAT_CORE.reset_skillchain_state('zone_change')
-	_G.UC_REACTION_LOCK = nil
 	_G.UC_LAST_ZONE_CHANGE_AT = uc_now_s()
 	_G.UC_ZONE_SUSPEND_UNTIL = uc_now_s() + UC_ZONE_SUSPEND_SEC
 	_G.UC_LAST_BLOCK_REASON = 'ZONE_SUSPEND'
@@ -2276,9 +2325,10 @@ windower.register_event('unload', function()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('unload')
 	uc_nyzul_runtime.reset('unload')
-	require('uc_reaction_runtime').reset('unload')
+	uc_reset_reaction_runtime('unload')
+	uc_encounter_runtime.reset('unload')
 	require('uc_lilith_easy_encounter').reset('unload')
-	require('uc_lilith_easy_formation_runtime').reset('unload')
+	require('uc_formation_runtime').reset('unload')
 	uc_profile_v2_autoload_pending_key = nil
 	uc_profile_v2_autoload_completed_key = nil
 	uc_profile_v2_startup_reload_completed_key = nil
@@ -2297,8 +2347,10 @@ windower.register_event('logout', function()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('logout')
 	uc_nyzul_runtime.reset('logout')
+	uc_reset_reaction_runtime('logout')
+	uc_encounter_runtime.reset('logout')
 	require('uc_lilith_easy_encounter').reset('logout')
-	require('uc_lilith_easy_formation_runtime').reset('logout')
+	require('uc_formation_runtime').reset('logout')
 	_G.UC_ZONE_SUSPEND_UNTIL = nil
 	uc_profile_v2_autoload_pending_key = nil
 	uc_profile_v2_autoload_completed_key = nil
@@ -2346,8 +2398,9 @@ windower.register_event('addon command', function(...)
 		return
 	elseif a == 'stop' then
 		Start_Engine = false
+		uc_encounter_runtime.reset('engine_stop')
 		require('uc_lilith_easy_encounter').reset('engine_stop')
-		require('uc_lilith_easy_formation_runtime').reset('engine_stop')
+		require('uc_formation_runtime').reset('engine_stop')
 		if _G.UC_SETTINGS then
 			_G.UC_SETTINGS.engine_enabled = false
 		end
@@ -2358,6 +2411,18 @@ windower.register_event('addon command', function(...)
 			_G.UC_StopUnifiedEngine('engine_stop')
 		end
 		windower.add_to_chat(207, 'UnifiedCombat: engine stopped')
+		return
+	elseif a == 'encounter' then
+		local sub = args[2] and tostring(args[2]):lower() or ''
+		if sub == 'status' then
+			uc_encounter_runtime.observe(uc_now_s())
+			local lines = uc_encounter_runtime.status_lines()
+			for i = 1, #lines do
+				windower.add_to_chat(207, 'UC ' .. tostring(lines[i]))
+			end
+			return
+		end
+		windower.add_to_chat(207, '//uc encounter status')
 		return
 	elseif a == 'save' then
 		if type(_G.UC_SaveActiveProfile) == 'function' then
@@ -2656,11 +2721,22 @@ windower.register_event('addon command', function(...)
 			))
 			for i = 1, #(status.active or {}) do
 				local lock = status.active[i]
-				windower.add_to_chat(207, ('  %s %s actor=%d response=%s'):format(
+				local movement_detail = ''
+				if require('uc_reaction_runtime').owns_movement(lock) then
+					local current_distance = type(lock.current_distance) == 'number'
+						and ('%.2f'):format(lock.current_distance) or 'unavailable'
+					movement_detail = (' target_distance=%.2f current_distance=%s phase=%s'):format(
+						lock.distance,
+						current_distance,
+						tostring(lock.run_away_phase or lock.move_to_range_phase or 'pending')
+					)
+				end
+				windower.add_to_chat(207, ('  %s %s actor=%d response=%s%s'):format(
 					tostring(lock.trigger or ''),
 					tostring(lock.name or ''),
 					tonumber(lock.actor_id) or 0,
-					tostring(lock.response or '')
+					tostring(lock.response or ''),
+					movement_detail
 				))
 			end
 			if #(status.unresolved_enemy_buffs or {}) > 0 then

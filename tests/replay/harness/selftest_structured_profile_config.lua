@@ -92,6 +92,7 @@ local function build_flat_settings()
         weaponskill = "Savage Blade",
         ws_mode = "smart",
         weaponskill_min_tp = 2000,
+        weaponskill_allow_aoe = false,
         defensive_enabled = true,
         defensive_cure_enabled = true,
         def_heal_min_tier_cure = 3,
@@ -162,6 +163,7 @@ local function build_structured_payload()
                     primary = "Savage Blade",
                     mode = "smart",
                     minimum_tp = 2000,
+                    allow_aoe = false,
                 },
             },
             defensive = {
@@ -266,6 +268,7 @@ local function assert_common_config(config, source)
     assert_equal(config.combat.weaponskill.primary, "Savage Blade", source .. " WS primary mismatch")
     assert_equal(config.combat.weaponskill.mode, "smart", source .. " WS mode mismatch")
     assert_equal(config.combat.weaponskill.minimum_tp, 2000, source .. " WS minimum TP mismatch")
+    assert_equal(config.combat.weaponskill.allow_aoe, false, source .. " WS AoE preference mismatch")
     assert_equal(config.defensive.enabled, true, source .. " defensive enabled mismatch")
     assert_equal(config.defensive.cure.enabled, true, source .. " cure enabled mismatch")
     assert_equal(config.defensive.cure.min_tier, 3, source .. " cure min tier mismatch")
@@ -368,6 +371,7 @@ local function main()
     assert_equal(missing.profile.character, "Redrogue", "missing structured profile character mismatch")
     assert_equal(missing.combat.weaponskill.enabled, false, "missing structured WS default mismatch")
     assert_equal(missing.combat.weaponskill.minimum_tp, 1000, "missing structured WS minimum TP default mismatch")
+    assert_equal(missing.combat.weaponskill.allow_aoe, true, "missing structured WS AoE preference must preserve existing behavior")
     assert_equal(missing.defensive.cure.min_tier, 3, "missing structured cure default mismatch")
     assert_equal(missing.maintenance.cor.roll_1, "", "missing structured COR default mismatch")
 
@@ -393,6 +397,7 @@ local function main()
     assert_equal(ui_fixture_config.profile.main_job, "PLD", "UI-authored fixture profile main job mismatch")
     assert_equal(ui_fixture_config.profile.sub_job, "WAR", "UI-authored fixture profile sub job mismatch")
     assert_equal(ui_fixture_config.combat.weaponskill.primary, "Savage Blade", "UI-authored fixture combat mismatch")
+    assert_equal(ui_fixture_config.combat.weaponskill.allow_aoe, false, "UI-authored fixture WS AoE preference mismatch")
     assert_equal(ui_fixture_config.movement.path.file_name, "route-a", "UI-authored fixture path file mismatch")
     assert_equal(#ui_fixture_config.movement.path.hunter_targets, 0, "UI-authored fixture path hunter list mismatch")
     assert_equal(ui_fixture_config.follow.party.leader_name, "Leader", "UI-authored fixture party leader mismatch")

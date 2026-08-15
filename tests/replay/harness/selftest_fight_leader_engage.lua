@@ -13,7 +13,7 @@ local function bool_setting(value)
 	return value == true
 end
 
-local function make_provider(leader_target_id, leader_enabled, friendly_claims)
+local function make_provider(leader_target_id, leader_enabled, friendly_claims, add_control_enabled)
 	return combat_provider.new({
 		bool_setting = bool_setting,
 		clamp_urgency = function(value)
@@ -75,6 +75,9 @@ local function make_provider(leader_target_id, leader_enabled, friendly_claims)
 		fight_leader_target_id = function(leader_id)
 			assert_equal(leader_id, 500, 'fight leader id')
 			return leader_target_id
+		end,
+		add_control_enabled = function()
+			return add_control_enabled == true
 		end,
 		select_pull = function()
 			return nil
@@ -160,6 +163,18 @@ local function main()
 	assert_equal(#out, 1, 'different leader target must preserve the retarget engage proposal')
 	assert_equal(out[1].action_type, 'engage', 'retarget proposal action type')
 	assert_equal(out[1].target_id, leader_target.id, 'retarget proposal target id')
+
+	local configured_add = make_target(303, 'Configured Add')
+	provider = make_provider(leader_target.id, true, {}, true)
+	out = {}
+	provider.collect_engage(make_context(configured_add, leader_target), out)
+	assert_equal(#out, 0, 'engaged add control must retain ownership of the configured add target')
+
+	provider = make_provider(leader_target.id, true, {}, false)
+	out = {}
+	provider.collect_engage(make_context(configured_add, leader_target), out)
+	assert_equal(#out, 1, 'fight leader must resume forced retargeting when add control is disabled')
+	assert_equal(out[1].target_id, leader_target.id, 'fight-leader resume target id')
 
 	camp_pull_registry.reset('fight_leader_engage_camp_pull_test')
 	local friendly_claims = { [100] = true }

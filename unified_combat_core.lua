@@ -2526,7 +2526,29 @@ local function effective_ws_properties(skill, actor_context)
 	return properties
 end
 
-local function local_ws_candidates(actor_context)
+local function ws_skill_by_id_or_name(ws_id_or_name)
+	local ws_id = tonumber(ws_id_or_name)
+	if ws_id == nil then
+		local ws_name = tostring(ws_id_or_name or '')
+		if ws_name == '' or type(res.weapon_skills) ~= 'table' then
+			return nil
+		end
+		local ws_resource = res.weapon_skills:with('en', ws_name)
+		ws_id = tonumber(ws_resource and ws_resource.id)
+	end
+	return skills.weapon_skills and skills.weapon_skills[ws_id or 0] or nil
+end
+
+local function ws_is_aoe(ws_id_or_name)
+	local skill = ws_skill_by_id_or_name(ws_id_or_name)
+	return type(skill) == 'table' and skill.aoe == true
+end
+
+local function smart_ws_allowed(settings, ws_id_or_name)
+	return settings.weaponskill_allow_aoe ~= false or not ws_is_aoe(ws_id_or_name)
+end
+
+local function local_ws_candidates(actor_context, settings)
 	local player_abilities = windower.ffxi.get_abilities()
 	if type(player_abilities) ~= 'table' or type(player_abilities.weapon_skills) ~= 'table' then
 		error('skillchain planning requires learned weapon skill data')
@@ -2536,7 +2558,8 @@ local function local_ws_candidates(actor_context)
 		local skill = skills.weapon_skills and skills.weapon_skills[ws_id]
 		local ws = res.weapon_skills and res.weapon_skills[ws_id]
 		local ws_name = ws and (ws.en or ws.name)
-		if skill and type(skill.skillchain) == 'table' and ws_name and ws_name ~= '' then
+		if skill and type(skill.skillchain) == 'table' and ws_name and ws_name ~= ''
+			and smart_ws_allowed(settings, ws_id) then
 			out[#out + 1] = {
 				ws_id = ws_id,
 				ws_name = ws_name,
@@ -2699,6 +2722,23 @@ function core.on_action(act)
 		chain_affinity_success = chain_affinity_success and true or false,
 		chainbound_level = message_id == 529 and param or 0,
 	})
+	local encounter_action_class = nil
+	if resource == 'weapon_skills' then
+		encounter_action_class = 'ws'
+	elseif category == 'avatar_tp_finish' then
+		encounter_action_class = 'bp'
+	end
+	if encounter_action_class ~= nil then
+		require('uc_encounter_runtime').observe_action_result({
+			action_class = encounter_action_class,
+			action_key = tostring(action_id),
+			action_name = tostring((ability and (ability.en or ability.name)) or ''),
+			actor_id = tonumber(actor) or 0,
+			target_id = tonumber(target and target.id) or 0,
+			observed_at = uc_now_s(),
+			success = action_success == true and interrupted ~= true,
+		})
+	end
 	local should_observe_skillchain = uc_skillchain_state.should_observe_action({
 		source_resource = resource,
 		has_properties = has_properties and true or false,
@@ -2780,6 +2820,7 @@ function core.on_action_message(msg)
 	if tid > 0 and death_message_ids[mid] then
 		core.last_death_target_id = tid
 		core.last_death_at = uc_now_s()
+		require('uc_encounter_runtime').observe_boss_defeat(tid)
 		skillchain_runtime:clear_target(tid, 'death')
 		uc_camp_pull_registry.note_death(tid)
 	end
@@ -3064,6 +3105,9 @@ local function select_smart_ws(settings, target_id)
 	end
 	local aftermath_ws, aftermath_reason = select_aftermath_maintenance_ws(settings, player)
 	if aftermath_reason then
+		if aftermath_ws ~= '' and not smart_ws_allowed(settings, aftermath_ws) then
+			return '', 'AFTERMATH_WS_AOE_BLOCKED'
+		end
 		return aftermath_ws, aftermath_reason
 	end
 	if not ordinary_weaponskill_tp_ready(settings, player) then
@@ -3072,7 +3116,7 @@ local function select_smart_ws(settings, target_id)
 	if resonance_active then
 		local plan, plan_reason = skillchain_runtime:plan_continuation(
 			tid,
-			local_ws_candidates(actor_context),
+			local_ws_candidates(actor_context, settings),
 			actor_context,
 			now
 		)
@@ -3101,6 +3145,9 @@ local function select_smart_ws(settings, target_id)
 
 	if primary_ws == '' or not uc_ws_memory.valid_ws_name(primary_ws) then
 		return '', 'PRIMARY_WS_INVALID'
+	end
+	if not smart_ws_allowed(settings, primary_ws) then
+		return '', 'PRIMARY_WS_AOE_BLOCKED'
 	end
 	return primary_ws, 'READY'
 end
@@ -3152,12 +3199,26 @@ function core.select_ws_plan_for_scheduler(settings, target_id)
 		reason = tostring(ws_reason or ''),
 		skillchain_plan = skillchain_plan,
 		required_tp = required_tp,
+		smart_aoe_guard = get_ws_mode(settings) == 'smart'
+			and not setting_enabled(settings.spam)
+			and not setting_enabled(settings.solo),
 	}, tostring(ws_reason or '')
+end
+
+function core.revalidate_smart_ws_aoe(settings, ws_id_or_name)
+	if not smart_ws_allowed(settings or {}, ws_id_or_name) then
+		return false, 'SMART_WS_AOE_BLOCKED'
+	end
+	return true, ''
 end
 
 function core.revalidate_skillchain_plan(plan, settings, expected_target_id, expected_ws_name, commit_stage)
 	if type(plan) ~= 'table' then
 		return false, 'SC_INTENT_LOST'
+	end
+	local aoe_allowed, aoe_reason = core.revalidate_smart_ws_aoe(settings, plan.ws_id)
+	if not aoe_allowed then
+		return false, aoe_reason
 	end
 	local player = windower.ffxi.get_player()
 	local current_target = windower.ffxi.get_mob_by_target('t')

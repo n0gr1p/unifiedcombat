@@ -6,7 +6,7 @@ namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
-    private const int ProfileSchemaVersion = 3;
+    private const int ProfileSchemaVersion = 4;
     private static readonly string[] RequiredDomainBoolKeys =
     [
         "domain_combat_enabled",
@@ -245,8 +245,27 @@ public partial class MainForm
             ["spacing_overlap_deadband"] = ParseDouble(_spEmergencyMargin.Text, 0.1),
             ["spacing_repel_weight"] = ParseDouble(_spSwitchMargin.Text, 0.35),
             ["spacing_band_deadband"] = ParseDouble(_spArrivalTolerance.Text, 0.2),
+            ["encounter_enabled"] = _encounterEnabled.Checked,
+            ["encounter_id"] = EncounterIdValue(),
+            ["encounter_water_damage"] = EncounterPolicyValue(_encounterWaterDamage),
+            ["encounter_water_skillchain"] = EncounterPolicyValue(_encounterWaterSkillchain),
+            ["encounter_repeat_action_wall"] = EncounterPolicyValue(_encounterRepeatActionWall),
+            ["encounter_repeat_action_guard_s"] = (double)_encounterRepeatActionGuard.Value,
+            ["kei_elemental_dealer_name"] = SelectedPartyName(_keiElementalDealer),
+            ["kei_water_probe_spell"] = _keiWaterProbeSpell.Text.Trim(),
+            ["kei_water_damage_spell"] = _keiWaterDamageSpell.Text.Trim(),
+            ["kei_ice_probe_spell"] = _keiIceProbeSpell.Text.Trim(),
+            ["kei_ice_damage_spell"] = _keiIceDamageSpell.Text.Trim(),
+            ["kei_sustain_interval_s"] = (double)_keiSustainInterval.Value,
+            ["kei_probe_timeout_s"] = (double)_keiProbeTimeout.Value,
+            ["kei_fullers_target_distance"] = (double)_keiFullersTargetDistance.Value,
+            ["kei_fullers_prearm_hpp_margin"] = (double)_keiFullersPrearmMargin.Value,
             ["formation_enabled"] = _formationEnabled.Checked,
+            ["named_formations_enabled"] = _namedFormationsEnabled.Checked,
+            ["named_formation_entries"] = BuildNamedFormationEntriesJson(),
             ["formation_encounter"] = FormationEncounterValue(),
+            ["formation_mock_enabled"] = _formationMockEnabled.Checked,
+            ["formation_mock_mob_name"] = _formationMockMobName.Text.Trim(),
             ["formation_role"] = FormationRoleValue(),
             ["formation_tank_name"] = SelectedPartyName(_formationTankName),
             ["formation_required_party_names"] = string.Join("|", SelectedFormationRequiredPartyNames()),
@@ -264,6 +283,26 @@ public partial class MainForm
             ["formation_healer_cone_half_angle_deg"] = (double)_formationHealerConeHalfAngle.Value,
             ["formation_healer_cone_safety_margin_deg"] = (double)_formationHealerConeSafetyMargin.Value,
             ["formation_healer_sample_step_deg"] = (double)_formationHealerSampleStep.Value,
+            ["formation_placement_mode"] = FormationPlacementModeValue(),
+            ["formation_anchor"] = FormationAnchorValue(),
+            ["formation_anchor_member"] = SelectedPartyName(_formationAnchorMember),
+            ["formation_axis_type"] = FormationAxisTypeValue(),
+            ["formation_axis_member"] = SelectedPartyName(_formationAxisMember),
+            ["formation_preferred_radius"] = (double)_formationPreferredRadius.Value,
+            ["formation_minimum_radius"] = (double)_formationMinimumRadius.Value,
+            ["formation_maximum_radius"] = (double)_formationMaximumRadius.Value,
+            ["formation_preferred_angle_deg"] = (double)_formationPreferredAngle.Value,
+            ["formation_allowed_angle_half_width_deg"] = (double)_formationAllowedAngleHalfWidth.Value,
+            ["formation_radius_step"] = (double)_formationRadiusStep.Value,
+            ["formation_angle_step_deg"] = (double)_formationAngleStep.Value,
+            ["formation_hysteresis_start_distance"] = (double)_formationHysteresisStart.Value,
+            ["formation_hysteresis_stop_distance"] = (double)_formationHysteresisStop.Value,
+            ["formation_avoid_encounter_hazards"] = _formationAvoidEncounterHazards.Checked,
+            ["formation_hazard_margin"] = (double)_formationHazardMargin.Value,
+            ["formation_safe_origin_radius"] = (double)_formationSafeOriginRadius.Value,
+            ["formation_minimum_boss_distance"] = (double)_formationMinimumBossDistance.Value,
+            ["formation_maximum_boss_distance"] = (double)_formationMaximumBossDistance.Value,
+            ["formation_maximum_party_range"] = (double)_formationMaximumPartyRange.Value,
             ["defensive_provider"] = _defProviderCombo.SelectedItem?.ToString() ?? "internal",
             ["defensive_critical_hpp"] = ParseInt(_defCrit.Text, 35),
             ["defensive_medium_hpp"] = ParseInt(_defMed.Text, 55),
@@ -327,6 +366,7 @@ public partial class MainForm
             ["ws1"] = (_wsCombo.Text ?? "").Trim(),
             ["ws_mode"] = string.Equals(_wsModeCombo.SelectedItem?.ToString(), "Primary Only (No SC)", StringComparison.Ordinal) ? "primary_no_sc" : "smart",
             ["weaponskill_min_tp"] = decimal.ToInt32(_wsMinimumTp.Value),
+            ["weaponskill_allow_aoe"] = _chkWsAllowAoe.Checked,
         };
 
         foreach (var key in HubUiConstants.BoolKeys)
@@ -357,14 +397,35 @@ public partial class MainForm
         var rules = new JsonArray();
         foreach (var rule in _reactionRules)
         {
-            rules.Add(new JsonObject
+            var serialized = new JsonObject
             {
                 ["trigger"] = rule.Trigger,
                 ["name"] = rule.Name,
                 ["response"] = rule.Response,
-            });
+            };
+            if (rule.Response is "run_away" or "move_to_range")
+            {
+                if (!rule.Distance.HasValue || !double.IsFinite(rule.Distance.Value) || rule.Distance.Value <= 0)
+                {
+                    throw new InvalidDataException($"{rule.Response} reaction requires a positive finite distance");
+                }
+                serialized["distance"] = rule.Distance.Value;
+            }
+            rules.Add(serialized);
         }
         return rules;
+    }
+
+    private JsonArray BuildNamedFormationEntriesJson()
+    {
+        var entries = new JsonArray();
+        foreach (var formation in _namedFormations)
+        {
+            var serialized = (JsonObject)formation.Geometry.DeepClone();
+            serialized["mob_name"] = formation.MobName;
+            entries.Add(serialized);
+        }
+        return entries;
     }
 
     private static int ParseInt(string? text, int fallback)
@@ -396,6 +457,7 @@ public partial class MainForm
             ["ws1"] = "",
             ["ws_mode"] = "smart",
             ["weaponskill_min_tp"] = 1000,
+            ["weaponskill_allow_aoe"] = true,
             ["aftermath_ws"] = "",
             ["defensive_provider"] = "internal",
             ["defensive_critical_hpp"] = 35,
@@ -514,8 +576,27 @@ public partial class MainForm
             ["spacing_overlap_deadband"] = 0.1,
             ["spacing_repel_weight"] = 0.35,
             ["spacing_band_deadband"] = 0.2,
+            ["encounter_enabled"] = false,
+            ["encounter_id"] = "sortie_ghatjot",
+            ["encounter_water_damage"] = "enforce",
+            ["encounter_water_skillchain"] = "enforce",
+            ["encounter_repeat_action_wall"] = "off",
+            ["encounter_repeat_action_guard_s"] = 10.0,
+            ["kei_elemental_dealer_name"] = "",
+            ["kei_water_probe_spell"] = "Water",
+            ["kei_water_damage_spell"] = "Water III",
+            ["kei_ice_probe_spell"] = "Blizzard",
+            ["kei_ice_damage_spell"] = "Blizzard III",
+            ["kei_sustain_interval_s"] = 2.5,
+            ["kei_probe_timeout_s"] = 3.0,
+            ["kei_fullers_target_distance"] = 12.0,
+            ["kei_fullers_prearm_hpp_margin"] = 1.0,
             ["formation_enabled"] = false,
+            ["named_formations_enabled"] = false,
+            ["named_formation_entries"] = new JsonArray(),
             ["formation_encounter"] = "lilith_easy",
+            ["formation_mock_enabled"] = false,
+            ["formation_mock_mob_name"] = "",
             ["formation_role"] = "disabled",
             ["formation_tank_name"] = "",
             ["formation_required_party_names"] = "",
@@ -533,6 +614,26 @@ public partial class MainForm
             ["formation_healer_cone_half_angle_deg"] = 50.0,
             ["formation_healer_cone_safety_margin_deg"] = 15.0,
             ["formation_healer_sample_step_deg"] = 10.0,
+            ["formation_placement_mode"] = "radial_band",
+            ["formation_anchor"] = "boss",
+            ["formation_anchor_member"] = "",
+            ["formation_axis_type"] = "boss_to_member",
+            ["formation_axis_member"] = "",
+            ["formation_preferred_radius"] = 3.0,
+            ["formation_minimum_radius"] = 2.0,
+            ["formation_maximum_radius"] = 4.0,
+            ["formation_preferred_angle_deg"] = 180.0,
+            ["formation_allowed_angle_half_width_deg"] = 60.0,
+            ["formation_radius_step"] = 0.5,
+            ["formation_angle_step_deg"] = 10.0,
+            ["formation_hysteresis_start_distance"] = 1.0,
+            ["formation_hysteresis_stop_distance"] = 0.5,
+            ["formation_avoid_encounter_hazards"] = false,
+            ["formation_hazard_margin"] = 0.0,
+            ["formation_safe_origin_radius"] = 0.0,
+            ["formation_minimum_boss_distance"] = 0.0,
+            ["formation_maximum_boss_distance"] = 0.0,
+            ["formation_maximum_party_range"] = 0.0,
         };
         foreach (var key in HubUiConstants.BoolKeys)
         {
@@ -742,6 +843,25 @@ public partial class MainForm
         MoveIfMissing(root, "spacing_slot_switch_margin", "spacing_repel_weight", ref changed);
         MoveIfMissing(root, "spacing_emergency_margin", "spacing_overlap_deadband", ref changed);
         MoveIfMissing(root, "spacing_anchor_invalid_ticks", "spacing_repel_hold_ticks", ref changed);
+
+        if (root.TryGetPropertyValue("kei_fullers_run_away_distance", out var legacyFullersDistance)
+            && legacyFullersDistance is not null)
+        {
+            if (root.TryGetPropertyValue("kei_fullers_target_distance", out var targetFullersDistance)
+                && targetFullersDistance is not null
+                && !JsonNode.DeepEquals(targetFullersDistance, legacyFullersDistance))
+            {
+                throw new InvalidDataException(
+                    "kei_fullers_target_distance conflicts with legacy alias kei_fullers_run_away_distance"
+                );
+            }
+            if (!root.ContainsKey("kei_fullers_target_distance"))
+            {
+                root["kei_fullers_target_distance"] = legacyFullersDistance.DeepClone();
+            }
+            root.Remove("kei_fullers_run_away_distance");
+            changed = true;
+        }
 
         if (root.Remove("spacing_slot_switch_penalty"))
         {

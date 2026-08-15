@@ -13,6 +13,8 @@ public partial class MainForm
     private ComboBox _wsCombo = null!;
     private ComboBox _wsModeCombo = null!;
     private NumericUpDown _wsMinimumTp = null!;
+    private CheckBox _chkWsAllowAoe = null!;
+    private ToolTip _smartWsToolTip = null!;
     private ComboBox _aftermathCombo = null!;
     private ComboBox _pullerCombo = null!;
 	private ComboBox _pullerLeashSource = null!;
@@ -100,8 +102,35 @@ public partial class MainForm
     private TextBox _spEmergencyMargin = null!;
     private TextBox _spSwitchMargin = null!;
     private TextBox _spArrivalTolerance = null!;
+    private CheckBox _encounterEnabled = null!;
+    private ComboBox _encounterId = null!;
+    private ComboBox _encounterWaterDamage = null!;
+    private ComboBox _encounterWaterSkillchain = null!;
+    private ComboBox _encounterRepeatActionWall = null!;
+    private NumericUpDown _encounterRepeatActionGuard = null!;
+    private TableLayoutPanel _encounterConfigPanel = null!;
+    private Label _encounterValidation = null!;
+    private TableLayoutPanel _keiConfigPanel = null!;
+    private ComboBox _keiElementalDealer = null!;
+    private ComboBox _keiWaterProbeSpell = null!;
+    private ComboBox _keiWaterDamageSpell = null!;
+    private ComboBox _keiIceProbeSpell = null!;
+    private ComboBox _keiIceDamageSpell = null!;
+    private NumericUpDown _keiSustainInterval = null!;
+    private NumericUpDown _keiProbeTimeout = null!;
+    private NumericUpDown _keiFullersTargetDistance = null!;
+    private NumericUpDown _keiFullersPrearmMargin = null!;
     private CheckBox _formationEnabled = null!;
+    private CheckBox _namedFormationsEnabled = null!;
+    private TextBox _namedFormationMobName = null!;
+    private ListBox _namedFormationList = null!;
+    private Button _namedFormationAddUpdate = null!;
+    private Button _namedFormationRemove = null!;
+    private Button _namedFormationEditEncounter = null!;
+    private readonly List<NamedFormationRow> _namedFormations = [];
     private ComboBox _formationEncounter = null!;
+    private CheckBox _formationMockEnabled = null!;
+    private TextBox _formationMockMobName = null!;
     private ComboBox _formationRole = null!;
     private ComboBox _formationTankName = null!;
     private CheckedListBox _formationRequiredParty = null!;
@@ -119,6 +148,26 @@ public partial class MainForm
     private NumericUpDown _formationHealerConeHalfAngle = null!;
     private NumericUpDown _formationHealerConeSafetyMargin = null!;
     private NumericUpDown _formationHealerSampleStep = null!;
+    private ComboBox _formationPlacementMode = null!;
+    private ComboBox _formationAnchor = null!;
+    private ComboBox _formationAnchorMember = null!;
+    private ComboBox _formationAxisType = null!;
+    private ComboBox _formationAxisMember = null!;
+    private NumericUpDown _formationPreferredRadius = null!;
+    private NumericUpDown _formationMinimumRadius = null!;
+    private NumericUpDown _formationMaximumRadius = null!;
+    private NumericUpDown _formationPreferredAngle = null!;
+    private NumericUpDown _formationAllowedAngleHalfWidth = null!;
+    private NumericUpDown _formationRadiusStep = null!;
+    private NumericUpDown _formationAngleStep = null!;
+    private NumericUpDown _formationHysteresisStart = null!;
+    private NumericUpDown _formationHysteresisStop = null!;
+    private CheckBox _formationAvoidEncounterHazards = null!;
+    private NumericUpDown _formationHazardMargin = null!;
+    private NumericUpDown _formationSafeOriginRadius = null!;
+    private NumericUpDown _formationMinimumBossDistance = null!;
+    private NumericUpDown _formationMaximumBossDistance = null!;
+    private NumericUpDown _formationMaximumPartyRange = null!;
     private TableLayoutPanel _formationConfigPanel = null!;
     private Label _formationValidation = null!;
     private Button _formationEnableOwnership = null!;
@@ -183,6 +232,7 @@ public partial class MainForm
     private ComboBox _reactionTriggerCombo = null!;
     private TextBox _reactionName = null!;
     private ComboBox _reactionResponseCombo = null!;
+    private NumericUpDown _reactionDistance = null!;
     private Button _reactionAdd = null!;
     private Button _reactionRemove = null!;
     private Button _reactionUp = null!;
@@ -368,6 +418,22 @@ public partial class MainForm
         };
         _wsMinimumTp.ValueChanged += (_, _) => OnWsMinimumTpChanged();
         leftCol.Controls.Add(_wsMinimumTp, 1, lr);
+        lr++;
+
+        _chkWsAllowAoe = new CheckBox
+        {
+            Text = "Allow AoE WS in Smart mode",
+            AutoSize = true,
+            Checked = true,
+        };
+        _smartWsToolTip = new ToolTip();
+        _smartWsToolTip.SetToolTip(
+            _chkWsAllowAoe,
+            "When disabled, Smart WS will not select area-of-effect weapon skills."
+        );
+        _chkWsAllowAoe.CheckedChanged += (_, _) => OnWsAllowAoeChanged();
+        leftCol.Controls.Add(_chkWsAllowAoe, 0, lr);
+        leftCol.SetColumnSpan(_chkWsAllowAoe, 2);
         lr++;
 
         _chkAftermath = MkCtx("aftermath_enabled");
@@ -935,6 +1001,86 @@ public partial class MainForm
         tabSpacing.Controls.Add(sp);
         _settingsTabs.TabPages.Add(tabSpacing);
 
+        var tabEncounter = new TabPage("Encounter Policy") { AutoScroll = true };
+        var encounterRoot = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 1,
+            Padding = new Padding(8),
+        };
+        _encounterEnabled = new CheckBox { Text = "Enable encounter safeguards", AutoSize = true };
+        _encounterEnabled.CheckedChanged += (_, _) => OnEncounterConfigChanged();
+        encounterRoot.Controls.Add(_encounterEnabled);
+        encounterRoot.Controls.Add(new Label
+        {
+            Text = "Profile-scoped safeguards for Sortie bosses, including validated Dhartok cloud avoidance through generic formation settings.",
+            AutoSize = true,
+            MaximumSize = new Size(760, 0),
+            Padding = new Padding(0, 4, 0, 8),
+        });
+        _encounterValidation = new Label { AutoSize = true, Padding = new Padding(0, 4, 0, 8) };
+        encounterRoot.Controls.Add(_encounterValidation);
+
+        _encounterConfigPanel = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 2,
+        };
+        _encounterConfigPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
+        _encounterConfigPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 320));
+        var encounterRow = 0;
+        _encounterConfigPanel.Controls.Add(new Label { Text = "Encounter", AutoSize = true, Anchor = AnchorStyles.Left }, 0, encounterRow);
+        _encounterId = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
+        _encounterId.Items.AddRange(["Ghatjot — Sortie Area A", "Dhartok — Sortie Area E (validation pending)", "Kei — Omen"]);
+        _encounterId.SelectedIndex = 0;
+        _encounterId.SelectedIndexChanged += (_, _) => OnEncounterSelectionChanged();
+        _encounterConfigPanel.Controls.Add(_encounterId, 1, encounterRow++);
+
+        _encounterWaterDamage = AddEncounterPolicyRow(_encounterConfigPanel, "Direct Water damage", "Enforce", ref encounterRow);
+        _encounterWaterSkillchain = AddEncounterPolicyRow(_encounterConfigPanel, "Water-bearing skillchains", "Enforce", ref encounterRow);
+        _encounterRepeatActionWall = AddEncounterPolicyRow(_encounterConfigPanel, "Repeated WS/BP wall (Dhartok)", "Off", ref encounterRow);
+        _encounterRepeatActionGuard = CreateFormationNumber(0.1m, 120.0m, 10.0m, 0.5m, 1);
+        AddFormationNumberRow(_encounterConfigPanel, "Repeat-action guard (seconds)", _encounterRepeatActionGuard, ref encounterRow);
+        _encounterRepeatActionGuard.ValueChanged += (_, _) => OnEncounterConfigChanged();
+        encounterRoot.Controls.Add(_encounterConfigPanel);
+
+        _keiConfigPanel = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 2,
+            Padding = new Padding(0, 8, 0, 0),
+        };
+        _keiConfigPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
+        _keiConfigPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 320));
+        var keiRow = 0;
+        _keiConfigPanel.Controls.Add(new Label { Text = "Elemental Damage Dealer", AutoSize = true, Anchor = AnchorStyles.Left }, 0, keiRow);
+        _keiElementalDealer = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Width = 300 };
+        _keiElementalDealer.TextChanged += (_, _) => OnEncounterConfigChanged();
+        _keiConfigPanel.Controls.Add(_keiElementalDealer, 1, keiRow++);
+        _keiWaterProbeSpell = AddKeiSpellRow(_keiConfigPanel, "Water Probe Spell", "Water", ref keiRow);
+        _keiWaterDamageSpell = AddKeiSpellRow(_keiConfigPanel, "Water Damage Spell", "Water III", ref keiRow);
+        _keiIceProbeSpell = AddKeiSpellRow(_keiConfigPanel, "Ice Probe Spell", "Blizzard", ref keiRow);
+        _keiIceDamageSpell = AddKeiSpellRow(_keiConfigPanel, "Ice Damage Spell", "Blizzard III", ref keiRow);
+        _keiSustainInterval = CreateFormationNumber(0.5m, 30.0m, 2.5m, 0.1m, 1);
+        AddFormationNumberRow(_keiConfigPanel, "Elemental Sustain Interval (seconds)", _keiSustainInterval, ref keiRow);
+        _keiSustainInterval.ValueChanged += (_, _) => OnEncounterConfigChanged();
+        _keiProbeTimeout = CreateFormationNumber(0.5m, 30.0m, 3.0m, 0.1m, 1);
+        AddFormationNumberRow(_keiConfigPanel, "Probe Timeout (seconds)", _keiProbeTimeout, ref keiRow);
+        _keiProbeTimeout.ValueChanged += (_, _) => OnEncounterConfigChanged();
+        _keiFullersTargetDistance = CreateFormationNumber(0.1m, 50.0m, 12.0m, 0.5m, 1);
+        AddFormationNumberRow(_keiConfigPanel, "Dancing Fullers Target Distance", _keiFullersTargetDistance, ref keiRow);
+        _keiFullersTargetDistance.ValueChanged += (_, _) => OnEncounterConfigChanged();
+        _keiFullersPrearmMargin = CreateFormationNumber(0.0m, 10.0m, 1.0m, 0.5m, 1);
+        AddFormationNumberRow(_keiConfigPanel, "Fullers Pre-Arm HP Margin", _keiFullersPrearmMargin, ref keiRow);
+        _keiFullersPrearmMargin.ValueChanged += (_, _) => OnEncounterConfigChanged();
+        encounterRoot.Controls.Add(_keiConfigPanel);
+        tabEncounter.Controls.Add(encounterRoot);
+        _settingsTabs.TabPages.Add(tabEncounter);
+        UpdateEncounterUiState();
+
         var tabFormation = new TabPage("Encounter Formation") { AutoScroll = true };
         var formationRoot = new TableLayoutPanel
         {
@@ -946,6 +1092,9 @@ public partial class MainForm
         _formationEnabled = new CheckBox { Text = "Enable encounter formation", AutoSize = true };
         _formationEnabled.CheckedChanged += (_, _) => OnFormationConfigChanged();
         formationRoot.Controls.Add(_formationEnabled);
+        _namedFormationsEnabled = new CheckBox { Text = "Enable automatic named mob / boss formations", AutoSize = true };
+        _namedFormationsEnabled.CheckedChanged += (_, _) => OnFormationConfigChanged();
+        formationRoot.Controls.Add(_namedFormationsEnabled);
         formationRoot.Controls.Add(new Label
         {
             Text = "Profile-scoped positioning for supported encounters. Settings are saved to Profile V2 and are not sent over the live mirror.",
@@ -978,12 +1127,97 @@ public partial class MainForm
         _formationConfigPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
         var formationRow = 0;
 
+        AddFormationSectionLabel(_formationConfigPanel, "Automatic named mob / boss formations", ref formationRow);
+        _formationConfigPanel.Controls.Add(new Label
+        {
+            Text = "Exact mob name",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+        }, 0, formationRow);
+        var namedMobEditor = new FlowLayoutPanel { AutoSize = true, WrapContents = true };
+        _namedFormationMobName = new TextBox { Width = 150 };
+        _namedFormationAddUpdate = new Button { Text = "Add / Update", AutoSize = true };
+        _namedFormationAddUpdate.Click += (_, _) => OnNamedFormationAddUpdate();
+        namedMobEditor.Controls.Add(_namedFormationMobName);
+        namedMobEditor.Controls.Add(_namedFormationAddUpdate);
+        _formationConfigPanel.Controls.Add(namedMobEditor, 1, formationRow++);
+
+        _formationConfigPanel.Controls.Add(new Label
+        {
+            Text = "Configured named formations",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left | AnchorStyles.Top,
+            Padding = new Padding(0, 5, 0, 0),
+        }, 0, formationRow);
+        var namedListPanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+        };
+        _namedFormationList = new ListBox { Width = 230, Height = 90, IntegralHeight = false };
+        _namedFormationList.SelectedIndexChanged += (_, _) => OnNamedFormationSelectionChanged();
+        var namedButtons = new FlowLayoutPanel { AutoSize = true, WrapContents = true };
+        _namedFormationRemove = new Button { Text = "Remove", AutoSize = true };
+        _namedFormationRemove.Click += (_, _) => OnNamedFormationRemove();
+        _namedFormationEditEncounter = new Button { Text = "Load geometry", AutoSize = true };
+        _namedFormationEditEncounter.Click += (_, _) => OnNamedFormationEditEncounter();
+        namedButtons.Controls.Add(_namedFormationRemove);
+        namedButtons.Controls.Add(_namedFormationEditEncounter);
+        namedListPanel.Controls.Add(_namedFormationList);
+        namedListPanel.Controls.Add(namedButtons);
+        _formationConfigPanel.Controls.Add(namedListPanel, 1, formationRow++);
+        var namedHelp = new Label
+        {
+            Text = "Select an entry, load its geometry, edit the fields below, then click Add / Update. It activates automatically while that exact named enemy is the engaged current target.",
+            AutoSize = true,
+            MaximumSize = new Size(490, 0),
+            ForeColor = SystemColors.GrayText,
+        };
+        _formationConfigPanel.Controls.Add(namedHelp, 0, formationRow);
+        _formationConfigPanel.SetColumnSpan(namedHelp, 2);
+        formationRow++;
+
+        AddFormationSectionLabel(_formationConfigPanel, "Encounter formation compatibility", ref formationRow);
+
         _formationConfigPanel.Controls.Add(new Label { Text = "Encounter", AutoSize = true, Anchor = AnchorStyles.Left }, 0, formationRow);
         _formationEncounter = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
-        _formationEncounter.Items.Add("Lady Lilith — Easy");
+        _formationEncounter.Items.AddRange([
+            "Lady Lilith — Easy",
+            "Ghatjot — Generic geometry",
+            "Dhartok — Generic geometry (hazards pending validation)",
+        ]);
         _formationEncounter.SelectedIndex = 0;
         _formationEncounter.SelectedIndexChanged += (_, _) => OnFormationConfigChanged();
         _formationConfigPanel.Controls.Add(_formationEncounter, 1, formationRow++);
+
+        AddFormationSectionLabel(_formationConfigPanel, "Formation-only mock testing", ref formationRow);
+        _formationMockEnabled = new CheckBox
+        {
+            Text = "Use a normal mob as the formation boss",
+            AutoSize = true,
+        };
+        _formationMockEnabled.CheckedChanged += (_, _) => OnFormationConfigChanged();
+        _formationConfigPanel.Controls.Add(_formationMockEnabled, 1, formationRow++);
+        _formationConfigPanel.Controls.Add(new Label
+        {
+            Text = "Mock mob name (exact)",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+        }, 0, formationRow);
+        _formationMockMobName = new TextBox { Width = 230 };
+        _formationMockMobName.TextChanged += (_, _) => OnFormationConfigChanged();
+        _formationConfigPanel.Controls.Add(_formationMockMobName, 1, formationRow++);
+        var mockHelp = new Label
+        {
+            Text = "Formation only. Target the exact named mob once on each client to bind it; encounter policies and hazards do not bind to it.",
+            AutoSize = true,
+            MaximumSize = new Size(490, 0),
+            ForeColor = SystemColors.GrayText,
+        };
+        _formationConfigPanel.Controls.Add(mockHelp, 0, formationRow);
+        _formationConfigPanel.SetColumnSpan(mockHelp, 2);
+        formationRow++;
 
         _formationConfigPanel.Controls.Add(new Label { Text = "Character role", AutoSize = true, Anchor = AnchorStyles.Left }, 0, formationRow);
         _formationRole = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
@@ -1050,6 +1284,68 @@ public partial class MainForm
         AddFormationNumberRow(_formationConfigPanel, "Cone safety margin (degrees)", _formationHealerConeSafetyMargin, ref formationRow);
         _formationHealerSampleStep = CreateFormationNumber(1.0m, 45.0m, 10.0m, 1.0m, 1);
         AddFormationNumberRow(_formationConfigPanel, "Search sample step (degrees)", _formationHealerSampleStep, ref formationRow);
+
+        AddFormationSectionLabel(_formationConfigPanel, "Role-free generic geometry", ref formationRow);
+        _formationPlacementMode = AddFormationChoiceRow(
+            _formationConfigPanel,
+            "Placement mode",
+            ["Radial band", "Polar band"],
+            "Radial band",
+            ref formationRow
+        );
+        _formationAnchor = AddFormationChoiceRow(
+            _formationConfigPanel,
+            "Anchor",
+            ["Boss", "Encounter origin", "Party member"],
+            "Boss",
+            ref formationRow
+        );
+        _formationAnchorMember = AddFormationPartyRow(_formationConfigPanel, "Anchor member", ref formationRow);
+        _formationAxisType = AddFormationChoiceRow(
+            _formationConfigPanel,
+            "Polar axis",
+            ["Boss to member", "Boss heading"],
+            "Boss to member",
+            ref formationRow
+        );
+        _formationAxisMember = AddFormationPartyRow(_formationConfigPanel, "Axis member", ref formationRow);
+        _formationPreferredRadius = CreateFormationNumber(0.0m, 50.0m, 3.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Preferred radius (yalms)", _formationPreferredRadius, ref formationRow);
+        _formationMinimumRadius = CreateFormationNumber(0.0m, 50.0m, 2.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Minimum radius (yalms)", _formationMinimumRadius, ref formationRow);
+        _formationMaximumRadius = CreateFormationNumber(0.0m, 50.0m, 4.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Maximum radius (yalms)", _formationMaximumRadius, ref formationRow);
+        _formationPreferredAngle = CreateFormationNumber(-360.0m, 360.0m, 180.0m, 5.0m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Preferred polar angle (degrees)", _formationPreferredAngle, ref formationRow);
+        _formationAllowedAngleHalfWidth = CreateFormationNumber(0.0m, 180.0m, 60.0m, 5.0m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Allowed angle half-width (degrees)", _formationAllowedAngleHalfWidth, ref formationRow);
+        _formationRadiusStep = CreateFormationNumber(0.1m, 10.0m, 0.5m, 0.1m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Radius sample step (yalms)", _formationRadiusStep, ref formationRow);
+        _formationAngleStep = CreateFormationNumber(1.0m, 360.0m, 10.0m, 1.0m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Angle sample step (degrees)", _formationAngleStep, ref formationRow);
+
+        AddFormationSectionLabel(_formationConfigPanel, "Generic hysteresis and constraints", ref formationRow);
+        _formationHysteresisStart = CreateFormationNumber(0.0m, 20.0m, 1.0m, 0.1m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Start correction distance (yalms)", _formationHysteresisStart, ref formationRow);
+        _formationHysteresisStop = CreateFormationNumber(0.0m, 20.0m, 0.5m, 0.1m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Stop correction distance (yalms)", _formationHysteresisStop, ref formationRow);
+        _formationAvoidEncounterHazards = new CheckBox
+        {
+            Text = "Avoid trusted encounter hazards (future gate)",
+            AutoSize = true,
+        };
+        _formationAvoidEncounterHazards.CheckedChanged += (_, _) => OnFormationConfigChanged();
+        _formationConfigPanel.Controls.Add(_formationAvoidEncounterHazards, 1, formationRow++);
+        _formationHazardMargin = CreateFormationNumber(0.0m, 20.0m, 0.0m, 0.1m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Hazard margin (yalms)", _formationHazardMargin, ref formationRow);
+        _formationSafeOriginRadius = CreateFormationNumber(0.0m, 50.0m, 0.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Safe origin radius (0 = off)", _formationSafeOriginRadius, ref formationRow);
+        _formationMinimumBossDistance = CreateFormationNumber(0.0m, 50.0m, 0.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Minimum boss distance (0 = off)", _formationMinimumBossDistance, ref formationRow);
+        _formationMaximumBossDistance = CreateFormationNumber(0.0m, 50.0m, 0.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Maximum boss distance (0 = off)", _formationMaximumBossDistance, ref formationRow);
+        _formationMaximumPartyRange = CreateFormationNumber(0.0m, 50.0m, 0.0m, 0.5m, 1);
+        AddFormationNumberRow(_formationConfigPanel, "Maximum required-party range (0 = off)", _formationMaximumPartyRange, ref formationRow);
 
         foreach (var numeric in FormationNumericControls())
         {
@@ -1550,24 +1846,37 @@ public partial class MainForm
         {
             AutoSize = true,
             Dock = DockStyle.Top,
-            ColumnCount = 4,
+            ColumnCount = 5,
             Padding = new Padding(0, 8, 0, 0),
         };
         reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));
         reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 145));
+        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
         reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
         _reactionTriggerCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
         _reactionTriggerCombo.Items.AddRange(["ability_window", "enemy_buff"]);
         _reactionTriggerCombo.SelectedIndexChanged += (_, _) => OnReactionTriggerChanged();
         _reactionName = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Cold Stare" };
         _reactionResponseCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
+        _reactionResponseCombo.SelectedIndexChanged += (_, _) => RefreshReactionDistanceState();
+        _reactionDistance = new NumericUpDown
+        {
+            Minimum = 0.1m,
+            Maximum = 1000m,
+            Value = 12m,
+            DecimalPlaces = 1,
+            Increment = 0.1m,
+            Dock = DockStyle.Fill,
+        };
+        _reactionDistance.ValueChanged += (_, _) => OnReactionConfigChanged();
         _reactionAdd = new Button { Text = "Add", AutoSize = true };
         _reactionAdd.Click += (_, _) => OnReactionRuleAdd();
         reactionEditor.Controls.Add(_reactionTriggerCombo, 0, 0);
         reactionEditor.Controls.Add(_reactionName, 1, 0);
         reactionEditor.Controls.Add(_reactionResponseCombo, 2, 0);
-        reactionEditor.Controls.Add(_reactionAdd, 3, 0);
+        reactionEditor.Controls.Add(_reactionDistance, 3, 0);
+        reactionEditor.Controls.Add(_reactionAdd, 4, 0);
         reactionRoot.Controls.Add(reactionEditor);
         var reactionButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         _reactionRemove = new Button { Text = "Remove", AutoSize = true };
@@ -1580,7 +1889,7 @@ public partial class MainForm
         reactionRoot.Controls.Add(reactionButtons);
         reactionRoot.Controls.Add(new Label
         {
-            Text = "ability_window turns away from ready until completion. enemy_buff holds attacks while the named enemy effect is active.",
+            Text = "ability_window supports turn_away, run_away to a minimum raw distance, or move_to_range to continuously maintain a raw distance. enemy_buff holds attacks while the named enemy effect is active.",
             AutoSize = true,
             Padding = new Padding(0, 8, 0, 0),
         });
@@ -1673,7 +1982,48 @@ public partial class MainForm
             _formationHealerConeHalfAngle,
             _formationHealerConeSafetyMargin,
             _formationHealerSampleStep,
+            _formationPreferredRadius,
+            _formationMinimumRadius,
+            _formationMaximumRadius,
+            _formationPreferredAngle,
+            _formationAllowedAngleHalfWidth,
+            _formationRadiusStep,
+            _formationAngleStep,
+            _formationHysteresisStart,
+            _formationHysteresisStop,
+            _formationHazardMargin,
+            _formationSafeOriginRadius,
+            _formationMinimumBossDistance,
+            _formationMaximumBossDistance,
+            _formationMaximumPartyRange,
         ];
+    }
+
+    private ComboBox AddFormationChoiceRow(
+        TableLayoutPanel panel,
+        string label,
+        string[] choices,
+        string selected,
+        ref int row
+    )
+    {
+        panel.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        var combo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
+        combo.Items.AddRange(choices);
+        combo.SelectedItem = selected;
+        combo.SelectedIndexChanged += (_, _) => OnFormationConfigChanged();
+        panel.Controls.Add(combo, 1, row++);
+        return combo;
+    }
+
+    private ComboBox AddFormationPartyRow(TableLayoutPanel panel, string label, ref int row)
+    {
+        panel.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        var combo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Width = 230 };
+        combo.SelectedIndexChanged += (_, _) => OnFormationConfigChanged();
+        combo.Leave += (_, _) => OnFormationConfigChanged();
+        panel.Controls.Add(combo, 1, row++);
+        return combo;
     }
 
     private static NumericUpDown CreateFormationNumber(decimal minimum, decimal maximum, decimal value, decimal increment, int decimalPlaces)
@@ -1688,6 +2038,26 @@ public partial class MainForm
             Width = 100,
             ThousandsSeparator = false,
         };
+    }
+
+    private ComboBox AddEncounterPolicyRow(TableLayoutPanel panel, string label, string selected, ref int row)
+    {
+        panel.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        var combo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
+        combo.Items.AddRange(["Enforce", "Warn", "Off"]);
+        combo.SelectedItem = selected;
+        combo.SelectedIndexChanged += (_, _) => OnEncounterConfigChanged();
+        panel.Controls.Add(combo, 1, row++);
+        return combo;
+    }
+
+    private ComboBox AddKeiSpellRow(TableLayoutPanel panel, string label, string selected, ref int row)
+    {
+        panel.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        var combo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Width = 300, Text = selected };
+        combo.TextChanged += (_, _) => OnEncounterConfigChanged();
+        panel.Controls.Add(combo, 1, row++);
+        return combo;
     }
 
     private static void AddFormationNumberRow(TableLayoutPanel panel, string label, NumericUpDown control, ref int row)

@@ -561,6 +561,7 @@ local function build_flat_settings()
 		weaponskill = 'Savage Blade',
 		ws_mode = 'smart',
 		weaponskill_min_tp = 2000,
+		weaponskill_allow_aoe = false,
 		aftermath_enabled = true,
 		aftermath_ws = 'Atonement',
 		autotarget = true,
@@ -656,6 +657,7 @@ local function build_expected_config()
 				primary = 'Savage Blade',
 				mode = 'smart',
 				minimum_tp = 2000,
+				allow_aoe = false,
 				wait_ignore_names = { 'Ally One', 'Ally Two' },
 				aftermath_enabled = true,
 				aftermath_ws = 'Atonement',
@@ -933,6 +935,7 @@ local function main()
 	assert_equal(profile.config.ui.show_ingame_ui, true, 'ui domain mismatch')
 	assert_equal(profile.config.combat.weaponskill.primary, 'Savage Blade', 'combat domain mismatch')
 	assert_equal(profile.config.combat.weaponskill.minimum_tp, 2000, 'combat WS minimum TP mismatch')
+	assert_equal(profile.config.combat.weaponskill.allow_aoe, false, 'combat Smart WS AoE preference mismatch')
 	assert_true(profile.config.maintenance.cor == nil, 'non-COR structured profile must omit maintenance.cor')
 	assert_equal(profile.config.legacy.hunter, true, 'legacy domain mismatch')
 	assert_equal(profile.config.targeting.targets[1], 'Apex Bat', 'exported config add priority target mismatch')
@@ -971,6 +974,7 @@ local function main()
 	assert_equal(normalized.profile.character, 'Redrogue', 'round-tripped normalized character mismatch')
 	assert_equal(normalized.combat.weaponskill.primary, 'Savage Blade', 'round-tripped normalized combat mismatch')
 	assert_equal(normalized.combat.weaponskill.minimum_tp, 2000, 'round-tripped normalized WS minimum TP mismatch')
+	assert_equal(normalized.combat.weaponskill.allow_aoe, false, 'round-tripped normalized Smart WS AoE preference mismatch')
 	assert_equal(normalized.maintenance.cor.roll_2, '', 'round-tripped normalized non-COR maintenance mismatch')
 	assert_equal(normalized.legacy.hunter, true, 'round-tripped normalized legacy mismatch')
 
@@ -1030,6 +1034,7 @@ local function main()
 	assert_nil(ui_fixture_payload.profile.profile_key, 'UI-authored fixture should omit profile_key metadata')
 	assert_equal(ui_fixture_payload.config.combat.weaponskill.wait_ignore_names[1], 'Ally One', 'UI-authored fixture wait ignore name mismatch')
 	assert_equal(ui_fixture_payload.config.combat.weaponskill.minimum_tp, 2000, 'UI-authored fixture WS minimum TP mismatch')
+	assert_equal(ui_fixture_payload.config.combat.weaponskill.allow_aoe, false, 'UI-authored fixture Smart WS AoE preference mismatch')
 	assert_equal(ui_fixture_payload.config.follow.fight.leader_name, 'Niightsiide', 'UI-authored fixture fight leader name mismatch')
 	assert_equal(ui_fixture_payload.config.follow.partner.puller_name, 'Niightsiide', 'UI-authored fixture puller name mismatch')
 	assert_equal(ui_fixture_payload.config.targeting.target_ignore_names[1], 'Mob One', 'UI-authored fixture target ignore name mismatch')
@@ -1373,7 +1378,7 @@ local function main()
 	}, contract.validate_structured_profile_config, missing_key_deps)
 	assert_true(missing_key_result.ok == true, 'structured profile diff should succeed for missing key payload')
 	assert_equal(missing_key_result.count, 1, 'structured profile diff should report one missing key difference')
-	assert_equal(missing_key_result.differences[1], 'config.targeting.targets', 'structured profile diff missing key path mismatch')
+	assert_equal(missing_key_result.differences[1], 'config.targeting.targets[1]', 'structured profile diff missing key path mismatch')
 
 	local metadata_only_payload = deep_clone(profile)
 	metadata_only_payload.profile.exported_at = '2100-12-31T23:59:59Z'
@@ -1405,6 +1410,24 @@ local function main()
 	}
 	local order_diff_result = exporter.diff_durable_config(order_diff_left, order_diff_right)
 	assert_equal(order_diff_result.count, 0, 'structured profile diff should ignore table key order')
+
+	do
+		local legacy_ws_target = deep_clone(profile.config)
+		legacy_ws_target.combat.weaponskill.minimum_tp = nil
+		legacy_ws_target.combat.weaponskill.allow_aoe = nil
+		legacy_ws_target.combat.weaponskill.wait_ignore_names = nil
+		local default_ws_current = deep_clone(profile.config)
+		default_ws_current.combat.weaponskill.minimum_tp = 1000
+		default_ws_current.combat.weaponskill.allow_aoe = true
+		default_ws_current.combat.weaponskill.wait_ignore_names = {}
+		local legacy_ws_default_diff = exporter.diff_durable_config(default_ws_current, legacy_ws_target)
+		assert_equal(legacy_ws_default_diff.count, 0, 'missing legacy Smart WS settings should equal their canonical defaults')
+		local explicit_ws_disabled_current = deep_clone(default_ws_current)
+		explicit_ws_disabled_current.combat.weaponskill.allow_aoe = false
+		local legacy_ws_disabled_diff = exporter.diff_durable_config(explicit_ws_disabled_current, legacy_ws_target)
+		assert_equal(legacy_ws_disabled_diff.count, 1, 'explicitly disabled Smart WS AoE preference must differ from a missing legacy default')
+		assert_equal(legacy_ws_disabled_diff.differences[1], 'config.combat.weaponskill.allow_aoe', 'legacy Smart WS AoE diff path mismatch')
+	end
 
 	local deterministic_left = {
 		beta = {
@@ -1798,6 +1821,26 @@ local function main()
 	assert_equal(nested_apply_result.candidate.partner_id, 99, 'structured profile apply should sync primary partner legacy field')
 	assert_equal(nested_apply_result.candidate.partner_id2, 100, 'structured profile apply should sync secondary partner legacy field')
 
+	do
+		local legacy_ws_apply_payload = deep_clone(profile)
+		legacy_ws_apply_payload.config.combat.weaponskill.minimum_tp = nil
+		legacy_ws_apply_payload.config.combat.weaponskill.allow_aoe = nil
+		legacy_ws_apply_payload.config.combat.weaponskill.wait_ignore_names = nil
+		local legacy_ws_apply_deps = make_fake_fs({
+			[durable_path] = profile_v2.serialize_structured_profile(legacy_ws_apply_payload),
+		})
+		local legacy_ws_apply_settings = deep_clone(flat)
+		local legacy_ws_apply_result = exporter.apply_structured_profile_file_to_settings(legacy_ws_apply_settings, {
+			character = 'Redrogue',
+			main_job = 'PLD',
+			sub_job = 'WAR',
+		}, contract.validate_structured_profile_config, legacy_ws_apply_deps)
+		assert_true(legacy_ws_apply_result.ok == true, 'legacy structured profile without current Smart WS settings should apply')
+		assert_equal(legacy_ws_apply_result.candidate.weaponskill_min_tp, 1000, 'legacy structured profile should project the Smart WS minimum TP compatibility default')
+		assert_equal(legacy_ws_apply_result.candidate.weaponskill_allow_aoe, true, 'legacy structured profile should project the Smart WS AoE compatibility default')
+		assert_deep_equal(legacy_ws_apply_result.candidate.wait_ignore_names, {}, 'legacy structured profile should project the Smart WS wait-ignore compatibility default')
+	end
+
 	local metadata_apply_payload = deep_clone(profile)
 	metadata_apply_payload.profile.character = 'SomeoneElse'
 	metadata_apply_payload.profile.main_job = 'THF'
@@ -1993,6 +2036,24 @@ local function main()
 	assert_deep_equal(rawget(_G, 'UC_ACTIVE_PROFILE'), live_conversion_failure_active_snapshot, 'live profilev2 apply conversion failure must not mutate active profile')
 
 	run_profile_v2_autoload_selftest(profile_v2, active_config, contract, flat, durable_path)
+
+	local encounter_settings = deep_clone(flat)
+	encounter_settings.encounter_enabled = true
+	encounter_settings.encounter_id = 'sortie_ghatjot'
+	encounter_settings.encounter_water_damage = 'enforce'
+	encounter_settings.encounter_water_skillchain = 'warn'
+	encounter_settings.encounter_repeat_action_wall = 'off'
+	encounter_settings.encounter_repeat_action_guard_s = 10.0
+	local encounter_profile = profile_v2.build_structured_profile(encounter_settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+		source = 'test',
+	})
+	assert_equal(encounter_profile.config.encounter.enabled, true, 'profile v2 encounter enabled mismatch')
+	assert_equal(encounter_profile.config.encounter.id, 'sortie_ghatjot', 'profile v2 encounter ID mismatch')
+	assert_equal(encounter_profile.config.encounter.policy.water_skillchain, 'warn', 'profile v2 encounter policy mismatch')
+	assert_equal(encounter_profile.config.encounter.tuning.repeat_action_guard_s, 10.0, 'profile v2 encounter tuning mismatch')
 
 	_G.UC_normalize_settings_table = previous_global_uc_normalize_settings_table
 	_G.uc_normalize_settings_table = previous_global_uc_normalize_settings_table_lower

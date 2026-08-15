@@ -48,6 +48,7 @@ function M.new(deps)
 	local fight_leader_enabled = require_function(deps, 'fight_leader_enabled')
 	local fight_leader_id = require_function(deps, 'fight_leader_id')
 	local fight_leader_target_id = require_function(deps, 'fight_leader_target_id')
+	local add_control_enabled = require_function(deps, 'add_control_enabled')
 	local select_pull = require_function(deps, 'select_pull')
 	local build_party_id_set = require_function(deps, 'build_party_id_set')
 	local prime_unclaimed_party_aggressive_ok = require_function(deps, 'prime_unclaimed_party_aggressive_ok')
@@ -184,6 +185,7 @@ function M.new(deps)
 			reason_code = reason_code,
 			required_tp = required_tp,
 			skillchain_plan = skillchain_plan,
+			smart_aoe_guard = ws_selection.smart_aoe_guard == true,
 			detail = {
 				tp = tp,
 				ws_pick_reason = tostring(ws_pick_reason or ''),
@@ -438,6 +440,12 @@ function M.new(deps)
 		if engaged and fight_leader_force_target_id > 0 then
 			local current_target_id = tonumber(ctx.target_present == true and ctx.target and ctx.target.id) or 0
 			if current_target_id == fight_leader_force_target_id then
+				return
+			end
+			-- Engaged add control owns target changes between configured adds and the
+			-- leader target. The target-control provider will select the leader again
+			-- when no configured add remains.
+			if bool_setting(add_control_enabled(ctx.settings), false) then
 				return
 			end
 		end

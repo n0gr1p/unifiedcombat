@@ -296,6 +296,10 @@ public partial class MainForm
         {
             throw new ActivityProfileException("There are no active sessions to capture.");
         }
+        if (!ValidateEncounterConfiguration(out var encounterError))
+        {
+            throw new ActivityProfileException(encounterError);
+        }
         if (!ValidateFormationConfiguration(out var formationError))
         {
             throw new ActivityProfileException(formationError);

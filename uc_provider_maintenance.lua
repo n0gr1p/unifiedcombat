@@ -270,6 +270,11 @@ function M.new(deps)
 			if type(action) == 'table' and tostring(action.action_name or '') ~= '' then
 				local camp_anchor = require('uc_camp_anchor').resolve_current_anchor()
 				local pulling_config = require('uc_active_config').get_path('config.combat.pulling')
+				local formation_status = rawget(_G, 'UC_FORMATION_STATUS')
+				local allow_formation_partial = type(formation_status) == 'table'
+					and formation_status.enabled == true
+					and formation_status.kind == 'generic'
+					and formation_status.phase == 'active'
 				if type(pulling_config) ~= 'table' or tonumber(pulling_config.leash_yalms) == nil then
 					error('Bard positioning requires normalized combat.pulling configuration')
 				end
@@ -283,10 +288,11 @@ function M.new(deps)
 					radius = brd_config.recovery_range_yalms,
 					camp_anchor = camp_anchor,
 					camp_leash_yalms = camp_anchor and pulling_config.leash_yalms or nil,
+					allow_formation_partial = allow_formation_partial,
 				})
 				if ready_to_emit ~= true then
-					brd_maintenance.note_positioning_block(positioning_reason)
 					local positioning_status = brd_positioning.status()
+					brd_maintenance.note_positioning_block(positioning_reason, positioning_status)
 					if positioning_status.phase == 'waiting' or positioning_status.phase == 'failed' then
 						brd_maintenance.defer_positioning(positioning_reason)
 					end

@@ -180,6 +180,48 @@ local function main()
     assert_equal(reason, 'formation_movement_lock', 'formation movement lock reason mismatch')
 
     set_state({
+        flag = false,
+        now = 10,
+        intent_until = 0,
+        owner = 'scheduler_formation',
+        lock_until = 15,
+        fight_follow_until = 0,
+        preengage = false,
+        target = nil,
+    })
+    suppress, reason = follow.should_suppress_follow_or_path_return_now({ combat_participant = false }, _G.__TEST_NOW)
+    assert_equal(suppress, true, 'formation ownership must suppress follow when transition arbitration is disabled')
+    assert_equal(reason, 'formation_movement_lock', 'unconditional formation movement lock reason mismatch')
+
+    set_state({
+        flag = false,
+        now = 10,
+        intent_until = 0,
+        owner = 'scheduler_reaction',
+        lock_until = 15,
+        fight_follow_until = 0,
+        preengage = false,
+        target = nil,
+    })
+    suppress, reason = follow.should_suppress_follow_or_path_return_now({ combat_participant = false }, _G.__TEST_NOW)
+    assert_equal(suppress, true, 'active or holding reaction range ownership must unconditionally suppress Party Follow')
+    assert_equal(reason, 'reaction_movement_lock', 'reaction range movement lock reason mismatch')
+
+    set_state({
+        flag = false,
+        now = 16,
+        intent_until = 0,
+        owner = 'scheduler_reaction',
+        lock_until = 15,
+        fight_follow_until = 0,
+        preengage = false,
+        target = nil,
+    })
+    suppress, reason = follow.should_suppress_follow_or_path_return_now({ combat_participant = false }, _G.__TEST_NOW)
+    assert_equal(suppress, false, 'expired reaction range ownership must allow normal movement to resume')
+    assert_equal(reason, 'flag_off', 'expired reaction range ownership release reason mismatch')
+
+    set_state({
         flag = true,
         now = 10,
         intent_until = 0,
@@ -426,6 +468,162 @@ local function main()
     assert_equal(_G.UC_MOVEMENT_OWNER, 'scheduler', 'party-follow suppression must preserve scheduler ownership')
     follow.prerender()
     assert_equal(#run_calls, 1, 'party follow must not start or repeatedly stop movement while scheduler ownership remains active')
+
+    local generic_runtime = require('uc_generic_formation_runtime').build({
+        solver = require('uc_generic_formation'),
+        dispatcher = require('uc_scheduler_dispatcher'),
+        run = windower.ffxi.run,
+        source_prefix = 'formation_follow_regression',
+    })
+    local formation_config = {
+        enabled = true,
+        encounter = 'sortie_ghatjot',
+        placement = {
+            mode = 'radial_band',
+            anchor = 'boss',
+            preferred_radius = 2,
+            minimum_radius = 2,
+            maximum_radius = 2,
+            radius_step = 1,
+            angle_step_deg = 90,
+        },
+        hysteresis = {
+            start_distance = 0.5,
+            stop_distance = 0.25,
+        },
+        constraints = {
+            avoid_encounter_hazards = false,
+            hazard_margin = 0,
+        },
+    }
+    set_active_profile({
+        ownership = {
+            domain_movement_enabled = true,
+            domain_follow_enabled = true,
+        },
+        movement = {
+            enabled = true,
+            formation = formation_config,
+        },
+        follow = {
+            party = {
+                enabled = true,
+                leader_id = 77,
+                leader_name = 'Leader',
+                min = 1.25,
+                max = 22,
+            },
+        },
+    })
+    _G.UC_ENABLE_COMBAT_TRANSITION_MOVEMENT_ARBITRATION = false
+    _G.UC_MOVEMENT_OWNER = 'none'
+    _G.UC_MOVEMENT_LOCK_UNTIL = _G.__TEST_NOW
+    fake_player.status = 0
+    fake_self_mob.x = 8
+    fake_self_mob.y = 0
+    run_calls = {}
+    follow.prerender()
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'follow', 'enabled Party Follow must establish the competing pre-formation vector')
+    assert_equal(#run_calls, 1, 'enabled Party Follow regression setup must issue one leader vector')
+
+    local formation_acted, formation_reason, formation_owns = generic_runtime.run_tick({
+        config = formation_config,
+        me = { id = 10, name = 'Tester', x = 8, y = 0 },
+        boss = { id = 900, name = 'Apex Crab', x = 0, y = 0 },
+        encounter_origin = nil,
+        party_members = {},
+        encounter_hazards = {},
+        was_moving = false,
+    })
+    assert_equal(formation_acted, true, 'generic formation must dispatch its corrective vector with Party Follow enabled')
+    assert_equal(formation_reason, 'FORMATION_REPOSITION', 'generic formation/Party Follow regression reason mismatch')
+    assert_equal(formation_owns, true, 'generic formation must claim movement from Party Follow')
+    assert_equal(#run_calls, 2, 'generic formation must replace the Party Follow vector exactly once')
+    _G.UC_MOVEMENT_OWNER = 'scheduler_formation'
+    _G.UC_MOVEMENT_LOCK_UNTIL = _G.__TEST_NOW + 0.4
+	_G.UC_FORMATION_STATUS = {
+		enabled = true,
+		kind = 'generic',
+		phase = 'active',
+		reason = 'FORMATION_REPOSITION',
+	}
+
+    follow.prerender()
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'scheduler_formation',
+        'Party Follow must not reclaim movement from generic formation when transition arbitration is disabled')
+    assert_equal(#run_calls, 3, 'Party Follow must issue only its one-time transition stop under generic formation ownership')
+    assert_equal(run_calls[3].x, false, 'generic formation ownership transition stop call shape')
+	assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP, false,
+		'active generic formation must clear Party Follow catch-up intent for defensive casting')
+	assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL, 0,
+		'active generic formation must clear the Party Follow catch-up hold window')
+
+    formation_acted, formation_reason, formation_owns = generic_runtime.run_tick({
+        config = formation_config,
+        me = { id = 10, name = 'Tester', x = 8, y = 0 },
+        boss = { id = 900, name = 'Apex Crab', x = 0, y = 0 },
+        encounter_origin = nil,
+        party_members = {},
+        encounter_hazards = {},
+        was_moving = true,
+    })
+    assert_equal(formation_acted, true, 'generic formation must resume after the Party Follow transition stop')
+    assert_equal(formation_reason, 'FORMATION_REPOSITION', 'resumed generic formation reason mismatch')
+    assert_equal(formation_owns, true, 'resumed generic formation must retain movement ownership')
+    assert_equal(#run_calls, 4, 'generic formation must restore its vector after the transition stop')
+    _G.UC_MOVEMENT_OWNER = 'scheduler_formation'
+    _G.UC_MOVEMENT_LOCK_UNTIL = _G.__TEST_NOW + 0.4
+    follow.prerender()
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'scheduler_formation',
+        'Party Follow must continue yielding to generic formation ownership')
+    assert_equal(#run_calls, 4, 'Party Follow must not overwrite the restored generic formation vector')
+
+	_G.UC_ENABLE_COMBAT_TRANSITION_MOVEMENT_ARBITRATION = true
+	_G.UC_MOVEMENT_OWNER = 'scheduler_brd'
+	_G.UC_MOVEMENT_LOCK_UNTIL = _G.__TEST_NOW + 0.4
+	_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP = true
+	_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL = _G.__TEST_NOW + 0.4
+	follow.prerender()
+	assert_equal(_G.UC_MOVEMENT_OWNER, 'scheduler_brd',
+		'Bard reposition must retain movement ownership while formation is active')
+	assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP, false,
+		'active formation must keep Party Follow catch-up from suppressing Bard song coverage work')
+	assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL, 0,
+		'Bard reposition under active formation must not retain a Party Follow catch-up window')
+
+	_G.UC_MOVEMENT_OWNER = 'scheduler'
+	_G.UC_MOVEMENT_LOCK_UNTIL = _G.__TEST_NOW + 0.4
+	_G.UC_MOVEMENT_MODE = 'CAST_FREEZE'
+	_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP = true
+	_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL = _G.__TEST_NOW + 0.4
+	follow.prerender()
+	assert_equal(_G.UC_MOVEMENT_OWNER, 'scheduler',
+		'defensive/GEO cast settling must retain scheduler ownership while formation is active')
+	assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP, false,
+		'active formation must keep Party Follow catch-up from suppressing defensive and GEO spells')
+	assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL, 0,
+		'defensive/GEO casting under active formation must not retain a Party Follow catch-up window')
+
+	_G.UC_FORMATION_STATUS = {
+		enabled = true,
+		kind = 'generic',
+		phase = 'origin_captured',
+		reason = 'FORMATION_WAITING_FOR_ENGAGE',
+	}
+	_G.UC_MOVEMENT_OWNER = 'scheduler_brd'
+	_G.UC_MOVEMENT_LOCK_UNTIL = _G.__TEST_NOW + 0.4
+	_G.UC_MOVEMENT_MODE = 'BRD_REPOSITION'
+	_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP = false
+	_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL = 0
+	follow.prerender()
+	assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP, true,
+		'Party Follow catch-up must remain active when formation is waiting rather than moving')
+	assert_true(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL > _G.__TEST_NOW,
+		'waiting formation must preserve the normal Party Follow catch-up window')
+	_G.UC_FORMATION_STATUS = nil
+	_G.UC_MOVEMENT_MODE = nil
+    fake_self_mob.x = 0
+    fake_self_mob.y = 0
 
     run_calls = {}
     _G.UC_ZONE_SUSPEND_UNTIL = _G.__TEST_NOW + 10
