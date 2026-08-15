@@ -14,7 +14,7 @@ local RAW_ACTOR_NAMES = {
 	Kei = true,
 }
 
-local SORTIE_ZONE_NAME = "Outer Ra'Kaznar [U3]"
+local SORTIE_ZONE_ID = 133
 
 local function emit(event_code, fields, key, interval)
 	local logger = rawget(_G, 'UC_ACTION_TIMELINE_LOG')
@@ -62,10 +62,13 @@ local function encounter_config()
 	return out
 end
 
-local function zone_name()
+local function current_zone_id()
 	local info = windower.ffxi.get_info()
-	local zone_id = tonumber(info and info.zone)
-	local zone = zone_id and res.zones and res.zones[zone_id] or nil
+	return tonumber(info and info.zone)
+end
+
+local function zone_name(zone_id)
+	local zone = res.zones and res.zones[zone_id] or nil
 	return tostring(zone and zone.en or '')
 end
 
@@ -198,9 +201,11 @@ function M.observe(now)
 	if configure_reason == 'DISABLED' then
 		return false, configure_reason
 	end
+	local observed_zone_id = current_zone_id()
 	local ok, reason = encounter_state.observe_snapshot({
 		now = observed_at,
-		zone_name = zone_name(),
+		zone_id = observed_zone_id,
+		zone_name = zone_name(observed_zone_id),
 		actors = encounter_actors(),
 		members = observed_members(),
 	})
@@ -294,7 +299,8 @@ local function raw_target_summaries(act)
 end
 
 local function emit_raw_encounter_candidate(act, category, ability_name, ability_id, observed_at)
-	if zone_name() ~= SORTIE_ZONE_NAME then
+	local observed_zone_id = current_zone_id()
+	if observed_zone_id ~= SORTIE_ZONE_ID then
 		return false
 	end
 	local actor_id = tonumber(act.actor_id) or 0
@@ -317,7 +323,8 @@ local function emit_raw_encounter_candidate(act, category, ability_name, ability
 		targets_summary = targets_summary,
 		actions_summary = actions_summary,
 		observed_at = observed_at,
-		zone_name = SORTIE_ZONE_NAME,
+		zone_id = observed_zone_id,
+		zone_name = zone_name(observed_zone_id),
 	})
 	return true
 end
@@ -376,7 +383,7 @@ function M.observe_action_result(event)
 	local target_id = tonumber(event.target_id) or 0
 	local target = target_id > 0 and windower.ffxi.get_mob_by_id(target_id) or nil
 	local target_name = tostring(target and target.name or '')
-	if zone_name() == SORTIE_ZONE_NAME and RAW_ACTOR_NAMES[target_name] == true then
+	if current_zone_id() == SORTIE_ZONE_ID and RAW_ACTOR_NAMES[target_name] == true then
 		emit('ENCOUNTER_RAW_ACTION_RESULT_CANDIDATE', {
 			action_class = tostring(event.action_class or ''),
 			action_key = tostring(event.action_key or ''),
@@ -584,7 +591,7 @@ function M.status_lines()
 			tonumber(cesspool.pair_index) or 0,
 			tostring(cesspool.sequence_confidence or '')
 		),
-		('repeat_action_observations=%d hazard_candidates=%d unresolved_hazards=%d last_hazard=%s'):format(
+		('repeat_action_observations=%d hazard_candidates=%d active_hazards=%d unresolved_hazards=%d last_hazard=%s'):format(
 			(function()
 				local count = 0
 				for _ in pairs(snapshot.recent_repeat_actions or {}) do
@@ -593,6 +600,7 @@ function M.status_lines()
 				return count
 			end)(),
 			#(snapshot.hazard_candidates or {}),
+			#snapshot.active_hazards,
 			tonumber(snapshot.unresolved_hazard_observations) or 0,
 			tostring(snapshot.last_hazard_diagnostic or '')
 		),
@@ -631,6 +639,17 @@ function M.status_lines()
 			tonumber(candidate.target_id) or 0,
 			tostring(candidate.observed_at or ''),
 			tostring(candidate.source or '')
+		)
+	end
+	for i = 1, #snapshot.active_hazards do
+		local hazard = snapshot.active_hazards[i]
+		lines[#lines + 1] = ('active_hazard sequence=%d center=%s radius=%.2f target_id=%d observed_at=%s source=%s'):format(
+			tonumber(hazard.sequence) or 0,
+			point_text(hazard.center),
+			hazard.avoid_radius,
+			tonumber(hazard.target_id) or 0,
+			tostring(hazard.observed_at or ''),
+			tostring(hazard.source or '')
 		)
 	end
 	return lines

@@ -94,6 +94,7 @@ function M.build(opts)
 		error = '',
 		boss = nil,
 		origin = nil,
+		active_hazards = {},
 		origin_candidate = nil,
 		origin_candidate_since = 0,
 		last_reset_reason = 'initial',

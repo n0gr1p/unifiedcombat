@@ -1014,7 +1014,7 @@ public partial class MainForm
         encounterRoot.Controls.Add(_encounterEnabled);
         encounterRoot.Controls.Add(new Label
         {
-            Text = "Profile-scoped safeguards for Sortie bosses. Ghatjot is ready; Dhartok spatial hazards remain disabled pending field validation.",
+            Text = "Profile-scoped safeguards for Sortie bosses, including validated Dhartok cloud avoidance through generic formation settings.",
             AutoSize = true,
             MaximumSize = new Size(760, 0),
             Padding = new Padding(0, 4, 0, 8),

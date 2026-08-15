@@ -2415,7 +2415,7 @@ public partial class MainForm
                 : isKei
                     ? "Kei elemental maintenance and Dancing Fullers reaction are ready to save."
                 : isDhartok
-                    ? "Dhartok policy is available, but spatial hazard handling remains blocked pending field validation."
+                    ? "Dhartok policy and validated cloud tracking are ready to save."
                     : "Ghatjot safeguards are ready to save."
             ;
         _encounterValidation.ForeColor = !enabled || valid ? SystemColors.ControlText : Color.Firebrick;
@@ -3029,7 +3029,7 @@ public partial class MainForm
                 ? _formationMockEnabled.Checked
                     ? "Ready to save. Mock mode drives formation only; encounter policies and hazards remain on live encounter state."
                     : generic && FormationEncounterValue() == "sortie_dhartok"
-                    ? "Ready to save. Dhartok hazard candidates remain telemetry-only pending field validation."
+                    ? "Ready to save. Validated Dhartok clouds are avoided when encounter hazard avoidance is enabled."
                     : "Ready to save. Movement domain is enabled."
                 : error;
         _formationValidation.ForeColor = !anyEnabled || valid ? SystemColors.ControlText : Color.Firebrick;

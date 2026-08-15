@@ -2,14 +2,14 @@
 
 ## Purpose
 
-This procedure gathers the live evidence required before Phase 4 may promote
-Dhartok hazard candidates into movement constraints. It also validates the Phase 1
+This procedure records the live evidence used to promote validated Dhartok clouds
+into movement constraints. It also validates the Phase 1
 zone, ability, target, and WS/BP observation contracts. Dhartok's gate is independent
 of Ghatjot's completed durable policy path.
 
 The raw capture path is intentionally independent of `config.encounter`. It only
-recognizes exact `Ghatjot` or `Dhartok` actors in the exact resource-derived zone
-`Outer Ra'Kaznar [U3]`. Raw candidates never activate encounter state, reject an
+recognizes exact `Ghatjot` or `Dhartok` actors in Windower zone ID `133`
+(`Outer Ra'Kaznar [U2]`). Raw candidates never activate encounter state, reject an
 action, create a trusted hazard, or dispatch movement.
 
 ## Capture preparation
@@ -80,24 +80,22 @@ rg -n "ENCOUNTER_RAW_(ABILITY|ACTION_RESULT)_CANDIDATE" data\logs\action_timelin
 
 ## Acceptance checklist
 
-- [ ] The live zone resolves exactly to `Outer Ra'Kaznar [U3]`.
-- [ ] Ghatjot and Dhartok actor IDs/names resolve without ambiguity.
-- [ ] Category 7 consistently represents the expected readied packet shape.
-- [ ] Category 11 consistently represents the expected completed packet shape.
-- [ ] Resource IDs resolve to the observed ability names on every client.
-- [ ] Cesspool pairing is repeatable across multiple sequences.
-- [ ] The second completed TP move has exactly one authoritative target, or the
+- [x] The live zone resolves to Windower zone ID `133` (`Outer Ra'Kaznar [U2]`).
+- [x] Ghatjot and Dhartok actor IDs/names resolve without ambiguity.
+- [x] Category 7 consistently represents the expected readied packet shape.
+- [x] Category 11 consistently represents the expected completed packet shape.
+- [x] Resource IDs resolve to the observed ability names on every client.
+- [x] Cesspool pairing is repeatable across multiple sequences.
+- [x] The second completed TP move has exactly one authoritative target, or the
       implementation is revised to represent the actual packet shape without
       guessing.
-- [ ] Target coordinates agree across clients closely enough to represent one world
+- [x] Target coordinates agree across clients closely enough to represent one world
       position.
-- [ ] Independent in-game observation confirms the cloud appears at that position;
+- [x] Independent in-game observation confirms the cloud appears at that position;
       packet structure alone is insufficient.
-- [ ] Successful WS/BP observations are recorded, while failed/interrupted actions
+- [x] Successful WS/BP observations are recorded, while failed/interrupted actions
       are not accepted as repeat-wall timestamps.
-- [ ] No raw candidate changed policy, movement, or durable configuration.
+- [x] No raw candidate changed policy, movement, or durable configuration.
 
-Phase 4 remains gated for Dhartok until these items are reviewed and recorded under
-`docs/TestResults/`. Ghatjot does not create a dynamic spatial hazard, and its hard
-policies do not depend on a named boss ability, so this gate does not prevent
-Ghatjot from being enabled through durable configuration.
+The reviewed evidence and Phase 4 activation decision are recorded in
+`docs/TestResults/sortie_dhartok_hazard_acceptance_2026-08-14.md`.

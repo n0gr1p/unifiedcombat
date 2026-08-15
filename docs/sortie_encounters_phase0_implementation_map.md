@@ -32,10 +32,10 @@ Implementation branch: `codex/encounter-work`.
 ### Encounter identity and status observations
 
 - `uc_encounter_registry.lua` owns the configured ID, family, actor name, and
-  resource-derived Sortie zone name for Ghatjot and Dhartok.
+  authoritative Windower Sortie zone ID for Ghatjot and Dhartok.
 - `uc_encounter_state.lua` owns transient identity, boss binding, origin capture,
   mechanic telemetry, Poison/Taint facts, recent successful WS/BP timestamps, and
-  untrusted hazard candidates.
+  diagnostic hazard candidates plus validated active hazards.
 - `uc_encounter_runtime.lua` adapts Windower mob, party, buff, resource, and action
   data into the state-owner contract.
 - Exact Ghatjot/Dhartok actions in the exact Sortie zone also emit explicitly
@@ -201,50 +201,40 @@ unsatisfied geometry, scheduler ownership/precedence, Lilith compatibility, isol
 mock binding, idle/engaged transitions, origin capture, actor movement, same-name
 actor stability, and explicit retargeting after actor loss.
 
-## Remaining work blocked solely on Dhartok field evidence
+## Dhartok Phase 4 hazard activation
 
-Generic formation activation is complete for both Sortie encounter identities, but
-the runtime passes an explicitly empty active-hazard list to the solver. The durable
-`avoid_encounter_hazards` preference is stored for future use; it does not promote or
-consume `hazard_candidates` today.
+The 2026-08-14 field capture completed the Dhartok placement gate. Only exact tracked
+TP moves advance the post-Cesspool pair; auto-attack packets do not. A second move
+with exactly one resolved target creates a fight-scoped active cloud centered on the
+recorded target position with a `3.0`-yalm radius. Multi-target or unresolved second
+moves fail closed and remain diagnostics only.
 
-Only the following Phase 4 work remains blocked on the checklist in
-`docs/sortie_encounters_field_validation.md`:
-
-- prove the Cesspool/double-TP packet sequence across repeat observations;
-- prove the authoritative cloud target and world position across clients;
-- confirm in game that the cloud appears at that resolved position;
-- define trusted hazard lifetime/radius from reviewed evidence;
-- promote validated clouds from diagnostic `hazard_candidates` to a distinct active
-  hazard list consumed by generic formation.
-
-Until that evidence is recorded and reviewed, Dhartok candidates remain diagnostic
-telemetry only. This gate does not block Ghatjot formation, Dhartok role-free static
-geometry, encounter policy, or transient encounter-origin use.
+Active clouds have no timed expiration and are cleared by the existing encounter
+reset lifecycle. The formation runtime supplies them to the generic solver only when
+the durable `avoid_encounter_hazards` preference is enabled. The configured hazard
+margin remains additive outside the confirmed cloud radius. Named-mob and mock
+formations receive explicit empty hazard lists.
 
 ## Phase 1 safety properties
 
 - No encounter module calls `windower.send_command`, movement APIs, or a dispatcher.
 - No scheduler proposal is rejected, rescored, or replaced.
-- No hazard candidate is published as an active spatial constraint.
+- Only a validated, single-target second TP move after Cesspool is published as an
+  active spatial constraint; diagnostic-only candidates are never published.
 - Ambiguous actor identity and unresolved target coordinates produce explicit
   diagnostics; no actor or coordinate is guessed.
 - Runtime state is module-owned and is not serialized into profile configuration.
 
-## Remaining Phase 1 validation
+## Field validation result
 
-- Field-confirm the resource zone name in a live Sortie instance.
-- Field-capture named ability packets and confirm category/name mapping. This remains
-  diagnostic-only for Ghatjot because no Ghatjot policy depends on a TP-move name.
-- Field-confirm whether the completed Dhartok action carries exactly one authoritative
-  target for cloud-location telemetry.
-- Field-confirm the Cesspool double-TP sequence before promoting candidates to hazards.
-- Field-confirm WS and Blood Pact success observations from local and remote actors.
-
-Until the Dhartok checks are complete, Cesspool timing, pair interpretation, and
-candidate hazard positions remain telemetry-only. They do not gate Ghatjot's actor-
-scoped Water safeguards or Poison/Taint facts.
+The zone, action-category, resource-name, Cesspool pair, authoritative single-target
+position, and WS result contracts were captured across the participating clients.
+Independent in-game observation confirmed that the cloud appears at the second TP
+move target, has a `3.0`-yalm radius, and persists for the fight. Ambiguous multi-target
+second moves continue to produce no active hazard.
 
 The capture procedure and acceptance checklist are in
 `docs/sortie_encounters_field_validation.md`. The corresponding log summarizer is
 `tests/replay/harness/audit_sortie_encounter_field_log.lua`.
+The reviewed result is recorded in
+`docs/TestResults/sortie_dhartok_hazard_acceptance_2026-08-14.md`.

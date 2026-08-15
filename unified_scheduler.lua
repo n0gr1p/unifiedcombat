@@ -7407,6 +7407,7 @@ scheduler.providers.combat = require('uc_provider_combat').new({
 	fight_leader_enabled = require('uc_runtime_overrides').fight_leader_enabled,
 	fight_leader_id = require('uc_runtime_overrides').fight_leader_id,
 	fight_leader_target_id = uc_fight_leader.leader_target_id,
+	add_control_enabled = combat_core.add_control_enabled_for_scheduler,
 	select_pull = combat_core.select_pull_for_scheduler,
 	build_party_id_set = p1_build_party_id_set,
 	prime_unclaimed_party_aggressive_ok = p1_prime_unclaimed_party_aggressive_ok,

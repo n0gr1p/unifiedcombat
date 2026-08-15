@@ -45,7 +45,7 @@ end
 
 package.loaded.resources = {
 	zones = {
-		[189] = { en = "Outer Ra'Kaznar [U3]" },
+		[133] = { en = "Outer Ra'Kaznar [U2]" },
 	},
 	buffs = {
 		[101] = { en = 'Poison' },
@@ -63,6 +63,7 @@ package.loaded.resources = {
 		[900] = { en = 'Cesspool' },
 		[901] = { en = 'Fetid Eddies' },
 		[902] = { en = 'Noyade' },
+		[903] = { en = 'Auto Attack 1' },
 	},
 }
 package.loaded.uc_active_config = {
@@ -83,7 +84,7 @@ package.loaded.uc_party_buff_tracker = {
 _G.windower = {
 	ffxi = {
 		get_info = function()
-			return { zone = 189 }
+			return { zone = 133 }
 		end,
 		get_mob_array = function()
 			return mobs
@@ -162,11 +163,21 @@ assert_true(ok, 'runtime should resolve Cesspool resource')
 assert_equal(reason, 'CESSPOOL_TELEMETRY_STARTED', 'runtime Cesspool reason mismatch')
 assert_equal(timeline_events[#timeline_events - 1].event_code, 'ENCOUNTER_RAW_ABILITY_CANDIDATE', 'raw capture event missing')
 assert_equal(timeline_events[#timeline_events - 1].fields.actor_name, 'Dhartok', 'raw capture actor mismatch')
+assert_equal(timeline_events[#timeline_events - 1].fields.zone_id, 133, 'raw capture zone id mismatch')
+assert_equal(timeline_events[#timeline_events - 1].fields.zone_name, "Outer Ra'Kaznar [U2]", 'raw capture zone name mismatch')
 assert_equal(timeline_events[#timeline_events - 1].fields.target_count, 1, 'raw capture target count mismatch')
 assert_true(
 	timeline_events[#timeline_events - 1].fields.targets_summary:find('id=4001', 1, true) ~= nil,
 	'raw capture target summary missing id'
 )
+
+runtime.on_action({
+	actor_id = 3001,
+	category = 11,
+	param = 903,
+	targets = { { id = 4001, actions = {} } },
+}, 11.5)
+assert_equal(runtime.snapshot().cesspool.pair_index, 0, 'runtime auto attack advanced Cesspool pairing')
 
 runtime.on_action({
 	actor_id = 3001,
@@ -181,7 +192,7 @@ ok, reason = runtime.on_action({
 	targets = { { id = 4001, actions = {} } },
 }, 13.0)
 assert_true(ok, 'runtime should observe second TP completion')
-assert_equal(reason, 'HAZARD_CANDIDATE_OBSERVED', 'runtime hazard candidate reason mismatch')
+assert_equal(reason, 'HAZARD_ACTIVATED', 'runtime hazard activation reason mismatch')
 
 ok, reason = runtime.observe_action_result({
 	action_class = 'bp',
@@ -198,6 +209,8 @@ assert_equal(reason, 'ACTION_SUCCESS_OBSERVED', 'runtime BP result reason mismat
 snapshot = runtime.snapshot()
 assert_equal(#snapshot.hazard_candidates, 1, 'runtime hazard candidate count mismatch')
 assert_equal(snapshot.hazard_candidates[1].target_id, 4001, 'runtime hazard target mismatch')
+assert_equal(#snapshot.active_hazards, 1, 'runtime active hazard count mismatch')
+assert_equal(snapshot.active_hazards[1].avoid_radius, 3.0, 'runtime active hazard radius mismatch')
 assert_true(snapshot.recent_repeat_actions['bp:777'] ~= nil, 'runtime BP timestamp missing')
 assert_true(#runtime.status_lines() >= 9, 'runtime diagnostics should expose detailed status')
 

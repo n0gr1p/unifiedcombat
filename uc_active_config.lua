@@ -1095,6 +1095,7 @@ function M.build_active_profile_from_v2_payload(payload, context)
 	if type(config.combat) == 'table' then
 		compatibility_source.combat = {
 			pulling = config.combat.pulling,
+			weaponskill = config.combat.weaponskill,
 		}
 	end
 	if type(config.maintenance) == 'table' then
@@ -1109,6 +1110,7 @@ function M.build_active_profile_from_v2_payload(payload, context)
 		end
 		if type(config.combat) == 'table' then
 			config.combat.pulling = clone_value(normalized_or_err.combat.pulling)
+			config.combat.weaponskill = clone_value(normalized_or_err.combat.weaponskill)
 		end
 		if type(config.maintenance) == 'table' then
 			config.maintenance.geo = clone_value(normalized_or_err.maintenance.geo)

@@ -1378,7 +1378,7 @@ local function main()
 	}, contract.validate_structured_profile_config, missing_key_deps)
 	assert_true(missing_key_result.ok == true, 'structured profile diff should succeed for missing key payload')
 	assert_equal(missing_key_result.count, 1, 'structured profile diff should report one missing key difference')
-	assert_equal(missing_key_result.differences[1], 'config.targeting.targets', 'structured profile diff missing key path mismatch')
+	assert_equal(missing_key_result.differences[1], 'config.targeting.targets[1]', 'structured profile diff missing key path mismatch')
 
 	local metadata_only_payload = deep_clone(profile)
 	metadata_only_payload.profile.exported_at = '2100-12-31T23:59:59Z'
@@ -1410,6 +1410,24 @@ local function main()
 	}
 	local order_diff_result = exporter.diff_durable_config(order_diff_left, order_diff_right)
 	assert_equal(order_diff_result.count, 0, 'structured profile diff should ignore table key order')
+
+	do
+		local legacy_ws_target = deep_clone(profile.config)
+		legacy_ws_target.combat.weaponskill.minimum_tp = nil
+		legacy_ws_target.combat.weaponskill.allow_aoe = nil
+		legacy_ws_target.combat.weaponskill.wait_ignore_names = nil
+		local default_ws_current = deep_clone(profile.config)
+		default_ws_current.combat.weaponskill.minimum_tp = 1000
+		default_ws_current.combat.weaponskill.allow_aoe = true
+		default_ws_current.combat.weaponskill.wait_ignore_names = {}
+		local legacy_ws_default_diff = exporter.diff_durable_config(default_ws_current, legacy_ws_target)
+		assert_equal(legacy_ws_default_diff.count, 0, 'missing legacy Smart WS settings should equal their canonical defaults')
+		local explicit_ws_disabled_current = deep_clone(default_ws_current)
+		explicit_ws_disabled_current.combat.weaponskill.allow_aoe = false
+		local legacy_ws_disabled_diff = exporter.diff_durable_config(explicit_ws_disabled_current, legacy_ws_target)
+		assert_equal(legacy_ws_disabled_diff.count, 1, 'explicitly disabled Smart WS AoE preference must differ from a missing legacy default')
+		assert_equal(legacy_ws_disabled_diff.differences[1], 'config.combat.weaponskill.allow_aoe', 'legacy Smart WS AoE diff path mismatch')
+	end
 
 	local deterministic_left = {
 		beta = {
@@ -1802,6 +1820,26 @@ local function main()
 	assert_equal(nested_apply_result.candidate.partner_ids[1], 99, 'structured profile apply should update nested partner id list')
 	assert_equal(nested_apply_result.candidate.partner_id, 99, 'structured profile apply should sync primary partner legacy field')
 	assert_equal(nested_apply_result.candidate.partner_id2, 100, 'structured profile apply should sync secondary partner legacy field')
+
+	do
+		local legacy_ws_apply_payload = deep_clone(profile)
+		legacy_ws_apply_payload.config.combat.weaponskill.minimum_tp = nil
+		legacy_ws_apply_payload.config.combat.weaponskill.allow_aoe = nil
+		legacy_ws_apply_payload.config.combat.weaponskill.wait_ignore_names = nil
+		local legacy_ws_apply_deps = make_fake_fs({
+			[durable_path] = profile_v2.serialize_structured_profile(legacy_ws_apply_payload),
+		})
+		local legacy_ws_apply_settings = deep_clone(flat)
+		local legacy_ws_apply_result = exporter.apply_structured_profile_file_to_settings(legacy_ws_apply_settings, {
+			character = 'Redrogue',
+			main_job = 'PLD',
+			sub_job = 'WAR',
+		}, contract.validate_structured_profile_config, legacy_ws_apply_deps)
+		assert_true(legacy_ws_apply_result.ok == true, 'legacy structured profile without current Smart WS settings should apply')
+		assert_equal(legacy_ws_apply_result.candidate.weaponskill_min_tp, 1000, 'legacy structured profile should project the Smart WS minimum TP compatibility default')
+		assert_equal(legacy_ws_apply_result.candidate.weaponskill_allow_aoe, true, 'legacy structured profile should project the Smart WS AoE compatibility default')
+		assert_deep_equal(legacy_ws_apply_result.candidate.wait_ignore_names, {}, 'legacy structured profile should project the Smart WS wait-ignore compatibility default')
+	end
 
 	local metadata_apply_payload = deep_clone(profile)
 	metadata_apply_payload.profile.character = 'SomeoneElse'

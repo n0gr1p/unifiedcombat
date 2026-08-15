@@ -13,6 +13,7 @@ local SHARED_ABILITY_NAMES = {
 local ORIGIN_CAPTURE_STABLE_S = 0.50
 local ORIGIN_CAPTURE_TOLERANCE = 0.10
 local DHARTOK_CESSPOOL_TELEMETRY_DURATION_S = 180.0
+local DHARTOK_HAZARD_RADIUS = 3.0
 
 local state = {
 	enabled = false,
@@ -30,6 +31,7 @@ local state = {
 	recent_repeat_actions = {},
 	cesspool = nil,
 	hazard_candidates = {},
+	active_hazards = {},
 	unresolved_hazard_observations = 0,
 	last_hazard_diagnostic = '',
 	policy_modes = {},
@@ -100,6 +102,7 @@ local function clear_transient(reason)
 	state.recent_repeat_actions = {}
 	state.cesspool = new_cesspool_state()
 	state.hazard_candidates = {}
+	state.active_hazards = {}
 	state.unresolved_hazard_observations = 0
 	state.last_hazard_diagnostic = ''
 	state.last_policy_violation = nil
@@ -314,10 +317,10 @@ function M.observe_snapshot(snapshot)
 	if now == nil then
 		error('uc_encounter_state.observe_snapshot requires snapshot.now')
 	end
-	local zone_name = tostring(snapshot.zone_name or '')
-	if zone_name ~= definition.zone_name then
+	local zone_id = tonumber(snapshot.zone_id)
+	if zone_id ~= definition.zone_id then
 		return invalidate_binding(
-			zone_name == '' and 'ZONE_UNRESOLVED' or 'NOT_IN_SORTIE',
+			zone_id == nil and 'ZONE_UNRESOLVED' or 'NOT_IN_SORTIE',
 			'encounter_zone_unresolved'
 		)
 	end
@@ -418,12 +421,17 @@ function M.observe_ability(event)
 	if state.cesspool.active ~= true then
 		return true, 'ABILITY_OBSERVED'
 	end
+	if SHARED_ABILITY_NAMES[ability_name] ~= true then
+		return true, 'ABILITY_OBSERVED'
+	end
 	state.cesspool.pair_index = state.cesspool.pair_index + 1
 	state.cesspool.last_tp_name = ability_name
 	state.cesspool.last_tp_target_id = tonumber(event.target_id) or 0
 	if state.cesspool.pair_index < 2 then
 		return true, 'CESSPOOL_FIRST_TP_OBSERVED'
 	end
+	state.cesspool.active = false
+	state.cesspool.expires_at = 0
 	state.cesspool.pair_index = 0
 	local point = copy_point(event.target_position)
 	if point == nil or point.x == nil or point.y == nil then
@@ -438,9 +446,17 @@ function M.observe_ability(event)
 		z = point.z,
 		observed_at = observed_at,
 		target_id = tonumber(event.target_id) or 0,
-		source = 'unverified_second_tp_target_position',
+		source = 'validated_second_tp_target_position',
 	}
-	state.last_hazard_diagnostic = 'HAZARD_CANDIDATE_OBSERVED'
+	state.active_hazards[#state.active_hazards + 1] = {
+		sequence = #state.active_hazards + 1,
+		center = point,
+		avoid_radius = DHARTOK_HAZARD_RADIUS,
+		observed_at = observed_at,
+		target_id = tonumber(event.target_id) or 0,
+		source = 'dhartok_second_tp_target',
+	}
+	state.last_hazard_diagnostic = 'HAZARD_ACTIVATED'
 	return true, state.last_hazard_diagnostic
 end
 
@@ -510,5 +526,6 @@ end
 
 M.ORIGIN_CAPTURE_STABLE_S = ORIGIN_CAPTURE_STABLE_S
 M.ORIGIN_CAPTURE_TOLERANCE = ORIGIN_CAPTURE_TOLERANCE
+M.DHARTOK_HAZARD_RADIUS = DHARTOK_HAZARD_RADIUS
 
 return M

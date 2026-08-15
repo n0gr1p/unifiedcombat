@@ -604,6 +604,75 @@ local function canonicalize_optional_true_ownership_flags(config)
 	return config
 end
 
+local function canonicalize_present_durable_defaults(config)
+	if type(config) ~= 'table' then
+		return config
+	end
+	-- A v2 file may predate leaf settings added to a domain it already owns.
+	-- Normalize only domains present in the file so missing leaves receive their
+	-- canonical defaults without claiming newly introduced top-level domains.
+	local source = {}
+	local has_durable_domain = false
+	for i = 1, #DURABLE_CONFIG_DOMAINS do
+		local domain = DURABLE_CONFIG_DOMAINS[i]
+		if type(config[domain]) == 'table' then
+			source[domain] = clone_value(config[domain])
+			has_durable_domain = true
+		end
+	end
+	-- Match the durable export pruning rules after normalization materializes
+	-- default-disabled optional subdomains.
+	if not has_durable_domain then
+		return config
+	end
+	local normalized = uc_config_normalizer.normalize(source)
+	for i = 1, #DURABLE_CONFIG_DOMAINS do
+		local domain = DURABLE_CONFIG_DOMAINS[i]
+		if type(config[domain]) == 'table' then
+			config[domain] = clone_value(normalized[domain])
+		end
+	end
+	if type(config.reactions) == 'table'
+		and config.reactions.enabled ~= true
+		and type(config.reactions.rules) == 'table'
+		and #config.reactions.rules == 0 then
+		config.reactions = nil
+	end
+	if type(config.encounter) == 'table' and config.encounter.enabled ~= true then
+		config.encounter = nil
+	end
+	if type(config.movement) == 'table'
+		and type(config.movement.formation) == 'table'
+		and config.movement.formation.enabled ~= true then
+		config.movement.formation = nil
+	end
+	if type(config.movement) == 'table'
+		and type(config.movement.named_formations) == 'table'
+		and config.movement.named_formations.enabled ~= true
+		and type(config.movement.named_formations.entries) == 'table'
+		and #config.movement.named_formations.entries == 0 then
+		config.movement.named_formations = nil
+	end
+	if type(config.movement) == 'table'
+		and type(config.movement.formation) == 'table'
+		and type(config.movement.formation.mock) == 'table'
+		and config.movement.formation.mock.enabled ~= true then
+		config.movement.formation.mock = nil
+	end
+	return config
+end
+
+local function canonicalize_durable_config_for_diff(config)
+	config = canonicalize_present_durable_defaults(clone_value(config))
+	config = strip_durable_profile_overrides(config)
+	config = canonicalize_optional_true_ownership_flags(config)
+	config = canonicalize_disabled_fight_leader_name(config)
+	config = canonicalize_leash_source(config)
+	config = canonicalize_unset_puller_name(config)
+	config = canonicalize_empty_nyzul(config)
+	return config
+end
+
 local function append_path(prefix, key)
 	local key_string = tostring(key)
 	if prefix == nil or prefix == '' then
@@ -1318,8 +1387,8 @@ end
 function M.diff_durable_config(current_config, target_config)
 	local differences = {}
 	local details = {}
-	current_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(current_config)))))))
-	target_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(canonicalize_optional_true_ownership_flags(strip_durable_profile_overrides(clone_value(target_config)))))))
+	current_config = canonicalize_durable_config_for_diff(current_config)
+	target_config = canonicalize_durable_config_for_diff(target_config)
 	current_config, target_config = canonicalize_optional_control_ranges(current_config, target_config)
 	diff_values(
 		current_config,

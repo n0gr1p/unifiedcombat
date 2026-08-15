@@ -79,6 +79,6 @@ Names must be unique within a profile. Empty enabled lists, duplicate names, inv
 geometry, or an enabled named formation without the movement domain fail profile
 validation.
 
-`avoid_encounter_hazards` remains durable future-facing configuration. Dhartok
-`hazard_candidates` are still telemetry-only and are not supplied to named or Sortie
-formation solving until the documented field-validation gate is complete.
+`avoid_encounter_hazards` applies validated live Dhartok clouds to the matching
+Sortie formation. Named-mob and mock formations remain isolated from encounter
+hazards.

@@ -1,6 +1,6 @@
 local encounter = require('uc_encounter_state')
 
-local SORTIE_ZONE = "Outer Ra'Kaznar [U3]"
+local SORTIE_ZONE_ID = 133
 
 local function assert_true(condition, message)
 	if condition ~= true then
@@ -33,10 +33,10 @@ local function boss(id, name, status, hpp, x, y, facing)
 	}
 end
 
-local function observe(now, actors, members, zone)
+local function observe(now, actors, members, zone_id)
 	return encounter.observe_snapshot({
 		now = now,
-		zone_name = zone or SORTIE_ZONE,
+		zone_id = zone_id or SORTIE_ZONE_ID,
 		actors = actors,
 		members = members or {},
 	})
@@ -47,7 +47,16 @@ assert_true(configured, 'Ghatjot should be a supported encounter')
 assert_equal(reason, 'CONFIGURED', 'initial configuration reason mismatch')
 
 local ok
-ok, reason = observe(1.0, { boss(1001, 'Ghatjot', 0, 100, 10, 20) }, {}, 'West Ronfaure')
+ok, reason = encounter.observe_snapshot({
+	now = 0.5,
+	zone_name = "Outer Ra'Kaznar [U2]",
+	actors = { boss(1001, 'Ghatjot', 0, 100, 10, 20) },
+	members = {},
+})
+assert_false(ok, 'zone name without authoritative zone id must not bind')
+assert_equal(reason, 'ZONE_UNRESOLVED', 'missing-zone-id reason mismatch')
+
+ok, reason = observe(1.0, { boss(1001, 'Ghatjot', 0, 100, 10, 20) }, {}, 100)
 assert_false(ok, 'same-named actor outside Sortie must not bind')
 assert_equal(reason, 'NOT_IN_SORTIE', 'wrong-zone reason mismatch')
 
@@ -121,6 +130,18 @@ assert_equal(reason, 'CESSPOOL_TELEMETRY_STARTED', 'Cesspool telemetry reason mi
 
 ok, reason = encounter.observe_ability({
 	actor_id = 3001,
+	ability_name = 'Auto Attack 1',
+	phase = 'completed',
+	target_id = 4001,
+	target_position = { x = 100, y = 100, z = 8 },
+	observed_at = 11.5,
+})
+assert_true(ok, 'Dhartok auto attack should remain observable')
+assert_equal(reason, 'ABILITY_OBSERVED', 'auto attack must not advance Cesspool pairing')
+assert_equal(encounter.snapshot().cesspool.pair_index, 0, 'auto attack advanced Cesspool pair index')
+
+ok, reason = encounter.observe_ability({
+	actor_id = 3001,
 	ability_name = 'Fetid Eddies',
 	phase = 'completed',
 	target_id = 4001,
@@ -138,21 +159,29 @@ ok, reason = encounter.observe_ability({
 	observed_at = 13.0,
 })
 assert_true(ok, 'second post-Cesspool TP move should be observed')
-assert_equal(reason, 'HAZARD_CANDIDATE_OBSERVED', 'hazard candidate reason mismatch')
+assert_equal(reason, 'HAZARD_ACTIVATED', 'validated hazard activation reason mismatch')
+assert_false(encounter.snapshot().cesspool.active, 'completed Cesspool pair must close')
 
+encounter.observe_ability({
+	actor_id = 3001,
+	ability_name = 'Cesspool',
+	phase = 'completed',
+	target_id = 4001,
+	observed_at = 14.0,
+})
 encounter.observe_ability({
 	actor_id = 3001,
 	ability_name = 'Clobbering Wave',
 	phase = 'completed',
 	target_id = 4001,
-	observed_at = 14.0,
+	observed_at = 15.0,
 })
 ok, reason = encounter.observe_ability({
 	actor_id = 3001,
 	ability_name = 'Nullifying Rain',
 	phase = 'completed',
 	target_id = 4001,
-	observed_at = 15.0,
+	observed_at = 16.0,
 })
 assert_true(ok, 'unresolved second TP target should still be recorded as telemetry')
 assert_equal(reason, 'HAZARD_LOCATION_UNRESOLVED', 'unresolved hazard reason mismatch')
@@ -163,7 +192,7 @@ ok, reason = encounter.observe_successful_action({
 	action_name = 'Test WS',
 	actor_id = 5001,
 	target_id = 3001,
-	observed_at = 16.0,
+	observed_at = 17.0,
 	success = true,
 })
 assert_true(ok, 'successful WS against Dhartok should be observed')
@@ -175,7 +204,7 @@ ok, reason = encounter.observe_successful_action({
 	action_name = 'Test BP',
 	actor_id = 5002,
 	target_id = 3001,
-	observed_at = 17.0,
+	observed_at = 18.0,
 	success = false,
 })
 assert_false(ok, 'failed BP must not create repeat telemetry')
@@ -184,20 +213,29 @@ assert_equal(reason, 'ACTION_NOT_SUCCESSFUL', 'failed BP reason mismatch')
 snapshot = encounter.snapshot()
 assert_equal(#snapshot.hazard_candidates, 1, 'hazard candidate count mismatch')
 assert_equal(snapshot.hazard_candidates[1].x, 6, 'hazard candidate x mismatch')
+assert_equal(#snapshot.active_hazards, 1, 'active hazard count mismatch')
+assert_equal(snapshot.active_hazards[1].center.x, 6, 'active hazard center x mismatch')
+assert_equal(snapshot.active_hazards[1].avoid_radius, 3.0, 'active hazard radius mismatch')
+assert_equal(snapshot.active_hazards[1].source, 'dhartok_second_tp_target', 'active hazard source mismatch')
 assert_equal(snapshot.unresolved_hazard_observations, 1, 'unresolved hazard count mismatch')
 assert_true(snapshot.recent_repeat_actions['ws:42'] ~= nil, 'WS repeat observation missing')
 assert_equal(snapshot.recent_repeat_actions['bp:99'], nil, 'failed BP must not be stored')
 
-ok, reason = observe(18.0, { boss(3001, 'Dhartok', 1, 0, -5, 8) })
+ok, reason = observe(200.0, { boss(3001, 'Dhartok', 1, 100, -5, 8) })
+assert_true(ok, 'active Dhartok should remain bound after the Cesspool telemetry window')
+assert_equal(#encounter.snapshot().active_hazards, 1, 'Dhartok hazard must remain active for the fight')
+
+ok, reason = observe(201.0, { boss(3001, 'Dhartok', 1, 0, -5, 8) })
 assert_false(ok, 'defeated boss should reset transient state')
 assert_equal(reason, 'BOSS_DEFEATED', 'boss defeat reason mismatch')
 snapshot = encounter.snapshot()
 assert_equal(snapshot.boss, nil, 'boss defeat must clear binding')
 assert_equal(#snapshot.hazard_candidates, 0, 'boss defeat must clear hazard candidates')
+assert_equal(#snapshot.active_hazards, 0, 'boss defeat must clear active hazards')
 assert_equal(snapshot.last_reset_reason, 'boss_defeated', 'boss defeat reset reason mismatch')
 
 encounter.configure({ enabled = true, id = 'sortie_dhartok' }, 'death_message_test')
-observe(19.0, { boss(3002, 'Dhartok', 1, 100, -5, 8) })
+observe(202.0, { boss(3002, 'Dhartok', 1, 100, -5, 8) })
 ok, reason = encounter.observe_boss_defeat(3002)
 assert_true(ok, 'boss death action message should reset matching encounter')
 assert_equal(reason, 'BOSS_DEFEATED', 'boss death action-message reason mismatch')

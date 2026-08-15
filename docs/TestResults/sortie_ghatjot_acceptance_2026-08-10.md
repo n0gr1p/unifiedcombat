@@ -9,7 +9,7 @@ field evidence.
 ## Implemented contract
 
 - exact configured identity `sortie_ghatjot`;
-- exact actor name `Ghatjot` in resource-derived zone `Outer Ra'Kaznar [U3]`;
+- exact actor name `Ghatjot` in Windower zone ID `133` (`Outer Ra'Kaznar [U2]`);
 - ambiguous, missing, replaced, or defeated actor lifecycle handling;
 - actor-scoped direct Water damage policy;
 - actor-scoped predicted Water-bearing skillchain policy;

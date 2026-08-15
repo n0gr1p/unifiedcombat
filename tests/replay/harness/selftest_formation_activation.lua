@@ -22,6 +22,12 @@ local function assert_equal(actual, expected, message)
 	end
 end
 
+local function assert_near(actual, expected, tolerance, message)
+	if math.abs(actual - expected) > tolerance then
+		error(('%s expected=%s actual=%s'):format(message, tostring(expected), tostring(actual)))
+	end
+end
+
 local function generic_flat()
 	return {
 		domain_movement_enabled = true,
@@ -313,6 +319,7 @@ local encounter_snapshot = {
 	hazard_candidates = {
 		{ x = 10, y = 10, source = 'untrusted_test_candidate' },
 	},
+	active_hazards = {},
 }
 local lilith_observe_calls = 0
 local lilith_run_calls = 0
@@ -330,9 +337,11 @@ local mock_snapshot = {
 	mock_mob_name = 'Apex Crab',
 	boss = { id = 901, name = 'Apex Crab', x = 5, y = 0, hpp = 100, status = 1 },
 	origin = { x = 5, y = 0 },
+	active_hazards = {},
 }
 local named_formations = { enabled = false, entries = {} }
 local engaged_target = nil
+local current_me = { id = 1, name = 'Me', x = 0, y = 0 }
 local runtime = formation_runtime.build({
 	get_config = function()
 		return selected_config
@@ -386,7 +395,7 @@ local runtime = formation_runtime.build({
 		end,
 	},
 	get_me = function()
-		return { id = 1, name = 'Me', x = 0, y = 0 }
+		return current_me
 	end,
 	get_party_members = function()
 		return {
@@ -416,6 +425,35 @@ assert_true(owns, 'moving generic formation must own scheduler movement')
 assert_equal(#intents, 1, 'generic activation must emit exactly one dispatcher-backed movement intent')
 assert_equal(intents[1].kind, 'run', 'generic activation must use the existing run intent')
 assert_equal(intents[1].source, 'formation_activation_test:run_heading', 'generic activation dispatcher source mismatch')
+
+selected_config.encounter = 'sortie_dhartok'
+encounter_snapshot.configured_id = 'sortie_dhartok'
+encounter_snapshot.resolved_id = 'sortie_dhartok'
+encounter_snapshot.boss.name = 'Dhartok'
+encounter_snapshot.active_hazards = {
+	{
+		center = { x = 2, y = 0, z = 0 },
+		avoid_radius = 3.0,
+		target_id = 1,
+		source = 'dhartok_second_tp_target',
+	},
+}
+current_me = { id = 1, name = 'Me', x = 2, y = 0 }
+observation = runtime.observe(10.55)
+acted, reason, owns = runtime.run_tick(observation)
+assert_true(acted, 'Dhartok hazard must dispatch a safe formation correction')
+assert_equal(reason, 'FORMATION_REPOSITION', 'Dhartok hazard movement reason mismatch')
+assert_true(owns, 'Dhartok hazard correction must own scheduler movement')
+assert_equal(published.active_hazard_count, 1, 'Dhartok active hazard diagnostic count mismatch')
+assert_near(published.proposal.goal.x, -2, 0.0001, 'Dhartok hazard must select the safe side of the ring')
+assert_near(published.proposal.goal.y, 0, 0.0001, 'Dhartok hazard safe goal y mismatch')
+
+selected_config.encounter = 'sortie_ghatjot'
+encounter_snapshot.configured_id = 'sortie_ghatjot'
+encounter_snapshot.resolved_id = 'sortie_ghatjot'
+encounter_snapshot.boss.name = 'Ghatjot'
+encounter_snapshot.active_hazards = {}
+current_me = { id = 1, name = 'Me', x = 0, y = 0 }
 
 local named_runtime_entry = {
 	mob_name = 'Kei',

@@ -112,15 +112,22 @@ end
 if not core_source:find('function core.add_control_enabled_for_scheduler(settings)', 1, true) then
 	error('scheduler must use the shared add-control enablement policy')
 end
+if not core_source:find('elseif leader_mid and leader_mid > 0 then', 1, true) then
+	error('engaged add control must return to the resolved fight-leader target when no configured add remains')
+end
 
 local scheduler_source = read_file('unified_scheduler.lua')
 local target_provider_source = read_file('uc_provider_target_control.lua')
+local combat_provider_source = read_file('uc_provider_combat.lua')
 if not target_provider_source:find('if engaged and not add_control_enabled(ctx.settings) then', 1, true) then
 	error('scheduler must allow engaged target control only for add control')
 end
 if not scheduler_source:find("kind = 'switch_target'", 1, true)
 	or not scheduler_source:find('switch_target = uc_attack.switch_target', 1, true) then
 	error('scheduler engaged add control must dispatch the attack switch-target primitive')
+end
+if not combat_provider_source:find("if bool_setting(add_control_enabled(ctx.settings), false) then", 1, true) then
+	error('fight-leader engage must defer while engaged add control owns target switching')
 end
 
 package.loaded['uc_target_ignore'] = old_target_ignore

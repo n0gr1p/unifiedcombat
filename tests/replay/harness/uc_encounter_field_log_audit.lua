@@ -1,5 +1,12 @@
 local M = {}
 
+local DHARTOK_POST_CESSPOOL_TP_KEYS = {
+	clobbering_wave = true,
+	fetid_eddies = true,
+	noyade = true,
+	nullifying_rain = true,
+}
+
 local function field(line, name)
 	return line:match(name .. '=([^ ]*)')
 end
@@ -81,7 +88,17 @@ function M.analyze(lines)
 				local candidate = result.ability_events[j]
 				if candidate.actor_id == event.actor_id
 					and candidate.phase == 'completed'
-					and candidate.ability_key ~= 'cesspool' then
+					and candidate.ability_key == 'cesspool' then
+					break
+				end
+				if candidate.observed_at ~= nil
+					and event.observed_at ~= nil
+					and candidate.observed_at - event.observed_at > 180.0 then
+					break
+				end
+				if candidate.actor_id == event.actor_id
+					and candidate.phase == 'completed'
+					and DHARTOK_POST_CESSPOOL_TP_KEYS[candidate.ability_key] == true then
 					following[#following + 1] = candidate
 					if #following == 2 then
 						break

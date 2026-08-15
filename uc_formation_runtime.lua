@@ -229,6 +229,7 @@ function M.build(opts)
 				error = '',
 				boss = copy_table(named_target),
 				origin = copy_table(named_origin),
+				active_hazards = {},
 			}
 			publish({
 				enabled = true,
@@ -270,6 +271,10 @@ function M.build(opts)
 			snapshot = encounter_runtime.snapshot()
 		end
 		require_table(snapshot, 'uc_encounter_runtime.snapshot result')
+		local active_hazards = require_table(
+			snapshot.active_hazards,
+			'uc_encounter_runtime.snapshot result.active_hazards'
+		)
 		publish({
 			enabled = true,
 			kind = kind,
@@ -280,7 +285,7 @@ function M.build(opts)
 			reason = tostring(snapshot.error or ''),
 			boss_id = snapshot.boss and snapshot.boss.id or nil,
 			origin = snapshot.origin,
-			active_hazard_count = 0,
+			active_hazard_count = #active_hazards,
 		})
 		return {
 			kind = kind,
@@ -329,14 +334,14 @@ function M.build(opts)
 			return stop_generic_for(tostring(members_reason), true)
 		end
 		local generic_status = generic_runtime.status()
+		local active_hazards = require_table(snapshot.active_hazards, 'formation snapshot.active_hazards')
 		local acted, reason, owns = generic_runtime.run_tick({
 			config = config,
 			me = me,
 			boss = boss,
 			encounter_origin = snapshot.origin,
 			party_members = members,
-			-- Dhartok hazard candidates remain telemetry-only until the field gate is complete.
-			encounter_hazards = {},
+			encounter_hazards = active_hazards,
 			was_moving = generic_status.moving == true,
 		})
 		local runtime_status = generic_runtime.status()
@@ -352,7 +357,7 @@ function M.build(opts)
 			reason = reason,
 			boss_id = boss.id,
 			origin = snapshot.origin,
-			active_hazard_count = 0,
+			active_hazard_count = #active_hazards,
 			proposal = runtime_status.proposal,
 		})
 		return acted, reason, owns
