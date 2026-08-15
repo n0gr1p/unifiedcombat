@@ -5046,6 +5046,7 @@ public partial class MainForm
                 return;
             }
 
+            MarkActiveActivityProfileSaved(sid);
             SetProfileSaveStatus("Mirror: profile saved (UI + v2)");
         }
         finally

@@ -13,6 +13,7 @@ public partial class MainForm : Form
     private bool _suppressEvents;
 
     private readonly List<string> _listSids = [];
+    private readonly Dictionary<string, string> _sessionBaseLabelBySid = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _sessionLabelBySid = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SessionMeta> _sessionMetaBySid = new(StringComparer.Ordinal);
     private readonly Dictionary<string, bool> _sessionRunningBySid = new(StringComparer.Ordinal);
@@ -172,8 +173,17 @@ public partial class MainForm : Form
         }
     }
 
-    private sealed record SessionListItem(string Sid, string Label)
+    private sealed class SessionListItem
     {
+        internal SessionListItem(string sid, string label)
+        {
+            Sid = sid;
+            Label = label;
+        }
+
+        internal string Sid { get; }
+        internal string Label { get; set; }
+
         public override string ToString() => Label;
     }
 
@@ -263,6 +273,7 @@ public partial class MainForm : Form
 
         var keepSid = _selectedSid;
         var nextSids = new List<string>();
+        var nextBaseLabels = new Dictionary<string, string>(StringComparer.Ordinal);
         var nextLabels = new Dictionary<string, string>(StringComparer.Ordinal);
         var nextMeta = new Dictionary<string, SessionMeta>(StringComparer.Ordinal);
         var nextRun = new Dictionary<string, bool>(StringComparer.Ordinal);
@@ -270,13 +281,24 @@ public partial class MainForm : Form
         foreach (var p in sessionsEl.EnumerateObject())
         {
             nextSids.Add(p.Name);
-            nextLabels[p.Name] = SessionLineLabel(p.Name, p.Value);
+            nextBaseLabels[p.Name] = SessionLineLabel(p.Name, p.Value);
             var ch = SessionStateHelper.GetString(p.Value, "char", "");
             var job = SessionStateHelper.GetString(p.Value, "job", "");
             var subJob = SessionStateHelper.GetString(p.Value, "sub_job", "");
             var eng = SessionStateHelper.GetString(p.Value, "engine", "UC");
             nextMeta[p.Name] = new SessionMeta(p.Name, ch, job, subJob, eng);
             nextRun[p.Name] = SessionStateHelper.GetBool(p.Value, "Start_Engine", false);
+        }
+
+        var nextActivityProvenance = BuildActiveActivityProvenanceBySid(nextMeta);
+        foreach (var sid in nextSids)
+        {
+            var label = nextBaseLabels[sid];
+            if (nextActivityProvenance.TryGetValue(sid, out var provenance))
+            {
+                label += " " + ActivityProvenanceSuffix(provenance);
+            }
+            nextLabels[sid] = label;
         }
 
         var listChanged = nextLabels.Count != _sessionLabelBySid.Count;
@@ -351,6 +373,11 @@ public partial class MainForm : Form
         foreach (var kv in nextLabels)
         {
             _sessionLabelBySid[kv.Key] = kv.Value;
+        }
+        _sessionBaseLabelBySid.Clear();
+        foreach (var kv in nextBaseLabels)
+        {
+            _sessionBaseLabelBySid[kv.Key] = kv.Value;
         }
         _sessionMetaBySid.Clear();
         foreach (var kv in nextMeta)
@@ -543,5 +570,26 @@ public partial class MainForm : Form
         }
 
         return $"[{runFlag}] {ch} ({job}) [{eng}]";
+    }
+
+    private void RefreshSessionLabelsForActivityContext()
+    {
+        var provenanceBySid = BuildActiveActivityProvenanceBySid(_sessionMetaBySid);
+        foreach (var item in listSessions.Items.OfType<SessionListItem>())
+        {
+            if (!_sessionBaseLabelBySid.TryGetValue(item.Sid, out var baseLabel))
+            {
+                throw new ActivityProfileException($"Base session label is unavailable for {item.Sid}.");
+            }
+
+            var label = baseLabel;
+            if (provenanceBySid.TryGetValue(item.Sid, out var provenance))
+            {
+                label += " " + ActivityProvenanceSuffix(provenance);
+            }
+            item.Label = label;
+            _sessionLabelBySid[item.Sid] = label;
+        }
+        listSessions.Refresh();
     }
 }

@@ -39,7 +39,27 @@ internal sealed record ActivityActivationEntry(
 internal sealed record ActivityActivationPlan(
     string ActivityId,
     string ActivityName,
-    IReadOnlyList<ActivityActivationEntry> Entries
+    IReadOnlyList<ActivityActivationEntry> Entries,
+    IReadOnlyList<ActivitySessionIdentity> UnmatchedSessions
+);
+
+internal enum ActivityProfileProvenance
+{
+    Exact,
+    Modified,
+    NoMatch,
+}
+
+internal sealed record ActivityProfileProvenanceEntry(
+    string Sid,
+    ActivityProfileIdentity Identity,
+    ActivityProfileProvenance Provenance
+);
+
+internal sealed record ActivityProfileProvenanceSnapshot(
+    string ActivityId,
+    string ActivityName,
+    IReadOnlyList<ActivityProfileProvenanceEntry> Entries
 );
 
 internal sealed record ActivityProfileSummary(string Id, string Name, int CharacterCount, int VariantCount);
@@ -293,14 +313,13 @@ internal sealed class ActivityProfileStore
         var manifest = Load(activityId);
         var variants = BuildVariantMap(manifest);
         var entries = new List<ActivityActivationEntry>();
+        var unmatchedSessions = new List<ActivitySessionIdentity>();
         foreach (var session in sessions)
         {
             if (!variants.TryGetValue(session.Identity.Key, out var variant))
             {
-                throw new ActivityProfileException(
-                    $"Activity '{manifest.Name}' has no exact profile for "
-                    + $"{session.Identity.Character} {session.Identity.MainJob}/{session.Identity.SubJob}."
-                );
+                unmatchedSessions.Add(session);
+                continue;
             }
 
             var activityDirectory = ActivityDirectory(manifest.Id);
@@ -354,7 +373,55 @@ internal sealed class ActivityProfileStore
             );
         }
 
-        return new ActivityActivationPlan(manifest.Id, manifest.Name, entries);
+        return new ActivityActivationPlan(manifest.Id, manifest.Name, entries, unmatchedSessions);
+    }
+
+    internal ActivityProfileProvenanceSnapshot BuildProvenance(
+        string activityId,
+        IReadOnlyList<ActivitySessionIdentity> sessions
+    )
+    {
+        var duplicateSid = sessions.GroupBy(x => x.Sid, StringComparer.Ordinal).FirstOrDefault(x => x.Count() > 1);
+        if (duplicateSid is not null)
+        {
+            throw new ActivityProfileException($"Duplicate active session id: {duplicateSid.Key}");
+        }
+
+        var manifest = Load(activityId);
+        var variants = BuildVariantMap(manifest);
+        var entries = new List<ActivityProfileProvenanceEntry>(sessions.Count);
+        foreach (var session in sessions)
+        {
+            if (!variants.TryGetValue(session.Identity.Key, out var variant))
+            {
+                entries.Add(
+                    new ActivityProfileProvenanceEntry(
+                        session.Sid,
+                        session.Identity,
+                        ActivityProfileProvenance.NoMatch
+                    )
+                );
+                continue;
+            }
+
+            var destination = StructuredProfileV2Writer.BuildFinalPath(
+                _addonRoot,
+                session.Identity.ToStructuredIdentity()
+            );
+            var provenance = ActivityProfileProvenance.Modified;
+            if (File.Exists(destination))
+            {
+                var currentContent = File.ReadAllText(destination, Encoding.UTF8);
+                if (string.Equals(Sha256(currentContent), variant.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    provenance = ActivityProfileProvenance.Exact;
+                }
+            }
+
+            entries.Add(new ActivityProfileProvenanceEntry(session.Sid, session.Identity, provenance));
+        }
+
+        return new ActivityProfileProvenanceSnapshot(manifest.Id, manifest.Name, entries);
     }
 
     internal ActivityProfileDeployment Deploy(ActivityActivationPlan plan)

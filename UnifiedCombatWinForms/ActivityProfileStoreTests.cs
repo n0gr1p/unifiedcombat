@@ -11,6 +11,7 @@ internal static class ActivityProfileStoreTests
         try
         {
             TestMultiJobCaptureAndGlobalActivation(root);
+            TestActivityProvenanceTransitions(root);
             TestLegacyBundleRequiresVariantUpdate(root);
             TestAppliedUiPreservesRuntimeEngineState();
             TestGlobalUiAndBridgeContract();
@@ -51,7 +52,8 @@ internal static class ActivityProfileStoreTests
         AssertContains(ui, "_sessionMetaBySid", "activity operations must enumerate the full active-session cohort");
         AssertContains(ui, "BuildActivationPlan(selected.Id, sessions)", "dropdown activation must build one global plan");
         AssertContains(ui, "private void ActivityComboSelectedIndexChanged", "activity selection must be synchronous and selection-only");
-        AssertContains(ui, "selected; click Apply to all sessions to activate", "activity selection must direct the user to explicit apply");
+        AssertContains(ui, "selected; click Apply Activity to activate", "activity selection must direct the user to explicit apply");
+        AssertContains(ui, "Text = \"Apply Activity\"", "activity apply button label mismatch");
         AssertNotContains(ui, "private async void ActivityComboSelectedIndexChanged", "selecting an activity must not trigger activation");
         AssertContains(ui, "the activity snapshot has conflicting", "known serializer contradictions must have actionable UI errors");
         AssertContains(ui, "select the activity, click Update, then Apply again", "serializer contradiction errors must state the recovery action");
@@ -68,7 +70,11 @@ internal static class ActivityProfileStoreTests
         AssertContains(ui, "BuildAppliedUiProfileContent", "activity apply must normalize runtime-owned UI state");
         AssertContains(ui, "_workingProfileBySid.Remove(entry.Sid)", "successful activity apply must discard stale UI working state");
         AssertContains(ui, "RefreshEditorFromSnapshot()", "successful activity apply must refresh the selected editor");
-        AssertContains(ui, "UI synchronized", "successful activity apply must report UI synchronization");
+        AssertContains(ui, "UnmatchedSessions", "partial activity activation must report unmatched sessions");
+        AssertContains(ui, "if (plan.Entries.Count > 0)", "zero-match activity context must skip deployment and reload");
+        AssertContains(ui, "matched / {modified} modified / {noMatch} no match", "activity status must report provenance counts");
+        AssertContains(ui, "MarkActiveActivityProfileSaved", "individual save must update activity provenance");
+        AssertContains(main, "ActivityProvenanceSuffix", "session labels must include activity provenance");
         AssertContains(parity, "TryLoadWorkingProfileForSid(_selectedSid", "session switching must prefer unsaved working state");
         AssertContains(profileStore, "$\"{ch}_{job}_{subJob}.json\"", "UI working profiles must use exact main/subjob identity");
         AssertContains(profileStore, "TryMigrateLegacyUiProfileForSid", "legacy main-job UI profiles need explicit migration");
@@ -126,16 +132,25 @@ internal static class ActivityProfileStoreTests
         Assert(alternatePlan.Entries.Single().ProfileContent == pldContent, "retained PLD job variant is not selectable");
         Assert(alternatePlan.Entries.Single().UiProfileContent == pldUi, "retained PLD UI variant is not selectable");
 
-        AssertThrows<ActivityProfileException>(
-            () => store.BuildActivationPlan(
-                created.Id,
-                [
-                    new ActivitySessionIdentity("sid-red", new ActivityProfileIdentity("Redrogue", "WHM", "SCH")),
-                    new ActivitySessionIdentity("sid-night", nightBrd),
-                ]
-            ),
-            "unsupported active job must block the whole activity"
+        var unmatchedIdentity = new ActivityProfileIdentity("Redrogue", "WHM", "SCH");
+        var partialPlan = store.BuildActivationPlan(
+            created.Id,
+            [
+                new ActivitySessionIdentity("sid-red", unmatchedIdentity),
+                new ActivitySessionIdentity("sid-night", nightBrd),
+            ]
         );
+        Assert(partialPlan.Entries.Count == 1, "partial activation must include only matching sessions");
+        Assert(partialPlan.Entries.Single().Sid == "sid-night", "partial activation selected the wrong matching session");
+        Assert(partialPlan.UnmatchedSessions.Count == 1, "partial activation must retain the unmatched identity");
+        Assert(partialPlan.UnmatchedSessions.Single().Identity.Key == unmatchedIdentity.Key, "unmatched identity mismatch");
+
+        var zeroMatchPlan = store.BuildActivationPlan(
+            created.Id,
+            [new ActivitySessionIdentity("sid-zero", new ActivityProfileIdentity("Nobody", "WHM", "RDM"))]
+        );
+        Assert(zeroMatchPlan.Entries.Count == 0, "zero-match activation must not create deployment entries");
+        Assert(zeroMatchPlan.UnmatchedSessions.Count == 1, "zero-match activation must retain all sessions as unmatched");
         AssertThrows<ActivityProfileException>(
             () => store.BuildActivationPlan(
                 created.Id,
@@ -151,12 +166,27 @@ internal static class ActivityProfileStoreTests
         var nightDestination = StructuredProfileV2Writer.BuildFinalPath(root, nightBrd.ToStructuredIdentity());
         var redUiDestination = ActivityProfileStore.BuildUiFinalPath(root, redRun);
         var nightUiDestination = ActivityProfileStore.BuildUiFinalPath(root, nightBrd);
+        var unmatchedDestination = StructuredProfileV2Writer.BuildFinalPath(root, unmatchedIdentity.ToStructuredIdentity());
+        var unmatchedUiDestination = ActivityProfileStore.BuildUiFinalPath(root, unmatchedIdentity);
         Directory.CreateDirectory(Path.GetDirectoryName(redDestination)!);
         Directory.CreateDirectory(Path.GetDirectoryName(redUiDestination)!);
         File.WriteAllText(redDestination, "old-red");
         File.WriteAllText(nightDestination, "old-night");
         File.WriteAllText(redUiDestination, "{\"marker\":\"old-red-ui\"}");
         File.WriteAllText(nightUiDestination, "{\"marker\":\"old-night-ui\"}");
+        File.WriteAllText(unmatchedDestination, "old-unmatched");
+        File.WriteAllText(unmatchedUiDestination, "{\"marker\":\"old-unmatched-ui\"}");
+
+        using (var partialDeployment = store.Deploy(partialPlan))
+        {
+            Assert(File.ReadAllText(nightDestination) == brdContent, "partial deployment did not update its matching session");
+            Assert(File.ReadAllText(unmatchedDestination) == "old-unmatched", "partial deployment changed an unmatched v2 profile");
+            Assert(File.ReadAllText(unmatchedUiDestination) == "{\"marker\":\"old-unmatched-ui\"}", "partial deployment changed an unmatched UI profile");
+            partialDeployment.Rollback();
+        }
+        Assert(File.ReadAllText(nightDestination) == "old-night", "partial rollback did not restore its matching session");
+        Assert(File.ReadAllText(unmatchedDestination) == "old-unmatched", "partial rollback changed an unmatched v2 profile");
+        Assert(File.ReadAllText(unmatchedUiDestination) == "{\"marker\":\"old-unmatched-ui\"}", "partial rollback changed an unmatched UI profile");
 
         using (var deployment = store.Deploy(plan))
         {
@@ -229,6 +259,86 @@ internal static class ActivityProfileStoreTests
         Assert(updated.SchemaVersion == 2, "updating a legacy activity must upgrade its schema");
         Assert(store.BuildActivationPlan(created.Id, [new ActivitySessionIdentity("sid-nyo", identity)]).Entries.Single().UiProfileContent == uiProfile,
             "updated legacy activity must provide UI state");
+        store.Delete(created.Id);
+    }
+
+    private static void TestActivityProvenanceTransitions(string root)
+    {
+        var store = new ActivityProfileStore(root);
+        var sortieIdentity = new ActivityProfileIdentity("Terrasjr", "MNK", "WAR");
+        var noMatchIdentity = new ActivityProfileIdentity("Niightsiide", "WHM", "RDM");
+        var sortieProfile = ProfileText(sortieIdentity, "sortie");
+        var changedProfile = ProfileText(sortieIdentity, "sortie-changed");
+        var sortieUi = UiProfileText("sortie");
+        var changedUi = UiProfileText("sortie-changed");
+        var created = store.Create(
+            "Sortie",
+            [new ActivityProfileCapture(sortieIdentity, sortieProfile, sortieUi)]
+        );
+
+        var destination = StructuredProfileV2Writer.BuildFinalPath(root, sortieIdentity.ToStructuredIdentity());
+        var uiDestination = ActivityProfileStore.BuildUiFinalPath(root, sortieIdentity);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(uiDestination)!);
+        File.WriteAllText(destination, sortieProfile);
+        File.WriteAllText(uiDestination, MainForm.BuildAppliedUiProfileContent(sortieUi, sortieIdentity, running: true));
+
+        var initial = store.BuildProvenance(
+            created.Id,
+            [
+                new ActivitySessionIdentity("sid-terra", sortieIdentity),
+                new ActivitySessionIdentity("sid-night", noMatchIdentity),
+            ]
+        );
+        Assert(initial.Entries.Single(x => x.Sid == "sid-terra").Provenance == ActivityProfileProvenance.Exact,
+            "exact saved profile must show [Activity]");
+        Assert(initial.Entries.Single(x => x.Sid == "sid-night").Provenance == ActivityProfileProvenance.NoMatch,
+            "missing exact variant must show [No Match]");
+        Assert(MainForm.ResolveActivityProvenance(ActivityProfileProvenance.NoMatch, individuallySavedInContext: false)
+                == ActivityProfileProvenance.NoMatch,
+            "unmodified unmatched session must remain [No Match]");
+        Assert(MainForm.ResolveActivityProvenance(ActivityProfileProvenance.NoMatch, individuallySavedInContext: true)
+                == ActivityProfileProvenance.Modified,
+            "individually saved unmatched session must become [Activity-mod]");
+        Assert(MainForm.ResolveActivityProvenance(
+                    ActivityProfileProvenance.Modified,
+                    individuallySavedInContext: false,
+                    updatedInContext: true
+                ) == ActivityProfileProvenance.Exact,
+            "Update Activity must immediately return captured sessions to [Activity]");
+
+        File.WriteAllText(destination, sortieProfile);
+        Assert(store.BuildProvenance(created.Id, [new ActivitySessionIdentity("sid-terra", sortieIdentity)])
+                .Entries.Single().Provenance == ActivityProfileProvenance.Exact,
+            "saving without changing profile content must remain [Activity]");
+
+        File.WriteAllText(destination, changedProfile);
+        File.WriteAllText(uiDestination, changedUi);
+        Assert(store.BuildProvenance(created.Id, [new ActivitySessionIdentity("sid-terra", sortieIdentity)])
+                .Entries.Single().Provenance == ActivityProfileProvenance.Modified,
+            "changed saved profile must become [Activity-mod]");
+
+        File.WriteAllText(destination, sortieProfile);
+        File.WriteAllText(uiDestination, sortieUi);
+        Assert(store.BuildProvenance(created.Id, [new ActivitySessionIdentity("sid-terra", sortieIdentity)])
+                .Entries.Single().Provenance == ActivityProfileProvenance.Exact,
+            "restoring saved profile content must return to [Activity]");
+
+        File.WriteAllText(destination, changedProfile);
+        File.WriteAllText(uiDestination, changedUi);
+        store.Update(created.Id, [new ActivityProfileCapture(sortieIdentity, changedProfile, changedUi)]);
+        Assert(store.BuildProvenance(created.Id, [new ActivitySessionIdentity("sid-terra", sortieIdentity)])
+                .Entries.Single().Provenance == ActivityProfileProvenance.Exact,
+            "Update Activity must return captured saved variants to [Activity]");
+
+        var changedJob = new ActivityProfileIdentity("Terrasjr", "WHM", "SCH");
+        Assert(store.BuildProvenance(created.Id, [new ActivitySessionIdentity("sid-terra", changedJob)])
+                .Entries.Single().Provenance == ActivityProfileProvenance.NoMatch,
+            "job/subjob changes must recompute provenance from exact identity");
+        Assert(store.BuildProvenance(created.Id, [new ActivitySessionIdentity("sid-terra-reconnected", sortieIdentity)])
+                .Entries.Single().Provenance == ActivityProfileProvenance.Exact,
+            "reconnect with a new SID must recompute provenance from exact identity");
+
         store.Delete(created.Id);
     }
 

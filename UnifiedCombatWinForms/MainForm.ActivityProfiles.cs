@@ -18,7 +18,8 @@ public partial class MainForm
     private bool _activityOperationInProgress;
     private string? _activeActivityId;
     private string? _activeActivityName;
-    private readonly Dictionary<string, string> _activeActivityCohortBySid = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _activeActivitySavedIdentityKeys = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _activeActivityUpdatedIdentityKeys = new(StringComparer.Ordinal);
 
     private sealed record ActivityComboItem(string Id, string Name, int CharacterCount, int VariantCount)
     {
@@ -96,7 +97,7 @@ public partial class MainForm
 
         _activityReapply = new Button
         {
-            Text = "Apply to all sessions",
+            Text = "Apply Activity",
             AutoSize = false,
             Dock = DockStyle.Fill,
             Margin = new Padding(0, 0, 0, 4),
@@ -197,9 +198,14 @@ public partial class MainForm
             return;
         }
 
-        _activityStatus.Text = string.Equals(selected.Id, _activeActivityId, StringComparison.Ordinal)
-            ? $"{selected.Name} active on {_activeActivityCohortBySid.Count} sessions"
-            : $"{selected.Name} selected; click Apply to all sessions to activate";
+        if (string.Equals(selected.Id, _activeActivityId, StringComparison.Ordinal))
+        {
+            RefreshActivityCohortStatus();
+        }
+        else
+        {
+            _activityStatus.Text = $"{selected.Name} selected; click Apply Activity to activate";
+        }
     }
 
     private void CreateActivity()
@@ -242,8 +248,16 @@ public partial class MainForm
                 captures.Select(BuildActivityProfileCapture).ToList()
             );
             RefreshActivityList(manifest.Id);
-            _activeActivityCohortBySid.Clear();
-            _activityStatus.Text = $"{manifest.Name} updated; click Apply to activate";
+            _activeActivityId = manifest.Id;
+            _activeActivityName = manifest.Name;
+            _activeActivitySavedIdentityKeys.Clear();
+            _activeActivityUpdatedIdentityKeys.Clear();
+            foreach (var capture in captures)
+            {
+                _activeActivityUpdatedIdentityKeys.Add(capture.Identity.Key);
+            }
+            RefreshSessionLabelsForActivityContext();
+            RefreshActivityCohortStatus();
         }
         catch (Exception ex)
         {
@@ -279,7 +293,9 @@ public partial class MainForm
             {
                 _activeActivityId = null;
                 _activeActivityName = null;
-                _activeActivityCohortBySid.Clear();
+                _activeActivitySavedIdentityKeys.Clear();
+                _activeActivityUpdatedIdentityKeys.Clear();
+                RefreshSessionLabelsForActivityContext();
             }
             RefreshActivityList();
             _activityStatus.Text = "Activity deleted; current character profiles unchanged";
@@ -402,16 +418,22 @@ public partial class MainForm
                 throw new ActivityProfileException("There are no active sessions to apply this activity to.");
             }
 
-            var runningCount = _sessionRunningBySid.Count(x => x.Value);
-
             var sessions = _sessionMetaBySid
                 .OrderBy(x => x.Value.CharName, StringComparer.OrdinalIgnoreCase)
                 .Select(x => new ActivitySessionIdentity(x.Key, RequireActivityIdentity(x.Value)))
                 .ToList();
             var plan = PreserveRuntimeUiState(_activityStore.BuildActivationPlan(selected.Id, sessions));
+            var runningCount = plan.Entries.Count(
+                entry => _sessionRunningBySid.TryGetValue(entry.Sid, out var running) && running
+            );
             if (confirm)
             {
-                var confirmationMessage = $"Apply '{plan.ActivityName}' to all {plan.Entries.Count} active sessions?";
+                var confirmationMessage = $"Apply '{plan.ActivityName}' to {plan.Entries.Count} matching active sessions?";
+                if (plan.UnmatchedSessions.Count > 0)
+                {
+                    confirmationMessage +=
+                        $"\n\n{plan.UnmatchedSessions.Count} active sessions have no exact variant and will remain unchanged.";
+                }
                 if (runningCount > 0)
                 {
                     var engineWord = runningCount == 1 ? "engine is" : "engines are";
@@ -436,27 +458,30 @@ public partial class MainForm
 
             _activityOperationInProgress = true;
             SetActivityControlsEnabled(false);
-            _activityStatus.Text = $"Applying {plan.ActivityName} to {plan.Entries.Count} sessions…";
+            _activityStatus.Text = $"Applying {plan.ActivityName} to {plan.Entries.Count} matching sessions…";
 
-            using var deployment = _activityStore.Deploy(plan);
-            try
+            if (plan.Entries.Count > 0)
             {
-                var mirror = _mirror ?? throw new ActivityProfileException("Session hub is unavailable.");
-                var reloadTasks = plan.Entries.Select(
-                    entry => mirror.ReloadProfileV2Async(entry.Sid, TimeSpan.FromSeconds(15), _cts.Token)
-                );
-                var results = await Task.WhenAll(reloadTasks);
-                ValidateReloadResults(plan, results);
-                deployment.Commit();
-            }
-            catch (Exception activationError)
-            {
-                deployment.Rollback();
-                var recovery = await ReloadRestoredProfilesAsync(plan);
-                throw new ActivityProfileException(
-                    $"Activity apply failed: {activationError.Message}. Previous profile files were restored; {recovery}",
-                    activationError
-                );
+                using var deployment = _activityStore.Deploy(plan);
+                try
+                {
+                    var mirror = _mirror ?? throw new ActivityProfileException("Session hub is unavailable.");
+                    var reloadTasks = plan.Entries.Select(
+                        entry => mirror.ReloadProfileV2Async(entry.Sid, TimeSpan.FromSeconds(15), _cts.Token)
+                    );
+                    var results = await Task.WhenAll(reloadTasks);
+                    ValidateReloadResults(plan, results);
+                    deployment.Commit();
+                }
+                catch (Exception activationError)
+                {
+                    deployment.Rollback();
+                    var recovery = await ReloadRestoredProfilesAsync(plan);
+                    throw new ActivityProfileException(
+                        $"Activity apply failed: {activationError.Message}. Previous profile files were restored; {recovery}",
+                        activationError
+                    );
+                }
             }
 
             foreach (var entry in plan.Entries)
@@ -471,13 +496,17 @@ public partial class MainForm
 
             _activeActivityId = plan.ActivityId;
             _activeActivityName = plan.ActivityName;
-            _activeActivityCohortBySid.Clear();
-            foreach (var entry in plan.Entries)
+            _activeActivitySavedIdentityKeys.Clear();
+            _activeActivityUpdatedIdentityKeys.Clear();
+            RefreshSessionLabelsForActivityContext();
+            RefreshActivityCohortStatus(force: true);
+            statusConnection.Text = plan.Entries.Count == 0
+                ? $"Mirror: activity context established ({plan.ActivityName}, zero matches)"
+                : $"Mirror: activity applied ({plan.ActivityName}, {plan.Entries.Count} matching sessions)";
+            if (plan.UnmatchedSessions.Count > 0)
             {
-                _activeActivityCohortBySid[entry.Sid] = entry.Identity.Key;
+                ShowUnmatchedActivityWarning(plan);
             }
-            _activityStatus.Text = $"{plan.ActivityName} active on {plan.Entries.Count} sessions; UI synchronized";
-            statusConnection.Text = $"Mirror: activity applied ({plan.ActivityName}, {plan.Entries.Count} sessions)";
         }
         catch (Exception ex)
         {
@@ -639,39 +668,116 @@ public partial class MainForm
         return new ActivityProfileIdentity(character, mainJob, subJob);
     }
 
-    private void RefreshActivityCohortStatus()
+    internal static ActivityProfileProvenance ResolveActivityProvenance(
+        ActivityProfileProvenance storedProvenance,
+        bool individuallySavedInContext,
+        bool updatedInContext = false
+    )
     {
-        if (_activityOperationInProgress || string.IsNullOrWhiteSpace(_activeActivityId))
+        if (updatedInContext && storedProvenance != ActivityProfileProvenance.NoMatch)
+        {
+            return ActivityProfileProvenance.Exact;
+        }
+        return storedProvenance == ActivityProfileProvenance.NoMatch && individuallySavedInContext
+            ? ActivityProfileProvenance.Modified
+            : storedProvenance;
+    }
+
+    private Dictionary<string, ActivityProfileProvenance> BuildActiveActivityProvenanceBySid(
+        IReadOnlyDictionary<string, SessionMeta> sessionMetaBySid
+    )
+    {
+        var output = new Dictionary<string, ActivityProfileProvenance>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(_activeActivityId))
+        {
+            return output;
+        }
+
+        var sessions = new List<ActivitySessionIdentity>();
+        foreach (var pair in sessionMetaBySid)
+        {
+            var meta = pair.Value;
+            if (string.IsNullOrWhiteSpace(meta.CharName)
+                || string.IsNullOrWhiteSpace(meta.Job)
+                || string.IsNullOrWhiteSpace(meta.SubJob))
+            {
+                output[pair.Key] = ActivityProfileProvenance.NoMatch;
+                continue;
+            }
+            sessions.Add(new ActivitySessionIdentity(pair.Key, RequireActivityIdentity(meta)));
+        }
+
+        var snapshot = _activityStore.BuildProvenance(_activeActivityId, sessions);
+        foreach (var entry in snapshot.Entries)
+        {
+            output[entry.Sid] = ResolveActivityProvenance(
+                entry.Provenance,
+                _activeActivitySavedIdentityKeys.Contains(entry.Identity.Key),
+                _activeActivityUpdatedIdentityKeys.Contains(entry.Identity.Key)
+            );
+        }
+        return output;
+    }
+
+    private string ActivityProvenanceSuffix(ActivityProfileProvenance provenance)
+    {
+        if (provenance == ActivityProfileProvenance.NoMatch)
+        {
+            return "[No Match]";
+        }
+
+        var activityName = _activeActivityName
+            ?? throw new ActivityProfileException("Active activity name is unavailable.");
+        return provenance == ActivityProfileProvenance.Exact
+            ? $"[{activityName}]"
+            : $"[{activityName}-mod]";
+    }
+
+    private void MarkActiveActivityProfileSaved(string sid)
+    {
+        if (string.IsNullOrWhiteSpace(_activeActivityId))
+        {
+            return;
+        }
+        if (!_sessionMetaBySid.TryGetValue(sid, out var meta))
+        {
+            throw new ActivityProfileException($"Session metadata is unavailable after saving {sid}.");
+        }
+
+        var identityKey = RequireActivityIdentity(meta).Key;
+        _activeActivityUpdatedIdentityKeys.Remove(identityKey);
+        _activeActivitySavedIdentityKeys.Add(identityKey);
+        RefreshSessionLabelsForActivityContext();
+        RefreshActivityCohortStatus();
+    }
+
+    private void RefreshActivityCohortStatus(bool force = false)
+    {
+        if ((!force && _activityOperationInProgress) || string.IsNullOrWhiteSpace(_activeActivityId))
         {
             return;
         }
 
-        var exact = _sessionMetaBySid.Count == _activeActivityCohortBySid.Count;
-        if (exact)
-        {
-            foreach (var pair in _sessionMetaBySid)
-            {
-                var meta = pair.Value;
-                if (string.IsNullOrWhiteSpace(meta.CharName)
-                    || string.IsNullOrWhiteSpace(meta.Job)
-                    || string.IsNullOrWhiteSpace(meta.SubJob))
-                {
-                    exact = false;
-                    break;
-                }
-                var identity = RequireActivityIdentity(meta);
-                if (!_activeActivityCohortBySid.TryGetValue(pair.Key, out var appliedKey)
-                    || !string.Equals(appliedKey, identity.Key, StringComparison.Ordinal))
-                {
-                    exact = false;
-                    break;
-                }
-            }
-        }
+        var provenance = BuildActiveActivityProvenanceBySid(_sessionMetaBySid);
+        var matched = provenance.Count(x => x.Value == ActivityProfileProvenance.Exact);
+        var modified = provenance.Count(x => x.Value == ActivityProfileProvenance.Modified);
+        var noMatch = provenance.Count(x => x.Value == ActivityProfileProvenance.NoMatch);
+        _activityStatus.Text = $"{_activeActivityName}: {matched} matched / {modified} modified / {noMatch} no match";
+    }
 
-        _activityStatus.Text = exact
-            ? $"{_activeActivityName} active on {_activeActivityCohortBySid.Count} sessions"
-            : $"{_activeActivityName}: active sessions or jobs changed; apply again required";
+    private void ShowUnmatchedActivityWarning(ActivityActivationPlan plan)
+    {
+        var identities = plan.UnmatchedSessions
+            .Select(x => $"{x.Identity.Character} {x.Identity.MainJob}/{x.Identity.SubJob}")
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase);
+        MessageBox.Show(
+            this,
+            $"'{plan.ActivityName}' is active, but these sessions had no exact variant and were left unchanged:\n\n"
+                + string.Join("\n", identities),
+            "Activity applied with unmatched sessions",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning
+        );
     }
 
     private void SetActivityControlsEnabled(bool enabled)
