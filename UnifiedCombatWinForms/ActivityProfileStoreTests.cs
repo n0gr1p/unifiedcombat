@@ -14,6 +14,7 @@ internal static class ActivityProfileStoreTests
             TestActivityProvenanceTransitions(root);
             TestLegacyBundleRequiresVariantUpdate(root);
             TestAppliedUiPreservesRuntimeEngineState();
+            TestSessionDisplayLabels();
             TestGlobalUiAndBridgeContract();
             Console.WriteLine("ActivityProfileStoreTests: PASS");
             return 0;
@@ -74,7 +75,10 @@ internal static class ActivityProfileStoreTests
         AssertContains(ui, "if (plan.Entries.Count > 0)", "zero-match activity context must skip deployment and reload");
         AssertContains(ui, "matched / {modified} modified / {noMatch} no match", "activity status must report provenance counts");
         AssertContains(ui, "MarkActiveActivityProfileSaved", "individual save must update activity provenance");
-        AssertContains(main, "ActivityProvenanceSuffix", "session labels must include activity provenance");
+        AssertContains(main, "BuildSessionDisplayLabel", "session labels must include activity provenance");
+        AssertContains(main, "listSessions.Items[index] = new SessionListItem", "changed labels must replace native ListBox items");
+        AssertContains(main, "_suppressSessionSelectionChanged", "label replacement must suppress selection side effects");
+        AssertNotContains(main, "listSessions.Refresh()", "label refresh must not rely on repainting a cached item string");
         AssertContains(parity, "TryLoadWorkingProfileForSid(_selectedSid", "session switching must prefer unsaved working state");
         AssertContains(profileStore, "$\"{ch}_{job}_{subJob}.json\"", "UI working profiles must use exact main/subjob identity");
         AssertContains(profileStore, "TryMigrateLegacyUiProfileForSid", "legacy main-job UI profiles need explicit migration");
@@ -352,6 +356,30 @@ internal static class ActivityProfileStoreTests
         Assert(stoppedJson["Start_Engine"]!.GetValue<bool>() == false, "stopped engine state must remain stopped in applied UI");
         Assert(runningJson["Start_Engine"]!.GetValue<bool>() == true, "running engine state must remain running in applied UI");
         Assert(runningJson["marker"]!.GetValue<string>() == "wave3", "activity UI settings must survive runtime-state normalization");
+    }
+
+    private static void TestSessionDisplayLabels()
+    {
+        const string baseLabel = "[On] Nyoourke (SAM) [UC]";
+        Assert(
+            MainForm.BuildSessionDisplayLabel(baseLabel, "Sortie", ActivityProfileProvenance.Exact)
+                == "[On] Nyoourke (SAM) [UC] [Sortie]",
+            "exact activity provenance label mismatch"
+        );
+        Assert(
+            MainForm.BuildSessionDisplayLabel(baseLabel, "Sortie", ActivityProfileProvenance.Modified)
+                == "[On] Nyoourke (SAM) [UC] [Sortie-mod]",
+            "modified activity provenance label mismatch"
+        );
+        Assert(
+            MainForm.BuildSessionDisplayLabel(baseLabel, "Sortie", ActivityProfileProvenance.NoMatch)
+                == "[On] Nyoourke (SAM) [UC] [No Match]",
+            "no-match activity provenance label mismatch"
+        );
+        Assert(
+            MainForm.BuildSessionDisplayLabel(baseLabel, null, null) == baseLabel,
+            "clearing the active activity must remove the provenance suffix"
+        );
     }
 
     private static string ProfileText(ActivityProfileIdentity identity, string marker)

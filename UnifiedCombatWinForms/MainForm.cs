@@ -28,6 +28,7 @@ public partial class MainForm : Form
     private DateTime _profileSaveStatusHoldUntilUtc = DateTime.MinValue;
     private string? _selectedSid;
     private string? _lastFillSid;
+    private bool _suppressSessionSelectionChanged;
 
     private readonly Dictionary<string, Dictionary<string, (bool val, DateTime ts)>> _pendingBoolBySid = new();
     private readonly Dictionary<string, (string ws, DateTime ts)> _pendingWsBySid = new();
@@ -42,6 +43,8 @@ public partial class MainForm : Form
     private DateTime _abilityInteractionUtc = DateTime.MinValue;
 
     private readonly Dictionary<string, CheckBox> _boolChecks = new(StringComparer.Ordinal);
+    /// <summary>Profile values retained for legacy booleans that no longer have editable UI controls.</summary>
+    private readonly Dictionary<string, Dictionary<string, bool>> _compatibilityBoolBySid = new(StringComparer.Ordinal);
     private readonly List<string> _abilityOptions = [];
     private readonly List<string> _corRollOptions = [];
     private readonly List<string> _brdSongOptions = [];
@@ -154,6 +157,11 @@ public partial class MainForm : Form
 
     private void ListSessions_SelectedIndexChanged(object? sender, EventArgs e)
     {
+        if (_suppressSessionSelectionChanged)
+        {
+            return;
+        }
+
         var prevSid = _selectedSid;
         if (!string.IsNullOrWhiteSpace(prevSid) && _listSids.Contains(prevSid))
         {
@@ -182,7 +190,7 @@ public partial class MainForm : Form
         }
 
         internal string Sid { get; }
-        internal string Label { get; set; }
+        internal string Label { get; }
 
         public override string ToString() => Label;
     }
@@ -293,12 +301,10 @@ public partial class MainForm : Form
         var nextActivityProvenance = BuildActiveActivityProvenanceBySid(nextMeta);
         foreach (var sid in nextSids)
         {
-            var label = nextBaseLabels[sid];
-            if (nextActivityProvenance.TryGetValue(sid, out var provenance))
-            {
-                label += " " + ActivityProvenanceSuffix(provenance);
-            }
-            nextLabels[sid] = label;
+            var provenance = nextActivityProvenance.TryGetValue(sid, out var value)
+                ? value
+                : (ActivityProfileProvenance?)null;
+            nextLabels[sid] = BuildSessionDisplayLabel(nextBaseLabels[sid], _activeActivityName, provenance);
         }
 
         var listChanged = nextLabels.Count != _sessionLabelBySid.Count;
@@ -391,6 +397,7 @@ public partial class MainForm : Form
                 _optionsHydratedJobBySid.Remove(kv.Key);
                 _optionsRequestInFlightBySid.Remove(kv.Key);
                 _workingProfileBySid.Remove(kv.Key);
+                _compatibilityBoolBySid.Remove(kv.Key);
                 newlyAddedSids.Add(kv.Key);
                 continue;
             }
@@ -401,6 +408,7 @@ public partial class MainForm : Form
                 _optionsHydratedJobBySid.Remove(kv.Key);
                 _optionsRequestInFlightBySid.Remove(kv.Key);
                 _workingProfileBySid.Remove(kv.Key);
+                _compatibilityBoolBySid.Remove(kv.Key);
             }
         }
         foreach (var oldSid in prevMeta.Keys)
@@ -410,6 +418,7 @@ public partial class MainForm : Form
                 _optionsHydratedJobBySid.Remove(oldSid);
                 _optionsRequestInFlightBySid.Remove(oldSid);
                 _workingProfileBySid.Remove(oldSid);
+                _compatibilityBoolBySid.Remove(oldSid);
             }
         }
         _sessionRunningBySid.Clear();
@@ -575,21 +584,54 @@ public partial class MainForm : Form
     private void RefreshSessionLabelsForActivityContext()
     {
         var provenanceBySid = BuildActiveActivityProvenanceBySid(_sessionMetaBySid);
-        foreach (var item in listSessions.Items.OfType<SessionListItem>())
+        var selectedSid = (listSessions.SelectedItem as SessionListItem)?.Sid ?? _selectedSid;
+        var wasSelectionSuppressed = _suppressSessionSelectionChanged;
+        _suppressSessionSelectionChanged = true;
+        listSessions.BeginUpdate();
+        try
         {
-            if (!_sessionBaseLabelBySid.TryGetValue(item.Sid, out var baseLabel))
+            for (var index = 0; index < listSessions.Items.Count; index++)
             {
-                throw new ActivityProfileException($"Base session label is unavailable for {item.Sid}.");
+                if (listSessions.Items[index] is not SessionListItem item)
+                {
+                    throw new ActivityProfileException($"Session list item {index} has an unexpected type.");
+                }
+                if (!_sessionBaseLabelBySid.TryGetValue(item.Sid, out var baseLabel))
+                {
+                    throw new ActivityProfileException($"Base session label is unavailable for {item.Sid}.");
+                }
+
+                var provenance = provenanceBySid.TryGetValue(item.Sid, out var value)
+                    ? value
+                    : (ActivityProfileProvenance?)null;
+                var label = BuildSessionDisplayLabel(baseLabel, _activeActivityName, provenance);
+                if (!string.Equals(item.Label, label, StringComparison.Ordinal))
+                {
+                    listSessions.Items[index] = new SessionListItem(item.Sid, label);
+                }
+                _sessionLabelBySid[item.Sid] = label;
             }
 
-            var label = baseLabel;
-            if (provenanceBySid.TryGetValue(item.Sid, out var provenance))
+            if (selectedSid is not null)
             {
-                label += " " + ActivityProvenanceSuffix(provenance);
+                for (var index = 0; index < listSessions.Items.Count; index++)
+                {
+                    if (listSessions.Items[index] is SessionListItem item
+                        && string.Equals(item.Sid, selectedSid, StringComparison.Ordinal))
+                    {
+                        if (listSessions.SelectedIndex != index)
+                        {
+                            listSessions.SelectedIndex = index;
+                        }
+                        break;
+                    }
+                }
             }
-            item.Label = label;
-            _sessionLabelBySid[item.Sid] = label;
         }
-        listSessions.Refresh();
+        finally
+        {
+            listSessions.EndUpdate();
+            _suppressSessionSelectionChanged = wasSelectionSuppressed;
+        }
     }
 }

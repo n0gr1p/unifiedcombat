@@ -719,15 +719,31 @@ public partial class MainForm
         return output;
     }
 
-    private string ActivityProvenanceSuffix(ActivityProfileProvenance provenance)
+    internal static string BuildSessionDisplayLabel(
+        string baseLabel,
+        string? activityName,
+        ActivityProfileProvenance? provenance
+    )
+    {
+        return provenance.HasValue
+            ? baseLabel + " " + ActivityProvenanceSuffix(activityName, provenance.Value)
+            : baseLabel;
+    }
+
+    private static string ActivityProvenanceSuffix(
+        string? activityName,
+        ActivityProfileProvenance provenance
+    )
     {
         if (provenance == ActivityProfileProvenance.NoMatch)
         {
             return "[No Match]";
         }
 
-        var activityName = _activeActivityName
-            ?? throw new ActivityProfileException("Active activity name is unavailable.");
+        if (string.IsNullOrWhiteSpace(activityName))
+        {
+            throw new ActivityProfileException("Active activity name is unavailable.");
+        }
         return provenance == ActivityProfileProvenance.Exact
             ? $"[{activityName}]"
             : $"[{activityName}-mod]";

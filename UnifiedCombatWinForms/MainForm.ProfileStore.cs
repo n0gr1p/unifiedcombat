@@ -371,7 +371,7 @@ public partial class MainForm
 
         foreach (var key in HubUiConstants.BoolKeys)
         {
-            profile[key] = _boolChecks.TryGetValue(key, out var cb) && cb.Checked;
+            profile[key] = ReadPersistedBoolValue(sid, key, running);
         }
 
         if (profile.TryGetPropertyValue("profile_v2_autoload", out var autoloadValue)
@@ -390,6 +390,28 @@ public partial class MainForm
         }
 
         return profile;
+    }
+
+    private bool ReadPersistedBoolValue(string sid, string key, bool running)
+    {
+        if (string.Equals(key, "Start_Engine", StringComparison.Ordinal))
+        {
+            return running;
+        }
+        if (_boolChecks.TryGetValue(key, out var checkBox))
+        {
+            return checkBox.Checked;
+        }
+        if (!HubUiConstants.CompatibilityOnlyBoolKeys.Contains(key, StringComparer.Ordinal))
+        {
+            throw new InvalidOperationException($"Persisted boolean '{key}' has no UI or compatibility owner.");
+        }
+        if (!_compatibilityBoolBySid.TryGetValue(sid, out var compatibilityBools)
+            || !compatibilityBools.TryGetValue(key, out var value))
+        {
+            throw new InvalidOperationException($"Compatibility boolean '{key}' is unavailable for session '{sid}'.");
+        }
+        return value;
     }
 
     private JsonArray BuildReactionRulesJson()

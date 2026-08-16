@@ -3,9 +3,6 @@ namespace UnifiedCombatWinForms;
 public partial class MainForm
 {
     private GroupBox _grpHealer = null!;
-    private GroupBox _grpCombat = null!;
-    private GroupBox _grpBehavior = null!;
-    private GroupBox _grpVisuals = null!;
     private CheckBox _chkWeaponskill = null!;
     private CheckBox _chkAftermath = null!;
     private CheckBox _chkAbility = null!;
@@ -299,35 +296,11 @@ public partial class MainForm
             Dock = DockStyle.Top,
             AutoSize = true,
             ColumnCount = 1,
-            RowCount = 2,
+            RowCount = 1,
         };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         host.Controls.Add(root);
         host.Resize += (_, _) => root.Width = Math.Max(400, host.ClientSize.Width - 16);
-
-        var top = new TableLayoutPanel
-        {
-            AutoSize = true,
-            ColumnCount = 4,
-            RowCount = 1,
-            Dock = DockStyle.Top,
-            Width = host.ClientSize.Width,
-        };
-        for (var i = 0; i < 4; i++)
-        {
-            top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
-        }
-
-        _grpHealer = CreateBoolCard("Healer / Defensive", HubUiConstants.HealerCardKeys);
-        _grpCombat = CreateBoolCard("Combat Engine", HubUiConstants.CombatCardKeys);
-        _grpBehavior = CreateBoolCard("Behavior / Legacy", HubUiConstants.BehaviorCardKeys);
-        _grpVisuals = CreateBoolCard("Display / Misc", HubUiConstants.VisualsCardKeys);
-        top.Controls.Add(_grpHealer, 0, 0);
-        top.Controls.Add(_grpCombat, 1, 0);
-        top.Controls.Add(_grpBehavior, 2, 0);
-        top.Controls.Add(_grpVisuals, 3, 0);
-        root.Controls.Add(top, 0, 0);
 
         var form = new GroupBox
         {
@@ -368,6 +341,22 @@ public partial class MainForm
         leftCol.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
         leftCol.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         var lr = 0;
+
+        var combatToggles = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Padding = new Padding(0, 0, 0, 6),
+        };
+        foreach (var key in HubUiConstants.CombatTargetingUiKeys)
+        {
+            combatToggles.Controls.Add(MkGlobal(key));
+        }
+        leftCol.Controls.Add(combatToggles, 0, lr);
+        leftCol.SetColumnSpan(combatToggles, 2);
+        lr++;
 
         var wsLab = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         _chkWeaponskill = MkCtx("weaponskill_active");
@@ -536,6 +525,21 @@ public partial class MainForm
         rightCol.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
         rightCol.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         var dr = 0;
+        var defensiveToggles = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Padding = new Padding(0, 0, 0, 6),
+        };
+        foreach (var key in HubUiConstants.DefensiveUiKeys)
+        {
+            defensiveToggles.Controls.Add(MkGlobal(key));
+        }
+        rightCol.Controls.Add(defensiveToggles, 0, dr);
+        rightCol.SetColumnSpan(defensiveToggles, 2);
+        dr++;
         rightCol.Controls.Add(new Label { Text = "defensive_provider", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defProviderCombo = new ComboBox
         {
@@ -593,13 +597,29 @@ public partial class MainForm
         rightCol.Controls.Add(_defTargetedBuffs, 1, dr);
         dr++;
 
-        topSplit.Controls.Add(leftCol, 0, 0);
-        topSplit.Controls.Add(rightCol, 1, 0);
+        var combatGroup = new GroupBox
+        {
+            Text = "Combat / Targeting",
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            Padding = new Padding(8),
+        };
+        combatGroup.Controls.Add(leftCol);
+        _grpHealer = new GroupBox
+        {
+            Text = "Defensive",
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            Padding = new Padding(8),
+        };
+        _grpHealer.Controls.Add(rightCol);
+        topSplit.Controls.Add(combatGroup, 0, 0);
+        topSplit.Controls.Add(_grpHealer, 1, 0);
         g.Controls.Add(topSplit, 0, gRow++);
 
         _grpFightLeader = new GroupBox
         {
-            Text = "Fight leader — autotarget stays on the leader target unless an eligible fight-add is valid.",
+            Text = "Fight Leader / Add Control — autotarget stays on the leader target unless an eligible fight-add is valid.",
             Dock = DockStyle.Top,
             Padding = new Padding(8),
             AutoSize = true,
@@ -612,6 +632,7 @@ public partial class MainForm
         flTop.Controls.Add(_fightLeaderCombo);
         var flFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0) };
         flFlow.Controls.Add(flTop);
+        flFlow.Controls.Add(MkGlobal("add_control"));
         var pfTop = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0) };
         pfTop.Controls.Add(MkGlobal("party_follow"));
         _partyFollowCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
@@ -841,6 +862,7 @@ public partial class MainForm
             MinimumSize = new Size(200, 120),
         };
         var sleepFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
+        sleepFlow.Controls.Add(MkGlobal("sleep"));
         var sleepRangeRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         sleepRangeRow.Controls.Add(new Label { Text = "Eligible mob range", AutoSize = true, Padding = new Padding(0, 4, 0, 0) });
         _sleepMaxTargetRange = new TextBox { Width = 52 };
@@ -888,6 +910,7 @@ public partial class MainForm
             MinimumSize = new Size(200, 120),
         };
         var tankFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
+        tankFlow.Controls.Add(MkGlobal("tank"));
         _tankEnmityList = new ListBox
         {
             Height = 90,
@@ -962,6 +985,20 @@ public partial class MainForm
         sp.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
         sp.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
         var sr = 0;
+        var movementToggles = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Padding = new Padding(0, 0, 0, 8),
+        };
+        foreach (var key in HubUiConstants.SpacingMovementUiKeys)
+        {
+            movementToggles.Controls.Add(MkGlobal(key));
+        }
+        sp.Controls.Add(movementToggles, 0, sr);
+        sp.SetColumnSpan(movementToggles, 2);
+        sr++;
         sp.Controls.Add(new Label { Text = "Use target prediction", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
         _spUsePrediction = new CheckBox { AutoSize = true, Anchor = AnchorStyles.Left };
         _spUsePrediction.CheckedChanged += (_, _) => OnSpacingTuningBoolChanged();
@@ -1367,6 +1404,10 @@ public partial class MainForm
         path.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
         path.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         var pathRow = 0;
+        var hunter = MkGlobal("hunter");
+        path.Controls.Add(hunter, 0, pathRow);
+        path.SetColumnSpan(hunter, 2);
+        pathRow++;
         var rec = MkGlobal("path_recording");
         var fol = MkGlobal("path_follow_enabled");
         path.Controls.Add(rec, 0, pathRow);
@@ -1919,11 +1960,39 @@ public partial class MainForm
         sch.Controls.Add(MkGlobal("domain_movement_enabled"));
         sch.Controls.Add(MkGlobal("domain_maintenance_enabled"));
         sch.Controls.Add(MkGlobal("domain_follow_enabled"));
+        sch.Controls.Add(
+            new Label
+            {
+                Text = "Diagnostics",
+                AutoSize = true,
+                Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold),
+                Padding = new Padding(0, 12, 0, 4),
+            }
+        );
+        foreach (var key in HubUiConstants.DiagnosticsUiKeys)
+        {
+            sch.Controls.Add(MkGlobal(key));
+        }
         tabScheduler.Controls.Add(sch);
         _settingsTabs.TabPages.Add(tabScheduler);
 
+        var tabProfile = new TabPage("Profile / Lifecycle") { AutoScroll = true };
+        var profileLifecycle = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 1,
+            Padding = new Padding(8),
+        };
+        foreach (var key in HubUiConstants.ProfileLifecycleUiKeys)
+        {
+            profileLifecycle.Controls.Add(MkGlobal(key));
+        }
+        tabProfile.Controls.Add(profileLifecycle);
+        _settingsTabs.TabPages.Add(tabProfile);
+
         form.Controls.Add(_settingsTabs);
-        root.Controls.Add(form, 0, 1);
+        root.Controls.Add(form, 0, 0);
 
         BuildGlobalActivityControls(sessionActionsFooter);
 
@@ -1956,10 +2025,7 @@ public partial class MainForm
 
         CheckBox MkGlobal(string key)
         {
-            var cb = new CheckBox { Text = HubUiConstants.BoolLabel(key), AutoSize = true };
-            _boolChecks[key] = cb;
-            cb.CheckedChanged += (_, _) => OnAnyBool(key, cb.Checked);
-            return cb;
+            return CreateGlobalBoolCheckBox(key);
         }
 
     }
@@ -2080,37 +2146,21 @@ public partial class MainForm
         row++;
     }
 
-    private GroupBox CreateBoolCard(string title, IEnumerable<string> keys)
+    private CheckBox CreateGlobalBoolCheckBox(string key)
     {
-        var gb = new GroupBox
+        if (_boolChecks.ContainsKey(key))
         {
-            Text = title,
-            Dock = DockStyle.Fill,
-            Padding = new Padding(8),
+            throw new InvalidOperationException($"Boolean control '{key}' was registered more than once.");
+        }
+
+        var checkBox = new CheckBox
+        {
+            Text = HubUiConstants.BoolLabel(key),
             AutoSize = true,
+            Anchor = AnchorStyles.Left,
         };
-        var t = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Top, ColumnCount = 1 };
-        foreach (var key in keys)
-        {
-            var cb = new CheckBox { Text = HubUiConstants.BoolLabel(key), AutoSize = true, Anchor = AnchorStyles.Left };
-            _boolChecks[key] = cb;
-            cb.CheckedChanged += (_, _) => OnAnyBool(key, cb.Checked);
-            t.Controls.Add(cb);
-        }
-
-        if (title.StartsWith("Healer", StringComparison.Ordinal))
-        {
-            t.Controls.Add(
-                new Label
-                {
-                    Text = "When Healer Enabled is off, options stay editable but inactive.",
-                    AutoSize = true,
-                    ForeColor = SystemColors.GrayText,
-                }
-            );
-        }
-
-        gb.Controls.Add(t);
-        return gb;
+        _boolChecks[key] = checkBox;
+        checkBox.CheckedChanged += (_, _) => OnAnyBool(key, checkBox.Checked);
+        return checkBox;
     }
 }
