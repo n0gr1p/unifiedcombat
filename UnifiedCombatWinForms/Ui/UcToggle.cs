@@ -68,7 +68,7 @@ internal sealed class UcToggle : CheckBox
         var trackColor = !Enabled
             ? SystemColors.ControlDark
             : Checked ? UcTheme.PrimaryBackground : UcTheme.ControlBorder;
-        using (var trackPath = RoundedRectangle(track, track.Height / 2F))
+        using (var trackPath = UcDrawing.CreateRoundedPath(track, track.Height / 2))
         using (var trackBrush = new SolidBrush(trackColor))
         {
             e.Graphics.FillPath(trackBrush, trackPath);
@@ -99,17 +99,5 @@ internal sealed class UcToggle : CheckBox
         }
     }
 
-    private int ScaleLogical(int value) => (int)Math.Round(value * DeviceDpi / 96F);
-
-    private static GraphicsPath RoundedRectangle(Rectangle bounds, float radius)
-    {
-        var diameter = radius * 2F;
-        var path = new GraphicsPath();
-        path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
-        path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
-        path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
-        path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
-        path.CloseFigure();
-        return path;
-    }
+    private int ScaleLogical(int value) => UcDrawing.Scale(this, value);
 }

@@ -1,7 +1,27 @@
+using System.Drawing.Drawing2D;
+using System.Runtime.CompilerServices;
+
 namespace UnifiedCombatWinForms.Ui;
 
 internal static class UcControlStyles
 {
+    private static readonly ConditionalWeakTable<Button, ButtonVisualState> ButtonStates = new();
+
+    private enum ButtonRole
+    {
+        Secondary,
+        Primary,
+        Destructive,
+    }
+
+    private sealed class ButtonVisualState
+    {
+        internal ButtonRole Role { get; set; }
+        internal bool Initialized { get; set; }
+        internal bool Hovered { get; set; }
+        internal bool Pressed { get; set; }
+    }
+
     internal static void Apply(Control root)
     {
         var controls = new List<Control>();
@@ -41,20 +61,20 @@ internal static class UcControlStyles
 
     internal static void StylePrimary(Button button)
     {
-        ApplyButtonPalette(button, () => UcTheme.PrimaryBackground, () => UcTheme.PrimaryText);
+        StyleButton(button, ButtonRole.Primary);
     }
 
     internal static void StyleSecondary(params Button[] buttons)
     {
         foreach (var button in buttons)
         {
-            ApplyButtonPalette(button, () => UcTheme.SecondaryBackground, () => SystemColors.ControlText);
+            StyleButton(button, ButtonRole.Secondary);
         }
     }
 
     internal static void StyleDestructive(Button button)
     {
-        ApplyButtonPalette(button, () => UcTheme.Destructive, () => UcTheme.BadgeText);
+        StyleButton(button, ButtonRole.Destructive);
     }
 
     internal static void StyleCompact(params Button[] buttons)
@@ -99,11 +119,11 @@ internal static class UcControlStyles
         {
             case Button button:
                 button.FlatStyle = FlatStyle.Flat;
-                button.FlatAppearance.BorderSize = 1;
+                button.FlatAppearance.BorderSize = 0;
                 button.MinimumSize = new Size(button.MinimumSize.Width, UcTheme.ControlHeight);
                 button.Padding = new Padding(UcTheme.SpaceMd, UcTheme.SpaceXs, UcTheme.SpaceMd, UcTheme.SpaceXs);
                 button.Margin = UcTheme.ControlMargin;
-                ApplyButtonPalette(button, () => UcTheme.SecondaryBackground, () => SystemColors.ControlText);
+                StyleButton(button, ButtonRole.Secondary);
                 break;
             case TextBoxBase textBox:
                 textBox.BorderStyle = BorderStyle.FixedSingle;
@@ -129,22 +149,125 @@ internal static class UcControlStyles
         }
     }
 
-    private static void ApplyButtonPalette(Button button, Func<Color> background, Func<Color> foreground)
+    private static void StyleButton(Button button, ButtonRole role)
     {
-        void ApplyPalette()
+        var state = ButtonStates.GetOrCreateValue(button);
+        state.Role = role;
+        if (!state.Initialized)
         {
+            state.Initialized = true;
             button.UseVisualStyleBackColor = false;
-            var paletteBackground = button.Enabled ? background() : SystemColors.ControlDark;
-            var paletteForeground = button.Enabled ? foreground() : SystemColors.GrayText;
-            button.BackColor = paletteBackground;
-            button.ForeColor = paletteForeground;
-            button.FlatAppearance.BorderColor = paletteBackground;
-            button.FlatAppearance.MouseOverBackColor = ControlPaint.Light(background(), 0.08F);
-            button.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(background(), 0.08F);
+            button.FlatStyle = FlatStyle.Flat;
+            button.FlatAppearance.BorderSize = 0;
+            button.Resize += (_, _) => UpdateButtonRegion(button);
+            button.DpiChangedAfterParent += (_, _) => UpdateButtonRegion(button);
+            button.HandleCreated += (_, _) => UpdateButtonRegion(button);
+            button.SystemColorsChanged += (_, _) => UpdateButtonVisual(button, state);
+            button.EnabledChanged += (_, _) => UpdateButtonVisual(button, state);
+            button.MouseEnter += (_, _) =>
+            {
+                state.Hovered = true;
+                UpdateButtonVisual(button, state);
+            };
+            button.MouseLeave += (_, _) =>
+            {
+                state.Hovered = false;
+                state.Pressed = false;
+                UpdateButtonVisual(button, state);
+            };
+            button.MouseDown += (_, e) =>
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    state.Pressed = true;
+                    UpdateButtonVisual(button, state);
+                }
+            };
+            button.MouseUp += (_, _) =>
+            {
+                state.Pressed = false;
+                UpdateButtonVisual(button, state);
+            };
+            button.MouseCaptureChanged += (_, _) =>
+            {
+                if (!button.Capture && state.Pressed)
+                {
+                    state.Pressed = false;
+                    UpdateButtonVisual(button, state);
+                }
+            };
+            button.KeyDown += (_, e) =>
+            {
+                if (e.KeyCode is Keys.Space or Keys.Enter)
+                {
+                    state.Pressed = true;
+                    UpdateButtonVisual(button, state);
+                }
+            };
+            button.KeyUp += (_, e) =>
+            {
+                if (e.KeyCode is Keys.Space or Keys.Enter)
+                {
+                    state.Pressed = false;
+                    UpdateButtonVisual(button, state);
+                }
+            };
+            button.GotFocus += (_, _) => button.Invalidate();
+            button.LostFocus += (_, _) => button.Invalidate();
+            button.Paint += (_, e) => PaintButtonFocus(button, e);
         }
 
-        ApplyPalette();
-        button.SystemColorsChanged += (_, _) => ApplyPalette();
-        button.EnabledChanged += (_, _) => ApplyPalette();
+        UpdateButtonRegion(button);
+        UpdateButtonVisual(button, state);
+    }
+
+    private static void UpdateButtonVisual(Button button, ButtonVisualState state)
+    {
+        var (background, hover, pressed, foreground) = state.Role switch
+        {
+            ButtonRole.Primary => (UcTheme.PrimaryBackground, UcTheme.PrimaryHover, UcTheme.PrimaryPressed, UcTheme.PrimaryText),
+            ButtonRole.Destructive => (UcTheme.Destructive, UcTheme.DestructiveHover, UcTheme.DestructivePressed, UcTheme.BadgeText),
+            _ => (UcTheme.SecondaryBackground, UcTheme.SecondaryHover, UcTheme.SecondaryPressed, SystemColors.ControlText),
+        };
+
+        if (!button.Enabled)
+        {
+            background = UcTheme.DisabledSurface;
+            hover = background;
+            pressed = background;
+            foreground = UcTheme.DisabledText;
+        }
+
+        button.BackColor = state.Pressed ? pressed : state.Hovered ? hover : background;
+        button.ForeColor = foreground;
+        button.FlatAppearance.MouseOverBackColor = hover;
+        button.FlatAppearance.MouseDownBackColor = pressed;
+        button.Invalidate();
+    }
+
+    private static void UpdateButtonRegion(Button button)
+    {
+        UcDrawing.ApplyRoundedRegion(button, UcTheme.CornerRadiusMd);
+        button.Invalidate();
+    }
+
+    private static void PaintButtonFocus(Button button, PaintEventArgs e)
+    {
+        if (!button.Focused || button.ClientSize.Width < 8 || button.ClientSize.Height < 8)
+        {
+            return;
+        }
+
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        var inset = UcDrawing.Scale(button, 3);
+        var bounds = Rectangle.Inflate(button.ClientRectangle, -inset, -inset);
+        bounds.Width--;
+        bounds.Height--;
+        using var path = UcDrawing.CreateRoundedPath(
+            bounds,
+            Math.Max(1, UcDrawing.Scale(button, UcTheme.CornerRadiusMd) - inset)
+        );
+        using var pen = new Pen(UcTheme.PrimaryBackground, Math.Max(1F, button.DeviceDpi / 96F));
+        e.Graphics.DrawPath(pen, path);
     }
 }

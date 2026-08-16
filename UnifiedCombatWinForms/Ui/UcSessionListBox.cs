@@ -31,6 +31,7 @@ internal sealed record UcSessionRow(
 internal sealed class UcSessionListBox : ListBox
 {
     private const int LogicalItemHeight = 60;
+    private int _hotIndex = -1;
 
     internal UcSessionListBox()
     {
@@ -39,6 +40,40 @@ internal sealed class UcSessionListBox : ListBox
         IntegralHeight = false;
         SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         UpdateItemHeight();
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        var nextHotIndex = IndexFromPoint(e.Location);
+        if (nextHotIndex == _hotIndex)
+        {
+            return;
+        }
+
+        var previousHotIndex = _hotIndex;
+        _hotIndex = nextHotIndex;
+        if (previousHotIndex >= 0)
+        {
+            Invalidate(GetItemRectangle(previousHotIndex));
+        }
+        if (_hotIndex >= 0)
+        {
+            Invalidate(GetItemRectangle(_hotIndex));
+        }
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        base.OnMouseLeave(e);
+        if (_hotIndex < 0)
+        {
+            return;
+        }
+
+        var previousHotIndex = _hotIndex;
+        _hotIndex = -1;
+        Invalidate(GetItemRectangle(previousHotIndex));
     }
 
     protected override void OnDpiChangedAfterParent(EventArgs e)
@@ -65,13 +100,23 @@ internal sealed class UcSessionListBox : ListBox
         }
 
         var selected = (e.State & DrawItemState.Selected) != 0;
-        var background = selected ? SystemColors.Highlight : BackColor;
+        var hovered = e.Index == _hotIndex;
+        var background = selected ? SystemColors.Highlight : hovered ? UcTheme.NavigationHover : BackColor;
         var foreground = selected ? SystemColors.HighlightText : ForeColor;
-        using (var backgroundBrush = new SolidBrush(background))
+        using (var listBrush = new SolidBrush(BackColor))
         {
-            e.Graphics.FillRectangle(backgroundBrush, e.Bounds);
+            e.Graphics.FillRectangle(listBrush, e.Bounds);
         }
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        if (selected || hovered)
+        {
+            var surfaceBounds = Rectangle.Inflate(e.Bounds, -ScaleLogical(2), -ScaleLogical(2));
+            surfaceBounds.Width--;
+            surfaceBounds.Height--;
+            using var surfacePath = UcDrawing.CreateRoundedPath(surfaceBounds, ScaleLogical(UcTheme.CornerRadiusMd));
+            using var surfaceBrush = new SolidBrush(background);
+            e.Graphics.FillPath(surfaceBrush, surfacePath);
+        }
 
         var inset = ScaleLogical(UcTheme.SpaceSm);
         var content = Rectangle.Inflate(e.Bounds, -inset, 0);
@@ -109,13 +154,22 @@ internal sealed class UcSessionListBox : ListBox
             DrawBadge(e.Graphics, activityText, content.Right, statusY - ScaleLogical(1), activityColor, selected, out _);
         }
 
-        using (var separator = new Pen(selected ? SystemColors.Highlight : UcTheme.Separator))
+        if (!selected)
         {
+            using var separator = new Pen(UcTheme.Separator);
             e.Graphics.DrawLine(separator, e.Bounds.Left + inset, e.Bounds.Bottom - 1, e.Bounds.Right - inset, e.Bounds.Bottom - 1);
         }
         if ((e.State & DrawItemState.Focus) != 0 && ShowFocusCues)
         {
-            ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(e.Bounds, -2, -2), foreground, background);
+            var focusBounds = Rectangle.Inflate(e.Bounds, -ScaleLogical(3), -ScaleLogical(3));
+            focusBounds.Width--;
+            focusBounds.Height--;
+            using var focusPath = UcDrawing.CreateRoundedPath(focusBounds, ScaleLogical(UcTheme.CornerRadiusSm));
+            using var focusPen = new Pen(selected ? SystemColors.HighlightText : UcTheme.PrimaryBackground)
+            {
+                DashStyle = DashStyle.Dot,
+            };
+            e.Graphics.DrawPath(focusPen, focusPath);
         }
     }
 
@@ -127,7 +181,7 @@ internal sealed class UcSessionListBox : ListBox
         var width = Math.Min(ScaleLogical(112), measured.Width + (paddingX * 2));
         bounds = new Rectangle(right - width, top, width, height);
         var badgeColor = selected ? ControlPaint.Light(SystemColors.Highlight, 0.18F) : color;
-        using (var path = RoundedRectangle(bounds, ScaleLogical(4)))
+        using (var path = UcDrawing.CreateRoundedPath(bounds, ScaleLogical(UcTheme.CornerRadiusSm)))
         using (var brush = new SolidBrush(badgeColor))
         {
             graphics.FillPath(brush, path);
@@ -149,17 +203,5 @@ internal sealed class UcSessionListBox : ListBox
 
     private void UpdateItemHeight() => ItemHeight = ScaleLogical(LogicalItemHeight);
 
-    private int ScaleLogical(int value) => (int)Math.Round(value * DeviceDpi / 96F);
-
-    private static GraphicsPath RoundedRectangle(Rectangle bounds, int radius)
-    {
-        var diameter = radius * 2;
-        var path = new GraphicsPath();
-        path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
-        path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
-        path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
-        path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
-        path.CloseFigure();
-        return path;
-    }
+    private int ScaleLogical(int value) => UcDrawing.Scale(this, value);
 }

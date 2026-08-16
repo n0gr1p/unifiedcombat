@@ -121,11 +121,24 @@ internal sealed class UcSection : Panel
         Invalidate();
     }
 
+    protected override void OnSizeChanged(EventArgs e)
+    {
+        base.OnSizeChanged(e);
+        UcDrawing.ApplyRoundedRegion(this, UcTheme.CornerRadiusLg);
+    }
+
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+        UcDrawing.ApplyRoundedRegion(this, UcTheme.CornerRadiusLg);
+    }
+
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
         using var separator = new Pen(UcTheme.Separator);
-        e.Graphics.DrawLine(separator, Padding.Left, ClientSize.Height - 1, ClientSize.Width - Padding.Right, ClientSize.Height - 1);
+        var dividerY = _titleLabel.Bottom + UcTheme.SpaceXs;
+        e.Graphics.DrawLine(separator, Padding.Left, dividerY, ClientSize.Width - Padding.Right, dividerY);
     }
 
     private void ContentLayoutChanged(object? sender, EventArgs e)
