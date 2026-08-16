@@ -22,6 +22,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeOmitsProfileV2AutoReloadWhenDisabled();
             TestSerializeIncludesProfileV2AutoReloadWhenEnabled();
             TestProfileV2AutoReloadIsPartOfPersistedBoolSet();
+            TestSchedulerAlignedWinFormsLayoutContract();
             TestDomainOwnershipUiContract();
             TestDomainOwnershipRequiresExplicitBooleans();
             TestDomainEnabledSectionsMatchOwnership();
@@ -522,6 +523,69 @@ internal static class StructuredProfileV2WriterTests
             AssertNotContains(source, key, $"{key} must be absent from the scheduler UI");
         }
         AssertNotContains(source, "Dark-launch toggles: opt into", "obsolete ownership guidance must be removed");
+    }
+
+    private static void TestSchedulerAlignedWinFormsLayoutContract()
+    {
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        var geoPullUi = ReadRepoFile("UnifiedCombatWinForms", "MainForm.GeoPullUi.cs");
+        var profileStore = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+
+        foreach (var oldTopCard in new[] { "Healer / Defensive", "Combat Engine", "Behavior / Legacy", "Display / Misc" })
+        {
+            AssertNotContains(ui, oldTopCard, $"legacy top card '{oldTopCard}' must be removed");
+        }
+        AssertNotContains(ui, "CreateBoolCard", "legacy top-card builder must be removed");
+        AssertNotContains(ui, "MkGlobal(\"Start_Engine\")", "engine run must remain owned by the session controls");
+
+        AssertTrue(
+            HubUiConstants.DefensiveUiKeys.SequenceEqual(
+                new[]
+                {
+                    "defensive_enabled",
+                    "defensive_cure_enabled",
+                    "defensive_doom_water",
+                    "def_charm_sleeper_enabled",
+                    "def_sleep_waker_enabled",
+                    "def_remove_enemy_buffs",
+                    "defensive_na_enabled",
+                    "defensive_buff_enabled",
+                    "defensive_overwrite_enabled",
+                    "defensive_buff_self_only",
+                }
+            ),
+            "defensive controls must be registered in the General defensive section"
+        );
+        AssertTrue(
+            HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "prime", "spam", "solo", "manual" }),
+            "combat and targeting controls must be registered together"
+        );
+        AssertTrue(
+            HubUiConstants.SpacingMovementUiKeys.SequenceEqual(new[] { "face", "spacing", "static", "move" }),
+            "movement controls must be registered in Spacing Tuning"
+        );
+        AssertContains(ui, "MkGlobal(\"sleep\")", "Sleep enable control must be in the Sleep section");
+        AssertContains(ui, "MkGlobal(\"tank\")", "Tank enable control must be in the Tank section");
+        AssertContains(ui, "MkGlobal(\"hunter\")", "Hunter enable control must be in Pathing");
+        AssertContains(ui, "MkGlobal(\"add_control\")", "add control must be in Fight Leader / Add Control");
+        AssertContains(
+            geoPullUi,
+            "CreateGlobalBoolCheckBox(\"puller_distance_only\")",
+            "puller distance-only control must be in Camp Pulling"
+        );
+        AssertContains(ui, "new TabPage(\"Profile / Lifecycle\")", "profile lifecycle tab must exist");
+
+        var removed = new[] { "show_ingame_ui", "closer", "sub", "sub2", "command", "aeonic", "color" };
+        AssertTrue(
+            HubUiConstants.CompatibilityOnlyBoolKeys.SequenceEqual(removed),
+            "removed controls must remain explicitly owned by compatibility persistence"
+        );
+        foreach (var key in removed)
+        {
+            AssertTrue(HubUiConstants.BoolKeys.Contains(key), $"legacy key '{key}' must remain persisted");
+            AssertNotContains(ui, $"MkGlobal(\"{key}\")", $"dead control '{key}' must not be rendered");
+        }
+        AssertContains(profileStore, "ReadPersistedBoolValue", "profile save must preserve non-visual compatibility booleans");
     }
 
     private static void TestSerializeIncludesPullerNameWhenSelected()

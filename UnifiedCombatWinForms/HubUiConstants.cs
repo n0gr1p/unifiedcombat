@@ -118,7 +118,10 @@ internal static class HubUiConstants
         ["path_follow_enabled"] = "Follow path",
     };
 
-    public static readonly string[] HealerCardKeys =
+    public static readonly string[] CompatibilityOnlyBoolKeys =
+        ["show_ingame_ui", "closer", "sub", "sub2", "command", "aeonic", "color"];
+
+    public static readonly string[] DefensiveUiKeys =
     [
         "defensive_enabled",
         "defensive_cure_enabled",
@@ -132,39 +135,23 @@ internal static class HubUiConstants
         "defensive_buff_self_only",
     ];
 
-    public static readonly string[] CombatCardKeys =
-        ["Start_Engine", "autotarget", "spam", "closer", "manual", "prime", "solo"];
+    public static readonly string[] CombatTargetingUiKeys =
+        ["autotarget", "prime", "spam", "solo", "manual"];
 
-    public static readonly string[] BehaviorCardKeys =
-    [
-        "face",
-        "spacing",
-        "static",
-        "move",
-        "sub",
-        "sub2",
-        "profile_v2_autoload",
-        "puller_distance_only",
-        "sleep",
-        "tank",
-        "hunter",
-        "add_control",
-        "command",
-        "profile_v2_auto_reload_on_change",
-    ];
+    public static readonly string[] SpacingMovementUiKeys = ["face", "spacing", "static", "move"];
 
-    public static readonly string[] VisualsCardKeys =
+    public static readonly string[] DiagnosticsUiKeys =
     [
-        "show_ingame_ui",
         "debug",
         "log_combat_sched",
         "log_ja_sched",
         "log_ja_debug",
         "log_def_sched",
         "log_tank_sched",
-        "aeonic",
-        "color",
     ];
+
+    public static readonly string[] ProfileLifecycleUiKeys =
+        ["profile_v2_autoload", "profile_v2_auto_reload_on_change"];
 
     public static readonly string[] CorRollOptions =
     [

@@ -42,6 +42,8 @@ public partial class MainForm : Form
     private DateTime _abilityInteractionUtc = DateTime.MinValue;
 
     private readonly Dictionary<string, CheckBox> _boolChecks = new(StringComparer.Ordinal);
+    /// <summary>Profile values retained for legacy booleans that no longer have editable UI controls.</summary>
+    private readonly Dictionary<string, Dictionary<string, bool>> _compatibilityBoolBySid = new(StringComparer.Ordinal);
     private readonly List<string> _abilityOptions = [];
     private readonly List<string> _corRollOptions = [];
     private readonly List<string> _brdSongOptions = [];
@@ -391,6 +393,7 @@ public partial class MainForm : Form
                 _optionsHydratedJobBySid.Remove(kv.Key);
                 _optionsRequestInFlightBySid.Remove(kv.Key);
                 _workingProfileBySid.Remove(kv.Key);
+                _compatibilityBoolBySid.Remove(kv.Key);
                 newlyAddedSids.Add(kv.Key);
                 continue;
             }
@@ -401,6 +404,7 @@ public partial class MainForm : Form
                 _optionsHydratedJobBySid.Remove(kv.Key);
                 _optionsRequestInFlightBySid.Remove(kv.Key);
                 _workingProfileBySid.Remove(kv.Key);
+                _compatibilityBoolBySid.Remove(kv.Key);
             }
         }
         foreach (var oldSid in prevMeta.Keys)
@@ -410,6 +414,7 @@ public partial class MainForm : Form
                 _optionsHydratedJobBySid.Remove(oldSid);
                 _optionsRequestInFlightBySid.Remove(oldSid);
                 _workingProfileBySid.Remove(oldSid);
+                _compatibilityBoolBySid.Remove(oldSid);
             }
         }
         _sessionRunningBySid.Clear();

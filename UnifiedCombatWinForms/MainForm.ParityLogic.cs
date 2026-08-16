@@ -551,6 +551,13 @@ public partial class MainForm
 
     private void FillFromSession(string sid, JsonElement s)
     {
+        var compatibilityBools = new Dictionary<string, bool>(StringComparer.Ordinal);
+        foreach (var key in HubUiConstants.CompatibilityOnlyBoolKeys)
+        {
+            compatibilityBools[key] = SessionStateHelper.GetBool(s, key, false);
+        }
+        _compatibilityBoolBySid[sid] = compatibilityBools;
+
         if (sid != _lastFillSid)
         {
             _lastFillSid = sid;
@@ -1076,7 +1083,7 @@ public partial class MainForm
     private void UpdateBooleanCardVisuals()
     {
         var healerOn = _boolChecks.TryGetValue("defensive_enabled", out var hb) && hb.Checked;
-        _grpHealer.Text = healerOn ? "Healer / Defensive" : "Healer / Defensive (inactive)";
+        _grpHealer.Text = healerOn ? "Defensive" : "Defensive (inactive)";
         var dim = SystemColors.GrayText;
         var bright = SystemColors.ControlText;
         foreach (var key in new[]
@@ -1085,6 +1092,7 @@ public partial class MainForm
                      "defensive_doom_water",
                      "def_charm_sleeper_enabled",
                      "def_sleep_waker_enabled",
+                     "def_remove_enemy_buffs",
                      "defensive_na_enabled",
                      "defensive_buff_enabled",
                      "defensive_overwrite_enabled",
@@ -5205,6 +5213,10 @@ public partial class MainForm
     private void PushFullFormState(string sid)
     {
         var eng = GetEngineForSid(sid);
+        if (!_sessionRunningBySid.TryGetValue(sid, out var running))
+        {
+            throw new InvalidOperationException($"Runtime engine state is unavailable for session '{sid}'.");
+        }
         var wsVal = (_wsCombo.Text ?? "").Trim();
         SendWsUpdate(sid, eng, wsVal);
         var wsMode = WsModeUiToRuntime(_wsModeCombo.SelectedItem?.ToString() ?? "Smart");
@@ -5231,7 +5243,7 @@ public partial class MainForm
         Forward(sid, new Dictionary<string, object?> { ["op"] = "tank_enmity_replace_actions", ["value"] = string.Join("|", _tankEnmityRows) });
         foreach (var key in HubUiConstants.BoolKeys)
         {
-            var val = _boolChecks.TryGetValue(key, out var cb) && cb.Checked;
+            var val = ReadPersistedBoolValue(sid, key, running);
             if (key == "Start_Engine")
             {
                 Forward(sid, val ? new Dictionary<string, object?> { ["op"] = "start_engine" } : new Dictionary<string, object?> { ["op"] = "stop_engine" });

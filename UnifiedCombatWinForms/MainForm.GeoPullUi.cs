@@ -366,6 +366,7 @@ public partial class MainForm
         var pullRow = 0;
         _campPullEnabled = new CheckBox { Text = "Pull configured mobs back to camp", AutoSize = true };
         AddWide(pull, _campPullEnabled, ref pullRow);
+        AddWide(pull, CreateGlobalBoolCheckBox("puller_distance_only"), ref pullRow);
         _campPullActionType = AddChoice(pull, "Pull action type", ["spell", "ja"], "spell", ref pullRow);
         _campPullActionName = AddText(pull, "Pull action", ref pullRow);
         _campPullTargets = AddText(pull, "Targets", ref pullRow);
