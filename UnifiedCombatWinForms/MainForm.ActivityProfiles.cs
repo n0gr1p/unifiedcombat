@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using UnifiedCombatWinForms.Ui;
 
 namespace UnifiedCombatWinForms;
 
@@ -46,15 +47,13 @@ public partial class MainForm
 
     private void BuildGlobalActivityControls(FlowLayoutPanel footer)
     {
-        var group = new GroupBox
+        var group = new UcSection("Activity")
         {
-            Text = "Activity (all active sessions)",
             AutoSize = false,
-            Height = 160,
-            MinimumSize = new Size(210, 160),
+            Height = 196,
+            MinimumSize = new Size(210, 196),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-            Padding = new Padding(6),
-            Margin = new Padding(0, 0, 0, 10),
+            Margin = new Padding(0, UcTheme.SpaceSm, 0, UcTheme.SpaceMd),
         };
         var layout = new TableLayoutPanel
         {
@@ -65,8 +64,8 @@ public partial class MainForm
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
         _activityCombo = new ComboBox
@@ -78,21 +77,25 @@ public partial class MainForm
         _activityCombo.SelectedIndexChanged += ActivityComboSelectedIndexChanged;
         layout.Controls.Add(_activityCombo, 0, 0);
 
-        var editButtons = new FlowLayoutPanel
+        var editButtons = new TableLayoutPanel
         {
-            AutoSize = false,
+            ColumnCount = 3,
+            RowCount = 1,
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
             Margin = new Padding(0, 0, 0, 4),
         };
-        _activityCreate = new Button { Text = "Create", AutoSize = true };
+        editButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333F));
+        editButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.333F));
+        editButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.334F));
+        _activityCreate = new Button { Text = "Create", AutoSize = false, Dock = DockStyle.Fill };
         _activityCreate.Click += (_, _) => CreateActivity();
-        _activityUpdate = new Button { Text = "Update", AutoSize = true };
+        _activityUpdate = new Button { Text = "Update", AutoSize = false, Dock = DockStyle.Fill };
         _activityUpdate.Click += (_, _) => UpdateActivity();
-        _activityDelete = new Button { Text = "Delete", AutoSize = true };
+        _activityDelete = new Button { Text = "Delete", AutoSize = false, Dock = DockStyle.Fill };
         _activityDelete.Click += (_, _) => DeleteActivity();
-        editButtons.Controls.AddRange([_activityCreate, _activityUpdate, _activityDelete]);
+        editButtons.Controls.Add(_activityCreate, 0, 0);
+        editButtons.Controls.Add(_activityUpdate, 1, 0);
+        editButtons.Controls.Add(_activityDelete, 2, 0);
         layout.Controls.Add(editButtons, 0, 1);
 
         _activityReapply = new Button
@@ -114,12 +117,12 @@ public partial class MainForm
             ForeColor = SystemColors.GrayText,
         };
         layout.Controls.Add(_activityStatus, 0, 3);
-        group.Controls.Add(layout);
+        group.ContentPanel.Controls.Add(layout);
         footer.Controls.Add(group);
         void sizeActivityGroup()
         {
             group.Width = Math.Max(210, footer.ClientSize.Width - footer.Padding.Horizontal - 2);
-            group.Height = 160;
+            group.Height = 196;
         }
         footer.SizeChanged += (_, _) => sizeActivityGroup();
         sizeActivityGroup();

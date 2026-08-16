@@ -1083,7 +1083,7 @@ public partial class MainForm
     private void UpdateBooleanCardVisuals()
     {
         var healerOn = _boolChecks.TryGetValue("defensive_enabled", out var hb) && hb.Checked;
-        _grpHealer.Text = healerOn ? "Defensive" : "Defensive (inactive)";
+        _grpHealer.Title = healerOn ? "Defensive" : "Defensive (inactive)";
         var dim = SystemColors.GrayText;
         var bright = SystemColors.ControlText;
         foreach (var key in new[]

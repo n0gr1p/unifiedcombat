@@ -1,8 +1,10 @@
+using UnifiedCombatWinForms.Ui;
+
 namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
-    private GroupBox _grpHealer = null!;
+    private UcSection _grpHealer = null!;
     private CheckBox _chkWeaponskill = null!;
     private CheckBox _chkAftermath = null!;
     private CheckBox _chkAbility = null!;
@@ -50,8 +52,8 @@ public partial class MainForm
     private TextBox _defOverwrite = null!;
     private TextBox _defBuffs = null!;
     private TextBox _defTargetedBuffs = null!;
-    private GroupBox _grpFightLeader = null!;
-    private GroupBox _grpAddPri = null!;
+    private UcSection _grpFightLeader = null!;
+    private UcSection _grpAddPri = null!;
     private ListBox _addPriList = null!;
     private TextBox _addPriName = null!;
     private Button _addPriByName = null!;
@@ -59,7 +61,7 @@ public partial class MainForm
     private Button _addPriRemove = null!;
     private Button _addPriUp = null!;
     private Button _addPriDown = null!;
-    private GroupBox _grpSleepSpells = null!;
+    private UcSection _grpSleepSpells = null!;
     private ListBox _sleepSpellList = null!;
     private TextBox _sleepSpellName = null!;
     private TextBox _sleepMaxTargetRange = null!;
@@ -69,19 +71,19 @@ public partial class MainForm
     private Button _sleepSpellClear = null!;
     private Button _sleepSpellUp = null!;
     private Button _sleepSpellDown = null!;
-    private GroupBox _grpPartner = null!;
+    private UcSection _grpPartner = null!;
     private ListBox _partnerList = null!;
     private TextBox _partnerName = null!;
     private Button _partnerByName = null!;
     private Button _partnerCurTarget = null!;
     private Button _partnerRemove = null!;
-    private GroupBox _grpIgnore = null!;
+    private UcSection _grpIgnore = null!;
     private ListBox _ignoreList = null!;
     private TextBox _ignoreName = null!;
     private Button _ignoreByName = null!;
     private Button _ignoreCurTarget = null!;
     private Button _ignoreRemove = null!;
-    private GroupBox _grpTargetIgn = null!;
+    private UcSection _grpTargetIgn = null!;
     private ListBox _targetIgnList = null!;
     private TextBox _targetIgnName = null!;
     private Button _targetIgnByName = null!;
@@ -290,25 +292,31 @@ public partial class MainForm
 
     private void BuildParityEditor(Panel host, FlowLayoutPanel sessionActionsFooter)
     {
-        host.Padding = new Padding(8);
+        host.AutoScroll = false;
+        host.Padding = new Padding(UcTheme.SpaceLg);
         var root = new TableLayoutPanel
         {
-            Dock = DockStyle.Top,
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+        };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        host.Controls.Add(root);
+
+        var workspaceHeader = new TableLayoutPanel
+        {
             AutoSize = true,
             ColumnCount = 1,
-            RowCount = 1,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 0, UcTheme.SpaceMd),
+            Padding = new Padding(UcTheme.SpaceXs, 0, 0, 0),
         };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        host.Controls.Add(root);
-        host.Resize += (_, _) => root.Width = Math.Max(400, host.ClientSize.Width - 16);
+        workspaceHeader.Controls.Add(UcControlStyles.CreateWorkspaceTitle("Settings"));
+        workspaceHeader.Controls.Add(UcControlStyles.CreateMutedLabel("Selected session configuration"));
+        root.Controls.Add(workspaceHeader, 0, 0);
 
-        var form = new GroupBox
-        {
-            Text = "Settings (selected session)",
-            Padding = new Padding(8),
-            Dock = DockStyle.Top,
-            AutoSize = true,
-        };
         var g = new TableLayoutPanel
         {
             AutoSize = true,
@@ -511,7 +519,7 @@ public partial class MainForm
 		pull.Controls.Add(_campClear);
 		_campStatus = new Label { Text = "Camp not set", AutoSize = true, Padding = new Padding(8, 4, 0, 0) };
 		pull.Controls.Add(_campStatus);
-        leftCol.Controls.Add(new Label { Text = "puller", AutoSize = true }, 0, lr);
+        leftCol.Controls.Add(new Label { Text = "Puller", AutoSize = true }, 0, lr);
         leftCol.Controls.Add(pull, 1, lr);
         lr++;
 
@@ -540,7 +548,7 @@ public partial class MainForm
         rightCol.Controls.Add(defensiveToggles, 0, dr);
         rightCol.SetColumnSpan(defensiveToggles, 2);
         dr++;
-        rightCol.Controls.Add(new Label { Text = "defensive_provider", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        rightCol.Controls.Add(new Label { Text = "Provider", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defProviderCombo = new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
@@ -551,78 +559,69 @@ public partial class MainForm
         _defProviderCombo.SelectedIndexChanged += (_, _) => OnDefProviderSelected();
         rightCol.Controls.Add(_defProviderCombo, 1, dr);
         dr++;
-        rightCol.Controls.Add(new Label { Text = "def_critical_hpp", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        rightCol.Controls.Add(new Label { Text = "Critical HP %", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defCrit = new TextBox { Width = 72, Anchor = AnchorStyles.Left };
         _defCrit.Leave += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defCrit, 1, dr);
         dr++;
-        rightCol.Controls.Add(new Label { Text = "def_medium_hpp", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        rightCol.Controls.Add(new Label { Text = "Medium HP %", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defMed = new TextBox { Width = 72, Anchor = AnchorStyles.Left };
         _defMed.Leave += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defMed, 1, dr);
         dr++;
-        rightCol.Controls.Add(new Label { Text = "heal_min_tier", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        rightCol.Controls.Add(new Label { Text = "Minimum Cure Tier", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defHealMinTier = new TextBox { Width = 72, Anchor = AnchorStyles.Left };
         _defHealMinTier.Leave += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defHealMinTier, 1, dr);
         dr++;
-        rightCol.Controls.Add(new Label { Text = "heal_max_tier", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        rightCol.Controls.Add(new Label { Text = "Maximum Cure Tier", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defHealMaxTier = new TextBox { Width = 72, Anchor = AnchorStyles.Left };
         _defHealMaxTier.Leave += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defHealMaxTier, 1, dr);
         dr++;
-        rightCol.Controls.Add(new Label { Text = "heal_min_missing_hp", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        rightCol.Controls.Add(new Label { Text = "Minimum Missing HP", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defHealMinMissingHp = new TextBox { Width = 72, Anchor = AnchorStyles.Left };
         _defHealMinMissingHp.Leave += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defHealMinMissingHp, 1, dr);
         dr++;
-        rightCol.Controls.Add(new Label { Text = "heal_ignore_trusts", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        rightCol.Controls.Add(new Label { Text = "Ignore Trusts", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defHealIgnoreTrusts = new CheckBox { AutoSize = true, Anchor = AnchorStyles.Left };
         _defHealIgnoreTrusts.CheckedChanged += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defHealIgnoreTrusts, 1, dr);
         dr++;
-        rightCol.Controls.Add(new Label { Text = "buff_overwrite_s", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        rightCol.Controls.Add(new Label { Text = "Buff Refresh Interval", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defOverwrite = new TextBox { Width = 72, Anchor = AnchorStyles.Left };
         _defOverwrite.Leave += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defOverwrite, 1, dr);
         dr++;
-        rightCol.Controls.Add(new Label { Text = "defensive_buffs (|)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        rightCol.Controls.Add(new Label { Text = "Maintained Buffs", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defBuffs = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top, MinimumSize = new Size(80, 23) };
         _defBuffs.Leave += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defBuffs, 1, dr);
         dr++;
-        rightCol.Controls.Add(new Label { Text = "targeted_buffs (Target:Buff|...)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        rightCol.Controls.Add(new Label { Text = "Targeted Buffs", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defTargetedBuffs = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top, MinimumSize = new Size(80, 23) };
         _defTargetedBuffs.Leave += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defTargetedBuffs, 1, dr);
         dr++;
 
-        var combatGroup = new GroupBox
+        var combatGroup = new UcSection("Combat / Targeting")
         {
-            Text = "Combat / Targeting",
-            AutoSize = true,
             Dock = DockStyle.Fill,
-            Padding = new Padding(8),
         };
-        combatGroup.Controls.Add(leftCol);
-        _grpHealer = new GroupBox
+        combatGroup.ContentPanel.Controls.Add(leftCol);
+        _grpHealer = new UcSection("Defensive")
         {
-            Text = "Defensive",
-            AutoSize = true,
             Dock = DockStyle.Fill,
-            Padding = new Padding(8),
         };
-        _grpHealer.Controls.Add(rightCol);
+        _grpHealer.ContentPanel.Controls.Add(rightCol);
         topSplit.Controls.Add(combatGroup, 0, 0);
         topSplit.Controls.Add(_grpHealer, 1, 0);
         g.Controls.Add(topSplit, 0, gRow++);
 
-        _grpFightLeader = new GroupBox
+        _grpFightLeader = new UcSection("Fight Leader / Add Control — autotarget stays on the leader target unless an eligible fight-add is valid.")
         {
-            Text = "Fight Leader / Add Control — autotarget stays on the leader target unless an eligible fight-add is valid.",
             Dock = DockStyle.Top,
-            Padding = new Padding(8),
-            AutoSize = true,
         };
         var flTop = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
         var flCb = MkGlobal("fight_leader");
@@ -664,15 +663,12 @@ public partial class MainForm
             Padding = new Padding(2, 2, 0, 0),
         };
         flFlow.Controls.Add(_partyFollowModeWarning);
-        _grpFightLeader.Controls.Add(flFlow);
+        _grpFightLeader.ContentPanel.Controls.Add(flFlow);
         g.Controls.Add(_grpFightLeader, 0, gRow++);
 
-		var nyzulGroup = new GroupBox
+		var nyzulGroup = new UcSection("Nyzul lamp parking — coordinator profile owns the ordered runtime queue.")
 		{
-			Text = "Nyzul lamp parking — coordinator profile owns the ordered runtime queue.",
 			Dock = DockStyle.Top,
-			Padding = new Padding(8),
-			AutoSize = true,
 		};
 		var nyzulFlow = new FlowLayoutPanel
 		{
@@ -716,7 +712,7 @@ public partial class MainForm
 		_nyzulParkerDown.Click += (_, _) => NyzulParkerMove(1);
 		nyzulButtons.Controls.Add(_nyzulParkerDown);
 		nyzulFlow.Controls.Add(nyzulButtons);
-		nyzulGroup.Controls.Add(nyzulFlow);
+		nyzulGroup.ContentPanel.Controls.Add(nyzulFlow);
 		g.Controls.Add(nyzulGroup, 0, gRow++);
 
         var listsSplit = new TableLayoutPanel
@@ -732,12 +728,9 @@ public partial class MainForm
         listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        _grpAddPri = new GroupBox
+        _grpAddPri = new UcSection("Fight-add priority — only listed mobs are eligible; Up/Down reorders.")
         {
-            Text = "Fight-add priority — only listed mobs are eligible; Up/Down reorders.",
             Dock = DockStyle.Fill,
-            Padding = new Padding(8),
-            AutoSize = true,
             MinimumSize = new Size(200, 120),
         };
         var apFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
@@ -763,15 +756,12 @@ public partial class MainForm
         _addPriDown.Click += (_, _) => AddPriorityMove("down");
         apr.Controls.Add(_addPriDown);
         apFlow.Controls.Add(apr);
-        _grpAddPri.Controls.Add(apFlow);
+        _grpAddPri.ContentPanel.Controls.Add(apFlow);
         listsSplit.Controls.Add(_grpAddPri, 0, 0);
 
-        _grpPartner = new GroupBox
+        _grpPartner = new UcSection("Partner follow — skip autotarget for these party members' targets.")
         {
-            Text = "Partner follow — skip autotarget for these party members' targets.",
             Dock = DockStyle.Fill,
-            Padding = new Padding(8),
-            AutoSize = true,
             MinimumSize = new Size(200, 120),
         };
         var pFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
@@ -794,15 +784,12 @@ public partial class MainForm
         _partnerRemove.Click += (_, _) => PartnerRemove();
         pr.Controls.Add(_partnerRemove);
         pFlow.Controls.Add(pr);
-        _grpPartner.Controls.Add(pFlow);
+        _grpPartner.ContentPanel.Controls.Add(pFlow);
         listsSplit.Controls.Add(_grpPartner, 0, 1);
 
-        _grpIgnore = new GroupBox
+        _grpIgnore = new UcSection("WS wait ignore — party members skipped for WS-hold decisions.")
         {
-            Text = "WS wait ignore — party members skipped for WS-hold decisions.",
             Dock = DockStyle.Fill,
-            Padding = new Padding(8),
-            AutoSize = true,
             MinimumSize = new Size(200, 120),
         };
         var iFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
@@ -822,15 +809,12 @@ public partial class MainForm
         _ignoreRemove.Click += (_, _) => IgnoreRemove();
         ign.Controls.Add(_ignoreRemove);
         iFlow.Controls.Add(ign);
-        _grpIgnore.Controls.Add(iFlow);
+        _grpIgnore.ContentPanel.Controls.Add(iFlow);
         listsSplit.Controls.Add(_grpIgnore, 1, 0);
 
-        _grpTargetIgn = new GroupBox
+        _grpTargetIgn = new UcSection("Target ignore (autotarget) — mobs never chosen as combat targets.")
         {
-            Text = "Target ignore (autotarget) — mobs never chosen as combat targets.",
             Dock = DockStyle.Fill,
-            Padding = new Padding(8),
-            AutoSize = true,
             MinimumSize = new Size(200, 120),
         };
         var tiFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
@@ -850,15 +834,12 @@ public partial class MainForm
         _targetIgnRemove.Click += (_, _) => TargetIgnRemove();
         tigr.Controls.Add(_targetIgnRemove);
         tiFlow.Controls.Add(tigr);
-        _grpTargetIgn.Controls.Add(tiFlow);
+        _grpTargetIgn.ContentPanel.Controls.Add(tiFlow);
         listsSplit.Controls.Add(_grpTargetIgn, 1, 1);
 
-        _grpSleepSpells = new GroupBox
+        _grpSleepSpells = new UcSection("Sleep spells — ordered list used for pre-engage and in-combat Sleep picks.")
         {
-            Text = "Sleep spells — ordered list used for pre-engage and in-combat Sleep picks.",
             Dock = DockStyle.Fill,
-            Padding = new Padding(8),
-            AutoSize = true,
             MinimumSize = new Size(200, 120),
         };
         var sleepFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
@@ -895,18 +876,15 @@ public partial class MainForm
         _sleepSpellDown.Click += (_, _) => SleepSpellMove("down");
         sleepRow.Controls.Add(_sleepSpellDown);
         sleepFlow.Controls.Add(sleepRow);
-        _grpSleepSpells.Controls.Add(sleepFlow);
+        _grpSleepSpells.ContentPanel.Controls.Add(sleepFlow);
         listsSplit.Controls.Add(_grpSleepSpells, 0, 2);
         listsSplit.SetColumnSpan(_grpSleepSpells, 2);
 
         g.Controls.Add(listsSplit, 0, gRow++);
 
-        var tankGroup = new GroupBox
+        var tankGroup = new UcSection("Tank Enmity Actions — single prioritized JA/spell list for threat recovery.")
         {
-            Text = "Tank Enmity Actions — single prioritized JA/spell list for threat recovery.",
             Dock = DockStyle.Top,
-            Padding = new Padding(8),
-            AutoSize = true,
             MinimumSize = new Size(200, 120),
         };
         var tankFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
@@ -959,13 +937,13 @@ public partial class MainForm
         tankBtnRow.Controls.Add(_tankEnmityUp);
         tankBtnRow.Controls.Add(_tankEnmityDown);
         tankFlow.Controls.Add(tankBtnRow);
-        tankGroup.Controls.Add(tankFlow);
+        tankGroup.ContentPanel.Controls.Add(tankFlow);
         g.Controls.Add(tankGroup, 0, gRow++);
 
         _settingsTabs = new TabControl
         {
-            Dock = DockStyle.Top,
-            Height = 520,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0),
         };
         var tabGeneral = new TabPage("General");
         tabGeneral.AutoScroll = true;
@@ -1930,7 +1908,7 @@ public partial class MainForm
         reactionRoot.Controls.Add(reactionButtons);
         reactionRoot.Controls.Add(new Label
         {
-            Text = "ability_window supports turn_away, run_away to a minimum raw distance, or move_to_range to continuously maintain a raw distance. enemy_buff holds attacks while the named enemy effect is active.",
+            Text = "Ability-window reactions can turn away, run to a minimum distance, or continuously maintain a chosen range. Enemy-buff reactions pause attacks while the named effect is active.",
             AutoSize = true,
             Padding = new Padding(0, 8, 0, 0),
         });
@@ -1991,8 +1969,7 @@ public partial class MainForm
         tabProfile.Controls.Add(profileLifecycle);
         _settingsTabs.TabPages.Add(tabProfile);
 
-        form.Controls.Add(_settingsTabs);
-        root.Controls.Add(form, 0, 0);
+        root.Controls.Add(_settingsTabs, 0, 1);
 
         BuildGlobalActivityControls(sessionActionsFooter);
 
@@ -2014,6 +1991,11 @@ public partial class MainForm
         }
         sessionActionsFooter.SizeChanged += (_, _) => sizeSessionButtons();
         sizeSessionButtons();
+
+        UcControlStyles.Apply(this);
+        UcControlStyles.StyleCompact(_activityCreate, _activityUpdate, _activityDelete);
+        UcControlStyles.StylePrimary(_btnSave);
+        UcControlStyles.StylePrimary(_activityReapply);
 
         CheckBox MkCtx(string key)
         {

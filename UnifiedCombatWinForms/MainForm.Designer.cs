@@ -1,3 +1,5 @@
+using UnifiedCombatWinForms.Ui;
+
 namespace UnifiedCombatWinForms;
 
 partial class MainForm
@@ -112,7 +114,7 @@ partial class MainForm
         //
         panelSessionColumn.Dock = DockStyle.Fill;
         panelSessionColumn.Name = "panelSessionColumn";
-        panelSessionColumn.Padding = new Padding(4, 4, 4, 0);
+        panelSessionColumn.Padding = new Padding(UcTheme.SpaceMd, UcTheme.SpaceMd, UcTheme.SpaceMd, UcTheme.SpaceSm);
         panelSessionColumn.Controls.Add(tableSessionSidebar);
         //
         // tableSessionSidebar
@@ -123,18 +125,18 @@ partial class MainForm
         tableSessionSidebar.Padding = new Padding(0);
         tableSessionSidebar.RowCount = 3;
         tableSessionSidebar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        tableSessionSidebar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         tableSessionSidebar.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        tableSessionSidebar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         tableSessionSidebar.Controls.Add(labelSessionsHeader, 0, 0);
-        tableSessionSidebar.Controls.Add(flowSessionActions, 0, 1);
-        tableSessionSidebar.Controls.Add(listSessions, 0, 2);
+        tableSessionSidebar.Controls.Add(listSessions, 0, 1);
+        tableSessionSidebar.Controls.Add(flowSessionActions, 0, 2);
         //
         // labelSessionsHeader
         //
         labelSessionsHeader.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         labelSessionsHeader.AutoSize = true;
-        labelSessionsHeader.Font = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
-        labelSessionsHeader.Margin = new Padding(4, 4, 4, 6);
+        labelSessionsHeader.Font = UcTheme.SectionFont;
+        labelSessionsHeader.Margin = new Padding(UcTheme.SpaceXs, UcTheme.SpaceXs, UcTheme.SpaceXs, UcTheme.SpaceSm);
         labelSessionsHeader.Name = "labelSessionsHeader";
         labelSessionsHeader.Padding = new Padding(2, 2, 2, 0);
         labelSessionsHeader.Text = "Sessions";
@@ -146,16 +148,16 @@ partial class MainForm
         flowSessionActions.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         flowSessionActions.Dock = DockStyle.Fill;
         flowSessionActions.FlowDirection = FlowDirection.TopDown;
-        flowSessionActions.Margin = new Padding(0, 6, 0, 0);
+        flowSessionActions.Margin = new Padding(0, UcTheme.SpaceMd, 0, 0);
         flowSessionActions.Name = "flowSessionActions";
-        flowSessionActions.Padding = new Padding(4, 6, 4, 8);
+        flowSessionActions.Padding = new Padding(0);
         flowSessionActions.WrapContents = false;
         //
         // listSessions
         //
         listSessions.Dock = DockStyle.Fill;
         listSessions.IntegralHeight = false;
-        listSessions.Margin = new Padding(0, 2, 0, 0);
+        listSessions.Margin = new Padding(0);
         listSessions.Name = "listSessions";
         listSessions.TabIndex = 0;
         listSessions.SelectedIndexChanged += ListSessions_SelectedIndexChanged;
