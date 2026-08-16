@@ -15,6 +15,7 @@ internal sealed record UcSessionRow(
     string AccessibleLabel,
     string Character,
     string Job,
+    string SubJob,
     string Engine,
     bool Running,
     bool Paused,
@@ -22,8 +23,17 @@ internal sealed record UcSessionRow(
     UcSessionActivityState ActivityState
 )
 {
+    internal string JobBadgeText => FormatJobBadge(Job, SubJob);
+
     internal UcSessionRow WithActivity(string accessibleLabel, string? activityName, UcSessionActivityState activityState)
         => this with { AccessibleLabel = accessibleLabel, ActivityName = activityName, ActivityState = activityState };
+
+    internal static string FormatJobBadge(string? mainJob, string? subJob)
+    {
+        var main = string.IsNullOrWhiteSpace(mainJob) ? "?" : mainJob.Trim().ToUpperInvariant();
+        var sub = string.IsNullOrWhiteSpace(subJob) ? "?" : subJob.Trim().ToUpperInvariant();
+        return $"{main}/{sub}";
+    }
 
     public override string ToString() => AccessibleLabel;
 }
@@ -131,8 +141,7 @@ internal sealed class UcSessionListBox : ListBox
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis
         );
 
-        var jobText = string.IsNullOrWhiteSpace(row.Job) ? "?" : row.Job.ToUpperInvariant();
-        DrawBadge(e.Graphics, jobText, content.Right, titleBounds.Top + ScaleLogical(5), selected ? SystemColors.HighlightText : UcTheme.MutedText, selected, out _);
+        DrawBadge(e.Graphics, row.JobBadgeText, content.Right, titleBounds.Top + ScaleLogical(5), selected ? SystemColors.HighlightText : UcTheme.MutedText, selected, out _);
 
         var statusY = content.Top + titleHeight + ScaleLogical(5);
         var statusColor = row.Paused ? UcTheme.Warning : row.Running ? UcTheme.Active : UcTheme.MutedText;

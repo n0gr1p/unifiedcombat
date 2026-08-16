@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using UnifiedCombatWinForms.Ui;
 
 namespace UnifiedCombatWinForms;
 
@@ -15,6 +16,7 @@ internal static class ActivityProfileStoreTests
             TestLegacyBundleRequiresVariantUpdate(root);
             TestAppliedUiPreservesRuntimeEngineState();
             TestSessionDisplayLabels();
+            TestSessionJobBadges();
             TestGlobalUiAndBridgeContract();
             Console.WriteLine("ActivityProfileStoreTests: PASS");
             return 0;
@@ -380,6 +382,13 @@ internal static class ActivityProfileStoreTests
             MainForm.BuildSessionDisplayLabel(baseLabel, null, null) == baseLabel,
             "clearing the active activity must remove the provenance suffix"
         );
+    }
+
+    private static void TestSessionJobBadges()
+    {
+        Assert(UcSessionRow.FormatJobBadge("smn", "whm") == "SMN/WHM", "session job badge must show main/sub job");
+        Assert(UcSessionRow.FormatJobBadge("COR", "") == "COR/?", "missing session subjob must remain explicit");
+        Assert(UcSessionRow.FormatJobBadge("", "DNC") == "?/DNC", "missing session main job must remain explicit");
     }
 
     private static string ProfileText(ActivityProfileIdentity identity, string marker)

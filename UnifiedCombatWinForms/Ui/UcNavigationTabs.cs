@@ -4,8 +4,6 @@ namespace UnifiedCombatWinForms.Ui;
 
 internal sealed class UcNavigationTabs : TabControl
 {
-    private const int WmPaint = 0x000F;
-    private const int WmPrintClient = 0x0318;
     private int _hotIndex = -1;
 
     internal UcNavigationTabs()
@@ -16,7 +14,13 @@ internal sealed class UcNavigationTabs : TabControl
         ItemSize = new Size(0, 34);
         Padding = new Point(UcTheme.SpaceSm, UcTheme.SpaceXs);
         SizeMode = TabSizeMode.Normal;
-        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        SetStyle(
+            ControlStyles.UserPaint
+            | ControlStyles.AllPaintingInWmPaint
+            | ControlStyles.OptimizedDoubleBuffer
+            | ControlStyles.ResizeRedraw,
+            true
+        );
         ApplyTheme();
     }
 
@@ -48,8 +52,10 @@ internal sealed class UcNavigationTabs : TabControl
             return;
         }
 
+        var previousHotIndex = _hotIndex;
         _hotIndex = nextHotIndex;
-        InvalidateHeader();
+        InvalidateTab(previousHotIndex);
+        InvalidateTab(_hotIndex);
     }
 
     protected override void OnMouseLeave(EventArgs e)
@@ -60,8 +66,9 @@ internal sealed class UcNavigationTabs : TabControl
             return;
         }
 
+        var previousHotIndex = _hotIndex;
         _hotIndex = -1;
-        InvalidateHeader();
+        InvalidateTab(previousHotIndex);
     }
 
     protected override void OnSelectedIndexChanged(EventArgs e)
@@ -97,33 +104,57 @@ internal sealed class UcNavigationTabs : TabControl
         Invalidate(true);
     }
 
-    protected override void WndProc(ref Message m)
+    protected override void OnGotFocus(EventArgs e)
     {
-        base.WndProc(ref m);
-        if ((m.Msg == WmPaint || m.Msg == WmPrintClient) && IsHandleCreated && ClientSize.Width > 0)
+        base.OnGotFocus(e);
+        InvalidateTab(SelectedIndex);
+    }
+
+    protected override void OnLostFocus(EventArgs e)
+    {
+        base.OnLostFocus(e);
+        InvalidateTab(SelectedIndex);
+    }
+
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        var headerBounds = new Rectangle(0, 0, ClientSize.Width, ItemSize.Height + 1);
+        var clippedHeader = Rectangle.Intersect(headerBounds, e.ClipRectangle);
+        if (!clippedHeader.IsEmpty)
         {
-            using var graphics = CreateGraphics();
-            DrawHeader(graphics);
+            using var headerBrush = new SolidBrush(UcTheme.NavigationBackground);
+            e.Graphics.FillRectangle(headerBrush, clippedHeader);
+        }
+
+        var workspaceBounds = new Rectangle(0, DisplayRectangle.Top, ClientSize.Width, Math.Max(0, ClientSize.Height - DisplayRectangle.Top));
+        var clippedWorkspace = Rectangle.Intersect(workspaceBounds, e.ClipRectangle);
+        if (!clippedWorkspace.IsEmpty)
+        {
+            using var workspaceBrush = new SolidBrush(UcTheme.WorkspaceSurface);
+            e.Graphics.FillRectangle(workspaceBrush, clippedWorkspace);
         }
     }
 
-    private void DrawHeader(Graphics graphics)
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        DrawHeader(e.Graphics, e.ClipRectangle);
+    }
+
+    private void DrawHeader(Graphics graphics, Rectangle clipRectangle)
     {
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        var headerBounds = new Rectangle(0, 0, ClientSize.Width, ItemSize.Height + 1);
-        using (var headerBrush = new SolidBrush(UcTheme.NavigationBackground))
-        {
-            graphics.FillRectangle(headerBrush, headerBounds);
-        }
 
         for (var index = 0; index < TabCount; index++)
         {
-            if (index != SelectedIndex)
+            if (index != SelectedIndex && GetTabPaintBounds(index).IntersectsWith(clipRectangle))
             {
                 DrawTab(graphics, index);
             }
         }
-        if (SelectedIndex >= 0 && SelectedIndex < TabCount)
+        if (SelectedIndex >= 0
+            && SelectedIndex < TabCount
+            && GetTabPaintBounds(SelectedIndex).IntersectsWith(clipRectangle))
         {
             DrawTab(graphics, SelectedIndex);
         }
@@ -245,6 +276,22 @@ internal sealed class UcNavigationTabs : TabControl
 
     private void InvalidateHeader()
     {
-        Invalidate(new Rectangle(0, 0, ClientSize.Width, ItemSize.Height + 2));
+        Invalidate(new Rectangle(0, 0, ClientSize.Width, ItemSize.Height + 2), false);
+    }
+
+    private void InvalidateTab(int index)
+    {
+        if (index < 0 || index >= TabCount)
+        {
+            return;
+        }
+        Invalidate(GetTabPaintBounds(index), false);
+    }
+
+    private Rectangle GetTabPaintBounds(int index)
+    {
+        var bounds = GetTabRect(index);
+        bounds.Inflate(UcTheme.SpaceXs, UcTheme.SpaceXs);
+        return bounds;
     }
 }

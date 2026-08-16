@@ -570,13 +570,15 @@ public partial class MainForm : Form
             job = "?";
         }
 
+        var subJob = SessionStateHelper.GetString(s, "sub_job", "?");
+
         var eng = SessionStateHelper.GetString(s, "engine", "?");
         if (string.IsNullOrEmpty(eng))
         {
             eng = "?";
         }
 
-        return $"[{runFlag}] {ch} ({job}) [{eng}]";
+        return $"[{runFlag}] {ch} ({UcSessionRow.FormatJobBadge(job, subJob)}) [{eng}]";
     }
 
     private static UcSessionRow BuildSessionRow(
@@ -593,6 +595,7 @@ public partial class MainForm : Form
             accessibleLabel,
             meta.CharName,
             meta.Job,
+            meta.SubJob,
             meta.Engine,
             running,
             paused,
