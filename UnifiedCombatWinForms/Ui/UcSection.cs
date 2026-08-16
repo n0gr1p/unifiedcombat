@@ -9,6 +9,7 @@ internal sealed class UcSection : Panel
 
     internal UcSection(string title)
     {
+        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         _titleLabel = new Label
         {
             AutoSize = true,
@@ -117,6 +118,14 @@ internal sealed class UcSection : Panel
     {
         base.OnSystemColorsChanged(e);
         ApplyTheme();
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        using var separator = new Pen(UcTheme.Separator);
+        e.Graphics.DrawLine(separator, Padding.Left, ClientSize.Height - 1, ClientSize.Width - Padding.Right, ClientSize.Height - 1);
     }
 
     private void ContentLayoutChanged(object? sender, EventArgs e)

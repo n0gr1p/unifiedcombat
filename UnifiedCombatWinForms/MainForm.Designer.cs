@@ -14,7 +14,7 @@ partial class MainForm
     private TableLayoutPanel tableSessionSidebar;
     private Label labelSessionsHeader;
     private FlowLayoutPanel flowSessionActions;
-    private ListBox listSessions;
+    private UcSessionListBox listSessions;
     private Panel panelEditorHost;
 
     protected override void Dispose(bool disposing)
@@ -37,7 +37,7 @@ partial class MainForm
         tableSessionSidebar = new TableLayoutPanel();
         labelSessionsHeader = new Label();
         flowSessionActions = new FlowLayoutPanel();
-        listSessions = new ListBox();
+        listSessions = new UcSessionListBox();
         panelEditorHost = new Panel();
         statusStrip.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)splitContainer).BeginInit();

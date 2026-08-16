@@ -1046,12 +1046,12 @@ internal static class StructuredProfileV2WriterTests
 		AssertContains(store, "[\"brd_recovery_range_yalms\"] = 9.9", "BRD recovery range must have a durable UI default");
 		AssertContains(logic, "ApplyBrdRecoveryRange(s);", "BRD recovery range must restore from UI profiles");
 		AssertContains(writer, ".Add(\"recovery_range_yalms\"", "BRD recovery range must serialize into structured profiles");
-		AssertContains(ui, "_brdRepositionForPartySongs = new CheckBox", "BRD party reposition control must exist");
+		AssertContains(ui, "_brdRepositionForPartySongs = new UcToggle", "BRD party reposition control must exist");
 		AssertContains(store, "[\"brd_reposition_for_party_songs\"] = _brdRepositionForPartySongs.Checked", "BRD party reposition policy must be captured from the UI");
 		AssertContains(store, "[\"brd_reposition_for_party_songs\"] = false", "BRD party reposition policy must have a durable UI default");
 		AssertContains(logic, "_brdRepositionForPartySongs.Checked = SessionStateHelper.GetBool", "BRD party reposition policy must restore from UI profiles");
 		AssertContains(writer, ".Add(\"reposition_for_party_songs\"", "BRD party reposition policy must serialize into structured profiles");
-		AssertContains(ui, "_brdUseSoulVoice = new CheckBox", "BRD Soul Voice control must exist");
+		AssertContains(ui, "_brdUseSoulVoice = new UcToggle", "BRD Soul Voice control must exist");
 		AssertContains(store, "[\"brd_use_soul_voice\"] = _brdUseSoulVoice.Checked", "BRD Soul Voice policy must be captured from the UI");
 		AssertContains(ui, "_brdTargetedSongs = new TextBox", "BRD targeted song control must exist");
 		AssertContains(writer, ".Add(\"targeted_songs\"", "BRD targeted songs must serialize into structured profiles");
@@ -1281,7 +1281,7 @@ internal static class StructuredProfileV2WriterTests
         var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
         var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
 
-        AssertContains(ui, "Allow AoE WS in Smart mode", "Smart WS AoE checkbox label missing");
+        AssertContains(ui, "Allow AoE Weapon Skills in Smart Mode", "Smart WS AoE toggle label missing");
         AssertContains(ui, "When disabled, Smart WS will not select area-of-effect weapon skills.", "Smart WS AoE tooltip missing");
         AssertContains(logic, "SessionStateHelper.GetBool(s, \"weaponskill_allow_aoe\", true)", "Smart WS AoE UI load must default true");
         AssertContains(logic, "[\"path\"] = \"weaponskill_allow_aoe\"", "Smart WS AoE live update path missing");

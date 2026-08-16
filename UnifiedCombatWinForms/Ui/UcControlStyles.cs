@@ -41,15 +41,20 @@ internal static class UcControlStyles
 
     internal static void StylePrimary(Button button)
     {
-        button.BackColor = UcTheme.PrimaryBackground;
-        button.ForeColor = UcTheme.PrimaryText;
-        button.FlatAppearance.BorderColor = UcTheme.PrimaryBackground;
-        button.SystemColorsChanged += (_, _) =>
+        ApplyButtonPalette(button, () => UcTheme.PrimaryBackground, () => UcTheme.PrimaryText);
+    }
+
+    internal static void StyleSecondary(params Button[] buttons)
+    {
+        foreach (var button in buttons)
         {
-            button.BackColor = UcTheme.PrimaryBackground;
-            button.ForeColor = UcTheme.PrimaryText;
-            button.FlatAppearance.BorderColor = UcTheme.PrimaryBackground;
-        };
+            ApplyButtonPalette(button, () => UcTheme.SecondaryBackground, () => SystemColors.ControlText);
+        }
+    }
+
+    internal static void StyleDestructive(Button button)
+    {
+        ApplyButtonPalette(button, () => UcTheme.Destructive, () => UcTheme.BadgeText);
     }
 
     internal static void StyleCompact(params Button[] buttons)
@@ -58,6 +63,7 @@ internal static class UcControlStyles
         {
             button.Padding = new Padding(UcTheme.SpaceXs, UcTheme.SpaceXs, UcTheme.SpaceXs, UcTheme.SpaceXs);
             button.Margin = new Padding(2);
+            button.MinimumSize = new Size(button.MinimumSize.Width, 28);
         }
     }
 
@@ -93,12 +99,11 @@ internal static class UcControlStyles
         {
             case Button button:
                 button.FlatStyle = FlatStyle.Flat;
-                button.FlatAppearance.BorderColor = UcTheme.ControlBorder;
                 button.FlatAppearance.BorderSize = 1;
                 button.MinimumSize = new Size(button.MinimumSize.Width, UcTheme.ControlHeight);
                 button.Padding = new Padding(UcTheme.SpaceMd, UcTheme.SpaceXs, UcTheme.SpaceMd, UcTheme.SpaceXs);
                 button.Margin = UcTheme.ControlMargin;
-                button.SystemColorsChanged += (_, _) => button.FlatAppearance.BorderColor = UcTheme.ControlBorder;
+                ApplyButtonPalette(button, () => UcTheme.SecondaryBackground, () => SystemColors.ControlText);
                 break;
             case TextBoxBase textBox:
                 textBox.BorderStyle = BorderStyle.FixedSingle;
@@ -122,5 +127,24 @@ internal static class UcControlStyles
                 label.SystemColorsChanged += (_, _) => label.ForeColor = UcTheme.MutedText;
                 break;
         }
+    }
+
+    private static void ApplyButtonPalette(Button button, Func<Color> background, Func<Color> foreground)
+    {
+        void ApplyPalette()
+        {
+            button.UseVisualStyleBackColor = false;
+            var paletteBackground = button.Enabled ? background() : SystemColors.ControlDark;
+            var paletteForeground = button.Enabled ? foreground() : SystemColors.GrayText;
+            button.BackColor = paletteBackground;
+            button.ForeColor = paletteForeground;
+            button.FlatAppearance.BorderColor = paletteBackground;
+            button.FlatAppearance.MouseOverBackColor = ControlPaint.Light(background(), 0.08F);
+            button.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(background(), 0.08F);
+        }
+
+        ApplyPalette();
+        button.SystemColorsChanged += (_, _) => ApplyPalette();
+        button.EnabledChanged += (_, _) => ApplyPalette();
     }
 }

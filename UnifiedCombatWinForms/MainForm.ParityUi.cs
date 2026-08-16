@@ -170,7 +170,7 @@ public partial class MainForm
     private TableLayoutPanel _formationConfigPanel = null!;
     private Label _formationValidation = null!;
     private Button _formationEnableOwnership = null!;
-    private TabControl _settingsTabs = null!;
+    private UcNavigationTabs _settingsTabs = null!;
     private TabPage _tabGeo = null!;
     private TabPage _tabSummoner = null!;
     private TabPage _tabCor = null!;
@@ -417,7 +417,7 @@ public partial class MainForm
         leftCol.Controls.Add(_wsMinimumTp, 1, lr);
         lr++;
 
-        _chkWsAllowAoe = new CheckBox
+        _chkWsAllowAoe = new UcToggle
         {
             Text = "Allow AoE Weapon Skills in Smart Mode",
             AutoSize = true,
@@ -585,7 +585,7 @@ public partial class MainForm
         rightCol.Controls.Add(_defHealMinMissingHp, 1, dr);
         dr++;
         rightCol.Controls.Add(new Label { Text = "Ignore Trusts", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
-        _defHealIgnoreTrusts = new CheckBox { AutoSize = true, Anchor = AnchorStyles.Left };
+        _defHealIgnoreTrusts = new UcToggle { AutoSize = true, Anchor = AnchorStyles.Left };
         _defHealIgnoreTrusts.CheckedChanged += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defHealIgnoreTrusts, 1, dr);
         dr++;
@@ -956,7 +956,7 @@ public partial class MainForm
         tankGroup.SetContent(tankFlow);
         g.Controls.Add(tankGroup, 0, gRow++);
 
-        _settingsTabs = new TabControl
+        _settingsTabs = new UcNavigationTabs
         {
             Dock = DockStyle.Fill,
             Margin = new Padding(0),
@@ -994,7 +994,7 @@ public partial class MainForm
         sp.SetColumnSpan(movementToggles, 2);
         sr++;
         sp.Controls.Add(new Label { Text = "Use target prediction", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
-        _spUsePrediction = new CheckBox { AutoSize = true, Anchor = AnchorStyles.Left };
+        _spUsePrediction = new UcToggle { AutoSize = true, Anchor = AnchorStyles.Left };
         _spUsePrediction.CheckedChanged += (_, _) => OnSpacingTuningBoolChanged();
         sp.Controls.Add(_spUsePrediction, 1, sr++);
         sp.Controls.Add(new Label { Text = "Combat band min (real)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, sr);
@@ -1040,7 +1040,7 @@ public partial class MainForm
             ColumnCount = 1,
             Padding = new Padding(8),
         };
-        _encounterEnabled = new CheckBox { Text = "Enable encounter safeguards", AutoSize = true };
+        _encounterEnabled = new UcToggle { Text = "Enable encounter safeguards", AutoSize = true };
         _encounterEnabled.CheckedChanged += (_, _) => OnEncounterConfigChanged();
         encounterRoot.Controls.Add(_encounterEnabled);
         encounterRoot.Controls.Add(new Label
@@ -1120,10 +1120,10 @@ public partial class MainForm
             ColumnCount = 1,
             Padding = new Padding(8),
         };
-        _formationEnabled = new CheckBox { Text = "Enable encounter formation", AutoSize = true };
+        _formationEnabled = new UcToggle { Text = "Enable encounter formation", AutoSize = true };
         _formationEnabled.CheckedChanged += (_, _) => OnFormationConfigChanged();
         formationRoot.Controls.Add(_formationEnabled);
-        _namedFormationsEnabled = new CheckBox { Text = "Enable automatic named mob / boss formations", AutoSize = true };
+        _namedFormationsEnabled = new UcToggle { Text = "Enable automatic named mob / boss formations", AutoSize = true };
         _namedFormationsEnabled.CheckedChanged += (_, _) => OnFormationConfigChanged();
         formationRoot.Controls.Add(_namedFormationsEnabled);
         formationRoot.Controls.Add(new Label
@@ -1223,7 +1223,7 @@ public partial class MainForm
         _formationConfigPanel.Controls.Add(_formationEncounter, 1, formationRow++);
 
         AddFormationSectionLabel(_formationConfigPanel, "Formation-only mock testing", ref formationRow);
-        _formationMockEnabled = new CheckBox
+        _formationMockEnabled = new UcToggle
         {
             Text = "Use a normal mob as the formation boss",
             AutoSize = true,
@@ -1360,7 +1360,7 @@ public partial class MainForm
         AddFormationNumberRow(_formationConfigPanel, "Start correction distance (yalms)", _formationHysteresisStart, ref formationRow);
         _formationHysteresisStop = CreateFormationNumber(0.0m, 20.0m, 0.5m, 0.1m, 1);
         AddFormationNumberRow(_formationConfigPanel, "Stop correction distance (yalms)", _formationHysteresisStop, ref formationRow);
-        _formationAvoidEncounterHazards = new CheckBox
+        _formationAvoidEncounterHazards = new UcToggle
         {
             Text = "Avoid trusted encounter hazards (future gate)",
             AutoSize = true,
@@ -1522,7 +1522,7 @@ public partial class MainForm
         summonerRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
         summonerRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         var summonerRow = 0;
-        _summonerEnabled = new CheckBox { Text = "Enable Summoner automation", AutoSize = true };
+        _summonerEnabled = new UcToggle { Text = "Enable Summoner automation", AutoSize = true };
         _summonerEnabled.CheckedChanged += (_, _) => OnSummonerSettingChanged();
         summonerRoot.Controls.Add(_summonerEnabled, 0, summonerRow);
         summonerRoot.SetColumnSpan(_summonerEnabled, 2);
@@ -1546,12 +1546,12 @@ public partial class MainForm
         _summonerAvatar.SelectedIndex = 0;
         _summonerAvatar.SelectedIndexChanged += (_, _) => OnSummonerAvatarChanged();
         summonerRoot.Controls.Add(_summonerAvatar, 1, summonerRow++);
-        _summonerAvatarFavor = new CheckBox { Text = "Maintain Avatar's Favor", AutoSize = true };
+        _summonerAvatarFavor = new UcToggle { Text = "Maintain Avatar's Favor", AutoSize = true };
         _summonerAvatarFavor.CheckedChanged += (_, _) => OnSummonerSettingChanged();
         summonerRoot.Controls.Add(_summonerAvatarFavor, 0, summonerRow);
         summonerRoot.SetColumnSpan(_summonerAvatarFavor, 2);
         summonerRow++;
-		_summonerWardEnabled = new CheckBox
+		_summonerWardEnabled = new UcToggle
 		{
 			Text = "Maintain selected Blood Pact: Ward effects",
 			AutoSize = true,
@@ -1580,12 +1580,12 @@ public partial class MainForm
         };
 		_summonerWardActions.ItemCheck += (_, _) => OnSummonerWardItemCheck();
 		summonerRoot.Controls.Add(_summonerWardActions, 1, summonerRow++);
-        _summonerEngage = new CheckBox { Text = "Engage the combat target with Assault", AutoSize = true };
+        _summonerEngage = new UcToggle { Text = "Engage the combat target with Assault", AutoSize = true };
         _summonerEngage.CheckedChanged += (_, _) => OnSummonerSettingChanged();
         summonerRoot.Controls.Add(_summonerEngage, 0, summonerRow);
         summonerRoot.SetColumnSpan(_summonerEngage, 2);
         summonerRow++;
-        _summonerRageEnabled = new CheckBox { Text = "Use one Blood Pact: Rage on cooldown", AutoSize = true };
+        _summonerRageEnabled = new UcToggle { Text = "Use one Blood Pact: Rage on cooldown", AutoSize = true };
         _summonerRageEnabled.CheckedChanged += (_, _) => OnSummonerSettingChanged();
         summonerRoot.Controls.Add(_summonerRageEnabled, 0, summonerRow);
         summonerRoot.SetColumnSpan(_summonerRageEnabled, 2);
@@ -1603,7 +1603,7 @@ public partial class MainForm
         };
         _summonerRageAction.SelectedIndexChanged += (_, _) => OnSummonerActionChanged();
         summonerRoot.Controls.Add(_summonerRageAction, 1, summonerRow++);
-        _summonerRageTargetHppAboveEnabled = new CheckBox
+        _summonerRageTargetHppAboveEnabled = new UcToggle
         {
             Text = "Require target HP above",
             AutoSize = true,
@@ -1634,7 +1634,7 @@ public partial class MainForm
             Padding = new Padding(0, 5, 0, 0),
         });
         summonerRoot.Controls.Add(summonerTargetHppGate, 1, summonerRow++);
-        _summonerRagePetTpAboveEnabled = new CheckBox
+        _summonerRagePetTpAboveEnabled = new UcToggle
         {
             Text = "Require pet TP above",
             AutoSize = true,
@@ -1691,7 +1691,7 @@ public partial class MainForm
         };
         _corRoll1Combo.SelectedIndexChanged += (_, _) => OnCorRollSelected(1);
         corRollCfg.Controls.Add(_corRoll1Combo, 1, 0);
-        _corCrookedRoll1 = new CheckBox { Text = "Use Crooked Cards", AutoSize = true, Anchor = AnchorStyles.Left };
+        _corCrookedRoll1 = new UcToggle { Text = "Use Crooked Cards", AutoSize = true, Anchor = AnchorStyles.Left };
         _corCrookedRoll1.CheckedChanged += (_, _) => OnCorCrookedChanged(1, _corCrookedRoll1.Checked);
         corRollCfg.Controls.Add(_corCrookedRoll1, 2, 0);
         corRollCfg.Controls.Add(new Label { Text = "Roll 2", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
@@ -1703,15 +1703,15 @@ public partial class MainForm
         };
         _corRoll2Combo.SelectedIndexChanged += (_, _) => OnCorRollSelected(2);
         corRollCfg.Controls.Add(_corRoll2Combo, 1, 1);
-        _corCrookedRoll2 = new CheckBox { Text = "Use Crooked Cards", AutoSize = true, Anchor = AnchorStyles.Left };
+        _corCrookedRoll2 = new UcToggle { Text = "Use Crooked Cards", AutoSize = true, Anchor = AnchorStyles.Left };
         _corCrookedRoll2.CheckedChanged += (_, _) => OnCorCrookedChanged(2, _corCrookedRoll2.Checked);
         corRollCfg.Controls.Add(_corCrookedRoll2, 2, 1);
         corRoot.Controls.Add(corRollCfg);
         var corFlags = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true };
-        _corElevens = new CheckBox { Text = "11's", AutoSize = true };
+        _corElevens = new UcToggle { Text = "11's", AutoSize = true };
         _corElevens.CheckedChanged += (_, _) => OnCorFlagChanged("cor_elevens", _corElevens.Checked);
         corFlags.Controls.Add(_corElevens);
-        _corLuzafRangeOverride = new CheckBox { Text = "Force Luzaf range (16y)", AutoSize = true };
+        _corLuzafRangeOverride = new UcToggle { Text = "Force Luzaf range (16y)", AutoSize = true };
         _corLuzafRangeOverride.CheckedChanged += (_, _) => OnCorFlagChanged("cor_luzaf_range_override", _corLuzafRangeOverride.Checked);
         corFlags.Controls.Add(_corLuzafRangeOverride);
         corRoot.Controls.Add(corFlags);
@@ -1742,7 +1742,7 @@ public partial class MainForm
             ColumnCount = 1,
             Padding = new Padding(8),
         };
-        _brdEnabled = new CheckBox { Text = "Maintain configured songs", AutoSize = true };
+        _brdEnabled = new UcToggle { Text = "Maintain configured songs", AutoSize = true };
         _brdEnabled.CheckedChanged += (_, _) => OnBrdConfigChanged();
         brdRoot.Controls.Add(_brdEnabled);
 
@@ -1795,13 +1795,13 @@ public partial class MainForm
         brdRoot.Controls.Add(brdDummyButtons);
 
         var brdFlags = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Padding = new Padding(0, 8, 0, 0) };
-        _brdUseNitro = new CheckBox { Text = "Use NITRO (Nightingale + Troubadour)", AutoSize = true };
+        _brdUseNitro = new UcToggle { Text = "Use NITRO (Nightingale + Troubadour)", AutoSize = true };
         _brdUseNitro.CheckedChanged += (_, _) => OnBrdConfigChanged();
-		_brdUseSoulVoice = new CheckBox { Text = "Use Soul Voice (requires NITRO)", AutoSize = true };
+		_brdUseSoulVoice = new UcToggle { Text = "Use Soul Voice (requires NITRO)", AutoSize = true };
 		_brdUseSoulVoice.CheckedChanged += (_, _) => OnBrdConfigChanged();
-        _brdUseClarion = new CheckBox { Text = "Use Clarion Call", AutoSize = true };
+        _brdUseClarion = new UcToggle { Text = "Use Clarion Call", AutoSize = true };
         _brdUseClarion.CheckedChanged += (_, _) => OnBrdConfigChanged();
-        _brdUseMarcato = new CheckBox { Text = "Use Marcato", AutoSize = true };
+        _brdUseMarcato = new UcToggle { Text = "Use Marcato", AutoSize = true };
         _brdUseMarcato.CheckedChanged += (_, _) => OnBrdConfigChanged();
         brdFlags.Controls.AddRange([_brdUseNitro, _brdUseSoulVoice, _brdUseClarion, _brdUseMarcato]);
         brdRoot.Controls.Add(brdFlags);
@@ -1826,7 +1826,7 @@ public partial class MainForm
 		recoveryRangeRow.Controls.Add(_brdRecoveryRangeYalms);
 		brdRoot.Controls.Add(recoveryRangeRow);
 		brdRoot.Controls.Add(new Label { Text = "Set to the equipped song instrument's actual area radius. Ordinary horn setups use 9.9; string instruments may support a larger tested radius.", AutoSize = true });
-		_brdRepositionForPartySongs = new CheckBox
+		_brdRepositionForPartySongs = new UcToggle
 		{
 			Text = "Reposition to cover the party for group songs",
 			AutoSize = true,
@@ -1866,7 +1866,7 @@ public partial class MainForm
             ColumnCount = 1,
             Padding = new Padding(8),
         };
-        _reactionEnabled = new CheckBox { Text = "Enable configured reactions", AutoSize = true };
+        _reactionEnabled = new UcToggle { Text = "Enable configured reactions", AutoSize = true };
         _reactionEnabled.CheckedChanged += (_, _) => OnReactionConfigChanged();
         reactionRoot.Controls.Add(_reactionEnabled);
         reactionRoot.Controls.Add(new Label
@@ -2009,13 +2009,24 @@ public partial class MainForm
         sizeSessionButtons();
 
         UcControlStyles.Apply(this);
-        UcControlStyles.StyleCompact(_activityCreate, _activityUpdate, _activityDelete);
+        UcControlStyles.StyleCompact(
+            _activityCreate,
+            _activityUpdate,
+            _activityDelete,
+            _btnAbilityAdd,
+            _btnAbilityRemove,
+            _btnAbilityUp,
+            _btnAbilityDown,
+            _campSet,
+            _campClear
+        );
         UcControlStyles.StylePrimary(_btnSave);
         UcControlStyles.StylePrimary(_activityReapply);
+        UcControlStyles.StyleDestructive(_activityDelete);
 
         CheckBox MkCtx(string key)
         {
-            var cb = new CheckBox { Text = HubUiConstants.BoolLabel(key), AutoSize = true };
+            var cb = new UcToggle { Text = HubUiConstants.BoolLabel(key), AutoSize = true };
             _boolChecks[key] = cb;
             cb.CheckedChanged += (_, _) => OnAnyBool(key, cb.Checked);
             return cb;
@@ -2151,7 +2162,7 @@ public partial class MainForm
             throw new InvalidOperationException($"Boolean control '{key}' was registered more than once.");
         }
 
-        var checkBox = new CheckBox
+        var checkBox = new UcToggle
         {
             Text = HubUiConstants.BoolLabel(key),
             AutoSize = true,

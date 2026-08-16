@@ -46,9 +46,9 @@ internal static class ActivityProfileStoreTests
         var bridge = File.ReadAllText(Path.Combine(addonRoot, "remote_bridge.lua"));
         var addon = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombat.lua"));
 
-        AssertContains(ui, "Activity (all active sessions)", "activity selector must be visibly global");
+        AssertContains(ui, "new UcSection(\"Activity\")", "activity selector must remain a global sidebar section");
         AssertContains(ui, "AutoSize = false", "activity selector container must not collapse during preferred-size layout");
-        AssertContains(ui, "group.Height = 160", "activity selector container must retain a usable fixed height");
+        AssertContains(ui, "group.Height = 196", "activity selector container must retain a usable fixed height");
         AssertContains(ui, "Dock = DockStyle.Fill", "activity selector controls must fill the sidebar width");
         AssertContains(ui, "_sessionMetaBySid", "activity operations must enumerate the full active-session cohort");
         AssertContains(ui, "BuildActivationPlan(selected.Id, sessions)", "dropdown activation must build one global plan");
@@ -76,7 +76,7 @@ internal static class ActivityProfileStoreTests
         AssertContains(ui, "matched / {modified} modified / {noMatch} no match", "activity status must report provenance counts");
         AssertContains(ui, "MarkActiveActivityProfileSaved", "individual save must update activity provenance");
         AssertContains(main, "BuildSessionDisplayLabel", "session labels must include activity provenance");
-        AssertContains(main, "listSessions.Items[index] = new SessionListItem", "changed labels must replace native ListBox items");
+        AssertContains(main, "listSessions.Items[index] = item.WithActivity", "changed provenance must replace session row items");
         AssertContains(main, "_suppressSessionSelectionChanged", "label replacement must suppress selection side effects");
         AssertNotContains(main, "listSessions.Refresh()", "label refresh must not rely on repainting a cached item string");
         AssertContains(parity, "TryLoadWorkingProfileForSid(_selectedSid", "session switching must prefer unsaved working state");

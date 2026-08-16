@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.IO;
+using UnifiedCombatWinForms.Ui;
 
 namespace UnifiedCombatWinForms;
 
@@ -168,7 +169,7 @@ public partial class MainForm : Form
             CaptureWorkingProfileFromUi(prevSid);
         }
 
-        if (listSessions.SelectedItem is SessionListItem li)
+        if (listSessions.SelectedItem is UcSessionRow li)
         {
             _selectedSid = li.Sid;
             RefreshEditorFromSnapshot();
@@ -179,20 +180,6 @@ public partial class MainForm : Form
             _selectedSid = null;
             ClearForm();
         }
-    }
-
-    private sealed class SessionListItem
-    {
-        internal SessionListItem(string sid, string label)
-        {
-            Sid = sid;
-            Label = label;
-        }
-
-        internal string Sid { get; }
-        internal string Label { get; }
-
-        public override string ToString() => Label;
     }
 
     private string? RequireSelectedSid()
@@ -285,6 +272,8 @@ public partial class MainForm : Form
         var nextLabels = new Dictionary<string, string>(StringComparer.Ordinal);
         var nextMeta = new Dictionary<string, SessionMeta>(StringComparer.Ordinal);
         var nextRun = new Dictionary<string, bool>(StringComparer.Ordinal);
+        var nextPaused = new Dictionary<string, bool>(StringComparer.Ordinal);
+        var nextRows = new Dictionary<string, UcSessionRow>(StringComparer.Ordinal);
         var newlyAddedSids = new List<string>();
         foreach (var p in sessionsEl.EnumerateObject())
         {
@@ -296,6 +285,7 @@ public partial class MainForm : Form
             var eng = SessionStateHelper.GetString(p.Value, "engine", "UC");
             nextMeta[p.Name] = new SessionMeta(p.Name, ch, job, subJob, eng);
             nextRun[p.Name] = SessionStateHelper.GetBool(p.Value, "Start_Engine", false);
+            nextPaused[p.Name] = SessionStateHelper.GetBool(p.Value, "zone_suspend_active", false);
         }
 
         var nextActivityProvenance = BuildActiveActivityProvenanceBySid(nextMeta);
@@ -305,6 +295,14 @@ public partial class MainForm : Form
                 ? value
                 : (ActivityProfileProvenance?)null;
             nextLabels[sid] = BuildSessionDisplayLabel(nextBaseLabels[sid], _activeActivityName, provenance);
+            nextRows[sid] = BuildSessionRow(
+                nextMeta[sid],
+                nextRun[sid],
+                nextPaused[sid],
+                nextLabels[sid],
+                _activeActivityName,
+                provenance
+            );
         }
 
         var listChanged = nextLabels.Count != _sessionLabelBySid.Count;
@@ -331,9 +329,9 @@ public partial class MainForm : Form
                 listSessions.Items.Clear();
                 foreach (var sid in nextSids)
                 {
-                    if (nextLabels.TryGetValue(sid, out var label))
+                    if (nextRows.TryGetValue(sid, out var row))
                     {
-                        listSessions.Items.Add(new SessionListItem(sid, label));
+                        listSessions.Items.Add(row);
                     }
                 }
 
@@ -342,7 +340,7 @@ public partial class MainForm : Form
                 {
                     for (var i = 0; i < listSessions.Items.Count; i++)
                     {
-                        if (listSessions.Items[i] is SessionListItem li && li.Sid == keepSid)
+                        if (listSessions.Items[i] is UcSessionRow li && li.Sid == keepSid)
                         {
                             newIndex = i;
                             break;
@@ -581,10 +579,44 @@ public partial class MainForm : Form
         return $"[{runFlag}] {ch} ({job}) [{eng}]";
     }
 
+    private static UcSessionRow BuildSessionRow(
+        SessionMeta meta,
+        bool running,
+        bool paused,
+        string accessibleLabel,
+        string? activityName,
+        ActivityProfileProvenance? provenance
+    )
+    {
+        return new UcSessionRow(
+            meta.Sid,
+            accessibleLabel,
+            meta.CharName,
+            meta.Job,
+            meta.Engine,
+            running,
+            paused,
+            activityName,
+            ToUiActivityState(provenance)
+        );
+    }
+
+    private static UcSessionActivityState ToUiActivityState(ActivityProfileProvenance? provenance)
+    {
+        return provenance switch
+        {
+            null => UcSessionActivityState.None,
+            ActivityProfileProvenance.Exact => UcSessionActivityState.Exact,
+            ActivityProfileProvenance.Modified => UcSessionActivityState.Modified,
+            ActivityProfileProvenance.NoMatch => UcSessionActivityState.NoMatch,
+            _ => throw new InvalidOperationException($"Unknown activity provenance: {provenance}.")
+        };
+    }
+
     private void RefreshSessionLabelsForActivityContext()
     {
         var provenanceBySid = BuildActiveActivityProvenanceBySid(_sessionMetaBySid);
-        var selectedSid = (listSessions.SelectedItem as SessionListItem)?.Sid ?? _selectedSid;
+        var selectedSid = (listSessions.SelectedItem as UcSessionRow)?.Sid ?? _selectedSid;
         var wasSelectionSuppressed = _suppressSessionSelectionChanged;
         _suppressSessionSelectionChanged = true;
         listSessions.BeginUpdate();
@@ -592,7 +624,7 @@ public partial class MainForm : Form
         {
             for (var index = 0; index < listSessions.Items.Count; index++)
             {
-                if (listSessions.Items[index] is not SessionListItem item)
+                if (listSessions.Items[index] is not UcSessionRow item)
                 {
                     throw new ActivityProfileException($"Session list item {index} has an unexpected type.");
                 }
@@ -605,9 +637,13 @@ public partial class MainForm : Form
                     ? value
                     : (ActivityProfileProvenance?)null;
                 var label = BuildSessionDisplayLabel(baseLabel, _activeActivityName, provenance);
-                if (!string.Equals(item.Label, label, StringComparison.Ordinal))
+                if (!string.Equals(item.AccessibleLabel, label, StringComparison.Ordinal))
                 {
-                    listSessions.Items[index] = new SessionListItem(item.Sid, label);
+                    listSessions.Items[index] = item.WithActivity(
+                        label,
+                        _activeActivityName,
+                        ToUiActivityState(provenance)
+                    );
                 }
                 _sessionLabelBySid[item.Sid] = label;
             }
@@ -616,7 +652,7 @@ public partial class MainForm : Form
             {
                 for (var index = 0; index < listSessions.Items.Count; index++)
                 {
-                    if (listSessions.Items[index] is SessionListItem item
+                    if (listSessions.Items[index] is UcSessionRow item
                         && string.Equals(item.Sid, selectedSid, StringComparison.Ordinal))
                     {
                         if (listSessions.SelectedIndex != index)

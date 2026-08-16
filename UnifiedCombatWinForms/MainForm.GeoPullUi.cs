@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using UnifiedCombatWinForms.Ui;
 
 namespace UnifiedCombatWinForms;
 
@@ -285,7 +286,7 @@ public partial class MainForm
         var geo = CreateGeoPullTable();
         var geoRow = 0;
 
-        _geoEnabled = new CheckBox { Text = "Maintain configured Geo and Indi spells", AutoSize = true };
+        _geoEnabled = new UcToggle { Text = "Maintain configured Geo and Indi spells", AutoSize = true };
         AddWide(geo, _geoEnabled, ref geoRow);
         _geoSpell = AddText(geo, "Geo spell", ref geoRow);
         _indiSpell = AddText(geo, "Indi spell", ref geoRow);
@@ -298,23 +299,23 @@ public partial class MainForm
         );
         _geoTargetName = AddText(geo, "Geo party member", ref geoRow);
         _geoOrdering = AddChoice(geo, "Casting order", ["geo_first", "indi_first"], "geo_first", ref geoRow);
-        _geoRequireCamp = new CheckBox { Text = "Require character at camp", AutoSize = true, Checked = true };
+        _geoRequireCamp = new UcToggle { Text = "Require character at camp", AutoSize = true, Checked = true };
         AddWide(geo, _geoRequireCamp, ref geoRow);
         _geoCampTolerance = AddNumber(geo, "Camp tolerance (yalms)", 0m, 50m, 1m, 0.1m, 1, ref geoRow);
-        _geoEntrustEnabled = new CheckBox { Text = "Maintain an Entrust Indi spell on a party member", AutoSize = true };
+        _geoEntrustEnabled = new UcToggle { Text = "Maintain an Entrust Indi spell on a party member", AutoSize = true };
         AddWide(geo, _geoEntrustEnabled, ref geoRow);
         _geoEntrustSpell = AddText(geo, "Entrust Indi spell", ref geoRow);
         _geoEntrustTarget = AddText(geo, "Entrust target", ref geoRow);
-        _geoUseBlaze = new CheckBox { Text = "Use Blaze of Glory before Geo placement", AutoSize = true };
+        _geoUseBlaze = new UcToggle { Text = "Use Blaze of Glory before Geo placement", AutoSize = true };
         AddWide(geo, _geoUseBlaze, ref geoRow);
-        _geoUseEcliptic = new CheckBox { Text = "Use Ecliptic Attrition after Geo placement", AutoSize = true };
+        _geoUseEcliptic = new UcToggle { Text = "Use Ecliptic Attrition after Geo placement", AutoSize = true };
         AddWide(geo, _geoUseEcliptic, ref geoRow);
-        _geoUseLifeCycle = new CheckBox { Text = "Use Life Cycle for a low-HP luopan", AutoSize = true };
+        _geoUseLifeCycle = new UcToggle { Text = "Use Life Cycle for a low-HP luopan", AutoSize = true };
         AddWide(geo, _geoUseLifeCycle, ref geoRow);
         _geoLifeCycleHpp = AddNumber(geo, "Life Cycle below luopan HP %", 1m, 99m, 50m, 1m, 0, ref geoRow);
-        _geoReplaceOutOfPosition = new CheckBox { Text = "Replace a luopan outside the camp radius", AutoSize = true };
+        _geoReplaceOutOfPosition = new UcToggle { Text = "Replace a luopan outside the camp radius", AutoSize = true };
         AddWide(geo, _geoReplaceOutOfPosition, ref geoRow);
-        _geoEnemyRequiresCampRadius = new CheckBox
+        _geoEnemyRequiresCampRadius = new UcToggle
         {
             Text = "Only cast enemy Geo within the camp radius",
             AutoSize = true,
@@ -364,7 +365,7 @@ public partial class MainForm
         var pullTab = new TabPage("Camp Pulling") { AutoScroll = true };
         var pull = CreateGeoPullTable();
         var pullRow = 0;
-        _campPullEnabled = new CheckBox { Text = "Pull configured mobs back to camp", AutoSize = true };
+        _campPullEnabled = new UcToggle { Text = "Pull configured mobs back to camp", AutoSize = true };
         AddWide(pull, _campPullEnabled, ref pullRow);
         AddWide(pull, CreateGlobalBoolCheckBox("puller_distance_only"), ref pullRow);
         _campPullActionType = AddChoice(pull, "Pull action type", ["spell", "ja"], "spell", ref pullRow);
