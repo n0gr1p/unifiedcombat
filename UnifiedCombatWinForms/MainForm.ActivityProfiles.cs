@@ -50,6 +50,7 @@ public partial class MainForm
         var group = new UcSection("Activity")
         {
             AutoSize = false,
+            FillAvailableHeight = true,
             Height = 196,
             MinimumSize = new Size(210, 196),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
@@ -117,7 +118,7 @@ public partial class MainForm
             ForeColor = SystemColors.GrayText,
         };
         layout.Controls.Add(_activityStatus, 0, 3);
-        group.ContentPanel.Controls.Add(layout);
+        group.SetContent(layout);
         footer.Controls.Add(group);
         void sizeActivityGroup()
         {

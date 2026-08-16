@@ -330,10 +330,10 @@ public partial class MainForm
         // Top split: combat / abilities (left) | defensive healer fields (right)
         var topSplit = new TableLayoutPanel
         {
-            AutoSize = true,
+            AutoSize = false,
             Dock = DockStyle.Top,
             ColumnCount = 2,
-            Padding = new Padding(0, 0, 0, 4),
+            Padding = new Padding(0),
         };
         topSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
         topSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
@@ -342,7 +342,7 @@ public partial class MainForm
         var leftCol = new TableLayoutPanel
         {
             AutoSize = true,
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
             ColumnCount = 2,
             Padding = new Padding(0, 0, 8, 0),
         };
@@ -388,7 +388,7 @@ public partial class MainForm
         leftCol.Controls.Add(_wsCombo, 1, lr);
         lr++;
 
-        leftCol.Controls.Add(new Label { Text = "WS mode", AutoSize = true, Anchor = AnchorStyles.Left }, 0, lr);
+        leftCol.Controls.Add(new Label { Text = "Weapon Skill Mode", AutoSize = true, Anchor = AnchorStyles.Left }, 0, lr);
         _wsModeCombo = new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
@@ -402,7 +402,7 @@ public partial class MainForm
         leftCol.Controls.Add(_wsModeCombo, 1, lr);
         lr++;
 
-        leftCol.Controls.Add(new Label { Text = "Minimum WS TP", AutoSize = true, Anchor = AnchorStyles.Left }, 0, lr);
+        leftCol.Controls.Add(new Label { Text = "Minimum TP", AutoSize = true, Anchor = AnchorStyles.Left }, 0, lr);
         _wsMinimumTp = new NumericUpDown
         {
             Minimum = 1000,
@@ -419,7 +419,7 @@ public partial class MainForm
 
         _chkWsAllowAoe = new CheckBox
         {
-            Text = "Allow AoE WS in Smart mode",
+            Text = "Allow AoE Weapon Skills in Smart Mode",
             AutoSize = true,
             Checked = true,
         };
@@ -474,7 +474,7 @@ public partial class MainForm
 
         _abilityList = new ListBox
         {
-            Height = 120,
+            Height = 44,
             IntegralHeight = false,
             Dock = DockStyle.Top,
             Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
@@ -506,7 +506,7 @@ public partial class MainForm
         _pullerCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
         _pullerCombo.SelectedIndexChanged += (_, _) => OnPullerSelected();
         pull.Controls.Add(_pullerCombo);
-        pull.Controls.Add(new Label { Text = "Engage range", AutoSize = true, Padding = new Padding(8, 4, 0, 0) });
+        pull.Controls.Add(new Label { Text = "Engage Range", AutoSize = true, Padding = new Padding(8, 4, 0, 0) });
         _pullerEngageRange = new TextBox { Width = 52 };
         _pullerEngageRange.Leave += (_, _) => OnPullerEngageRangeChanged();
         pull.Controls.Add(_pullerEngageRange);
@@ -519,14 +519,14 @@ public partial class MainForm
 		pull.Controls.Add(_campClear);
 		_campStatus = new Label { Text = "Camp not set", AutoSize = true, Padding = new Padding(8, 4, 0, 0) };
 		pull.Controls.Add(_campStatus);
-        leftCol.Controls.Add(new Label { Text = "Puller", AutoSize = true }, 0, lr);
+        leftCol.Controls.Add(new Label { Text = "Pulling", AutoSize = true }, 0, lr);
         leftCol.Controls.Add(pull, 1, lr);
         lr++;
 
         var rightCol = new TableLayoutPanel
         {
             AutoSize = true,
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
             ColumnCount = 2,
             Padding = new Padding(8, 0, 0, 0),
         };
@@ -607,19 +607,35 @@ public partial class MainForm
 
         var combatGroup = new UcSection("Combat / Targeting")
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.None,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
         };
-        combatGroup.ContentPanel.Controls.Add(leftCol);
+        combatGroup.SetContent(leftCol);
         _grpHealer = new UcSection("Defensive")
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.None,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
         };
-        _grpHealer.ContentPanel.Controls.Add(rightCol);
+        _grpHealer.SetContent(rightCol);
         topSplit.Controls.Add(combatGroup, 0, 0);
         topSplit.Controls.Add(_grpHealer, 1, 0);
+        void SizeTopSplitToSections()
+        {
+            var height = Math.Max(
+                combatGroup.Height + combatGroup.Margin.Vertical,
+                _grpHealer.Height + _grpHealer.Margin.Vertical
+            ) + topSplit.Padding.Vertical;
+            if (topSplit.Height != height)
+            {
+                topSplit.Height = height;
+            }
+        }
+        combatGroup.SizeChanged += (_, _) => SizeTopSplitToSections();
+        _grpHealer.SizeChanged += (_, _) => SizeTopSplitToSections();
+        SizeTopSplitToSections();
         g.Controls.Add(topSplit, 0, gRow++);
 
-        _grpFightLeader = new UcSection("Fight Leader / Add Control — autotarget stays on the leader target unless an eligible fight-add is valid.")
+        _grpFightLeader = new UcSection("Fight Leader / Add Control — Auto Target stays with the leader unless an eligible add is available.")
         {
             Dock = DockStyle.Top,
         };
@@ -637,19 +653,19 @@ public partial class MainForm
         _partyFollowCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
         _partyFollowCombo.SelectedIndexChanged += (_, _) => OnPartyFollowSelected();
         pfTop.Controls.Add(_partyFollowCombo);
-        pfTop.Controls.Add(new Label { Text = "Min yalms", AutoSize = true, Padding = new Padding(10, 4, 0, 0) });
+        pfTop.Controls.Add(new Label { Text = "Minimum Distance", AutoSize = true, Padding = new Padding(10, 4, 0, 0) });
         _pfFollowMinYalms = new TextBox { Width = 52 };
         _pfFollowMinYalms.Leave += (_, _) => OnPartyFollowDistanceChanged();
         pfTop.Controls.Add(_pfFollowMinYalms);
-        pfTop.Controls.Add(new Label { Text = "Max yalms", AutoSize = true, Padding = new Padding(8, 4, 0, 0) });
+        pfTop.Controls.Add(new Label { Text = "Maximum Distance", AutoSize = true, Padding = new Padding(8, 4, 0, 0) });
         _pfFollowMaxYalms = new TextBox { Width = 52 };
         _pfFollowMaxYalms.Leave += (_, _) => OnPartyFollowDistanceChanged();
         pfTop.Controls.Add(_pfFollowMaxYalms);
-        pfTop.Controls.Add(new Label { Text = "Fight min", AutoSize = true, Padding = new Padding(8, 4, 0, 0) });
+        pfTop.Controls.Add(new Label { Text = "Combat Minimum", AutoSize = true, Padding = new Padding(8, 4, 0, 0) });
         _pfFightFollowMinYalms = new TextBox { Width = 52 };
         _pfFightFollowMinYalms.Leave += (_, _) => OnPartyFollowDistanceChanged();
         pfTop.Controls.Add(_pfFightFollowMinYalms);
-        pfTop.Controls.Add(new Label { Text = "Hold s", AutoSize = true, Padding = new Padding(8, 4, 0, 0) });
+        pfTop.Controls.Add(new Label { Text = "Hold Time (s)", AutoSize = true, Padding = new Padding(8, 4, 0, 0) });
         _pfFightFollowHoldS = new TextBox { Width = 52 };
         _pfFightFollowHoldS.Leave += (_, _) => OnPartyFollowDistanceChanged();
         pfTop.Controls.Add(_pfFightFollowHoldS);
@@ -663,10 +679,10 @@ public partial class MainForm
             Padding = new Padding(2, 2, 0, 0),
         };
         flFlow.Controls.Add(_partyFollowModeWarning);
-        _grpFightLeader.ContentPanel.Controls.Add(flFlow);
+        _grpFightLeader.SetContent(flFlow);
         g.Controls.Add(_grpFightLeader, 0, gRow++);
 
-		var nyzulGroup = new UcSection("Nyzul lamp parking — coordinator profile owns the ordered runtime queue.")
+		var nyzulGroup = new UcSection("Nyzul Lamp Parking — the coordinator profile owns the ordered runtime queue.")
 		{
 			Dock = DockStyle.Top,
 		};
@@ -712,7 +728,7 @@ public partial class MainForm
 		_nyzulParkerDown.Click += (_, _) => NyzulParkerMove(1);
 		nyzulButtons.Controls.Add(_nyzulParkerDown);
 		nyzulFlow.Controls.Add(nyzulButtons);
-		nyzulGroup.ContentPanel.Controls.Add(nyzulFlow);
+		nyzulGroup.SetContent(nyzulFlow);
 		g.Controls.Add(nyzulGroup, 0, gRow++);
 
         var listsSplit = new TableLayoutPanel
@@ -728,7 +744,7 @@ public partial class MainForm
         listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        _grpAddPri = new UcSection("Fight-add priority — only listed mobs are eligible; Up/Down reorders.")
+        _grpAddPri = new UcSection("Fight Add Priority — only listed enemies are eligible; Move Up/Down changes the order.")
         {
             Dock = DockStyle.Fill,
             MinimumSize = new Size(200, 120),
@@ -756,10 +772,10 @@ public partial class MainForm
         _addPriDown.Click += (_, _) => AddPriorityMove("down");
         apr.Controls.Add(_addPriDown);
         apFlow.Controls.Add(apr);
-        _grpAddPri.ContentPanel.Controls.Add(apFlow);
+        _grpAddPri.SetContent(apFlow);
         listsSplit.Controls.Add(_grpAddPri, 0, 0);
 
-        _grpPartner = new UcSection("Partner follow — skip autotarget for these party members' targets.")
+        _grpPartner = new UcSection("Partner Follow — skip Auto Target for these party members' targets.")
         {
             Dock = DockStyle.Fill,
             MinimumSize = new Size(200, 120),
@@ -784,10 +800,10 @@ public partial class MainForm
         _partnerRemove.Click += (_, _) => PartnerRemove();
         pr.Controls.Add(_partnerRemove);
         pFlow.Controls.Add(pr);
-        _grpPartner.ContentPanel.Controls.Add(pFlow);
+        _grpPartner.SetContent(pFlow);
         listsSplit.Controls.Add(_grpPartner, 0, 1);
 
-        _grpIgnore = new UcSection("WS wait ignore — party members skipped for WS-hold decisions.")
+        _grpIgnore = new UcSection("Weapon Skill Wait Ignore — party members excluded from Weapon Skill hold decisions.")
         {
             Dock = DockStyle.Fill,
             MinimumSize = new Size(200, 120),
@@ -809,10 +825,10 @@ public partial class MainForm
         _ignoreRemove.Click += (_, _) => IgnoreRemove();
         ign.Controls.Add(_ignoreRemove);
         iFlow.Controls.Add(ign);
-        _grpIgnore.ContentPanel.Controls.Add(iFlow);
+        _grpIgnore.SetContent(iFlow);
         listsSplit.Controls.Add(_grpIgnore, 1, 0);
 
-        _grpTargetIgn = new UcSection("Target ignore (autotarget) — mobs never chosen as combat targets.")
+        _grpTargetIgn = new UcSection("Auto Target Ignore — enemies never selected as combat targets.")
         {
             Dock = DockStyle.Fill,
             MinimumSize = new Size(200, 120),
@@ -834,10 +850,10 @@ public partial class MainForm
         _targetIgnRemove.Click += (_, _) => TargetIgnRemove();
         tigr.Controls.Add(_targetIgnRemove);
         tiFlow.Controls.Add(tigr);
-        _grpTargetIgn.ContentPanel.Controls.Add(tiFlow);
+        _grpTargetIgn.SetContent(tiFlow);
         listsSplit.Controls.Add(_grpTargetIgn, 1, 1);
 
-        _grpSleepSpells = new UcSection("Sleep spells — ordered list used for pre-engage and in-combat Sleep picks.")
+        _grpSleepSpells = new UcSection("Sleep Spells — ordered list used for pre-engage and in-combat Sleep selection.")
         {
             Dock = DockStyle.Fill,
             MinimumSize = new Size(200, 120),
@@ -876,13 +892,13 @@ public partial class MainForm
         _sleepSpellDown.Click += (_, _) => SleepSpellMove("down");
         sleepRow.Controls.Add(_sleepSpellDown);
         sleepFlow.Controls.Add(sleepRow);
-        _grpSleepSpells.ContentPanel.Controls.Add(sleepFlow);
+        _grpSleepSpells.SetContent(sleepFlow);
         listsSplit.Controls.Add(_grpSleepSpells, 0, 2);
         listsSplit.SetColumnSpan(_grpSleepSpells, 2);
 
         g.Controls.Add(listsSplit, 0, gRow++);
 
-        var tankGroup = new UcSection("Tank Enmity Actions — single prioritized JA/spell list for threat recovery.")
+        var tankGroup = new UcSection("Tank Enmity Actions — prioritized ability and spell list for threat recovery.")
         {
             Dock = DockStyle.Top,
             MinimumSize = new Size(200, 120),
@@ -937,7 +953,7 @@ public partial class MainForm
         tankBtnRow.Controls.Add(_tankEnmityUp);
         tankBtnRow.Controls.Add(_tankEnmityDown);
         tankFlow.Controls.Add(tankBtnRow);
-        tankGroup.ContentPanel.Controls.Add(tankFlow);
+        tankGroup.SetContent(tankFlow);
         g.Controls.Add(tankGroup, 0, gRow++);
 
         _settingsTabs = new TabControl

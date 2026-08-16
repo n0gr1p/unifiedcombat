@@ -19,6 +19,6 @@ internal static class UcTheme
     internal static Color PrimaryText => SystemColors.HighlightText;
 
     internal static Padding ControlMargin => new(SpaceXs);
-    internal static Padding SectionMargin => new(0, 0, 0, SpaceMd);
+    internal static Padding SectionMargin => new(0, 0, 0, SpaceSm);
     internal static Padding SectionPadding => new(SpaceLg);
 }

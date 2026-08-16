@@ -6,9 +6,6 @@ partial class MainForm
 {
     private System.ComponentModel.IContainer components = null!;
 
-    private MenuStrip menuStrip;
-    private ToolStripMenuItem fileToolStripMenuItem;
-    private ToolStripMenuItem exitToolStripMenuItem;
     private StatusStrip statusStrip;
     private ToolStripStatusLabel statusConnection;
     private ToolStripStatusLabel statusLastUpdate;
@@ -32,9 +29,6 @@ partial class MainForm
     private void InitializeComponent()
     {
         components = new System.ComponentModel.Container();
-        menuStrip = new MenuStrip();
-        fileToolStripMenuItem = new ToolStripMenuItem();
-        exitToolStripMenuItem = new ToolStripMenuItem();
         statusStrip = new StatusStrip();
         statusConnection = new ToolStripStatusLabel();
         statusLastUpdate = new ToolStripStatusLabel();
@@ -45,7 +39,6 @@ partial class MainForm
         flowSessionActions = new FlowLayoutPanel();
         listSessions = new ListBox();
         panelEditorHost = new Panel();
-        menuStrip.SuspendLayout();
         statusStrip.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)splitContainer).BeginInit();
         splitContainer.Panel1.SuspendLayout();
@@ -55,35 +48,13 @@ partial class MainForm
         tableSessionSidebar.SuspendLayout();
         SuspendLayout();
         //
-        // menuStrip
-        //
-        menuStrip.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem });
-        menuStrip.Location = new Point(0, 0);
-        menuStrip.Name = "menuStrip";
-        menuStrip.Size = new Size(1184, 24);
-        menuStrip.TabIndex = 0;
-        //
-        // fileToolStripMenuItem
-        //
-        fileToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { exitToolStripMenuItem });
-        fileToolStripMenuItem.Name = "fileToolStripMenuItem";
-        fileToolStripMenuItem.Size = new Size(37, 20);
-        fileToolStripMenuItem.Text = "&File";
-        //
-        // exitToolStripMenuItem
-        //
-        exitToolStripMenuItem.Name = "exitToolStripMenuItem";
-        exitToolStripMenuItem.Size = new Size(93, 22);
-        exitToolStripMenuItem.Text = "E&xit";
-        exitToolStripMenuItem.Click += (_, _) => Close();
-        //
         // statusStrip
         //
         statusStrip.Items.AddRange(new ToolStripItem[] { statusConnection, statusLastUpdate });
         statusStrip.Location = new Point(0, 739);
         statusStrip.Name = "statusStrip";
         statusStrip.Size = new Size(1184, 22);
-        statusStrip.TabIndex = 1;
+        statusStrip.TabIndex = 0;
         //
         // statusConnection
         //
@@ -102,13 +73,13 @@ partial class MainForm
         //
         splitContainer.Dock = DockStyle.Fill;
         splitContainer.FixedPanel = FixedPanel.Panel1;
-        splitContainer.Location = new Point(0, 24);
+        splitContainer.Location = new Point(0, 0);
         splitContainer.Name = "splitContainer";
         splitContainer.Panel1.Controls.Add(panelSessionColumn);
         splitContainer.Panel2.Controls.Add(panelEditorHost);
-        splitContainer.Size = new Size(1184, 715);
+        splitContainer.Size = new Size(1184, 739);
         splitContainer.SplitterDistance = 260;
-        splitContainer.TabIndex = 2;
+        splitContainer.TabIndex = 1;
         //
         // panelSessionColumn
         //
@@ -176,14 +147,10 @@ partial class MainForm
         ClientSize = new Size(1184, 761);
         Controls.Add(splitContainer);
         Controls.Add(statusStrip);
-        Controls.Add(menuStrip);
-        MainMenuStrip = menuStrip;
         MinimumSize = new Size(900, 600);
         Name = "MainForm";
         StartPosition = FormStartPosition.CenterScreen;
-        Text = "UnifiedCombat — desktop UI (direct addon hub 127.0.0.1:27182)";
-        menuStrip.ResumeLayout(false);
-        menuStrip.PerformLayout();
+        Text = "UnifiedCombat";
         statusStrip.ResumeLayout(false);
         statusStrip.PerformLayout();
         splitContainer.Panel1.ResumeLayout(false);

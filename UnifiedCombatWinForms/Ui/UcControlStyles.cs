@@ -4,16 +4,38 @@ internal static class UcControlStyles
 {
     internal static void Apply(Control root)
     {
-        root.Font = UcTheme.BodyFont;
-        ApplyChildren(root);
+        var controls = new List<Control>();
+        CollectControls(root, controls);
+        foreach (var control in controls)
+        {
+            control.SuspendLayout();
+        }
+
+        try
+        {
+            root.Font = UcTheme.BodyFont;
+            for (var i = 1; i < controls.Count; i++)
+            {
+                ApplyControl(controls[i]);
+            }
+        }
+        finally
+        {
+            for (var i = controls.Count - 1; i >= 0; i--)
+            {
+                controls[i].ResumeLayout(false);
+            }
+        }
+
+        root.PerformLayout();
     }
 
-    private static void ApplyChildren(Control root)
+    private static void CollectControls(Control root, List<Control> controls)
     {
+        controls.Add(root);
         foreach (Control control in root.Controls)
         {
-            ApplyControl(control);
-            ApplyChildren(control);
+            CollectControls(control, controls);
         }
     }
 

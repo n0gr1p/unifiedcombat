@@ -1082,6 +1082,7 @@ public partial class MainForm
 
     private void UpdateBooleanCardVisuals()
     {
+        UpdateAbilityListLayout();
         var healerOn = _boolChecks.TryGetValue("defensive_enabled", out var hb) && hb.Checked;
         _grpHealer.Title = healerOn ? "Defensive" : "Defensive (inactive)";
         var dim = SystemColors.GrayText;
@@ -1104,6 +1105,12 @@ public partial class MainForm
                 cb.ForeColor = healerOn ? bright : dim;
             }
         }
+    }
+
+    private void UpdateAbilityListLayout()
+    {
+        var hasWorkingList = _chkAbility.Checked && _abilityList.Items.Count > 0;
+        _abilityList.Height = hasWorkingList ? 96 : 44;
     }
 
     /// <summary>Rebuild the active-abilities list only when it differs from <see cref="_selectedAbilities"/> (avoids mirror-snapshot flicker).</summary>
@@ -1151,6 +1158,7 @@ public partial class MainForm
         finally
         {
             _abilityList.EndUpdate();
+            UpdateAbilityListLayout();
         }
     }
 
