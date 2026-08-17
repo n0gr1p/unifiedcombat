@@ -68,18 +68,18 @@ local core = {
 	chivalry_hold_until = 0,
 	ws_intent_pending_target_id = 0,
 	ws_intent_pending_name = '',
-	ws_intent_pending_generation = 0,
+	ws_intent_pending_claim_id = '',
 	ws_intent_pending_ready_at = 0,
 	ws_intent_remote_target_id = 0,
 	ws_intent_remote_name = '',
-	ws_intent_remote_generation = 0,
+	ws_intent_remote_claim_id = '',
 	ws_intent_remote_actor_id = 0,
 	ws_intent_remote_until = 0,
 	ws_intent_loser_cooldown_until = 0,
 	ws_intent_loser_actor_id = 0,
 	ws_intent_loser_target_id = 0,
 	ws_intent_loser_name = '',
-	ws_intent_loser_generation = 0,
+	ws_intent_loser_claim_id = '',
 	ws_hold_remote = {},
 	spacing = {
 		target_prev_x = nil,
@@ -329,46 +329,42 @@ end
 local function ws_intent_clear_pending()
 	core.ws_intent_pending_target_id = 0
 	core.ws_intent_pending_name = ''
-	core.ws_intent_pending_generation = 0
+	core.ws_intent_pending_claim_id = ''
 	core.ws_intent_pending_ready_at = 0
 end
 
-local function ws_intent_claims_conflict(target_id, ws_name, generation, other_target_id, other_ws_name, other_generation)
-	if target_id ~= other_target_id then
-		return false
-	end
-	if generation > 0 or other_generation > 0 then
-		return generation > 0 and generation == other_generation
-	end
-	return ws_name == other_ws_name
-end
-
-local function ws_intent_generation(skillchain_plan)
+local function ws_intent_claim_id(ws_name, skillchain_plan)
 	if skillchain_plan == nil then
-		return 0
+		return 'ws:' .. tostring(ws_name or '')
 	end
 	if type(skillchain_plan) ~= 'table' or skillchain_plan.kind ~= 'skillchain_continuation' then
 		return nil
 	end
-	local generation = tonumber(skillchain_plan.resonance_generation) or 0
-	if generation <= 0 then
+	local actor_id = tonumber(skillchain_plan.source_actor_id) or 0
+	local action_id = tonumber(skillchain_plan.source_action_id) or 0
+	local resource = tostring(skillchain_plan.source_resource or '')
+	if actor_id <= 0 or action_id <= 0 or resource == '' then
 		return nil
 	end
-	return generation
+	return ('sc:%d:%s:%d'):format(actor_id, resource, action_id)
 end
 
-local function ws_intent_emit(ws_name, target_id, generation)
+local function ws_intent_claims_conflict(target_id, claim_id, other_target_id, other_claim_id)
+	return target_id == other_target_id and claim_id ~= '' and claim_id == other_claim_id
+end
+
+local function ws_intent_emit(ws_name, target_id, claim_id)
 	local my_id = get_my_player_id()
 	local tid = tonumber(target_id) or 0
 	local ws = tostring(ws_name or '')
-	local gen = tonumber(generation) or 0
-	if my_id <= 0 or tid <= 0 or ws == '' or gen < 0 then
+	local claim = tostring(claim_id or '')
+	if my_id <= 0 or tid <= 0 or ws == '' or claim == '' then
 		return false
 	end
-	-- IPC payload format: ucws_intent|actor_id|target_id|ws_name|resonance_generation|clock
-	-- resonance_generation is zero for ordinary WS and positive for skillchain continuations.
+	-- IPC payload format: ucws_intent|actor_id|target_id|ws_name|claim_id|clock
+	-- claim_id is ws:<name> for ordinary WS or sc:<source_actor_id>:<source_resource>:<source_action_id>.
 	-- ws_name in FFXI does not contain pipe characters.
-	windower.send_ipc_message(('%s|%d|%d|%s|%d|%.3f'):format(WS_INTENT_PREFIX, my_id, tid, ws, gen, uc_now_s()))
+	windower.send_ipc_message(('%s|%d|%d|%s|%s|%.3f'):format(WS_INTENT_PREFIX, my_id, tid, ws, claim, uc_now_s()))
 	return true
 end
 
@@ -410,12 +406,12 @@ local function ws_intent_gate(settings, ws_name, target_id, skillchain_plan)
 	local my_id = get_my_player_id()
 	local tid = tonumber(target_id) or 0
 	local ws = tostring(ws_name or '')
-	local generation = ws_intent_generation(skillchain_plan)
+	local claim_id = ws_intent_claim_id(ws, skillchain_plan)
 	if tid <= 0 or ws == '' then
 		return false, 'WS_INTENT_INVALID'
 	end
-	if generation == nil then
-		return false, 'WS_INTENT_INVALID_SKILLCHAIN_GENERATION'
+	if claim_id == nil then
+		return false, 'WS_INTENT_INVALID_SKILLCHAIN_CLAIM'
 	end
 	if skillchain_plan ~= nil
 		and (tonumber(skillchain_plan.target_id) ~= tid or tostring(skillchain_plan.ws_name or '') ~= ws) then
@@ -423,23 +419,19 @@ local function ws_intent_gate(settings, ws_name, target_id, skillchain_plan)
 	end
 	if now < (tonumber(core.ws_intent_loser_cooldown_until) or 0)
 		and ws_intent_claims_conflict(
-			tid, ws, generation,
+			tid, claim_id,
 			tonumber(core.ws_intent_loser_target_id) or 0,
-			tostring(core.ws_intent_loser_name or ''),
-			tonumber(core.ws_intent_loser_generation) or 0
+			tostring(core.ws_intent_loser_claim_id or '')
 		) then
 		return false, ('WS_INTENT_COOLDOWN_LOST_TO:%d'):format(tonumber(core.ws_intent_loser_actor_id) or 0)
 	end
 	local remote_tid = tonumber(core.ws_intent_remote_target_id) or 0
 	local remote_until = tonumber(core.ws_intent_remote_until) or 0
-	local remote_ws = tostring(core.ws_intent_remote_name or '')
-	local remote_generation = tonumber(core.ws_intent_remote_generation) or 0
 	local pending_tid = tonumber(core.ws_intent_pending_target_id) or 0
-	local pending_ws = tostring(core.ws_intent_pending_name or '')
-	local pending_generation = tonumber(core.ws_intent_pending_generation) or 0
-	local pending_claim = ws_intent_claims_conflict(tid, ws, generation, pending_tid, pending_ws, pending_generation)
+	local pending_claim_id = tostring(core.ws_intent_pending_claim_id or '')
+	local pending_claim = ws_intent_claims_conflict(tid, claim_id, pending_tid, pending_claim_id)
 	local remote_actor_id = tonumber(core.ws_intent_remote_actor_id) or 0
-	if now < remote_until and ws_intent_claims_conflict(tid, ws, generation, remote_tid, remote_ws, remote_generation)
+	if now < remote_until and ws_intent_claims_conflict(tid, claim_id, remote_tid, tostring(core.ws_intent_remote_claim_id or ''))
 		and (not pending_claim or my_id <= 0 or remote_actor_id < my_id) then
 		return false, ('WS_INTENT_WAIT_REMOTE:%d'):format(remote_actor_id)
 	end
@@ -449,10 +441,10 @@ local function ws_intent_gate(settings, ws_name, target_id, skillchain_plan)
 		end
 		return true, 'WS_INTENT_COMMIT_OK'
 	end
-	if ws_intent_emit(ws, tid, generation) then
+	if ws_intent_emit(ws, tid, claim_id) then
 		core.ws_intent_pending_target_id = tid
 		core.ws_intent_pending_name = ws
-		core.ws_intent_pending_generation = generation
+		core.ws_intent_pending_claim_id = claim_id
 		core.ws_intent_pending_ready_at = now + WS_INTENT_COMMIT_DELAY
 		return false, 'WS_INTENT_BROADCAST'
 	end
@@ -2956,8 +2948,8 @@ function core.on_ipc_message(msg)
 	local sender_id = tonumber(parts[2]) or 0
 	local target_id = tonumber(parts[3]) or 0
 	local ws_name = tostring(parts[4] or '')
-	local generation = tonumber(parts[5]) or -1
-	if sender_id <= 0 or target_id <= 0 or ws_name == '' or generation < 0 then
+	local claim_id = tostring(parts[5] or '')
+	if sender_id <= 0 or target_id <= 0 or ws_name == '' or claim_id == '' then
 		return
 	end
 	local my_id = get_my_player_id()
@@ -2967,21 +2959,20 @@ function core.on_ipc_message(msg)
 	local now = uc_now_s()
 	core.ws_intent_remote_target_id = target_id
 	core.ws_intent_remote_name = ws_name
-	core.ws_intent_remote_generation = generation
+	core.ws_intent_remote_claim_id = claim_id
 	core.ws_intent_remote_actor_id = sender_id
 	core.ws_intent_remote_until = now + WS_INTENT_REMOTE_HOLD
 	local pending_tid = tonumber(core.ws_intent_pending_target_id) or 0
-	local pending_ws = tostring(core.ws_intent_pending_name or '')
-	local pending_generation = tonumber(core.ws_intent_pending_generation) or 0
-	if ws_intent_claims_conflict(pending_tid, pending_ws, pending_generation, target_id, ws_name, generation)
+	local pending_claim_id = tostring(core.ws_intent_pending_claim_id or '')
+	if ws_intent_claims_conflict(pending_tid, pending_claim_id, target_id, claim_id)
 		and my_id > 0 and sender_id < my_id then
 		core.ws_intent_loser_cooldown_until = now + WS_INTENT_LOSER_COOLDOWN
 		core.ws_intent_loser_actor_id = sender_id
 		core.ws_intent_loser_target_id = target_id
 		core.ws_intent_loser_name = ws_name
-		core.ws_intent_loser_generation = generation
+		core.ws_intent_loser_claim_id = claim_id
 		ws_intent_clear_pending()
-		_G.UC_WS_LAST_DIAG = ('core ws intent lose_tiebreak to=%d ws=%s tid=%d generation=%d'):format(sender_id, ws_name, target_id, generation)
+		_G.UC_WS_LAST_DIAG = ('core ws intent lose_tiebreak to=%d ws=%s tid=%d claim=%s'):format(sender_id, ws_name, target_id, claim_id)
 	end
 end
 
@@ -3382,7 +3373,7 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillcha
 	ws_intent_clear_pending()
 	core.ws_intent_remote_target_id = 0
 	core.ws_intent_remote_name = ''
-	core.ws_intent_remote_generation = 0
+	core.ws_intent_remote_claim_id = ''
 	core.ws_intent_remote_actor_id = 0
 	core.ws_intent_remote_until = 0
 	return true, 'WS_INTENT_SENT'
@@ -3402,14 +3393,14 @@ function core.reset_skillchain_state(reason)
 	core.ws_hold_remote = {}
 	core.ws_intent_remote_target_id = 0
 	core.ws_intent_remote_name = ''
-	core.ws_intent_remote_generation = 0
+	core.ws_intent_remote_claim_id = ''
 	core.ws_intent_remote_actor_id = 0
 	core.ws_intent_remote_until = 0
 	core.ws_intent_loser_cooldown_until = 0
 	core.ws_intent_loser_actor_id = 0
 	core.ws_intent_loser_target_id = 0
 	core.ws_intent_loser_name = ''
-	core.ws_intent_loser_generation = 0
+	core.ws_intent_loser_claim_id = ''
 	ws_intent_clear_pending()
 end
 

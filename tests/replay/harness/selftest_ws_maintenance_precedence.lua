@@ -664,12 +664,15 @@ local function install_dispatch_target(target_id)
 	}
 end
 
-local function skillchain_intent(target_id, ws_name, generation)
+local function skillchain_intent(target_id, ws_name, generation, source_actor_id, source_action_id, source_resource)
 	return {
 		kind = 'skillchain_continuation',
 		target_id = target_id,
 		ws_name = ws_name,
 		resonance_generation = generation,
+		source_actor_id = source_actor_id or 202,
+		source_action_id = source_action_id or 42,
+		source_resource = source_resource or 'weapon_skills',
 	}
 end
 
@@ -678,21 +681,32 @@ local function reset_ws_intent_test_state()
 	ipc_messages = {}
 end
 
-local function test_skillchain_intent_different_ws_same_generation_conflicts()
+local function test_skillchain_intent_different_ws_same_resonance_conflicts_across_local_generations()
 	reset_ws_intent_test_state()
 	install_dispatch_target(9001)
 	local plan = skillchain_intent(9001, 'Savage Blade', 7)
 	local sent, reason = core.try_dispatch_ws_with_intent('Savage Blade', 9001, settings, plan)
 	assert_false(sent, 'initial skillchain intent must wait for arbitration')
 	assert_equal(reason, 'WS_INTENT_BROADCAST', 'initial skillchain intent reason')
-	assert_true(tostring(ipc_messages[1] or ''):match('^ucws_intent|101|9001|Savage Blade|7|') ~= nil, 'skillchain IPC must include resonance generation')
+	assert_true(tostring(ipc_messages[1] or ''):match('^ucws_intent|101|9001|Savage Blade|sc:202:weapon_skills:42|') ~= nil, 'skillchain IPC must include stable resonance identity')
 
-	core.on_ipc_message('ucws_intent|100|9001|Tachi: Kasha|7|1.000')
-	assert_equal(core.ws_intent_remote_generation, 7, 'remote skillchain generation must be recorded')
+	-- The remote client has a different local resonance_generation, but observed the same source action.
+	core.on_ipc_message('ucws_intent|100|9001|Tachi: Kasha|sc:202:weapon_skills:42|1.000')
+	assert_equal(core.ws_intent_remote_claim_id, 'sc:202:weapon_skills:42', 'remote stable resonance identity must be recorded')
 	assert_equal(core.ws_intent_pending_target_id, 0, 'lower actor must clear a conflicting local generation claim')
 	sent, reason = core.try_dispatch_ws_with_intent('Savage Blade', 9001, settings, plan)
 	assert_false(sent, 'losing skillchain intent must not dispatch against the claimed generation')
 	assert_equal(reason, 'WS_INTENT_COOLDOWN_LOST_TO:100', 'different WS must contend for the same generation')
+end
+
+local function test_established_remote_claim_is_not_preempted_by_lower_actor()
+	reset_ws_intent_test_state()
+	install_dispatch_target(9001)
+	core.on_ipc_message('ucws_intent|102|9001|Tachi: Kasha|sc:202:weapon_skills:42|1.000')
+	local sent, reason = core.try_dispatch_ws_with_intent('Savage Blade', 9001, settings, skillchain_intent(9001, 'Savage Blade', 7))
+	assert_false(sent, 'lower actor must not preempt an established remote claim')
+	assert_equal(reason, 'WS_INTENT_WAIT_REMOTE:102', 'established remote claim must win before a local pending claim exists')
+	assert_equal(#ipc_messages, 0, 'waiting on an established remote claim must not broadcast a competing claim')
 end
 
 local function test_skillchain_intent_same_ws_contention_remains()
@@ -702,7 +716,7 @@ local function test_skillchain_intent_same_ws_contention_remains()
 	local sent, reason = core.try_dispatch_ws_with_intent('Savage Blade', 9001, settings, plan)
 	assert_false(sent, 'initial same-WS intent must wait for arbitration')
 	assert_equal(reason, 'WS_INTENT_BROADCAST', 'initial same-WS intent reason')
-	core.on_ipc_message('ucws_intent|100|9001|Savage Blade|7|1.000')
+	core.on_ipc_message('ucws_intent|100|9001|Savage Blade|sc:202:weapon_skills:42|1.000')
 	sent, reason = core.try_dispatch_ws_with_intent('Savage Blade', 9001, settings, plan)
 	assert_false(sent, 'same WS contenders must still arbitrate')
 	assert_equal(reason, 'WS_INTENT_COOLDOWN_LOST_TO:100', 'same WS contention winner must remain lower actor ID')
@@ -715,9 +729,9 @@ local function test_skillchain_intent_lower_actor_keeps_the_generation_claim()
 	local sent, reason = core.try_dispatch_ws_with_intent('Savage Blade', 9001, settings, plan)
 	assert_false(sent, 'initial winner intent must wait for arbitration')
 	assert_equal(reason, 'WS_INTENT_BROADCAST', 'initial winner intent reason')
-	core.on_ipc_message('ucws_intent|102|9001|Tachi: Kasha|7|1.000')
+	core.on_ipc_message('ucws_intent|102|9001|Tachi: Kasha|sc:202:weapon_skills:42|1.000')
 	assert_equal(core.ws_intent_pending_target_id, 9001, 'lower actor must retain its conflicting generation claim')
-	assert_equal(core.ws_intent_pending_generation, 7, 'winner must retain the claimed generation')
+	assert_equal(core.ws_intent_pending_claim_id, 'sc:202:weapon_skills:42', 'winner must retain the claimed resonance identity')
 	assert_equal(core.ws_intent_loser_cooldown_until, 0, 'winner must not enter loser cooldown')
 end
 
@@ -728,18 +742,18 @@ local function test_skillchain_intent_next_generation_is_not_blocked()
 	local sent, reason = core.try_dispatch_ws_with_intent('Savage Blade', 9001, settings, generation_seven)
 	assert_false(sent, 'initial generation must wait for arbitration')
 	assert_equal(reason, 'WS_INTENT_BROADCAST', 'initial generation reason')
-	core.on_ipc_message('ucws_intent|100|9001|Tachi: Kasha|7|1.000')
+	core.on_ipc_message('ucws_intent|100|9001|Tachi: Kasha|sc:202:weapon_skills:42|1.000')
 
-	local generation_eight = skillchain_intent(9001, 'Savage Blade', 8)
+	local generation_eight = skillchain_intent(9001, 'Savage Blade', 8, 202, 43)
 	sent, reason = core.try_dispatch_ws_with_intent('Savage Blade', 9001, settings, generation_eight)
 	assert_false(sent, 'next generation must start its own arbitration window')
 	assert_equal(reason, 'WS_INTENT_BROADCAST', 'previous generation reservation must not block next generation')
-	assert_equal(core.ws_intent_pending_generation, 8, 'next generation must own the new local claim')
+	assert_equal(core.ws_intent_pending_claim_id, 'sc:202:weapon_skills:43', 'next resonance must own the new local claim')
 end
 
 local function test_skillchain_intent_different_targets_do_not_conflict()
 	reset_ws_intent_test_state()
-	core.on_ipc_message('ucws_intent|100|9001|Tachi: Kasha|7|1.000')
+	core.on_ipc_message('ucws_intent|100|9001|Tachi: Kasha|sc:202:weapon_skills:42|1.000')
 	install_dispatch_target(9002)
 	local sent, reason = core.try_dispatch_ws_with_intent('Savage Blade', 9002, settings, skillchain_intent(9002, 'Savage Blade', 7))
 	assert_false(sent, 'different target intent must start local arbitration')
@@ -749,14 +763,14 @@ end
 local function test_non_skillchain_primary_ws_arbitration_is_name_based()
 	reset_ws_intent_test_state()
 	install_dispatch_target(9001)
-	core.on_ipc_message('ucws_intent|100|9001|Tachi: Kasha|0|1.000')
+	core.on_ipc_message('ucws_intent|100|9001|Tachi: Kasha|ws:Tachi: Kasha|1.000')
 	local sent, reason = core.try_dispatch_ws_with_intent('Savage Blade', 9001, settings, nil)
 	assert_false(sent, 'ordinary primary WS must start arbitration when remote WS differs')
 	assert_equal(reason, 'WS_INTENT_BROADCAST', 'ordinary primary WS must retain name-based arbitration')
 
 	reset_ws_intent_test_state()
 	install_dispatch_target(9001)
-	core.on_ipc_message('ucws_intent|100|9001|Savage Blade|0|1.000')
+	core.on_ipc_message('ucws_intent|100|9001|Savage Blade|ws:Savage Blade|1.000')
 	sent, reason = core.try_dispatch_ws_with_intent('Savage Blade', 9001, settings, nil)
 	assert_false(sent, 'ordinary same-WS primary contention must wait for remote')
 	assert_equal(reason, 'WS_INTENT_WAIT_REMOTE:100', 'ordinary primary same-WS behavior must remain unchanged')
@@ -782,7 +796,8 @@ local function main()
 	test_spam_forces_primary_ws_across_active_resonance()
 	test_spam_ws_observes_minimum_tp()
 	test_spam_ws_dispatch_rejects_out_of_range_target()
-	test_skillchain_intent_different_ws_same_generation_conflicts()
+	test_skillchain_intent_different_ws_same_resonance_conflicts_across_local_generations()
+	test_established_remote_claim_is_not_preempted_by_lower_actor()
 	test_skillchain_intent_same_ws_contention_remains()
 	test_skillchain_intent_lower_actor_keeps_the_generation_claim()
 	test_skillchain_intent_next_generation_is_not_blocked()

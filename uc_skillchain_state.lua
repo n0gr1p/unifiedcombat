@@ -530,6 +530,7 @@ function State:plan_continuation(target_id, candidates, actor_context, now_value
 		resonance_generation = state.generation,
 		source_action_id = state.source_action_id,
 		source_actor_id = state.source_actor_id,
+		source_resource = state.source_resource,
 		ws_id = tonumber(chosen.ws_id) or 0,
 		ws_name = tostring(chosen.ws_name or ''),
 		effective_properties = copy_list(chosen.effective_properties),
