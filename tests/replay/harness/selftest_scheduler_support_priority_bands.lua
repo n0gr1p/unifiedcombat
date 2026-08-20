@@ -56,6 +56,8 @@ local function main()
     assert_contains(source, "scheduler.PRIORITY_BAND_SLEEP_WAKE = 149", "Sleep waker priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_CRITICAL_CURE = 153", "critical Cure priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 200", "Bard maintenance priority band mismatch")
+	assert_contains(source, "scheduler.PRIORITY_BAND_SCH_ROUTINE = 75", "Scholar routine priority band mismatch")
+	assert_contains(source, "scheduler.PRIORITY_BAND_SCH_PREPARED = 150", "Scholar prepared priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION", "engage bypass threshold must begin at skillchain continuation")
 
     assert_true(score(153, 0.70) > score(142, 1.00), "critical Cure must beat maximum Sleep urgency")
@@ -67,9 +69,27 @@ local function main()
     assert_true(score(200, 0.00) > score(153, 1.00), "minimum Bard maintenance urgency must beat maximum critical Cure urgency")
     assert_true(score(200, 0.00) > score(142, 1.00), "minimum Bard maintenance urgency must beat maximum Sleep urgency")
     assert_true(score(200, 0.00) > score(131, 1.00), "minimum Bard maintenance urgency must beat maximum skillchain urgency")
+	assert_true(score(153, 0.70) > score(150, 0.95),
+		"critical Cure must beat prepared Scholar completion")
+	assert_true(score(150, 0.95) > score(149, 1.00),
+		"prepared Scholar completion must beat other urgent support")
+	assert_true(score(75, 0.70) < score(108, 0.00),
+		"new routine Scholar maintenance must remain below ordinary offense bands")
 
     assert_contains(source, "brd_maintenance_priority = scheduler.PRIORITY_BAND_BRD_MAINTENANCE", "scheduler must inject the global Bard band")
     assert_contains(source, "geo_maintenance_priority = scheduler.PRIORITY_BAND_GEO_MAINTENANCE", "scheduler must inject the global GEO maintenance band")
+	assert_contains(source, "routine_priority = scheduler.PRIORITY_BAND_SCH_ROUTINE",
+		"scheduler must inject the Scholar routine band")
+	assert_contains(source, "prepared_priority = scheduler.PRIORITY_BAND_SCH_PREPARED",
+		"scheduler must inject the Scholar prepared band")
+	assert_contains(source, "function scheduler.p1_dispatch_maintenance_sch(selected, settings)",
+		"scheduler must own Scholar live dispatch")
+	assert_contains(source, "scheduler.providers.sch_maintenance.note_dispatched(",
+		"Scholar dispatch must enter the runtime pending transaction")
+	assert_contains(source, "if main_job == 'SCH' then\n\t\t\tctx.sch_defensive_evidence_current",
+		"Scholar provider collection must be gated before charge decoding on non-SCH jobs")
+	assert_contains(source, "if provider == 'maintenance_sch' or provider == 'defensive_sch' then",
+		"scheduler arbitration must route Scholar proposals")
     assert_contains(source, "critical_cure_priority = scheduler.PRIORITY_BAND_CRITICAL_CURE", "scheduler must inject the global Cure band")
     assert_contains(source, "priority_band = scheduler.PRIORITY_BAND_SLEEP_WAKE", "scheduler must inject the global Sleep-wake band")
     assert_contains(source, "sleep_priority = scheduler.PRIORITY_BAND_SLEEP", "scheduler must inject the global Sleep band")
@@ -94,8 +114,12 @@ local function main()
 
     assert_contains(source, "and main_job ~= 'COR'",
         "BRD provider cadence must use the same job eligibility as maintenance collection")
-    assert_contains(source, "and (brd_provider_active or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0)) then",
+    assert_contains(source, "and (brd_provider_active or sch_fast_tick_active",
         "BRD provider must be collected every scheduler tick")
+    assert_contains(source, "and (require('uc_sch_runtime').requires_fast_tick()",
+        "active Scholar sequences must be collected every scheduler tick")
+    assert_contains(source, "or scheduler.providers.sch_maintenance.trace_active())",
+        "armed Scholar evidence capture must be collected every scheduler tick")
     assert_contains(maintenance_provider, "brd_maintenance_priority,\n\t\t\t\t\t0,",
         "BRD proposal emission must not consume a speculative throttle")
 
@@ -115,6 +139,38 @@ local function main()
 		"camp-puller action-lane ownership must cover actions, targeting, engage, and movement")
 	assert_contains(source, "local lane_reserved, lane_reason = require('uc_brd_maintenance').action_lane_status()",
 		"scheduler collection must consult authoritative BRD sequence state")
+	assert_contains(source, "local sch_lane = require('uc_sch_runtime').lane_status()",
+		"scheduler collection must consult authoritative Scholar sequence state")
+	assert_contains(source, "local decision = sch_lane_policy.decide(",
+		"scheduler collection must apply selective Scholar lane policy")
+	assert_contains(source, "proposal._sch_lane_preempt_reason = decision.reason",
+		"eligible emergency proposals must carry Scholar preemption intent to dispatch")
+	assert_contains(source, "SCH_DEFENSIVE_PARITY provider=%s type=%s action=\"%s\"",
+		"Scholar diagnostics must identify unchanged existing cure and status-removal proposals")
+	assert_contains(source, "source=existing_defensive",
+		"Scholar defensive comparison diagnostics must name the existing defensive source")
+	assert_contains(source, "function scheduler.sch_sublimation_safety(ctx, proposals)",
+		"Scholar Sublimation must derive safety from the current scheduler proposal set")
+	assert_contains(source, "ctx.sch_defensive_evidence_current = defensive_evidence_current",
+		"Scholar Sublimation safety must know whether defensive proposals were refreshed this tick")
+	assert_contains(source, "defensive_evidence_current = ctx.sch_defensive_evidence_current",
+		"Scholar Sublimation safety must fail closed on stale defensive proposal evidence")
+	assert_contains(source, "player_doom_present = player_has_doom(ctx.player)",
+		"Scholar Sublimation safety must reuse the existing Doom observation")
+	assert_contains(source, "return scheduler.p1_is_critical_defensive_proposal(ctx.settings, proposal)",
+		"Scholar Sublimation safety must reuse the established critical-cure classifier")
+	assert_contains(source, "get_sublimation_safety = scheduler.sch_sublimation_safety",
+		"Scholar provider must receive the scheduler-owned safety evidence boundary")
+	assert_contains(source, "get_sublimation_release_mechanics = require('uc_sch_sublimation').production_release_mechanics",
+		"Scholar provider must retain the explicit production-unknown release-capacity gate")
+	assert_before(source, "local function p1_collect_proposals(ctx)", "SCH_DEFENSIVE_PARITY provider=%s",
+		"Scholar defensive comparison diagnostics must remain inside scheduler proposal collection")
+	assert_before(source, "SCH_DEFENSIVE_PARITY provider=%s", "local sch_lane_policy = require('uc_sch_lane_policy')",
+		"Scholar defensive comparison diagnostics must observe the existing proposal before lane filtering")
+	assert_contains(source, "require('uc_sch_runtime').preempt(\n\t\t\t\tsch_preempt_reason,",
+		"selected emergency dispatch must abort Scholar state before provider dispatch")
+	assert_before(source, "'doom_emergency_preemption'", "local doom_holy_water_command",
+		"Doom must abort Scholar state before Holy Water command construction and dispatch")
 	assert_contains(source, "local _, brd_action_event = require('uc_brd_maintenance').on_action(act, player_id, observed_at)",
 		"scheduler action handling must receive Bard modifier confirmation events")
 	assert_contains(source, "if brd_action_event == 'pianissimo_confirmed' then",
@@ -128,14 +184,20 @@ local function main()
     assert_true(type(process_tick) == "string", "failed to capture scheduler process_tick")
     assert_contains(process_tick, "local defensive_domain_enabled = domain_ownership.is_enabled('defensive')",
         "process_tick must enforce defensive domain enablement")
+	assert_contains(process_tick, "require('uc_sch_runtime').cancel('maintenance_domain_disabled', now_s(), 0)",
+		"maintenance domain disablement must abort an active Scholar sequence")
     assert_before(process_tick, "try_doom_water_emergency(s)", "scheduler.dispatch_selected_plan(s)",
         "Doom must remain the sole hard prepass ahead of Bard scheduler arbitration")
-    assert_contains(process_tick, "if not brd_lane_reserved and not camp_lane_reserved then\n\t\tlocal target_ctx = nil",
-        "Bard and camp-puller lanes must hold nonblocking target acquisition")
+    assert_contains(process_tick, "if not brd_lane_reserved and not camp_lane_reserved and not sch_lane_holds then\n\t\tlocal target_ctx = nil",
+        "Bard, Scholar, and camp-puller lanes must hold nonblocking target acquisition")
     assert_contains(process_tick, "scheduler.p1_try_nonblocking_target_acquire(s, target_ctx)",
         "Bard lane target acquisition must use the tick-stable context")
-    assert_contains(process_tick, "if camp_lane_reserved or not brd_lane_reserved then\n\t\tmove_acted, move_reason = run_movement_coordinator_tick()",
-        "Bard must hold movement coordination while camp-puller ownership retains its movement path")
+    assert_contains(process_tick, "if camp_lane_reserved or (not brd_lane_reserved and not sch_lane_holds) then\n\t\tmove_acted, move_reason = run_movement_coordinator_tick()",
+        "Bard and Scholar must hold movement coordination while camp-puller ownership retains its movement path")
+	assert_contains(process_tick, "scheduler.apply_sch_lane_movement(sch_lane.reason, now_s())",
+		"Scholar lane reservation must actively stop movement")
+	assert_contains(process_tick, "return true, 'BLOCK_SCH_ACTION_LANE:' .. sch_lane.reason",
+		"Scholar lane reservation must report an explicit scheduler hold")
     assert_not_contains(process_tick, "try_internal_defensive_action()",
         "process_tick must not retain legacy internal defensive fallback execution")
     assert_not_contains(process_tick, "try_delegate_healbot()",

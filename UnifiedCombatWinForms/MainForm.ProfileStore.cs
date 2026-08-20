@@ -355,6 +355,24 @@ public partial class MainForm
             ["summoner_rage_target_hpp_above"] = decimal.ToInt32(_summonerRageTargetHppAbove.Value),
             ["summoner_rage_pet_tp_above_enabled"] = _summonerRagePetTpAboveEnabled.Checked,
             ["summoner_rage_pet_tp_above"] = decimal.ToInt32(_summonerRagePetTpAbove.Value),
+            ["sch_enabled"] = _schEnabled.Checked,
+            ["sch_arts_minimum_commit_s"] = decimal.ToInt32(_schArtsMinimumCommit.Value),
+            ["sch_arts_emergency_off_art_casts"] = _schArtsEmergencyOffArtCasts.Checked,
+            ["sch_regen_enabled"] = _schRegenEnabled.Checked,
+            ["sch_accession_perpetuance_spells"] = _schAccessionPerpetuanceSpells.Text.Trim(),
+            ["sch_regen_minimum_coverage"] = decimal.ToInt32(_schRegenMinimumCoverage.Value),
+            ["sch_regen_refresh_before_s"] = decimal.ToInt32(_schRegenRefreshBefore.Value),
+            ["sch_storms_enabled"] = _schStormsEnabled.Checked,
+            ["sch_storm_assignments"] = _schStormAssignments.Text.Trim(),
+            ["sch_storms_refresh_before_s"] = decimal.ToInt32(_schStormsRefreshBefore.Value),
+            ["sch_sublimation_enabled"] = _schSublimationEnabled.Checked,
+            ["sch_sublimation_release_when_mpp_at_most"] = decimal.ToInt32(_schSublimationReleaseMpp.Value),
+            ["sch_sublimation_release_when_complete"] = _schSublimationReleaseComplete.Checked,
+            ["sch_sublimation_minimum_hpp_to_activate"] = decimal.ToInt32(_schSublimationMinimumHpp.Value),
+            ["sch_accession_cure_enabled"] = _schAccessionCureEnabled.Checked,
+            ["sch_accession_status_removal_enabled"] = _schAccessionStatusRemovalEnabled.Checked,
+            ["sch_rapture_enabled"] = _schRaptureEnabled.Checked,
+            ["sch_penury_enabled"] = _schPenuryEnabled.Checked,
             ["reaction_enabled"] = _reactionEnabled.Checked,
             ["reaction_rules"] = BuildReactionRulesJson(),
             ["ignore_entries"] = string.Join("|", _ignoreRows.Select(r => $"{r.Id}:{r.Name}")),
@@ -368,6 +386,7 @@ public partial class MainForm
             ["ws_mode"] = string.Equals(_wsModeCombo.SelectedItem?.ToString(), "Primary Only (No SC)", StringComparison.Ordinal) ? "primary_no_sc" : "smart",
             ["weaponskill_min_tp"] = decimal.ToInt32(_wsMinimumTp.Value),
             ["weaponskill_allow_aoe"] = _chkWsAllowAoe.Checked,
+            ["fast_skillchain"] = _chkFastSkillchain.Checked,
         };
 
         foreach (var key in HubUiConstants.BoolKeys)
@@ -481,6 +500,7 @@ public partial class MainForm
             ["ws_mode"] = "smart",
             ["weaponskill_min_tp"] = 1000,
             ["weaponskill_allow_aoe"] = true,
+            ["fast_skillchain"] = false,
             ["aftermath_ws"] = "",
             ["defensive_provider"] = "internal",
             ["defensive_critical_hpp"] = 35,
@@ -589,6 +609,24 @@ public partial class MainForm
             ["summoner_rage_target_hpp_above"] = 50,
             ["summoner_rage_pet_tp_above_enabled"] = false,
             ["summoner_rage_pet_tp_above"] = 2000,
+            ["sch_enabled"] = false,
+            ["sch_arts_minimum_commit_s"] = 12,
+            ["sch_arts_emergency_off_art_casts"] = true,
+            ["sch_regen_enabled"] = false,
+            ["sch_accession_perpetuance_spells"] = "Regen V",
+            ["sch_regen_minimum_coverage"] = 4,
+            ["sch_regen_refresh_before_s"] = 25,
+            ["sch_storms_enabled"] = false,
+            ["sch_storm_assignments"] = "",
+            ["sch_storms_refresh_before_s"] = 30,
+            ["sch_sublimation_enabled"] = false,
+            ["sch_sublimation_release_when_mpp_at_most"] = 45,
+            ["sch_sublimation_release_when_complete"] = false,
+            ["sch_sublimation_minimum_hpp_to_activate"] = 75,
+            ["sch_accession_cure_enabled"] = false,
+            ["sch_accession_status_removal_enabled"] = false,
+            ["sch_rapture_enabled"] = false,
+            ["sch_penury_enabled"] = false,
             ["reaction_enabled"] = false,
             ["reaction_rules"] = new JsonArray(),
             ["spacing_band_min"] = -0.9,
@@ -840,9 +878,14 @@ public partial class MainForm
             }
         }
 
+        if (root.Remove("sch_sublimation_activate_when_mpp_at_least"))
+        {
+            changed = true;
+        }
+
         if (schema >= ProfileSchemaVersion)
         {
-            return false;
+            return changed;
         }
 
         static void MoveIfMissing(JsonObject obj, string oldKey, string newKey, ref bool dirty)

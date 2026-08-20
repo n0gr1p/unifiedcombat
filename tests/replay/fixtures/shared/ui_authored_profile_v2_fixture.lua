@@ -30,6 +30,7 @@ return {
                 mode = "smart",
                 minimum_tp = 2000,
                 allow_aoe = false,
+				fast_skillchain = true,
                 wait_ignore_names = { "Ally One", "Ally Two" },
                 aftermath_enabled = true,
                 aftermath_ws = "Atonement",

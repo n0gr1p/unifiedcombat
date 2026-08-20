@@ -1,4 +1,5 @@
 local uc_config_normalizer = require('uc_config_normalizer')
+local uc_sch_config = require('uc_sch_config')
 
 local M = {}
 
@@ -18,6 +19,7 @@ local DURABLE_CONFIG_DOMAINS = {
 	'spells',
 	'maintenance',
 	'summoner',
+	'sch',
 	'debug',
 	'ownership',
 	'legacy',
@@ -285,6 +287,15 @@ local function summoner_ward_actions(ward)
 	return actions, nil
 end
 
+local function serialize_sch_storm_assignments(assignments)
+	local out = {}
+	for i = 1, #(assignments or {}) do
+		local assignment = assignments[i]
+		out[#out + 1] = tostring(assignment.spell) .. ':' .. table.concat(assignment.targets, ',')
+	end
+	return table.concat(out, '|')
+end
+
 local function current_meta()
 	local meta = {
 		source = 'UC_SETTINGS',
@@ -448,6 +459,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.ws_mode = config.combat.weaponskill.mode
 			candidate.weaponskill_min_tp = config.combat.weaponskill.minimum_tp
 			candidate.weaponskill_allow_aoe = config.combat.weaponskill.allow_aoe
+			candidate.fast_skillchain = config.combat.weaponskill.fast_skillchain
 			candidate.wait_ignore_names = clone_value(config.combat.weaponskill.wait_ignore_names)
 			candidate.aftermath_enabled = config.combat.weaponskill.aftermath_enabled
 			candidate.aftermath_ws = config.combat.weaponskill.aftermath_ws
@@ -1018,6 +1030,34 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.summoner_rage_pet_tp_above = pet_tp_above
 	end
 
+	if type(config.sch) == 'table' then
+		local validation = uc_sch_config.validate(config.sch)
+		if validation.valid ~= true then
+			local first = validation.errors[1]
+			return false, first and first.message or 'config.sch is invalid'
+		end
+		local sch = uc_sch_config.copy_validated(config.sch)
+		candidate.sch = clone_value(sch)
+		candidate.sch_enabled = sch.enabled
+		candidate.sch_arts_minimum_commit_s = sch.arts.minimum_commit_s
+		candidate.sch_arts_emergency_off_art_casts = sch.arts.emergency_off_art_casts
+		candidate.sch_regen_enabled = sch.support.regen.enabled
+		candidate.sch_accession_perpetuance_spells = table.concat(sch.support.regen.spells, '|')
+		candidate.sch_regen_minimum_coverage = sch.support.regen.minimum_coverage
+		candidate.sch_regen_refresh_before_s = sch.support.regen.refresh_before_s
+		candidate.sch_storms_enabled = sch.support.storms.enabled
+		candidate.sch_storm_assignments = serialize_sch_storm_assignments(sch.support.storms.assignments)
+		candidate.sch_storms_refresh_before_s = sch.support.storms.refresh_before_s
+		candidate.sch_sublimation_enabled = sch.sublimation.enabled
+		candidate.sch_sublimation_release_when_mpp_at_most = sch.sublimation.release_when_mpp_at_most
+		candidate.sch_sublimation_release_when_complete = sch.sublimation.release_when_complete
+		candidate.sch_sublimation_minimum_hpp_to_activate = sch.sublimation.minimum_hpp_to_activate
+		candidate.sch_accession_cure_enabled = sch.defensive.accession_cure.enabled
+		candidate.sch_accession_status_removal_enabled = sch.defensive.accession_status_removal.enabled
+		candidate.sch_rapture_enabled = sch.defensive.rapture.enabled
+		candidate.sch_penury_enabled = sch.defensive.penury.enabled
+	end
+
 	if type(config.debug) == 'table' then
 		candidate.debug = config.debug.enabled
 		candidate.log_combat_sched = config.debug.combat_sched
@@ -1094,6 +1134,14 @@ function M.build_active_profile_from_v2_payload(payload, context)
 	local meta = resolve_meta(context, 'UC_PROFILE_V2')
 	local profile = build_profile_record(payload.profile, meta, 'UC_PROFILE_V2')
 	local config = pick_durable_config_domains(payload.config)
+	local sch_validation = uc_sch_config.validate(config.sch, profile)
+	if sch_validation.valid ~= true then
+		local first = sch_validation.errors[1]
+		return nil, first and first.message or 'Scholar configuration is invalid'
+	end
+	if type(config.sch) == 'table' then
+		config.sch = uc_sch_config.copy_validated(config.sch, profile)
+	end
 	local compatibility_source = {}
 	if type(config.combat) == 'table' then
 		compatibility_source.combat = {
@@ -1253,6 +1301,7 @@ function M.project_flat_settings(active_profile, base_settings)
 	for i = 1, #DURABLE_CONFIG_DOMAINS do
 		candidate[DURABLE_CONFIG_DOMAINS[i]] = nil
 	end
+	candidate.sch_sublimation_activate_when_mpp_at_least = nil
 	local ok, err = apply_structured_config_to_candidate(candidate, active_profile.config)
 	if ok ~= true then
 		return nil, err

@@ -13,6 +13,7 @@ public partial class MainForm
     private ComboBox _wsModeCombo = null!;
     private NumericUpDown _wsMinimumTp = null!;
     private CheckBox _chkWsAllowAoe = null!;
+    private CheckBox _chkFastSkillchain = null!;
     private ToolTip _smartWsToolTip = null!;
     private ToolTip _recoveryHoldToolTip = null!;
     private ComboBox _aftermathCombo = null!;
@@ -175,6 +176,7 @@ public partial class MainForm
     private UcNavigationTabs _settingsTabs = null!;
     private TabPage _tabGeo = null!;
     private TabPage _tabSummoner = null!;
+    private TabPage _tabScholar = null!;
     private TabPage _tabCor = null!;
     private TabPage _tabBrd = null!;
     private CheckBox _geoEnabled = null!;
@@ -228,6 +230,25 @@ public partial class MainForm
     private CheckBox _summonerRagePetTpAboveEnabled = null!;
     private NumericUpDown _summonerRagePetTpAbove = null!;
     private Label _summonerValidation = null!;
+    private CheckBox _schEnabled = null!;
+    private NumericUpDown _schArtsMinimumCommit = null!;
+    private CheckBox _schArtsEmergencyOffArtCasts = null!;
+    private CheckBox _schRegenEnabled = null!;
+    private TextBox _schAccessionPerpetuanceSpells = null!;
+    private NumericUpDown _schRegenMinimumCoverage = null!;
+    private NumericUpDown _schRegenRefreshBefore = null!;
+    private CheckBox _schStormsEnabled = null!;
+    private TextBox _schStormAssignments = null!;
+    private NumericUpDown _schStormsRefreshBefore = null!;
+    private CheckBox _schSublimationEnabled = null!;
+    private NumericUpDown _schSublimationReleaseMpp = null!;
+    private CheckBox _schSublimationReleaseComplete = null!;
+    private NumericUpDown _schSublimationMinimumHpp = null!;
+    private CheckBox _schAccessionCureEnabled = null!;
+    private CheckBox _schAccessionStatusRemovalEnabled = null!;
+    private CheckBox _schRaptureEnabled = null!;
+    private CheckBox _schPenuryEnabled = null!;
+    private Label _schValidation = null!;
     private CheckBox _reactionEnabled = null!;
     private ListBox _reactionRuleList = null!;
     private ComboBox _reactionTriggerCombo = null!;
@@ -442,6 +463,21 @@ public partial class MainForm
         _chkWsAllowAoe.CheckedChanged += (_, _) => OnWsAllowAoeChanged();
         leftCol.Controls.Add(_chkWsAllowAoe, 0, lr);
         leftCol.SetColumnSpan(_chkWsAllowAoe, 2);
+        lr++;
+
+        _chkFastSkillchain = new UcToggle
+        {
+            Text = "Fast Skillchain",
+            AutoSize = true,
+            Checked = false,
+        };
+        _smartWsToolTip.SetToolTip(
+            _chkFastSkillchain,
+            "After the skillchain tracker confirms a terminal result, allow the next weapon skill to open a new skillchain immediately."
+        );
+        _chkFastSkillchain.CheckedChanged += (_, _) => OnFastSkillchainChanged();
+        leftCol.Controls.Add(_chkFastSkillchain, 0, lr);
+        leftCol.SetColumnSpan(_chkFastSkillchain, 2);
         lr++;
 
         _chkAftermath = MkCtx("aftermath_enabled");
@@ -1684,6 +1720,258 @@ public partial class MainForm
         summonerRoot.SetColumnSpan(_summonerValidation, 2);
         _tabSummoner.Controls.Add(summonerRoot);
         _settingsTabs.TabPages.Add(_tabSummoner);
+
+        _tabScholar = new TabPage("SCH") { AutoScroll = true };
+        var scholarRoot = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 2,
+            Padding = new Padding(8),
+        };
+        scholarRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 240));
+        scholarRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        var scholarRow = 0;
+        _schEnabled = new CheckBox { Text = "Enable Scholar support automation", AutoSize = true };
+        _schEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schEnabled, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schEnabled, 2);
+        scholarRow++;
+        var scholarDefensiveNote = new Label
+        {
+            Text = "Direct cures and single-target status removal continue to use the existing Defensive settings.",
+            AutoSize = true,
+            MaximumSize = new Size(680, 0),
+            Padding = new Padding(0, 2, 0, 6),
+        };
+        scholarRoot.Controls.Add(scholarDefensiveNote, 0, scholarRow);
+        scholarRoot.SetColumnSpan(scholarDefensiveNote, 2);
+        scholarRow++;
+        var scholarUnavailableNote = new Label
+        {
+            Text = "Tabula Rasa and autonomous Immanence chains are unavailable in this phase.",
+            AutoSize = true,
+            MaximumSize = new Size(680, 0),
+            Padding = new Padding(0, 0, 0, 8),
+        };
+        scholarRoot.Controls.Add(scholarUnavailableNote, 0, scholarRow);
+        scholarRoot.SetColumnSpan(scholarUnavailableNote, 2);
+        scholarRow++;
+        scholarRoot.Controls.Add(
+            new Label { Text = "Light Arts minimum commitment (s)", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            scholarRow
+        );
+        _schArtsMinimumCommit = new NumericUpDown
+        {
+            Minimum = 0,
+            Maximum = 120,
+            Value = 12,
+            Width = 90,
+            Anchor = AnchorStyles.Left,
+        };
+        _schArtsMinimumCommit.ValueChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schArtsMinimumCommit, 1, scholarRow++);
+        _schArtsEmergencyOffArtCasts = new CheckBox
+        {
+            Text = "Allow emergency off-Art casts",
+            AutoSize = true,
+            Checked = true,
+        };
+        _schArtsEmergencyOffArtCasts.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schArtsEmergencyOffArtCasts, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schArtsEmergencyOffArtCasts, 2);
+        scholarRow++;
+        _schRegenEnabled = new CheckBox
+        {
+            Text = "Maintain configured party buffs with Accession + Perpetuance",
+            AutoSize = true,
+        };
+        _schRegenEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schRegenEnabled, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schRegenEnabled, 2);
+        scholarRow++;
+        scholarRoot.Controls.Add(
+            new Label { Text = "Buff spells (priority order)", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            scholarRow
+        );
+        _schAccessionPerpetuanceSpells = new TextBox
+        {
+            Multiline = true,
+            Height = 72,
+            Width = 430,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Regen V",
+            PlaceholderText = "Regen V|Protect V|Shell V|Adloquium|Phalanx",
+        };
+        _schAccessionPerpetuanceSpells.TextChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schAccessionPerpetuanceSpells, 1, scholarRow++);
+        scholarRoot.Controls.Add(
+            new Label { Text = "Minimum party coverage", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            scholarRow
+        );
+        _schRegenMinimumCoverage = new NumericUpDown
+        {
+            Minimum = 1,
+            Maximum = 6,
+            Value = 4,
+            Width = 90,
+            Anchor = AnchorStyles.Left,
+        };
+        _schRegenMinimumCoverage.ValueChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schRegenMinimumCoverage, 1, scholarRow++);
+        scholarRoot.Controls.Add(
+            new Label { Text = "Refresh window (s)", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            scholarRow
+        );
+        _schRegenRefreshBefore = new NumericUpDown
+        {
+            Minimum = 1,
+            Maximum = 300,
+            Value = 25,
+            Width = 90,
+            Anchor = AnchorStyles.Left,
+        };
+        _schRegenRefreshBefore.ValueChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schRegenRefreshBefore, 1, scholarRow++);
+        _schStormsEnabled = new CheckBox { Text = "Maintain Storm II assignments", AutoSize = true };
+        _schStormsEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schStormsEnabled, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schStormsEnabled, 2);
+        scholarRow++;
+        scholarRoot.Controls.Add(
+            new Label { Text = "Storm assignments", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            scholarRow
+        );
+        _schStormAssignments = new TextBox
+        {
+            Multiline = true,
+            Height = 72,
+            Width = 430,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right,
+            PlaceholderText = "Sandstorm II:Tank,Healer|Hailstorm II:Wizard",
+        };
+        _schStormAssignments.TextChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schStormAssignments, 1, scholarRow++);
+        scholarRoot.Controls.Add(
+            new Label { Text = "Storm refresh window (s)", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            scholarRow
+        );
+        _schStormsRefreshBefore = new NumericUpDown
+        {
+            Minimum = 1,
+            Maximum = 300,
+            Value = 30,
+            Width = 90,
+            Anchor = AnchorStyles.Left,
+        };
+        _schStormsRefreshBefore.ValueChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schStormsRefreshBefore, 1, scholarRow++);
+        _schSublimationEnabled = new CheckBox { Text = "Manage Sublimation", AutoSize = true };
+        _schSublimationEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schSublimationEnabled, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schSublimationEnabled, 2);
+        scholarRow++;
+        scholarRoot.Controls.Add(
+            new Label { Text = "Minimum HP to start charging (%)", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            scholarRow
+        );
+        _schSublimationMinimumHpp = new NumericUpDown
+        {
+            Minimum = 1,
+            Maximum = 100,
+            Value = 75,
+            Width = 90,
+            Anchor = AnchorStyles.Left,
+        };
+        _schSublimationMinimumHpp.ValueChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schSublimationMinimumHpp, 1, scholarRow++);
+        scholarRoot.Controls.Add(
+            new Label { Text = "Release stored MP when MP <= (%)", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            scholarRow
+        );
+        _schSublimationReleaseMpp = new NumericUpDown
+        {
+            Minimum = 0,
+            Maximum = 100,
+            Value = 45,
+            Width = 90,
+            Anchor = AnchorStyles.Left,
+        };
+        _schSublimationReleaseMpp.ValueChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schSublimationReleaseMpp, 1, scholarRow++);
+        _schSublimationReleaseComplete = new CheckBox
+        {
+            Text = "Release immediately when fully charged",
+            AutoSize = true,
+        };
+        _schSublimationReleaseComplete.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schSublimationReleaseComplete, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schSublimationReleaseComplete, 2);
+        scholarRow++;
+        var scholarPhase2Label = new Label
+        {
+            Text = "Scholar-aware group defense",
+            AutoSize = true,
+            Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold),
+            Padding = new Padding(0, 10, 0, 2),
+        };
+        scholarRoot.Controls.Add(scholarPhase2Label, 0, scholarRow);
+        scholarRoot.SetColumnSpan(scholarPhase2Label, 2);
+        scholarRow++;
+        _schAccessionCureEnabled = new CheckBox
+        {
+            Text = "Accession group cures (3 members, 75% HPP, 2500 missing HP)",
+            AutoSize = true,
+        };
+        _schAccessionCureEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schAccessionCureEnabled, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schAccessionCureEnabled, 2);
+        scholarRow++;
+        _schAccessionStatusRemovalEnabled = new CheckBox
+        {
+            Text = "Accession status removal (2 members with the same effect)",
+            AutoSize = true,
+        };
+        _schAccessionStatusRemovalEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schAccessionStatusRemovalEnabled, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schAccessionStatusRemovalEnabled, 2);
+        scholarRow++;
+        _schRaptureEnabled = new CheckBox
+        {
+            Text = "Rapture noncritical cures (1800 missing HP)",
+            AutoSize = true,
+        };
+        _schRaptureEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schRaptureEnabled, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schRaptureEnabled, 2);
+        scholarRow++;
+        _schPenuryEnabled = new CheckBox
+        {
+            Text = "Penury noncritical cures (45% MPP or lower)",
+            AutoSize = true,
+        };
+        _schPenuryEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schPenuryEnabled, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schPenuryEnabled, 2);
+        scholarRow++;
+        _schValidation = new Label
+        {
+            AutoSize = true,
+            MaximumSize = new Size(680, 0),
+            Padding = new Padding(0, 8, 0, 0),
+        };
+        scholarRoot.Controls.Add(_schValidation, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schValidation, 2);
+        _tabScholar.Controls.Add(scholarRoot);
+        _settingsTabs.TabPages.Add(_tabScholar);
 
         _tabCor = new TabPage("COR");
         _tabCor.AutoScroll = true;

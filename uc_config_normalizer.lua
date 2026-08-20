@@ -1,4 +1,5 @@
 local M = {}
+local uc_sch_config = require('uc_sch_config')
 
 local CURRENT_CANONICAL_CONFIG_VERSION = 1
 
@@ -912,6 +913,7 @@ local function default_config(meta)
                 mode = 'smart',
                 minimum_tp = 1000,
                 allow_aoe = true,
+                fast_skillchain = false,
                 wait_ignore_names = {},
                 aftermath_enabled = false,
                 aftermath_ws = '',
@@ -1155,6 +1157,7 @@ local function default_config(meta)
                 },
             },
         },
+        sch = uc_sch_config.default_config(),
         debug = {
             enabled = false,
             combat_sched = false,
@@ -1473,6 +1476,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.mode = normalize_string(nested_ws.mode, combat.weaponskill.mode)
         combat.weaponskill.minimum_tp = normalize_weaponskill_minimum_tp(nested_ws.minimum_tp, combat.weaponskill.minimum_tp)
         combat.weaponskill.allow_aoe = normalize_boolean(nested_ws.allow_aoe, combat.weaponskill.allow_aoe)
+        combat.weaponskill.fast_skillchain = normalize_boolean(nested_ws.fast_skillchain, combat.weaponskill.fast_skillchain)
         combat.weaponskill.wait_ignore_names = normalize_list(nested_ws.wait_ignore_names, combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(nested_ws.aftermath_enabled, combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(nested_ws.aftermath_ws, combat.weaponskill.aftermath_ws)
@@ -1491,6 +1495,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.mode = normalize_string(first_path(source, { path('ws_mode') }), combat.weaponskill.mode)
         combat.weaponskill.minimum_tp = normalize_weaponskill_minimum_tp(first_path(source, { path('weaponskill_min_tp') }), combat.weaponskill.minimum_tp)
         combat.weaponskill.allow_aoe = normalize_boolean(first_path(source, { path('weaponskill_allow_aoe') }), combat.weaponskill.allow_aoe)
+        combat.weaponskill.fast_skillchain = normalize_boolean(first_path(source, { path('fast_skillchain') }), combat.weaponskill.fast_skillchain)
         combat.weaponskill.wait_ignore_names = normalize_list(first_path(source, { path('wait_ignore_names') }), combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(first_path(source, { path('aftermath_enabled') }), combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(first_path(source, { path('aftermath_ws') }), combat.weaponskill.aftermath_ws)
@@ -2540,6 +2545,18 @@ local function normalize_summoner(source, config)
     end
 end
 
+local function normalize_sch(source, config)
+    local nested = get_path(source, { 'sch' })
+    if nested == nil then
+        return
+    end
+    local copied, validation = uc_sch_config.copy_validated(nested, config.profile)
+    if validation.valid ~= true then
+        error('Scholar configuration validation failed')
+    end
+    config.sch = copied
+end
+
 local function normalize_reactions(source, config)
     local reactions = config.reactions
     local nested = get_path(source, { 'reactions' })
@@ -2617,6 +2634,7 @@ function M.normalize(settings, meta)
     normalize_spells(source, config)
     normalize_maintenance(source, config)
     normalize_summoner(source, config)
+    normalize_sch(source, config)
     normalize_debug(source, config)
     normalize_ownership(source, config)
     normalize_legacy(source, config)

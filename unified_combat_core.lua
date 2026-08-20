@@ -3111,6 +3111,13 @@ local function ordinary_weaponskill_tp_ready(settings, player)
 	return tp >= minimum_tp
 end
 
+local function fast_skillchain_restart_enabled(settings, state)
+	if not setting_enabled(settings and settings.fast_skillchain) or type(state) ~= 'table' then
+		return false
+	end
+	return state.terminal == true
+end
+
 local function select_smart_ws(settings, target_id)
 	local tid = tonumber(target_id) or 0
 	if tid <= 0 then
@@ -3154,19 +3161,24 @@ local function select_smart_ws(settings, target_id)
 	local actor_context = local_skillchain_actor_context()
 	local state = skillchain_runtime:get_state(tid)
 	local now = os.clock()
+	local fast_restart = fast_skillchain_restart_enabled(settings, state)
 	local resonance_active = state
 		and state.terminal ~= true
+		and not fast_restart
 		and now <= skillchain_runtime:expiry_for_actor(tid, actor_context.actor_id)
 	if ws_mode == 'primary_no_sc' then
 		if primary_ws == '' or not uc_ws_memory.valid_ws_name(primary_ws) then
 			return '', 'PRIMARY_WS_INVALID'
 		end
-		if resonance_active or (state and state.terminal == true and now < (tonumber(state.magic_burst_expires_at) or 0)) then
+		if resonance_active or (not fast_restart
+			and state and state.terminal == true
+			and now < (tonumber(state.magic_burst_expires_at) or 0)) then
 			return '', 'WS_MODE_PRIMARY_ONLY_SC_HOLD'
 		end
 		return primary_ws, 'WS_MODE_PRIMARY_ONLY_READY'
 	end
-	if state and state.terminal == true and now < (tonumber(state.magic_burst_expires_at) or 0) then
+	if not fast_restart and state and state.terminal == true
+		and now < (tonumber(state.magic_burst_expires_at) or 0) then
 		return '', 'SC_TERMINAL'
 	end
 	local chivalry_reason = chivalry_ws_reservation_reason(settings, player)
@@ -3369,6 +3381,11 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillcha
 			if not marked then
 				error('skillchain dispatch sent without generation reservation: ' .. tostring(mark_reason))
 			end
+			return true
+		end
+	elseif fast_skillchain_restart_enabled(settings or get_settings(), skillchain_runtime:get_state(tid)) then
+		hooks.on_executed = function()
+			skillchain_runtime:clear_target(tid, 'fast_skillchain_restart')
 			return true
 		end
 	end

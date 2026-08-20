@@ -1,5 +1,6 @@
 local M = {}
 local uc_smn_config = require('uc_smn_config')
+local uc_sch_config = require('uc_sch_config')
 
 local CURRENT_PROFILE_SCHEMA_VERSION = 1
 local CURRENT_STATUS_SCHEMA_VERSION = 1
@@ -550,6 +551,7 @@ function M.validate_structured_profile_config(payload)
     end
 
     local summoner_validation = uc_smn_config.validate(nil)
+    local sch_validation = uc_sch_config.validate(nil)
     if type(payload.config) ~= "table" then
         add_error(errors, "payload.config", "config must be a table")
     else
@@ -560,12 +562,20 @@ function M.validate_structured_profile_config(payload)
         for _, issue in ipairs(summoner_validation.warnings) do
             warnings[#warnings + 1] = issue.message
         end
+        sch_validation = uc_sch_config.validate(payload.config.sch, profile)
+        for _, issue in ipairs(sch_validation.errors) do
+            warnings[#warnings + 1] = issue.message
+        end
+        for _, issue in ipairs(sch_validation.warnings) do
+            warnings[#warnings + 1] = issue.message
+        end
     end
 
     return {
         ok = #errors == 0,
-        configuration_valid = #errors == 0 and summoner_validation.valid,
+        configuration_valid = #errors == 0 and summoner_validation.valid and sch_validation.valid,
         summoner = summoner_validation,
+        sch = sch_validation,
         version = version,
         warnings = warnings,
         errors = errors,

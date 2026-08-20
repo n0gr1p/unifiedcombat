@@ -290,6 +290,7 @@ public partial class MainForm
             _wsModeCombo.SelectedItem = WsModeRuntimeToUi(wsMode);
             _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
             _chkWsAllowAoe.Checked = SessionStateHelper.GetBool(s, "weaponskill_allow_aoe", true);
+            _chkFastSkillchain.Checked = SessionStateHelper.GetBool(s, "fast_skillchain", false);
             var amVal = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amVal) && !list.Contains(amVal))
             {
@@ -342,6 +343,7 @@ public partial class MainForm
             _wsModeCombo.SelectedItem = "Smart";
             _wsMinimumTp.Value = 1000;
             _chkWsAllowAoe.Checked = true;
+            _chkFastSkillchain.Checked = false;
             _pullerCombo.Items.Clear();
 			_pullerLeashSource.SelectedItem = "Player";
 			_campStatus.Text = "Camp not set";
@@ -464,6 +466,7 @@ public partial class MainForm
             ResetGeoPullUi();
             EnsureGeoTabVisibility(false);
             EnsureSummonerTabVisibility(false);
+            EnsureScholarTabVisibility(false);
             _tankEnmityList.Items.Clear();
             _tankEnmityRows = [];
             _tankEnmityTypeCombo.SelectedItem = "ja";
@@ -498,6 +501,20 @@ public partial class MainForm
             _summonerRagePetTpAboveEnabled.Checked = false;
             _summonerRagePetTpAbove.Value = 2000;
             UpdateSummonerUiState();
+            _schEnabled.Checked = false;
+            _schArtsMinimumCommit.Value = 12;
+            _schArtsEmergencyOffArtCasts.Checked = true;
+            _schRegenEnabled.Checked = false;
+            _schRegenMinimumCoverage.Value = 4;
+            _schRegenRefreshBefore.Value = 25;
+            _schStormsEnabled.Checked = false;
+            _schStormAssignments.Text = "";
+            _schStormsRefreshBefore.Value = 30;
+            _schSublimationEnabled.Checked = false;
+            _schSublimationReleaseMpp.Value = 45;
+            _schSublimationReleaseComplete.Checked = false;
+            _schSublimationMinimumHpp.Value = 75;
+            UpdateScholarUiState();
             _reactionEnabled.Checked = false;
             _reactionRules.Clear();
             _reactionRuleList.Items.Clear();
@@ -637,6 +654,7 @@ public partial class MainForm
             _wsModeCombo.SelectedItem = WsModeRuntimeToUi(wsMode);
             _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
             _chkWsAllowAoe.Checked = SessionStateHelper.GetBool(s, "weaponskill_allow_aoe", true);
+            _chkFastSkillchain.Checked = SessionStateHelper.GetBool(s, "fast_skillchain", false);
             var amDisplay = new List<string>(wsOpts);
             var amRaw = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amRaw) && !amDisplay.Contains(amRaw))
@@ -855,8 +873,11 @@ public partial class MainForm
             var summonerVisible = string.Equals(mainJob, "SMN", StringComparison.Ordinal)
                 || string.Equals(subJob, "SMN", StringComparison.Ordinal);
             EnsureSummonerTabVisibility(summonerVisible);
+            var scholarVisible = string.Equals(mainJob, "SCH", StringComparison.Ordinal);
+            EnsureScholarTabVisibility(scholarVisible);
             ApplyGeoPullFromSnapshot(s);
             ApplySummonerFromSnapshot(s);
+            ApplyScholarFromSnapshot(s);
             _reactionEnabled.Checked = SessionStateHelper.GetBool(s, "reaction_enabled", false);
             ApplyReactionRulesFromSnapshot(s);
 
@@ -1565,6 +1586,27 @@ public partial class MainForm
         });
     }
 
+    private void OnFastSkillchainChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "fast_skillchain",
+            ["value"] = _chkFastSkillchain.Checked,
+        });
+    }
+
     private void SendWsUpdate(string sid, string eng, string val)
     {
         var path = eng == "melee" ? "ws1" : "weaponskill";
@@ -1699,6 +1741,11 @@ public partial class MainForm
     private void EnsureSummonerTabVisibility(bool shouldShow)
     {
         EnsureJobTabVisibility(_tabSummoner, shouldShow);
+    }
+
+    private void EnsureScholarTabVisibility(bool shouldShow)
+    {
+        EnsureJobTabVisibility(_tabScholar, shouldShow);
     }
 
     private void EnsureJobTabVisibility(TabPage tab, bool shouldShow)
@@ -2029,6 +2076,183 @@ public partial class MainForm
             _summonerValidation.ForeColor = Color.DarkGreen;
             _summonerValidation.Text = $"Summoner configuration is valid for {avatarName}.";
         }
+    }
+
+    private static bool ReadOptionalScholarBool(JsonElement snapshot, string key, bool defaultValue)
+    {
+        if (!snapshot.TryGetProperty(key, out var value))
+        {
+            return defaultValue;
+        }
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => throw new InvalidDataException($"{key} must be boolean."),
+        };
+    }
+
+    private static decimal ReadOptionalScholarInteger(
+        JsonElement snapshot,
+        string key,
+        int defaultValue,
+        int minimum,
+        int maximum
+    )
+    {
+        if (!snapshot.TryGetProperty(key, out var value))
+        {
+            return defaultValue;
+        }
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var number))
+        {
+            throw new InvalidDataException($"{key} must be an integer.");
+        }
+        if (number < minimum || number > maximum)
+        {
+            throw new InvalidDataException($"{key} must be from {minimum} to {maximum}.");
+        }
+        return number;
+    }
+
+    private void ApplyScholarFromSnapshot(JsonElement snapshot)
+    {
+        _schEnabled.Checked = ReadOptionalScholarBool(snapshot, "sch_enabled", false);
+        _schArtsMinimumCommit.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_arts_minimum_commit_s",
+            12,
+            0,
+            120
+        );
+        _schArtsEmergencyOffArtCasts.Checked = ReadOptionalScholarBool(
+            snapshot,
+            "sch_arts_emergency_off_art_casts",
+            true
+        );
+        _schRegenEnabled.Checked = ReadOptionalScholarBool(snapshot, "sch_regen_enabled", false);
+        _schAccessionPerpetuanceSpells.Text = SessionStateHelper.GetString(
+            snapshot,
+            "sch_accession_perpetuance_spells"
+        );
+        _schRegenMinimumCoverage.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_regen_minimum_coverage",
+            4,
+            1,
+            6
+        );
+        _schRegenRefreshBefore.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_regen_refresh_before_s",
+            25,
+            1,
+            300
+        );
+        _schStormsEnabled.Checked = ReadOptionalScholarBool(snapshot, "sch_storms_enabled", false);
+        _schStormAssignments.Text = SessionStateHelper.GetString(snapshot, "sch_storm_assignments");
+        _schStormsRefreshBefore.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_storms_refresh_before_s",
+            30,
+            1,
+            300
+        );
+        _schSublimationEnabled.Checked = ReadOptionalScholarBool(
+            snapshot,
+            "sch_sublimation_enabled",
+            false
+        );
+        _schSublimationReleaseMpp.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_sublimation_release_when_mpp_at_most",
+            45,
+            0,
+            100
+        );
+        _schSublimationReleaseComplete.Checked = ReadOptionalScholarBool(
+            snapshot,
+            "sch_sublimation_release_when_complete",
+            false
+        );
+        _schSublimationMinimumHpp.Value = ReadOptionalScholarInteger(
+            snapshot,
+            "sch_sublimation_minimum_hpp_to_activate",
+            75,
+            1,
+            100
+        );
+        _schAccessionCureEnabled.Checked = ReadOptionalScholarBool(
+            snapshot, "sch_accession_cure_enabled", false
+        );
+        _schAccessionStatusRemovalEnabled.Checked = ReadOptionalScholarBool(
+            snapshot, "sch_accession_status_removal_enabled", false
+        );
+        _schRaptureEnabled.Checked = ReadOptionalScholarBool(
+            snapshot, "sch_rapture_enabled", false
+        );
+        _schPenuryEnabled.Checked = ReadOptionalScholarBool(
+            snapshot, "sch_penury_enabled", false
+        );
+        UpdateScholarUiState();
+    }
+
+    private void OnScholarSettingChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        UpdateScholarUiState();
+        var sid = RequireSelectedSid();
+        if (sid is not null)
+        {
+            CaptureWorkingProfileFromUi(sid);
+        }
+    }
+
+    private void UpdateScholarUiState()
+    {
+        var enabled = _schEnabled.Checked;
+        _schArtsMinimumCommit.Enabled = enabled;
+        _schArtsEmergencyOffArtCasts.Enabled = enabled;
+        _schRegenEnabled.Enabled = enabled;
+        _schAccessionPerpetuanceSpells.Enabled = enabled && _schRegenEnabled.Checked;
+        _schRegenMinimumCoverage.Enabled = enabled && _schRegenEnabled.Checked;
+        _schRegenRefreshBefore.Enabled = enabled && _schRegenEnabled.Checked;
+        _schStormsEnabled.Enabled = enabled;
+        _schStormAssignments.Enabled = enabled && _schStormsEnabled.Checked;
+        _schStormsRefreshBefore.Enabled = enabled && _schStormsEnabled.Checked;
+        _schSublimationEnabled.Enabled = enabled;
+        _schSublimationReleaseMpp.Enabled = enabled && _schSublimationEnabled.Checked;
+        _schSublimationReleaseComplete.Enabled = enabled && _schSublimationEnabled.Checked;
+        _schSublimationMinimumHpp.Enabled = enabled && _schSublimationEnabled.Checked;
+        _schAccessionCureEnabled.Enabled = enabled;
+        _schAccessionStatusRemovalEnabled.Enabled = enabled;
+        _schRaptureEnabled.Enabled = enabled;
+        _schPenuryEnabled.Enabled = enabled;
+
+        if (!enabled)
+        {
+            _schValidation.ForeColor = SystemColors.GrayText;
+            _schValidation.Text = "Scholar automation is disabled.";
+            return;
+        }
+        try
+        {
+            StructuredProfileV2Writer.ParseScholarAccessionMaintenanceSpells(
+                _schAccessionPerpetuanceSpells.Text.Trim()
+            );
+            StructuredProfileV2Writer.ParseScholarStormAssignments(_schStormAssignments.Text.Trim());
+        }
+        catch (InvalidDataException ex)
+        {
+            _schValidation.ForeColor = Color.Firebrick;
+            _schValidation.Text = ex.Message;
+            return;
+        }
+        _schValidation.ForeColor = Color.DarkGreen;
+        _schValidation.Text = "Scholar support and group-defense configuration is valid.";
     }
 
     private void EnsureBrdTabVisibility(bool shouldShow)
@@ -5254,6 +5478,12 @@ public partial class MainForm
             ["op"] = "set",
             ["path"] = "weaponskill_allow_aoe",
             ["value"] = _chkWsAllowAoe.Checked,
+        });
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "fast_skillchain",
+            ["value"] = _chkFastSkillchain.Checked,
         });
         Forward(sid, new Dictionary<string, object?>
         {
