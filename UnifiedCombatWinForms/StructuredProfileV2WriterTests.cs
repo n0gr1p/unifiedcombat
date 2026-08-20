@@ -23,6 +23,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeOmitsProfileV2AutoReloadWhenDisabled();
             TestSerializeIncludesProfileV2AutoReloadWhenEnabled();
             TestProfileV2AutoReloadIsPartOfPersistedBoolSet();
+            TestRecoveryHoldProfileAndUiContract();
             TestSchedulerAlignedWinFormsLayoutContract();
             TestDomainOwnershipUiContract();
             TestDomainOwnershipRequiresExplicitBooleans();
@@ -587,7 +588,7 @@ internal static class StructuredProfileV2WriterTests
             "defensive controls must be registered in the General defensive section"
         );
         AssertTrue(
-            HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "prime", "spam", "solo", "manual" }),
+            HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" }),
             "combat and targeting controls must be registered together"
         );
         AssertTrue(
@@ -616,6 +617,21 @@ internal static class StructuredProfileV2WriterTests
             AssertNotContains(ui, $"MkGlobal(\"{key}\")", $"dead control '{key}' must not be rendered");
         }
         AssertContains(profileStore, "ReadPersistedBoolValue", "profile save must preserve non-visual compatibility booleans");
+    }
+
+    private static void TestRecoveryHoldProfileAndUiContract()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["pause_automation_while_weakened"] = true;
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+        AssertContains(content, "pause_automation_while_weakened = true", "recovery hold must serialize into profile v2 ownership");
+        AssertTrue(HubUiConstants.GlobalBoolKeys.Contains("pause_automation_while_weakened"), "recovery hold must persist as a global UI boolean");
+        AssertEqual(HubUiConstants.BoolLabel("pause_automation_while_weakened"), "Pause automation while weakened", "recovery hold label mismatch");
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        AssertContains(ui, "While weakened after Raise", "recovery hold tooltip must explain manual recovery positioning");
     }
 
     private static void TestSerializeIncludesPullerNameWhenSelected()
@@ -1971,6 +1987,7 @@ internal static class StructuredProfileV2WriterTests
             ["domain_movement_enabled"] = true,
             ["domain_maintenance_enabled"] = true,
             ["domain_follow_enabled"] = true,
+            ["pause_automation_while_weakened"] = false,
             ["sub"] = true,
             ["sub2"] = false,
             ["solo"] = false,

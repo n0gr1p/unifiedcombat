@@ -127,6 +127,7 @@ local function build_flat_settings()
         domain_movement_enabled = true,
         domain_maintenance_enabled = true,
         domain_follow_enabled = true,
+        pause_automation_while_weakened = true,
         profile_v2_autoload = true,
         profile_v2_auto_reload_on_change = true,
         sub = true,
@@ -247,6 +248,7 @@ local function build_structured_payload()
                 domain_movement_enabled = true,
                 domain_maintenance_enabled = true,
                 domain_follow_enabled = true,
+                pause_automation_while_weakened = true,
                 profile_v2_autoload = true,
                 profile_v2_auto_reload_on_change = true,
             },
@@ -308,6 +310,7 @@ local function assert_common_config(config, source)
     assert_equal(config.debug.enabled, true, source .. " debug enabled mismatch")
     assert_equal(config.debug.def_sched, true, source .. " debug defensive scheduler mismatch")
     assert_equal(config.ownership.domain_combat_enabled, true, source .. " combat domain mismatch")
+    assert_equal(config.ownership.pause_automation_while_weakened, true, source .. " recovery hold mismatch")
     assert_equal(config.ownership.profile_v2_autoload, true, source .. " ownership autoload mismatch")
     assert_equal(config.ownership.profile_v2_auto_reload_on_change, true, source .. " ownership auto-reload mismatch")
     assert_equal(config.legacy.sub, true, source .. " legacy sub mismatch")
@@ -357,6 +360,13 @@ local function main()
     optional_true_omitted.ownership.profile_v2_auto_reload_on_change = nil
     local optional_true_diff = profile_v2.diff_durable_config(optional_true_false, optional_true_omitted)
     assert_equal(optional_true_diff.count, 0, "optional-true ownership flags should compare equal when false or omitted")
+
+	local recovery_default = deep_clone(structured_config)
+	recovery_default.ownership.pause_automation_while_weakened = false
+	local legacy_recovery_profile = deep_clone(recovery_default)
+	legacy_recovery_profile.ownership.pause_automation_while_weakened = nil
+	local recovery_default_diff = profile_v2.diff_durable_config(recovery_default, legacy_recovery_profile)
+	assert_equal(recovery_default_diff.count, 0, "profiles missing recovery hold must remain compatible with default false")
 
     local unrelated_ownership = deep_clone(structured_config)
     unrelated_ownership.ownership.domain_follow_enabled = false

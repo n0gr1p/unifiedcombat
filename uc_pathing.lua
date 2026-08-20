@@ -19,6 +19,7 @@ local uc_camp_puller = require('uc_camp_puller')
 local domain_ownership = require('uc_domain_ownership')
 local uc_party_follow = require('uc_party_follow')
 local uc_nyzul_runtime = require('uc_nyzul_runtime')
+local uc_recovery_hold = require('uc_recovery_hold')
 local movement_dispatcher = require('uc_movement_dispatcher').build({
 	dispatcher = require('uc_scheduler_dispatcher'),
 	run = windower.ffxi.run,
@@ -1115,6 +1116,11 @@ function mod.tick()
 	local s = rawget(_G, 'UC_SETTINGS')
 	if type(s) ~= 'table' then
 		hide_debug_overlay()
+		return
+	end
+	if uc_recovery_hold.current() then
+		follow_pause_reason = uc_recovery_hold.BLOCK_REASON
+		set_follow_paused(true)
 		return
 	end
 	if not domain_ownership.is_enabled('movement') then

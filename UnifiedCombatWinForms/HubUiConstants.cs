@@ -50,6 +50,7 @@ internal static class HubUiConstants
         "party_follow",
         "profile_v2_autoload",
         "profile_v2_auto_reload_on_change",
+        "pause_automation_while_weakened",
         "domain_combat_enabled",
         "domain_defensive_enabled",
         "domain_movement_enabled",
@@ -107,6 +108,7 @@ internal static class HubUiConstants
         ["add_control"] = "Allow Off-Leader Adds",
         ["profile_v2_autoload"] = "Autoload profile v2 on load",
         ["profile_v2_auto_reload_on_change"] = "Auto reload profile changes",
+        ["pause_automation_while_weakened"] = "Pause automation while weakened",
         ["domain_combat_enabled"] = "Combat domain enabled",
         ["domain_defensive_enabled"] = "Defensive domain enabled",
         ["domain_movement_enabled"] = "Movement domain enabled",
@@ -139,7 +141,7 @@ internal static class HubUiConstants
     ];
 
     public static readonly string[] CombatTargetingUiKeys =
-        ["autotarget", "prime", "spam", "solo", "manual"];
+        ["autotarget", "prime", "spam", "solo", "manual", "pause_automation_while_weakened"];
 
     public static readonly string[] SpacingMovementUiKeys = ["face", "spacing", "static", "move"];
 

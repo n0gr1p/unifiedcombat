@@ -1,4 +1,5 @@
 local M = {}
+local recovery_hold = require('uc_recovery_hold')
 
 local function require_table(value, name)
 	if type(value) ~= 'table' then
@@ -58,9 +59,13 @@ function M.build(opts)
 				send_command = send_command,
 			})
 			if type(result) ~= 'table' or result.ok ~= true or result.executed ~= true then
+				if type(result) == 'table' and result.reason == recovery_hold.BLOCK_REASON then
+					return false, result.reason
+				end
 				error('uc_scheduler_pull_executor command dispatch failed: '
 					.. tostring(type(result) == 'table' and result.reason or 'missing_dispatch_result'))
 			end
+			return true, ''
 		end,
 	}
 end

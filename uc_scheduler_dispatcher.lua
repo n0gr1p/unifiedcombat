@@ -1,4 +1,5 @@
 local M = {}
+local recovery_hold = require('uc_recovery_hold')
 
 -- Scheduler-owned side effects cross this contract exactly once. Callers supply
 -- the concrete Windower/packet adapter as an injected dependency; there is no
@@ -251,6 +252,19 @@ function M.dispatch_intent(intent, deps, hooks)
         return {
             ok = true,
             reason = "dry_run",
+            executed = false,
+            normalized_intent = normalized,
+        }
+    end
+
+    local recovery_release_allowed = hooks.allow_during_recovery_hold == true
+        and normalized.kind == "run_stop"
+        and as_string(intent and intent.source):match(":release$") ~= nil
+    if not recovery_release_allowed and recovery_hold.current() then
+        scrub_validation_fields(normalized)
+        return {
+            ok = false,
+            reason = recovery_hold.BLOCK_REASON,
             executed = false,
             normalized_intent = normalized,
         }

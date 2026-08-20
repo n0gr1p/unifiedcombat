@@ -318,6 +318,15 @@ local function canonicalize_optional_control_ranges(current_config, target_confi
 		end
 	end
 
+	local target_ownership = type(target_config.ownership) == 'table' and target_config.ownership or nil
+	if target_ownership and target_ownership.pause_automation_while_weakened == nil then
+		target_ownership.pause_automation_while_weakened = false
+		local current_ownership = type(current_config.ownership) == 'table' and current_config.ownership or nil
+		if current_ownership and current_ownership.pause_automation_while_weakened == nil then
+			current_ownership.pause_automation_while_weakened = false
+		end
+	end
+
 	if type(target_config.summoner) ~= 'table' then
 		-- Profiles written before Summoner automation became a durable v2 domain
 		-- continue to mean "Summoner automation disabled".

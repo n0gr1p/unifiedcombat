@@ -19,6 +19,7 @@ uc_prefer_addon_local_libs()
 require('lor/lor_utils')
 require('tables')
 local uc_runtime_overrides = require('uc_runtime_overrides')
+local uc_recovery_hold = require('uc_recovery_hold')
 local uc_lifecycle_movement = require('uc_movement_dispatcher').build({
 	dispatcher = require('uc_scheduler_dispatcher'),
 	run = windower.ffxi.run,
@@ -51,6 +52,35 @@ local function uc_now_s()
 		error('uc_now_s requires LuaSocket socket.gettime')
 	end
 	return s.gettime()
+end
+
+local function uc_update_recovery_hold()
+	local player = windower.ffxi.get_player()
+	return uc_recovery_hold.update(rawget(_G, 'UC_SETTINGS'), player, {
+		on_enter = function()
+			uc_lifecycle_movement.release({ reason = 'RECOVERY_HOLD_ENTER' })
+			_G.UC_MOVEMENT_OWNER = 'none'
+			_G.UC_MOVEMENT_LOCK_UNTIL = 0
+			_G.UC_MOVEMENT_MODE = 'RECOVERY_HOLD'
+			_G.UC_MOVEMENT_BLOCK_REASON = uc_recovery_hold.BLOCK_REASON
+			_G.UC_PARTY_FOLLOW_RUN_ACTIVE = false
+			_G.UC_PARTY_FOLLOW_RUN_ACTIVE_UNTIL = 0
+			_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP = false
+			_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL = 0
+			_G.UC_PREENGAGE_APPROACH_ACTIVE = false
+			_G.UC_PULL_APPROACH_UNTIL = 0
+			local scheduler_enter = rawget(_G, 'UC_SCHED_OnRecoveryHoldEntered')
+			if type(scheduler_enter) == 'function' then
+				pcall(scheduler_enter)
+			end
+			windower.add_to_chat(207, 'UnifiedCombat: recovery hold active (Weakness); automation paused.')
+		end,
+		on_clear = function()
+			_G.UC_MOVEMENT_MODE = 'OUT_OF_COMBAT'
+			_G.UC_MOVEMENT_BLOCK_REASON = ''
+			windower.add_to_chat(207, 'UnifiedCombat: recovery hold cleared; automation resumed.')
+		end,
+	})
 end
 
 require('luau')
@@ -119,6 +149,7 @@ UC_JOB_DEFAULTS = {
 }
 
 local res = require('resources')
+uc_recovery_hold.validate_resources(res.buffs)
 local files = require('files')
 require('actions')
 
@@ -309,6 +340,7 @@ local function uc_new_settings_defaults()
 		defensive_buffs = '',
 		defensive_targeted_buffs = '',
 		engine_enabled = false,
+		pause_automation_while_weakened = false,
 		domain_combat_enabled = true,
 		domain_defensive_enabled = true,
 		domain_movement_enabled = true,
@@ -574,7 +606,7 @@ local PROFILE_KEYS = {
 	'defensive_critical_hpp', 'defensive_medium_hpp',
 	'defensive_overwrite_enabled', 'defensive_overwrite_interval', 'defensive_buff_self_only', 'defensive_buffs',
 	'defensive_targeted_buffs',
-	'engine_enabled', 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled',
+	'engine_enabled', 'pause_automation_while_weakened', 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled',
 	'cor_roll_1', 'cor_roll_2', 'cor_crooked_roll_slot', 'cor_elevens', 'cor_luzaf_range_override', 'cor_roll_range_selected', 'cor_roll_range_require_ids',
 	'summoner_enabled', 'summoner_avatar', 'summoner_avatar_favor',
 	'summoner_ward_enabled', 'summoner_ward_action', 'summoner_ward_actions',
@@ -1718,6 +1750,9 @@ local function uc_normalize_domain_settings(s)
 	if s.domain_follow_enabled == nil then
 		s.domain_follow_enabled = true
 	end
+	if s.pause_automation_while_weakened == nil then
+		s.pause_automation_while_weakened = false
+	end
 	if type(s.wait_ignore_names) ~= 'table' then
 		s.wait_ignore_names = {}
 	end
@@ -2283,6 +2318,7 @@ windower.register_event('outgoing chunk', function(id, data, modified, injected,
 end)
 
 windower.register_event('prerender', function()
+	uc_update_recovery_hold()
 	pcall(function()
 		uc_pathing.tick()
 	end)
@@ -2324,6 +2360,7 @@ windower.register_event('zone change', function()
 end)
 
 windower.register_event('unload', function()
+	uc_recovery_hold.reset_runtime()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('unload')
 	uc_nyzul_runtime.reset('unload')
@@ -2346,6 +2383,7 @@ windower.register_event('unload', function()
 end)
 
 windower.register_event('logout', function()
+	uc_recovery_hold.reset_runtime()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('logout')
 	uc_nyzul_runtime.reset('logout')
