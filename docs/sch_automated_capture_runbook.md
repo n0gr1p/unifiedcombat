@@ -4,7 +4,9 @@
 
 The Scholar field-evidence workflow is unattended. The operator starts one Windower script and UnifiedCombat persists the complete labeled session under `data/sch_captures/`. The operator is not expected to arm, display, copy, or label individual traces.
 
-The capture path is passive. Only the explicitly executed Windower script issues actions. Scholar production automation remains observe-only.
+The capture recorder itself is passive. Scholar production automation is now live; disable
+`sch.enabled` in the active profile before running another manual action script so the
+scheduler does not compete with that script. The recorder still never issues actions.
 
 ## Installed scripts
 

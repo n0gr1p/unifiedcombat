@@ -54,6 +54,8 @@ local function main()
 	assert_equal(capabilities.abilities.perpetuance.buff_id, 469, 'Perpetuance buff id mismatch')
 	assert_equal(capabilities.abilities.addendum_white.recast_id, 231, 'Addendum recast id mismatch')
 	assert_equal(capabilities.regen_spell('Regen V').status_id, 42, 'Regen V status mismatch')
+	assert_equal(capabilities.accession_maintenance_spell('Phalanx').anchor_policy, 'self',
+		'Phalanx maintenance anchor policy mismatch')
 	assert_equal(capabilities.storm_spell('Aurorastorm II').status_id, 595, 'Aurorastorm II status mismatch')
 	assert_true(capabilities.storm_spell('Aurorastorm') == nil, 'Phase 1 must not accept Storm I')
 
@@ -61,7 +63,7 @@ local function main()
 	assert_true(type(missing.sch) == 'table', 'missing Scholar section must create disabled canonical config')
 	assert_equal(missing.sch.enabled, false, 'missing Scholar section must remain disabled')
 	assert_equal(missing.sch.mode, 'support', 'default Scholar mode mismatch')
-	assert_equal(missing.sch.support.regen.spell, 'Regen V', 'default Regen spell mismatch')
+	assert_equal(missing.sch.support.regen.spells[1], 'Regen V', 'default maintenance spell mismatch')
 	assert_true(config_module.validate(missing.sch, { main_job = 'SCH' }).valid, 'disabled default Scholar config must validate')
 
 	local enabled = valid_config()
@@ -92,10 +94,18 @@ local function main()
 	assert_true(find_issue(unsupported_mode_result.errors, 'sch_mode_unsupported') ~= nil, 'mode issue mismatch')
 
 	local invalid_regen = valid_config()
-	invalid_regen.support.regen.spell = 'Regen IV'
+	invalid_regen.support.regen.spells = { 'Regen IV' }
 	local invalid_regen_result = config_module.validate(invalid_regen, { main_job = 'SCH' })
 	assert_true(not invalid_regen_result.valid, 'non-exact Regen spell must fail validation')
-	assert_true(find_issue(invalid_regen_result.errors, 'sch_regen_spell_unsupported') ~= nil, 'Regen issue mismatch')
+	assert_true(find_issue(invalid_regen_result.errors, 'sch_accession_maintenance_spell_unsupported') ~= nil,
+		'maintenance spell issue mismatch')
+
+	local conflicting_buffs = valid_config()
+	conflicting_buffs.support.regen.spells = { 'Enfire', 'Enwater' }
+	local conflicting_buffs_result = config_module.validate(conflicting_buffs, { main_job = 'SCH' })
+	assert_true(not conflicting_buffs_result.valid, 'mutually exclusive maintenance buffs must fail validation')
+	assert_true(find_issue(conflicting_buffs_result.errors, 'sch_accession_maintenance_spell_conflict') ~= nil,
+		'maintenance conflict issue mismatch')
 
 	local invalid_stratagems = valid_config()
 	invalid_stratagems.support.regen.stratagems = { 'Accession' }
@@ -122,8 +132,12 @@ local function main()
 	assert_true(not conflict_result.valid, 'contradictory Sublimation thresholds must fail validation')
 	assert_true(find_issue(conflict_result.errors, 'sch_threshold_conflict') ~= nil, 'threshold issue mismatch')
 
+	local phase2 = valid_config()
+	phase2.defensive.rapture.enabled = true
+	assert_true(config_module.validate(phase2, { main_job = 'SCH' }).valid,
+		'enabled Phase 2 defensive feature must validate')
 	local deferred = valid_config()
-	deferred.defensive.rapture.enabled = true
+	deferred.offense.magic_burst.enabled = true
 	local deferred_result = config_module.validate(deferred, { main_job = 'SCH' })
 	assert_true(not deferred_result.valid, 'enabled deferred feature must fail validation')
 	assert_true(find_issue(deferred_result.errors, 'sch_deferred_feature_enabled') ~= nil, 'deferred issue mismatch')
@@ -158,7 +172,9 @@ local function main()
 	local projected, projection_error = active_config.project_flat_settings(active_profile, {})
 	assert_true(type(projected) == 'table', 'Scholar projection failed: ' .. tostring(projection_error))
 	assert_true(type(projected.sch) == 'table', 'projected settings must carry exact nested Scholar config')
-	assert_equal(projected.sch.support.regen.spell, 'Regen V', 'projected Regen spell mismatch')
+	assert_equal(projected.sch.support.regen.spells[1], 'Regen V', 'projected maintenance spell mismatch')
+	assert_equal(projected.sch_accession_perpetuance_spells, 'Regen V',
+		'projected maintenance spell list mismatch')
 	assert_equal(projected.sch_enabled, true, 'projected Scholar enabled mismatch')
 	assert_equal(projected.sch_arts_minimum_commit_s, 12, 'projected Scholar Arts commitment mismatch')
 	assert_equal(projected.sch_regen_enabled, true, 'projected Scholar Regen enabled mismatch')
@@ -180,7 +196,8 @@ local function main()
 		exported_at = '2026-08-02T00:00:00Z',
 	})
 	assert_true(type(exported.config.sch) == 'table', 'SCH profile export must own config.sch')
-	assert_equal(exported.config.sch.support.regen.spell, 'Regen V', 'exported Scholar Regen mismatch')
+	assert_equal(exported.config.sch.support.regen.spells[1], 'Regen V',
+		'exported Scholar maintenance spell mismatch')
 	local non_sch_export = profile_v2.build_structured_profile({}, {
 		character = 'Tester',
 		main_job = 'WHM',

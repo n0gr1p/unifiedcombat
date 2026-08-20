@@ -47,7 +47,7 @@ local function base_runtime()
 		sublimation = { observed = 'none', observed_at = 99 },
 		active_sequence = nil,
 		pending = nil,
-		lane = { class = 'none', reserved = false, reason = '' },
+		lane = { class = 'none', reserved = false, atomic = false, reason = '' },
 		next_retry_at = 0,
 		last_sequence = nil,
 		owned_buffs = {},
@@ -182,10 +182,10 @@ local function main()
 	started.active_sequence = {
 		id = 'regen-1',
 		generation = 4,
-		purpose = 'party_regen',
+		purpose = 'party_accession_maintenance',
 		phase = 'use_accession',
 	}
-	started.lane = { class = 'prepared_support', reserved = true, reason = 'use_accession' }
+	started.lane = { class = 'prepared_support', reserved = true, atomic = true, reason = 'use_accession' }
 	local start_events = diagnostics.runtime_events(runtime, started, 101)
 	assert_equal(start_events[1].code, 'SCH_SEQUENCE_START', 'sequence start event mismatch')
 	assert_equal(start_events[2].code, 'SCH_LANE_ACQUIRE', 'lane acquire event mismatch')
@@ -194,10 +194,10 @@ local function main()
 	transitioned.active_sequence = {
 		id = 'regen-1',
 		generation = 4,
-		purpose = 'party_regen',
+		purpose = 'party_accession_maintenance',
 		phase = 'use_perpetuance',
 	}
-	transitioned.lane = { class = 'prepared_support', reserved = true, reason = 'use_perpetuance' }
+	transitioned.lane = { class = 'prepared_support', reserved = true, atomic = true, reason = 'use_perpetuance' }
 	local transition_events = diagnostics.runtime_events(started, transitioned, 102)
 	assert_equal(#transition_events, 1, 'sequence transition event count mismatch')
 	assert_equal(transition_events[1].code, 'SCH_SEQUENCE_TRANSITION', 'sequence transition event mismatch')
@@ -228,7 +228,7 @@ local function main()
 				estimated_expires_at = 0,
 				duration_reason = 'phase0_duration_unvalidated',
 				duration_source = '',
-				duration_model_key = 'regen|Regen V|Accession,Perpetuance',
+				duration_model_key = 'accession_maintenance|Regen V|Accession,Perpetuance',
 				last_observed_at = 104,
 			},
 		},
@@ -242,7 +242,7 @@ local function main()
 		'owned target=1001/Scholar family=regen spell=Regen V presence=present duration=unknown/0'),
 		'owned effect status must expose exact identity and duration confidence')
 	assert_true(contains(owned_lines,
-		'reason=phase0_duration_unvalidated model=regen|Regen V|Accession,Perpetuance'),
+		'reason=phase0_duration_unvalidated model=accession_maintenance|Regen V|Accession,Perpetuance'),
 		'owned effect status must expose the duration evidence blocker and model key')
 
 	local invalid_ok = pcall(diagnostics.status_lines, {}, '100')

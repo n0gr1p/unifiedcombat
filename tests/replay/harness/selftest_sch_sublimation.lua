@@ -77,9 +77,12 @@ local function main()
 		mp = 500,
 		max_mp = 1000,
 	}, sublimation.production_release_mechanics())
-	assert_equal(production.state, 'blocked', 'unknown production release mechanics must block')
-	assert_equal(production.blocker, 'phase0_sublimation_release_capacity_unvalidated',
-		'unknown production release blocker mismatch')
+	assert_equal(production.state, 'ready', 'captured production release mechanics must authorize release')
+	assert_equal(production.source,
+		'sch_capture:Nyoourke_solo_phase1_20260820T104827Z',
+		'production release evidence source mismatch')
+	assert_equal(production.minimum_missing_mp, 332,
+		'production release minimum missing MP mismatch')
 	assert_equal(production.missing_mp, 500, 'unknown release missing MP mismatch')
 
 	local ready = sublimation.evaluate_release_capacity({

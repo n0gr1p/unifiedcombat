@@ -59,10 +59,24 @@ function M.model_key(main_job_level, job_points_present, job_points_spent)
 end
 
 function M.production_catalog(main_job_level, job_points_present, job_points_spent)
+	local model_key = M.model_key(main_job_level, job_points_present, job_points_spent)
+	if main_job_level == 99 and job_points_present == true and job_points_spent == 2100 then
+		return {
+			confidence = 'confirmed',
+			model_key = model_key,
+			source = 'sch_capture:Nyoourke_solo_phase1_20260820T104827Z',
+			encoding = 'time_until_full',
+			maximum_charges = 5,
+			recharge_interval_s = 33,
+			recast_unit_scale = 1,
+			boundary_tolerance_s = 0.5,
+			tabula_rasa_policy = 'unknown',
+		}
+	end
 	return {
 		confidence = 'unknown',
-		model_key = M.model_key(main_job_level, job_points_present, job_points_spent),
-		reason = 'phase0_charge_mapping_unvalidated',
+		model_key = model_key,
+		reason = 'charge_mapping_not_captured_for_exact_progression',
 	}
 end
 

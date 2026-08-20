@@ -56,6 +56,8 @@ local function main()
     assert_contains(source, "scheduler.PRIORITY_BAND_SLEEP_WAKE = 149", "Sleep waker priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_CRITICAL_CURE = 153", "critical Cure priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 200", "Bard maintenance priority band mismatch")
+	assert_contains(source, "scheduler.PRIORITY_BAND_SCH_ROUTINE = 75", "Scholar routine priority band mismatch")
+	assert_contains(source, "scheduler.PRIORITY_BAND_SCH_PREPARED = 150", "Scholar prepared priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION", "engage bypass threshold must begin at skillchain continuation")
 
     assert_true(score(153, 0.70) > score(142, 1.00), "critical Cure must beat maximum Sleep urgency")
@@ -67,9 +69,27 @@ local function main()
     assert_true(score(200, 0.00) > score(153, 1.00), "minimum Bard maintenance urgency must beat maximum critical Cure urgency")
     assert_true(score(200, 0.00) > score(142, 1.00), "minimum Bard maintenance urgency must beat maximum Sleep urgency")
     assert_true(score(200, 0.00) > score(131, 1.00), "minimum Bard maintenance urgency must beat maximum skillchain urgency")
+	assert_true(score(153, 0.70) > score(150, 0.95),
+		"critical Cure must beat prepared Scholar completion")
+	assert_true(score(150, 0.95) > score(149, 1.00),
+		"prepared Scholar completion must beat other urgent support")
+	assert_true(score(75, 0.70) < score(108, 0.00),
+		"new routine Scholar maintenance must remain below ordinary offense bands")
 
     assert_contains(source, "brd_maintenance_priority = scheduler.PRIORITY_BAND_BRD_MAINTENANCE", "scheduler must inject the global Bard band")
     assert_contains(source, "geo_maintenance_priority = scheduler.PRIORITY_BAND_GEO_MAINTENANCE", "scheduler must inject the global GEO maintenance band")
+	assert_contains(source, "routine_priority = scheduler.PRIORITY_BAND_SCH_ROUTINE",
+		"scheduler must inject the Scholar routine band")
+	assert_contains(source, "prepared_priority = scheduler.PRIORITY_BAND_SCH_PREPARED",
+		"scheduler must inject the Scholar prepared band")
+	assert_contains(source, "function scheduler.p1_dispatch_maintenance_sch(selected, settings)",
+		"scheduler must own Scholar live dispatch")
+	assert_contains(source, "scheduler.providers.sch_maintenance.note_dispatched(",
+		"Scholar dispatch must enter the runtime pending transaction")
+	assert_contains(source, "if main_job == 'SCH' then\n\t\t\tctx.sch_defensive_evidence_current",
+		"Scholar provider collection must be gated before charge decoding on non-SCH jobs")
+	assert_contains(source, "if provider == 'maintenance_sch' or provider == 'defensive_sch' then",
+		"scheduler arbitration must route Scholar proposals")
     assert_contains(source, "critical_cure_priority = scheduler.PRIORITY_BAND_CRITICAL_CURE", "scheduler must inject the global Cure band")
     assert_contains(source, "priority_band = scheduler.PRIORITY_BAND_SLEEP_WAKE", "scheduler must inject the global Sleep-wake band")
     assert_contains(source, "sleep_priority = scheduler.PRIORITY_BAND_SLEEP", "scheduler must inject the global Sleep band")

@@ -38,11 +38,21 @@ end
 local function main()
 	package.loaded.uc_sch_charge_model = nil
 	local model = require('uc_sch_charge_model')
-	local unknown = model.decode(input(17), model.production_catalog(99, true, 2100))
-	assert_equal(unknown.confidence, 'unknown', 'production charge confidence mismatch')
-	assert_equal(unknown.reason, 'phase0_charge_mapping_unvalidated',
-		'production charge blocker mismatch')
-	assert_equal(unknown.observed_recast, 17, 'production raw recast must be preserved')
+	local production = model.decode(input(17), model.production_catalog(99, true, 2100))
+	assert_equal(production.confidence, 'confirmed', 'production charge confidence mismatch')
+	assert_equal(production.available, 4, 'captured production charge count mismatch')
+	assert_equal(production.decoder_source,
+		'sch_capture:Nyoourke_solo_phase1_20260820T104827Z',
+		'production charge evidence source mismatch')
+	local uncaptured_input = input(17)
+	uncaptured_input.job_points_spent = 2000
+	local unknown = model.decode(
+		uncaptured_input,
+		model.production_catalog(99, true, 2000)
+	)
+	assert_equal(unknown.confidence, 'unknown', 'uncaptured progression must remain unknown')
+	assert_equal(unknown.reason, 'charge_mapping_not_captured_for_exact_progression',
+		'uncaptured progression blocker mismatch')
 
 	local full = model.decode(input(0), catalog())
 	assert_equal(full.available, 5, 'zero time-until-full charge count mismatch')

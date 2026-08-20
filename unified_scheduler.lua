@@ -1671,7 +1671,7 @@ local function try_doom_water_emergency(settings)
 	end
 	doom_last_item_at = now
 	local sch_lane = require('uc_sch_runtime').lane_status()
-	if sch_lane.reserved then
+	if sch_lane.reserved and not sch_lane.atomic then
 		local preempted, preempt_reason = require('uc_sch_runtime').preempt(
 			'doom_emergency_preemption',
 			now
@@ -1680,6 +1680,10 @@ local function try_doom_water_emergency(settings)
 			error('Scholar Doom preemption did not abort the active sequence')
 		end
 		log_def_sched(('SCH_LANE_PREEMPT emergency=doom lane=%s'):format(
+			tostring(sch_lane.class)
+		))
+	elseif sch_lane.atomic then
+		log_def_sched(('SCH_ATOMIC_LANE_RETAIN emergency=doom lane=%s'):format(
 			tostring(sch_lane.class)
 		))
 	end
@@ -1849,6 +1853,9 @@ scheduler.DEFAULT_ENGAGE_PRIORITY = 72
 scheduler.DEFAULT_ENGAGE_URGENCY = 0.70
 scheduler.PRIORITY_BAND_AFTERMATH_WS = 108
 scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 200
+scheduler.PRIORITY_BAND_SCH_ROUTINE = 75
+scheduler.PRIORITY_BAND_SCH_PREPARED = 150
+scheduler.PRIORITY_BAND_SCH_DEFENSIVE = 145
 scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131
 scheduler.PRIORITY_BAND_SLEEP = 142
 scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 143
@@ -3140,6 +3147,30 @@ local function spell_ready(name)
 	return true, ''
 end
 
+local function sch_spell_ready(name, target_id, mp_multiplier)
+	local multiplier = tonumber(mp_multiplier)
+	if multiplier ~= 0.5 and multiplier ~= 1.0 and multiplier ~= 2.0 then
+		error('Scholar spell readiness requires an exact supported MP multiplier')
+	end
+	local sp = get_spell_resource(name)
+	if not sp then return false, 'BLOCK_DEFENSIVE_UNKNOWN_SPELL', 'spell' end
+	local known_ok, known_reason = spell_known_and_usable(sp)
+	if not known_ok then return false, known_reason, 'spell' end
+	local recasts = windower.ffxi.get_spell_recasts() or {}
+	if (recasts[sp.recast_id] or 0) > 0 then
+		return false, 'BLOCK_DEFENSIVE_RECAST', 'spell'
+	end
+	local player = windower.ffxi.get_player()
+	if not player or not player.vitals then
+		return false, 'BLOCK_DEFENSIVE_NO_PLAYER', 'spell'
+	end
+	local required_mp = math.ceil((tonumber(sp.mp_cost) or 0) * multiplier)
+	if (tonumber(player.vitals.mp) or 0) < required_mp then
+		return false, 'BLOCK_DEFENSIVE_NO_MP', 'spell'
+	end
+	return true, '', 'spell'
+end
+
 function scheduler.select_sleep_spell_for_target(settings, target)
 	if type(target) ~= 'table' then
 		return nil, 'SLEEP_BAD_TARGET'
@@ -3493,6 +3524,27 @@ local function get_usable_cure_from_tier(orig_tier, min_tier)
 		tier = tier - 1
 	end
 	return nil
+end
+
+local function sch_select_cure_spell(member, mp_multiplier)
+	local s = get_settings()
+	local min_tier = tonumber(scheduler.active_value_or_flat(
+		'config.defensive.cure.min_tier', s.def_heal_min_tier_cure
+	)) or 2
+	local max_tier = tonumber(scheduler.active_value_or_flat(
+		'config.defensive.cure.max_tier', s.def_heal_max_tier_cure
+	)) or 4
+	min_tier = math.max(1, math.min(min_tier, 4))
+	max_tier = math.max(min_tier, math.min(max_tier, 4))
+	local wanted_tier = cure_tier_for_missing_hp(estimate_missing_hp(member), max_tier)
+	local last_reason = 'BLOCK_DEFENSIVE_NO_CURE'
+	for tier = wanted_tier, min_tier, -1 do
+		local cure = cure_by_tier[tier]
+		local ready, reason = sch_spell_ready(cure.name, member.id, mp_multiplier)
+		if ready then return cure.name, '' end
+		last_reason = reason
+	end
+	return nil, last_reason
 end
 
 local function dedupe_numeric_ids(ids)
@@ -3951,6 +4003,7 @@ local function p1_build_ctx(settings)
 	end
 	ctx.engine_enabled = rawget(_G, 'Start_Engine') == true
 	ctx.maintenance_enabled = domain_ownership.is_enabled('maintenance')
+	ctx.defensive_enabled = domain_ownership.is_enabled('defensive')
 	return ctx
 end
 
@@ -4007,23 +4060,33 @@ local function p1_collect_proposals(ctx)
 	local main_job = tostring(player.main_job or '')
 	local sub_job = tostring(player.sub_job or '')
 	local maintenance_enabled = domain_ownership.is_enabled('maintenance')
+	local defensive_enabled = domain_ownership.is_enabled('defensive')
 	local brd_provider_active = maintenance_enabled
 		and main_job ~= 'COR'
 		and (main_job == 'BRD' or sub_job == 'BRD')
-	local sch_fast_tick_active = maintenance_enabled
+	local sch_fast_tick_active = (maintenance_enabled or defensive_enabled)
 		and main_job == 'SCH'
 		and (require('uc_sch_runtime').requires_fast_tick()
 			or scheduler.providers.sch_maintenance.trace_active())
 	local camp_journey_active = scheduler.providers.camp_puller.active()
+	local sch_provider_collected = false
 	if maintenance_enabled
 		and not camp_journey_active
 		and (brd_provider_active or sch_fast_tick_active
 			or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0)) then
 		scheduler.providers.maintenance.collect(ctx, out)
 		scheduler.providers.summoner_maintenance.collect(ctx, out)
+		if main_job == 'SCH' then
+			ctx.sch_defensive_evidence_current = defensive_evidence_current
+			scheduler.providers.sch_maintenance.collect(ctx, out)
+			sch_provider_collected = true
+		end
+		scheduler.providers.geo_maintenance.collect(ctx, out)
+	end
+	if not sch_provider_collected and not camp_journey_active and main_job == 'SCH'
+		and (sch_fast_tick_active or (defensive_enabled and defensive_evidence_current)) then
 		ctx.sch_defensive_evidence_current = defensive_evidence_current
 		scheduler.providers.sch_maintenance.collect(ctx, out)
-		scheduler.providers.geo_maintenance.collect(ctx, out)
 	end
 	if camp_journey_active then
 		for i = #out, 1, -1 do
@@ -5258,6 +5321,120 @@ function scheduler.p1_dispatch_maintenance_brd(selected, settings)
 	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_MAINT_BRD'
 end
 
+function scheduler.p1_dispatch_maintenance_sch(selected, settings)
+	local provider_id = tostring(selected.provider or '')
+	local defensive = provider_id == 'defensive_sch'
+	if defensive and not domain_ownership.is_enabled('defensive') then
+		return false, nil
+	end
+	if not defensive and not domain_ownership.is_enabled('maintenance') then
+		return false, nil
+	end
+	local action_name = tostring(selected.action_name or '')
+	local action_type = tostring(selected.action_type or '')
+	if action_name == '' or (action_type ~= 'spell' and action_type ~= 'ja') then
+		return false, nil
+	end
+	local detail = selected.detail
+	if type(detail) ~= 'table' or type(detail.sch_step) ~= 'table' then
+		error('Scholar maintenance proposal requires its exact runtime step')
+	end
+	local blocked, block_reason = action_dispatch_blocked()
+	if blocked then
+		return true, block_reason
+	end
+	local target_id = tonumber(selected.target_id) or 0
+	local ready, ready_reason, ready_kind
+	if action_type == 'spell' then
+		ready, ready_reason, ready_kind = sch_spell_ready(
+			action_name,
+			target_id,
+			tonumber(detail.sch_step.spell_mp_multiplier) or 1.0
+		)
+	else
+		if detail.sch_step.uses_reserved_charge == true then
+			ready, ready_reason = require('uc_sch_runtime').reserved_charge_step_ready(
+				detail.sch_step
+			)
+			ready_kind = 'ja'
+		else
+			ready, ready_reason, ready_kind = action_ready(action_name, target_id)
+		end
+	end
+	if not ready or ready_kind ~= action_type then
+		log_def_sched(('MAINT_SCH_DISPATCH_SKIP reason=NOT_READY action="%s" kind=%s ready_kind=%s ready_reason=%s'):format(
+			action_name,
+			action_type,
+			tostring(ready_kind or ''),
+			tostring(ready_reason or '')
+		))
+		return false, nil
+	end
+	local target_kind = tostring(selected.target_kind or '')
+	local target_member = {
+		id = target_id,
+		name = tostring(selected.target_name or ''),
+		is_self = target_kind == 'self',
+		is_mob = false,
+	}
+	local command = build_action_command(action_name, action_type, target_member)
+	local result = require('uc_scheduler_dispatcher').dispatch_intent({
+		kind = 'send_command',
+		source = 'unified_scheduler:sch_sequence',
+		command = command,
+		meta = {
+			action_type = action_type,
+			action_name = action_name,
+			provider = provider_id,
+			target_id = target_id,
+			target_name = target_member.name,
+		},
+	}, {
+		execute = true,
+		send_command = windower.send_command,
+	})
+	if type(result) ~= 'table' or result.ok ~= true or result.executed ~= true then
+		return false, nil
+	end
+	local dispatched_at = now_s()
+	local noted, note_reason = scheduler.providers.sch_maintenance.note_dispatched(
+		detail.sch_step,
+		dispatched_at
+	)
+	if not noted then
+		error('Scholar runtime rejected a dispatched step: ' .. tostring(note_reason))
+	end
+	action_mark_sent(action_type, {
+		action_name = action_name,
+		provider = provider_id,
+		target_id = target_id,
+		target_name = target_member.name,
+		target_kind = target_kind,
+	})
+	local ctx = {
+		now = dispatched_at,
+		tick = p1_number(scheduler.phase1.tick, 0),
+	}
+	scheduler.record_dispatch(ctx)
+	scheduler.p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(
+		ctx,
+		scheduler.p1_get_locks(ctx)
+	)
+	_G.UC_LAST_SCHED_ACTION = ('[sch]%s:%s'):format(action_type, action_name)
+	scheduler.action_timeline_log('SCH_MAINTENANCE_DISPATCHED', {
+		action = action_name,
+		provider = provider_id,
+		band = tonumber(selected.priority_band) or 0,
+		sequence_id = tostring(detail.sch_step.sequence_id or ''),
+		phase = tostring(detail.sch_step.phase or ''),
+	}, ('sch_dispatch:%s:%s'):format(
+		tostring(detail.sch_step.sequence_generation or ''),
+		tostring(detail.sch_step.phase or '')
+	), 0.05)
+	return true, 'BLOCK_SCHED_P1_SCH_MAINTENANCE'
+end
+
 local function p1_dispatch_defensive_internal(selected, settings)
 	if not domain_ownership.is_enabled('defensive') then
 		return false, nil
@@ -6398,6 +6575,9 @@ function scheduler.dispatch_selected_plan(settings)
 	if provider == 'maintenance_brd' then
 		return scheduler.p1_dispatch_maintenance_brd(selected, settings)
 	end
+	if provider == 'maintenance_sch' or provider == 'defensive_sch' then
+		return scheduler.p1_dispatch_maintenance_sch(selected, settings)
+	end
 	if provider == 'maintenance_summoner' then
 		if tostring(selected.action_type or '') == 'pet' then
 			return p1_dispatch_pet_command(selected, settings)
@@ -6439,6 +6619,13 @@ local function try_charm_sleeper_emergency(settings, ctx)
 	_G.UC_SCHED_P1_SELECTED_FAMILY = tostring(selected.family_id or '')
 	local sch_lane = require('uc_sch_runtime').lane_status()
 	if sch_lane.reserved then
+		if sch_lane.atomic then
+			log_def_sched(('CHARM_SLEEP_EMERGENCY_HOLD reason=SCH_ATOMIC_LANE lane=%s'):format(
+				tostring(sch_lane.class)
+			))
+			_G.UC_LAST_SCHED_ACTION = '[charm_sleep]blocked:sch_atomic_lane'
+			return true, 'BLOCK_CHARM_SLEEPER_SCH_ATOMIC_LANE'
+		end
 		selected._sch_lane_preempt_reason = 'charm_sleeper_preemption'
 		log_def_sched(('SCH_LANE_PREEMPT_ELIGIBLE emergency=charm_sleeper lane=%s'):format(
 			tostring(sch_lane.class)
@@ -7303,6 +7490,8 @@ function scheduler.get_debug_overlay()
 			return domain_ownership.is_enabled('maintenance')
 		elseif p == 'maintenance_sch' then
 			return domain_ownership.is_enabled('maintenance')
+		elseif p == 'defensive_sch' then
+			return domain_ownership.is_enabled('defensive')
 		elseif p == 'maintenance_geo' then
 			return domain_ownership.is_enabled('maintenance')
 		elseif p == 'pet_combat' then
@@ -7528,8 +7717,30 @@ scheduler.providers.sch_maintenance = require('uc_provider_sch_maintenance').new
 	get_charge_catalog = require('uc_sch_charge_model').production_catalog,
 	get_area_mechanics = require('uc_sch_area_planner').production_mechanics,
 	action_ready = action_ready,
+	sch_spell_ready = sch_spell_ready,
+	select_cure_spell = sch_select_cure_spell,
+	status_removal_for_buff = function(buff_id)
+		local id = tonumber(buff_id)
+		local buff = id and res.buffs[id] or nil
+		if buff == nil then return nil end
+		local spell = debuff_map[buff.en] or debuff_spell_for_buff_id(id)
+		if spell == nil then return nil end
+		local status_key = normalize_status_removal_key(buff)
+		return {
+			buff_id = id,
+			spell = spell,
+			status_key = status_key,
+			priority = status_removal_priority[status_key] or 5,
+		}
+	end,
+	is_critical_defensive = function(proposal, settings)
+		return scheduler.p1_is_critical_defensive_proposal(settings, proposal)
+	end,
 	get_sublimation_safety = scheduler.sch_sublimation_safety,
 	get_sublimation_release_mechanics = require('uc_sch_sublimation').production_release_mechanics,
+	routine_priority = scheduler.PRIORITY_BAND_SCH_ROUTINE,
+	prepared_priority = scheduler.PRIORITY_BAND_SCH_PREPARED,
+	defensive_priority = scheduler.PRIORITY_BAND_SCH_DEFENSIVE,
 	log = log_def_sched,
 })
 scheduler.providers.geo_maintenance = require('uc_geo_maintenance').new({

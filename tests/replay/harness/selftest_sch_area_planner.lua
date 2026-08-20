@@ -82,10 +82,11 @@ local function main()
 
 	local unknown = input()
 	unknown.mechanics = planner.production_mechanics()
-	assert_equal(planner.select(unknown).blocker, 'accession_geometry_unvalidated',
-		'unconfirmed mechanics must block planning')
-	assert_equal(planner.select(unknown).mechanics_reason, 'accession_geometry_unvalidated',
-		'unconfirmed mechanics reason mismatch')
+	assert_equal(planner.select(unknown).state, 'ready',
+		'captured production mechanics must authorize planning')
+	assert_equal(planner.select(unknown).mechanics_source,
+		'sch_capture:Nyoourke_party_ranges_20260820T113121Z',
+		'production geometry source mismatch')
 
 	local invalid = input()
 	invalid.eligible_recipient_ids = { 1001, 1001 }

@@ -1,5 +1,15 @@
 # Scholar Automation Phase 0 Repository Audit
 
+> **Superseded gate status (2026-08-20):** The completed solo and party-range captures
+> closed the Phase 1 production gates for Nyoourke's level-99, 2100-JP Scholar. Live
+> Light Arts, Sublimation, configured Storm II, and an ordered exact-spell Accession +
+> Perpetuance maintenance list are now wired through the existing Scholar reducer and scheduler.
+> The two stratagem charges are reserved before admission and dispatched without applying the
+> shared charge-recast timer as a single-charge cooldown; the scheduler lane remains atomic
+> through the maintenance spell.
+> The observe-only and production-unknown statements below remain as the historical
+> Phase 0 audit record, not the current runtime status.
+
 **Status:** Initial repository audit complete; live field evidence remains required
 
 **RFC:** `docs/sch_automation_rfc.md`

@@ -1180,20 +1180,7 @@ internal static class StructuredProfileV2Writer
 
     private static bool HasConfiguredScholar(JsonObject flatProfile)
     {
-        return ReadOptionalBool(flatProfile, "sch_enabled", false)
-            || ReadOptionalBool(flatProfile, "sch_regen_enabled", false)
-            || ReadOptionalBool(flatProfile, "sch_storms_enabled", false)
-            || ReadOptionalBool(flatProfile, "sch_sublimation_enabled", false)
-            || ReadString(flatProfile, "sch_storm_assignments", "") != ""
-            || ReadBoundedInt(flatProfile, "sch_arts_minimum_commit_s", 12, 0, 120) != 12
-            || !ReadOptionalBool(flatProfile, "sch_arts_emergency_off_art_casts", true)
-            || ReadBoundedInt(flatProfile, "sch_regen_minimum_coverage", 4, 1, 6) != 4
-            || ReadBoundedInt(flatProfile, "sch_regen_refresh_before_s", 25, 1, 300) != 25
-            || ReadBoundedInt(flatProfile, "sch_storms_refresh_before_s", 30, 1, 300) != 30
-            || ReadBoundedInt(flatProfile, "sch_sublimation_activate_when_mpp_at_least", 70, 0, 100) != 70
-            || ReadBoundedInt(flatProfile, "sch_sublimation_release_when_mpp_at_most", 45, 0, 100) != 45
-            || ReadOptionalBool(flatProfile, "sch_sublimation_release_when_complete", false)
-            || ReadBoundedInt(flatProfile, "sch_sublimation_minimum_hpp_to_activate", 75, 1, 100) != 75;
+        return ReadOptionalBool(flatProfile, "sch_enabled", false);
     }
 
     private static StructuredProfileNode? BuildScholar(
@@ -1280,7 +1267,16 @@ internal static class StructuredProfileV2Writer
                         "regen",
                         new StructuredProfileNode()
                             .Add("enabled", ReadOptionalBool(flatProfile, "sch_regen_enabled", false))
-                            .Add("spell", "Regen V")
+                            .Add(
+                                "spells",
+                                ParseScholarAccessionMaintenanceSpells(
+                                    ReadString(
+                                        flatProfile,
+                                        "sch_accession_perpetuance_spells",
+                                        "Regen V"
+                                    )
+                                ).Cast<object?>().ToList()
+                            )
                             .Add("recipients", new List<object?> { "party" })
                             .Add("stratagems", new List<object?> { "Accession", "Perpetuance" })
                             .Add(
@@ -1322,7 +1318,10 @@ internal static class StructuredProfileV2Writer
                     .Add(
                         "accession_cure",
                         new StructuredProfileNode()
-                            .Add("enabled", false)
+                            .Add(
+                                "enabled",
+                                ReadOptionalBool(flatProfile, "sch_accession_cure_enabled", false)
+                            )
                             .Add("minimum_members", 3)
                             .Add("member_hpp_at_most", 75)
                             .Add("minimum_total_missing_hp", 2500)
@@ -1330,19 +1329,32 @@ internal static class StructuredProfileV2Writer
                     .Add(
                         "accession_status_removal",
                         new StructuredProfileNode()
-                            .Add("enabled", false)
+                            .Add(
+                                "enabled",
+                                ReadOptionalBool(
+                                    flatProfile,
+                                    "sch_accession_status_removal_enabled",
+                                    false
+                                )
+                            )
                             .Add("minimum_members", 2)
                     )
                     .Add(
                         "rapture",
                         new StructuredProfileNode()
-                            .Add("enabled", false)
+                            .Add(
+                                "enabled",
+                                ReadOptionalBool(flatProfile, "sch_rapture_enabled", false)
+                            )
                             .Add("minimum_missing_hp", 1800)
                     )
                     .Add(
                         "penury",
                         new StructuredProfileNode()
-                            .Add("enabled", false)
+                            .Add(
+                                "enabled",
+                                ReadOptionalBool(flatProfile, "sch_penury_enabled", false)
+                            )
                             .Add("maximum_mpp", 45)
                     )
             )
@@ -1412,6 +1424,47 @@ internal static class StructuredProfileV2Writer
             throw new InvalidDataException("Scholar storm assignments contain no valid entries.");
         }
         return assignments;
+    }
+
+    internal static List<string> ParseScholarAccessionMaintenanceSpells(string value)
+    {
+        var spells = value
+            .Split(['|', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        if (spells.Count == 0)
+        {
+            throw new InvalidDataException(
+                "Scholar Accession + Perpetuance maintenance requires at least one spell."
+            );
+        }
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var exclusiveGroups = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var spell in spells)
+        {
+            if (!ScholarCapabilities.AccessionMaintenanceSpellNames.Contains(spell, StringComparer.Ordinal))
+            {
+                throw new InvalidDataException(
+                    $"Unsupported Scholar Accession + Perpetuance maintenance spell: {spell}"
+                );
+            }
+            if (!seen.Add(spell))
+            {
+                throw new InvalidDataException(
+                    $"Scholar Accession + Perpetuance maintenance repeats spell: {spell}"
+                );
+            }
+            if (ScholarCapabilities.AccessionExclusiveGroups.TryGetValue(spell, out var group))
+            {
+                if (exclusiveGroups.TryGetValue(group, out var previous))
+                {
+                    throw new InvalidDataException(
+                        $"Scholar maintenance spells {previous} and {spell} conflict; only one {group} spell may be selected."
+                    );
+                }
+                exclusiveGroups[group] = spell;
+            }
+        }
+        return spells;
     }
 
     private static List<object?> BuildScholarStormAssignments(string value)

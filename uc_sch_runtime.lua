@@ -58,6 +58,7 @@ local function new_state()
 			observed_at = 0,
 			engine_enabled = false,
 			maintenance_enabled = false,
+			defensive_enabled = false,
 			main_job = '',
 			player_hpp = 0,
 			party_generation = 0,
@@ -67,6 +68,7 @@ local function new_state()
 		pending = nil,
 		lane = {
 			reserved = false,
+			atomic = false,
 			class = 'none',
 			reason = '',
 		},
@@ -118,8 +120,10 @@ end
 
 local function set_lane(class, reason)
 	local lane_class = tostring(class or 'none')
+	local atomic = state.active_sequence ~= nil and state.active_sequence.atomic == true
 	state.lane.class = lane_class
-	state.lane.reserved = lane_class ~= 'none' and lane_class ~= 'planning'
+	state.lane.atomic = atomic
+	state.lane.reserved = lane_class ~= 'none' and (lane_class ~= 'planning' or atomic)
 	state.lane.reason = tostring(reason or '')
 end
 
@@ -249,40 +253,15 @@ local function validate_plan(plan, at)
 	if type(plan) ~= 'table' then
 		return nil, 'sequence_plan_must_be_table'
 	end
-	local required_strings = { 'id', 'purpose', 'domain', 'spell' }
+	local required_strings = { 'id', 'purpose', 'domain' }
 	for i = 1, #required_strings do
 		local key = required_strings[i]
 		if type(plan[key]) ~= 'string' or plan[key] == '' then
 			return nil, 'sequence_' .. key .. '_required'
 		end
 	end
-	if plan.purpose ~= 'party_regen' then
-		return nil, 'sequence_purpose_unsupported'
-	end
-	if plan.domain ~= 'maintenance' then
+	if plan.domain ~= 'maintenance' and plan.domain ~= 'defensive' then
 		return nil, 'sequence_domain_unsupported'
-	end
-	if capabilities.regen_spell(plan.spell) == nil then
-		return nil, 'sequence_spell_unsupported'
-	end
-	if plan.required_art ~= 'light' then
-		return nil, 'sequence_required_art_unsupported'
-	end
-	if plan.required_addendum ~= nil and plan.required_addendum ~= 'white' then
-		return nil, 'sequence_required_addendum_unsupported'
-	end
-	if type(plan.stratagems) ~= 'table'
-		or #plan.stratagems ~= 2
-		or plan.stratagems[1] ~= 'Accession'
-		or plan.stratagems[2] ~= 'Perpetuance' then
-		return nil, 'sequence_stratagem_policy_unsupported'
-	end
-	local anchor_id = tonumber(plan.anchor_id)
-	if anchor_id == nil or anchor_id <= 0 or anchor_id % 1 ~= 0 then
-		return nil, 'sequence_anchor_id_required'
-	end
-	if type(plan.anchor_name) ~= 'string' or plan.anchor_name == '' then
-		return nil, 'sequence_anchor_name_required'
 	end
 	local party_generation = tonumber(plan.party_generation)
 	if party_generation == nil or party_generation < 0 or party_generation % 1 ~= 0 then
@@ -291,6 +270,133 @@ local function validate_plan(plan, at)
 	local deadline = tonumber(plan.deadline)
 	if deadline == nil or deadline <= at then
 		return nil, 'sequence_deadline_invalid'
+	end
+	local copy = clone_value(plan)
+	copy.party_generation = party_generation
+	copy.deadline = deadline
+	if plan.purpose == 'ensure_light_arts'
+		or plan.purpose == 'sublimation_activate'
+		or plan.purpose == 'sublimation_release' then
+		if plan.action_type ~= 'job_ability' then
+			return nil, 'sequence_direct_action_type_unsupported'
+		end
+		local expected_name = plan.purpose == 'ensure_light_arts' and 'Light Arts' or 'Sublimation'
+		if plan.action_name ~= expected_name then
+			return nil, 'sequence_direct_action_name_mismatch'
+		end
+		local target_id = tonumber(plan.target_id)
+		if target_id == nil or target_id <= 0 or target_id % 1 ~= 0 then
+			return nil, 'sequence_target_id_required'
+		end
+		if type(plan.target_name) ~= 'string' or plan.target_name == '' then
+			return nil, 'sequence_target_name_required'
+		end
+		copy.anchor_id = target_id
+		copy.anchor_name = plan.target_name
+		copy.target_id = target_id
+		copy.direct_action_type = 'job_ability'
+		copy.direct_action_name = expected_name
+		copy.required_art = nil
+		copy.required_addendum = nil
+		copy.stratagems = {}
+		copy.expected_recipients = {
+			{ id = target_id, name = plan.target_name },
+		}
+		copy.expected_recipient_set = { [target_id] = true }
+		if plan.purpose == 'ensure_light_arts' then
+			copy.expected_buff_id = capabilities.abilities.light_arts.buff_id
+		elseif plan.purpose == 'sublimation_activate' then
+			copy.expected_buff_id = capabilities.abilities.sublimation.activated_buff_id
+		else
+			copy.expected_buff_id = 0
+		end
+		return copy, ''
+	end
+	local defensive_purposes = {
+		accession_cure = true,
+		accession_status_removal = true,
+		rapture_cure = true,
+		penury_cure = true,
+	}
+	if plan.purpose ~= 'party_accession_maintenance' and plan.purpose ~= 'targeted_storm'
+		and defensive_purposes[plan.purpose] ~= true then
+		return nil, 'sequence_purpose_unsupported'
+	end
+	if defensive_purposes[plan.purpose] == true and plan.domain ~= 'defensive' then
+		return nil, 'sequence_domain_mismatch'
+	end
+	if type(plan.spell) ~= 'string' or plan.spell == '' then
+		return nil, 'sequence_spell_required'
+	end
+	if plan.required_art ~= 'light' then
+		return nil, 'sequence_required_art_unsupported'
+	end
+	if plan.required_addendum ~= nil and plan.required_addendum ~= 'white' then
+		return nil, 'sequence_required_addendum_unsupported'
+	end
+	local anchor_id = tonumber(plan.anchor_id or plan.target_id)
+	local anchor_name = plan.anchor_name or plan.target_name
+	if anchor_id == nil or anchor_id <= 0 or anchor_id % 1 ~= 0 then
+		return nil, 'sequence_anchor_id_required'
+	end
+	if type(anchor_name) ~= 'string' or anchor_name == '' then
+		return nil, 'sequence_anchor_name_required'
+	end
+	local spell
+	if plan.purpose == 'party_accession_maintenance' then
+		if plan.atomic ~= true then
+			return nil, 'sequence_atomic_policy_required'
+		end
+		spell = capabilities.accession_maintenance_spell(plan.spell)
+		if spell == nil then
+			return nil, 'sequence_spell_unsupported'
+		end
+		if type(plan.stratagems) ~= 'table'
+			or #plan.stratagems ~= 2
+			or plan.stratagems[1] ~= 'Accession'
+			or plan.stratagems[2] ~= 'Perpetuance' then
+			return nil, 'sequence_stratagem_policy_unsupported'
+		end
+	elseif plan.purpose == 'targeted_storm' then
+		spell = capabilities.storm_spell(plan.spell)
+		if spell == nil then
+			return nil, 'sequence_spell_unsupported'
+		end
+		if type(plan.stratagems) ~= 'table' or #plan.stratagems ~= 0 then
+			return nil, 'sequence_stratagem_policy_unsupported'
+		end
+	else
+		local cure_spells = {
+			['Cure'] = true, ['Cure II'] = true,
+			['Cure III'] = true, ['Cure IV'] = true,
+		}
+		local status_spells = {
+			Erase = true, Blindna = true, Paralyna = true, Poisona = true,
+			Silena = true, Stona = true, Cursna = true, Viruna = true,
+		}
+		local expected_stratagem = plan.purpose == 'rapture_cure' and 'Rapture'
+			or (plan.purpose == 'penury_cure' and 'Penury' or 'Accession')
+		if type(plan.stratagems) ~= 'table' or #plan.stratagems ~= 1
+			or plan.stratagems[1] ~= expected_stratagem then
+			return nil, 'sequence_stratagem_policy_unsupported'
+		end
+		if plan.purpose == 'accession_status_removal' then
+			if status_spells[plan.spell] ~= true then
+				return nil, 'sequence_spell_unsupported'
+			end
+			copy.effect_kind = 'status_removal'
+			copy.status_buff_id = tonumber(plan.status_buff_id)
+			copy.minimum_members = tonumber(plan.minimum_members)
+			if copy.status_buff_id == nil or copy.status_buff_id <= 0
+				or copy.minimum_members == nil or copy.minimum_members < 2 then
+				return nil, 'sequence_status_policy_invalid'
+			end
+		elseif cure_spells[plan.spell] ~= true then
+			return nil, 'sequence_spell_unsupported'
+		else
+			copy.effect_kind = 'cure'
+		end
+		spell = { status_id = 0 }
 	end
 	if type(plan.expected_recipients) ~= 'table' or #plan.expected_recipients == 0 then
 		return nil, 'sequence_expected_recipients_required'
@@ -308,14 +414,47 @@ local function validate_plan(plan, at)
 		recipient_set[recipient.id] = true
 		recipients[#recipients + 1] = recipient
 	end
-	local copy = clone_value(plan)
 	copy.anchor_id = anchor_id
-	copy.party_generation = party_generation
-	copy.deadline = deadline
+	copy.anchor_name = anchor_name
 	copy.expected_recipients = recipients
 	copy.expected_recipient_set = recipient_set
-	copy.buff_family = 'regen'
-	copy.status_id = capabilities.regen_spell(copy.spell).status_id
+	if plan.purpose == 'party_accession_maintenance' then
+		local expected_family = capabilities.accession_ownership_family(plan.spell)
+		if plan.buff_family ~= expected_family
+			or plan.duration_family ~= 'accession_maintenance' then
+			return nil, 'sequence_buff_family_invalid'
+		end
+		copy.buff_family = expected_family
+		copy.duration_family = 'accession_maintenance'
+	elseif plan.purpose == 'targeted_storm' then
+		copy.buff_family = 'storm'
+		copy.duration_family = 'storm'
+	end
+	copy.status_id = spell.status_id
+	if plan.purpose == 'accession_cure' then
+		copy.minimum_members = tonumber(plan.minimum_members)
+		copy.member_hpp_at_most = tonumber(plan.member_hpp_at_most)
+		copy.minimum_total_missing_hp = tonumber(plan.minimum_total_missing_hp)
+		if copy.minimum_members == nil or copy.minimum_members < 2
+			or copy.member_hpp_at_most == nil or copy.member_hpp_at_most <= 0
+			or copy.minimum_total_missing_hp == nil or copy.minimum_total_missing_hp <= 0 then
+			return nil, 'sequence_cure_policy_invalid'
+		end
+	elseif plan.purpose == 'rapture_cure' or plan.purpose == 'penury_cure' then
+		copy.minimum_missing_hp = tonumber(plan.minimum_missing_hp)
+		if copy.minimum_missing_hp == nil or copy.minimum_missing_hp <= 0 then
+			return nil, 'sequence_cure_policy_invalid'
+		end
+	end
+	local expected_mp_multiplier = plan.purpose == 'party_accession_maintenance' and 2.0
+		or (plan.purpose == 'accession_cure' and 2.0)
+		or (plan.purpose == 'accession_status_removal' and 2.0)
+		or (plan.purpose == 'penury_cure' and 0.5) or 1.0
+	if plan.spell_mp_multiplier ~= nil
+		and tonumber(plan.spell_mp_multiplier) ~= expected_mp_multiplier then
+		return nil, 'sequence_spell_mp_multiplier_invalid'
+	end
+	copy.spell_mp_multiplier = expected_mp_multiplier
 	return copy, ''
 end
 
@@ -335,8 +474,12 @@ local function active_environment_blocker(sequence)
 	if environment.engine_enabled ~= true then
 		return 'engine_stopped'
 	end
-	if environment.maintenance_enabled ~= true then
-		return 'maintenance_domain_disabled'
+	if sequence == nil or sequence.domain == 'maintenance' then
+		if environment.maintenance_enabled ~= true then
+			return 'maintenance_domain_disabled'
+		end
+	elseif sequence.domain == 'defensive' and environment.defensive_enabled ~= true then
+		return 'defensive_domain_disabled'
 	end
 	if environment.main_job ~= capabilities.JOB_SHORT_NAME then
 		return 'job_changed'
@@ -358,6 +501,49 @@ local function active_environment_blocker(sequence)
 		end
 		if anchor == nil or anchor.name ~= sequence.anchor_name or anchor.hpp <= 0 then
 			return 'target_unavailable'
+		end
+		local pending_spell = state.pending ~= nil and state.pending.action_type == 'spell'
+		if sequence.domain == 'defensive' and not pending_spell then
+			local by_id = {}
+			for i = 1, #environment.party_members do
+				by_id[environment.party_members[i].id] = environment.party_members[i]
+			end
+			local qualifying = 0
+			local total_missing = 0
+			for i = 1, #sequence.expected_recipients do
+				local member = by_id[sequence.expected_recipients[i].id]
+				if member == nil or member.hpp <= 0 or member.charmed == true then
+					return 'defensive_recipient_unavailable'
+				end
+				if sequence.effect_kind == 'status_removal' then
+					if type(member.buffs) ~= 'table' then return 'party_buff_state_unknown' end
+					if has_buff(member.buffs, sequence.status_buff_id) then
+						qualifying = qualifying + 1
+					end
+				else
+					if type(member.max_hp) ~= 'number' or type(member.hp) ~= 'number'
+						or member.max_hp <= 0 or member.hp < 0 or member.hp > member.max_hp then
+						return 'party_hp_state_unknown'
+					end
+					local missing = math.max(0, member.max_hp - member.hp)
+					total_missing = total_missing + missing
+					if sequence.purpose ~= 'accession_cure'
+						or member.hpp <= sequence.member_hpp_at_most then
+						qualifying = qualifying + (missing > 0 and 1 or 0)
+					end
+				end
+			end
+			if sequence.purpose == 'accession_status_removal'
+				and qualifying < sequence.minimum_members then
+				return 'defensive_group_condition_cleared'
+			elseif sequence.purpose == 'accession_cure' then
+				if qualifying < sequence.minimum_members
+					or total_missing < sequence.minimum_total_missing_hp then
+					return 'defensive_group_condition_cleared'
+				end
+			elseif total_missing < sequence.minimum_missing_hp then
+				return 'defensive_cure_condition_cleared'
+			end
 		end
 	end
 	return ''
@@ -381,7 +567,8 @@ function M.check_invariants()
 		return false, 'pending_without_active_sequence'
 	end
 	if sequence == nil then
-		if state.lane.class ~= 'none' or state.lane.reserved ~= false then
+		if state.lane.class ~= 'none' or state.lane.reserved ~= false
+			or state.lane.atomic ~= false then
 			return false, 'idle_lane_not_released'
 		end
 		return true, ''
@@ -405,7 +592,8 @@ function M.check_invariants()
 		if state.lane.class ~= 'prepared_support' or state.lane.reserved ~= true then
 			return false, 'prepared_lane_invalid'
 		end
-	elseif state.lane.class ~= 'planning' or state.lane.reserved ~= false then
+	elseif state.lane.class ~= 'planning'
+		or state.lane.reserved ~= (sequence.atomic == true) then
 		return false, 'planning_lane_invalid'
 	end
 	return true, ''
@@ -496,6 +684,9 @@ function M.observe_environment(observation, at)
 	if type(observation.maintenance_enabled) ~= 'boolean' then
 		error('Scholar runtime maintenance_enabled must be a boolean')
 	end
+	if type(observation.defensive_enabled) ~= 'boolean' then
+		error('Scholar runtime defensive_enabled must be a boolean')
+	end
 	if type(observation.main_job) ~= 'string' then
 		error('Scholar runtime main_job must be a string')
 	end
@@ -532,10 +723,23 @@ function M.observe_environment(observation, at)
 		if type(member.hpp) ~= 'number' or member.hpp < 0 or member.hpp > 100 then
 			error('Scholar runtime party member hpp must be a number from 0 through 100')
 		end
+		if member.hp ~= nil and (type(member.hp) ~= 'number' or member.hp < 0) then
+			error('Scholar runtime party member hp must be non-negative when present')
+		end
+		if member.max_hp ~= nil and (type(member.max_hp) ~= 'number' or member.max_hp < 0) then
+			error('Scholar runtime party member max_hp must be non-negative when present')
+		end
+		if member.buffs ~= nil and type(member.buffs) ~= 'table' then
+			error('Scholar runtime party member buffs must be a table when present')
+		end
 		members[i] = {
 			id = member.id,
 			name = member.name,
 			hpp = member.hpp,
+			hp = member.hp,
+			max_hp = member.max_hp,
+			buffs = member.buffs and clone_value(member.buffs) or nil,
+			charmed = member.charmed == true,
 		}
 	end
 	for key in pairs(observation.party_members) do
@@ -552,6 +756,7 @@ function M.observe_environment(observation, at)
 		observed_at = now,
 		engine_enabled = observation.engine_enabled,
 		maintenance_enabled = observation.maintenance_enabled,
+		defensive_enabled = observation.defensive_enabled,
 		main_job = observation.main_job:upper(),
 		player_hpp = observation.player_hpp,
 		party_generation = observation.party_generation,
@@ -658,6 +863,23 @@ function M.observe_player_buffs(buffs, at)
 	local sequence = state.active_sequence
 	local pending = state.pending
 	if sequence ~= nil and pending ~= nil and pending.action_type == 'job_ability' then
+		local direct_confirmed = false
+		if sequence.direct_action_type == 'job_ability' then
+			if sequence.purpose == 'sublimation_release' then
+				direct_confirmed = pending.action_result_observed == true
+					and state.sublimation.observed == 'none'
+			else
+				local direct_buff_id = tonumber(sequence.expected_buff_id) or 0
+				direct_confirmed = direct_buff_id > 0 and has_buff(buffs, direct_buff_id)
+			end
+		end
+		if direct_confirmed then
+			if sequence.purpose == 'sublimation_activate' then
+				state.sublimation.activated_at = now
+			end
+			state.pending = nil
+			return complete_sequence(now)
+		end
 		local expected_buff_id = tonumber(pending.expected_buff_id) or 0
 		if expected_buff_id > 0 and has_buff(buffs, expected_buff_id) then
 			local action_name = pending.action_name
@@ -715,7 +937,7 @@ function M.start_sequence(plan, at)
 		return false, environment_reason
 	end
 	local charges = required_charge_count(validated)
-	if state.stratagem.confidence ~= 'confirmed' then
+	if charges > 0 and state.stratagem.confidence ~= 'confirmed' then
 		state.last_blocker = 'charge_confidence_unknown'
 		return false, state.last_blocker
 	end
@@ -727,7 +949,7 @@ function M.start_sequence(plan, at)
 	validated.generation = state.sequence_generation
 	validated.profile_generation = state.profile_generation
 	validated.created_at = now
-	validated.phase = 'ensure_art'
+	validated.phase = validated.direct_action_type ~= nil and 'dispatch_action' or 'ensure_art'
 	validated.next_stratagem_index = 1
 	validated.prepared_stratagems = {}
 	validated.reserved_charges_initial = charges
@@ -740,8 +962,9 @@ function M.start_sequence(plan, at)
 end
 
 local function action_step(sequence, action_type, action_name, target_id, target_name, expected_buff_id)
+	local ability = action_type == 'job_ability' and capabilities.ability(action_name) or nil
 	return {
-		provider = 'maintenance_sch',
+		provider = sequence.domain == 'defensive' and 'defensive_sch' or 'maintenance_sch',
 		domain = sequence.domain,
 		action_type = action_type,
 		action_name = action_name,
@@ -752,11 +975,52 @@ local function action_step(sequence, action_type, action_name, target_id, target
 		phase = sequence.phase,
 		deadline = sequence.deadline,
 		expected_buff_id = tonumber(expected_buff_id) or 0,
+		uses_reserved_charge = ability ~= nil
+			and ability.recast_id == capabilities.STRATAGEM_RECAST_ID,
+		spell_mp_multiplier = tonumber(sequence.spell_mp_multiplier) or 1.0,
 		duplicate_suppression_key = table.concat({
 			'sch', tostring(sequence.generation), tostring(sequence.phase),
 		}, ':'),
 		reason_code = 'sch_' .. action_key(sequence.purpose) .. '_' .. action_key(sequence.phase),
 	}
+end
+
+function M.reserved_charge_step_ready(step)
+	if type(step) ~= 'table' then
+		error('Scholar reserved-charge readiness requires a runtime step')
+	end
+	local sequence = state.active_sequence
+	if sequence == nil then
+		return false, 'no_active_sequence'
+	end
+	if state.pending ~= nil then
+		return false, 'sequence_action_pending'
+	end
+	if step.uses_reserved_charge ~= true
+		or step.action_type ~= 'job_ability' then
+		return false, 'step_does_not_use_reserved_charge'
+	end
+	if tostring(step.sequence_id or '') ~= sequence.id
+		or tonumber(step.sequence_generation) ~= sequence.generation
+		or tostring(step.phase or '') ~= sequence.phase then
+		return false, 'stale_sequence_step'
+	end
+	local ability = capabilities.ability(step.action_name)
+	if ability == nil or ability.recast_id ~= capabilities.STRATAGEM_RECAST_ID then
+		return false, 'reserved_charge_action_invalid'
+	end
+	local remaining = tonumber(sequence.reserved_charges_remaining)
+	if remaining == nil or remaining <= 0 or remaining % 1 ~= 0 then
+		return false, 'reserved_charge_exhausted'
+	end
+	if state.stratagem.confidence ~= 'confirmed' then
+		return false, 'charge_confidence_unknown'
+	end
+	local available = tonumber(state.stratagem.estimated_available)
+	if available == nil or available < remaining then
+		return false, 'reserved_charge_observation_contradiction'
+	end
+	return true, ''
 end
 
 function M.next_step(at)
@@ -799,6 +1063,16 @@ function M.next_step(at)
 			capabilities.abilities.light_arts.buff_id
 		), ''
 	end
+	if sequence.phase == 'dispatch_action' then
+		return action_step(
+			sequence,
+			sequence.direct_action_type,
+			sequence.direct_action_name,
+			0,
+			'<me>',
+			sequence.expected_buff_id
+		), ''
+	end
 	if sequence.phase == 'ensure_addendum' then
 		if addendum_is_confirmed(sequence.required_addendum) then
 			next_stratagem_phase('addendum_not_required_or_confirmed')
@@ -816,8 +1090,10 @@ function M.next_step(at)
 	local stratagem_index = tonumber(sequence.next_stratagem_index) or 1
 	local stratagem_name = sequence.stratagems[stratagem_index]
 	if stratagem_name ~= nil and sequence.phase == phase_for('use', stratagem_name) then
-		local ability = stratagem_name == 'Accession'
-			and capabilities.abilities.accession or capabilities.abilities.perpetuance
+		local ability = capabilities.ability(stratagem_name)
+		if ability == nil then
+			error('Scholar runtime stratagem capability is missing: ' .. tostring(stratagem_name))
+		end
 		return action_step(
 			sequence,
 			'job_ability',
@@ -886,16 +1162,6 @@ end
 
 local function record_spell_recipients(sequence, recipients, at)
 	local expected = sequence.expected_recipient_set
-	local duration = sch_duration.estimate({
-		family = sequence.buff_family,
-		spell = sequence.spell,
-		cast_at = at,
-		applied_modifiers = sequence.stratagems,
-		evidence = {
-			confidence = 'unknown',
-			reason = 'phase0_duration_unvalidated',
-		},
-	})
 	local normalized_recipients = {}
 	local seen_recipient_ids = {}
 	local unexpected_recipients = {}
@@ -914,6 +1180,20 @@ local function record_spell_recipients(sequence, recipients, at)
 		end
 	end
 	state.unexpected_recipients = unexpected_recipients
+	if sequence.effect_kind == 'cure' or sequence.effect_kind == 'status_removal' then
+		return true, ''
+	end
+	local duration = sch_duration.estimate({
+		family = sequence.duration_family,
+		spell = sequence.spell,
+		cast_at = at,
+		applied_modifiers = sequence.stratagems,
+		evidence = sch_duration.production_evidence(
+			sequence.duration_family,
+			sequence.spell,
+			sequence.stratagems
+		),
+	})
 	for i = 1, #normalized_recipients do
 		local recipient = normalized_recipients[i]
 		state.owned_buffs[recipient.id] = state.owned_buffs[recipient.id] or {}

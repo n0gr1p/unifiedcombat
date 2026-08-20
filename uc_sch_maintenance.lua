@@ -2,6 +2,7 @@ local capabilities = require('uc_sch_capabilities')
 local sch_config = require('uc_sch_config')
 local sch_area_planner = require('uc_sch_area_planner')
 local sch_duration = require('uc_sch_duration')
+local sch_defensive = require('uc_sch_defensive')
 local sch_sublimation = require('uc_sch_sublimation')
 
 local M = {}
@@ -62,14 +63,27 @@ local function action(action_type, action_name, target_id, target_name, reason_c
 		target_name = target_name,
 		reason_code = reason_code,
 		subsystem = subsystem,
-		observe_only = true,
 	}
 end
 
-local function evaluate_regen(config, members, runtime_snapshot, now, player, area_mechanics)
+local function evaluate_accession_maintenance_spell(
+	config,
+	spell_name,
+	members,
+	runtime_snapshot,
+	now,
+	player,
+	area_mechanics,
+	spell_ready
+)
+	local spell = capabilities.accession_maintenance_spell(spell_name)
+	if spell == nil then
+		error('Scholar Accession maintenance spell is not in the capability catalog')
+	end
+	local ownership_family = capabilities.accession_ownership_family(spell_name)
 	local result = {
-		enabled = config.enabled,
-		state = config.enabled and 'evaluating' or 'disabled',
+		spell = spell_name,
+		state = 'evaluating',
 		missing_recipient_ids = {},
 		unknown_recipient_ids = {},
 		unowned_existing_recipient_ids = {},
@@ -84,25 +98,21 @@ local function evaluate_regen(config, members, runtime_snapshot, now, player, ar
 			selected = nil,
 		},
 	}
-	if not config.enabled then
-		return result
-	end
-	local spell = capabilities.regen_spell(config.spell)
 	local members_by_id = {}
 	for i = 1, #members do
 		local member = members[i]
 		if type(member) ~= 'table' then
-			error('Scholar Regen party member must be a table')
+			error('Scholar Accession maintenance party member must be a table')
 		end
 		local member_id = member.id
 		if type(member_id) ~= 'number' or member_id <= 0 or member_id % 1 ~= 0 then
-			error('Scholar Regen party member id must be a positive integer')
+			error('Scholar Accession maintenance party member id must be a positive integer')
 		end
 		if members_by_id[member_id] ~= nil then
-			error('Scholar Regen party member ids must be unique')
+			error('Scholar Accession maintenance party member ids must be unique')
 		end
 		if type(member.hpp) ~= 'number' or member.hpp < 0 or member.hpp > 100 then
-			error('Scholar Regen party member hpp must be numeric from 0 through 100')
+			error('Scholar Accession maintenance party member hpp must be numeric from 0 through 100')
 		end
 		members_by_id[member_id] = member
 		if member.hpp > 0 then
@@ -112,9 +122,9 @@ local function evaluate_regen(config, members, runtime_snapshot, now, player, ar
 				result.missing_recipient_ids[#result.missing_recipient_ids + 1] = member_id
 			else
 				local families = runtime_snapshot.owned_buffs[member_id]
-				local owner = type(families) == 'table' and families.regen or nil
+				local owner = type(families) == 'table' and families[ownership_family] or nil
 				if type(owner) == 'table'
-					and owner.exact_spell == config.spell
+					and owner.exact_spell == spell_name
 					and owner.status_id == spell.status_id
 					and owner.presence == 'present' then
 					result.owned_present_recipient_ids[#result.owned_present_recipient_ids + 1] = member_id
@@ -139,7 +149,8 @@ local function evaluate_regen(config, members, runtime_snapshot, now, player, ar
 		eligible_recipient_ids = result.missing_recipient_ids,
 		unsafe_recipient_ids = result.unowned_existing_recipient_ids,
 		minimum_coverage = config.minimum_coverage,
-		mechanics = require_table(area_mechanics, 'Scholar Regen area mechanics'),
+		mechanics = require_table(area_mechanics, 'Scholar Accession maintenance area mechanics'),
+		anchor_recipient_ids = spell.anchor_policy == 'self' and { player.id } or nil,
 	})
 	if runtime_snapshot.stratagem.confidence ~= 'confirmed' then
 		result.state = 'blocked'
@@ -160,13 +171,28 @@ local function evaluate_regen(config, members, runtime_snapshot, now, player, ar
 		result.blocker = result.geometry.blocker
 		return result
 	end
-	local selected = require_table(result.geometry.selected, 'Scholar Regen selected geometry')
+	local selected = require_table(result.geometry.selected, 'Scholar Accession maintenance selected geometry')
+	local ready, ready_reason, ready_kind = spell_ready(spell_name, selected.anchor_id, 2.0)
+	if type(ready) ~= 'boolean' or type(ready_reason) ~= 'string' or ready_kind ~= 'spell' then
+		error('Scholar Accession maintenance spell readiness returned invalid evidence')
+	end
+	if not ready then
+		if ready_reason == '' then
+			error('Scholar unavailable Accession maintenance spell requires a blocker')
+		end
+		result.state = 'blocked'
+		result.blocker = ready_reason
+		return result
+	end
+	if ready_reason ~= '' then
+		error('Scholar ready Accession maintenance spell must not include a blocker')
+	end
 	local expected_recipients = {}
 	for i = 1, #selected.expected_recipient_ids do
 		local recipient_id = selected.expected_recipient_ids[i]
 		local member = members_by_id[recipient_id]
 		if member == nil then
-			error('Scholar Regen selected recipient is not in the party snapshot')
+			error('Scholar Accession maintenance selected recipient is not in the party snapshot')
 		end
 		expected_recipients[i] = {
 			id = member.id,
@@ -183,12 +209,16 @@ local function evaluate_regen(config, members, runtime_snapshot, now, player, ar
 		error('Scholar runtime party generation must be a non-negative integer')
 	end
 	result.plan = {
-		purpose = 'party_regen',
+		purpose = 'party_accession_maintenance',
 		domain = 'maintenance',
 		required_art = 'light',
 		required_addendum = nil,
 		stratagems = { 'Accession', 'Perpetuance' },
-		spell = config.spell,
+		atomic = true,
+		spell = spell_name,
+		buff_family = ownership_family,
+		duration_family = 'accession_maintenance',
+		spell_mp_multiplier = 2.0,
 		anchor_id = selected.anchor_id,
 		anchor_name = selected.anchor_name,
 		expected_recipients = expected_recipients,
@@ -198,17 +228,55 @@ local function evaluate_regen(config, members, runtime_snapshot, now, player, ar
 		charge_decoder_source = runtime_snapshot.stratagem.decoder_source,
 		geometry_model_key = result.geometry.mechanics_model_key,
 		geometry_source = result.geometry.mechanics_source,
+		refresh_before_s = config.refresh_before_s,
 	}
 	result.candidate = action(
 		'job_ability',
 		'Accession',
 		player.id,
 		player.name,
-		'sch_regen_prepare_accession',
-		'regen'
+		'sch_accession_maintenance_prepare_accession',
+		'accession_maintenance'
 	)
 	result.candidate.plan = result.plan
 	result.state = 'actionable'
+	return result
+end
+
+local function evaluate_regen(config, members, runtime_snapshot, now, player, area_mechanics, spell_ready)
+	local result = {
+		enabled = config.enabled,
+		state = config.enabled and 'evaluating' or 'disabled',
+		spells = {},
+		blocker = '',
+		candidate = nil,
+		plan = nil,
+	}
+	if not config.enabled then
+		return result
+	end
+	require_function(spell_ready, 'Scholar Accession maintenance spell_ready')
+	for i = 1, #config.spells do
+		local spell_result = evaluate_accession_maintenance_spell(
+			config,
+			config.spells[i],
+			members,
+			runtime_snapshot,
+			now,
+			player,
+			area_mechanics,
+			spell_ready
+		)
+		result.spells[i] = spell_result
+		if spell_result.candidate ~= nil or spell_result.blocker ~= '' then
+			for key, value in pairs(spell_result) do
+				result[key] = value
+			end
+			result.active_spell = config.spells[i]
+			return result
+		end
+	end
+	result.state = 'satisfied'
 	return result
 end
 
@@ -687,7 +755,7 @@ function M.evaluate(config, ctx, runtime_snapshot)
 	end
 	local result = {
 		enabled = config.enabled,
-		mode = 'observe_only',
+		mode = 'live',
 		eligibility = runtime_snapshot.eligibility,
 		first_blocker = '',
 		candidate = nil,
@@ -695,6 +763,7 @@ function M.evaluate(config, ctx, runtime_snapshot)
 		sublimation = { enabled = false, state = 'disabled', blocker = '' },
 		regen = { enabled = false, state = 'disabled', blocker = '' },
 		storms = { enabled = false, state = 'disabled', blocker = '' },
+		defensive = { enabled = false, state = 'disabled', blocker = '' },
 	}
 	if config.enabled ~= true then
 		result.first_blocker = 'sch_disabled'
@@ -705,19 +774,21 @@ function M.evaluate(config, ctx, runtime_snapshot)
 		return result
 	end
 	if runtime_snapshot.active_sequence ~= nil then
-		result.first_blocker = 'active_sequence_observe_only'
+		result.first_blocker = 'active_sequence_in_progress'
 		return result
 	end
 	local members = require_table(ctx.party_members, 'Scholar maintenance party members')
+	result.defensive = sch_defensive.evaluate(config.defensive, ctx, runtime_snapshot)
 	result.arts = evaluate_arts(ctx, runtime_snapshot)
-	result.candidate = result.arts.candidate
+	result.candidate = result.defensive.candidate or result.arts.candidate
 	result.regen = evaluate_regen(
 		config.support.regen,
 		members,
 		runtime_snapshot,
 		now,
 		ctx.player,
-		ctx.area_mechanics
+		ctx.area_mechanics,
+		ctx.spell_ready
 	)
 	result.storms = evaluate_storms(config.support.storms, members, runtime_snapshot)
 	result.sublimation = evaluate_sublimation(config.sublimation, ctx, runtime_snapshot)
@@ -732,6 +803,7 @@ function M.evaluate(config, ctx, runtime_snapshot)
 		result.candidate = result.sublimation.candidate
 	end
 	local blockers = {
+		result.defensive.blocker,
 		result.arts.blocker,
 		result.regen.blocker,
 		result.storms.blocker,
@@ -742,9 +814,6 @@ function M.evaluate(config, ctx, runtime_snapshot)
 			result.first_blocker = blockers[i]
 			break
 		end
-	end
-	if result.candidate ~= nil then
-		result.candidate.observe_only = true
 	end
 	return result
 end

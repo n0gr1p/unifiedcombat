@@ -62,6 +62,7 @@ internal static class StructuredProfileV2WriterTests
             TestSummonerPreservesIncompatibleSelections();
             TestSummonerUiOfflineContract();
             TestNonScholarOmitsUnconfiguredScholar();
+            TestNonScholarOmitsInactiveScholarPanelState();
             TestNonScholarRejectsConfiguredScholar();
             TestScholarDisabledShape();
             TestScholarConfiguredRoundTripShape();
@@ -1281,6 +1282,26 @@ internal static class StructuredProfileV2WriterTests
         );
     }
 
+    private static void TestNonScholarOmitsInactiveScholarPanelState()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["sch_enabled"] = false;
+        flat["sch_regen_enabled"] = true;
+        flat["sch_accession_perpetuance_spells"] = "Regen V|Protect V|Shell V|Adloquium|Phalanx";
+        flat["sch_regen_refresh_before_s"] = 10;
+        flat["sch_storms_enabled"] = true;
+        flat["sch_storm_assignments"] = "Thunderstorm II:Nyoourke";
+        flat["sch_sublimation_enabled"] = true;
+        flat["sch_accession_cure_enabled"] = true;
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Terrasjr", "MNK", "WAR")
+        );
+        AssertNotContains(content, "sch = {",
+            "inactive hidden Scholar panel state must not configure a non-SCH profile");
+    }
+
     private static void TestScholarDisabledShape()
     {
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
@@ -1290,7 +1311,8 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "sch = {", "SCH profile must include the durable Scholar domain");
         AssertContains(content, "mode = \"support\"", "Scholar support mode default missing");
         AssertContains(content, "default = \"light\"", "Scholar Light Arts default missing");
-        AssertContains(content, "spell = \"Regen V\"", "Scholar exact Regen spell missing");
+        AssertContains(content, "spells = {", "Scholar maintenance spell list missing");
+        AssertContains(content, "\"Regen V\"", "Scholar default maintenance spell missing");
         AssertContains(content, "\"Accession\"", "Scholar Accession policy missing");
         AssertContains(content, "\"Perpetuance\"", "Scholar Perpetuance policy missing");
         AssertContains(content, "manual_arm_required = true", "Scholar Embrava safety gate missing");
@@ -1306,6 +1328,7 @@ internal static class StructuredProfileV2WriterTests
         flat["sch_regen_enabled"] = true;
         flat["sch_regen_minimum_coverage"] = 5;
         flat["sch_regen_refresh_before_s"] = 30;
+        flat["sch_accession_perpetuance_spells"] = "Regen V|Protect V|Phalanx";
         flat["sch_storms_enabled"] = true;
         flat["sch_storm_assignments"] = "Sandstorm II:Tank,Healer|Hailstorm II:Wizard";
         flat["sch_storms_refresh_before_s"] = 40;
@@ -1314,6 +1337,10 @@ internal static class StructuredProfileV2WriterTests
         flat["sch_sublimation_release_when_mpp_at_most"] = 35;
         flat["sch_sublimation_release_when_complete"] = true;
         flat["sch_sublimation_minimum_hpp_to_activate"] = 85;
+        flat["sch_accession_cure_enabled"] = true;
+        flat["sch_accession_status_removal_enabled"] = true;
+        flat["sch_rapture_enabled"] = true;
+        flat["sch_penury_enabled"] = true;
 
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
@@ -1322,10 +1349,16 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "minimum_commit_s = 20", "Scholar Arts commitment must serialize");
         AssertContains(content, "emergency_off_art_casts = false", "Scholar off-Art policy must serialize");
         AssertContains(content, "minimum_coverage = 5", "Scholar Regen coverage must serialize");
+        AssertContains(content, "\"Protect V\"", "Scholar ordered maintenance list must serialize");
+        AssertContains(content, "\"Phalanx\"", "Scholar self-anchor maintenance spell must serialize");
         AssertContains(content, "spell = \"Sandstorm II\"", "Scholar storm assignment spell missing");
         AssertContains(content, "\"Tank\"", "Scholar storm target missing");
         AssertContains(content, "release_when_complete = true", "Scholar Sublimation release policy missing");
         AssertContains(content, "minimum_hpp_to_activate = 85", "Scholar Sublimation HPP gate missing");
+        AssertContains(content, "accession_cure = {\n                    enabled = true", "Scholar Accession cure policy must serialize");
+        AssertContains(content, "accession_status_removal = {\n                    enabled = true", "Scholar Accession status-removal policy must serialize");
+        AssertContains(content, "rapture = {\n                    enabled = true", "Scholar Rapture policy must serialize");
+        AssertContains(content, "penury = {\n                    enabled = true", "Scholar Penury policy must serialize");
     }
 
     private static void TestScholarStormAssignmentValidation()
@@ -1335,6 +1368,23 @@ internal static class StructuredProfileV2WriterTests
         );
         AssertEqual(assignments.Count, 2, "Scholar storm assignment count mismatch");
         AssertEqual(assignments[0].Targets.Count, 2, "Scholar first assignment target count mismatch");
+		var maintenanceSpells = StructuredProfileV2Writer.ParseScholarAccessionMaintenanceSpells(
+			"Regen V|Protect V\r\nPhalanx"
+		);
+		AssertEqual(maintenanceSpells.Count, 3, "Scholar maintenance spell count mismatch");
+		AssertEqual(maintenanceSpells[2], "Phalanx", "Scholar maintenance order mismatch");
+		AssertThrows<InvalidDataException>(
+			() => StructuredProfileV2Writer.ParseScholarAccessionMaintenanceSpells("Regen IV"),
+			"unsupported Scholar maintenance spell must fail"
+		);
+		AssertThrows<InvalidDataException>(
+			() => StructuredProfileV2Writer.ParseScholarAccessionMaintenanceSpells("Regen V|Regen V"),
+			"duplicate Scholar maintenance spell must fail"
+		);
+		AssertThrows<InvalidDataException>(
+			() => StructuredProfileV2Writer.ParseScholarAccessionMaintenanceSpells("Enfire|Enwater"),
+			"exclusive Scholar maintenance spells must fail"
+		);
         AssertThrows<InvalidDataException>(
             () => StructuredProfileV2Writer.ParseScholarStormAssignments("Sandstorm:Tank"),
             "base-tier storm must be rejected"
@@ -1367,9 +1417,13 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(ui, "Sandstorm II:Tank,Healer", "Scholar storm assignment format must be visible");
         AssertContains(store, "[\"sch_enabled\"] = _schEnabled.Checked", "Scholar enabled state must be captured");
         AssertContains(store, "[\"sch_storm_assignments\"]", "Scholar storm assignments must be captured");
+        AssertContains(store, "[\"sch_accession_perpetuance_spells\"]",
+			"Scholar Accession maintenance list must be captured");
+        AssertContains(store, "[\"sch_accession_cure_enabled\"]", "Scholar Phase 2 state must be captured");
+        AssertContains(ui, "Accession group cures", "Scholar Phase 2 controls must be visible");
         AssertContains(logic, "string.Equals(mainJob, \"SCH\"", "Scholar tab requires SCH main job");
         AssertContains(logic, "ApplyScholarFromSnapshot(s);", "Scholar settings must restore from local state");
-        AssertContains(logic, "Runtime execution remains observe-only", "Scholar field gate must remain visible");
+        AssertContains(logic, "Scholar support and group-defense configuration is valid.", "Scholar Phase 2 validation must be visible");
         AssertContains(
             ReadRepoFile("UnifiedCombatWinForms", "MainForm.cs"),
             "EnsureScholarTabVisibility(false)",

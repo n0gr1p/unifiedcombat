@@ -233,6 +233,7 @@ public partial class MainForm
     private NumericUpDown _schArtsMinimumCommit = null!;
     private CheckBox _schArtsEmergencyOffArtCasts = null!;
     private CheckBox _schRegenEnabled = null!;
+    private TextBox _schAccessionPerpetuanceSpells = null!;
     private NumericUpDown _schRegenMinimumCoverage = null!;
     private NumericUpDown _schRegenRefreshBefore = null!;
     private CheckBox _schStormsEnabled = null!;
@@ -243,6 +244,10 @@ public partial class MainForm
     private NumericUpDown _schSublimationReleaseMpp = null!;
     private CheckBox _schSublimationReleaseComplete = null!;
     private NumericUpDown _schSublimationMinimumHpp = null!;
+    private CheckBox _schAccessionCureEnabled = null!;
+    private CheckBox _schAccessionStatusRemovalEnabled = null!;
+    private CheckBox _schRaptureEnabled = null!;
+    private CheckBox _schPenuryEnabled = null!;
     private Label _schValidation = null!;
     private CheckBox _reactionEnabled = null!;
     private ListBox _reactionRuleList = null!;
@@ -1764,7 +1769,7 @@ public partial class MainForm
         scholarRow++;
         _schRegenEnabled = new CheckBox
         {
-            Text = "Maintain party Regen V with Accession + Perpetuance",
+            Text = "Maintain configured party buffs with Accession + Perpetuance",
             AutoSize = true,
         };
         _schRegenEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
@@ -1772,7 +1777,23 @@ public partial class MainForm
         scholarRoot.SetColumnSpan(_schRegenEnabled, 2);
         scholarRow++;
         scholarRoot.Controls.Add(
-            new Label { Text = "Minimum Regen coverage", AutoSize = true, Anchor = AnchorStyles.Left },
+            new Label { Text = "Buff spells (priority order)", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            scholarRow
+        );
+        _schAccessionPerpetuanceSpells = new TextBox
+        {
+            Multiline = true,
+            Height = 72,
+            Width = 430,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right,
+            Text = "Regen V",
+            PlaceholderText = "Regen V|Protect V|Shell V|Adloquium|Phalanx",
+        };
+        _schAccessionPerpetuanceSpells.TextChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schAccessionPerpetuanceSpells, 1, scholarRow++);
+        scholarRoot.Controls.Add(
+            new Label { Text = "Minimum party coverage", AutoSize = true, Anchor = AnchorStyles.Left },
             0,
             scholarRow
         );
@@ -1787,7 +1808,7 @@ public partial class MainForm
         _schRegenMinimumCoverage.ValueChanged += (_, _) => OnScholarSettingChanged();
         scholarRoot.Controls.Add(_schRegenMinimumCoverage, 1, scholarRow++);
         scholarRoot.Controls.Add(
-            new Label { Text = "Regen refresh window (s)", AutoSize = true, Anchor = AnchorStyles.Left },
+            new Label { Text = "Refresh window (s)", AutoSize = true, Anchor = AnchorStyles.Left },
             0,
             scholarRow
         );
@@ -1895,6 +1916,52 @@ public partial class MainForm
         };
         _schSublimationMinimumHpp.ValueChanged += (_, _) => OnScholarSettingChanged();
         scholarRoot.Controls.Add(_schSublimationMinimumHpp, 1, scholarRow++);
+        var scholarPhase2Label = new Label
+        {
+            Text = "Scholar-aware group defense",
+            AutoSize = true,
+            Font = new Font(SystemFonts.DefaultFont, FontStyle.Bold),
+            Padding = new Padding(0, 10, 0, 2),
+        };
+        scholarRoot.Controls.Add(scholarPhase2Label, 0, scholarRow);
+        scholarRoot.SetColumnSpan(scholarPhase2Label, 2);
+        scholarRow++;
+        _schAccessionCureEnabled = new CheckBox
+        {
+            Text = "Accession group cures (3 members, 75% HPP, 2500 missing HP)",
+            AutoSize = true,
+        };
+        _schAccessionCureEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schAccessionCureEnabled, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schAccessionCureEnabled, 2);
+        scholarRow++;
+        _schAccessionStatusRemovalEnabled = new CheckBox
+        {
+            Text = "Accession status removal (2 members with the same effect)",
+            AutoSize = true,
+        };
+        _schAccessionStatusRemovalEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schAccessionStatusRemovalEnabled, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schAccessionStatusRemovalEnabled, 2);
+        scholarRow++;
+        _schRaptureEnabled = new CheckBox
+        {
+            Text = "Rapture noncritical cures (1800 missing HP)",
+            AutoSize = true,
+        };
+        _schRaptureEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schRaptureEnabled, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schRaptureEnabled, 2);
+        scholarRow++;
+        _schPenuryEnabled = new CheckBox
+        {
+            Text = "Penury noncritical cures (45% MPP or lower)",
+            AutoSize = true,
+        };
+        _schPenuryEnabled.CheckedChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schPenuryEnabled, 0, scholarRow);
+        scholarRoot.SetColumnSpan(_schPenuryEnabled, 2);
+        scholarRow++;
         _schValidation = new Label
         {
             AutoSize = true,

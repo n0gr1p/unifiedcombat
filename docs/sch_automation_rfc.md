@@ -1,14 +1,32 @@
 # RFC: Stateful Scholar Automation
 
-**Status:** Draft; Phase 1A implemented, observe-only Phase 1B field validation pending
+**Status:** Phase 2 Scholar-aware group defense implemented (2026-08-20)
+
+> **2026-08-20 live update:** The historical Phase 0/observe-only descriptions below
+> document the development gates that preceded field capture. The production adapter now
+> dispatches Light Arts, Sublimation activation/release, exact configured Storm II spells,
+> an ordered list of exact Accession + Perpetuance maintenance spells, and Phase 2 Scholar-aware defense:
+> Accession Cure I-IV, Accession Erase/-na, Rapture Cure I-IV, and Penury Cure I-IV.
+> Production evidence is limited
+> to the captured level-99, 2100-JP Scholar charge model, the captured Accession geometry,
+> captured action-result messages, the captured 440-second Regen V duration, and the
+> captured 332-MP Sublimation release-capacity threshold. Uncaptured progression and action
+> identities remain fail-closed. Automatic Tabula Rasa use and all deferred Phase 3+ work
+> remain disabled.
+>
+> Accession maintenance is admitted only when the exact charge model confirms the full
+> charge budget. For the two-stratagem chain, both charges are reserved before Accession;
+> Accession and Perpetuance are then dispatched from that reservation without treating the
+> shared recast timer as a single-charge cooldown. The scheduler lane is atomic through the
+> maintenance spell cast, so another scheduled spell cannot consume either prepared effect.
 
 **Target:** UnifiedCombat Windower addon, scheduler, profile-v2 contract, and WinForms UI
 
 **Initial eligibility:** Main-job Scholar only
 
-**Primary implementation goal:** Reliable party support through Arts, Sublimation, strict Accession + Perpetuance + Regen, and targeted storms
+**Primary implementation goal:** Reliable party support and Scholar-aware group defense through Phase 2
 
-**Later goals:** Scholar-aware group defense, reactive magic bursts, Immanence skillchains, and runtime-armed encounter abilities
+**Later goals:** Reactive magic bursts, Immanence skillchains, and runtime-armed encounter abilities
 
 ---
 
@@ -653,7 +671,8 @@ The implemented `uc_sch_charge_model.lua` supplies the strict decoder boundary w
 A validated sequence reserves its full remaining charge requirement at plan creation. The reservation is local planning state, not proof that charges exist.
 
 - Two confirmed charges are required before Accession + Perpetuance begins.
-- After Accession is confirmed, the sequence still requires one confirmed or consistently reserved charge for Perpetuance.
+- After Accession is confirmed, Perpetuance consumes the already reserved second charge; a nonzero shared recast timer does not force a recharge wait.
+- The admitted Accession + Perpetuance maintenance transaction is non-preemptible through its exact spell cast, preventing scheduler contamination.
 - Any recast contradiction invalidates the plan.
 - Tabula Rasa does not imply permission to spend the ability or start an otherwise invalid sequence.
 
@@ -914,7 +933,13 @@ sch = {
     support = {
         regen = {
             enabled = true,
-            spell = 'Regen V',
+            spells = {
+                'Regen V',
+                'Protect V',
+                'Shell V',
+                'Adloquium',
+                'Phalanx',
+            },
             recipients = { 'party' },
             stratagems = { 'Accession', 'Perpetuance' },
             minimum_coverage = 4,
@@ -1263,6 +1288,22 @@ Deliver:
 ### Phase 2: Scholar-aware group defense
 
 Add Rapture, Penury, Accession cures, Accession status removal, and finalized selective-preemption policy. Keep existing critical cure semantics unchanged.
+
+Implemented 2026-08-20. The defensive planner shares the Phase 1 state machine and
+charge reservation rather than introducing a second executor. It adds:
+
+- Accession Cure I-IV after the configured member-count, HPP, total-missing-HP,
+  geometry, charge, recast, learned-spell, and doubled-MP checks pass;
+- Accession Erase and exact `-na` spells for two or more party members with the
+  same removable status, with Addendum: White inserted when required;
+- Rapture for a noncritical single-target cure meeting its missing-HP threshold;
+- Penury for a noncritical single-target cure while player MPP is at or below its
+  configured threshold, using the halved base MP requirement;
+- priority below existing critical direct cures and prepared-sequence priority,
+  so critical direct defense remains authoritative and can abort prepared work.
+
+All four features remain explicit profile toggles. Phase 3 offense, Phase 4
+skillchains, and Phase 5 encounter abilities remain rejected when enabled.
 
 ### Phase 3: Reactive magic bursts
 

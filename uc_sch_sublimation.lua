@@ -137,8 +137,10 @@ end
 
 function M.production_release_mechanics()
 	return {
-		confidence = 'unknown',
-		reason = 'phase0_sublimation_release_capacity_unvalidated',
+		confidence = 'confirmed',
+		model_key = M.RELEASE_MODEL_KEY,
+		source = 'sch_capture:Nyoourke_solo_phase1_20260820T104827Z',
+		minimum_missing_mp = 332,
 	}
 end
 

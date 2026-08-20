@@ -1041,6 +1041,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.sch_arts_minimum_commit_s = sch.arts.minimum_commit_s
 		candidate.sch_arts_emergency_off_art_casts = sch.arts.emergency_off_art_casts
 		candidate.sch_regen_enabled = sch.support.regen.enabled
+		candidate.sch_accession_perpetuance_spells = table.concat(sch.support.regen.spells, '|')
 		candidate.sch_regen_minimum_coverage = sch.support.regen.minimum_coverage
 		candidate.sch_regen_refresh_before_s = sch.support.regen.refresh_before_s
 		candidate.sch_storms_enabled = sch.support.storms.enabled
@@ -1051,6 +1052,10 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.sch_sublimation_release_when_mpp_at_most = sch.sublimation.release_when_mpp_at_most
 		candidate.sch_sublimation_release_when_complete = sch.sublimation.release_when_complete
 		candidate.sch_sublimation_minimum_hpp_to_activate = sch.sublimation.minimum_hpp_to_activate
+		candidate.sch_accession_cure_enabled = sch.defensive.accession_cure.enabled
+		candidate.sch_accession_status_removal_enabled = sch.defensive.accession_status_removal.enabled
+		candidate.sch_rapture_enabled = sch.defensive.rapture.enabled
+		candidate.sch_penury_enabled = sch.defensive.penury.enabled
 	end
 
 	if type(config.debug) == 'table' then

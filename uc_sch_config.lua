@@ -132,9 +132,9 @@ local function validate_empty_array(result, value, path)
 	end
 end
 
-local function validate_disabled_feature(result, value, path)
+local function validate_deferred_feature(result, value, path)
 	if require_boolean(result, value, 'enabled', path .. '.enabled') and value.enabled ~= false then
-		add_issue(result, 'sch_deferred_feature_enabled', path .. '.enabled', path .. ' is not implemented in Phase 1.')
+		add_issue(result, 'sch_deferred_feature_enabled', path .. '.enabled', path .. ' is not implemented through Phase 2.')
 	end
 end
 
@@ -157,7 +157,7 @@ function M.default_config()
 		support = {
 			regen = {
 				enabled = false,
-				spell = 'Regen V',
+				spells = { 'Regen V' },
 				recipients = { 'party' },
 				stratagems = { 'Accession', 'Perpetuance' },
 				minimum_coverage = 4,
@@ -254,13 +254,46 @@ local function validate_regen(result, support)
 	local regen = require_table(result, support, 'regen', 'sch.support.regen')
 	if regen == nil then return end
 	reject_unknown_keys(result, regen, 'sch.support.regen', {
-		'enabled', 'spell', 'recipients', 'stratagems', 'minimum_coverage',
+		'enabled', 'spells', 'recipients', 'stratagems', 'minimum_coverage',
 		'refresh_before_s', 'unknown_existing_policy',
 	})
 	require_boolean(result, regen, 'enabled', 'sch.support.regen.enabled')
-	if require_string(result, regen, 'spell', 'sch.support.regen.spell')
-		and capabilities.regen_spell(regen.spell) == nil then
-		add_issue(result, 'sch_regen_spell_unsupported', 'sch.support.regen.spell', 'Phase 1 supports exact spell "Regen V" only.')
+	local spell_count = array_length(result, regen.spells, 'sch.support.regen.spells')
+	if spell_count ~= nil then
+		if spell_count == 0 then
+			add_issue(result, 'sch_shape_invalid', 'sch.support.regen.spells',
+				'sch.support.regen.spells must contain at least one spell.')
+		end
+		local seen_spells = {}
+		local exclusive_groups = {}
+		for i = 1, spell_count do
+			local spell_name = regen.spells[i]
+			local spell_path = ('sch.support.regen.spells[%d]'):format(i)
+			if type(spell_name) ~= 'string' or spell_name == '' then
+				add_issue(result, 'sch_shape_invalid', spell_path, spell_path .. ' must be a non-empty string.')
+			else
+				local spell = capabilities.accession_maintenance_spell(spell_name)
+				if spell == nil then
+					add_issue(result, 'sch_accession_maintenance_spell_unsupported', spell_path,
+						('Spell %q is not supported for automatic Accession + Perpetuance maintenance.'):format(spell_name))
+				elseif seen_spells[spell_name] then
+					add_issue(result, 'sch_accession_maintenance_spell_duplicate', spell_path,
+						('Spell %q appears more than once.'):format(spell_name))
+				else
+					seen_spells[spell_name] = true
+					if spell.exclusive_group ~= nil then
+						local previous = exclusive_groups[spell.exclusive_group]
+						if previous ~= nil then
+							add_issue(result, 'sch_accession_maintenance_spell_conflict', spell_path,
+								('Spell %q conflicts with %q; only one %s spell may be maintained.'):format(
+									spell_name, previous, spell.exclusive_group))
+						else
+							exclusive_groups[spell.exclusive_group] = spell_name
+						end
+					end
+				end
+			end
+		end
 	end
 	require_exact_array(result, regen.recipients, 'sch.support.regen.recipients', { 'party' })
 	require_exact_array(
@@ -351,7 +384,7 @@ local function validate_support(result, config)
 	local embrava = require_table(result, support, 'embrava', 'sch.support.embrava')
 	if embrava ~= nil then
 		reject_unknown_keys(result, embrava, 'sch.support.embrava', { 'enabled', 'manual_arm_required' })
-		validate_disabled_feature(result, embrava, 'sch.support.embrava')
+		validate_deferred_feature(result, embrava, 'sch.support.embrava')
 		if require_boolean(result, embrava, 'manual_arm_required', 'sch.support.embrava.manual_arm_required')
 			and embrava.manual_arm_required ~= true then
 			add_issue(
@@ -375,7 +408,7 @@ local function validate_defensive(result, config)
 		reject_unknown_keys(result, accession_cure, 'sch.defensive.accession_cure', {
 			'enabled', 'minimum_members', 'member_hpp_at_most', 'minimum_total_missing_hp',
 		})
-		validate_disabled_feature(result, accession_cure, 'sch.defensive.accession_cure')
+		require_boolean(result, accession_cure, 'enabled', 'sch.defensive.accession_cure.enabled')
 		require_integer(result, accession_cure, 'minimum_members', 'sch.defensive.accession_cure.minimum_members', 2, 6)
 		require_integer(result, accession_cure, 'member_hpp_at_most', 'sch.defensive.accession_cure.member_hpp_at_most', 1, 99)
 		require_integer(result, accession_cure, 'minimum_total_missing_hp', 'sch.defensive.accession_cure.minimum_total_missing_hp', 1, 99999)
@@ -385,19 +418,19 @@ local function validate_defensive(result, config)
 	)
 	if status ~= nil then
 		reject_unknown_keys(result, status, 'sch.defensive.accession_status_removal', { 'enabled', 'minimum_members' })
-		validate_disabled_feature(result, status, 'sch.defensive.accession_status_removal')
+		require_boolean(result, status, 'enabled', 'sch.defensive.accession_status_removal.enabled')
 		require_integer(result, status, 'minimum_members', 'sch.defensive.accession_status_removal.minimum_members', 2, 6)
 	end
 	local rapture = require_table(result, defensive, 'rapture', 'sch.defensive.rapture')
 	if rapture ~= nil then
 		reject_unknown_keys(result, rapture, 'sch.defensive.rapture', { 'enabled', 'minimum_missing_hp' })
-		validate_disabled_feature(result, rapture, 'sch.defensive.rapture')
+		require_boolean(result, rapture, 'enabled', 'sch.defensive.rapture.enabled')
 		require_integer(result, rapture, 'minimum_missing_hp', 'sch.defensive.rapture.minimum_missing_hp', 1, 99999)
 	end
 	local penury = require_table(result, defensive, 'penury', 'sch.defensive.penury')
 	if penury ~= nil then
 		reject_unknown_keys(result, penury, 'sch.defensive.penury', { 'enabled', 'maximum_mpp' })
-		validate_disabled_feature(result, penury, 'sch.defensive.penury')
+		require_boolean(result, penury, 'enabled', 'sch.defensive.penury.enabled')
 		require_integer(result, penury, 'maximum_mpp', 'sch.defensive.penury.maximum_mpp', 0, 100)
 	end
 end
@@ -411,7 +444,7 @@ local function validate_offense(result, config)
 		reject_unknown_keys(result, burst, 'sch.offense.magic_burst', {
 			'enabled', 'minimum_mpp', 'minimum_target_hpp', 'spells',
 		})
-		validate_disabled_feature(result, burst, 'sch.offense.magic_burst')
+		validate_deferred_feature(result, burst, 'sch.offense.magic_burst')
 		require_integer(result, burst, 'minimum_mpp', 'sch.offense.magic_burst.minimum_mpp', 0, 100)
 		require_integer(result, burst, 'minimum_target_hpp', 'sch.offense.magic_burst.minimum_target_hpp', 1, 100)
 		validate_empty_array(result, burst.spells, 'sch.offense.magic_burst.spells')
@@ -421,7 +454,7 @@ local function validate_offense(result, config)
 		reject_unknown_keys(result, skillchain, 'sch.offense.skillchain', {
 			'enabled', 'allow_party_close', 'plans',
 		})
-		validate_disabled_feature(result, skillchain, 'sch.offense.skillchain')
+		validate_deferred_feature(result, skillchain, 'sch.offense.skillchain')
 		if require_boolean(result, skillchain, 'allow_party_close', 'sch.offense.skillchain.allow_party_close')
 			and skillchain.allow_party_close ~= false then
 			add_issue(

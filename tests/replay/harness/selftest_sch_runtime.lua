@@ -20,12 +20,16 @@ end
 local function regen_plan(id, deadline)
 	return {
 		id = id,
-		purpose = 'party_regen',
+		purpose = 'party_accession_maintenance',
 		domain = 'maintenance',
 		required_art = 'light',
 		required_addendum = nil,
 		stratagems = { 'Accession', 'Perpetuance' },
+		atomic = true,
 		spell = 'Regen V',
+		buff_family = 'accession_42',
+		duration_family = 'accession_maintenance',
+		spell_mp_multiplier = 2.0,
 		anchor_id = 1001,
 		anchor_name = 'Anchor',
 		expected_recipients = {
@@ -45,6 +49,7 @@ local function configure_ready(runtime, at, available)
 	runtime.observe_environment({
 		engine_enabled = true,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		main_job = 'SCH',
 		player_hpp = 100,
 		party_generation = 7,
@@ -98,6 +103,7 @@ local function observe_environment(runtime, at, engine_enabled, maintenance_enab
 	return runtime.observe_environment({
 		engine_enabled = engine_enabled,
 		maintenance_enabled = maintenance_enabled,
+		defensive_enabled = true,
 		main_job = main_job,
 		player_hpp = player_hpp,
 		party_generation = 7,
@@ -125,17 +131,27 @@ local function main()
 	assert_equal(generation, 1, 'first sequence generation mismatch')
 	assert_true(runtime.requires_fast_tick(), 'active Scholar sequence must require fast tick')
 	assert_equal(runtime.lane_status().class, 'planning', 'initial Scholar lane mismatch')
+	assert_true(runtime.lane_status().reserved, 'atomic sequence must reserve the lane before Accession')
+	assert_true(runtime.lane_status().atomic, 'maintenance stratagem chain must be atomic')
 
 	local accession, accession_reason = runtime.next_step(100.1)
 	assert_true(type(accession) == 'table', 'Accession step missing: ' .. tostring(accession_reason))
 	assert_equal(accession.action_name, 'Accession', 'first stratagem mismatch')
 	assert_equal(accession.phase, 'use_accession', 'Accession phase mismatch')
+	assert_true(accession.uses_reserved_charge, 'Accession must consume a reserved charge')
+	local accession_ready, accession_ready_reason = runtime.reserved_charge_step_ready(accession)
+	assert_true(accession_ready, 'reserved Accession readiness failed: ' .. tostring(accession_ready_reason))
 	dispatch_and_confirm_ja(runtime, accession, { 358, 366 }, 100.2)
 	assert_equal(runtime.snapshot().active_sequence.phase, 'use_perpetuance', 'Perpetuance phase mismatch')
 	assert_equal(runtime.lane_status().class, 'prepared_support', 'prepared Accession must reserve support lane')
 
 	local perpetuance = runtime.next_step(100.5)
 	assert_equal(perpetuance.action_name, 'Perpetuance', 'second stratagem mismatch')
+	assert_true(perpetuance.uses_reserved_charge, 'Perpetuance must consume the second reserved charge')
+	local perpetuance_ready, perpetuance_ready_reason = runtime.reserved_charge_step_ready(perpetuance)
+	assert_true(perpetuance_ready,
+		'reserved Perpetuance readiness failed while shared recast is active: '
+			.. tostring(perpetuance_ready_reason))
 	dispatch_and_confirm_ja(runtime, perpetuance, { 358, 366, 469 }, 100.6)
 	assert_equal(runtime.snapshot().active_sequence.phase, 'cast_spell', 'spell phase mismatch')
 	assert_equal(runtime.snapshot().active_sequence.reserved_charges_remaining, 0, 'charge reservation mismatch')
@@ -159,15 +175,15 @@ local function main()
 	local completed_snapshot = runtime.snapshot()
 	assert_true(completed_snapshot.active_sequence == nil, 'completed sequence must clear active state')
 	assert_equal(completed_snapshot.last_sequence.result, 'complete', 'completed sequence result mismatch')
-	assert_equal(completed_snapshot.owned_buffs[1001].regen.exact_spell, 'Regen V', 'owned Regen identity mismatch')
-	assert_equal(completed_snapshot.owned_buffs[1001].regen.duration_confidence, 'unknown',
-		'unvalidated duration must remain unknown')
-	assert_equal(completed_snapshot.owned_buffs[1001].regen.duration_reason,
-		'phase0_duration_unvalidated', 'unknown duration reason mismatch')
-	assert_equal(completed_snapshot.owned_buffs[1001].regen.duration_model_key,
-		'regen|Regen V|Accession,Perpetuance', 'owned duration model key mismatch')
+	assert_equal(completed_snapshot.owned_buffs[1001].accession_42.exact_spell, 'Regen V', 'owned Regen identity mismatch')
+	assert_equal(completed_snapshot.owned_buffs[1001].accession_42.duration_confidence, 'confirmed',
+		'captured duration must be confirmed')
+	assert_equal(completed_snapshot.owned_buffs[1001].accession_42.duration_reason,
+		'', 'captured duration reason mismatch')
+	assert_equal(completed_snapshot.owned_buffs[1001].accession_42.duration_model_key,
+		'accession_maintenance|Regen V|Accession,Perpetuance', 'owned duration model key mismatch')
 	assert_true(completed_snapshot.owned_buffs[1003] == nil, 'unsuccessful planned recipient must not gain ownership')
-	assert_equal(completed_snapshot.owned_buffs[1099].regen.presence, 'present', 'successful unexpected recipient must be recorded')
+	assert_equal(completed_snapshot.owned_buffs[1099].accession_42.presence, 'present', 'successful unexpected recipient must be recorded')
 	assert_equal(completed_snapshot.unexpected_recipients[1], 1099, 'unexpected recipient diagnostic mismatch')
 	assert_true(not runtime.requires_fast_tick(), 'completed runtime must return to idle cadence')
 
@@ -177,10 +193,11 @@ local function main()
 		{ id = 1099, buffs = { 42 } },
 	}, 104.0)
 	local reconciled = runtime.snapshot()
-	assert_equal(reconciled.owned_buffs[1001].regen.presence, 'absent', 'observed Regen loss mismatch')
-	assert_equal(reconciled.owned_buffs[1002].regen.presence, 'unknown', 'missing party buffs must remain unknown')
-	assert_equal(reconciled.owned_buffs[1099].regen.presence, 'present', 'confirmed Regen presence mismatch')
-	assert_equal(reconciled.owned_buffs[1099].regen.estimated_expires_at, 0, 'unproven duration must remain unknown')
+	assert_equal(reconciled.owned_buffs[1001].accession_42.presence, 'absent', 'observed Regen loss mismatch')
+	assert_equal(reconciled.owned_buffs[1002].accession_42.presence, 'unknown', 'missing party buffs must remain unknown')
+	assert_equal(reconciled.owned_buffs[1099].accession_42.presence, 'present', 'confirmed Regen presence mismatch')
+	assert_equal(reconciled.owned_buffs[1099].accession_42.estimated_expires_at, 543,
+		'captured duration expiry mismatch')
 
 	configure_ready(runtime, 150, 2)
 	prepare_regen_spell(runtime, 'invalid-recipient', 150)
@@ -312,6 +329,7 @@ local function main()
 	local environment_ok, environment_reason = runtime.observe_environment({
 		engine_enabled = true,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		main_job = 'SCH',
 		player_hpp = 100,
 		party_generation = 8,
@@ -329,6 +347,7 @@ local function main()
 	local anchor_ok, anchor_reason = runtime.observe_environment({
 		engine_enabled = true,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		main_job = 'SCH',
 		player_hpp = 100,
 		party_generation = 7,
@@ -345,6 +364,7 @@ local function main()
 	local engine_ok, engine_reason = runtime.observe_environment({
 		engine_enabled = false,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		main_job = 'SCH',
 		player_hpp = 100,
 		party_generation = 7,
@@ -381,9 +401,84 @@ local function main()
 	assert_equal(runtime.snapshot().stratagem.confidence, 'unknown', 'preemption must invalidate charge confidence')
 	assert_equal(runtime.lane_status().class, 'none', 'preemption must release Scholar lane')
 
-	configure_ready(runtime, 800, 2)
-	assert_true(runtime.start_sequence(regen_plan('lifecycle-reset', 830), 800), 'reset sequence start failed')
-	runtime.reset('zone_change', 800.1)
+	configure_ready(runtime, 780, 0)
+	runtime.observe_player_buffs({}, 780)
+	assert_true(runtime.start_sequence({
+		id = 'light-arts-live',
+		purpose = 'ensure_light_arts',
+		domain = 'maintenance',
+		action_type = 'job_ability',
+		action_name = 'Light Arts',
+		target_id = 1001,
+		target_name = 'Anchor',
+		party_generation = 7,
+		deadline = 786,
+	}, 780), 'Light Arts sequence start failed')
+	local light_arts = runtime.next_step(780.1)
+	assert_equal(light_arts.action_name, 'Light Arts', 'Light Arts live step mismatch')
+	dispatch_and_confirm_ja(runtime, light_arts, { 358 }, 780.2)
+	assert_equal(runtime.snapshot().last_sequence.result, 'complete',
+		'Light Arts live sequence did not complete')
+
+	configure_ready(runtime, 790, 0)
+	runtime.observe_player_buffs({ 358, 188 }, 790)
+	assert_true(runtime.start_sequence({
+		id = 'sublimation-release-live',
+		purpose = 'sublimation_release',
+		domain = 'maintenance',
+		action_type = 'job_ability',
+		action_name = 'Sublimation',
+		target_id = 1001,
+		target_name = 'Anchor',
+		party_generation = 7,
+		deadline = 796,
+	}, 790), 'Sublimation release sequence start failed')
+	local sublimation_release = runtime.next_step(790.1)
+	assert_true(runtime.note_dispatched(sublimation_release, 790.2),
+		'Sublimation release dispatch failed')
+	assert_true(runtime.observe_local_action({
+		action_type = 'job_ability',
+		action_name = 'Sublimation',
+		success = true,
+	}, 790.3), 'Sublimation release result observation failed')
+	runtime.observe_player_buffs({ 358 }, 790.4)
+	assert_equal(runtime.snapshot().last_sequence.result, 'complete',
+		'Sublimation release sequence did not complete')
+
+	configure_ready(runtime, 800, 0)
+	assert_true(runtime.start_sequence({
+		id = 'storm-live',
+		purpose = 'targeted_storm',
+		domain = 'maintenance',
+		required_art = 'light',
+		required_addendum = nil,
+		stratagems = {},
+		spell = 'Thunderstorm II',
+		target_id = 1002,
+		target_name = 'Second',
+		expected_recipients = {
+			{ id = 1002, name = 'Second' },
+		},
+		party_generation = 7,
+		deadline = 812,
+	}, 800), 'targeted Storm sequence start failed')
+	local storm = runtime.next_step(800.1)
+	assert_equal(storm.action_name, 'Thunderstorm II', 'targeted Storm live step mismatch')
+	assert_true(runtime.note_dispatched(storm, 800.2), 'targeted Storm dispatch failed')
+	assert_true(runtime.observe_local_action({
+		action_type = 'spell',
+		action_name = 'Thunderstorm II',
+		success = true,
+		successful_recipients = {
+			{ id = 1002, name = 'Second' },
+		},
+	}, 802), 'targeted Storm result observation failed')
+	assert_equal(runtime.snapshot().owned_buffs[1002].storm.exact_spell,
+		'Thunderstorm II', 'targeted Storm ownership mismatch')
+
+	configure_ready(runtime, 820, 2)
+	assert_true(runtime.start_sequence(regen_plan('lifecycle-reset', 850), 820), 'reset sequence start failed')
+	runtime.reset('zone_change', 820.1)
 	local reset_snapshot = runtime.snapshot()
 	assert_true(reset_snapshot.active_sequence == nil, 'lifecycle reset must clear active sequence')
 	assert_true(reset_snapshot.pending == nil, 'lifecycle reset must clear pending action')
@@ -395,7 +490,7 @@ local function main()
 	assert_true(runtime.check_invariants(), 'reset runtime invariants must hold')
 	local internal = runtime._test_state()
 	internal.pending = { sequence_id = 'invalid' }
-	local invariants_valid, invariant_reason = runtime.enforce_invariants(800.2)
+	local invariants_valid, invariant_reason = runtime.enforce_invariants(820.2)
 	assert_true(not invariants_valid, 'invalid pending state must fail runtime invariants')
 	assert_equal(invariant_reason, 'pending_without_active_sequence', 'invariant reason mismatch')
 	assert_true(runtime.snapshot().pending == nil, 'invariant enforcement must clear orphaned pending state')

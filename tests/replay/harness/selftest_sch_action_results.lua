@@ -74,16 +74,54 @@ local function main()
 	assert_equal(unexpected.successful_recipients[4].name, '',
 		'unexpected recipient must not gain an invented name')
 
-	local unknown_catalog = module.production_catalog('spell', 'Regen V')
-	local blocked = classify({
+	local production_catalog = module.production_catalog('spell', 'Regen V')
+	local production = classify({
 		{ id = 1001, actions = { { message = 230, param = 42 } } },
-	}, unknown_catalog)
-	assert_equal(blocked.state, 'unclassified', 'production catalog must remain unclassified')
-	assert_equal(blocked.blocker, 'phase0_action_results_unvalidated',
-		'production action-result blocker mismatch')
-	assert_equal(#blocked.successful_recipients, 0,
-		'unvalidated production messages must not create successful recipients')
-	assert_equal(blocked.unknown_message_ids[1], 230, 'unknown message visibility mismatch')
+	}, production_catalog)
+	assert_equal(production.state, 'classified', 'captured production result must classify')
+	assert_equal(production.outcome, 'partial_success',
+		'captured single-recipient production outcome mismatch')
+	assert_equal(production.catalog_source,
+		'windower_resources:action_messages',
+		'production action-result source mismatch')
+	local phalanx = module.classify({
+		action_type = 'spell',
+		action_name = 'Phalanx',
+		expected_recipients = { { id = 1001, name = 'Scholar' } },
+		raw_targets = { { id = 1001, actions = { { message = 230, param = 116 } } } },
+		catalog = module.production_catalog('spell', 'Phalanx'),
+	})
+	assert_equal(phalanx.outcome, 'success',
+		'cataloged Accession maintenance spell result mismatch')
+	local light_arts = module.classify({
+		action_type = 'job_ability',
+		action_name = 'Light Arts',
+		expected_recipients = { { id = 1001, name = 'Scholar' } },
+		raw_targets = { { id = 1001, actions = { { message = 100, param = 0 } } } },
+		catalog = module.production_catalog('job_ability', 'Light Arts'),
+	})
+	assert_equal(light_arts.outcome, 'success', 'captured Light Arts result mismatch')
+	local sublimation_release = module.classify({
+		action_type = 'job_ability',
+		action_name = 'Sublimation',
+		expected_recipients = { { id = 1001, name = 'Scholar' } },
+		raw_targets = { { id = 1001, actions = { { message = 451, param = 332 } } } },
+		catalog = module.production_catalog('job_ability', 'Sublimation'),
+	})
+	assert_equal(sublimation_release.outcome, 'success',
+		'captured Sublimation release result mismatch')
+	local thunderstorm = module.classify({
+		action_type = 'spell',
+		action_name = 'Thunderstorm II',
+		expected_recipients = { { id = 1002, name = 'Tank' } },
+		raw_targets = { { id = 1002, actions = { { message = 230, param = 593 } } } },
+		catalog = module.production_catalog('spell', 'Thunderstorm II'),
+	})
+	assert_equal(thunderstorm.outcome, 'success',
+		'captured Thunderstorm II result mismatch')
+	local unknown_catalog = module.production_catalog('spell', 'Regen IV')
+	assert_equal(unknown_catalog.confidence, 'unknown',
+		'uncaptured exact action must remain unknown')
 
 	local unknown_message = classify({
 		{ id = 1001, actions = { { message = 999, param = 42 } } },

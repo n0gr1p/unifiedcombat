@@ -18,6 +18,9 @@ function M.decide(lane, proposal, critical_cure, hard_emergency)
 	if type(lane.reserved) ~= 'boolean' then
 		error('Scholar lane policy requires a boolean reserved state')
 	end
+	if type(lane.atomic) ~= 'boolean' then
+		error('Scholar lane policy requires a boolean atomic state')
+	end
 	if type(proposal) ~= 'table' then
 		error('Scholar lane policy requires a proposal')
 	end
@@ -27,18 +30,33 @@ function M.decide(lane, proposal, critical_cure, hard_emergency)
 	if type(hard_emergency) ~= 'boolean' then
 		error('Scholar lane policy requires a boolean hard-emergency classification')
 	end
-	if lane.reserved ~= true or lane.class == 'dispatched' then
+	if lane.reserved ~= true then
 		return {
 			allowed = true,
 			preempt = false,
 			reason = '',
 		}
 	end
-	if tostring(proposal.provider or '') == 'maintenance_sch' then
+	local provider = tostring(proposal.provider or '')
+	if provider == 'maintenance_sch' or provider == 'defensive_sch' then
 		return {
 			allowed = true,
 			preempt = false,
 			reason = 'sch_sequence_owner',
+		}
+	end
+	if lane.atomic then
+		return {
+			allowed = false,
+			preempt = false,
+			reason = 'sch_lane_atomic',
+		}
+	end
+	if lane.class == 'dispatched' then
+		return {
+			allowed = true,
+			preempt = false,
+			reason = '',
 		}
 	end
 	if hard_emergency then
@@ -68,6 +86,9 @@ function M.holds_movement_and_targeting(lane)
 	end
 	if type(lane.reserved) ~= 'boolean' then
 		error('Scholar lane movement policy requires a boolean reserved state')
+	end
+	if type(lane.atomic) ~= 'boolean' then
+		error('Scholar lane movement policy requires a boolean atomic state')
 	end
 	return lane.class == 'prepared_support' or lane.class == 'timed_combat'
 end

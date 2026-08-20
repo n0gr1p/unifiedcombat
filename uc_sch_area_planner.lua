@@ -18,9 +18,12 @@ end
 
 function M.production_mechanics()
 	return {
-		confidence = 'unknown',
+		confidence = 'confirmed',
 		model_key = ACCESSION_MODEL_KEY,
-		reason = 'accession_geometry_unvalidated',
+		source = 'sch_capture:Nyoourke_party_ranges_20260820T113121Z',
+		radius_yalms = 10,
+		max_coordinate_age_s = 1,
+		distance_metric = 'horizontal',
 	}
 end
 
@@ -135,6 +138,15 @@ function M.select(input)
 		by_id,
 		true
 	)
+	local anchors = eligible
+	if input.anchor_recipient_ids ~= nil then
+		anchors = validate_id_set(
+			input.anchor_recipient_ids,
+			'Scholar area planner anchor_recipient_ids',
+			by_id,
+			true
+		)
+	end
 	for id in pairs(eligible) do
 		if unsafe[id] then
 			error('Scholar area planner recipient cannot be both eligible and unsafe')
@@ -205,6 +217,9 @@ function M.select(input)
 	for id in pairs(unsafe) do
 		relevant[id] = true
 	end
+	for id in pairs(anchors) do
+		relevant[id] = true
+	end
 	local relevant_rows = sorted_relevant_rows(members, relevant)
 	for i = 1, #relevant_rows do
 		local member = relevant_rows[i]
@@ -227,7 +242,7 @@ function M.select(input)
 	local best = nil
 	for i = 1, #members do
 		local anchor = members[i]
-		if eligible[anchor.id] then
+		if anchors[anchor.id] then
 			local candidate = {
 				anchor_id = anchor.id,
 				anchor_name = anchor.name,

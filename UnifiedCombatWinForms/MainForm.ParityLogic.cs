@@ -2108,6 +2108,10 @@ public partial class MainForm
             true
         );
         _schRegenEnabled.Checked = ReadOptionalScholarBool(snapshot, "sch_regen_enabled", false);
+        _schAccessionPerpetuanceSpells.Text = SessionStateHelper.GetString(
+            snapshot,
+            "sch_accession_perpetuance_spells"
+        );
         _schRegenMinimumCoverage.Value = ReadOptionalScholarInteger(
             snapshot,
             "sch_regen_minimum_coverage",
@@ -2162,6 +2166,18 @@ public partial class MainForm
             1,
             100
         );
+        _schAccessionCureEnabled.Checked = ReadOptionalScholarBool(
+            snapshot, "sch_accession_cure_enabled", false
+        );
+        _schAccessionStatusRemovalEnabled.Checked = ReadOptionalScholarBool(
+            snapshot, "sch_accession_status_removal_enabled", false
+        );
+        _schRaptureEnabled.Checked = ReadOptionalScholarBool(
+            snapshot, "sch_rapture_enabled", false
+        );
+        _schPenuryEnabled.Checked = ReadOptionalScholarBool(
+            snapshot, "sch_penury_enabled", false
+        );
         UpdateScholarUiState();
     }
 
@@ -2185,6 +2201,7 @@ public partial class MainForm
         _schArtsMinimumCommit.Enabled = enabled;
         _schArtsEmergencyOffArtCasts.Enabled = enabled;
         _schRegenEnabled.Enabled = enabled;
+        _schAccessionPerpetuanceSpells.Enabled = enabled && _schRegenEnabled.Checked;
         _schRegenMinimumCoverage.Enabled = enabled && _schRegenEnabled.Checked;
         _schRegenRefreshBefore.Enabled = enabled && _schRegenEnabled.Checked;
         _schStormsEnabled.Enabled = enabled;
@@ -2195,6 +2212,10 @@ public partial class MainForm
         _schSublimationReleaseMpp.Enabled = enabled && _schSublimationEnabled.Checked;
         _schSublimationReleaseComplete.Enabled = enabled && _schSublimationEnabled.Checked;
         _schSublimationMinimumHpp.Enabled = enabled && _schSublimationEnabled.Checked;
+        _schAccessionCureEnabled.Enabled = enabled;
+        _schAccessionStatusRemovalEnabled.Enabled = enabled;
+        _schRaptureEnabled.Enabled = enabled;
+        _schPenuryEnabled.Enabled = enabled;
 
         if (!enabled)
         {
@@ -2210,6 +2231,9 @@ public partial class MainForm
         }
         try
         {
+            StructuredProfileV2Writer.ParseScholarAccessionMaintenanceSpells(
+                _schAccessionPerpetuanceSpells.Text.Trim()
+            );
             StructuredProfileV2Writer.ParseScholarStormAssignments(_schStormAssignments.Text.Trim());
         }
         catch (InvalidDataException ex)
@@ -2219,8 +2243,7 @@ public partial class MainForm
             return;
         }
         _schValidation.ForeColor = Color.DarkGreen;
-        _schValidation.Text =
-            "Scholar Phase 1 configuration is valid. Runtime execution remains observe-only until field-evidence gates pass.";
+        _schValidation.Text = "Scholar support and group-defense configuration is valid.";
     }
 
     private void EnsureBrdTabVisibility(bool shouldShow)

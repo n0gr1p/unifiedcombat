@@ -11,10 +11,10 @@ for _, ability in pairs(capabilities.abilities) do
 	ability_names[ability.id] = ability.name
 end
 
-local spell_names = {
-	[capabilities.regen_spells['Regen V'].id] = 'Regen V',
-	[capabilities.embrava.id] = 'Embrava',
-}
+local spell_names = { [capabilities.embrava.id] = 'Embrava' }
+for _, spell in pairs(capabilities.accession_maintenance_spells) do
+	spell_names[spell.id] = spell.name
+end
 for _, spell in pairs(capabilities.storm_spells) do
 	spell_names[spell.id] = spell.name
 end

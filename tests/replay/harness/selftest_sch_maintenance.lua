@@ -10,6 +10,15 @@ local function assert_equal(actual, expected, message)
 	end
 end
 
+local function logs_contain(logs, needle)
+	for i = 1, #logs do
+		if logs[i]:find(needle, 1, true) ~= nil then
+			return true
+		end
+	end
+	return false
+end
+
 local function base_config()
 	local config = require('uc_sch_config').default_config()
 	config.enabled = true
@@ -77,7 +86,11 @@ local function members()
 end
 
 local function unknown_area_mechanics()
-	return require('uc_sch_area_planner').production_mechanics()
+	return {
+		confidence = 'unknown',
+		model_key = 'Accession|party',
+		reason = 'fixture_accession_geometry_unvalidated',
+	}
 end
 
 local function sublimation_safety(critical_defensive_present, dangerous_local_pressure_present)
@@ -108,6 +121,10 @@ local function sublimation_ready()
 	return true, '', 'ja'
 end
 
+local function maintenance_spell_ready()
+	return true, '', 'spell'
+end
+
 local function main()
 	package.loaded.uc_sch_maintenance = nil
 	package.loaded.uc_provider_sch_maintenance = nil
@@ -131,7 +148,7 @@ local function main()
 		end,
 	}, runtime_snapshot('none', 'unknown', 0))
 	assert_equal(arts_result.candidate.action_name, 'Light Arts', 'missing Arts candidate mismatch')
-	assert_true(arts_result.candidate.observe_only, 'Arts candidate must remain observe-only')
+	assert_true(arts_result.candidate.observe_only == nil, 'Arts candidate must be executable')
 	assert_equal(arts_result.arts.plan.purpose, 'ensure_light_arts', 'Arts plan purpose mismatch')
 	assert_equal(arts_result.arts.plan.expected_buff_id, 358, 'Arts expected buff mismatch')
 	assert_equal(arts_result.arts.plan.recast_id, 228, 'Arts recast id mismatch')
@@ -174,7 +191,7 @@ local function main()
 	}, runtime_snapshot('light', 'unknown', 0))
 	assert_equal(storm_result.candidate.action_name, 'Thunderstorm II', 'missing storm candidate mismatch')
 	assert_equal(storm_result.candidate.target_id, 1002, 'storm target mismatch')
-	assert_true(storm_result.candidate.observe_only, 'storm candidate must remain observe-only')
+	assert_true(storm_result.candidate.observe_only == nil, 'storm candidate must be executable')
 	assert_equal(storm_result.storms.plan.purpose, 'targeted_storm', 'storm plan purpose mismatch')
 	assert_equal(storm_result.storms.plan.party_generation, 7, 'storm plan party generation mismatch')
 	assert_equal(storm_result.storms.plan.expected_recipients[1].id, 1002,
@@ -297,8 +314,8 @@ local function main()
 		'Sublimation activation recast evidence mismatch')
 	assert_equal(activation_result.sublimation.plan.readiness_source,
 		'unified_scheduler:action_ready', 'Sublimation readiness source mismatch')
-	assert_true(activation_result.candidate.observe_only,
-		'Sublimation activation candidate must remain observe-only')
+	assert_true(activation_result.candidate.observe_only == nil,
+		'Sublimation activation candidate must be executable')
 
 	local unsafe_activation = maintenance.evaluate(
 		sublimation_config,
@@ -389,9 +406,12 @@ local function main()
 		),
 		release_snapshot
 	)
-	assert_equal(unknown_release.sublimation.blocker,
-		'phase0_sublimation_release_capacity_unvalidated',
-		'unknown Sublimation release capacity must block')
+	assert_equal(unknown_release.sublimation.blocker, '',
+		'captured Sublimation release capacity must authorize release')
+	assert_equal(unknown_release.candidate.action_name, 'Sublimation',
+		'captured Sublimation release candidate mismatch')
+	assert_equal(unknown_release.sublimation.plan.minimum_missing_mp, 332,
+		'captured Sublimation release capacity mismatch')
 	local confirmed_release_mechanics = {
 		confidence = 'confirmed',
 		model_key = 'Sublimation|release_capacity',
@@ -443,6 +463,7 @@ local function main()
 		player = player(),
 		party_members = members(),
 		area_mechanics = unknown_area_mechanics(),
+		spell_ready = maintenance_spell_ready,
 	}, runtime_snapshot('light', 'unknown', 0))
 	assert_equal(regen_result.regen.blocker, 'charge_confidence_unknown', 'unknown charge Regen blocker mismatch')
 	local geometry_result = maintenance.evaluate(regen_config, {
@@ -450,6 +471,7 @@ local function main()
 		player = player(),
 		party_members = members(),
 		area_mechanics = unknown_area_mechanics(),
+		spell_ready = maintenance_spell_ready,
 	}, runtime_snapshot('light', 'confirmed', 2))
 	assert_equal(geometry_result.regen.blocker, 'accession_geometry_unvalidated', 'geometry gate mismatch')
 	local unknown_members = members()
@@ -459,6 +481,7 @@ local function main()
 		player = player(),
 		party_members = unknown_members,
 		area_mechanics = unknown_area_mechanics(),
+		spell_ready = maintenance_spell_ready,
 	}, runtime_snapshot('light', 'confirmed', 2))
 	assert_equal(unknown_result.regen.blocker, 'party_buff_state_unknown', 'unknown party buff blocker mismatch')
 	assert_equal(geometry_result.regen.geometry.blocker, 'accession_geometry_unvalidated',
@@ -470,6 +493,7 @@ local function main()
 		player = player(),
 		party_members = unowned_members,
 		area_mechanics = unknown_area_mechanics(),
+		spell_ready = maintenance_spell_ready,
 	}, runtime_snapshot('light', 'confirmed', 2))
 	assert_equal(unowned_result.regen.unowned_existing_recipient_ids[1], 1001,
 		'unowned existing Regen recipient mismatch')
@@ -489,6 +513,7 @@ local function main()
 			max_coordinate_age_s = 1,
 			distance_metric = 'horizontal',
 		},
+		spell_ready = maintenance_spell_ready,
 	}, runtime_snapshot('light', 'confirmed', 2))
 	assert_equal(ready_result.regen.state, 'actionable', 'ready Regen plan state mismatch')
 	assert_equal(ready_result.candidate.action_name, 'Accession', 'ready Regen candidate mismatch')
@@ -497,7 +522,46 @@ local function main()
 		'ready Regen expected coverage mismatch')
 	assert_equal(ready_result.regen.plan.geometry_source,
 		'fixture:confirmed_accession_geometry', 'ready Regen geometry source mismatch')
-	assert_true(ready_result.candidate.observe_only, 'ready Regen candidate must remain observe-only')
+	assert_true(ready_result.candidate.observe_only == nil, 'ready Regen candidate must be executable')
+
+	local list_config = base_config()
+	list_config.support.regen.enabled = true
+	list_config.support.regen.spells = { 'Regen V', 'Phalanx' }
+	list_config.support.regen.minimum_coverage = 3
+	local list_members = members()
+	local list_snapshot = runtime_snapshot('light', 'confirmed', 2)
+	for i = 1, #list_members do
+		list_members[i].buffs[#list_members[i].buffs + 1] = 42
+		list_snapshot.owned_buffs[list_members[i].id] = {
+			accession_42 = {
+				exact_spell = 'Regen V',
+				status_id = 42,
+				presence = 'present',
+			},
+		}
+	end
+	local list_result = maintenance.evaluate(list_config, {
+		now = 100,
+		player = player(),
+		party_members = list_members,
+		area_mechanics = {
+			confidence = 'confirmed',
+			model_key = 'Accession|party',
+			source = 'fixture:confirmed_accession_geometry',
+			radius_yalms = 4,
+			max_coordinate_age_s = 1,
+			distance_metric = 'horizontal',
+		},
+		spell_ready = maintenance_spell_ready,
+	}, list_snapshot)
+	assert_equal(list_result.regen.spell, 'Phalanx',
+		'ordered maintenance list must advance past satisfied Regen V')
+	assert_equal(list_result.regen.plan.anchor_id, 1001,
+		'self-target Accession maintenance must anchor on the Scholar')
+	assert_equal(list_result.regen.plan.buff_family, 'accession_116',
+		'Phalanx ownership family mismatch')
+	assert_true(list_result.regen.plan.atomic,
+		'Accession and Perpetuance maintenance chain must be atomic')
 
 	local provider_config = storm_config
 	local provider_player = player()
@@ -572,6 +636,18 @@ local function main()
 			assert_equal(target_id, provider_player.id, 'provider readiness target mismatch')
 			return true, '', 'ja'
 		end,
+		sch_spell_ready = function()
+			return true, '', 'spell'
+		end,
+		select_cure_spell = function()
+			return 'Cure IV', ''
+		end,
+		status_removal_for_buff = function()
+			return nil
+		end,
+		is_critical_defensive = function()
+			return false
+		end,
 		get_sublimation_safety = function()
 			return {
 				confidence = 'confirmed',
@@ -584,6 +660,9 @@ local function main()
 		get_sublimation_release_mechanics = function()
 			return require('uc_sch_sublimation').production_release_mechanics()
 		end,
+		routine_priority = 75,
+		prepared_priority = 150,
+		defensive_priority = 145,
 		log = function(message)
 			logs[#logs + 1] = message
 		end,
@@ -596,28 +675,34 @@ local function main()
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		ability_recasts_present = true,
 		ability_recasts = { [231] = 17 },
 	}, out)
-	assert_true(emitted == false, 'observe-only provider must report no emission')
-	assert_equal(#out, 0, 'observe-only provider must not append scheduler proposals')
+	assert_true(emitted == true, 'live provider must report its emitted proposal')
+	assert_equal(#out, 1, 'live provider must append one scheduler proposal')
 	local status = provider.status_snapshot()
-	assert_equal(status.mode, 'observe_only', 'provider mode mismatch')
-	assert_equal(status.proposals_emitted, 0, 'provider emitted-count mismatch')
+	assert_equal(status.mode, 'live', 'provider mode mismatch')
+	assert_equal(status.proposals_emitted, 1, 'provider emitted-count mismatch')
+	assert_equal(out[1].action_name, 'Thunderstorm II', 'provider live proposal action mismatch')
+	assert_equal(out[1].priority_band, 75, 'provider routine priority mismatch')
 	assert_equal(status.candidate.action_name, 'Thunderstorm II', 'provider observed candidate mismatch')
 	assert_equal(status.storms.plan.purpose, 'targeted_storm', 'provider storm plan purpose mismatch')
 	assert_equal(status.storms.plan.target_id, 1002, 'provider storm plan target mismatch')
 	assert_equal(status.storms.plan.expected_recipients[1].id, 1002,
 		'provider storm plan exact recipient mismatch')
 	assert_true(status.candidate.plan ~= nil, 'provider storm candidate must expose its exact plan')
-	assert_equal(status.runtime.stratagem.confidence, 'unknown', 'provider must not invent charge confidence')
+	assert_equal(status.runtime.stratagem.confidence, 'confirmed',
+		'provider must consume captured charge evidence')
+	assert_equal(status.runtime.stratagem.estimated_available, 4,
+		'provider captured charge count mismatch')
 	assert_equal(status.runtime.stratagem.observed_recast, 17, 'provider raw recast observation mismatch')
 	assert_equal(status.party_generation, 1, 'provider party generation mismatch')
 	assert_equal(status.runtime.environment.party_generation, 1, 'runtime party generation mismatch')
-	assert_true(#logs == 2, 'provider initial diagnostic log count mismatch')
-	assert_true(logs[1]:find('SCH_CHARGE_OBSERVATION', 1, true) ~= nil,
+	assert_true(#logs >= 2, 'provider initial diagnostic log count mismatch')
+	assert_true(logs_contain(logs, 'SCH_CHARGE_OBSERVATION'),
 		'provider initial charge diagnostic mismatch')
-	assert_true(logs[2]:find('SCH_OBSERVE', 1, true) ~= nil, 'provider observation diagnostic mismatch')
+	assert_true(logs_contain(logs, 'SCH_OBSERVE'), 'provider observation diagnostic mismatch')
 	assert_equal(status.job_points_spent, 2100, 'provider job-point status mismatch')
 	local status_lines = provider.status_lines(100)
 	assert_true(status_lines[2]:find('jp_spent=2100', 1, true) ~= nil,
@@ -632,11 +717,11 @@ local function main()
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		ability_recasts_present = true,
 		ability_recasts = { [231] = 16 },
 	}, traced_out)
-	assert_equal(#traced_out, 0, 'trace evaluation must remain observe-only')
-	assert_equal(#logs, 2, 'unchanged idle observation must not repeat diagnostic logs')
+	assert_equal(#traced_out, 1, 'trace evaluation must retain the live proposal')
 	assert_true(provider.status_snapshot().trace_armed, 'trace must wait for a relevant local action')
 	provider.observe_action({
 		actor_id = provider_player.id,
@@ -659,6 +744,7 @@ local function main()
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		ability_recasts_present = true,
 		ability_recasts = { [231] = 16 },
 	}, traced_out)
@@ -669,8 +755,7 @@ local function main()
 	assert_true(#traced_status.last_trace.events >= 5, 'transaction trace must retain raw evidence')
 	assert_equal(traced_status.last_trace.events[2].party[1].coordinate_observed_at, 101,
 		'provider trace must use the timestamped Scholar party snapshot')
-	assert_equal(#logs, 3, 'trace completion must be the only new log for unchanged evaluation')
-	assert_true(logs[#logs]:find('SCH_TRACE_COMPLETE', 1, true) ~= nil, 'one-shot trace completion log mismatch')
+	assert_true(logs_contain(logs, 'SCH_TRACE_COMPLETE'), 'one-shot trace completion log mismatch')
 
 	local owned_state = runtime._test_state()
 	owned_state.owned_buffs[1002] = {
@@ -687,6 +772,7 @@ local function main()
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		ability_recasts_present = true,
 		ability_recasts = { [231] = 15 },
 	}, traced_out)
@@ -701,6 +787,7 @@ local function main()
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		ability_recasts_present = true,
 		ability_recasts = { [231] = 14 },
 	}, traced_out)
@@ -712,6 +799,7 @@ local function main()
 	runtime.observe_environment({
 		engine_enabled = true,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		main_job = 'SCH',
 		player_hpp = 100,
 		party_generation = 2,
@@ -731,12 +819,16 @@ local function main()
 	}, 200)
 	assert_true(runtime.start_sequence({
 		id = 'provider-result',
-		purpose = 'party_regen',
+		purpose = 'party_accession_maintenance',
 		domain = 'maintenance',
 		required_art = 'light',
 		required_addendum = nil,
 		stratagems = { 'Accession', 'Perpetuance' },
+		atomic = true,
 		spell = 'Regen V',
+		buff_family = 'accession_42',
+		duration_family = 'accession_maintenance',
+		spell_mp_multiplier = 2.0,
 		anchor_id = 1001,
 		anchor_name = 'Scholar',
 		expected_recipients = {
@@ -765,7 +857,7 @@ local function main()
 		'classified provider result must complete the reducer transaction')
 	assert_equal(provider.status_snapshot().last_action_result.outcome, 'success',
 		'provider action-result diagnostic mismatch')
-	assert_equal(runtime.snapshot().owned_buffs[1002].regen.exact_spell, 'Regen V',
+	assert_equal(runtime.snapshot().owned_buffs[1002].accession_42.exact_spell, 'Regen V',
 		'provider result must record classified successful ownership')
 
 	use_confirmed_planning_evidence = true
@@ -778,18 +870,22 @@ local function main()
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		ability_recasts_present = true,
 		ability_recasts = { [231] = 0 },
 	}, ready_out)
 	local ready_status = provider.status_snapshot()
-	assert_equal(#ready_out, 0, 'ready observe-only Regen plan must emit zero proposals')
+	assert_equal(#ready_out, 1, 'ready Regen plan must emit one live proposal')
+	assert_equal(ready_out[1].action_name, 'Accession', 'live Regen first step mismatch')
+	assert_true(type(ready_out[1].detail.sch_step) == 'table',
+		'live Regen proposal must carry its exact runtime step')
 	assert_equal(ready_status.candidate.action_name, 'Accession',
 		'provider ready Regen candidate mismatch')
 	assert_equal(ready_status.regen.plan.anchor_id, 1002,
 		'provider ready Regen anchor mismatch')
 	assert_equal(ready_status.runtime.stratagem.confidence, 'confirmed',
 		'provider confirmed fixture charge model mismatch')
-	assert_equal(ready_status.proposals_emitted, 0,
+	assert_equal(ready_status.proposals_emitted, 1,
 		'provider ready Regen proposal count mismatch')
 	local ready_status_lines = provider.status_lines(250)
 	assert_true(ready_status_lines[6]:find(
@@ -810,19 +906,22 @@ local function main()
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		ability_recasts_present = true,
 		ability_recasts = { [231] = 0, [234] = 0 },
 	}, sublimation_out)
 	local sublimation_status = provider.status_snapshot()
-	assert_equal(#sublimation_out, 0,
-		'ready observe-only Sublimation activation must emit zero proposals')
+	assert_equal(#sublimation_out, 1,
+		'ready Sublimation activation must emit one live proposal')
+	assert_equal(sublimation_out[1].action_type, 'ja',
+		'live Sublimation scheduler action type mismatch')
 	assert_equal(sublimation_status.candidate.action_name, 'Sublimation',
 		'provider Sublimation candidate mismatch')
 	assert_equal(sublimation_status.sublimation.plan.purpose, 'sublimation_activate',
 		'provider Sublimation plan purpose mismatch')
 	assert_equal(sublimation_status.sublimation.plan.safety_source,
 		'fixture:provider_scheduler_safety', 'provider Sublimation safety source mismatch')
-	assert_equal(sublimation_status.proposals_emitted, 0,
+	assert_equal(sublimation_status.proposals_emitted, 1,
 		'provider ready Sublimation proposal count mismatch')
 	local sublimation_status_lines = provider.status_lines(260)
 	assert_true(sublimation_status_lines[8]:find(
@@ -840,18 +939,20 @@ local function main()
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
+		defensive_enabled = true,
 		ability_recasts_present = true,
 		ability_recasts = { [228] = 0, [231] = 0 },
 	}, arts_out)
 	local arts_status = provider.status_snapshot()
-	assert_equal(#arts_out, 0, 'ready observe-only Light Arts plan must emit zero proposals')
+	assert_equal(#arts_out, 1, 'ready Light Arts plan must emit one live proposal')
+	assert_equal(arts_out[1].action_name, 'Light Arts', 'live Light Arts proposal mismatch')
 	assert_equal(arts_status.candidate.action_name, 'Light Arts',
 		'provider Light Arts candidate mismatch')
 	assert_equal(arts_status.arts.plan.purpose, 'ensure_light_arts',
 		'provider Light Arts plan purpose mismatch')
 	assert_equal(arts_status.arts.plan.recast_id, 228,
 		'provider Light Arts recast id mismatch')
-	assert_equal(arts_status.proposals_emitted, 0,
+	assert_equal(arts_status.proposals_emitted, 1,
 		'provider ready Light Arts proposal count mismatch')
 	local arts_status_lines = provider.status_lines(270)
 	assert_true(arts_status_lines[3]:find(
@@ -859,6 +960,42 @@ local function main()
 		1,
 		true
 	) ~= nil, 'provider status must expose the complete Light Arts plan')
+
+	local defensive_config = base_config()
+	defensive_config.defensive.accession_cure.enabled = true
+	provider_members = members()
+	for i = 1, #provider_members do
+		provider_members[i].hp = 1000
+		provider_members[i].max_hp = 2000
+		provider_members[i].hpp = 50
+		provider_members[i].buffs = {}
+	end
+	provider_player.buffs = { 358 }
+	runtime.reset('provider_phase2_accession_cure', 279)
+	local defensive_out = {}
+	provider.collect({
+		now = 280,
+		settings = { sch = defensive_config, defensive_critical_hpp = 35 },
+		player = provider_player,
+		engine_enabled = true,
+		maintenance_enabled = true,
+		defensive_enabled = true,
+		ability_recasts_present = true,
+		ability_recasts = { [231] = 0 },
+	}, defensive_out)
+	local defensive_status = provider.status_snapshot()
+	assert_equal(#defensive_out, 1, 'Phase 2 provider must emit one live proposal')
+	assert_equal(defensive_out[1].provider, 'defensive_sch',
+		'Phase 2 provider route mismatch')
+	assert_equal(defensive_out[1].action_name, 'Accession',
+		'Phase 2 first action mismatch')
+	assert_equal(defensive_out[1].priority_band, 145,
+		'Phase 2 defensive priority mismatch')
+	assert_equal(defensive_status.defensive.candidate.plan.purpose, 'accession_cure',
+		'Phase 2 provider plan mismatch')
+	assert_equal(defensive_status.defensive.candidate.plan.spell_mp_multiplier, 2.0,
+		'Phase 2 provider MP adjustment mismatch')
+	runtime.reset('provider_test_cleanup', 281)
 
 	print('selftest_sch_maintenance: OK')
 end

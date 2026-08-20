@@ -1,3 +1,5 @@
+local capabilities = require('uc_sch_capabilities')
+
 local M = {}
 
 local VALID_OUTCOMES = {
@@ -59,10 +61,94 @@ function M.model_key(action_type, action_name)
 end
 
 function M.production_catalog(action_type, action_name)
+	local model_key = M.model_key(action_type, action_name)
+	local exact_rules = {
+		['job_ability|Light Arts'] = {
+			{ message_id = 100, param = 0, outcome = 'success' },
+		},
+		['job_ability|Addendum: White'] = {
+			{ message_id = 100, param = 0, outcome = 'success' },
+		},
+		['job_ability|Accession'] = {
+			{ message_id = 100, param = 366, outcome = 'success' },
+		},
+		['job_ability|Penury'] = {
+			{ message_id = 100, param = 360, outcome = 'success' },
+		},
+		['job_ability|Rapture'] = {
+			{ message_id = 100, param = 364, outcome = 'success' },
+		},
+		['job_ability|Perpetuance'] = {
+			{ message_id = 100, param = 469, outcome = 'success' },
+		},
+		['job_ability|Sublimation'] = {
+			{ message_id = 100, param = 0, outcome = 'success' },
+			{ message_id = 451, param = 'any', outcome = 'success' },
+		},
+	}
+	local storms = {
+		['Sandstorm II'] = 592,
+		['Rainstorm II'] = 594,
+		['Windstorm II'] = 591,
+		['Firestorm II'] = 589,
+		['Hailstorm II'] = 590,
+		['Thunderstorm II'] = 593,
+		['Voidstorm II'] = 596,
+		['Aurorastorm II'] = 595,
+	}
+	local cures = {
+		['Cure'] = true,
+		['Cure II'] = true,
+		['Cure III'] = true,
+		['Cure IV'] = true,
+	}
+	local status_removal = {
+		Erase = true, Blindna = true, Paralyna = true, Poisona = true,
+		Silena = true, Stona = true, Cursna = true, Viruna = true,
+	}
+	local resource_backed_action = action_type == 'job_ability'
+		and (action_name == 'Penury' or action_name == 'Rapture')
+	local maintenance_spell = action_type == 'spell'
+		and capabilities.accession_maintenance_spell(action_name) or nil
+	if maintenance_spell ~= nil then
+		exact_rules[model_key] = {
+			{ message_id = 230, param = maintenance_spell.status_id, outcome = 'success' },
+			{ message_id = 266, param = maintenance_spell.status_id, outcome = 'success' },
+		}
+	elseif action_type == 'spell' and cures[action_name] then
+		exact_rules[model_key] = {
+			{ message_id = 7, param = 'any', outcome = 'success' },
+			{ message_id = 75, param = 'any', outcome = 'no_effect' },
+			{ message_id = 16, param = 'any', outcome = 'interrupted' },
+		}
+	elseif action_type == 'spell' and status_removal[action_name] then
+		exact_rules[model_key] = {
+			{ message_id = 64, param = 'any', outcome = 'success' },
+			{ message_id = 83, param = 'any', outcome = 'success' },
+			{ message_id = 75, param = 'any', outcome = 'no_effect' },
+			{ message_id = 16, param = 'any', outcome = 'interrupted' },
+		}
+	end
+	if action_type == 'spell' and storms[action_name] ~= nil then
+		exact_rules[model_key] = {
+			{ message_id = 230, param = storms[action_name], outcome = 'success' },
+		}
+	end
+	if exact_rules[model_key] ~= nil then
+		return {
+			confidence = 'confirmed',
+			model_key = model_key,
+			source = (maintenance_spell ~= nil or cures[action_name] or status_removal[action_name]
+				or resource_backed_action)
+				and 'windower_resources:action_messages'
+				or 'sch_capture:Nyoourke_solo_phase1_20260820T104827Z',
+			rules = exact_rules[model_key],
+		}
+	end
 	return {
 		confidence = 'unknown',
-		model_key = M.model_key(action_type, action_name),
-		reason = 'phase0_action_results_unvalidated',
+		model_key = model_key,
+		reason = 'action_result_not_captured_for_exact_action',
 		rules = {},
 	}
 end

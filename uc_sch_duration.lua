@@ -27,9 +27,9 @@ local function require_finite_number(value, name)
 end
 
 local function require_supported_spell(family, spell)
-	if family == 'regen' then
-		if capabilities.regen_spell(spell) == nil then
-			error('Scholar duration Regen spell is unsupported')
+	if family == 'accession_maintenance' then
+		if capabilities.accession_maintenance_spell(spell) == nil then
+			error('Scholar duration Accession maintenance spell is unsupported')
 		end
 		return
 	end
@@ -71,6 +71,22 @@ function M.model_key(family, spell, applied_modifiers)
 	require_supported_spell(family, spell)
 	local modifiers = validated_modifiers(applied_modifiers)
 	return table.concat({ family, spell, table.concat(modifiers, ',') }, '|'), modifiers
+end
+
+function M.production_evidence(family, spell, applied_modifiers)
+	local model_key = M.model_key(family, spell, applied_modifiers)
+	if model_key == 'accession_maintenance|Regen V|Accession,Perpetuance' then
+		return {
+			confidence = 'confirmed',
+			model_key = model_key,
+			duration_s = 440,
+			source = 'sch_capture:Nyoourke_solo_phase1_20260820T104827Z',
+		}
+	end
+	return {
+		confidence = 'unknown',
+		reason = 'duration_not_captured_for_exact_effect',
+	}
 end
 
 function M.estimate(input)

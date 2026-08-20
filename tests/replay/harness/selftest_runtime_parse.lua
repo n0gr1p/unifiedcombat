@@ -116,6 +116,7 @@ local RUNTIME_LUA_FILES = {
 	"uc_sch_charge_model.lua",
 	"uc_sch_config.lua",
 	"uc_sch_diagnostics.lua",
+	"uc_sch_defensive.lua",
 	"uc_sch_duration.lua",
 	"uc_sch_sublimation.lua",
 	"uc_sch_maintenance.lua",

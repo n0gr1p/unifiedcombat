@@ -122,6 +122,16 @@ function M.new(deps)
 	local get_charge_catalog = require_function(deps.get_charge_catalog, 'deps.get_charge_catalog')
 	local get_area_mechanics = require_function(deps.get_area_mechanics, 'deps.get_area_mechanics')
 	local action_ready = require_function(deps.action_ready, 'deps.action_ready')
+	local sch_spell_ready = require_function(deps.sch_spell_ready, 'deps.sch_spell_ready')
+	local select_cure_spell = require_function(deps.select_cure_spell, 'deps.select_cure_spell')
+	local status_removal_for_buff = require_function(
+		deps.status_removal_for_buff,
+		'deps.status_removal_for_buff'
+	)
+	local is_critical_defensive = require_function(
+		deps.is_critical_defensive,
+		'deps.is_critical_defensive'
+	)
 	local get_sublimation_safety = require_function(
 		deps.get_sublimation_safety,
 		'deps.get_sublimation_safety'
@@ -131,6 +141,12 @@ function M.new(deps)
 		'deps.get_sublimation_release_mechanics'
 	)
 	local log = require_function(deps.log, 'deps.log')
+	local routine_priority = tonumber(deps.routine_priority)
+	local prepared_priority = tonumber(deps.prepared_priority)
+	local defensive_priority = tonumber(deps.defensive_priority)
+	if routine_priority == nil or prepared_priority == nil or defensive_priority == nil then
+		error('Scholar provider priorities must be numeric')
+	end
 	local runtime = deps.runtime or sch_runtime
 	local capture = require_table(deps.capture, 'deps.capture')
 	if type(capture) ~= 'table'
@@ -146,7 +162,7 @@ function M.new(deps)
 		generation = 0,
 		config_signature = '',
 		status = {
-			mode = 'observe_only',
+			mode = 'live',
 			first_blocker = 'not_evaluated',
 		},
 		trace = sch_trace.new(),
@@ -180,6 +196,7 @@ function M.new(deps)
 		runtime.observe_environment({
 			engine_enabled = ctx.engine_enabled,
 			maintenance_enabled = ctx.maintenance_enabled,
+			defensive_enabled = ctx.defensive_enabled,
 			main_job = player.main_job,
 			player_hpp = vitals.hpp,
 			party_generation = party_snapshot.generation,
@@ -210,6 +227,13 @@ function M.new(deps)
 		runtime.observe_charge(charge_observation, ctx.now)
 		runtime.tick(ctx.now)
 		local runtime_snapshot = runtime.snapshot()
+		local critical_cure_present = false
+		for proposal_index = 1, #out do
+			if is_critical_defensive(out[proposal_index], settings) then
+				critical_cure_present = true
+				break
+			end
+		end
 		local evaluation = sch_maintenance.evaluate(config, {
 			now = ctx.now,
 			player = player,
@@ -221,7 +245,105 @@ function M.new(deps)
 			ability_recasts = ctx.ability_recasts,
 			sublimation_safety = get_sublimation_safety(ctx, out),
 			sublimation_release_mechanics = get_sublimation_release_mechanics(),
+			defensive_enabled = ctx.defensive_enabled,
+			critical_cure_present = critical_cure_present,
+			critical_hpp = tonumber(settings.defensive_critical_hpp) or 35,
+			party_generation = party_snapshot.generation,
+			status_removal_for_buff = status_removal_for_buff,
+			spell_ready = sch_spell_ready,
+			select_cure_spell = select_cure_spell,
 		}, runtime_snapshot)
+		if runtime_snapshot.active_sequence == nil and evaluation.candidate ~= nil then
+			local plan = clone_value(require_table(
+				evaluation.candidate.plan,
+				'Scholar candidate execution plan'
+			))
+			plan.id = table.concat({
+				'sch',
+				tostring(provider.generation),
+				tostring(plan.purpose),
+				tostring(math.floor(ctx.now * 1000)),
+			}, ':')
+			local sequence_window = plan.purpose == 'party_accession_maintenance' and 20
+				or (plan.purpose == 'targeted_storm' and 12
+				or (plan.domain == 'defensive' and 12 or 6))
+			plan.deadline = ctx.now + sequence_window
+			local started, start_reason = runtime.start_sequence(plan, ctx.now)
+			if not started then
+				evaluation.first_blocker = start_reason
+			end
+		end
+		runtime_snapshot = runtime.snapshot()
+		local step, step_reason = runtime.next_step(ctx.now)
+		runtime_snapshot = runtime.snapshot()
+		local emitted = false
+		if step ~= nil then
+			local active_sequence = require_table(
+				runtime_snapshot.active_sequence,
+				'Scholar active sequence'
+			)
+			local sequence_domain = tostring(active_sequence.domain or '')
+			local provider_id = sequence_domain == 'defensive'
+				and 'defensive_sch' or 'maintenance_sch'
+			local proposal_action_type = step.action_type == 'job_ability'
+				and 'ja' or step.action_type
+			if proposal_action_type ~= 'ja' and proposal_action_type ~= 'spell' then
+				error('Scholar runtime emitted an unsupported scheduler action type')
+			end
+			local proposal_target_id = tonumber(step.target_id) or 0
+			local proposal_target_name = tostring(step.target_name or '')
+			local target_kind = 'ally'
+			if proposal_action_type == 'ja' or proposal_target_id == player.id then
+				target_kind = 'self'
+				proposal_target_id = player.id
+				proposal_target_name = player.name
+			end
+			local prepared = runtime_snapshot.lane.class == 'prepared_support'
+			out[#out + 1] = {
+				proposal_id = ('sch.%d.%s.%d'):format(
+					tonumber(step.sequence_generation) or 0,
+					tostring(step.phase or ''),
+					math.floor(ctx.now * 1000)
+				),
+				family_id = sequence_domain .. '.sch.' .. tostring(active_sequence.purpose),
+				provider = provider_id,
+				action_type = proposal_action_type,
+				action_name = step.action_name,
+				target_kind = target_kind,
+				target_id = proposal_target_id,
+				target_name = proposal_target_name,
+				priority_band = sequence_domain == 'defensive'
+					and (prepared and prepared_priority or defensive_priority)
+					or (prepared and prepared_priority or routine_priority),
+				urgency = prepared and 0.95 or 0.70,
+				starvation_eligible = true,
+				created_at = ctx.now,
+				expires_at = ctx.now + 0.40,
+				commit_deadline = ctx.now + 0.25,
+				movement_policy = proposal_action_type == 'spell' and 'must_stop' or 'none',
+				range_policy = { min = 0.0, max = 12.0, los_required = false },
+				recast_key = 'sch:' .. tostring(step.action_name),
+				duplicate_suppression_key = step.duplicate_suppression_key,
+				lock_class = 'support_action',
+				expected_ack = proposal_action_type == 'spell' and 'spell_start' or 'action_start',
+				expected_effect = proposal_action_type == 'spell' and 'buff_gain' or 'ability_result',
+				sticky = true,
+				can_preempt_movement = true,
+				can_preempt_same_band = false,
+				reason_code = step.reason_code,
+				detail = {
+					sch_step = clone_value(step),
+					purpose = active_sequence.purpose,
+					domain = sequence_domain,
+					prepared = prepared,
+				},
+			}
+			emitted = true
+		elseif runtime_snapshot.active_sequence ~= nil
+			and step_reason ~= 'sequence_action_pending'
+			and step_reason ~= 'sequence_waiting_for_evidence' then
+			evaluation.first_blocker = step_reason
+		end
 		provider.status = evaluation
 		provider.status.runtime = runtime_snapshot
 		provider.status.party_generation = party_snapshot.generation
@@ -229,7 +351,7 @@ function M.new(deps)
 		provider.status.main_job_level = main_job_level
 		provider.status.job_points_present = job_points_present
 		provider.status.job_points_spent = job_points_spent
-		provider.status.proposals_emitted = 0
+		provider.status.proposals_emitted = emitted and 1 or 0
 		provider.status.last_action_result = clone_value(provider.last_action_result)
 		local runtime_events = sch_diagnostics.runtime_events(
 			provider.last_runtime_snapshot,
@@ -304,8 +426,7 @@ function M.new(deps)
 				#(trace_snapshot.last.events or {})
 			))
 		end
-		-- Observe-only mode must never append to scheduler arbitration.
-		return false
+		return emitted
 	end
 
 	function provider.status_snapshot()
@@ -353,7 +474,7 @@ function M.new(deps)
 				)
 			else
 				expected_recipients = {
-					{ id = pending.target_id, name = '' },
+					{ id = player_id, name = '' },
 				}
 			end
 			local classification = sch_action_results.classify({
@@ -395,6 +516,10 @@ function M.new(deps)
 
 	function provider.trace_active()
 		return provider.trace.snapshot().armed
+	end
+
+	function provider.note_dispatched(step, now)
+		return runtime.note_dispatched(step, now)
 	end
 
 	function provider.start_capture(meta, now)
