@@ -1574,7 +1574,7 @@ internal static class StructuredProfileV2WriterTests
 		var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
 
 		AssertContains(ui, "Text = \"Fast Skillchain\"", "Fast Skillchain toggle label missing");
-		AssertContains(ui, "After a level 3 or 4 result", "Fast Skillchain tooltip missing");
+		AssertContains(ui, "tracker confirms a terminal result", "Fast Skillchain tooltip missing");
 		AssertContains(logic, "SessionStateHelper.GetBool(s, \"fast_skillchain\", false)",
 			"Fast Skillchain UI load must default false");
 		AssertContains(logic, "[\"path\"] = \"fast_skillchain\"", "Fast Skillchain live update path missing");

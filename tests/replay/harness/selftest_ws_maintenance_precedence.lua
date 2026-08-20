@@ -681,7 +681,7 @@ local function reset_ws_intent_test_state()
 	ipc_messages = {}
 end
 
-local function install_high_level_skillchain_result(level)
+local function install_high_level_skillchain_result(level, terminal)
 	local now = os.clock()
 	core.resonating[9001] = {
 		target_id = 9001,
@@ -697,12 +697,12 @@ local function install_high_level_skillchain_result(level)
 		preferred_execute_at = now - 0.5,
 		expires_at = now + 8,
 		magic_burst_expires_at = now + 10,
-		terminal = level == 4,
+		terminal = terminal == true,
 		actor_expiry_overrides = {},
 	}
 end
 
-local function test_fast_skillchain_restarts_after_level_three_and_four()
+local function test_fast_skillchain_restarts_only_after_terminal_result()
 	reset_ws_intent_test_state()
 	ability_recasts[20] = 30
 	settings.ws_mode = 'smart'
@@ -714,31 +714,32 @@ local function test_fast_skillchain_restarts_after_level_three_and_four()
 	settings.fast_skillchain = false
 	player.vitals.tp = 1000
 
-	install_high_level_skillchain_result(3)
+	install_high_level_skillchain_result(3, false)
 	local selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
 	assert_equal(selection, nil, 'default level-3 behavior must preserve the burst window')
 	assert_equal(reason, 'SC_NO_CONTINUATION', 'default level-3 hold reason mismatch')
 
 	settings.fast_skillchain = true
 	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
-	assert_true(type(selection) == 'table', 'Fast Skillchain must select a fresh opener after level 3')
-	assert_equal(reason, 'READY', 'Fast Skillchain level-3 opener reason mismatch')
-	assert_equal(selection.ws_name, 'Savage Blade', 'Fast Skillchain level-3 opener mismatch')
+	assert_equal(selection, nil,
+		'Fast Skillchain must preserve continuation timing after a nonterminal level-3 result')
+	assert_equal(reason, 'SC_NO_CONTINUATION', 'Fast Skillchain nonterminal level-3 hold reason mismatch')
 	assert_true(core.resonating[9001] ~= nil,
-		'proposal selection must not clear the level-3 resonance before dispatch')
+		'Fast Skillchain must retain the nonterminal level-3 resonance for Double Light or Darkness')
 
-	install_high_level_skillchain_result(4)
+	install_high_level_skillchain_result(4, true)
 	settings.fast_skillchain = false
 	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
-	assert_equal(selection, nil, 'default level-4 behavior must preserve the burst window')
-	assert_equal(reason, 'SC_TERMINAL', 'default level-4 hold reason mismatch')
+	assert_equal(selection, nil, 'default terminal-result behavior must preserve the burst window')
+	assert_equal(reason, 'SC_TERMINAL', 'default terminal-result hold reason mismatch')
 
 	settings.fast_skillchain = true
 	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
-	assert_true(type(selection) == 'table', 'Fast Skillchain must select a fresh opener after level 4')
-	assert_equal(reason, 'READY', 'Fast Skillchain level-4 opener reason mismatch')
+	assert_true(type(selection) == 'table',
+		'Fast Skillchain must select a fresh opener after a confirmed terminal result')
+	assert_equal(reason, 'READY', 'Fast Skillchain terminal-result opener reason mismatch')
 
-	install_high_level_skillchain_result(3)
+	install_high_level_skillchain_result(4, true)
 	dispatch_target = {
 		id = 9001,
 		valid_target = true,
@@ -878,7 +879,7 @@ local function main()
 	test_spam_forces_primary_ws_across_active_resonance()
 	test_spam_ws_observes_minimum_tp()
 	test_spam_ws_dispatch_rejects_out_of_range_target()
-	test_fast_skillchain_restarts_after_level_three_and_four()
+	test_fast_skillchain_restarts_only_after_terminal_result()
 	test_skillchain_intent_different_ws_same_resonance_conflicts_across_local_generations()
 	test_established_remote_claim_is_not_preempted_by_lower_actor()
 	test_skillchain_intent_same_ws_contention_remains()

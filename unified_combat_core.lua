@@ -3115,10 +3115,7 @@ local function fast_skillchain_restart_enabled(settings, state)
 	if not setting_enabled(settings and settings.fast_skillchain) or type(state) ~= 'table' then
 		return false
 	end
-	if type(state.result_level) ~= 'number' then
-		return false
-	end
-	return state.result_level >= 3
+	return state.terminal == true
 end
 
 local function select_smart_ws(settings, target_id)

@@ -473,7 +473,7 @@ public partial class MainForm
         };
         _smartWsToolTip.SetToolTip(
             _chkFastSkillchain,
-            "After a level 3 or 4 result, allow the next weapon skill to open a new skillchain immediately."
+            "After the skillchain tracker confirms a terminal result, allow the next weapon skill to open a new skillchain immediately."
         );
         _chkFastSkillchain.CheckedChanged += (_, _) => OnFastSkillchainChanged();
         leftCol.Controls.Add(_chkFastSkillchain, 0, lr);
