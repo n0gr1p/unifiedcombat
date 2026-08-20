@@ -49,6 +49,7 @@ public partial class MainForm
     private TextBox _defHealMaxTier = null!;
     private TextBox _defHealMinMissingHp = null!;
     private CheckBox _defHealIgnoreTrusts = null!;
+    private TextBox _defNaPriority = null!;
     private TextBox _defOverwrite = null!;
     private TextBox _defBuffs = null!;
     private TextBox _defTargetedBuffs = null!;
@@ -547,6 +548,17 @@ public partial class MainForm
         }
         rightCol.Controls.Add(defensiveToggles, 0, dr);
         rightCol.SetColumnSpan(defensiveToggles, 2);
+        dr++;
+        rightCol.Controls.Add(new Label { Text = "Status Removal Priority", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        _defNaPriority = new TextBox
+        {
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(80, 23),
+            PlaceholderText = "Poison|Paralyze|Dia",
+            Enabled = false,
+        };
+        _defNaPriority.Leave += (_, _) => OnDefThresholdChanged();
+        rightCol.Controls.Add(_defNaPriority, 1, dr);
         dr++;
         rightCol.Controls.Add(new Label { Text = "Provider", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defProviderCombo = new ComboBox

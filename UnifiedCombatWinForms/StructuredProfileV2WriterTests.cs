@@ -14,6 +14,7 @@ internal static class StructuredProfileV2WriterTests
             TestWeaponskillMinimumTpValidation();
             TestSmartWsAoePreferenceRoundTrip();
             TestSmartWsAoeUiPersistenceContract();
+            TestStatusRemovalLimitProfileContract();
             TestSerializeOmitsRetiredOwnershipMarkers();
             TestParseTargetedBuffs();
             TestSerializeOmitsProfileV2AutoloadWhenDisabled();
@@ -288,6 +289,8 @@ internal static class StructuredProfileV2WriterTests
         AssertTrue(HubUiConstants.BoolKeys.Contains("def_charm_sleeper_enabled"), "charm sleeper must be in the shared UI bool key set");
         AssertContains(content, "sleep_waker = {", "sleep waker defensive config missing");
         AssertTrue(HubUiConstants.BoolKeys.Contains("def_sleep_waker_enabled"), "sleep waker must be in the shared UI bool key set");
+        AssertContains(content, "limit_enabled = true", "status-removal limit missing");
+        AssertContains(content, "priority = \"Poison|Paralyze|Dia\"", "status-removal priority missing");
         AssertContains(content, "wait_ignore_names = {", "combat wait ignore list missing");
         AssertContains(content, "\"Ally One\"", "combat wait ignore names must be serialized");
         AssertContains(content, "target_ignore_names = {", "target ignore list missing");
@@ -329,6 +332,32 @@ internal static class StructuredProfileV2WriterTests
         AssertNotContains(content, "sleepspells", "legacy sleep list must not be serialized");
         AssertNotContains(content, "sleepspell", "legacy sleep singleton must not be serialized");
         AssertNotContains(content, "profile_v2_autoload", "autoload must be omitted unless explicitly enabled");
+    }
+
+    private static void TestStatusRemovalLimitProfileContract()
+    {
+        var flat = BuildSampleFlatProfile();
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+        AssertTrue(HubUiConstants.BoolKeys.Contains("defensive_na_limit_enabled"), "status-removal limit must be persisted as a UI boolean");
+        AssertContains(content, "limit_enabled = true", "enabled status-removal limit must round trip");
+        AssertContains(content, "priority = \"Poison|Paralyze|Dia\"", "status-removal priority must round trip");
+
+        flat.Remove("defensive_na_limit_enabled");
+        flat.Remove("defensive_na_priority");
+        var legacy = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+        );
+        AssertContains(legacy, "limit_enabled = false", "older UI profiles must default status-removal limiting off");
+        AssertContains(legacy, "priority = \"\"", "older UI profiles must default status-removal priority empty");
+
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        AssertContains(ui, "Status Removal Priority", "status-removal priority field must be adjacent to defensive controls");
+        AssertContains(logic, "_defNaPriority.Enabled = healerOn && naEnabled && limitEnabled", "priority field must only be editable in limited NA mode");
     }
 
     private static void TestWeaponskillMinimumTpValidation()
@@ -549,6 +578,7 @@ internal static class StructuredProfileV2WriterTests
                     "def_sleep_waker_enabled",
                     "def_remove_enemy_buffs",
                     "defensive_na_enabled",
+                    "defensive_na_limit_enabled",
                     "defensive_buff_enabled",
                     "defensive_overwrite_enabled",
                     "defensive_buff_self_only",
@@ -1873,6 +1903,8 @@ internal static class StructuredProfileV2WriterTests
             ["def_charm_sleeper_enabled"] = true,
             ["def_sleep_waker_enabled"] = true,
             ["defensive_na_enabled"] = true,
+            ["defensive_na_limit_enabled"] = true,
+            ["defensive_na_priority"] = "Poison|Paralyze|Dia",
             ["def_remove_enemy_buffs"] = false,
             ["defensive_buff_enabled"] = true,
             ["defensive_buff_self_only"] = true,

@@ -99,6 +99,9 @@ local function build_flat_settings()
         def_heal_max_tier_cure = 4,
         def_heal_min_missing_hp = 250,
         def_heal_ignore_trusts = true,
+        defensive_na_enabled = true,
+        defensive_na_limit_enabled = true,
+        defensive_na_priority = "Poison|Paralyze|Dia",
         defensive_targeted_buffs = "Terrasjr:Honor March|Nyoourke:Valor Minuet V",
         tank = true,
         tank_enmity_actions = { "Provoke", "Flash" },
@@ -174,6 +177,11 @@ local function build_structured_payload()
                     max_tier = 4,
                     min_missing_hp = 250,
                     ignore_trusts = true,
+                },
+                na = {
+                    enabled = true,
+                    limit_enabled = true,
+                    priority = "Poison|Paralyze|Dia",
                 },
                 buffs = {
                     enabled = true,
@@ -275,6 +283,8 @@ local function assert_common_config(config, source)
     assert_equal(config.defensive.cure.max_tier, 4, source .. " cure max tier mismatch")
     assert_equal(config.defensive.cure.min_missing_hp, 250, source .. " cure min missing HP mismatch")
     assert_equal(config.defensive.cure.ignore_trusts, true, source .. " cure ignore trusts mismatch")
+    assert_equal(config.defensive.na.limit_enabled, true, source .. " status-removal limit mismatch")
+    assert_equal(config.defensive.na.priority, "Poison|Paralyze|Dia", source .. " status-removal priority mismatch")
     assert_equal(config.defensive.buffs.targeted[1].character, "Terrasjr", source .. " targeted buff character mismatch")
     assert_equal(config.defensive.buffs.targeted[1].buff, "Honor March", source .. " targeted buff name mismatch")
     assert_equal(config.tank.enabled, true, source .. " tank enabled mismatch")
@@ -404,6 +414,8 @@ local function main()
     assert_equal(ui_fixture_config.follow.partner.puller_name, "Niightsiide", "UI-authored fixture puller name mismatch")
     assert_equal(ui_fixture_config.targeting.targets[1], "Apex Bat", "UI-authored fixture add priority target mismatch")
     assert_equal(ui_fixture_config.defensive.sleep_waker.enabled, false, "UI-authored fixture sleep waker mismatch")
+    assert_equal(ui_fixture_config.defensive.na.limit_enabled, true, "UI-authored fixture status-removal limit mismatch")
+    assert_equal(ui_fixture_config.defensive.na.priority, "Poison|Paralyze|Dia", "UI-authored fixture status-removal priority mismatch")
     assert_equal(ui_fixture_config.sleep.enabled, false, "UI-authored fixture sleep enabled mismatch")
     assert_equal(ui_fixture_config.sleep.order[1], "Horde Lullaby II", "UI-authored fixture sleep order mismatch")
     assert_equal(ui_fixture_config.legacy.profiles.UC.PLD.marker, true, "UI-authored fixture legacy marker mismatch")

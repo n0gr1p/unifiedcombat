@@ -65,9 +65,10 @@ end
 
 local function main()
     local source = read_file(scheduler_path)
+    local chooser_source = read_file("uc_scheduler_na_policy.lua")
 
-    assert_contains(source, "if majesty_action then", "Majesty must be allowed to beat available cure candidate again")
-    assert_not_contains(source, "elseif c.buff and ((c.buff.prio + 2) < c.cure.prio) then", "normal buff must not beat available cure candidate")
+    assert_contains(chooser_source, "if majesty_action then", "Majesty must be allowed to beat available cure candidate again")
+    assert_not_contains(chooser_source, "elseif c.buff and ((c.buff.prio + 2) < c.cure.prio) then", "normal buff must not beat available cure candidate")
 
     local red_ally_cure = {
         type = "cure",

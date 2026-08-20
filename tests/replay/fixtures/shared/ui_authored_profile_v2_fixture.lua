@@ -62,6 +62,8 @@ return {
             },
             na = {
                 enabled = true,
+                limit_enabled = true,
+                priority = "Poison|Paralyze|Dia",
             },
             enemy_buffs = {
                 remove = false,

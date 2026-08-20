@@ -362,6 +362,7 @@ public partial class MainForm
 
             _defCrit.Text = "35";
             _defMed.Text = "55";
+            _defNaPriority.Text = "";
             _defOverwrite.Text = "150";
             _defBuffs.Text = "";
             _defTargetedBuffs.Text = "";
@@ -719,6 +720,7 @@ public partial class MainForm
             _defHealMaxTier.Text = SessionStateHelper.GetString(s, "def_heal_max_tier_cure", "4");
             _defHealMinMissingHp.Text = SessionStateHelper.GetString(s, "def_heal_min_missing_hp", "250");
             _defHealIgnoreTrusts.Checked = SessionStateHelper.GetBool(s, "def_heal_ignore_trusts", true);
+            _defNaPriority.Text = SessionStateHelper.GetString(s, "defensive_na_priority");
             _defOverwrite.Text = SessionStateHelper.GetString(s, "defensive_overwrite_interval", "150");
             _defBuffs.Text = SessionStateHelper.GetString(s, "defensive_buffs");
             _defTargetedBuffs.Text = SessionStateHelper.GetString(s, "defensive_targeted_buffs");
@@ -1095,6 +1097,7 @@ public partial class MainForm
                      "def_sleep_waker_enabled",
                      "def_remove_enemy_buffs",
                      "defensive_na_enabled",
+                     "defensive_na_limit_enabled",
                      "defensive_buff_enabled",
                      "defensive_overwrite_enabled",
                      "defensive_buff_self_only",
@@ -1105,6 +1108,9 @@ public partial class MainForm
                 cb.ForeColor = healerOn ? bright : dim;
             }
         }
+        var naEnabled = _boolChecks.TryGetValue("defensive_na_enabled", out var na) && na.Checked;
+        var limitEnabled = _boolChecks.TryGetValue("defensive_na_limit_enabled", out var limit) && limit.Checked;
+        _defNaPriority.Enabled = healerOn && naEnabled && limitEnabled;
     }
 
     private void UpdateAbilityListLayout()
@@ -4363,6 +4369,17 @@ public partial class MainForm
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_provider", ["value"] = prov });
     }
 
+    private static string CleanStatusRemovalPriority(string raw)
+    {
+        return string.Join(
+            "|",
+            (raw ?? "").Split('|')
+                .Select(x => x.Trim())
+                .Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+        );
+    }
+
     private void OnDefThresholdChanged()
     {
         if (_suppressEvents)
@@ -4431,6 +4448,7 @@ public partial class MainForm
             /* keep default */
         }
         var ignoreTrusts = _defHealIgnoreTrusts.Checked;
+        var naPriority = CleanStatusRemovalPriority(_defNaPriority.Text ?? "");
 
         if (med < crit)
         {
@@ -4452,6 +4470,7 @@ public partial class MainForm
         _defHealMinTier.Text = healMinTier.ToString();
         _defHealMaxTier.Text = healMaxTier.ToString();
         _defHealMinMissingHp.Text = healMinMissingHp.ToString();
+        _defNaPriority.Text = naPriority;
         _defOverwrite.Text = overwrite.ToString();
         _defBuffs.Text = buffsClean;
         _defTargetedBuffs.Text = targetedClean;
@@ -4461,6 +4480,7 @@ public partial class MainForm
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_max_tier_cure", ["value"] = healMaxTier });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_min_missing_hp", ["value"] = healMinMissingHp });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_ignore_trusts", ["value"] = ignoreTrusts ? "on" : "off" });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_na_priority", ["value"] = naPriority });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_overwrite_interval", ["value"] = overwrite });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_buffs", ["value"] = buffsClean });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_targeted_buffs", ["value"] = targetedClean });
@@ -5322,6 +5342,7 @@ public partial class MainForm
         try { healMinMissingHp = (int)Math.Clamp(int.Parse((_defHealMinMissingHp.Text ?? "").Trim()), 0, 5000); } catch { }
         if (med < crit) med = crit;
         var ignoreTrusts = _defHealIgnoreTrusts.Checked;
+        var naPriority = CleanStatusRemovalPriority(_defNaPriority.Text ?? "");
         var buffsRaw = _defBuffs.Text ?? "";
         var buffsClean = string.Join(
             "|",
@@ -5338,6 +5359,7 @@ public partial class MainForm
         _defHealMinTier.Text = healMinTier.ToString();
         _defHealMaxTier.Text = healMaxTier.ToString();
         _defHealMinMissingHp.Text = healMinMissingHp.ToString();
+        _defNaPriority.Text = naPriority;
         _defOverwrite.Text = overwrite.ToString();
         _defBuffs.Text = buffsClean;
         _defTargetedBuffs.Text = targetedClean;
@@ -5348,6 +5370,7 @@ public partial class MainForm
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_max_tier_cure", ["value"] = healMaxTier });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_min_missing_hp", ["value"] = healMinMissingHp });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_ignore_trusts", ["value"] = ignoreTrusts ? "on" : "off" });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_na_priority", ["value"] = naPriority });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_overwrite_interval", ["value"] = overwrite });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_buffs", ["value"] = buffsClean });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_targeted_buffs", ["value"] = targetedClean });
