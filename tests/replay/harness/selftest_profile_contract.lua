@@ -91,6 +91,8 @@ local function main()
         main_job = "status_output_owned_by_addon",
         sub_job = "status_output_owned_by_addon",
         ability_active = "profile_owned_by_ui",
+		defensive_na_limit_enabled = "profile_owned_by_ui",
+		defensive_na_priority = "profile_owned_by_ui",
         tank = "profile_owned_by_ui",
         sleepspells = "profile_owned_by_ui",
         cor_roll_1 = "profile_owned_by_ui",

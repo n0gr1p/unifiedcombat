@@ -945,6 +945,8 @@ local function default_config(meta)
             },
             na = {
                 enabled = false,
+                limit_enabled = false,
+                priority = '',
             },
             enemy_buffs = {
                 remove = false,
@@ -1516,6 +1518,8 @@ local function normalize_defensive(source, config)
         defensive.sleep_waker.enabled = normalize_boolean(sleep_waker.enabled, defensive.sleep_waker.enabled)
         local na = is_table(nested.na) and nested.na or {}
         defensive.na.enabled = normalize_boolean(na.enabled, defensive.na.enabled)
+        defensive.na.limit_enabled = normalize_boolean(na.limit_enabled, defensive.na.limit_enabled)
+        defensive.na.priority = normalize_string(na.priority, defensive.na.priority)
         local enemy_buffs = is_table(nested.enemy_buffs) and nested.enemy_buffs or {}
         defensive.enemy_buffs.remove = normalize_boolean(enemy_buffs.remove, defensive.enemy_buffs.remove)
         local buffs = is_table(nested.buffs) and nested.buffs or {}
@@ -1540,6 +1544,8 @@ local function normalize_defensive(source, config)
         defensive.charm_sleeper.enabled = normalize_boolean(first_path(source, { path('def_charm_sleeper_enabled') }), defensive.charm_sleeper.enabled)
         defensive.sleep_waker.enabled = normalize_boolean(first_path(source, { path('def_sleep_waker_enabled') }), defensive.sleep_waker.enabled)
         defensive.na.enabled = normalize_boolean(first_path(source, { path('defensive_na_enabled') }), defensive.na.enabled)
+        defensive.na.limit_enabled = normalize_boolean(first_path(source, { path('defensive_na_limit_enabled') }), defensive.na.limit_enabled)
+        defensive.na.priority = normalize_string(first_path(source, { path('defensive_na_priority') }), defensive.na.priority)
         defensive.enemy_buffs.remove = normalize_boolean(first_path(source, { path('def_remove_enemy_buffs') }), defensive.enemy_buffs.remove)
         defensive.buffs.enabled = normalize_boolean(first_path(source, { path('defensive_buff_enabled') }), defensive.buffs.enabled)
         defensive.buffs.self_only = normalize_boolean(first_path(source, { path('defensive_buff_self_only') }), defensive.buffs.self_only)

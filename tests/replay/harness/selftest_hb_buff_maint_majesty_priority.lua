@@ -157,13 +157,13 @@ local function main()
     assert_equal(picked.spell, 'Barwatera', 'missing local Barwater must select Barwatera')
     assert_equal(picked.target.name, 'Redrogue', 'self-centered Barwatera must target the local player')
 
-    local scheduler_source = io.open('unified_scheduler.lua', 'r')
-    local scheduler_text = scheduler_source:read('*a')
-    scheduler_source:close()
-    assert_true(scheduler_text:find("if majesty_action then", 1, true) ~= nil,
-        'defensive chooser must still allow Majesty to beat Cure')
-    assert_true(scheduler_text:find("elseif c.buff and ((c.buff.prio + 2) < c.cure.prio) then", 1, true) == nil,
-        'ordinary self-buffs must still not beat valid Cure candidates')
+	local chooser_source = io.open('uc_scheduler_na_policy.lua', 'r')
+	local chooser_text = chooser_source:read('*a')
+	chooser_source:close()
+	assert_true(chooser_text:find("if majesty_action then", 1, true) ~= nil,
+		'defensive chooser must still allow Majesty to beat Cure')
+	assert_true(chooser_text:find("elseif c.buff and ((c.buff.prio + 2) < c.cure.prio) then", 1, true) == nil,
+		'ordinary self-buffs must still not beat valid Cure candidates')
 
     io.stdout:write('selftest_hb_buff_maint_majesty_priority: OK\n')
 end

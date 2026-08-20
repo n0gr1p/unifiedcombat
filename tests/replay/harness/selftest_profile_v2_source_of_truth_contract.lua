@@ -227,6 +227,8 @@ local function build_flat_settings()
 		def_heal_ignore_trusts = true,
 		defensive_doom_water = true,
 		defensive_na_enabled = true,
+		defensive_na_limit_enabled = true,
+		defensive_na_priority = 'Poison|Paralyze|Dia',
 		defensive_buff_enabled = true,
 		defensive_buffs = 'Barspell',
 		defensive_targeted_buffs = 'Terrasjr:Honor March|Nyoourke:Valor Minuet V',
@@ -390,6 +392,8 @@ local function main()
 	assert_equal(projected.defensive_overwrite_interval, 150, 'defensive overwrite interval must round-trip')
 	assert_equal(projected.defensive_critical_hpp, 35, 'defensive critical threshold must round-trip')
 	assert_equal(projected.defensive_medium_hpp, 55, 'defensive medium threshold must round-trip')
+	assert_equal(projected.defensive_na_limit_enabled, true, 'status-removal limit must round-trip')
+	assert_equal(projected.defensive_na_priority, 'Poison|Paralyze|Dia', 'status-removal priority must round-trip')
 	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'targeted defensive buffs must round-trip')
 
 	local enabled_mismatch_payload = make_fight_leader_payload('Terrasjr')

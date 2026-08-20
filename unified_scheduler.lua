@@ -152,6 +152,11 @@ local function normalize_status_removal_key(buff_res)
 	return require('uc_scheduler_enemy_effect_utils').normalize_status_removal_key(buff_res)
 end
 
+local known_status_removal_keys = {}
+for status_name in pairs(debuff_map) do
+	known_status_removal_keys[normalize_status_removal_key({ en = status_name })] = true
+end
+
 local buff_priority = {
 	['Afflatus Solace'] = 0, ['Majesty'] = 0, ['Composure'] = 0, ['Light Arts'] = 0, ['Haste'] = 2,
 	['Refresh'] = 2, ['Reraise'] = 3,
@@ -3628,6 +3633,7 @@ local function build_defensive_candidates(ctx)
 	}
 	local now = type(ctx) == 'table' and ctx.now or now_s()
 	local ignore_trusts = bool_setting(scheduler.active_value_or_flat('config.defensive.cure.ignore_trusts', s.def_heal_ignore_trusts), true)
+	local na_members = {}
 
 	if bool_setting(scheduler.active_value_or_flat('config.defensive.buffs.enabled', s.defensive_buff_enabled), true) then
 		log_def_sched(('BUFF_SCAN mode=%s buffs="%s" targeted="%s" members=%d'):format(
@@ -3698,6 +3704,7 @@ local function build_defensive_candidates(ctx)
 
 	for _, m in ipairs(members) do
 		if not (ignore_trusts and tonumber(m.spawn_type) == 14) then
+			na_members[#na_members + 1] = m
 			local active_counts = count_buff_occurrences(m.buffs or {})
 			if m.charmed == true then
 				log_def_sched(('CURE_REJECT target="%s" reason=CHARMED_TARGET'):format(tostring(m.name or '?')))
@@ -3778,43 +3785,26 @@ local function build_defensive_candidates(ctx)
 				))
 			end
 			end
-			if bool_setting(scheduler.active_value_or_flat('config.defensive.na.enabled', s.defensive_na_enabled), true) and in_party_cast_range(m) then
-			local best = nil
-			for _, buff_id in ipairs(m.buffs or {}) do
-				local debuff = res.buffs[buff_id]
-				local debuff_en = debuff and debuff.en or ''
-				local na_spell = debuff_map[debuff_en] or debuff_spell_for_buff_id(buff_id)
-				if na_spell then
-					local ready = action_ready(na_spell)
-					if ready and attempt_allowed('debuff', m.name, na_spell, now, 3) then
-						local key = normalize_status_removal_key(debuff)
-						local action_prio = status_removal_priority[key] or 5
-						if (not best) or action_prio < best.action_prio then
-							best = {
-								spell = na_spell,
-								buff_id = buff_id,
-								action_prio = action_prio,
-							}
-						end
-					end
-				end
-			end
-			if best then
-				local p = member_priority(m)
-				local d = {
-					type = 'debuff',
-					spell = best.spell,
-					target = m,
-					buff_id = best.buff_id,
-					prio = pri_default(p, best.action_prio),
-				}
-				if not out.debuff or d.prio < out.debuff.prio then
-					out.debuff = d
-				end
-			end
-			end
 		end
 	end
+	out.debuff = require('uc_scheduler_na_policy').choose_status_removal(na_members, {
+		enabled = bool_setting(scheduler.active_value_or_flat('config.defensive.na.enabled', s.defensive_na_enabled), true),
+		limit_enabled = bool_setting(scheduler.active_value_or_flat('config.defensive.na.limit_enabled', s.defensive_na_limit_enabled), false),
+		priority = scheduler.active_value_or_flat('config.defensive.na.priority', s.defensive_na_priority),
+		now = now,
+	}, {
+		buffs = res.buffs,
+		debuff_map = debuff_map,
+		status_removal_priority = status_removal_priority,
+		known_status_keys = known_status_removal_keys,
+		debuff_spell_for_buff_id = debuff_spell_for_buff_id,
+		normalize_status_removal_key = normalize_status_removal_key,
+		action_ready = action_ready,
+		attempt_allowed = attempt_allowed,
+		in_party_cast_range = in_party_cast_range,
+		member_priority = member_priority,
+		pri_default = pri_default,
+	})
 	return out
 end
 
@@ -3837,48 +3827,9 @@ end
 
 
 local function choose_defensive_action(c)
-	local function is_majesty_action(a)
-		return type(a) == 'table' and tostring(a.spell or ''):lower() == 'majesty'
-	end
-	local function cure_is_critical(cure_action)
-		if type(cure_action) ~= 'table' then
-			return false
-		end
-		local target_hpp = tonumber(cure_action.target and cure_action.target.hpp) or 0
-		if target_hpp <= 0 then
-			return false
-		end
-		local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', get_settings().defensive_critical_hpp)) or 35
-		return target_hpp <= critical_hpp
-	end
-	local majesty_action = nil
-	if is_majesty_action(c.buff) then
-		majesty_action = c.buff
-	elseif is_majesty_action(c.overwrite) then
-		majesty_action = c.overwrite
-	end
-	if c.debuff and c.debuff.spell == 'Paralyna' and c.debuff.target.is_self then
-		return c.debuff, 'BLOCK_DEFENSIVE_NA'
-	end
-	if majesty_action then
-		return majesty_action, 'BLOCK_DEFENSIVE_MAJESTY'
-	end
-	if c.overwrite then
-		return c.overwrite, 'BLOCK_DEFENSIVE_OVERWRITE'
-	elseif c.cure then
-		if c.debuff and ((c.debuff.prio + 2) < c.cure.prio) then
-			return c.debuff, 'BLOCK_DEFENSIVE_NA'
-		end
-		return c.cure, 'BLOCK_DEFENSIVE_CURE'
-	elseif c.debuff then
-		if c.buff and (c.buff.prio < c.debuff.prio) then
-			return c.buff, 'BLOCK_DEFENSIVE_BUFF'
-		end
-		return c.debuff, 'BLOCK_DEFENSIVE_NA'
-	elseif c.buff then
-		return c.buff, 'BLOCK_DEFENSIVE_BUFF'
-	end
-	return nil, nil
+	local s = get_settings()
+	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', s.defensive_critical_hpp)) or 35
+	return require('uc_scheduler_na_policy').choose_defensive_action(c, critical_hpp)
 end
 
 
