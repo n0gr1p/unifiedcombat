@@ -1,0 +1,47 @@
+name: Apply status removal priority limiter
+
+on:
+  push:
+    branches:
+      - work/status-removal-priority-limit
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[status-removal-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/status-removal-priority-limit
+          fetch-depth: 0
+      - name: Apply deterministic source patch
+        run: python3 tools/apply_status_removal_priority.py
+      - name: Commit generated source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            UnifiedCombat.lua \
+            melee_engine.lua \
+            uc_status_removal_policy.lua \
+            uc_config_normalizer.lua \
+            uc_active_config.lua \
+            uc_profile_contract.lua \
+            unified_scheduler.lua \
+            UnifiedCombatWinForms/HubUiConstants.cs \
+            UnifiedCombatWinForms/MainForm.ParityUi.cs \
+            UnifiedCombatWinForms/MainForm.ParityLogic.cs \
+            UnifiedCombatWinForms/MainForm.ProfileStore.cs \
+            UnifiedCombatWinForms/StructuredProfileV2Writer.cs \
+            tests/replay/harness/selftest_defensive_na_status_limit.lua \
+            tests/replay/harness/selftest_all_replay_fixtures.lua
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+            exit 0
+          fi
+          git commit -m "Add prioritized status removal limiter [status-removal-applied]"
+          git push origin HEAD:work/status-removal-priority-limit
