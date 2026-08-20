@@ -362,6 +362,7 @@ public partial class MainForm
 
             _defCrit.Text = "35";
             _defMed.Text = "55";
+            _defNaStatusPriority.Text = "";
             _defOverwrite.Text = "150";
             _defBuffs.Text = "";
             _defTargetedBuffs.Text = "";
@@ -719,6 +720,7 @@ public partial class MainForm
             _defHealMaxTier.Text = SessionStateHelper.GetString(s, "def_heal_max_tier_cure", "4");
             _defHealMinMissingHp.Text = SessionStateHelper.GetString(s, "def_heal_min_missing_hp", "250");
             _defHealIgnoreTrusts.Checked = SessionStateHelper.GetBool(s, "def_heal_ignore_trusts", true);
+            _defNaStatusPriority.Text = SessionStateHelper.GetString(s, "defensive_na_status_priority");
             _defOverwrite.Text = SessionStateHelper.GetString(s, "defensive_overwrite_interval", "150");
             _defBuffs.Text = SessionStateHelper.GetString(s, "defensive_buffs");
             _defTargetedBuffs.Text = SessionStateHelper.GetString(s, "defensive_targeted_buffs");
@@ -4431,6 +4433,7 @@ public partial class MainForm
             /* keep default */
         }
         var ignoreTrusts = _defHealIgnoreTrusts.Checked;
+        var naPriorityClean = string.Join("|", (_defNaStatusPriority.Text ?? "").Split('|').Select(x => x.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase));
 
         if (med < crit)
         {

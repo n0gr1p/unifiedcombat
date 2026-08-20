@@ -489,6 +489,9 @@ local function apply_structured_config_to_candidate(candidate, config)
 		end
 		if type(config.defensive.na) == 'table' then
 			candidate.defensive_na_enabled = config.defensive.na.enabled
+			candidate.defensive_na_limit_enabled = config.defensive.na.limit_enabled
+			local status_priority = config.defensive.na.status_priority
+			candidate.defensive_na_status_priority = type(status_priority) == 'table' and table.concat(status_priority, '|') or tostring(status_priority or '')
 		end
 		if type(config.defensive.enemy_buffs) == 'table' then
 			candidate.def_remove_enemy_buffs = config.defensive.enemy_buffs.remove

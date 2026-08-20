@@ -17,6 +17,7 @@ local uc_scheduler_config = require('uc_scheduler_config')
 local domain_ownership = require('uc_domain_ownership')
 local pet_command_coordinator = require('uc_pet_command_coordinator')
 local sleep_status = require('uc_sleep_status')
+local status_removal_policy = require('uc_status_removal_policy')
 sleep_status.validate_resources(res.buffs)
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
@@ -3627,6 +3628,10 @@ local function build_defensive_candidates(ctx)
 	}
 	local now = type(ctx) == 'table' and ctx.now or now_s()
 	local ignore_trusts = bool_setting(scheduler.active_value_or_flat('config.defensive.cure.ignore_trusts', s.def_heal_ignore_trusts), true)
+	local na_limit_policy = status_removal_policy.build(
+		bool_setting(scheduler.active_value_or_flat('config.defensive.na.limit_enabled', s.defensive_na_limit_enabled), false),
+		scheduler.active_value_or_flat('config.defensive.na.status_priority', s.defensive_na_status_priority)
+	)
 
 	if bool_setting(scheduler.active_value_or_flat('config.defensive.buffs.enabled', s.defensive_buff_enabled), true) then
 		log_def_sched(('BUFF_SCAN mode=%s buffs="%s" targeted="%s" members=%d'):format(
@@ -3787,12 +3792,16 @@ local function build_defensive_candidates(ctx)
 					local ready = action_ready(na_spell)
 					if ready and attempt_allowed('debuff', m.name, na_spell, now, 3) then
 						local key = normalize_status_removal_key(debuff)
-						local action_prio = status_removal_priority[key] or 5
-						if (not best) or action_prio < best.action_prio then
+						local action_prio = na_limit_policy.enabled
+							and status_removal_policy.rank(na_limit_policy, key)
+							or (status_removal_priority[key] or 5)
+						if action_prio ~= nil and ((not best) or action_prio < best.action_prio) then
 							best = {
 								spell = na_spell,
 								buff_id = buff_id,
 								action_prio = action_prio,
+								status_key = key,
+								limited_na = na_limit_policy.enabled,
 							}
 						end
 					end
@@ -3800,12 +3809,19 @@ local function build_defensive_candidates(ctx)
 			end
 			if best then
 				local p = member_priority(m)
+				local selected_prio = pri_default(p, best.action_prio)
+				if na_limit_policy.enabled then
+					selected_prio = status_removal_policy.candidate_priority(na_limit_policy, best.status_key, p)
+				end
 				local d = {
 					type = 'debuff',
 					spell = best.spell,
 					target = m,
 					buff_id = best.buff_id,
-					prio = pri_default(p, best.action_prio),
+					status_key = best.status_key,
+					status_priority = best.action_prio,
+					limited_na = best.limited_na == true,
+					prio = selected_prio,
 				}
 				if not out.debuff or d.prio < out.debuff.prio then
 					out.debuff = d
@@ -3855,6 +3871,12 @@ local function choose_defensive_action(c)
 		majesty_action = c.buff
 	elseif is_majesty_action(c.overwrite) then
 		majesty_action = c.overwrite
+	end
+	if c.debuff and c.debuff.limited_na == true then
+		if c.cure and cure_is_critical(c.cure) then
+			return c.cure, 'BLOCK_DEFENSIVE_CURE_CRITICAL'
+		end
+		return c.debuff, 'BLOCK_DEFENSIVE_NA_LIMIT'
 	end
 	if c.debuff and c.debuff.spell == 'Paralyna' and c.debuff.target.is_self then
 		return c.debuff, 'BLOCK_DEFENSIVE_NA'

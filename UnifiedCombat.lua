@@ -298,6 +298,8 @@ local function uc_new_settings_defaults()
 		def_heal_min_missing_hp = 250,
 		def_heal_ignore_trusts = true,
 		defensive_na_enabled = false,
+		defensive_na_limit_enabled = false,
+		defensive_na_status_priority = '',
 		defensive_buff_enabled = false,
 		defensive_critical_hpp = 35,
 		defensive_medium_hpp = 55,

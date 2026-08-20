@@ -50,6 +50,7 @@ public partial class MainForm
     private TextBox _defHealMinMissingHp = null!;
     private CheckBox _defHealIgnoreTrusts = null!;
     private TextBox _defOverwrite = null!;
+    private TextBox _defNaStatusPriority = null!;
     private TextBox _defBuffs = null!;
     private TextBox _defTargetedBuffs = null!;
     private UcSection _grpFightLeader = null!;
@@ -588,6 +589,11 @@ public partial class MainForm
         _defHealIgnoreTrusts = new UcToggle { AutoSize = true, Anchor = AnchorStyles.Left };
         _defHealIgnoreTrusts.CheckedChanged += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defHealIgnoreTrusts, 1, dr);
+        dr++;
+        rightCol.Controls.Add(new Label { Text = "NA Status Priority", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        _defNaStatusPriority = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top, MinimumSize = new Size(80, 23), PlaceholderText = "Poison|Paralyze|Dia" };
+        _defNaStatusPriority.Leave += (_, _) => OnDefThresholdChanged();
+        rightCol.Controls.Add(_defNaStatusPriority, 1, dr);
         dr++;
         rightCol.Controls.Add(new Label { Text = "Buff Refresh Interval", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defOverwrite = new TextBox { Width = 72, Anchor = AnchorStyles.Left };
