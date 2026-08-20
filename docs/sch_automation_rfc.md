@@ -755,6 +755,10 @@ The implemented pure planner accepts radius, distance metric, and coordinate-age
 
 Party buff presence can prove that a Regen-family effect exists but not its exact spell, caster, or remaining duration. With `unknown_existing_policy = 'wait_for_clear'`, an unowned existing Regen suppresses overwrite until it disappears. This is an explicit safety policy, not inferred ownership.
 
+When the existing defensive `ignore_trusts` option is enabled, trusts are excluded from Scholar recipient evaluation because their buff state is not present in the party-buff packet. An ignored trust therefore cannot block maintenance for observable player characters or count toward minimum coverage.
+
+The configured spell order is an actionable priority order. A spell blocked by overwrite safety, coverage, readiness, or another spell-specific condition remains blocked, but does not starve later list entries that can be maintained safely. If no configured spell is actionable, diagnostics report the first blocked entry and its original blocker.
+
 No other unknown-existing policy is supported in Phase 1.
 
 ### 12.3 Storm assignments

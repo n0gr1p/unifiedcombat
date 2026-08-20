@@ -140,6 +140,7 @@ function M.new(deps)
 		deps.get_sublimation_release_mechanics,
 		'deps.get_sublimation_release_mechanics'
 	)
+	local ignore_trusts = require_function(deps.ignore_trusts, 'deps.ignore_trusts')
 	local log = require_function(deps.log, 'deps.log')
 	local routine_priority = tonumber(deps.routine_priority)
 	local prepared_priority = tonumber(deps.prepared_priority)
@@ -192,6 +193,17 @@ function M.new(deps)
 		local party_members = get_party_members(ctx)
 		local party_snapshot = sch_party.observe(provider.party_tracker, party_members, ctx.now)
 		local observed_party_members = party_snapshot.members
+		local ignore_trusts_enabled = ignore_trusts(settings)
+		if type(ignore_trusts_enabled) ~= 'boolean' then
+			error('Scholar provider ignore_trusts must return a boolean')
+		end
+		local managed_party_members = {}
+		for member_index = 1, #observed_party_members do
+			local member = observed_party_members[member_index]
+			if not ignore_trusts_enabled or member.is_npc ~= true then
+				managed_party_members[#managed_party_members + 1] = member
+			end
+		end
 		runtime.configure(config, { main_job = player.main_job }, provider.generation, ctx.now)
 		runtime.observe_environment({
 			engine_enabled = ctx.engine_enabled,
@@ -200,10 +212,10 @@ function M.new(deps)
 			main_job = player.main_job,
 			player_hpp = vitals.hpp,
 			party_generation = party_snapshot.generation,
-			party_members = observed_party_members,
+			party_members = managed_party_members,
 		}, ctx.now)
 		runtime.observe_player_buffs(require_table(player.buffs, 'Scholar provider player buffs'), ctx.now)
-		runtime.observe_party_buffs(observed_party_members, ctx.now)
+		runtime.observe_party_buffs(managed_party_members, ctx.now)
 		if type(ctx.ability_recasts_present) ~= 'boolean' then
 			error('Scholar provider ability_recasts_present must be a boolean')
 		end
@@ -237,7 +249,7 @@ function M.new(deps)
 		local evaluation = sch_maintenance.evaluate(config, {
 			now = ctx.now,
 			player = player,
-			party_members = observed_party_members,
+			party_members = managed_party_members,
 			area_mechanics = get_area_mechanics(),
 			action_ready = action_ready,
 			action_readiness_source = 'unified_scheduler:action_ready',

@@ -7738,6 +7738,13 @@ scheduler.providers.sch_maintenance = require('uc_provider_sch_maintenance').new
 	end,
 	get_sublimation_safety = scheduler.sch_sublimation_safety,
 	get_sublimation_release_mechanics = require('uc_sch_sublimation').production_release_mechanics,
+	ignore_trusts = function(settings)
+		local value = settings.def_heal_ignore_trusts
+		if type(value) ~= 'boolean' then
+			error('normalized defensive cure ignore_trusts setting is required')
+		end
+		return value
+	end,
 	routine_priority = scheduler.PRIORITY_BAND_SCH_ROUTINE,
 	prepared_priority = scheduler.PRIORITY_BAND_SCH_PREPARED,
 	defensive_priority = scheduler.PRIORITY_BAND_SCH_DEFENSIVE,

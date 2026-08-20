@@ -639,11 +639,35 @@ local function main()
 	assert_true(list_result.regen.plan.atomic,
 		'Accession and Perpetuance maintenance chain must be atomic')
 
+	local blocked_list_members = members()
+	blocked_list_members[1].buffs[#blocked_list_members[1].buffs + 1] = 42
+	local blocked_list_result = maintenance.evaluate(list_config, {
+		now = 100,
+		player = player(),
+		party_members = blocked_list_members,
+		area_mechanics = {
+			confidence = 'confirmed',
+			model_key = 'Accession|party',
+			source = 'fixture:confirmed_accession_geometry',
+			radius_yalms = 4,
+			max_coordinate_age_s = 1,
+			distance_metric = 'horizontal',
+		},
+		spell_ready = maintenance_spell_ready,
+	}, runtime_snapshot('light', 'confirmed', 2))
+	assert_equal(blocked_list_result.regen.spells[1].blocker, 'coverage_below_minimum',
+		'partially unowned Regen must retain its overwrite-safety blocker')
+	assert_equal(blocked_list_result.regen.spell, 'Phalanx',
+		'a blocked earlier maintenance spell must not starve a later actionable spell')
+	assert_equal(blocked_list_result.regen.active_spell, 'Phalanx',
+		'ordered maintenance list must expose the selected later actionable spell')
+
 	local provider_config = storm_config
 	local provider_player = player()
 	local provider_members = members()
 	local logs = {}
 	local use_confirmed_planning_evidence = false
+	local ignore_trusts_enabled = false
 	local provider = provider_module.new({
 		capture = require('uc_sch_capture').new(),
 		runtime = runtime,
@@ -735,6 +759,9 @@ local function main()
 		end,
 		get_sublimation_release_mechanics = function()
 			return require('uc_sch_sublimation').production_release_mechanics()
+		end,
+		ignore_trusts = function()
+			return ignore_trusts_enabled
 		end,
 		routine_priority = 75,
 		prepared_priority = 150,
@@ -937,6 +964,42 @@ local function main()
 		'provider result must record classified successful ownership')
 
 	use_confirmed_planning_evidence = true
+	local trust_party_config = base_config()
+	trust_party_config.support.regen.enabled = true
+	trust_party_config.support.regen.spells = { 'Regen V' }
+	trust_party_config.support.regen.minimum_coverage = 4
+	provider_members = {
+		{ id = 1001, name = 'Scholar', hpp = 100, x = 0, y = 0, z = 0, buffs = { 358 }, is_npc = false },
+		{ id = 1002, name = 'Player2', hpp = 100, x = 0.1, y = 0, z = 0, buffs = {}, is_npc = false },
+		{ id = 1003, name = 'Player3', hpp = 100, x = 0.2, y = 0, z = 0, buffs = {}, is_npc = false },
+		{ id = 1004, name = 'Player4', hpp = 100, x = 0.3, y = 0, z = 0, buffs = {}, is_npc = false },
+		{ id = 1005, name = 'Player5', hpp = 100, x = 0.4, y = 0, z = 0, buffs = {}, is_npc = false },
+		{ id = 1006, name = 'Trust', hpp = 100, x = 0.5, y = 0, z = 0, buffs = nil, is_npc = true },
+	}
+	ignore_trusts_enabled = true
+	provider_player.buffs = { 358 }
+	runtime.reset('provider_ignore_trusts_regen', 239)
+	local trust_party_out = {}
+	provider.collect({
+		now = 240,
+		settings = { sch = trust_party_config },
+		player = provider_player,
+		engine_enabled = true,
+		maintenance_enabled = true,
+		defensive_enabled = true,
+		ability_recasts_present = true,
+		ability_recasts = { [231] = 0 },
+	}, trust_party_out)
+	local trust_party_status = provider.status_snapshot()
+	assert_equal(#trust_party_out, 1,
+		'ignore trusts must allow observable player maintenance to emit')
+	assert_equal(trust_party_out[1].action_name, 'Accession',
+		'five missing players plus one ignored trust must prepare Accession')
+	assert_equal(#trust_party_status.regen.plan.expected_recipients, 5,
+		'ignored trust must not enter the Accession recipient plan')
+	assert_equal(#trust_party_status.runtime.environment.party_members, 5,
+		'ignored trust must not enter Scholar runtime party state')
+	ignore_trusts_enabled = false
 	provider_members = members()
 	runtime.reset('observe_only_ready_plan', 249)
 	local ready_out = {}

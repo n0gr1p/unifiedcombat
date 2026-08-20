@@ -256,6 +256,8 @@ local function evaluate_regen(config, members, runtime_snapshot, now, player, ar
 		return result
 	end
 	require_function(spell_ready, 'Scholar Accession maintenance spell_ready')
+	local first_blocked_result = nil
+	local first_blocked_spell = nil
 	for i = 1, #config.spells do
 		local spell_result = evaluate_accession_maintenance_spell(
 			config,
@@ -268,13 +270,24 @@ local function evaluate_regen(config, members, runtime_snapshot, now, player, ar
 			spell_ready
 		)
 		result.spells[i] = spell_result
-		if spell_result.candidate ~= nil or spell_result.blocker ~= '' then
+		if spell_result.candidate ~= nil then
 			for key, value in pairs(spell_result) do
 				result[key] = value
 			end
 			result.active_spell = config.spells[i]
 			return result
 		end
+		if spell_result.blocker ~= '' and first_blocked_result == nil then
+			first_blocked_result = spell_result
+			first_blocked_spell = config.spells[i]
+		end
+	end
+	if first_blocked_result ~= nil then
+		for key, value in pairs(first_blocked_result) do
+			result[key] = value
+		end
+		result.active_spell = first_blocked_spell
+		return result
 	end
 	result.state = 'satisfied'
 	return result
