@@ -1031,6 +1031,7 @@ local function apply_structured_config_to_candidate(candidate, config)
         candidate.domain_movement_enabled = config.ownership.domain_movement_enabled
         candidate.domain_maintenance_enabled = config.ownership.domain_maintenance_enabled
         candidate.domain_follow_enabled = config.ownership.domain_follow_enabled
+        candidate.pause_automation_while_weakened = config.ownership.pause_automation_while_weakened == true
         if config.ownership.profile_v2_auto_reload_on_change == true then
             candidate.profile_v2_auto_reload_on_change = true
         else

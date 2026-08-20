@@ -240,6 +240,7 @@ local function build_flat_settings()
         domain_movement_enabled = false,
         domain_maintenance_enabled = false,
         domain_follow_enabled = false,
+        pause_automation_while_weakened = true,
         sub = true,
         sub2 = true,
         solo = true,
@@ -535,6 +536,7 @@ local function build_nested_settings()
             domain_movement_enabled = false,
             domain_maintenance_enabled = false,
             domain_follow_enabled = false,
+            pause_automation_while_weakened = true,
         },
         legacy = {
             sub = true,
@@ -601,6 +603,7 @@ local function main()
     assert_equal(default_from_normalize.combat.pulling.mode, 'camp', 'default camp pulling mode mismatch')
     assert_true(type(default_from_normalize.debug) == 'table', 'debug domain missing')
     assert_true(type(default_from_normalize.ownership) == 'table', 'ownership domain missing')
+    assert_equal(default_from_normalize.ownership.pause_automation_while_weakened, false, 'recovery hold must default off')
     assert_true(type(default_from_normalize.legacy) == 'table', 'legacy domain missing')
 
     local flat_settings = build_flat_settings()
@@ -669,6 +672,7 @@ local function main()
 	assert_equal(flat_config.maintenance.brd.reposition_for_party_songs, true, 'flat BRD reposition policy mismatch')
     assert_equal(flat_config.debug.ja_debug, true, 'debug flag mismatch')
     assert_equal(flat_config.ownership.domain_maintenance_enabled, false, 'maintenance domain mismatch')
+    assert_equal(flat_config.ownership.pause_automation_while_weakened, true, 'flat recovery hold mismatch')
     assert_equal(flat_config.legacy.command, true, 'legacy ambiguous flag mismatch')
     assert_equal(flat_config.legacy.profiles.UC.WAR.flag, true, 'legacy profiles mismatch')
 
@@ -687,6 +691,7 @@ local function main()
     assert_equal(nested_config.combat.enabled, false, 'nested combat enabled mismatch')
     assert_equal(nested_config.combat.weaponskill.enabled, true, 'nested combat ws enabled mismatch')
 	assert_equal(nested_config.combat.weaponskill.allow_aoe, false, 'nested Smart WS AoE preference mismatch')
+	assert_equal(nested_config.ownership.pause_automation_while_weakened, true, 'nested recovery hold mismatch')
     assert_equal(nested_config.defensive.cure.min_tier, 5, 'nested defensive cure min tier mismatch')
     assert_equal(nested_config.defensive.charm_sleeper.enabled, true, 'nested charm sleeper mismatch')
     assert_equal(nested_config.defensive.sleep_waker.enabled, true, 'nested sleep waker mismatch')

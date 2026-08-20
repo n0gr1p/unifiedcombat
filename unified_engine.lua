@@ -121,6 +121,11 @@ local function render_sched_overlay()
 	qlines[#qlines + 1] = ('DomainDefensiveLive: %s'):format(tostring(domain_live('defensive')))
 	qlines[#qlines + 1] = ('DomainMaintenanceLive: %s'):format(tostring(domain_live('maintenance')))
 	qlines[#qlines + 1] = ('DomainFollowLive: %s'):format(tostring(domain_live('follow')))
+	local recovery_hold_status = tostring(rawget(_G, 'UC_RECOVERY_HOLD_STATUS') or '')
+	if recovery_hold_status == '' then
+		recovery_hold_status = '(inactive)'
+	end
+	qlines[#qlines + 1] = ('RecoveryHold: %s'):format(recovery_hold_status)
 	local pf_op = tostring(rawget(_G, 'UC_LAST_PARTY_FOLLOW_OP') or '')
 	if pf_op ~= '' then
 		qlines[#qlines + 1] = ('PartyFollow: %s'):format(pf_op)

@@ -148,6 +148,7 @@ local function build_flat_settings()
 		domain_movement_enabled = true,
 		domain_maintenance_enabled = true,
 		domain_follow_enabled = true,
+		pause_automation_while_weakened = true,
 		profile_v2_auto_reload_on_change = true,
 		tank = true,
 		tank_enmity_actions = { 'Provoke', 'Flash' },
@@ -214,6 +215,7 @@ local function main()
 	assert_equal(active_profile.config.combat.weaponskill.primary, 'Savage Blade', 'active combat WS mismatch')
 	assert_equal(active_profile.config.combat.weaponskill.wait_ignore_names[1], 'Niightsiide', 'active wait ignore names mismatch')
 	assert_equal(active_profile.config.ownership.profile_v2_auto_reload_on_change, true, 'active auto-reload flag mismatch')
+	assert_equal(active_profile.config.ownership.pause_automation_while_weakened, true, 'active recovery hold mismatch')
 	assert_equal(active_profile.config.follow.fight.leader, true, 'active fight leader enabled mismatch')
 	assert_equal(active_profile.config.follow.fight.leader_name, 'Niightsiide', 'active fight leader name mismatch')
 	assert_equal(active_profile.config.follow.fight.leader_id, 0, 'active fight leader id must stay runtime-owned')
@@ -286,6 +288,7 @@ local function main()
 	assert_equal(projected.wait_ignore_names[1], 'Niightsiide', 'projected wait ignore names mismatch')
 	assert_equal(projected.ignore[1], 77, 'projected compatibility ignore id mismatch')
 	assert_equal(projected.profile_v2_auto_reload_on_change, true, 'projected auto-reload flag mismatch')
+	assert_equal(projected.pause_automation_while_weakened, true, 'projected recovery hold mismatch')
 	assert_equal(projected.fight_leader_name, 'Niightsiide', 'projected fight leader name mismatch')
 	assert_equal(projected.fight_leader_id, 77, 'projected fight leader id should resolve from fight leader name')
 	assert_equal(projected.fight_leader_selected, 'Niightsiide', 'projected fight leader selected mismatch')
@@ -377,6 +380,7 @@ local function main()
 		sub_job = 'WAR',
 		source = 'UC_PROFILE_V2',
 	})
+	assert_equal(ui_profile.config.ownership.pause_automation_while_weakened, true, 'UI-authored recovery hold mismatch')
 	assert_true(type(ui_profile) == 'table', 'active profile from v2 payload must be a table')
 	assert_equal(ui_profile.version, 2, 'UI active profile version mismatch')
 	assert_equal(ui_profile.profile.source, 'ui', 'UI active profile source mismatch')

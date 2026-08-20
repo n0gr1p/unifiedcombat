@@ -2054,13 +2054,29 @@ local function try_pull_action(settings, player, target, executor)
 	end
 
 	local sent_key = tostring(action_type) .. ':' .. tostring(action_name)
+	local command_sent, command_reason
+	local function pull_dispatch_rejected(reason)
+		clear_pull_spell_wait_state()
+		_G.UC_PULL_APPROACH_UNTIL = 0
+		_G.UC_COMBAT_INTENT_UNTIL = 0
+		_G.UC_LAST_BLOCK_REASON = tostring(reason or 'PULL_ACTION_REJECTED')
+		_G.UC_WS_LAST_DIAG = ('core pull cancelled type=%s action=%s reason=%s'):format(
+			action_type,
+			action_name,
+			tostring(reason or 'PULL_ACTION_REJECTED')
+		)
+	end
 	if action_type == 'spell' then
-		executor.send_command('input /ma "' .. action_name .. '" ' .. tostring(cur.id), {
+		command_sent, command_reason = executor.send_command('input /ma "' .. action_name .. '" ' .. tostring(cur.id), {
 			reason = 'PULL_ACTION_SEND',
 			target_id = tonumber(cur.id) or 0,
 			action_type = action_type,
 			action_name = action_name,
 		})
+		if command_sent == false then
+			pull_dispatch_rejected(command_reason)
+			return true
+		end
 		core.pull_lock_until = math.max(tonumber(core.pull_lock_until) or 0, now + 0.9)
 		core.pull_pending_type = 'spell'
 		core.pull_spell_waiting = true
@@ -2071,12 +2087,16 @@ local function try_pull_action(settings, player, target, executor)
 		_G.UC_COMBAT_INTENT_UNTIL = uc_now_s() + 2.5
 		_G.UC_PULL_APPROACH_UNTIL = uc_now_s() + 2.5
 	else
-		executor.send_command('input /ja "' .. action_name .. '" ' .. tostring(cur.id), {
+		command_sent, command_reason = executor.send_command('input /ja "' .. action_name .. '" ' .. tostring(cur.id), {
 			reason = 'PULL_ACTION_SEND',
 			target_id = tonumber(cur.id) or 0,
 			action_type = action_type,
 			action_name = action_name,
 		})
+		if command_sent == false then
+			pull_dispatch_rejected(command_reason)
+			return true
+		end
 		core.ja_lock_until = math.max(tonumber(core.ja_lock_until) or 0, now + 0.5)
 		core.pull_lock_until = math.max(tonumber(core.pull_lock_until) or 0, now + 0.6)
 		core.pull_pending_type = 'ja'

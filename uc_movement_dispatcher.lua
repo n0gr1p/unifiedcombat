@@ -1,4 +1,5 @@
 local M = {}
+local recovery_hold = require('uc_recovery_hold')
 
 local function require_table(value, name)
 	if type(value) ~= 'table' then
@@ -60,6 +61,7 @@ function M.build(opts)
 	local source_prefix = require_source_prefix(opts.source_prefix)
 	local sources = {
 		stop = source_prefix .. ':stop',
+		release = source_prefix .. ':release',
 		run_vector = source_prefix .. ':run_vector',
 		run_heading = source_prefix .. ':run_heading',
 		run_forward = source_prefix .. ':run_forward',
@@ -72,12 +74,24 @@ function M.build(opts)
 		run = run,
 	}
 
-	local function dispatch(operation, intent, deps)
+	local function dispatch(operation, intent, deps, hooks)
 		intent.source = sources[operation]
-		return require_executed(dispatcher.dispatch_intent(intent, deps), operation)
+		local result = dispatcher.dispatch_intent(intent, deps, hooks)
+		if type(result) == 'table' and result.reason == recovery_hold.BLOCK_REASON then
+			return result
+		end
+		return require_executed(result, operation)
 	end
 
 	local executor = {
+		release = function(meta)
+			return dispatch('release', {
+				kind = 'run_stop',
+				meta = require_meta(meta),
+			}, run_deps, {
+				allow_during_recovery_hold = true,
+			})
+		end,
 		stop = function(meta)
 			return dispatch('stop', {
 				kind = 'run_stop',

@@ -1,4 +1,5 @@
 local M = {}
+local recovery_hold = require('uc_recovery_hold')
 
 local function require_table(value, name)
     if type(value) ~= "table" then
@@ -45,7 +46,7 @@ function M.apply_command_ownership(opts)
     status.dispatch_ok = (type(dispatch_result) == "table" and dispatch_result.ok == true and dispatch_result.executed == true)
     status.dispatch_reason = type(dispatch_result) == "table" and tostring(dispatch_result.reason or "") or "missing_dispatch_result"
 
-    if not status.dispatch_ok then
+    if not status.dispatch_ok and status.dispatch_reason ~= recovery_hold.BLOCK_REASON then
         error("uc_scheduler_command_ownership dispatcher failed: " .. status.dispatch_reason)
     end
 

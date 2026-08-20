@@ -18,6 +18,7 @@ local domain_ownership = require('uc_domain_ownership')
 local pet_command_coordinator = require('uc_pet_command_coordinator')
 local sleep_status = require('uc_sleep_status')
 sleep_status.validate_resources(res.buffs)
+local recovery_hold = require('uc_recovery_hold')
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
 	or nil
@@ -4224,6 +4225,9 @@ local function p1_build_dispatch_plan(ctx, selected)
 end
 
 local function p1_revalidate_plan_commit(ctx, selected, plan)
+	if recovery_hold.current() then
+		return false, recovery_hold.BLOCK_REASON
+	end
 	local valid, reason = require('uc_scheduler_dispatch_plan').p1_revalidate_plan_commit(
 		scheduler,
 		ctx,
@@ -6351,6 +6355,22 @@ local function try_charm_sleeper_emergency(settings, ctx)
 	return true, 'BLOCK_CHARM_SLEEPER_DISPATCH_REVALIDATION'
 end
 
+function scheduler.on_recovery_hold_entered()
+	local phase = scheduler.phase1
+	phase.last_selected = nil
+	phase.last_plan = nil
+	phase.last_noop_reason = recovery_hold.BLOCK_REASON
+	_G.UC_SCHED_P1_SELECTED_PROPOSAL = ''
+	_G.UC_SCHED_P1_SELECTED_PROVIDER = ''
+	_G.UC_SCHED_P1_SELECTED_FAMILY = ''
+	_G.UC_SCHED_P1_PLAN_PRELUDE = ''
+	scheduler.action_timeline_log('RECOVERY_HOLD_ENTER', {
+		reason = recovery_hold.BLOCK_REASON,
+	}, 'recovery_hold_enter', 0)
+end
+
+_G.UC_SCHED_OnRecoveryHoldEntered = scheduler.on_recovery_hold_entered
+
 function scheduler.process_tick(cadence)
 	_G.UC_LAST_SCHED_ACTION = ''
 	require('uc_encounter_runtime').observe(now_s())
@@ -6378,6 +6398,16 @@ function scheduler.process_tick(cadence)
 	_G.UC_LOG_TANK_SCHED = uc_scheduler_config.debug_log_tank_sched(s)
 	ensure_diag_logs_initialized()
 	maybe_broadcast_party_state_ipc()
+	if recovery_hold.current() then
+		scheduler.phase1.last_selected = nil
+		scheduler.phase1.last_plan = nil
+		scheduler.phase1.last_noop_reason = recovery_hold.BLOCK_REASON
+		_G.UC_LAST_SCHED_ACTION = '[recovery_hold]Weakness'
+		_G.UC_TARGET_BLOCK_REASON = recovery_hold.BLOCK_REASON
+		_G.UC_MOVEMENT_MODE = 'RECOVERY_HOLD'
+		_G.UC_MOVEMENT_BLOCK_REASON = recovery_hold.BLOCK_REASON
+		return true, recovery_hold.BLOCK_REASON
+	end
 	if not defensive_domain_enabled then
 		scheduler.providers.sleep_waker.reset('DEFENSIVE_DOMAIN_DISABLED')
 	end

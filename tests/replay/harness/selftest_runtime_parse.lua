@@ -58,6 +58,7 @@ local RUNTIME_LUA_FILES = {
     "uc_profile_v2.lua",
     "uc_profile_v2_export.lua",
     "uc_profile_contract.lua",
+    "uc_recovery_hold.lua",
     "uc_provider_combat.lua",
 	"uc_provider_kei.lua",
     "uc_provider_defensive.lua",

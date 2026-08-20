@@ -14,6 +14,7 @@ public partial class MainForm
     private NumericUpDown _wsMinimumTp = null!;
     private CheckBox _chkWsAllowAoe = null!;
     private ToolTip _smartWsToolTip = null!;
+    private ToolTip _recoveryHoldToolTip = null!;
     private ComboBox _aftermathCombo = null!;
     private ComboBox _pullerCombo = null!;
 	private ComboBox _pullerLeashSource = null!;
@@ -358,9 +359,18 @@ public partial class MainForm
             WrapContents = true,
             Padding = new Padding(0, 0, 0, 6),
         };
+        _recoveryHoldToolTip = new ToolTip();
         foreach (var key in HubUiConstants.CombatTargetingUiKeys)
         {
-            combatToggles.Controls.Add(MkGlobal(key));
+            var toggle = MkGlobal(key);
+            combatToggles.Controls.Add(toggle);
+            if (key == "pause_automation_while_weakened")
+            {
+                _recoveryHoldToolTip.SetToolTip(
+                    toggle,
+                    "While weakened after Raise, UnifiedCombat releases movement and pauses automated actions until Weakness expires, allowing manual recovery positioning."
+                );
+            }
         }
         leftCol.Controls.Add(combatToggles, 0, lr);
         leftCol.SetColumnSpan(combatToggles, 2);
