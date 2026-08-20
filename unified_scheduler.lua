@@ -7333,18 +7333,57 @@ function scheduler.sch_maintenance_status_lines()
 	return scheduler.providers.sch_maintenance.status_lines(now_s())
 end
 
-function scheduler.sch_maintenance_trace_once()
+local function sch_capture_player()
 	local player = windower.ffxi.get_player()
 	if type(player) ~= 'table' or tostring(player.main_job or '') ~= 'SCH' then
-		return false, 'Scholar trace requires SCH as the current main job.'
+		return nil, 'Scholar capture requires SCH as the current main job.'
 	end
 	if rawget(_G, 'Start_Engine') ~= true then
-		return false, 'Scholar trace requires the UnifiedCombat engine to be running.'
+		return nil, 'Scholar capture requires the UnifiedCombat engine to be running.'
 	end
 	if not domain_ownership.is_enabled('maintenance') then
-		return false, 'Scholar trace requires the maintenance domain to be enabled.'
+		return nil, 'Scholar capture requires the maintenance domain to be enabled.'
+	end
+	if type(player.name) ~= 'string' or player.name == '' then
+		error('Scholar capture player name is unavailable')
+	end
+	return player, nil
+end
+
+function scheduler.sch_maintenance_trace_once()
+	local player, reason = sch_capture_player()
+	if player == nil then
+		return false, reason:gsub('capture', 'trace', 1)
 	end
 	return scheduler.providers.sch_maintenance.arm_trace_once(now_s())
+end
+
+function scheduler.sch_maintenance_capture_start(label)
+	local player, reason = sch_capture_player()
+	if player == nil then
+		return false, reason, nil
+	end
+	return scheduler.providers.sch_maintenance.start_capture({
+		label = label,
+		character = player.name,
+		main_job = player.main_job,
+		sub_job = player.sub_job,
+	}, now_s())
+end
+
+function scheduler.sch_maintenance_capture_mark(label)
+	return scheduler.providers.sch_maintenance.mark_capture(label, now_s())
+end
+
+function scheduler.sch_maintenance_capture_stop(reason)
+	if type(reason) ~= 'string' or reason == '' then
+		error('Scholar capture stop reason must be a non-empty string')
+	end
+	return scheduler.providers.sch_maintenance.stop_capture(reason, now_s())
+end
+
+function scheduler.sch_maintenance_capture_status()
+	return scheduler.providers.sch_maintenance.capture_status()
 end
 
 function scheduler.sch_maintenance_trace_snapshot()
@@ -7463,6 +7502,7 @@ function scheduler.sch_sublimation_safety(ctx, proposals)
 	})
 end
 scheduler.providers.sch_maintenance = require('uc_provider_sch_maintenance').new({
+	capture = require('uc_sch_capture').new(),
 	get_party_members = get_party_members,
 	resolve_spell_name = function(id)
 		local spell = res.spells[id]

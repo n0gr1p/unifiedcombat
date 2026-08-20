@@ -109,6 +109,7 @@ local RUNTIME_LUA_FILES = {
     "uc_smn_pet_combat_adapter.lua",
     "uc_smn_runtime.lua",
 	"uc_sch_capabilities.lua",
+	"uc_sch_capture.lua",
 	"uc_sch_action_observer.lua",
 	"uc_sch_action_results.lua",
 	"uc_sch_area_planner.lua",

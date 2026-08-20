@@ -267,6 +267,7 @@ The following decisions are supported now:
 | Local action identity/contamination observation | PASS FOR IDENTITY ONLY | Local spell and JA identities are resource-resolved; manual or unknown spells abort prepared state. Success, rejection, interruption, and recipient classification remain field-gated. |
 | Existing direct cure/status-removal ownership | PASS | Scheduler comparison diagnostics retain `defensive_internal`/`defensive_healbot` as the source; no Scholar cure selector was added. |
 | Bounded field trace | PASS | Captures main-job level/job-point context, changing recast/buff/party samples, raw local action targets, action messages, and terminal reason without dispatch. |
+| Durable automated field capture | PASS OFFLINE | Continuous changing samples and labeled completed traces are flushed to a structured session artifact; unattended solo and party-range Windower scripts drive the supported evidence runs without enabling production Scholar dispatch. Live artifacts remain required. |
 | Live Arts/Sublimation/storm dispatch | NOT AUTHORIZED | Action-message field classification remains incomplete. |
 | Live group Regen dispatch | NOT AUTHORIZED | Charge, geometry, action-result, and duration gates remain unresolved. |
 

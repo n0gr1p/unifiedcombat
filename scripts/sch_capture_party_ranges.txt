@@ -1,0 +1,77 @@
+// UnifiedCombat unattended Accession geometry capture.
+// Preconditions: main-job SCH in a stable party with p1, p2, and p3 present.
+// Arrange the characters at deliberately staggered ranges before running.
+// Do not move them during the script. Runtime is approximately 22 minutes.
+
+echo UC SCH party-range capture starting. Hold party positions until completion.
+uc sch capture start party_ranges
+wait 2
+
+uc sch capture mark light_arts_party
+uc sch trace once
+wait 1
+input /ja "Light Arts" <me>
+wait 6
+
+uc sch capture mark p1_accession
+uc sch trace once
+wait 1
+input /ja "Accession" <me>
+wait 5
+
+uc sch capture mark p1_perpetuance
+uc sch trace once
+wait 1
+input /ja "Perpetuance" <me>
+wait 5
+
+uc sch capture mark p1_group_regen
+uc sch trace once
+wait 1
+input /ma "Regen V" <p1>
+wait 10
+
+echo UC SCH holding 600 seconds for Regen expiration and charge recovery.
+wait 600
+
+uc sch capture mark p2_accession
+uc sch trace once
+wait 1
+input /ja "Accession" <me>
+wait 5
+
+uc sch capture mark p2_perpetuance
+uc sch trace once
+wait 1
+input /ja "Perpetuance" <me>
+wait 5
+
+uc sch capture mark p2_group_regen
+uc sch trace once
+wait 1
+input /ma "Regen V" <p2>
+wait 10
+
+echo UC SCH holding 600 seconds for Regen expiration and charge recovery.
+wait 600
+
+uc sch capture mark p3_accession
+uc sch trace once
+wait 1
+input /ja "Accession" <me>
+wait 5
+
+uc sch capture mark p3_perpetuance
+uc sch trace once
+wait 1
+input /ja "Perpetuance" <me>
+wait 5
+
+uc sch capture mark p3_group_regen
+uc sch trace once
+wait 1
+input /ma "Regen V" <p3>
+wait 10
+
+uc sch capture stop
+echo UC SCH party-range capture complete. Party members may move.

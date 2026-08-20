@@ -27,6 +27,7 @@ The following reviewable slices now exist:
 - an exact evidence-keyed raw action-result classifier that validates every target/action, handles full and partial success, failures, interruption, missing and unexpected recipients, and aborts immediately without ownership when any result remains unclassified; the production catalog remains explicitly unvalidated and empty;
 - an evidence-keyed charge-model boundary parameterized by exact level/job-point context, recast encoding, maximum charges, recharge interval, units, boundary tolerance, and Tabula Rasa policy; missing recast remains missing, contradictions invalidate confidence, and the production catalog remains explicitly unvalidated;
 - status plus a bounded one-shot field trace that records changing buff/recast/party samples, raw local action targets, action messages, and a terminal reason;
+- a durable automated capture session that continuously persists changing samples during long waits, associates completed raw traces with script-owned marks, and supports unattended solo and party-range Windower runners;
 - comparison diagnostics that identify direct cures and single-target status removal as unchanged `defensive_internal`/`defensive_healbot` proposals;
 - expanded `//uc sch status` output covering context, Arts, charge age, sequence/pending/lane state, support subsystems, ownership, retry, last result, and trace state;
 - transition-only stable runtime logs for charge changes, sequence lifecycle, action failure, recipient reconciliation, and lane acquire/release without repeating unchanged idle observations;
@@ -47,6 +48,8 @@ The following reviewable slices now exist:
 Live Arts, Sublimation, storm, and multi-stratagem dispatch remain disabled. The lane and abort integration is safety infrastructure only; the observe-only provider cannot create an active sequence or emit an executable Scholar proposal. Phase 0 field gates for charge decoding, production action-result rules, area geometry/freshness, and exact duration still apply.
 
 ### Field trace runbook
+
+The operator-facing field workflow is the unattended script process in `docs/sch_automated_capture_runbook.md`. The per-action commands below remain useful for focused engineering diagnosis; they are not the required operator workflow for the complete matrix.
 
 With SCH as the current main job, the UnifiedCombat engine running, and the maintenance domain enabled:
 

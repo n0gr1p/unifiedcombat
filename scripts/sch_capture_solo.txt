@@ -1,0 +1,172 @@
+// UnifiedCombat unattended SCH Phase 1 evidence capture.
+// Preconditions: main-job SCH, engine running, maintenance domain enabled,
+// safe outdoor location, full HP/MP, no combat target, and no other automation acting.
+
+echo UC SCH solo capture starting. Do not issue actions until completion.
+uc sch capture start solo_phase1
+wait 2
+
+uc sch capture mark light_arts_success
+uc sch trace once
+wait 1
+input /ja "Light Arts" <me>
+wait 6
+
+uc sch capture mark light_arts_repeat
+uc sch trace once
+wait 1
+input /ja "Light Arts" <me>
+wait 6
+
+uc sch capture mark addendum_white
+uc sch trace once
+wait 1
+input /ja "Addendum: White" <me>
+wait 6
+
+uc sch capture mark accession_1
+uc sch trace once
+wait 1
+input /ja "Accession" <me>
+wait 5
+
+uc sch capture mark perpetuance_1
+uc sch trace once
+wait 1
+input /ja "Perpetuance" <me>
+wait 5
+
+uc sch capture mark accession_perpetuance_regen_self_1
+uc sch trace once
+wait 1
+input /ma "Regen V" <me>
+wait 9
+
+uc sch capture mark accession_2
+uc sch trace once
+wait 1
+input /ja "Accession" <me>
+wait 5
+
+uc sch capture mark perpetuance_2
+uc sch trace once
+wait 1
+input /ja "Perpetuance" <me>
+wait 5
+
+uc sch capture mark accession_perpetuance_regen_self_2
+uc sch trace once
+wait 1
+input /ma "Regen V" <me>
+wait 9
+
+uc sch capture mark accession_low_charge_probe
+uc sch trace once
+wait 1
+input /ja "Accession" <me>
+wait 5
+
+uc sch capture mark regen_consumes_prepared_accession
+uc sch trace once
+wait 1
+input /ma "Regen V" <me>
+wait 9
+
+echo UC SCH waiting 210 seconds for charge recovery evidence.
+wait 210
+
+uc sch capture mark perpetuance_after_recovery
+uc sch trace once
+wait 1
+input /ja "Perpetuance" <me>
+wait 5
+
+uc sch capture mark regen_consumes_recovered_perpetuance
+uc sch trace once
+wait 1
+input /ma "Regen V" <me>
+wait 9
+
+uc sch capture mark sublimation_activate
+uc sch trace once
+wait 1
+input /ja "Sublimation" <me>
+wait 8
+
+uc sch capture mark sublimation_early_release
+uc sch trace once
+wait 1
+input /ja "Sublimation" <me>
+wait 8
+
+uc sch capture mark sublimation_reactivate
+uc sch trace once
+wait 1
+input /ja "Sublimation" <me>
+wait 8
+
+echo UC SCH waiting 1200 seconds for Sublimation completion evidence.
+wait 1200
+
+uc sch capture mark sandstorm_ii
+uc sch trace once
+wait 1
+input /ma "Sandstorm II" <me>
+wait 8
+
+uc sch capture mark rainstorm_ii
+uc sch trace once
+wait 1
+input /ma "Rainstorm II" <me>
+wait 8
+
+uc sch capture mark windstorm_ii
+uc sch trace once
+wait 1
+input /ma "Windstorm II" <me>
+wait 8
+
+uc sch capture mark firestorm_ii
+uc sch trace once
+wait 1
+input /ma "Firestorm II" <me>
+wait 8
+
+uc sch capture mark hailstorm_ii
+uc sch trace once
+wait 1
+input /ma "Hailstorm II" <me>
+wait 8
+
+uc sch capture mark thunderstorm_ii
+uc sch trace once
+wait 1
+input /ma "Thunderstorm II" <me>
+wait 8
+
+uc sch capture mark voidstorm_ii
+uc sch trace once
+wait 1
+input /ma "Voidstorm II" <me>
+wait 8
+
+uc sch capture mark aurorastorm_ii
+uc sch trace once
+wait 1
+input /ma "Aurorastorm II" <me>
+wait 8
+
+uc sch capture mark aurorastorm_ii_repeat
+uc sch trace once
+wait 1
+input /ma "Aurorastorm II" <me>
+wait 8
+
+uc sch capture mark sublimation_completed_release
+uc sch trace once
+wait 1
+input /ja "Sublimation" <me>
+wait 8
+
+uc sch capture stop
+echo UC SCH solo capture complete. The output path is shown in chat.

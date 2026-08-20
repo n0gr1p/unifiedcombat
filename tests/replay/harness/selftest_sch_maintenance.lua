@@ -505,6 +505,7 @@ local function main()
 	local logs = {}
 	local use_confirmed_planning_evidence = false
 	local provider = provider_module.new({
+		capture = require('uc_sch_capture').new(),
 		runtime = runtime,
 		get_party_members = function()
 			return provider_members

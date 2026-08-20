@@ -2382,6 +2382,10 @@ windower.register_event('zone change', function()
 end)
 
 windower.register_event('unload', function()
+	local sch_capture_status = require('unified_scheduler').sch_maintenance_capture_status()
+	if sch_capture_status.active == true then
+		require('unified_scheduler').sch_maintenance_capture_stop('unload')
+	end
 	uc_recovery_hold.reset_runtime()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('unload')
@@ -2407,6 +2411,10 @@ windower.register_event('unload', function()
 end)
 
 windower.register_event('logout', function()
+	local sch_capture_status = require('unified_scheduler').sch_maintenance_capture_status()
+	if sch_capture_status.active == true then
+		require('unified_scheduler').sch_maintenance_capture_stop('logout')
+	end
 	uc_recovery_hold.reset_runtime()
 	uc_camp_anchor.clear()
 	uc_camp_pull_registry.reset('logout')
@@ -2463,6 +2471,10 @@ windower.register_event('addon command', function(...)
 		return
 	elseif a == 'stop' then
 		Start_Engine = false
+		local sch_capture_status = require('unified_scheduler').sch_maintenance_capture_status()
+		if sch_capture_status.active == true then
+			require('unified_scheduler').sch_maintenance_capture_stop('engine_stop')
+		end
 		require('uc_sch_runtime').reset('engine_stop', uc_now_s())
 		uc_encounter_runtime.reset('engine_stop')
 		require('uc_lilith_easy_encounter').reset('engine_stop')
@@ -2709,8 +2721,61 @@ windower.register_event('addon command', function(...)
 				windower.add_to_chat(207, lines[i])
 			end
 			return
+		elseif sub == 'capture' then
+			if args[3] == nil then
+				windower.add_to_chat(167, '//uc sch capture start <label>|mark <label>|status|stop')
+				return
+			end
+			local capture_command = tostring(args[3]):lower()
+			if capture_command == 'start' then
+				if args[4] == nil or tostring(args[4]) == '' then
+					windower.add_to_chat(167, 'UC SCH: capture start requires a label.')
+					return
+				end
+				local ok, message, path = scheduler.sch_maintenance_capture_start(tostring(args[4]))
+				windower.add_to_chat(ok and 207 or 167, 'UC SCH: ' .. tostring(message))
+				if ok then
+					windower.add_to_chat(207, 'UC SCH capture file: ' .. tostring(path))
+				end
+				return
+			elseif capture_command == 'mark' then
+				if args[4] == nil or tostring(args[4]) == '' then
+					windower.add_to_chat(167, 'UC SCH: capture mark requires a label.')
+					return
+				end
+				local ok, message = scheduler.sch_maintenance_capture_mark(tostring(args[4]))
+				windower.add_to_chat(ok and 207 or 167, 'UC SCH: ' .. tostring(message))
+				return
+			elseif capture_command == 'status' then
+				local capture_status = scheduler.sch_maintenance_capture_status()
+				if capture_status.active == true then
+					windower.add_to_chat(207, ('UC SCH capture active label=%s mark=%s traces=%d path=%s'):format(
+						tostring(capture_status.label),
+						tostring(capture_status.mark),
+						tonumber(capture_status.trace_count),
+						tostring(capture_status.path)
+					))
+				elseif type(capture_status.last) == 'table' then
+					windower.add_to_chat(207, ('UC SCH capture inactive last=%s traces=%d'):format(
+						tostring(capture_status.last.path),
+						tonumber(capture_status.last.trace_count)
+					))
+				else
+					windower.add_to_chat(207, 'UC SCH capture inactive; no completed session.')
+				end
+				return
+			elseif capture_command == 'stop' then
+				local ok, message, path = scheduler.sch_maintenance_capture_stop('operator_stop')
+				windower.add_to_chat(ok and 207 or 167, 'UC SCH: ' .. tostring(message))
+				if ok then
+					windower.add_to_chat(207, 'UC SCH capture file: ' .. tostring(path))
+				end
+				return
+			end
+			windower.add_to_chat(167, '//uc sch capture start <label>|mark <label>|status|stop')
+			return
 		end
-		windower.add_to_chat(207, '//uc sch status|trace once|trace show')
+		windower.add_to_chat(207, '//uc sch status|trace once|trace show|capture start <label>|mark <label>|status|stop')
 		return
 	elseif a == 'geo' then
 		local scheduler = require('unified_scheduler')

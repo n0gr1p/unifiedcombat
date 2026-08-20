@@ -132,6 +132,16 @@ function M.new(deps)
 	)
 	local log = require_function(deps.log, 'deps.log')
 	local runtime = deps.runtime or sch_runtime
+	local capture = require_table(deps.capture, 'deps.capture')
+	if type(capture) ~= 'table'
+		or type(capture.start) ~= 'function'
+		or type(capture.mark) ~= 'function'
+		or type(capture.record_trace) ~= 'function'
+		or type(capture.record_sample) ~= 'function'
+		or type(capture.stop) ~= 'function'
+		or type(capture.status) ~= 'function' then
+		error('Scholar provider capture dependency is invalid')
+	end
 	local provider = {
 		generation = 0,
 		config_signature = '',
@@ -236,7 +246,7 @@ function M.new(deps)
 			end
 		end
 		provider.last_runtime_snapshot = clone_value(runtime_snapshot)
-		local trace_completed = provider.trace.observe_sample({
+		local trace_sample = {
 			main_job = player.main_job,
 			main_job_level = main_job_level,
 			job_points_present = job_points_present,
@@ -248,7 +258,11 @@ function M.new(deps)
 			blocker = evaluation.first_blocker or '',
 			party = observed_party_members,
 			party_generation = party_snapshot.generation,
-		}, ctx.now)
+		}
+		if capture.status().active == true then
+			capture.record_sample(trace_sample, ctx.now)
+		end
+		local trace_completed = provider.trace.observe_sample(trace_sample, ctx.now)
 		local trace_snapshot = provider.trace.snapshot()
 		provider.status.trace_armed = trace_snapshot.armed
 		provider.status.trace_phase = trace_snapshot.active and trace_snapshot.active.phase or 'idle'
@@ -277,6 +291,12 @@ function M.new(deps)
 		if trace_completed and trace_snapshot.last ~= nil
 			and trace_snapshot.last.id ~= provider.last_logged_trace_id then
 			provider.last_logged_trace_id = trace_snapshot.last.id
+			if capture.status().active == true then
+				local persisted, persist_message = capture.record_trace(trace_snapshot.last, ctx.now)
+				if not persisted then
+					error('Scholar trace persistence failed: ' .. tostring(persist_message))
+				end
+			end
 			log(('SCH_TRACE_COMPLETE id=%d action=%s reason=%s events=%d'):format(
 				tonumber(trace_snapshot.last.id) or 0,
 				tostring(trace_snapshot.last.focus_action_name or ''),
@@ -375,6 +395,22 @@ function M.new(deps)
 
 	function provider.trace_active()
 		return provider.trace.snapshot().armed
+	end
+
+	function provider.start_capture(meta, now)
+		return capture.start(meta, now)
+	end
+
+	function provider.mark_capture(label, now)
+		return capture.mark(label, now)
+	end
+
+	function provider.stop_capture(reason, now)
+		return capture.stop(reason, now)
+	end
+
+	function provider.capture_status()
+		return capture.status()
 	end
 
 	return provider
