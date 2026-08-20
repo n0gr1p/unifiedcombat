@@ -15,6 +15,14 @@ local function require_function(deps, name)
 	return value
 end
 
+local function cure_is_critical(cure, critical_hpp)
+	if type(cure) ~= 'table' then
+		return false
+	end
+	local hpp = tonumber(cure.target and cure.target.hpp) or 0
+	return hpp > 0 and hpp <= (tonumber(critical_hpp) or 35)
+end
+
 function M.new(deps)
 	deps = require_table(deps, 'deps')
 	local bool_setting = require_function(deps, 'bool_setting')
@@ -41,8 +49,53 @@ function M.new(deps)
 		if tostring(active_value_or_flat('config.defensive.provider', ctx.settings.defensive_provider) or 'internal') ~= 'internal' then
 			return
 		end
+
 		local candidates = build_defensive_candidates(ctx)
-		local action, reason = choose_defensive_action(candidates)
+		local limit_enabled = bool_setting(
+			active_value_or_flat('config.defensive.na.limit_enabled', ctx.settings.defensive_na_limit_enabled),
+			false
+		)
+		local action = nil
+		local reason = nil
+		if limit_enabled then
+			local na_enabled = bool_setting(
+				active_value_or_flat('config.defensive.na.enabled', ctx.settings.defensive_na_enabled),
+				true
+			)
+			local status_priority = active_value_or_flat(
+				'config.defensive.na.status_priority',
+				ctx.settings.defensive_na_status_priority
+			)
+			local ignore_trusts = bool_setting(
+				active_value_or_flat('config.defensive.cure.ignore_trusts', ctx.settings.def_heal_ignore_trusts),
+				true
+			)
+			local limited_debuff = nil
+			if na_enabled then
+				limited_debuff = require('uc_defensive_na_limit').select(ctx, status_priority, {
+					action_ready = action_ready,
+					ignore_trusts = ignore_trusts,
+				})
+			end
+			-- Limited mode owns the NA candidate completely. The legacy member-first
+			-- candidate is deliberately discarded even when the allowlist is empty.
+			candidates.debuff = limited_debuff
+			local critical_hpp = tonumber(
+				active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings.defensive_critical_hpp)
+			) or 35
+			if candidates.cure and cure_is_critical(candidates.cure, critical_hpp) then
+				action = candidates.cure
+				reason = 'BLOCK_DEFENSIVE_CURE_CRITICAL'
+			elseif limited_debuff then
+				action = limited_debuff
+				reason = 'BLOCK_DEFENSIVE_NA_LIMIT'
+			else
+				action, reason = choose_defensive_action(candidates)
+			end
+		else
+			action, reason = choose_defensive_action(candidates)
+		end
+
 		if not action or not action.spell or not action.target or not action.target.name then
 			return
 		end
@@ -66,7 +119,10 @@ function M.new(deps)
 		if tostring(action.type or '') == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp then
 			priority_band = critical_cure_priority
 		end
-		local _, _, action_kind = action_ready(action_name, target_id)
+		local ready, _, action_kind = action_ready(action_name, target_id)
+		if ready ~= true then
+			return
+		end
 		local legacy_command = build_action_command(action_name, action_kind, action.target)
 		out[#out + 1] = {
 			proposal_id = ('def.internal.%s.%s.%d'):format(tostring(action.type or 'action'), action_name, math.floor(ctx.now * 1000)),
@@ -97,6 +153,8 @@ function M.new(deps)
 			detail = {
 				def_action_type = tostring(action.type or ''),
 				target_hpp = target_hpp,
+				limited_na = action.limited_na == true,
+				status_key = tostring(action.status_key or ''),
 			},
 			legacy_command = legacy_command,
 		}
