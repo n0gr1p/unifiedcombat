@@ -14,6 +14,8 @@ internal static class StructuredProfileV2WriterTests
             TestWeaponskillMinimumTpValidation();
             TestSmartWsAoePreferenceRoundTrip();
             TestSmartWsAoeUiPersistenceContract();
+			TestFastSkillchainRoundTrip();
+			TestFastSkillchainUiPersistenceContract();
             TestStatusRemovalLimitProfileContract();
             TestSerializeOmitsRetiredOwnershipMarkers();
             TestParseTargetedBuffs();
@@ -32,6 +34,7 @@ internal static class StructuredProfileV2WriterTests
             TestProfileSchemaThreePreservesExplicitDomains();
             TestProfileSchemaThreeRemovesRetiredDarkLaunchKeys();
             TestProfileSchemaFourMigratesKeiFullersDistance();
+            TestScholarSublimationActivationMppMigration();
             TestSerializeIncludesPullerNameWhenSelected();
 			TestSerializeCampLeashSourceWithoutPullerName();
             TestSerializeGeoMaintenance();
@@ -1282,6 +1285,23 @@ internal static class StructuredProfileV2WriterTests
         );
     }
 
+    private static void TestScholarSublimationActivationMppMigration()
+    {
+        var profile = new JsonObject
+        {
+            ["profile_schema_version"] = 4,
+            ["sch_sublimation_activate_when_mpp_at_least"] = 95,
+            ["sch_sublimation_release_when_mpp_at_most"] = 50,
+        };
+
+        AssertTrue(MainForm.MigrateProfileInPlace(profile),
+            "current-schema profile with deprecated Sublimation activation MPP must migrate");
+        AssertTrue(!profile.ContainsKey("sch_sublimation_activate_when_mpp_at_least"),
+            "deprecated Sublimation activation MPP must be removed during profile migration");
+        AssertEqual(profile["sch_sublimation_release_when_mpp_at_most"]!.GetValue<int>(), 50,
+            "Sublimation release MPP must survive activation-field migration");
+    }
+
     private static void TestNonScholarOmitsInactiveScholarPanelState()
     {
         var flat = BuildSampleFlatProfile();
@@ -1355,6 +1375,8 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "\"Tank\"", "Scholar storm target missing");
         AssertContains(content, "release_when_complete = true", "Scholar Sublimation release policy missing");
         AssertContains(content, "minimum_hpp_to_activate = 85", "Scholar Sublimation HPP gate missing");
+        AssertNotContains(content, "activate_when_mpp_at_least",
+            "new Scholar profiles must omit deprecated Sublimation activation MPP");
         AssertContains(content, "accession_cure = {\n                    enabled = true", "Scholar Accession cure policy must serialize");
         AssertContains(content, "accession_status_removal = {\n                    enabled = true", "Scholar Accession status-removal policy must serialize");
         AssertContains(content, "rapture = {\n                    enabled = true", "Scholar Rapture policy must serialize");
@@ -1396,16 +1418,18 @@ internal static class StructuredProfileV2WriterTests
             "Scholar storm targets must be globally unique"
         );
 
-        var conflicting = BuildSampleFlatProfile();
-        conflicting["sch_sublimation_activate_when_mpp_at_least"] = 45;
-        conflicting["sch_sublimation_release_when_mpp_at_most"] = 45;
-        AssertThrows<InvalidDataException>(
-            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
-                conflicting,
-                new StructuredProfileV2Identity("Redrogue", "SCH", "RDM")
-            ),
-            "Scholar Sublimation threshold conflict must fail"
+        var unrestrictedRelease = BuildSampleFlatProfile();
+        unrestrictedRelease["sch_enabled"] = true;
+        unrestrictedRelease["sch_sublimation_activate_when_mpp_at_least"] = 45;
+        unrestrictedRelease["sch_sublimation_release_when_mpp_at_most"] = 100;
+        var unrestrictedContent = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            unrestrictedRelease,
+            new StructuredProfileV2Identity("Redrogue", "SCH", "RDM")
         );
+        AssertContains(unrestrictedContent, "release_when_mpp_at_most = 100",
+            "Scholar Sublimation release MPP must not be compared with deprecated activation MPP");
+        AssertNotContains(unrestrictedContent, "activate_when_mpp_at_least",
+            "deprecated Sublimation activation MPP must not serialize");
     }
 
     private static void TestScholarUiOfflineContract()
@@ -1421,6 +1445,11 @@ internal static class StructuredProfileV2WriterTests
 			"Scholar Accession maintenance list must be captured");
         AssertContains(store, "[\"sch_accession_cure_enabled\"]", "Scholar Phase 2 state must be captured");
         AssertContains(ui, "Accession group cures", "Scholar Phase 2 controls must be visible");
+        AssertContains(ui, "Minimum HP to start charging (%)", "Scholar Sublimation HP charging label missing");
+        AssertContains(ui, "Release stored MP when MP <= (%)", "Scholar Sublimation MP release label missing");
+        AssertContains(ui, "Release immediately when fully charged", "Scholar complete-release label missing");
+        AssertNotContains(ui, "Activate at MPP at least", "obsolete Sublimation activation MPP label must be removed");
+        AssertNotContains(store, "_schSublimationActivateMpp", "obsolete Sublimation activation control must not persist");
         AssertContains(logic, "string.Equals(mainJob, \"SCH\"", "Scholar tab requires SCH main job");
         AssertContains(logic, "ApplyScholarFromSnapshot(s);", "Scholar settings must restore from local state");
         AssertContains(logic, "Scholar support and group-defense configuration is valid.", "Scholar Phase 2 validation must be visible");
@@ -1519,6 +1548,40 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(store, "[\"weaponskill_allow_aoe\"] = _chkWsAllowAoe.Checked", "Smart WS AoE UI save path missing");
         AssertContains(store, "[\"weaponskill_allow_aoe\"] = true", "Smart WS AoE UI profile default must be true");
     }
+
+	private static void TestFastSkillchainRoundTrip()
+	{
+		var flat = BuildSampleFlatProfile();
+		flat["fast_skillchain"] = true;
+		var enabled = StructuredProfileV2Writer.BuildStructuredProfileFile(
+			flat,
+			new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+		);
+		AssertContains(enabled, "fast_skillchain = true", "enabled Fast Skillchain must serialize true");
+
+		flat.Remove("fast_skillchain");
+		var missing = StructuredProfileV2Writer.BuildStructuredProfileFile(
+			flat,
+			new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
+		);
+		AssertContains(missing, "fast_skillchain = false", "missing Fast Skillchain must default false");
+	}
+
+	private static void TestFastSkillchainUiPersistenceContract()
+	{
+		var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+		var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+		var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+
+		AssertContains(ui, "Text = \"Fast Skillchain\"", "Fast Skillchain toggle label missing");
+		AssertContains(ui, "After a level 3 or 4 result", "Fast Skillchain tooltip missing");
+		AssertContains(logic, "SessionStateHelper.GetBool(s, \"fast_skillchain\", false)",
+			"Fast Skillchain UI load must default false");
+		AssertContains(logic, "[\"path\"] = \"fast_skillchain\"", "Fast Skillchain live update path missing");
+		AssertContains(store, "[\"fast_skillchain\"] = _chkFastSkillchain.Checked",
+			"Fast Skillchain UI save path missing");
+		AssertContains(store, "[\"fast_skillchain\"] = false", "Fast Skillchain UI profile default must be false");
+	}
 
     private static void TestRejectInvalidRunAwayDistance()
     {

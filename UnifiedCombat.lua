@@ -215,6 +215,7 @@ local function uc_new_settings_defaults()
 		ws_mode = 'smart',
 		weaponskill_min_tp = 1000,
 		weaponskill_allow_aoe = true,
+		fast_skillchain = false,
 		aftermath_enabled = false,
 		aftermath_ws = '',
 		autotarget = false,
@@ -405,7 +406,6 @@ local function uc_new_settings_defaults()
 		sch_storm_assignments = '',
 		sch_storms_refresh_before_s = 30,
 		sch_sublimation_enabled = false,
-		sch_sublimation_activate_when_mpp_at_least = 70,
 		sch_sublimation_release_when_mpp_at_most = 45,
 		sch_sublimation_release_when_complete = false,
 		sch_sublimation_minimum_hpp_to_activate = 75,
@@ -617,7 +617,7 @@ end
 local PROFILE_KEYS = {
 	'ability1', 'ability2', 'ability3', 'ability4', 'ability5', 'ability6',
 	'ability_active', 'abilities', 'wsabilities',
-	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode', 'weaponskill_min_tp', 'weaponskill_allow_aoe',
+	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode', 'weaponskill_min_tp', 'weaponskill_allow_aoe', 'fast_skillchain',
 	'aftermath_enabled', 'aftermath_ws',
 	'engine_mode',
 	'show_ingame_ui',
@@ -637,7 +637,7 @@ local PROFILE_KEYS = {
 	'sch_regen_enabled', 'sch_accession_perpetuance_spells',
 	'sch_regen_minimum_coverage', 'sch_regen_refresh_before_s',
 	'sch_storms_enabled', 'sch_storm_assignments', 'sch_storms_refresh_before_s',
-	'sch_sublimation_enabled', 'sch_sublimation_activate_when_mpp_at_least',
+	'sch_sublimation_enabled',
 	'sch_sublimation_release_when_mpp_at_most', 'sch_sublimation_release_when_complete',
 	'sch_sublimation_minimum_hpp_to_activate',
 	'sch_accession_cure_enabled', 'sch_accession_status_removal_enabled',
@@ -1697,6 +1697,11 @@ local function uc_normalize_ws_for_engine(s, eng)
 		s.weaponskill_allow_aoe = true
 	elseif type(s.weaponskill_allow_aoe) ~= 'boolean' then
 		error('weaponskill_allow_aoe must be a boolean')
+	end
+	if s.fast_skillchain == nil then
+		s.fast_skillchain = false
+	elseif type(s.fast_skillchain) ~= 'boolean' then
+		error('fast_skillchain must be a boolean')
 	end
 	s.engine_mode = eng
 end

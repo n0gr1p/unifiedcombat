@@ -290,6 +290,7 @@ public partial class MainForm
             _wsModeCombo.SelectedItem = WsModeRuntimeToUi(wsMode);
             _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
             _chkWsAllowAoe.Checked = SessionStateHelper.GetBool(s, "weaponskill_allow_aoe", true);
+            _chkFastSkillchain.Checked = SessionStateHelper.GetBool(s, "fast_skillchain", false);
             var amVal = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amVal) && !list.Contains(amVal))
             {
@@ -342,6 +343,7 @@ public partial class MainForm
             _wsModeCombo.SelectedItem = "Smart";
             _wsMinimumTp.Value = 1000;
             _chkWsAllowAoe.Checked = true;
+            _chkFastSkillchain.Checked = false;
             _pullerCombo.Items.Clear();
 			_pullerLeashSource.SelectedItem = "Player";
 			_campStatus.Text = "Camp not set";
@@ -509,7 +511,6 @@ public partial class MainForm
             _schStormAssignments.Text = "";
             _schStormsRefreshBefore.Value = 30;
             _schSublimationEnabled.Checked = false;
-            _schSublimationActivateMpp.Value = 70;
             _schSublimationReleaseMpp.Value = 45;
             _schSublimationReleaseComplete.Checked = false;
             _schSublimationMinimumHpp.Value = 75;
@@ -653,6 +654,7 @@ public partial class MainForm
             _wsModeCombo.SelectedItem = WsModeRuntimeToUi(wsMode);
             _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
             _chkWsAllowAoe.Checked = SessionStateHelper.GetBool(s, "weaponskill_allow_aoe", true);
+            _chkFastSkillchain.Checked = SessionStateHelper.GetBool(s, "fast_skillchain", false);
             var amDisplay = new List<string>(wsOpts);
             var amRaw = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amRaw) && !amDisplay.Contains(amRaw))
@@ -1584,6 +1586,27 @@ public partial class MainForm
         });
     }
 
+    private void OnFastSkillchainChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "fast_skillchain",
+            ["value"] = _chkFastSkillchain.Checked,
+        });
+    }
+
     private void SendWsUpdate(string sid, string eng, string val)
     {
         var path = eng == "melee" ? "ws1" : "weaponskill";
@@ -2140,13 +2163,6 @@ public partial class MainForm
             "sch_sublimation_enabled",
             false
         );
-        _schSublimationActivateMpp.Value = ReadOptionalScholarInteger(
-            snapshot,
-            "sch_sublimation_activate_when_mpp_at_least",
-            70,
-            0,
-            100
-        );
         _schSublimationReleaseMpp.Value = ReadOptionalScholarInteger(
             snapshot,
             "sch_sublimation_release_when_mpp_at_most",
@@ -2208,7 +2224,6 @@ public partial class MainForm
         _schStormAssignments.Enabled = enabled && _schStormsEnabled.Checked;
         _schStormsRefreshBefore.Enabled = enabled && _schStormsEnabled.Checked;
         _schSublimationEnabled.Enabled = enabled;
-        _schSublimationActivateMpp.Enabled = enabled && _schSublimationEnabled.Checked;
         _schSublimationReleaseMpp.Enabled = enabled && _schSublimationEnabled.Checked;
         _schSublimationReleaseComplete.Enabled = enabled && _schSublimationEnabled.Checked;
         _schSublimationMinimumHpp.Enabled = enabled && _schSublimationEnabled.Checked;
@@ -2221,12 +2236,6 @@ public partial class MainForm
         {
             _schValidation.ForeColor = SystemColors.GrayText;
             _schValidation.Text = "Scholar automation is disabled.";
-            return;
-        }
-        if (_schSublimationReleaseMpp.Value >= _schSublimationActivateMpp.Value)
-        {
-            _schValidation.ForeColor = Color.Firebrick;
-            _schValidation.Text = "Sublimation release MPP must be lower than activation MPP.";
             return;
         }
         try
@@ -5469,6 +5478,12 @@ public partial class MainForm
             ["op"] = "set",
             ["path"] = "weaponskill_allow_aoe",
             ["value"] = _chkWsAllowAoe.Checked,
+        });
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "fast_skillchain",
+            ["value"] = _chkFastSkillchain.Checked,
         });
         Forward(sid, new Dictionary<string, object?>
         {

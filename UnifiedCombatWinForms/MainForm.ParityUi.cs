@@ -13,6 +13,7 @@ public partial class MainForm
     private ComboBox _wsModeCombo = null!;
     private NumericUpDown _wsMinimumTp = null!;
     private CheckBox _chkWsAllowAoe = null!;
+    private CheckBox _chkFastSkillchain = null!;
     private ToolTip _smartWsToolTip = null!;
     private ToolTip _recoveryHoldToolTip = null!;
     private ComboBox _aftermathCombo = null!;
@@ -240,7 +241,6 @@ public partial class MainForm
     private TextBox _schStormAssignments = null!;
     private NumericUpDown _schStormsRefreshBefore = null!;
     private CheckBox _schSublimationEnabled = null!;
-    private NumericUpDown _schSublimationActivateMpp = null!;
     private NumericUpDown _schSublimationReleaseMpp = null!;
     private CheckBox _schSublimationReleaseComplete = null!;
     private NumericUpDown _schSublimationMinimumHpp = null!;
@@ -463,6 +463,21 @@ public partial class MainForm
         _chkWsAllowAoe.CheckedChanged += (_, _) => OnWsAllowAoeChanged();
         leftCol.Controls.Add(_chkWsAllowAoe, 0, lr);
         leftCol.SetColumnSpan(_chkWsAllowAoe, 2);
+        lr++;
+
+        _chkFastSkillchain = new UcToggle
+        {
+            Text = "Fast Skillchain",
+            AutoSize = true,
+            Checked = false,
+        };
+        _smartWsToolTip.SetToolTip(
+            _chkFastSkillchain,
+            "After a level 3 or 4 result, allow the next weapon skill to open a new skillchain immediately."
+        );
+        _chkFastSkillchain.CheckedChanged += (_, _) => OnFastSkillchainChanged();
+        leftCol.Controls.Add(_chkFastSkillchain, 0, lr);
+        leftCol.SetColumnSpan(_chkFastSkillchain, 2);
         lr++;
 
         _chkAftermath = MkCtx("aftermath_enabled");
@@ -1863,22 +1878,22 @@ public partial class MainForm
         scholarRoot.SetColumnSpan(_schSublimationEnabled, 2);
         scholarRow++;
         scholarRoot.Controls.Add(
-            new Label { Text = "Activate at MPP at least", AutoSize = true, Anchor = AnchorStyles.Left },
+            new Label { Text = "Minimum HP to start charging (%)", AutoSize = true, Anchor = AnchorStyles.Left },
             0,
             scholarRow
         );
-        _schSublimationActivateMpp = new NumericUpDown
+        _schSublimationMinimumHpp = new NumericUpDown
         {
-            Minimum = 0,
+            Minimum = 1,
             Maximum = 100,
-            Value = 70,
+            Value = 75,
             Width = 90,
             Anchor = AnchorStyles.Left,
         };
-        _schSublimationActivateMpp.ValueChanged += (_, _) => OnScholarSettingChanged();
-        scholarRoot.Controls.Add(_schSublimationActivateMpp, 1, scholarRow++);
+        _schSublimationMinimumHpp.ValueChanged += (_, _) => OnScholarSettingChanged();
+        scholarRoot.Controls.Add(_schSublimationMinimumHpp, 1, scholarRow++);
         scholarRoot.Controls.Add(
-            new Label { Text = "Release at MPP at most", AutoSize = true, Anchor = AnchorStyles.Left },
+            new Label { Text = "Release stored MP when MP <= (%)", AutoSize = true, Anchor = AnchorStyles.Left },
             0,
             scholarRow
         );
@@ -1894,28 +1909,13 @@ public partial class MainForm
         scholarRoot.Controls.Add(_schSublimationReleaseMpp, 1, scholarRow++);
         _schSublimationReleaseComplete = new CheckBox
         {
-            Text = "Release when Sublimation is complete",
+            Text = "Release immediately when fully charged",
             AutoSize = true,
         };
         _schSublimationReleaseComplete.CheckedChanged += (_, _) => OnScholarSettingChanged();
         scholarRoot.Controls.Add(_schSublimationReleaseComplete, 0, scholarRow);
         scholarRoot.SetColumnSpan(_schSublimationReleaseComplete, 2);
         scholarRow++;
-        scholarRoot.Controls.Add(
-            new Label { Text = "Minimum HPP to activate", AutoSize = true, Anchor = AnchorStyles.Left },
-            0,
-            scholarRow
-        );
-        _schSublimationMinimumHpp = new NumericUpDown
-        {
-            Minimum = 1,
-            Maximum = 100,
-            Value = 75,
-            Width = 90,
-            Anchor = AnchorStyles.Left,
-        };
-        _schSublimationMinimumHpp.ValueChanged += (_, _) => OnScholarSettingChanged();
-        scholarRoot.Controls.Add(_schSublimationMinimumHpp, 1, scholarRow++);
         var scholarPhase2Label = new Label
         {
             Text = "Scholar-aware group defense",

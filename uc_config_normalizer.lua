@@ -913,6 +913,7 @@ local function default_config(meta)
                 mode = 'smart',
                 minimum_tp = 1000,
                 allow_aoe = true,
+                fast_skillchain = false,
                 wait_ignore_names = {},
                 aftermath_enabled = false,
                 aftermath_ws = '',
@@ -1475,6 +1476,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.mode = normalize_string(nested_ws.mode, combat.weaponskill.mode)
         combat.weaponskill.minimum_tp = normalize_weaponskill_minimum_tp(nested_ws.minimum_tp, combat.weaponskill.minimum_tp)
         combat.weaponskill.allow_aoe = normalize_boolean(nested_ws.allow_aoe, combat.weaponskill.allow_aoe)
+        combat.weaponskill.fast_skillchain = normalize_boolean(nested_ws.fast_skillchain, combat.weaponskill.fast_skillchain)
         combat.weaponskill.wait_ignore_names = normalize_list(nested_ws.wait_ignore_names, combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(nested_ws.aftermath_enabled, combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(nested_ws.aftermath_ws, combat.weaponskill.aftermath_ws)
@@ -1493,6 +1495,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.mode = normalize_string(first_path(source, { path('ws_mode') }), combat.weaponskill.mode)
         combat.weaponskill.minimum_tp = normalize_weaponskill_minimum_tp(first_path(source, { path('weaponskill_min_tp') }), combat.weaponskill.minimum_tp)
         combat.weaponskill.allow_aoe = normalize_boolean(first_path(source, { path('weaponskill_allow_aoe') }), combat.weaponskill.allow_aoe)
+        combat.weaponskill.fast_skillchain = normalize_boolean(first_path(source, { path('fast_skillchain') }), combat.weaponskill.fast_skillchain)
         combat.weaponskill.wait_ignore_names = normalize_list(first_path(source, { path('wait_ignore_names') }), combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(first_path(source, { path('aftermath_enabled') }), combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(first_path(source, { path('aftermath_ws') }), combat.weaponskill.aftermath_ws)

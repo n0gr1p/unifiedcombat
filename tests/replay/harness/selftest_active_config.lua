@@ -98,6 +98,7 @@ local function build_flat_settings()
 		weaponskill = 'Savage Blade',
 		ws_mode = 'smart',
 		weaponskill_allow_aoe = false,
+		fast_skillchain = true,
 		autotarget = true,
 		spam = true,
 		closer = true,
@@ -283,6 +284,7 @@ local function main()
 	assert_equal(projected.weaponskill, 'Savage Blade', 'projected weaponskill mismatch')
 	assert_equal(projected.ws1, 'Savage Blade', 'projected ws1 mismatch')
 	assert_equal(projected.weaponskill_allow_aoe, false, 'projected Smart WS AoE preference mismatch')
+	assert_equal(projected.fast_skillchain, true, 'projected Fast Skillchain preference mismatch')
 	assert_equal(projected.sleep, true, 'projected sleep mismatch')
 	assert_equal(projected.sleepspell, 'Horde Lullaby II', 'projected sleep mirror mismatch')
 	assert_equal(projected.sleepspells[1], 'Horde Lullaby II', 'projected sleep list mismatch')
@@ -396,9 +398,11 @@ local function main()
 	assert_equal(ui_profile.profile.sub_job, 'WAR', 'UI active profile sub job mismatch')
 	assert_equal(ui_profile.config.combat.weaponskill.primary, 'Savage Blade', 'UI active combat mismatch')
 	assert_equal(ui_profile.config.combat.weaponskill.allow_aoe, false, 'UI active Smart WS AoE preference mismatch')
+	assert_equal(ui_profile.config.combat.weaponskill.fast_skillchain, true, 'UI active Fast Skillchain preference mismatch')
 	local legacy_ws_fixture = deep_clone(ui_fixture)
 	legacy_ws_fixture.config.combat.weaponskill.minimum_tp = nil
 	legacy_ws_fixture.config.combat.weaponskill.allow_aoe = nil
+	legacy_ws_fixture.config.combat.weaponskill.fast_skillchain = nil
 	legacy_ws_fixture.config.combat.weaponskill.wait_ignore_names = nil
 	local legacy_ws_profile = active_config.build_active_profile_from_v2_payload(legacy_ws_fixture, {
 		character = 'Redrogue',
@@ -408,6 +412,7 @@ local function main()
 	})
 	assert_equal(legacy_ws_profile.config.combat.weaponskill.minimum_tp, 1000, 'legacy v2 profile must receive the Smart WS minimum TP compatibility default')
 	assert_equal(legacy_ws_profile.config.combat.weaponskill.allow_aoe, true, 'legacy v2 profile must receive the Smart WS AoE compatibility default')
+	assert_equal(legacy_ws_profile.config.combat.weaponskill.fast_skillchain, false, 'legacy v2 profile must receive the Fast Skillchain compatibility default')
 	assert_deep_equal(legacy_ws_profile.config.combat.weaponskill.wait_ignore_names, {}, 'legacy v2 profile must receive the Smart WS wait-ignore compatibility default')
 	assert_equal(ui_profile.config.movement.path.file_name, 'route-a', 'UI active path mismatch')
 	assert_equal(ui_profile.config.follow.party.leader_name, 'Leader', 'UI active follow mismatch')

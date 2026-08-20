@@ -287,8 +287,8 @@ local function main()
 	local sublimation_config = base_config()
 	sublimation_config.sublimation.enabled = true
 	local activation_player = player()
-	activation_player.vitals.mpp = 80
-	activation_player.vitals.mp = 1200
+	activation_player.vitals.mpp = 10
+	activation_player.vitals.mp = 150
 	local activation_snapshot = runtime_snapshot('light', 'unknown', 0)
 	activation_snapshot.sublimation.observed = 'none'
 	local activation_result = maintenance.evaluate(
@@ -314,8 +314,30 @@ local function main()
 		'Sublimation activation recast evidence mismatch')
 	assert_equal(activation_result.sublimation.plan.readiness_source,
 		'unified_scheduler:action_ready', 'Sublimation readiness source mismatch')
+	assert_true(activation_result.sublimation.plan.missing_mp == nil,
+		'Sublimation activation plan must not depend on current MP capacity')
 	assert_true(activation_result.candidate.observe_only == nil,
 		'Sublimation activation candidate must be executable')
+
+	local low_hp_player = player()
+	low_hp_player.vitals.hpp = 60
+	low_hp_player.vitals.mpp = 100
+	low_hp_player.vitals.mp = low_hp_player.vitals.max_mp
+	local low_hp_activation = maintenance.evaluate(
+		sublimation_config,
+		sublimation_context(
+			low_hp_player,
+			0,
+			sublimation_safety(false, false),
+			require('uc_sch_sublimation').production_release_mechanics(),
+			sublimation_ready
+		),
+		activation_snapshot
+	)
+	assert_equal(low_hp_activation.sublimation.state, 'no_transition_required',
+		'Sublimation activation must remain gated by minimum HPP')
+	assert_true(low_hp_activation.candidate == nil,
+		'low HPP must suppress Sublimation activation even at full MP')
 
 	local unsafe_activation = maintenance.evaluate(
 		sublimation_config,
@@ -437,6 +459,60 @@ local function main()
 		'Sublimation|release_capacity', 'Sublimation release capacity model mismatch')
 	assert_equal(ready_release.sublimation.plan.missing_mp, 900,
 		'Sublimation release missing MP mismatch')
+
+	local partial_release_snapshot = runtime_snapshot('light', 'unknown', 0)
+	partial_release_snapshot.sublimation.observed = 'activated'
+	local partial_release = maintenance.evaluate(
+		sublimation_config,
+		sublimation_context(
+			release_player,
+			0,
+			sublimation_safety(false, false),
+			require('uc_sch_sublimation').production_release_mechanics(),
+			sublimation_ready
+		),
+		partial_release_snapshot
+	)
+	assert_equal(partial_release.sublimation.plan.purpose, 'sublimation_release',
+		'charging Sublimation must permit partial release at low MP')
+
+	local banked_player = player()
+	banked_player.vitals.mpp = 80
+	banked_player.vitals.mp = 600
+	local banked_release = maintenance.evaluate(
+		sublimation_config,
+		sublimation_context(
+			banked_player,
+			0,
+			sublimation_safety(false, false),
+			require('uc_sch_sublimation').production_release_mechanics(),
+			sublimation_ready
+		),
+		release_snapshot
+	)
+	assert_equal(banked_release.sublimation.state, 'no_transition_required',
+		'complete Sublimation must remain banked above the release threshold')
+	assert_true(banked_release.candidate == nil,
+		'banked complete Sublimation must not request release')
+
+	local immediate_config = base_config()
+	immediate_config.sublimation.enabled = true
+	immediate_config.sublimation.release_when_complete = true
+	local immediate_release = maintenance.evaluate(
+		immediate_config,
+		sublimation_context(
+			banked_player,
+			0,
+			sublimation_safety(false, false),
+			require('uc_sch_sublimation').production_release_mechanics(),
+			sublimation_ready
+		),
+		release_snapshot
+	)
+	assert_equal(immediate_release.sublimation.plan.purpose, 'sublimation_release',
+		'complete Sublimation must release immediately when configured')
+	assert_equal(immediate_release.sublimation.plan.minimum_missing_mp, 332,
+		'immediate complete release must retain the production capacity guard')
 
 	local arts_before_sublimation = runtime_snapshot('none', 'unknown', 0)
 	arts_before_sublimation.sublimation.observed = 'none'

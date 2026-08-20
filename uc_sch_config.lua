@@ -149,7 +149,6 @@ function M.default_config()
 		},
 		sublimation = {
 			enabled = false,
-			activate_when_mpp_at_least = 70,
 			release_when_mpp_at_most = 45,
 			release_when_complete = false,
 			minimum_hpp_to_activate = 75,
@@ -228,26 +227,15 @@ local function validate_sublimation(result, config)
 	local value = require_table(result, config, 'sublimation', 'sch.sublimation')
 	if value == nil then return end
 	reject_unknown_keys(result, value, 'sch.sublimation', {
-		'enabled', 'activate_when_mpp_at_least', 'release_when_mpp_at_most',
+		'enabled', 'release_when_mpp_at_most',
 		'release_when_complete', 'minimum_hpp_to_activate',
 	})
 	require_boolean(result, value, 'enabled', 'sch.sublimation.enabled')
-	local activate_ok = require_integer(
-		result, value, 'activate_when_mpp_at_least', 'sch.sublimation.activate_when_mpp_at_least', 0, 100
-	)
-	local release_ok = require_integer(
+	require_integer(
 		result, value, 'release_when_mpp_at_most', 'sch.sublimation.release_when_mpp_at_most', 0, 100
 	)
 	require_boolean(result, value, 'release_when_complete', 'sch.sublimation.release_when_complete')
 	require_integer(result, value, 'minimum_hpp_to_activate', 'sch.sublimation.minimum_hpp_to_activate', 1, 100)
-	if activate_ok and release_ok and value.release_when_mpp_at_most >= value.activate_when_mpp_at_least then
-		add_issue(
-			result,
-			'sch_threshold_conflict',
-			'sch.sublimation',
-			'sch.sublimation.release_when_mpp_at_most must be less than activate_when_mpp_at_least.'
-		)
-	end
 end
 
 local function validate_regen(result, support)
@@ -482,6 +470,10 @@ function M.validate(config, meta)
 		add_issue(result, 'sch_not_table', 'sch', 'Scholar configuration must be a table.')
 		return result
 	end
+	config = clone_value(config)
+	if type(config.sublimation) == 'table' then
+		config.sublimation.activate_when_mpp_at_least = nil
+	end
 	reject_unknown_keys(result, config, 'sch', {
 		'enabled', 'mode', 'arts', 'sublimation', 'support', 'defensive', 'offense',
 	})
@@ -518,7 +510,11 @@ function M.copy_validated(config, meta)
 	if config == nil then
 		return M.default_config(), validation
 	end
-	return clone_value(config), validation
+	local copied = clone_value(config)
+	if type(copied.sublimation) == 'table' then
+		copied.sublimation.activate_when_mpp_at_least = nil
+	end
+	return copied, validation
 end
 
 return M

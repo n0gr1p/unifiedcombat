@@ -562,6 +562,7 @@ local function build_flat_settings()
 		ws_mode = 'smart',
 		weaponskill_min_tp = 2000,
 		weaponskill_allow_aoe = false,
+		fast_skillchain = true,
 		aftermath_enabled = true,
 		aftermath_ws = 'Atonement',
 		autotarget = true,
@@ -661,6 +662,7 @@ local function build_expected_config()
 				mode = 'smart',
 				minimum_tp = 2000,
 				allow_aoe = false,
+				fast_skillchain = true,
 				wait_ignore_names = { 'Ally One', 'Ally Two' },
 				aftermath_enabled = true,
 				aftermath_ws = 'Atonement',
@@ -942,6 +944,7 @@ local function main()
 	assert_equal(profile.config.combat.weaponskill.primary, 'Savage Blade', 'combat domain mismatch')
 	assert_equal(profile.config.combat.weaponskill.minimum_tp, 2000, 'combat WS minimum TP mismatch')
 	assert_equal(profile.config.combat.weaponskill.allow_aoe, false, 'combat Smart WS AoE preference mismatch')
+	assert_equal(profile.config.combat.weaponskill.fast_skillchain, true, 'combat Fast Skillchain preference mismatch')
 	assert_true(profile.config.maintenance.cor == nil, 'non-COR structured profile must omit maintenance.cor')
 	assert_equal(profile.config.legacy.hunter, true, 'legacy domain mismatch')
 	assert_equal(profile.config.targeting.targets[1], 'Apex Bat', 'exported config add priority target mismatch')
@@ -981,6 +984,7 @@ local function main()
 	assert_equal(normalized.combat.weaponskill.primary, 'Savage Blade', 'round-tripped normalized combat mismatch')
 	assert_equal(normalized.combat.weaponskill.minimum_tp, 2000, 'round-tripped normalized WS minimum TP mismatch')
 	assert_equal(normalized.combat.weaponskill.allow_aoe, false, 'round-tripped normalized Smart WS AoE preference mismatch')
+	assert_equal(normalized.combat.weaponskill.fast_skillchain, true, 'round-tripped normalized Fast Skillchain preference mismatch')
 	assert_equal(normalized.maintenance.cor.roll_2, '', 'round-tripped normalized non-COR maintenance mismatch')
 	assert_equal(normalized.legacy.hunter, true, 'round-tripped normalized legacy mismatch')
 
@@ -1421,10 +1425,12 @@ local function main()
 		local legacy_ws_target = deep_clone(profile.config)
 		legacy_ws_target.combat.weaponskill.minimum_tp = nil
 		legacy_ws_target.combat.weaponskill.allow_aoe = nil
+		legacy_ws_target.combat.weaponskill.fast_skillchain = nil
 		legacy_ws_target.combat.weaponskill.wait_ignore_names = nil
 		local default_ws_current = deep_clone(profile.config)
 		default_ws_current.combat.weaponskill.minimum_tp = 1000
 		default_ws_current.combat.weaponskill.allow_aoe = true
+		default_ws_current.combat.weaponskill.fast_skillchain = false
 		default_ws_current.combat.weaponskill.wait_ignore_names = {}
 		local legacy_ws_default_diff = exporter.diff_durable_config(default_ws_current, legacy_ws_target)
 		assert_equal(legacy_ws_default_diff.count, 0, 'missing legacy Smart WS settings should equal their canonical defaults')
@@ -1831,6 +1837,7 @@ local function main()
 		local legacy_ws_apply_payload = deep_clone(profile)
 		legacy_ws_apply_payload.config.combat.weaponskill.minimum_tp = nil
 		legacy_ws_apply_payload.config.combat.weaponskill.allow_aoe = nil
+		legacy_ws_apply_payload.config.combat.weaponskill.fast_skillchain = nil
 		legacy_ws_apply_payload.config.combat.weaponskill.wait_ignore_names = nil
 		local legacy_ws_apply_deps = make_fake_fs({
 			[durable_path] = profile_v2.serialize_structured_profile(legacy_ws_apply_payload),
@@ -1844,6 +1851,7 @@ local function main()
 		assert_true(legacy_ws_apply_result.ok == true, 'legacy structured profile without current Smart WS settings should apply')
 		assert_equal(legacy_ws_apply_result.candidate.weaponskill_min_tp, 1000, 'legacy structured profile should project the Smart WS minimum TP compatibility default')
 		assert_equal(legacy_ws_apply_result.candidate.weaponskill_allow_aoe, true, 'legacy structured profile should project the Smart WS AoE compatibility default')
+		assert_equal(legacy_ws_apply_result.candidate.fast_skillchain, false, 'legacy structured profile should project the Fast Skillchain compatibility default')
 		assert_deep_equal(legacy_ws_apply_result.candidate.wait_ignore_names, {}, 'legacy structured profile should project the Smart WS wait-ignore compatibility default')
 	end
 

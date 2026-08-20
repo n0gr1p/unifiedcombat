@@ -5,6 +5,10 @@ Scope: original read-only audit of Nyoourke's UC/SAM profile, smart-WS selection
 
 Approved follow-up work: `docs/scheduler_owned_ws_skillchain_implementation_plan.md`
 
+## Fast Skillchain test option (2026-08-20)
+
+The default Smart WS policy continues to preserve the post-result magic-burst window. The optional, default-off `fast_skillchain` weaponskill setting changes only level-3 and level-4 results: the next eligible automated WS is selected as a fresh opener without waiting for the prior resonance or terminal burst deadline. The prior target resonance is retained during proposal and arbitration, then cleared only after the replacement WS command is dispatched.
+
 ## Implementation disposition
 
 The source-backed causes identified below have been codified and corrected in the scheduler-owned WS path:

@@ -126,11 +126,19 @@ local function main()
 	assert_true(not unknown_storm_result.valid, 'unknown Storm II spell must fail validation')
 	assert_true(find_issue(unknown_storm_result.errors, 'sch_storm_spell_unsupported') ~= nil, 'storm issue mismatch')
 
-	local threshold_conflict = valid_config()
-	threshold_conflict.sublimation.release_when_mpp_at_most = 70
-	local conflict_result = config_module.validate(threshold_conflict, { main_job = 'SCH' })
-	assert_true(not conflict_result.valid, 'contradictory Sublimation thresholds must fail validation')
-	assert_true(find_issue(conflict_result.errors, 'sch_threshold_conflict') ~= nil, 'threshold issue mismatch')
+	local unrestricted_release = valid_config()
+	unrestricted_release.sublimation.release_when_mpp_at_most = 100
+	assert_true(config_module.validate(unrestricted_release, { main_job = 'SCH' }).valid,
+		'Sublimation release MPP must not be compared with an activation threshold')
+	local legacy_sublimation = valid_config()
+	legacy_sublimation.sublimation.activate_when_mpp_at_least = 95
+	local legacy_copy, legacy_validation = config_module.copy_validated(
+		legacy_sublimation,
+		{ main_job = 'SCH' }
+	)
+	assert_true(legacy_validation.valid, 'legacy Sublimation activation MPP must be accepted during normalization')
+	assert_true(legacy_copy.sublimation.activate_when_mpp_at_least == nil,
+		'legacy Sublimation activation MPP must be discarded during normalization')
 
 	local phase2 = valid_config()
 	phase2.defensive.rapture.enabled = true
@@ -156,7 +164,7 @@ local function main()
 			sub_job = 'RDM',
 		},
 		config = {
-			sch = enabled,
+			sch = legacy_sublimation,
 		},
 	}
 	local contract_result = contract.validate_structured_profile_config(payload)
@@ -169,9 +177,36 @@ local function main()
 		{ main_job = 'SCH', sub_job = 'RDM' }
 	)
 	assert_true(type(active_profile) == 'table', 'Scholar active profile failed: ' .. tostring(active_error))
-	local projected, projection_error = active_config.project_flat_settings(active_profile, {})
+	local projected, projection_error = active_config.project_flat_settings(active_profile, {
+		sch_sublimation_activate_when_mpp_at_least = 95,
+	})
 	assert_true(type(projected) == 'table', 'Scholar projection failed: ' .. tostring(projection_error))
 	assert_true(type(projected.sch) == 'table', 'projected settings must carry exact nested Scholar config')
+	assert_true(projected.sch.sublimation.activate_when_mpp_at_least == nil,
+		'projected nested Scholar config must omit legacy activation MPP')
+	assert_true(projected.sch_sublimation_activate_when_mpp_at_least == nil,
+		'projected flat Scholar settings must omit legacy activation MPP')
+	local legacy_apply_payload = profile_v2.build_structured_profile(
+		normalizer.normalize({ sch = legacy_sublimation }, { main_job = 'SCH', sub_job = 'RDM' }),
+		{
+			character = 'Tester',
+			main_job = 'SCH',
+			sub_job = 'RDM',
+			exported_at = '2026-08-20T00:00:00Z',
+		}
+	)
+	legacy_apply_payload.config.sch.sublimation.activate_when_mpp_at_least = 95
+	local legacy_apply = profile_v2.build_settings_candidate_from_structured_profile(
+		{ sch_sublimation_activate_when_mpp_at_least = 95 },
+		legacy_apply_payload,
+		{ character = 'Tester', main_job = 'SCH', sub_job = 'RDM' }
+	)
+	assert_true(legacy_apply.ok == true,
+		'legacy structured Scholar profile must load: ' .. tostring(legacy_apply.error))
+	assert_equal(legacy_apply.diff_count, 0,
+		'legacy activation MPP must not create a structured-profile conversion difference')
+	assert_true(legacy_apply.candidate.sch_sublimation_activate_when_mpp_at_least == nil,
+		'legacy structured profile apply must remove the flat activation MPP setting')
 	assert_equal(projected.sch.support.regen.spells[1], 'Regen V', 'projected maintenance spell mismatch')
 	assert_equal(projected.sch_accession_perpetuance_spells, 'Regen V',
 		'projected maintenance spell list mismatch')

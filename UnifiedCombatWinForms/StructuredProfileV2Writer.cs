@@ -253,6 +253,7 @@ internal static class StructuredProfileV2Writer
                     .Add("mode", ReadString(flatProfile, "ws_mode", "smart"))
                     .Add("minimum_tp", ReadBoundedInt(flatProfile, "weaponskill_min_tp", 1000, 1000, 3000))
                     .Add("allow_aoe", ReadBool(flatProfile, "weaponskill_allow_aoe", true))
+                    .Add("fast_skillchain", ReadBool(flatProfile, "fast_skillchain", false))
                     .Add("wait_ignore_names", ParseNameList(ReadString(flatProfile, "ignore_entries", "")))
                     .Add("aftermath_enabled", ReadBool(flatProfile, "aftermath_enabled", false))
                     .Add("aftermath_ws", ReadString(flatProfile, "aftermath_ws", ""))
@@ -1202,13 +1203,6 @@ internal static class StructuredProfileV2Writer
             return null;
         }
 
-        var sublimationActivate = ReadBoundedInt(
-            flatProfile,
-            "sch_sublimation_activate_when_mpp_at_least",
-            70,
-            0,
-            100
-        );
         var sublimationRelease = ReadBoundedInt(
             flatProfile,
             "sch_sublimation_release_when_mpp_at_most",
@@ -1216,13 +1210,6 @@ internal static class StructuredProfileV2Writer
             0,
             100
         );
-        if (sublimationRelease >= sublimationActivate)
-        {
-            throw new InvalidDataException(
-                "Scholar Sublimation release MPP must be less than activation MPP."
-            );
-        }
-
         return new StructuredProfileNode()
             .Add("enabled", ReadOptionalBool(flatProfile, "sch_enabled", false))
             .Add("mode", "support")
@@ -1243,7 +1230,6 @@ internal static class StructuredProfileV2Writer
                 "sublimation",
                 new StructuredProfileNode()
                     .Add("enabled", ReadOptionalBool(flatProfile, "sch_sublimation_enabled", false))
-                    .Add("activate_when_mpp_at_least", sublimationActivate)
                     .Add("release_when_mpp_at_most", sublimationRelease)
                     .Add(
                         "release_when_complete",

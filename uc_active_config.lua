@@ -459,6 +459,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.ws_mode = config.combat.weaponskill.mode
 			candidate.weaponskill_min_tp = config.combat.weaponskill.minimum_tp
 			candidate.weaponskill_allow_aoe = config.combat.weaponskill.allow_aoe
+			candidate.fast_skillchain = config.combat.weaponskill.fast_skillchain
 			candidate.wait_ignore_names = clone_value(config.combat.weaponskill.wait_ignore_names)
 			candidate.aftermath_enabled = config.combat.weaponskill.aftermath_enabled
 			candidate.aftermath_ws = config.combat.weaponskill.aftermath_ws
@@ -1035,8 +1036,8 @@ local function apply_structured_config_to_candidate(candidate, config)
 			local first = validation.errors[1]
 			return false, first and first.message or 'config.sch is invalid'
 		end
-		candidate.sch = clone_value(config.sch)
-		local sch = config.sch
+		local sch = uc_sch_config.copy_validated(config.sch)
+		candidate.sch = clone_value(sch)
 		candidate.sch_enabled = sch.enabled
 		candidate.sch_arts_minimum_commit_s = sch.arts.minimum_commit_s
 		candidate.sch_arts_emergency_off_art_casts = sch.arts.emergency_off_art_casts
@@ -1048,7 +1049,6 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.sch_storm_assignments = serialize_sch_storm_assignments(sch.support.storms.assignments)
 		candidate.sch_storms_refresh_before_s = sch.support.storms.refresh_before_s
 		candidate.sch_sublimation_enabled = sch.sublimation.enabled
-		candidate.sch_sublimation_activate_when_mpp_at_least = sch.sublimation.activate_when_mpp_at_least
 		candidate.sch_sublimation_release_when_mpp_at_most = sch.sublimation.release_when_mpp_at_most
 		candidate.sch_sublimation_release_when_complete = sch.sublimation.release_when_complete
 		candidate.sch_sublimation_minimum_hpp_to_activate = sch.sublimation.minimum_hpp_to_activate
@@ -1138,6 +1138,9 @@ function M.build_active_profile_from_v2_payload(payload, context)
 	if sch_validation.valid ~= true then
 		local first = sch_validation.errors[1]
 		return nil, first and first.message or 'Scholar configuration is invalid'
+	end
+	if type(config.sch) == 'table' then
+		config.sch = uc_sch_config.copy_validated(config.sch, profile)
 	end
 	local compatibility_source = {}
 	if type(config.combat) == 'table' then
@@ -1298,6 +1301,7 @@ function M.project_flat_settings(active_profile, base_settings)
 	for i = 1, #DURABLE_CONFIG_DOMAINS do
 		candidate[DURABLE_CONFIG_DOMAINS[i]] = nil
 	end
+	candidate.sch_sublimation_activate_when_mpp_at_least = nil
 	local ok, err = apply_structured_config_to_candidate(candidate, active_profile.config)
 	if ok ~= true then
 		return nil, err

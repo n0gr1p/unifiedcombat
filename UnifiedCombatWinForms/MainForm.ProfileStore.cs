@@ -366,7 +366,6 @@ public partial class MainForm
             ["sch_storm_assignments"] = _schStormAssignments.Text.Trim(),
             ["sch_storms_refresh_before_s"] = decimal.ToInt32(_schStormsRefreshBefore.Value),
             ["sch_sublimation_enabled"] = _schSublimationEnabled.Checked,
-            ["sch_sublimation_activate_when_mpp_at_least"] = decimal.ToInt32(_schSublimationActivateMpp.Value),
             ["sch_sublimation_release_when_mpp_at_most"] = decimal.ToInt32(_schSublimationReleaseMpp.Value),
             ["sch_sublimation_release_when_complete"] = _schSublimationReleaseComplete.Checked,
             ["sch_sublimation_minimum_hpp_to_activate"] = decimal.ToInt32(_schSublimationMinimumHpp.Value),
@@ -387,6 +386,7 @@ public partial class MainForm
             ["ws_mode"] = string.Equals(_wsModeCombo.SelectedItem?.ToString(), "Primary Only (No SC)", StringComparison.Ordinal) ? "primary_no_sc" : "smart",
             ["weaponskill_min_tp"] = decimal.ToInt32(_wsMinimumTp.Value),
             ["weaponskill_allow_aoe"] = _chkWsAllowAoe.Checked,
+            ["fast_skillchain"] = _chkFastSkillchain.Checked,
         };
 
         foreach (var key in HubUiConstants.BoolKeys)
@@ -500,6 +500,7 @@ public partial class MainForm
             ["ws_mode"] = "smart",
             ["weaponskill_min_tp"] = 1000,
             ["weaponskill_allow_aoe"] = true,
+            ["fast_skillchain"] = false,
             ["aftermath_ws"] = "",
             ["defensive_provider"] = "internal",
             ["defensive_critical_hpp"] = 35,
@@ -619,7 +620,6 @@ public partial class MainForm
             ["sch_storm_assignments"] = "",
             ["sch_storms_refresh_before_s"] = 30,
             ["sch_sublimation_enabled"] = false,
-            ["sch_sublimation_activate_when_mpp_at_least"] = 70,
             ["sch_sublimation_release_when_mpp_at_most"] = 45,
             ["sch_sublimation_release_when_complete"] = false,
             ["sch_sublimation_minimum_hpp_to_activate"] = 75,
@@ -878,9 +878,14 @@ public partial class MainForm
             }
         }
 
+        if (root.Remove("sch_sublimation_activate_when_mpp_at_least"))
+        {
+            changed = true;
+        }
+
         if (schema >= ProfileSchemaVersion)
         {
-            return false;
+            return changed;
         }
 
         static void MoveIfMissing(JsonObject obj, string oldKey, string newKey, ref bool dirty)

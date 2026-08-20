@@ -55,7 +55,7 @@ The following reviewable slices now exist:
 - observe-only Regen evaluation that distinguishes confirmed owned presence from unowned existing Regen and exposes the geometry blocker without assuming a radius, distance metric, or coordinate-freshness window;
 - a complete observe-only Regen ready path that, with injected confirmed charge and geometry evidence, selects the exact anchor and recipient set, builds the strict Accession + Perpetuance + Regen plan, exposes it in status, and still emits zero scheduler proposals;
 - deterministic observe-only Storm II assignment planning that validates exact party identity and buff evidence, treats matching but unowned Storm II presence as blocked rather than satisfied, exposes the exact target/recipient plan, preserves Arts-before-storm priority, and still emits zero scheduler proposals;
-- deterministic observe-only Sublimation activation planning that requires exact buff state, configured HP/MP thresholds, recast ID 234 readiness, learned JA readiness, and confirmed safety evidence derived from the scheduler's existing critical-cure, Doom, and charm signals; the provider exposes the complete plan while emitting zero proposals;
+- deterministic Sublimation activation planning that requires exact buff state, the configured minimum HP threshold, recast ID 234 readiness, learned JA readiness, and confirmed safety evidence derived from the scheduler's existing critical-cure, Doom, and charm signals; current MP is not an activation condition;
 - deterministic observe-only Light Arts planning that blocks contradictory/unknown Arts state, requires exact recast ID 228 and scheduler JA ownership/readiness, exposes the expected buff and evidence source, preserves downstream diagnostics without admitting downstream candidates, and emits zero scheduler proposals;
 - an evidence-keyed Sublimation release-capacity boundary that rejects invented thresholds and keeps production release explicitly blocked until a documented minimum-useful missing-MP rule is validated;
 - an isolated evidence-keyed duration model that records the exact spell/modifier model key, rejects mismatched or invented evidence, and leaves production ownership explicitly unknown with no claimed end time until field validation exists;
@@ -687,7 +687,6 @@ Sublimation is an independent policy, not a generic buff-list entry.
 ```lua
 sublimation = {
     enabled = true,
-    activate_when_mpp_at_least = 70,
     release_when_mpp_at_most = 45,
     minimum_hpp_to_activate = 75,
     release_when_complete = false,
@@ -697,7 +696,7 @@ sublimation = {
 Activation requires:
 
 - no observed Sublimation state;
-- HP and MP thresholds satisfied;
+- the configured minimum HP threshold satisfied;
 - no critical party damage;
 - no dangerous local pressure signal selected by the implementation audit;
 - no active prepared Scholar sequence;
@@ -712,7 +711,7 @@ Release requires:
 
 Unknown Sublimation state blocks activation and release until reconciled. Repeated release attempts without a state transition enter explicit backoff and diagnostics.
 
-The observe-only planner now produces a complete activation plan only after a defensive proposal set refreshed on the same scheduler tick proves no established critical cure is pending, the existing Doom/charm signals prove no hard local emergency, recast ID 234 is exactly zero, and the scheduler confirms that the local player owns and can currently use the Sublimation JA. A fast trace tick without refreshed defensive evidence reports `scheduler_defensive_evidence_not_current`; an empty stale proposal set is never interpreted as safe. Activation remains lower priority than Light Arts and all candidates remain diagnostic-only. Release planning additionally passes current and maximum MP through `uc_sch_sublimation.lua`; production mechanics deliberately report `phase0_sublimation_release_capacity_unvalidated`, so no release candidate is authorized until field evidence documents a minimum-useful missing-MP rule. Synthetic confirmed mechanics exercise the complete release-plan path offline.
+The planner produces an activation plan regardless of current MP only after a defensive proposal set refreshed on the same scheduler tick proves no established critical cure is pending, the existing Doom/charm signals prove no hard local emergency, recast ID 234 is exactly zero, and the scheduler confirms that the local player owns and can currently use the Sublimation JA. A fast trace tick without refreshed defensive evidence reports `scheduler_defensive_evidence_not_current`; an empty stale proposal set is never interpreted as safe. Activation remains lower priority than Light Arts. Release planning additionally passes current and maximum MP through `uc_sch_sublimation.lua`; the production mechanics require at least 332 missing MP before release.
 
 ### 12.2 Group Regen
 
@@ -924,7 +923,6 @@ sch = {
 
     sublimation = {
         enabled = true,
-        activate_when_mpp_at_least = 70,
         release_when_mpp_at_most = 45,
         release_when_complete = false,
         minimum_hpp_to_activate = 75,
@@ -1035,7 +1033,7 @@ Required controls:
 - Scholar enabled;
 - support mode display;
 - Arts intent display;
-- Sublimation thresholds;
+- Sublimation minimum charging HP, MP release threshold, and complete-charge release policy;
 - exact Regen spell;
 - minimum coverage and refresh window;
 - exact Storm II assignments by character;

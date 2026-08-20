@@ -631,24 +631,23 @@ local function evaluate_sublimation(config, ctx, runtime_snapshot)
 	end
 	local player = require_table(ctx.player, 'Scholar maintenance player')
 	local vitals = require_table(player.vitals, 'Scholar maintenance player vitals')
-	local mpp = vitals.mpp
 	local hpp = vitals.hpp
-	local mp = vitals.mp
-	local max_mp = vitals.max_mp
-	if type(mpp) ~= 'number' or mpp < 0 or mpp > 100
-		or type(hpp) ~= 'number' or hpp < 0 or hpp > 100 then
-		error('Scholar maintenance player HPP and MPP must be numeric from 0 through 100')
-	end
-	if type(mp) ~= 'number' or type(max_mp) ~= 'number'
-		or max_mp <= 0 or mp < 0 or mp > max_mp then
-		error('Scholar maintenance player MP values are inconsistent')
+	if type(hpp) ~= 'number' or hpp < 0 or hpp > 100 then
+		error('Scholar maintenance player HPP must be numeric from 0 through 100')
 	end
 	local activation_requested = observed == 'none'
-		and mpp >= config.activate_when_mpp_at_least
 		and hpp >= config.minimum_hpp_to_activate
-	local release_requested = (observed == 'complete'
-		and (config.release_when_complete or mpp <= config.release_when_mpp_at_most))
-		or (observed == 'activated' and mpp <= config.release_when_mpp_at_most)
+	local release_requested = false
+	if observed == 'complete' and config.release_when_complete then
+		release_requested = true
+	elseif observed == 'activated' or observed == 'complete' then
+		local mpp = vitals.mpp
+		if type(mpp) ~= 'number' or mpp < 0 or mpp > 100 then
+			error('Scholar maintenance player MPP must be numeric from 0 through 100 for Sublimation release')
+		end
+		release_requested = (observed == 'complete' and mpp <= config.release_when_mpp_at_most)
+			or (observed == 'activated' and mpp <= config.release_when_mpp_at_most)
+	end
 	if not activation_requested and not release_requested then
 		result.state = 'no_transition_required'
 		return result
@@ -670,6 +669,12 @@ local function evaluate_sublimation(config, ctx, runtime_snapshot)
 		return result
 	end
 	if release_requested then
+		local mp = vitals.mp
+		local max_mp = vitals.max_mp
+		if type(mp) ~= 'number' or type(max_mp) ~= 'number'
+			or max_mp <= 0 or mp < 0 or mp > max_mp then
+			error('Scholar maintenance player MP values are inconsistent for Sublimation release')
+		end
 		result.release_capacity = sch_sublimation.evaluate_release_capacity({
 			mp = mp,
 			max_mp = max_mp,
@@ -715,9 +720,9 @@ local function evaluate_sublimation(config, ctx, runtime_snapshot)
 		recast_id = readiness.recast_id,
 		observed_recast = readiness.observed_recast,
 		readiness_source = readiness.source,
-		missing_mp = max_mp - mp,
 	}
 	if result.release_capacity ~= nil then
+		result.plan.missing_mp = vitals.max_mp - vitals.mp
 		result.plan.release_capacity_model_key = result.release_capacity.model_key
 		result.plan.release_capacity_source = result.release_capacity.source
 		result.plan.minimum_missing_mp = result.release_capacity.minimum_missing_mp
