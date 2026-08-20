@@ -130,6 +130,8 @@ local function build_flat_settings()
         def_sleep_waker_enabled = true,
         def_remove_enemy_buffs = true,
         defensive_na_enabled = true,
+        defensive_na_limit_enabled = true,
+        defensive_na_priority = 'Poison|Paralyze|Dia',
         defensive_buff_enabled = true,
         defensive_critical_hpp = 40,
         defensive_medium_hpp = 60,
@@ -317,6 +319,8 @@ local function build_nested_settings()
             },
             na = {
                 enabled = true,
+                limit_enabled = true,
+                priority = 'Poison|Paralyze',
             },
             enemy_buffs = {
                 remove = true,
@@ -583,6 +587,8 @@ local function main()
     assert_true(type(default_from_normalize.defensive) == 'table', 'defensive domain missing')
     assert_true(type(default_from_normalize.encounter) == 'table', 'encounter domain missing')
     assert_equal(default_from_normalize.encounter.enabled, false, 'encounter must default disabled')
+    assert_equal(default_from_normalize.defensive.na.limit_enabled, false, 'status-removal limiting must default disabled')
+    assert_equal(default_from_normalize.defensive.na.priority, '', 'status-removal priority must default empty')
     assert_true(type(default_from_normalize.movement) == 'table', 'movement domain missing')
     assert_true(type(default_from_normalize.follow) == 'table', 'follow domain missing')
     assert_true(type(default_from_normalize.targeting) == 'table', 'targeting domain missing')
@@ -627,6 +633,8 @@ local function main()
     assert_equal(flat_config.defensive.charm_sleeper.enabled, true, 'flat charm sleeper mismatch')
     assert_equal(flat_config.defensive.sleep_waker.enabled, true, 'flat sleep waker mismatch')
     assert_equal(flat_config.defensive.enemy_buffs.remove, true, 'defensive enemy buffs mismatch')
+    assert_equal(flat_config.defensive.na.limit_enabled, true, 'flat status-removal limit mismatch')
+    assert_equal(flat_config.defensive.na.priority, 'Poison|Paralyze|Dia', 'flat status-removal priority mismatch')
     assert_equal(flat_config.defensive.buffs.list, 'Haste', 'defensive buffs mismatch')
     assert_equal(flat_config.defensive.buffs.targeted[1].character, 'Terrasjr', 'defensive targeted buff character mismatch')
     assert_equal(flat_config.defensive.buffs.targeted[1].buff, 'Honor March', 'defensive targeted buff name mismatch')
@@ -690,6 +698,8 @@ local function main()
     assert_equal(nested_config.defensive.cure.min_tier, 5, 'nested defensive cure min tier mismatch')
     assert_equal(nested_config.defensive.charm_sleeper.enabled, true, 'nested charm sleeper mismatch')
     assert_equal(nested_config.defensive.sleep_waker.enabled, true, 'nested sleep waker mismatch')
+    assert_equal(nested_config.defensive.na.limit_enabled, true, 'nested status-removal limit mismatch')
+    assert_equal(nested_config.defensive.na.priority, 'Poison|Paralyze', 'nested status-removal priority mismatch')
     assert_equal(nested_config.defensive.buffs.targeted[2].character, 'Nyoourke', 'nested targeted buff character mismatch')
     assert_equal(nested_config.defensive.buffs.targeted[2].buff, 'Valor Minuet V', 'nested targeted buff name mismatch')
     assert_equal(nested_config.encounter.enabled, true, 'nested encounter enabled mismatch')
@@ -724,6 +734,11 @@ local function main()
 	assert_equal(nested_config.follow.nyzul.anchor_name, 'Terrasjr', 'nested Nyzul anchor mismatch')
 	assert_equal(nested_config.follow.nyzul.parking_order[2], 'Ponponponponp', 'nested Nyzul parking order mismatch')
     assert_equal(nested_config.sleep.max_target_range, 12.0, 'nested sleep target range mismatch')
+
+    local legacy_na = normalizer.normalize({ defensive_na_enabled = true }, meta).defensive.na
+    assert_equal(legacy_na.enabled, true, 'legacy NA enablement mismatch')
+    assert_equal(legacy_na.limit_enabled, false, 'older profiles must retain unrestricted NA behavior')
+    assert_equal(legacy_na.priority, '', 'older profiles must default to an empty status-removal priority')
 
     assert_error_contains(function()
         normalizer.normalize({ encounter = { enabled = true, id = '' } }, meta)

@@ -586,6 +586,8 @@ local function build_flat_settings()
 		def_charm_sleeper_enabled = false,
 		def_sleep_waker_enabled = false,
 		defensive_na_enabled = true,
+		defensive_na_limit_enabled = true,
+		defensive_na_priority = 'Poison|Paralyze|Dia',
 		defensive_buff_enabled = true,
 		defensive_buffs = 'Barspell',
 		defensive_targeted_buffs = 'Terrasjr:Honor March|Nyoourke:Valor Minuet V',
@@ -710,6 +712,8 @@ local function build_expected_config()
 			},
 			na = {
 				enabled = true,
+				limit_enabled = true,
+				priority = 'Poison|Paralyze|Dia',
 			},
 			enemy_buffs = {
 				remove = false,

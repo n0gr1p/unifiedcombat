@@ -109,6 +109,9 @@ local function build_flat_settings()
 		defensive_cure_enabled = true,
 		def_charm_sleeper_enabled = true,
 		def_sleep_waker_enabled = true,
+		defensive_na_enabled = true,
+		defensive_na_limit_enabled = true,
+		defensive_na_priority = 'Poison|Paralyze|Dia',
 		def_heal_min_tier_cure = 3,
 		def_heal_max_tier_cure = 4,
 		def_heal_min_missing_hp = 250,
@@ -214,6 +217,8 @@ local function main()
 	assert_equal(active_profile.config.combat.weaponskill.primary, 'Savage Blade', 'active combat WS mismatch')
 	assert_equal(active_profile.config.combat.weaponskill.wait_ignore_names[1], 'Niightsiide', 'active wait ignore names mismatch')
 	assert_equal(active_profile.config.ownership.profile_v2_auto_reload_on_change, true, 'active auto-reload flag mismatch')
+	assert_equal(active_profile.config.defensive.na.limit_enabled, true, 'active status-removal limit mismatch')
+	assert_equal(active_profile.config.defensive.na.priority, 'Poison|Paralyze|Dia', 'active status-removal priority mismatch')
 	assert_equal(active_profile.config.follow.fight.leader, true, 'active fight leader enabled mismatch')
 	assert_equal(active_profile.config.follow.fight.leader_name, 'Niightsiide', 'active fight leader name mismatch')
 	assert_equal(active_profile.config.follow.fight.leader_id, 0, 'active fight leader id must stay runtime-owned')
@@ -282,6 +287,8 @@ local function main()
 	assert_equal(projected.sleep_max_target_range, 14.0, 'projected sleep target range mismatch')
 	assert_equal(projected.def_charm_sleeper_enabled, true, 'projected charm sleeper mirror mismatch')
 	assert_equal(projected.def_sleep_waker_enabled, true, 'projected sleep waker mirror mismatch')
+	assert_equal(projected.defensive_na_limit_enabled, true, 'projected status-removal limit mismatch')
+	assert_equal(projected.defensive_na_priority, 'Poison|Paralyze|Dia', 'projected status-removal priority mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'projected targeted buff mirror mismatch')
 	assert_equal(projected.wait_ignore_names[1], 'Niightsiide', 'projected wait ignore names mismatch')
 	assert_equal(projected.ignore[1], 77, 'projected compatibility ignore id mismatch')
@@ -406,6 +413,8 @@ local function main()
 	assert_equal(ui_profile.config.targeting.targets[1], 'Apex Bat', 'UI active add priority target mismatch')
 	assert_equal(ui_profile.config.defensive.buffs.targeted[1].character, 'Terrasjr', 'UI active targeted buff character mismatch')
 	assert_equal(ui_profile.config.defensive.buffs.targeted[1].buff, 'Honor March', 'UI active targeted buff name mismatch')
+	assert_equal(ui_profile.config.defensive.na.limit_enabled, true, 'UI active status-removal limit mismatch')
+	assert_equal(ui_profile.config.defensive.na.priority, 'Poison|Paralyze|Dia', 'UI active status-removal priority mismatch')
 	assert_deep_equal(ui_fixture, ui_fixture_snapshot, 'building from payload must not mutate fixture')
 
 	local ui_set_ok, ui_stored_profile = active_config.set_active_profile(ui_profile)

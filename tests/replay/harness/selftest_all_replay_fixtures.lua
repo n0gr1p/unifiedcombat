@@ -62,6 +62,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_alliance_target_scope.lua",
     "tests/replay/harness/selftest_hb_buff_maint_majesty_priority.lua",
     "tests/replay/harness/selftest_defensive_cure_priority.lua",
+	"tests/replay/harness/selftest_na_status_removal_priority.lua",
 	"tests/replay/harness/selftest_charm_sleeper.lua",
 	"tests/replay/harness/selftest_sleep_waker.lua",
     "tests/replay/harness/selftest_tank_engage_priority.lua",
