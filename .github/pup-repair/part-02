@@ -1,0 +1,132 @@
+       _pupActivateIfMissing.Checked = ReadPupBool(text, @"^\s*activate_if_missing\s*=\s*(true|false)", true);
+-            _pupDeployOnCombatStart.Checked = ReadPupBool(text, @"^\s*deploy_on_combat_start\s*=\s*(true|false)", true);
+-            _pupManeuversEnabled.Checked = ReadPupBool(text, @"^\s*maneuvers\s*=\s*\{[\s\S]*?^\s*enabled\s*=\s*(true|false)", true);
+-
+-            var patternMatch = Regex.Match(
+-                text,
+-                @"pattern\s*=\s*\{(?<body>[\s\S]*?)\}",
+-                RegexOptions.Multiline
+-            );
+-            if (patternMatch.Success)
+-            {
+-                var names = Regex.Matches(patternMatch.Groups["body"].Value, "'([^']+)'|\"([^\"]+)\"")
+-                    .Select(m => m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value)
+-                    .Where(PuppetmasterManeuverNames.Contains)
+-                    .Take(3)
+-                    .ToArray();
+-                if (names.Length > 0) _pupManeuver1.SelectedItem = names[0];
+-                if (names.Length > 1) _pupManeuver2.SelectedItem = names[1];
+-                if (names.Length > 2) _pupManeuver3.SelectedItem = names[2];
+-            }
++            _pupEnabled.Checked = SessionStateHelper.GetBool(snapshot, "puppetmaster_enabled", false);
++            _pupActivateIfMissing.Checked = SessionStateHelper.GetBool(snapshot, "puppetmaster_activate_if_missing", true);
++            _pupDeployOnCombatStart.Checked = SessionStateHelper.GetBool(snapshot, "puppetmaster_deploy_on_combat_start", true);
++            _pupManeuversEnabled.Checked = SessionStateHelper.GetBool(snapshot, "puppetmaster_maneuvers_enabled", true);
++
++            var pattern = SessionStateHelper.GetString(
++                snapshot,
++                "puppetmaster_maneuver_pattern",
++                "Fire Maneuver|Fire Maneuver|Light Maneuver"
++            ).Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
++            ApplyPuppetmasterManeuverSelection(_pupManeuver1, pattern.ElementAtOrDefault(0) ?? "Fire Maneuver");
++            ApplyPuppetmasterManeuverSelection(_pupManeuver2, pattern.ElementAtOrDefault(1) ?? "Fire Maneuver");
++            ApplyPuppetmasterManeuverSelection(_pupManeuver3, pattern.ElementAtOrDefault(2) ?? "Light Maneuver");
+ 
+             _pupPostActivateQuiet.Value = Math.Clamp(
+-                ReadPupDecimal(text, @"post_activate_quiet_seconds\s*=\s*([0-9.]+)", 120),
+-                _pupPostActivateQuiet.Minimum,
+-                _pupPostActivateQuiet.Maximum
++                SessionStateHelper.GetInt(snapshot, "puppetmaster_post_activate_quiet_seconds", 120),
++                decimal.ToInt32(_pupPostActivateQuiet.Minimum),
++                decimal.ToInt32(_pupPostActivateQuiet.Maximum)
+             );
+             _pupSafeBurdenCeiling.Value = Math.Clamp(
+-                ReadPupDecimal(text, @"safe_burden_ceiling\s*=\s*([0-9.]+)", 30),
+-                _pupSafeBurdenCeiling.Minimum,
+-                _pupSafeBurdenCeiling.Maximum
++                SessionStateHelper.GetInt(snapshot, "puppetmaster_safe_burden_ceiling", 30),
++                decimal.ToInt32(_pupSafeBurdenCeiling.Minimum),
++                decimal.ToInt32(_pupSafeBurdenCeiling.Maximum)
+             );
+-            _pupStatus.Text = $"Loaded {path}";
+         }
+-        catch (Exception ex)
++        finally
+         {
+-            _pupStatus.Text = $"Could not read PUP config: {ex.Message}";
++            _suppressEvents = oldSuppress;
+         }
++        RefreshPuppetmasterValidation();
+     }
+ 
+-    private static bool ReadPupBool(string text, string pattern, bool fallback)
+-    {
+-        var match = Regex.Match(text, pattern, RegexOptions.Multiline | RegexOptions.IgnoreCase);
+-        return match.Success ? string.Equals(match.Groups[1].Value, "true", StringComparison.OrdinalIgnoreCase) : fallback;
+-    }
+-
+-    private static decimal ReadPupDecimal(string text, string pattern, decimal fallback)
+-    {
+-        var match = Regex.Match(text, pattern, RegexOptions.Multiline | RegexOptions.IgnoreCase);
+-        return match.Success
+-            && decimal.TryParse(match.Groups[1].Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
+-            ? value
+-            : fallback;
+-    }
+-
+-    private void SavePuppetmasterConfig(bool reloadSelected)
++    private static void ApplyPuppetmasterManeuverSelection(ComboBox combo, string value)
+     {
+-        var path = PuppetmasterConfigPath();
+-        if (path is null)
+-        {
+-            _pupStatus.Text = "Cannot save PUP settings: UnifiedCombat addon root was not found.";
+-            return;
+-        }
+-
+-        var maneuvers = new[]
+-        {
+-            _pupManeuver1.SelectedItem?.ToString(),
+-            _pupManeuver2.SelectedItem?.ToString(),
+-            _pupManeuver3.SelectedItem?.ToString(),
+-        };
+-        if (maneuvers.Any(x => string.IsNullOrWhiteSpace(x) || !PuppetmasterManeuverNames.Contains(x!)))
+-        {
+-            _pupStatus.Text = "Select a valid maneuver in all three slots before saving.";
+-            return;
+-        }
+-
+-        var sb = new StringBuilder();
+-        sb.AppendLine("-- Puppetmaster automation defaults.");
+-        sb.AppendLine("-- Managed by the UnifiedCombat WinForms PUP tab; manual edits are still supported.");
+-        sb.AppendLine("return {");
+-        sb.AppendLine($"    enabled = {_pupEnabled.Checked.ToString().ToLowerInvariant()},");
+-        sb.AppendLine($"    activate_if_missing = {_pupActivateIfMissing.Checked.ToString().ToLowerInvariant()},");
+-        sb.AppendLine($"    deploy_on_combat_start = {_pupDeployOnCombatStart.Checked.ToString().ToLowerInvariant()},");
+-        sb.AppendLine("    maneuvers = {");
+-        sb.AppendLine($"        enabled = {_pupManeuversEnabled.Checked.ToString().ToLowerInvariant()},");
+-        sb.AppendLine("        pattern = {");
+-        foreach (var maneuver in maneuvers)
+-        {
+-            sb.AppendLine($"            '{maneuver}',");
+-        }
+-        sb.AppendLine("        },");
+-        sb.AppendLine($"        post_activate_quiet_seconds = {_pupPostActivateQuiet.Value.ToString(CultureInfo.InvariantCulture)},");
+-        sb.AppendLine($"        safe_burden_ceiling = {_pupSafeBurdenCeiling.Value.ToString(CultureInfo.InvariantCulture)},");
+-        sb.AppendLine("    },");
+-        sb.AppendLine("}");
+-
+-        try
+-        {
+-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+-            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+-            _pupStatus.Text = reloadSelected
+-                ? "PUP settings saved; reloading the selected PUP client..."
+-                : "PUP settings saved. Reload UnifiedCombat on PUP clients to apply them.";
+-
+-            if (reloadSelected)
+-            {
+-                if (string.IsNullOrWhiteSpace(_selectedSid)
+-                    || !_sessionMetaBySid.TryGetValue(_selectedSid, out var meta)
+-                    || !string.Equals(meta.Job, "PUP", StringComparison.OrdinalIgnoreCase))
+-                     
