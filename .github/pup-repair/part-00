@@ -1,0 +1,127 @@
+diff --git a/UnifiedCombatWinForms/MainForm.ParityLogic.cs b/UnifiedCombatWinForms/MainForm.ParityLogic.cs
+index 1524845..679e92d 100644
+--- a/UnifiedCombatWinForms/MainForm.ParityLogic.cs
++++ b/UnifiedCombatWinForms/MainForm.ParityLogic.cs
+@@ -875,8 +875,11 @@ public partial class MainForm
+             EnsureSummonerTabVisibility(summonerVisible);
+             var scholarVisible = string.Equals(mainJob, "SCH", StringComparison.Ordinal);
+             EnsureScholarTabVisibility(scholarVisible);
++            var puppetmasterVisible = string.Equals(mainJob, "PUP", StringComparison.Ordinal);
++            EnsurePuppetmasterTabVisibility(puppetmasterVisible);
+             ApplyGeoPullFromSnapshot(s);
+             ApplySummonerFromSnapshot(s);
++            ApplyPuppetmasterFromSnapshot(s);
+             ApplyScholarFromSnapshot(s);
+             _reactionEnabled.Checked = SessionStateHelper.GetBool(s, "reaction_enabled", false);
+             ApplyReactionRulesFromSnapshot(s);
+diff --git a/UnifiedCombatWinForms/MainForm.ProfileStore.cs b/UnifiedCombatWinForms/MainForm.ProfileStore.cs
+index c3c710a..49af2b1 100644
+--- a/UnifiedCombatWinForms/MainForm.ProfileStore.cs
++++ b/UnifiedCombatWinForms/MainForm.ProfileStore.cs
+@@ -355,6 +355,13 @@ public partial class MainForm
+             ["summoner_rage_target_hpp_above"] = decimal.ToInt32(_summonerRageTargetHppAbove.Value),
+             ["summoner_rage_pet_tp_above_enabled"] = _summonerRagePetTpAboveEnabled.Checked,
+             ["summoner_rage_pet_tp_above"] = decimal.ToInt32(_summonerRagePetTpAbove.Value),
++            ["puppetmaster_enabled"] = _pupEnabled.Checked,
++            ["puppetmaster_activate_if_missing"] = _pupActivateIfMissing.Checked,
++            ["puppetmaster_deploy_on_combat_start"] = _pupDeployOnCombatStart.Checked,
++            ["puppetmaster_maneuvers_enabled"] = _pupManeuversEnabled.Checked,
++            ["puppetmaster_maneuver_pattern"] = string.Join("|", SelectedPuppetmasterManeuvers()),
++            ["puppetmaster_post_activate_quiet_seconds"] = decimal.ToInt32(_pupPostActivateQuiet.Value),
++            ["puppetmaster_safe_burden_ceiling"] = decimal.ToInt32(_pupSafeBurdenCeiling.Value),
+             ["sch_enabled"] = _schEnabled.Checked,
+             ["sch_arts_minimum_commit_s"] = decimal.ToInt32(_schArtsMinimumCommit.Value),
+             ["sch_arts_emergency_off_art_casts"] = _schArtsEmergencyOffArtCasts.Checked,
+@@ -609,6 +616,13 @@ public partial class MainForm
+             ["summoner_rage_target_hpp_above"] = 50,
+             ["summoner_rage_pet_tp_above_enabled"] = false,
+             ["summoner_rage_pet_tp_above"] = 2000,
++            ["puppetmaster_enabled"] = false,
++            ["puppetmaster_activate_if_missing"] = true,
++            ["puppetmaster_deploy_on_combat_start"] = true,
++            ["puppetmaster_maneuvers_enabled"] = true,
++            ["puppetmaster_maneuver_pattern"] = "Fire Maneuver|Fire Maneuver|Light Maneuver",
++            ["puppetmaster_post_activate_quiet_seconds"] = 120,
++            ["puppetmaster_safe_burden_ceiling"] = 30,
+             ["sch_enabled"] = false,
+             ["sch_arts_minimum_commit_s"] = 12,
+             ["sch_arts_emergency_off_art_casts"] = true,
+diff --git a/UnifiedCombatWinForms/MainForm.PuppetmasterUi.cs b/UnifiedCombatWinForms/MainForm.PuppetmasterUi.cs
+index 759008f..94b922a 100644
+--- a/UnifiedCombatWinForms/MainForm.PuppetmasterUi.cs
++++ b/UnifiedCombatWinForms/MainForm.PuppetmasterUi.cs
+@@ -1,6 +1,4 @@
+-using System.Globalization;
+-using System.Text;
+-using System.Text.RegularExpressions;
++using System.Text.Json;
+ using UnifiedCombatWinForms.Ui;
+ 
+ namespace UnifiedCombatWinForms;
+@@ -29,18 +27,18 @@ public partial class MainForm
+     private ComboBox _pupManeuver3 = null!;
+     private NumericUpDown _pupPostActivateQuiet = null!;
+     private NumericUpDown _pupSafeBurdenCeiling = null!;
+-    private Button _pupSave = null!;
+-    private Button _pupSaveReload = null!;
+-    private Label _pupStatus = null!;
++    private Label _pupValidation = null!;
+     private bool _pupUiLoaded;
+ 
+     protected override void OnLoad(EventArgs e)
+     {
+         base.OnLoad(e);
+         EnsurePuppetmasterTabBuilt();
+-        LoadPuppetmasterConfigIntoUi();
+         RefreshPuppetmasterTabVisibility();
+-        listSessions.SelectedIndexChanged += (_, _) => RefreshPuppetmasterTabVisibility();
++        if (!string.IsNullOrWhiteSpace(_selectedSid))
++        {
++            RefreshEditorFromSnapshot();
++        }
+     }
+ 
+     private void EnsurePuppetmasterTabBuilt()
+@@ -65,7 +63,7 @@ public partial class MainForm
+ 
+         var note = new Label
+         {
+-            Text = "Automaton lifecycle and overload-safe maneuver maintenance. These settings are stored in data/puppetmaster_config.lua and apply to PUP automation after the addon reloads.",
++            Text = "Automaton lifecycle and overload-safe maneuver maintenance. These settings belong to the selected character/main-job/subjob profile and are saved with the normal UnifiedCombat Save action.",
+             AutoSize = true,
+             MaximumSize = new Size(700, 0),
+             Padding = new Padding(0, 0, 0, 8),
+@@ -74,22 +72,26 @@ public partial class MainForm
+         root.SetColumnSpan(note, 2);
+         row++;
+ 
+-        _pupEnabled = new UcToggle { Text = "Enable Puppetmaster automation", AutoSize = true, Checked = true };
++        _pupEnabled = new UcToggle { Text = "Enable Puppetmaster automation", AutoSize = true };
++        _pupEnabled.CheckedChanged += (_, _) => OnPuppetmasterSettingChanged();
+         root.Controls.Add(_pupEnabled, 0, row);
+         root.SetColumnSpan(_pupEnabled, 2);
+         row++;
+ 
+         _pupActivateIfMissing = new UcToggle { Text = "Activate automaton when missing", AutoSize = true, Checked = true };
++        _pupActivateIfMissing.CheckedChanged += (_, _) => OnPuppetmasterSettingChanged();
+         root.Controls.Add(_pupActivateIfMissing, 0, row);
+         root.SetColumnSpan(_pupActivateIfMissing, 2);
+         row++;
+ 
+         _pupDeployOnCombatStart = new UcToggle { Text = "Deploy automaton on UnifiedCombat target", AutoSize = true, Checked = true };
++        _pupDeployOnCombatStart.CheckedChanged += (_, _) => OnPuppetmasterSettingChanged();
+         root.Controls.Add(_pupDeployOnCombatStart, 0, row);
+         root.SetColumnSpan(_pupDeployOnCombatStart, 2);
+         row++;
+ 
+         _pupManeuversEnabled = new UcToggle { Text = "Maintain configured maneuvers", AutoSize = true, Checked = true };
++        _pupManeuversEnabled.CheckedChanged += (_, _) => OnPuppetmasterSettingChanged();
+         root.Controls.Add(_pupManeuversEnabled, 0, row);
+         root.SetColumnSpan(_pupManeuversEnabled, 2);
+         row++;
+@@ -110,6 +112,7 @@ public partial class MainForm
+             Width = 90,
+             Anchor = AnchorStyles.Left,
+         };
++        _pupPostActivateQuiet.ValueChanged += (_, _) => OnPuppetmasterSettingChanged();
+         AddPuppetmasterRow(root, "Post-Activate 
