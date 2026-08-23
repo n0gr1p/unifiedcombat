@@ -250,7 +250,7 @@ function M.new_state()
 		zone_id = nil,
 		pet_id = 0,
 		burden = {},
-		burden_at = 0,
+		burden_at = nil,
 		quiet_until = 0,
 		maneuver_counts = {},
 		last_recorded_at = {},
@@ -273,8 +273,8 @@ local function current_zone_id()
 end
 
 local function decay(state, now)
-	local last = tonumber(state.burden_at) or now
-	if last <= 0 then
+	local last = tonumber(state.burden_at)
+	if last == nil then
 		state.burden_at = now
 		return
 	end
