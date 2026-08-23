@@ -5,13 +5,55 @@ on:
     branches: [master]
 
 jobs:
-  source-snapshot:
+  lua-validation:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/upload-artifact@v4
         with:
-          name: pup-architecture-source
-          path: .
-          include-hidden-files: true
-          retention-days: 1
+          ref: ${{ github.head_ref }}
+      - name: Assemble repair patch
+        run: cat .github/pup-repair/part-* > /tmp/pup-repair.patch
+      - name: Apply repair
+        run: git apply --check /tmp/pup-repair.patch && git apply /tmp/pup-repair.patch
+      - name: Install Lua
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+      - name: Lua syntax
+        run: luac -p uc_config_normalizer.lua uc_active_config.lua uc_config_runtime.lua uc_profile_v2.lua uc_profile_contract.lua uc_pup_runtime.lua tests/replay/harness/selftest_pup_profile_v2.lua tests/replay/harness/selftest_pup_automaton_control.lua
+      - name: PUP profile architecture
+        run: lua tests/replay/harness/selftest_pup_profile_v2.lua
+      - name: PUP behavior
+        run: lua tests/replay/harness/selftest_pup_automaton_control.lua
+      - name: Config normalizer regression
+        run: lua tests/replay/harness/selftest_config_normalizer.lua
+      - name: Profile v2 export regression
+        run: lua tests/replay/harness/selftest_profile_v2_export.lua
+      - name: Profile v2 runtime consumers
+        run: lua tests/replay/harness/selftest_profile_v2_runtime_consumers.lua
+      - name: Shared pet command regression
+        run: lua tests/replay/harness/selftest_pet_command_infrastructure.lua
+      - name: Shared pet combat regression
+        run: lua tests/replay/harness/selftest_pet_combat_provider.lua
+      - name: Summoner cross-provider regression
+        run: lua tests/replay/harness/selftest_smn_cross_provider_integration.lua
+
+  winforms-validation:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Assemble repair patch
+        shell: bash
+        run: cat .github/pup-repair/part-* > "$RUNNER_TEMP/pup-repair.patch"
+      - name: Apply repair
+        shell: bash
+        run: git apply --check "$RUNNER_TEMP/pup-repair.patch" && git apply "$RUNNER_TEMP/pup-repair.patch"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Build UnifiedCombat WinForms
+        run: dotnet build UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --nologo
+      - name: Structured profile v2 selftest
+        run: dotnet run --project UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --no-build -- --selftest-profile-v2
