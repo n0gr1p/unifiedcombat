@@ -12,8 +12,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
-      - name: Assemble repair patch
-        run: cat .github/pup-repair/part-* > /tmp/pup-repair.patch
+      - name: Decode exact repair patch
+        run: |
+          cat .github/pup-repair-b64/part-* | base64 -d > /tmp/pup-repair.patch
+          echo "b4bf267d8194018fbda15c18eb0add22ca33766adfaa9192d6fcdbbfba0bc2fc  /tmp/pup-repair.patch" | sha256sum -c -
       - name: Apply repair
         run: git apply --check /tmp/pup-repair.patch && git apply /tmp/pup-repair.patch
       - name: Install Lua
@@ -44,9 +46,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
-      - name: Assemble repair patch
+      - name: Decode exact repair patch
         shell: bash
-        run: cat .github/pup-repair/part-* > "$RUNNER_TEMP/pup-repair.patch"
+        run: |
+          cat .github/pup-repair-b64/part-* | base64 -d > "$RUNNER_TEMP/pup-repair.patch"
+          echo "b4bf267d8194018fbda15c18eb0add22ca33766adfaa9192d6fcdbbfba0bc2fc  $RUNNER_TEMP/pup-repair.patch" | sha256sum -c -
       - name: Apply repair
         shell: bash
         run: git apply --check "$RUNNER_TEMP/pup-repair.patch" && git apply "$RUNNER_TEMP/pup-repair.patch"
