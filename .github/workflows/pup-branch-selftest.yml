@@ -1,0 +1,24 @@
+name: PUP branch selftest
+
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  pup-selftest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+      - name: Puppetmaster automaton control
+        run: lua tests/replay/harness/selftest_pup_automaton_control.lua
+      - name: Shared pet command regression
+        run: lua tests/replay/harness/selftest_pet_command_infrastructure.lua
+      - name: Shared pet combat provider regression
+        run: lua tests/replay/harness/selftest_pet_combat_provider.lua
+      - name: Summoner cross-provider regression
+        run: lua tests/replay/harness/selftest_smn_cross_provider_integration.lua
+      - name: Summoner maintenance regression
+        run: lua tests/replay/harness/selftest_smn_maintenance.lua
