@@ -40,6 +40,7 @@ local function config()
 end
 
 local function ctx(now, pet_present, buffs)
+	local player_buffs = buffs or {}
 	return {
 		now = now,
 		settings = {
@@ -52,12 +53,14 @@ local function ctx(now, pet_present, buffs)
 			id = 100,
 			name = 'Tester',
 			main_job = 'PUP',
-			buffs = buffs or {},
+			buffs = player_buffs,
 		},
+		player_buffs = player_buffs,
 		pet_present = pet_present == true,
 		pet_id = pet_present == true and 200 or 0,
 		pet_name = pet_present == true and 'Automaton' or '',
 		pet_status = 0,
+		pet_inferred_target_id = 0,
 		ability_recasts_present = true,
 		ability_recasts = {
 			[runtime.RECAST_ACTIVATE] = 0,
@@ -112,7 +115,6 @@ local function test_coordinator_completion()
 	coordinator.begin(state, deploy, 1)
 	local deploy_ctx = ctx(1.1, true, {})
 	deploy_ctx.pet_status = 1
-	deploy_ctx.pet_inferred_target_id = 0
 	local event = coordinator.observe(state, deploy_ctx)
 	assert_equal(event.outcome, 'complete', 'Deploy completion outcome')
 	assert_equal(event.reason, 'pet_engaged_observed', 'Deploy completion evidence')
@@ -128,7 +130,6 @@ local function test_coordinator_completion()
 	}
 	coordinator.begin(state, maneuver, 2)
 	local maneuver_ctx = ctx(2.1, true, {})
-	maneuver_ctx.pet_inferred_target_id = 0
 	maneuver_ctx.ability_recasts[210] = 10
 	event = coordinator.observe(state, maneuver_ctx)
 	assert_equal(event.outcome, 'complete', 'Maneuver completion outcome')
@@ -136,7 +137,6 @@ local function test_coordinator_completion()
 
 	coordinator.begin(state, maneuver, 3)
 	local overload_ctx = ctx(3.1, true, { runtime.BUFF_OVERLOAD })
-	overload_ctx.pet_inferred_target_id = 0
 	event = coordinator.observe(state, overload_ctx)
 	assert_equal(event.outcome, 'failed', 'Overload must fail in-flight maneuver command')
 	assert_equal(event.reason, 'overload_observed', 'Overload failure reason')
@@ -203,7 +203,13 @@ local function test_adapter_activate_deploy_and_maneuver()
 	assert_equal(maintenance.action_name, 'Activate', 'missing automaton must propose Activate')
 	assert_equal(maintenance.action_type, 'ja', 'Activate uses normal JA lane')
 
+	-- First automaton observation deliberately starts the conservative burden
+	-- quiet window. Maneuver maintenance must wait until it drains.
 	local pet = ctx(121, true, {})
+	snapshot = adapter.snapshot(pet)
+	assert_equal(adapter.maintenance(snapshot, pet), nil, 'new automaton must honor post-Activate burden quiet')
+
+	pet.now = 242
 	snapshot = adapter.snapshot(pet)
 	maintenance = adapter.maintenance(snapshot, pet)
 	assert_equal(maintenance.action_name, 'Fire Maneuver', 'first missing maneuver proposal')
