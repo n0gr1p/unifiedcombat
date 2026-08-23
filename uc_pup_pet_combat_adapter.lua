@@ -96,10 +96,11 @@ function M.new(deps)
 			if get_ja_resource('Activate') == nil then
 				error('Puppetmaster Activate resource is missing')
 			end
+			local retry_key = 'pup:activate'
 			return {
 				kind = 'activate',
 				family_id = 'maintenance.puppetmaster.activate',
-				action_type = 'ja',
+				action_type = 'pet',
 				action_name = 'Activate',
 				target_kind = 'self',
 				target_id = player_id,
@@ -107,11 +108,18 @@ function M.new(deps)
 				priority_band = runtime.PRIORITY_ACTIVATE,
 				urgency = 0.96,
 				range = 0.0,
-				retry_key = 'pup:activate',
-				expected_ack = 'action_start',
+				retry_key = retry_key,
+				expected_ack = 'pet_command',
 				expected_effect = 'automaton_present',
-				lock_class = 'support_action',
+				lock_class = 'pet_command',
 				reason_code = 'pup_automaton_missing',
+				command = {
+					kind = 'activate',
+					action_name = 'Activate',
+					recast_id = runtime.RECAST_ACTIVATE,
+					recast_before = tonumber(ctx.ability_recasts[runtime.RECAST_ACTIVATE]) or 0,
+					retry_key = retry_key,
+				},
 				detail = {
 					adapter_action_kind = 'activate',
 					recast_id = runtime.RECAST_ACTIVATE,
@@ -248,7 +256,11 @@ function M.new(deps)
 				or tonumber(ctx.combat_generation) ~= tonumber(command.combat_generation) then
 				return false, 'stale_target'
 			end
-			return adapter.engagement(snapshot, ctx) ~= nil, 'deploy_not_executable'
+			local current = adapter.engagement(snapshot, ctx)
+			if current == nil then
+				return false, 'deploy_not_executable'
+			end
+			return true, ''
 		elseif command.kind == 'maneuver' then
 			local wanted = runtime.next_missing_maneuver(snapshot.config, ctx.player)
 			if wanted ~= command.action_name then
