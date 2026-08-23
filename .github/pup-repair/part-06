@@ -1,0 +1,184 @@
+ -2634,6 +2784,7 @@ function M.normalize(settings, meta)
+     normalize_spells(source, config)
+     normalize_maintenance(source, config)
+     normalize_summoner(source, config)
++    normalize_puppetmaster(source, config)
+     normalize_sch(source, config)
+     normalize_debug(source, config)
+     normalize_ownership(source, config)
+diff --git a/uc_config_runtime.lua b/uc_config_runtime.lua
+index cf28910..59f93bc 100644
+--- a/uc_config_runtime.lua
++++ b/uc_config_runtime.lua
+@@ -16,6 +16,7 @@ local STATUS_FIELDS = {
+     'updated_at',
+     'profile_v2',
+     'summoner',
++    'puppetmaster',
+ }
+ 
+ local function legacy_ingame_ui_enabled(settings)
+@@ -100,6 +101,8 @@ local function config_domain_names(config)
+         'spells',
+         'maintenance',
+         'summoner',
++        'puppetmaster',
++        'sch',
+         'debug',
+         'ownership',
+         'legacy',
+@@ -221,6 +224,10 @@ function M.config_contract_status(settings, meta, normalizer, current_status)
+             ward_valid = summoner.ward_valid,
+             rage_valid = summoner.rage_valid,
+         }
++        out.puppetmaster = {
++            enabled = type(config.puppetmaster) == 'table' and config.puppetmaster.enabled == true,
++            valid = type(config.puppetmaster) == 'table',
++        }
+         for _, issue in ipairs(summoner.errors) do
+             out.errors[#out.errors + 1] = issue.message
+         end
+diff --git a/uc_profile_contract.lua b/uc_profile_contract.lua
+index 756436b..66f6afc 100644
+--- a/uc_profile_contract.lua
++++ b/uc_profile_contract.lua
+@@ -48,6 +48,7 @@ local PREFIX_CLASSIFICATION = {
+     domain_ = "profile_owned_by_ui",
+     encounter_ = "profile_owned_by_ui",
+     cor_ = "profile_owned_by_ui",
++    puppetmaster_ = "profile_owned_by_ui",
+     path_ = "profile_owned_by_ui",
+     target_ = "profile_owned_by_ui",
+     reaction_ = "profile_owned_by_ui",
+diff --git a/uc_profile_v2.lua b/uc_profile_v2.lua
+index e315b7c..e7fc378 100644
+--- a/uc_profile_v2.lua
++++ b/uc_profile_v2.lua
+@@ -18,6 +18,7 @@ local DURABLE_CONFIG_DOMAINS = {
+ 	'spells',
+ 	'maintenance',
+ 	'summoner',
++	'puppetmaster',
+ 	'sch',
+ 	'debug',
+ 	'ownership',
+@@ -183,6 +184,11 @@ local function is_sch_profile(meta)
+ 	return type(main_job) == 'string' and main_job:upper() == 'SCH'
+ end
+ 
++local function is_pup_profile(meta)
++	local main_job = meta and meta.main_job
++	return type(main_job) == 'string' and main_job:upper() == 'PUP'
++end
++
+ local function non_cor_maintenance_cor_is_default_empty(cor, meta)
+ 	if is_cor_profile(meta) or type(cor) ~= 'table' then
+ 		return false
+@@ -257,6 +263,9 @@ local function pick_durable_config_domains(config, meta)
+ 	if not is_brd_profile(meta) and type(out.maintenance) == 'table' then
+ 		out.maintenance.brd = nil
+ 	end
++	if not is_pup_profile(meta) then
++		out.puppetmaster = nil
++	end
+ 	if not is_sch_profile(meta) then
+ 		out.sch = nil
+ 	end
+@@ -365,6 +374,12 @@ local function canonicalize_optional_control_ranges(current_config, target_confi
+ 		canonicalize_rage_gates(target_config)
+ 	end
+ 
++	if type(target_config.puppetmaster) ~= 'table' then
++		-- Profiles written before Puppetmaster automation became a durable v2 domain
++		-- continue to mean "Puppetmaster automation disabled".
++		current_config.puppetmaster = nil
++	end
++
+ 	if type(target_config.sch) ~= 'table' then
+ 		-- Profiles written before Scholar automation became a durable v2 domain
+ 		-- continue to mean "Scholar automation disabled".
+diff --git a/uc_pup_runtime.lua b/uc_pup_runtime.lua
+index 63ce470..59ea715 100644
+--- a/uc_pup_runtime.lua
++++ b/uc_pup_runtime.lua
+@@ -27,7 +27,7 @@ for name, entry in pairs(MANEUVERS) do
+ end
+ 
+ local DEFAULT_CONFIG = {
+-	enabled = true,
++	enabled = false,
+ 	activate_if_missing = true,
+ 	deploy_on_combat_start = true,
+ 	maneuvers = {
+@@ -38,8 +38,6 @@ local DEFAULT_CONFIG = {
+ 	},
+ }
+ 
+-local file_config_cache = nil
+-
+ local function clone(value)
+ 	if type(value) ~= 'table' then
+ 		return value
+@@ -84,16 +82,12 @@ local function normalize_pattern(value)
+ 		return clone(DEFAULT_CONFIG.maneuvers.pattern)
+ 	end
+ 	local raw = {}
+-	if type(value) == 'string' then
+-		for token in value:gmatch('[^|]+') do
+-			raw[#raw + 1] = token:match('^%s*(.-)%s*$')
+-		end
+-	elseif type(value) == 'table' then
++	if type(value) == 'table' then
+ 		for i = 1, #value do
+ 			raw[#raw + 1] = value[i]
+ 		end
+ 	else
+-		error('puppetmaster.maneuvers.pattern must be an array or pipe-delimited string')
++		error('puppetmaster.maneuvers.pattern must be an array')
+ 	end
+ 	if #raw < 1 or #raw > 3 then
+ 		error('puppetmaster.maneuvers.pattern must contain one to three maneuvers')
+@@ -108,42 +102,8 @@ local function normalize_pattern(value)
+ 	return out
+ end
+ 
+-local function load_file_config()
+-	if file_config_cache ~= nil then
+-		return clone(file_config_cache)
+-	end
+-	local config = clone(DEFAULT_CONFIG)
+-	local windower_ref = rawget(_G, 'windower')
+-	local addon_path = type(windower_ref) == 'table' and tostring(windower_ref.addon_path or '') or ''
+-	if addon_path ~= '' then
+-		local ok, loaded = pcall(dofile, addon_path .. 'data/puppetmaster_config.lua')
+-		if ok and type(loaded) == 'table' then
+-			config = loaded
+-		end
+-	end
+-	file_config_cache = clone(config)
+-	return clone(file_config_cache)
+-end
+-
+ function M.config_from_settings(settings)
+-	local source = nil
+-	if type(settings) == 'table' and type(settings.puppetmaster) == 'table' then
+-		source = settings.puppetmaster
+-	elseif type(settings) == 'table' and settings.puppetmaster_enabled ~= nil then
+-		source = {
+-			enabled = settings.puppetmaster_enabled,
+-			activate_if_missing = settings.puppetmaster_activate_if_missing,
+-			deploy_on_combat_start = settings.puppetmaster_deploy_on_combat_start,
+-			maneuvers = {
+-				enabled = settings.puppetmaster_maneuvers_enabled,
+-				pattern = settings.puppetmaster_maneuver_pattern,
+-				post_activate_quiet_seconds = settings.puppetmaster_post_activate_quiet_seconds,
+-				safe_burden_ceiling = settings.puppetmaster_safe_burden_ceiling,
+-			},
+-		}
+-	else
+-		source = load_file_config()
+-	end
++	local source = type(settings) == 'table' and settings.puppetmaster or nil
+ 	if type(source) ~= 'table' then
+ 		source = {}
+ 	end
