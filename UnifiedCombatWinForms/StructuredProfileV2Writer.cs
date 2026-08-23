@@ -217,6 +217,11 @@ internal static class StructuredProfileV2Writer
         {
             config.Add("summoner", summoner);
         }
+        var puppetmaster = BuildPuppetmaster(flatProfile, identity);
+        if (puppetmaster is not null)
+        {
+            config.Add("puppetmaster", puppetmaster);
+        }
         var scholar = BuildScholar(flatProfile, identity);
         if (scholar is not null)
         {
@@ -1175,6 +1180,74 @@ internal static class StructuredProfileV2Writer
                                 "pet_tp_above",
                                 ReadBoundedInt(flatProfile, "summoner_rage_pet_tp_above", 2000, 0, 2999)
                             )
+                    )
+            );
+    }
+
+    private static readonly HashSet<string> PuppetmasterManeuverNames = new(StringComparer.Ordinal)
+    {
+        "Fire Maneuver",
+        "Ice Maneuver",
+        "Wind Maneuver",
+        "Earth Maneuver",
+        "Thunder Maneuver",
+        "Water Maneuver",
+        "Light Maneuver",
+        "Dark Maneuver",
+    };
+
+    private static StructuredProfileNode? BuildPuppetmaster(
+        JsonObject flatProfile,
+        StructuredProfileV2Identity identity
+    )
+    {
+        var isPuppetmasterProfile = string.Equals(
+            SafeJobComponent(identity.MainJob),
+            "PUP",
+            StringComparison.Ordinal
+        );
+        var enabled = ReadOptionalBool(flatProfile, "puppetmaster_enabled", false);
+        if (!isPuppetmasterProfile)
+        {
+            if (enabled)
+            {
+                throw new InvalidDataException("Puppetmaster automation configuration requires main job PUP.");
+            }
+            return null;
+        }
+
+        var pattern = SplitPipeList(
+            ReadString(flatProfile, "puppetmaster_maneuver_pattern", "Fire Maneuver|Fire Maneuver|Light Maneuver")
+        );
+        if (pattern.Count is < 1 or > 3)
+        {
+            throw new InvalidDataException("Puppetmaster maneuver pattern must contain one to three maneuvers.");
+        }
+        foreach (var entry in pattern)
+        {
+            var name = entry?.ToString() ?? "";
+            if (!PuppetmasterManeuverNames.Contains(name))
+            {
+                throw new InvalidDataException($"Unsupported Puppetmaster maneuver: {name}");
+            }
+        }
+
+        return new StructuredProfileNode()
+            .Add("enabled", enabled)
+            .Add("activate_if_missing", ReadOptionalBool(flatProfile, "puppetmaster_activate_if_missing", true))
+            .Add("deploy_on_combat_start", ReadOptionalBool(flatProfile, "puppetmaster_deploy_on_combat_start", true))
+            .Add(
+                "maneuvers",
+                new StructuredProfileNode()
+                    .Add("enabled", ReadOptionalBool(flatProfile, "puppetmaster_maneuvers_enabled", true))
+                    .Add("pattern", pattern)
+                    .Add(
+                        "post_activate_quiet_seconds",
+                        ReadBoundedInt(flatProfile, "puppetmaster_post_activate_quiet_seconds", 120, 0, 300)
+                    )
+                    .Add(
+                        "safe_burden_ceiling",
+                        ReadBoundedInt(flatProfile, "puppetmaster_safe_burden_ceiling", 30, 0, 32)
                     )
             );
     }

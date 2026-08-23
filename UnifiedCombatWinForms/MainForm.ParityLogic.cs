@@ -466,6 +466,7 @@ public partial class MainForm
             ResetGeoPullUi();
             EnsureGeoTabVisibility(false);
             EnsureSummonerTabVisibility(false);
+            EnsurePuppetmasterTabVisibility(false);
             EnsureScholarTabVisibility(false);
             _tankEnmityList.Items.Clear();
             _tankEnmityRows = [];
@@ -501,6 +502,7 @@ public partial class MainForm
             _summonerRagePetTpAboveEnabled.Checked = false;
             _summonerRagePetTpAbove.Value = 2000;
             UpdateSummonerUiState();
+            ResetPuppetmasterUi();
             _schEnabled.Checked = false;
             _schArtsMinimumCommit.Value = 12;
             _schArtsEmergencyOffArtCasts.Checked = true;
@@ -873,10 +875,13 @@ public partial class MainForm
             var summonerVisible = string.Equals(mainJob, "SMN", StringComparison.Ordinal)
                 || string.Equals(subJob, "SMN", StringComparison.Ordinal);
             EnsureSummonerTabVisibility(summonerVisible);
+            var puppetmasterVisible = string.Equals(mainJob, "PUP", StringComparison.Ordinal);
+            EnsurePuppetmasterTabVisibility(puppetmasterVisible);
             var scholarVisible = string.Equals(mainJob, "SCH", StringComparison.Ordinal);
             EnsureScholarTabVisibility(scholarVisible);
             ApplyGeoPullFromSnapshot(s);
             ApplySummonerFromSnapshot(s);
+            ApplyPuppetmasterFromSnapshot(s);
             ApplyScholarFromSnapshot(s);
             _reactionEnabled.Checked = SessionStateHelper.GetBool(s, "reaction_enabled", false);
             ApplyReactionRulesFromSnapshot(s);

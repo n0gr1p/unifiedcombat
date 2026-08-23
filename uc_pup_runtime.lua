@@ -1,3 +1,5 @@
+local uc_pup_config = require('uc_pup_config')
+
 local M = {
 	RECAST_ACTIVATE = 205,
 	RECAST_DEPLOY = 207,
@@ -26,20 +28,6 @@ for name, entry in pairs(MANEUVERS) do
 	ACTION_TO_MANEUVER[entry.action_id] = name
 end
 
-local DEFAULT_CONFIG = {
-	enabled = true,
-	activate_if_missing = true,
-	deploy_on_combat_start = true,
-	maneuvers = {
-		enabled = true,
-		pattern = { 'Fire Maneuver', 'Fire Maneuver', 'Light Maneuver' },
-		post_activate_quiet_seconds = M.DEFAULT_POST_ACTIVATE_QUIET_SECONDS,
-		safe_burden_ceiling = M.DEFAULT_SAFE_BURDEN_CEILING,
-	},
-}
-
-local file_config_cache = nil
-
 local function clone(value)
 	if type(value) ~= 'table' then
 		return value
@@ -58,127 +46,15 @@ local function require_table(value, name)
 	return value
 end
 
-local function bool(value, default_value, name)
-	if value == nil then
-		return default_value
-	end
-	if type(value) ~= 'boolean' then
-		error(name .. ' must be boolean')
-	end
-	return value
-end
-
-local function number_in_range(value, default_value, name, min_value, max_value)
-	if value == nil then
-		return default_value
-	end
-	local number = tonumber(value)
-	if number == nil or number < min_value or number > max_value then
-		error(('%s must be between %.1f and %.1f'):format(name, min_value, max_value))
-	end
-	return number
-end
-
-local function normalize_pattern(value)
-	if value == nil then
-		return clone(DEFAULT_CONFIG.maneuvers.pattern)
-	end
-	local raw = {}
-	if type(value) == 'string' then
-		for token in value:gmatch('[^|]+') do
-			raw[#raw + 1] = token:match('^%s*(.-)%s*$')
-		end
-	elseif type(value) == 'table' then
-		for i = 1, #value do
-			raw[#raw + 1] = value[i]
-		end
-	else
-		error('puppetmaster.maneuvers.pattern must be an array or pipe-delimited string')
-	end
-	if #raw < 1 or #raw > 3 then
-		error('puppetmaster.maneuvers.pattern must contain one to three maneuvers')
-	end
-	local out = {}
-	for i = 1, #raw do
-		if type(raw[i]) ~= 'string' or MANEUVERS[raw[i]] == nil then
-			error(('unsupported Puppetmaster maneuver at slot %d: %s'):format(i, tostring(raw[i])))
-		end
-		out[i] = raw[i]
-	end
-	return out
-end
-
-local function load_file_config()
-	if file_config_cache ~= nil then
-		return clone(file_config_cache)
-	end
-	local config = clone(DEFAULT_CONFIG)
-	local windower_ref = rawget(_G, 'windower')
-	local addon_path = type(windower_ref) == 'table' and tostring(windower_ref.addon_path or '') or ''
-	if addon_path ~= '' then
-		local ok, loaded = pcall(dofile, addon_path .. 'data/puppetmaster_config.lua')
-		if ok and type(loaded) == 'table' then
-			config = loaded
-		end
-	end
-	file_config_cache = clone(config)
-	return clone(file_config_cache)
-end
-
 function M.config_from_settings(settings)
-	local source = nil
-	if type(settings) == 'table' and type(settings.puppetmaster) == 'table' then
-		source = settings.puppetmaster
-	elseif type(settings) == 'table' and settings.puppetmaster_enabled ~= nil then
-		source = {
-			enabled = settings.puppetmaster_enabled,
-			activate_if_missing = settings.puppetmaster_activate_if_missing,
-			deploy_on_combat_start = settings.puppetmaster_deploy_on_combat_start,
-			maneuvers = {
-				enabled = settings.puppetmaster_maneuvers_enabled,
-				pattern = settings.puppetmaster_maneuver_pattern,
-				post_activate_quiet_seconds = settings.puppetmaster_post_activate_quiet_seconds,
-				safe_burden_ceiling = settings.puppetmaster_safe_burden_ceiling,
-			},
-		}
-	else
-		source = load_file_config()
+	local source = type(settings) == 'table' and settings.puppetmaster or nil
+	local meta = type(settings) == 'table' and settings.profile or nil
+	local config, validation = uc_pup_config.copy_validated(source, meta)
+	if config == nil or validation.valid ~= true then
+		local first = validation and validation.errors and validation.errors[1]
+		error(first and first.message or 'Puppetmaster configuration validation failed')
 	end
-	if type(source) ~= 'table' then
-		source = {}
-	end
-	local maneuvers = type(source.maneuvers) == 'table' and source.maneuvers or {}
-	return {
-		enabled = bool(source.enabled, DEFAULT_CONFIG.enabled, 'puppetmaster.enabled'),
-		activate_if_missing = bool(
-			source.activate_if_missing,
-			DEFAULT_CONFIG.activate_if_missing,
-			'puppetmaster.activate_if_missing'
-		),
-		deploy_on_combat_start = bool(
-			source.deploy_on_combat_start,
-			DEFAULT_CONFIG.deploy_on_combat_start,
-			'puppetmaster.deploy_on_combat_start'
-		),
-		maneuvers = {
-			enabled = bool(maneuvers.enabled, DEFAULT_CONFIG.maneuvers.enabled, 'puppetmaster.maneuvers.enabled'),
-			pattern = normalize_pattern(maneuvers.pattern),
-			post_activate_quiet_seconds = number_in_range(
-				maneuvers.post_activate_quiet_seconds,
-				DEFAULT_CONFIG.maneuvers.post_activate_quiet_seconds,
-				'puppetmaster.maneuvers.post_activate_quiet_seconds',
-				0,
-				300
-			),
-			safe_burden_ceiling = number_in_range(
-				maneuvers.safe_burden_ceiling,
-				DEFAULT_CONFIG.maneuvers.safe_burden_ceiling,
-				'puppetmaster.maneuvers.safe_burden_ceiling',
-				0,
-				32
-			),
-		},
-	}
+	return config
 end
 
 function M.maneuver(name)

@@ -1,6 +1,5 @@
 using System.Globalization;
-using System.Text;
-using System.Text.RegularExpressions;
+using System.Text.Json;
 using UnifiedCombatWinForms.Ui;
 
 namespace UnifiedCombatWinForms;
@@ -29,26 +28,11 @@ public partial class MainForm
     private ComboBox _pupManeuver3 = null!;
     private NumericUpDown _pupPostActivateQuiet = null!;
     private NumericUpDown _pupSafeBurdenCeiling = null!;
-    private Button _pupSave = null!;
-    private Button _pupSaveReload = null!;
-    private Label _pupStatus = null!;
     private bool _pupUiLoaded;
-
-    protected override void OnLoad(EventArgs e)
-    {
-        base.OnLoad(e);
-        EnsurePuppetmasterTabBuilt();
-        LoadPuppetmasterConfigIntoUi();
-        RefreshPuppetmasterTabVisibility();
-        listSessions.SelectedIndexChanged += (_, _) => RefreshPuppetmasterTabVisibility();
-    }
 
     private void EnsurePuppetmasterTabBuilt()
     {
-        if (_pupUiLoaded)
-        {
-            return;
-        }
+        if (_pupUiLoaded) return;
         _pupUiLoaded = true;
 
         _tabPuppetmaster = new TabPage("PUP") { AutoScroll = true };
@@ -65,7 +49,7 @@ public partial class MainForm
 
         var note = new Label
         {
-            Text = "Automaton lifecycle and overload-safe maneuver maintenance. These settings are stored in data/puppetmaster_config.lua and apply to PUP automation after the addon reloads.",
+            Text = "Automaton lifecycle and overload-safe maneuver maintenance. These settings belong to the selected character / PUP / subjob profile and are saved through the normal UnifiedCombat profile-v2 flow.",
             AutoSize = true,
             MaximumSize = new Size(700, 0),
             Padding = new Padding(0, 0, 0, 8),
@@ -74,25 +58,14 @@ public partial class MainForm
         root.SetColumnSpan(note, 2);
         row++;
 
-        _pupEnabled = new UcToggle { Text = "Enable Puppetmaster automation", AutoSize = true, Checked = true };
-        root.Controls.Add(_pupEnabled, 0, row);
-        root.SetColumnSpan(_pupEnabled, 2);
-        row++;
-
+        _pupEnabled = new UcToggle { Text = "Enable Puppetmaster automation", AutoSize = true };
+        AddPuppetmasterToggle(root, _pupEnabled, ref row);
         _pupActivateIfMissing = new UcToggle { Text = "Activate automaton when missing", AutoSize = true, Checked = true };
-        root.Controls.Add(_pupActivateIfMissing, 0, row);
-        root.SetColumnSpan(_pupActivateIfMissing, 2);
-        row++;
-
+        AddPuppetmasterToggle(root, _pupActivateIfMissing, ref row);
         _pupDeployOnCombatStart = new UcToggle { Text = "Deploy automaton on UnifiedCombat target", AutoSize = true, Checked = true };
-        root.Controls.Add(_pupDeployOnCombatStart, 0, row);
-        root.SetColumnSpan(_pupDeployOnCombatStart, 2);
-        row++;
-
+        AddPuppetmasterToggle(root, _pupDeployOnCombatStart, ref row);
         _pupManeuversEnabled = new UcToggle { Text = "Maintain configured maneuvers", AutoSize = true, Checked = true };
-        root.Controls.Add(_pupManeuversEnabled, 0, row);
-        root.SetColumnSpan(_pupManeuversEnabled, 2);
-        row++;
+        AddPuppetmasterToggle(root, _pupManeuversEnabled, ref row);
 
         _pupManeuver1 = CreatePuppetmasterManeuverCombo("Fire Maneuver");
         AddPuppetmasterRow(root, "Maneuver slot 1", _pupManeuver1, ref row);
@@ -125,55 +98,37 @@ public partial class MainForm
 
         var safetyNote = new Label
         {
-            Text = "Safety model assumes worst-case normal Maneuver burden (20), Dark burden (15), and 1 burden decay every 3 seconds. If the projected burden would exceed the ceiling, UnifiedCombat waits instead of risking Overload.",
+            Text = "Safety model assumes worst-case normal Maneuver burden (20), Dark burden (15), and 1 burden decay every 3 seconds. If projected burden would exceed the ceiling, UnifiedCombat waits instead of risking Overload.",
             AutoSize = true,
             MaximumSize = new Size(700, 0),
             Padding = new Padding(0, 8, 0, 8),
         };
         root.Controls.Add(safetyNote, 0, row);
         root.SetColumnSpan(safetyNote, 2);
-        row++;
-
-        var buttons = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = true,
-        };
-        _pupSave = new Button { Text = "Save PUP settings", AutoSize = true };
-        _pupSave.Click += (_, _) => SavePuppetmasterConfig(false);
-        buttons.Controls.Add(_pupSave);
-        _pupSaveReload = new Button { Text = "Save + reload selected PUP", AutoSize = true };
-        _pupSaveReload.Click += (_, _) => SavePuppetmasterConfig(true);
-        buttons.Controls.Add(_pupSaveReload);
-        root.Controls.Add(buttons, 0, row);
-        root.SetColumnSpan(buttons, 2);
-        row++;
-
-        _pupStatus = new Label
-        {
-            AutoSize = true,
-            MaximumSize = new Size(700, 0),
-            Padding = new Padding(0, 6, 0, 0),
-        };
-        root.Controls.Add(_pupStatus, 0, row);
-        root.SetColumnSpan(_pupStatus, 2);
 
         _tabPuppetmaster.Controls.Add(root);
-
-        var summonerIndex = _settingsTabs.TabPages.IndexOf(_tabSummoner);
-        if (summonerIndex >= 0)
-        {
-            _settingsTabs.TabPages.Insert(summonerIndex + 1, _tabPuppetmaster);
-        }
-        else
-        {
-            _settingsTabs.TabPages.Add(_tabPuppetmaster);
-        }
+        ResetPuppetmasterUi();
     }
 
-    private static void AddPuppetmasterRow(TableLayoutPanel root, string label, Control control, ref int row)
+    private void AddPuppetmasterToggle(TableLayoutPanel root, UcToggle toggle, ref int row)
     {
+        toggle.CheckedChanged += (_, _) => OnPuppetmasterSettingChanged();
+        root.Controls.Add(toggle, 0, row);
+        root.SetColumnSpan(toggle, 2);
+        row++;
+    }
+
+    private void AddPuppetmasterRow(TableLayoutPanel root, string label, Control control, ref int row)
+    {
+        switch (control)
+        {
+            case ComboBox combo:
+                combo.SelectedIndexChanged += (_, _) => OnPuppetmasterSettingChanged();
+                break;
+            case NumericUpDown number:
+                number.ValueChanged += (_, _) => OnPuppetmasterSettingChanged();
+                break;
+        }
         root.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
         root.Controls.Add(control, 1, row);
         row++;
@@ -192,177 +147,97 @@ public partial class MainForm
         return combo;
     }
 
-    private void RefreshPuppetmasterTabVisibility()
+    private void EnsurePuppetmasterTabVisibility(bool shouldShow)
     {
-        if (!_pupUiLoaded || _tabPuppetmaster is null)
-        {
-            return;
-        }
-        var isPup = false;
-        if (!string.IsNullOrWhiteSpace(_selectedSid)
-            && _sessionMetaBySid.TryGetValue(_selectedSid, out var meta))
-        {
-            isPup = string.Equals(meta.Job, "PUP", StringComparison.OrdinalIgnoreCase);
-        }
-
-        var present = _settingsTabs.TabPages.Contains(_tabPuppetmaster);
-        if (isPup && !present)
-        {
-            var summonerIndex = _settingsTabs.TabPages.IndexOf(_tabSummoner);
-            if (summonerIndex >= 0)
-            {
-                _settingsTabs.TabPages.Insert(summonerIndex + 1, _tabPuppetmaster);
-            }
-            else
-            {
-                _settingsTabs.TabPages.Add(_tabPuppetmaster);
-            }
-        }
-        else if (!isPup && present)
-        {
-            _settingsTabs.TabPages.Remove(_tabPuppetmaster);
-        }
+        EnsurePuppetmasterTabBuilt();
+        EnsureJobTabVisibility(_tabPuppetmaster, shouldShow);
     }
 
-    private string? PuppetmasterConfigPath()
+    private void ResetPuppetmasterUi()
     {
-        var addonRoot = StructuredProfileV2Writer.FindAddonRootFrom(AppContext.BaseDirectory);
-        return addonRoot is null ? null : Path.Combine(addonRoot, "data", "puppetmaster_config.lua");
+        if (!_pupUiLoaded) return;
+        _pupEnabled.Checked = false;
+        _pupActivateIfMissing.Checked = true;
+        _pupDeployOnCombatStart.Checked = true;
+        _pupManeuversEnabled.Checked = true;
+        _pupManeuver1.SelectedItem = "Fire Maneuver";
+        _pupManeuver2.SelectedItem = "Fire Maneuver";
+        _pupManeuver3.SelectedItem = "Light Maneuver";
+        _pupPostActivateQuiet.Value = 120;
+        _pupSafeBurdenCeiling.Value = 30;
+        UpdatePuppetmasterUiState();
     }
 
-    private void LoadPuppetmasterConfigIntoUi()
+    private void ApplyPuppetmasterFromSnapshot(JsonElement snapshot)
     {
-        var path = PuppetmasterConfigPath();
-        if (path is null || !File.Exists(path))
-        {
-            _pupStatus.Text = path is null
-                ? "PUP config path unavailable; using built-in UI defaults."
-                : "PUP config file does not exist yet; Save will create it.";
-            return;
-        }
+        EnsurePuppetmasterTabBuilt();
+        _pupEnabled.Checked = SessionStateHelper.GetBool(snapshot, "puppetmaster_enabled", false);
+        _pupActivateIfMissing.Checked = SessionStateHelper.GetBool(snapshot, "puppetmaster_activate_if_missing", true);
+        _pupDeployOnCombatStart.Checked = SessionStateHelper.GetBool(snapshot, "puppetmaster_deploy_on_combat_start", true);
+        _pupManeuversEnabled.Checked = SessionStateHelper.GetBool(snapshot, "puppetmaster_maneuvers_enabled", true);
 
-        try
-        {
-            var text = File.ReadAllText(path);
-            _pupEnabled.Checked = ReadPupBool(text, @"^\s*enabled\s*=\s*(true|false)", true);
-            _pupActivateIfMissing.Checked = ReadPupBool(text, @"^\s*activate_if_missing\s*=\s*(true|false)", true);
-            _pupDeployOnCombatStart.Checked = ReadPupBool(text, @"^\s*deploy_on_combat_start\s*=\s*(true|false)", true);
-            _pupManeuversEnabled.Checked = ReadPupBool(text, @"^\s*maneuvers\s*=\s*\{[\s\S]*?^\s*enabled\s*=\s*(true|false)", true);
-
-            var patternMatch = Regex.Match(
-                text,
-                @"pattern\s*=\s*\{(?<body>[\s\S]*?)\}",
-                RegexOptions.Multiline
-            );
-            if (patternMatch.Success)
-            {
-                var names = Regex.Matches(patternMatch.Groups["body"].Value, "'([^']+)'|\"([^\"]+)\"")
-                    .Select(m => m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value)
-                    .Where(PuppetmasterManeuverNames.Contains)
-                    .Take(3)
-                    .ToArray();
-                if (names.Length > 0) _pupManeuver1.SelectedItem = names[0];
-                if (names.Length > 1) _pupManeuver2.SelectedItem = names[1];
-                if (names.Length > 2) _pupManeuver3.SelectedItem = names[2];
-            }
-
-            _pupPostActivateQuiet.Value = Math.Clamp(
-                ReadPupDecimal(text, @"post_activate_quiet_seconds\s*=\s*([0-9.]+)", 120),
-                _pupPostActivateQuiet.Minimum,
-                _pupPostActivateQuiet.Maximum
-            );
-            _pupSafeBurdenCeiling.Value = Math.Clamp(
-                ReadPupDecimal(text, @"safe_burden_ceiling\s*=\s*([0-9.]+)", 30),
-                _pupSafeBurdenCeiling.Minimum,
-                _pupSafeBurdenCeiling.Maximum
-            );
-            _pupStatus.Text = $"Loaded {path}";
-        }
-        catch (Exception ex)
-        {
-            _pupStatus.Text = $"Could not read PUP config: {ex.Message}";
-        }
+        var pattern = SessionStateHelper.SplitOptions(
+            snapshot.TryGetProperty("puppetmaster_maneuver_pattern", out var patternNode) ? patternNode : default
+        );
+        if (pattern.Count == 0) pattern = ["Fire Maneuver", "Fire Maneuver", "Light Maneuver"];
+        ApplyPuppetmasterManeuver(_pupManeuver1, pattern.ElementAtOrDefault(0) ?? "Fire Maneuver");
+        ApplyPuppetmasterManeuver(_pupManeuver2, pattern.ElementAtOrDefault(1) ?? "Fire Maneuver");
+        ApplyPuppetmasterManeuver(_pupManeuver3, pattern.ElementAtOrDefault(2) ?? "Light Maneuver");
+        _pupPostActivateQuiet.Value = ReadPuppetmasterInteger(snapshot, "puppetmaster_post_activate_quiet_seconds", 120, 0, 300);
+        _pupSafeBurdenCeiling.Value = ReadPuppetmasterInteger(snapshot, "puppetmaster_safe_burden_ceiling", 30, 0, 32);
+        UpdatePuppetmasterUiState();
     }
 
-    private static bool ReadPupBool(string text, string pattern, bool fallback)
+    private static void ApplyPuppetmasterManeuver(ComboBox combo, string name)
     {
-        var match = Regex.Match(text, pattern, RegexOptions.Multiline | RegexOptions.IgnoreCase);
-        return match.Success ? string.Equals(match.Groups[1].Value, "true", StringComparison.OrdinalIgnoreCase) : fallback;
+        combo.SelectedItem = PuppetmasterManeuverNames.Contains(name, StringComparer.Ordinal)
+            ? name
+            : "Fire Maneuver";
     }
 
-    private static decimal ReadPupDecimal(string text, string pattern, decimal fallback)
+    private static decimal ReadPuppetmasterInteger(JsonElement snapshot, string key, int fallback, int minimum, int maximum)
     {
-        var match = Regex.Match(text, pattern, RegexOptions.Multiline | RegexOptions.IgnoreCase);
-        return match.Success
-            && decimal.TryParse(match.Groups[1].Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
-            ? value
+        if (!snapshot.TryGetProperty(key, out var node)) return fallback;
+        if (node.ValueKind == JsonValueKind.Number && node.TryGetInt32(out var number))
+            return Math.Clamp(number, minimum, maximum);
+        var raw = SessionStateHelper.GetString(snapshot, key, fallback.ToString(CultureInfo.InvariantCulture));
+        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? Math.Clamp(parsed, minimum, maximum)
             : fallback;
     }
 
-    private void SavePuppetmasterConfig(bool reloadSelected)
+    private string PuppetmasterPatternFromUi()
     {
-        var path = PuppetmasterConfigPath();
-        if (path is null)
+        return string.Join("|", new[]
         {
-            _pupStatus.Text = "Cannot save PUP settings: UnifiedCombat addon root was not found.";
-            return;
-        }
+            _pupManeuver1.SelectedItem?.ToString() ?? "Fire Maneuver",
+            _pupManeuver2.SelectedItem?.ToString() ?? "Fire Maneuver",
+            _pupManeuver3.SelectedItem?.ToString() ?? "Light Maneuver",
+        });
+    }
 
-        var maneuvers = new[]
+    private void OnPuppetmasterSettingChanged()
+    {
+        if (_suppressEvents) return;
+        UpdatePuppetmasterUiState();
+        if (!string.IsNullOrWhiteSpace(_selectedSid) && _listSids.Contains(_selectedSid))
         {
-            _pupManeuver1.SelectedItem?.ToString(),
-            _pupManeuver2.SelectedItem?.ToString(),
-            _pupManeuver3.SelectedItem?.ToString(),
-        };
-        if (maneuvers.Any(x => string.IsNullOrWhiteSpace(x) || !PuppetmasterManeuverNames.Contains(x!)))
-        {
-            _pupStatus.Text = "Select a valid maneuver in all three slots before saving.";
-            return;
+            CaptureWorkingProfileFromUi(_selectedSid);
         }
+    }
 
-        var sb = new StringBuilder();
-        sb.AppendLine("-- Puppetmaster automation defaults.");
-        sb.AppendLine("-- Managed by the UnifiedCombat WinForms PUP tab; manual edits are still supported.");
-        sb.AppendLine("return {");
-        sb.AppendLine($"    enabled = {_pupEnabled.Checked.ToString().ToLowerInvariant()},");
-        sb.AppendLine($"    activate_if_missing = {_pupActivateIfMissing.Checked.ToString().ToLowerInvariant()},");
-        sb.AppendLine($"    deploy_on_combat_start = {_pupDeployOnCombatStart.Checked.ToString().ToLowerInvariant()},");
-        sb.AppendLine("    maneuvers = {");
-        sb.AppendLine($"        enabled = {_pupManeuversEnabled.Checked.ToString().ToLowerInvariant()},");
-        sb.AppendLine("        pattern = {");
-        foreach (var maneuver in maneuvers)
-        {
-            sb.AppendLine($"            '{maneuver}',");
-        }
-        sb.AppendLine("        },");
-        sb.AppendLine($"        post_activate_quiet_seconds = {_pupPostActivateQuiet.Value.ToString(CultureInfo.InvariantCulture)},");
-        sb.AppendLine($"        safe_burden_ceiling = {_pupSafeBurdenCeiling.Value.ToString(CultureInfo.InvariantCulture)},");
-        sb.AppendLine("    },");
-        sb.AppendLine("}");
-
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
-            _pupStatus.Text = reloadSelected
-                ? "PUP settings saved; reloading the selected PUP client..."
-                : "PUP settings saved. Reload UnifiedCombat on PUP clients to apply them.";
-
-            if (reloadSelected)
-            {
-                if (string.IsNullOrWhiteSpace(_selectedSid)
-                    || !_sessionMetaBySid.TryGetValue(_selectedSid, out var meta)
-                    || !string.Equals(meta.Job, "PUP", StringComparison.OrdinalIgnoreCase))
-                {
-                    _pupStatus.Text = "PUP settings saved, but the selected session is not a PUP client.";
-                    return;
-                }
-                _btnReloadAddon.PerformClick();
-            }
-        }
-        catch (Exception ex)
-        {
-            _pupStatus.Text = $"Could not save PUP config: {ex.Message}";
-        }
+    private void UpdatePuppetmasterUiState()
+    {
+        if (!_pupUiLoaded) return;
+        var enabled = _pupEnabled.Checked;
+        _pupActivateIfMissing.Enabled = enabled;
+        _pupDeployOnCombatStart.Enabled = enabled;
+        _pupManeuversEnabled.Enabled = enabled;
+        var maneuversEnabled = enabled && _pupManeuversEnabled.Checked;
+        _pupManeuver1.Enabled = maneuversEnabled;
+        _pupManeuver2.Enabled = maneuversEnabled;
+        _pupManeuver3.Enabled = maneuversEnabled;
+        _pupPostActivateQuiet.Enabled = maneuversEnabled;
+        _pupSafeBurdenCeiling.Enabled = maneuversEnabled;
     }
 }

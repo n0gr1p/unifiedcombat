@@ -1,5 +1,6 @@
 local uc_config_normalizer = require('uc_config_normalizer')
 local uc_sch_config = require('uc_sch_config')
+local uc_pup_config = require('uc_pup_config')
 
 local M = {}
 
@@ -19,6 +20,7 @@ local DURABLE_CONFIG_DOMAINS = {
 	'spells',
 	'maintenance',
 	'summoner',
+	'puppetmaster',
 	'sch',
 	'debug',
 	'ownership',
@@ -364,6 +366,10 @@ local function pick_durable_config_domains(config)
 	end
 	if type(out.ownership) == 'table' and out.ownership.profile_v2_auto_reload_on_change ~= true then
 		out.ownership.profile_v2_auto_reload_on_change = nil
+	end
+	local main_job = type(config.profile) == 'table' and config.profile.main_job or nil
+	if type(main_job) ~= 'string' or main_job:upper() ~= 'PUP' then
+		out.puppetmaster = nil
 	end
 	return out
 end
@@ -1030,6 +1036,25 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.summoner_rage_pet_tp_above = pet_tp_above
 	end
 
+	if type(config.puppetmaster) == 'table' then
+		local puppetmaster, validation = uc_pup_config.copy_validated(config.puppetmaster, config.profile)
+		if puppetmaster == nil or validation.valid ~= true then
+			local first = validation and validation.errors and validation.errors[1]
+			return false, first and first.message or 'config.puppetmaster is invalid'
+		end
+		candidate.puppetmaster = clone_value(puppetmaster)
+		candidate.puppetmaster_enabled = puppetmaster.enabled
+		candidate.puppetmaster_activate_if_missing = puppetmaster.activate_if_missing
+		candidate.puppetmaster_deploy_on_combat_start = puppetmaster.deploy_on_combat_start
+		candidate.puppetmaster_maneuvers_enabled = puppetmaster.maneuvers.enabled
+		candidate.puppetmaster_maneuver_pattern = table.concat(puppetmaster.maneuvers.pattern, '|')
+		candidate.puppetmaster_post_activate_quiet_seconds = puppetmaster.maneuvers.post_activate_quiet_seconds
+		candidate.puppetmaster_safe_burden_ceiling = puppetmaster.maneuvers.safe_burden_ceiling
+	else
+		candidate.puppetmaster = nil
+		candidate.puppetmaster_enabled = false
+	end
+
 	if type(config.sch) == 'table' then
 		local validation = uc_sch_config.validate(config.sch)
 		if validation.valid ~= true then
@@ -1134,6 +1159,14 @@ function M.build_active_profile_from_v2_payload(payload, context)
 	local meta = resolve_meta(context, 'UC_PROFILE_V2')
 	local profile = build_profile_record(payload.profile, meta, 'UC_PROFILE_V2')
 	local config = pick_durable_config_domains(payload.config)
+	local pup_validation = uc_pup_config.validate(config.puppetmaster, profile)
+	if pup_validation.valid ~= true then
+		local first = pup_validation.errors[1]
+		return nil, first and first.message or 'Puppetmaster configuration is invalid'
+	end
+	if type(config.puppetmaster) == 'table' then
+		config.puppetmaster = uc_pup_config.copy_validated(config.puppetmaster, profile)
+	end
 	local sch_validation = uc_sch_config.validate(config.sch, profile)
 	if sch_validation.valid ~= true then
 		local first = sch_validation.errors[1]

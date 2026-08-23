@@ -16,6 +16,7 @@ local STATUS_FIELDS = {
     'updated_at',
     'profile_v2',
     'summoner',
+    'puppetmaster',
 }
 
 local function legacy_ingame_ui_enabled(settings)
@@ -100,6 +101,8 @@ local function config_domain_names(config)
         'spells',
         'maintenance',
         'summoner',
+        'puppetmaster',
+        'sch',
         'debug',
         'ownership',
         'legacy',
@@ -213,7 +216,9 @@ function M.config_contract_status(settings, meta, normalizer, current_status)
     if ok and type(config) == 'table' then
         local summoner_validator = require('uc_smn_config')
         local summoner = summoner_validator.validate(config.summoner)
-        out.ok = summoner.valid
+        local puppetmaster_validator = require('uc_pup_config')
+        local puppetmaster = puppetmaster_validator.validate(config.puppetmaster, config.profile)
+        out.ok = summoner.valid and puppetmaster.valid
         out.summoner = {
             enabled = summoner.enabled,
             valid = summoner.valid,
@@ -225,6 +230,16 @@ function M.config_contract_status(settings, meta, normalizer, current_status)
             out.errors[#out.errors + 1] = issue.message
         end
         for _, issue in ipairs(summoner.warnings) do
+            out.warnings[#out.warnings + 1] = issue.message
+        end
+        out.puppetmaster = {
+            enabled = puppetmaster.enabled,
+            valid = puppetmaster.valid,
+        }
+        for _, issue in ipairs(puppetmaster.errors) do
+            out.errors[#out.errors + 1] = issue.message
+        end
+        for _, issue in ipairs(puppetmaster.warnings) do
             out.warnings[#out.warnings + 1] = issue.message
         end
         out.domains = config_domain_names(config)

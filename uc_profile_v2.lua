@@ -18,6 +18,7 @@ local DURABLE_CONFIG_DOMAINS = {
 	'spells',
 	'maintenance',
 	'summoner',
+	'puppetmaster',
 	'sch',
 	'debug',
 	'ownership',
@@ -178,6 +179,11 @@ local function is_brd_profile(meta)
 		or (type(sub_job) == 'string' and sub_job:upper() == 'BRD')
 end
 
+local function is_pup_profile(meta)
+	local main_job = meta and meta.main_job
+	return type(main_job) == 'string' and main_job:upper() == 'PUP'
+end
+
 local function is_sch_profile(meta)
 	local main_job = meta and meta.main_job
 	return type(main_job) == 'string' and main_job:upper() == 'SCH'
@@ -256,6 +262,9 @@ local function pick_durable_config_domains(config, meta)
 	end
 	if not is_brd_profile(meta) and type(out.maintenance) == 'table' then
 		out.maintenance.brd = nil
+	end
+	if not is_pup_profile(meta) then
+		out.puppetmaster = nil
 	end
 	if not is_sch_profile(meta) then
 		out.sch = nil
@@ -363,6 +372,12 @@ local function canonicalize_optional_control_ranges(current_config, target_confi
 		end
 		canonicalize_rage_gates(current_config)
 		canonicalize_rage_gates(target_config)
+	end
+
+	if type(target_config.puppetmaster) ~= 'table' then
+		-- Profiles written before Puppetmaster automation became a durable v2 domain
+		-- continue to mean "Puppetmaster automation disabled".
+		current_config.puppetmaster = nil
 	end
 
 	if type(target_config.sch) ~= 'table' then
@@ -523,6 +538,10 @@ local function strip_non_applicable_maintenance(current_config, target_config, m
 	if default_disabled_camp_pulling(current_pulling) and default_disabled_camp_pulling(target_pulling) then
 		if current_combat then current_combat.pulling = nil end
 		if target_combat then target_combat.pulling = nil end
+	end
+	if not is_pup_profile(meta) then
+		current_config.puppetmaster = nil
+		target_config.puppetmaster = nil
 	end
 	if not is_sch_profile(meta) then
 		current_config.sch = nil

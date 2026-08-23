@@ -1,5 +1,6 @@
 local M = {}
 local uc_sch_config = require('uc_sch_config')
+local uc_pup_config = require('uc_pup_config')
 
 local CURRENT_CANONICAL_CONFIG_VERSION = 1
 
@@ -1134,6 +1135,7 @@ local function default_config(meta)
             },
             geo = clone_value(DEFAULT_GEO_MAINTENANCE),
         },
+        puppetmaster = uc_pup_config.default_config(),
         summoner = {
             enabled = false,
             avatar = nil,
@@ -2545,6 +2547,52 @@ local function normalize_summoner(source, config)
     end
 end
 
+local function normalize_puppetmaster(source, config)
+    local nested = get_path(source, { 'puppetmaster' })
+    local candidate = nil
+    if nested ~= nil then
+        candidate = nested
+    else
+        local enabled = first_path(source, { path('puppetmaster_enabled') })
+        local activate_if_missing = first_path(source, { path('puppetmaster_activate_if_missing') })
+        local deploy_on_combat_start = first_path(source, { path('puppetmaster_deploy_on_combat_start') })
+        local maneuvers_enabled = first_path(source, { path('puppetmaster_maneuvers_enabled') })
+        local maneuver_pattern = first_path(source, { path('puppetmaster_maneuver_pattern') })
+        local quiet = first_path(source, { path('puppetmaster_post_activate_quiet_seconds') })
+        local ceiling = first_path(source, { path('puppetmaster_safe_burden_ceiling') })
+        if enabled ~= nil or activate_if_missing ~= nil or deploy_on_combat_start ~= nil
+            or maneuvers_enabled ~= nil or maneuver_pattern ~= nil or quiet ~= nil or ceiling ~= nil then
+            local defaults = uc_pup_config.default_config()
+            local pattern = maneuver_pattern
+            if type(pattern) == 'string' then
+                pattern = normalize_pipe_string_list(pattern, defaults.maneuvers.pattern)
+            elseif pattern == nil then
+                pattern = clone_value(defaults.maneuvers.pattern)
+            end
+            candidate = {
+                enabled = normalize_boolean(enabled, defaults.enabled),
+                activate_if_missing = normalize_boolean(activate_if_missing, defaults.activate_if_missing),
+                deploy_on_combat_start = normalize_boolean(deploy_on_combat_start, defaults.deploy_on_combat_start),
+                maneuvers = {
+                    enabled = normalize_boolean(maneuvers_enabled, defaults.maneuvers.enabled),
+                    pattern = pattern,
+                    post_activate_quiet_seconds = normalize_number(quiet, defaults.maneuvers.post_activate_quiet_seconds, { integer = true }),
+                    safe_burden_ceiling = normalize_number(ceiling, defaults.maneuvers.safe_burden_ceiling, { integer = true }),
+                },
+            }
+        end
+    end
+    if candidate == nil then
+        return
+    end
+    local copied, validation = uc_pup_config.copy_validated(candidate, config.profile)
+    if copied == nil or validation.valid ~= true then
+        local first = validation and validation.errors and validation.errors[1]
+        error(first and first.message or 'Puppetmaster configuration validation failed')
+    end
+    config.puppetmaster = copied
+end
+
 local function normalize_sch(source, config)
     local nested = get_path(source, { 'sch' })
     if nested == nil then
@@ -2634,6 +2682,7 @@ function M.normalize(settings, meta)
     normalize_spells(source, config)
     normalize_maintenance(source, config)
     normalize_summoner(source, config)
+    normalize_puppetmaster(source, config)
     normalize_sch(source, config)
     normalize_debug(source, config)
     normalize_ownership(source, config)
