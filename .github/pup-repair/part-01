@@ -1,0 +1,185 @@
+ / zone hold (s)", _pupPostActivateQuiet, ref row);
+ 
+         _pupSafeBurdenCeiling = new NumericUpDown
+@@ -121,11 +124,12 @@ public partial class MainForm
+             Width = 90,
+             Anchor = AnchorStyles.Left,
+         };
++        _pupSafeBurdenCeiling.ValueChanged += (_, _) => OnPuppetmasterSettingChanged();
+         AddPuppetmasterRow(root, "Safe burden ceiling", _pupSafeBurdenCeiling, ref row);
+ 
+         var safetyNote = new Label
+         {
+-            Text = "Safety model assumes worst-case normal Maneuver burden (20), Dark burden (15), and 1 burden decay every 3 seconds. If the projected burden would exceed the ceiling, UnifiedCombat waits instead of risking Overload.",
++            Text = "Safety model assumes worst-case normal Maneuver burden (20), Dark burden (15), and 1 burden decay every 3 seconds. If projected burden would exceed the ceiling, UnifiedCombat waits instead of risking Overload.",
+             AutoSize = true,
+             MaximumSize = new Size(700, 0),
+             Padding = new Padding(0, 8, 0, 8),
+@@ -134,42 +138,17 @@ public partial class MainForm
+         root.SetColumnSpan(safetyNote, 2);
+         row++;
+ 
+-        var buttons = new FlowLayoutPanel
+-        {
+-            AutoSize = true,
+-            FlowDirection = FlowDirection.LeftToRight,
+-            WrapContents = true,
+-        };
+-        _pupSave = new Button { Text = "Save PUP settings", AutoSize = true };
+-        _pupSave.Click += (_, _) => SavePuppetmasterConfig(false);
+-        buttons.Controls.Add(_pupSave);
+-        _pupSaveReload = new Button { Text = "Save + reload selected PUP", AutoSize = true };
+-        _pupSaveReload.Click += (_, _) => SavePuppetmasterConfig(true);
+-        buttons.Controls.Add(_pupSaveReload);
+-        root.Controls.Add(buttons, 0, row);
+-        root.SetColumnSpan(buttons, 2);
+-        row++;
+-
+-        _pupStatus = new Label
++        _pupValidation = new Label
+         {
+             AutoSize = true,
+             MaximumSize = new Size(700, 0),
+-            Padding = new Padding(0, 6, 0, 0),
++            Padding = new Padding(0, 4, 0, 0),
+         };
+-        root.Controls.Add(_pupStatus, 0, row);
+-        root.SetColumnSpan(_pupStatus, 2);
++        root.Controls.Add(_pupValidation, 0, row);
++        root.SetColumnSpan(_pupValidation, 2);
+ 
+         _tabPuppetmaster.Controls.Add(root);
+-
+-        var summonerIndex = _settingsTabs.TabPages.IndexOf(_tabSummoner);
+-        if (summonerIndex >= 0)
+-        {
+-            _settingsTabs.TabPages.Insert(summonerIndex + 1, _tabPuppetmaster);
+-        }
+-        else
+-        {
+-            _settingsTabs.TabPages.Add(_tabPuppetmaster);
+-        }
++        RefreshPuppetmasterValidation();
+     }
+ 
+     private static void AddPuppetmasterRow(TableLayoutPanel root, string label, Control control, ref int row)
+@@ -179,7 +158,7 @@ public partial class MainForm
+         row++;
+     }
+ 
+-    private static ComboBox CreatePuppetmasterManeuverCombo(string selected)
++    private ComboBox CreatePuppetmasterManeuverCombo(string selected)
+     {
+         var combo = new ComboBox
+         {
+@@ -189,24 +168,68 @@ public partial class MainForm
+         };
+         combo.Items.AddRange(PuppetmasterManeuverNames.Cast<object>().ToArray());
+         combo.SelectedItem = selected;
++        combo.SelectedIndexChanged += (_, _) => OnPuppetmasterSettingChanged();
+         return combo;
+     }
+ 
+-    private void RefreshPuppetmasterTabVisibility()
++    private void OnPuppetmasterSettingChanged()
+     {
+-        if (!_pupUiLoaded || _tabPuppetmaster is null)
++        if (_suppressEvents || !_pupUiLoaded)
++        {
++            return;
++        }
++        RefreshPuppetmasterValidation();
++        if (!string.IsNullOrWhiteSpace(_selectedSid))
++        {
++            CaptureWorkingProfileFromUi(_selectedSid);
++        }
++    }
++
++    private void RefreshPuppetmasterValidation()
++    {
++        if (!_pupUiLoaded)
+         {
+             return;
+         }
+-        var isPup = false;
++        var values = SelectedPuppetmasterManeuvers();
++        _pupValidation.Text = values.Count == 3
++            ? "Profile-owned PUP configuration is valid. Use the normal Save action to persist it."
++            : "Select a valid maneuver in all three slots.";
++    }
++
++    private List<string> SelectedPuppetmasterManeuvers()
++    {
++        var values = new[]
++        {
++            _pupManeuver1?.SelectedItem?.ToString(),
++            _pupManeuver2?.SelectedItem?.ToString(),
++            _pupManeuver3?.SelectedItem?.ToString(),
++        };
++        return values
++            .Where(value => !string.IsNullOrWhiteSpace(value) && PuppetmasterManeuverNames.Contains(value!))
++            .Select(value => value!)
++            .ToList();
++    }
++
++    private void RefreshPuppetmasterTabVisibility()
++    {
++        var visible = false;
+         if (!string.IsNullOrWhiteSpace(_selectedSid)
+             && _sessionMetaBySid.TryGetValue(_selectedSid, out var meta))
+         {
+-            isPup = string.Equals(meta.Job, "PUP", StringComparison.OrdinalIgnoreCase);
++            visible = string.Equals(meta.Job, "PUP", StringComparison.OrdinalIgnoreCase);
+         }
++        EnsurePuppetmasterTabVisibility(visible);
++    }
+ 
++    private void EnsurePuppetmasterTabVisibility(bool visible)
++    {
++        if (!_pupUiLoaded || _tabPuppetmaster is null)
++        {
++            return;
++        }
+         var present = _settingsTabs.TabPages.Contains(_tabPuppetmaster);
+-        if (isPup && !present)
++        if (visible && !present)
+         {
+             var summonerIndex = _settingsTabs.TabPages.IndexOf(_tabSummoner);
+             if (summonerIndex >= 0)
+@@ -218,151 +241,57 @@ public partial class MainForm
+                 _settingsTabs.TabPages.Add(_tabPuppetmaster);
+             }
+         }
+-        else if (!isPup && present)
++        else if (!visible && present)
+         {
+             _settingsTabs.TabPages.Remove(_tabPuppetmaster);
+         }
+     }
+ 
+-    private string? PuppetmasterConfigPath()
++    private void ApplyPuppetmasterFromSnapshot(JsonElement snapshot)
+     {
+-        var addonRoot = StructuredProfileV2Writer.FindAddonRootFrom(AppContext.BaseDirectory);
+-        return addonRoot is null ? null : Path.Combine(addonRoot, "data", "puppetmaster_config.lua");
+-    }
+-
+-    private void LoadPuppetmasterConfigIntoUi()
+-    {
+-        var path = PuppetmasterConfigPath();
+-        if (path is null || !File.Exists(path))
++        if (!_pupUiLoaded)
+         {
+-            _pupStatus.Text = path is null
+-                ? "PUP config path unavailable; using built-in UI defaults."
+-                : "PUP config file does not exist yet; Save will create it.";
+             return;
+         }
+ 
++        var oldSuppress = _suppressEvents;
++        _suppressEvents = true;
+         try
+         {
+-            var text = File.ReadAllText(path);
+-            _pupEnabled.Checked = ReadPupBool(text, @"^\s*enabled\s*=\s*(true|false)", true);
+-      
