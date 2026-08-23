@@ -1,0 +1,17 @@
+name: PUP architecture repair
+
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  source-snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pup-architecture-source
+          path: .
+          include-hidden-files: true
+          retention-days: 1
