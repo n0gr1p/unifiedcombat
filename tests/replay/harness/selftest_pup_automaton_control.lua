@@ -74,7 +74,34 @@ local function ctx(now, pet_present, buffs)
 	}
 end
 
+local function activate_command()
+	return {
+		kind = 'activate',
+		action_name = 'Activate',
+		recast_id = runtime.RECAST_ACTIVATE,
+		recast_before = 0,
+		retry_key = 'pup:activate',
+	}
+end
+
+local function maneuver_command()
+	return {
+		kind = 'maneuver',
+		action_name = 'Fire Maneuver',
+		action_id = 141,
+		recast_id = 210,
+		recast_before = 0,
+		pet_id = 200,
+		retry_key = 'pup:maneuver:Fire Maneuver',
+	}
+end
+
 local function test_command_contract()
+	assert_equal(
+		commands.serialize(activate_command()),
+		'input /ja "Activate" <me>',
+		'Activate serialization'
+	)
 	local deploy = {
 		kind = 'deploy',
 		action_name = 'Deploy',
@@ -84,17 +111,11 @@ local function test_command_contract()
 		retry_key = 'pup:deploy:4:200',
 	}
 	assert_equal(commands.serialize(deploy), 'input /pet "Deploy" 300', 'Deploy serialization')
-
-	local maneuver = {
-		kind = 'maneuver',
-		action_name = 'Fire Maneuver',
-		action_id = 141,
-		recast_id = 210,
-		recast_before = 0,
-		pet_id = 200,
-		retry_key = 'pup:maneuver:Fire Maneuver',
-	}
-	assert_equal(commands.serialize(maneuver), 'input /pet "Fire Maneuver" <me>', 'Maneuver serialization')
+	assert_equal(
+		commands.serialize(maneuver_command()),
+		'input /pet "Fire Maneuver" <me>',
+		'Maneuver serialization'
+	)
 end
 
 local function test_coordinator_completion()
@@ -104,6 +125,21 @@ local function test_coordinator_completion()
 		backoff_base = 1.0,
 		backoff_max = 8.0,
 	})
+
+	coordinator.begin(state, activate_command(), 0)
+	local activate_pending_ctx = ctx(0.1, false, {})
+	activate_pending_ctx.ability_recasts[runtime.RECAST_ACTIVATE] = 1200
+	assert_equal(
+		coordinator.observe(state, activate_pending_ctx),
+		nil,
+		'Activate recast consumption alone must not complete automaton creation'
+	)
+	local activate_live_ctx = ctx(0.2, true, {})
+	activate_live_ctx.ability_recasts[runtime.RECAST_ACTIVATE] = 1200
+	local event = coordinator.observe(state, activate_live_ctx)
+	assert_equal(event.outcome, 'complete', 'Activate completion outcome')
+	assert_equal(event.reason, 'automaton_appeared', 'Activate completion evidence')
+
 	local deploy = {
 		kind = 'deploy',
 		action_name = 'Deploy',
@@ -115,19 +151,11 @@ local function test_coordinator_completion()
 	coordinator.begin(state, deploy, 1)
 	local deploy_ctx = ctx(1.1, true, {})
 	deploy_ctx.pet_status = 1
-	local event = coordinator.observe(state, deploy_ctx)
+	event = coordinator.observe(state, deploy_ctx)
 	assert_equal(event.outcome, 'complete', 'Deploy completion outcome')
 	assert_equal(event.reason, 'pet_engaged_observed', 'Deploy completion evidence')
 
-	local maneuver = {
-		kind = 'maneuver',
-		action_name = 'Fire Maneuver',
-		action_id = 141,
-		recast_id = 210,
-		recast_before = 0,
-		pet_id = 200,
-		retry_key = 'pup:maneuver:Fire Maneuver',
-	}
+	local maneuver = maneuver_command()
 	coordinator.begin(state, maneuver, 2)
 	local maneuver_ctx = ctx(2.1, true, {})
 	maneuver_ctx.ability_recasts[210] = 10
@@ -201,7 +229,8 @@ local function test_adapter_activate_deploy_and_maneuver()
 	local snapshot = adapter.snapshot(no_pet)
 	local maintenance = adapter.maintenance(snapshot, no_pet)
 	assert_equal(maintenance.action_name, 'Activate', 'missing automaton must propose Activate')
-	assert_equal(maintenance.action_type, 'ja', 'Activate uses normal JA lane')
+	assert_equal(maintenance.action_type, 'pet', 'Activate must use serialized pet-related lane')
+	assert_equal(maintenance.command.kind, 'activate', 'Activate coordinator command kind')
 
 	-- First automaton observation deliberately starts the conservative burden
 	-- quiet window. Maneuver maintenance must wait until it drains.
