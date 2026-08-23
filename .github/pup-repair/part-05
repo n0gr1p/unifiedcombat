@@ -1,0 +1,191 @@
+lue(config.puppetmaster)
++	end
+ 	if next(compatibility_source) ~= nil then
+ 		local ok_normalized, normalized_or_err = pcall(uc_config_normalizer.normalize, compatibility_source, meta)
+ 		if ok_normalized ~= true then
+@@ -1166,6 +1184,9 @@ function M.build_active_profile_from_v2_payload(payload, context)
+ 		if type(config.maintenance) == 'table' then
+ 			config.maintenance.geo = clone_value(normalized_or_err.maintenance.geo)
+ 		end
++		if type(config.puppetmaster) == 'table' then
++			config.puppetmaster = clone_value(normalized_or_err.puppetmaster)
++		end
+ 	end
+ 	if type(config.maintenance) == 'table' and type(config.maintenance.brd) == 'table' then
+ 		local brd = config.maintenance.brd
+diff --git a/uc_config_normalizer.lua b/uc_config_normalizer.lua
+index 41d9a5e..3d9900f 100644
+--- a/uc_config_normalizer.lua
++++ b/uc_config_normalizer.lua
+@@ -5,6 +5,17 @@ local CURRENT_CANONICAL_CONFIG_VERSION = 1
+ 
+ local DEFAULT_SLEEP_ORDER = { 'Horde Lullaby II' }
+ 
++local PUPPETMASTER_MANEUVERS = {
++    ['Fire Maneuver'] = true,
++    ['Ice Maneuver'] = true,
++    ['Wind Maneuver'] = true,
++    ['Earth Maneuver'] = true,
++    ['Thunder Maneuver'] = true,
++    ['Water Maneuver'] = true,
++    ['Light Maneuver'] = true,
++    ['Dark Maneuver'] = true,
++}
++
+ local DEFAULT_GEO_MAINTENANCE = {
+     enabled = false,
+     geo_spell = nil,
+@@ -1157,6 +1168,17 @@ local function default_config(meta)
+                 },
+             },
+         },
++        puppetmaster = {
++            enabled = false,
++            activate_if_missing = true,
++            deploy_on_combat_start = true,
++            maneuvers = {
++                enabled = true,
++                pattern = { 'Fire Maneuver', 'Fire Maneuver', 'Light Maneuver' },
++                post_activate_quiet_seconds = 120,
++                safe_burden_ceiling = 30,
++            },
++        },
+         sch = uc_sch_config.default_config(),
+         debug = {
+             enabled = false,
+@@ -2545,6 +2567,134 @@ local function normalize_summoner(source, config)
+     end
+ end
+ 
++local function normalize_puppetmaster_pattern(value, default_value, path_name)
++    if value == nil then
++        return clone_value(default_value)
++    end
++    local raw = {}
++    if type(value) == 'string' then
++        if value:sub(1, 1) == '|' or value:sub(-1) == '|' or value:find('||', 1, true) then
++            error(path_name .. ' contains an empty maneuver')
++        end
++        for token in value:gmatch('[^|]+') do
++            raw[#raw + 1] = trim_string(token)
++        end
++    elseif type(value) == 'table' then
++        local count = 0
++        for key in pairs(value) do
++            count = count + 1
++            if type(key) ~= 'number' or key % 1 ~= 0 or key < 1 then
++                error(path_name .. ' must be a contiguous array')
++            end
++        end
++        if count ~= #value then
++            error(path_name .. ' must be a contiguous array')
++        end
++        for i = 1, #value do
++            raw[#raw + 1] = value[i]
++        end
++    else
++        error(path_name .. ' must be an array or pipe-delimited string')
++    end
++    if #raw < 1 or #raw > 3 then
++        error(path_name .. ' must contain one to three maneuvers')
++    end
++    local out = {}
++    for i = 1, #raw do
++        if type(raw[i]) ~= 'string' then
++            error(('%s[%d] must be a string'):format(path_name, i))
++        end
++        local name = trim_string(raw[i])
++        if PUPPETMASTER_MANEUVERS[name] ~= true then
++            error(('%s[%d] has unsupported maneuver %q'):format(path_name, i, name))
++        end
++        out[i] = name
++    end
++    return out
++end
++
++local function normalize_puppetmaster(source, config)
++    local pup = config.puppetmaster
++    local nested = get_path(source, { 'puppetmaster' })
++    if nested ~= nil then
++        if type(nested) ~= 'table' then
++            error('puppetmaster must be a table')
++        end
++        pup.enabled = strict_boolean(nested.enabled, pup.enabled, 'puppetmaster.enabled')
++        pup.activate_if_missing = strict_boolean(
++            nested.activate_if_missing,
++            pup.activate_if_missing,
++            'puppetmaster.activate_if_missing'
++        )
++        pup.deploy_on_combat_start = strict_boolean(
++            nested.deploy_on_combat_start,
++            pup.deploy_on_combat_start,
++            'puppetmaster.deploy_on_combat_start'
++        )
++        if nested.maneuvers ~= nil and type(nested.maneuvers) ~= 'table' then
++            error('puppetmaster.maneuvers must be a table')
++        end
++        local maneuvers = nested.maneuvers or {}
++        pup.maneuvers.enabled = strict_boolean(
++            maneuvers.enabled,
++            pup.maneuvers.enabled,
++            'puppetmaster.maneuvers.enabled'
++        )
++        pup.maneuvers.pattern = normalize_puppetmaster_pattern(
++            maneuvers.pattern,
++            pup.maneuvers.pattern,
++            'puppetmaster.maneuvers.pattern'
++        )
++        pup.maneuvers.post_activate_quiet_seconds = strict_integer(
++            maneuvers.post_activate_quiet_seconds,
++            pup.maneuvers.post_activate_quiet_seconds,
++            'puppetmaster.maneuvers.post_activate_quiet_seconds',
++            0,
++            300
++        )
++        pup.maneuvers.safe_burden_ceiling = strict_integer(
++            maneuvers.safe_burden_ceiling,
++            pup.maneuvers.safe_burden_ceiling,
++            'puppetmaster.maneuvers.safe_burden_ceiling',
++            0,
++            32
++        )
++        return
++    end
++
++    pup.enabled = normalize_boolean(
++        first_path(source, { path('puppetmaster_enabled') }),
++        pup.enabled
++    )
++    pup.activate_if_missing = normalize_boolean(
++        first_path(source, { path('puppetmaster_activate_if_missing') }),
++        pup.activate_if_missing
++    )
++    pup.deploy_on_combat_start = normalize_boolean(
++        first_path(source, { path('puppetmaster_deploy_on_combat_start') }),
++        pup.deploy_on_combat_start
++    )
++    pup.maneuvers.enabled = normalize_boolean(
++        first_path(source, { path('puppetmaster_maneuvers_enabled') }),
++        pup.maneuvers.enabled
++    )
++    pup.maneuvers.pattern = normalize_puppetmaster_pattern(
++        first_path(source, { path('puppetmaster_maneuver_pattern') }),
++        pup.maneuvers.pattern,
++        'puppetmaster_maneuver_pattern'
++    )
++    pup.maneuvers.post_activate_quiet_seconds = normalize_number(
++        first_path(source, { path('puppetmaster_post_activate_quiet_seconds') }),
++        pup.maneuvers.post_activate_quiet_seconds,
++        { integer = true, min = 0, max = 300 }
++    )
++    pup.maneuvers.safe_burden_ceiling = normalize_number(
++        first_path(source, { path('puppetmaster_safe_burden_ceiling') }),
++        pup.maneuvers.safe_burden_ceiling,
++        { integer = true, min = 0, max = 32 }
++    )
++end
++
+ local function normalize_sch(source, config)
+     local nested = get_path(source, { 'sch' })
+     if nested == nil then
+@@ 
