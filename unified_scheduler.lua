@@ -7980,6 +7980,10 @@ scheduler.providers.camp_puller = require('uc_camp_puller').new({
 			if brd_reserved then
 				return false, 'BRD_LANE:' .. tostring(brd_reason or '')
 			end
+			local sch_lane = require('uc_sch_runtime').lane_status()
+			if sch_lane.atomic then
+				return false, 'SCH_ATOMIC_LANE:' .. tostring(sch_lane.reason or '')
+			end
 			if scheduler.providers.geo_maintenance.lane_reserved()
 				and not scheduler.providers.geo_maintenance.pull_for_enemy_allowed() then
 				return false, 'GEO_LANE'

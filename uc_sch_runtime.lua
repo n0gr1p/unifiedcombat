@@ -277,6 +277,9 @@ local function validate_plan(plan, at)
 	if plan.purpose == 'ensure_light_arts'
 		or plan.purpose == 'sublimation_activate'
 		or plan.purpose == 'sublimation_release' then
+		if plan.domain ~= 'maintenance' then
+			return nil, 'sequence_domain_mismatch'
+		end
 		if plan.action_type ~= 'job_ability' then
 			return nil, 'sequence_direct_action_type_unsupported'
 		end
@@ -541,8 +544,13 @@ local function active_environment_blocker(sequence)
 					or total_missing < sequence.minimum_total_missing_hp then
 					return 'defensive_group_condition_cleared'
 				end
-			elseif total_missing < sequence.minimum_missing_hp then
-				return 'defensive_cure_condition_cleared'
+			elseif sequence.purpose == 'rapture_cure'
+				or sequence.purpose == 'penury_cure' then
+				if total_missing < sequence.minimum_missing_hp then
+					return 'defensive_cure_condition_cleared'
+				end
+			else
+				return 'defensive_sequence_policy_invalid'
 			end
 		end
 	end

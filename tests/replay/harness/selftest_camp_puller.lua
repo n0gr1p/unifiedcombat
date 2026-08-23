@@ -362,6 +362,10 @@ assert_true(
 	'a camp journey must not begin while Bard owns its atomic lane'
 )
 assert_true(
+	scheduler_source:find("return false, 'SCH_ATOMIC_LANE:' .. tostring(sch_lane.reason or '')", 1, true) ~= nil,
+	'a camp journey must not begin while Scholar owns its atomic lane'
+)
+assert_true(
 	scheduler_source:find("return false, 'GEO_LANE'", 1, true) ~= nil,
 	'a camp journey must not begin during a non-pull GEO atomic sequence'
 )

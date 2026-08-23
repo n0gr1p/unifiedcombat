@@ -420,6 +420,45 @@ local function main()
 	assert_equal(runtime.snapshot().last_sequence.result, 'complete',
 		'Light Arts live sequence did not complete')
 
+	configure_ready(runtime, 787, 0)
+	local invalid_direct_started, invalid_direct_reason = runtime.start_sequence({
+		id = 'light-arts-invalid-defensive-domain',
+		purpose = 'ensure_light_arts',
+		domain = 'defensive',
+		action_type = 'job_ability',
+		action_name = 'Light Arts',
+		target_id = 1001,
+		target_name = 'Anchor',
+		party_generation = 7,
+		deadline = 793,
+	}, 787)
+	assert_true(not invalid_direct_started,
+		'direct Scholar maintenance action must reject the defensive domain')
+	assert_equal(invalid_direct_reason, 'sequence_domain_mismatch',
+		'direct Scholar action domain rejection mismatch')
+	assert_true(runtime.start_sequence({
+		id = 'light-arts-corrupt-defensive-domain',
+		purpose = 'ensure_light_arts',
+		domain = 'maintenance',
+		action_type = 'job_ability',
+		action_name = 'Light Arts',
+		target_id = 1001,
+		target_name = 'Anchor',
+		party_generation = 7,
+		deadline = 793,
+	}, 787.1), 'direct Scholar state-corruption fixture failed to start')
+	local corrupt_state = runtime._test_state()
+	corrupt_state.active_sequence.domain = 'defensive'
+	for member_index = 1, #corrupt_state.environment.party_members do
+		corrupt_state.environment.party_members[member_index].hp = 1000
+		corrupt_state.environment.party_members[member_index].max_hp = 1000
+	end
+	local corrupt_direct_ok, corrupt_direct_reason = runtime.tick(787.2)
+	assert_true(not corrupt_direct_ok,
+		'invalid defensive direct-action state must abort without a numeric comparison error')
+	assert_equal(corrupt_direct_reason, 'defensive_sequence_policy_invalid',
+		'invalid defensive direct-action state blocker mismatch')
+
 	configure_ready(runtime, 790, 0)
 	runtime.observe_player_buffs({ 358, 188 }, 790)
 	assert_true(runtime.start_sequence({
