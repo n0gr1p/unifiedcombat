@@ -24,17 +24,20 @@ function M.new(deps)
 	local get_ja_resource = require_function(deps, 'get_ja_resource')
 	local action_effective_range = require_function(deps, 'action_effective_range')
 	local pup_adapter = pup_adapter_module.new(deps)
+	local active_job_adapter = 'NONE'
 
 	local adapter = {}
 
 	function adapter.snapshot(ctx)
 		require_table(ctx, 'ctx')
 		if ctx.player_present == true and tostring(ctx.player.main_job or '') == 'PUP' then
+			active_job_adapter = 'PUP'
 			local snapshot = pup_adapter.snapshot(ctx)
 			snapshot._job_adapter = 'PUP'
 			return snapshot
 		end
 		if ctx.player_present ~= true or tostring(ctx.player.main_job or '') ~= 'SMN' then
+			active_job_adapter = 'NONE'
 			return {
 				enabled = false,
 				valid = false,
@@ -42,6 +45,7 @@ function M.new(deps)
 				_job_adapter = 'NONE',
 			}
 		end
+		active_job_adapter = 'SMN'
 		local config, validation = runtime.config_from_settings(ctx.settings)
 		local snapshot = {
 			enabled = false,
@@ -226,11 +230,16 @@ function M.new(deps)
 	end
 
 	function adapter.observe_action(act, observed_at)
+		if active_job_adapter ~= 'PUP' then
+			return false
+		end
 		return pup_adapter.observe_action(act, observed_at)
 	end
 
 	function adapter.observe_coordinator_event(event)
-		pup_adapter.observe_coordinator_event(event)
+		if active_job_adapter == 'PUP' then
+			pup_adapter.observe_coordinator_event(event)
+		end
 	end
 
 	return adapter
