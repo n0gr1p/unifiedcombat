@@ -1,0 +1,33 @@
+name: PUP UI build
+
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  winforms-build:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Build UnifiedCombat WinForms
+        run: dotnet build UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --nologo
+
+  pup-lua-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+      - name: Puppetmaster automaton control
+        run: lua tests/replay/harness/selftest_pup_automaton_control.lua
+      - name: Shared pet command regression
+        run: lua tests/replay/harness/selftest_pet_command_infrastructure.lua
+      - name: Shared pet combat provider regression
+        run: lua tests/replay/harness/selftest_pet_combat_provider.lua
+      - name: Summoner cross-provider regression
+        run: lua tests/replay/harness/selftest_smn_cross_provider_integration.lua
