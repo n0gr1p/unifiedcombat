@@ -1,6 +1,7 @@
 local M = {}
 
 local VALID_KINDS = {
+	activate = true,
 	release = true,
 	assault = true,
 	deploy = true,
@@ -57,7 +58,9 @@ function M.validate(command)
 		error('unsupported pet command kind: ' .. kind)
 	end
 	require_nonempty_string(command.action_name, 'pet command action_name')
-	require_positive_integer(command.pet_id, 'pet command pet_id')
+	if kind ~= 'activate' then
+		require_positive_integer(command.pet_id, 'pet command pet_id')
+	end
 
 	if kind == 'assault' or kind == 'deploy' or kind == 'rage' then
 		require_positive_integer(command.target_id, 'pet command target_id')
@@ -65,6 +68,9 @@ function M.validate(command)
 	end
 	if kind == 'ward' or kind == 'rage' or kind == 'maneuver' then
 		require_positive_integer(command.action_id, 'pet command action_id')
+		require_positive_integer(command.recast_id, 'pet command recast_id')
+	end
+	if kind == 'activate' then
 		require_positive_integer(command.recast_id, 'pet command recast_id')
 	end
 	if kind == 'ward' then
@@ -83,6 +89,9 @@ function M.serialize(command)
 	local action_name = command.action_name
 	if action_name:find('"', 1, true) then
 		error('pet command action_name must not contain quotes')
+	end
+	if command.kind == 'activate' then
+		return ('input /ja "%s" <me>'):format(action_name)
 	end
 	if command.kind == 'release' or command.kind == 'ward' or command.kind == 'maneuver' then
 		return ('input /pet "%s" <me>'):format(action_name)
