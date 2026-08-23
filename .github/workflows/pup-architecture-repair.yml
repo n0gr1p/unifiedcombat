@@ -22,8 +22,8 @@ jobs:
           echo "4e69fb668fc2ca2dbf0d2551ffccd4f0552f2bf7953f7722f056fec364ff572f  /tmp/pup-repair.patch" | sha256sum -c -
           git apply --check /tmp/pup-repair.patch
           git apply /tmp/pup-repair.patch
-      - name: Install Lua 5.1
-        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: Install Lua 5.1 + LuaSocket
+        run: sudo apt-get update && sudo apt-get install -y lua5.1 lua-socket
       - name: Lua syntax
         run: >-
           luac5.1 -p
