@@ -15,6 +15,8 @@ local FAILURE_MESSAGE_IDS = {
 	[155] = true,
 }
 
+local OVERLOAD_BUFF_ID = 299
+
 local function require_table(value, name)
 	if type(value) ~= 'table' then
 		error(name .. ' must be a table')
@@ -120,6 +122,16 @@ local function player_has_all_effects(ctx, effect_ids)
 		end
 	end
 	return true
+end
+
+local function player_has_effect(ctx, effect_id)
+	local buffs = require_table(ctx.player_buffs, 'pet command context player_buffs')
+	for i = 1, #buffs do
+		if tonumber(buffs[i]) == effect_id then
+			return true
+		end
+	end
+	return false
 end
 
 local function target_is_current_and_live(pending, ctx)
@@ -253,7 +265,7 @@ function M.observe(state, ctx)
 		end
 	elseif not pet_matches then
 		return finish(state, now, 'failed', 'stale_pet')
-	elseif pending.kind == 'assault' then
+	elseif pending.kind == 'assault' or pending.kind == 'deploy' then
 		if not target_is_current_and_live(pending, ctx) then
 			return finish(state, now, 'failed', 'stale_target')
 		end
@@ -284,6 +296,13 @@ function M.observe(state, ctx)
 		if recast_consumed(pending, ctx) then
 			return finish(state, now, 'complete', 'rage_recast_consumed')
 		end
+	elseif pending.kind == 'maneuver' then
+		if player_has_effect(ctx, OVERLOAD_BUFF_ID) then
+			return finish(state, now, 'failed', 'overload_observed')
+		end
+		if recast_consumed(pending, ctx) then
+			return finish(state, now, 'complete', 'maneuver_recast_consumed')
+		end
 	end
 
 	if now >= pending.deadline then
@@ -303,7 +322,7 @@ function M.observe_action(state, act, now)
 	if tonumber(act.actor_id) ~= pending.pet_id then
 		return nil
 	end
-	if pending.kind == 'assault' then
+	if pending.kind == 'assault' or pending.kind == 'deploy' then
 		if type(act.targets) ~= 'table' then
 			return nil
 		end
