@@ -96,6 +96,21 @@ local function maneuver_command()
 	}
 end
 
+local function make_adapter()
+	local resources = {
+		Activate = { range = 0 },
+		Deploy = { range = 12 },
+	}
+	return adapter_module.new({
+		get_ja_resource = function(name)
+			return resources[name]
+		end,
+		action_effective_range = function(range)
+			return tonumber(range) or 0
+		end,
+	})
+end
+
 local function test_command_contract()
 	assert_equal(
 		commands.serialize(activate_command()),
@@ -177,13 +192,13 @@ local function test_burden_guard()
 	runtime.observe(state, live, 0, cfg)
 
 	local safe, reason = runtime.maneuver_safe(state, cfg, live, 'Fire Maneuver', 1)
-	assert_false(safe, 'post-Activate quiet period must block maneuvers')
-	assert_equal(reason, 'post_activate_or_zone_quiet', 'post-Activate guard reason')
+	assert_false(safe, 'unknown initial pet burden must block maneuvers')
+	assert_equal(reason, 'post_activate_or_zone_quiet', 'unknown initial burden guard reason')
 
 	live.now = 121
 	runtime.observe(state, live, 121, cfg)
 	safe, reason = runtime.maneuver_safe(state, cfg, live, 'Fire Maneuver', 121)
-	assert_true(safe, 'maneuver must become safe after conservative burden drain')
+	assert_true(safe, 'maneuver must become safe after conservative unknown burden drain')
 	assert_equal(reason, '', 'safe maneuver reason')
 
 	assert_true(runtime.record_maneuver(state, 'Fire Maneuver', 121), 'first Fire maneuver should record burden')
@@ -211,20 +226,8 @@ local function test_pattern_convergence()
 	assert_equal(runtime.next_missing_maneuver(cfg, player), nil, 'configured three-slot multiset satisfied')
 end
 
-local function test_adapter_activate_deploy_and_maneuver()
-	local resources = {
-		Activate = { range = 0 },
-		Deploy = { range = 12 },
-	}
-	local adapter = adapter_module.new({
-		get_ja_resource = function(name)
-			return resources[name]
-		end,
-		action_effective_range = function(range)
-			return tonumber(range) or 0
-		end,
-	})
-
+local function test_known_pet_appearance_uses_modeled_burden()
+	local adapter = make_adapter()
 	local no_pet = ctx(0, false, {})
 	local snapshot = adapter.snapshot(no_pet)
 	local maintenance = adapter.maintenance(snapshot, no_pet)
@@ -232,16 +235,19 @@ local function test_adapter_activate_deploy_and_maneuver()
 	assert_equal(maintenance.action_type, 'pet', 'Activate must use serialized pet-related lane')
 	assert_equal(maintenance.command.kind, 'activate', 'Activate coordinator command kind')
 
-	-- First automaton observation deliberately starts the conservative burden
-	-- quiet window. Maneuver maintenance must wait until it drains.
-	local pet = ctx(121, true, {})
+	local pet = ctx(1, true, {})
 	snapshot = adapter.snapshot(pet)
-	assert_equal(adapter.maintenance(snapshot, pet), nil, 'new automaton must honor post-Activate burden quiet')
+	assert_equal(adapter.maintenance(snapshot, pet), nil, 'fresh automaton burden must still block an immediate Maneuver')
+	assert_equal(_G.UC_PUP_AUTOMATION_STATUS.quiet_remaining, 0, 'known pet appearance must remove the fixed unknown-state hold')
+	assert_true(
+		tostring(_G.UC_PUP_AUTOMATION_STATUS.reason or ''):find('burden_guard', 1, true) ~= nil,
+		'known pet appearance must be guarded by modeled burden instead of fixed quiet'
+	)
 
-	pet.now = 242
+	pet.now = 91
 	snapshot = adapter.snapshot(pet)
 	maintenance = adapter.maintenance(snapshot, pet)
-	assert_equal(maintenance.action_name, 'Fire Maneuver', 'first missing maneuver proposal')
+	assert_equal(maintenance.action_name, 'Fire Maneuver', 'known fresh pet should become Maneuver-safe after modeled burden decay')
 	assert_equal(maintenance.action_type, 'pet', 'Maneuver uses pet command lane')
 	assert_equal(maintenance.command.kind, 'maneuver', 'Maneuver command kind')
 
@@ -251,10 +257,65 @@ local function test_adapter_activate_deploy_and_maneuver()
 	assert_equal(deploy.command.target_id, 300, 'Deploy target identity')
 end
 
+local function test_unknown_existing_pet_keeps_recovery_hold()
+	local adapter = make_adapter()
+	local pet = ctx(0, true, {})
+	local snapshot = adapter.snapshot(pet)
+	assert_equal(adapter.maintenance(snapshot, pet), nil, 'pre-existing automaton must not immediately Maneuver after addon observation begins')
+	assert_true(_G.UC_PUP_AUTOMATION_STATUS.quiet_remaining > 119, 'unknown existing pet must keep the configured recovery hold')
+
+	pet.now = 91
+	snapshot = adapter.snapshot(pet)
+	assert_equal(adapter.maintenance(snapshot, pet), nil, 'unknown existing pet must still be held before 120 seconds')
+	assert_true(_G.UC_PUP_AUTOMATION_STATUS.quiet_remaining > 28, 'unknown existing pet hold must still be active at 91 seconds')
+
+	pet.now = 121
+	snapshot = adapter.snapshot(pet)
+	local maintenance = adapter.maintenance(snapshot, pet)
+	assert_equal(maintenance.action_name, 'Fire Maneuver', 'unknown existing pet may Maneuver after the conservative recovery hold')
+end
+
+local function test_known_zone_transition_uses_modeled_burden()
+	local original_windower = rawget(_G, 'windower')
+	local zone_id = 100
+	_G.windower = {
+		ffxi = {
+			get_info = function()
+				return { zone = zone_id }
+			end,
+		},
+	}
+
+	local adapter = make_adapter()
+	local pet = ctx(0, true, {})
+	local snapshot = adapter.snapshot(pet)
+	pet.now = 121
+	snapshot = adapter.snapshot(pet)
+	assert_equal(adapter.maintenance(snapshot, pet).action_name, 'Fire Maneuver', 'baseline existing-pet recovery must complete')
+
+	zone_id = 101
+	pet.now = 122
+	snapshot = adapter.snapshot(pet)
+	assert_equal(adapter.maintenance(snapshot, pet), nil, 'zone burden must block an immediate Maneuver')
+	assert_equal(_G.UC_PUP_AUTOMATION_STATUS.quiet_remaining, 0, 'known zone transition must remove the fixed unknown-state hold')
+	assert_true(
+		tostring(_G.UC_PUP_AUTOMATION_STATUS.reason or ''):find('burden_guard', 1, true) ~= nil,
+		'known zone transition must use modeled burden guard'
+	)
+
+	pet.now = 212
+	snapshot = adapter.snapshot(pet)
+	assert_equal(adapter.maintenance(snapshot, pet).action_name, 'Fire Maneuver', 'zone transition should become Maneuver-safe after modeled decay')
+
+	_G.windower = original_windower
+end
+
 test_command_contract()
 test_coordinator_completion()
 test_burden_guard()
 test_pattern_convergence()
-test_adapter_activate_deploy_and_maneuver()
+test_known_pet_appearance_uses_modeled_burden()
+test_unknown_existing_pet_keeps_recovery_hold()
+test_known_zone_transition_uses_modeled_burden()
 
 print('selftest_pup_automaton_control: OK')
