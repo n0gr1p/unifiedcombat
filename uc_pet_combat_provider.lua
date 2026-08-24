@@ -1,4 +1,5 @@
 local pet_combat_state = require('uc_pet_combat_state')
+local combat_commitment = require('uc_combat_commitment')
 
 local M = {}
 
@@ -115,6 +116,12 @@ function M.new(deps)
 	end
 	local coordinator_can_attempt = require_function(deps, 'coordinator_can_attempt')
 	local target_is_actionable = require_function(deps, 'target_is_actionable')
+	local combat_commitment_evaluate = deps.combat_commitment_evaluate
+	if combat_commitment_evaluate == nil then
+		combat_commitment_evaluate = combat_commitment.evaluate_runtime
+	elseif type(combat_commitment_evaluate) ~= 'function' then
+		error('uc_pet_combat_provider deps.combat_commitment_evaluate must be a function')
+	end
 	local state = require_table(deps.state, 'deps.state')
 
 	local provider = {}
@@ -153,10 +160,20 @@ function M.new(deps)
 			ctx.pet_id,
 			ctx.pet_status
 		)
-		local valid = ctx.combat_domain_enabled == true
+		local actionable = ctx.combat_domain_enabled == true
 			and ctx.target_present == true
 			and target_is_actionable(ctx.target, ctx.now, true)
 			and (tonumber(ctx.target.id) or 0) > 0
+		local commitment = { committed = false, reason = actionable and 'selection_only' or 'not_actionable' }
+		if actionable then
+			commitment = combat_commitment_evaluate(ctx, ctx.target, { allow_player_engaged = false })
+			if type(commitment) ~= 'table' then
+				error('pet combat commitment evaluator must return a table')
+			end
+		end
+		local valid = actionable and commitment.committed == true
+		ctx.target_combat_committed = valid
+		ctx.target_commitment_reason = tostring(commitment.reason or '')
 		ctx.target_valid = valid
 		ctx.target_id = 0
 		ctx.target_hpp = 0
