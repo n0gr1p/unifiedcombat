@@ -337,7 +337,7 @@ local function resolve_meta(context, default_source)
 	return meta
 end
 
-local function pick_durable_config_domains(config)
+local function pick_durable_config_domains(config, meta)
 	local out = {}
 	if type(config) ~= 'table' then
 		return out
@@ -367,7 +367,10 @@ local function pick_durable_config_domains(config)
 	if type(out.ownership) == 'table' and out.ownership.profile_v2_auto_reload_on_change ~= true then
 		out.ownership.profile_v2_auto_reload_on_change = nil
 	end
-	local main_job = type(config.profile) == 'table' and config.profile.main_job or nil
+	local main_job = type(meta) == 'table' and meta.main_job or nil
+	if main_job == nil and type(config.profile) == 'table' then
+		main_job = config.profile.main_job
+	end
 	if type(main_job) ~= 'string' or main_job:upper() ~= 'PUP' then
 		out.puppetmaster = nil
 	end
@@ -1138,7 +1141,7 @@ function M.build_active_profile_from_settings(settings, context)
 	return {
 		version = 2,
 		profile = profile,
-		config = pick_durable_config_domains(normalized),
+		config = pick_durable_config_domains(normalized, profile),
 	}
 end
 
@@ -1158,7 +1161,7 @@ function M.build_active_profile_from_v2_payload(payload, context)
 
 	local meta = resolve_meta(context, 'UC_PROFILE_V2')
 	local profile = build_profile_record(payload.profile, meta, 'UC_PROFILE_V2')
-	local config = pick_durable_config_domains(payload.config)
+	local config = pick_durable_config_domains(payload.config, profile)
 	local pup_validation = uc_pup_config.validate(config.puppetmaster, profile)
 	if pup_validation.valid ~= true then
 		local first = pup_validation.errors[1]

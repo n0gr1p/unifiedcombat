@@ -49,11 +49,22 @@ local structured = profile_v2.build_structured_profile(flat_settings(), meta)
 assert_true(type(structured.config.puppetmaster) == 'table', 'PUP profile export must retain puppetmaster domain')
 assert_equal(structured.config.puppetmaster.maneuvers.safe_burden_ceiling, 30, 'PUP profile export burden ceiling')
 
-local projected, project_error = active_config.project_flat_settings(structured, {})
+local active_from_v2, active_error = active_config.build_active_profile_from_v2_payload(structured, meta)
+assert_true(active_from_v2 ~= nil, 'active PUP profile build failed: ' .. tostring(active_error))
+assert_true(type(active_from_v2.config.puppetmaster) == 'table', 'active PUP profile must retain puppetmaster domain')
+assert_true(active_from_v2.config.puppetmaster.enabled, 'active PUP profile must retain enabled=true')
+
+local projected, project_error = active_config.project_flat_settings(active_from_v2, {})
 assert_true(projected ~= nil, 'active config projection failed: ' .. tostring(project_error))
 assert_true(type(projected.puppetmaster) == 'table', 'active config must project nested puppetmaster settings')
 assert_true(projected.puppetmaster_enabled, 'active config must project flat PUP UI mirror')
 assert_equal(projected.puppetmaster_maneuver_pattern, 'Fire Maneuver|Fire Maneuver|Light Maneuver', 'active config pattern mirror')
+
+local conversion = profile_v2.build_settings_candidate_from_structured_profile({}, structured, meta)
+assert_true(conversion.ok, 'enabled PUP profile-v2 conversion must round-trip: ' .. tostring(conversion.error or conversion.detail))
+assert_true(conversion.candidate.puppetmaster_enabled, 'autoload candidate must retain PUP enabled=true')
+assert_true(type(conversion.candidate_config.puppetmaster) == 'table', 'autoload candidate durable config must retain puppetmaster domain')
+assert_true(conversion.candidate_config.puppetmaster.enabled, 'autoload candidate durable config must retain enabled=true')
 
 local no_profile_config = runtime.config_from_settings({ profile = { main_job = 'PUP' } })
 assert_false(no_profile_config.enabled, 'missing profile-owned PUP config must disable automation')
