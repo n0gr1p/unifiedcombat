@@ -24,6 +24,7 @@ function M.new(deps)
 	local burden_state = runtime.new_state()
 	local last_player_id = 0
 	local last_ctx_now = 0
+	local lifecycle_observed = false
 
 	local adapter = {}
 
@@ -42,6 +43,28 @@ function M.new(deps)
 		_G.UC_PUP_AUTOMATION_STATUS = status
 	end
 
+	local function relax_known_lifecycle_hold(ctx, previous_pet_id, had_lifecycle_observation)
+		if had_lifecycle_observation ~= true then
+			return
+		end
+		local current_pet_id = ctx.pet_present == true and (tonumber(ctx.pet_id) or 0) or 0
+		local reset_reason = tostring(burden_state.last_reason or '')
+		local known_pet_transition = current_pet_id > 0 and current_pet_id ~= (tonumber(previous_pet_id) or 0)
+		local known_zone_transition = reset_reason == 'zone_change'
+		if not known_pet_transition and not known_zone_transition then
+			return
+		end
+		local now = tonumber(ctx.now) or 0
+		if (tonumber(burden_state.quiet_until) or 0) > now then
+			-- The reset itself is known, so the conservative burden estimate is enough.
+			-- Keep the modeled starting burden from runtime.observe(), but remove the
+			-- fixed unknown-history hold and let maneuver_safe() decide when the next
+			-- Maneuver is actually safe.
+			burden_state.quiet_until = now
+			burden_state.last_reason = 'modeled_burden:' .. reset_reason
+		end
+	end
+
 	function adapter.snapshot(ctx)
 		require_table(ctx, 'ctx')
 		if ctx.player_present ~= true or tostring(ctx.player.main_job or '') ~= 'PUP' then
@@ -55,7 +78,11 @@ function M.new(deps)
 		local config = runtime.config_from_settings(ctx.settings)
 		last_player_id = tonumber(ctx.player_id) or tonumber(ctx.player.id) or 0
 		last_ctx_now = tonumber(ctx.now) or last_ctx_now
+		local previous_pet_id = tonumber(burden_state.pet_id) or 0
+		local had_lifecycle_observation = lifecycle_observed
 		runtime.observe(burden_state, ctx, ctx.now, config)
+		relax_known_lifecycle_hold(ctx, previous_pet_id, had_lifecycle_observation)
+		lifecycle_observed = true
 		local snapshot = {
 			enabled = config.enabled == true,
 			valid = true,
