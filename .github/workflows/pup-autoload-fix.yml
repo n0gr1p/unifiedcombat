@@ -1,0 +1,153 @@
+name: PUP autoload regression fix
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  lua-validation:
+    if: github.head_ref == 'pup-automaton-control'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Apply PUP autoload fix and regression
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one replacement, found {count}: {old!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'uc_active_config.lua',
+              'local function pick_durable_config_domains(config)\n',
+              'local function pick_durable_config_domains(config, meta)\n'
+          )
+          replace_once(
+              'uc_active_config.lua',
+              "\tlocal main_job = type(config.profile) == 'table' and config.profile.main_job or nil\n",
+              "\tlocal main_job = type(meta) == 'table' and meta.main_job or nil\n"
+              "\tif main_job == nil and type(config.profile) == 'table' then\n"
+              "\t\tmain_job = config.profile.main_job\n"
+              "\tend\n"
+          )
+          replace_once(
+              'uc_active_config.lua',
+              '\t\tconfig = pick_durable_config_domains(normalized),\n',
+              '\t\tconfig = pick_durable_config_domains(normalized, profile),\n'
+          )
+          replace_once(
+              'uc_active_config.lua',
+              '\tlocal config = pick_durable_config_domains(payload.config)\n',
+              '\tlocal config = pick_durable_config_domains(payload.config, profile)\n'
+          )
+
+          replace_once(
+              'tests/replay/harness/selftest_pup_profile_v2.lua',
+              "local projected, project_error = active_config.project_flat_settings(structured, {})\n"
+              "assert_true(projected ~= nil, 'active config projection failed: ' .. tostring(project_error))\n",
+              "local active_from_v2, active_error = active_config.build_active_profile_from_v2_payload(structured, meta)\n"
+              "assert_true(active_from_v2 ~= nil, 'active PUP profile build failed: ' .. tostring(active_error))\n"
+              "assert_true(type(active_from_v2.config.puppetmaster) == 'table', 'active PUP profile must retain puppetmaster domain')\n"
+              "assert_true(active_from_v2.config.puppetmaster.enabled, 'active PUP profile must retain enabled=true')\n"
+              "\n"
+              "local projected, project_error = active_config.project_flat_settings(active_from_v2, {})\n"
+              "assert_true(projected ~= nil, 'active config projection failed: ' .. tostring(project_error))\n"
+          )
+          replace_once(
+              'tests/replay/harness/selftest_pup_profile_v2.lua',
+              "assert_equal(projected.puppetmaster_maneuver_pattern, 'Fire Maneuver|Fire Maneuver|Light Maneuver', 'active config pattern mirror')\n",
+              "assert_equal(projected.puppetmaster_maneuver_pattern, 'Fire Maneuver|Fire Maneuver|Light Maneuver', 'active config pattern mirror')\n"
+              "\n"
+              "local conversion = profile_v2.build_settings_candidate_from_structured_profile({}, structured, meta)\n"
+              "assert_true(conversion.ok, 'enabled PUP profile-v2 conversion must round-trip: ' .. tostring(conversion.error or conversion.detail))\n"
+              "assert_true(conversion.candidate.puppetmaster_enabled, 'autoload candidate must retain PUP enabled=true')\n"
+              "assert_true(type(conversion.candidate_config.puppetmaster) == 'table', 'autoload candidate durable config must retain puppetmaster domain')\n"
+              "assert_true(conversion.candidate_config.puppetmaster.enabled, 'autoload candidate durable config must retain enabled=true')\n"
+          )
+          PY
+      - name: Install Lua 5.1 + LuaSocket
+        run: sudo apt-get update && sudo apt-get install -y lua5.1 lua-socket
+      - name: Lua syntax
+        run: luac5.1 -p uc_active_config.lua tests/replay/harness/selftest_pup_profile_v2.lua
+      - name: PUP profile-v2 regression
+        run: lua5.1 tests/replay/harness/selftest_pup_profile_v2.lua
+      - name: PUP automaton behavior
+        run: lua5.1 tests/replay/harness/selftest_pup_automaton_control.lua
+      - name: Config normalizer regression
+        run: lua5.1 tests/replay/harness/selftest_config_normalizer.lua
+      - name: Profile v2 export regression
+        run: lua5.1 tests/replay/harness/selftest_profile_v2_export.lua
+      - name: Profile v2 runtime consumers
+        run: lua5.1 tests/replay/harness/selftest_profile_v2_runtime_consumers.lua
+      - name: Shared pet command regression
+        run: lua5.1 tests/replay/harness/selftest_pet_command_infrastructure.lua
+      - name: Shared pet combat regression
+        run: lua5.1 tests/replay/harness/selftest_pet_combat_provider.lua
+      - name: Summoner cross-provider regression
+        run: lua5.1 tests/replay/harness/selftest_smn_cross_provider_integration.lua
+
+  winforms-validation:
+    if: github.head_ref == 'pup-automaton-control'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Build UnifiedCombat WinForms
+        run: dotnet build UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --nologo
+      - name: Structured profile v2 selftest
+        run: dotnet run --project UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --no-build -- --selftest-profile-v2
+
+  promote:
+    needs: [lua-validation, winforms-validation]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Apply validated fix, remove workflow, and push
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one replacement, found {count}: {old!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once('uc_active_config.lua', 'local function pick_durable_config_domains(config)\n', 'local function pick_durable_config_domains(config, meta)\n')
+          replace_once('uc_active_config.lua', "\tlocal main_job = type(config.profile) == 'table' and config.profile.main_job or nil\n", "\tlocal main_job = type(meta) == 'table' and meta.main_job or nil\n\tif main_job == nil and type(config.profile) == 'table' then\n\t\tmain_job = config.profile.main_job\n\tend\n")
+          replace_once('uc_active_config.lua', '\t\tconfig = pick_durable_config_domains(normalized),\n', '\t\tconfig = pick_durable_config_domains(normalized, profile),\n')
+          replace_once('uc_active_config.lua', '\tlocal config = pick_durable_config_domains(payload.config)\n', '\tlocal config = pick_durable_config_domains(payload.config, profile)\n')
+          replace_once('tests/replay/harness/selftest_pup_profile_v2.lua', "local projected, project_error = active_config.project_flat_settings(structured, {})\nassert_true(projected ~= nil, 'active config projection failed: ' .. tostring(project_error))\n", "local active_from_v2, active_error = active_config.build_active_profile_from_v2_payload(structured, meta)\nassert_true(active_from_v2 ~= nil, 'active PUP profile build failed: ' .. tostring(active_error))\nassert_true(type(active_from_v2.config.puppetmaster) == 'table', 'active PUP profile must retain puppetmaster domain')\nassert_true(active_from_v2.config.puppetmaster.enabled, 'active PUP profile must retain enabled=true')\n\nlocal projected, project_error = active_config.project_flat_settings(active_from_v2, {})\nassert_true(projected ~= nil, 'active config projection failed: ' .. tostring(project_error))\n")
+          replace_once('tests/replay/harness/selftest_pup_profile_v2.lua', "assert_equal(projected.puppetmaster_maneuver_pattern, 'Fire Maneuver|Fire Maneuver|Light Maneuver', 'active config pattern mirror')\n", "assert_equal(projected.puppetmaster_maneuver_pattern, 'Fire Maneuver|Fire Maneuver|Light Maneuver', 'active config pattern mirror')\n\nlocal conversion = profile_v2.build_settings_candidate_from_structured_profile({}, structured, meta)\nassert_true(conversion.ok, 'enabled PUP profile-v2 conversion must round-trip: ' .. tostring(conversion.error or conversion.detail))\nassert_true(conversion.candidate.puppetmaster_enabled, 'autoload candidate must retain PUP enabled=true')\nassert_true(type(conversion.candidate_config.puppetmaster) == 'table', 'autoload candidate durable config must retain puppetmaster domain')\nassert_true(conversion.candidate_config.puppetmaster.enabled, 'autoload candidate durable config must retain enabled=true')\n")
+          PY
+          rm .github/workflows/pup-autoload-fix.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: preserve PUP domain during profile-v2 autoload"
+          git push origin HEAD:${{ github.head_ref }}
