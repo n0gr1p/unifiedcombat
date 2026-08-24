@@ -83,7 +83,7 @@ public partial class MainForm
             Width = 90,
             Anchor = AnchorStyles.Left,
         };
-        AddPuppetmasterRow(root, "Post-Activate / zone hold (s)", _pupPostActivateQuiet, ref row);
+        AddPuppetmasterRow(root, "Unknown-state recovery hold (s)", _pupPostActivateQuiet, ref row);
 
         _pupSafeBurdenCeiling = new NumericUpDown
         {
@@ -98,7 +98,7 @@ public partial class MainForm
 
         var safetyNote = new Label
         {
-            Text = "Safety model assumes worst-case normal Maneuver burden (20), Dark burden (15), and 1 burden decay every 3 seconds. If projected burden would exceed the ceiling, UnifiedCombat waits instead of risking Overload.",
+            Text = "The fixed recovery hold is used only when UnifiedCombat starts with an already-present automaton and cannot know its burden history. Known pet appearances and zone transitions keep the conservative starting-burden model and resume Maneuvers as soon as projected burden is safe. The model assumes worst-case normal Maneuver burden (20), Dark burden (15), and 1 burden decay every 3 seconds.",
             AutoSize = true,
             MaximumSize = new Size(700, 0),
             Padding = new Padding(0, 8, 0, 8),
