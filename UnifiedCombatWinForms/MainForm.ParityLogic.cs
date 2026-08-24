@@ -868,6 +868,7 @@ public partial class MainForm
                 _brdUseMarcato.Enabled = !subBrdOnly;
                 _brdMarcatoSong.Enabled = !subBrdOnly && _brdUseMarcato.Checked;
 				_brdTargetedSongs.Enabled = !subBrdOnly;
+				EnsureOptionsHydrated(sid);
             }
             var geoVisible = string.Equals(mainJob, "GEO", StringComparison.Ordinal)
                 || string.Equals(subJob, "GEO", StringComparison.Ordinal);

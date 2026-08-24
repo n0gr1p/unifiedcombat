@@ -998,6 +998,14 @@ internal static class StructuredProfileV2Writer
 		{
 			var useNitro = ReadBool(flatProfile, "brd_use_nitro", false);
 			var useSoulVoice = ReadBool(flatProfile, "brd_use_soul_voice", false);
+			var targetedSongs = ParseBardTargetedSongs(ReadString(flatProfile, "brd_targeted_songs", ""));
+			ValidateBardTargetedSongNames(
+				targetedSongs,
+				SplitPipeList(ReadString(flatProfile, "brd_song_options", ""))
+					.Select(value => value?.ToString() ?? "")
+					.Where(value => value.Length > 0)
+					.ToList()
+			);
 			if (useSoulVoice && !useNitro)
 			{
 				throw new InvalidDataException("BRD Soul Voice requires NITRO.");
@@ -1013,7 +1021,7 @@ internal static class StructuredProfileV2Writer
 					.Add("use_clarion_call", ReadBool(flatProfile, "brd_use_clarion_call", false))
 					.Add("use_marcato", ReadBool(flatProfile, "brd_use_marcato", false))
 					.Add("marcato_song", ReadString(flatProfile, "brd_marcato_song", ""))
-					.Add("targeted_songs", BuildBardTargetedSongs(ReadString(flatProfile, "brd_targeted_songs", "")))
+					.Add("targeted_songs", BuildBardTargetedSongs(targetedSongs))
 					.Add("recovery_range_yalms", ReadBoundedDouble(flatProfile, "brd_recovery_range_yalms", 9.9, 1.0, 20.0))
 					.Add("reposition_for_party_songs", ReadBool(flatProfile, "brd_reposition_for_party_songs", false))
 					.Add("recovery_ignore_names", SplitPipeList(ReadString(flatProfile, "brd_recovery_ignore_names", "")))
@@ -2184,10 +2192,38 @@ internal static class StructuredProfileV2Writer
 		return sets;
 	}
 
-	private static List<object?> BuildBardTargetedSongs(string value)
+	private static void ValidateBardTargetedSongNames(
+		IReadOnlyList<BardTargetedSongSet> targetedSongs,
+		IReadOnlyList<string> availableSongs
+	)
+	{
+		if (targetedSongs.Count == 0)
+		{
+			return;
+		}
+		if (availableSongs.Count == 0)
+		{
+			throw new InvalidDataException(
+				"BRD targeted songs require hydrated BRD song options. Refresh the BRD session before saving."
+			);
+		}
+		var available = new HashSet<string>(availableSongs, StringComparer.Ordinal);
+		foreach (var set in targetedSongs)
+		{
+			foreach (var song in set.PrioritySongs)
+			{
+				if (!available.Contains(song))
+				{
+					throw new InvalidDataException($"BRD targeted song is unavailable or invalid: {song}");
+				}
+			}
+		}
+	}
+
+	private static List<object?> BuildBardTargetedSongs(IReadOnlyList<BardTargetedSongSet> sets)
 	{
 		var list = new List<object?>();
-		foreach (var set in ParseBardTargetedSongs(value))
+		foreach (var set in sets)
 		{
 			list.Add(new StructuredProfileNode()
 				.Add("recipients", set.Recipients.Cast<object?>().ToList())

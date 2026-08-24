@@ -2158,7 +2158,7 @@ public partial class MainForm
 		_brdTargetedSongs.TextChanged += (_, _) => OnBrdConfigChanged();
 		targetedSongsRow.Controls.Add(_brdTargetedSongs);
 		brdRoot.Controls.Add(targetedSongsRow);
-		brdRoot.Controls.Add(new Label { Text = "TargetA,TargetB:Highest Priority Song,Next Song|OtherTarget:Song", AutoSize = true });
+		brdRoot.Controls.Add(new Label { Text = "TargetA,TargetB:Highest Priority Song,Next Song|OtherTarget:Song. Songs must be available in the active BRD options.", AutoSize = true });
         brdRoot.Controls.Add(new Label
         {
             Text = "Durations and active song ownership are observed by the addon and are never saved in the profile.",

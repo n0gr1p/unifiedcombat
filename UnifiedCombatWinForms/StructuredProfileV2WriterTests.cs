@@ -53,6 +53,7 @@ internal static class StructuredProfileV2WriterTests
             TestCorPreservesConfiguredMaintenanceValues();
             TestBrdPreservesConfiguredSongMaintenance();
 			TestParseBardTargetedSongs();
+			TestBrdRejectsUnknownTargetedSong();
 			TestBrdRejectsSoulVoiceWithoutNitro();
 			TestBrdRejectsInvalidRecoveryRange();
             TestNonBrdOmitsHiddenBrdMaintenance();
@@ -966,6 +967,7 @@ internal static class StructuredProfileV2WriterTests
         flat["brd_use_marcato"] = true;
         flat["brd_marcato_song"] = "Honor March";
 		flat["brd_targeted_songs"] = "Tankone,Tanktwo:Mage's Ballad III,Mage's Ballad II";
+		flat["brd_song_options"] = "Honor March|Victory March|Valor Minuet V|Valor Minuet IV|Mage's Ballad III|Mage's Ballad II";
 		flat["brd_recovery_range_yalms"] = 14.5;
 		flat["brd_reposition_for_party_songs"] = true;
 		flat["brd_recovery_ignore_names"] = "PullerOne|PullerTwo";
@@ -1027,6 +1029,21 @@ internal static class StructuredProfileV2WriterTests
 			return;
 		}
 		throw new InvalidOperationException("duplicate BRD targeted recipient must fail parsing");
+	}
+
+	private static void TestBrdRejectsUnknownTargetedSong()
+	{
+		var flat = BuildSampleFlatProfile();
+		flat["brd_maintenance_enabled"] = true;
+		flat["brd_targeted_songs"] = "Redrogue:Mages Ballad III";
+		flat["brd_song_options"] = "Honor March|Mage's Ballad III";
+		AssertThrows<InvalidDataException>(
+			() => StructuredProfileV2Writer.BuildStructuredProfileFile(
+				flat,
+				new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+			),
+			"invalid BRD targeted song must be rejected before profile write"
+		);
 	}
 
 	private static void TestBrdRejectsSoulVoiceWithoutNitro()
