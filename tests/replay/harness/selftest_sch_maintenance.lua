@@ -1136,6 +1136,31 @@ local function main()
 		'Phase 2 provider MP adjustment mismatch')
 	runtime.reset('provider_test_cleanup', 281)
 
+	provider_members = members()
+	table.remove(provider_members, 1)
+	provider_player.buffs = { 358 }
+	runtime.reset('provider_inconsistent_party_snapshot', 289)
+	local inconsistent_party_out = {}
+	local inconsistent_party_emitted = provider.collect({
+		now = 290,
+		settings = { sch = arts_config },
+		player = provider_player,
+		engine_enabled = true,
+		maintenance_enabled = true,
+		defensive_enabled = true,
+		ability_recasts_present = true,
+		ability_recasts = { [228] = 0, [231] = 0 },
+	}, inconsistent_party_out)
+	local inconsistent_party_status = provider.status_snapshot()
+	assert_true(inconsistent_party_emitted == false,
+		'inconsistent party snapshot must not emit a Scholar proposal')
+	assert_equal(#inconsistent_party_out, 0,
+		'inconsistent party snapshot must leave the proposal set unchanged')
+	assert_equal(inconsistent_party_status.first_blocker, 'party_snapshot_inconsistent',
+		'missing player party snapshot blocker mismatch')
+	assert_true(logs_contain(logs, 'blocker=party_snapshot_inconsistent'),
+		'inconsistent party snapshot blocker must be observable')
+
 	print('selftest_sch_maintenance: OK')
 end
 

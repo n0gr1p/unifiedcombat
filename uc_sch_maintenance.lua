@@ -791,11 +791,30 @@ function M.evaluate(config, ctx, runtime_snapshot)
 		result.first_blocker = 'sch_not_eligible'
 		return result
 	end
+	local members = require_table(ctx.party_members, 'Scholar maintenance party members')
+	local player = require_table(ctx.player, 'Scholar maintenance player')
+	local player_id = player.id
+	if type(player_id) ~= 'number' or player_id <= 0 or player_id % 1 ~= 0 then
+		error('Scholar maintenance player id must be a positive integer')
+	end
+	local player_present_in_party_snapshot = false
+	for member_index = 1, #members do
+		local member = require_table(members[member_index], 'Scholar maintenance party member')
+		if type(member.id) ~= 'number' or member.id <= 0 or member.id % 1 ~= 0 then
+			error('Scholar maintenance party member id must be a positive integer')
+		end
+		if member.id == player_id then
+			player_present_in_party_snapshot = true
+		end
+	end
+	if not player_present_in_party_snapshot then
+		result.first_blocker = 'party_snapshot_inconsistent'
+		return result
+	end
 	if runtime_snapshot.active_sequence ~= nil then
 		result.first_blocker = 'active_sequence_in_progress'
 		return result
 	end
-	local members = require_table(ctx.party_members, 'Scholar maintenance party members')
 	result.defensive = sch_defensive.evaluate(config.defensive, ctx, runtime_snapshot)
 	result.arts = evaluate_arts(ctx, runtime_snapshot)
 	result.candidate = result.defensive.candidate or result.arts.candidate
