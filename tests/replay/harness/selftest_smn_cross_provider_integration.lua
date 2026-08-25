@@ -71,6 +71,7 @@ local function context()
 			y = 0,
 		},
 		combat_domain_enabled = true,
+		combat_committed = true,
 		ability_recasts_present = true,
 		ability_recasts = {
 			[170] = 0,
@@ -127,6 +128,9 @@ local pet_provider = pet_provider_module.new({
 	state = pet_state_module.new(),
 	target_is_actionable = function(target)
 		return target.valid_target == true and target.hpp > 0
+	end,
+	combat_commitment_evaluate = function(ctx)
+		return { committed = ctx.combat_committed == true, reason = ctx.combat_committed == true and 'test_committed' or 'selection_only' }
 	end,
 	coordinator_can_attempt = can_attempt,
 })

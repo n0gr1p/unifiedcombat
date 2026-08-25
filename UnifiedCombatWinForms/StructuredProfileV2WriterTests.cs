@@ -53,6 +53,7 @@ internal static class StructuredProfileV2WriterTests
             TestCorPreservesConfiguredMaintenanceValues();
             TestBrdPreservesConfiguredSongMaintenance();
 			TestParseBardTargetedSongs();
+			TestBrdRejectsUnknownTargetedSong();
 			TestBrdRejectsSoulVoiceWithoutNitro();
 			TestBrdRejectsInvalidRecoveryRange();
             TestNonBrdOmitsHiddenBrdMaintenance();
@@ -64,6 +65,9 @@ internal static class StructuredProfileV2WriterTests
             TestSummonerConfiguredRoundTripShape();
             TestSummonerPreservesIncompatibleSelections();
             TestSummonerUiOfflineContract();
+            TestPuppetmasterConfiguredRoundTripShape();
+            TestNonPuppetmasterRejectsEnabledPuppetmaster();
+            TestPuppetmasterUiProfilePersistenceContract();
             TestNonScholarOmitsUnconfiguredScholar();
             TestNonScholarOmitsInactiveScholarPanelState();
             TestNonScholarRejectsConfiguredScholar();
@@ -963,6 +967,7 @@ internal static class StructuredProfileV2WriterTests
         flat["brd_use_marcato"] = true;
         flat["brd_marcato_song"] = "Honor March";
 		flat["brd_targeted_songs"] = "Tankone,Tanktwo:Mage's Ballad III,Mage's Ballad II";
+		flat["brd_song_options"] = "Honor March|Victory March|Valor Minuet V|Valor Minuet IV|Mage's Ballad III|Mage's Ballad II";
 		flat["brd_recovery_range_yalms"] = 14.5;
 		flat["brd_reposition_for_party_songs"] = true;
 		flat["brd_recovery_ignore_names"] = "PullerOne|PullerTwo";
@@ -1024,6 +1029,21 @@ internal static class StructuredProfileV2WriterTests
 			return;
 		}
 		throw new InvalidOperationException("duplicate BRD targeted recipient must fail parsing");
+	}
+
+	private static void TestBrdRejectsUnknownTargetedSong()
+	{
+		var flat = BuildSampleFlatProfile();
+		flat["brd_maintenance_enabled"] = true;
+		flat["brd_targeted_songs"] = "Redrogue:Mages Ballad III";
+		flat["brd_song_options"] = "Honor March|Mage's Ballad III";
+		AssertThrows<InvalidDataException>(
+			() => StructuredProfileV2Writer.BuildStructuredProfileFile(
+				flat,
+				new StructuredProfileV2Identity("Redrogue", "BRD", "WHM")
+			),
+			"invalid BRD targeted song must be rejected before profile write"
+		);
 	}
 
 	private static void TestBrdRejectsSoulVoiceWithoutNitro()
@@ -1261,6 +1281,66 @@ internal static class StructuredProfileV2WriterTests
         var handlers = logic[start..end];
         AssertContains(handlers, "CaptureWorkingProfileFromUi", "Summoner edits must update local working state");
         AssertNotContains(handlers, "Forward(", "Summoner durable controls must not require a live addon connection");
+    }
+
+    private static void TestPuppetmasterConfiguredRoundTripShape()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["puppetmaster_enabled"] = true;
+        flat["puppetmaster_activate_if_missing"] = true;
+        flat["puppetmaster_deploy_on_combat_start"] = true;
+        flat["puppetmaster_maneuvers_enabled"] = true;
+        flat["puppetmaster_maneuver_pattern"] = "Fire Maneuver|Fire Maneuver|Light Maneuver";
+        flat["puppetmaster_post_activate_quiet_seconds"] = 120;
+        flat["puppetmaster_safe_burden_ceiling"] = 30;
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Terrasjr", "PUP", "WAR")
+        );
+        AssertContains(content, "puppetmaster = {", "PUP profile must include durable Puppetmaster domain");
+        AssertContains(content, "enabled = true", "PUP automation enabled state must serialize");
+        AssertContains(content, "activate_if_missing = true", "PUP Activate policy must serialize");
+        AssertContains(content, "deploy_on_combat_start = true", "PUP Deploy policy must serialize");
+        AssertContains(content, "\"Fire Maneuver\"", "PUP Fire Maneuver must serialize");
+        AssertContains(content, "\"Light Maneuver\"", "PUP Light Maneuver must serialize");
+        AssertContains(content, "post_activate_quiet_seconds = 120", "PUP safety hold must serialize");
+        AssertContains(content, "safe_burden_ceiling = 30", "PUP burden ceiling must serialize");
+    }
+
+    private static void TestNonPuppetmasterRejectsEnabledPuppetmaster()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["puppetmaster_enabled"] = true;
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Terrasjr", "WAR", "NIN")
+            ),
+            "configured Puppetmaster automation must require PUP main job"
+        );
+    }
+
+    private static void TestPuppetmasterUiProfilePersistenceContract()
+    {
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.PuppetmasterUi.cs");
+        var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        var main = ReadRepoFile("UnifiedCombatWinForms", "MainForm.cs");
+        var runtime = ReadRepoFile("uc_pup_runtime.lua");
+
+        AssertContains(ui, "selected character / PUP / subjob profile", "PUP UI must describe profile ownership");
+        AssertContains(ui, "CaptureWorkingProfileFromUi", "PUP edits must update local working profile state");
+        AssertNotContains(ui, "File.WriteAllText", "PUP UI must not own a standalone config file");
+        AssertNotContains(ui, "puppetmaster_config.lua", "PUP UI must not reference a standalone config file");
+        AssertNotContains(ui, "Save + reload selected PUP", "PUP UI must use the normal profile save path");
+        AssertContains(store, "[\"puppetmaster_enabled\"] = _pupEnabled.Checked", "PUP enabled state must be captured by the profile store");
+        AssertContains(store, "[\"puppetmaster_maneuver_pattern\"] = PuppetmasterPatternFromUi()", "PUP maneuver pattern must be captured by the profile store");
+        AssertContains(logic, "EnsurePuppetmasterTabVisibility(puppetmasterVisible)", "PUP tab visibility must follow PUP main job");
+        AssertContains(logic, "ApplyPuppetmasterFromSnapshot(s)", "PUP controls must restore from profile state");
+        AssertContains(main, "EnsurePuppetmasterTabVisibility(false)", "PUP tab must start hidden before a PUP profile is selected");
+        AssertNotContains(runtime, "dofile", "PUP runtime must not load a standalone file fallback");
+        AssertNotContains(runtime, "puppetmaster_config.lua", "PUP runtime must consume active profile config only");
     }
 
     private static void TestNonScholarOmitsUnconfiguredScholar()

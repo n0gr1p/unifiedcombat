@@ -1,5 +1,6 @@
 local capabilities = require('uc_smn_capabilities')
 local runtime = require('uc_smn_runtime')
+local pup_adapter_module = require('uc_pup_pet_combat_adapter')
 
 local M = {}
 
@@ -22,18 +23,29 @@ function M.new(deps)
 	deps = require_table(deps, 'deps')
 	local get_ja_resource = require_function(deps, 'get_ja_resource')
 	local action_effective_range = require_function(deps, 'action_effective_range')
+	local pup_adapter = pup_adapter_module.new(deps)
+	local active_job_adapter = 'NONE'
 
 	local adapter = {}
 
 	function adapter.snapshot(ctx)
 		require_table(ctx, 'ctx')
+		if ctx.player_present == true and tostring(ctx.player.main_job or '') == 'PUP' then
+			active_job_adapter = 'PUP'
+			local snapshot = pup_adapter.snapshot(ctx)
+			snapshot._job_adapter = 'PUP'
+			return snapshot
+		end
 		if ctx.player_present ~= true or tostring(ctx.player.main_job or '') ~= 'SMN' then
+			active_job_adapter = 'NONE'
 			return {
 				enabled = false,
 				valid = false,
 				correct_pet = false,
+				_job_adapter = 'NONE',
 			}
 		end
+		active_job_adapter = 'SMN'
 		local config, validation = runtime.config_from_settings(ctx.settings)
 		local snapshot = {
 			enabled = false,
@@ -41,6 +53,7 @@ function M.new(deps)
 			correct_pet = false,
 			config = config,
 			validation = validation,
+			_job_adapter = 'SMN',
 		}
 		if config.enabled ~= true or validation.valid ~= true or validation.avatar_valid ~= true then
 			return snapshot
@@ -55,7 +68,17 @@ function M.new(deps)
 		return snapshot
 	end
 
+	function adapter.maintenance(snapshot, ctx)
+		if snapshot._job_adapter == 'PUP' then
+			return pup_adapter.maintenance(snapshot, ctx)
+		end
+		return nil
+	end
+
 	function adapter.engagement(snapshot, ctx)
+		if snapshot._job_adapter == 'PUP' then
+			return pup_adapter.engagement(snapshot, ctx)
+		end
 		require_table(snapshot, 'Summoner pet combat snapshot')
 		require_table(ctx, 'ctx')
 		if snapshot.correct_pet ~= true or snapshot.config.pet_combat.engage_on_combat_start ~= true then
@@ -66,6 +89,7 @@ function M.new(deps)
 			return nil
 		end
 		return {
+			kind = 'assault',
 			action_name = 'Assault',
 			priority_band = runtime.PRIORITY_ASSAULT,
 			urgency = 0.78,
@@ -83,6 +107,9 @@ function M.new(deps)
 	end
 
 	function adapter.offensive_action(snapshot, ctx)
+		if snapshot._job_adapter == 'PUP' then
+			return pup_adapter.offensive_action(snapshot, ctx)
+		end
 		require_table(snapshot, 'Summoner pet combat snapshot')
 		require_table(ctx, 'ctx')
 		local configured = snapshot.config.pet_combat.offensive_action
@@ -167,6 +194,9 @@ function M.new(deps)
 	end
 
 	function adapter.revalidate(snapshot, selected, ctx)
+		if snapshot._job_adapter == 'PUP' then
+			return pup_adapter.revalidate(snapshot, selected, ctx)
+		end
 		require_table(snapshot, 'Summoner pet combat snapshot')
 		require_table(selected, 'selected')
 		require_table(ctx, 'ctx')
@@ -197,6 +227,19 @@ function M.new(deps)
 			return false, 'unsupported_pet_combat_command'
 		end
 		return true, ''
+	end
+
+	function adapter.observe_action(act, observed_at)
+		if active_job_adapter ~= 'PUP' then
+			return false
+		end
+		return pup_adapter.observe_action(act, observed_at)
+	end
+
+	function adapter.observe_coordinator_event(event)
+		if active_job_adapter == 'PUP' then
+			pup_adapter.observe_coordinator_event(event)
+		end
 	end
 
 	return adapter

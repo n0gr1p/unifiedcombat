@@ -15,6 +15,8 @@ local FAILURE_MESSAGE_IDS = {
 	[155] = true,
 }
 
+local OVERLOAD_BUFF_ID = 299
+
 local function require_table(value, name)
 	if type(value) ~= 'table' then
 		error(name .. ' must be a table')
@@ -120,6 +122,16 @@ local function player_has_all_effects(ctx, effect_ids)
 		end
 	end
 	return true
+end
+
+local function player_has_effect(ctx, effect_id)
+	local buffs = require_table(ctx.player_buffs, 'pet command context player_buffs')
+	for i = 1, #buffs do
+		if tonumber(buffs[i]) == effect_id then
+			return true
+		end
+	end
+	return false
 end
 
 local function target_is_current_and_live(pending, ctx)
@@ -245,44 +257,61 @@ function M.observe(state, ctx)
 	end
 	local now = require_now(ctx.now)
 	local current_pet_id = tonumber(ctx.pet_id) or 0
-	local pet_matches = ctx.pet_present == true and current_pet_id == pending.pet_id
 
-	if pending.kind == 'release' then
-		if not pet_matches then
-			return finish(state, now, 'complete', 'pet_disappeared')
+	if pending.kind == 'activate' then
+		if ctx.pet_present == true and current_pet_id > 0 then
+			return finish(state, now, 'complete', 'automaton_appeared')
 		end
-	elseif not pet_matches then
-		return finish(state, now, 'failed', 'stale_pet')
-	elseif pending.kind == 'assault' then
-		if not target_is_current_and_live(pending, ctx) then
-			return finish(state, now, 'failed', 'stale_target')
-		end
-		local inferred_target_id = tonumber(ctx.pet_inferred_target_id)
-		if inferred_target_id == nil then
-			error('pet command context inferred target id must be numeric')
-		end
-		if inferred_target_id > 0 and inferred_target_id == pending.target_id then
-			return finish(state, now, 'complete', 'pet_action_target_observed')
-		end
-		if inferred_target_id == 0 and ctx.pet_status == 1 then
-			return finish(state, now, 'complete', 'pet_engaged_observed')
-		end
-	elseif pending.kind == 'ward' then
-		if player_has_all_effects(ctx, pending.expected_effect_ids) then
-			return finish(state, now, 'complete', 'ward_effect_observed')
-		end
-		if recast_consumed(pending, ctx) then
-			if pending.recast_consumed_at == nil then
-				pending.recast_consumed_at = now
-				pending.deadline = now + state.ward_effect_timeout
+		-- Recast consumption acknowledges the JA, but completion remains
+		-- observation-driven: the command owns the lane until an automaton exists
+		-- or the normal watchdog/failure path resolves it.
+		recast_consumed(pending, ctx)
+	else
+		local pet_matches = ctx.pet_present == true and current_pet_id == pending.pet_id
+		if pending.kind == 'release' then
+			if not pet_matches then
+				return finish(state, now, 'complete', 'pet_disappeared')
 			end
-		end
-	elseif pending.kind == 'rage' then
-		if not target_is_current_and_live(pending, ctx) then
-			return finish(state, now, 'failed', 'stale_target')
-		end
-		if recast_consumed(pending, ctx) then
-			return finish(state, now, 'complete', 'rage_recast_consumed')
+		elseif not pet_matches then
+			return finish(state, now, 'failed', 'stale_pet')
+		elseif pending.kind == 'assault' or pending.kind == 'deploy' then
+			if not target_is_current_and_live(pending, ctx) then
+				return finish(state, now, 'failed', 'stale_target')
+			end
+			local inferred_target_id = tonumber(ctx.pet_inferred_target_id)
+			if inferred_target_id == nil then
+				error('pet command context inferred target id must be numeric')
+			end
+			if inferred_target_id > 0 and inferred_target_id == pending.target_id then
+				return finish(state, now, 'complete', 'pet_action_target_observed')
+			end
+			if inferred_target_id == 0 and ctx.pet_status == 1 then
+				return finish(state, now, 'complete', 'pet_engaged_observed')
+			end
+		elseif pending.kind == 'ward' then
+			if player_has_all_effects(ctx, pending.expected_effect_ids) then
+				return finish(state, now, 'complete', 'ward_effect_observed')
+			end
+			if recast_consumed(pending, ctx) then
+				if pending.recast_consumed_at == nil then
+					pending.recast_consumed_at = now
+					pending.deadline = now + state.ward_effect_timeout
+				end
+			end
+		elseif pending.kind == 'rage' then
+			if not target_is_current_and_live(pending, ctx) then
+				return finish(state, now, 'failed', 'stale_target')
+			end
+			if recast_consumed(pending, ctx) then
+				return finish(state, now, 'complete', 'rage_recast_consumed')
+			end
+		elseif pending.kind == 'maneuver' then
+			if player_has_effect(ctx, OVERLOAD_BUFF_ID) then
+				return finish(state, now, 'failed', 'overload_observed')
+			end
+			if recast_consumed(pending, ctx) then
+				return finish(state, now, 'complete', 'maneuver_recast_consumed')
+			end
 		end
 	end
 
@@ -300,10 +329,13 @@ function M.observe_action(state, act, now)
 	if type(pending) ~= 'table' then
 		return nil
 	end
+	if pending.kind == 'activate' then
+		return nil
+	end
 	if tonumber(act.actor_id) ~= pending.pet_id then
 		return nil
 	end
-	if pending.kind == 'assault' then
+	if pending.kind == 'assault' or pending.kind == 'deploy' then
 		if type(act.targets) ~= 'table' then
 			return nil
 		end

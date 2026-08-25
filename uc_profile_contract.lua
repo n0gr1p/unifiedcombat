@@ -1,6 +1,7 @@
 local M = {}
 local uc_smn_config = require('uc_smn_config')
 local uc_sch_config = require('uc_sch_config')
+local uc_pup_config = require('uc_pup_config')
 
 local CURRENT_PROFILE_SCHEMA_VERSION = 1
 local CURRENT_STATUS_SCHEMA_VERSION = 1
@@ -54,6 +55,7 @@ local PREFIX_CLASSIFICATION = {
     party_follow_ = "profile_owned_by_ui",
     fight_follow_ = "profile_owned_by_ui",
     spacing_ = "profile_owned_by_ui",
+    puppetmaster_ = "profile_owned_by_ui",
     add_ = "profile_owned_by_ui",
     log_ = "profile_owned_by_ui",
     sleep = "profile_owned_by_ui",
@@ -551,6 +553,7 @@ function M.validate_structured_profile_config(payload)
     end
 
     local summoner_validation = uc_smn_config.validate(nil)
+    local puppetmaster_validation = uc_pup_config.validate(nil, profile)
     local sch_validation = uc_sch_config.validate(nil)
     if type(payload.config) ~= "table" then
         add_error(errors, "payload.config", "config must be a table")
@@ -560,6 +563,13 @@ function M.validate_structured_profile_config(payload)
             warnings[#warnings + 1] = issue.message
         end
         for _, issue in ipairs(summoner_validation.warnings) do
+            warnings[#warnings + 1] = issue.message
+        end
+        puppetmaster_validation = uc_pup_config.validate(payload.config.puppetmaster, profile)
+        for _, issue in ipairs(puppetmaster_validation.errors) do
+            warnings[#warnings + 1] = issue.message
+        end
+        for _, issue in ipairs(puppetmaster_validation.warnings) do
             warnings[#warnings + 1] = issue.message
         end
         sch_validation = uc_sch_config.validate(payload.config.sch, profile)
@@ -573,8 +583,9 @@ function M.validate_structured_profile_config(payload)
 
     return {
         ok = #errors == 0,
-        configuration_valid = #errors == 0 and summoner_validation.valid and sch_validation.valid,
+        configuration_valid = #errors == 0 and summoner_validation.valid and puppetmaster_validation.valid and sch_validation.valid,
         summoner = summoner_validation,
+        puppetmaster = puppetmaster_validation,
         sch = sch_validation,
         version = version,
         warnings = warnings,

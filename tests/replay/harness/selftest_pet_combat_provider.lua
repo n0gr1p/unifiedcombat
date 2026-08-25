@@ -66,6 +66,7 @@ local function context()
 			y = 0,
 		},
 		combat_domain_enabled = true,
+		combat_committed = true,
 		ability_recasts_present = true,
 		ability_recasts = {
 			[170] = 0,
@@ -90,6 +91,11 @@ local adapter = adapter_module.new({
 		return 3.9
 	end,
 })
+local function commitment_evaluate(ctx)
+	local committed = ctx.combat_committed == true
+	return { committed = committed, reason = committed and 'test_committed' or 'selection_only' }
+end
+
 local state = state_module.new()
 local provider = provider_module.new({
 	adapter = adapter,
@@ -97,6 +103,7 @@ local provider = provider_module.new({
 	target_is_actionable = function(target)
 		return target.valid_target == true and target.hpp > 0
 	end,
+	combat_commitment_evaluate = commitment_evaluate,
 	coordinator_can_attempt = function(key)
 		return blocked_keys[key] ~= true, blocked_keys[key] and 'retry_backoff' or '', 0
 	end,
@@ -116,6 +123,39 @@ local function find(actions, kind)
 		end
 	end
 	return nil
+end
+
+local function test_selection_only_does_not_start_pet_combat()
+	_G.Start_Engine = true
+	local local_provider = provider_module.new({
+		adapter = adapter,
+		state = state_module.new(),
+		target_is_actionable = function(target)
+			return target.valid_target == true and target.hpp > 0
+		end,
+		combat_commitment_evaluate = commitment_evaluate,
+		coordinator_can_attempt = function()
+			return true, '', 0
+		end,
+	})
+	local ctx = context()
+	ctx.combat_committed = false
+	local_provider.observe_target(ctx)
+	local actions = {}
+	local_provider.collect(ctx, actions)
+	assert_equal(ctx.target_valid, false, 'selected-only target must not be a pet combat target')
+	assert_equal(ctx.combat_generation, 0, 'selected-only target must not start combat generation')
+	assert_equal(find(actions, 'assault'), nil, 'selected-only target must not trigger Assault')
+	assert_equal(find(actions, 'rage'), nil, 'selected-only target must not trigger Rage')
+
+	ctx.combat_committed = true
+	ctx.now = 11
+	local_provider.observe_target(ctx)
+	actions = {}
+	local_provider.collect(ctx, actions)
+	assert_equal(ctx.combat_generation, 1, 'combat commitment starts combat generation')
+	assert_true(find(actions, 'assault') ~= nil, 'committed combat target triggers Assault')
+	assert_true(find(actions, 'rage') ~= nil, 'committed combat target permits Rage')
 end
 
 local function test_generation_and_initial_actions()
@@ -159,6 +199,7 @@ local function test_engagement_identity()
 		target_is_actionable = function(target)
 			return target.valid_target == true and target.hpp > 0
 		end,
+		combat_commitment_evaluate = commitment_evaluate,
 		coordinator_can_attempt = function()
 			return true, '', 0
 		end,
@@ -231,6 +272,7 @@ local function test_pet_action_target_inference()
 		target_is_actionable = function(target)
 			return target.valid_target == true and target.hpp > 0
 		end,
+		combat_commitment_evaluate = commitment_evaluate,
 		coordinator_can_attempt = function()
 			return true, '', 0
 		end,
@@ -285,6 +327,7 @@ local function test_stale_commit_validation()
 	assert_equal(valid, false, 'stale Rage target identity')
 end
 
+test_selection_only_does_not_start_pet_combat()
 test_generation_and_initial_actions()
 test_engagement_identity()
 test_hard_prerequisites_and_rage_guards()

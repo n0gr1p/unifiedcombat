@@ -42,6 +42,8 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_sch_trace.lua",
     "tests/replay/harness/selftest_sch_maintenance.lua",
     "tests/replay/harness/selftest_pet_command_infrastructure.lua",
+    "tests/replay/harness/selftest_pup_automaton_control.lua",
+    "tests/replay/harness/selftest_pup_profile_v2.lua",
     "tests/replay/harness/selftest_pet_tp_state.lua",
     "tests/replay/harness/selftest_smn_maintenance.lua",
     "tests/replay/harness/selftest_geo_maintenance.lua",
