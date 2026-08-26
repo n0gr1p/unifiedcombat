@@ -32,6 +32,15 @@ local classify_pos = assert(pathing:find('classify_route(s)', read_pos, true))
 local write_pos = assert(pathing:find('write_path_file(s)', classify_pos, true))
 assert_true(read_pos < classify_pos and classify_pos < write_pos, 'route recovery must happen before final classification/write')
 
+local parity = read_file('UnifiedCombatWinForms/MainForm.ParityLogic.cs')
+local add_start = assert(parity:find('private void OnPathHunterAdd()', 1, true))
+local remove_start = assert(parity:find('private void OnPathHunterRemove()', add_start, true))
+local next_section = assert(parity:find('private static string NormalizeTankEnmityEntry', remove_start, true))
+local add_section = parity:sub(add_start, remove_start - 1)
+local remove_section = parity:sub(remove_start, next_section - 1)
+assert_true(add_section:find('CaptureWorkingProfileFromUi(sid);', 1, true) ~= nil, 'Hunter add must capture the working profile before a snapshot can erase the local row')
+assert_true(remove_section:find('CaptureWorkingProfileFromUi(sid);', 1, true) ~= nil, 'Hunter remove must capture the working profile before a snapshot can restore the removed row')
+
 local scheduler = read_file('unified_scheduler.lua')
 assert_true(
     scheduler:find("scheduler.p1_pending_mark_complete(ctx.now, ('pull_no_send:%s')", 1, true) ~= nil,
