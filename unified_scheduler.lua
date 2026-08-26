@@ -5054,7 +5054,7 @@ local function p1_dispatch_pull_control(selected, settings)
 		scheduler.p1_set_pending_globals()
 		_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 	else
-		p1_pending_mark_complete(ctx.now, ('pull_no_send:%s'):format(tostring(reason or 'BLOCK')))
+		scheduler.p1_pending_mark_complete(ctx.now, ('pull_no_send:%s'):format(tostring(reason or 'BLOCK')))
 		scheduler.p1_set_pending_globals()
 		_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
 	end

@@ -1146,6 +1146,12 @@ function mod.tick()
 	if path_recording_enabled(s) then
 		maybe_capture_point(s)
 	elseif last_recording then
+		-- Route points are owned by the path file, not profile-v2. A profile
+		-- reload can therefore clear runtime points before the recording OFF
+		-- transition is observed. Recover the recorded route before finalizing.
+		if type(s.path_points) ~= 'table' or #s.path_points == 0 then
+			read_path_file(s)
+		end
 		classify_route(s)
 		write_path_file(s)
 	else
