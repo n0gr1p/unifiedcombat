@@ -18,7 +18,7 @@ jobs:
           ref: fix/path-hunter-recording
           fetch-depth: 0
 
-      - name: Apply targeted fixes
+      - name: Apply targeted fixes and regression guard
         shell: bash
         run: |
           python3 - <<'PY'
@@ -32,21 +32,12 @@ jobs:
                   raise SystemExit(f'{path}: expected one match, found {count}: {old!r}')
               p.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-          # 1) Hunter target names are already captured in the flat UI profile as
-          #    path_hunter_entries ("id:name|id:name"). ParseNameList intentionally
-          #    strips the id prefix and de-duplicates names, so serialize that list
-          #    instead of hard-coding an empty durable list.
           replace_once(
               'UnifiedCombatWinForms/StructuredProfileV2Writer.cs',
               '                    .Add("hunter_targets", EmptyList())',
               '                    .Add("hunter_targets", ParseNameList(ReadString(flatProfile, "path_hunter_entries", "")))',
           )
 
-          # 2) Saving profile-v2 intentionally projects an empty path point list because
-          #    the route file owns recorded points. When Save flips recording OFF, that
-          #    projection can arrive before uc_pathing observes the falling edge. Recover
-          #    the just-recorded route from disk before classify/write so a good file is
-          #    never replaced with points = {}.
           replace_once(
               'uc_pathing.lua',
               "\telseif last_recording then\n\t\tclassify_route(s)\n\t\twrite_path_file(s)",
@@ -61,17 +52,12 @@ jobs:
               "\t\twrite_path_file(s)",
           )
 
-          # 3) Scheduler extraction moved pending completion behind the scheduler wrapper,
-          #    but path pull control retained one stale unqualified call. That is the
-          #    exact nil-global crash reported at unified_scheduler.lua:5057.
           replace_once(
               'unified_scheduler.lua',
               "\t\tp1_pending_mark_complete(ctx.now, ('pull_no_send:%s'):format(tostring(reason or 'BLOCK')))",
               "\t\tscheduler.p1_pending_mark_complete(ctx.now, ('pull_no_send:%s'):format(tostring(reason or 'BLOCK')))",
           )
 
-          # Persistent regression guard. This is deliberately source-contract focused:
-          # the three bugs were wiring/persistence regressions, not algorithm changes.
           Path('tests/replay/harness/selftest_path_hunter_regressions.lua').write_text(r'''local function assert_true(condition, message)
               if not condition then
                   error(message or 'assertion failed')
@@ -88,7 +74,7 @@ jobs:
               return content
           end
 
-          local writer = read_file('UnifiedCombatWinForms\\StructuredProfileV2Writer.cs')
+          local writer = read_file('UnifiedCombatWinForms/StructuredProfileV2Writer.cs')
           assert_true(
               writer:find('.Add("hunter_targets", ParseNameList(ReadString(flatProfile, "path_hunter_entries", "")))', 1, true) ~= nil,
               'profile-v2 writer must persist path hunter target names'
@@ -100,8 +86,7 @@ jobs:
 
           local pathing = read_file('uc_pathing.lua')
           local recovery = "if type(s.path_points) ~= 'table' or #s.path_points == 0 then"
-          assert_true(pathing:find(recovery, 1, true) ~= nil, 'recording OFF must recover route points after profile reload')
-          local recover_pos = assert(pathing:find(recovery, 1, true))
+          local recover_pos = assert(pathing:find(recovery, 1, true), 'recording OFF must recover route points after profile reload')
           local read_pos = assert(pathing:find('read_path_file(s)', recover_pos, true))
           local classify_pos = assert(pathing:find('classify_route(s)', read_pos, true))
           local write_pos = assert(pathing:find('write_path_file(s)', classify_pos, true))
@@ -119,22 +104,6 @@ jobs:
 
           print('path hunter regression guards: PASS')
           ''', encoding='utf-8')
-          PY
-
-      - name: Validate patches
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          writer = Path('UnifiedCombatWinForms/StructuredProfileV2Writer.cs').read_text(encoding='utf-8')
-          pathing = Path('uc_pathing.lua').read_text(encoding='utf-8')
-          scheduler = Path('unified_scheduler.lua').read_text(encoding='utf-8')
-          assert 'ParseNameList(ReadString(flatProfile, "path_hunter_entries", ""))' in writer
-          assert '.Add("hunter_targets", EmptyList())' not in writer
-          assert "if type(s.path_points) ~= 'table' or #s.path_points == 0 then" in pathing
-          assert "scheduler.p1_pending_mark_complete(ctx.now, ('pull_no_send:%s')" in scheduler
-          assert "\n\t\tp1_pending_mark_complete(ctx.now, ('pull_no_send:%s')" not in scheduler
-          print('source validation: PASS')
           PY
 
       - name: Install Lua 5.1
@@ -157,6 +126,6 @@ jobs:
           rm .github/workflows/apply-path-hunter-hotfix.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add UnifiedCombatWinForms/StructuredProfileV2Writer.cs uc_pathing.lua unified_scheduler.lua tests/replay/harness/selftest_path_hunter_regressions.lua .github/workflows/apply-path-hunter-hotfix.yml
+          git add -A
           git commit -m "Fix path recording and hunter pull regressions"
           git push origin HEAD:fix/path-hunter-recording
