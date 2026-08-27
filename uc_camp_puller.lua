@@ -15,8 +15,16 @@ function M.movement_reserved(config)
 	if type(config.enabled) ~= 'boolean' then
 		error('normalized combat.pulling configuration is required for movement ownership')
 	end
-	return config.enabled == true
-		and rawget(_G, 'Start_Engine') == true
+	if config.enabled ~= true or rawget(_G, 'Start_Engine') ~= true then
+		return false
+	end
+	local status = rawget(_G, 'UC_CAMP_PULLER_STATUS')
+	if type(status) == 'table'
+		and tostring(status.state or '') == 'IDLE'
+		and status.demanded == false then
+		return false
+	end
+	return true
 end
 
 local function require_function(deps, name)
@@ -116,6 +124,7 @@ function M.new(deps)
 			last_intent = '',
 			active_count = 0,
 			quota = 0,
+			demanded = nil,
 			camp_distance = nil,
 			target_camp_distance = nil,
 			action_range = nil,
@@ -188,6 +197,7 @@ function M.new(deps)
 			last_intent = provider.state.last_intent,
 			active_count = provider.state.active_count,
 			quota = provider.state.quota,
+			demanded = provider.state.demanded,
 			camp_distance = provider.state.camp_distance,
 			target_camp_distance = provider.state.target_camp_distance,
 			target_distance = provider.state.target_distance,
@@ -596,6 +606,7 @@ function M.new(deps)
 		if config.enabled ~= true or rawget(_G, 'Start_Engine') ~= true then
 			return false
 		end
+		provider.state.demanded = nil
 		if ctx.player_present == false
 			or (type(ctx.player) == 'table'
 				and type(ctx.player.vitals) == 'table'
@@ -621,6 +632,7 @@ function M.new(deps)
 		local friendly_claims = get_friendly_claims()
 		observe_pull_registry(ctx, friendly_claims)
 		local demanded, demand = policy.pull_demand(config, ctx.mob_array, friendly_claims, pull_registry)
+		provider.state.demanded = demanded
 		if not demanded then
 			publish('PULL_QUOTA_SATISFIED', demand)
 			return false
@@ -641,6 +653,9 @@ function M.new(deps)
 				publish(config.enabled == true and 'PULL_ENGINE_OFF' or 'PULL_DISABLED')
 			end
 			return
+		end
+		if provider.state.name == 'IDLE' then
+			provider.state.demanded = nil
 		end
 		if ctx.player_present == false
 			or (type(ctx.player) == 'table'
@@ -679,6 +694,7 @@ function M.new(deps)
 		local friendly_claims = get_friendly_claims()
 		local zone_id = observe_pull_registry(ctx, friendly_claims)
 		local demanded, demand = policy.pull_demand(config, ctx.mob_array, friendly_claims, pull_registry)
+		provider.state.demanded = demanded
 
 		if action_not_dispatched() and not demanded then
 			provider.state.name = 'RETURN_TO_CAMP'
@@ -962,6 +978,7 @@ function M.new(deps)
 			last_intent = provider.state.last_intent,
 			active_count = provider.state.active_count,
 			quota = provider.state.quota,
+			demanded = provider.state.demanded,
 			camp_distance = provider.state.camp_distance,
 			target_camp_distance = provider.state.target_camp_distance,
 			target_distance = provider.state.target_distance,
@@ -983,6 +1000,7 @@ function M.new(deps)
 	end
 
 	function provider.reset(reason)
+		provider.state.demanded = nil
 		reset(reason)
 	end
 
