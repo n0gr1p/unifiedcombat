@@ -3832,6 +3832,9 @@ public partial class MainForm
         {
             _pathHunterRows.Add((NextId(_pathHunterRows), name));
             RebindPathHunterListUi();
+            // Hunter edits are profile-local until explicit Save. Capture immediately
+            // so a subsequent mirror refresh cannot rebuild the list from stale state.
+            CaptureWorkingProfileFromUi(sid);
         }
 
         Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_add", ["name"] = name });
@@ -3860,6 +3863,8 @@ public partial class MainForm
         {
             _pathHunterRows.RemoveAt(idx);
             RebindPathHunterListUi();
+            // Keep the per-session working profile authoritative for unsaved list edits.
+            CaptureWorkingProfileFromUi(sid);
         }
 
         Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_remove", ["index"] = idx + 1 });

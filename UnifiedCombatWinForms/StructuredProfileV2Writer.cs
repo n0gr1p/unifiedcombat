@@ -486,7 +486,7 @@ internal static class StructuredProfileV2Writer
                     .Add("points", EmptyList())
                     .Add("party_gate_yalms", ReadDouble(flatProfile, "path_party_gate_yalms", 3.0))
                     .Add("resume_index_window", ReadInt(flatProfile, "path_resume_index_window", 12))
-                    .Add("hunter_targets", EmptyList())
+                    .Add("hunter_targets", ParseNameList(ReadString(flatProfile, "path_hunter_entries", "")))
                     .Add("hunter_max_z_delta", ReadDouble(flatProfile, "path_hunter_max_z_delta", 2.0))
                     .Add("hunter_max_target_range", ReadDouble(flatProfile, "path_hunter_max_target_range", 20.0))
                     .Add("hunter_claim_timeout_s", ReadDouble(flatProfile, "path_hunter_claim_timeout_s", 4.0))
