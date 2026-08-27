@@ -138,7 +138,10 @@ local ctx = {
 
 local original_engine = rawget(_G, 'Start_Engine')
 rawset(_G, 'Start_Engine', true)
-assert_true(provider.movement_reserved(ctx.settings.camp_pulling), 'enabled camp pulling must reserve movement while idle')
+assert_true(
+	provider.movement_reserved(ctx.settings.camp_pulling),
+	'enabled camp pulling must reserve movement until pull demand has been evaluated'
+)
 
 start_lane_available = false
 start_lane_reason = 'BRD_LANE:brd_targeted_pianissimo'
@@ -153,6 +156,11 @@ assert_equal(
 	'PULL_WAIT_ACTION_LANE:BRD_LANE:brd_targeted_pianissimo',
 	'blocked action-lane handoff reason mismatch'
 )
+assert_equal(provider.status_snapshot().demanded, true, 'blocked pull demand must remain unsatisfied')
+assert_true(
+	provider.movement_reserved(ctx.settings.camp_pulling),
+	'unsatisfied pull demand must reserve movement even while the provider remains idle'
+)
 start_lane_available = true
 start_lane_reason = ''
 
@@ -164,6 +172,10 @@ assert_equal(out[1].target_id, mob.id, 'direct candidate approach must retain th
 assert_equal(timeline_events[#timeline_events].event_code, 'CAMP_PULL_STATE', 'state transition must be written to the action timeline')
 assert_equal(timeline_events[#timeline_events].fields.target_distance, 20, 'timeline must include observed target distance')
 assert_equal(provider.status_snapshot().state, 'APPROACH', 'candidate selection must enter approach without changing the game target')
+assert_true(
+	provider.movement_reserved(ctx.settings.camp_pulling),
+	'an active pull journey must reserve movement'
+)
 
 ctx.now = 1.2
 out = {}
@@ -240,6 +252,15 @@ assert_equal(out[1].action_type, 'camp_stop', 'camp arrival stop mismatch')
 provider.note_dispatch(out[1], ctx.now, config)
 assert_equal(provider.status_snapshot().state, 'IDLE', 'camp stop must complete journey')
 assert_equal(provider.status_snapshot().tracked_count, 1, 'successful reacted pull must remain tracked after return')
+assert_equal(provider.status_snapshot().demanded, false, 'satisfied quota must be retained across pull completion')
+assert_true(
+	not provider.movement_reserved(ctx.settings.camp_pulling),
+	'idle camp pulling must release movement once pull demand is satisfied'
+)
+assert_true(
+	not camp_puller.movement_reserved(ctx.settings.camp_pulling),
+	'shared camp-puller movement ownership must release when pull demand is satisfied'
+)
 assert_true(#ipc_messages > 0, 'successful reacted pull must publish registry state over IPC')
 pull_registry.reset('selftest_next_scenario')
 
@@ -252,6 +273,11 @@ ctx.now = 3.3
 out = {}
 provider.collect(ctx, out)
 assert_equal(provider.status_snapshot().state, 'APPROACH', 'engine-stop scenario must start an active journey')
+assert_equal(provider.status_snapshot().demanded, true, 'new pull demand must become unsatisfied after registry reset')
+assert_true(
+	provider.movement_reserved(ctx.settings.camp_pulling),
+	'new pull demand must reclaim movement ownership'
+)
 rawset(_G, 'Start_Engine', false)
 assert_true(not provider.movement_reserved(ctx.settings.camp_pulling), 'engine stop must release camp-puller movement reservation')
 ctx.now = 3.4
@@ -295,9 +321,20 @@ provider.collect(ctx, out)
 assert_equal(#out, 1, 'quota becoming satisfied before dispatch must terminate the selected journey')
 assert_equal(out[1].action_type, 'camp_stop', 'quota cancellation at camp must emit an explicit stop')
 assert_equal(provider.status_snapshot().state, 'RETURN_TO_CAMP', 'quota cancellation must enter return state')
+assert_equal(provider.status_snapshot().demanded, false, 'quota cancellation must record satisfied pull demand')
+assert_true(
+	provider.movement_reserved(ctx.settings.camp_pulling),
+	'an active return journey must keep movement reserved even after demand becomes satisfied'
+)
 assert_true(
 	provider.status_snapshot().detail == 'PULL_CAMP_ARRIVED',
 	'quota cancellation at camp must stop without dispatching the pull action'
+)
+provider.note_dispatch(out[1], ctx.now, config)
+assert_equal(provider.status_snapshot().state, 'IDLE', 'quota cancellation stop must complete the return journey')
+assert_true(
+	not provider.movement_reserved(ctx.settings.camp_pulling),
+	'movement must release immediately after a satisfied return journey completes'
 )
 
 local scheduler_file = assert(io.open('unified_scheduler.lua', 'rb'))
@@ -323,11 +360,11 @@ assert_true(
 )
 assert_true(
 	scheduler_source:find("if scheduler.providers.camp_puller.movement_reserved(camp_pulling_config()) then", 1, true) ~= nil,
-	'enabled camp pulling must reserve movement even while idle at camp'
+	'the scheduler must defer movement according to the camp-puller reservation decision'
 )
 assert_true(
 	scheduler_source:find("return false, 'MOVE_COORD_CAMP_PULL_RESERVED'", 1, true) ~= nil,
-	'normal movement coordinator must yield while camp pulling is enabled'
+	'normal movement coordinator must yield while camp pulling owns movement'
 )
 assert_true(
 	scheduler_source:find('pull_action_in_flight = function(target_id, action_type, action_name)', 1, true) ~= nil,
