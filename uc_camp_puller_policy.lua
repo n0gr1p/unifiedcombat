@@ -1,3 +1,5 @@
+local targeting_common = require('uc_targeting_common')
+
 local M = {}
 
 local function finite_number(value)
@@ -64,6 +66,19 @@ local function match_target(name, config, exact, substring)
 	return matched
 end
 
+local function threat_recovery_eligible(mob, friendly_claims, now)
+	if type(mob) ~= 'table'
+		or mob.valid_target ~= true
+		or tonumber(mob.spawn_type) ~= 16
+		or (tonumber(mob.hpp) or 0) <= 0
+		or tonumber(mob.status) ~= 1
+		or (tonumber(mob.claim_id) or 0) ~= 0 then
+		return false
+	end
+	local aggressive = targeting_common.mob_targets_friendly_member(mob, friendly_claims, now)
+	return aggressive == true
+end
+
 function M.pull_demand(config, mobs, friendly_claims, pull_registry)
 	if type(config) ~= 'table'
 		or type(mobs) ~= 'table'
@@ -126,13 +141,13 @@ function M.select_candidate(config, ctx, anchor, friendly_claims, cooldowns, ign
 		local mob_z = finite_number(mob and mob.z)
 		local z_delta = mob_z and math.abs(mob_z - me_z) or nil
 		local cooldown_until = tonumber(cooldowns[id]) or 0
+		local normal_idle = hpp == 100 and status == 0 and claim_id == 0
+		local threat_recovery = threat_recovery_eligible(mob, friendly_claims, ctx.now)
 		if id > 0
 			and policy ~= nil
 			and mob.valid_target == true
 			and spawn_type == 16
-			and hpp == 100
-			and status == 0
-			and claim_id == 0
+			and (normal_idle or threat_recovery)
 			and camp_distance ~= nil
 			and camp_distance <= config.leash_yalms
 			and z_delta ~= nil
@@ -144,11 +159,15 @@ function M.select_candidate(config, ctx, anchor, friendly_claims, cooldowns, ign
 				name = tostring(mob.name),
 				priority = policy.priority,
 				camp_distance = camp_distance,
+				threat_recovery = threat_recovery,
 				mob = mob,
 			}
 		end
 	end
 	table.sort(candidates, function(a, b)
+		if a.threat_recovery ~= b.threat_recovery then
+			return a.threat_recovery == true
+		end
 		if a.priority ~= b.priority then
 			return a.priority > b.priority
 		end
@@ -157,7 +176,11 @@ function M.select_candidate(config, ctx, anchor, friendly_claims, cooldowns, ign
 		end
 		return a.id < b.id
 	end)
-	return candidates[1], candidates[1] and 'PULL_CANDIDATE_SELECTED' or 'PULL_NO_CANDIDATE'
+	local selected = candidates[1]
+	if selected == nil then
+		return nil, 'PULL_NO_CANDIDATE'
+	end
+	return selected, selected.threat_recovery and 'PULL_THREAT_RECOVERY_SELECTED' or 'PULL_CANDIDATE_SELECTED'
 end
 
 function M.candidate_eligible(config, ctx, anchor, cooldowns, ignored, mob)
@@ -178,11 +201,18 @@ function M.candidate_eligible(config, ctx, anchor, cooldowns, ignored, mob)
 	if match_target(mob.name, config, exact, substring) == nil then
 		return false, 'PULL_TARGET_POLICY_MISMATCH'
 	end
+	local hpp = tonumber(mob.hpp) or 0
+	local status = tonumber(mob.status) or 0
+	local claim_id = tonumber(mob.claim_id) or 0
+	local normal_idle = hpp == 100 and status == 0 and claim_id == 0
+	local threat_recovery = false
+	if status == 1 and claim_id == 0 and hpp > 0 then
+		local _, friendly_claims = targeting_common.build_friendly_claims()
+		threat_recovery = threat_recovery_eligible(mob, friendly_claims, ctx.now)
+	end
 	if mob.valid_target ~= true
 		or tonumber(mob.spawn_type) ~= 16
-		or tonumber(mob.hpp) ~= 100
-		or tonumber(mob.status) ~= 0
-		or (tonumber(mob.claim_id) or 0) ~= 0 then
+		or not (normal_idle or threat_recovery) then
 		return false, 'PULL_TARGET_STATE_INVALID'
 	end
 	local camp_distance = distance_2d(mob, anchor)
@@ -198,7 +228,7 @@ function M.candidate_eligible(config, ctx, anchor, cooldowns, ignored, mob)
 	if ignored(mob) then
 		return false, 'PULL_TARGET_IGNORED'
 	end
-	return true, 'PULL_TARGET_ELIGIBLE'
+	return true, threat_recovery and 'PULL_THREAT_RECOVERY_ELIGIBLE' or 'PULL_TARGET_ELIGIBLE'
 end
 
 function M.distance_2d(a, b)

@@ -103,11 +103,16 @@ function M.mob_targets_friendly_member(mob, friendly_id_set, now)
 		error('mob_targets_friendly_member requires current time')
 	end
 
+	local live_nonfriendly_target = false
 	local target_index = tonumber(mob.target_index) or 0
 	if target_index > 0 then
 		local target = windower.ffxi.get_mob_by_index(target_index)
-		if target and friendly_id_set[tonumber(target.id) or 0] == true then
+		local target_id = tonumber(target and target.id) or 0
+		if target_id > 0 and friendly_id_set[target_id] == true then
 			return true, 'target_index'
+		end
+		if target_id > 0 and target_id ~= (tonumber(mob.id) or 0) then
+			live_nonfriendly_target = true
 		end
 	end
 
@@ -115,14 +120,33 @@ function M.mob_targets_friendly_member(mob, friendly_id_set, now)
 	if direct_target_id > 0 and friendly_id_set[direct_target_id] == true then
 		return true, 'target_id'
 	end
+	if direct_target_id > 0 and direct_target_id ~= (tonumber(mob.id) or 0) then
+		live_nonfriendly_target = true
+	end
 
 	local action_targets = rawget(_G, 'UC_MOB_LAST_ACTION_TARGETS')
 	local record = type(action_targets) == 'table' and action_targets[tonumber(mob.id) or 0] or nil
 	if type(record) == 'table' then
 		local age = observed_at - (tonumber(record.at) or 0)
 		local action_target_id = tonumber(record.target_id) or 0
-		if age >= 0 and age <= 5.0 and friendly_id_set[action_target_id] == true then
-			return true, 'recent_action'
+		if age >= 0 and friendly_id_set[action_target_id] == true then
+			if age <= 5.0 then
+				return true, 'recent_action'
+			end
+
+			-- A mob's last observed action remains useful hostility evidence after the
+			-- short packet-freshness window when the mob is still an unresolved threat.
+			-- Sleep commonly suppresses new hostile actions without resolving aggro.
+			local claim_id = tonumber(mob.claim_id) or 0
+			local hpp = tonumber(mob.hpp) or 0
+			local status = tonumber(mob.status) or 0
+			local spawn_type = tonumber(mob.spawn_type) or 0
+			local foreign_claim = claim_id > 0 and friendly_id_set[claim_id] ~= true
+			local reset_idle = claim_id == 0 and status == 0 and hpp == 100
+			local invalid = mob.valid_target == false or (spawn_type ~= 0 and spawn_type ~= 16) or hpp <= 0
+			if not invalid and not foreign_claim and not reset_idle and not live_nonfriendly_target then
+				return true, 'remembered_action'
+			end
 		end
 	end
 

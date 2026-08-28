@@ -140,6 +140,62 @@ local cooldown_candidate = policy.select_candidate(
 )
 assert_equal(cooldown_candidate.id, 302, 'target cooldown filtering mismatch')
 
+local sleeping_threat = {
+	id = 303,
+	name = 'Apex Pugil',
+	valid_target = true,
+	spawn_type = 16,
+	hpp = 100,
+	status = 1,
+	claim_id = 0,
+	target_index = 0,
+	target = 0,
+	x = 12,
+	y = 0,
+	z = 0,
+}
+_G.UC_MOB_LAST_ACTION_TARGETS = {
+	[303] = {
+		target_id = 100,
+		at = 1,
+		category = 'mob_tp_finish',
+	},
+}
+local threat_ctx = {
+	now = 10,
+	me = { z = 0 },
+	mob_array = {
+		ctx.mob_array[2],
+		sleeping_threat,
+	},
+}
+local threat_candidate, threat_reason = policy.select_candidate(
+	config,
+	threat_ctx,
+	{ x = 0, y = 0 },
+	{ [100] = true },
+	{},
+	function()
+		return false
+	end
+)
+assert_equal(threat_candidate.id, 303, 'remembered party threat must outrank an ordinary idle pull candidate')
+assert_equal(threat_candidate.threat_recovery, true, 'remembered party threat must be marked as threat recovery')
+assert_equal(threat_reason, 'PULL_THREAT_RECOVERY_SELECTED', 'remembered party threat selection reason mismatch')
+
+_G.UC_MOB_LAST_ACTION_TARGETS[303].target_id = 999
+threat_candidate = policy.select_candidate(
+	config,
+	threat_ctx,
+	{ x = 0, y = 0 },
+	{ [100] = true },
+	{},
+	function()
+		return false
+	end
+)
+assert_equal(threat_candidate.id, 302, 'new non-friendly action evidence must invalidate remembered party threat recovery')
+
 config.match_mode = 'substring'
 config.targets = {
 	{ name = 'Crab', priority = 1 },
@@ -156,4 +212,5 @@ candidate = policy.select_candidate(
 )
 assert_equal(candidate.id, 301, 'substring target matching mismatch')
 
+_G.UC_MOB_LAST_ACTION_TARGETS = nil
 io.stdout:write('selftest_camp_puller_policy: OK\n')
