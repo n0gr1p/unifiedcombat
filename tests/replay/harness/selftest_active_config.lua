@@ -99,6 +99,7 @@ local function build_flat_settings()
 		ws_mode = 'smart',
 		weaponskill_allow_aoe = false,
 		fast_skillchain = true,
+		skillchain_target = 'light',
 		autotarget = true,
 		spam = true,
 		closer = true,
@@ -285,6 +286,7 @@ local function main()
 	assert_equal(projected.ws1, 'Savage Blade', 'projected ws1 mismatch')
 	assert_equal(projected.weaponskill_allow_aoe, false, 'projected Smart WS AoE preference mismatch')
 	assert_equal(projected.fast_skillchain, true, 'projected Fast Skillchain preference mismatch')
+	assert_equal(projected.skillchain_target, 'light', 'projected skillchain target mismatch')
 	assert_equal(projected.sleep, true, 'projected sleep mismatch')
 	assert_equal(projected.sleepspell, 'Horde Lullaby II', 'projected sleep mirror mismatch')
 	assert_equal(projected.sleepspells[1], 'Horde Lullaby II', 'projected sleep list mismatch')

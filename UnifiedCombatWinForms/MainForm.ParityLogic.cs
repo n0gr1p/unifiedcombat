@@ -291,6 +291,9 @@ public partial class MainForm
             _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
             _chkWsAllowAoe.Checked = SessionStateHelper.GetBool(s, "weaponskill_allow_aoe", true);
             _chkFastSkillchain.Checked = SessionStateHelper.GetBool(s, "fast_skillchain", false);
+            _skillchainTargetCombo.SelectedItem = SkillchainTargetRuntimeToUi(
+                SessionStateHelper.GetString(s, "skillchain_target", "auto")
+            );
             var amVal = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amVal) && !list.Contains(amVal))
             {
@@ -344,6 +347,7 @@ public partial class MainForm
             _wsMinimumTp.Value = 1000;
             _chkWsAllowAoe.Checked = true;
             _chkFastSkillchain.Checked = false;
+            _skillchainTargetCombo.SelectedItem = "Auto";
             _pullerCombo.Items.Clear();
 			_pullerLeashSource.SelectedItem = "Player";
 			_campStatus.Text = "Camp not set";
@@ -657,6 +661,9 @@ public partial class MainForm
             _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
             _chkWsAllowAoe.Checked = SessionStateHelper.GetBool(s, "weaponskill_allow_aoe", true);
             _chkFastSkillchain.Checked = SessionStateHelper.GetBool(s, "fast_skillchain", false);
+            _skillchainTargetCombo.SelectedItem = SkillchainTargetRuntimeToUi(
+                SessionStateHelper.GetString(s, "skillchain_target", "auto")
+            );
             var amDisplay = new List<string>(wsOpts);
             var amRaw = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amRaw) && !amDisplay.Contains(amRaw))
@@ -1514,6 +1521,48 @@ public partial class MainForm
         return string.Equals(runtime, "primary_no_sc", StringComparison.OrdinalIgnoreCase)
             ? "Primary Only (No SC)"
             : "Smart";
+    }
+
+    private static string SkillchainTargetUiToRuntime(string? value)
+    {
+        var normalized = (value ?? "Auto").Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "auto" or "compression" or "liquefaction" or "induration" or "reverberation"
+                or "transfixion" or "scission" or "detonation" or "impaction"
+                or "gravitation" or "fragmentation" or "distortion" or "fusion"
+                or "light" or "darkness" or "radiance" or "umbra" => normalized,
+            _ => throw new InvalidOperationException($"unsupported skillchain target: {value}"),
+        };
+    }
+
+    private static string SkillchainTargetRuntimeToUi(string? value)
+    {
+        var normalized = SkillchainTargetUiToRuntime(value);
+        return normalized == "auto"
+            ? "Auto"
+            : char.ToUpperInvariant(normalized[0]) + normalized[1..];
+    }
+
+    private void OnSkillchainTargetSelected()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+        var target = SkillchainTargetUiToRuntime(_skillchainTargetCombo.SelectedItem?.ToString());
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "skillchain_target",
+            ["value"] = target,
+        });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void OnWsModeSelected()
@@ -5495,6 +5544,12 @@ public partial class MainForm
             ["op"] = "set",
             ["path"] = "fast_skillchain",
             ["value"] = _chkFastSkillchain.Checked,
+        });
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "skillchain_target",
+            ["value"] = SkillchainTargetUiToRuntime(_skillchainTargetCombo.SelectedItem?.ToString()),
         });
         Forward(sid, new Dictionary<string, object?>
         {

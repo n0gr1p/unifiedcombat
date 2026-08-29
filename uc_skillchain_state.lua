@@ -31,6 +31,38 @@ local property_levels = {
 	Umbra = 4,
 }
 
+local skillchain_target_properties = {
+	auto = 'Auto',
+	compression = 'Compression',
+	liquefaction = 'Liquefaction',
+	induration = 'Induration',
+	reverberation = 'Reverberation',
+	transfixion = 'Transfixion',
+	scission = 'Scission',
+	detonation = 'Detonation',
+	impaction = 'Impaction',
+	gravitation = 'Gravitation',
+	fragmentation = 'Fragmentation',
+	distortion = 'Distortion',
+	fusion = 'Fusion',
+	light = 'Light',
+	darkness = 'Darkness',
+	radiance = 'Radiance',
+	umbra = 'Umbra',
+}
+
+function M.normalize_skillchain_target(value)
+	local key = tostring(value or 'auto'):match('^%s*(.-)%s*$'):lower()
+	local property = skillchain_target_properties[key]
+	if property == nil then
+		error('unsupported skillchain target: ' .. tostring(value))
+	end
+	if key == 'auto' then
+		return key, nil
+	end
+	return key, property
+end
+
 local transitions = {
 	Compression = {
 		Transfixion = { level = 1, property = 'Transfixion' },
@@ -240,6 +272,62 @@ local function aeonic_result_for(transition, actor_context, action_count)
 		}
 	end
 	return transition
+end
+
+local function skillchain_target_distance(start_property, target_property, actor_context, action_count, start_level)
+	local start = tostring(start_property or '')
+	local target = tostring(target_property or '')
+	if start == '' or target == '' then
+		return nil
+	end
+	if start == target then
+		return 0
+	end
+	-- Level-4 results are terminal. A non-Ultimate Double Light or Double
+	-- Darkness cannot be used as an intermediate node until Aeonic eligibility
+	-- becomes valid on a later, impossible action.
+	if tonumber(start_level) == 4 then
+		return nil
+	end
+	local queue = {
+		{
+			property = start,
+			action_count = tonumber(action_count) or 1,
+			distance = 0,
+		},
+	}
+	local head = 1
+	local seen = {}
+	seen[start .. ':' .. tostring(tonumber(action_count) or 1)] = true
+	while head <= #queue do
+		local current = queue[head]
+		head = head + 1
+		if current.distance < 8 then
+			local outgoing = transitions[current.property]
+			if outgoing then
+				for _, transition in pairs(outgoing) do
+					local result = aeonic_result_for(copy_transition(transition), actor_context, current.action_count)
+					local property = tostring(result and result.property or '')
+					if property == target then
+						return current.distance + 1
+					end
+					if property ~= '' and tonumber(result.level) ~= 4 then
+						local next_count = current.action_count + 1
+						local seen_key = property .. ':' .. tostring(next_count)
+						if not seen[seen_key] then
+							seen[seen_key] = true
+							queue[#queue + 1] = {
+								property = property,
+								action_count = next_count,
+								distance = current.distance + 1,
+							}
+						end
+					end
+				end
+			end
+		end
+	end
+	return nil
 end
 
 local State = {}
@@ -472,7 +560,7 @@ function State:_reject_continuation(state, target_id, reason, now)
 	return nil, reason
 end
 
-function State:plan_continuation(target_id, candidates, actor_context, now_value)
+function State:plan_continuation(target_id, candidates, actor_context, now_value, skillchain_target)
 	local target = tonumber(target_id) or 0
 	if target <= 0 then
 		return self:_reject_continuation(nil, target, 'SC_NO_TARGET', tonumber(now_value) or self.now())
@@ -505,19 +593,44 @@ function State:plan_continuation(target_id, candidates, actor_context, now_value
 		return self:_reject_continuation(state, target, 'SC_WINDOW_EXPIRED', now)
 	end
 	local latest_safe_at = expiry - M.LATEST_WINDOW_GUARD_S
+	local target_key, target_property = M.normalize_skillchain_target(skillchain_target)
+	local targeted = target_property ~= nil
 	local chosen = nil
 	local chosen_result = nil
+	local chosen_distance = nil
+	local saw_continuation = false
 	for i = 1, #(candidates or {}) do
 		local candidate = candidates[i]
 		local result = M.resolve_properties(state.active_properties, candidate.effective_properties, state.chainbound_level)
 		result = aeonic_result_for(result, actor_context, state.action_count)
-		if result and (not chosen_result or result.level >= chosen_result.level) then
-			chosen = candidate
-			chosen_result = result
+		if result then
+			saw_continuation = true
+			if not targeted then
+				-- Preserve legacy Auto behavior exactly, including later-candidate tie preference.
+				if not chosen_result or result.level >= chosen_result.level then
+					chosen = candidate
+					chosen_result = result
+				end
+			else
+				local distance = skillchain_target_distance(
+					result.property,
+					target_property,
+					actor_context,
+					(tonumber(state.action_count) or 1) + 1,
+					result.level
+				)
+				-- Target mode is a hard gate. Equal routes preserve the existing candidate order.
+				if distance ~= nil and (chosen_distance == nil or distance < chosen_distance) then
+					chosen = candidate
+					chosen_result = result
+					chosen_distance = distance
+				end
+			end
 		end
 	end
 	if not chosen then
-		return self:_reject_continuation(state, target, 'SC_NO_CONTINUATION', now)
+		local reason = targeted and saw_continuation and 'SC_NO_PATH_TO_TARGET' or 'SC_NO_CONTINUATION'
+		return self:_reject_continuation(state, target, reason, now)
 	end
 	local preferred_execute_at = tonumber(state.preferred_execute_at) or state.earliest_close_at
 	local high_risk = preferred_execute_at > latest_safe_at
@@ -536,6 +649,8 @@ function State:plan_continuation(target_id, candidates, actor_context, now_value
 		effective_properties = copy_list(chosen.effective_properties),
 		predicted_result = tostring(chosen_result.property or ''),
 		predicted_level = tonumber(chosen_result.level) or 0,
+		skillchain_target = target_key,
+		target_distance = chosen_distance,
 		planned_at = now,
 		earliest_execute_at = tonumber(state.earliest_close_at) or 0,
 		preferred_execute_at = preferred_execute_at,
@@ -543,6 +658,7 @@ function State:plan_continuation(target_id, candidates, actor_context, now_value
 		high_risk = high_risk,
 		selection_reason = high_risk and 'SC_WINDOW_HIGH_RISK' or 'SC_READY',
 		requirements = {
+			skillchain_target = target_key,
 			weapon_signature = tostring(actor_context and actor_context.weapon_signature or ''),
 			aftermath_level = tonumber(actor_context and actor_context.aftermath_level) or 0,
 			diamond_aspis = actor_context and actor_context.diamond_aspis == true or false,
@@ -557,6 +673,8 @@ function State:plan_continuation(target_id, candidates, actor_context, now_value
 		closer_properties = table.concat(plan.effective_properties, ','),
 		predicted_result = plan.predicted_result,
 		predicted_level = plan.predicted_level,
+		skillchain_target = plan.skillchain_target,
+		target_distance = plan.target_distance,
 		earliest_execute_at = plan.earliest_execute_at,
 		preferred_execute_at = plan.preferred_execute_at,
 		latest_safe_at = plan.latest_safe_at,
@@ -646,6 +764,11 @@ function State:revalidate_plan(plan, context)
 	end
 	local actor_context = context.actor_context or {}
 	local requirements = plan.requirements or {}
+	local current_target_key = select(1, M.normalize_skillchain_target(context.skillchain_target))
+	local planned_target_key = tostring(requirements.skillchain_target or plan.skillchain_target or 'auto')
+	if current_target_key ~= planned_target_key then
+		return reject('SC_TARGET_POLICY_CHANGED')
+	end
 	if tostring(actor_context.weapon_signature or '') ~= tostring(requirements.weapon_signature or '')
 		or (tonumber(actor_context.aftermath_level) or 0) ~= (tonumber(requirements.aftermath_level) or 0)
 		or (actor_context.diamond_aspis == true) ~= (requirements.diamond_aspis == true) then
