@@ -64,6 +64,7 @@ local RUNTIME_LUA_FILES = {
     "uc_provider_defensive.lua",
 	"uc_provider_sleep_waker.lua",
     "uc_provider_enemy_buff_removal.lua",
+    "uc_provider_enemy_debuff_maintenance.lua",
     "uc_provider_maintenance.lua",
     "uc_provider_tank_enmity.lua",
     "uc_provider_target_control.lua",

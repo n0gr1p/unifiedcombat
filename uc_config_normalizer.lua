@@ -955,6 +955,10 @@ local function default_config(meta)
             enemy_buffs = {
                 remove = false,
             },
+            enemy_debuffs = {
+                enabled = false,
+                list = '',
+            },
             buffs = {
                 enabled = false,
                 self_only = true,
@@ -1539,7 +1543,7 @@ end
 local function normalize_defensive(source, config)
     local defensive = config.defensive
     local nested = get_path(source, { 'defensive' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'provider', 'cure', 'doom', 'charm_sleeper', 'sleep_waker', 'na', 'enemy_buffs', 'buffs', 'thresholds' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'provider', 'cure', 'doom', 'charm_sleeper', 'sleep_waker', 'na', 'enemy_buffs', 'enemy_debuffs', 'buffs', 'thresholds' }) then
         defensive.enabled = normalize_boolean(nested.enabled, defensive.enabled)
         defensive.provider = normalize_string(nested.provider, defensive.provider)
         local cure = is_table(nested.cure) and nested.cure or {}
@@ -1560,6 +1564,9 @@ local function normalize_defensive(source, config)
         defensive.na.priority = normalize_string(na.priority, defensive.na.priority)
         local enemy_buffs = is_table(nested.enemy_buffs) and nested.enemy_buffs or {}
         defensive.enemy_buffs.remove = normalize_boolean(enemy_buffs.remove, defensive.enemy_buffs.remove)
+        local enemy_debuffs = is_table(nested.enemy_debuffs) and nested.enemy_debuffs or {}
+        defensive.enemy_debuffs.enabled = normalize_boolean(enemy_debuffs.enabled, defensive.enemy_debuffs.enabled)
+        defensive.enemy_debuffs.list = normalize_string(enemy_debuffs.list, defensive.enemy_debuffs.list)
         local buffs = is_table(nested.buffs) and nested.buffs or {}
         defensive.buffs.enabled = normalize_boolean(buffs.enabled, defensive.buffs.enabled)
         defensive.buffs.self_only = normalize_boolean(buffs.self_only, defensive.buffs.self_only)
@@ -1585,6 +1592,8 @@ local function normalize_defensive(source, config)
         defensive.na.limit_enabled = normalize_boolean(first_path(source, { path('defensive_na_limit_enabled') }), defensive.na.limit_enabled)
         defensive.na.priority = normalize_string(first_path(source, { path('defensive_na_priority') }), defensive.na.priority)
         defensive.enemy_buffs.remove = normalize_boolean(first_path(source, { path('def_remove_enemy_buffs') }), defensive.enemy_buffs.remove)
+        defensive.enemy_debuffs.enabled = normalize_boolean(first_path(source, { path('def_maintain_enemy_debuffs') }), defensive.enemy_debuffs.enabled)
+        defensive.enemy_debuffs.list = normalize_string(first_path(source, { path('defensive_enemy_debuffs') }), defensive.enemy_debuffs.list)
         defensive.buffs.enabled = normalize_boolean(first_path(source, { path('defensive_buff_enabled') }), defensive.buffs.enabled)
         defensive.buffs.self_only = normalize_boolean(first_path(source, { path('defensive_buff_self_only') }), defensive.buffs.self_only)
         defensive.buffs.list = normalize_string(first_path(source, { path('defensive_buffs') }), defensive.buffs.list)

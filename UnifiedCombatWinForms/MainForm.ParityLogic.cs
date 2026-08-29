@@ -372,6 +372,7 @@ public partial class MainForm
             _defOverwrite.Text = "150";
             _defBuffs.Text = "";
             _defTargetedBuffs.Text = "";
+            _defEnemyDebuffs.Text = "";
             _pfFollowMinYalms.Text = "0.5";
             _pfFollowMaxYalms.Text = "50";
             _pfFightFollowMinYalms.Text = "3";
@@ -751,6 +752,7 @@ public partial class MainForm
             _defOverwrite.Text = SessionStateHelper.GetString(s, "defensive_overwrite_interval", "150");
             _defBuffs.Text = SessionStateHelper.GetString(s, "defensive_buffs");
             _defTargetedBuffs.Text = SessionStateHelper.GetString(s, "defensive_targeted_buffs");
+            _defEnemyDebuffs.Text = SessionStateHelper.GetString(s, "defensive_enemy_debuffs");
 
             _pathFileValue.Text = SessionStateHelper.GetString(s, "path_file_name");
             _pathRouteTypeValue.Text = SessionStateHelper.GetString(s, "path_route_type", "unknown");
@@ -4749,6 +4751,11 @@ public partial class MainForm
             "|",
             targetedRaw.Split('|').Select(x => x.Trim()).Where(x => x.Length > 0 && x.Contains(':'))
         );
+        var enemyDebuffsRaw = _defEnemyDebuffs.Text ?? "";
+        var enemyDebuffsClean = string.Join(
+            "|",
+            enemyDebuffsRaw.Replace(',', '|').Split('|').Select(x => x.Trim()).Where(x => x.Length > 0)
+        );
         _defCrit.Text = crit.ToString();
         _defMed.Text = med.ToString();
         _defHealMinTier.Text = healMinTier.ToString();
@@ -4758,6 +4765,7 @@ public partial class MainForm
         _defOverwrite.Text = overwrite.ToString();
         _defBuffs.Text = buffsClean;
         _defTargetedBuffs.Text = targetedClean;
+        _defEnemyDebuffs.Text = enemyDebuffsClean;
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_critical_hpp", ["value"] = crit });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_medium_hpp", ["value"] = med });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_min_tier_cure", ["value"] = healMinTier });
@@ -4768,6 +4776,7 @@ public partial class MainForm
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_overwrite_interval", ["value"] = overwrite });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_buffs", ["value"] = buffsClean });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_targeted_buffs", ["value"] = targetedClean });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_enemy_debuffs", ["value"] = enemyDebuffsClean });
     }
 
     private void SendAbilitiesUpdate()
@@ -5649,6 +5658,11 @@ public partial class MainForm
             "|",
             targetedRaw.Split('|').Select(x => x.Trim()).Where(x => x.Length > 0 && x.Contains(':'))
         );
+        var enemyDebuffsRaw = _defEnemyDebuffs.Text ?? "";
+        var enemyDebuffsClean = string.Join(
+            "|",
+            enemyDebuffsRaw.Replace(',', '|').Split('|').Select(x => x.Trim()).Where(x => x.Length > 0)
+        );
 
         _defCrit.Text = crit.ToString();
         _defMed.Text = med.ToString();
@@ -5659,6 +5673,7 @@ public partial class MainForm
         _defOverwrite.Text = overwrite.ToString();
         _defBuffs.Text = buffsClean;
         _defTargetedBuffs.Text = targetedClean;
+        _defEnemyDebuffs.Text = enemyDebuffsClean;
 
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_critical_hpp", ["value"] = crit });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_medium_hpp", ["value"] = med });
@@ -5670,5 +5685,6 @@ public partial class MainForm
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_overwrite_interval", ["value"] = overwrite });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_buffs", ["value"] = buffsClean });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_targeted_buffs", ["value"] = targetedClean });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_enemy_debuffs", ["value"] = enemyDebuffsClean });
     }
 }

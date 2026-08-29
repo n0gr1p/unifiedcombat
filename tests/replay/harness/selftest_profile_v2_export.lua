@@ -586,6 +586,8 @@ local function build_flat_settings()
 		defensive_doom_water = true,
 		def_charm_sleeper_enabled = false,
 		def_sleep_waker_enabled = false,
+		def_maintain_enemy_debuffs = false,
+		defensive_enemy_debuffs = '',
 		defensive_na_enabled = true,
 		defensive_na_limit_enabled = true,
 		defensive_na_priority = 'Poison|Paralyze|Dia',
@@ -663,6 +665,7 @@ local function build_expected_config()
 				minimum_tp = 2000,
 				allow_aoe = false,
 				fast_skillchain = true,
+				skillchain_target = 'auto',
 				wait_ignore_names = { 'Ally One', 'Ally Two' },
 				aftermath_enabled = true,
 				aftermath_ws = 'Atonement',
@@ -720,6 +723,10 @@ local function build_expected_config()
 			},
 			enemy_buffs = {
 				remove = false,
+			},
+			enemy_debuffs = {
+				enabled = false,
+				list = '',
 			},
 			buffs = {
 				enabled = true,

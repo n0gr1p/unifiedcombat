@@ -78,6 +78,9 @@ return {
             command_magic = 1,
             command_ability = 1,
         },
+        ["uc_pet_commands.lua"] = {
+            command_ability = 1,
+        },
         ["uc_scheduler_command_builder.lua"] = {
             command_magic = 1,
             command_ability = 1,

@@ -131,6 +131,8 @@ local function build_flat_settings()
         def_charm_sleeper_enabled = true,
         def_sleep_waker_enabled = true,
         def_remove_enemy_buffs = true,
+        def_maintain_enemy_debuffs = true,
+        defensive_enemy_debuffs = 'Dia III|Distract III',
         defensive_na_enabled = true,
         defensive_na_limit_enabled = true,
         defensive_na_priority = 'Poison|Paralyze|Dia',
@@ -328,6 +330,10 @@ local function build_nested_settings()
             },
             enemy_buffs = {
                 remove = true,
+            },
+            enemy_debuffs = {
+                enabled = true,
+                list = 'Dia III|Frazzle III',
             },
             buffs = {
                 enabled = true,
@@ -642,6 +648,8 @@ local function main()
     assert_equal(flat_config.defensive.charm_sleeper.enabled, true, 'flat charm sleeper mismatch')
     assert_equal(flat_config.defensive.sleep_waker.enabled, true, 'flat sleep waker mismatch')
     assert_equal(flat_config.defensive.enemy_buffs.remove, true, 'defensive enemy buffs mismatch')
+    assert_equal(flat_config.defensive.enemy_debuffs.enabled, true, 'flat enemy debuff maintenance mismatch')
+    assert_equal(flat_config.defensive.enemy_debuffs.list, 'Dia III|Distract III', 'flat enemy debuff list mismatch')
     assert_equal(flat_config.defensive.na.limit_enabled, true, 'flat status-removal limit mismatch')
     assert_equal(flat_config.defensive.na.priority, 'Poison|Paralyze|Dia', 'flat status-removal priority mismatch')
     assert_equal(flat_config.defensive.buffs.list, 'Haste', 'defensive buffs mismatch')
@@ -710,6 +718,8 @@ local function main()
     assert_equal(nested_config.defensive.cure.min_tier, 5, 'nested defensive cure min tier mismatch')
     assert_equal(nested_config.defensive.charm_sleeper.enabled, true, 'nested charm sleeper mismatch')
     assert_equal(nested_config.defensive.sleep_waker.enabled, true, 'nested sleep waker mismatch')
+    assert_equal(nested_config.defensive.enemy_debuffs.enabled, true, 'nested enemy debuff maintenance mismatch')
+    assert_equal(nested_config.defensive.enemy_debuffs.list, 'Dia III|Frazzle III', 'nested enemy debuff list mismatch')
     assert_equal(nested_config.defensive.na.limit_enabled, true, 'nested status-removal limit mismatch')
     assert_equal(nested_config.defensive.na.priority, 'Poison|Paralyze', 'nested status-removal priority mismatch')
     assert_equal(nested_config.defensive.buffs.targeted[2].character, 'Nyoourke', 'nested targeted buff character mismatch')

@@ -3,6 +3,7 @@ package.path = package.path .. ';./?.lua'
 local camp_puller = require('uc_camp_puller')
 local pull_registry = require('uc_camp_pull_registry')
 pull_registry.reset('selftest_start')
+local original_status = rawget(_G, 'UC_CAMP_PULLER_STATUS')
 
 local function assert_equal(actual, expected, message)
 	if actual ~= expected then
@@ -443,5 +444,6 @@ if original_engine == nil then
 else
 	rawset(_G, 'Start_Engine', original_engine)
 end
+rawset(_G, 'UC_CAMP_PULLER_STATUS', original_status)
 
 io.stdout:write('selftest_camp_puller: OK\n')

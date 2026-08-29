@@ -21,9 +21,10 @@ local function now()
 	return now_value
 end
 
-enemy_state.set(phase1, 100, 33, 'fixture', 10, 5, now)
+enemy_state.set(phase1, 100, 33, 'fixture', 10, 5, now, 57)
 assert_equal(phase1.effectiveTargets[100][33].source, 'fixture', 'effect source')
 assert_equal(phase1.effectiveTargets[100][33].expires_at, 15, 'effect expiry')
+assert_equal(phase1.effectiveTargets[100][33].action_id, 57, 'effect action identity')
 enemy_state.prune_expired(phase1, 14.9, now)
 assert_equal(phase1.effectiveTargets[100][33] ~= nil, true, 'effect retained before expiry')
 enemy_state.prune_expired(phase1, 15, now)

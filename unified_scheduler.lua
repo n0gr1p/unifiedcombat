@@ -198,6 +198,7 @@ local ensure_maintenance_state_tables
 local canon_name
 local action_ready
 local DISPell_ATTEMPT_COOLDOWN_S = 3.0
+local ENEMY_DEBUFF_ATTEMPT_COOLDOWN_S = 5.0
 
 require('uc_scheduler_enemy_effect_state').load_dispel_map(windower.addon_path)
 
@@ -1456,7 +1457,7 @@ local function enemy_effect_state_map()
 	return require('uc_scheduler_enemy_effect_state').effect_map(scheduler.phase1)
 end
 
-local function enemy_effect_state_set(target_id, effect_id, source, at, duration_s)
+local function enemy_effect_state_set(target_id, effect_id, source, at, duration_s, action_id)
 	return require('uc_scheduler_enemy_effect_state').set(
 		scheduler.phase1,
 		target_id,
@@ -1464,7 +1465,8 @@ local function enemy_effect_state_set(target_id, effect_id, source, at, duration
 		source,
 		at,
 		duration_s,
-		now_s
+		now_s,
+		action_id
 	)
 end
 
@@ -1508,6 +1510,17 @@ local function can_attempt_enemy_dispel(action_name, target_id, effect_id, now)
 		effect_id,
 		now,
 		DISPell_ATTEMPT_COOLDOWN_S
+	)
+end
+
+local function can_attempt_enemy_debuff(action_name, target_id, effect_id, now)
+	return require('uc_scheduler_enemy_effect_state').can_attempt(
+		scheduler.phase1,
+		action_name,
+		target_id,
+		effect_id,
+		now,
+		ENEMY_DEBUFF_ATTEMPT_COOLDOWN_S
 	)
 end
 
@@ -4049,6 +4062,7 @@ local function p1_collect_proposals(ctx)
 		defensive_evidence_current = true
 		scheduler.providers.charm_sleeper.collect(ctx, out)
 		scheduler.providers.sleep_waker.collect(ctx, out)
+		scheduler.providers.enemy_debuff_maintenance.collect(ctx, out)
 		scheduler.providers.enemy_buff_removal.collect(ctx, out)
 		scheduler.providers.defensive.collect_internal(ctx, out)
 		scheduler.providers.defensive.collect_healbot(ctx, out)
@@ -5600,6 +5614,9 @@ local function p1_dispatch_defensive_internal(selected, settings)
 	local dispel_detail = selected.detail
 	if type(dispel_detail) == 'table' and tostring(dispel_detail.enemy_dispel_attempt_key or '') ~= '' then
 		mark_enemy_dispel_attempt(tostring(dispel_detail.enemy_dispel_attempt_key), dispatch_now)
+	end
+	if type(dispel_detail) == 'table' and tostring(dispel_detail.enemy_debuff_attempt_key or '') ~= '' then
+		mark_enemy_dispel_attempt(tostring(dispel_detail.enemy_debuff_attempt_key), dispatch_now)
 	end
 	local ctx = { now = dispatch_now, tick = p1_number(scheduler.phase1.tick, 0) }
 	scheduler.record_dispatch(ctx)
@@ -7855,6 +7872,23 @@ scheduler.providers.enemy_buff_removal = require('uc_provider_enemy_buff_removal
 	action_ready = action_ready,
 	build_action_command = build_action_command,
 	clamp_urgency = p1_clamp_urgency,
+})
+scheduler.providers.enemy_debuff_maintenance = require('uc_provider_enemy_debuff_maintenance').new({
+	bool_setting = bool_setting,
+	active_value_or_flat = scheduler.active_value_or_flat,
+	get_spell_resource = get_spell_resource,
+	get_spell_by_id = function(spell_id)
+		return res.spells[tonumber(spell_id) or 0]
+	end,
+	build_friendly_claims = uc_targeting_common.build_friendly_claims,
+	claim_valid = enemy_dispel_claim_valid,
+	effect_map = enemy_effect_state_map,
+	prune_expired = enemy_effect_state_prune_expired,
+	can_attempt = can_attempt_enemy_debuff,
+	action_ready = action_ready,
+	build_action_command = build_action_command,
+	clamp_urgency = p1_clamp_urgency,
+	log = enemy_dispel_log,
 })
 scheduler.providers.tank_enmity = require('uc_provider_tank_enmity').new({
 	bool_setting = bool_setting,

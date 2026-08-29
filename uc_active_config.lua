@@ -517,6 +517,10 @@ local function apply_structured_config_to_candidate(candidate, config)
 		if type(config.defensive.enemy_buffs) == 'table' then
 			candidate.def_remove_enemy_buffs = config.defensive.enemy_buffs.remove
 		end
+		if type(config.defensive.enemy_debuffs) == 'table' then
+			candidate.def_maintain_enemy_debuffs = config.defensive.enemy_debuffs.enabled
+			candidate.defensive_enemy_debuffs = config.defensive.enemy_debuffs.list
+		end
 		if type(config.defensive.buffs) == 'table' then
 			candidate.defensive_buff_enabled = config.defensive.buffs.enabled
 			candidate.defensive_buff_self_only = config.defensive.buffs.self_only

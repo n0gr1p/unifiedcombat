@@ -4,7 +4,7 @@ local spells = dofile(windower.addon_path .. 'TargetBar\\spells.lua')
 local abilities = dofile(windower.addon_path .. 'TargetBar\\abilities.lua')
 local skills = dofile(windower.addon_path .. 'TargetBar\\skills.lua')
 
-local function apply_list(set_effect, target_id, list, source, now)
+local function apply_list(set_effect, target_id, list, source, now, action_id)
 	if type(list) ~= 'table' then return end
 	for i = 1, #list do
 		local r = list[i]
@@ -12,7 +12,7 @@ local function apply_list(set_effect, target_id, list, source, now)
 			local eid = tonumber(r[1]) or 0
 			local dur = tonumber(r[2]) or 0
 			if eid > 0 then
-				set_effect(target_id, eid, source, now, dur)
+				set_effect(target_id, eid, source, now, dur, action_id)
 			end
 		end
 	end
@@ -26,17 +26,17 @@ local function apply_catalog(set_effect, action_id, actor_id, target_id, from_pl
 	if type(entry[1]) == 'number' then
 		local eid = tonumber(entry[1]) or 0
 		local dur = tonumber(entry[2]) or 0
-		if eid > 0 then set_effect(target_id, eid, source, now, dur) end
+		if eid > 0 then set_effect(target_id, eid, source, now, dur, id) end
 		return
 	end
 	if type(entry[1]) == 'table' and type(entry[1][1]) == 'number' then
-		apply_list(set_effect, target_id, entry, source, now)
+		apply_list(set_effect, target_id, entry, source, now, id)
 		return
 	end
 	if type(entry[1]) == 'table' and type(entry[1][1]) == 'table' then
-		apply_list(set_effect, target_id, entry[1], source, now)
+		apply_list(set_effect, target_id, entry[1], source, now, id)
 		if not from_player then
-			apply_list(set_effect, actor_id, entry[2], source .. '_actor', now)
+			apply_list(set_effect, actor_id, entry[2], source .. '_actor', now, id)
 		end
 	end
 end
