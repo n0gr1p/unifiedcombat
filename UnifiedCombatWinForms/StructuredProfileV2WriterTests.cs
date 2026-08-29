@@ -306,6 +306,13 @@ internal static class StructuredProfileV2WriterTests
         AssertTrue(HubUiConstants.BoolKeys.Contains("def_sleep_waker_enabled"), "sleep waker must be in the shared UI bool key set");
         AssertContains(content, "limit_enabled = true", "status-removal limit missing");
         AssertContains(content, "priority = \"Poison|Paralyze|Dia\"", "status-removal priority missing");
+        AssertContains(content, "curaga = {", "Curaga config missing");
+        AssertContains(content, "min_targets = 4", "Curaga minimum targets missing");
+        AssertContains(content, "waltz = {", "Waltz config missing");
+        AssertContains(content, "tp_reserve = 1000", "Waltz TP reserve missing");
+        AssertContains(content, "divine_min_targets = 2", "Divine Waltz minimum missing");
+        AssertTrue(HubUiConstants.BoolKeys.Contains("defensive_curaga_enabled"), "Curaga must be a persisted UI boolean");
+        AssertTrue(HubUiConstants.BoolKeys.Contains("defensive_waltz_enabled"), "Waltz must be a persisted UI boolean");
         AssertContains(content, "wait_ignore_names = {", "combat wait ignore list missing");
         AssertContains(content, "\"Ally One\"", "combat wait ignore names must be serialized");
         AssertContains(content, "target_ignore_names = {", "target ignore list missing");
@@ -588,6 +595,8 @@ internal static class StructuredProfileV2WriterTests
                 {
                     "defensive_enabled",
                     "defensive_cure_enabled",
+                    "defensive_curaga_enabled",
+                    "defensive_waltz_enabled",
                     "defensive_doom_water",
                     "def_charm_sleeper_enabled",
                     "def_sleep_waker_enabled",
@@ -2244,6 +2253,11 @@ internal static class StructuredProfileV2WriterTests
             ["def_heal_max_tier_cure"] = 4,
             ["def_heal_min_missing_hp"] = 250,
             ["def_heal_ignore_trusts"] = true,
+            ["defensive_curaga_enabled"] = true,
+            ["defensive_curaga_min_targets"] = 4,
+            ["defensive_waltz_enabled"] = true,
+            ["defensive_waltz_tp_reserve"] = 1000,
+            ["defensive_divine_waltz_min_targets"] = 2,
             ["defensive_doom_water"] = true,
             ["def_charm_sleeper_enabled"] = true,
             ["def_sleep_waker_enabled"] = true,

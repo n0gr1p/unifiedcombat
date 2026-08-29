@@ -127,6 +127,11 @@ local function build_flat_settings()
         def_heal_max_tier_cure = 5,
         def_heal_min_missing_hp = 300,
         def_heal_ignore_trusts = false,
+		defensive_curaga_enabled = true,
+		defensive_curaga_min_targets = 9,
+		defensive_waltz_enabled = true,
+		defensive_waltz_tp_reserve = 3500,
+		defensive_divine_waltz_min_targets = 1,
         defensive_doom_water = true,
         def_charm_sleeper_enabled = true,
         def_sleep_waker_enabled = true,
@@ -313,7 +318,9 @@ local function build_nested_settings()
                 max_tier = 6,
                 min_missing_hp = 400,
                 ignore_trusts = false,
+				curaga = { enabled = true, min_targets = 4 },
             },
+			waltz = { enabled = true, tp_reserve = 1200, divine_min_targets = 2 },
             doom = {
                 holy_water_enabled = true,
             },
@@ -645,6 +652,11 @@ local function main()
     assert_equal(flat_config.defensive.cure.min_tier, 2, 'defensive cure min tier mismatch')
     assert_equal(flat_config.defensive.cure.max_tier, 5, 'defensive cure max tier mismatch')
     assert_equal(flat_config.defensive.cure.min_missing_hp, 300, 'defensive cure missing hp mismatch')
+	assert_equal(flat_config.defensive.cure.curaga.enabled, true, 'flat Curaga enabled mismatch')
+	assert_equal(flat_config.defensive.cure.curaga.min_targets, 6, 'flat Curaga minimum must clamp to six')
+	assert_equal(flat_config.defensive.waltz.enabled, true, 'flat Waltz enabled mismatch')
+	assert_equal(flat_config.defensive.waltz.tp_reserve, 3000, 'flat Waltz reserve must clamp to 3000')
+	assert_equal(flat_config.defensive.waltz.divine_min_targets, 2, 'flat Divine Waltz minimum must clamp to two')
     assert_equal(flat_config.defensive.charm_sleeper.enabled, true, 'flat charm sleeper mismatch')
     assert_equal(flat_config.defensive.sleep_waker.enabled, true, 'flat sleep waker mismatch')
     assert_equal(flat_config.defensive.enemy_buffs.remove, true, 'defensive enemy buffs mismatch')
@@ -716,6 +728,11 @@ local function main()
 	assert_equal(nested_config.combat.weaponskill.fast_skillchain, true, 'nested Fast Skillchain preference mismatch')
 	assert_equal(nested_config.ownership.pause_automation_while_weakened, true, 'nested recovery hold mismatch')
     assert_equal(nested_config.defensive.cure.min_tier, 5, 'nested defensive cure min tier mismatch')
+	assert_equal(nested_config.defensive.cure.curaga.enabled, true, 'nested Curaga enabled mismatch')
+	assert_equal(nested_config.defensive.cure.curaga.min_targets, 4, 'nested Curaga minimum mismatch')
+	assert_equal(nested_config.defensive.waltz.enabled, true, 'nested Waltz enabled mismatch')
+	assert_equal(nested_config.defensive.waltz.tp_reserve, 1200, 'nested Waltz reserve mismatch')
+	assert_equal(nested_config.defensive.waltz.divine_min_targets, 2, 'nested Divine Waltz minimum mismatch')
     assert_equal(nested_config.defensive.charm_sleeper.enabled, true, 'nested charm sleeper mismatch')
     assert_equal(nested_config.defensive.sleep_waker.enabled, true, 'nested sleep waker mismatch')
     assert_equal(nested_config.defensive.enemy_debuffs.enabled, true, 'nested enemy debuff maintenance mismatch')

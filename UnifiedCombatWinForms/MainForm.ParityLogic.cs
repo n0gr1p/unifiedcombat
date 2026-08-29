@@ -748,6 +748,9 @@ public partial class MainForm
             _defHealMaxTier.Text = SessionStateHelper.GetString(s, "def_heal_max_tier_cure", "4");
             _defHealMinMissingHp.Text = SessionStateHelper.GetString(s, "def_heal_min_missing_hp", "250");
             _defHealIgnoreTrusts.Checked = SessionStateHelper.GetBool(s, "def_heal_ignore_trusts", true);
+            _defCuragaMinTargets.Value = Math.Clamp(SessionStateHelper.GetInt(s, "defensive_curaga_min_targets", 3), 2, 6);
+            _defWaltzTpReserve.Value = Math.Clamp(SessionStateHelper.GetInt(s, "defensive_waltz_tp_reserve", 0), 0, 3000);
+            _defDivineWaltzMinTargets.Value = Math.Clamp(SessionStateHelper.GetInt(s, "defensive_divine_waltz_min_targets", 3), 2, 6);
             _defNaPriority.Text = SessionStateHelper.GetString(s, "defensive_na_priority");
             _defOverwrite.Text = SessionStateHelper.GetString(s, "defensive_overwrite_interval", "150");
             _defBuffs.Text = SessionStateHelper.GetString(s, "defensive_buffs");
@@ -1128,6 +1131,8 @@ public partial class MainForm
         foreach (var key in new[]
                  {
                      "defensive_cure_enabled",
+                     "defensive_curaga_enabled",
+                     "defensive_waltz_enabled",
                      "defensive_doom_water",
                      "def_charm_sleeper_enabled",
                      "def_sleep_waker_enabled",
@@ -1147,6 +1152,10 @@ public partial class MainForm
         var naEnabled = _boolChecks.TryGetValue("defensive_na_enabled", out var na) && na.Checked;
         var limitEnabled = _boolChecks.TryGetValue("defensive_na_limit_enabled", out var limit) && limit.Checked;
         _defNaPriority.Enabled = healerOn && naEnabled && limitEnabled;
+        _defCuragaMinTargets.Enabled = healerOn && _boolChecks.TryGetValue("defensive_curaga_enabled", out var curaga) && curaga.Checked;
+        var waltzEnabled = healerOn && _boolChecks.TryGetValue("defensive_waltz_enabled", out var waltz) && waltz.Checked;
+        _defWaltzTpReserve.Enabled = waltzEnabled;
+        _defDivineWaltzMinTargets.Enabled = waltzEnabled;
     }
 
     private void UpdateAbilityListLayout()
@@ -4734,6 +4743,9 @@ public partial class MainForm
             /* keep default */
         }
         var ignoreTrusts = _defHealIgnoreTrusts.Checked;
+        var curagaMinTargets = decimal.ToInt32(_defCuragaMinTargets.Value);
+        var waltzTpReserve = decimal.ToInt32(_defWaltzTpReserve.Value);
+        var divineWaltzMinTargets = decimal.ToInt32(_defDivineWaltzMinTargets.Value);
         var naPriority = CleanStatusRemovalPriority(_defNaPriority.Text ?? "");
 
         if (med < crit)
@@ -4772,6 +4784,9 @@ public partial class MainForm
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_max_tier_cure", ["value"] = healMaxTier });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_min_missing_hp", ["value"] = healMinMissingHp });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_ignore_trusts", ["value"] = ignoreTrusts ? "on" : "off" });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_curaga_min_targets", ["value"] = curagaMinTargets });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_waltz_tp_reserve", ["value"] = waltzTpReserve });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_divine_waltz_min_targets", ["value"] = divineWaltzMinTargets });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_na_priority", ["value"] = naPriority });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_overwrite_interval", ["value"] = overwrite });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_buffs", ["value"] = buffsClean });
@@ -5647,6 +5662,9 @@ public partial class MainForm
         try { healMinMissingHp = (int)Math.Clamp(int.Parse((_defHealMinMissingHp.Text ?? "").Trim()), 0, 5000); } catch { }
         if (med < crit) med = crit;
         var ignoreTrusts = _defHealIgnoreTrusts.Checked;
+        var curagaMinTargets = decimal.ToInt32(_defCuragaMinTargets.Value);
+        var waltzTpReserve = decimal.ToInt32(_defWaltzTpReserve.Value);
+        var divineWaltzMinTargets = decimal.ToInt32(_defDivineWaltzMinTargets.Value);
         var naPriority = CleanStatusRemovalPriority(_defNaPriority.Text ?? "");
         var buffsRaw = _defBuffs.Text ?? "";
         var buffsClean = string.Join(
@@ -5681,6 +5699,9 @@ public partial class MainForm
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_max_tier_cure", ["value"] = healMaxTier });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_min_missing_hp", ["value"] = healMinMissingHp });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "def_heal_ignore_trusts", ["value"] = ignoreTrusts ? "on" : "off" });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_curaga_min_targets", ["value"] = curagaMinTargets });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_waltz_tp_reserve", ["value"] = waltzTpReserve });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_divine_waltz_min_targets", ["value"] = divineWaltzMinTargets });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_na_priority", ["value"] = naPriority });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_overwrite_interval", ["value"] = overwrite });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_buffs", ["value"] = buffsClean });

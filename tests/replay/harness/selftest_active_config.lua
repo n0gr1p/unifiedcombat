@@ -118,6 +118,11 @@ local function build_flat_settings()
 		def_heal_max_tier_cure = 4,
 		def_heal_min_missing_hp = 250,
 		def_heal_ignore_trusts = true,
+		defensive_curaga_enabled = true,
+		defensive_curaga_min_targets = 4,
+		defensive_waltz_enabled = true,
+		defensive_waltz_tp_reserve = 1000,
+		defensive_divine_waltz_min_targets = 2,
 		defensive_targeted_buffs = 'Terrasjr:Honor March|Nyoourke:Valor Minuet V',
 		def_maintain_enemy_debuffs = true,
 		defensive_enemy_debuffs = 'Dia III|Distract III',
@@ -297,6 +302,11 @@ local function main()
 	assert_equal(projected.def_sleep_waker_enabled, true, 'projected sleep waker mirror mismatch')
 	assert_equal(projected.defensive_na_limit_enabled, true, 'projected status-removal limit mismatch')
 	assert_equal(projected.defensive_na_priority, 'Poison|Paralyze|Dia', 'projected status-removal priority mismatch')
+	assert_equal(projected.defensive_curaga_enabled, true, 'projected Curaga enabled mismatch')
+	assert_equal(projected.defensive_curaga_min_targets, 4, 'projected Curaga minimum mismatch')
+	assert_equal(projected.defensive_waltz_enabled, true, 'projected Waltz enabled mismatch')
+	assert_equal(projected.defensive_waltz_tp_reserve, 1000, 'projected Waltz reserve mismatch')
+	assert_equal(projected.defensive_divine_waltz_min_targets, 2, 'projected Divine Waltz minimum mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'projected targeted buff mirror mismatch')
 	assert_equal(projected.def_maintain_enemy_debuffs, true, 'projected enemy debuff maintenance mismatch')
 	assert_equal(projected.defensive_enemy_debuffs, 'Dia III|Distract III', 'projected enemy debuff list mismatch')

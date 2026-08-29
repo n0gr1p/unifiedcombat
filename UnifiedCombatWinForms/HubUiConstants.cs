@@ -9,6 +9,8 @@ internal static class HubUiConstants
         "show_ingame_ui",
         "defensive_enabled",
         "defensive_cure_enabled",
+        "defensive_curaga_enabled",
+        "defensive_waltz_enabled",
         "defensive_doom_water",
         "def_charm_sleeper_enabled",
         "def_sleep_waker_enabled",
@@ -67,6 +69,8 @@ internal static class HubUiConstants
     {
         ["defensive_enabled"] = "Healer Enabled",
         ["defensive_cure_enabled"] = "Allow Cures",
+        ["defensive_curaga_enabled"] = "Use Curaga",
+        ["defensive_waltz_enabled"] = "Use Dancer Waltzes",
         ["defensive_doom_water"] = "Doom water",
         ["def_charm_sleeper_enabled"] = "Charm sleeper",
         ["def_sleep_waker_enabled"] = "Sleep waker",
@@ -131,6 +135,8 @@ internal static class HubUiConstants
     [
         "defensive_enabled",
         "defensive_cure_enabled",
+        "defensive_curaga_enabled",
+        "defensive_waltz_enabled",
         "defensive_doom_water",
         "def_charm_sleeper_enabled",
         "def_sleep_waker_enabled",

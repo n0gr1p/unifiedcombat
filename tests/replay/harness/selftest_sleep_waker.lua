@@ -219,7 +219,7 @@ assert_contains(scheduler_source, "scheduler.providers.sleep_waker.reset('ZONE_C
 assert_contains(scheduler_source, "scheduler.providers.sleep_waker.reset('DEFENSIVE_DOMAIN_DISABLED')", 'defensive-domain reset missing')
 assert_contains(scheduler_source, "event_code = 'SLEEP_WAKE_PROPOSED'", 'Sleep-wake proposal timeline event missing')
 assert_contains(scheduler_source, "event_code = 'SLEEP_WAKE_DISPATCHED'", 'Sleep-wake dispatch timeline event missing')
-assert_contains(scheduler_source, "if m.charmed ~= true and m.hpp > 0", 'internal Cure collection Charm exclusion missing')
+assert_contains(scheduler_source, "if cure_enabled and m.charmed ~= true and (tonumber(m.hpp) or 0) > 0", 'internal Cure collection Charm exclusion missing')
 
 local engine_file = assert(io.open('unified_engine.lua', 'r'))
 local engine_source = engine_file:read('*a')
