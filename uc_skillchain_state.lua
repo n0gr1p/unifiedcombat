@@ -274,7 +274,7 @@ local function aeonic_result_for(transition, actor_context, action_count)
 	return transition
 end
 
-local function skillchain_target_distance(start_property, target_property, actor_context, action_count)
+local function skillchain_target_distance(start_property, target_property, actor_context, action_count, start_level)
 	local start = tostring(start_property or '')
 	local target = tostring(target_property or '')
 	if start == '' or target == '' then
@@ -282,6 +282,12 @@ local function skillchain_target_distance(start_property, target_property, actor
 	end
 	if start == target then
 		return 0
+	end
+	-- Level-4 results are terminal. A non-Ultimate Double Light or Double
+	-- Darkness cannot be used as an intermediate node until Aeonic eligibility
+	-- becomes valid on a later, impossible action.
+	if tonumber(start_level) == 4 then
+		return nil
 	end
 	local queue = {
 		{
@@ -305,7 +311,7 @@ local function skillchain_target_distance(start_property, target_property, actor
 					if property == target then
 						return current.distance + 1
 					end
-					if property ~= '' then
+					if property ~= '' and tonumber(result.level) ~= 4 then
 						local next_count = current.action_count + 1
 						local seen_key = property .. ':' .. tostring(next_count)
 						if not seen[seen_key] then
@@ -610,7 +616,8 @@ function State:plan_continuation(target_id, candidates, actor_context, now_value
 					result.property,
 					target_property,
 					actor_context,
-					(tonumber(state.action_count) or 1) + 1
+					(tonumber(state.action_count) or 1) + 1,
+					result.level
 				)
 				-- Target mode is a hard gate. Equal routes preserve the existing candidate order.
 				if distance ~= nil and (chosen_distance == nil or distance < chosen_distance) then

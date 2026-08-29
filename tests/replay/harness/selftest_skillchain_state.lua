@@ -569,6 +569,13 @@ local function test_configured_skillchain_target_planning()
 	assert_equal(plan, nil, 'non-Aeonic actor must not claim a Radiance path')
 	assert_equal(reason, 'SC_NO_PATH_TO_TARGET', 'non-Aeonic Radiance reason')
 
+	local insufficient_aeonic_context = actor_context(2001, 1, false, nil, 'Dojikiri Yasutsuna')
+	plan, reason = runtime:plan_continuation(1001, {
+		named_candidate(42, 'Terminal Double Light', { 'Light' }),
+	}, insufficient_aeonic_context, 103.5, 'radiance')
+	assert_equal(plan, nil, 'insufficient Aeonic eligibility must not route through terminal Double Light')
+	assert_equal(reason, 'SC_NO_PATH_TO_TARGET', 'terminal Double Light Radiance reason')
+
 	local aeonic_context = actor_context(2001, 3, false, nil, 'Dojikiri Yasutsuna')
 	plan, reason = runtime:plan_continuation(1001, {
 		named_candidate(42, 'Radiance Closer', { 'Light' }),
