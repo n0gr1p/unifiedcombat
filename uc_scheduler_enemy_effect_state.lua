@@ -179,7 +179,7 @@ function M.effect_map(phase1)
 	return phase.effectiveTargets
 end
 
-function M.set(phase1, target_id, effect_id, source, at, duration_s, now)
+function M.set(phase1, target_id, effect_id, source, at, duration_s, now, action_id)
 	local tid = tonumber(target_id) or 0
 	local eid = tonumber(effect_id) or 0
 	if tid <= 0 or eid <= 0 then
@@ -200,6 +200,7 @@ function M.set(phase1, target_id, effect_id, source, at, duration_s, now)
 		seen_at = timestamp,
 		source = tostring(source or ''),
 		expires_at = expires_at,
+		action_id = tonumber(action_id) or 0,
 	}
 end
 

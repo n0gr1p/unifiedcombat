@@ -56,6 +56,7 @@ public partial class MainForm
     private TextBox _defOverwrite = null!;
     private TextBox _defBuffs = null!;
     private TextBox _defTargetedBuffs = null!;
+    private TextBox _defEnemyDebuffs = null!;
     private UcSection _grpFightLeader = null!;
     private UcSection _grpAddPri = null!;
     private ListBox _addPriList = null!;
@@ -686,6 +687,16 @@ public partial class MainForm
         _defTargetedBuffs = new TextBox { Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top, MinimumSize = new Size(80, 23) };
         _defTargetedBuffs.Leave += (_, _) => OnDefThresholdChanged();
         rightCol.Controls.Add(_defTargetedBuffs, 1, dr);
+        dr++;
+        rightCol.Controls.Add(new Label { Text = "Maintained Enemy Debuffs", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        _defEnemyDebuffs = new TextBox
+        {
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(80, 23),
+            PlaceholderText = "Dia III|Distract III|Frazzle III",
+        };
+        _defEnemyDebuffs.Leave += (_, _) => OnDefThresholdChanged();
+        rightCol.Controls.Add(_defEnemyDebuffs, 1, dr);
         dr++;
 
         var combatGroup = new UcSection("Combat / Targeting")

@@ -58,6 +58,7 @@ local SELFTESTS = {
 	"tests/replay/harness/selftest_scheduler_tick_context_static.lua",
 	"tests/replay/harness/selftest_scheduler_enemy_effect_state.lua",
 	"tests/replay/harness/selftest_scheduler_enemy_effect_state_static.lua",
+	"tests/replay/harness/selftest_enemy_debuff_maintenance.lua",
 	"tests/replay/harness/selftest_scheduler_observability.lua",
 	"tests/replay/harness/selftest_scheduler_observability_static.lua",
 	"tests/replay/harness/selftest_scheduler_party_state.lua",

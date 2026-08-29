@@ -363,6 +363,12 @@ internal static class StructuredProfileV2Writer
             )
             .Add("enemy_buffs", new StructuredProfileNode().Add("remove", ReadBool(flatProfile, "def_remove_enemy_buffs", false)))
             .Add(
+                "enemy_debuffs",
+                new StructuredProfileNode()
+                    .Add("enabled", ReadBool(flatProfile, "def_maintain_enemy_debuffs", false))
+                    .Add("list", ReadString(flatProfile, "defensive_enemy_debuffs", ""))
+            )
+            .Add(
                 "buffs",
                 new StructuredProfileNode()
                     .Add("enabled", ReadBool(flatProfile, "defensive_buff_enabled", false))

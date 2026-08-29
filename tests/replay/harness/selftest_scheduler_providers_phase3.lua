@@ -3,6 +3,7 @@ local PROVIDER_PATHS = {
     "uc_provider_combat.lua",
     "uc_provider_tank_enmity.lua",
     "uc_provider_enemy_buff_removal.lua",
+    "uc_provider_enemy_debuff_maintenance.lua",
     "uc_provider_maintenance.lua",
     "uc_provider_target_control.lua",
 }

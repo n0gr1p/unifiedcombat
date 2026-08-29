@@ -119,6 +119,8 @@ local function build_flat_settings()
 		def_heal_min_missing_hp = 250,
 		def_heal_ignore_trusts = true,
 		defensive_targeted_buffs = 'Terrasjr:Honor March|Nyoourke:Valor Minuet V',
+		def_maintain_enemy_debuffs = true,
+		defensive_enemy_debuffs = 'Dia III|Distract III',
 		move = true,
 		spacing = true,
 		path_follow_enabled = true,
@@ -296,6 +298,8 @@ local function main()
 	assert_equal(projected.defensive_na_limit_enabled, true, 'projected status-removal limit mismatch')
 	assert_equal(projected.defensive_na_priority, 'Poison|Paralyze|Dia', 'projected status-removal priority mismatch')
 	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'projected targeted buff mirror mismatch')
+	assert_equal(projected.def_maintain_enemy_debuffs, true, 'projected enemy debuff maintenance mismatch')
+	assert_equal(projected.defensive_enemy_debuffs, 'Dia III|Distract III', 'projected enemy debuff list mismatch')
 	assert_equal(projected.wait_ignore_names[1], 'Niightsiide', 'projected wait ignore names mismatch')
 	assert_equal(projected.ignore[1], 77, 'projected compatibility ignore id mismatch')
 	assert_equal(projected.profile_v2_auto_reload_on_change, true, 'projected auto-reload flag mismatch')
