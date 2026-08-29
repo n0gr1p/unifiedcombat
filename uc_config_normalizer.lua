@@ -915,6 +915,7 @@ local function default_config(meta)
                 minimum_tp = 1000,
                 allow_aoe = true,
                 fast_skillchain = false,
+                skillchain_target = 'auto',
                 wait_ignore_names = {},
                 aftermath_enabled = false,
                 aftermath_ws = '',
@@ -1460,6 +1461,34 @@ local function normalize_weaponskill_minimum_tp(value, default_value)
     return value
 end
 
+local SKILLCHAIN_TARGETS = {
+    auto = true,
+    compression = true,
+    liquefaction = true,
+    induration = true,
+    reverberation = true,
+    transfixion = true,
+    scission = true,
+    detonation = true,
+    impaction = true,
+    gravitation = true,
+    fragmentation = true,
+    distortion = true,
+    fusion = true,
+    light = true,
+    darkness = true,
+    radiance = true,
+    umbra = true,
+}
+
+local function normalize_skillchain_target(value, default_value)
+    local normalized = normalize_string(value, default_value or 'auto'):lower()
+    if SKILLCHAIN_TARGETS[normalized] ~= true then
+        error('combat.weaponskill.skillchain_target has unsupported value: ' .. tostring(value))
+    end
+    return normalized
+end
+
 local function normalize_combat(source, config)
     local combat = config.combat
     local nested = get_path(source, { 'combat' })
@@ -1479,6 +1508,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.minimum_tp = normalize_weaponskill_minimum_tp(nested_ws.minimum_tp, combat.weaponskill.minimum_tp)
         combat.weaponskill.allow_aoe = normalize_boolean(nested_ws.allow_aoe, combat.weaponskill.allow_aoe)
         combat.weaponskill.fast_skillchain = normalize_boolean(nested_ws.fast_skillchain, combat.weaponskill.fast_skillchain)
+        combat.weaponskill.skillchain_target = normalize_skillchain_target(nested_ws.skillchain_target, combat.weaponskill.skillchain_target)
         combat.weaponskill.wait_ignore_names = normalize_list(nested_ws.wait_ignore_names, combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(nested_ws.aftermath_enabled, combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(nested_ws.aftermath_ws, combat.weaponskill.aftermath_ws)
@@ -1498,6 +1528,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.minimum_tp = normalize_weaponskill_minimum_tp(first_path(source, { path('weaponskill_min_tp') }), combat.weaponskill.minimum_tp)
         combat.weaponskill.allow_aoe = normalize_boolean(first_path(source, { path('weaponskill_allow_aoe') }), combat.weaponskill.allow_aoe)
         combat.weaponskill.fast_skillchain = normalize_boolean(first_path(source, { path('fast_skillchain') }), combat.weaponskill.fast_skillchain)
+        combat.weaponskill.skillchain_target = normalize_skillchain_target(first_path(source, { path('skillchain_target') }), combat.weaponskill.skillchain_target)
         combat.weaponskill.wait_ignore_names = normalize_list(first_path(source, { path('wait_ignore_names') }), combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(first_path(source, { path('aftermath_enabled') }), combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(first_path(source, { path('aftermath_ws') }), combat.weaponskill.aftermath_ws)

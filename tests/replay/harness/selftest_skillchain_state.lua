@@ -518,6 +518,85 @@ local function test_field_log_audit()
 	assert_true(#result.failures >= 4, 'field audit must report every acceptance failure')
 end
 
+
+local function named_candidate(id, name, properties)
+	return {
+		ws_id = id,
+		ws_name = name,
+		effective_properties = properties,
+	}
+end
+
+local function test_configured_skillchain_target_planning()
+	local runtime = new_runtime(100)
+	opener(runtime, 1001, 100, { 'Fragmentation' })
+	local context = actor_context()
+	local plan, reason = runtime:plan_continuation(1001, {
+		named_candidate(11, 'Indirect Light Route', { 'Distortion' }),
+		named_candidate(12, 'Direct Light', { 'Fusion' }),
+	}, context, 103.5, 'light')
+	assert_true(plan ~= nil, 'Light target must produce a plan')
+	assert_equal(reason, 'SC_READY', 'Light target ready reason')
+	assert_equal(plan.ws_name, 'Direct Light', 'direct target must outrank an intermediate route')
+	assert_equal(plan.predicted_result, 'Light', 'direct target predicted result')
+	assert_equal(plan.skillchain_target, 'light', 'plan records selected target')
+	assert_equal(plan.target_distance, 0, 'direct target distance')
+
+	runtime = new_runtime(100)
+	opener(runtime, 1001, 100, { 'Distortion' })
+	plan, reason = runtime:plan_continuation(1001, {
+		named_candidate(21, 'Wrong Branch', { 'Gravitation' }),
+		named_candidate(22, 'Toward Light', { 'Fusion' }),
+	}, context, 103.5, 'light')
+	assert_true(plan ~= nil, 'intermediate Light route must remain eligible')
+	assert_equal(plan.ws_name, 'Toward Light', 'off-target branch must be filtered')
+	assert_equal(plan.predicted_result, 'Fusion', 'intermediate route result')
+	assert_true((tonumber(plan.target_distance) or 0) > 0, 'intermediate route must have positive distance')
+
+	runtime = new_runtime(100)
+	opener(runtime, 1001, 100, { 'Light' })
+	plan, reason = runtime:plan_continuation(1001, {
+		named_candidate(31, 'Double Light', { 'Light' }),
+	}, context, 103.5, 'darkness')
+	assert_equal(plan, nil, 'unreachable target must not plan a closer')
+	assert_equal(reason, 'SC_NO_PATH_TO_TARGET', 'unreachable target reason')
+
+	runtime = new_runtime(100)
+	opener(runtime, 1001, 100, { 'Light' })
+	plan, reason = runtime:plan_continuation(1001, {
+		named_candidate(41, 'Double Light', { 'Light' }),
+	}, context, 103.5, 'radiance')
+	assert_equal(plan, nil, 'non-Aeonic actor must not claim a Radiance path')
+	assert_equal(reason, 'SC_NO_PATH_TO_TARGET', 'non-Aeonic Radiance reason')
+
+	local aeonic_context = actor_context(2001, 3, false, nil, 'Dojikiri Yasutsuna')
+	plan, reason = runtime:plan_continuation(1001, {
+		named_candidate(42, 'Radiance Closer', { 'Light' }),
+	}, aeonic_context, 103.5, 'radiance')
+	assert_true(plan ~= nil, 'Aeonic actor with valid aftermath must reach Radiance')
+	assert_equal(plan.predicted_result, 'Radiance', 'Aeonic target result')
+	assert_equal(plan.target_distance, 0, 'Aeonic direct target distance')
+
+	runtime = new_runtime(100)
+	opener(runtime, 1001, 100, { 'Induration' })
+	plan = runtime:plan_continuation(1001, {
+		named_candidate(51, 'First Equal Level', { 'Compression' }),
+		named_candidate(52, 'Second Equal Level', { 'Impaction' }),
+	}, context, 103.5, 'auto')
+	assert_equal(plan.ws_name, 'Second Equal Level', 'Auto must preserve legacy later-candidate tie behavior')
+
+	runtime = new_runtime(100)
+	opener(runtime, 1001, 100, { 'Fragmentation' })
+	plan = runtime:plan_continuation(1001, {
+		named_candidate(61, 'Direct Light', { 'Fusion' }),
+	}, context, 103.5, 'light')
+	local commit = valid_commit(plan, context, 103.6)
+	commit.skillchain_target = 'darkness'
+	local ok, commit_reason = runtime:revalidate_plan(plan, commit)
+	assert_false(ok, 'changing target policy after planning must cancel the closer')
+	assert_equal(commit_reason, 'SC_TARGET_POLICY_CHANGED', 'changed target policy reason')
+end
+
 local function main()
 	test_clock_contract()
 	test_action_family_classification()
@@ -527,6 +606,7 @@ local function main()
 	test_failed_and_propertyless_preservation()
 	test_target_isolation_and_aoe_selected_target()
 	test_priority_and_level_two_transitions()
+	test_configured_skillchain_target_planning()
 	test_terminal_and_aeonic()
 	test_chainbound_rules()
 	test_diamond_aspis_actor_expiry()

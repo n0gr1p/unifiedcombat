@@ -109,6 +109,7 @@ local function build_flat_settings()
         weaponskill_active = true,
         weaponskill_allow_aoe = false,
 		fast_skillchain = true,
+        skillchain_target = 'darkness',
         ws_mode = 'always',
         aftermath_enabled = true,
         aftermath_ws = 'Aftermath WS',
@@ -628,6 +629,7 @@ local function main()
     assert_equal(flat_config.combat.weaponskill.enabled, true, 'combat ws enabled mismatch')
 	assert_equal(flat_config.combat.weaponskill.allow_aoe, false, 'flat Smart WS AoE preference mismatch')
 	assert_equal(flat_config.combat.weaponskill.fast_skillchain, true, 'flat Fast Skillchain preference mismatch')
+    assert_equal(flat_config.combat.weaponskill.skillchain_target, 'darkness', 'skillchain target normalization')
     assert_equal(flat_config.abilities.enabled, true, 'abilities enabled mismatch')
     assert_equal(flat_config.abilities.configured[1], 'Savage Blade', 'abilities list mismatch')
     assert_equal(flat_config.abilities.legacy_slots[6], 'Consume Mana', 'legacy ability slot mismatch')

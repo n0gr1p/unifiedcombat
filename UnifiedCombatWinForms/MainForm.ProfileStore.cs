@@ -176,6 +176,7 @@ public partial class MainForm
             ["puller_options"] = string.Join("|", partyNames),
             ["abilities_selected"] = string.Join("|", _selectedAbilities),
             ["aftermath_ws"] = (_aftermathCombo.Text ?? "").Trim(),
+            ["skillchain_target"] = SkillchainTargetUiToRuntime(_skillchainTargetCombo.SelectedItem?.ToString()),
             ["path_pull_action_type"] = _pathPullActionType.SelectedItem?.ToString() ?? "ja",
             ["path_pull_action_name"] = (_pathPullActionName.Text ?? "").Trim(),
             ["geo_maintenance_enabled"] = _geoEnabled.Checked,
@@ -1036,6 +1037,12 @@ public partial class MainForm
                 migratedSleep.Add("Horde Lullaby II");
             }
             root["sleep_spell_entries"] = string.Join("|", migratedSleep.Select((name, idx) => $"{idx + 1}:{name}"));
+            changed = true;
+        }
+
+        if (!root.ContainsKey("skillchain_target"))
+        {
+            root["skillchain_target"] = "auto";
             changed = true;
         }
 

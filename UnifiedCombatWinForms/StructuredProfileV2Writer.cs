@@ -239,6 +239,19 @@ internal static class StructuredProfileV2Writer
             .Add("show_ingame_ui", ReadBool(flatProfile, "show_ingame_ui", false));
     }
 
+    private static string ReadSkillchainTarget(JsonObject flatProfile)
+    {
+        var target = ReadString(flatProfile, "skillchain_target", "auto").Trim().ToLowerInvariant();
+        return target switch
+        {
+            "auto" or "compression" or "liquefaction" or "induration" or "reverberation"
+                or "transfixion" or "scission" or "detonation" or "impaction"
+                or "gravitation" or "fragmentation" or "distortion" or "fusion"
+                or "light" or "darkness" or "radiance" or "umbra" => target,
+            _ => throw new InvalidDataException($"Unsupported skillchain target: {target}"),
+        };
+    }
+
     private static StructuredProfileNode BuildCombat(JsonObject flatProfile)
     {
         return new StructuredProfileNode()
@@ -259,6 +272,7 @@ internal static class StructuredProfileV2Writer
                     .Add("minimum_tp", ReadBoundedInt(flatProfile, "weaponskill_min_tp", 1000, 1000, 3000))
                     .Add("allow_aoe", ReadBool(flatProfile, "weaponskill_allow_aoe", true))
                     .Add("fast_skillchain", ReadBool(flatProfile, "fast_skillchain", false))
+                    .Add("skillchain_target", ReadSkillchainTarget(flatProfile))
                     .Add("wait_ignore_names", ParseNameList(ReadString(flatProfile, "ignore_entries", "")))
                     .Add("aftermath_enabled", ReadBool(flatProfile, "aftermath_enabled", false))
                     .Add("aftermath_ws", ReadString(flatProfile, "aftermath_ws", ""))

@@ -3200,7 +3200,8 @@ local function select_smart_ws(settings, target_id)
 			tid,
 			local_ws_candidates(actor_context, settings),
 			actor_context,
-			now
+			now,
+			settings.skillchain_target or 'auto'
 		)
 		if plan and (plan_reason == 'SC_READY'
 			or plan_reason == 'SC_WINDOW_HIGH_RISK'
@@ -3334,6 +3335,7 @@ function core.revalidate_skillchain_plan(plan, settings, expected_target_id, exp
 		range_valid = target_valid and target_distance(target) <= WS_DISPATCH_MAX_DISTANCE or false,
 		reaction_hold = type(reaction_lock) == 'table',
 		intent_valid = target_id == tonumber(plan.target_id) and ws_name == tostring(plan.ws_name or ''),
+		skillchain_target = settings and settings.skillchain_target or 'auto',
 		actor_context = actor_context,
 		effective_properties = effective_properties,
 		commit_stage = tostring(commit_stage or 'unspecified'),

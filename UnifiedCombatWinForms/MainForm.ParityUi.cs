@@ -14,6 +14,7 @@ public partial class MainForm
     private NumericUpDown _wsMinimumTp = null!;
     private CheckBox _chkWsAllowAoe = null!;
     private CheckBox _chkFastSkillchain = null!;
+    private ComboBox _skillchainTargetCombo = null!;
     private ToolTip _smartWsToolTip = null!;
     private ToolTip _recoveryHoldToolTip = null!;
     private ComboBox _aftermathCombo = null!;
@@ -478,6 +479,30 @@ public partial class MainForm
         _chkFastSkillchain.CheckedChanged += (_, _) => OnFastSkillchainChanged();
         leftCol.Controls.Add(_chkFastSkillchain, 0, lr);
         leftCol.SetColumnSpan(_chkFastSkillchain, 2);
+        lr++;
+
+        leftCol.Controls.Add(new Label { Text = "Skillchain Target", AutoSize = true, Anchor = AnchorStyles.Left }, 0, lr);
+        _skillchainTargetCombo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(120, 0),
+        };
+        _skillchainTargetCombo.Items.AddRange(new object[]
+        {
+            "Auto",
+            "Compression", "Liquefaction", "Induration", "Reverberation",
+            "Transfixion", "Scission", "Detonation", "Impaction",
+            "Gravitation", "Fragmentation", "Distortion", "Fusion",
+            "Light", "Darkness", "Radiance", "Umbra",
+        });
+        _skillchainTargetCombo.SelectedItem = "Auto";
+        _smartWsToolTip.SetToolTip(
+            _skillchainTargetCombo,
+            "During an active skillchain, SmartWS only closes when the predicted result is on a path to this target. Auto preserves highest-level selection."
+        );
+        _skillchainTargetCombo.SelectedIndexChanged += (_, _) => OnSkillchainTargetSelected();
+        leftCol.Controls.Add(_skillchainTargetCombo, 1, lr);
         lr++;
 
         _chkAftermath = MkCtx("aftermath_enabled");
