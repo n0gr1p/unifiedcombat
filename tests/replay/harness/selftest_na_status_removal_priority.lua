@@ -61,6 +61,10 @@ local ready = {
 	Paralyna = true,
 }
 
+local alternative_enabled = false
+local spell_blocked = false
+local alternative_in_range = true
+
 local deps = {
 	buffs = buffs,
 	debuff_map = debuff_map,
@@ -78,6 +82,16 @@ local deps = {
 	end,
 	in_party_cast_range = function(member)
 		return member.in_range ~= false
+	end,
+	spell_status_removal_blocked = function()
+		return spell_blocked
+	end,
+	status_removal_alternative_in_range = function()
+		return alternative_enabled and alternative_in_range
+	end,
+	status_removal_alternative = function()
+		if not alternative_enabled or not alternative_in_range then return nil end
+		return { action_name = 'Healing Waltz', action_kind = 'ja', target_range = 24.9, tp_cost = 200 }
 	end,
 	member_priority = member_priority,
 	pri_default = function(member_prio, action_prio)
@@ -159,6 +173,9 @@ local function main()
 	chosen, reason = policy.choose_defensive_action({ cure = critical_cure, debuff = configured }, 35)
 	assert_equal(chosen, critical_cure, 'existing critical Cure classification must outrank limited removal')
 	assert_equal(reason, 'BLOCK_DEFENSIVE_CURE', 'critical Cure reason mismatch')
+	local critical_aoe = { type = 'cure', action_name = 'Curaga III', action_kind = 'spell', lowest_covered_hpp = 20, target = { name = 'Healthy Anchor', hpp = 100 } }
+	chosen = policy.choose_defensive_action({ cure = critical_aoe, debuff = configured }, 35)
+	assert_equal(chosen, critical_aoe, 'AoE criticality must use the worst covered recipient rather than anchor HPP')
 
 	local self_paralyna = choose({ self }, true, false, '')
 	chosen = policy.choose_defensive_action({ cure = ordinary_cure, debuff = self_paralyna }, 35)
@@ -168,6 +185,30 @@ local function main()
 	local actionable = choose({ self, ally }, true, true, 'Poison|Paralyze')
 	assert_equal(actionable.spell, 'Paralyna', 'unready higher-priority status must not block actionable lower status')
 	ready.Poisona = true
+
+	alternative_enabled = true
+	self.buffs = {}
+	ally.buffs = { 2 }
+	local spell_preferred = choose({ ally }, true, false, '')
+	assert_equal(spell_preferred.action_name, 'Poisona', 'ready spell removal must retain deterministic preference over Healing Waltz')
+	assert_equal(spell_preferred.action_kind, 'spell', 'ready spell removal kind')
+	ready.Poisona = false
+	local waltz_fallback = choose({ ally }, true, false, '')
+	assert_equal(waltz_fallback.action_name, 'Healing Waltz', 'Healing Waltz must become available when the spell is not ready')
+	assert_equal(waltz_fallback.action_kind, 'ja', 'Healing Waltz candidate kind')
+	assert_nil(waltz_fallback.spell, 'Healing Waltz must not pretend to be a spell')
+	ready.Poisona = true
+	spell_blocked = true
+	local silenced_waltz = choose({ ally }, true, false, '')
+	assert_equal(silenced_waltz.action_name, 'Healing Waltz', 'Healing Waltz must replace spell removal when spell casting is blocked')
+	local limited_waltz = choose({ ally }, true, true, 'Poison')
+	assert_equal(limited_waltz.action_name, 'Healing Waltz', 'Healing Waltz must honor the limited NA priority list')
+	spell_blocked = false
+	ally.in_range = false
+	local extended_range_waltz = choose({ ally }, true, false, '')
+	assert_equal(extended_range_waltz.action_name, 'Healing Waltz', 'Healing Waltz alternative range must remain independent of spell range')
+	alternative_in_range = false
+	assert_nil(choose({ ally }, true, false, ''), 'Healing Waltz outside 24.9-yalm range must be rejected')
 
 	io.stdout:write('selftest_na_status_removal_priority: OK\n')
 end

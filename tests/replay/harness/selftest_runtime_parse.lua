@@ -10,6 +10,7 @@ local RUNTIME_LUA_FILES = {
     "uc_attack.lua",
     "uc_cor_maintenance.lua",
 	"uc_cure_target_safety.lua",
+	"uc_defensive_healing.lua",
 	"uc_brd_party_song_state.lua",
     "uc_brd_maintenance.lua",
 	"uc_brd_positioning.lua",

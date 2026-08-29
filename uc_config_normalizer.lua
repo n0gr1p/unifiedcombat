@@ -937,6 +937,15 @@ local function default_config(meta)
                 max_tier = 4,
                 min_missing_hp = 250,
                 ignore_trusts = true,
+                curaga = {
+                    enabled = false,
+                    min_targets = 3,
+                },
+            },
+            waltz = {
+                enabled = false,
+                tp_reserve = 0,
+                divine_min_targets = 3,
             },
             doom = {
                 holy_water_enabled = false,
@@ -1543,7 +1552,7 @@ end
 local function normalize_defensive(source, config)
     local defensive = config.defensive
     local nested = get_path(source, { 'defensive' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'provider', 'cure', 'doom', 'charm_sleeper', 'sleep_waker', 'na', 'enemy_buffs', 'enemy_debuffs', 'buffs', 'thresholds' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'provider', 'cure', 'waltz', 'doom', 'charm_sleeper', 'sleep_waker', 'na', 'enemy_buffs', 'enemy_debuffs', 'buffs', 'thresholds' }) then
         defensive.enabled = normalize_boolean(nested.enabled, defensive.enabled)
         defensive.provider = normalize_string(nested.provider, defensive.provider)
         local cure = is_table(nested.cure) and nested.cure or {}
@@ -1552,6 +1561,13 @@ local function normalize_defensive(source, config)
         defensive.cure.max_tier = normalize_number(cure.max_tier, defensive.cure.max_tier, { integer = true })
         defensive.cure.min_missing_hp = normalize_number(cure.min_missing_hp, defensive.cure.min_missing_hp, { integer = true })
         defensive.cure.ignore_trusts = normalize_boolean(cure.ignore_trusts, defensive.cure.ignore_trusts)
+        local curaga = is_table(cure.curaga) and cure.curaga or {}
+        defensive.cure.curaga.enabled = normalize_boolean(curaga.enabled, defensive.cure.curaga.enabled)
+        defensive.cure.curaga.min_targets = normalize_number(curaga.min_targets, defensive.cure.curaga.min_targets, { integer = true, min = 2, max = 6 })
+        local waltz = is_table(nested.waltz) and nested.waltz or {}
+        defensive.waltz.enabled = normalize_boolean(waltz.enabled, defensive.waltz.enabled)
+        defensive.waltz.tp_reserve = normalize_number(waltz.tp_reserve, defensive.waltz.tp_reserve, { integer = true, min = 0, max = 3000 })
+        defensive.waltz.divine_min_targets = normalize_number(waltz.divine_min_targets, defensive.waltz.divine_min_targets, { integer = true, min = 2, max = 6 })
         local doom = is_table(nested.doom) and nested.doom or {}
         defensive.doom.holy_water_enabled = normalize_boolean(doom.holy_water_enabled, defensive.doom.holy_water_enabled)
         local charm_sleeper = is_table(nested.charm_sleeper) and nested.charm_sleeper or {}
@@ -1585,6 +1601,11 @@ local function normalize_defensive(source, config)
         defensive.cure.max_tier = normalize_number(first_path(source, { path('def_heal_max_tier_cure') }), defensive.cure.max_tier, { integer = true })
         defensive.cure.min_missing_hp = normalize_number(first_path(source, { path('def_heal_min_missing_hp') }), defensive.cure.min_missing_hp, { integer = true })
         defensive.cure.ignore_trusts = normalize_boolean(first_path(source, { path('def_heal_ignore_trusts') }), defensive.cure.ignore_trusts)
+        defensive.cure.curaga.enabled = normalize_boolean(first_path(source, { path('defensive_curaga_enabled') }), defensive.cure.curaga.enabled)
+        defensive.cure.curaga.min_targets = normalize_number(first_path(source, { path('defensive_curaga_min_targets') }), defensive.cure.curaga.min_targets, { integer = true, min = 2, max = 6 })
+        defensive.waltz.enabled = normalize_boolean(first_path(source, { path('defensive_waltz_enabled') }), defensive.waltz.enabled)
+        defensive.waltz.tp_reserve = normalize_number(first_path(source, { path('defensive_waltz_tp_reserve') }), defensive.waltz.tp_reserve, { integer = true, min = 0, max = 3000 })
+        defensive.waltz.divine_min_targets = normalize_number(first_path(source, { path('defensive_divine_waltz_min_targets') }), defensive.waltz.divine_min_targets, { integer = true, min = 2, max = 6 })
         defensive.doom.holy_water_enabled = normalize_boolean(first_path(source, { path('defensive_doom_water') }), defensive.doom.holy_water_enabled)
         defensive.charm_sleeper.enabled = normalize_boolean(first_path(source, { path('def_charm_sleeper_enabled') }), defensive.charm_sleeper.enabled)
         defensive.sleep_waker.enabled = normalize_boolean(first_path(source, { path('def_sleep_waker_enabled') }), defensive.sleep_waker.enabled)

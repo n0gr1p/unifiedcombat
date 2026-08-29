@@ -132,24 +132,30 @@ end
 local function assert_defensive_proposal_shape()
     package.loaded.uc_provider_defensive = nil
     local cure_allowed = true
+	local defensive_action = {
+		type = "cure",
+		spell = "Cure IV",
+		target = {
+			id = 77,
+			name = "Ally",
+			hpp = 20,
+			is_self = false,
+		},
+	}
     local provider = require("uc_provider_defensive").new({
         bool_setting = function(value) return value == true end,
         active_value_or_flat = function(_, flat_value) return flat_value end,
         build_defensive_candidates = function() return { "candidate" } end,
         choose_defensive_action = function()
-            return {
-                type = "cure",
-                spell = "Cure IV",
-                target = {
-                    id = 77,
-                    name = "Ally",
-                    hpp = 20,
-                    is_self = false,
-                },
-            }, "critical_cure"
+			return defensive_action, "critical_cure"
         end,
-        action_ready = function() return true, "READY", "spell" end,
-        build_action_command = function() return "input /ma Cure IV 77" end,
+		action_ready = function(name)
+			return true, "READY", tostring(name):find("Waltz", 1, true) and "ja" or "spell"
+		end,
+		action_range = function() return 21.0 end,
+		build_action_command = function(name, kind)
+			return kind == "ja" and ("input /ja " .. name .. " 77") or "input /ma Cure IV 77"
+		end,
         cure_target_allowed = function() return cure_allowed end,
         clamp_urgency = function(value) return value end,
         critical_cure_priority = 153,
@@ -176,6 +182,52 @@ local function assert_defensive_proposal_shape()
     assert_equal(proposal.lock_class, "support_action", "defensive lock class")
     assert_equal(proposal.reason_code, "critical_cure", "defensive reason")
     assert_equal(proposal.legacy_command, "input /ma Cure IV 77", "defensive compatibility command")
+	assert_equal(proposal.recast_key, "spell:Cure IV", "existing Cure recast key must remain compatible")
+	assert_equal(proposal.duplicate_suppression_key, "spell:Cure IV:77", "existing Cure duplicate key must remain compatible")
+
+	defensive_action = {
+		type = "debuff",
+		action_name = "Healing Waltz",
+		action_kind = "ja",
+		target = { id = 77, name = "Ally", hpp = 80, is_self = false },
+		target_range = 24.9,
+		action_detail = { tp_cost = 200, tp_reserve = 300, target_range = 24.9 },
+	}
+	proposals = {}
+	provider.collect_internal({
+		now = 12.75,
+		settings = { defensive_enabled = true, defensive_provider = "internal", defensive_critical_hpp = 35 },
+	}, proposals)
+	assert_equal(#proposals, 1, "Waltz defensive proposal count")
+	local waltz = proposals[1]
+	assert_equal(waltz.action_type, "ja", "Waltz proposal action type")
+	assert_equal(waltz.action_name, "Healing Waltz", "Waltz proposal action name")
+	assert_equal(waltz.range_policy.max, 24.9, "Healing Waltz proposal range")
+	assert_equal(waltz.recast_key, "ja:Healing Waltz", "Waltz JA-aware recast key")
+	assert_equal(waltz.duplicate_suppression_key, "ja:Healing Waltz:77", "Waltz JA-aware duplicate key")
+	assert_equal(waltz.movement_policy, "requires_range", "Waltz JA movement policy")
+	assert_equal(waltz.expected_effect, "ja_effect", "Waltz JA expected effect")
+	assert_equal(waltz.detail.tp_cost, 200, "Waltz proposal TP cost detail")
+
+	defensive_action = {
+		type = "cure",
+		action_name = "Curing Waltz III",
+		action_kind = "ja",
+		target = { id = 77, name = "Ally", hpp = 20, is_self = false },
+		target_range = 20.7,
+		action_detail = { tp_cost = 500, tp_reserve = 300, target_range = 20.7 },
+	}
+	proposals = {}
+	provider.collect_internal({
+		now = 12.9,
+		settings = { defensive_enabled = true, defensive_provider = "internal", defensive_critical_hpp = 35 },
+	}, proposals)
+	assert_equal(#proposals, 1, "Curing Waltz proposal count")
+	local curing_waltz = proposals[1]
+	assert_equal(curing_waltz.action_type, "ja", "Curing Waltz must emit as a JA")
+	assert_equal(curing_waltz.detail.def_action_type, "cure", "Curing Waltz must retain cure arbitration semantics")
+	assert_equal(curing_waltz.priority_band, 153, "critical Curing Waltz must use critical Cure priority")
+	assert_equal(curing_waltz.range_policy.max, 20.7, "Curing Waltz III measured range")
 
     local old_actions = rawget(_G, "actions")
     local old_healer = rawget(_G, "healer")

@@ -1052,7 +1052,8 @@ function scheduler.p1_is_critical_defensive_proposal(settings, selected)
 		return false
 	end
 	local detail = type(selected.detail) == 'table' and selected.detail or {}
-	if tostring(selected.action_type or '') ~= 'spell' or tostring(detail.def_action_type or '') ~= 'cure' then
+	local action_type = tostring(selected.action_type or '')
+	if (action_type ~= 'spell' and action_type ~= 'ja') or tostring(detail.def_action_type or '') ~= 'cure' then
 		return false
 	end
 	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', settings and settings.defensive_critical_hpp)) or 35
@@ -1081,7 +1082,8 @@ function scheduler.p1_selected_is_critical_cure(settings, selected)
 	local detail = type(selected.detail) == 'table' and selected.detail or {}
 	local target_hpp = tonumber(detail.target_hpp or -1) or -1
 	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', settings and settings.defensive_critical_hpp)) or 35
-	return tostring(selected.action_type or '') == 'spell'
+	local action_type = tostring(selected.action_type or '')
+	return (action_type == 'spell' or action_type == 'ja')
 		and tostring(detail.def_action_type or '') == 'cure'
 		and target_hpp > 0
 		and target_hpp <= critical_hpp
@@ -2824,6 +2826,7 @@ local function get_party_members(ctx)
 	local out = {}
 	local party = type(ctx) == 'table' and ctx.party or windower.ffxi.get_party()
 	local player = type(ctx) == 'table' and ctx.player or windower.ffxi.get_player()
+	local coordinate_observed_at = type(ctx) == 'table' and tonumber(ctx.now) or now_s()
 	local self_id = player and player.id or 0
 	if type(party) ~= 'table' then
 		return out
@@ -2833,6 +2836,8 @@ local function get_party_members(ctx)
 		local entry = party[key]
 		if entry and entry.mob and entry.mob.id and entry.mob.id ~= 0 then
 			local is_self = entry.mob.id == self_id
+			local squared_distance = tonumber(entry.mob.distance)
+			local distance_yalms = is_self and 0 or (squared_distance and math.sqrt(math.max(0, squared_distance)) or nil)
 			local ipc = get_party_state_ipc_entry(entry.mob.id, entry.mob.name)
 			local packet_buffs = require('uc_party_buff_tracker').get(entry.mob.id)
 			local source = 'party'
@@ -2902,6 +2907,8 @@ local function get_party_members(ctx)
 				x = entry.mob.x,
 				y = entry.mob.y,
 				z = entry.mob.z,
+				coordinate_observed_at = coordinate_observed_at,
+				distance_yalms = distance_yalms,
 				is_self = is_self,
 				spawn_type = entry.mob.spawn_type,
 				is_npc = entry.mob.is_npc == true,
@@ -3631,6 +3638,8 @@ local function ja_ready(name, target_id)
 	return true, ''
 end
 
+local attempt_allowed
+
 action_ready = function(name, target_id)
 	local sp = get_spell_resource(name)
 	if sp then
@@ -3643,6 +3652,115 @@ action_ready = function(name, target_id)
 		return ok, reason, 'ja'
 	end
 	return false, 'BLOCK_DEFENSIVE_UNKNOWN_ACTION', 'none'
+end
+
+local curaga_by_tier = {
+	[1] = 'Curaga',
+	[2] = 'Curaga II',
+	[3] = 'Curaga III',
+	[4] = 'Curaga IV',
+	[5] = 'Curaga V',
+}
+
+local curing_waltz_by_tier = {
+	[1] = 'Curing Waltz',
+	[2] = 'Curing Waltz II',
+	[3] = 'Curing Waltz III',
+	[4] = 'Curing Waltz IV',
+	[5] = 'Curing Waltz V',
+}
+
+local function player_has_named_buff(player, wanted_name)
+	if type(player) ~= 'table' or type(player.buffs) ~= 'table' then
+		return nil
+	end
+	local wanted = tostring(wanted_name or ''):lower()
+	for _, buff_id in ipairs(player.buffs) do
+		local buff = res.buffs[tonumber(buff_id) or 0]
+		if buff and tostring(buff.en or ''):lower() == wanted then
+			return true
+		end
+	end
+	return false
+end
+
+local function waltz_ready(name, target_id, tp_reserve)
+	local ready, reason, kind = action_ready(name, target_id)
+	local player = windower.ffxi.get_player()
+	local ja = get_ja_resource(name)
+	if type(player) ~= 'table' or type(player.buffs) ~= 'table' or type(player.vitals) ~= 'table' then
+		return false, 'WALTZ_ACTOR_STATUS_UNKNOWN'
+	end
+	if type(ja) ~= 'table' then return false, 'WALTZ_RESOURCE_UNKNOWN' end
+	local result = require('uc_defensive_healing').evaluate_waltz_resource_gate({
+		action_ready = ready,
+		action_reason = reason,
+		action_kind = kind,
+		player_buffs = player.buffs,
+		buff_resources = res.buffs,
+		ja_resource = ja,
+		current_tp = player.vitals.tp,
+		tp_reserve = tp_reserve,
+	})
+	return result.ready, result.reason, result
+end
+
+local function member_within_action_range(member, max_range)
+	if type(member) ~= 'table' then
+		return false
+	end
+	if member.is_self == true then
+		return true
+	end
+	local distance = tonumber(member.distance_yalms)
+	return distance ~= nil and distance <= max_range
+end
+
+local function choose_curaga_action(plan)
+	local wanted_tier = cure_tier_for_missing_hp(tonumber(plan.maximum_missing_hp) or 0, 5)
+	for tier = wanted_tier, 1, -1 do
+		local name = curaga_by_tier[tier]
+		if name and spell_ready(name) then
+			return name
+		end
+	end
+	return nil
+end
+
+local function choose_curing_waltz_action(member, tp_reserve, now)
+	local healing = require('uc_defensive_healing')
+	local wanted_tier = cure_tier_for_missing_hp(estimate_missing_hp(member), 5)
+	for tier = wanted_tier, 1, -1 do
+		local name = curing_waltz_by_tier[tier]
+		local action_range = healing.mechanics.curing_waltz_ranges[name]
+		if name and action_range and member_within_action_range(member, action_range) then
+			local ready, reason, detail = waltz_ready(name, member.id, tp_reserve)
+			if ready then
+				if attempt_allowed('cure', member.name, name, now, 2.5) then
+					detail.target_range = action_range
+					return name, detail
+				end
+				return nil
+			end
+			log_def_sched(('WALTZ_REJECT action="%s" target="%s" reason=%s'):format(name, tostring(member.name or ''), tostring(reason)))
+		end
+	end
+	return nil
+end
+
+local function choose_divine_waltz_action(plan, tp_reserve, critical_hpp)
+	local order = { 'Divine Waltz', 'Divine Waltz II' }
+	if tonumber(plan.lowest_covered_hpp) <= tonumber(critical_hpp) then
+		order = { 'Divine Waltz II', 'Divine Waltz' }
+	end
+	for _, name in ipairs(order) do
+		local ready, reason, detail = waltz_ready(name, plan.anchor.id, tp_reserve)
+		if ready then
+			return name, detail
+		end
+		log_def_sched(('WALTZ_REJECT action="%s" target="%s" reason=%s'):format(name, tostring(plan.anchor_name or ''), tostring(reason)))
+	end
+	return nil
 end
 
 local function action_target_mode(action_name, action_kind)
@@ -3690,7 +3808,7 @@ local function attempt_key(kind, member_name, action_name)
 	return require('uc_scheduler_proposal_keys').attempt_key(kind, member_name, action_name)
 end
 
-local function attempt_allowed(kind, member_name, action_name, now, min_gap)
+attempt_allowed = function(kind, member_name, action_name, now, min_gap)
 	local key = attempt_key(kind, member_name, action_name)
 	local last = scheduler.attempted[key]
 	if last and (now - last) < (min_gap or 3) then
@@ -3752,7 +3870,28 @@ local function build_defensive_candidates(ctx)
 	}
 	local now = type(ctx) == 'table' and ctx.now or now_s()
 	local ignore_trusts = bool_setting(scheduler.active_value_or_flat('config.defensive.cure.ignore_trusts', s.def_heal_ignore_trusts), true)
+	local cure_enabled = bool_setting(scheduler.active_value_or_flat('config.defensive.cure.enabled', s.defensive_cure_enabled), true)
+	local curaga_enabled = bool_setting(scheduler.active_value_or_flat('config.defensive.cure.curaga.enabled', s.defensive_curaga_enabled), false)
+	local curaga_min_targets = tonumber(scheduler.active_value_or_flat('config.defensive.cure.curaga.min_targets', s.defensive_curaga_min_targets)) or 3
+	local waltz_enabled = bool_setting(scheduler.active_value_or_flat('config.defensive.waltz.enabled', s.defensive_waltz_enabled), false)
+	local waltz_tp_reserve = tonumber(scheduler.active_value_or_flat('config.defensive.waltz.tp_reserve', s.defensive_waltz_tp_reserve)) or 0
+	local divine_min_targets = tonumber(scheduler.active_value_or_flat('config.defensive.waltz.divine_min_targets', s.defensive_divine_waltz_min_targets)) or 3
+	if curaga_min_targets < 2 or curaga_min_targets > 6 or curaga_min_targets % 1 ~= 0 then
+		error('normalized defensive Curaga minimum targets must be an integer from 2 through 6')
+	end
+	if waltz_tp_reserve < 0 or waltz_tp_reserve > 3000 or waltz_tp_reserve % 1 ~= 0 then
+		error('normalized defensive Waltz TP reserve must be an integer from 0 through 3000')
+	end
+	if divine_min_targets < 2 or divine_min_targets > 6 or divine_min_targets % 1 ~= 0 then
+		error('normalized defensive Divine Waltz minimum targets must be an integer from 2 through 6')
+	end
 	local na_members = {}
+	local aoe_members = {}
+	local injured_members = {}
+	local injured_ids = {}
+	local missing_gate = math.max(0, tonumber(scheduler.active_value_or_flat('config.defensive.cure.min_missing_hp', s.def_heal_min_missing_hp)) or 250)
+	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', s.defensive_critical_hpp)) or 35
+	local actor_silenced = waltz_enabled and player_has_named_buff(windower.ffxi.get_player(), 'silence') == true
 
 	if bool_setting(scheduler.active_value_or_flat('config.defensive.buffs.enabled', s.defensive_buff_enabled), true) then
 		log_def_sched(('BUFF_SCAN mode=%s buffs="%s" targeted="%s" members=%d'):format(
@@ -3824,86 +3963,184 @@ local function build_defensive_candidates(ctx)
 	for _, m in ipairs(members) do
 		if not (ignore_trusts and tonumber(m.spawn_type) == 14) then
 			na_members[#na_members + 1] = m
-			local active_counts = count_buff_occurrences(m.buffs or {})
 			if m.charmed == true then
 				log_def_sched(('CURE_REJECT target="%s" reason=CHARMED_TARGET'):format(tostring(m.name or '?')))
+			elseif (tonumber(m.hpp) or 0) > 0 then
+				aoe_members[#aoe_members + 1] = m
 			end
-			if m.charmed ~= true and m.hpp > 0 and m.hpp < 95 and bool_setting(scheduler.active_value_or_flat('config.defensive.cure.enabled', s.defensive_cure_enabled), true) and in_party_cast_range(m) then
-			local missing_hp = estimate_missing_hp(m)
-			local missing_gate = tonumber(scheduler.active_value_or_flat('config.defensive.cure.min_missing_hp', s.def_heal_min_missing_hp)) or 250
-			missing_gate = math.max(0, missing_gate)
-			log_def_sched(('CURE_CANDIDATE target="%s" hp=%d hpp=%d missing=%d gate=%d in_range=1'):format(
-				tostring(m.name or '?'),
-				tonumber(m.hp) or 0,
-				tonumber(m.hpp) or 0,
-				tonumber(missing_hp) or 0,
-				tonumber(missing_gate) or 0
-			))
-			if missing_hp >= missing_gate then
-			local spell = choose_cure_spell(m)
-			if not spell then
-				log_def_sched(('CURE_REJECT target="%s" reason=NO_SPELL hp=%d hpp=%d missing=%d gate=%d'):format(
-					tostring(m.name or '?'),
-					tonumber(m.hp) or 0,
-					tonumber(m.hpp) or 0,
-					tonumber(missing_hp) or 0,
-					tonumber(missing_gate) or 0
-				))
-			end
-			if spell then
-				local ready = spell_ready(spell)
-				if not ready then
-					log_def_sched(('CURE_REJECT target="%s" reason=SPELL_NOT_READY spell="%s" hp=%d hpp=%d missing=%d gate=%d'):format(
-						tostring(m.name or '?'),
-						tostring(spell),
-						tonumber(m.hp) or 0,
-						tonumber(m.hpp) or 0,
-						tonumber(missing_hp) or 0,
-						tonumber(missing_gate) or 0
-					))
-				end
-				if ready and attempt_allowed('cure', m.name, spell, now, 2.5) then
-					local c = {
-						type = 'cure',
-						spell = spell,
-						target = m,
-						member_prio = member_priority(m),
-						danger = danger_level(m.hpp),
-						prio = member_priority(m),
-					}
-					if cure_better(c, out.cure) then
-						out.cure = c
-						log_def_sched(('CURE_ACCEPT target="%s" spell="%s" hp=%d hpp=%d missing=%d gate=%d prio=%0.2f'):format(
-							tostring(m.name or '?'),
-							tostring(spell),
-							tonumber(m.hp) or 0,
-							tonumber(m.hpp) or 0,
-							tonumber(missing_hp) or 0,
-							tonumber(missing_gate) or 0,
-							tonumber(c.prio) or 0
+			if cure_enabled and m.charmed ~= true and (tonumber(m.hpp) or 0) > 0 and (tonumber(m.hpp) or 100) < 95 then
+				local missing_hp = estimate_missing_hp(m)
+				if missing_hp >= missing_gate then
+					injured_members[#injured_members + 1] = m
+					injured_ids[#injured_ids + 1] = m.id
+					if in_party_cast_range(m) then
+						log_def_sched(('CURE_CANDIDATE target="%s" hp=%d hpp=%d missing=%d gate=%d in_range=1'):format(
+							tostring(m.name or '?'), tonumber(m.hp) or 0, tonumber(m.hpp) or 0,
+							missing_hp, missing_gate
 						))
+						local spell = actor_silenced and nil or choose_cure_spell(m)
+						local ready = spell and spell_ready(spell) or false
+						if ready and attempt_allowed('cure', m.name, spell, now, 2.5) then
+							local candidate = {
+								type = 'cure',
+								spell = spell,
+								action_name = spell,
+								action_kind = 'spell',
+								target = m,
+								member_prio = member_priority(m),
+								danger = danger_level(m.hpp),
+								prio = member_priority(m),
+							}
+							if cure_better(candidate, out.cure) then
+								out.cure = candidate
+								log_def_sched(('CURE_ACCEPT target="%s" action="%s" kind=spell hp=%d hpp=%d missing=%d gate=%d'):format(
+									tostring(m.name or '?'), spell, tonumber(m.hp) or 0, tonumber(m.hpp) or 0,
+									missing_hp, missing_gate
+								))
+							end
+						elseif actor_silenced then
+							log_def_sched(('CURE_REJECT target="%s" reason=SPELL_SILENCED_WALTZ_ENABLED'):format(tostring(m.name or '?')))
+						elseif not spell then
+							log_def_sched(('CURE_REJECT target="%s" reason=NO_SPELL hp=%d hpp=%d missing=%d gate=%d'):format(
+								tostring(m.name or '?'), tonumber(m.hp) or 0, tonumber(m.hpp) or 0, missing_hp, missing_gate
+							))
+						elseif not ready then
+							log_def_sched(('CURE_REJECT target="%s" reason=SPELL_NOT_READY spell="%s" hp=%d hpp=%d missing=%d gate=%d'):format(
+								tostring(m.name or '?'), tostring(spell), tonumber(m.hp) or 0, tonumber(m.hpp) or 0, missing_hp, missing_gate
+							))
+						else
+							log_def_sched(('CURE_REJECT target="%s" reason=ATTEMPT_THROTTLE spell="%s" hp=%d hpp=%d missing=%d gate=%d'):format(
+								tostring(m.name or '?'), tostring(spell), tonumber(m.hp) or 0, tonumber(m.hpp) or 0, missing_hp, missing_gate
+							))
+						end
 					end
-				elseif ready then
-					log_def_sched(('CURE_REJECT target="%s" reason=ATTEMPT_THROTTLE spell="%s" hp=%d hpp=%d missing=%d gate=%d'):format(
-						tostring(m.name or '?'),
-						tostring(spell),
-						tonumber(m.hp) or 0,
-						tonumber(m.hpp) or 0,
-						tonumber(missing_hp) or 0,
-						tonumber(missing_gate) or 0
+				else
+					log_def_sched(('CURE_REJECT target="%s" reason=MISSING_BELOW_GATE hp=%d hpp=%d missing=%d gate=%d'):format(
+						tostring(m.name or '?'), tonumber(m.hp) or 0, tonumber(m.hpp) or 0, missing_hp, missing_gate
 					))
 				end
 			end
-			else
-				log_def_sched(('CURE_REJECT target="%s" reason=MISSING_BELOW_GATE hp=%d hpp=%d missing=%d gate=%d'):format(
-					tostring(m.name or '?'),
-					tonumber(m.hp) or 0,
-					tonumber(m.hpp) or 0,
-					tonumber(missing_hp) or 0,
-					tonumber(missing_gate) or 0
-				))
+		end
+	end
+
+	local healing = require('uc_defensive_healing')
+	local function aoe_action_from_plan(name, kind, plan, waltz_detail)
+		local covered_prio = 99
+		local covered = {}
+		for _, id in ipairs(plan.covered_ids) do covered[tonumber(id) or 0] = true end
+		for _, member in ipairs(aoe_members) do
+			if covered[tonumber(member.id) or 0] then
+				covered_prio = math.min(covered_prio, member_priority(member))
 			end
+		end
+		return {
+			type = 'cure',
+			spell = kind == 'spell' and name or nil,
+			action_name = name,
+			action_kind = kind,
+			target = plan.anchor,
+			member_prio = covered_prio,
+			danger = danger_level(plan.lowest_covered_hpp),
+			prio = covered_prio,
+			aoe = true,
+			covered_ids = plan.covered_ids,
+			covered_names = plan.covered_names,
+			coverage_count = plan.coverage_count,
+			aggregate_missing_hp = plan.aggregate_missing_hp,
+			lowest_covered_hpp = plan.lowest_covered_hpp,
+			maximum_missing_hp = plan.maximum_missing_hp,
+			aoe_radius = plan.radius,
+			target_range = plan.target_range,
+			anchor_distance = plan.anchor_distance,
+			action_detail = waltz_detail,
+		}
+	end
+	local function admit_aoe(candidate)
+		local allowed, reason = healing.should_admit_aoe(out.cure, candidate, critical_hpp)
+		if not allowed then return false, reason end
+		out.cure = candidate
+		return true, ''
+	end
+	if cure_enabled and waltz_enabled then
+		for _, member in ipairs(injured_members) do
+			local name, detail = choose_curing_waltz_action(member, waltz_tp_reserve, now)
+			if name then
+				local candidate = {
+					type = 'cure', action_name = name, action_kind = 'ja', target = member,
+					member_prio = member_priority(member), danger = danger_level(member.hpp), prio = member_priority(member),
+					target_range = detail.target_range, action_detail = detail,
+				}
+				if cure_better(candidate, out.cure) then
+					out.cure = candidate
+					log_def_sched(('CURE_ACCEPT target="%s" action="%s" kind=ja hp=%d hpp=%d tp_cost=%d tp_reserve=%d'):format(
+						tostring(member.name or '?'), name, tonumber(member.hp) or 0, tonumber(member.hpp) or 0,
+						detail.tp_cost, detail.tp_reserve
+					))
+				end
 			end
+		end
+	end
+
+	if cure_enabled and curaga_enabled and not actor_silenced then
+		local result = healing.plan_aoe({
+			now = now,
+			members = aoe_members,
+			injured_recipient_ids = injured_ids,
+			minimum_targets = curaga_min_targets,
+			mechanics = healing.mechanics.curaga,
+			member_priority = member_priority,
+			estimate_missing_hp = estimate_missing_hp,
+		})
+		if result.state == 'ready' then
+			local name = choose_curaga_action(result.selected)
+			if name and attempt_allowed('cure', result.selected.anchor_name, name, now, 2.5) then
+				local candidate = aoe_action_from_plan(name, 'spell', result.selected)
+				local admitted, admit_reason = admit_aoe(candidate)
+				if admitted then
+					log_def_sched(('AOE_HEAL_ACCEPT action="%s" kind=spell anchor="%s" anchor_id=%d anchor_dist=%.2f radius=%.1f coverage=%d covered="%s" aggregate_missing=%d lowest_hpp=%d'):format(
+						name, result.selected.anchor_name, result.selected.anchor_id, result.selected.anchor_distance,
+						result.selected.radius, result.selected.coverage_count, table.concat(result.selected.covered_names, '|'),
+						result.selected.aggregate_missing_hp, result.selected.lowest_covered_hpp
+					))
+				else
+					log_def_sched(('AOE_HEAL_REJECT family=Curaga action="%s" reason=%s'):format(name, admit_reason))
+				end
+			elseif not name then
+				log_def_sched('AOE_HEAL_REJECT family=Curaga reason=NO_READY_CURAGA')
+			end
+		else
+			log_def_sched(('AOE_HEAL_REJECT family=Curaga reason=%s'):format(tostring(result.blocker)))
+		end
+	end
+
+	if cure_enabled and waltz_enabled then
+		local result = healing.plan_aoe({
+			now = now,
+			members = aoe_members,
+			injured_recipient_ids = injured_ids,
+			minimum_targets = divine_min_targets,
+			mechanics = healing.mechanics.divine_waltz,
+			member_priority = member_priority,
+			estimate_missing_hp = estimate_missing_hp,
+		})
+		if result.state == 'ready' then
+			local name, detail = choose_divine_waltz_action(result.selected, waltz_tp_reserve, critical_hpp)
+			if name and attempt_allowed('cure', result.selected.anchor_name, name, now, 2.5) then
+				detail.target_range = result.selected.target_range
+				local candidate = aoe_action_from_plan(name, 'ja', result.selected, detail)
+				local admitted, admit_reason = admit_aoe(candidate)
+				if admitted then
+					log_def_sched(('AOE_HEAL_ACCEPT action="%s" kind=ja anchor="%s" anchor_id=%d anchor_dist=%.2f radius=%.1f coverage=%d covered="%s" aggregate_missing=%d lowest_hpp=%d tp_cost=%d tp_reserve=%d'):format(
+						name, result.selected.anchor_name, result.selected.anchor_id, result.selected.anchor_distance,
+						result.selected.radius, result.selected.coverage_count, table.concat(result.selected.covered_names, '|'),
+						result.selected.aggregate_missing_hp, result.selected.lowest_covered_hpp, detail.tp_cost, detail.tp_reserve
+					))
+				else
+					log_def_sched(('AOE_HEAL_REJECT family=DivineWaltz action="%s" reason=%s'):format(name, admit_reason))
+				end
+			end
+		else
+			log_def_sched(('AOE_HEAL_REJECT family=DivineWaltz reason=%s'):format(tostring(result.blocker)))
 		end
 	end
 	out.debuff = require('uc_scheduler_na_policy').choose_status_removal(na_members, {
@@ -3921,6 +4158,28 @@ local function build_defensive_candidates(ctx)
 		action_ready = action_ready,
 		attempt_allowed = attempt_allowed,
 		in_party_cast_range = in_party_cast_range,
+		spell_status_removal_blocked = function()
+			return waltz_enabled and actor_silenced
+		end,
+		status_removal_alternative_in_range = function(member)
+			return waltz_enabled and member.charmed ~= true and (tonumber(member.hpp) or 0) > 0
+				and member_within_action_range(member, healing.mechanics.healing_waltz_range)
+		end,
+		status_removal_alternative = function(member, _buff_id, status_key, mapped_spell)
+			if not waltz_enabled or member.charmed == true or (tonumber(member.hpp) or 0) <= 0 then return nil end
+			if not healing.healing_waltz_supports(status_key, mapped_spell) then
+				log_def_sched(('HEALING_WALTZ_REJECT target="%s" status=%s reason=HEALING_WALTZ_UNSUPPORTED_STATUS'):format(tostring(member.name or ''), tostring(status_key)))
+				return nil
+			end
+			if not member_within_action_range(member, healing.mechanics.healing_waltz_range) then return nil end
+			local ready, reason, detail = waltz_ready('Healing Waltz', member.id, waltz_tp_reserve)
+			if not ready then
+				log_def_sched(('HEALING_WALTZ_REJECT target="%s" status=%s reason=%s'):format(tostring(member.name or ''), tostring(status_key), tostring(reason)))
+				return nil
+			end
+			detail.target_range = healing.mechanics.healing_waltz_range
+			return { action_name = 'Healing Waltz', action_kind = 'ja', target_range = detail.target_range, tp_cost = detail.tp_cost, tp_reserve = detail.tp_reserve, recast_id = detail.recast_id }
+		end,
 		member_priority = member_priority,
 		pri_default = pri_default,
 	})
@@ -4530,7 +4789,7 @@ local function p1_run_dry(settings, ctx)
 		local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings and ctx.settings.defensive_critical_hpp)) or 35
 		local is_defensive_cure_selected = (
 			(selected_provider_for_weave == 'defensive_internal' or selected_provider_for_weave == 'defensive_healbot')
-			and tostring(selected.action_type or '') == 'spell'
+			and (tostring(selected.action_type or '') == 'spell' or tostring(selected.action_type or '') == 'ja')
 			and tostring(detail and detail.def_action_type or '') == 'cure'
 		)
 		local cure_is_critical = (target_hpp > 0 and target_hpp <= critical_hpp)
@@ -5482,6 +5741,20 @@ local function p1_dispatch_defensive_internal(selected, settings)
 	if action_kind == 'none' or not ok_ready then
 		return false, nil
 	end
+	local detail = type(selected.detail) == 'table' and selected.detail or {}
+	if action_kind == 'ja' and detail.waltz_action == true then
+		local waltz_ok, waltz_reason = waltz_ready(
+			tostring(selected.action_name or ''),
+			tonumber(selected.target_id) or 0,
+			tonumber(detail.tp_reserve)
+		)
+		if not waltz_ok then
+			log_def_sched(('WALTZ_DISPATCH_REJECT action="%s" target="%s" reason=%s'):format(
+				tostring(selected.action_name or ''), tostring(selected.target_name or ''), tostring(waltz_reason)
+			))
+			return true, tostring(waltz_reason)
+		end
+	end
 	local player = windower.ffxi.get_player()
 	local out_of_combat = (tonumber(player and player.status) or 0) ~= 1
 	local now_gate = now_s()
@@ -5547,7 +5820,6 @@ local function p1_dispatch_defensive_internal(selected, settings)
 		dispatch_reason = defensive_command_ownership_status.dispatch_reason,
 		fallback_used = defensive_command_ownership_status.fallback_used,
 	}
-	local detail = selected.detail
 	if defensive_command_ownership_status.dispatch_ok == true
 		and type(detail) == 'table'
 		and detail.def_action_type == 'charm_sleep' then
@@ -7811,6 +8083,13 @@ scheduler.providers.defensive = require('uc_provider_defensive').new({
 	build_defensive_candidates = build_defensive_candidates,
 	choose_defensive_action = choose_defensive_action,
 	action_ready = action_ready,
+	action_range = function(action_name, action_kind)
+		local resource = action_kind == 'spell' and get_spell_resource(action_name) or get_ja_resource(action_name)
+		if type(resource) ~= 'table' or tonumber(resource.range) == nil then
+			error(('defensive action %s has no authoritative resource range'):format(tostring(action_name)))
+		end
+		return action_effective_range(resource.range)
+	end,
 	build_action_command = build_action_command,
 	cure_target_allowed = function(target_id, target_kind)
 		if tostring(target_kind or '') == 'self' then

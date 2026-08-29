@@ -22,6 +22,7 @@ function M.new(deps)
 	local build_defensive_candidates = require_function(deps, 'build_defensive_candidates')
 	local choose_defensive_action = require_function(deps, 'choose_defensive_action')
 	local action_ready = require_function(deps, 'action_ready')
+	local action_range = require_function(deps, 'action_range')
 	local build_action_command = require_function(deps, 'build_action_command')
 	local cure_target_allowed = require_function(deps, 'cure_target_allowed')
 	local clamp_urgency = require_function(deps, 'clamp_urgency')
@@ -43,7 +44,8 @@ function M.new(deps)
 		end
 		local candidates = build_defensive_candidates(ctx)
 		local action, reason = choose_defensive_action(candidates)
-		if not action or not action.spell or not action.target or not action.target.name then
+		local action_name = type(action) == 'table' and tostring(action.action_name or action.spell or '') or ''
+		if not action or action_name == '' or not action.target or not action.target.name then
 			return
 		end
 		local urgency = 0.35
@@ -59,15 +61,36 @@ function M.new(deps)
 		local target_kind = action.target.is_self and 'self' or 'ally'
 		local target_id = tonumber(action.target.id) or 0
 		local target_name = tostring(action.target.name or '')
-		local action_name = tostring(action.spell or '')
-		local target_hpp = tonumber(action.target.hpp) or -1
+		local target_hpp = tonumber(action.lowest_covered_hpp) or tonumber(action.target.hpp) or -1
 		local critical_hpp = tonumber(active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings.defensive_critical_hpp)) or 35
 		local priority_band = 100
 		if tostring(action.type or '') == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp then
 			priority_band = critical_cure_priority
 		end
-		local _, _, action_kind = action_ready(action_name, target_id)
+		local ready, _, action_kind = action_ready(action_name, target_id)
+		if not ready or action_kind == 'none' then
+			return
+		end
+		if action.action_kind ~= nil and tostring(action.action_kind) ~= action_kind then
+			error(('defensive action kind mismatch for %s: candidate=%s resolved=%s'):format(action_name, tostring(action.action_kind), tostring(action_kind)))
+		end
 		local legacy_command = build_action_command(action_name, action_kind, action.target)
+		local target_range = tonumber(action.target_range)
+		if target_range == nil and type(action.action_detail) == 'table' then
+			target_range = tonumber(action.action_detail.target_range)
+		end
+		if target_range == nil then
+			target_range = action_range(action_name, action_kind)
+		end
+		if type(target_range) ~= 'number' or target_range < 0 then
+			error(('defensive action range is invalid for %s'):format(action_name))
+		end
+		local recast_key = ('spell:%s'):format(action_name)
+		local duplicate_key = ('spell:%s:%d'):format(action_name, target_id)
+		if action_kind == 'ja' then
+			recast_key = ('ja:%s'):format(action_name)
+			duplicate_key = ('ja:%s:%d'):format(action_name, target_id)
+		end
 		out[#out + 1] = {
 			proposal_id = ('def.internal.%s.%s.%d'):format(tostring(action.type or 'action'), action_name, math.floor(ctx.now * 1000)),
 			family_id = ('def.internal.%s'):format(tostring(action.type or 'action')),
@@ -83,13 +106,13 @@ function M.new(deps)
 			created_at = ctx.now,
 			expires_at = ctx.now + 0.40,
 			commit_deadline = ctx.now + 0.25,
-			movement_policy = 'must_stop',
-			range_policy = { min = 0.0, max = 21.0, los_required = true },
-			recast_key = ('spell:%s'):format(action_name),
-			duplicate_suppression_key = ('spell:%s:%d'):format(action_name, target_id),
+			movement_policy = action_kind == 'spell' and 'must_stop' or 'requires_range',
+			range_policy = { min = 0.0, max = target_range, los_required = true },
+			recast_key = recast_key,
+			duplicate_suppression_key = duplicate_key,
 			lock_class = 'support_action',
 			expected_ack = 'action_start',
-			expected_effect = 'buff_gain',
+			expected_effect = action_kind == 'ja' and 'ja_effect' or 'buff_gain',
 			sticky = false,
 			can_preempt_movement = true,
 			can_preempt_same_band = false,
@@ -97,6 +120,17 @@ function M.new(deps)
 			detail = {
 				def_action_type = tostring(action.type or ''),
 				target_hpp = target_hpp,
+				aoe = action.aoe == true,
+				coverage_count = tonumber(action.coverage_count) or 0,
+				covered_ids = action.covered_ids,
+				covered_names = action.covered_names,
+				aggregate_missing_hp = tonumber(action.aggregate_missing_hp) or 0,
+				lowest_covered_hpp = tonumber(action.lowest_covered_hpp) or -1,
+				aoe_radius = tonumber(action.aoe_radius) or 0,
+				target_range = target_range,
+				tp_cost = type(action.action_detail) == 'table' and tonumber(action.action_detail.tp_cost) or nil,
+				tp_reserve = type(action.action_detail) == 'table' and tonumber(action.action_detail.tp_reserve) or nil,
+				waltz_action = action_kind == 'ja' and action_name:find('Waltz', 1, true) ~= nil,
 			},
 			legacy_command = legacy_command,
 		}

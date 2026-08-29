@@ -350,6 +350,19 @@ internal static class StructuredProfileV2Writer
                     .Add("max_tier", ReadInt(flatProfile, "def_heal_max_tier_cure", 4))
                     .Add("min_missing_hp", ReadInt(flatProfile, "def_heal_min_missing_hp", 250))
                     .Add("ignore_trusts", ReadBool(flatProfile, "def_heal_ignore_trusts", true))
+                    .Add(
+                        "curaga",
+                        new StructuredProfileNode()
+                            .Add("enabled", ReadBool(flatProfile, "defensive_curaga_enabled", false))
+                            .Add("min_targets", Math.Clamp(ReadInt(flatProfile, "defensive_curaga_min_targets", 3), 2, 6))
+                    )
+            )
+            .Add(
+                "waltz",
+                new StructuredProfileNode()
+                    .Add("enabled", ReadBool(flatProfile, "defensive_waltz_enabled", false))
+                    .Add("tp_reserve", Math.Clamp(ReadInt(flatProfile, "defensive_waltz_tp_reserve", 0), 0, 3000))
+                    .Add("divine_min_targets", Math.Clamp(ReadInt(flatProfile, "defensive_divine_waltz_min_targets", 3), 2, 6))
             )
             .Add("doom", new StructuredProfileNode().Add("holy_water_enabled", ReadBool(flatProfile, "defensive_doom_water", false)))
             .Add("charm_sleeper", new StructuredProfileNode().Add("enabled", ReadBool(flatProfile, "def_charm_sleeper_enabled", false)))

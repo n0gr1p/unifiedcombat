@@ -499,6 +499,15 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.def_heal_max_tier_cure = config.defensive.cure.max_tier
 			candidate.def_heal_min_missing_hp = config.defensive.cure.min_missing_hp
 			candidate.def_heal_ignore_trusts = config.defensive.cure.ignore_trusts
+			if type(config.defensive.cure.curaga) == 'table' then
+				candidate.defensive_curaga_enabled = config.defensive.cure.curaga.enabled
+				candidate.defensive_curaga_min_targets = config.defensive.cure.curaga.min_targets
+			end
+		end
+		if type(config.defensive.waltz) == 'table' then
+			candidate.defensive_waltz_enabled = config.defensive.waltz.enabled
+			candidate.defensive_waltz_tp_reserve = config.defensive.waltz.tp_reserve
+			candidate.defensive_divine_waltz_min_targets = config.defensive.waltz.divine_min_targets
 		end
 		if type(config.defensive.doom) == 'table' then
 			candidate.defensive_doom_water = config.defensive.doom.holy_water_enabled

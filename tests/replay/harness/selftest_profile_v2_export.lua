@@ -583,6 +583,11 @@ local function build_flat_settings()
 		def_heal_max_tier_cure = 4,
 		def_heal_min_missing_hp = 250,
 		def_heal_ignore_trusts = true,
+		defensive_curaga_enabled = true,
+		defensive_curaga_min_targets = 4,
+		defensive_waltz_enabled = true,
+		defensive_waltz_tp_reserve = 1000,
+		defensive_divine_waltz_min_targets = 2,
 		defensive_doom_water = true,
 		def_charm_sleeper_enabled = false,
 		def_sleep_waker_enabled = false,
@@ -706,6 +711,15 @@ local function build_expected_config()
 				max_tier = 4,
 				min_missing_hp = 250,
 				ignore_trusts = true,
+				curaga = {
+					enabled = true,
+					min_targets = 4,
+				},
+			},
+			waltz = {
+				enabled = true,
+				tp_reserve = 1000,
+				divine_min_targets = 2,
 			},
 			doom = {
 				holy_water_enabled = true,
@@ -1309,6 +1323,11 @@ local function main()
 	ui_fixture_match_flat.fight_leader_selected = 'Niightsiide'
 	ui_fixture_match_flat.puller = true
 	ui_fixture_match_flat.puller_name = 'Niightsiide'
+	ui_fixture_match_flat.defensive_curaga_enabled = false
+	ui_fixture_match_flat.defensive_curaga_min_targets = 3
+	ui_fixture_match_flat.defensive_waltz_enabled = false
+	ui_fixture_match_flat.defensive_waltz_tp_reserve = 0
+	ui_fixture_match_flat.defensive_divine_waltz_min_targets = 3
 	local ui_fixture_diff_ok_result = exporter.diff_structured_profile_file_against_settings(ui_fixture_match_flat, {
 		character = 'Redrogue',
 		main_job = 'PLD',
@@ -1347,6 +1366,11 @@ local function main()
 	local ui_fixture_diff_settings = deep_clone(flat)
 	ui_fixture_diff_settings.puller = true
 	ui_fixture_diff_settings.puller_name = 'Niightsiide'
+	ui_fixture_diff_settings.defensive_curaga_enabled = false
+	ui_fixture_diff_settings.defensive_curaga_min_targets = 3
+	ui_fixture_diff_settings.defensive_waltz_enabled = false
+	ui_fixture_diff_settings.defensive_waltz_tp_reserve = 0
+	ui_fixture_diff_settings.defensive_divine_waltz_min_targets = 3
 	ui_fixture_diff_settings.face = false
 	local ui_fixture_diff_snapshot = deep_clone(ui_fixture_diff_settings)
 	local ui_fixture_scalar_diff_result = exporter.diff_structured_profile_file_against_settings(ui_fixture_diff_settings, {
@@ -1523,6 +1547,11 @@ local function main()
 	assert_deep_equal(status_match_settings, status_match_snapshot, 'structured profile status matching config must not mutate settings')
 
 	local ui_fixture_status_settings = deep_clone(flat)
+	ui_fixture_status_settings.defensive_curaga_enabled = false
+	ui_fixture_status_settings.defensive_curaga_min_targets = 3
+	ui_fixture_status_settings.defensive_waltz_enabled = false
+	ui_fixture_status_settings.defensive_waltz_tp_reserve = 0
+	ui_fixture_status_settings.defensive_divine_waltz_min_targets = 3
 	local ui_fixture_status_snapshot = deep_clone(ui_fixture_status_settings)
 	local ui_fixture_status_result = exporter.inspect_structured_profile_file_against_settings(ui_fixture_status_settings, {
 		character = 'Redrogue',
@@ -1628,6 +1657,11 @@ local function main()
 	assert_deep_equal(v2_status_diff_settings, v2_status_diff_snapshot, 'structured profile v2 status differing must not mutate settings')
 
 	local v2_fixture_status_settings = deep_clone(flat)
+	v2_fixture_status_settings.defensive_curaga_enabled = false
+	v2_fixture_status_settings.defensive_curaga_min_targets = 3
+	v2_fixture_status_settings.defensive_waltz_enabled = false
+	v2_fixture_status_settings.defensive_waltz_tp_reserve = 0
+	v2_fixture_status_settings.defensive_divine_waltz_min_targets = 3
 	local v2_fixture_status_snapshot = deep_clone(v2_fixture_status_settings)
 	local v2_fixture_status = profile_v2.inspect_structured_profile_status(v2_fixture_status_settings, {
 		character = 'Redrogue',
@@ -1737,6 +1771,11 @@ local function main()
 	assert_equal(path_gate_diff.first_difference.path, 'config.movement.path.party_gate_yalms', 'durable diff should report the durable movement path field path')
 
 	local ui_fixture_reload_settings = deep_clone(flat)
+	ui_fixture_reload_settings.defensive_curaga_enabled = false
+	ui_fixture_reload_settings.defensive_curaga_min_targets = 3
+	ui_fixture_reload_settings.defensive_waltz_enabled = false
+	ui_fixture_reload_settings.defensive_waltz_tp_reserve = 0
+	ui_fixture_reload_settings.defensive_divine_waltz_min_targets = 3
 	ui_fixture_reload_settings.face = false
 	local ui_fixture_reload_identity = ui_fixture_reload_settings
 	local ui_fixture_reload_deps, ui_fixture_reload_state = make_fake_fs({
