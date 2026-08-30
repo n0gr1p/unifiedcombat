@@ -194,6 +194,37 @@ local function assert_non_cor_blank_cor_round_trip(profile_v2, contract, make_fa
 	assert_equal(blank_cor_apply.diff_count, 0, 'non-COR structured profile with blank maintenance.cor apply diff count mismatch')
 end
 
+local function assert_missing_new_defensive_settings_apply(profile_v2, exporter, contract, make_fake_fs_fn, flat, profile, durable_path)
+	local legacy_profile = deep_clone(profile)
+	legacy_profile.config.defensive.cure.curaga = nil
+	legacy_profile.config.defensive.waltz = nil
+	legacy_profile.config.defensive.enemy_debuffs = nil
+	local settings = deep_clone(flat)
+	settings.defensive_curaga_enabled = true
+	settings.defensive_curaga_min_targets = 6
+	settings.defensive_waltz_enabled = true
+	settings.defensive_waltz_tp_reserve = 1000
+	settings.defensive_divine_waltz_min_targets = 6
+	settings.def_maintain_enemy_debuffs = true
+	settings.defensive_enemy_debuffs = 'Distract'
+	local deps = make_fake_fs_fn({
+		[durable_path] = profile_v2.serialize_structured_profile(legacy_profile),
+	})
+	local result = exporter.apply_structured_profile_file_to_settings(settings, {
+		character = 'Redrogue',
+		main_job = 'PLD',
+		sub_job = 'WAR',
+	}, contract.validate_structured_profile_config, deps)
+	assert_true(result.ok == true, 'structured profile missing new defensive settings must apply cleanly')
+	assert_false(result.candidate.defensive_curaga_enabled, 'missing Curaga enabled value must project as false')
+	assert_equal(result.candidate.defensive_curaga_min_targets, 3, 'missing Curaga minimum must project as 3')
+	assert_false(result.candidate.defensive_waltz_enabled, 'missing Waltz enabled value must project as false')
+	assert_equal(result.candidate.defensive_waltz_tp_reserve, 0, 'missing Waltz TP reserve must project as 0')
+	assert_equal(result.candidate.defensive_divine_waltz_min_targets, 3, 'missing Divine Waltz minimum must project as 3')
+	assert_false(result.candidate.def_maintain_enemy_debuffs, 'missing enemy debuff enabled value must project as false')
+	assert_equal(result.candidate.defensive_enemy_debuffs, '', 'missing enemy debuff list must project as empty')
+end
+
 local function load_profile_v2_apply_from_addon(addon_source, exporter_stub, validator_stub)
 	local apply_block = extract_source_block(
 		addon_source,
@@ -1715,6 +1746,8 @@ local function main()
 	assert_deep_equal(no_diff_settings, flat, 'structured profile apply helper should leave matching settings unchanged')
 	assert_equal(#no_diff_state.open_calls, 0, 'structured profile apply should not write to disk on no-diff apply')
 	assert_equal(#no_diff_state.rename_calls, 0, 'structured profile apply should not rename files on no-diff apply')
+
+	assert_missing_new_defensive_settings_apply(profile_v2, exporter, contract, make_fake_fs, flat, profile, durable_path)
 
 	no_diff_settings = deep_clone(profile)
 	no_diff_settings.config.follow.nyzul = nil

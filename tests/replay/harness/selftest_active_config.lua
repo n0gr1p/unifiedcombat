@@ -553,6 +553,9 @@ local function main()
 			combat = {
 				enabled = true,
 			},
+			defensive = {
+				cure = {},
+			},
 			maintenance = {
 				geo = {},
 			},
@@ -567,13 +570,93 @@ local function main()
 	assert_true(migrated_err == nil, 'legacy GEO profile migration should not report an error')
 	assert_true(type(migrated_profile.config.combat.pulling) == 'table', 'legacy profile must receive normalized pulling configuration')
 	assert_false(migrated_profile.config.combat.pulling.enabled, 'migrated pulling configuration must remain disabled')
+	assert_true(type(migrated_profile.config.defensive.cure.curaga) == 'table', 'legacy profile must receive Curaga compatibility defaults')
+	assert_false(migrated_profile.config.defensive.cure.curaga.enabled, 'legacy profile must leave Curaga disabled')
+	assert_equal(migrated_profile.config.defensive.cure.curaga.min_targets, 3, 'legacy profile must receive the Curaga minimum target default')
+	assert_true(type(migrated_profile.config.defensive.waltz) == 'table', 'legacy profile must receive Waltz compatibility defaults')
+	assert_false(migrated_profile.config.defensive.waltz.enabled, 'legacy profile must leave Waltz disabled')
+	assert_equal(migrated_profile.config.defensive.waltz.tp_reserve, 0, 'legacy profile must receive the Waltz TP reserve default')
+	assert_equal(migrated_profile.config.defensive.waltz.divine_min_targets, 3, 'legacy profile must receive the Divine Waltz minimum target default')
+	assert_true(type(migrated_profile.config.defensive.enemy_debuffs) == 'table', 'legacy profile must receive enemy debuff compatibility defaults')
+	assert_false(migrated_profile.config.defensive.enemy_debuffs.enabled, 'legacy profile must leave enemy debuff maintenance disabled')
+	assert_equal(migrated_profile.config.defensive.enemy_debuffs.list, '', 'legacy profile must receive an empty enemy debuff list')
 	assert_true(type(migrated_profile.config.maintenance.geo) == 'table', 'legacy profile must receive normalized GEO configuration')
 	assert_false(migrated_profile.config.maintenance.geo.enabled, 'migrated GEO configuration must remain disabled')
-	local migrated_projected, migrated_project_err = active_config.project_flat_settings(migrated_profile, {})
+	local migrated_projected, migrated_project_err = active_config.project_flat_settings(migrated_profile, {
+		defensive_curaga_enabled = true,
+		defensive_curaga_min_targets = 6,
+		defensive_waltz_enabled = true,
+		defensive_waltz_tp_reserve = 1000,
+		defensive_divine_waltz_min_targets = 6,
+		def_maintain_enemy_debuffs = true,
+		defensive_enemy_debuffs = 'Distract',
+	})
 	assert_true(type(migrated_projected) == 'table', 'migrated GEO profile should project to runtime settings')
 	assert_true(migrated_project_err == nil, 'migrated GEO profile projection should not report an error')
 	assert_true(type(migrated_projected.camp_pulling) == 'table', 'migrated runtime settings must include camp pulling configuration')
 	assert_true(type(migrated_projected.maintenance_geo) == 'table', 'migrated runtime settings must include GEO configuration')
+	assert_false(migrated_projected.defensive_curaga_enabled, 'legacy profile projection must disable stale Curaga')
+	assert_equal(migrated_projected.defensive_curaga_min_targets, 3, 'legacy profile projection must restore the Curaga minimum target default')
+	assert_false(migrated_projected.defensive_waltz_enabled, 'legacy profile projection must disable stale Waltz')
+	assert_equal(migrated_projected.defensive_waltz_tp_reserve, 0, 'legacy profile projection must restore the Waltz TP reserve default')
+	assert_equal(migrated_projected.defensive_divine_waltz_min_targets, 3, 'legacy profile projection must restore the Divine Waltz minimum target default')
+	assert_false(migrated_projected.def_maintain_enemy_debuffs, 'legacy profile projection must disable stale enemy debuff maintenance')
+	assert_equal(migrated_projected.defensive_enemy_debuffs, '', 'legacy profile projection must clear a stale enemy debuff list')
+
+	local invalid_enemy_debuffs_profile, invalid_enemy_debuffs_err = active_config.build_active_profile_from_v2_payload({
+		version = 2,
+		profile = {
+			schema_version = 2,
+			engine = 'UC',
+			character = 'Niightsiide',
+			main_job = 'GEO',
+			sub_job = 'RDM',
+			source = 'ui',
+		},
+		config = {
+			defensive = {
+				enemy_debuffs = {
+					enabled = 'false',
+					list = '',
+				},
+			},
+		},
+	}, {
+		character = 'Niightsiide',
+		main_job = 'GEO',
+		sub_job = 'RDM',
+		source = 'UC_PROFILE_V2',
+	})
+	assert_true(invalid_enemy_debuffs_profile == nil, 'malformed enemy debuff configuration must fail profile activation')
+	assert_true(type(invalid_enemy_debuffs_err) == 'string' and invalid_enemy_debuffs_err:find('config.defensive.enemy_debuffs.enabled must be a boolean', 1, true) ~= nil, 'malformed enemy debuff configuration must report the contract error')
+
+	local invalid_waltz_profile, invalid_waltz_err = active_config.build_active_profile_from_v2_payload({
+		version = 2,
+		profile = {
+			schema_version = 2,
+			engine = 'UC',
+			character = 'Ponponponponpon',
+			main_job = 'COR',
+			sub_job = 'DNC',
+			source = 'ui',
+		},
+		config = {
+			defensive = {
+				waltz = {
+					enabled = false,
+					tp_reserve = 5000,
+					divine_min_targets = 3,
+				},
+			},
+		},
+	}, {
+		character = 'Ponponponponpon',
+		main_job = 'COR',
+		sub_job = 'DNC',
+		source = 'UC_PROFILE_V2',
+	})
+	assert_true(invalid_waltz_profile == nil, 'malformed Waltz configuration must fail profile activation')
+	assert_true(type(invalid_waltz_err) == 'string' and invalid_waltz_err:find('config.defensive.waltz.tp_reserve must be an integer from 0 to 3000', 1, true) ~= nil, 'malformed Waltz configuration must report the contract error')
 
 	local invalid_pulling_profile, invalid_pulling_err = active_config.build_active_profile_from_v2_payload({
 		version = 2,

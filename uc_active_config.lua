@@ -400,6 +400,95 @@ local function is_structured_profile(value)
 	return type(value) == 'table' and value.version == 2 and type(value.profile) == 'table' and type(value.config) == 'table'
 end
 
+local function normalize_defensive_compatibility(config)
+	if type(config.defensive) ~= 'table' then
+		return true
+	end
+	local defensive = config.defensive
+
+	if type(defensive.cure) == 'table' then
+		local curaga = defensive.cure.curaga
+		if curaga == nil then
+			defensive.cure.curaga = {
+				enabled = false,
+				min_targets = 3,
+			}
+		elseif type(curaga) ~= 'table' then
+			return false, 'config.defensive.cure.curaga must be a table'
+		else
+			if curaga.enabled == nil then
+				curaga.enabled = false
+			elseif type(curaga.enabled) ~= 'boolean' then
+				return false, 'config.defensive.cure.curaga.enabled must be a boolean'
+			end
+			if curaga.min_targets == nil then
+				curaga.min_targets = 3
+			elseif type(curaga.min_targets) ~= 'number'
+				or curaga.min_targets % 1 ~= 0
+				or curaga.min_targets < 2
+				or curaga.min_targets > 6 then
+				return false, 'config.defensive.cure.curaga.min_targets must be an integer from 2 to 6'
+			end
+		end
+	end
+
+	local waltz = defensive.waltz
+	if waltz == nil then
+		defensive.waltz = {
+			enabled = false,
+			tp_reserve = 0,
+			divine_min_targets = 3,
+		}
+	elseif type(waltz) ~= 'table' then
+		return false, 'config.defensive.waltz must be a table'
+	else
+		if waltz.enabled == nil then
+			waltz.enabled = false
+		elseif type(waltz.enabled) ~= 'boolean' then
+			return false, 'config.defensive.waltz.enabled must be a boolean'
+		end
+		if waltz.tp_reserve == nil then
+			waltz.tp_reserve = 0
+		elseif type(waltz.tp_reserve) ~= 'number'
+			or waltz.tp_reserve % 1 ~= 0
+			or waltz.tp_reserve < 0
+			or waltz.tp_reserve > 3000 then
+			return false, 'config.defensive.waltz.tp_reserve must be an integer from 0 to 3000'
+		end
+		if waltz.divine_min_targets == nil then
+			waltz.divine_min_targets = 3
+		elseif type(waltz.divine_min_targets) ~= 'number'
+			or waltz.divine_min_targets % 1 ~= 0
+			or waltz.divine_min_targets < 2
+			or waltz.divine_min_targets > 6 then
+			return false, 'config.defensive.waltz.divine_min_targets must be an integer from 2 to 6'
+		end
+	end
+
+	local enemy_debuffs = defensive.enemy_debuffs
+	if enemy_debuffs == nil then
+		defensive.enemy_debuffs = {
+			enabled = false,
+			list = '',
+		}
+		return true
+	end
+	if type(enemy_debuffs) ~= 'table' then
+		return false, 'config.defensive.enemy_debuffs must be a table'
+	end
+	if enemy_debuffs.enabled == nil then
+		enemy_debuffs.enabled = false
+	elseif type(enemy_debuffs.enabled) ~= 'boolean' then
+		return false, 'config.defensive.enemy_debuffs.enabled must be a boolean'
+	end
+	if enemy_debuffs.list == nil then
+		enemy_debuffs.list = ''
+	elseif type(enemy_debuffs.list) ~= 'string' then
+		return false, 'config.defensive.enemy_debuffs.list must be a string'
+	end
+	return true
+end
+
 local function sync_table_in_place(target, source)
 	if type(target) ~= 'table' or type(source) ~= 'table' then
 		return false, 'tables required'
@@ -1176,6 +1265,10 @@ function M.build_active_profile_from_v2_payload(payload, context)
 	local meta = resolve_meta(context, 'UC_PROFILE_V2')
 	local profile = build_profile_record(payload.profile, meta, 'UC_PROFILE_V2')
 	local config = pick_durable_config_domains(payload.config, profile)
+	local defensive_ok, defensive_err = normalize_defensive_compatibility(config)
+	if defensive_ok ~= true then
+		return nil, defensive_err
+	end
 	local pup_validation = uc_pup_config.validate(config.puppetmaster, profile)
 	if pup_validation.valid ~= true then
 		local first = pup_validation.errors[1]
