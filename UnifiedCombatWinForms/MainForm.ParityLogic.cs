@@ -963,43 +963,18 @@ public partial class MainForm
             if (hasWs)
             {
                 var wsText = (_wsCombo.Text ?? "").Trim();
-                var wsDisplay = new List<string>(wsOpts);
-                if (!string.IsNullOrEmpty(wsText) && !wsDisplay.Contains(wsText))
+                var wsDisplay = ComboBoxOptionUpdater.BuildDisplayOptions(wsOpts, wsText);
+                if (ComboBoxOptionUpdater.ReplaceItemsPreservingTextIfChanged(_wsCombo, wsDisplay, wsText))
                 {
-                    wsDisplay.Insert(0, wsText);
-                }
-
-                var currentWs = _wsCombo.Items.Cast<object>().Select(x => x.ToString() ?? "").ToList();
-                if (!SequenceEqualOrdinal(currentWs, wsDisplay))
-                {
-                    _wsCombo.Items.Clear();
-                    foreach (var w in wsDisplay)
-                    {
-                        _wsCombo.Items.Add(w);
-                    }
                     changed = true;
                 }
-                var wsIdx = wsDisplay.FindIndex(x => string.Equals(x, wsText, StringComparison.Ordinal));
-                _wsCombo.SelectedIndex = wsIdx >= 0 ? wsIdx : (wsDisplay.Count > 0 ? 0 : -1);
 
                 var amText = (_aftermathCombo.Text ?? "").Trim();
-                var amDisplay = new List<string>(wsOpts);
-                if (!string.IsNullOrEmpty(amText) && !amDisplay.Contains(amText))
+                var amDisplay = ComboBoxOptionUpdater.BuildDisplayOptions(wsOpts, amText);
+                if (ComboBoxOptionUpdater.ReplaceItemsPreservingTextIfChanged(_aftermathCombo, amDisplay, amText))
                 {
-                    amDisplay.Insert(0, amText);
-                }
-                var currentAm = _aftermathCombo.Items.Cast<object>().Select(x => x.ToString() ?? "").ToList();
-                if (!SequenceEqualOrdinal(currentAm, amDisplay))
-                {
-                    _aftermathCombo.Items.Clear();
-                    foreach (var w in amDisplay)
-                    {
-                        _aftermathCombo.Items.Add(w);
-                    }
                     changed = true;
                 }
-                var amIdx = amDisplay.FindIndex(x => string.Equals(x, amText, StringComparison.Ordinal));
-                _aftermathCombo.SelectedIndex = amIdx >= 0 ? amIdx : (amDisplay.Count > 0 ? 0 : -1);
             }
 
             if (hasPullJa && !SequenceEqualOrdinal(_pathPullJaOptions, pullJaOpts))
@@ -1100,12 +1075,23 @@ public partial class MainForm
         var job = _sessionMetaBySid.TryGetValue(sid, out var meta)
             ? meta.Job
             : SessionStateHelper.GetString(s, "job", "");
-        if (!string.IsNullOrWhiteSpace(job))
+        if (hasWs)
         {
-            var subJob = meta?.SubJob ?? SessionStateHelper.GetString(s, "sub_job", "");
-            _optionsHydratedJobBySid[sid] = $"{job}/{subJob}";
+            if (!string.IsNullOrWhiteSpace(job))
+            {
+                var subJob = meta?.SubJob ?? SessionStateHelper.GetString(s, "sub_job", "");
+                OptionsRequestGate.Complete(
+                    _optionsHydratedJobBySid,
+                    _optionsRequestInFlightBySid,
+                    sid,
+                    $"{job}/{subJob}"
+                );
+            }
+            else
+            {
+                _optionsRequestInFlightBySid.Remove(sid);
+            }
         }
-        _optionsRequestInFlightBySid.Remove(sid);
         if (changed && string.Equals(_selectedSid, sid, StringComparison.Ordinal))
         {
             statusConnection.Text = $"Mirror: options hydrated ({metaOrJob(sid, job)})";

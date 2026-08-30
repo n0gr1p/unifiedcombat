@@ -132,6 +132,8 @@ internal static class UcControlStyles
             case ComboBox comboBox:
                 comboBox.FlatStyle = FlatStyle.Flat;
                 comboBox.Margin = UcTheme.ControlMargin;
+                comboBox.MouseWheel -= ComboBoxMouseWheel;
+                comboBox.MouseWheel += ComboBoxMouseWheel;
                 break;
             case NumericUpDown numeric:
                 numeric.BorderStyle = BorderStyle.FixedSingle;
@@ -146,6 +148,17 @@ internal static class UcControlStyles
                 label.ForeColor = UcTheme.MutedText;
                 label.SystemColorsChanged += (_, _) => label.ForeColor = UcTheme.MutedText;
                 break;
+        }
+    }
+
+    internal static bool ShouldSuppressComboBoxMouseWheel(bool droppedDown) => !droppedDown;
+
+    private static void ComboBoxMouseWheel(object? sender, MouseEventArgs e)
+    {
+        var comboBox = (ComboBox)sender!;
+        if (ShouldSuppressComboBoxMouseWheel(comboBox.DroppedDown))
+        {
+            ((HandledMouseEventArgs)e).Handled = true;
         }
     }
 

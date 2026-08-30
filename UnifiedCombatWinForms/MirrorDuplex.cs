@@ -321,6 +321,7 @@ internal sealed class MirrorDuplex : IDisposable
                 return;
             }
 
+            SessionOptionState.InvalidateWeaponSkillsForJobChange(rec.State, incoming);
             foreach (var kv in incoming)
             {
                 rec.State[kv.Key] = kv.Value?.DeepClone();

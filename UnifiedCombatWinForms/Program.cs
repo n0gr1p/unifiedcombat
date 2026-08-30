@@ -21,6 +21,12 @@ internal static class Program
             return;
         }
 
+        if (args.Any(arg => string.Equals(arg, "--selftest-dropdown-interaction", StringComparison.Ordinal)))
+        {
+            Environment.ExitCode = DropdownInteractionTests.Run();
+            return;
+        }
+
         ApplicationConfiguration.Initialize();
         // Follow Windows Settings → Personalization → mode (light / dark). Requires WinForms + OS support (e.g. Windows 11).
         Application.SetColorMode(SystemColorMode.System);

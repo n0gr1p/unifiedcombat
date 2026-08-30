@@ -413,13 +413,13 @@ public partial class MainForm
             Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
             MinimumSize = new Size(120, 0),
         };
-        _wsCombo.SelectedIndexChanged += (_, _) => OnWsSelected();
+        _wsCombo.SelectionChangeCommitted += (_, _) => OnWsSelected();
         _wsCombo.DropDown += (_, _) =>
         {
             var sid = _selectedSid;
             if (!string.IsNullOrWhiteSpace(sid))
             {
-                EnsureOptionsHydrated(sid);
+                EnsureOptionsHydrated(sid, force: true);
             }
         };
         leftCol.Controls.Add(_wsCombo, 1, lr);
@@ -517,13 +517,13 @@ public partial class MainForm
             Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
             MinimumSize = new Size(120, 0),
         };
-        _aftermathCombo.SelectedIndexChanged += (_, _) => OnAftermathWsSelected();
+        _aftermathCombo.SelectionChangeCommitted += (_, _) => OnAftermathWsSelected();
         _aftermathCombo.DropDown += (_, _) =>
         {
             var sid = _selectedSid;
             if (!string.IsNullOrWhiteSpace(sid))
             {
-                EnsureOptionsHydrated(sid);
+                EnsureOptionsHydrated(sid, force: true);
             }
         };
         leftCol.Controls.Add(_aftermathCombo, 1, lr);

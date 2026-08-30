@@ -394,8 +394,7 @@ public partial class MainForm : Form
         {
             if (!prevMeta.TryGetValue(kv.Key, out var oldMeta))
             {
-                _optionsHydratedJobBySid.Remove(kv.Key);
-                _optionsRequestInFlightBySid.Remove(kv.Key);
+                OptionsRequestGate.Invalidate(_optionsHydratedJobBySid, _optionsRequestInFlightBySid, kv.Key);
                 _workingProfileBySid.Remove(kv.Key);
                 _compatibilityBoolBySid.Remove(kv.Key);
                 newlyAddedSids.Add(kv.Key);
@@ -405,8 +404,7 @@ public partial class MainForm : Form
             if (!string.Equals(oldMeta.Job, kv.Value.Job, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(oldMeta.SubJob, kv.Value.SubJob, StringComparison.OrdinalIgnoreCase))
             {
-                _optionsHydratedJobBySid.Remove(kv.Key);
-                _optionsRequestInFlightBySid.Remove(kv.Key);
+                OptionsRequestGate.Invalidate(_optionsHydratedJobBySid, _optionsRequestInFlightBySid, kv.Key);
                 _workingProfileBySid.Remove(kv.Key);
                 _compatibilityBoolBySid.Remove(kv.Key);
             }
@@ -415,8 +413,7 @@ public partial class MainForm : Form
         {
             if (!nextMeta.ContainsKey(oldSid))
             {
-                _optionsHydratedJobBySid.Remove(oldSid);
-                _optionsRequestInFlightBySid.Remove(oldSid);
+                OptionsRequestGate.Invalidate(_optionsHydratedJobBySid, _optionsRequestInFlightBySid, oldSid);
                 _workingProfileBySid.Remove(oldSid);
                 _compatibilityBoolBySid.Remove(oldSid);
             }
@@ -515,36 +512,28 @@ public partial class MainForm : Form
         }
     }
 
-    private bool IsOptionsHydratedForCurrentJob(string sid)
-    {
-        if (!_sessionMetaBySid.TryGetValue(sid, out var meta))
-        {
-            return false;
-        }
-        if (!_optionsHydratedJobBySid.TryGetValue(sid, out var hydratedJob))
-        {
-            return false;
-        }
-        var currentJobs = $"{meta.Job}/{meta.SubJob}";
-        return string.Equals(hydratedJob, currentJobs, StringComparison.OrdinalIgnoreCase);
-    }
-
     private void EnsureOptionsHydrated(string sid, bool force = false)
     {
         if (string.IsNullOrWhiteSpace(sid))
         {
             return;
         }
-        if (!force && IsOptionsHydratedForCurrentJob(sid))
-        {
-            return;
-        }
-        if (!force && _optionsRequestInFlightBySid.TryGetValue(sid, out var lastReq) && (DateTime.UtcNow - lastReq).TotalSeconds < 2)
+
+        var currentJobIdentity = _sessionMetaBySid.TryGetValue(sid, out var meta)
+            ? $"{meta.Job}/{meta.SubJob}"
+            : null;
+        if (!OptionsRequestGate.TryBegin(
+                _optionsHydratedJobBySid,
+                _optionsRequestInFlightBySid,
+                sid,
+                currentJobIdentity,
+                force,
+                DateTime.UtcNow
+            ))
         {
             return;
         }
 
-        _optionsRequestInFlightBySid[sid] = DateTime.UtcNow;
         Forward(
             sid,
             new Dictionary<string, object?>
