@@ -9,6 +9,7 @@ internal static class StructuredProfileV2WriterTests
     {
         try
         {
+            RuntimeProfileEditorAdapterTests.Run();
             TestBuildFinalPath();
             TestSerializeShapeAndEscaping();
             TestWeaponskillMinimumTpValidation();

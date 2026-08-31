@@ -27,7 +27,7 @@ public partial class MainForm
         return true;
     }
 
-    private static List<string> ComputeSelectedAbilitiesFromState(JsonElement s, IReadOnlyList<string> abilityOptions)
+    internal static List<string> ComputeSelectedAbilitiesFromState(JsonElement s)
     {
         var sel = SessionStateHelper.SplitOptions(s.TryGetProperty("abilities_selected", out var asel) ? asel : default);
         if (sel.Count == 0)
@@ -46,11 +46,6 @@ public partial class MainForm
         foreach (var a in sel)
         {
             if (string.IsNullOrEmpty(a))
-            {
-                continue;
-            }
-
-            if (!abilityOptions.Any(o => string.Equals(o, a, StringComparison.Ordinal)))
             {
                 continue;
             }
@@ -242,83 +237,9 @@ public partial class MainForm
             ClearForm();
             return;
         }
-        var editorProfile = BuildEditorProfileFromRuntimeSession(session, activeConfig);
+        var editorProfile = RuntimeProfileEditorAdapter.Build(session, activeConfig);
         using var activeProfileDoc = JsonDocument.Parse(editorProfile.ToJsonString());
         FillFromSession(_selectedSid, activeProfileDoc.RootElement);
-    }
-
-    private static JsonObject BuildEditorProfileFromRuntimeSession(JsonElement session, JsonElement activeConfig)
-    {
-        var profile = JsonNode.Parse(activeConfig.GetRawText())?.AsObject()
-            ?? throw new InvalidDataException("Runtime active configuration must be a JSON object.");
-        foreach (var key in new[]
-        {
-            "ability_options",
-            "weaponskill_options",
-            "path_pull_ja_options",
-            "path_pull_spell_options",
-            "cor_roll_options",
-            "brd_song_options",
-            "party_options",
-        })
-        {
-            if (session.TryGetProperty(key, out var value))
-            {
-                profile[key] = JsonNode.Parse(value.GetRawText());
-            }
-        }
-        CopyStringArrayAsPipe(profile, "abilities", "abilities_selected");
-        CopyNameArrayAsEntries(profile, "wait_ignore_names", "ignore", "ignore_entries");
-        CopyNameArrayAsEntries(profile, "partner_names", "partner_ids", "partner_entries");
-        CopyNameArrayAsEntries(profile, "target_ignore_names", null, "target_ignore_entries");
-        CopyNameArrayAsEntries(profile, "add_priority_names", null, "add_priority_entries");
-        CopyNameArrayAsEntries(profile, "sleepspells", null, "sleep_spell_entries");
-        CopyNameArrayAsEntries(profile, "path_hunter_targets", null, "path_hunter_entries");
-        return profile;
-    }
-
-    private static void CopyStringArrayAsPipe(JsonObject profile, string sourceKey, string destinationKey)
-    {
-        if (profile[sourceKey] is not JsonArray values)
-        {
-            return;
-        }
-        profile[destinationKey] = string.Join("|", values.Select(value =>
-            value?.GetValue<string>()
-            ?? throw new InvalidDataException($"Runtime active config '{sourceKey}' contains a null entry.")));
-    }
-
-    private static void CopyNameArrayAsEntries(
-        JsonObject profile,
-        string namesKey,
-        string? idsKey,
-        string destinationKey
-    )
-    {
-        if (profile[namesKey] is not JsonArray names)
-        {
-            return;
-        }
-        var ids = idsKey is not null
-            ? profile[idsKey] as JsonArray
-                ?? throw new InvalidDataException($"Runtime active config '{idsKey}' must be an array.")
-            : null;
-        if (ids is not null && ids.Count != names.Count)
-        {
-            throw new InvalidDataException($"Runtime active config '{idsKey}' must align with '{namesKey}'.");
-        }
-        var entries = new List<string>(names.Count);
-        for (var i = 0; i < names.Count; i++)
-        {
-            var name = names[i]?.GetValue<string>()
-                ?? throw new InvalidDataException($"Runtime active config '{namesKey}' contains a null entry.");
-            var id = ids is not null
-                ? ids[i]?.GetValue<int>()
-                    ?? throw new InvalidDataException($"Runtime active config '{idsKey}' contains a null entry.")
-                : i + 1;
-            entries.Add($"{id}:{name}");
-        }
-        profile[destinationKey] = string.Join("|", entries);
     }
 
     private void PrunePendingBoolEchoes(string sid, JsonElement s)
@@ -715,7 +636,7 @@ public partial class MainForm
                 _abilityOptions.AddRange(abilityOpts);
             }
 
-            var nextSelected = ComputeSelectedAbilitiesFromState(s, _abilityOptions);
+            var nextSelected = ComputeSelectedAbilitiesFromState(s);
             if (!SequenceEqualOrdinal(_selectedAbilities, nextSelected))
             {
                 _selectedAbilities.Clear();
@@ -1830,9 +1751,9 @@ public partial class MainForm
 
     private void EnsureCorRollOptions(ComboBox combo)
     {
+        var selected = combo.SelectedItem?.ToString() ?? combo.Text ?? "";
         var src = _corRollOptions.Count > 0 ? _corRollOptions : HubUiConstants.CorRollOptions.ToList();
-        var next = new List<string> { "" };
-        next.AddRange(src);
+        var next = BuildCorRollOptions(src, selected);
         var cur = combo.Items.Cast<object>().Select(x => x?.ToString() ?? "").ToList();
         if (SequenceEqualOrdinal(cur, next))
         {
@@ -1843,6 +1764,18 @@ public partial class MainForm
         {
             combo.Items.Add(roll);
         }
+        combo.SelectedIndex = next.FindIndex(value => string.Equals(value, selected, StringComparison.Ordinal));
+    }
+
+    internal static List<string> BuildCorRollOptions(IReadOnlyList<string> options, string selected)
+    {
+        var next = new List<string> { "" };
+        next.AddRange(options);
+        if (!string.IsNullOrEmpty(selected) && !next.Contains(selected, StringComparer.Ordinal))
+        {
+            next.Insert(1, selected);
+        }
+        return next;
     }
 
     private void EnsureCorTabVisibility(bool shouldShow)

@@ -384,7 +384,7 @@ public partial class MainForm
         {
             throw new ActivityProfileException($"Runtime active configuration is unavailable for session {sid}.");
         }
-        return BuildEditorProfileFromRuntimeSession(session, activeConfig);
+        return RuntimeProfileEditorAdapter.Build(session, activeConfig);
     }
 
     private async Task ApplySelectedActivityAsync(bool confirm)

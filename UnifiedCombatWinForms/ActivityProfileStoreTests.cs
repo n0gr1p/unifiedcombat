@@ -43,6 +43,7 @@ internal static class ActivityProfileStoreTests
         var ui = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "MainForm.ActivityProfiles.cs"));
         var main = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "MainForm.cs"));
         var parity = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "MainForm.ParityLogic.cs"));
+        var runtimeAdapter = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "RuntimeProfileEditorAdapter.cs"));
         var profileStore = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "MainForm.ProfileStore.cs"));
         var mirror = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "MirrorDuplex.cs"));
         var bridge = File.ReadAllText(Path.Combine(addonRoot, "remote_bridge.lua"));
@@ -82,7 +83,8 @@ internal static class ActivityProfileStoreTests
         AssertContains(main, "_suppressSessionSelectionChanged", "label replacement must suppress selection side effects");
         AssertNotContains(main, "listSessions.Refresh()", "label refresh must not rely on repainting a cached item string");
         AssertContains(parity, "TryLoadWorkingProfileForSid(_selectedSid", "session switching must prefer unsaved working state");
-        AssertContains(parity, "BuildEditorProfileFromRuntimeSession", "editor initialization must come from runtime active config");
+        AssertContains(parity, "RuntimeProfileEditorAdapter.Build(session, activeConfig)", "editor initialization must use the runtime active config adapter");
+        AssertContains(runtimeAdapter, "FlattenGeoMaintenance(profile)", "runtime config adapter must project GEO maintenance into the editor model");
         AssertNotContains(parity, "TryLoadProfileForSid(_selectedSid", "editor initialization must not read per-identity UI JSON");
         AssertNotContains(parity, "TrySaveProfileFromUi(sid, profile", "Save must not write per-identity UI JSON");
         AssertContains(bridge, "st.active_config = active_settings", "bridge snapshots must publish active-config projection");
