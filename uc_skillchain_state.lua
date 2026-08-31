@@ -1,3 +1,5 @@
+local uc_ws_selector = require('uc_ws_selector')
+
 local M = {}
 
 M.ORDINARY_WS_MIN_DELAY_S = 3.0
@@ -560,7 +562,7 @@ function State:_reject_continuation(state, target_id, reason, now)
 	return nil, reason
 end
 
-function State:plan_continuation(target_id, candidates, actor_context, now_value, skillchain_target)
+function State:plan_continuation(target_id, candidates, actor_context, now_value, skillchain_target, configured_primary)
 	local target = tonumber(target_id) or 0
 	if target <= 0 then
 		return self:_reject_continuation(nil, target, 'SC_NO_TARGET', tonumber(now_value) or self.now())
@@ -595,9 +597,7 @@ function State:plan_continuation(target_id, candidates, actor_context, now_value
 	local latest_safe_at = expiry - M.LATEST_WINDOW_GUARD_S
 	local target_key, target_property = M.normalize_skillchain_target(skillchain_target)
 	local targeted = target_property ~= nil
-	local chosen = nil
-	local chosen_result = nil
-	local chosen_distance = nil
+	local ranked_candidates = {}
 	local saw_continuation = false
 	for i = 1, #(candidates or {}) do
 		local candidate = candidates[i]
@@ -605,33 +605,36 @@ function State:plan_continuation(target_id, candidates, actor_context, now_value
 		result = aeonic_result_for(result, actor_context, state.action_count)
 		if result then
 			saw_continuation = true
-			if not targeted then
-				-- Preserve legacy Auto behavior exactly, including later-candidate tie preference.
-				if not chosen_result or result.level >= chosen_result.level then
-					chosen = candidate
-					chosen_result = result
-				end
-			else
-				local distance = skillchain_target_distance(
+			local distance = nil
+			if targeted then
+				distance = skillchain_target_distance(
 					result.property,
 					target_property,
 					actor_context,
 					(tonumber(state.action_count) or 1) + 1,
 					result.level
 				)
-				-- Target mode is a hard gate. Equal routes preserve the existing candidate order.
-				if distance ~= nil and (chosen_distance == nil or distance < chosen_distance) then
-					chosen = candidate
-					chosen_result = result
-					chosen_distance = distance
-				end
+			end
+			if not targeted or distance ~= nil then
+				ranked_candidates[#ranked_candidates + 1] = {
+					ws_id = candidate.ws_id,
+					ws_name = candidate.ws_name,
+					effective_properties = candidate.effective_properties,
+					path_rank = targeted and -distance or 0,
+					skillchain_level = result.level,
+					progression_score = candidate.progression_score,
+					predicted_result = result,
+					target_distance = distance,
+				}
 			end
 		end
 	end
+	local chosen = uc_ws_selector.select(ranked_candidates, configured_primary)
 	if not chosen then
 		local reason = targeted and saw_continuation and 'SC_NO_PATH_TO_TARGET' or 'SC_NO_CONTINUATION'
 		return self:_reject_continuation(state, target, reason, now)
 	end
+	local chosen_result = chosen.predicted_result
 	local preferred_execute_at = tonumber(state.preferred_execute_at) or state.earliest_close_at
 	local high_risk = preferred_execute_at > latest_safe_at
 	if high_risk then
@@ -649,8 +652,9 @@ function State:plan_continuation(target_id, candidates, actor_context, now_value
 		effective_properties = copy_list(chosen.effective_properties),
 		predicted_result = tostring(chosen_result.property or ''),
 		predicted_level = tonumber(chosen_result.level) or 0,
+		progression_score = chosen.progression_score,
 		skillchain_target = target_key,
-		target_distance = chosen_distance,
+		target_distance = chosen.target_distance,
 		planned_at = now,
 		earliest_execute_at = tonumber(state.earliest_close_at) or 0,
 		preferred_execute_at = preferred_execute_at,
@@ -673,6 +677,7 @@ function State:plan_continuation(target_id, candidates, actor_context, now_value
 		closer_properties = table.concat(plan.effective_properties, ','),
 		predicted_result = plan.predicted_result,
 		predicted_level = plan.predicted_level,
+		progression_score = plan.progression_score,
 		skillchain_target = plan.skillchain_target,
 		target_distance = plan.target_distance,
 		earliest_execute_at = plan.earliest_execute_at,

@@ -64,6 +64,7 @@ local SELFTESTS = {
 	"tests/replay/harness/selftest_scheduler_party_state.lua",
 	"tests/replay/harness/selftest_scheduler_party_state_static.lua",
 	"tests/replay/harness/selftest_skillchain_state.lua",
+	"tests/replay/harness/selftest_ws_selector.lua",
 	"tests/replay/harness/selftest_scheduler_skillchain_integration.lua",
 	"tests/replay/harness/selftest_ws_maintenance_precedence.lua",
     "tests/replay/harness/selftest_dispatcher_fixtures.lua",

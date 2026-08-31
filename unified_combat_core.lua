@@ -24,6 +24,7 @@ local uc_add_control = require('uc_add_control')
 local uc_targeting_common = require('uc_targeting_common')
 local uc_path_hunter = require('uc_path_hunter')
 local uc_skillchain_state = require('uc_skillchain_state')
+local uc_ws_selector = require('uc_ws_selector')
 local uc_camp_anchor = require('uc_camp_anchor')
 local uc_camp_pull_registry = require('uc_camp_pull_registry')
 local aftermath_table = dofile(windower.addon_path .. 'docs/aftermath_table.lua')
@@ -2628,6 +2629,7 @@ local function local_ws_candidates(actor_context, settings)
 				ws_id = ws_id,
 				ws_name = ws_name,
 				effective_properties = effective_ws_properties(skill, actor_context),
+				progression_score = uc_ws_selector.progression_score(ws_id),
 			}
 		end
 	end
@@ -3201,7 +3203,8 @@ local function select_smart_ws(settings, target_id)
 			local_ws_candidates(actor_context, settings),
 			actor_context,
 			now,
-			settings.skillchain_target or 'auto'
+			settings.skillchain_target or 'auto',
+			primary_ws
 		)
 		if plan and (plan_reason == 'SC_READY'
 			or plan_reason == 'SC_WINDOW_HIGH_RISK'

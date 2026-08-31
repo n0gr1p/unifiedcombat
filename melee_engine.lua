@@ -34,6 +34,7 @@ local uc_partner_list = require('uc_partner_list')
 local uc_fight_leader = require('uc_fight_leader')
 local uc_target_ignore = require('uc_target_ignore')
 local uc_add_control = require('uc_add_control')
+local uc_ws_selector = require('uc_ws_selector')
 local socket = require("socket")
 
 require('lor/lor_utils')
@@ -359,17 +360,13 @@ local smartws = {
 				end
 			end
 		end
-		local tempwslvl = 0
 		wstouse = ''
 		if GetResonatingStep(targetsetid) == 0 then
 			WSForSkillchain = T{}
 		end
-		for index, value in ipairs(WSForSkillchain) do
-			if value.lvl >= tempwslvl then
-				wstouse = value.ws
-				tempwslvl = value.lvl
-			end
-		end
+		local configured_ws = settings.ws1 or settings.weaponskill or ''
+		local chosen = uc_ws_selector.select(WSForSkillchain, configured_ws)
+		wstouse = chosen and chosen.ws_name or ''
 		if wstouse == '' or spam_on or GetResonatingStep(targetsetid) == 0 then
 			wstouse = settings.ws1 or settings.weaponskill or ''
 		end
@@ -577,7 +574,13 @@ function add_skills(t, abilities, active, resource, AM)
 					a:format(res[resource][ability_id].name, lv, colors[prop], prop) or
 					b:format(res[resource][ability_id].name, lv, prop)
 				if resource == 'weapon_skills' and res[resource][ability_id].name then
-					WSForSkillchain:append({ ws = res[resource][ability_id].name, lvl = lv })
+					WSForSkillchain:append({
+						ws_id = ability_id,
+						ws_name = res[resource][ability_id].name,
+						path_rank = 0,
+						skillchain_level = lv,
+						progression_score = uc_ws_selector.progression_score(ability_id),
+					})
 				end
 			end
 		end

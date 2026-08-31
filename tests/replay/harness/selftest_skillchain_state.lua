@@ -58,6 +58,7 @@ local function candidate(properties)
 		ws_id = 10,
 		ws_name = 'Test WS',
 		effective_properties = properties,
+		progression_score = 0,
 	}
 end
 
@@ -519,11 +520,12 @@ local function test_field_log_audit()
 end
 
 
-local function named_candidate(id, name, properties)
+local function named_candidate(id, name, properties, progression_score)
 	return {
 		ws_id = id,
 		ws_name = name,
 		effective_properties = properties,
+		progression_score = progression_score or 0,
 	}
 end
 
@@ -545,8 +547,8 @@ local function test_configured_skillchain_target_planning()
 	runtime = new_runtime(100)
 	opener(runtime, 1001, 100, { 'Distortion' })
 	plan, reason = runtime:plan_continuation(1001, {
-		named_candidate(21, 'Wrong Branch', { 'Gravitation' }),
-		named_candidate(22, 'Toward Light', { 'Fusion' }),
+		named_candidate(126, 'Wrong Branch', { 'Gravitation' }, 450),
+		named_candidate(117, 'Toward Light', { 'Fusion' }, 175),
 	}, context, 103.5, 'light')
 	assert_true(plan ~= nil, 'intermediate Light route must remain eligible')
 	assert_equal(plan.ws_name, 'Toward Light', 'off-target branch must be filtered')
@@ -590,7 +592,12 @@ local function test_configured_skillchain_target_planning()
 		named_candidate(51, 'First Equal Level', { 'Compression' }),
 		named_candidate(52, 'Second Equal Level', { 'Impaction' }),
 	}, context, 103.5, 'auto')
-	assert_equal(plan.ws_name, 'Second Equal Level', 'Auto must preserve legacy later-candidate tie behavior')
+	assert_equal(plan.ws_name, 'First Equal Level', 'Auto equal-rank fallback must prefer lower resource ID')
+	plan = runtime:plan_continuation(1001, {
+		named_candidate(52, 'Second Equal Level', { 'Impaction' }),
+		named_candidate(51, 'First Equal Level', { 'Compression' }),
+	}, context, 103.5, 'auto')
+	assert_equal(plan.ws_name, 'First Equal Level', 'Auto equal-rank fallback must ignore candidate order')
 
 	runtime = new_runtime(100)
 	opener(runtime, 1001, 100, { 'Fragmentation' })
@@ -604,6 +611,24 @@ local function test_configured_skillchain_target_planning()
 	assert_equal(commit_reason, 'SC_TARGET_POLICY_CHANGED', 'changed target policy reason')
 end
 
+local function test_impulse_drive_progression_tie_break()
+	local runtime = new_runtime(100)
+	opener(runtime, 1001, 100, { 'Gravitation', 'Induration' })
+	local context = actor_context()
+	local vorpal = named_candidate(117, 'Vorpal Thrust', { 'Reverberation', 'Transfixion' }, 175)
+	local camlann = named_candidate(124, "Camlann's Torment", { 'Light', 'Fragmentation' }, 400)
+	local plan = runtime:plan_continuation(1001, { vorpal, camlann }, context, 103.5, 'auto')
+	assert_equal(plan.ws_name, "Camlann's Torment", 'Impulse Drive tie must prefer later-progression WS')
+	assert_equal(plan.predicted_result, 'Fragmentation', 'Impulse Drive closer result')
+	assert_equal(plan.predicted_level, 2, 'Impulse Drive closer level')
+	assert_equal(plan.progression_score, 400, 'Impulse Drive closer progression score')
+
+	runtime = new_runtime(100)
+	opener(runtime, 1001, 100, { 'Gravitation', 'Induration' })
+	plan = runtime:plan_continuation(1001, { camlann, vorpal }, context, 103.5, 'auto')
+	assert_equal(plan.ws_name, "Camlann's Torment", 'Impulse Drive tie must ignore candidate order')
+end
+
 local function main()
 	test_clock_contract()
 	test_action_family_classification()
@@ -614,6 +639,7 @@ local function main()
 	test_target_isolation_and_aoe_selected_target()
 	test_priority_and_level_two_transitions()
 	test_configured_skillchain_target_planning()
+	test_impulse_drive_progression_tie_break()
 	test_terminal_and_aeonic()
 	test_chainbound_rules()
 	test_diamond_aspis_actor_expiry()

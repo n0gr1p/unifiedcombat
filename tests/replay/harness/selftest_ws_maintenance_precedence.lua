@@ -4,6 +4,8 @@ local TEST_MODULE_NAMES = {
 	'skills',
 	'uc_ws_gate',
 	'uc_ws_memory',
+	'uc_ws_selector',
+	'data/ws_progression',
 	'uc_ignore',
 	'uc_target_ignore',
 	'uc_partner_list',
@@ -358,7 +360,7 @@ local function test_satisfied_maintenance_applies_minimum_tp_to_continuation()
 	assert_true(type(selection) == 'table', 'satisfied maintenance must allow a continuation at configured minimum TP')
 	assert_equal(reason, 'SC_READY', 'continuation reason mismatch after maintenance is satisfied')
 	assert_true(type(selection.skillchain_plan) == 'table', 'continuation plan must remain structured')
-	assert_equal(selection.ws_name, 'Test AoE Continuation', 'continuation WS mismatch')
+	assert_equal(selection.ws_name, 'Test Single Continuation', 'equal-rank continuation must use stable lower resource ID')
 	assert_equal(selection.required_tp, 2000, 'continuation dispatch requirement must use configured minimum TP')
 	settings.weaponskill_min_tp = 1000
 end
@@ -404,7 +406,7 @@ local function test_smart_continuation_candidate_filtering()
 	local selection, reason = select()
 	assert_true(type(selection) == 'table', 'AoE-enabled Smart mode must retain continuation candidates')
 	assert_equal(reason, 'SC_READY', 'AoE-enabled continuation reason mismatch')
-	assert_equal(selection.ws_name, 'Test AoE Continuation', 'AoE-enabled candidates must preserve existing planner choice')
+	assert_equal(selection.ws_name, 'Test Single Continuation', 'AoE-enabled equal-rank candidates must use stable lower resource ID')
 
 	settings.weaponskill_allow_aoe = false
 	selection, reason = select()
@@ -442,6 +444,7 @@ local function test_smart_primary_and_aftermath_aoe_restriction()
 	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001)
 	assert_true(type(selection) == 'table', 'Smart single-target primary must remain selectable')
 	assert_equal(reason, 'READY', 'Smart single-target primary reason mismatch')
+	assert_equal(selection.ws_name, 'Savage Blade', 'Smart mode without active resonance must use configured primary WS')
 	assert_equal(selection.smart_aoe_guard, true, 'normal Smart proposals must carry the commit guard')
 
 	settings.weaponskill_allow_aoe = true
