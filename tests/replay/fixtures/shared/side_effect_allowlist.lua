@@ -57,7 +57,7 @@ return {
             packet_inject = 3,
         },
         ["uc_camp_anchor.lua"] = {
-            direct_ipc_send = 2,
+            direct_ipc_send = 4,
         },
         ["uc_nyzul_runtime.lua"] = {
             direct_ipc_send = 2,

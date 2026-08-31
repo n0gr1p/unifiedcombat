@@ -174,6 +174,7 @@ windower = {
 
 package.loaded['uc_targeting_common'] = nil
 package.loaded['unified_combat_core'] = nil
+package.loaded['uc_camp_anchor'] = nil
 local targeting_common = dofile('uc_targeting_common.lua')
 package.loaded['uc_targeting_common'] = targeting_common
 local core = dofile('unified_combat_core.lua')
@@ -266,6 +267,8 @@ local function test_helper_flag_off_and_on()
     assert_false(claim_set[303] == true, 'compat claim builder should exclude alliance when flag off')
     assert_true(targeting_common.is_friendly_party_or_alliance_member_id(202) == true, 'flag-off party member should be valid')
     assert_false(targeting_common.is_friendly_party_or_alliance_member_id(303) == true, 'flag-off alliance member should be invalid')
+	assert_true(targeting_common.is_friendly_combat_member_identity('PartyMate', 202) == true, 'flag-off party identity should be valid')
+	assert_false(targeting_common.is_friendly_combat_member_identity('AllianceMate', 303) == true, 'flag-off alliance identity should be invalid')
 
     _G.UC_ENABLE_ALLIANCE_TARGET_SCOPE = true
     ids, set = targeting_common.get_friendly_combat_member_ids()
@@ -276,6 +279,8 @@ local function test_helper_flag_off_and_on()
     _, claim_set = targeting_common.build_party_claims()
     assert_true(claim_set[303] == true, 'compat claim builder should include alliance when flag on')
     assert_true(targeting_common.is_friendly_party_or_alliance_member_id(303) == true, 'flag-on alliance member should be valid')
+	assert_true(targeting_common.is_friendly_combat_member_identity('AllianceMate', 303) == true, 'flag-on alliance identity should be valid')
+	assert_false(targeting_common.is_friendly_combat_member_identity('WrongName', 303) == true, 'identity helper must bind name to id')
 end
 
 local function test_claim_validity_scope()
@@ -651,7 +656,11 @@ local function test_camp_range_gate_uses_shared_runtime_geometry()
 	local camp = require('uc_camp_anchor')
 	camp.clear()
 	_G.__TEST_ZONE = 100
-	local consumed, installed = camp.on_ipc_message('uc_camp_anchor_v1|set|100|5|5|Setter')
+	set_party({
+		p0 = { mob = { id = 101, name = 'Self' } },
+		p1 = { mob = { id = 202, name = 'PartyMate' } },
+	})
+	local consumed, installed = camp.on_ipc_message('uc_camp_anchor_v2|set|100|5|5|PartyMate|202|1:0:PartyMate')
 	assert_true(consumed and installed, 'camp test point must install')
 	local target = make_mob({
 		id = 7020,

@@ -91,6 +91,63 @@ function M.is_friendly_party_or_alliance_member_id(id, opts)
 	return set[member_id] == true
 end
 
+local function append_member_identity(members, seen_ids, entry)
+	local mob = type(entry) == 'table' and entry.mob or nil
+	local member_id = type(mob) == 'table' and tonumber(mob.id) or nil
+	local member_name = type(mob) == 'table' and mob.name or nil
+	if member_id == nil or member_id <= 0 or member_id % 1 ~= 0 then
+		return
+	end
+	if type(member_name) ~= 'string' or member_name == '' or seen_ids[member_id] == true then
+		return
+	end
+	members[#members + 1] = {
+		id = member_id,
+		name = member_name,
+	}
+	seen_ids[member_id] = true
+end
+
+function M.get_friendly_combat_member_identities(opts)
+	local party = get_party_table(opts)
+	local members = {}
+	local seen_ids = {}
+	if type(party) ~= 'table' then
+		return members
+	end
+
+	for _, key in ipairs(PARTY_KEYS) do
+		append_member_identity(members, seen_ids, party[key])
+	end
+
+	if alliance_scope_enabled(opts) then
+		for _, key in ipairs(sorted_alliance_keys(party)) do
+			append_member_identity(members, seen_ids, party[key])
+		end
+	end
+
+	return members
+end
+
+function M.is_friendly_combat_member_identity(name, id, opts)
+	if type(name) ~= 'string' or name == '' then
+		return false
+	end
+	local member_id = tonumber(id)
+	if member_id == nil or member_id <= 0 or member_id % 1 ~= 0 then
+		return false
+	end
+	local normalized_name = name:lower()
+	local members = M.get_friendly_combat_member_identities(opts)
+	for i = 1, #members do
+		local member = members[i]
+		if member.id == member_id and member.name:lower() == normalized_name then
+			return true
+		end
+	end
+	return false
+end
+
 function M.mob_targets_friendly_member(mob, friendly_id_set, now)
 	if type(mob) ~= 'table' then
 		return false, 'missing_mob'

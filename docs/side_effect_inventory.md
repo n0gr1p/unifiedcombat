@@ -67,7 +67,7 @@ that only constructs an intent is not thereby classified as a direct executor.
 | `uc_pathing.lua` | No tracked side-effect call | Path movement decisions | Movement uses `uc_movement_dispatcher.lua`; retain independent path decision ownership |
 | `uc_nyzul_runtime.lua` | `send_ipc`: 163, 173 | Nyzul movement-hold decisions and IPC | Stop uses `uc_movement_dispatcher.lua`; retain Nyzul IPC ownership |
 | `uc_lilith_easy_formation_runtime.lua` | No tracked side-effect call | Formation movement decisions | Movement uses `uc_movement_dispatcher.lua`; retain formation decision ownership |
-| `uc_camp_anchor.lua` | `send_ipc`: 92, 108 | Camp-anchor synchronization | Camp-anchor IPC owner |
+| `uc_camp_anchor.lua` | `send_ipc`: 313, 363, 394, 415 | Camp-anchor SET, CLEAR, request, and state-response synchronization | Camp-anchor IPC owner |
 | `uc_pet_commands.lua` | `/ja`: 94 | Pure pet-command serialization | Keep pure; execution remains dispatcher-owned |
 | `uc_scheduler_command_builder.lua` | `/ja`: 17; `/ma`: 19 | Pure command construction | Keep pure; execution remains outside this module |
 | `remote_bridge.lua` | `send_command`: 1607 | Explicit addon reload operation | Bridge-owned exception unless separately migrated |

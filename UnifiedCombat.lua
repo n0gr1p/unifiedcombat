@@ -2356,6 +2356,7 @@ windower.register_event('load', function()
 		UC_UNIFIED_ENGINE.seed_cached_status_snapshot()
 		uc_update_engine()
 		uc_begin_profile_v2_identity_transition()
+		uc_camp_anchor.request_current_state()
 	end
 end)
 
@@ -2425,6 +2426,7 @@ windower.register_event('outgoing chunk', function(id, data, modified, injected,
 end)
 
 windower.register_event('prerender', function()
+	uc_camp_anchor.observe_runtime()
 	uc_run_queued_profile_v2_autoload()
 	uc_update_recovery_hold()
 	pcall(function()
@@ -2452,6 +2454,7 @@ end)
 
 windower.register_event('zone change', function()
 	uc_camp_anchor.clear()
+	uc_camp_anchor.schedule_state_request()
 	uc_camp_pull_registry.reset('zone_change')
 	uc_nyzul_runtime.reset('zone_change')
 	require('uc_brd_maintenance').reset('zone_change')
@@ -2919,14 +2922,23 @@ windower.register_event('addon command', function(...)
 		elseif sub == 'status' then
 			local status = uc_camp_anchor.status()
 			if status.active then
-				windower.add_to_chat(207, ('UC camp: active=true zone=%d x=%.2f y=%.2f set_by=%s'):format(
+				windower.add_to_chat(207, ('UC camp: state=active zone=%d x=%.2f y=%.2f set_by=%s revision=%s source=%s'):format(
 					status.zone_id,
 					status.x,
 					status.y,
-					status.set_by
+					status.set_by,
+					tostring(status.revision),
+					status.source
+				))
+			elseif status.known then
+				windower.add_to_chat(207, ('UC camp: state=cleared zone=%d cleared_by=%s revision=%s source=%s'):format(
+					status.zone_id,
+					status.cleared_by,
+					tostring(status.revision),
+					status.source
 				))
 			else
-				windower.add_to_chat(207, 'UC camp: active=false')
+				windower.add_to_chat(207, 'UC camp: state=unknown')
 			end
 			return
 		elseif sub == 'pullstatus' then
@@ -3419,4 +3431,5 @@ windower.register_event('login', function()
 	uc_update_engine()
 	uc_begin_profile_v2_identity_transition()
 	uc_register_action_listener()
+	uc_camp_anchor.request_current_state()
 end)
