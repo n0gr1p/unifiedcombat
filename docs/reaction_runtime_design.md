@@ -12,7 +12,7 @@ The first live acceptance rule is `Cold Stare`: when a valid live enemy actor re
 - `_G.UC_ACTIVE_PROFILE` is the active durable source read by the reaction runtime.
 - `_G.UC_SETTINGS` may contain `reaction_enabled` and `reaction_rules` compatibility projections.
 - Actor IDs, effect IDs selected from resources, active locks, transition timestamps, and turn-applied state are addon-owned runtime state.
-- UI edits remain local until Save. The addon consumes changes through normal profilev2 reload, autoload, or opt-in file-change reload.
+- UI edits remain local until Save. Save writes the exact Profile V2 file, and the unconditional stable-file watcher consumes valid changes automatically.
 - Reaction handling never starts or stops the engine and never writes a profile file.
 
 ## Durable Shape

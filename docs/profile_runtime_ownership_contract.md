@@ -24,11 +24,11 @@ The addon consumes the UI-owned profile file into `_G.UC_ACTIVE_PROFILE`.
 
 `_G.UC_SETTINGS` remains a flat compatibility projection during migration. The existence of a value in `_G.UC_SETTINGS` does not automatically make that value durable profile configuration.
 
-## Current Target Architecture
+## Current Architecture
 
 ### Durable profile source of truth
 
-The long-term durable source of truth is one structured v2 profile file per character/main-job/sub-job combination:
+The sole automatic durable source of truth is one structured v2 profile file per character/main-job/sub-job combination:
 
     data/profiles_v2/<safe_character>_<MAIN_JOB>_<SUB_JOB>.lua
 
@@ -116,7 +116,7 @@ Durable config should be compared by `profilev2 status` and `profilev2 diff`.
 
 Durable config may be applied by `profilev2 reload`.
 
-The UI-owned `config.ownership.profile_v2_autoload` flag is a startup-consumer setting, not engine running state. It controls whether the addon should consume the v2 profile file on load; it must not start the combat engine.
+Profile loading and change detection are lifecycle behavior, not profile-owned policy. The obsolete `profile_v2_autoload` and `profile_v2_auto_reload_on_change` keys are accepted as inert compatibility input, removed during canonicalization, omitted from UI controls and writers, and excluded from durable diffs.
 
 ### 2. Runtime / Session State
 
@@ -313,7 +313,7 @@ The addon owns runtime behavior.
 
 The addon consumes the UI-authored profile file.
 
-The addon validates, diffs, and reloads the file.
+The addon automatically validates and applies the exact file on load, login, and main-job/subjob transitions, and watches it continuously for stable content changes.
 
 The addon maintains `_G.UC_ACTIVE_PROFILE` as the structured active durable config.
 
@@ -321,7 +321,7 @@ The addon maintains `_G.UC_SETTINGS` as a compatibility projection.
 
 The addon must not make runtime state durable by accident.
 
-The addon must not write profile files except for explicit migration/bootstrap export.
+The addon may write Profile V2 only for explicit user-invoked save/export commands. It never writes or reads legacy profiles during normal lifecycle processing.
 
 ## Bridge / Status Responsibilities
 
@@ -368,34 +368,25 @@ Fix the mismatch at the correct boundary:
 
 ## Autoload Policy
 
-Startup autoload is not currently part of the base contract.
+Automatic Profile V2 consumption is unconditional lifecycle behavior. It runs
+for addon load, login, and every exact main-job/subjob transition. It does not
+start an engine that was stopped before the transition and does not write a
+profile file.
 
-Autoload may be added later only as an explicit opt-in feature.
-
-Autoload means:
-
-    On addon startup, consume the UI-authored v2 profile file automatically.
-
-Autoload does not mean:
-
-    Start the combat engine automatically.
-
-Autoload must not imply engine autostart.
-
-Autoload must not write profile files.
-
-Autoload must not watch/poll files unless a separate file-watch feature is explicitly designed.
+When a running engine crosses an identity transition, the addon stops it,
+publishes safe defaults, resolves the exact Profile V2 identity, and only then
+resumes it. Missing and invalid files do not trigger legacy fallback.
 
 ## File Watching Policy
 
-File watching/polling is out of scope unless explicitly designed.
+The Profile V2 watcher is unconditional. It polls once per second, waits for
+one second of stable content, hashes content, and validates before apply.
+Unchanged content is not reapplied. Invalid live edits retain the
+last-known-good active config and report once per rejected hash. File creation
+after absence and corrected content are detected and applied automatically.
 
-Current expected workflow:
-
-1. UI writes profile file.
-2. User runs `//uc profilev2 reload`, or future explicit autoload consumes it on startup.
-3. Addon applies durable config into `_G.UC_ACTIVE_PROFILE`.
-4. Runtime/session state remains addon-owned.
+Manual reload remains available for diagnostics and recovery, not as a normal
+post-Save step.
 
 ## Schema Change Policy
 

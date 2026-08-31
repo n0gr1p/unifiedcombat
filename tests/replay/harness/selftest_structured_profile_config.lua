@@ -311,8 +311,8 @@ local function assert_common_config(config, source)
     assert_equal(config.debug.def_sched, true, source .. " debug defensive scheduler mismatch")
     assert_equal(config.ownership.domain_combat_enabled, true, source .. " combat domain mismatch")
     assert_equal(config.ownership.pause_automation_while_weakened, true, source .. " recovery hold mismatch")
-    assert_equal(config.ownership.profile_v2_autoload, true, source .. " ownership autoload mismatch")
-    assert_equal(config.ownership.profile_v2_auto_reload_on_change, true, source .. " ownership auto-reload mismatch")
+    assert_true(config.ownership.profile_v2_autoload == nil, source .. " must ignore legacy autoload ownership")
+    assert_true(config.ownership.profile_v2_auto_reload_on_change == nil, source .. " must ignore legacy auto-reload ownership")
     assert_equal(config.legacy.sub, true, source .. " legacy sub mismatch")
     assert_equal(config.legacy.hunter, true, source .. " legacy hunter mismatch")
     assert_equal(config.legacy.profiles.UC.PLD.marker, true, source .. " legacy profiles mismatch")
@@ -350,7 +350,7 @@ local function main()
         sub_job = "WAR",
         source = "meta-source",
     })
-    assert_true(disabled_config.ownership.profile_v2_auto_reload_on_change == false, "disabled auto-reload flag should normalize to the default false value")
+    assert_true(disabled_config.ownership.profile_v2_auto_reload_on_change == nil, "legacy false auto-reload must be ignored")
 
     local optional_true_false = deep_clone(structured_config)
     optional_true_false.ownership.profile_v2_autoload = false
@@ -359,7 +359,7 @@ local function main()
     optional_true_omitted.ownership.profile_v2_autoload = nil
     optional_true_omitted.ownership.profile_v2_auto_reload_on_change = nil
     local optional_true_diff = profile_v2.diff_durable_config(optional_true_false, optional_true_omitted)
-    assert_equal(optional_true_diff.count, 0, "optional-true ownership flags should compare equal when false or omitted")
+    assert_equal(optional_true_diff.count, 0, "obsolete lifecycle ownership flags should compare equal when false or omitted")
 
 	local recovery_default = deep_clone(structured_config)
 	recovery_default.ownership.pause_automation_while_weakened = false

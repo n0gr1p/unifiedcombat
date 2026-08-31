@@ -19,8 +19,11 @@ data/activity_profiles/<activity-id>/
 ```
 
 `activity.json` uses schema version 2. It groups exact main-job/sub-job profile
-variants by character and records SHA-256 checksums for both the addon profile
-and UI snapshot.
+variants by character and records SHA-256 checksums for both the canonical
+Profile V2 snapshot and its bundle-local editor snapshot. The `ui_profiles`
+directory is explicit activity import/export data only; it is never deployed
+to the normal per-identity UI storage path and is never an automatic config
+source.
 
 An activity can retain multiple job variants for the same character. Updating
 an activity replaces the variants for the currently connected job
@@ -33,7 +36,8 @@ activity removes only its bundle; it does not delete the canonical
 Create and Update operate on the complete active-session cohort. The UI:
 
 1. captures the selected session's current working form state;
-2. resolves every other connected session's exact individual UI profile;
+2. resolves every other connected session from transient working state or its
+   runtime active-config snapshot;
 3. builds a structured profile-v2 snapshot for every exact
    character/main-job/sub-job identity;
 4. stores the corresponding flat UI state for every identity; and
@@ -45,10 +49,9 @@ explicit error. Runtime state such as engine running state, targets, pending
 actions, locks, and camp coordinates remains outside activity snapshots because
 the structured profile-v2 writer already excludes those fields.
 
-The UI's auxiliary JSON working profiles are also keyed by exact
-character/main-job/sub-job identity. On first access, an older
-character/main-job JSON file is copied once into the exact path so existing UI
-profiles can migrate without combining future subjob edits.
+Working editor profiles are in-memory and keyed by session. Historical
+`data/ui_profiles/*.json` files are not loaded or migrated by the normal editor
+lifecycle.
 
 ## Activation behavior
 
@@ -71,17 +74,19 @@ schema-version-1 variant remains selectable for Update and Delete, but it cannot
 be applied until that exact character/job is recaptured with Update so the
 required UI snapshot exists.
 
-Canonical profile-v2 files and exact-job UI JSON files are staged together with
-rollback copies for the matched sessions only. The UI then sends an acknowledged
+Canonical Profile V2 files are staged with rollback copies for the matched
+sessions only. Bundle-local editor snapshots are copied into transient working
+state after a successful apply; they are not deployed as per-identity files.
+The UI then sends an acknowledged
 `profile_v2_reload` request to each matched addon session. Each addon validates
 and applies its exact canonical file and returns its current identity plus the
 post-apply durable diff count. The activity is marked active only when all
-matched sessions report success and zero differences. After success, cached
-working profiles are discarded for matched sessions and the selected editor
-reloads the applied UI snapshot immediately when it was matched.
+matched sessions report success and zero differences. After success, matched
+working profiles are replaced in memory with the applied bundle snapshots and
+the selected editor refreshes immediately.
 
-If a reload fails, the UI restores both the prior canonical and UI files and
-requests another reload for the matched cohort. Unmatched sessions are not part
+If a reload fails, the UI restores the prior canonical files and requests
+another reload for the matched cohort. Unmatched sessions are not part
 of deployment or rollback. The failure remains visible even
 when runtime restoration succeeds. Verification failures identify the
 character/job, first differing config path, file value, and runtime value.

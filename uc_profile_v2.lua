@@ -630,11 +630,6 @@ local function canonicalize_empty_nyzul(config)
 	return config
 end
 
-local OPTIONAL_TRUE_OWNERSHIP_FLAGS = {
-	profile_v2_autoload = true,
-	profile_v2_auto_reload_on_change = true,
-}
-
 local function canonicalize_optional_true_ownership_flags(config)
 	if type(config) ~= 'table' then
 		return config
@@ -643,11 +638,8 @@ local function canonicalize_optional_true_ownership_flags(config)
 	if type(ownership) ~= 'table' then
 		return config
 	end
-	for flag in pairs(OPTIONAL_TRUE_OWNERSHIP_FLAGS) do
-		if ownership[flag] ~= true then
-			ownership[flag] = nil
-		end
-	end
+	ownership.profile_v2_autoload = nil
+	ownership.profile_v2_auto_reload_on_change = nil
 	return config
 end
 
@@ -1718,24 +1710,6 @@ function M.apply_structured_profile_file_to_settings(current_settings, meta, val
 end
 
 function M.autoload_structured_profile_file_to_settings(current_settings, meta, validator, deps)
-	local inspection = M.validate_structured_profile_file(meta, nil, deps)
-	if type(inspection) ~= 'table' or inspection.ok ~= true or type(inspection.payload) ~= 'table' then
-		return nil
-	end
-
-	local config = inspection.payload.config
-	if type(config) ~= 'table' then
-		return nil
-	end
-
-	local ownership = config.ownership
-	if type(ownership) ~= 'table' then
-		return nil
-	end
-	if ownership.profile_v2_autoload ~= true then
-		return nil
-	end
-
 	local apply_result = M.apply_structured_profile_file_to_settings(current_settings, meta, validator, deps)
 	if type(apply_result) ~= 'table' then
 		return nil

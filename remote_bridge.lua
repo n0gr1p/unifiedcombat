@@ -27,6 +27,7 @@ local uc_target_ignore = require('uc_target_ignore')
 local uc_add_priority = require('uc_add_priority')
 local uc_path_hunter = require('uc_path_hunter')
 local uc_config_runtime = require('uc_config_runtime')
+local uc_active_config = require('uc_active_config')
 local uc_camp_anchor = require('uc_camp_anchor')
 
 local function uc_trim(s)
@@ -155,23 +156,55 @@ local function json_escape_simple(value)
 	return text
 end
 
-local function json_encode_simple(t)
-	local parts = {}
-	for k, v in pairs(t) do
-		local ks = '"' .. json_escape_simple(k) .. '":'
-		local vs
-		if type(v) == 'string' then
-			vs = '"' .. json_escape_simple(v) .. '"'
-		elseif type(v) == 'boolean' then
-			vs = v and 'true' or 'false'
-		elseif type(v) == 'number' then
-			vs = tostring(v)
-		else
-			vs = '"' .. json_escape_simple(v) .. '"'
-		end
-		parts[#parts + 1] = ks .. vs
+local function json_encode_value(value, seen)
+	local value_type = type(value)
+	if value_type == 'nil' then
+		return 'null'
+	elseif value_type == 'string' then
+		return '"' .. json_escape_simple(value) .. '"'
+	elseif value_type == 'boolean' then
+		return value and 'true' or 'false'
+	elseif value_type == 'number' then
+		return tostring(value)
+	elseif value_type ~= 'table' then
+		error('unsupported JSON value type: ' .. value_type)
 	end
+
+	local visited = seen or {}
+	if visited[value] then
+		error('cycle detected while encoding bridge JSON')
+	end
+	visited[value] = true
+	local count = 0
+	local max_index = 0
+	local is_array = true
+	for key in pairs(value) do
+		count = count + 1
+		if type(key) ~= 'number' or key < 1 or key % 1 ~= 0 then
+			is_array = false
+		elseif key > max_index then
+			max_index = key
+		end
+	end
+	if is_array and max_index == count then
+		local parts = {}
+		for i = 1, max_index do
+			parts[#parts + 1] = json_encode_value(value[i], visited)
+		end
+		visited[value] = nil
+		return '[' .. table.concat(parts, ',') .. ']'
+	end
+
+	local parts = {}
+	for key, inner_value in pairs(value) do
+		parts[#parts + 1] = '"' .. json_escape_simple(key) .. '":' .. json_encode_value(inner_value, visited)
+	end
+	visited[value] = nil
 	return '{' .. table.concat(parts, ',') .. '}'
+end
+
+local function json_encode_simple(value)
+	return json_encode_value(value)
 end
 
 local sock = nil
@@ -1755,6 +1788,16 @@ function uc_remote_tick()
 		profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS,
 		config_contract_status = uc_config_runtime.config_contract_status(_G.UC_SETTINGS),
 	}
+	local active_profile = uc_active_config.get_active_profile()
+	if type(active_profile) ~= 'table' then
+		error('remote bridge state requires an active configuration')
+	end
+	local active_settings, projection_err = uc_active_config.project_flat_settings(active_profile, {})
+	if type(active_settings) ~= 'table' then
+		error('remote bridge active-config projection failed: ' .. tostring(projection_err))
+	end
+	active_settings.Start_Engine = Start_Engine == true
+	st.active_config = active_settings
 	if not safe_send_line(json_encode_simple(st)) then
 		return
 	end

@@ -1,5 +1,11 @@
 # Profile / UI File Contract Audit
 
+> Historical audit: this document records the staged migration state before
+> issue #29. The current source-of-truth and lifecycle contract is documented
+> in `profile_v2_issue_29_cutover.md`; statements below about v1 authority,
+> bridge writes, or absent polling are intentionally preserved as historical
+> findings and are no longer current behavior.
+
 ## Scaffolding status
 
 - `T3.7b` added a pure profile validation module and a status contract snapshot helper.

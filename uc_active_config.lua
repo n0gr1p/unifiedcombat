@@ -206,17 +206,6 @@ local function resolve_wait_ignore_names(settings)
 	return {}
 end
 
-local function resolve_profile_v2_auto_reload_on_change(settings)
-	if type(settings) == 'table' and settings.profile_v2_auto_reload_on_change == true then
-		return true
-	end
-	local ownership = type(settings) == 'table' and settings.ownership or nil
-	if type(ownership) == 'table' and ownership.profile_v2_auto_reload_on_change == true then
-		return true
-	end
-	return false
-end
-
 local function serialize_targeted_buffs(entries)
 	local out = {}
 	if type(entries) ~= 'table' then
@@ -361,10 +350,8 @@ local function pick_durable_config_domains(config, meta)
 	if type(out.encounter) == 'table' and out.encounter.enabled ~= true then
 		out.encounter = nil
 	end
-	if type(out.ownership) == 'table' and out.ownership.profile_v2_autoload ~= true then
+	if type(out.ownership) == 'table' then
 		out.ownership.profile_v2_autoload = nil
-	end
-	if type(out.ownership) == 'table' and out.ownership.profile_v2_auto_reload_on_change ~= true then
 		out.ownership.profile_v2_auto_reload_on_change = nil
 	end
 	local main_job = type(meta) == 'table' and meta.main_job or nil
@@ -1205,16 +1192,8 @@ local function apply_structured_config_to_candidate(candidate, config)
         candidate.domain_maintenance_enabled = config.ownership.domain_maintenance_enabled
         candidate.domain_follow_enabled = config.ownership.domain_follow_enabled
         candidate.pause_automation_while_weakened = config.ownership.pause_automation_while_weakened == true
-        if config.ownership.profile_v2_auto_reload_on_change == true then
-            candidate.profile_v2_auto_reload_on_change = true
-        else
-            candidate.profile_v2_auto_reload_on_change = nil
-        end
-        if config.ownership.profile_v2_autoload == true then
-            candidate.profile_v2_autoload = true
-        else
-            candidate.profile_v2_autoload = nil
-        end
+        candidate.profile_v2_auto_reload_on_change = nil
+        candidate.profile_v2_autoload = nil
     end
 
 	if type(config.legacy) == 'table' then
@@ -1236,9 +1215,6 @@ function M.build_active_profile_from_settings(settings, context)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
 	if type(normalized.combat) == 'table' and type(normalized.combat.weaponskill) == 'table' then
 		normalized.combat.weaponskill.wait_ignore_names = resolve_wait_ignore_names(settings)
-	end
-	if type(normalized.ownership) == 'table' then
-		normalized.ownership.profile_v2_auto_reload_on_change = resolve_profile_v2_auto_reload_on_change(settings)
 	end
 	local profile = build_profile_record(normalized.profile, meta, 'UC_SETTINGS')
 	return {
@@ -1336,12 +1312,8 @@ local function clean_active_profile_durable_config(active_profile)
 		return
 	end
 	if type(config.ownership) == 'table' then
-		if config.ownership.profile_v2_autoload ~= true then
-			config.ownership.profile_v2_autoload = nil
-		end
-		if config.ownership.profile_v2_auto_reload_on_change ~= true then
-			config.ownership.profile_v2_auto_reload_on_change = nil
-		end
+		config.ownership.profile_v2_autoload = nil
+		config.ownership.profile_v2_auto_reload_on_change = nil
 	end
 end
 

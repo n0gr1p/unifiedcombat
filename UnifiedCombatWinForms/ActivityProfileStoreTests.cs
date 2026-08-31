@@ -68,10 +68,10 @@ internal static class ActivityProfileStoreTests
         AssertNotContains(ui, "Stop the engine on all active sessions", "running engines must not block a confirmed activity change");
         AssertContains(ui, "already-issued actions will not be cancelled", "live activity changes must warn about in-flight actions");
         AssertContains(ui, "_activityStore.Update(", "activity update must retain and upsert job variants through the store");
-        AssertContains(ui, "BuildActivityProfileCapture", "activity capture must retain flat UI JSON");
+        AssertContains(ui, "BuildActivityProfileCapture", "activity capture must retain a paired editor snapshot");
         AssertContains(ui, "PreserveRuntimeUiState", "activity apply must preserve runtime-owned engine state in the UI");
         AssertContains(ui, "BuildAppliedUiProfileContent", "activity apply must normalize runtime-owned UI state");
-        AssertContains(ui, "_workingProfileBySid.Remove(entry.Sid)", "successful activity apply must discard stale UI working state");
+        AssertContains(ui, "_workingProfileBySid[entry.Sid]", "successful activity apply must publish its paired editor snapshot as transient state");
         AssertContains(ui, "RefreshEditorFromSnapshot()", "successful activity apply must refresh the selected editor");
         AssertContains(ui, "UnmatchedSessions", "partial activity activation must report unmatched sessions");
         AssertContains(ui, "if (plan.Entries.Count > 0)", "zero-match activity context must skip deployment and reload");
@@ -82,8 +82,11 @@ internal static class ActivityProfileStoreTests
         AssertContains(main, "_suppressSessionSelectionChanged", "label replacement must suppress selection side effects");
         AssertNotContains(main, "listSessions.Refresh()", "label refresh must not rely on repainting a cached item string");
         AssertContains(parity, "TryLoadWorkingProfileForSid(_selectedSid", "session switching must prefer unsaved working state");
-        AssertContains(profileStore, "$\"{ch}_{job}_{subJob}.json\"", "UI working profiles must use exact main/subjob identity");
-        AssertContains(profileStore, "TryMigrateLegacyUiProfileForSid", "legacy main-job UI profiles need explicit migration");
+        AssertContains(parity, "BuildEditorProfileFromRuntimeSession", "editor initialization must come from runtime active config");
+        AssertNotContains(parity, "TryLoadProfileForSid(_selectedSid", "editor initialization must not read per-identity UI JSON");
+        AssertNotContains(parity, "TrySaveProfileFromUi(sid, profile", "Save must not write per-identity UI JSON");
+        AssertContains(bridge, "st.active_config = active_settings", "bridge snapshots must publish active-config projection");
+        AssertNotContains(File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "ActivityProfileStore.cs")), "UiDestinationPath", "activity deployment must not write UI JSON beside Profile V2");
         AssertContains(mirror, "ReloadProfileV2Async", "UI hub must await profile-v2 reload acknowledgements");
         AssertContains(ui, "DescribeReloadRejection", "activity errors must retain per-session reload diagnostics");
         AssertContains(ui, "runtime restoration failed on", "activity rollback errors must identify restoration failures");
@@ -170,42 +173,29 @@ internal static class ActivityProfileStoreTests
 
         var redDestination = StructuredProfileV2Writer.BuildFinalPath(root, redRun.ToStructuredIdentity());
         var nightDestination = StructuredProfileV2Writer.BuildFinalPath(root, nightBrd.ToStructuredIdentity());
-        var redUiDestination = ActivityProfileStore.BuildUiFinalPath(root, redRun);
-        var nightUiDestination = ActivityProfileStore.BuildUiFinalPath(root, nightBrd);
         var unmatchedDestination = StructuredProfileV2Writer.BuildFinalPath(root, unmatchedIdentity.ToStructuredIdentity());
-        var unmatchedUiDestination = ActivityProfileStore.BuildUiFinalPath(root, unmatchedIdentity);
         Directory.CreateDirectory(Path.GetDirectoryName(redDestination)!);
-        Directory.CreateDirectory(Path.GetDirectoryName(redUiDestination)!);
         File.WriteAllText(redDestination, "old-red");
         File.WriteAllText(nightDestination, "old-night");
-        File.WriteAllText(redUiDestination, "{\"marker\":\"old-red-ui\"}");
-        File.WriteAllText(nightUiDestination, "{\"marker\":\"old-night-ui\"}");
         File.WriteAllText(unmatchedDestination, "old-unmatched");
-        File.WriteAllText(unmatchedUiDestination, "{\"marker\":\"old-unmatched-ui\"}");
 
         using (var partialDeployment = store.Deploy(partialPlan))
         {
             Assert(File.ReadAllText(nightDestination) == brdContent, "partial deployment did not update its matching session");
             Assert(File.ReadAllText(unmatchedDestination) == "old-unmatched", "partial deployment changed an unmatched v2 profile");
-            Assert(File.ReadAllText(unmatchedUiDestination) == "{\"marker\":\"old-unmatched-ui\"}", "partial deployment changed an unmatched UI profile");
             partialDeployment.Rollback();
         }
         Assert(File.ReadAllText(nightDestination) == "old-night", "partial rollback did not restore its matching session");
         Assert(File.ReadAllText(unmatchedDestination) == "old-unmatched", "partial rollback changed an unmatched v2 profile");
-        Assert(File.ReadAllText(unmatchedUiDestination) == "{\"marker\":\"old-unmatched-ui\"}", "partial rollback changed an unmatched UI profile");
 
         using (var deployment = store.Deploy(plan))
         {
             Assert(File.ReadAllText(redDestination) == runContent, "deployment did not stage RUN profile");
             Assert(File.ReadAllText(nightDestination) == brdContent, "deployment did not stage BRD profile");
-            Assert(File.ReadAllText(redUiDestination) == runUi, "deployment did not stage RUN UI profile");
-            Assert(File.ReadAllText(nightUiDestination) == brdUi, "deployment did not stage BRD UI profile");
             deployment.Rollback();
         }
         Assert(File.ReadAllText(redDestination) == "old-red", "rollback did not restore RUN destination");
         Assert(File.ReadAllText(nightDestination) == "old-night", "rollback did not restore BRD destination");
-        Assert(File.ReadAllText(redUiDestination) == "{\"marker\":\"old-red-ui\"}", "rollback did not restore RUN UI destination");
-        Assert(File.ReadAllText(nightUiDestination) == "{\"marker\":\"old-night-ui\"}", "rollback did not restore BRD UI destination");
 
         using (var deployment = store.Deploy(plan))
         {
@@ -213,8 +203,6 @@ internal static class ActivityProfileStoreTests
         }
         Assert(File.ReadAllText(redDestination) == runContent, "committed RUN profile mismatch");
         Assert(File.ReadAllText(nightDestination) == brdContent, "committed BRD profile mismatch");
-        Assert(File.ReadAllText(redUiDestination) == runUi, "committed RUN UI profile mismatch");
-        Assert(File.ReadAllText(nightUiDestination) == brdUi, "committed BRD UI profile mismatch");
 
         var uiSourceToCorrupt = plan.Entries.Single(x => x.Sid == "sid-red").UiSourcePath;
         File.AppendAllText(uiSourceToCorrupt, " ");
@@ -234,7 +222,6 @@ internal static class ActivityProfileStoreTests
         store.Delete(created.Id);
         Assert(store.List().Count == 0, "delete must remove only the activity bundle");
         Assert(File.Exists(redDestination), "delete must not remove current canonical character profiles");
-        Assert(File.Exists(redUiDestination), "delete must not remove current UI character profiles");
     }
 
     private static void TestLegacyBundleRequiresVariantUpdate(string root)
@@ -283,11 +270,8 @@ internal static class ActivityProfileStoreTests
         );
 
         var destination = StructuredProfileV2Writer.BuildFinalPath(root, sortieIdentity.ToStructuredIdentity());
-        var uiDestination = ActivityProfileStore.BuildUiFinalPath(root, sortieIdentity);
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        Directory.CreateDirectory(Path.GetDirectoryName(uiDestination)!);
         File.WriteAllText(destination, sortieProfile);
-        File.WriteAllText(uiDestination, MainForm.BuildAppliedUiProfileContent(sortieUi, sortieIdentity, running: true));
 
         var initial = store.BuildProvenance(
             created.Id,
@@ -319,19 +303,16 @@ internal static class ActivityProfileStoreTests
             "saving without changing profile content must remain [Activity]");
 
         File.WriteAllText(destination, changedProfile);
-        File.WriteAllText(uiDestination, changedUi);
         Assert(store.BuildProvenance(created.Id, [new ActivitySessionIdentity("sid-terra", sortieIdentity)])
                 .Entries.Single().Provenance == ActivityProfileProvenance.Modified,
             "changed saved profile must become [Activity-mod]");
 
         File.WriteAllText(destination, sortieProfile);
-        File.WriteAllText(uiDestination, sortieUi);
         Assert(store.BuildProvenance(created.Id, [new ActivitySessionIdentity("sid-terra", sortieIdentity)])
                 .Entries.Single().Provenance == ActivityProfileProvenance.Exact,
             "restoring saved profile content must return to [Activity]");
 
         File.WriteAllText(destination, changedProfile);
-        File.WriteAllText(uiDestination, changedUi);
         store.Update(created.Id, [new ActivityProfileCapture(sortieIdentity, changedProfile, changedUi)]);
         Assert(store.BuildProvenance(created.Id, [new ActivitySessionIdentity("sid-terra", sortieIdentity)])
                 .Entries.Single().Provenance == ActivityProfileProvenance.Exact,

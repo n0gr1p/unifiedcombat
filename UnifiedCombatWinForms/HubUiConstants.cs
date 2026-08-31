@@ -51,8 +51,6 @@ internal static class HubUiConstants
         "puller_distance_only",
         "fight_leader",
         "party_follow",
-        "profile_v2_autoload",
-        "profile_v2_auto_reload_on_change",
         "pause_automation_while_weakened",
         "domain_combat_enabled",
         "domain_defensive_enabled",
@@ -112,8 +110,6 @@ internal static class HubUiConstants
         ["fight_leader"] = "Enable Fight Leader",
         ["party_follow"] = "Follow Party Member While Idle",
         ["add_control"] = "Allow Off-Leader Adds",
-        ["profile_v2_autoload"] = "Autoload profile v2 on load",
-        ["profile_v2_auto_reload_on_change"] = "Auto reload profile changes",
         ["pause_automation_while_weakened"] = "Pause automation while weakened",
         ["domain_combat_enabled"] = "Combat domain enabled",
         ["domain_defensive_enabled"] = "Defensive domain enabled",
@@ -163,9 +159,6 @@ internal static class HubUiConstants
         "log_def_sched",
         "log_tank_sched",
     ];
-
-    public static readonly string[] ProfileLifecycleUiKeys =
-        ["profile_v2_autoload", "profile_v2_auto_reload_on_change"];
 
     public static readonly string[] CorRollOptions =
     [

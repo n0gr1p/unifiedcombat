@@ -225,17 +225,100 @@ public partial class MainForm
             ClearForm();
             return;
         }
-        if (!TryLoadWorkingProfileForSid(_selectedSid, out var profileDoc)
-            && !TryLoadProfileForSid(_selectedSid, out profileDoc))
+        if (TryLoadWorkingProfileForSid(_selectedSid, out var profileDoc))
+        {
+            using (profileDoc)
+            {
+                FillFromSession(_selectedSid, profileDoc.RootElement);
+            }
+            return;
+        }
+        if (_snapshotDoc is null
+            || !_snapshotDoc.RootElement.TryGetProperty("sessions", out var sessions)
+            || !sessions.TryGetProperty(_selectedSid, out var session)
+            || !session.TryGetProperty("active_config", out var activeConfig)
+            || activeConfig.ValueKind != JsonValueKind.Object)
         {
             ClearForm();
             return;
         }
+        var editorProfile = BuildEditorProfileFromRuntimeSession(session, activeConfig);
+        using var activeProfileDoc = JsonDocument.Parse(editorProfile.ToJsonString());
+        FillFromSession(_selectedSid, activeProfileDoc.RootElement);
+    }
 
-        using (profileDoc)
+    private static JsonObject BuildEditorProfileFromRuntimeSession(JsonElement session, JsonElement activeConfig)
+    {
+        var profile = JsonNode.Parse(activeConfig.GetRawText())?.AsObject()
+            ?? throw new InvalidDataException("Runtime active configuration must be a JSON object.");
+        foreach (var key in new[]
         {
-            FillFromSession(_selectedSid, profileDoc.RootElement);
+            "ability_options",
+            "weaponskill_options",
+            "path_pull_ja_options",
+            "path_pull_spell_options",
+            "cor_roll_options",
+            "brd_song_options",
+            "party_options",
+        })
+        {
+            if (session.TryGetProperty(key, out var value))
+            {
+                profile[key] = JsonNode.Parse(value.GetRawText());
+            }
         }
+        CopyStringArrayAsPipe(profile, "abilities", "abilities_selected");
+        CopyNameArrayAsEntries(profile, "wait_ignore_names", "ignore", "ignore_entries");
+        CopyNameArrayAsEntries(profile, "partner_names", "partner_ids", "partner_entries");
+        CopyNameArrayAsEntries(profile, "target_ignore_names", null, "target_ignore_entries");
+        CopyNameArrayAsEntries(profile, "add_priority_names", null, "add_priority_entries");
+        CopyNameArrayAsEntries(profile, "sleepspells", null, "sleep_spell_entries");
+        CopyNameArrayAsEntries(profile, "path_hunter_targets", null, "path_hunter_entries");
+        return profile;
+    }
+
+    private static void CopyStringArrayAsPipe(JsonObject profile, string sourceKey, string destinationKey)
+    {
+        if (profile[sourceKey] is not JsonArray values)
+        {
+            return;
+        }
+        profile[destinationKey] = string.Join("|", values.Select(value =>
+            value?.GetValue<string>()
+            ?? throw new InvalidDataException($"Runtime active config '{sourceKey}' contains a null entry.")));
+    }
+
+    private static void CopyNameArrayAsEntries(
+        JsonObject profile,
+        string namesKey,
+        string? idsKey,
+        string destinationKey
+    )
+    {
+        if (profile[namesKey] is not JsonArray names)
+        {
+            return;
+        }
+        var ids = idsKey is not null
+            ? profile[idsKey] as JsonArray
+                ?? throw new InvalidDataException($"Runtime active config '{idsKey}' must be an array.")
+            : null;
+        if (ids is not null && ids.Count != names.Count)
+        {
+            throw new InvalidDataException($"Runtime active config '{idsKey}' must align with '{namesKey}'.");
+        }
+        var entries = new List<string>(names.Count);
+        for (var i = 0; i < names.Count; i++)
+        {
+            var name = names[i]?.GetValue<string>()
+                ?? throw new InvalidDataException($"Runtime active config '{namesKey}' contains a null entry.");
+            var id = ids is not null
+                ? ids[i]?.GetValue<int>()
+                    ?? throw new InvalidDataException($"Runtime active config '{idsKey}' contains a null entry.")
+                : i + 1;
+            entries.Add($"{id}:{name}");
+        }
+        profile[destinationKey] = string.Join("|", entries);
     }
 
     private void PrunePendingBoolEchoes(string sid, JsonElement s)
@@ -5370,14 +5453,9 @@ public partial class MainForm
                 SetProfileSaveStatus($"Mirror: v2 save failed ({v2Error})");
                 return;
             }
-            if (!TrySaveProfileFromUi(sid, profile, out var uiError))
-            {
-                SetProfileSaveStatus($"Mirror: UI profile save failed ({uiError})");
-                return;
-            }
-
+            _workingProfileBySid[sid] = profile.DeepClone().AsObject();
             MarkActiveActivityProfileSaved(sid);
-            SetProfileSaveStatus("Mirror: profile saved (UI + v2)");
+            SetProfileSaveStatus("Mirror: Profile V2 saved");
         }
         finally
         {

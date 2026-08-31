@@ -110,25 +110,6 @@ local function normalize_boolean(value, default_value)
     return default_value
 end
 
-local function normalize_optional_true_boolean(value)
-    if value == true then
-        return true
-    end
-    if type(value) == 'number' then
-        if value == 1 then
-            return true
-        end
-        return nil
-    end
-    if type(value) == 'string' then
-        local lowered = trim_string(value):lower()
-        if lowered == 'true' or lowered == 'on' or lowered == 'yes' or lowered == '1' then
-            return true
-        end
-    end
-    return nil
-end
-
 local function normalize_number(value, default_value, options)
     local n = nil
     if type(value) == 'number' then
@@ -1189,7 +1170,6 @@ local function default_config(meta)
             domain_maintenance_enabled = true,
             domain_follow_enabled = true,
             pause_automation_while_weakened = false,
-            profile_v2_auto_reload_on_change = false,
         },
         legacy = {
             sub = false,
@@ -2387,18 +2367,13 @@ end
 local function normalize_ownership(source, config)
     local ownership = config.ownership
     local nested = get_path(source, { 'ownership' })
-    if is_table(nested) and table_has_any(nested, { 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled', 'pause_automation_while_weakened', 'profile_v2_autoload', 'profile_v2_auto_reload_on_change' }) then
+    if is_table(nested) and table_has_any(nested, { 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled', 'pause_automation_while_weakened' }) then
         ownership.domain_combat_enabled = normalize_boolean(nested.domain_combat_enabled, ownership.domain_combat_enabled)
         ownership.domain_defensive_enabled = normalize_boolean(nested.domain_defensive_enabled, ownership.domain_defensive_enabled)
         ownership.domain_movement_enabled = normalize_boolean(nested.domain_movement_enabled, ownership.domain_movement_enabled)
         ownership.domain_maintenance_enabled = normalize_boolean(nested.domain_maintenance_enabled, ownership.domain_maintenance_enabled)
         ownership.domain_follow_enabled = normalize_boolean(nested.domain_follow_enabled, ownership.domain_follow_enabled)
         ownership.pause_automation_while_weakened = normalize_boolean(nested.pause_automation_while_weakened, ownership.pause_automation_while_weakened)
-        ownership.profile_v2_autoload = normalize_optional_true_boolean(nested.profile_v2_autoload)
-        local auto_reload = normalize_optional_true_boolean(nested.profile_v2_auto_reload_on_change)
-        if auto_reload ~= nil then
-            ownership.profile_v2_auto_reload_on_change = auto_reload
-        end
     else
         ownership.domain_combat_enabled = normalize_boolean(first_path(source, { path('domain_combat_enabled') }), ownership.domain_combat_enabled)
         ownership.domain_defensive_enabled = normalize_boolean(first_path(source, { path('domain_defensive_enabled') }), ownership.domain_defensive_enabled)
@@ -2406,11 +2381,6 @@ local function normalize_ownership(source, config)
         ownership.domain_maintenance_enabled = normalize_boolean(first_path(source, { path('domain_maintenance_enabled') }), ownership.domain_maintenance_enabled)
         ownership.domain_follow_enabled = normalize_boolean(first_path(source, { path('domain_follow_enabled') }), ownership.domain_follow_enabled)
         ownership.pause_automation_while_weakened = normalize_boolean(first_path(source, { path('pause_automation_while_weakened') }), ownership.pause_automation_while_weakened)
-        ownership.profile_v2_autoload = normalize_optional_true_boolean(first_path(source, { path('profile_v2_autoload') }))
-        local auto_reload = normalize_optional_true_boolean(first_path(source, { path('profile_v2_auto_reload_on_change') }))
-        if auto_reload ~= nil then
-            ownership.profile_v2_auto_reload_on_change = auto_reload
-        end
     end
 end
 

@@ -451,8 +451,8 @@ public partial class MainForm : Form
 			ApplyCampRuntimeStatus(selectedState);
             ApplyGeoPullRuntimeStatus(selectedState);
         }
-        // UI is authoritative after initial/manual session selection.
-        // Do not force-refresh controls on every inbound snapshot.
+        // Preserve unsaved editor state across routine snapshots. Initial
+        // selection and identity-list changes refresh from active config.
     }
 
     // Removed: old def_heal_min_missing_hp enforcement/reapply resend loop.

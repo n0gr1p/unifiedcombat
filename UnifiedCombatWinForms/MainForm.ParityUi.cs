@@ -2334,21 +2334,6 @@ public partial class MainForm
         tabScheduler.Controls.Add(sch);
         _settingsTabs.TabPages.Add(tabScheduler);
 
-        var tabProfile = new TabPage("Profile / Lifecycle") { AutoScroll = true };
-        var profileLifecycle = new TableLayoutPanel
-        {
-            AutoSize = true,
-            Dock = DockStyle.Top,
-            ColumnCount = 1,
-            Padding = new Padding(8),
-        };
-        foreach (var key in HubUiConstants.ProfileLifecycleUiKeys)
-        {
-            profileLifecycle.Controls.Add(MkGlobal(key));
-        }
-        tabProfile.Controls.Add(profileLifecycle);
-        _settingsTabs.TabPages.Add(tabProfile);
-
         root.Controls.Add(_settingsTabs, 0, 1);
 
         BuildGlobalActivityControls(sessionActionsFooter);

@@ -14,7 +14,7 @@ Status of the current checkout (`3f78bf5`, 2026-07-31):
 - The scheduler owns target/action selection and dispatch. `unified_combat_core.lua` remains a side-effect-light combat policy and intent helper; it is not a second tick loop.
 - Combat, defensive support, COR/BRD maintenance, movement coordination, profile-v2 consumption, reactions, and scheduler diagnostics have broad replay/self-test coverage.
 - The scheduler cutover was field-tested on a five-character party on 2026-07-24 with no reported regression. Party follow, combat movement/casting, and lifecycle stop were included in that acceptance pass.
-- Structured profile v2 is the durable UI-authored configuration source. The addon validates and consumes it through reload, optional startup autoload, or optional file-change auto-reload.
+- Structured Profile V2 is the sole durable UI-authored configuration source. The addon validates and consumes the exact identity automatically at startup and on stable file changes; manual reload remains diagnostic/recovery tooling.
 
 ### Implemented, with field acceptance still open
 
@@ -141,7 +141,7 @@ UnifiedCombatWinForms\bin\Release\net9.0-windows\win-x64\publish\UnifiedCombatWi
 
 The published build requires the .NET 9 Desktop Runtime. Building requires the .NET 9 SDK.
 
-The UI exposes general combat/defensive settings plus spacing, encounter formation, pathing, reactions, scheduler domains, camp pulling, and job-relevant COR/BRD/GEO/SMN configuration. Durable edits remain local until Save. Despite the current button label `Save (XML)`, Save writes the UI JSON profile and structured Lua profile v2; it does not push the form into the running addon.
+The UI exposes general combat/defensive settings plus spacing, encounter formation, pathing, reactions, scheduler domains, camp pulling, and job-relevant COR/BRD/GEO/SMN configuration. Durable edits remain local until Save. Despite the current button label `Save (XML)`, Save writes only the structured Lua Profile V2 file; it does not push form fields over the runtime bridge.
 
 ## Configuration and profiles
 
@@ -174,12 +174,14 @@ return {
 
 The UI is the normal v2 writer. The addon is the consumer and keeps the applied canonical profile in `_G.UC_ACTIVE_PROFILE`; `_G.UC_SETTINGS` is a compatibility projection. Runtime state—engine running state, selected targets, resolved IDs, locks, pending actions, current path file, camp journey, pet state, song timers, and Nyzul queue progress—is deliberately not durable.
 
+Profile V2 is the sole automatic and durable configuration source. Addon load, login, and every main-job or subjob identity transition resolve the exact file automatically. The file watcher is always active: it polls at low frequency, waits for stable content, ignores unchanged hashes, and applies valid edits through the same validation path. The old `profile_v2_autoload` and `profile_v2_auto_reload_on_change` keys are accepted as obsolete input but have no effect and are not written.
+
 Normal workflow:
 
 1. Edit a profile in WinForms.
-2. Click Save to write `data/profiles_v2/...lua` and the UI's local `data/ui_profiles/...json` file.
-3. Run `//uc profilev2 reload`, reload the addon with v2 autoload enabled, or use opt-in file-change auto-reload.
-4. Use `//uc profilev2 status` or `//uc profilev2 diff detail` to confirm the running durable config matches the file.
+2. Click Save to atomically write only `data/profiles_v2/...lua`.
+3. Let the addon detect and apply the stable file automatically.
+4. Use `//uc profilev2 status` or `//uc profilev2 diff detail` to inspect the result. `//uc profilev2 reload` remains a manual diagnostic/recovery action, not a normal lifecycle requirement.
 
 ### Version-1 compatibility profile
 
@@ -193,7 +195,9 @@ data/profiles/<lowercase-character>.lua
 return { version = 1, profiles = { UC = { JOB = { } } } }
 ```
 
-`//uc save` and `//uc reload` operate on this compatibility profile. `//uc profilev2 export` can seed a v2 migration/bootstrap file from the current compatibility settings, but it is not the normal profile editor.
+These files may remain for historical inspection or explicit migration tooling, but normal addon lifecycle and UI Save do not read, write, or fall back to them. Compatibility commands `//uc save` and `//uc reload` now write/reload the exact Profile V2 identity. `//uc profilev2 export` remains a manual bootstrap/export tool.
+
+When an exact Profile V2 file is missing or invalid during a new identity transition, UnifiedCombat publishes safe normalized defaults and does not reuse configuration from the prior identity or a legacy file. An invalid edit to an already active identity leaves the last-known-good runtime configuration in place; correcting the file applies it automatically.
 
 ### Activity profiles
 
@@ -207,11 +211,13 @@ matches each session's current jobs. Dropdown selection is management-only;
 Activity activation is cohort-wide: every active session must have a valid
 exact variant. Running engines do not block an explicitly confirmed change;
 the confirmation warns that changes take effect immediately and already-issued
-actions are not cancelled. The UI stages both canonical v2 files and exact-job
-UI JSON snapshots, requests an acknowledged profile-v2 reload from every
-session, verifies zero durable differences, and rolls both representations back
-if the cohort does not complete successfully. After success, the selected
-session editor immediately reflects the applied activity. See
+actions are not cancelled. The UI stages canonical exact-identity Profile V2
+files, requests an acknowledged profile-v2 reload from every
+session, verifies zero durable differences, and rolls those files back if the
+cohort does not complete successfully. The JSON inside an activity bundle is
+an explicit editor snapshot for that bundle; it is never deployed as a
+per-identity configuration source. After success, the selected session editor
+immediately reflects the applied activity. See
 [Activity profiles](docs/activity_profiles.md).
 
 ## Commands
@@ -225,7 +231,7 @@ The addon accepts both `//uc` and `//unifiedcombat` prefixes.
 - `//uc engine` — print the active engine label (`UC`).
 - `//uc host <ip>` — change the UI server host for the current session.
 - `//uc port <port>` — change the UI server port for the current session.
-- `//uc save` / `//uc reload` — save or reload the version-1 compatibility profile.
+- `//uc save` / `//uc reload` — compatibility aliases that save or reload the exact Profile V2 identity.
 
 ### Profile v2 and config diagnostics
 

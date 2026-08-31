@@ -353,7 +353,7 @@ internal static class StructuredProfileV2WriterTests
         AssertNotContains(content, "sleep_spell_entries", "legacy sleep spell entries must not be serialized");
         AssertNotContains(content, "sleepspells", "legacy sleep list must not be serialized");
         AssertNotContains(content, "sleepspell", "legacy sleep singleton must not be serialized");
-        AssertNotContains(content, "profile_v2_autoload", "autoload must be omitted unless explicitly enabled");
+        AssertNotContains(content, "profile_v2_autoload", "obsolete lifecycle controls must not be serialized");
     }
 
     private static void TestStatusRemovalLimitProfileContract()
@@ -500,7 +500,7 @@ internal static class StructuredProfileV2WriterTests
             new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
         );
 
-        AssertContains(content, "profile_v2_autoload = true", "autoload flag missing when explicitly enabled");
+        AssertNotContains(content, "profile_v2_autoload", "legacy true autoload input must be ignored");
     }
 
     private static void TestSerializeOmitsProfileV2AutoReloadWhenDisabled()
@@ -523,23 +523,17 @@ internal static class StructuredProfileV2WriterTests
             new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
         );
 
-        AssertContains(content, "profile_v2_auto_reload_on_change = true", "auto-reload flag missing when explicitly enabled");
+        AssertNotContains(content, "profile_v2_auto_reload_on_change", "legacy true auto-reload input must be ignored");
     }
 
     private static void TestProfileV2AutoloadIsPartOfPersistedBoolSet()
     {
-        AssertTrue(
-            HubUiConstants.BoolKeys.Contains("profile_v2_autoload"),
-            "autoload must be included in the shared UI bool key set so load/save paths persist it"
-        );
+        AssertTrue(!HubUiConstants.BoolKeys.Contains("profile_v2_autoload"), "autoload must not remain a UI boolean");
     }
 
     private static void TestProfileV2AutoReloadIsPartOfPersistedBoolSet()
     {
-        AssertTrue(
-            HubUiConstants.BoolKeys.Contains("profile_v2_auto_reload_on_change"),
-            "auto-reload must be included in the shared UI bool key set so load/save paths persist it"
-        );
+        AssertTrue(!HubUiConstants.BoolKeys.Contains("profile_v2_auto_reload_on_change"), "auto-reload must not remain a UI boolean");
     }
 
     private static void TestDomainOwnershipUiContract()
@@ -628,7 +622,7 @@ internal static class StructuredProfileV2WriterTests
             "CreateGlobalBoolCheckBox(\"puller_distance_only\")",
             "puller distance-only control must be in Camp Pulling"
         );
-        AssertContains(ui, "new TabPage(\"Profile / Lifecycle\")", "profile lifecycle tab must exist");
+        AssertNotContains(ui, "new TabPage(\"Profile / Lifecycle\")", "obsolete profile lifecycle tab must be removed");
 
         var removed = new[] { "show_ingame_ui", "closer", "sub", "sub2", "command", "aeonic", "color" };
         AssertTrue(
@@ -2136,9 +2130,9 @@ internal static class StructuredProfileV2WriterTests
     private static void TestUiSaveIsFileOnly()
     {
         var source = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
-        AssertContains(source, "TrySaveProfileFromUi(sid, profile, out var uiError)", "UI save must still write the legacy profile file");
-        AssertContains(source, "TrySaveStructuredProfileV2FromUi(sid, profile, out var v2Error)", "UI save must still write the structured profile file");
-        AssertContains(source, "SetProfileSaveStatus(\"Mirror: profile saved (UI + v2)\")", "UI save must report complete success");
+        AssertNotContains(source, "TrySaveProfileFromUi(sid, profile", "UI save must not write a per-identity JSON profile");
+        AssertContains(source, "TrySaveStructuredProfileV2FromUi(sid, profile, out var v2Error)", "UI save must write the structured profile file");
+        AssertContains(source, "SetProfileSaveStatus(\"Mirror: Profile V2 saved\")", "UI save must report Profile V2 success");
         AssertNotContains(source, "[\"op\"] = \"save\"", "UI save must not send a runtime save command");
     }
 

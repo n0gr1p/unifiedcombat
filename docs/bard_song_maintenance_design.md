@@ -94,7 +94,7 @@ The tab will own durable user intent such as:
 
 The UI will not expose or serialize expected duration, current duration, expiration timestamps, active song slots, current JA buffs, recast timers, packet confidence, or runtime entity IDs.
 
-As with all durable controls, editing the Bard tab remains local until Save. Save writes files only. The addon consumes the saved profile through manual reload, startup autoload, or opt-in file-change auto-reload.
+As with all durable controls, editing the Bard tab remains local until Save. Save writes the exact Profile V2 file only. The addon consumes it automatically through the unconditional stable-file watcher; manual reload remains diagnostic/recovery tooling.
 
 ## Durable Profile Ownership
 

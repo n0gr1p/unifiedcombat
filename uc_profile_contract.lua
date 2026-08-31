@@ -42,6 +42,8 @@ local OWNERSHIP_BY_FIELD = {
     local_ownership_flags = "legacy_or_ambiguous",
     local_ownership_flag = "legacy_or_ambiguous",
     ownership_flags = "legacy_or_ambiguous",
+    profile_v2_autoload = "legacy_or_ambiguous",
+    profile_v2_auto_reload_on_change = "legacy_or_ambiguous",
 }
 
 local PREFIX_CLASSIFICATION = {
@@ -109,8 +111,6 @@ local DIRECT_PROFILE_FIELDS = {
     domain_movement_enabled = "profile_owned_by_ui",
     domain_maintenance_enabled = "profile_owned_by_ui",
     domain_follow_enabled = "profile_owned_by_ui",
-    profile_v2_autoload = "profile_owned_by_ui",
-    profile_v2_auto_reload_on_change = "profile_owned_by_ui",
     path_recording = "profile_owned_by_ui",
     path_follow_enabled = "profile_owned_by_ui",
     path_file_name = "profile_owned_by_ui",

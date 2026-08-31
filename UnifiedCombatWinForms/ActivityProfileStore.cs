@@ -32,7 +32,6 @@ internal sealed record ActivityActivationEntry(
     string DestinationPath,
     string ProfileContent,
     string UiSourcePath,
-    string UiDestinationPath,
     string UiProfileContent
 );
 
@@ -358,7 +357,6 @@ internal sealed class ActivityProfileStore
             ValidateUiProfileContent(uiContent, session.Identity);
 
             var destination = StructuredProfileV2Writer.BuildFinalPath(_addonRoot, session.Identity.ToStructuredIdentity());
-            var uiDestination = BuildUiFinalPath(_addonRoot, session.Identity);
             entries.Add(
                 new ActivityActivationEntry(
                     session.Sid,
@@ -367,7 +365,6 @@ internal sealed class ActivityProfileStore
                     destination,
                     content,
                     uiSourcePath,
-                    uiDestination,
                     uiContent
                 )
             );
@@ -432,11 +429,7 @@ internal sealed class ActivityProfileStore
         }
 
         var deploymentFiles = plan.Entries
-            .SelectMany(entry => new[]
-            {
-                (DestinationPath: entry.DestinationPath, Content: entry.ProfileContent),
-                (DestinationPath: entry.UiDestinationPath, Content: entry.UiProfileContent),
-            })
+            .Select(entry => (DestinationPath: entry.DestinationPath, Content: entry.ProfileContent))
             .ToList();
         var duplicateDestination = deploymentFiles
             .GroupBy(x => Path.GetFullPath(x.DestinationPath), StringComparer.OrdinalIgnoreCase)
@@ -727,27 +720,7 @@ internal sealed class ActivityProfileStore
         return manifest;
     }
 
-    internal static string BuildUiFinalPath(string addonRoot, ActivityProfileIdentity identity)
-    {
-        var root = Path.GetFullPath(addonRoot);
-        var character = SafeUiComponent(identity.Character);
-        var mainJob = StructuredProfileV2Writer.SafeJobComponent(identity.MainJob);
-        var subJob = StructuredProfileV2Writer.SafeJobComponent(identity.SubJob);
-        return Path.Combine(root, "data", "ui_profiles", $"{character}_{mainJob}_{subJob}.json");
-    }
-
     private string ActivityDirectory(string id) => Path.Combine(_root, RequireId(id));
-
-    private static string SafeUiComponent(string value)
-    {
-        var clean = value.Trim();
-        if (clean.Length == 0)
-        {
-            throw new ActivityProfileException("Activity UI profile identity is empty.");
-        }
-        var invalid = Path.GetInvalidFileNameChars();
-        return new string(clean.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
-    }
 
     private static string RequireId(string id)
     {

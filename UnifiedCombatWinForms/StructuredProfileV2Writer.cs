@@ -1594,24 +1594,13 @@ internal static class StructuredProfileV2Writer
 
     private static StructuredProfileNode BuildOwnership(JsonObject flatProfile)
     {
-        var ownership = new StructuredProfileNode()
+        return new StructuredProfileNode()
             .Add("domain_combat_enabled", ReadRequiredBool(flatProfile, "domain_combat_enabled"))
             .Add("domain_defensive_enabled", ReadRequiredBool(flatProfile, "domain_defensive_enabled"))
             .Add("domain_movement_enabled", ReadRequiredBool(flatProfile, "domain_movement_enabled"))
             .Add("domain_maintenance_enabled", ReadRequiredBool(flatProfile, "domain_maintenance_enabled"))
             .Add("domain_follow_enabled", ReadRequiredBool(flatProfile, "domain_follow_enabled"))
             .Add("pause_automation_while_weakened", ReadBool(flatProfile, "pause_automation_while_weakened", false));
-
-        if (ReadBool(flatProfile, "profile_v2_autoload", false))
-        {
-            ownership.Add("profile_v2_autoload", true);
-        }
-        if (ReadBool(flatProfile, "profile_v2_auto_reload_on_change", false))
-        {
-            ownership.Add("profile_v2_auto_reload_on_change", true);
-        }
-
-        return ownership;
     }
 
     private static StructuredProfileNode BuildLegacy(JsonObject flatProfile)

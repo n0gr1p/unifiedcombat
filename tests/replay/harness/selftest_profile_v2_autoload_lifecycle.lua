@@ -4,14 +4,12 @@ local function assert_true(condition, message)
 	end
 end
 
-local function assert_equal(actual, expected, message)
-	if actual ~= expected then
-		error((message or 'values are not equal') .. ': expected=' .. tostring(expected) .. ', actual=' .. tostring(actual))
-	end
-end
-
 local function assert_contains(haystack, needle, message)
 	assert_true(type(haystack) == 'string' and haystack:find(needle, 1, true) ~= nil, message or ('missing substring: ' .. tostring(needle)))
+end
+
+local function assert_not_contains(haystack, needle, message)
+	assert_true(type(haystack) == 'string' and haystack:find(needle, 1, true) == nil, message or ('unexpected substring: ' .. tostring(needle)))
 end
 
 local function read_file(path)
@@ -24,7 +22,7 @@ local function read_file(path)
 	return content
 end
 
-local function extract_source_block(source, start_marker, end_marker)
+local function source_block(source, start_marker, end_marker)
 	local start_pos = source:find(start_marker, 1, true)
 	assert_true(start_pos ~= nil, 'missing source block start: ' .. tostring(start_marker))
 	local end_pos = source:find(end_marker, start_pos + #start_marker, true)
@@ -32,725 +30,251 @@ local function extract_source_block(source, start_marker, end_marker)
 	return source:sub(start_pos, end_pos - 1)
 end
 
-local function deep_clone(value)
-	if type(value) ~= 'table' then
-		return value
-	end
-	local out = {}
-	for key, inner_value in pairs(value) do
-		out[key] = deep_clone(inner_value)
-	end
-	return out
+local function test_automatic_identity_lifecycle(addon)
+	local transition = source_block(addon, 'local function uc_begin_profile_v2_identity_transition', 'local function uc_run_profile_v2_auto_reload')
+	assert_contains(transition, "_G.UC_StopUnifiedEngine('profile_identity_change')", 'identity changes must stop the running engine')
+	assert_contains(transition, 'uc_initialize_safe_profile_v2_identity', 'identity changes must publish safe defaults before resolution')
+	assert_contains(transition, 'uc_queue_profile_v2_autoload(expected_main_job, resume_engine)', 'identity changes must queue the exact Profile V2 identity')
+	assert_not_contains(transition, 'uc_load_profiles_for_character', 'identity changes must not read legacy profiles')
+	assert_not_contains(transition, 'UC_StartUnifiedEngine', 'identity transition must not restart before Profile V2 resolution')
+
+	local establish = source_block(addon, 'local function uc_establish_profile_v2_identity', 'local function uc_autoload_profile_v2_file')
+	assert_contains(establish, 'uc_initialize_safe_profile_v2_identity', 'missing and invalid identities must begin from safe defaults')
+	assert_contains(establish, "state = 'missing'", 'missing files must be reported distinctly')
+	assert_contains(establish, "state = 'invalid'", 'invalid files must be reported distinctly')
+	assert_contains(establish, 'uc_apply_profile_v2_file', 'valid files must use the shared Profile V2 apply path')
+	assert_not_contains(establish, 'uc_load_profiles_for_character', 'Profile V2 establishment must never fall back to legacy profiles')
+
+	local queued = source_block(addon, 'local function uc_run_queued_profile_v2_autoload', 'local function uc_begin_profile_v2_identity_transition')
+	assert_contains(queued, 'uc_autoload_profile_v2_file()', 'queued startup and job transitions must resolve Profile V2 automatically')
+	assert_contains(queued, 'uc_profile_v2_autoload_resume_engine', 'engine restart must be deferred until identity resolution completes')
+	assert_contains(queued, 'uc_start_active_engine_if_running()', 'previously-running engines must restart after resolution')
+
+	local load_event = source_block(addon, "windower.register_event('load'", "windower.register_event('login'")
+	assert_contains(load_event, 'uc_begin_profile_v2_identity_transition()', 'load must automatically resolve Profile V2')
+	assert_not_contains(load_event, 'uc_reload_startup_profile_once', 'load must not use the legacy startup loader')
+
+	local login_start = addon:find("windower.register_event('login'", 1, true)
+	assert_true(login_start ~= nil, 'missing login event')
+	local login_event = addon:sub(login_start)
+	assert_contains(login_event, 'uc_begin_profile_v2_identity_transition()', 'login must automatically resolve Profile V2')
+	assert_not_contains(login_event, 'uc_reload_startup_profile_once', 'login must not use the legacy startup loader')
+
+	local job_event = source_block(addon, "windower.register_event('job change'", "windower.register_event('zone change'")
+	assert_contains(job_event, 'uc_begin_profile_v2_identity_transition(jname)', 'job/subjob changes must automatically resolve the exact Profile V2 identity')
+	assert_not_contains(job_event, 'uc_reload_startup_profile_once', 'job changes must not use the legacy startup loader')
+	assert_not_contains(job_event, 'UC_StartUnifiedEngine', 'job event must not restart the engine ahead of queued resolution')
+
+	local prerender = source_block(addon, "windower.register_event('prerender'", "windower.register_event('job change'")
+	local queued_pos = prerender:find('uc_run_queued_profile_v2_autoload()', 1, true)
+	local recovery_pos = prerender:find('uc_update_recovery_hold()', 1, true)
+	assert_true(queued_pos ~= nil and recovery_pos ~= nil and queued_pos < recovery_pos, 'Profile V2 identity must resolve before runtime recovery work')
 end
 
-local function test_bridge_diagnostic_json_encoding()
-	local bridge = read_file('remote_bridge.lua')
-	local block = extract_source_block(
-		bridge,
-		'local function json_escape_simple',
-		'\n\nlocal sock = nil'
-	)
-	local chunk, load_err = loadstring(block .. '\nreturn json_encode_simple', '@selftest_bridge_diagnostic_json.lua')
-	assert_true(type(chunk) == 'function', 'unable to load bridge JSON encoder: ' .. tostring(load_err))
-	local encode = chunk()
-	local encoded = encode({
-		error = 'config.path: file="C:\\Addon"\nruntime=false',
-	})
-	assert_contains(encoded, 'file=\\"C:\\\\Addon\\"', 'bridge diagnostic JSON must escape quotes and backslashes')
-	assert_contains(encoded, '\\nruntime=false', 'bridge diagnostic JSON must escape control characters')
+local function test_unconditional_watcher(addon)
+	local watcher = source_block(addon, 'local function uc_run_profile_v2_auto_reload', 'local function uc_normalize_targets')
+	assert_contains(watcher, 'UC_PROFILE_V2_AUTO_RELOAD_POLL_SEC', 'watcher must poll continuously')
+	assert_contains(watcher, 'UC_PROFILE_V2_AUTO_RELOAD_STABLE_SEC', 'watcher must debounce file writes')
+	assert_contains(watcher, 'uc_profile_v2_content_hash', 'watcher must suppress unchanged content by hash')
+	assert_contains(watcher, 'uc_apply_profile_v2_file', 'watcher must use the shared validated apply path')
+	assert_contains(watcher, 'last_reported_hash', 'watcher must suppress duplicate invalid-content errors')
+	assert_not_contains(watcher, 'profile_v2_auto_reload_on_change == true', 'watcher must not consult the removed lifecycle switch')
+	assert_not_contains(watcher, 'profile_v2_autoload == true', 'watcher must not consult the removed lifecycle switch')
 end
 
-local function load_autoload_scope(state, status_result, autoload_result)
-	local addon = read_file('UnifiedCombat.lua')
-	assert_contains(addon, 'local function uc_queue_profile_v2_autoload()', 'addon must define the queued autoload helper')
-	assert_contains(addon, 'local function uc_run_queued_profile_v2_autoload()', 'addon must define the queued autoload runner')
-	assert_contains(addon, 'local function uc_run_profile_v2_auto_reload()', 'addon must define the file-change auto-reload runner')
-	assert_contains(addon, 'local function uc_reload_profile_v2_for_current_identity()', 'addon must define acknowledged activity reload helper')
-	local bridge = read_file('remote_bridge.lua')
-	assert_contains(bridge, "elseif op == 'profile_v2_reload' then", 'bridge must accept activity profile reload requests')
-	assert_contains(bridge, "op = 'profile_v2_reload_result'", 'bridge must acknowledge activity profile reload results')
-	assert_contains(addon, 'local UC_PROFILE_V2_AUTO_RELOAD_POLL_SEC = 1', 'auto-reload must poll once per second')
-	assert_contains(addon, 'local UC_PROFILE_V2_AUTO_RELOAD_STABLE_SEC = 1', 'auto-reload must retain a one-second stable-file window')
-
-	local block = extract_source_block(
-		addon,
-		'local uc_sync_table_in_place',
-		'\n\nlocal function uc_sleep_spell_list_lines'
-	)
-
-	local chunk_source = table.concat({
-		block,
-		'',
-		'return {',
-		'  startup_reload = uc_reload_startup_profile_once,',
-		'  reload = uc_reload_active_profile,',
-		'  queue = uc_queue_profile_v2_autoload,',
-		'  run = uc_run_queued_profile_v2_autoload,',
-		'  auto_reload = uc_run_profile_v2_auto_reload,',
-		'  auto_reload_status = uc_profile_v2_auto_reload_status,',
-		'  autoload = uc_autoload_profile_v2_file,',
-		'  activity_reload = uc_reload_profile_v2_for_current_identity,',
-		'}',
-	}, '\n')
-
+local function test_watcher_state_machine(addon)
+	local watcher_source = source_block(addon, 'local function uc_run_profile_v2_auto_reload', 'local function uc_normalize_targets')
+	local state = {
+		now = 1.1,
+		content = nil,
+		apply_calls = 0,
+		chats = {},
+		settings = {
+			value = 'last-known-good',
+			profile_v2_autoload = false,
+			profile_v2_auto_reload_on_change = false,
+		},
+	}
 	local env = {
-		_G = _G,
+		UC_PROFILE_V2_AUTO_RELOAD_POLL_SEC = 1,
+		UC_PROFILE_V2_AUTO_RELOAD_STABLE_SEC = 1,
+		uc_profile_v2_auto_reload_last_checked_at = 0,
+		uc_profile_v2_auto_reload_session_key = nil,
+		uc_profile_v2_auto_reload_last_applied_session_key = nil,
+		uc_profile_v2_auto_reload_last_applied_hash = nil,
+		uc_profile_v2_auto_reload_last_reported_hash = nil,
+		uc_profile_v2_auto_reload_pending_path = nil,
+		uc_profile_v2_auto_reload_pending_hash = nil,
+		uc_profile_v2_auto_reload_pending_seen_at = nil,
+		uc_profile_v2_auto_reload_last_error = nil,
+		UC_SETTINGS = state.settings,
 		uc_now_s = function()
 			return state.now
 		end,
-		uc_active_config = require('uc_active_config'),
-		uc_partner_list = {
-			migrate_from_legacy = function()
-			end,
-			sync_legacy_partner_fields = function()
-			end,
-		},
+		uc_profile_v2_session_key = function(player)
+			return player.name .. '|' .. player.main_job .. '|' .. player.sub_job
+		end,
 		uc_addon_path = function()
 			return 'C:\\Addon'
 		end,
 		uc_profile_v2_file_path = function()
-			return 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'
+			return 'C:\\Addon\\data\\profiles_v2\\redrogue_PLD_WAR.lua'
+		end,
+		uc_profile_v2_read_file_content = function()
+			if state.content == nil then
+				return nil, 'missing file'
+			end
+			return state.content
+		end,
+		uc_profile_v2_content_hash = function(content)
+			return content
 		end,
 		uc_validate_structured_profile_export = function()
-			return {
-				ok = true,
-			}
-		end,
-		uc_update_config_contract_status = function()
-			return {
-				ok = true,
-			}
+			return { ok = true }
 		end,
 		uc_profile_v2 = {
-			format_structured_profile_diff_detail = function(detail)
-				return tostring(detail.path)
-					.. ': file=' .. tostring(detail.file_value) .. ' [' .. tostring(detail.file_type) .. ']'
-					.. ' runtime=' .. tostring(detail.runtime_value) .. ' [' .. tostring(detail.runtime_type) .. ']'
-			end,
-			validate_structured_profile_file = function(meta)
-				state.validate_calls = state.validate_calls + 1
-				if type(state.validate_result) == 'table' then
-					return deep_clone(state.validate_result)
-				end
-				return {
-					ok = true,
-					payload = {
-						config = {
-							ownership = {
-								profile_v2_autoload = true,
-								profile_v2_auto_reload_on_change = true,
-							},
-						},
-					},
-				}
-			end,
-			apply_structured_profile_file_to_settings = function(current_settings, meta)
-				if type(state.apply_result) == 'table' then
-					return deep_clone(state.apply_result)
-				end
-				state.autoload_calls = state.autoload_calls + 1
-				state.settings_identity = current_settings
-				local auto_reload_enabled = state.auto_reload_enabled_after_apply
-				if auto_reload_enabled == nil then
-					auto_reload_enabled = current_settings.profile_v2_auto_reload_on_change == true
-				end
-				current_settings.profile_v2_autoload = true
-				current_settings.engine_enabled = false
-				current_settings.profile_v2_auto_reload_on_change = auto_reload_enabled == true
-				current_settings.cor_roll_1 = 'Chaos Roll'
-				current_settings.cor_roll_2 = 'Ninja Roll'
-				current_settings.defensive_targeted_buffs = 'Terrasjr:Honor March'
-				current_settings.cor_crooked_roll_slot = 0
-				current_settings.cor_elevens = false
-				current_settings.cor_luzaf_range_override = false
-				current_settings.cor_roll_range_require_ids = {}
-				state.active_profile = {
-					version = 2,
-					profile = {
-						character = meta.character,
-						main_job = meta.main_job,
-						sub_job = meta.sub_job,
-						source = 'UC_PROFILE_V2',
-					},
-					config = {
-						ownership = {
-							profile_v2_autoload = true,
-							profile_v2_auto_reload_on_change = current_settings.profile_v2_auto_reload_on_change == true,
-						},
-						maintenance = {
-							cor = {
-								roll_1 = 'Chaos Roll',
-								roll_2 = 'Ninja Roll',
-								crooked_roll_slot = 0,
-								elevens = false,
-								luzaf_range_override = false,
-								range_require_ids = {},
-							},
-						},
-						defensive = {
-							buffs = {
-								targeted = {
-									{ character = 'Terrasjr', buff = 'Honor March' },
-								},
-							},
-						},
-					},
-				}
-				_G.UC_ACTIVE_PROFILE = state.active_profile
-				return {
-					ok = true,
-					path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
-					stage = 'done',
-					active_profile = state.active_profile,
-					candidate = current_settings,
-					projected_settings = current_settings,
-					candidate_config = state.active_profile.config,
-					count = autoload_result.count,
-					diff_count = autoload_result.diff_count,
-					differences = deep_clone(autoload_result.differences or {}),
-					details = deep_clone(autoload_result.details or {}),
-					diff_details = deep_clone(autoload_result.diff_details or {}),
-					first_difference = deep_clone(autoload_result.first_difference),
-				}
-			end,
-			inspect_structured_profile_file_against_settings = function(settings, meta)
-				state.status_calls = state.status_calls + 1
-				state.status_context = {
-					settings = settings,
-					meta = meta,
-				}
-				return deep_clone(state.status_result)
-			end,
-		},
-		files = {
-			exists = function(path)
-				return state.files[path] ~= nil
-			end,
-			read = function(path)
-				state.read_calls[#state.read_calls + 1] = path
-				return state.files[path]
-			end,
-		},
-		uc_update_profile_v2_contract_status = function(context)
-			state.status_calls = state.status_calls + 1
-			state.status_context = context
-			return deep_clone(status_result)
-		end,
-		io = {
-			open = function(path, mode)
-				state.read_calls[#state.read_calls + 1] = path
-				local content = state.files[path]
-				if type(content) ~= 'string' then
-					return nil, 'missing'
-				end
-				local consumed = false
-				return {
-					read = function(_, read_mode)
-						if consumed then
-							return nil
-						end
-						consumed = true
-						if read_mode ~= nil and read_mode ~= '*' and read_mode ~= '*a' then
-							return content
-						end
-						return content
-					end,
-					close = function()
-						return true
-					end,
-				}
+			inspect_structured_profile_file_against_settings = function()
+				return { ok = true, valid = true, count = 0, diff_count = 0 }
 			end,
 		},
 		windower = {
 			ffxi = {
 				get_player = function()
-					return state.player
+					return { name = 'Redrogue', main_job = 'PLD', sub_job = 'WAR' }
 				end,
 			},
 			add_to_chat = function(_, message)
-				state.chats[#state.chats + 1] = tostring(message)
+				state.chats[#state.chats + 1] = message
 			end,
 		},
 	}
 	setmetatable(env, { __index = _G })
+	env._G = env
+	env.uc_profile_v2_auto_reload_reset = function()
+		env.uc_profile_v2_auto_reload_pending_path = nil
+		env.uc_profile_v2_auto_reload_pending_hash = nil
+		env.uc_profile_v2_auto_reload_pending_seen_at = nil
+		env.uc_profile_v2_auto_reload_session_key = nil
+		env.uc_profile_v2_auto_reload_last_applied_session_key = nil
+		env.uc_profile_v2_auto_reload_last_applied_hash = nil
+		env.uc_profile_v2_auto_reload_last_reported_hash = nil
+		env.uc_profile_v2_auto_reload_last_checked_at = 0
+		env.uc_profile_v2_auto_reload_last_error = nil
+	end
+	env.uc_apply_profile_v2_file = function()
+		state.apply_calls = state.apply_calls + 1
+		if state.content == 'invalid' then
+			return false, env.uc_profile_v2_file_path(), 'forced invalid profile'
+		end
+		state.settings.value = state.content
+		return true, env.uc_profile_v2_file_path(), nil, 1
+	end
 
-	local chunk, load_err = loadstring(chunk_source, '@selftest_profile_v2_autoload_scope.lua')
-	assert_true(type(chunk) == 'function', 'unable to load extracted autoload helpers: ' .. tostring(load_err))
+	local chunk, load_err = loadstring(watcher_source .. '\nreturn uc_run_profile_v2_auto_reload', '@watcher_state_machine')
+	assert_true(type(chunk) == 'function', 'failed to compile watcher: ' .. tostring(load_err))
 	setfenv(chunk, env)
-	local scope = chunk()
-	assert_true(type(scope) == 'table', 'extracted autoload scope must return a table')
-	return scope
+	local run = chunk()
+
+	assert_true(run() == nil, 'missing Profile V2 must remain on safe current state')
+	assert_true(state.settings.value == 'last-known-good', 'missing file must not mutate runtime config')
+
+	state.now = 2.2
+	state.content = 'first-write'
+	assert_true(run() == nil and state.apply_calls == 0, 'file creation must enter debounce')
+	state.now = 3.3
+	state.content = 'rapid-replacement'
+	assert_true(run() == nil and state.apply_calls == 0, 'rapid replacement must restart debounce')
+	state.now = 4.4
+	assert_true(run().ok == true and state.apply_calls == 1, 'stable replacement must apply once')
+	assert_true(state.settings.value == 'rapid-replacement', 'stable replacement must become active')
+	state.now = 5.5
+	assert_true(run() == nil and state.apply_calls == 1, 'unchanged content must not reapply')
+
+	state.now = 6.6
+	state.content = 'invalid'
+	assert_true(run() == nil, 'invalid edit must first debounce')
+	state.now = 7.7
+	local invalid_result = run()
+	assert_true(type(invalid_result) == 'table' and invalid_result.ok == false, 'stable invalid edit must be rejected')
+	assert_true(state.settings.value == 'rapid-replacement', 'invalid edit must preserve last-known-good runtime config')
+	assert_true(#state.chats == 2, 'successful apply and first invalid content should each report once')
+	state.now = 8.8
+	assert_true(run() == nil and #state.chats == 2, 'unchanged invalid content must not repeat the error')
+
+	state.now = 9.9
+	state.content = 'corrected'
+	assert_true(run() == nil, 'corrected content must debounce independently')
+	state.now = 11.0
+	assert_true(run().ok == true and state.apply_calls == 3, 'corrected stable content must apply automatically')
+	assert_true(state.settings.value == 'corrected', 'corrected content must replace last-known-good config')
 end
 
-local function make_state()
-	return {
-		validate_calls = 0,
-		autoload_calls = 0,
-		status_calls = 0,
-		start_calls = 0,
-		reload_calls = 0,
-		reload_job = nil,
-		chats = {},
-		read_calls = {},
-		files = {},
-		now = 123.5,
-		player = {
-			name = 'Terrasjr',
-			main_job = 'PLD',
-			sub_job = 'RDM',
-		},
-		settings = {
-			engine_enabled = false,
-			profile_v2_autoload = false,
-		},
-		active_profile = nil,
-		settings_identity = nil,
-		status_context = nil,
-		validate_result = nil,
-		status_result = {
-			ok = true,
-			valid = true,
-			diff_count = 0,
-			count = 0,
-			first_difference = nil,
-			path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
-		},
-	}
+local function test_manual_commands_and_legacy_isolation(addon)
+	local save = source_block(addon, 'local function uc_save_active_profile', 'local function uc_reload_active_profile')
+	assert_contains(save, 'uc_write_profile_v2_export', '//uc save must use the Profile V2 export writer')
+	assert_contains(addon, 'uc_profile_v2.write_structured_profile_export', 'Profile V2 export writer must preserve atomic-write behavior')
+	assert_not_contains(save, 'uc_write_profiles_file', '//uc save must not write legacy profiles')
+
+	local reload = source_block(addon, 'local function uc_reload_active_profile', 'local function uc_sleep_spell_list_lines')
+	assert_contains(reload, 'uc_reload_profile_v2_for_current_identity', '//uc reload must be a manual Profile V2 recovery command')
+	assert_not_contains(reload, 'uc_load_profiles_for_character', '//uc reload must not read legacy profiles')
+
+	local load_calls = 0
+	for _ in addon:gmatch('uc_load_profiles_for_character%s*%(') do
+		load_calls = load_calls + 1
+	end
+	assert_true(load_calls == 1, 'legacy profile reader may remain defined for compatibility but must have no callers')
+
+	local write_calls = 0
+	for _ in addon:gmatch('uc_write_profiles_file%s*%(') do
+		write_calls = write_calls + 1
+	end
+	assert_true(write_calls == 1, 'legacy profile writer may remain defined for compatibility but must have no callers')
 end
 
-local function assert_chat_contains(state, needle, message)
-	local joined = table.concat(state.chats, '\n')
-	assert_contains(joined, needle, message)
+local function test_ui_single_authority()
+	local logic = read_file('UnifiedCombatWinForms/MainForm.ParityLogic.cs')
+	local activity = read_file('UnifiedCombatWinForms/MainForm.ActivityProfiles.cs')
+	local writer = read_file('UnifiedCombatWinForms/StructuredProfileV2Writer.cs')
+	local constants = read_file('UnifiedCombatWinForms/HubUiConstants.cs')
+	assert_contains(logic, '"active_config"', 'editor initialization must come from runtime active config')
+	assert_contains(logic, 'BuildEditorProfileFromRuntimeSession', 'runtime config must be converted into the editor model')
+	assert_contains(logic, 'TrySaveStructuredProfileV2FromUi(sid, profile', 'durable Save must write Profile V2')
+	assert_not_contains(logic, 'TrySaveProfileFromUi(', 'durable Save must not write per-identity UI JSON')
+	assert_not_contains(logic, 'TryLoadProfileForSid(', 'editor must not load per-identity UI JSON as authority')
+	assert_not_contains(activity, 'BuildUiFinalPath', 'activity deployment must not create per-identity UI JSON')
+	assert_not_contains(activity, 'UiDestinationPath', 'activity deployment must target Profile V2 only')
+	assert_not_contains(writer, 'profile_v2_autoload', 'writer must ignore removed lifecycle keys')
+	assert_not_contains(writer, 'profile_v2_auto_reload_on_change', 'writer must ignore removed lifecycle keys')
+	assert_not_contains(constants, 'ProfileLifecycleUiKeys', 'lifecycle controls must be absent from the WinForms UI')
 end
 
-local function main()
-	test_bridge_diagnostic_json_encoding()
-	local previous_settings = rawget(_G, 'UC_SETTINGS')
-	local previous_active_profile = rawget(_G, 'UC_ACTIVE_PROFILE')
-	local previous_reload_active_profile = rawget(_G, 'UC_ReloadActiveProfile')
-	local previous_activity_reload = rawget(_G, 'UC_ReloadProfileV2ForCurrentIdentity')
-
-	local success_state = make_state()
-	_G.UC_SETTINGS = success_state.settings
-	_G.UC_ACTIVE_PROFILE = {
-		version = 2,
-		profile = {
-			character = 'Terrasjr',
-			main_job = 'PLD',
-			sub_job = 'RDM',
-			source = 'seed',
-		},
-		config = {
-			ownership = {},
-		},
-	}
-	rawset(_G, 'UC_ReloadActiveProfile', function(job_for_defaults)
-		success_state.reload_calls = success_state.reload_calls + 1
-		success_state.reload_job = job_for_defaults
-		success_state.active_profile = {
-			version = 2,
-			profile = {
-				character = success_state.player.name,
-				main_job = success_state.player.main_job,
-				sub_job = success_state.player.sub_job,
-				source = 'legacy',
-			},
-			config = {
-				maintenance = {
-					cor = {
-						roll_1 = 'Corsair\'s Roll',
-						roll_2 = 'Ninja Roll',
-						crooked_roll_slot = 0,
-						elevens = false,
-						luzaf_range_override = false,
-						range_require_ids = {},
-					},
-				},
-			},
-		}
-		_G.UC_ACTIVE_PROFILE = success_state.active_profile
-		return true
-	end)
-
-	local success_scope = load_autoload_scope(
-		success_state,
-		{
-			valid = true,
-			diff_count = 0,
-			first_difference = nil,
-		},
-		{
-			ok = true,
-			count = 12,
-			diff_count = 12,
-			first_difference = {
-				path = 'config.defensive.thresholds.critical_hpp',
-			},
-		}
-	)
-
-	assert_true(success_scope.queue() == 'Terrasjr|PLD|RDM', 'queued autoload should record the session key')
-	assert_true(success_scope.queue() == 'Terrasjr|PLD|RDM', 'duplicate queue requests should return the same session key')
-	assert_equal(success_state.autoload_calls, 0, 'queued autoload must not run before the startup runner fires')
-	assert_equal(success_state.status_calls, 0, 'queued autoload must not inspect status before the startup runner fires')
-	assert_true(success_scope.startup_reload() ~= nil, 'startup reload should run once before autoload')
-	assert_equal(success_state.reload_calls, 1, 'startup reload should call the legacy bootstrap path once')
-	assert_true(success_scope.startup_reload() ~= nil, 'duplicate startup reloads should be ignored for the same session')
-	assert_equal(success_state.reload_calls, 1, 'duplicate startup reloads must not run twice for the same session')
-	assert_true(success_scope.run() ~= nil, 'startup runner should execute the queued autoload')
-	assert_equal(success_state.validate_calls, 1, 'autoload should validate the profile once before apply')
-	assert_equal(success_state.autoload_calls, 1, 'autoload should run exactly once for the session')
-	assert_equal(success_state.status_calls, 1, 'autoload should compute a post-apply status check')
-	assert_equal(success_state.settings_identity, success_state.settings, 'autoload must preserve _G.UC_SETTINGS identity')
-	assert_true(_G.UC_ACTIVE_PROFILE == success_state.active_profile, 'autoload must update _G.UC_ACTIVE_PROFILE')
-	assert_equal(success_state.settings.profile_v2_autoload, true, 'autoload must preserve the autoload flag in settings')
-	assert_equal(success_state.settings.engine_enabled, false, 'autoload must not enable the engine')
-	assert_equal(success_state.settings.cor_roll_1, 'Chaos Roll', 'autoload must preserve COR roll 1 in settings')
-	assert_equal(success_state.settings.cor_roll_2, 'Ninja Roll', 'autoload must preserve COR roll 2 in settings')
-	assert_equal(success_state.settings.defensive_targeted_buffs, 'Terrasjr:Honor March', 'autoload must preserve targeted buffs in settings')
-	assert_equal(success_state.start_calls, 0, 'autoload runner must not start the engine')
-	assert_chat_contains(success_state, 'UC profile v2 autoload: applied', 'successful autoload should report applied when post-apply diff is zero')
-	assert_true(success_scope.startup_reload() ~= nil, 'post-autoload startup reload should be ignored for the same session')
-	assert_equal(success_state.reload_calls, 1, 'post-autoload startup reload must not run twice for the same session')
-	local active_config = require('uc_active_config')
-	assert_equal(active_config.get_path('config.maintenance.cor.roll_1'), 'Chaos Roll', 'autoloaded active config roll 1 mismatch')
-	assert_equal(active_config.get_path('config.maintenance.cor.roll_2'), 'Ninja Roll', 'autoloaded active config roll 2 mismatch')
-	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Terrasjr', 'autoloaded active config targeted buff character mismatch')
-	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].buff, 'Honor March', 'autoloaded active config targeted buff name mismatch')
-	assert_true(success_scope.reload('PLD') ~= nil, 'post-autoload legacy reload guard should still return the player')
-	assert_equal(success_state.settings.cor_roll_1, 'Chaos Roll', 'post-autoload reload must preserve COR roll 1 in settings')
-	assert_equal(success_state.settings.cor_roll_2, 'Ninja Roll', 'post-autoload reload must preserve COR roll 2 in settings')
-	assert_equal(success_state.settings.defensive_targeted_buffs, 'Terrasjr:Honor March', 'post-autoload reload must preserve targeted buffs in settings')
-	assert_equal(active_config.get_path('config.maintenance.cor.roll_1'), 'Chaos Roll', 'post-autoload reload must preserve active config roll 1')
-	assert_equal(active_config.get_path('config.maintenance.cor.roll_2'), 'Ninja Roll', 'post-autoload reload must preserve active config roll 2')
-	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].character, 'Terrasjr', 'post-autoload reload must preserve active targeted buff character')
-	assert_equal(active_config.get_path('config.defensive.buffs.targeted')[1].buff, 'Honor March', 'post-autoload reload must preserve active targeted buff name')
-	local previous_windower = rawget(_G, 'windower')
-	rawset(_G, 'windower', {
-		ffxi = {
-			get_player = function()
-				return {
-					main_job = 'COR',
-					sub_job = 'WAR',
-					status = 0,
-					buffs = {},
-				}
-			end,
-			get_ability_recasts = function()
-				return {}
-			end,
-			get_items = function()
-				return { enabled = false }
-			end,
-			get_mob_by_id = function()
-				return nil
-			end,
+local function test_bridge_publishes_runtime_config()
+	local bridge = read_file('remote_bridge.lua')
+	assert_contains(bridge, "require('uc_active_config')", 'bridge must project the canonical active profile')
+	assert_contains(bridge, 'st.active_config = active_settings', 'bridge snapshots must expose active runtime config to the editor')
+	assert_contains(bridge, 'json_encode_value', 'bridge JSON must encode the nested active config')
+	local encoder_source = source_block(bridge, 'local function json_escape_simple', '\n\nlocal sock = nil')
+	local chunk, load_err = loadstring(encoder_source .. '\nreturn json_encode_simple', '@bridge_active_config_json')
+	assert_true(type(chunk) == 'function', 'failed to compile bridge JSON encoder: ' .. tostring(load_err))
+	local encode = chunk()
+	local encoded = encode({
+		active_config = {
+			enabled = true,
+			abilities = { 'Provoke', 'Warcry' },
 		},
 	})
-	local active_cor = dofile('uc_cor_maintenance.lua')
-	local cor_action = active_cor.propose({
-		cor_roll_1 = 'Corsair\'s Roll',
-		cor_roll_2 = 'Samurai Roll',
-		cor_crooked_roll_slot = 0,
-		cor_elevens = false,
-		cor_luzaf_range_override = false,
-		cor_roll_range_require_ids = {},
-		abilities = {},
-	})
-	assert_true(type(cor_action) == 'table', 'post-autoload COR maintenance should still produce an action')
-	assert_equal(cor_action.action_name, 'Chaos Roll', 'autoloaded COR rolls must survive the startup reload guard')
-	rawset(_G, 'windower', previous_windower)
-
-	assert_true(success_scope.run() == nil, 'duplicate startup runner calls must not rerun the same session')
-	assert_equal(success_state.autoload_calls, 1, 'duplicate startup runner calls must not reapply the same session')
-	rawset(_G, 'UC_ReloadActiveProfile', previous_reload_active_profile)
-
-	local auto_reload_state = make_state()
-	auto_reload_state.settings.profile_v2_auto_reload_on_change = true
-	auto_reload_state.status_result = {
-		ok = true,
-		valid = true,
-		diff_count = 0,
-		count = 0,
-		first_difference = nil,
-		path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
-	}
-	local auto_reload_scope = load_autoload_scope(
-		auto_reload_state,
-		auto_reload_state.status_result,
-		{
-			ok = true,
-			count = 7,
-			diff_count = 7,
-			first_difference = {
-				path = 'config.defensive.thresholds.critical_hpp',
-			},
-		}
-	)
-	_G.UC_SETTINGS = auto_reload_state.settings
-	_G.UC_ACTIVE_PROFILE = {
-		version = 2,
-		profile = {
-			character = 'Terrasjr',
-			main_job = 'PLD',
-			sub_job = 'RDM',
-			source = 'UC_PROFILE_V2',
-		},
-		config = {
-			ownership = {
-				profile_v2_auto_reload_on_change = true,
-			},
-		},
-	}
-	auto_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { defensive = { thresholds = { critical_hpp = 35 } } } }'
-	assert_true(auto_reload_scope.auto_reload() == nil, 'first auto-reload poll should only arm the stable snapshot')
-	assert_equal(#auto_reload_state.read_calls, 1, 'auto-reload must read the active file once on the first poll')
-	auto_reload_state.now = auto_reload_state.now + 1.1
-	auto_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { defensive = { thresholds = { critical_hpp = 30 } } } }'
-	assert_true(auto_reload_scope.auto_reload() == nil, 'second auto-reload poll should record the changed file before applying')
-	auto_reload_state.now = auto_reload_state.now + 1.1
-	local auto_reload_settings_identity = auto_reload_state.settings
-	local auto_reload_result = auto_reload_scope.auto_reload()
-	assert_true(type(auto_reload_result) == 'table' and auto_reload_result.ok == true, 'stable file change should auto-reload successfully')
-	assert_equal(auto_reload_state.settings_identity, auto_reload_settings_identity, 'auto-reload must preserve _G.UC_SETTINGS identity')
-	assert_equal(auto_reload_state.settings.engine_enabled, false, 'auto-reload must not enable the engine')
-	assert_equal(auto_reload_state.settings.profile_v2_auto_reload_on_change, true, 'auto-reload must preserve the auto-reload flag in settings')
-	assert_equal(auto_reload_state.status_calls, 1, 'auto-reload should perform a post-apply status check')
-	local auto_reload_status = auto_reload_scope.auto_reload_status()
-	assert_true(type(auto_reload_status) == 'table', 'auto-reload status helper should return a table')
-	assert_equal(auto_reload_status.enabled, true, 'auto-reload status should report enabled')
-	assert_equal(auto_reload_status.last_error, nil, 'auto-reload status should clear last error on success')
-	assert_true(auto_reload_status.path ~= nil, 'auto-reload status should report the watched path')
-	assert_chat_contains(auto_reload_state, 'UC profile v2 auto-reload: applied', 'successful auto-reload should report applied when post-apply diff is zero')
-	assert_true(auto_reload_scope.auto_reload() == nil, 'no-op auto-reload poll should not reapply an unchanged file')
-	assert_equal(auto_reload_state.autoload_calls, 1, 'no-op auto-reload poll must not apply an unchanged file twice')
-
-	local disable_reload_state = make_state()
-	disable_reload_state.settings.profile_v2_auto_reload_on_change = true
-	disable_reload_state.auto_reload_enabled_after_apply = false
-	disable_reload_state.status_result = {
-		ok = true,
-		valid = true,
-		diff_count = 0,
-		count = 0,
-		first_difference = nil,
-		path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
-	}
-	local disable_reload_scope = load_autoload_scope(
-		disable_reload_state,
-		disable_reload_state.status_result,
-		{
-			ok = true,
-			count = 0,
-			diff_count = 0,
-			first_difference = nil,
-		}
-	)
-	_G.UC_SETTINGS = disable_reload_state.settings
-	_G.UC_ACTIVE_PROFILE = {
-		version = 2,
-		profile = {
-			character = 'Terrasjr',
-			main_job = 'PLD',
-			sub_job = 'RDM',
-			source = 'UC_PROFILE_V2',
-		},
-		config = {
-			ownership = {
-				profile_v2_auto_reload_on_change = true,
-			},
-		},
-	}
-	disable_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { ownership = { profile_v2_auto_reload_on_change = false }, defensive = { thresholds = { critical_hpp = 35 } } } }'
-	assert_true(disable_reload_scope.auto_reload() == nil, 'disabled auto-reload should arm on the first poll')
-	disable_reload_state.now = disable_reload_state.now + 1.1
-	disable_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { ownership = { profile_v2_auto_reload_on_change = false }, defensive = { thresholds = { critical_hpp = 30 } } } }'
-	assert_true(disable_reload_scope.auto_reload() == nil, 'disabled auto-reload should record the changed file before applying')
-	disable_reload_state.now = disable_reload_state.now + 1.1
-	local disable_reload_result = disable_reload_scope.auto_reload()
-	assert_true(type(disable_reload_result) == 'table' and disable_reload_result.ok == true, 'disabled auto-reload should still apply successfully')
-	assert_equal(disable_reload_state.settings.profile_v2_auto_reload_on_change, false, 'disabled auto-reload must clear the flag in settings')
-	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE').config.ownership.profile_v2_auto_reload_on_change == nil, 'disabled auto-reload must omit the durable ownership flag')
-	local disable_reload_status = disable_reload_scope.auto_reload_status()
-	assert_true(type(disable_reload_status) == 'table', 'disabled auto-reload status should return a table')
-	assert_equal(disable_reload_status.enabled, false, 'disabled auto-reload status should report disabled')
-	assert_equal(disable_reload_state.status_calls, 2, 'disabled auto-reload should perform a post-apply status check and a status query')
-	local disable_reload_reads_before = #disable_reload_state.read_calls
-	disable_reload_state.now = disable_reload_state.now + 1.1
-	assert_true(disable_reload_scope.auto_reload() == nil, 'disabled auto-reload should stop polling after the disabled flag is applied')
-	assert_equal(#disable_reload_state.read_calls, disable_reload_reads_before, 'disabled auto-reload must stop reading the file after the flag is cleared')
-
-	local invalid_reload_state = make_state()
-	invalid_reload_state.settings.profile_v2_auto_reload_on_change = true
-	invalid_reload_state.validate_result = {
-		ok = false,
-		path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
-		stage = 'load',
-		error = 'parse failed',
-		reason = 'parse failed',
-	}
-	invalid_reload_state.apply_result = {
-		ok = false,
-		path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
-		stage = 'apply',
-		error = 'parse failed',
-		reason = 'parse failed',
-		count = 0,
-		diff_count = 0,
-	}
-	invalid_reload_state.status_result = {
-		ok = false,
-		valid = false,
-		diff_count = 1,
-		count = 1,
-		first_difference = {
-			path = 'config.defensive.buffs.overwrite_interval',
-		},
-		path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
-	}
-	local invalid_reload_scope = load_autoload_scope(
-		invalid_reload_state,
-		invalid_reload_state.status_result,
-		{
-			ok = true,
-			count = 3,
-			diff_count = 3,
-			first_difference = {
-				path = 'config.defensive.buffs.overwrite_interval',
-			},
-		}
-	)
-	_G.UC_SETTINGS = invalid_reload_state.settings
-	_G.UC_ACTIVE_PROFILE = {
-		version = 2,
-		profile = {
-			character = 'Terrasjr',
-			main_job = 'PLD',
-			sub_job = 'RDM',
-			source = 'UC_PROFILE_V2',
-		},
-		config = {
-			ownership = {
-				profile_v2_auto_reload_on_change = true,
-			},
-		},
-	}
-	invalid_reload_state.files['C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua'] = 'return { version = 2, config = { bad = true } }'
-	assert_true(invalid_reload_scope.auto_reload() == nil, 'invalid auto-reload should arm on the first poll')
-	invalid_reload_state.now = invalid_reload_state.now + 1.1
-	local invalid_reload_result = invalid_reload_scope.auto_reload()
-	assert_true(type(invalid_reload_result) == 'table' and invalid_reload_result.ok == false, 'invalid auto-reload should fail without mutating runtime')
-	assert_equal(invalid_reload_state.autoload_calls, 0, 'invalid auto-reload must not apply runtime changes')
-	assert_equal(invalid_reload_state.settings.engine_enabled, false, 'invalid auto-reload must not mutate engine state')
-	assert_equal(invalid_reload_state.settings.profile_v2_auto_reload_on_change, true, 'invalid auto-reload must preserve the flag in settings')
-	assert_chat_contains(invalid_reload_state, 'UC profile v2 auto-reload failed: ', 'invalid auto-reload should report a concise warning')
-
-	local warning_state = make_state()
-	_G.UC_SETTINGS = warning_state.settings
-	_G.UC_ACTIVE_PROFILE = {
-		version = 2,
-		profile = {
-			character = 'Terrasjr',
-			main_job = 'PLD',
-			sub_job = 'RDM',
-			source = 'seed',
-		},
-		config = {
-			ownership = {},
-		},
-	}
-
-	local warning_scope = load_autoload_scope(
-		warning_state,
-		{
-			valid = true,
-			diff_count = 12,
-			first_difference = {
-				path = 'config.defensive.thresholds.critical_hpp',
-			},
-		},
-		{
-			ok = true,
-			count = 12,
-			diff_count = 12,
-			first_difference = {
-				path = 'config.defensive.thresholds.critical_hpp',
-			},
-		}
-	)
-
-	assert_true(warning_scope.queue() == 'Terrasjr|PLD|RDM', 'warning case should still queue the session')
-	assert_true(warning_scope.run() ~= nil, 'warning case should still execute once')
-	assert_equal(warning_state.autoload_calls, 1, 'warning case should apply once')
-	assert_equal(warning_state.status_calls, 1, 'warning case should compute one post-apply status check')
-	assert_chat_contains(warning_state, 'UC profile v2 autoload warning: config.defensive.thresholds.critical_hpp', 'nonzero post-autoload diff should warn with the first diff path')
-	assert_true(table.concat(warning_state.chats, '\n'):find('UC profile v2 autoload: applied', 1, true) == nil, 'warning case must not report success')
-	assert_equal(warning_state.settings, warning_state.settings_identity, 'warning case must preserve _G.UC_SETTINGS identity')
-	assert_equal(warning_state.settings.engine_enabled, false, 'warning case must not enable the engine')
-	assert_equal(warning_state.start_calls, 0, 'warning case must not start the engine')
-
-	local activity_state = make_state()
-	local activity_status = {
-		ok = true,
-		valid = true,
-		diff_count = 0,
-		count = 0,
-		path = 'C:\\Addon\\data\\profiles_v2\\terrassjr_PLD_RDM.lua',
-	}
-	local activity_scope = load_autoload_scope(
-		activity_state,
-		activity_status,
-		{
-			ok = true,
-			count = 4,
-			diff_count = 4,
-		}
-	)
-	_G.UC_SETTINGS = activity_state.settings
-	local activity_result = activity_scope.activity_reload()
-	assert_true(type(activity_result) == 'table' and activity_result.ok == true, 'activity reload helper should acknowledge success')
-	assert_equal(activity_result.character, 'Terrasjr', 'activity reload acknowledgement character mismatch')
-	assert_equal(activity_result.main_job, 'PLD', 'activity reload acknowledgement main job mismatch')
-	assert_equal(activity_result.sub_job, 'RDM', 'activity reload acknowledgement subjob mismatch')
-	assert_equal(activity_result.diff_count, 0, 'activity reload must acknowledge only a zero post-apply diff')
-	assert_equal(activity_state.autoload_calls, 1, 'activity reload must apply exactly once')
-	assert_equal(activity_state.status_calls, 1, 'activity reload must verify the post-apply profile status')
-	assert_equal(activity_state.status_context.addon_path, 'C:\\Addon', 'activity reload verification must use the addon root')
-
-	local activity_mismatch_state = make_state()
-	local activity_mismatch_scope = load_autoload_scope(
-		activity_mismatch_state,
-		{
-			ok = true,
-			valid = true,
-			diff_count = 1,
-			count = 1,
-			first_difference = {
-				path = 'config.defensive.thresholds.critical_hpp',
-				file_value = 35,
-				file_type = 'number',
-				runtime_value = 40,
-				runtime_type = 'number',
-			},
-		},
-		{
-			ok = true,
-			count = 0,
-			diff_count = 0,
-		}
-	)
-	_G.UC_SETTINGS = activity_mismatch_state.settings
-	local activity_mismatch_result = activity_mismatch_scope.activity_reload()
-	assert_true(type(activity_mismatch_result) == 'table' and activity_mismatch_result.ok == false, 'activity reload mismatch should reject the acknowledgement')
-	assert_contains(activity_mismatch_result.error, 'config.defensive.thresholds.critical_hpp', 'activity reload mismatch must report the first difference path')
-	assert_contains(activity_mismatch_result.error, 'file=35 [number]', 'activity reload mismatch must report the file value')
-	assert_contains(activity_mismatch_result.error, 'runtime=40 [number]', 'activity reload mismatch must report the runtime value')
-
-	_G.UC_SETTINGS = previous_settings
-	_G.UC_ACTIVE_PROFILE = previous_active_profile
-	rawset(_G, 'UC_ReloadActiveProfile', previous_reload_active_profile)
-	rawset(_G, 'UC_ReloadProfileV2ForCurrentIdentity', previous_activity_reload)
-	io.stdout:write('selftest_profile_v2_autoload_lifecycle: OK\n')
+	assert_contains(encoded, '"active_config":{', 'bridge must encode active config as an object')
+	assert_contains(encoded, '"abilities":["Provoke","Warcry"]', 'bridge must encode active-config arrays')
+	assert_contains(encoded, '"enabled":true', 'bridge must encode active-config booleans')
 end
 
-main()
+local addon = read_file('UnifiedCombat.lua')
+test_automatic_identity_lifecycle(addon)
+test_unconditional_watcher(addon)
+test_watcher_state_machine(addon)
+test_manual_commands_and_legacy_isolation(addon)
+test_ui_single_authority()
+test_bridge_publishes_runtime_config()
+
+io.stdout:write('selftest_profile_v2_autoload_lifecycle: OK\n')

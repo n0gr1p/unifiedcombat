@@ -349,7 +349,7 @@ public partial class MainForm
             }
             else
             {
-                profile = ReadExistingUiProfileForActivityCapture(sid);
+                profile = ReadRuntimeActiveProfileForActivityCapture(sid);
             }
 
             var content = StructuredProfileV2Writer.BuildStructuredProfileFile(profile, identity.ToStructuredIdentity());
@@ -374,38 +374,17 @@ public partial class MainForm
         );
     }
 
-    private JsonObject ReadExistingUiProfileForActivityCapture(string sid)
+    private JsonObject ReadRuntimeActiveProfileForActivityCapture(string sid)
     {
-        if (!TryProfilePathForSid(sid, out var path))
+        if (_snapshotDoc is null
+            || !_snapshotDoc.RootElement.TryGetProperty("sessions", out var sessions)
+            || !sessions.TryGetProperty(sid, out var session)
+            || !session.TryGetProperty("active_config", out var activeConfig)
+            || activeConfig.ValueKind != JsonValueKind.Object)
         {
-            throw new ActivityProfileException($"UI profile path is unavailable for session {sid}.");
+            throw new ActivityProfileException($"Runtime active configuration is unavailable for session {sid}.");
         }
-        if (!TryMigrateLegacyUiProfileForSid(sid, path, out var migrationError))
-        {
-            throw new ActivityProfileException(migrationError);
-        }
-        if (!File.Exists(path))
-        {
-            throw new ActivityProfileException($"Save the individual session profile before capturing an activity: {path}");
-        }
-
-        JsonObject profile;
-        try
-        {
-            profile = JsonNode.Parse(File.ReadAllText(path, Encoding.UTF8)) as JsonObject
-                ?? throw new ActivityProfileException($"UI profile is not a JSON object: {path}");
-        }
-        catch (ActivityProfileException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw new ActivityProfileException($"UI profile is invalid: {path}", ex);
-        }
-
-        MigrateProfileInPlace(profile);
-        return profile;
+        return BuildEditorProfileFromRuntimeSession(session, activeConfig);
     }
 
     private async Task ApplySelectedActivityAsync(bool confirm)
@@ -490,7 +469,8 @@ public partial class MainForm
 
             foreach (var entry in plan.Entries)
             {
-                _workingProfileBySid.Remove(entry.Sid);
+                _workingProfileBySid[entry.Sid] = JsonNode.Parse(entry.UiProfileContent)?.AsObject()
+                    ?? throw new ActivityProfileException($"Activity editor snapshot is invalid for {entry.Identity.Key}.");
             }
             if (!string.IsNullOrWhiteSpace(_selectedSid)
                 && plan.Entries.Any(entry => string.Equals(entry.Sid, _selectedSid, StringComparison.Ordinal)))

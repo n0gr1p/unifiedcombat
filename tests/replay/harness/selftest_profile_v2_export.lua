@@ -478,14 +478,36 @@ local function run_profile_v2_autoload_selftest(profile_v2, active_config, contr
 		contract.validate_structured_profile_config,
 		disabled_deps
 	)
-	assert_true(disabled_result == nil, 'autoload should stay disabled when the flag is missing')
-	assert_true(disabled_settings == disabled_settings_identity, 'disabled autoload must preserve settings table identity')
-	assert_deep_equal(disabled_settings, disabled_snapshot, 'disabled autoload must not mutate settings')
-	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE') == disabled_active_identity, 'disabled autoload must not mutate active profile identity')
-	assert_deep_equal(rawget(_G, 'UC_ACTIVE_PROFILE'), disabled_active_snapshot, 'disabled autoload must not mutate active profile values')
-	assert_equal(#disabled_state.read_calls, 1, 'disabled autoload should only inspect the file')
-	assert_equal(#disabled_state.open_calls, 0, 'disabled autoload must not write files')
-	assert_true(_G.Start_Engine == false, 'disabled autoload must not start the engine')
+	assert_true(type(disabled_result) == 'table' and disabled_result.ok == true, 'autoload must apply when the legacy flag is missing')
+	assert_true(disabled_result.autoload == true, 'unconditional autoload should mark the result')
+	assert_true(disabled_settings == disabled_settings_identity, 'autoload helper must preserve settings table identity')
+	assert_deep_equal(disabled_settings, disabled_snapshot, 'autoload helper must return a candidate without mutating settings directly')
+	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE') == disabled_active_identity, 'autoload helper must not publish active config directly')
+	assert_deep_equal(rawget(_G, 'UC_ACTIVE_PROFILE'), disabled_active_snapshot, 'autoload helper must not mutate active config directly')
+	assert_equal(#disabled_state.read_calls, 1, 'autoload should validate and apply through one file read')
+	assert_equal(#disabled_state.open_calls, 0, 'autoload must not write files')
+	assert_true(_G.Start_Engine == false, 'autoload must not start the engine')
+
+	local false_payload = profile_v2.build_structured_profile(flat, profile_meta)
+	false_payload.config.ownership.profile_v2_autoload = false
+	false_payload.config.ownership.profile_v2_auto_reload_on_change = false
+	local false_deps, false_state = make_fake_fs({
+		[durable_path] = profile_v2.serialize_structured_profile(false_payload),
+	})
+	local false_result = profile_v2.autoload_structured_profile_file_to_settings(
+		deep_clone(flat),
+		{
+			character = 'Redrogue',
+			main_job = 'PLD',
+			sub_job = 'WAR',
+		},
+		contract.validate_structured_profile_config,
+		false_deps
+	)
+	assert_true(type(false_result) == 'table' and false_result.ok == true, 'autoload must apply when legacy lifecycle flags are explicitly false')
+	assert_true(false_result.candidate.profile_v2_autoload == nil, 'false legacy autoload must be inert')
+	assert_true(false_result.candidate.profile_v2_auto_reload_on_change == nil, 'false legacy auto-reload must be inert')
+	assert_equal(#false_state.read_calls, 1, 'false lifecycle flags must not add a second read path')
 
 	local enabled_payload = profile_v2.build_structured_profile(flat, profile_meta)
 	enabled_payload.config.ownership.profile_v2_autoload = true
@@ -495,7 +517,6 @@ local function run_profile_v2_autoload_selftest(profile_v2, active_config, contr
 	local enabled_settings = deep_clone(flat)
 	local enabled_snapshot = deep_clone(enabled_settings)
 	local enabled_expected = deep_clone(enabled_snapshot)
-	enabled_expected.profile_v2_autoload = true
 	local enabled_active = active_config.build_active_profile_from_settings(enabled_settings, {
 		character = 'Redrogue',
 		main_job = 'PLD',
@@ -523,13 +544,11 @@ local function run_profile_v2_autoload_selftest(profile_v2, active_config, contr
 	assert_deep_equal(enabled_settings, enabled_expected, 'enabled autoload must update settings values in place')
 	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE') == enabled_active_identity, 'enabled autoload must preserve active profile table identity')
 	assert_true(type(enabled_result.active_profile) == 'table', 'enabled autoload must return an active profile')
-	assert_true(_G.UC_ACTIVE_PROFILE.config.ownership.profile_v2_autoload == true, 'enabled autoload must update the active profile')
-	assert_true(_G.UC_ACTIVE_PROFILE.config.ownership.profile_v2_auto_reload_on_change == true, 'enabled autoload must update the auto-reload flag in the active profile')
-	assert_true(enabled_settings.profile_v2_autoload == true, 'enabled autoload must project the flag into flat settings')
-	assert_true(enabled_settings.profile_v2_auto_reload_on_change == true, 'enabled autoload must project the auto-reload flag into flat settings')
-	assert_true(enabled_result.candidate.profile_v2_autoload == true, 'enabled autoload must build a candidate with the flag projected')
-	assert_true(enabled_result.candidate.profile_v2_auto_reload_on_change == true, 'enabled autoload must build a candidate with the auto-reload flag projected')
-	assert_equal(#enabled_state.read_calls, 2, 'enabled autoload should inspect and then apply the file')
+	assert_true(_G.UC_ACTIVE_PROFILE.config.ownership.profile_v2_autoload == nil, 'legacy autoload must not enter active config')
+	assert_true(_G.UC_ACTIVE_PROFILE.config.ownership.profile_v2_auto_reload_on_change == nil, 'legacy auto-reload must not enter active config')
+	assert_true(enabled_result.candidate.profile_v2_autoload == nil, 'legacy autoload must not project into candidate settings')
+	assert_true(enabled_result.candidate.profile_v2_auto_reload_on_change == nil, 'legacy auto-reload must not project into candidate settings')
+	assert_equal(#enabled_state.read_calls, 1, 'autoload should read the file once')
 	assert_equal(#enabled_state.open_calls, 0, 'enabled autoload must not write files')
 	assert_true(_G.Start_Engine == false, 'enabled autoload must not start the engine')
 
@@ -570,7 +589,7 @@ local function run_profile_v2_autoload_selftest(profile_v2, active_config, contr
 	assert_deep_equal(invalid_settings, invalid_snapshot, 'invalid autoload must not mutate settings')
 	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE') == invalid_active_identity, 'invalid autoload must preserve active profile identity')
 	assert_deep_equal(rawget(_G, 'UC_ACTIVE_PROFILE'), invalid_active_snapshot, 'invalid autoload must not mutate active profile values')
-	assert_equal(#invalid_state.read_calls, 2, 'invalid autoload should inspect and then attempt apply')
+	assert_equal(#invalid_state.read_calls, 1, 'invalid autoload should validate and apply from one file read')
 	assert_equal(#invalid_state.open_calls, 0, 'invalid autoload must not write files')
 	assert_true(_G.Start_Engine == false, 'invalid autoload must not start the engine')
 
@@ -936,8 +955,6 @@ local function build_expected_config()
 			domain_maintenance_enabled = true,
 			domain_follow_enabled = true,
 			pause_automation_while_weakened = true,
-			profile_v2_autoload = true,
-			profile_v2_auto_reload_on_change = true,
 		},
 		legacy = {
 			sub = true,
@@ -2006,15 +2023,15 @@ local function main()
 	assert_contains(addon, "UC profile v2 autoload warning: ", 'addon must report post-apply autoload diff warnings tersely')
 	assert_contains(addon, "UC profile v2 autoload: applied", 'addon must report autoload success tersely')
 	assert_contains(addon, "UC profile v2 autoload: no config differences", 'addon must report no-diff autoload tersely')
-	assert_contains(addon, "UC profile v2 autoload failed: ", 'addon must report autoload failures tersely')
+	assert_contains(addon, "UC profile v2 identity load failed; using safe defaults: ", 'addon must report identity-load failures tersely')
 	assert_contains(addon, "local uc_profile_v2_autoload_pending_key = nil", 'addon must track pending profilev2 autoload sessions')
-	assert_contains(addon, "local function uc_queue_profile_v2_autoload()", 'addon must queue profilev2 autoload after startup hooks')
+	assert_contains(addon, "local function uc_queue_profile_v2_autoload(expected_main_job, resume_engine)", 'addon must queue exact-identity profilev2 resolution')
 	assert_contains(addon, "local function uc_run_queued_profile_v2_autoload()", 'addon must run queued profilev2 autoload once per session')
 	assert_contains(addon, "local function uc_run_profile_v2_auto_reload()", 'addon must define the profilev2 file-change auto-reload helper')
-	assert_contains(addon, "uc_queue_profile_v2_autoload()", 'addon must queue profilev2 autoload from startup hooks')
+	assert_contains(addon, "uc_begin_profile_v2_identity_transition()", 'startup hooks must begin profilev2 identity resolution')
 	assert_contains(addon, "uc_run_queued_profile_v2_autoload()", 'addon must run queued profilev2 autoload from prerender')
 	assert_contains(addon, "uc_run_profile_v2_auto_reload()", 'addon must run profilev2 auto-reload from prerender')
-	assert_contains(addon, "uc_profile_v2.validate_structured_profile_file(meta, function(payload)", 'addon autoload must validate the structured file before applying')
+	assert_contains(addon, "uc_profile_v2.inspect_structured_profile_status(", 'addon identity load must distinguish missing and invalid files before applying')
 	assert_contains(addon, "uc_apply_profile_v2_file(", 'addon autoload must use the shared apply path')
 	assert_contains(addon, "local detail_mode = args[3] and tostring(args[3]):lower() == 'detail'", 'addon must recognize the diff detail command')
 	assert_contains(addon, "local ok_reload, _, reload_err, reload_count = uc_apply_profile_v2_file(", 'addon reload command must use the shared apply path')
