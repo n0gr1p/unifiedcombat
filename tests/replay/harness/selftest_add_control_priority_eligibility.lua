@@ -119,8 +119,9 @@ end
 local scheduler_source = read_file('unified_scheduler.lua')
 local target_provider_source = read_file('uc_provider_target_control.lua')
 local combat_provider_source = read_file('uc_provider_combat.lua')
-if not target_provider_source:find('if engaged and not add_control_enabled(ctx.settings) then', 1, true) then
-	error('scheduler must allow engaged target control only for add control')
+if not target_provider_source:find('local add_control_retarget = engaged and add_control_enabled(ctx.settings)', 1, true)
+	or not target_provider_source:find('if engaged and not add_control_retarget and not death_switch then', 1, true) then
+	error('scheduler must allow engaged target control only for add control or explicit death switch')
 end
 if not scheduler_source:find("kind = 'switch_target'", 1, true)
 	or not scheduler_source:find('switch_target = uc_attack.switch_target', 1, true) then

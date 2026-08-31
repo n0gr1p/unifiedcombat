@@ -40,8 +40,8 @@ package.loaded['uc_ws_gate'] = {}
 package.loaded['uc_ws_memory'] = {}
 package.loaded['uc_ignore'] = {}
 package.loaded['uc_target_ignore'] = {
-    is_mob_blocked = function()
-        return false
+    is_mob_blocked = function(_, mob)
+		return tonumber(mob and mob.id) == tonumber(_G.__TEST_BLOCKED_MOB_ID)
     end,
 }
 package.loaded['uc_partner_list'] = {
@@ -112,10 +112,10 @@ windower = {
     send_command = function()
     end,
     ffxi = {
-        get_player = function()
+		get_player = function()
             return {
 				name = 'Self',
-                status = 0,
+                status = tonumber(_G.__TEST_PLAYER_STATUS) or 0,
                 id = 101,
                 vitals = {
                     tp = 1000,
@@ -476,6 +476,97 @@ local function test_zero_hp_and_recent_death_preserved()
     }), _G.__TEST_NOW, true), 'recent-death target must remain invalid even when alliance-claimed')
 end
 
+local function test_engaged_death_switch_selection_and_revalidation()
+	set_party(make_party_fixture())
+	_G.UC_ENABLE_ALLIANCE_TARGET_SCOPE = true
+	_G.__TEST_NOW = 100
+	_G.__TEST_PLAYER_STATUS = 1
+	_G.__TEST_ME = { id = 101, x = 0, y = 0 }
+	_G.__TEST_BLOCKED_MOB_ID = nil
+	core.sticky_target_id = 0
+	core.sticky_hold_until = 0
+	core.last_death_target_id = 0
+	core.last_death_at = 0
+
+	local incumbent = make_mob({
+		id = 8001,
+		name = 'Incumbent',
+		claim_id = 101,
+		hpp = 60,
+		distance = 25,
+	})
+	local replacement = make_mob({
+		id = 8002,
+		name = 'Replacement',
+		claim_id = 101,
+		hpp = 90,
+		distance = 4,
+	})
+	local settings = {
+		autotarget = true,
+		prime = false,
+		hunter = false,
+		path_follow_enabled = false,
+	}
+	_G.__TEST_TARGET = incumbent
+	set_mob_by_id({
+		[8001] = incumbent,
+		[8002] = replacement,
+	})
+	set_mob_array({ incumbent, replacement })
+
+	local selected = core.select_target_for_scheduler(settings)
+	assert_true(type(selected) == 'table' and selected.target_id == 8001, 'living engaged incumbent must remain selected')
+	assert_false(selected.death_switch, 'living engaged incumbent must not produce death-switch metadata')
+
+	incumbent.hpp = 0
+	selected = core.select_target_for_scheduler(settings)
+	assert_true(type(selected) == 'table' and selected.target_id == 8002, 'zero-hpp incumbent must select replacement')
+	assert_true(selected.death_switch, 'zero-hpp incumbent must mark death-switch metadata')
+	assert_equal(selected.death_switch_incumbent_id, 8001, 'death-switch metadata must preserve incumbent id')
+	local valid, reason = core.revalidate_death_switch_for_scheduler(settings, 8002, 8001)
+	assert_true(valid, 'eligible replacement must pass commit-time revalidation: ' .. tostring(reason))
+
+	incumbent.hpp = 60
+	core.last_death_target_id = 8001
+	core.last_death_at = 99.5
+	selected = core.select_target_for_scheduler(settings)
+	assert_true(type(selected) == 'table' and selected.target_id == 8002, 'recent death event must override stale positive incumbent HPP')
+	assert_true(selected.death_switch, 'recent death event must mark death-switch metadata')
+
+	core.last_death_at = 98.5
+	selected = core.select_target_for_scheduler(settings)
+	assert_true(type(selected) == 'table' and selected.target_id == 8001, 'expired death event must preserve living incumbent')
+	assert_false(selected.death_switch, 'expired death event must not create false death-switch metadata')
+
+	incumbent.hpp = 0
+	core.last_death_target_id = 0
+	core.last_death_at = 0
+	replacement.hpp = 0
+	selected = core.select_target_for_scheduler(settings)
+	assert_equal(selected, nil, 'dead incumbent without a live replacement must produce no selection')
+
+	replacement.hpp = 90
+	_G.__TEST_BLOCKED_MOB_ID = 8002
+	selected = core.select_target_for_scheduler(settings)
+	assert_equal(selected, nil, 'ignored replacement must remain ineligible for death switch')
+	_G.__TEST_BLOCKED_MOB_ID = nil
+
+	selected = core.select_target_for_scheduler(settings)
+	assert_true(type(selected) == 'table' and selected.death_switch, 'replacement must be selected again after ignore removal')
+	replacement.hpp = 0
+	valid, reason = core.revalidate_death_switch_for_scheduler(settings, 8002, 8001)
+	assert_false(valid, 'replacement dying before commit must reject switch')
+	assert_equal(reason, 'death_switch_destination_invalid', 'stale replacement rejection reason mismatch')
+
+	_G.__TEST_PLAYER_STATUS = nil
+	_G.__TEST_TARGET = nil
+	_G.__TEST_BLOCKED_MOB_ID = nil
+	core.sticky_target_id = 0
+	core.last_death_target_id = 0
+	core.last_death_at = 0
+end
+
 local function test_puller_range_gate_uses_live_puller_geometry()
     local movement_executor = {
         stop = function() windower.ffxi.run(false) end,
@@ -636,6 +727,7 @@ local function main()
 	test_friendly_aggression_evidence()
     test_tank_victim_scope()
     test_zero_hp_and_recent_death_preserved()
+	test_engaged_death_switch_selection_and_revalidation()
     test_puller_range_gate_uses_live_puller_geometry()
 	test_camp_range_gate_uses_shared_runtime_geometry()
     test_source_wiring()

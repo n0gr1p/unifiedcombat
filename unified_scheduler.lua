@@ -1874,11 +1874,13 @@ scheduler.PRIORITY_BAND_SCH_DEFENSIVE = 145
 scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131
 scheduler.PRIORITY_BAND_SLEEP = 142
 scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 143
+scheduler.PRIORITY_BAND_DEATH_SWITCH = 148
 scheduler.PRIORITY_BAND_SLEEP_WAKE = 149
 scheduler.PRIORITY_BAND_CRITICAL_CURE = 153
 scheduler.PRIORITY_BAND_CHARM_SLEEPER = 1000
 scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION
 scheduler.TARGET_ACQUIRE_DEBOUNCE_S = 0.20
+scheduler.DEATH_SWITCH_DEBOUNCE_S = 0.90
 
 local maintenance_blocked_zone_names = {
 	["southern san d'oria"] = true,
@@ -4936,7 +4938,10 @@ function scheduler.p1_apply_target_acquire_debounce(proposal, at)
 		return
 	end
 	local now = tonumber(at) or now_s()
-	local debounce_s = tonumber(scheduler.TARGET_ACQUIRE_DEBOUNCE_S) or 0.20
+	local detail = type(proposal and proposal.detail) == 'table' and proposal.detail or {}
+	local debounce_s = detail.death_switch == true
+		and (tonumber(scheduler.DEATH_SWITCH_DEBOUNCE_S) or 0.90)
+		or (tonumber(scheduler.TARGET_ACQUIRE_DEBOUNCE_S) or 0.20)
 	scheduler.phase1.recent_duplicate_until[dkey] = now + debounce_s
 end
 
@@ -4950,9 +4955,32 @@ function scheduler.p1_dispatch_target_control(selected, ctx)
 	end
 	local detail = type(selected.detail) == 'table' and selected.detail or {}
 	local player = windower.ffxi.get_player()
+	local death_switch = detail.death_switch == true
 	local engaged_retarget = detail.add_control_retarget == true and player and tonumber(player.status) == 1
 	local ok
-	if engaged_retarget then
+	local dispatch_reason = nil
+	if death_switch then
+		local result = require('uc_scheduler_dispatcher').dispatch_intent({
+			kind = 'switch_target',
+			source = 'unified_scheduler:death_switch',
+			target_id = tid,
+		}, {
+			execute = true,
+			switch_target = uc_attack.switch_target,
+		}, {
+			revalidate = function()
+				return combat_core.revalidate_death_switch_for_scheduler(
+					ctx.settings,
+					tid,
+					detail.death_switch_incumbent_id
+				)
+			end,
+		})
+		ok = result.ok and result.executed
+		dispatch_reason = result.reason
+		-- A packet failure must not retry every scheduler frame during the death window.
+		scheduler.p1_apply_target_acquire_debounce(selected, ctx.now)
+	elseif engaged_retarget then
 		local result = require('uc_scheduler_dispatcher').dispatch_intent({
 			kind = 'switch_target',
 			source = 'unified_scheduler:target_control',
@@ -4962,6 +4990,7 @@ function scheduler.p1_dispatch_target_control(selected, ctx)
 			switch_target = uc_attack.switch_target,
 		})
 		ok = result.ok and result.executed
+		dispatch_reason = result.reason
 	else
 		ok = p1_try_target_prep(tid)
 	end
@@ -4969,13 +4998,15 @@ function scheduler.p1_dispatch_target_control(selected, ctx)
 		scheduler.action_timeline_log('TARGET_SELECT_BLOCKED', {
 			tid = tid,
 			name = tostring(selected.target_name or ''),
-			reason = 'BLOCK_INVALID_TARGET',
+			reason = tostring(dispatch_reason or 'BLOCK_INVALID_TARGET'),
 		}, ('target_blocked:%d:prep'):format(tid), 0.50)
 		return false, nil
 	end
 	scheduler.phase1.last_selected = selected
 	scheduler.phase1.last_plan = p1_build_dispatch_plan(ctx, selected)
-	scheduler.p1_apply_target_acquire_debounce(selected, ctx.now)
+	if not death_switch then
+		scheduler.p1_apply_target_acquire_debounce(selected, ctx.now)
+	end
 	scheduler.p1_maybe_release_stale_spell_lock_for_target_transition(selected, ctx.now)
 	scheduler.action_timeline_log('TARGET_SELECTED', {
 		tid = tid,
@@ -8192,6 +8223,8 @@ scheduler.providers.target_control = require('uc_provider_target_control').new({
 	clamp_urgency = p1_clamp_urgency,
 	tank_target_priority = scheduler.TANK_TARGET_ACQUIRE_PRIORITY,
 	tank_target_urgency = scheduler.TANK_TARGET_ACQUIRE_URGENCY,
+	death_switch_priority = scheduler.PRIORITY_BAND_DEATH_SWITCH,
+	death_switch_urgency = 1.0,
 })
 scheduler.providers.combat = require('uc_provider_combat').new({
 	bool_setting = bool_setting,

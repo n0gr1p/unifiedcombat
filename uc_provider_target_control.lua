@@ -36,6 +36,8 @@ function M.new(deps)
 	local clamp_urgency = require_function(deps, 'clamp_urgency')
 	local tank_target_priority = require_number(deps, 'tank_target_priority')
 	local tank_target_urgency = require_number(deps, 'tank_target_urgency')
+	local death_switch_priority = require_number(deps, 'death_switch_priority')
+	local death_switch_urgency = require_number(deps, 'death_switch_urgency')
 
 	local provider = {}
 
@@ -53,12 +55,18 @@ function M.new(deps)
 			return
 		end
 		local engaged = tonumber(player.status) == 1
-		-- Engaged target control is reserved for explicit fight-leader add control.
-		if engaged and not add_control_enabled(ctx.settings) then
-			return
-		end
+		local add_control_retarget = engaged and add_control_enabled(ctx.settings)
 		local pick = select_target(ctx.settings)
 		if type(pick) ~= 'table' then
+			return
+		end
+		local death_switch = pick.death_switch == true
+		local death_switch_incumbent_id = tonumber(pick.death_switch_incumbent_id) or 0
+		if death_switch and death_switch_incumbent_id <= 0 then
+			error('uc_provider_target_control death-switch pick requires death_switch_incumbent_id')
+		end
+		-- While engaged, only explicit Add Control or the core's death-aware handoff may retarget.
+		if engaged and not add_control_retarget and not death_switch then
 			return
 		end
 		local tid = tonumber(pick.target_id) or 0
@@ -66,8 +74,8 @@ function M.new(deps)
 			return
 		end
 		local tank_mode = bool_setting(tank_enabled(ctx.settings), false)
-		local priority_band = tank_mode and tank_target_priority or 84
-		local urgency = tank_mode and tank_target_urgency or 0.55
+		local priority_band = death_switch and death_switch_priority or (tank_mode and tank_target_priority or 84)
+		local urgency = death_switch and death_switch_urgency or (tank_mode and tank_target_urgency or 0.55)
 		local cur = ctx.target_present == true and ctx.target or nil
 		if cur and tonumber(cur.id) == tid then
 			action_timeline_log('TARGET_SELECT_SKIPPED_ALREADY_TARGETED', {
@@ -76,18 +84,20 @@ function M.new(deps)
 			}, ('target_already:%d'):format(tid), 0.50)
 			return
 		end
-		action_timeline_log('TARGET_ACQUIRE_CANDIDATE', {
+		action_timeline_log(death_switch and 'TARGET_DEATH_SWITCH_CANDIDATE' or 'TARGET_ACQUIRE_CANDIDATE', {
 			tid = tid,
 			name = tostring(pick.target_name or ''),
 			band = priority_band,
 			urgency = ('%.2f'):format(clamp_urgency(urgency)),
 		}, ('target_candidate:%d'):format(tid), 0.50)
 		out[#out + 1] = {
-			proposal_id = ('target.acquire.%d.%d'):format(tid, math.floor(ctx.now * 1000)),
+			proposal_id = death_switch
+				and ('target.death_switch.%d.%d.%d'):format(death_switch_incumbent_id, tid, math.floor(ctx.now * 1000))
+				or ('target.acquire.%d.%d'):format(tid, math.floor(ctx.now * 1000)),
 			family_id = 'target.acquire.primary',
 			provider = 'target_control',
 			action_type = 'target',
-			action_name = 'acquire_target',
+			action_name = death_switch and 'death_switch' or 'acquire_target',
 			target_kind = 'mob',
 			target_id = tid,
 			target_name = tostring(pick.target_name or ''),
@@ -100,17 +110,21 @@ function M.new(deps)
 			movement_policy = 'can_move',
 			range_policy = { min = 0.0, max = 50.0, los_required = false },
 			recast_key = ('target:%d'):format(tid),
-			duplicate_suppression_key = ('target.acquire:%d'):format(tid),
+			duplicate_suppression_key = death_switch
+				and ('target.death_switch:%d:%d'):format(death_switch_incumbent_id, tid)
+				or ('target.acquire:%d'):format(tid),
 			lock_class = 'target_control',
 			expected_ack = 'target_set',
 			expected_effect = 'target_selected',
 			sticky = true,
 			can_preempt_movement = true,
 			can_preempt_same_band = false,
-			reason_code = 'acquire_candidate',
+			reason_code = death_switch and 'death_switch' or 'acquire_candidate',
 			detail = {
 				hpp = tonumber(pick.hpp) or 0,
-				add_control_retarget = engaged,
+				add_control_retarget = add_control_retarget and not death_switch,
+				death_switch = death_switch,
+				death_switch_incumbent_id = death_switch_incumbent_id,
 			},
 			required_setting = 'autotarget',
 		}

@@ -1175,8 +1175,10 @@ local function find_candidate_target(settings)
 	-- requires fight-leader + add-control). Do not unlock stickiness for fight-leader alone.
 	local allow_engaged_retarget = uc_add_control.enabled(settings)
 	local cur = get_current_target()
-	local cur_alive_monster = cur and cur.valid_target and cur.hpp and cur.hpp > 0 and cur.spawn_type == 16
-	local cur_dead_monster = cur and cur.spawn_type == 16 and ((cur.hpp or 0) <= 0 or death_event_active_for_id(cur.id))
+	local cur_recent_death = cur and death_event_active_for_id(cur.id)
+	local cur_alive_monster = cur and cur.valid_target and cur.hpp and cur.hpp > 0
+		and cur.spawn_type == 16 and not cur_recent_death
+	local cur_dead_monster = cur and cur.spawn_type == 16 and ((cur.hpp or 0) <= 0 or cur_recent_death)
 	local partner_target_set = {}
 	if setting_enabled(settings.partner) then
 		local partner_ids = uc_partner_list.as_ordered_ids(settings)
@@ -1298,7 +1300,8 @@ local function find_candidate_target(settings)
 	end
 	if override_id > 0 then
 		local ov = windower.ffxi.get_mob_by_id(override_id)
-		if ov and ov.valid_target and (ov.hpp or 0) > 0 and ov.spawn_type == 16 then
+		if ov and ov.valid_target and (ov.hpp or 0) > 0 and ov.spawn_type == 16
+			and not death_event_active_for_id(ov.id) then
 			return ov
 		end
 	end
@@ -1357,7 +1360,8 @@ local function find_candidate_target(settings)
 			partner_on_mob = select(1, partner_engaged_on_target(mob.id))
 		end
 		local keep_current_incumbent = engaged and cur and cur_alive_monster and ((tonumber(cur.id) or 0) == (tonumber(mob and mob.id) or 0))
-		if mob and mob.id and mob.valid_target and mob.spawn_type == 16 and (mob.hpp or 0) > 0 and
+		if mob and mob.id and mob.valid_target and mob.spawn_type == 16 and (mob.hpp or 0) > 0
+			and not death_event_active_for_id(mob.id, now) and
 			(not partner_on_mob or keep_current_incumbent) and
 			(not partner_target_owned_by_lower_id(mob.id)) then
 			if not uc_target_ignore.is_mob_blocked(settings, mob) then
@@ -3520,6 +3524,13 @@ function core.select_target_for_scheduler(settings)
 	if not setting_enabled(s.autotarget) then
 		return nil
 	end
+	local player = windower.ffxi.get_player()
+	local incumbent = get_current_target()
+	local incumbent_id = tonumber(incumbent and incumbent.id) or 0
+	local incumbent_dead = player and tonumber(player.status) == 1
+		and incumbent_id > 0
+		and tonumber(incumbent.spawn_type) == 16
+		and ((tonumber(incumbent.hpp) or 0) <= 0 or death_event_active_for_id(incumbent_id))
 	local target = find_candidate_target(s)
 	if not target or not target.id or not target.valid_target then
 		return nil
@@ -3527,11 +3538,52 @@ function core.select_target_for_scheduler(settings)
 	if tonumber(target.spawn_type) ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
 		return nil
 	end
+	local target_id = tonumber(target.id) or 0
+	local death_switch = incumbent_dead and target_id ~= incumbent_id
 	return {
-		target_id = tonumber(target.id) or 0,
+		target_id = target_id,
 		target_name = tostring(target.name or ''),
 		hpp = tonumber(target.hpp) or 0,
+		death_switch = death_switch and true or false,
+		death_switch_incumbent_id = death_switch and incumbent_id or 0,
 	}
+end
+
+function core.revalidate_death_switch_for_scheduler(settings, target_id, incumbent_id)
+	local tid = tonumber(target_id) or 0
+	local expected_incumbent_id = tonumber(incumbent_id) or 0
+	if tid <= 0 or expected_incumbent_id <= 0 then
+		return false, 'death_switch_invalid_ids'
+	end
+	local player = windower.ffxi.get_player()
+	if not player or tonumber(player.status) ~= 1 then
+		return false, 'death_switch_not_engaged'
+	end
+	local incumbent = get_current_target()
+	if not incumbent or tonumber(incumbent.id) ~= expected_incumbent_id then
+		return false, 'death_switch_incumbent_changed'
+	end
+	if tonumber(incumbent.spawn_type) ~= 16 then
+		return false, 'death_switch_incumbent_not_monster'
+	end
+	if (tonumber(incumbent.hpp) or 0) > 0 and not death_event_active_for_id(expected_incumbent_id) then
+		return false, 'death_switch_incumbent_alive'
+	end
+	if tid == expected_incumbent_id then
+		return false, 'death_switch_same_target'
+	end
+	local destination = windower.ffxi.get_mob_by_id(tid)
+	if not is_live_actionable_combat_target(destination, uc_now_s(), true) then
+		return false, 'death_switch_destination_invalid'
+	end
+	local selected = core.select_target_for_scheduler(settings)
+	if type(selected) ~= 'table'
+		or selected.death_switch ~= true
+		or tonumber(selected.death_switch_incumbent_id) ~= expected_incumbent_id
+		or tonumber(selected.target_id) ~= tid then
+		return false, 'death_switch_no_longer_selected'
+	end
+	return true, 'death_switch_valid'
 end
 
 function core.add_control_enabled_for_scheduler(settings)

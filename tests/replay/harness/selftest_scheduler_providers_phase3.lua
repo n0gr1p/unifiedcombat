@@ -343,6 +343,8 @@ local function assert_target_and_pull_proposal_shapes()
         clamp_urgency = function(value) return value end,
         tank_target_priority = 132,
         tank_target_urgency = 0.95,
+		death_switch_priority = 148,
+		death_switch_urgency = 1.0,
     })
     local old_engine = rawget(_G, "Start_Engine")
     _G.Start_Engine = true
@@ -373,6 +375,74 @@ local function assert_target_and_pull_proposal_shapes()
     assert_equal(proposals[2].lock_class, "offense_action", "pull lock class")
 end
 
+local function assert_engaged_death_switch_proposal_gate()
+	package.loaded.uc_provider_target_control = nil
+	local target_pick = {
+		target_id = 601,
+		target_name = 'Nearest',
+		hpp = 100,
+		death_switch = false,
+		death_switch_incumbent_id = 0,
+	}
+	local add_control = false
+	local provider = require('uc_provider_target_control').new({
+		bool_setting = function(value) return value == true end,
+		combat_autotarget = function() return true end,
+		combat_domain_enabled = function() return true end,
+		tank_enabled = function() return false end,
+		select_target = function() return target_pick end,
+		add_control_enabled = function() return add_control end,
+		select_pull = function() return nil end,
+		action_timeline_log = function() end,
+		clamp_urgency = function(value) return value end,
+		tank_target_priority = 132,
+		tank_target_urgency = 0.95,
+		death_switch_priority = 148,
+		death_switch_urgency = 1.0,
+	})
+	local old_engine = rawget(_G, 'Start_Engine')
+	_G.Start_Engine = true
+	local ctx = {
+		now = 40,
+		settings = {},
+		player_present = true,
+		player = { status = 1 },
+		target_present = true,
+		target = { id = 600 },
+	}
+	local proposals = {}
+	provider.collect_target(ctx, proposals)
+	assert_equal(#proposals, 0, 'engaged ordinary selection must not emit nearest-target churn')
+
+	target_pick = {
+		target_id = 601,
+		target_name = 'Replacement',
+		hpp = 90,
+		death_switch = true,
+		death_switch_incumbent_id = 600,
+	}
+	provider.collect_target(ctx, proposals)
+	assert_equal(#proposals, 1, 'engaged death switch must emit one target-control proposal')
+	local proposal = proposals[1]
+	assert_equal(proposal.reason_code, 'death_switch', 'death switch reason code')
+	assert_equal(proposal.action_name, 'death_switch', 'death switch action name')
+	assert_equal(proposal.priority_band, 148, 'death switch priority band')
+	assert_equal(proposal.urgency, 1.0, 'death switch urgency')
+	assert_equal(proposal.detail.death_switch, true, 'death switch detail flag')
+	assert_equal(proposal.detail.add_control_retarget, false, 'death switch must not masquerade as Add Control')
+	assert_equal(proposal.detail.death_switch_incumbent_id, 600, 'death switch incumbent detail')
+
+	proposals = {}
+	target_pick.death_switch = false
+	target_pick.death_switch_incumbent_id = 0
+	add_control = true
+	provider.collect_target(ctx, proposals)
+	assert_equal(#proposals, 1, 'engaged Add Control proposal must remain enabled')
+	assert_equal(proposals[1].detail.add_control_retarget, true, 'Add Control engaged-retarget detail must remain true')
+	assert_equal(proposals[1].detail.death_switch, false, 'Add Control proposal must not be marked death switch')
+	_G.Start_Engine = old_engine
+end
+
 local function main()
     assert_provider_purity()
     assert_scheduler_wiring()
@@ -380,6 +450,7 @@ local function main()
     assert_defensive_proposal_shape()
     assert_tank_proposal_shape()
     assert_target_and_pull_proposal_shapes()
+	assert_engaged_death_switch_proposal_gate()
     io.stdout:write("selftest_scheduler_providers_phase3: OK\n")
 end
 
