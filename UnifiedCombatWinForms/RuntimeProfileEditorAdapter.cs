@@ -31,6 +31,7 @@ internal static class RuntimeProfileEditorAdapter
             }
         }
 
+        profile["party_follow_selected"] = RequiredString(profile, "party_follow_leader_name");
         CopyStringArrayAsPipe(profile, "abilities", "abilities_selected");
         CopyStringArrayAsPipe(profile, "tank_enmity_actions", "tank_enmity_actions");
         CopyStringArrayAsPipe(profile, "nyzul_parking_order", "nyzul_parking_order");
@@ -47,6 +48,15 @@ internal static class RuntimeProfileEditorAdapter
         FlattenCampPulling(profile);
         FlattenGeoMaintenance(profile);
         return profile;
+    }
+
+    private static string RequiredString(JsonObject profile, string key)
+    {
+        if (!profile.TryGetPropertyValue(key, out var value) || value is null)
+        {
+            throw new InvalidDataException($"Runtime active config '{key}' is required.");
+        }
+        return value.GetValue<string>();
     }
 
     private static void CopyStringArrayAsPipe(JsonObject profile, string sourceKey, string destinationKey)

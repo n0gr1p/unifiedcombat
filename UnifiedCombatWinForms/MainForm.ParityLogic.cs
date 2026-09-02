@@ -641,8 +641,8 @@ public partial class MainForm
             {
                 _selectedAbilities.Clear();
                 _selectedAbilities.AddRange(nextSelected);
-                SyncAbilityListUi();
             }
+            SyncAbilityListUi();
 
             RefreshAbilityPickIfChanged();
 

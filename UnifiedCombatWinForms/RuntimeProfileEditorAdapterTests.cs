@@ -30,6 +30,7 @@ internal static class RuntimeProfileEditorAdapterTests
         var editor = RuntimeProfileEditorAdapter.Build(sessionDocument.RootElement, activeDocument.RootElement);
 
         AssertEqual(editor["abilities_selected"]?.GetValue<string>(), "Bolster|Entrust", "ability projection");
+        AssertEqual(editor["party_follow_selected"]?.GetValue<string>(), "Leader", "party follow projection");
         AssertEqual(editor["brd_songs"]?.GetValue<string>(), "Honor March|Victory March", "BRD song projection");
         AssertEqual(editor["brd_dummy_songs"]?.GetValue<string>(), "Bewitching Etude", "BRD dummy projection");
         AssertEqual(editor["geo_maintenance_enabled"]?.GetValue<bool>(), true, "GEO enabled projection");
@@ -99,6 +100,12 @@ internal static class RuntimeProfileEditorAdapterTests
             ["domain_follow_enabled"] = true,
             ["ability_active"] = true,
             ["abilities"] = new JsonArray("Bolster", "Entrust"),
+            ["party_follow"] = true,
+            ["party_follow_leader_name"] = "Leader",
+            ["party_follow_min"] = 1.0,
+            ["party_follow_max"] = 25.0,
+            ["fight_follow_min"] = 3.0,
+            ["fight_follow_hold_s"] = 8.0,
             ["tank_enmity_actions"] = new JsonArray("Provoke", "Flash"),
             ["nyzul_coordinator_name"] = "Terrasjr",
             ["nyzul_anchor_name"] = "Ponponponponpon",
