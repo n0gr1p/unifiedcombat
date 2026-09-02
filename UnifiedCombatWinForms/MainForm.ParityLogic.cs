@@ -181,6 +181,22 @@ public partial class MainForm
         combo.SelectedIndex = idx;
     }
 
+    private List<string> CurrentSelectablePartyNameOptions(IReadOnlyList<string> reportedPartyNames)
+    {
+        var selectedCharacter = _selectedSid is not null
+            && _sessionMetaBySid.TryGetValue(_selectedSid, out var selectedMeta)
+                ? selectedMeta.CharName
+                : "";
+        return reportedPartyNames
+            .Concat(CurrentPartyNameOptions())
+            .Select(NormalizePartyName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Where(name => !string.Equals(name, selectedCharacter, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private void UpdatePartyFollowModeWarning(string sid)
     {
         if (_partyFollowModeWarning is null)
@@ -607,7 +623,9 @@ public partial class MainForm
         var pullJaOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("path_pull_ja_options", out var pjo) ? pjo : default);
         var pullSpellOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("path_pull_spell_options", out var pso) ? pso : default);
         var tankEnmityActions = SessionStateHelper.SplitOptions(s.TryGetProperty("tank_enmity_actions", out var tea) ? tea : default);
-        var partyOptsLive = SessionStateHelper.SplitOptions(s.TryGetProperty("party_options", out var pto) ? pto : default);
+        var partyOptsLive = CurrentSelectablePartyNameOptions(
+            SessionStateHelper.SplitOptions(s.TryGetProperty("party_options", out var pto) ? pto : default)
+        );
         if (!SequenceEqualOrdinal(_partyOptions, partyOptsLive))
         {
             _partyOptions.Clear();
@@ -950,7 +968,7 @@ public partial class MainForm
         var pullSpellOpts = SessionStateHelper.SplitOptions(hasPullSpell ? pso : default);
         var corRollOpts = SessionStateHelper.SplitOptions(hasCorRolls ? cro : default);
         var brdSongOpts = SessionStateHelper.SplitOptions(hasBrdSongs ? bso : default);
-        var partyOpts = SessionStateHelper.SplitOptions(hasPartyOpts ? po : default);
+        var partyOpts = CurrentSelectablePartyNameOptions(SessionStateHelper.SplitOptions(hasPartyOpts ? po : default));
         var changed = false;
 
         _suppressEvents = true;
@@ -1013,7 +1031,9 @@ public partial class MainForm
                 RefreshBrdSongPickOptions(_brdDummyCombo);
                 changed = true;
             }
-            if (hasPartyOpts && !SequenceEqualOrdinal(_corPartyOptions, partyOpts))
+            if (hasPartyOpts
+                && (!SequenceEqualOrdinal(_corPartyOptions, partyOpts)
+                    || !SequenceEqualOrdinal(_partyOptions, partyOpts)))
             {
                 _corPartyOptions.Clear();
                 _corPartyOptions.AddRange(partyOpts);
@@ -1037,6 +1057,10 @@ public partial class MainForm
 				var keepNyzulAnchor = SelectedPartyName(_nyzulAnchorCombo);
 				var keepNyzulParker = SelectedPartyName(_nyzulParkerCombo);
                 var keepKeiDealer = SelectedPartyName(_keiElementalDealer);
+                var keepFormationTank = SelectedPartyName(_formationTankName);
+                var keepFormationAnchor = SelectedPartyName(_formationAnchorMember);
+                var keepFormationAxis = SelectedPartyName(_formationAxisMember);
+                var keepFormationRequired = SelectedFormationRequiredPartyNames();
                 if (string.IsNullOrWhiteSpace(snapPuller) && !string.IsNullOrWhiteSpace(keepPuller))
                 {
                     snapPuller = keepPuller;
@@ -1056,6 +1080,13 @@ public partial class MainForm
 				BindPartyCombo(_nyzulAnchorCombo, partnerOpts, keepNyzulAnchor);
 				BindPartyCombo(_nyzulParkerCombo, partnerOpts, keepNyzulParker);
                 BindPartyCombo(_keiElementalDealer, partnerOpts, keepKeiDealer);
+                BindFormationPartyControls(
+                    partnerOpts,
+                    keepFormationTank,
+                    keepFormationAnchor,
+                    keepFormationAxis,
+                    keepFormationRequired
+                );
                 UpdatePartyFollowModeWarning(sid);
                 var selectedNames = SessionStateHelper.SplitOptions(s.TryGetProperty("cor_roll_range_selected", out var crs2) ? crs2 : default);
                 RenderCorRangePartyChecks(sid, selectedNames);
@@ -3076,25 +3107,7 @@ public partial class MainForm
         var required = SessionStateHelper.SplitOptions(
             snapshot.TryGetProperty("formation_required_party_names", out var requiredNode) ? requiredNode : default
         );
-        var names = partyOptions
-            .Concat(required)
-            .Append(tankName)
-            .Append(anchorMember)
-            .Append(axisMember)
-            .Select(NormalizePartyName)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        BindPartyCombo(_formationTankName, names, tankName);
-        BindPartyCombo(_formationAnchorMember, names, anchorMember);
-        BindPartyCombo(_formationAxisMember, names, axisMember);
-        _formationRequiredParty.Items.Clear();
-        foreach (var name in names)
-        {
-            var check = required.Any(selected => string.Equals(NormalizePartyName(selected), name, StringComparison.OrdinalIgnoreCase));
-            _formationRequiredParty.Items.Add(name, check);
-        }
+        BindFormationPartyControls(partyOptions, tankName, anchorMember, axisMember, required);
 
         ApplyFormationNumber(snapshot, "formation_capture_stable_s", _formationCaptureStable, "0.5");
         ApplyFormationNumber(snapshot, "formation_capture_tolerance", _formationCaptureTolerance, "0.1");
@@ -3148,6 +3161,35 @@ public partial class MainForm
         ApplyFormationNumber(snapshot, "formation_minimum_boss_distance", _formationMinimumBossDistance, "0");
         ApplyFormationNumber(snapshot, "formation_maximum_boss_distance", _formationMaximumBossDistance, "0");
         ApplyFormationNumber(snapshot, "formation_maximum_party_range", _formationMaximumPartyRange, "0");
+    }
+
+    private void BindFormationPartyControls(
+        IReadOnlyList<string> partyOptions,
+        string tankName,
+        string anchorMember,
+        string axisMember,
+        IReadOnlyList<string> required
+    )
+    {
+        var names = partyOptions
+            .Concat(required)
+            .Append(tankName)
+            .Append(anchorMember)
+            .Append(axisMember)
+            .Select(NormalizePartyName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        BindPartyCombo(_formationTankName, names, tankName);
+        BindPartyCombo(_formationAnchorMember, names, anchorMember);
+        BindPartyCombo(_formationAxisMember, names, axisMember);
+        _formationRequiredParty.Items.Clear();
+        foreach (var name in names)
+        {
+            var check = required.Any(selected => string.Equals(NormalizePartyName(selected), name, StringComparison.OrdinalIgnoreCase));
+            _formationRequiredParty.Items.Add(name, check);
+        }
     }
 
     private static void ApplyFormationNumber(JsonElement snapshot, string key, NumericUpDown control, string defaultValue)

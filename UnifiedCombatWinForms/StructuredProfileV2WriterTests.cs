@@ -93,6 +93,7 @@ internal static class StructuredProfileV2WriterTests
             TestEnabledFormationRequiresMovementDomain();
             TestFormationUiEditsAreLocalUntilSave();
             TestFormationUiProfilePersistenceContract();
+            TestFormationPartyOptionsRefreshContract();
             TestSerializeConfigurableControlRanges();
             TestControlRangeUiEditsAreLocalUntilSave();
             TestUiSaveIsFileOnly();
@@ -2094,6 +2095,55 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(logic, "ApplyFormationConfigFromSnapshot(s, partnerOpts);", "formation settings must restore from UI profiles");
         AssertContains(logic, "named_formation_entries", "named formation settings must restore from UI profiles");
         AssertContains(logic, "profile save blocked", "invalid formation settings must block profile save");
+    }
+
+    private static void TestFormationPartyOptionsRefreshContract()
+    {
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        var start = logic.IndexOf("private void ApplyOptionsFromSnapshotIfPresent", StringComparison.Ordinal);
+        var end = logic.IndexOf("private string metaOrJob", start, StringComparison.Ordinal);
+        AssertTrue(start >= 0 && end > start, "incremental options handler source range missing");
+        var optionsHandler = logic[start..end];
+        AssertContains(
+            optionsHandler,
+            "BindFormationPartyControls(",
+            "incremental party options must refresh formation party controls"
+        );
+        AssertContains(
+            optionsHandler,
+            "!SequenceEqualOrdinal(_partyOptions, partyOpts)",
+            "incremental party refresh must detect a stale shared party-options cache"
+        );
+        AssertContains(
+            optionsHandler,
+            "keepFormationAxis",
+            "incremental party options must preserve the selected formation axis member"
+        );
+        AssertContains(
+            optionsHandler,
+            "keepFormationRequired",
+            "incremental party options must preserve checked formation coverage members"
+        );
+        AssertContains(
+            logic,
+            "var partyOptsLive = CurrentSelectablePartyNameOptions(",
+            "full editor hydration must combine reported party members with connected UC sessions"
+        );
+        AssertContains(
+            optionsHandler,
+            "var partyOpts = CurrentSelectablePartyNameOptions(",
+            "incremental editor hydration must combine reported party members with connected UC sessions"
+        );
+        AssertContains(
+            logic,
+            ".Concat(CurrentPartyNameOptions())",
+            "selectable party options must include connected UC session identities"
+        );
+        AssertContains(
+            logic,
+            "!string.Equals(name, selectedCharacter, StringComparison.OrdinalIgnoreCase)",
+            "selectable party options must exclude the selected character"
+        );
     }
 
     private static void TestSerializeConfigurableControlRanges()
