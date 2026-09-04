@@ -100,7 +100,7 @@ windower = {
 		get_mob_by_target = function(target)
 			if target == 'me' then
 				return me
-		end
+			end
 			return nil
 		end,
 	},
@@ -164,6 +164,7 @@ assert_equal(
 )
 local status = _G.UC_GEO_CAMP_PLACEMENT_STATUS
 assert_equal(status.rewritten, true, 'enemy rewrite status')
+assert_equal(status.blocked, false, 'enemy rewrite not blocked')
 assert_equal(status.target_id, 1001, 'enemy target id preserved')
 assert_near(status.camp_x, 100.0, 0.000001, 'enemy camp x')
 assert_near(status.camp_y, 200.0, 0.000001, 'enemy camp y')
@@ -188,19 +189,25 @@ assert_near(status.x_offset, 2.0, 0.000001, 'friendly x offset')
 assert_near(status.y_offset, -7.0, 0.000001, 'friendly y offset')
 assert_near(status.z_offset, 0.5, 0.000001, 'friendly z offset')
 
--- No camp means no rewrite.
+-- Once an exact UC-owned camp-placement cast is identified, unsafe placement
+-- conditions fail closed rather than silently creating a target-centered Luopan.
 camp = nil
 parsed_packet = geo_packet(1001, 51)
 arm_uc_geo()
-assert_equal(placement.rewrite_outgoing(0x01A, 'raw-packet', false, true), nil, 'missing camp')
+local failed_data, failed_blocked = placement.rewrite_outgoing(0x01A, 'raw-packet', false, true)
+assert_equal(failed_data, 'raw-packet', 'missing camp preserves packet buffer')
+assert_equal(failed_blocked, true, 'missing camp blocks owned Geo packet')
 assert_equal(_G.UC_GEO_CAMP_PLACEMENT_STATUS.reason, 'CAMP_UNSET', 'missing camp reason')
+assert_equal(_G.UC_GEO_CAMP_PLACEMENT_STATUS.blocked, true, 'missing camp blocked status')
 camp = { x = 100.0, y = 200.0 }
 
 -- Camp v2 does not own Z, so fail closed if caster is not at camp.
 me.x = 105.0
 me.y = 205.0
 arm_uc_geo()
-assert_equal(placement.rewrite_outgoing(0x01A, 'raw-packet', false, true), nil, 'away from camp z')
+failed_data, failed_blocked = placement.rewrite_outgoing(0x01A, 'raw-packet', false, true)
+assert_equal(failed_data, 'raw-packet', 'away from camp preserves packet buffer')
+assert_equal(failed_blocked, true, 'away from camp blocks owned Geo packet')
 assert_equal(
 	_G.UC_GEO_CAMP_PLACEMENT_STATUS.reason,
 	'CAMP_Z_UNAVAILABLE_AWAY_FROM_CAMP',
