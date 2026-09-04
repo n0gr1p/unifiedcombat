@@ -86,6 +86,7 @@ local function set_status(reason, detail)
 	local status = {
 		reason = tostring(reason or ''),
 		rewritten = detail.rewritten == true,
+		blocked = detail.blocked == true,
 		spell = tostring(detail.spell or ''),
 		spell_id = tonumber(detail.spell_id) or 0,
 		target_id = tonumber(detail.target_id) or 0,
@@ -107,6 +108,13 @@ end
 local function reject(reason, detail)
 	set_status(reason, detail)
 	return nil
+end
+
+local function fail_closed(data, reason, detail)
+	detail = type(detail) == 'table' and detail or {}
+	detail.blocked = true
+	set_status(reason, detail)
+	return data, true
 end
 
 local function target_position(target_id)
@@ -212,9 +220,12 @@ function M.rewrite_outgoing(id, data, blocked, injected)
 		})
 	end
 
+	-- From this point onward this is the exact Geo spell UC just dispatched with
+	-- camp placement enabled. If we cannot produce a trustworthy replacement,
+	-- block the packet rather than silently creating a target-centered Luopan.
 	local target = target_position(packet['Target'])
 	if target == nil then
-		return reject('GEO_CAMP_TARGET_POSITION_UNAVAILABLE', {
+		return fail_closed(data, 'GEO_CAMP_TARGET_POSITION_UNAVAILABLE', {
 			spell = spell_name,
 			spell_id = packet['Param'],
 			target_id = packet['Target'],
@@ -224,7 +235,7 @@ function M.rewrite_outgoing(id, data, blocked, injected)
 
 	local camp, camp_reason = camp_position_with_z(config)
 	if camp == nil then
-		return reject(camp_reason, {
+		return fail_closed(data, camp_reason, {
 			spell = spell_name,
 			spell_id = packet['Param'],
 			target_id = packet['Target'],
@@ -244,7 +255,7 @@ function M.rewrite_outgoing(id, data, blocked, injected)
 
 	local ok_build, rewritten = pcall(packets.build, packet)
 	if not ok_build or type(rewritten) ~= 'string' then
-		return reject('GEO_CAMP_PACKET_BUILD_FAILED', {
+		return fail_closed(data, 'GEO_CAMP_PACKET_BUILD_FAILED', {
 			spell = spell_name,
 			spell_id = packet['Param'],
 			target_id = packet['Target'],
