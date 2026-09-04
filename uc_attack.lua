@@ -1,6 +1,10 @@
 local packets = require('packets')
 
-if type(windower) == 'table' and type(windower.register_event) == 'function' then
+local live_unifiedcombat_runtime = type(_addon) == 'table'
+	and tostring(_addon.name or ''):lower() == 'unifiedcombat'
+	and type(windower) == 'table'
+	and type(windower.register_event) == 'function'
+if live_unifiedcombat_runtime then
 	local ok_trace, geo_packet_trace = pcall(require, 'uc_geo_packet_trace')
 	if ok_trace and type(geo_packet_trace) == 'table' and type(geo_packet_trace.register) == 'function' then
 		local ok_register, registered = pcall(geo_packet_trace.register)
