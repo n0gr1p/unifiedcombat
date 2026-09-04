@@ -5,6 +5,23 @@ local live_unifiedcombat_runtime = type(_addon) == 'table'
 	and type(windower) == 'table'
 	and type(windower.register_event) == 'function'
 if live_unifiedcombat_runtime then
+	-- Register the production placement rewrite before the diagnostic tracer so
+	-- later outgoing-chunk observers receive the latest modified packet buffer.
+	local ok_placement, geo_camp_placement = pcall(require, 'uc_geo_camp_placement')
+	if ok_placement
+		and type(geo_camp_placement) == 'table'
+		and type(geo_camp_placement.register) == 'function' then
+		local ok_register, registered = pcall(geo_camp_placement.register)
+		if not ok_register or registered ~= true then
+			_G.UC_GEO_CAMP_PLACEMENT_REGISTER_ERROR = ok_register
+				and 'register returned false' or tostring(registered)
+		else
+			_G.UC_GEO_CAMP_PLACEMENT_REGISTER_ERROR = nil
+		end
+	else
+		_G.UC_GEO_CAMP_PLACEMENT_REGISTER_ERROR = tostring(geo_camp_placement)
+	end
+
 	local ok_trace, geo_packet_trace = pcall(require, 'uc_geo_packet_trace')
 	if ok_trace and type(geo_packet_trace) == 'table' and type(geo_packet_trace.register) == 'function' then
 		local ok_register, registered = pcall(geo_packet_trace.register)
