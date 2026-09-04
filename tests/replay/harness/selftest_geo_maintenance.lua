@@ -44,7 +44,7 @@ local camp_anchor = {
 
 local function new_provider()
 	return geo_maintenance.new({
-		geo_maintenance_priority = 143,
+		geo_maintenance_priority = 210,
 		action_ready = function(name)
 			if resources[name] ~= nil then
 				return true, 'ready', 'spell'
@@ -205,6 +205,15 @@ end
 local original_engine = rawget(_G, 'Start_Engine')
 rawset(_G, 'Start_Engine', true)
 
+local independent_camp_provider = new_provider()
+local independent_camp_ctx = context(0.5)
+independent_camp_ctx.settings.config.maintenance.geo.luopan.placement = 'camp'
+independent_camp_ctx.settings.config.maintenance.geo.require_camp = false
+local independent_out = {}
+independent_camp_provider.collect(independent_camp_ctx, independent_out)
+assert_equal(#independent_out, 1, 'camp placement must not require provider camp restriction')
+assert_equal(independent_out[1].action_name, 'Geo-Frailty', 'independent camp placement proposal mismatch')
+
 local provider = new_provider()
 local ctx = context(1.0)
 local out = {}
@@ -213,7 +222,7 @@ assert_equal(#out, 1, 'missing effects should emit one action')
 assert_equal(out[1].provider, 'maintenance_geo', 'GEO provider id mismatch')
 assert_equal(out[1].action_name, 'Geo-Frailty', 'geo_first should emit Geo spell')
 assert_equal(out[1].target_id, 200, 'Geo target id mismatch')
-assert_equal(out[1].priority_band, 143, 'Geo spell must use elevated GEO maintenance priority')
+assert_equal(out[1].priority_band, 210, 'Geo spell must use elevated GEO maintenance priority')
 
 provider.note_dispatch(out[1], 1.1)
 ctx.now = 2.0
@@ -229,7 +238,7 @@ provider.collect(ctx, out)
 assert_equal(#out, 1, 'observed luopan should advance to Indi')
 assert_equal(out[1].action_name, 'Indi-Haste', 'Indi follow-up mismatch')
 assert_equal(out[1].target_id, 100, 'Indi must target self')
-assert_equal(out[1].priority_band, 143, 'Indi spell must use elevated GEO maintenance priority')
+assert_equal(out[1].priority_band, 210, 'Indi spell must use elevated GEO maintenance priority')
 
 provider.note_dispatch(out[1], 2.1)
 ctx.now = 3.0
@@ -260,7 +269,7 @@ assert_equal(#out, 0, 'GEO maintenance must hold outside camp tolerance')
 assert_equal(camp_provider.status.reason, 'GEO_AWAY_FROM_CAMP', 'camp hold reason mismatch')
 
 local moving_provider = geo_maintenance.new({
-	geo_maintenance_priority = 143,
+	geo_maintenance_priority = 210,
 	action_ready = function()
 		return true, 'ready', 'spell'
 	end,

@@ -687,11 +687,15 @@ internal static class StructuredProfileV2WriterTests
 		var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
 		var main = ReadRepoFile("UnifiedCombatWinForms", "MainForm.cs");
 		var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+		var bridge = ReadRepoFile("remote_bridge.lua");
 		AssertContains(ui, "Set camp here", "camp capture button must exist");
 		AssertContains(store, "[\"puller_leash_source\"] = leashSource.ToLowerInvariant()", "camp leash source must be captured by UI profiles");
 		AssertContains(main, "string.Equals(op, \"camp_set\"", "camp capture must be an explicit runtime bridge operation");
 		AssertContains(main, "ApplyCampRuntimeStatus(selectedState)", "recurring live snapshots must refresh camp status");
 		AssertContains(logic, "Camp unavailable — reload UnifiedCombat addon", "missing runtime support must produce an actionable camp status");
+		AssertContains(logic, "camp_coordinate_mode", "camp status must distinguish XYZ from legacy XY state");
+		AssertContains(bridge, "camp_z = camp_status.z", "runtime bridge must expose camp z");
+		AssertContains(bridge, "camp_coordinate_mode = camp_status.coordinate_mode", "runtime bridge must expose camp coordinate mode");
 	}
 
     private static void TestSerializeGeoMaintenance()
@@ -759,13 +763,12 @@ internal static class StructuredProfileV2WriterTests
         );
         flat["geo_luopan_placement"] = "camp";
         flat["geo_require_camp"] = false;
-        AssertThrows<InvalidDataException>(
-            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
-                flat,
-                new StructuredProfileV2Identity("Redrogue", "GEO", "RDM")
-            ),
-            "camp Luopan placement must require the GEO character at camp"
+        var remoteCampPlacementContent = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "GEO", "RDM")
         );
+        AssertContains(remoteCampPlacementContent, "placement = \"camp\"", "camp placement must remain enabled independently");
+        AssertContains(remoteCampPlacementContent, "require_camp = false", "camp placement must not force require_camp");
         flat["geo_require_camp"] = true;
 
         flat["geo_spell"] = "Frailty";
@@ -831,9 +834,10 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(ui, "OnGeoPullConfigChanged", "GEO and camp pulling controls need a durable edit handler");
         AssertContains(ui, "Only cast enemy Geo within the camp radius", "GEO UI must expose the enemy camp-radius policy");
         AssertContains(ui, "Luopan placement", "GEO UI must expose Luopan placement");
-        AssertContains(ui, "shared camp anchor does not yet provide Z", "GEO UI must explain the camp Z requirement");
+        AssertContains(ui, "uses the shared camp XYZ", "GEO UI must explain shared XYZ placement");
         AssertContains(ui, "_geoLuopanPlacement.Enabled = geoEnabled", "Luopan placement must disable with GEO maintenance");
-        AssertContains(ui, "_geoRequireCamp.Enabled = geoEnabled && !campPlacement", "camp placement must lock the character-at-camp requirement");
+        AssertContains(ui, "_geoRequireCamp.Enabled = geoEnabled", "require_camp must remain independently editable");
+        AssertNotContains(ui, "campPlacement && !_geoRequireCamp.Checked", "camp placement must not force require_camp");
         AssertContains(ui, "_geoReplaceOutOfPosition.Enabled = geoEnabled && campPlacement", "camp replacement controls must require camp placement");
         AssertContains(ui, "CaptureWorkingProfileFromUi", "GEO and camp pulling edits must update local profile state");
         AssertNotContains(ui, "Forward(", "GEO and camp pulling edits must not emit live mirror commands");

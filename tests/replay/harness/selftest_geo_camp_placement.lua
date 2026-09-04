@@ -21,14 +21,16 @@ local previous_active_config = package.loaded['uc_active_config']
 local previous_module = package.loaded['uc_geo_camp_placement']
 
 local parsed_packet = nil
-local camp = { x = 100.0, y = 200.0 }
-local me = { id = 1, index = 1, name = 'Tester', x = 100.1, y = 199.9, z = 7.0 }
+local camp = { x = 100.0, y = 200.0, z = 3.75 }
+local me = { id = 1, index = 1, name = 'Tester', x = 105.0, y = 205.0, z = 99.0 }
+local caster_position_reads = 0
 local mobs = {
 	[1001] = { id = 1001, index = 51, name = 'Enemy', x = 110.0, y = 205.0, z = 5.0 },
 	[2001] = { id = 2001, index = 61, name = 'Friend', x = 98.0, y = 207.0, z = 6.5 },
 }
 local active_geo = {
 	camp_tolerance_yalms = 1.0,
+	require_camp = false,
 	luopan = {
 		placement = 'camp',
 		replace_out_of_position = true,
@@ -100,6 +102,7 @@ windower = {
 		end,
 		get_mob_by_target = function(target)
 			if target == 'me' then
+				caster_position_reads = caster_position_reads + 1
 				return me
 			end
 			return nil
@@ -161,7 +164,7 @@ local rewritten, blocked = placement.rewrite_outgoing(0x01A, 'raw-packet', false
 assert_equal(blocked, false, 'blocked state preserved')
 assert_equal(
 	rewritten,
-	'built:1001:51:3:818:-10.000000:-5.000000:2.000000',
+	'built:1001:51:3:818:-10.000000:-5.000000:-1.250000',
 	'enemy rewrite payload'
 )
 local status = _G.UC_GEO_CAMP_PLACEMENT_STATUS
@@ -170,10 +173,11 @@ assert_equal(status.blocked, false, 'enemy rewrite not blocked')
 assert_equal(status.target_id, 1001, 'enemy target id preserved')
 assert_near(status.camp_x, 100.0, 0.000001, 'enemy camp x')
 assert_near(status.camp_y, 200.0, 0.000001, 'enemy camp y')
-assert_near(status.camp_z, 7.0, 0.000001, 'enemy camp z')
+assert_near(status.camp_z, 3.75, 0.000001, 'enemy camp z')
 assert_near(status.x_offset, -10.0, 0.000001, 'enemy x offset')
 assert_near(status.y_offset, -5.0, 0.000001, 'enemy y offset')
-assert_near(status.z_offset, 2.0, 0.000001, 'enemy z offset')
+assert_near(status.z_offset, -1.25, 0.000001, 'enemy z offset')
+assert_equal(caster_position_reads, 0, 'camp placement must not read caster position')
 
 -- Friendly-target Geo uses identical placement math. Target kind is deliberately
 -- irrelevant to the packet layer; the legal entity target remains unchanged.
@@ -182,14 +186,14 @@ arm_uc_geo()
 rewritten = placement.rewrite_outgoing(0x01A, 'raw-packet', false, true)
 assert_equal(
 	rewritten,
-	'built:2001:61:3:818:2.000000:-7.000000:0.500000',
+	'built:2001:61:3:818:2.000000:-7.000000:-2.750000',
 	'friendly rewrite payload'
 )
 status = _G.UC_GEO_CAMP_PLACEMENT_STATUS
 assert_equal(status.target_id, 2001, 'friendly target id preserved')
 assert_near(status.x_offset, 2.0, 0.000001, 'friendly x offset')
 assert_near(status.y_offset, -7.0, 0.000001, 'friendly y offset')
-assert_near(status.z_offset, 0.5, 0.000001, 'friendly z offset')
+assert_near(status.z_offset, -2.75, 0.000001, 'friendly z offset')
 
 -- Once an exact UC-owned camp-placement cast is identified, unsafe placement
 -- conditions fail closed rather than silently creating a target-centered Luopan.
@@ -201,22 +205,22 @@ assert_equal(failed_data, 'raw-packet', 'missing camp preserves packet buffer')
 assert_equal(failed_blocked, true, 'missing camp blocks owned Geo packet')
 assert_equal(_G.UC_GEO_CAMP_PLACEMENT_STATUS.reason, 'CAMP_UNSET', 'missing camp reason')
 assert_equal(_G.UC_GEO_CAMP_PLACEMENT_STATUS.blocked, true, 'missing camp blocked status')
-camp = { x = 100.0, y = 200.0 }
+camp = { x = 100.0, y = 200.0, z = 3.75 }
 
--- Camp v2 does not own Z, so fail closed if caster is not at camp.
-me.x = 105.0
-me.y = 205.0
+-- Legacy XY-only camp knowledge remains useful to XY consumers, but packet
+-- placement fails closed because no trustworthy Z exists.
+camp = { x = 100.0, y = 200.0 }
 arm_uc_geo()
 failed_data, failed_blocked = placement.rewrite_outgoing(0x01A, 'raw-packet', false, true)
-assert_equal(failed_data, 'raw-packet', 'away from camp preserves packet buffer')
-assert_equal(failed_blocked, true, 'away from camp blocks owned Geo packet')
+assert_equal(failed_data, 'raw-packet', 'missing camp z preserves packet buffer')
+assert_equal(failed_blocked, true, 'missing camp z blocks owned Geo packet')
 assert_equal(
 	_G.UC_GEO_CAMP_PLACEMENT_STATUS.reason,
-	'CAMP_Z_UNAVAILABLE_AWAY_FROM_CAMP',
-	'away from camp reason'
+	'CAMP_Z_UNAVAILABLE',
+	'missing camp z reason'
 )
-me.x = 100.1
-me.y = 199.9
+assert_equal(caster_position_reads, 0, 'missing camp z must not trigger caster-position inference')
+camp = { x = 100.0, y = 200.0, z = 3.75 }
 
 -- Non-Geo and non-magic packets are ignored.
 parsed_packet = geo_packet(1001, 51)
@@ -235,9 +239,23 @@ assert_equal(type(registered_callback), 'function', 'placement callback register
 local callback_result = registered_callback(0x01A, 'original-packet', 'raw-packet', true, false)
 assert_equal(
 	callback_result,
-	'built:1001:51:3:818:-10.000000:-5.000000:2.000000',
+	'built:1001:51:3:818:-10.000000:-5.000000:-1.250000',
 	'registered callback rewrite'
 )
+
+local placement_file = assert(io.open('uc_geo_camp_placement.lua', 'r'))
+local placement_source = placement_file:read('*a')
+placement_file:close()
+assert_equal(
+	placement_source:find("get_mob_by_target('me')", 1, true),
+	nil,
+	'camp placement source must not borrow caster z'
+)
+local trace_file = assert(io.open('uc_geo_packet_trace.lua', 'r'))
+local trace_source = trace_file:read('*a')
+trace_file:close()
+assert_equal(trace_source:find('camp_z=%s', 1, true) ~= nil, true, 'packet trace log must include camp z')
+assert_equal(trace_source:find('camp_z = camp and finite_number(camp.z) or nil', 1, true) ~= nil, true, 'packet trace status must include camp z')
 
 _G.UC_SETTINGS = previous_settings
 _G.UC_GEO_MAINTENANCE_STATUS = previous_geo_status

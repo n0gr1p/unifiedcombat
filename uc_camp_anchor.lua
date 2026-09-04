@@ -1,6 +1,7 @@
 local M = {}
 
-local IPC_PREFIX = 'uc_camp_anchor_v2'
+local IPC_PREFIX_V2 = 'uc_camp_anchor_v2'
+local IPC_PREFIX_V3 = 'uc_camp_anchor_v3'
 local targeting_common = require('uc_targeting_common')
 
 local state = {
@@ -9,10 +10,12 @@ local state = {
 	zone_id = 0,
 	x = nil,
 	y = nil,
+	z = nil,
 	author_name = '',
 	author_id = 0,
 	revision = nil,
 	source = 'unknown',
+	coordinate_version = 0,
 }
 
 -- Revisions are Lamport-style tuples: wall-clock seconds, a logical counter,
@@ -197,10 +200,12 @@ local function reset_runtime_state()
 	state.zone_id = 0
 	state.x = nil
 	state.y = nil
+	state.z = nil
 	state.author_name = ''
 	state.author_id = 0
 	state.revision = nil
 	state.source = 'unknown'
+	state.coordinate_version = 0
 end
 
 local function validate_candidate(candidate)
@@ -211,6 +216,7 @@ local function validate_candidate(candidate)
 	local author_name = valid_name(candidate.author_name)
 	local author_id = valid_integer(candidate.author_id, 1, 4294967295)
 	local revision = parse_revision(candidate.revision)
+	local coordinate_version = valid_integer(candidate.coordinate_version, 2, 3)
 	if zone_id == nil then
 		return nil, 'CAMP_ZONE_INVALID'
 	end
@@ -220,15 +226,27 @@ local function validate_candidate(candidate)
 	if revision == nil or revision.author:lower() ~= author_name:lower() then
 		return nil, 'CAMP_REVISION_INVALID'
 	end
+	if coordinate_version == nil then
+		return nil, 'CAMP_COORDINATE_VERSION_INVALID'
+	end
 	local x = nil
 	local y = nil
+	local z = nil
 	if candidate.active then
 		x = finite_number(candidate.x)
 		y = finite_number(candidate.y)
 		if x == nil or y == nil then
 			return nil, 'CAMP_COORDINATES_INVALID'
 		end
-	elseif candidate.x ~= nil or candidate.y ~= nil then
+		if coordinate_version == 3 then
+			z = finite_number(candidate.z)
+			if z == nil then
+				return nil, 'CAMP_COORDINATES_INVALID'
+			end
+		elseif candidate.z ~= nil then
+			return nil, 'CAMP_COORDINATES_INVALID'
+		end
+	elseif candidate.x ~= nil or candidate.y ~= nil or candidate.z ~= nil then
 		return nil, 'CAMP_COORDINATES_INVALID'
 	end
 	return {
@@ -237,9 +255,11 @@ local function validate_candidate(candidate)
 		zone_id = zone_id,
 		x = x,
 		y = y,
+		z = z,
 		author_name = author_name,
 		author_id = author_id,
 		revision = revision,
+		coordinate_version = coordinate_version,
 	}, nil
 end
 
@@ -249,6 +269,10 @@ local function equivalent_state(candidate)
 		and state.zone_id == candidate.zone_id
 		and state.x == candidate.x
 		and state.y == candidate.y
+		and (state.active ~= true
+			or state.z == candidate.z
+			or state.z == nil
+			or candidate.z == nil)
 		and state.author_name:lower() == candidate.author_name:lower()
 		and state.author_id == candidate.author_id
 end
@@ -268,10 +292,17 @@ local function apply_candidate(raw_candidate, source)
 			return false, 'CAMP_REVISION_STALE'
 		end
 		if comparison == 0 then
-			if equivalent_state(candidate) then
-				return true, state.active and 'CAMP_SET' or 'CAMP_CLEARED'
+			if not equivalent_state(candidate) then
+				return false, 'CAMP_REVISION_CONFLICT'
 			end
-			return false, 'CAMP_REVISION_CONFLICT'
+			if state.active and state.z == nil and candidate.z ~= nil then
+				state.z = candidate.z
+				state.coordinate_version = 3
+				state.source = source
+			elseif not state.active and candidate.coordinate_version > state.coordinate_version then
+				state.coordinate_version = candidate.coordinate_version
+			end
+			return true, state.active and 'CAMP_SET' or 'CAMP_CLEARED'
 		end
 	end
 	state.known = true
@@ -279,10 +310,12 @@ local function apply_candidate(raw_candidate, source)
 	state.zone_id = candidate.zone_id
 	state.x = candidate.x
 	state.y = candidate.y
+	state.z = candidate.z
 	state.author_name = candidate.author_name
 	state.author_id = candidate.author_id
 	state.revision = candidate.revision.text
 	state.source = source
+	state.coordinate_version = candidate.coordinate_version
 	observe_revision(candidate.revision)
 	return true, state.active and 'CAMP_SET' or 'CAMP_CLEARED'
 end
@@ -299,19 +332,44 @@ local function validate_remote_identity(name_value, id_value)
 	return name, id
 end
 
-local function send_state_response(target_name, target_id, context)
+local function send_state_response(request_prefix, target_name, target_id, context)
 	if not state.known or state.zone_id ~= context.zone_id then
 		return false, 'CAMP_STATE_UNAVAILABLE'
 	end
 	local state_kind = state.active and 'set' or 'clear'
 	local x_text = '-'
 	local y_text = '-'
+	local z_text = '-'
 	if state.active then
 		x_text = ('%.6f'):format(state.x)
 		y_text = ('%.6f'):format(state.y)
+		if state.z ~= nil then
+			z_text = ('%.6f'):format(state.z)
+		end
+	end
+	if request_prefix == IPC_PREFIX_V3 and (not state.active or state.z ~= nil) then
+		windower.send_ipc_message(('%s|state|%s|%.0f|%d|%s|%s|%s|%s|%s|%.0f|%s|%s|%.0f'):format(
+			IPC_PREFIX_V3,
+			target_name,
+			target_id,
+			state.zone_id,
+			state_kind,
+			x_text,
+			y_text,
+			z_text,
+			state.author_name,
+			state.author_id,
+			state.revision,
+			context.name,
+			context.id
+		))
+		return true, 'CAMP_STATE_SENT'
+	end
+	if request_prefix ~= IPC_PREFIX_V2 and request_prefix ~= IPC_PREFIX_V3 then
+		error('camp state response requires a supported IPC prefix')
 	end
 	windower.send_ipc_message(('%s|state|%s|%.0f|%d|%s|%s|%s|%s|%.0f|%s|%s|%.0f'):format(
-		IPC_PREFIX,
+		IPC_PREFIX_V2,
 		target_name,
 		target_id,
 		state.zone_id,
@@ -343,7 +401,8 @@ function M.set_current_position()
 	end
 	local point_x = finite_number(me.x)
 	local point_y = finite_number(me.y)
-	if point_x == nil or point_y == nil then
+	local point_z = finite_number(me.z)
+	if point_x == nil or point_y == nil or point_z == nil then
 		return false, 'CAMP_COORDINATES_INVALID'
 	end
 	local revision = mint_revision(context.name)
@@ -353,15 +412,27 @@ function M.set_current_position()
 		zone_id = context.zone_id,
 		x = point_x,
 		y = point_y,
+		z = point_z,
 		author_name = context.name,
 		author_id = context.id,
 		revision = revision.text,
+		coordinate_version = 3,
 	}, 'authored')
 	if not ok then
 		error('locally authored camp set failed validation: ' .. tostring(reason))
 	end
+	windower.send_ipc_message(('%s|set|%d|%.6f|%.6f|%.6f|%s|%.0f|%s'):format(
+		IPC_PREFIX_V3,
+		state.zone_id,
+		state.x,
+		state.y,
+		state.z,
+		state.author_name,
+		state.author_id,
+		state.revision
+	))
 	windower.send_ipc_message(('%s|set|%d|%.6f|%.6f|%s|%.0f|%s'):format(
-		IPC_PREFIX,
+		IPC_PREFIX_V2,
 		state.zone_id,
 		state.x,
 		state.y,
@@ -384,15 +455,24 @@ function M.clear_shared()
 		zone_id = context.zone_id,
 		x = nil,
 		y = nil,
+		z = nil,
 		author_name = context.name,
 		author_id = context.id,
 		revision = revision.text,
+		coordinate_version = 3,
 	}, 'authored')
 	if not ok then
 		error('locally authored camp clear failed validation: ' .. tostring(reason))
 	end
 	windower.send_ipc_message(('%s|clear|%d|%s|%.0f|%s'):format(
-		IPC_PREFIX,
+		IPC_PREFIX_V3,
+		state.zone_id,
+		state.author_name,
+		state.author_id,
+		state.revision
+	))
+	windower.send_ipc_message(('%s|clear|%d|%s|%.0f|%s'):format(
+		IPC_PREFIX_V2,
 		state.zone_id,
 		state.author_name,
 		state.author_id,
@@ -413,7 +493,13 @@ function M.request_current_state()
 		return false, 'CAMP_GROUP_UNAVAILABLE'
 	end
 	windower.send_ipc_message(('%s|request|%s|%.0f|%d'):format(
-		IPC_PREFIX,
+		IPC_PREFIX_V3,
+		context.name,
+		context.id,
+		context.zone_id
+	))
+	windower.send_ipc_message(('%s|request|%s|%.0f|%d'):format(
+		IPC_PREFIX_V2,
 		context.name,
 		context.id,
 		context.zone_id
@@ -451,20 +537,28 @@ function M.observe_runtime()
 end
 
 function M.on_ipc_message(message)
-	if type(message) ~= 'string' or message:sub(1, #IPC_PREFIX + 1) ~= IPC_PREFIX .. '|' then
+	if type(message) ~= 'string' then
 		return false
 	end
 	local parts = split_pipe(message)
-	if parts[1] ~= IPC_PREFIX then
+	local prefix = parts[1]
+	local coordinate_version = nil
+	if prefix == IPC_PREFIX_V2 then
+		coordinate_version = 2
+	elseif prefix == IPC_PREFIX_V3 then
+		coordinate_version = 3
+	else
 		return false
 	end
 	local operation = parts[2]
 	if operation == 'set' then
-		if #parts ~= 8 then
+		local expected_parts = coordinate_version == 3 and 9 or 8
+		if #parts ~= expected_parts then
 			return true, false, 'CAMP_IPC_INVALID'
 		end
 		local context = current_context()
-		local author_name, author_id = validate_remote_identity(parts[6], parts[7])
+		local author_index = coordinate_version == 3 and 7 or 6
+		local author_name, author_id = validate_remote_identity(parts[author_index], parts[author_index + 1])
 		local zone_id = valid_integer(parts[3], 1, 65535)
 		if context == nil or author_name == nil or zone_id ~= context.zone_id then
 			return true, false, 'CAMP_IPC_SCOPE_INVALID'
@@ -475,9 +569,11 @@ function M.on_ipc_message(message)
 			zone_id = zone_id,
 			x = parts[4],
 			y = parts[5],
+			z = coordinate_version == 3 and parts[6] or nil,
 			author_name = author_name,
 			author_id = author_id,
-			revision = parts[8],
+			revision = parts[author_index + 2],
+			coordinate_version = coordinate_version,
 		}, 'synchronized')
 		return true, ok, reason
 	end
@@ -497,9 +593,11 @@ function M.on_ipc_message(message)
 			zone_id = zone_id,
 			x = nil,
 			y = nil,
+			z = nil,
 			author_name = author_name,
 			author_id = author_id,
 			revision = parts[6],
+			coordinate_version = coordinate_version,
 		}, 'synchronized')
 		return true, ok, reason
 	end
@@ -513,18 +611,24 @@ function M.on_ipc_message(message)
 		if context == nil or requester_name == nil or requested_zone ~= context.zone_id then
 			return true, false, 'CAMP_IPC_SCOPE_INVALID'
 		end
-		local ok, reason = send_state_response(requester_name, requester_id, context)
+		local ok, reason = send_state_response(prefix, requester_name, requester_id, context)
 		return true, ok, reason
 	end
 	if operation == 'state' then
-		if #parts ~= 13 then
+		local expected_parts = coordinate_version == 3 and 14 or 13
+		if #parts ~= expected_parts then
 			return true, false, 'CAMP_IPC_INVALID'
 		end
 		local context = current_context()
 		local target_name = valid_name(parts[3])
 		local target_id = valid_integer(parts[4], 1, 4294967295)
 		local zone_id = valid_integer(parts[5], 1, 65535)
-		local responder_name, responder_id = validate_remote_identity(parts[12], parts[13])
+		local author_index = coordinate_version == 3 and 10 or 9
+		local responder_index = coordinate_version == 3 and 13 or 12
+		local responder_name, responder_id = validate_remote_identity(
+			parts[responder_index],
+			parts[responder_index + 1]
+		)
 		if context == nil
 			or target_name == nil
 			or target_id == nil
@@ -539,11 +643,16 @@ function M.on_ipc_message(message)
 		local active = nil
 		local x = nil
 		local y = nil
+		local z = nil
 		if parts[6] == 'set' then
 			active = true
 			x = parts[7]
 			y = parts[8]
-		elseif parts[6] == 'clear' and parts[7] == '-' and parts[8] == '-' then
+			z = coordinate_version == 3 and parts[9] or nil
+		elseif parts[6] == 'clear'
+			and parts[7] == '-'
+			and parts[8] == '-'
+			and (coordinate_version == 2 or parts[9] == '-') then
 			active = false
 		else
 			return true, false, 'CAMP_IPC_INVALID'
@@ -554,9 +663,11 @@ function M.on_ipc_message(message)
 			zone_id = zone_id,
 			x = x,
 			y = y,
-			author_name = parts[9],
-			author_id = parts[10],
-			revision = parts[11],
+			z = z,
+			author_name = parts[author_index],
+			author_id = parts[author_index + 1],
+			revision = parts[author_index + 2],
+			coordinate_version = coordinate_version,
 		}, 'synchronized')
 		return true, ok, reason
 	end
@@ -579,22 +690,38 @@ function M.resolve_current_anchor()
 	if point_x == nil or point_y == nil then
 		return nil, 'CAMP_GEOMETRY_UNAVAILABLE'
 	end
-	return {
+	local point_z = finite_number(state.z)
+	if state.z ~= nil and point_z == nil then
+		return nil, 'CAMP_GEOMETRY_UNAVAILABLE'
+	end
+	local anchor = {
 		x = point_x,
 		y = point_y,
+		z = point_z,
 		zone_id = state.zone_id,
 		set_by = state.author_name,
 		revision = state.revision,
-	}, 'CAMP_READY'
+	}
+	if point_z == nil then
+		return anchor, 'CAMP_READY_XY_ONLY'
+	end
+	return anchor, 'CAMP_READY'
 end
 
 function M.status()
+	local coordinate_mode = 'unset'
+	if state.active then
+		coordinate_mode = state.z == nil and 'xy' or 'xyz'
+	end
 	return {
 		known = state.known,
 		active = state.active,
 		zone_id = state.zone_id,
 		x = state.x,
 		y = state.y,
+		z = state.z,
+		coordinate_mode = coordinate_mode,
+		coordinate_version = state.coordinate_version,
 		set_by = state.active and state.author_name or '',
 		cleared_by = state.known and not state.active and state.author_name or '',
 		author_id = state.author_id,

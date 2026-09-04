@@ -120,7 +120,7 @@ end
 
 local function new_provider(party_members, pull_state, ability_ready)
 	return geo_maintenance.new({
-		geo_maintenance_priority = 143,
+		geo_maintenance_priority = 210,
 		action_ready = function(name)
 			if resources[name] ~= nil then
 				return true, 'ready', 'spell'
@@ -594,7 +594,7 @@ radius_ctx.now = 4.0
 radius_ctx.mobs_by_id[200].x = 16.6
 action = collect_one(radius_provider, radius_ctx)
 assert_equal(action.action_name, 'Full Circle', 'enemy outside the luopan radius must dismiss the luopan')
-assert_equal(action.priority_band, 143, 'radius-driven Full Circle must use reposition priority')
+assert_equal(action.priority_band, 210, 'radius-driven Full Circle must use reposition priority')
 assert_true(not radius_provider.lane_reserved(), 'replacement must not reserve the lane before luopan dismissal')
 radius_provider.note_dispatch(action, 4.1)
 radius_ctx.now = 5.0
@@ -604,7 +604,7 @@ radius_ctx.pet = {}
 action = collect_one(radius_provider, radius_ctx)
 assert_equal(action.action_name, 'Geo-Frailty', 'dismissed out-of-range luopan must be recast')
 assert_equal(action.target_id, 200, 'replacement Geo must target the current lowest-HPP claimed mob')
-assert_equal(action.priority_band, 143, 'replacement Geo must retain reposition priority')
+assert_equal(action.priority_band, 210, 'replacement Geo must retain reposition priority')
 assert_true(not radius_provider.lane_reserved(), 'reposition must preserve emergency scheduler preemption')
 
 local life_config = base_config()
@@ -661,8 +661,20 @@ assert_true(
 	'atomic GEO lane must query its explicit pull-admission state'
 )
 assert_true(
-	scheduler_source:find("local allowed = (pull_for_enemy and provider == 'camp_puller')", 1, true) ~= nil,
-	'atomic enemy wait must admit only the camp puller'
+	scheduler_source:find(
+		'local critical_cure = scheduler.p1_is_critical_defensive_proposal(',
+		1,
+		true
+	) ~= nil,
+	'atomic GEO lane must classify critical Cure proposals'
+)
+assert_true(
+	scheduler_source:find('local allowed = critical_cure', 1, true) ~= nil,
+	'atomic GEO lane must admit critical Cure proposals'
+)
+assert_true(
+	scheduler_source:find("or (pull_for_enemy and provider == 'camp_puller')", 1, true) ~= nil,
+	'atomic enemy wait must continue admitting the camp puller'
 )
 assert_true(
 	scheduler_source:find("or (not pull_for_enemy and provider == 'maintenance_geo')", 1, true) ~= nil,

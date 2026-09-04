@@ -1096,10 +1096,6 @@ internal static class StructuredProfileV2Writer
         {
             throw new InvalidDataException("Luopan placement must be target or camp.");
         }
-        if (placement == "camp" && !requireCamp)
-        {
-            throw new InvalidDataException("Camp Luopan placement currently requires the GEO character at camp.");
-        }
         if (targetKind == "party_member" && targetName.Length == 0)
         {
             throw new InvalidDataException("GEO party-member targeting requires a target name.");

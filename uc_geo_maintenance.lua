@@ -342,9 +342,6 @@ function M.new(deps)
 		if luopan.placement ~= 'target' and luopan.placement ~= 'camp' then
 			return nil, 'unsupported_luopan_placement'
 		end
-		if luopan.placement == 'camp' and config.require_camp ~= true then
-			return nil, 'camp_placement_requires_camp'
-		end
 		local geo, geo_reason = spell_contract(config.geo_spell, 'Geo', target.kind)
 		if geo == nil then
 			return nil, geo_reason

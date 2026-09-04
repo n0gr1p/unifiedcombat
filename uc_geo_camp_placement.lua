@@ -9,7 +9,6 @@ local uc_active_config = require('uc_active_config')
 
 local ACTION_PACKET_ID = 0x01A
 local MAGIC_CATEGORY = 0x03
-local CAMP_Z_POSITION_EPSILON_YALMS = 0.25
 
 local registered = false
 
@@ -142,43 +141,25 @@ local function target_position(target_id)
 	}
 end
 
-local function camp_position_with_z(config)
+local function camp_position()
 	local ok_camp, camp, camp_reason = pcall(uc_camp_anchor.resolve_current_anchor)
 	if not ok_camp or type(camp) ~= 'table' then
 		return nil, ok_camp and tostring(camp_reason or 'CAMP_UNSET') or 'CAMP_RESOLVE_FAILED'
 	end
 	local camp_x = finite_number(camp.x)
 	local camp_y = finite_number(camp.y)
+	local camp_z = finite_number(camp.z)
 	if camp_x == nil or camp_y == nil then
 		return nil, 'CAMP_XY_UNAVAILABLE'
 	end
-
-	local me = windower.ffxi.get_mob_by_target('me')
-	local self_x = finite_number(me and me.x)
-	local self_y = finite_number(me and me.y)
-	local self_z = finite_number(me and me.z)
-	if self_x == nil or self_y == nil or self_z == nil then
-		return nil, 'CAMP_Z_SELF_POSITION_UNAVAILABLE'
-	end
-
-	-- Camp anchor v2 currently owns only X/Y. Until camp synchronization owns Z,
-	-- use the caster's ground Z only while the caster is actually at the camp
-	-- point. This fails closed rather than fabricating a vertical coordinate.
-	local tolerance = finite_number(config and config.camp_tolerance_yalms) or 1.0
-	if tolerance < 0 then
-		tolerance = 0
-	end
-	local dx = self_x - camp_x
-	local dy = self_y - camp_y
-	local distance = math.sqrt(dx * dx + dy * dy)
-	if distance > tolerance + CAMP_Z_POSITION_EPSILON_YALMS then
-		return nil, 'CAMP_Z_UNAVAILABLE_AWAY_FROM_CAMP'
+	if camp_z == nil then
+		return nil, 'CAMP_Z_UNAVAILABLE'
 	end
 
 	return {
 		x = camp_x,
 		y = camp_y,
-		z = self_z,
+		z = camp_z,
 	}, 'CAMP_READY'
 end
 
@@ -233,7 +214,7 @@ function M.rewrite_outgoing(id, data, blocked, injected)
 		})
 	end
 
-	local camp, camp_reason = camp_position_with_z(config)
+	local camp, camp_reason = camp_position()
 	if camp == nil then
 		return fail_closed(data, camp_reason, {
 			spell = spell_name,

@@ -867,18 +867,18 @@ local function main()
         }, meta)
     end, 'maintenance.geo.luopan.placement', 'unsupported GEO placement must fail')
 
-    assert_error_contains(function()
-        normalizer.normalize({
-            maintenance = {
-                geo = {
-                    require_camp = false,
-                    luopan = {
-                        placement = 'camp',
-                    },
+    local remote_camp_geo = normalizer.normalize({
+        maintenance = {
+            geo = {
+                require_camp = false,
+                luopan = {
+                    placement = 'camp',
                 },
             },
-        }, meta)
-    end, 'requires maintenance.geo.require_camp', 'camp placement without camp requirement must fail')
+        },
+    }, meta).maintenance.geo
+    assert_equal(remote_camp_geo.luopan.placement, 'camp', 'camp placement must remain enabled independently')
+    assert_equal(remote_camp_geo.require_camp, false, 'camp placement must not force require_camp')
 
     assert_error_contains(function()
         normalizer.normalize({

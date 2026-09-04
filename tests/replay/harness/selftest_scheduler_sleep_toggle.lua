@@ -303,7 +303,7 @@ local function main()
     assert_equal(skip_slept.action_name, "Sleep", "first available spell selection must remain intact for the unslept add")
 
     local ranked = pick_top_priority({
-        { action_name = "Cure IV", priority_band = 153 },
+        { action_name = "Cure IV", priority_band = 220 },
         { action_name = "Sleep II", priority_band = 142 },
         { action_name = "Protect", priority_band = 70 },
     })

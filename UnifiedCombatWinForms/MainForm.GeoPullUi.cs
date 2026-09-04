@@ -64,19 +64,6 @@ public partial class MainForm
             "Camp",
             StringComparison.Ordinal
         );
-        if (campPlacement && !_geoRequireCamp.Checked)
-        {
-            var wasSuppressed = _suppressEvents;
-            _suppressEvents = true;
-            try
-            {
-                _geoRequireCamp.Checked = true;
-            }
-            finally
-            {
-                _suppressEvents = wasSuppressed;
-            }
-        }
         _geoSpell.Enabled = geoEnabled;
         _indiSpell.Enabled = geoEnabled;
         _geoTargetKind.Enabled = geoEnabled;
@@ -84,7 +71,7 @@ public partial class MainForm
             && string.Equals(_geoTargetKind.SelectedItem?.ToString(), "party_member", StringComparison.Ordinal);
         _geoOrdering.Enabled = geoEnabled;
         _geoLuopanPlacement.Enabled = geoEnabled;
-        _geoRequireCamp.Enabled = geoEnabled && !campPlacement;
+        _geoRequireCamp.Enabled = geoEnabled;
         _geoCampTolerance.Enabled = geoEnabled && _geoRequireCamp.Checked;
         _geoEntrustEnabled.Enabled = geoEnabled;
         _geoEntrustSpell.Enabled = geoEnabled && _geoEntrustEnabled.Checked;
@@ -369,8 +356,8 @@ public partial class MainForm
             MaximumSize = new Size(720, 0),
             Text = "Profile-scoped settings. In game: //uc geo status, //uc geo reseed, "
                 + "//uc geo bolster arm, and //uc geo bolster disarm. Camp placement keeps the legal "
-                + "Geo target unchanged and currently requires the GEO character at camp because the "
-                + "shared camp anchor does not yet provide Z.",
+                + "Geo target unchanged and uses the shared camp XYZ. Requiring the GEO character at "
+                + "camp is an independent provider restriction.",
             Padding = new Padding(0, 8, 0, 0),
         };
         AddWide(geo, _geoHelp, ref geoRow);

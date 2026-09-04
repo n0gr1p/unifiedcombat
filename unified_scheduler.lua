@@ -1873,10 +1873,10 @@ scheduler.PRIORITY_BAND_SCH_PREPARED = 150
 scheduler.PRIORITY_BAND_SCH_DEFENSIVE = 145
 scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131
 scheduler.PRIORITY_BAND_SLEEP = 142
-scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 143
+scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 210
 scheduler.PRIORITY_BAND_DEATH_SWITCH = 148
 scheduler.PRIORITY_BAND_SLEEP_WAKE = 149
-scheduler.PRIORITY_BAND_CRITICAL_CURE = 153
+scheduler.PRIORITY_BAND_CRITICAL_CURE = 220
 scheduler.PRIORITY_BAND_CHARM_SLEEPER = 1000
 scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION
 scheduler.TARGET_ACQUIRE_DEBOUNCE_S = 0.20
@@ -4378,8 +4378,14 @@ local function p1_collect_proposals(ctx)
 	elseif scheduler.providers.geo_maintenance.lane_reserved() then
 		local pull_for_enemy = scheduler.providers.geo_maintenance.pull_for_enemy_allowed()
 		for i = #out, 1, -1 do
-			local provider = tostring(out[i] and out[i].provider or '')
-			local allowed = (pull_for_enemy and provider == 'camp_puller')
+			local proposal = out[i]
+			local provider = tostring(proposal and proposal.provider or '')
+			local critical_cure = scheduler.p1_is_critical_defensive_proposal(
+				ctx.settings,
+				proposal
+			)
+			local allowed = critical_cure
+				or (pull_for_enemy and provider == 'camp_puller')
 				or (not pull_for_enemy and provider == 'maintenance_geo')
 			if not allowed then
 				log_def_sched(('GEO_ATOMIC_LANE_HOLD provider=%s reason=%s'):format(

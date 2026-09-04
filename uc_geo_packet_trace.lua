@@ -250,7 +250,7 @@ function M.observe_outgoing(id, data, blocked, injected)
 	end
 
 	local info = windower.ffxi.get_info()
-	local line = ('event=GEO_ACTION_PACKET trace=%d id=0x01A spell_id=%s spell=%q category=%s target_id=%s target_index=%s x_offset=%s y_offset=%s z_offset=%s injected=%s zone=%s player=%q player_id=%s self_x=%s self_y=%s self_z=%s target_name=%q target_x=%s target_y=%s target_z=%s predicted_x=%s predicted_y=%s predicted_z=%s camp_reason=%s camp_x=%s camp_y=%s prior_pet_id=%s raw=%q'):format(
+	local line = ('event=GEO_ACTION_PACKET trace=%d id=0x01A spell_id=%s spell=%q category=%s target_id=%s target_index=%s x_offset=%s y_offset=%s z_offset=%s injected=%s zone=%s player=%q player_id=%s self_x=%s self_y=%s self_z=%s target_name=%q target_x=%s target_y=%s target_z=%s predicted_x=%s predicted_y=%s predicted_z=%s camp_reason=%s camp_x=%s camp_y=%s camp_z=%s prior_pet_id=%s raw=%q'):format(
 		trace_id,
 		id_text(packet['Param']),
 		tostring(spell.en or ''),
@@ -277,6 +277,7 @@ function M.observe_outgoing(id, data, blocked, injected)
 		tostring(camp_reason),
 		number_text(camp and camp.x),
 		number_text(camp and camp.y),
+		number_text(camp and camp.z),
 		id_text(prior_pet and prior_pet.id),
 		hex_bytes(data)
 	)
@@ -294,6 +295,9 @@ function M.observe_outgoing(id, data, blocked, injected)
 		predicted_x = predicted and predicted.x or nil,
 		predicted_y = predicted and predicted.y or nil,
 		predicted_z = predicted and predicted.z or nil,
+		camp_x = camp and finite_number(camp.x) or nil,
+		camp_y = camp and finite_number(camp.y) or nil,
+		camp_z = camp and finite_number(camp.z) or nil,
 		observed_at = now_s(),
 	}
 

@@ -698,10 +698,6 @@ local function normalize_geo_maintenance(value)
         0.1,
         50.0
     )
-    if out.luopan.placement == 'camp' and out.require_camp ~= true then
-        error('maintenance.geo.luopan.placement camp currently requires maintenance.geo.require_camp = true')
-    end
-
     if out.enabled then
         if out.geo_spell == nil or not out.geo_spell:match('^Geo%-') then
             error('maintenance.geo.geo_spell must be an exact Geo- spell name when enabled')
