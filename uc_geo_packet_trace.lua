@@ -13,6 +13,7 @@ local PET_OBSERVE_INTERVAL_S = 0.20
 local socket_ok, socket_mod = pcall(require, 'socket')
 local socket_gettime = socket_ok and type(socket_mod) == 'table' and socket_mod.gettime or nil
 local trace_sequence = 0
+local registered = false
 
 local function now_s()
 	if type(socket_gettime) == 'function' then
@@ -71,7 +72,8 @@ local function append_log(text)
 	if type(text) ~= 'string' or text == '' then
 		return false
 	end
-	local ok = pcall(function()
+	local wrote = false
+	pcall(function()
 		local player = windower.ffxi.get_player()
 		local dir = ensure_log_dir()
 		if not dir then
@@ -84,8 +86,9 @@ local function append_log(text)
 		end
 		file:write(timestamp(), '\t', text:gsub('\r?\n', ' '), '\n')
 		file:close()
+		wrote = true
 	end)
-	return ok
+	return wrote
 end
 
 local function hex_bytes(raw)
@@ -295,6 +298,21 @@ function M.observe_outgoing(id, data, blocked, injected)
 	}
 
 	observe_new_luopan(trace_id, prior_pet and prior_pet.id or 0, predicted)
+	return true
+end
+
+function M.register()
+	if registered then
+		return true
+	end
+	if type(windower) ~= 'table' or type(windower.register_event) ~= 'function' then
+		return false
+	end
+	windower.register_event('outgoing chunk', function(id, original, modified, injected, blocked)
+		local data = modified or original
+		pcall(M.observe_outgoing, id, data, blocked, injected)
+	end)
+	registered = true
 	return true
 end
 
