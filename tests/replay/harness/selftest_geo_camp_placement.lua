@@ -30,6 +30,7 @@ local mobs = {
 local active_geo = {
 	camp_tolerance_yalms = 1.0,
 	luopan = {
+		placement = 'camp',
 		replace_out_of_position = true,
 	},
 }
@@ -136,11 +137,11 @@ end
 
 -- Feature off: packet is untouched.
 parsed_packet = geo_packet(1001, 51)
-active_geo.luopan.replace_out_of_position = false
+active_geo.luopan.placement = 'target'
 arm_uc_geo()
-assert_equal(placement.rewrite_outgoing(0x01A, 'raw-packet', false, true), nil, 'disabled placement')
+assert_equal(placement.rewrite_outgoing(0x01A, 'raw-packet', false, true), nil, 'target placement')
 assert_equal(_G.UC_GEO_CAMP_PLACEMENT_STATUS.reason, 'GEO_CAMP_PLACEMENT_DISABLED', 'disabled reason')
-active_geo.luopan.replace_out_of_position = true
+active_geo.luopan.placement = 'camp'
 
 -- Manual/unowned Geo casts are untouched.
 _G.UC_GEO_MAINTENANCE_STATUS = nil
@@ -154,6 +155,7 @@ assert_equal(_G.UC_GEO_CAMP_PLACEMENT_STATUS.reason, 'GEO_PENDING_SPELL_MISMATCH
 
 -- Enemy-target Geo is rewritten to camp XYZ while preserving legal target fields.
 arm_uc_geo()
+active_geo.luopan.replace_out_of_position = false
 parsed_packet = geo_packet(1001, 51)
 local rewritten, blocked = placement.rewrite_outgoing(0x01A, 'raw-packet', false, true)
 assert_equal(blocked, false, 'blocked state preserved')

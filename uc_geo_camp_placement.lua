@@ -61,7 +61,7 @@ end
 local function camp_placement_enabled(config)
 	return type(config) == 'table'
 		and type(config.luopan) == 'table'
-		and config.luopan.replace_out_of_position == true
+		and config.luopan.placement == 'camp'
 end
 
 local function matching_uc_geo_dispatch(spell_name)

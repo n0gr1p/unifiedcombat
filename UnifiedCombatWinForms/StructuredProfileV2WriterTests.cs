@@ -703,6 +703,7 @@ internal static class StructuredProfileV2WriterTests
         flat["geo_target_kind"] = "party_member";
         flat["geo_target_name"] = "Terrasjr";
         flat["geo_ordering"] = "indi_first";
+        flat["geo_luopan_placement"] = "camp";
         flat["geo_require_camp"] = true;
         flat["geo_camp_tolerance_yalms"] = 1.5;
         flat["geo_entrust_enabled"] = true;
@@ -726,12 +727,46 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "name = \"Terrasjr\"", "GEO target name must serialize");
         AssertContains(content, "indi_spell = \"Indi-Haste\"", "Indi spell must serialize");
         AssertContains(content, "ordering = \"indi_first\"", "GEO ordering must serialize");
+        AssertContains(content, "placement = \"camp\"", "Luopan placement must serialize");
         AssertContains(content, "spell = \"Indi-Fury\"", "Entrust spell must serialize");
         AssertContains(content, "target_name = \"Nyoourke\"", "Entrust target must serialize");
         AssertContains(content, "use_blaze_of_glory = true", "Blaze of Glory policy must serialize");
         AssertContains(content, "life_cycle_hpp = 45", "Life Cycle threshold must serialize");
         AssertContains(content, "enemy_geo_requires_camp_radius = true", "enemy Geo camp-radius policy must serialize");
         AssertContains(content, "max_camp_distance_yalms = 7.5", "luopan camp radius must serialize");
+
+        flat.Remove("geo_luopan_placement");
+        var missingPlacementContent = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "GEO", "RDM")
+        );
+        AssertContains(missingPlacementContent, "placement = \"target\"", "missing Luopan placement must default to target");
+
+        flat["geo_luopan_placement"] = "target";
+        var targetPlacementContent = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Redrogue", "GEO", "RDM")
+        );
+        AssertContains(targetPlacementContent, "placement = \"target\"", "target Luopan placement must round-trip");
+
+        flat["geo_luopan_placement"] = "caster";
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Redrogue", "GEO", "RDM")
+            ),
+            "GEO maintenance must reject an unsupported Luopan placement"
+        );
+        flat["geo_luopan_placement"] = "camp";
+        flat["geo_require_camp"] = false;
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Redrogue", "GEO", "RDM")
+            ),
+            "camp Luopan placement must require the GEO character at camp"
+        );
+        flat["geo_require_camp"] = true;
 
         flat["geo_spell"] = "Frailty";
         AssertThrows<InvalidDataException>(
@@ -795,9 +830,15 @@ internal static class StructuredProfileV2WriterTests
         var bridge = ReadRepoFile("remote_bridge.lua");
         AssertContains(ui, "OnGeoPullConfigChanged", "GEO and camp pulling controls need a durable edit handler");
         AssertContains(ui, "Only cast enemy Geo within the camp radius", "GEO UI must expose the enemy camp-radius policy");
+        AssertContains(ui, "Luopan placement", "GEO UI must expose Luopan placement");
+        AssertContains(ui, "shared camp anchor does not yet provide Z", "GEO UI must explain the camp Z requirement");
+        AssertContains(ui, "_geoLuopanPlacement.Enabled = geoEnabled", "Luopan placement must disable with GEO maintenance");
+        AssertContains(ui, "_geoRequireCamp.Enabled = geoEnabled && !campPlacement", "camp placement must lock the character-at-camp requirement");
+        AssertContains(ui, "_geoReplaceOutOfPosition.Enabled = geoEnabled && campPlacement", "camp replacement controls must require camp placement");
         AssertContains(ui, "CaptureWorkingProfileFromUi", "GEO and camp pulling edits must update local profile state");
         AssertNotContains(ui, "Forward(", "GEO and camp pulling edits must not emit live mirror commands");
         AssertContains(store, "[\"geo_maintenance_enabled\"]", "GEO enabled state must persist in flat UI profiles");
+        AssertContains(store, "[\"geo_luopan_placement\"]", "Luopan placement must persist in flat UI profiles");
         AssertContains(store, "[\"geo_enemy_requires_camp_radius\"]", "enemy Geo camp-radius policy must persist in flat UI profiles");
         AssertContains(store, "[\"camp_pulling_enabled\"]", "camp pulling enabled state must persist in flat UI profiles");
         AssertContains(store, "[\"camp_pulling_targets\"]", "camp pull targets must persist in flat UI profiles");

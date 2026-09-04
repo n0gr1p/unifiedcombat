@@ -487,6 +487,7 @@ local function strip_non_applicable_maintenance(current_config, target_config, m
 			and value.entrust.spell == nil
 			and value.entrust.target_name == nil
 			and type(value.luopan) == 'table'
+			and value.luopan.placement == 'target'
 			and value.luopan.use_blaze_of_glory == false
 			and value.luopan.use_ecliptic_attrition == false
 			and value.luopan.use_life_cycle == false

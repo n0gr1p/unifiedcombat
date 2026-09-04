@@ -380,6 +380,7 @@ local function uc_new_settings_defaults()
 				target_name = nil,
 			},
 			luopan = {
+				placement = 'target',
 				use_blaze_of_glory = false,
 				use_ecliptic_attrition = false,
 				use_life_cycle = false,

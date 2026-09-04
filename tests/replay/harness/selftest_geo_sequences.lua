@@ -57,6 +57,7 @@ local function base_config()
 			target_name = nil,
 		},
 		luopan = {
+			placement = 'target',
 			use_blaze_of_glory = false,
 			use_ecliptic_attrition = false,
 			use_life_cycle = false,
@@ -622,6 +623,7 @@ action = collect_one(life_provider, life_ctx)
 assert_equal(action.action_name, 'Life Cycle', 'low luopan HPP must propose Life Cycle')
 
 local placement_config = base_config()
+placement_config.luopan.placement = 'camp'
 placement_config.luopan.replace_out_of_position = true
 local placement_provider = new_provider({}, { active = false })
 local placement_ctx = context(placement_config)

@@ -25,6 +25,7 @@ local DEFAULT_GEO_MAINTENANCE = {
         target_name = nil,
     },
     luopan = {
+        placement = 'target',
         use_blaze_of_glory = false,
         use_ecliptic_attrition = false,
         use_life_cycle = false,
@@ -654,6 +655,15 @@ local function normalize_geo_maintenance(value)
         error('maintenance.geo.luopan must be a table')
     end
     local luopan = value.luopan or {}
+    out.luopan.placement = strict_enum(
+        luopan.placement,
+        out.luopan.placement,
+        'maintenance.geo.luopan.placement',
+        {
+            target = true,
+            camp = true,
+        }
+    )
     out.luopan.use_blaze_of_glory = strict_boolean(
         luopan.use_blaze_of_glory,
         out.luopan.use_blaze_of_glory,
@@ -688,6 +698,9 @@ local function normalize_geo_maintenance(value)
         0.1,
         50.0
     )
+    if out.luopan.placement == 'camp' and out.require_camp ~= true then
+        error('maintenance.geo.luopan.placement camp currently requires maintenance.geo.require_camp = true')
+    end
 
     if out.enabled then
         if out.geo_spell == nil or not out.geo_spell:match('^Geo%-') then

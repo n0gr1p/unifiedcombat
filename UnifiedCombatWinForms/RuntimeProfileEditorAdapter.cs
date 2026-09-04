@@ -160,6 +160,7 @@ internal static class RuntimeProfileEditorAdapter
         CopyRequiredValue(luopan, "use_ecliptic_attrition", profile, "geo_use_ecliptic_attrition", "maintenance_geo.luopan.use_ecliptic_attrition");
         CopyRequiredValue(luopan, "use_life_cycle", profile, "geo_use_life_cycle", "maintenance_geo.luopan.use_life_cycle");
         CopyRequiredValue(luopan, "life_cycle_hpp", profile, "geo_life_cycle_hpp", "maintenance_geo.luopan.life_cycle_hpp");
+        CopyGeoLuopanPlacement(luopan, profile);
         CopyRequiredValue(luopan, "replace_out_of_position", profile, "geo_replace_out_of_position", "maintenance_geo.luopan.replace_out_of_position");
         CopyRequiredValue(luopan, "max_camp_distance_yalms", profile, "geo_max_camp_distance_yalms", "maintenance_geo.luopan.max_camp_distance_yalms");
     }
@@ -184,6 +185,26 @@ internal static class RuntimeProfileEditorAdapter
     {
         return source[key]?.DeepClone()
             ?? throw new InvalidDataException($"Runtime active config '{path}' is required.");
+    }
+
+    private static void CopyGeoLuopanPlacement(JsonObject luopan, JsonObject profile)
+    {
+        if (!luopan.TryGetPropertyValue("placement", out var value) || value is null)
+        {
+            // Active runtime projections can outlive an addon update. The durable-profile
+            // migration for this newly introduced field has the same canonical default.
+            profile["geo_luopan_placement"] = "target";
+            return;
+        }
+        if (value is not JsonValue placementValue
+            || !placementValue.TryGetValue<string>(out var placement)
+            || (placement != "target" && placement != "camp"))
+        {
+            throw new InvalidDataException(
+                "Runtime active config 'maintenance_geo.luopan.placement' must be 'target' or 'camp'."
+            );
+        }
+        profile["geo_luopan_placement"] = placement;
     }
 
     private static JsonObject RequiredObject(JsonObject source, string key, string path)

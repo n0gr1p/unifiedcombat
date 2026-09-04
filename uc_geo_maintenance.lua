@@ -338,6 +338,13 @@ function M.new(deps)
 			return nil, 'unsupported_unknown_existing_policy'
 		end
 		local target = require_table(config.geo_target, 'maintenance.geo.geo_target')
+		local luopan = require_table(config.luopan, 'maintenance.geo.luopan')
+		if luopan.placement ~= 'target' and luopan.placement ~= 'camp' then
+			return nil, 'unsupported_luopan_placement'
+		end
+		if luopan.placement == 'camp' and config.require_camp ~= true then
+			return nil, 'camp_placement_requires_camp'
+		end
 		local geo, geo_reason = spell_contract(config.geo_spell, 'Geo', target.kind)
 		if geo == nil then
 			return nil, geo_reason
@@ -369,7 +376,8 @@ function M.new(deps)
 			required_abilities[#required_abilities + 1] = 'Life Cycle'
 		end
 		if config.luopan.use_blaze_of_glory == true
-			or config.luopan.replace_out_of_position == true
+			or (config.luopan.placement == 'camp'
+				and config.luopan.replace_out_of_position == true)
 			or target.kind == 'current_enemy' then
 			required_abilities[#required_abilities + 1] = 'Full Circle'
 		end
@@ -669,7 +677,9 @@ function M.new(deps)
 	end
 
 	local function luopan_misplaced(ctx, config)
-		if config.luopan.replace_out_of_position ~= true or ctx.pet_present ~= true then
+		if config.luopan.placement ~= 'camp'
+			or config.luopan.replace_out_of_position ~= true
+			or ctx.pet_present ~= true then
 			return false, nil
 		end
 		local anchor, reason = resolve_camp_anchor()
@@ -684,7 +694,10 @@ function M.new(deps)
 	end
 
 	local function luopan_outside_enemy_radius(ctx, config, target)
-		if tostring(config.geo_target.kind or '') ~= 'current_enemy'
+		-- Camp placement converges against the camp anchor in luopan_misplaced;
+		-- the legal spell target is not the Luopan's placement anchor in that mode.
+		if config.luopan.placement == 'camp'
+			or tostring(config.geo_target.kind or '') ~= 'current_enemy'
 			or ctx.pet_present ~= true
 			or target == nil then
 			return false, nil, nil
