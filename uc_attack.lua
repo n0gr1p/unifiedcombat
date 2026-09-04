@@ -1,5 +1,19 @@
 local packets = require('packets')
 
+if type(windower) == 'table' and type(windower.register_event) == 'function' then
+	local ok_trace, geo_packet_trace = pcall(require, 'uc_geo_packet_trace')
+	if ok_trace and type(geo_packet_trace) == 'table' and type(geo_packet_trace.register) == 'function' then
+		local ok_register, registered = pcall(geo_packet_trace.register)
+		if not ok_register or registered ~= true then
+			_G.UC_GEO_PACKET_TRACE_REGISTER_ERROR = ok_register and 'register returned false' or tostring(registered)
+		else
+			_G.UC_GEO_PACKET_TRACE_REGISTER_ERROR = nil
+		end
+	else
+		_G.UC_GEO_PACKET_TRACE_REGISTER_ERROR = tostring(geo_packet_trace)
+	end
+end
+
 local M = {}
 
 local CATEGORY_ENGAGE = 0x02
