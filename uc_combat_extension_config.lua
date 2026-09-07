@@ -17,6 +17,18 @@ local function flat_settings(settings)
     return type(global_settings) == 'table' and global_settings or {}
 end
 
+local function has_action_rule(rules)
+    if type(rules) ~= 'table' then
+        return false
+    end
+    for i = 1, #rules do
+        if type(rules[i]) == 'table' and rules[i].response == 'use_action' then
+            return true
+        end
+    end
+    return false
+end
+
 function M.auto_engage_enabled(settings)
     local active_value = uc_active_config.get_path('config.combat.auto_engage')
     if active_value ~= nil then
@@ -46,14 +58,23 @@ end
 
 function M.reaction_rules()
     local active = uc_active_config.get_path('config.reactions')
-    if type(active) == 'table' and active.enabled == true and type(active.rules) == 'table' then
-        return active.rules
-    end
+    local active_rules = type(active) == 'table' and active.enabled == true and type(active.rules) == 'table'
+        and active.rules or nil
     local flat = flat_settings(nil)
-    if flat.reaction_enabled == true and type(flat.reaction_rules) == 'table' then
-        return flat.reaction_rules
+    local flat_rules = flat.reaction_enabled == true and type(flat.reaction_rules) == 'table'
+        and flat.reaction_rules or nil
+
+    -- Structured v2 is authoritative when it contains the new action-rule shape.
+    -- During legacy flat-settings startup, the old normalizer can legitimately
+    -- project the older reaction subset into active config. Preserve the full
+    -- flat rule list in that case instead of silently dropping use_action.
+    if has_action_rule(active_rules) then
+        return active_rules
     end
-    return nil
+    if has_action_rule(flat_rules) then
+        return flat_rules
+    end
+    return active_rules or flat_rules
 end
 
 function M.validate_action_rule(rule)
