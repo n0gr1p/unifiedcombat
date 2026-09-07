@@ -9,6 +9,7 @@ local SELFTESTS = {
 	"tests/replay/harness/selftest_camp_puller_policy.lua",
 	"tests/replay/harness/selftest_camp_puller.lua",
     "tests/replay/harness/selftest_config_normalizer.lua",
+    "tests/replay/harness/selftest_combat_extension_config_schema.lua",
     "tests/replay/harness/selftest_active_config.lua",
     "tests/replay/harness/selftest_active_config_consumer_migration.lua",
     "tests/replay/harness/selftest_active_config_defensive_maintenance_readers.lua",
