@@ -71,8 +71,6 @@ jobs:
           script = script.replace("\\n            spells.magic_burst", "\\n        spells.magic_burst")
           script = script.replace("\\n            spells.dd2_slots", "\\n        spells.dd2_slots")
 
-          # Apply the production/UI patch first. Normalizer regression coverage is added as a
-          # separate focused test after the source is build-clean, avoiding stale fixture anchors.
           pattern = re.compile(
               r"(?:replace_once|replace_all)\(\n\s*'tests/replay/harness/selftest_config_normalizer\.lua'.*?\n\s*\)\n",
               re.S,
@@ -84,6 +82,16 @@ jobs:
           Path('apply_patch.py').write_text(script, encoding='utf-8')
           PY
           python apply_patch.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs')
+          text = path.read_text(encoding='utf-8')
+          old = 'HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" })'
+          new = 'HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "auto_engage", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" })'
+          if text.count(old) != 1:
+              raise RuntimeError('expected exactly one combat targeting layout contract')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Build WinForms
         shell: pwsh
         run: dotnet build .\UnifiedCombatWinForms\UnifiedCombatWinForms.csproj -c Release
