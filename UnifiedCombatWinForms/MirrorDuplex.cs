@@ -44,6 +44,7 @@ internal sealed class MirrorDuplex : IDisposable
     private long _sidSuffix = 0;
 
     public event Action<string>? SnapshotOrErrorLineReceived;
+    public event Action<string, string, string>? ActivityRequested;
 
     private sealed class SessionConn
     {
@@ -252,6 +253,12 @@ internal sealed class MirrorDuplex : IDisposable
                     {
                         UpdateSessionState(sid!, msg);
                         EmitSnapshot();
+                        continue;
+                    }
+
+                    if (op == "activity_request" && !string.IsNullOrWhiteSpace(sid))
+                    {
+                        ActivityRequested?.Invoke(sid, msg["action"]!.GetValue<string>(), msg["name"]!.GetValue<string>());
                         continue;
                     }
 

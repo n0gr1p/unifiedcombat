@@ -7,6 +7,24 @@ durable profile-v2 configurations across every currently connected
 UnifiedCombat session. Activity selection is global to the UI; it is not a
 per-session setting.
 
+## In-game commands
+
+With the updated WinForms UI running and connected, use:
+
+- `//uc activity list` to list saved activity names.
+- `//uc activity <name>` to apply a saved activity (case-insensitive exact name).
+- `//uc activity apply <name>` for the explicit form, including an activity named `list`.
+
+Names may contain spaces. The command applies globally to all matching connected
+character/job sessions, just like the UI's Apply Activity button, without a
+confirmation dialog. Running engines receive the configuration immediately;
+already-issued actions are not cancelled. Unmatched sessions remain unchanged.
+Success, unmatched counts, and failures are reported to the requesting game's chat.
+Concurrent activity operations are rejected; retry after the current operation
+finishes. The existing deployment validation and rollback process is shared with
+the UI button. A disconnected UI produces an error; requests are not queued for
+later application. Restart the rebuilt UI and reload the addon to enable this command.
+
 ## Storage
 
 The UI owns activity bundles under:

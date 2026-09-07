@@ -387,7 +387,39 @@ public partial class MainForm
         return RuntimeProfileEditorAdapter.Build(session, activeConfig);
     }
 
-    private async Task ApplySelectedActivityAsync(bool confirm)
+    private async Task HandleActivityRequestAsync(string sid, string action, string name)
+    {
+        void Reply(bool ok, string message) => _mirror!.EnqueueForward(sid,
+            new Dictionary<string, object?> { ["op"] = "activity_result", ["ok"] = ok, ["message"] = message });
+        try
+        {
+            if (action != "list" && action != "apply")
+                throw new ActivityProfileException("Unknown activity action.");
+            if (_activityOperationInProgress)
+                throw new ActivityProfileException("An activity operation is already in progress; try again after it completes.");
+            var activities = _activityStore.List();
+            if (action == "list")
+            {
+                Reply(true, $"Activities: {activities.Count}");
+                foreach (var activity in activities)
+                    Reply(true, activity.Name);
+                return;
+            }
+            var matches = activities.Where(x => string.Equals(x.Name, name.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+            if (matches.Count != 1)
+                throw new ActivityProfileException($"Activity name must match exactly one saved activity: '{name}'. Use //uc activity list.");
+            RefreshActivityList(matches[0].Id);
+            if (_activityCombo.SelectedItem is not ActivityComboItem selected || selected.Id != matches[0].Id)
+                throw new ActivityProfileException("Requested activity could not be selected.");
+            await ApplySelectedActivityAsync(confirm: false, reply: Reply);
+        }
+        catch (Exception ex)
+        {
+            Reply(false, $"Activity request failed: {ex.Message}");
+        }
+    }
+
+    private async Task ApplySelectedActivityAsync(bool confirm, Action<bool, string>? reply = null)
     {
         if (_activityOperationInProgress || _activityCombo.SelectedItem is not ActivityComboItem selected)
         {
@@ -487,14 +519,18 @@ public partial class MainForm
             statusConnection.Text = plan.Entries.Count == 0
                 ? $"Mirror: activity context established ({plan.ActivityName}, zero matches)"
                 : $"Mirror: activity applied ({plan.ActivityName}, {plan.Entries.Count} matching sessions)";
-            if (plan.UnmatchedSessions.Count > 0)
+            reply?.Invoke(true, $"Activity '{plan.ActivityName}' applied to {plan.Entries.Count} matching sessions; {plan.UnmatchedSessions.Count} unmatched sessions unchanged.");
+            if (plan.UnmatchedSessions.Count > 0 && reply is null)
             {
                 ShowUnmatchedActivityWarning(plan);
             }
         }
         catch (Exception ex)
         {
-            ShowActivityError("Activity activation failed", ex);
+            if (reply is not null)
+                reply(false, $"Activity activation failed: {ex.Message}");
+            else
+                ShowActivityError("Activity activation failed", ex);
         }
         finally
         {

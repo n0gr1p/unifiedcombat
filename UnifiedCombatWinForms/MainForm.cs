@@ -94,6 +94,8 @@ public partial class MainForm : Form
         EnsureScholarTabVisibility(false);
         _mirror = new MirrorDuplex(_cts.Token);
         _mirror.SnapshotOrErrorLineReceived += OnMirrorLine;
+        _mirror.ActivityRequested += (sid, action, name) =>
+            BeginInvoke(new Action(async () => await HandleActivityRequestAsync(sid, action, name)));
         _mirror.Start();
         FormClosed += (_, _) =>
         {

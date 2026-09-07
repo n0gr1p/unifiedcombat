@@ -249,6 +249,14 @@ local function safe_send_line(payload)
 	return true
 end
 
+function uc_remote_activity_request(action, name)
+	if not safe_send_line(json_encode_simple({ op = 'activity_request', action = action, name = name })) then
+		windower.add_to_chat(167, 'UnifiedCombat: activity request failed; UI connection unavailable')
+		return
+	end
+	windower.add_to_chat(207, 'UnifiedCombat: activity request sent to UI')
+end
+
 local function uc_remote_host()
 	return _G.UC_REMOTE_HOST or '127.0.0.1'
 end
@@ -1041,6 +1049,13 @@ local function process_line(line)
 		end
 	end
 	local op = tostring(uc_msg_get(msg, 'op') or '')
+	if op == 'activity_result' then
+		if type(msg.message) ~= 'string' or type(msg.ok) ~= 'boolean' then
+			error('Invalid activity result from UI')
+		end
+		windower.add_to_chat(msg.ok and 207 or 167, 'UnifiedCombat: ' .. msg.message)
+		return
+	end
 	local function maybe_start_active_engine()
 		if type(_G.UC_StartUnifiedEngine) == 'function' then
 			_G.UC_StartUnifiedEngine()

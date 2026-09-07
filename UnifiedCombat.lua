@@ -2581,6 +2581,25 @@ windower.register_event('addon command', function(...)
 		end
 		windower.add_to_chat(207, 'UnifiedCombat: engine stopped')
 		return
+	elseif a == 'activity' then
+		local name = table.concat(args, ' ', 2)
+		if name == '' then
+			windower.add_to_chat(207, '//uc activity <name> | //uc activity list | //uc activity apply <name>')
+			return
+		end
+		local action = 'apply'
+		if name:lower() == 'list' then
+			action = 'list'
+			name = ''
+		elseif tostring(args[2]):lower() == 'apply' then
+			name = table.concat(args, ' ', 3)
+		end
+		if action == 'apply' and name == '' then
+			windower.add_to_chat(167, 'UnifiedCombat: activity name is required')
+			return
+		end
+		uc_remote_activity_request(action, name)
+		return
 	elseif a == 'encounter' then
 		local sub = args[2] and tostring(args[2]):lower() or ''
 		if sub == 'status' then
