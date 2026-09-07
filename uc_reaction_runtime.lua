@@ -332,6 +332,27 @@ function M.on_action(act, current_target_id, now, actor_is_valid_enemy)
 	return result
 end
 
+function M.prune_invalid_ability_windows(actor_is_valid_enemy)
+	if type(actor_is_valid_enemy) ~= 'function' then
+		error('reaction ability-window pruning requires an enemy-validity function')
+	end
+	local active_before = copy_lock(select_active_lock())
+	for key, lock in pairs(locks) do
+		if lock.trigger == 'ability_window'
+			and actor_is_valid_enemy(tonumber(lock.actor_id) or 0) ~= true then
+			locks[key] = nil
+		end
+	end
+	if not actor_has_lock(last_active_target_id) then
+		last_active_target_id = 0
+	end
+	if active_before and locks[tostring(active_before.key or '')] == nil then
+		last_transition = 'actor_unavailable:' .. tostring(active_before.name or '')
+		return active_before
+	end
+	return nil
+end
+
 function M.evaluate(current_target_id, effects, now)
 	local target_id = tonumber(current_target_id) or 0
 	local enabled, rules = configured()
