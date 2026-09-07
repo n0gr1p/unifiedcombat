@@ -1,0 +1,73 @@
+name: Finish combat extension UI integration
+
+on:
+  push:
+    branches:
+      - feature/combat-burst-reactions-auto-engage
+    paths:
+      - .github/workflows/rerun-combat-extension-ui.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/combat-burst-reactions-auto-engage
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Apply corrected source patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+          wf = Path('.github/workflows/apply-combat-extension-ui.yml').read_text(encoding='utf-8')
+          start = wf.index("          from pathlib import Path\n")
+          end = wf.index("          PY\n", start)
+          script = textwrap.dedent(wf[start:end])
+          old = '''replace_once(
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
+              ''' + "'''" + '''            ["skillchain_target"] = "auto",\\n            ["aftermath_ws"] = "",''' + "'''" + ''',
+              ''' + "'''" + '''            ["skillchain_target"] = "auto",\\n            ["magic_burst_enabled"] = false,\\n            ["spell"] = "",\\n            ["aftermath_ws"] = "",''' + "'''" + '''
+          )'''
+          new = '''replace_once(
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
+              '            ["aftermath_ws"] = "",',
+              '            ["aftermath_ws"] = "",\\n            ["magic_burst_enabled"] = false,\\n            ["spell"] = "",'
+          )'''
+          if old not in script:
+              raise RuntimeError('failed to locate obsolete BuildDefaultProfile patch operation')
+          script = script.replace(old, new, 1)
+          Path('apply_patch.py').write_text(script, encoding='utf-8')
+          PY
+          python apply_patch.py
+      - name: Build WinForms
+        shell: pwsh
+        run: dotnet build .\UnifiedCombatWinForms\UnifiedCombatWinForms.csproj -c Release
+      - name: Run Profile V2 selftests
+        shell: pwsh
+        run: dotnet run --project .\UnifiedCombatWinForms\UnifiedCombatWinForms.csproj -c Release -- --selftest-profile-v2
+      - name: Commit verified feature source
+        shell: bash
+        run: |
+          rm -f apply_patch.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add UnifiedCombatWinForms/HubUiConstants.cs \
+                  UnifiedCombatWinForms/MainForm.ParityUi.cs \
+                  UnifiedCombatWinForms/MainForm.ParityLogic.cs \
+                  UnifiedCombatWinForms/MainForm.ProfileStore.cs \
+                  UnifiedCombatWinForms/StructuredProfileV2Writer.cs \
+                  UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs \
+                  uc_config_normalizer.lua \
+                  uc_active_config.lua \
+                  tests/replay/harness/selftest_config_normalizer.lua
+          git diff --cached --check
+          git commit -m "Expose combat extensions in profile UI"
+          git push origin HEAD:feature/combat-burst-reactions-auto-engage
