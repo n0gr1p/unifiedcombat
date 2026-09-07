@@ -4187,10 +4187,12 @@ public partial class MainForm
 		{
 			_campStatus.Text = string.Format(
 				CultureInfo.InvariantCulture,
-				"Zone {0} ({1}, {2}) by {3}",
+				"Zone {0} ({1}, {2}, {3}) [{4}] by {5}",
 				SessionStateHelper.GetString(state, "camp_zone_id", "?"),
 				SessionStateHelper.GetString(state, "camp_x", "?"),
 				SessionStateHelper.GetString(state, "camp_y", "?"),
+				SessionStateHelper.GetString(state, "camp_z", "?"),
+				SessionStateHelper.GetString(state, "camp_coordinate_mode", "unknown"),
 				SessionStateHelper.GetString(state, "camp_set_by", "?")
 			);
 			return;

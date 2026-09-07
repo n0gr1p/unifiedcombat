@@ -190,6 +190,7 @@ public partial class MainForm
     private ComboBox _geoTargetKind = null!;
     private TextBox _geoTargetName = null!;
     private ComboBox _geoOrdering = null!;
+    private ComboBox _geoLuopanPlacement = null!;
     private CheckBox _geoRequireCamp = null!;
     private NumericUpDown _geoCampTolerance = null!;
     private CheckBox _geoEntrustEnabled = null!;

@@ -533,6 +533,7 @@ local function build_nested_settings()
                     enabled = false,
                 },
                 luopan = {
+                    placement = 'camp',
                     use_blaze_of_glory = true,
                     use_ecliptic_attrition = false,
                     use_life_cycle = true,
@@ -619,6 +620,7 @@ local function main()
     assert_true(type(default_from_normalize.maintenance) == 'table', 'maintenance domain missing')
     assert_equal(default_from_normalize.maintenance.geo.enabled, false, 'default GEO maintenance must be disabled')
     assert_equal(default_from_normalize.maintenance.geo.ordering, 'geo_first', 'default GEO ordering mismatch')
+    assert_equal(default_from_normalize.maintenance.geo.luopan.placement, 'target', 'default GEO placement mismatch')
     assert_equal(default_from_normalize.maintenance.geo.unknown_existing_policy, 'wait_for_clear', 'default GEO ownership policy mismatch')
     assert_equal(default_from_normalize.combat.pulling.enabled, false, 'default camp pulling must be disabled')
 	assert_equal(default_from_normalize.combat.weaponskill.allow_aoe, true, 'Smart WS AoE preference must default true')
@@ -763,6 +765,7 @@ local function main()
     assert_equal(nested_config.maintenance.geo.geo_spell, 'Geo-Frailty', 'nested maintenance GEO spell mismatch')
     assert_equal(nested_config.maintenance.geo.indi_spell, 'Indi-Haste', 'nested maintenance Indi spell mismatch')
     assert_equal(nested_config.maintenance.geo.enemy_geo_requires_camp_radius, true, 'nested enemy Geo camp-radius policy mismatch')
+    assert_equal(nested_config.maintenance.geo.luopan.placement, 'camp', 'nested GEO placement mismatch')
     assert_equal(nested_config.maintenance.geo.luopan.life_cycle_hpp, 45, 'nested GEO Life Cycle threshold mismatch')
     assert_equal(nested_config.follow.partner.puller_name, 'Niightsiide', 'nested puller name mismatch')
 	assert_equal(nested_config.follow.partner.leash_source, 'player', 'nested puller leash source mismatch')
@@ -816,6 +819,66 @@ local function main()
     assert_equal(migrated_geo.enabled, false, 'legacy GEO list migration must not enable execution')
     assert_equal(migrated_geo.geo_spell, 'Geo-Frailty', 'legacy GEO spell migration mismatch')
     assert_equal(migrated_geo.indi_spell, 'Indi-Haste', 'legacy Indi spell migration mismatch')
+    assert_equal(migrated_geo.luopan.placement, 'target', 'legacy GEO placement must default to target')
+
+    local old_replace_geo = normalizer.normalize({
+        maintenance = {
+            geo = {
+                luopan = {
+                    replace_out_of_position = true,
+                },
+            },
+        },
+    }, meta).maintenance.geo
+    assert_equal(old_replace_geo.luopan.placement, 'target', 'old replacement setting must not enable camp placement')
+
+    local explicit_target_geo = normalizer.normalize({
+        maintenance = {
+            geo = {
+                luopan = {
+                    placement = 'target',
+                },
+            },
+        },
+    }, meta).maintenance.geo
+    assert_equal(explicit_target_geo.luopan.placement, 'target', 'explicit target placement mismatch')
+
+    local explicit_camp_geo = normalizer.normalize({
+        maintenance = {
+            geo = {
+                require_camp = true,
+                luopan = {
+                    placement = 'camp',
+                },
+            },
+        },
+    }, meta).maintenance.geo
+    assert_equal(explicit_camp_geo.luopan.placement, 'camp', 'explicit camp placement mismatch')
+
+    assert_error_contains(function()
+        normalizer.normalize({
+            maintenance = {
+                geo = {
+                    luopan = {
+                        placement = 'caster',
+                    },
+                },
+            },
+        }, meta)
+    end, 'maintenance.geo.luopan.placement', 'unsupported GEO placement must fail')
+
+    local remote_camp_geo = normalizer.normalize({
+        maintenance = {
+            geo = {
+                require_camp = false,
+                luopan = {
+                    placement = 'camp',
+                },
+            },
+        },
+    }, meta).maintenance.geo
+    assert_equal(remote_camp_geo.luopan.placement, 'camp', 'camp placement must remain enabled independently')
+    assert_equal(remote_camp_geo.require_camp, false, 'camp placement must not force require_camp')
 
     assert_error_contains(function()
         normalizer.normalize({

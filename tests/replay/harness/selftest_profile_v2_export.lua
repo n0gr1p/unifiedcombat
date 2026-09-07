@@ -931,6 +931,7 @@ local function build_expected_config()
 					enabled = false,
 				},
 				luopan = {
+					placement = 'target',
 					use_blaze_of_glory = false,
 					use_ecliptic_attrition = false,
 					use_life_cycle = false,

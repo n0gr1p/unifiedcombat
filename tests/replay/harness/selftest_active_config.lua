@@ -582,6 +582,7 @@ local function main()
 	assert_equal(migrated_profile.config.defensive.enemy_debuffs.list, '', 'legacy profile must receive an empty enemy debuff list')
 	assert_true(type(migrated_profile.config.maintenance.geo) == 'table', 'legacy profile must receive normalized GEO configuration')
 	assert_false(migrated_profile.config.maintenance.geo.enabled, 'migrated GEO configuration must remain disabled')
+	assert_equal(migrated_profile.config.maintenance.geo.luopan.placement, 'target', 'migrated GEO placement must default to target')
 	local migrated_projected, migrated_project_err = active_config.project_flat_settings(migrated_profile, {
 		defensive_curaga_enabled = true,
 		defensive_curaga_min_targets = 6,

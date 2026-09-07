@@ -50,7 +50,7 @@ windower = {
 		end,
 		get_mob_by_target = function(target)
 			if target == 'me' then
-				return { x = 12.5, y = -8.25 }
+				return { x = 12.5, y = -8.25, z = 3.75 }
 			end
 			return nil
 		end,
@@ -109,6 +109,9 @@ local function assert_state_unchanged(before, message)
 	assert_equal(after.zone_id, before.zone_id, message .. ' zone')
 	assert_equal(after.x, before.x, message .. ' x')
 	assert_equal(after.y, before.y, message .. ' y')
+	assert_equal(after.z, before.z, message .. ' z')
+	assert_equal(after.coordinate_mode, before.coordinate_mode, message .. ' coordinate mode')
+	assert_equal(after.coordinate_version, before.coordinate_version, message .. ' coordinate version')
 	assert_equal(after.set_by, before.set_by, message .. ' setter')
 	assert_equal(after.cleared_by, before.cleared_by, message .. ' clearer')
 	assert_equal(after.revision, before.revision, message .. ' revision')
@@ -139,11 +142,15 @@ local ok
 ok, reason = camp.set_current_position()
 assert_true(ok, 'local camp capture must succeed')
 assert_equal(reason, 'CAMP_SET', 'local camp reason mismatch')
-assert_equal(#sent, 1, 'local camp capture must broadcast once')
-assert_true(sent[1]:find('uc_camp_anchor_v2|set|100|12.500000|-8.250000|Setter|101|', 1, true) == 1, 'camp SET payload mismatch')
+assert_equal(#sent, 2, 'local camp capture must broadcast v3 plus v2 projection')
+assert_true(sent[1]:find('uc_camp_anchor_v3|set|100|12.500000|-8.250000|3.750000|Setter|101|', 1, true) == 1, 'camp v3 SET payload mismatch')
+assert_true(sent[2]:find('uc_camp_anchor_v2|set|100|12.500000|-8.250000|Setter|101|', 1, true) == 1, 'camp v2 SET projection mismatch')
 local set_payload = sent[1]
+local legacy_set_payload = sent[2]
 local set_revision = camp.status().revision
 assert_equal(camp.status().source, 'authored', 'local SET must be marked authored')
+assert_equal(camp.status().z, 3.75, 'local SET must capture camp z')
+assert_equal(camp.status().coordinate_mode, 'xyz', 'local SET must expose XYZ mode')
 
 switch_player('Peer', 202)
 camp.clear()
@@ -154,19 +161,27 @@ assert_equal(reason, 'CAMP_SET', 'replicated SET reason mismatch')
 anchor = camp.resolve_current_anchor()
 assert_equal(anchor.x, 12.5, 'replicated camp x mismatch')
 assert_equal(anchor.y, -8.25, 'replicated camp y mismatch')
+assert_equal(anchor.z, 3.75, 'replicated camp z mismatch')
 assert_equal(anchor.set_by, 'Setter', 'replicated camp setter mismatch')
 assert_equal(anchor.revision, set_revision, 'replicated SET must preserve revision')
+consumed, ok, reason = camp.on_ipc_message(legacy_set_payload)
+assert_true(consumed and ok, 'same-revision v2 projection must be idempotent after v3 SET')
+assert_equal(reason, 'CAMP_SET', 'same-revision v2 projection reason mismatch')
+assert_equal(camp.status().z, 3.75, 'v2 projection must not erase replicated camp z')
 
 -- Explicit CLEAR is a newer replicated tombstone; stale SET cannot resurrect it.
 clear_sent()
 ok, reason = camp.clear_shared()
 assert_true(ok, 'explicit shared clear must succeed')
 assert_equal(reason, 'CAMP_CLEARED', 'explicit shared clear reason mismatch')
-assert_equal(#sent, 1, 'explicit shared clear must broadcast once')
+assert_equal(#sent, 2, 'explicit shared clear must broadcast v3 plus v2 tombstones')
 local clear_payload = sent[1]
+local legacy_clear_payload = sent[2]
 local clear_status = camp.status()
 local clear_revision = clear_status.revision
 assert_true(clear_status.known and not clear_status.active, 'explicit clear must retain known tombstone state')
+assert_equal(clear_status.z, nil, 'explicit clear must remove camp z')
+assert_equal(clear_status.coordinate_mode, 'unset', 'explicit clear coordinate mode mismatch')
 assert_equal(clear_status.cleared_by, 'Peer', 'tombstone clearer mismatch')
 assert_revision_newer(clear_revision, set_revision, 'explicit CLEAR must mint a newer revision')
 
@@ -175,6 +190,9 @@ camp.clear()
 consumed, ok = camp.on_ipc_message(clear_payload)
 assert_true(consumed and ok, 'same-group CLEAR IPC must install')
 assert_true(camp.status().known and not camp.status().active, 'CLEAR IPC must install tombstone')
+consumed, ok = camp.on_ipc_message(legacy_clear_payload)
+assert_true(consumed and ok, 'same-revision v2 CLEAR projection must be idempotent')
+assert_equal(camp.status().z, nil, 'v2 CLEAR projection must preserve cleared z')
 consumed, ok, reason = camp.on_ipc_message(set_payload)
 assert_true(consumed and not ok, 'older SET must be rejected after newer CLEAR')
 assert_equal(reason, 'CAMP_REVISION_STALE', 'older SET rejection mismatch')
@@ -202,8 +220,9 @@ clear_sent()
 ok, reason = camp.request_current_state()
 assert_true(ok, 'state request must send when runtime context is valid')
 assert_equal(reason, 'CAMP_STATE_REQUESTED', 'request reason mismatch')
-assert_equal(#sent, 1, 'state request must send one IPC message')
-assert_equal(sent[1], 'uc_camp_anchor_v2|request|Newmember|303|100', 'request payload mismatch')
+assert_equal(#sent, 2, 'state request must send bounded v3 and v2 IPC messages')
+assert_equal(sent[1], 'uc_camp_anchor_v3|request|Newmember|303|100', 'v3 request payload mismatch')
+assert_equal(sent[2], 'uc_camp_anchor_v2|request|Newmember|303|100', 'v2 request payload mismatch')
 local request_payload = sent[1]
 
 switch_player('Setter', 101)
@@ -216,7 +235,7 @@ assert_true(consumed and ok, 'same-group same-zone peer must answer request')
 assert_equal(reason, 'CAMP_STATE_SENT', 'request response reason mismatch')
 assert_equal(#sent, 1, 'one peer must emit one STATE response')
 local state_payload = sent[1]
-assert_true(state_payload:find('uc_camp_anchor_v2|state|Newmember|303|100|set|12.500000|-8.250000|Setter|101|' .. set_revision .. '|Setter|101', 1, true) == 1, 'STATE payload mismatch')
+assert_true(state_payload:find('uc_camp_anchor_v3|state|Newmember|303|100|set|12.500000|-8.250000|3.750000|Setter|101|' .. set_revision .. '|Setter|101', 1, true) == 1, 'v3 STATE payload mismatch')
 
 switch_player('Newmember', 303)
 camp.clear()
@@ -228,6 +247,8 @@ assert_true(restored.known and restored.active, 'reload recovery must restore ac
 assert_equal(restored.set_by, 'Setter', 'STATE replay must preserve original setter')
 assert_equal(restored.revision, set_revision, 'STATE replay must preserve original revision')
 assert_equal(restored.source, 'synchronized', 'STATE replay source mismatch')
+assert_equal(restored.z, 3.75, 'STATE replay must restore camp z')
+assert_equal(restored.coordinate_mode, 'xyz', 'STATE replay coordinate mode mismatch')
 consumed, ok = camp.on_ipc_message(state_payload)
 assert_true(consumed and ok, 'identical STATE responses must be idempotent')
 assert_equal(camp.status().revision, set_revision, 'idempotent replay must not mint a revision')
@@ -242,11 +263,11 @@ local requested
 requested, reason = camp.observe_runtime()
 assert_true(requested, 'party membership change must trigger request')
 assert_equal(reason, 'CAMP_STATE_REQUESTED', 'membership request reason mismatch')
-assert_equal(#sent, 1, 'membership change must send one request')
+assert_equal(#sent, 2, 'membership change must send one v3 and one v2 request')
 requested, reason = camp.observe_runtime()
 assert_false(requested, 'unchanged membership must remain silent')
 assert_equal(reason, 'CAMP_GROUP_UNCHANGED', 'unchanged membership reason mismatch')
-assert_equal(#sent, 1, 'unchanged membership must not spam IPC')
+assert_equal(#sent, 2, 'unchanged membership must not spam IPC')
 
 -- Wrong-zone requests and responses fail closed. A lifecycle clear is local-only,
 -- and a later response in the entered zone can restore the camp.
@@ -329,10 +350,56 @@ local reactivated = camp.status()
 assert_true(reactivated.active, 'explicit SET after CLEAR must be active')
 assert_revision_newer(reactivated.revision, '3000:0:Peer', 'explicit SET after CLEAR must be newer')
 
+-- Rolling v2/v3 compatibility uses one logical state. A same-revision v3
+-- representation enriches legacy XY, while later v2 projections cannot erase Z.
+switch_player('Newmember', 303)
+camp.clear()
+local mixed_revision = '5000000000:0:Setter'
+local legacy_xy_state = 'uc_camp_anchor_v2|state|Newmember|303|100|set|9.000000|8.000000|Setter|101|' .. mixed_revision .. '|Peer|202'
+local full_xyz_state = 'uc_camp_anchor_v3|state|Newmember|303|100|set|9.000000|8.000000|3.750000|Setter|101|' .. mixed_revision .. '|Peer|202'
+consumed, ok, reason = camp.on_ipc_message(legacy_xy_state)
+assert_true(consumed and ok, 'legacy XY state must remain useful during rolling reload')
+anchor, reason = camp.resolve_current_anchor()
+assert_equal(reason, 'CAMP_READY_XY_ONLY', 'legacy XY state must expose missing Z')
+assert_equal(anchor.x, 9, 'legacy XY anchor x mismatch')
+assert_equal(anchor.y, 8, 'legacy XY anchor y mismatch')
+assert_equal(anchor.z, nil, 'legacy XY state must not fabricate z')
+assert_equal(camp.status().coordinate_mode, 'xy', 'legacy XY status mode mismatch')
+
+clear_sent()
+consumed, ok, reason = camp.on_ipc_message('uc_camp_anchor_v3|request|Peer|202|100')
+assert_true(consumed and ok, 'v3 requester must receive useful legacy state')
+assert_equal(#sent, 1, 'legacy replay must remain bounded to one response')
+assert_true(sent[1]:find('uc_camp_anchor_v2|state|Peer|202|100|set|9.000000|8.000000|', 1, true) == 1, 'legacy-only state must replay as v2')
+
+consumed, ok, reason = camp.on_ipc_message(full_xyz_state)
+assert_true(consumed and ok, 'same-revision v3 state must enrich legacy XY without conflict')
+assert_equal(reason, 'CAMP_SET', 'same-revision v3 enrichment reason mismatch')
+anchor, reason = camp.resolve_current_anchor()
+assert_equal(reason, 'CAMP_READY', 'enriched XYZ state must become fully ready')
+assert_equal(anchor.z, 3.75, 'same-revision v3 enrichment must install z')
+assert_equal(camp.status().coordinate_mode, 'xyz', 'enriched XYZ status mode mismatch')
+
+consumed, ok, reason = camp.on_ipc_message(legacy_xy_state)
+assert_true(consumed and ok, 'same-revision v2 replay must remain idempotent after enrichment')
+assert_equal(camp.status().z, 3.75, 'same-revision v2 replay must not erase z')
+local conflicting_xy = legacy_xy_state:gsub('|9%.000000|8%.000000|', '|10.000000|8.000000|')
+consumed, ok, reason = camp.on_ipc_message(conflicting_xy)
+assert_true(consumed and not ok, 'same-revision conflicting XY must fail closed')
+assert_equal(reason, 'CAMP_REVISION_CONFLICT', 'same-revision conflicting XY reason mismatch')
+assert_equal(camp.status().z, 3.75, 'conflicting legacy state must not corrupt full XYZ')
+local stale_legacy_xy = legacy_xy_state:gsub(mixed_revision, '4000000000:0:Setter', 1)
+consumed, ok, reason = camp.on_ipc_message(stale_legacy_xy)
+assert_true(consumed and not ok, 'stale legacy XY must not replace newer full XYZ')
+assert_equal(reason, 'CAMP_REVISION_STALE', 'stale legacy XY rejection mismatch')
+assert_equal(camp.status().revision, mixed_revision, 'stale legacy XY must preserve full XYZ revision')
+
 -- Malformed names, IDs, zones, coordinates, revisions, and shapes never mutate.
 local valid_before_malformed = camp.status()
 local malformed_messages = {
 	'uc_camp_anchor_v2|set|100|1|2|Setter|101',
+	'uc_camp_anchor_v3|set|100|1|2|Setter|101|4000000000:0:Setter',
+	'uc_camp_anchor_v3|set|100|1|2|nan|Setter|101|4000000000:0:Setter',
 	'uc_camp_anchor_v2|set|bad|1|2|Setter|101|4000000000:0:Setter',
 	'uc_camp_anchor_v2|set|100|nan|2|Setter|101|4000000000:0:Setter',
 	'uc_camp_anchor_v2|set|100|1|2|Bad_Name|101|4000000000:0:BadName',
@@ -341,6 +408,8 @@ local malformed_messages = {
 	'uc_camp_anchor_v2|set|100|1|2|Setter|101|4000000000:0:Peer',
 	'uc_camp_anchor_v2|state|Other|303|100|set|1|2|Setter|101|4000000000:0:Setter|Peer|202',
 	'uc_camp_anchor_v2|state|Newmember|303|100|invalid|1|2|Setter|101|4000000000:0:Setter|Peer|202',
+	'uc_camp_anchor_v3|state|Newmember|303|100|set|1|2|nan|Setter|101|4000000000:0:Setter|Peer|202',
+	'uc_camp_anchor_v3|state|Newmember|303|100|clear|-|-|1|Setter|101|4000000000:0:Setter|Peer|202',
 }
 for i = 1, #malformed_messages do
 	consumed, ok = camp.on_ipc_message(malformed_messages[i])
@@ -354,6 +423,8 @@ local addon_source = read_file('UnifiedCombat.lua')
 assert_contains(addon_source, 'uc_camp_anchor.request_current_state()', 'load/login request wiring missing')
 assert_contains(addon_source, 'uc_camp_anchor.observe_runtime()', 'membership observation wiring missing')
 assert_contains(addon_source, 'uc_camp_anchor.schedule_state_request()', 'zone request scheduling missing')
+assert_contains(addon_source, 'geometry=xyz', 'camp status must expose full XYZ geometry')
+assert_contains(addon_source, 'z=unavailable', 'camp status must expose legacy XY-only geometry')
 
 package.loaded['uc_camp_anchor'] = previous_camp_module
 package.loaded['uc_targeting_common'] = previous_targeting_module

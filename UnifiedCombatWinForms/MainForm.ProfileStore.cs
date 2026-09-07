@@ -163,6 +163,11 @@ public partial class MainForm
 			throw new InvalidOperationException("Puller leash source must be Player or Camp.");
 		}
 		var summonerWardActions = SelectedSummonerWardActions();
+        var geoLuopanPlacement = _geoLuopanPlacement.SelectedItem?.ToString();
+        if (geoLuopanPlacement is not ("Target" or "Camp"))
+        {
+            throw new InvalidOperationException("Luopan placement must be Target or Camp.");
+        }
         var profile = new JsonObject
         {
             ["profile_schema_version"] = ProfileSchemaVersion,
@@ -185,6 +190,7 @@ public partial class MainForm
             ["geo_target_kind"] = _geoTargetKind.SelectedItem?.ToString() ?? "current_enemy",
             ["geo_target_name"] = _geoTargetName.Text.Trim(),
             ["geo_ordering"] = _geoOrdering.SelectedItem?.ToString() ?? "geo_first",
+            ["geo_luopan_placement"] = geoLuopanPlacement.ToLowerInvariant(),
             ["geo_require_camp"] = _geoRequireCamp.Checked,
             ["geo_camp_tolerance_yalms"] = decimal.ToDouble(_geoCampTolerance.Value),
             ["geo_entrust_enabled"] = _geoEntrustEnabled.Checked,
@@ -540,6 +546,7 @@ public partial class MainForm
             ["geo_target_kind"] = "current_enemy",
             ["geo_target_name"] = "",
             ["geo_ordering"] = "geo_first",
+            ["geo_luopan_placement"] = "target",
             ["geo_require_camp"] = true,
             ["geo_camp_tolerance_yalms"] = 1.0,
             ["geo_entrust_enabled"] = false,

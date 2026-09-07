@@ -59,12 +59,18 @@ public partial class MainForm
     private void UpdateGeoPullUiState()
     {
         var geoEnabled = _geoEnabled.Checked;
+        var campPlacement = string.Equals(
+            _geoLuopanPlacement.SelectedItem?.ToString(),
+            "Camp",
+            StringComparison.Ordinal
+        );
         _geoSpell.Enabled = geoEnabled;
         _indiSpell.Enabled = geoEnabled;
         _geoTargetKind.Enabled = geoEnabled;
         _geoTargetName.Enabled = geoEnabled
             && string.Equals(_geoTargetKind.SelectedItem?.ToString(), "party_member", StringComparison.Ordinal);
         _geoOrdering.Enabled = geoEnabled;
+        _geoLuopanPlacement.Enabled = geoEnabled;
         _geoRequireCamp.Enabled = geoEnabled;
         _geoCampTolerance.Enabled = geoEnabled && _geoRequireCamp.Checked;
         _geoEntrustEnabled.Enabled = geoEnabled;
@@ -74,11 +80,12 @@ public partial class MainForm
         _geoUseEcliptic.Enabled = geoEnabled;
         _geoUseLifeCycle.Enabled = geoEnabled;
         _geoLifeCycleHpp.Enabled = geoEnabled && _geoUseLifeCycle.Checked;
-        _geoReplaceOutOfPosition.Enabled = geoEnabled;
+        _geoReplaceOutOfPosition.Enabled = geoEnabled && campPlacement;
         _geoEnemyRequiresCampRadius.Enabled = geoEnabled
             && string.Equals(_geoTargetKind.SelectedItem?.ToString(), "current_enemy", StringComparison.Ordinal);
         _geoMaxCampDistance.Enabled = geoEnabled
-            && (_geoReplaceOutOfPosition.Checked || _geoEnemyRequiresCampRadius.Checked);
+            && ((campPlacement && _geoReplaceOutOfPosition.Checked)
+                || _geoEnemyRequiresCampRadius.Checked);
 
         var pullEnabled = _campPullEnabled.Checked;
         _campPullActionType.Enabled = pullEnabled;
@@ -106,6 +113,7 @@ public partial class MainForm
         _geoTargetKind.SelectedItem = "current_enemy";
         _geoTargetName.Text = "";
         _geoOrdering.SelectedItem = "geo_first";
+        _geoLuopanPlacement.SelectedItem = "Target";
         _geoRequireCamp.Checked = true;
         _geoCampTolerance.Value = 1m;
         _geoEntrustEnabled.Checked = false;
@@ -155,6 +163,17 @@ public partial class MainForm
             _geoOrdering,
             SessionStateHelper.GetString(snapshot, "geo_ordering", "geo_first"),
             "geo_ordering"
+        );
+        var placement = SessionStateHelper.GetString(snapshot, "geo_luopan_placement", "target");
+        SelectRequiredValue(
+            _geoLuopanPlacement,
+            placement switch
+            {
+                "target" => "Target",
+                "camp" => "Camp",
+                _ => throw new InvalidDataException($"Unsupported geo_luopan_placement value '{placement}'."),
+            },
+            "geo_luopan_placement"
         );
         _geoRequireCamp.Checked = ReadProfileBool(snapshot, "geo_require_camp", true);
         SetProfileNumber(_geoCampTolerance, ReadProfileDecimal(snapshot, "geo_camp_tolerance_yalms", 1m));
@@ -299,6 +318,7 @@ public partial class MainForm
         );
         _geoTargetName = AddText(geo, "Geo party member", ref geoRow);
         _geoOrdering = AddChoice(geo, "Casting order", ["geo_first", "indi_first"], "geo_first", ref geoRow);
+        _geoLuopanPlacement = AddChoice(geo, "Luopan placement", ["Target", "Camp"], "Target", ref geoRow);
         _geoRequireCamp = new UcToggle { Text = "Require character at camp", AutoSize = true, Checked = true };
         AddWide(geo, _geoRequireCamp, ref geoRow);
         _geoCampTolerance = AddNumber(geo, "Camp tolerance (yalms)", 0m, 50m, 1m, 0.1m, 1, ref geoRow);
@@ -313,7 +333,7 @@ public partial class MainForm
         _geoUseLifeCycle = new UcToggle { Text = "Use Life Cycle for a low-HP luopan", AutoSize = true };
         AddWide(geo, _geoUseLifeCycle, ref geoRow);
         _geoLifeCycleHpp = AddNumber(geo, "Life Cycle below luopan HP %", 1m, 99m, 50m, 1m, 0, ref geoRow);
-        _geoReplaceOutOfPosition = new UcToggle { Text = "Replace a luopan outside the camp radius", AutoSize = true };
+        _geoReplaceOutOfPosition = new UcToggle { Text = "Replace misplaced camp Luopan", AutoSize = true };
         AddWide(geo, _geoReplaceOutOfPosition, ref geoRow);
         _geoEnemyRequiresCampRadius = new UcToggle
         {
@@ -335,7 +355,9 @@ public partial class MainForm
             AutoSize = true,
             MaximumSize = new Size(720, 0),
             Text = "Profile-scoped settings. In game: //uc geo status, //uc geo reseed, "
-                + "//uc geo bolster arm, and //uc geo bolster disarm.",
+                + "//uc geo bolster arm, and //uc geo bolster disarm. Camp placement keeps the legal "
+                + "Geo target unchanged and uses the shared camp XYZ. Requiring the GEO character at "
+                + "camp is an independent provider restriction.",
             Padding = new Padding(0, 8, 0, 0),
         };
         AddWide(geo, _geoHelp, ref geoRow);
@@ -346,6 +368,7 @@ public partial class MainForm
             _geoTargetKind,
             _geoTargetName,
             _geoOrdering,
+            _geoLuopanPlacement,
             _geoRequireCamp,
             _geoCampTolerance,
             _geoEntrustEnabled,

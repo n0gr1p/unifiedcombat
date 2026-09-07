@@ -158,7 +158,7 @@ local function assert_defensive_proposal_shape()
 		end,
         cure_target_allowed = function() return cure_allowed end,
         clamp_urgency = function(value) return value end,
-        critical_cure_priority = 153,
+        critical_cure_priority = 220,
     })
     local proposals = {}
     provider.collect_internal({
@@ -177,7 +177,7 @@ local function assert_defensive_proposal_shape()
     assert_equal(proposal.action_name, "Cure IV", "defensive action name")
     assert_equal(proposal.target_kind, "ally", "defensive target kind")
     assert_equal(proposal.target_id, 77, "defensive target id")
-    assert_equal(proposal.priority_band, 153, "critical Cure priority")
+    assert_equal(proposal.priority_band, 220, "critical Cure priority")
     assert_equal(proposal.urgency, 0.70, "Cure urgency")
     assert_equal(proposal.lock_class, "support_action", "defensive lock class")
     assert_equal(proposal.reason_code, "critical_cure", "defensive reason")
@@ -226,7 +226,7 @@ local function assert_defensive_proposal_shape()
 	local curing_waltz = proposals[1]
 	assert_equal(curing_waltz.action_type, "ja", "Curing Waltz must emit as a JA")
 	assert_equal(curing_waltz.detail.def_action_type, "cure", "Curing Waltz must retain cure arbitration semantics")
-	assert_equal(curing_waltz.priority_band, 153, "critical Curing Waltz must use critical Cure priority")
+	assert_equal(curing_waltz.priority_band, 220, "critical Curing Waltz must use critical Cure priority")
 	assert_equal(curing_waltz.range_policy.max, 20.7, "Curing Waltz III measured range")
 
     local old_actions = rawget(_G, "actions")

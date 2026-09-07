@@ -52,24 +52,26 @@ local function main()
     assert_contains(source, "scheduler.PRIORITY_BAND_AFTERMATH_WS = 108", "aftermath priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131", "skillchain continuation priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_SLEEP = 142", "Sleep priority band mismatch")
-    assert_contains(source, "scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 143", "GEO maintenance priority band mismatch")
+    assert_contains(source, "scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 210", "GEO maintenance priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_SLEEP_WAKE = 149", "Sleep waker priority band mismatch")
-    assert_contains(source, "scheduler.PRIORITY_BAND_CRITICAL_CURE = 153", "critical Cure priority band mismatch")
+    assert_contains(source, "scheduler.PRIORITY_BAND_GEO_CREATION = 240", "GEO creation priority band mismatch")
+    assert_contains(source, "scheduler.PRIORITY_BAND_CRITICAL_CURE = 250", "critical Cure priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_BRD_MAINTENANCE = 200", "Bard maintenance priority band mismatch")
 	assert_contains(source, "scheduler.PRIORITY_BAND_SCH_ROUTINE = 75", "Scholar routine priority band mismatch")
 	assert_contains(source, "scheduler.PRIORITY_BAND_SCH_PREPARED = 150", "Scholar prepared priority band mismatch")
     assert_contains(source, "scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION", "engage bypass threshold must begin at skillchain continuation")
 
-    assert_true(score(153, 0.70) > score(142, 1.00), "critical Cure must beat maximum Sleep urgency")
-    assert_true(score(153, 0.70) > score(149, 1.00), "critical Cure must beat maximum Sleep-wake urgency")
-    assert_true(score(149, 1.00) > score(143, 0.95), "Sleep-wake urgency must beat maximum GEO maintenance urgency")
-    assert_true(score(153, 0.00) > score(143, 1.00), "critical Cure must beat maximum GEO maintenance urgency")
-    assert_true(score(143, 0.95) > score(142, 1.00), "GEO maintenance must beat maximum Sleep urgency")
+    assert_true(score(250, 0.00) > score(240, 1.00), "critical Cure must beat maximum GEO creation urgency")
+    assert_true(score(240, 0.00) > score(225, 1.00), "GEO creation must beat maximum camp-pull recovery urgency")
+    assert_true(score(210, 0.00) > score(200, 1.00), "GEO maintenance must beat maximum Bard maintenance urgency")
+    assert_true(score(210, 0.00) > score(150, 1.00), "GEO maintenance must beat maximum prepared Scholar urgency")
+    assert_true(score(210, 0.00) > score(149, 1.00), "GEO maintenance must beat maximum Sleep-wake urgency")
+    assert_true(score(210, 0.00) > score(142, 1.00), "GEO maintenance must beat maximum Sleep urgency")
     assert_true(score(142, 0.55) > score(131, 1.00), "minimum Sleep urgency must beat maximum skillchain urgency")
-    assert_true(score(200, 0.00) > score(153, 1.00), "minimum Bard maintenance urgency must beat maximum critical Cure urgency")
+    assert_true(score(250, 0.00) > score(200, 1.00), "critical Cure must beat maximum Bard maintenance urgency")
     assert_true(score(200, 0.00) > score(142, 1.00), "minimum Bard maintenance urgency must beat maximum Sleep urgency")
     assert_true(score(200, 0.00) > score(131, 1.00), "minimum Bard maintenance urgency must beat maximum skillchain urgency")
-	assert_true(score(153, 0.70) > score(150, 0.95),
+	assert_true(score(250, 0.70) > score(150, 0.95),
 		"critical Cure must beat prepared Scholar completion")
 	assert_true(score(150, 0.95) > score(149, 1.00),
 		"prepared Scholar completion must beat other urgent support")
@@ -78,6 +80,7 @@ local function main()
 
     assert_contains(source, "brd_maintenance_priority = scheduler.PRIORITY_BAND_BRD_MAINTENANCE", "scheduler must inject the global Bard band")
     assert_contains(source, "geo_maintenance_priority = scheduler.PRIORITY_BAND_GEO_MAINTENANCE", "scheduler must inject the global GEO maintenance band")
+    assert_contains(source, "geo_creation_priority = scheduler.PRIORITY_BAND_GEO_CREATION", "scheduler must inject the GEO creation band")
 	assert_contains(source, "routine_priority = scheduler.PRIORITY_BAND_SCH_ROUTINE",
 		"scheduler must inject the Scholar routine band")
 	assert_contains(source, "prepared_priority = scheduler.PRIORITY_BAND_SCH_PREPARED",
@@ -179,6 +182,10 @@ local function main()
 		"confirmed Pianissimo must release the active JA lock while preserving normal cooldown")
 	assert_contains(source, "scheduler.p1_pending_mark_complete(observed_at, 'brd_pianissimo_action')",
 		"confirmed Pianissimo must complete its scheduler pending record before the reserved song")
+	assert_contains(source, "local critical_cure = scheduler.p1_is_critical_defensive_proposal(",
+		"an atomic GEO sequence must continue admitting scheduler-classified critical cures")
+	assert_contains(source, "local allowed = critical_cure",
+		"the GEO atomic lane must preserve critical-Cure proposals")
 
 	local process_tick = source:match("function scheduler%.process_tick%(cadence%)(.-)function scheduler%.on_ipc_message")
     assert_true(type(process_tick) == "string", "failed to capture scheduler process_tick")
@@ -186,6 +193,14 @@ local function main()
         "process_tick must enforce defensive domain enablement")
 	assert_contains(process_tick, "require('uc_sch_runtime').cancel('maintenance_domain_disabled', now_s(), 0)",
 		"maintenance domain disablement must abort an active Scholar sequence")
+	assert_contains(process_tick, "scheduler.providers.geo_maintenance.creation_preempts_pull(geo_creation_ctx)",
+		"ready Luopan recovery must be checked before camp-pull lane acquisition")
+	assert_contains(process_tick, "scheduler.providers.camp_puller.reset('PULL_PREEMPTED_FOR_GEO_CREATION')",
+		"ready Luopan recovery must abort an active pull journey")
+	assert_contains(process_tick, "and not geo_creation_preempts_pull then",
+		"ready Luopan recovery must prevent a new pull journey")
+	assert_contains(source, "if ctx.geo_creation_preempts_pull ~= true then\n\t\t\tscheduler.providers.camp_puller.collect(ctx, out)",
+		"ready Luopan recovery must suppress collection-time pull acquisition")
     assert_before(process_tick, "try_doom_water_emergency(s)", "scheduler.dispatch_selected_plan(s)",
         "Doom must remain the sole hard prepass ahead of Bard scheduler arbitration")
     assert_contains(process_tick, "if not brd_lane_reserved and not camp_lane_reserved and not sch_lane_holds then\n\t\tlocal target_ctx = nil",

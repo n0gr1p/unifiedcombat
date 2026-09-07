@@ -160,6 +160,7 @@ function M.new(deps)
 	local log = require_function(deps, 'log')
 	local action_timeline_log = require_function(deps, 'action_timeline_log')
 	local geo_maintenance_priority = require_number(deps, 'geo_maintenance_priority')
+	local geo_creation_priority = require_number(deps, 'geo_creation_priority')
 
 	local provider = {
 		status = {
@@ -177,6 +178,8 @@ function M.new(deps)
 			pending = nil,
 			sequence = nil,
 			next_retry_at = 0,
+			failed_geo_target_id = 0,
+			failed_geo_target_until = 0,
 			bolster_armed = false,
 		},
 	}
@@ -252,6 +255,8 @@ function M.new(deps)
 		provider.state.pending = nil
 		provider.state.sequence = nil
 		provider.state.next_retry_at = 0
+		provider.state.failed_geo_target_id = 0
+		provider.state.failed_geo_target_until = 0
 	end
 
 	local function config_from_context(ctx)
@@ -338,6 +343,10 @@ function M.new(deps)
 			return nil, 'unsupported_unknown_existing_policy'
 		end
 		local target = require_table(config.geo_target, 'maintenance.geo.geo_target')
+		local luopan = require_table(config.luopan, 'maintenance.geo.luopan')
+		if luopan.placement ~= 'target' and luopan.placement ~= 'camp' then
+			return nil, 'unsupported_luopan_placement'
+		end
 		local geo, geo_reason = spell_contract(config.geo_spell, 'Geo', target.kind)
 		if geo == nil then
 			return nil, geo_reason
@@ -369,7 +378,8 @@ function M.new(deps)
 			required_abilities[#required_abilities + 1] = 'Life Cycle'
 		end
 		if config.luopan.use_blaze_of_glory == true
-			or config.luopan.replace_out_of_position == true
+			or (config.luopan.placement == 'camp'
+				and config.luopan.replace_out_of_position == true)
 			or target.kind == 'current_enemy' then
 			required_abilities[#required_abilities + 1] = 'Full Circle'
 		end
@@ -414,9 +424,23 @@ function M.new(deps)
 
 	local function choose_enemy_target(ctx, preferred_id)
 		local friendly_claims = require_table(get_friendly_claims(ctx), 'friendly combat claim set')
+		local failed_target_id = finite_number(provider.state.failed_geo_target_id)
+		local failed_target_until = finite_number(provider.state.failed_geo_target_until)
+		if failed_target_id == nil or failed_target_until == nil then
+			error('failed GEO target quarantine state must remain finite')
+		end
+		if ctx.now >= failed_target_until then
+			failed_target_id = 0
+			provider.state.failed_geo_target_id = 0
+			provider.state.failed_geo_target_until = 0
+		end
+		local function target_is_available(mob)
+			return tonumber(mob and mob.id) ~= failed_target_id
+				and tracked_enemy_is_valid(ctx, mob, friendly_claims)
+		end
 
 		local preferred = ctx.mobs_by_id[tonumber(preferred_id) or 0]
-		if preferred ~= nil and tracked_enemy_is_valid(ctx, preferred, friendly_claims) then
+		if preferred ~= nil and target_is_available(preferred) then
 			return preferred, 'sequence_target'
 		end
 
@@ -424,7 +448,7 @@ function M.new(deps)
 		for _, mob in pairs(ctx.mob_array) do
 			local claim_id = tonumber(mob and mob.claim_id) or 0
 			if friendly_claims[claim_id] == true
-				and tracked_enemy_is_valid(ctx, mob, friendly_claims) then
+				and target_is_available(mob) then
 				local mob_hpp = tonumber(mob.hpp) or 0
 				local selected_hpp = tonumber(selected and selected.hpp) or math.huge
 				local mob_distance = tonumber(mob.distance) or math.huge
@@ -622,6 +646,10 @@ function M.new(deps)
 			publish_status(kind .. '_blocked', tostring(ready_reason or action_kind))
 			return
 		end
+		local priority_band = geo_maintenance_priority
+		if kind == 'geo' then
+			priority_band = geo_creation_priority
+		end
 		out[#out + 1] = proposal(ctx, {
 			kind = kind,
 			action_name = spell_name,
@@ -630,7 +658,7 @@ function M.new(deps)
 			target_name = target.name,
 			max_range = max_range,
 			urgency = urgency,
-			priority_band = geo_maintenance_priority,
+			priority_band = priority_band,
 			reason_code = 'geo_' .. kind .. '_missing',
 			expected_effect = kind == 'geo' and 'luopan_present' or 'indi_colure_present',
 			sequence_kind = sequence and sequence.kind or '',
@@ -646,6 +674,12 @@ function M.new(deps)
 			publish_status('ja_blocked', tostring(ready_reason or action_kind))
 			return
 		end
+		local priority_band = geo_maintenance_priority
+		if type(sequence) == 'table'
+			and sequence.kind == 'geo_create'
+			and (sequence.step == 'full_circle' or sequence.step == 'blaze') then
+			priority_band = geo_creation_priority
+		end
 		out[#out + 1] = proposal(ctx, {
 			kind = effect,
 			action_type = 'ja',
@@ -655,7 +689,7 @@ function M.new(deps)
 			target_name = ctx.player_name,
 			max_range = 0.1,
 			urgency = urgency,
-			priority_band = geo_maintenance_priority,
+			priority_band = priority_band,
 			reason_code = 'geo_' .. effect,
 			expected_effect = effect,
 			sequence_kind = sequence and sequence.kind or '',
@@ -669,7 +703,9 @@ function M.new(deps)
 	end
 
 	local function luopan_misplaced(ctx, config)
-		if config.luopan.replace_out_of_position ~= true or ctx.pet_present ~= true then
+		if config.luopan.placement ~= 'camp'
+			or config.luopan.replace_out_of_position ~= true
+			or ctx.pet_present ~= true then
 			return false, nil
 		end
 		local anchor, reason = resolve_camp_anchor()
@@ -684,7 +720,10 @@ function M.new(deps)
 	end
 
 	local function luopan_outside_enemy_radius(ctx, config, target)
-		if tostring(config.geo_target.kind or '') ~= 'current_enemy'
+		-- Camp placement converges against the camp anchor in luopan_misplaced;
+		-- the legal spell target is not the Luopan's placement anchor in that mode.
+		if config.luopan.placement == 'camp'
+			or tostring(config.geo_target.kind or '') ~= 'current_enemy'
 			or ctx.pet_present ~= true
 			or target == nil then
 			return false, nil, nil
@@ -907,6 +946,80 @@ function M.new(deps)
 		error('unsupported GEO sequence kind: ' .. tostring(sequence.kind))
 	end
 
+	local function sequence_restores_missing_luopan(sequence, ctx)
+		return ctx.pet_present ~= true
+			and type(sequence) == 'table'
+			and sequence.kind == 'geo_create'
+			and (sequence.step == 'full_circle'
+				or sequence.step == 'blaze'
+				or sequence.step == 'geo_spell')
+	end
+
+	local function creation_target_ready(ctx, config, contracts, sequence)
+		local target, _, target_reason = resolve_geo_target(ctx, config, sequence)
+		if target == nil then
+			return false, target_reason
+		end
+		local target_at_camp, target_camp_reason = enemy_geo_camp_ready(ctx, config, target)
+		if not target_at_camp then
+			return false, target_camp_reason
+		end
+		local in_range, range_reason = target_in_range(ctx, target, contracts.geo.max_range)
+		if not in_range then
+			return false, range_reason
+		end
+		return true, nil, target
+	end
+
+	function provider.creation_preempts_pull(ctx)
+		require_table(ctx, 'ctx')
+		local config = config_from_context(ctx)
+		if rawget(_G, 'Start_Engine') ~= true
+			or config.enabled ~= true
+			or ctx.player_present ~= true
+			or tostring(ctx.player.main_job or '') ~= 'GEO'
+			or ctx.pet_present == true then
+			return false
+		end
+		if type(ctx.player.vitals) == 'table' and tonumber(ctx.player.vitals.hpp) == 0 then
+			return false
+		end
+		local contracts = validate_config(config)
+		if contracts == nil then
+			return false
+		end
+		local at_camp = camp_ready(ctx, config)
+		if not at_camp then
+			return false
+		end
+		local pending = provider.state.pending
+		if type(pending) == 'table'
+			and (pending.kind == 'geo' or pending.kind == 'blaze_buff') then
+			return true
+		end
+		if ctx.now < provider.state.next_retry_at then
+			return false
+		end
+		local sequence = provider.state.sequence
+		if type(sequence) == 'table' and not sequence_restores_missing_luopan(sequence, ctx) then
+			return false
+		end
+		local target_ready, _, target = creation_target_ready(ctx, config, contracts, sequence)
+		if not target_ready then
+			return false
+		end
+		if type(sequence) == 'table' and sequence.step == 'blaze' then
+			local ready, _, action_kind = action_ready('Blaze of Glory', ctx.player_id)
+			return ready == true and action_kind == 'ja'
+		end
+		local blaze_ready, blaze_consumed = blaze_upgrade_ready(ctx, config)
+		if blaze_ready and not blaze_consumed then
+			return true
+		end
+		local ready, _, action_kind = action_ready(config.geo_spell, tonumber(target.id))
+		return ready == true and action_kind == 'spell'
+	end
+
 	function provider.collect(ctx, out)
 		require_table(ctx, 'ctx')
 		require_table(out, 'out')
@@ -976,7 +1089,9 @@ function M.new(deps)
 
 		sequence = provider.state.sequence
 		if type(sequence) == 'table' then
-			if sequence.atomic ~= true and pull_active() then
+			if sequence.atomic ~= true
+				and pull_active()
+				and not sequence_restores_missing_luopan(sequence, ctx) then
 				publish_status('sequence_held', 'pull_active')
 				return
 			end
@@ -995,7 +1110,8 @@ function M.new(deps)
 			publish_status('unknown_existing', 'indi_wait_for_clear')
 			return
 		end
-		if pull_active() then
+		local pull_in_progress = pull_active()
+		if pull_in_progress and geo_present then
 			publish_status('blocked', 'pull_active')
 			return
 		end
@@ -1105,7 +1221,7 @@ function M.new(deps)
 		end
 
 		if config.ordering == 'indi_first' then
-			if not indi_satisfied then
+			if not indi_satisfied and not (pull_in_progress and not geo_present) then
 				emit_indi()
 				return
 			elseif not geo_satisfied then
@@ -1202,7 +1318,10 @@ function M.new(deps)
 		local detail = require_table(selected.detail, 'selected.detail')
 		local kind = tostring(detail.geo_kind or '')
 		local sequence = provider.state.sequence
-		if pull_active() and not (type(sequence) == 'table' and sequence.atomic == true) then
+		if pull_active()
+			and not (type(sequence) == 'table' and sequence.atomic == true)
+			and not sequence_restores_missing_luopan(sequence, ctx)
+			and not (kind == 'geo' and ctx.pet_present ~= true) then
 			return false, 'pull_active'
 		end
 		if tostring(selected.action_type or '') == 'ja' then
@@ -1383,11 +1502,29 @@ function M.new(deps)
 	function provider.note_failure(action_name, at)
 		local pending = provider.state.pending
 		if type(pending) == 'table' and tostring(action_name or '') == pending.spell then
+			local failed_at = finite_number(at)
+			if failed_at == nil then
+				error('GEO maintenance failure time must be finite')
+			end
+			if pending.kind == 'geo' then
+				local failed_target_id = finite_number(pending.target_id)
+				if failed_target_id == nil or failed_target_id <= 0 then
+					error('failed Geo spell must retain a positive target id')
+				end
+				provider.state.failed_geo_target_id = failed_target_id
+				provider.state.failed_geo_target_until = failed_at + 2.0
+				provider.state.enemy_target_id = 0
+				action_timeline_log('GEO_ENEMY_TARGET_INVALIDATED', {
+					target_id = provider.state.failed_geo_target_id,
+					retry_at = ('%.3f'):format(provider.state.failed_geo_target_until),
+				}, ('geo_enemy_target_invalidated:%d'):format(
+					provider.state.failed_geo_target_id
+				), 0.05)
+			end
 			provider.state.pending = nil
 			if type(provider.state.sequence) == 'table' then
 				provider.state.sequence = nil
-				provider.state.next_retry_at = finite_number(at) or 0
-				provider.state.next_retry_at = provider.state.next_retry_at + 2.0
+				provider.state.next_retry_at = failed_at + 2.0
 			end
 			publish_status('cast_failed', pending.kind)
 			return true

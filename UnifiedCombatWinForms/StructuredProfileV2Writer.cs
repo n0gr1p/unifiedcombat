@@ -1074,6 +1074,8 @@ internal static class StructuredProfileV2Writer
         var targetKind = ReadString(flatProfile, "geo_target_kind", "current_enemy");
         var targetName = ReadString(flatProfile, "geo_target_name", "");
         var ordering = ReadString(flatProfile, "geo_ordering", "geo_first");
+        var placement = ReadString(flatProfile, "geo_luopan_placement", "target");
+        var requireCamp = ReadOptionalBool(flatProfile, "geo_require_camp", true);
         var entrustEnabled = ReadOptionalBool(flatProfile, "geo_entrust_enabled", false);
         var entrustSpell = ReadString(flatProfile, "geo_entrust_spell", "");
         var entrustTarget = ReadString(flatProfile, "geo_entrust_target_name", "");
@@ -1089,6 +1091,10 @@ internal static class StructuredProfileV2Writer
         if (ordering is not ("geo_first" or "indi_first"))
         {
             throw new InvalidDataException("GEO ordering must be geo_first or indi_first.");
+        }
+        if (placement is not ("target" or "camp"))
+        {
+            throw new InvalidDataException("Luopan placement must be target or camp.");
         }
         if (targetKind == "party_member" && targetName.Length == 0)
         {
@@ -1110,7 +1116,7 @@ internal static class StructuredProfileV2Writer
             )
             .Add("indi_spell", NullIfEmpty(indiSpell))
             .Add("ordering", ordering)
-            .Add("require_camp", ReadOptionalBool(flatProfile, "geo_require_camp", true))
+            .Add("require_camp", requireCamp)
             .Add("camp_tolerance_yalms", ReadBoundedDouble(flatProfile, "geo_camp_tolerance_yalms", 1.0, 0.0, 50.0))
             .Add("enemy_geo_requires_camp_radius", ReadOptionalBool(flatProfile, "geo_enemy_requires_camp_radius", false))
             .Add("unknown_existing_policy", "wait_for_clear")
@@ -1124,6 +1130,7 @@ internal static class StructuredProfileV2Writer
             .Add(
                 "luopan",
                 new StructuredProfileNode()
+                    .Add("placement", placement)
                     .Add("use_blaze_of_glory", ReadOptionalBool(flatProfile, "geo_use_blaze_of_glory", false))
                     .Add("use_ecliptic_attrition", ReadOptionalBool(flatProfile, "geo_use_ecliptic_attrition", false))
                     .Add("use_life_cycle", ReadOptionalBool(flatProfile, "geo_use_life_cycle", false))

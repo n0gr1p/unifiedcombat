@@ -380,6 +380,7 @@ local function uc_new_settings_defaults()
 				target_name = nil,
 			},
 			luopan = {
+				placement = 'target',
 				use_blaze_of_glory = false,
 				use_ecliptic_attrition = false,
 				use_life_cycle = false,
@@ -2922,14 +2923,28 @@ windower.register_event('addon command', function(...)
 		elseif sub == 'status' then
 			local status = uc_camp_anchor.status()
 			if status.active then
-				windower.add_to_chat(207, ('UC camp: state=active zone=%d x=%.2f y=%.2f set_by=%s revision=%s source=%s'):format(
-					status.zone_id,
-					status.x,
-					status.y,
-					status.set_by,
-					tostring(status.revision),
-					status.source
-				))
+				if status.coordinate_mode == 'xyz' then
+					windower.add_to_chat(207, ('UC camp: state=active geometry=xyz zone=%d x=%.2f y=%.2f z=%.2f set_by=%s revision=%s source=%s'):format(
+						status.zone_id,
+						status.x,
+						status.y,
+						status.z,
+						status.set_by,
+						tostring(status.revision),
+						status.source
+					))
+				elseif status.coordinate_mode == 'xy' then
+					windower.add_to_chat(207, ('UC camp: state=active geometry=xy zone=%d x=%.2f y=%.2f z=unavailable set_by=%s revision=%s source=%s'):format(
+						status.zone_id,
+						status.x,
+						status.y,
+						status.set_by,
+						tostring(status.revision),
+						status.source
+					))
+				else
+					error('active camp status has an invalid coordinate mode')
+				end
 			elseif status.known then
 				windower.add_to_chat(207, ('UC camp: state=cleared zone=%d cleared_by=%s revision=%s source=%s'):format(
 					status.zone_id,

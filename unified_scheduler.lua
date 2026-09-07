@@ -1873,10 +1873,11 @@ scheduler.PRIORITY_BAND_SCH_PREPARED = 150
 scheduler.PRIORITY_BAND_SCH_DEFENSIVE = 145
 scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131
 scheduler.PRIORITY_BAND_SLEEP = 142
-scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 143
+scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 210
+scheduler.PRIORITY_BAND_GEO_CREATION = 240
 scheduler.PRIORITY_BAND_DEATH_SWITCH = 148
 scheduler.PRIORITY_BAND_SLEEP_WAKE = 149
-scheduler.PRIORITY_BAND_CRITICAL_CURE = 153
+scheduler.PRIORITY_BAND_CRITICAL_CURE = 250
 scheduler.PRIORITY_BAND_CHARM_SLEEPER = 1000
 scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION
 scheduler.TARGET_ACQUIRE_DEBOUNCE_S = 0.20
@@ -4309,7 +4310,9 @@ local function p1_collect_proposals(ctx)
 		scheduler.providers.target_control.collect_target(ctx, out)
 		scheduler.providers.combat.collect_engage(ctx, out)
 		scheduler.providers.target_control.collect_pull(ctx, out)
-		scheduler.providers.camp_puller.collect(ctx, out)
+		if ctx.geo_creation_preempts_pull ~= true then
+			scheduler.providers.camp_puller.collect(ctx, out)
+		end
 		scheduler.providers.tank_enmity.collect(ctx, out)
 		scheduler.providers.combat.collect_sleep(ctx, out)
 		scheduler.providers.combat.collect_offense(ctx, out)
@@ -4378,8 +4381,14 @@ local function p1_collect_proposals(ctx)
 	elseif scheduler.providers.geo_maintenance.lane_reserved() then
 		local pull_for_enemy = scheduler.providers.geo_maintenance.pull_for_enemy_allowed()
 		for i = #out, 1, -1 do
-			local provider = tostring(out[i] and out[i].provider or '')
-			local allowed = (pull_for_enemy and provider == 'camp_puller')
+			local proposal = out[i]
+			local provider = tostring(proposal and proposal.provider or '')
+			local critical_cure = scheduler.p1_is_critical_defensive_proposal(
+				ctx.settings,
+				proposal
+			)
+			local allowed = critical_cure
+				or (pull_for_enemy and provider == 'camp_puller')
 				or (not pull_for_enemy and provider == 'maintenance_geo')
 			if not allowed then
 				log_def_sched(('GEO_ATOMIC_LANE_HOLD provider=%s reason=%s'):format(
@@ -7036,6 +7045,19 @@ function scheduler.process_tick(cadence)
 		and require('uc_sch_runtime').snapshot().active_sequence ~= nil then
 		require('uc_sch_runtime').cancel('maintenance_domain_disabled', now_s(), 0)
 	end
+	local geo_creation_preempts_pull = false
+	if maintenance_domain_enabled then
+		local geo_creation_ctx = get_tick_ctx()
+		geo_creation_preempts_pull = scheduler.providers.geo_maintenance.creation_preempts_pull(geo_creation_ctx)
+		geo_creation_ctx.geo_creation_preempts_pull = geo_creation_preempts_pull
+	end
+	if geo_creation_preempts_pull and scheduler.providers.camp_puller.active() then
+		p1_build_pull_executor().stop({
+			reason = 'PULL_PREEMPTED_FOR_GEO_CREATION',
+			provider = 'camp_puller',
+		})
+		scheduler.providers.camp_puller.reset('PULL_PREEMPTED_FOR_GEO_CREATION')
+	end
 	local camp_lane_reserved = combat_domain_enabled and scheduler.providers.camp_puller.active()
 	if defensive_domain_enabled then
 		local charm_blocked, charm_reason = try_charm_sleeper_emergency(s, get_tick_ctx())
@@ -7053,7 +7075,7 @@ function scheduler.process_tick(cadence)
 			return true, doom_reason
 		end
 	end
-	if combat_domain_enabled and not camp_lane_reserved then
+	if combat_domain_enabled and not camp_lane_reserved and not geo_creation_preempts_pull then
 		local acquisition_ctx = get_tick_ctx()
 		scheduler.p1_update_pending_state(acquisition_ctx)
 		scheduler.providers.camp_puller.acquire_lane(acquisition_ctx)
@@ -8072,6 +8094,7 @@ scheduler.providers.sch_maintenance = require('uc_provider_sch_maintenance').new
 })
 scheduler.providers.geo_maintenance = require('uc_geo_maintenance').new({
 	geo_maintenance_priority = scheduler.PRIORITY_BAND_GEO_MAINTENANCE,
+	geo_creation_priority = scheduler.PRIORITY_BAND_GEO_CREATION,
 	action_ready = action_ready,
 	get_spell_resource = get_spell_resource,
 	get_ja_resource = get_ja_resource,

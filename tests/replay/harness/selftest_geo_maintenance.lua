@@ -44,9 +44,13 @@ local camp_anchor = {
 
 local function new_provider()
 	return geo_maintenance.new({
-		geo_maintenance_priority = 143,
-		action_ready = function()
-			return true, 'ready', 'spell'
+		geo_maintenance_priority = 210,
+		geo_creation_priority = 240,
+		action_ready = function(name)
+			if resources[name] ~= nil then
+				return true, 'ready', 'spell'
+			end
+			return true, 'ready', 'ja'
 		end,
 		get_spell_resource = function(name)
 			return resources[name]
@@ -108,6 +112,7 @@ local function config()
 			enabled = false,
 		},
 		luopan = {
+			placement = 'target',
 			use_blaze_of_glory = false,
 			use_ecliptic_attrition = false,
 			use_life_cycle = false,
@@ -167,8 +172,48 @@ local function context(now)
 	}
 end
 
+local function converge_owned_luopan(provider, ctx, pet_x, pet_y)
+	local out = {}
+	provider.collect(ctx, out)
+	assert_equal(#out, 1, 'initial GEO proposal count mismatch')
+	assert_equal(out[1].action_name, 'Geo-Frailty', 'initial GEO proposal mismatch')
+	provider.note_dispatch(out[1], ctx.now + 0.1)
+
+	ctx.now = ctx.now + 1.0
+	ctx.pet_present = true
+	ctx.pet_id = 300
+	ctx.pet = {
+		id = 300,
+		name = 'Luopan',
+		hpp = 100,
+		x = pet_x,
+		y = pet_y,
+	}
+	out = {}
+	provider.collect(ctx, out)
+	assert_equal(#out, 1, 'owned Luopan should advance to Indi')
+	assert_equal(out[1].action_name, 'Indi-Haste', 'owned Luopan Indi proposal mismatch')
+	provider.note_dispatch(out[1], ctx.now + 0.1)
+
+	ctx.now = ctx.now + 1.0
+	ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+	out = {}
+	provider.collect(ctx, out)
+	assert_equal(#out, 0, 'owned GEO effects should converge')
+	assert_equal(provider.status.state, 'converged', 'owned GEO convergence state mismatch')
+end
+
 local original_engine = rawget(_G, 'Start_Engine')
 rawset(_G, 'Start_Engine', true)
+
+local independent_camp_provider = new_provider()
+local independent_camp_ctx = context(0.5)
+independent_camp_ctx.settings.config.maintenance.geo.luopan.placement = 'camp'
+independent_camp_ctx.settings.config.maintenance.geo.require_camp = false
+local independent_out = {}
+independent_camp_provider.collect(independent_camp_ctx, independent_out)
+assert_equal(#independent_out, 1, 'camp placement must not require provider camp restriction')
+assert_equal(independent_out[1].action_name, 'Geo-Frailty', 'independent camp placement proposal mismatch')
 
 local provider = new_provider()
 local ctx = context(1.0)
@@ -178,7 +223,7 @@ assert_equal(#out, 1, 'missing effects should emit one action')
 assert_equal(out[1].provider, 'maintenance_geo', 'GEO provider id mismatch')
 assert_equal(out[1].action_name, 'Geo-Frailty', 'geo_first should emit Geo spell')
 assert_equal(out[1].target_id, 200, 'Geo target id mismatch')
-assert_equal(out[1].priority_band, 143, 'Geo spell must use elevated GEO maintenance priority')
+assert_equal(out[1].priority_band, 240, 'Geo spell must use elevated GEO creation priority')
 
 provider.note_dispatch(out[1], 1.1)
 ctx.now = 2.0
@@ -194,7 +239,7 @@ provider.collect(ctx, out)
 assert_equal(#out, 1, 'observed luopan should advance to Indi')
 assert_equal(out[1].action_name, 'Indi-Haste', 'Indi follow-up mismatch')
 assert_equal(out[1].target_id, 100, 'Indi must target self')
-assert_equal(out[1].priority_band, 143, 'Indi spell must use elevated GEO maintenance priority')
+assert_equal(out[1].priority_band, 210, 'Indi spell must use elevated GEO maintenance priority')
 
 provider.note_dispatch(out[1], 2.1)
 ctx.now = 3.0
@@ -225,7 +270,8 @@ assert_equal(#out, 0, 'GEO maintenance must hold outside camp tolerance')
 assert_equal(camp_provider.status.reason, 'GEO_AWAY_FROM_CAMP', 'camp hold reason mismatch')
 
 local moving_provider = geo_maintenance.new({
-	geo_maintenance_priority = 143,
+	geo_maintenance_priority = 210,
+	geo_creation_priority = 240,
 	action_ready = function()
 		return true, 'ready', 'spell'
 	end,
@@ -273,6 +319,75 @@ out = {}
 moving_provider.collect(context(7.0), out)
 assert_equal(#out, 0, 'moving player must not emit GEO spells')
 assert_equal(moving_provider.status.reason, 'player_moving', 'moving hold reason mismatch')
+
+local camp_outside_provider = new_provider()
+local camp_outside_ctx = context(10.0)
+camp_outside_ctx.settings.config.maintenance.geo.luopan.placement = 'camp'
+camp_outside_ctx.settings.config.maintenance.geo.luopan.replace_out_of_position = true
+converge_owned_luopan(camp_outside_provider, camp_outside_ctx, 10, 20)
+camp_outside_ctx.now = 13.0
+camp_outside_ctx.mobs_by_id[200].x = 18
+camp_outside_ctx.mobs_by_id[200].distance = 64
+out = {}
+camp_outside_provider.collect(camp_outside_ctx, out)
+assert_equal(#out, 0, 'camp-placed Luopan must ignore enemy outside 6.5 yalms')
+assert_equal(camp_outside_provider.status.state, 'converged', 'camp placement outside-radius state mismatch')
+assert_equal(camp_outside_provider.status_snapshot().sequence, nil, 'camp placement must not begin replacement')
+
+local camp_inside_provider = new_provider()
+local camp_inside_ctx = context(20.0)
+camp_inside_ctx.settings.config.maintenance.geo.luopan.placement = 'camp'
+camp_inside_ctx.settings.config.maintenance.geo.luopan.replace_out_of_position = true
+converge_owned_luopan(camp_inside_provider, camp_inside_ctx, 10, 20)
+camp_inside_ctx.now = 23.0
+camp_inside_ctx.mobs_by_id[200].x = 16
+camp_inside_ctx.mobs_by_id[200].distance = 36
+out = {}
+camp_inside_provider.collect(camp_inside_ctx, out)
+assert_equal(#out, 0, 'camp-placed Luopan must remain satisfied inside 6.5 yalms')
+assert_equal(camp_inside_provider.status.state, 'converged', 'camp placement inside-radius state mismatch')
+assert_equal(camp_inside_provider.status_snapshot().sequence, nil, 'inside-radius camp placement must not replace')
+
+local camp_no_replace_provider = new_provider()
+local camp_no_replace_ctx = context(25.0)
+camp_no_replace_ctx.settings.config.maintenance.geo.luopan.placement = 'camp'
+converge_owned_luopan(camp_no_replace_provider, camp_no_replace_ctx, 10, 20)
+camp_no_replace_ctx.now = 28.0
+camp_no_replace_ctx.pet.x = 20
+out = {}
+camp_no_replace_provider.collect(camp_no_replace_ctx, out)
+assert_equal(#out, 0, 'camp-misplaced Luopan must remain when replacement is disabled')
+assert_equal(camp_no_replace_provider.status.state, 'converged', 'disabled camp replacement state mismatch')
+assert_equal(camp_no_replace_provider.status_snapshot().sequence, nil, 'disabled camp replacement must not begin sequence')
+
+local target_old_replace_provider = new_provider()
+local target_old_replace_ctx = context(29.0)
+target_old_replace_ctx.settings.config.maintenance.geo.luopan.replace_out_of_position = true
+converge_owned_luopan(target_old_replace_provider, target_old_replace_ctx, 10, 20)
+target_old_replace_ctx.now = 32.0
+target_old_replace_ctx.pet.x = 20
+target_old_replace_ctx.mobs_by_id[200].x = 20
+target_old_replace_ctx.mobs_by_id[200].distance = 100
+out = {}
+target_old_replace_provider.collect(target_old_replace_ctx, out)
+assert_equal(#out, 0, 'target placement must ignore camp distance despite old replacement setting')
+assert_equal(target_old_replace_provider.status.state, 'converged', 'target placement old-setting state mismatch')
+assert_equal(target_old_replace_provider.status_snapshot().sequence, nil, 'target placement old setting must not replace')
+
+local target_centered_provider = new_provider()
+local target_centered_ctx = context(35.0)
+converge_owned_luopan(target_centered_provider, target_centered_ctx, 10, 20)
+target_centered_ctx.now = 38.0
+target_centered_ctx.mobs_by_id[200].x = 18
+target_centered_ctx.mobs_by_id[200].distance = 64
+out = {}
+target_centered_provider.collect(target_centered_ctx, out)
+assert_equal(#out, 1, 'target-centered Luopan must replace when enemy leaves 6.5 yalms')
+assert_equal(out[1].action_name, 'Full Circle', 'target-centered reposition must begin with Full Circle')
+local target_centered_sequence = target_centered_provider.status_snapshot().sequence
+assert_true(type(target_centered_sequence) == 'table', 'target-centered replacement sequence missing')
+assert_equal(target_centered_sequence.step, 'full_circle', 'target-centered replacement step mismatch')
+assert_true(target_centered_sequence.replacement, 'target-centered replacement flag missing')
 
 if original_engine == nil then
 	rawset(_G, 'Start_Engine', nil)

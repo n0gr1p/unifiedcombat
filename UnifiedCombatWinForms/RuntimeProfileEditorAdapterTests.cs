@@ -8,9 +8,31 @@ internal static class RuntimeProfileEditorAdapterTests
     internal static void Run()
     {
         TestReconnectProjectionPreservesDurableConfiguration();
+        TestOlderRuntimeProjectionDefaultsMissingLuopanPlacement();
         TestConfiguredAbilitiesSurviveOptionHydrationDelay();
         TestCorSelectionSurvivesOptionReplacement();
         TestMalformedRuntimeProjectionFailsFast();
+        TestMalformedRuntimeLuopanPlacementFailsFast();
+    }
+
+    private static void TestOlderRuntimeProjectionDefaultsMissingLuopanPlacement()
+    {
+        var active = BuildRuntimeProjection();
+        var maintenance = active["maintenance_geo"]?.AsObject()
+            ?? throw new InvalidOperationException("test maintenance_geo fixture is missing");
+        var luopan = maintenance["luopan"]?.AsObject()
+            ?? throw new InvalidOperationException("test luopan fixture is missing");
+        luopan.Remove("placement");
+
+        using var activeDocument = JsonDocument.Parse(active.ToJsonString());
+        using var sessionDocument = JsonDocument.Parse("{}");
+        var editor = RuntimeProfileEditorAdapter.Build(sessionDocument.RootElement, activeDocument.RootElement);
+
+        AssertEqual(
+            editor["geo_luopan_placement"]?.GetValue<string>(),
+            "target",
+            "older runtime Luopan placement projection"
+        );
     }
 
     private static void TestReconnectProjectionPreservesDurableConfiguration()
@@ -37,6 +59,7 @@ internal static class RuntimeProfileEditorAdapterTests
         AssertEqual(editor["geo_spell"]?.GetValue<string>(), "Geo-Fury", "GEO spell projection");
         AssertEqual(editor["indi_spell"]?.GetValue<string>(), "Indi-Frailty", "Indi spell projection");
         AssertEqual(editor["geo_target_kind"]?.GetValue<string>(), "self", "GEO target projection");
+        AssertEqual(editor["geo_luopan_placement"]?.GetValue<string>(), "camp", "Luopan placement projection");
         AssertEqual(editor["camp_pulling_targets"]?.GetValue<string>(), "Apex Bat:100|Apex Crab:50", "camp target projection");
         AssertEqual(editor["tank_enmity_actions"]?.GetValue<string>(), "Provoke|Flash", "tank action projection");
         AssertEqual(editor["nyzul_parking_order"]?.GetValue<string>(), "Redrogue|Niightsiide", "Nyzul projection");
@@ -51,6 +74,7 @@ internal static class RuntimeProfileEditorAdapterTests
         AssertContains(content, "\"Bolster\",", "Bolster save round-trip");
         AssertContains(content, "\"Entrust\",", "Entrust save round-trip");
         AssertContains(content, "geo_spell = \"Geo-Fury\"", "GEO save round-trip");
+        AssertContains(content, "placement = \"camp\"", "Luopan placement save round-trip");
         AssertContains(content, "\"Honor March\",", "Honor March save round-trip");
         AssertContains(content, "\"Victory March\",", "Victory March save round-trip");
         AssertContains(content, "roll_1 = \"Chaos Roll\"", "COR save round-trip");
@@ -86,6 +110,28 @@ internal static class RuntimeProfileEditorAdapterTests
             return;
         }
         throw new InvalidOperationException("malformed runtime projection did not fail fast");
+    }
+
+    private static void TestMalformedRuntimeLuopanPlacementFailsFast()
+    {
+        var active = BuildRuntimeProjection();
+        var maintenance = active["maintenance_geo"]?.AsObject()
+            ?? throw new InvalidOperationException("test maintenance_geo fixture is missing");
+        var luopan = maintenance["luopan"]?.AsObject()
+            ?? throw new InvalidOperationException("test luopan fixture is missing");
+        luopan["placement"] = "caster";
+
+        using var activeDocument = JsonDocument.Parse(active.ToJsonString());
+        using var sessionDocument = JsonDocument.Parse("{}");
+        try
+        {
+            _ = RuntimeProfileEditorAdapter.Build(sessionDocument.RootElement, activeDocument.RootElement);
+        }
+        catch (InvalidDataException)
+        {
+            return;
+        }
+        throw new InvalidOperationException("invalid runtime Luopan placement did not fail fast");
     }
 
     private static JsonObject BuildRuntimeProjection()
@@ -165,6 +211,7 @@ internal static class RuntimeProfileEditorAdapterTests
                 ["entrust"] = new JsonObject { ["enabled"] = false },
                 ["luopan"] = new JsonObject
                 {
+                    ["placement"] = "camp",
                     ["use_blaze_of_glory"] = false,
                     ["use_ecliptic_attrition"] = false,
                     ["use_life_cycle"] = false,

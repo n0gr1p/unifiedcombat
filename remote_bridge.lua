@@ -1772,6 +1772,8 @@ function uc_remote_tick()
 		camp_zone_id = camp_status.zone_id,
 		camp_x = camp_status.x,
 		camp_y = camp_status.y,
+		camp_z = camp_status.z,
+		camp_coordinate_mode = camp_status.coordinate_mode,
 		camp_set_by = camp_status.set_by,
 		camp_last_op = camp_last_op,
 		geo_runtime_state = geo_runtime.state,
