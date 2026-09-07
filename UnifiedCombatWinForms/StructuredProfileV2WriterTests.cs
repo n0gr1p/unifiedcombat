@@ -77,6 +77,7 @@ internal static class StructuredProfileV2WriterTests
             TestScholarStormAssignmentValidation();
             TestScholarUiOfflineContract();
             TestSerializeReactionRules();
+            TestCombatExtensionProfileContract();
             TestRejectInvalidRunAwayDistance();
             TestDisabledEmptyReactionsAreOmitted();
             TestReactionUiEditsAreLocalUntilSave();
@@ -192,7 +193,7 @@ internal static class StructuredProfileV2WriterTests
         };
 
         AssertTrue(MainForm.MigrateProfileInPlace(profile), "schema-two profile must migrate");
-        AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 4, "migrated schema version mismatch");
+        AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 5, "migrated schema version mismatch");
         AssertTrue(!profile["domain_combat_enabled"]!.GetValue<bool>(), "explicit combat domain value must be preserved");
         AssertTrue(profile["domain_defensive_enabled"]!.GetValue<bool>(), "missing defensive domain must migrate enabled");
         AssertTrue(profile["domain_movement_enabled"]!.GetValue<bool>(), "missing movement domain must migrate enabled");
@@ -252,7 +253,7 @@ internal static class StructuredProfileV2WriterTests
             ["kei_fullers_run_away_distance"] = 12.0,
         };
         AssertTrue(MainForm.MigrateProfileInPlace(profile), "schema-three Kei profile must migrate");
-        AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 4, "Kei migration schema version mismatch");
+        AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 5, "Kei migration schema version mismatch");
         AssertTrue(profile["kei_fullers_target_distance"]!.GetValue<double>() == 12.0, "Kei target distance migration mismatch");
         AssertTrue(!profile.ContainsKey("kei_fullers_run_away_distance"), "Kei legacy distance must be removed after migration");
 
@@ -266,6 +267,44 @@ internal static class StructuredProfileV2WriterTests
             () => MainForm.MigrateProfileInPlace(conflict),
             "conflicting Kei target-distance aliases must fail migration"
         );
+    }
+
+    private static void TestCombatExtensionProfileContract()
+    {
+        var migrated = new JsonObject { ["profile_schema_version"] = 4 };
+        AssertTrue(MainForm.MigrateProfileInPlace(migrated), "schema-four profile must migrate to combat-extension defaults");
+        AssertTrue(migrated["auto_engage"]!.GetValue<bool>(), "legacy profile must default Auto Engage on");
+        AssertTrue(!migrated["magic_burst_enabled"]!.GetValue<bool>(), "legacy profile must default Magic Burst off");
+        AssertEqual(migrated["spell"]!.GetValue<string>(), "", "legacy profile must default configured spell empty");
+
+        var flat = BuildSampleFlatProfile();
+        flat["auto_engage"] = false;
+        flat["magic_burst_enabled"] = true;
+        flat["spell"] = "Fire V";
+        flat["reaction_enabled"] = true;
+        flat["reaction_rules"] = new JsonArray
+        {
+            new JsonObject
+            {
+                ["trigger"] = "ability_window",
+                ["name"] = "Just Desserts",
+                ["response"] = "use_action",
+                ["action_type"] = "spell",
+                ["action_name"] = "Stun",
+            },
+        };
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Niightsiide", "GEO", "RDM")
+        );
+        AssertContains(content, "auto_engage = false", "Auto Engage must serialize independently from Auto Target");
+        AssertContains(content, "configured = \"Fire V\"", "Magic Burst configured spell missing");
+        AssertContains(content, "magic_burst = true", "Magic Burst toggle missing");
+        AssertContains(content, "response = \"use_action\"", "use_action reaction response missing");
+        AssertContains(content, "action_type = \"spell\"", "reaction action type missing");
+        AssertContains(content, "action_name = \"Stun\"", "reaction action name missing");
+        AssertTrue(HubUiConstants.BoolKeys.Contains("auto_engage"), "Auto Engage must be persisted by the shared UI boolean registry");
+        AssertTrue(HubUiConstants.CombatTargetingUiKeys.Contains("auto_engage"), "Auto Engage must appear in Combat & Targeting UI");
     }
 
     private static void TestSerializeShapeAndEscaping()
@@ -608,7 +647,7 @@ internal static class StructuredProfileV2WriterTests
             "defensive controls must be registered in the General defensive section"
         );
         AssertTrue(
-            HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" }),
+            HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "auto_engage", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" }),
             "combat and targeting controls must be registered together"
         );
         AssertTrue(

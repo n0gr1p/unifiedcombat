@@ -6,7 +6,14 @@ namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
-    private sealed record ReactionRuleRow(string Trigger, string Name, string Response, double? Distance);
+    private sealed record ReactionRuleRow(
+        string Trigger,
+        string Name,
+        string Response,
+        double? Distance,
+        string? ActionType = null,
+        string? ActionName = null
+    );
     private sealed record NamedFormationRow(string MobName, JsonObject Geometry);
 
     private static bool SequenceEqualOrdinal(IReadOnlyList<string> a, IReadOnlyList<string> b)
@@ -269,7 +276,7 @@ public partial class MainForm
         foreach (var key in pend.Keys.ToList())
         {
             var (val, ts) = pend[key];
-            var incoming = SessionStateHelper.GetBool(s, key, false);
+            var incoming = SessionStateHelper.GetBool(s, key, string.Equals(key, "auto_engage", StringComparison.Ordinal));
             if (incoming == val)
             {
                 pend.Remove(key);
@@ -361,6 +368,10 @@ public partial class MainForm
                     cb.Checked = false;
                 }
             }
+            if (_boolChecks.TryGetValue("auto_engage", out var autoEngage))
+            {
+                autoEngage.Checked = true;
+            }
 
             _wsCombo.Items.Clear();
             _wsModeCombo.SelectedItem = "Smart";
@@ -368,6 +379,9 @@ public partial class MainForm
             _chkWsAllowAoe.Checked = true;
             _chkFastSkillchain.Checked = false;
             _skillchainTargetCombo.SelectedItem = "Auto";
+            _magicBurstEnabled.Checked = false;
+            _magicBurstSpell.Items.Clear();
+            _magicBurstSpell.Text = "";
             _pullerCombo.Items.Clear();
 			_pullerLeashSource.SelectedItem = "Player";
 			_campStatus.Text = "Camp not set";
@@ -547,6 +561,9 @@ public partial class MainForm
             _reactionRuleList.Items.Clear();
             _reactionName.Text = "";
             _reactionDistance.Value = 12m;
+            _reactionActionType.SelectedItem = "spell";
+            _reactionActionName.Items.Clear();
+            _reactionActionName.Text = "";
             _reactionTriggerCombo.SelectedItem = "ability_window";
             RefreshReactionResponseOptions();
             _partyOptions.Clear();
@@ -687,6 +704,8 @@ public partial class MainForm
             _skillchainTargetCombo.SelectedItem = SkillchainTargetRuntimeToUi(
                 SessionStateHelper.GetString(s, "skillchain_target", "auto")
             );
+            _magicBurstEnabled.Checked = SessionStateHelper.GetBool(s, "magic_burst_enabled", false);
+            RefreshMagicBurstSpellOptions(SessionStateHelper.GetString(s, "spell"));
             var amDisplay = new List<string>(wsOpts);
             var amRaw = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amRaw) && !amDisplay.Contains(amRaw))
@@ -829,6 +848,8 @@ public partial class MainForm
                 _pathPullSpellOptions.AddRange(pullSpellOpts);
                 RefreshKeiSpellOptions();
                 UpdateEncounterUiState();
+                RefreshMagicBurstSpellOptions();
+                RefreshReactionActionSpellOptions();
             }
             if (!SequenceEqualOrdinal(_tankEnmityRows, tankEnmityActions))
             {
@@ -934,7 +955,7 @@ public partial class MainForm
                 }
                 else
                 {
-                    cb.Checked = SessionStateHelper.GetBool(s, key, false);
+                    cb.Checked = SessionStateHelper.GetBool(s, key, string.Equals(key, "auto_engage", StringComparison.Ordinal));
                 }
             }
 
@@ -1011,6 +1032,8 @@ public partial class MainForm
                 _pathPullSpellOptions.AddRange(pullSpellOpts);
                 RefreshKeiSpellOptions();
                 UpdateEncounterUiState();
+                RefreshMagicBurstSpellOptions();
+                RefreshReactionActionSpellOptions();
                 changed = true;
             }
             if (hasCorRolls && !SequenceEqualOrdinal(_corRollOptions, corRollOpts))
@@ -2493,6 +2516,37 @@ public partial class MainForm
         }
     }
 
+    private void OnMagicBurstConfigChanged()
+    {
+        if (_suppressEvents || string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            return;
+        }
+        CaptureWorkingProfileFromUi(_selectedSid);
+    }
+
+    private void RefreshMagicBurstSpellOptions(string? selected = null)
+    {
+        selected = string.IsNullOrWhiteSpace(selected) ? (_magicBurstSpell.Text ?? "").Trim() : selected.Trim();
+        _magicBurstSpell.Items.Clear();
+        foreach (var spell in _pathPullSpellOptions)
+        {
+            _magicBurstSpell.Items.Add(spell);
+        }
+        _magicBurstSpell.Text = selected ?? "";
+    }
+
+    private void RefreshReactionActionSpellOptions(string? selected = null)
+    {
+        selected = string.IsNullOrWhiteSpace(selected) ? (_reactionActionName.Text ?? "").Trim() : selected.Trim();
+        _reactionActionName.Items.Clear();
+        foreach (var spell in _pathPullSpellOptions)
+        {
+            _reactionActionName.Items.Add(spell);
+        }
+        _reactionActionName.Text = selected ?? "";
+    }
+
     private void ApplyReactionRulesFromSnapshot(JsonElement snapshot)
     {
         _reactionRules.Clear();
@@ -2507,9 +2561,11 @@ public partial class MainForm
                 var trigger = SessionStateHelper.GetString(item, "trigger").Trim();
                 var name = SessionStateHelper.GetString(item, "name").Trim();
                 var response = SessionStateHelper.GetString(item, "response").Trim();
-                var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range"))
+                var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))
                     || (trigger == "enemy_buff" && response == "stop_attacking");
                 double? distance = null;
+                string? actionType = null;
+                string? actionName = null;
                 if (response is "run_away" or "move_to_range")
                 {
                     if (!item.TryGetProperty("distance", out var distanceNode)
@@ -2522,9 +2578,18 @@ public partial class MainForm
                     }
                     distance = parsedDistance;
                 }
+                else if (response == "use_action")
+                {
+                    actionType = SessionStateHelper.GetString(item, "action_type").Trim();
+                    actionName = SessionStateHelper.GetString(item, "action_name").Trim();
+                    if (actionType != "spell" || actionName.Length == 0)
+                    {
+                        throw new InvalidDataException("use_action reaction requires action_type 'spell' and a non-empty action_name");
+                    }
+                }
                 if (valid && name.Length > 0)
                 {
-                    _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance));
+                    _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance, actionType, actionName));
                 }
             }
         }
@@ -2537,7 +2602,8 @@ public partial class MainForm
         foreach (var rule in _reactionRules)
         {
             var distance = rule.Distance.HasValue ? $" | {rule.Distance.Value:0.0}y" : "";
-            _reactionRuleList.Items.Add($"{rule.Trigger} | {rule.Name} | {rule.Response}{distance}");
+            var action = rule.Response == "use_action" ? $" | {rule.ActionType}: {rule.ActionName}" : "";
+            _reactionRuleList.Items.Add($"{rule.Trigger} | {rule.Name} | {rule.Response}{distance}{action}");
         }
         if (_reactionRuleList.Items.Count > 0 && selectedIndex >= 0)
         {
@@ -2554,7 +2620,7 @@ public partial class MainForm
         }
         else
         {
-            _reactionResponseCombo.Items.AddRange(["turn_away", "run_away", "move_to_range"]);
+            _reactionResponseCombo.Items.AddRange(["turn_away", "run_away", "move_to_range", "use_action"]);
         }
         _reactionResponseCombo.SelectedIndex = 0;
         RefreshReactionDistanceState();
@@ -2564,6 +2630,14 @@ public partial class MainForm
     {
         var response = _reactionResponseCombo.SelectedItem?.ToString();
         _reactionDistance.Enabled = response is "run_away" or "move_to_range";
+        var actionEnabled = response == "use_action";
+        _reactionActionType.Enabled = actionEnabled;
+        _reactionActionName.Enabled = actionEnabled;
+        if (actionEnabled)
+        {
+            _reactionActionType.SelectedItem = "spell";
+            RefreshReactionActionSpellOptions();
+        }
     }
 
     private void OnReactionTriggerChanged()
@@ -3403,7 +3477,7 @@ public partial class MainForm
         var trigger = _reactionTriggerCombo.SelectedItem?.ToString() ?? "";
         var name = (_reactionName.Text ?? "").Trim();
         var response = _reactionResponseCombo.SelectedItem?.ToString() ?? "";
-        var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range"))
+        var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))
             || (trigger == "enemy_buff" && response == "stop_attacking");
         if (!valid || name.Length == 0)
         {
@@ -3415,8 +3489,23 @@ public partial class MainForm
             return;
         }
         var distance = response is "run_away" or "move_to_range" ? decimal.ToDouble(_reactionDistance.Value) : (double?)null;
-        _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance));
+        string? actionType = null;
+        string? actionName = null;
+        if (response == "use_action")
+        {
+            actionType = _reactionActionType.SelectedItem?.ToString() ?? "";
+            actionName = (_reactionActionName.Text ?? "").Trim();
+            if (actionType != "spell" || actionName.Length == 0)
+            {
+                return;
+            }
+        }
+        _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance, actionType, actionName));
         _reactionName.Text = "";
+        if (response == "use_action")
+        {
+            _reactionActionName.Text = "";
+        }
         RebindReactionRuleList(_reactionRules.Count - 1);
         OnReactionConfigChanged();
     }

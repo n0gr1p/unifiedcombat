@@ -531,6 +531,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 	if type(config.combat) == 'table' then
 		candidate.domain_combat_enabled = config.combat.enabled
 		candidate.autotarget = config.combat.autotarget
+		candidate.auto_engage = config.combat.auto_engage
 		candidate.spam = config.combat.spam
 		candidate.closer = config.combat.closer
 		candidate.manual = config.combat.manual
@@ -1006,6 +1007,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 	if type(config.spells) == 'table' then
 		candidate.spell_active = config.spells.enabled
 		candidate.spell = config.spells.configured
+		candidate.magic_burst_enabled = config.spells.magic_burst
 		candidate.dd2_spell_slots = clone_value(config.spells.dd2_slots)
 	end
 

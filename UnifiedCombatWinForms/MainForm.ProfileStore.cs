@@ -6,7 +6,7 @@ namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
-    private const int ProfileSchemaVersion = 4;
+    private const int ProfileSchemaVersion = 5;
     private static readonly string[] RequiredDomainBoolKeys =
     [
         "domain_combat_enabled",
@@ -182,6 +182,8 @@ public partial class MainForm
             ["abilities_selected"] = string.Join("|", _selectedAbilities),
             ["aftermath_ws"] = (_aftermathCombo.Text ?? "").Trim(),
             ["skillchain_target"] = SkillchainTargetUiToRuntime(_skillchainTargetCombo.SelectedItem?.ToString()),
+            ["magic_burst_enabled"] = _magicBurstEnabled.Checked,
+            ["spell"] = (_magicBurstSpell.Text ?? "").Trim(),
             ["path_pull_action_type"] = _pathPullActionType.SelectedItem?.ToString() ?? "ja",
             ["path_pull_action_name"] = (_pathPullActionName.Text ?? "").Trim(),
             ["geo_maintenance_enabled"] = _geoEnabled.Checked,
@@ -456,6 +458,15 @@ public partial class MainForm
                 }
                 serialized["distance"] = rule.Distance.Value;
             }
+            else if (rule.Response == "use_action")
+            {
+                if (rule.ActionType != "spell" || string.IsNullOrWhiteSpace(rule.ActionName))
+                {
+                    throw new InvalidDataException("use_action reaction requires action_type 'spell' and a non-empty action_name");
+                }
+                serialized["action_type"] = rule.ActionType;
+                serialized["action_name"] = rule.ActionName.Trim();
+            }
             rules.Add(serialized);
         }
         return rules;
@@ -505,6 +516,8 @@ public partial class MainForm
             ["weaponskill_allow_aoe"] = true,
             ["fast_skillchain"] = false,
             ["aftermath_ws"] = "",
+            ["magic_burst_enabled"] = false,
+            ["spell"] = "",
             ["defensive_provider"] = "internal",
             ["defensive_critical_hpp"] = 35,
             ["defensive_medium_hpp"] = 55,
@@ -720,6 +733,7 @@ public partial class MainForm
         {
             p[key] = true;
         }
+        p["auto_engage"] = true;
 
         return p;
     }
@@ -1043,6 +1057,21 @@ public partial class MainForm
         if (!root.ContainsKey("skillchain_target"))
         {
             root["skillchain_target"] = "auto";
+            changed = true;
+        }
+        if (!root.ContainsKey("auto_engage"))
+        {
+            root["auto_engage"] = true;
+            changed = true;
+        }
+        if (!root.ContainsKey("magic_burst_enabled"))
+        {
+            root["magic_burst_enabled"] = false;
+            changed = true;
+        }
+        if (!root.ContainsKey("spell"))
+        {
+            root["spell"] = "";
             changed = true;
         }
 

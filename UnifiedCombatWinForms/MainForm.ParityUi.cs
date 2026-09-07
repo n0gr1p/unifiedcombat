@@ -15,6 +15,8 @@ public partial class MainForm
     private CheckBox _chkWsAllowAoe = null!;
     private CheckBox _chkFastSkillchain = null!;
     private ComboBox _skillchainTargetCombo = null!;
+    private CheckBox _magicBurstEnabled = null!;
+    private ComboBox _magicBurstSpell = null!;
     private ToolTip _smartWsToolTip = null!;
     private ToolTip _recoveryHoldToolTip = null!;
     private ComboBox _aftermathCombo = null!;
@@ -261,6 +263,8 @@ public partial class MainForm
     private TextBox _reactionName = null!;
     private ComboBox _reactionResponseCombo = null!;
     private NumericUpDown _reactionDistance = null!;
+    private ComboBox _reactionActionType = null!;
+    private ComboBox _reactionActionName = null!;
     private Button _reactionAdd = null!;
     private Button _reactionRemove = null!;
     private Button _reactionUp = null!;
@@ -508,6 +512,38 @@ public partial class MainForm
         );
         _skillchainTargetCombo.SelectedIndexChanged += (_, _) => OnSkillchainTargetSelected();
         leftCol.Controls.Add(_skillchainTargetCombo, 1, lr);
+        lr++;
+
+        _magicBurstEnabled = new UcToggle
+        {
+            Text = "Magic Burst",
+            AutoSize = true,
+            Checked = false,
+        };
+        _smartWsToolTip.SetToolTip(
+            _magicBurstEnabled,
+            "Cast the configured spell when its element matches an active skillchain magic-burst window."
+        );
+        _magicBurstEnabled.CheckedChanged += (_, _) => OnMagicBurstConfigChanged();
+        leftCol.Controls.Add(_magicBurstEnabled, 0, lr);
+        _magicBurstSpell = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDown,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(120, 0),
+        };
+        _magicBurstSpell.SelectionChangeCommitted += (_, _) => OnMagicBurstConfigChanged();
+        _magicBurstSpell.Leave += (_, _) => OnMagicBurstConfigChanged();
+        _magicBurstSpell.DropDown += (_, _) =>
+        {
+            var sid = _selectedSid;
+            if (!string.IsNullOrWhiteSpace(sid))
+            {
+                EnsureOptionsHydrated(sid, force: true);
+                RefreshMagicBurstSpellOptions();
+            }
+        };
+        leftCol.Controls.Add(_magicBurstSpell, 1, lr);
         lr++;
 
         _chkAftermath = MkCtx("aftermath_enabled");
@@ -2236,7 +2272,7 @@ public partial class MainForm
         reactionRoot.Controls.Add(_reactionEnabled);
         reactionRoot.Controls.Add(new Label
         {
-            Text = "Reactions apply only to the current combat target. Active actor IDs and reaction locks are runtime-only.",
+            Text = "Ability-window action reactions target the actor readying the named ability, even when it is not the current combat target. Active actor IDs and reaction locks are runtime-only.",
             AutoSize = true,
             Padding = new Padding(0, 5, 0, 8),
         });
@@ -2246,13 +2282,15 @@ public partial class MainForm
         {
             AutoSize = true,
             Dock = DockStyle.Top,
-            ColumnCount = 5,
+            ColumnCount = 7,
             Padding = new Padding(0, 8, 0, 0),
         };
-        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));
+        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
         reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 145));
-        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));
+        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 85));
+        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
         reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
         _reactionTriggerCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
         _reactionTriggerCombo.Items.AddRange(["ability_window", "enemy_buff"]);
@@ -2270,13 +2308,28 @@ public partial class MainForm
             Dock = DockStyle.Fill,
         };
         _reactionDistance.ValueChanged += (_, _) => OnReactionConfigChanged();
+        _reactionActionType = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
+        _reactionActionType.Items.Add("spell");
+        _reactionActionType.SelectedItem = "spell";
+        _reactionActionName = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Dock = DockStyle.Fill };
+        _reactionActionName.DropDown += (_, _) =>
+        {
+            var sid = _selectedSid;
+            if (!string.IsNullOrWhiteSpace(sid))
+            {
+                EnsureOptionsHydrated(sid, force: true);
+                RefreshReactionActionSpellOptions();
+            }
+        };
         _reactionAdd = new Button { Text = "Add", AutoSize = true };
         _reactionAdd.Click += (_, _) => OnReactionRuleAdd();
         reactionEditor.Controls.Add(_reactionTriggerCombo, 0, 0);
         reactionEditor.Controls.Add(_reactionName, 1, 0);
         reactionEditor.Controls.Add(_reactionResponseCombo, 2, 0);
         reactionEditor.Controls.Add(_reactionDistance, 3, 0);
-        reactionEditor.Controls.Add(_reactionAdd, 4, 0);
+        reactionEditor.Controls.Add(_reactionActionType, 4, 0);
+        reactionEditor.Controls.Add(_reactionActionName, 5, 0);
+        reactionEditor.Controls.Add(_reactionAdd, 6, 0);
         reactionRoot.Controls.Add(reactionEditor);
         var reactionButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         _reactionRemove = new Button { Text = "Remove", AutoSize = true };
@@ -2289,7 +2342,7 @@ public partial class MainForm
         reactionRoot.Controls.Add(reactionButtons);
         reactionRoot.Controls.Add(new Label
         {
-            Text = "Ability-window reactions can turn away, run to a minimum distance, or continuously maintain a chosen range. Enemy-buff reactions pause attacks while the named effect is active.",
+            Text = "Ability-window reactions can turn away, run to a minimum distance, maintain a chosen range, or use a configured spell. Enemy-buff reactions pause attacks while the named effect is active.",
             AutoSize = true,
             Padding = new Padding(0, 8, 0, 0),
         });
