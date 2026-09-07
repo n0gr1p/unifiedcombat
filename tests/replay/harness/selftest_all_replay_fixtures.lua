@@ -140,6 +140,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_text_utils_fixtures.lua",
     "tests/replay/harness/selftest_action_metadata_fixtures.lua",
     "tests/replay/harness/selftest_reaction_runtime.lua",
+    "tests/replay/harness/selftest_combat_extensions.lua",
 	"tests/replay/harness/selftest_encounter_state.lua",
 	"tests/replay/harness/selftest_encounter_runtime.lua",
 	"tests/replay/harness/selftest_kei_encounter.lua",
