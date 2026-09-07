@@ -1,0 +1,384 @@
+name: Apply combat extension UI integration
+
+on:
+  push:
+    branches:
+      - feature/combat-burst-reactions-auto-engage
+    paths:
+      - .github/workflows/apply-combat-extension-ui.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/combat-burst-reactions-auto-engage
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Apply end-to-end UI/profile patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected one match, found {count}: {old[:100]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          def replace_all(path, old, new, expected_min=1):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count < expected_min:
+                  raise RuntimeError(f'{path}: expected at least {expected_min} matches, found {count}: {old[:100]!r}')
+              p.write_text(text.replace(old, new), encoding='utf-8')
+
+          # Shared boolean registry: expose Auto Engage beside Auto Target.
+          replace_once(
+              'UnifiedCombatWinForms/HubUiConstants.cs',
+              '        "autotarget",\n        "spam",',
+              '        "autotarget",\n        "auto_engage",\n        "spam",'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/HubUiConstants.cs',
+              '        ["autotarget"] = "Auto Target",\n        ["spam"] = "Spam",',
+              '        ["autotarget"] = "Auto Target",\n        ["auto_engage"] = "Auto Engage",\n        ["spam"] = "Spam",'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/HubUiConstants.cs',
+              '        ["autotarget", "prime", "spam", "solo", "manual", "pause_automation_while_weakened"];',
+              '        ["autotarget", "auto_engage", "prime", "spam", "solo", "manual", "pause_automation_while_weakened"];'
+          )
+
+          # MainForm UI fields.
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityUi.cs',
+              '    private CheckBox _chkFastSkillchain = null!;\n    private ComboBox _skillchainTargetCombo = null!;',
+              '    private CheckBox _chkFastSkillchain = null!;\n    private ComboBox _skillchainTargetCombo = null!;\n    private CheckBox _magicBurstEnabled = null!;\n    private ComboBox _magicBurstSpell = null!;'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityUi.cs',
+              '    private ComboBox _reactionResponseCombo = null!;\n    private NumericUpDown _reactionDistance = null!;',
+              '    private ComboBox _reactionResponseCombo = null!;\n    private NumericUpDown _reactionDistance = null!;\n    private ComboBox _reactionActionType = null!;\n    private ComboBox _reactionActionName = null!;'
+          )
+
+          # Magic Burst UI lives in the existing combat section and reuses hydrated spell options.
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityUi.cs',
+              '        leftCol.Controls.Add(_skillchainTargetCombo, 1, lr);\n        lr++;\n\n        _chkAftermath = MkCtx("aftermath_enabled");',
+              '''        leftCol.Controls.Add(_skillchainTargetCombo, 1, lr);\n        lr++;\n\n        _magicBurstEnabled = new UcToggle\n        {\n            Text = "Magic Burst",\n            AutoSize = true,\n            Checked = false,\n        };\n        _smartWsToolTip.SetToolTip(\n            _magicBurstEnabled,\n            "Cast the configured spell when its element matches an active skillchain magic-burst window."\n        );\n        _magicBurstEnabled.CheckedChanged += (_, _) => OnMagicBurstConfigChanged();\n        leftCol.Controls.Add(_magicBurstEnabled, 0, lr);\n        _magicBurstSpell = new ComboBox\n        {\n            DropDownStyle = ComboBoxStyle.DropDown,\n            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,\n            MinimumSize = new Size(120, 0),\n        };\n        _magicBurstSpell.SelectionChangeCommitted += (_, _) => OnMagicBurstConfigChanged();\n        _magicBurstSpell.Leave += (_, _) => OnMagicBurstConfigChanged();\n        _magicBurstSpell.DropDown += (_, _) =>\n        {\n            var sid = _selectedSid;\n            if (!string.IsNullOrWhiteSpace(sid))\n            {\n                EnsureOptionsHydrated(sid, force: true);\n                RefreshMagicBurstSpellOptions();\n            }\n        };\n        leftCol.Controls.Add(_magicBurstSpell, 1, lr);\n        lr++;\n\n        _chkAftermath = MkCtx("aftermath_enabled");'''
+          )
+
+          # Reaction editor gains generic use_action / spell fields.
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityUi.cs',
+              '            Text = "Reactions apply only to the current combat target. Active actor IDs and reaction locks are runtime-only.",',
+              '            Text = "Ability-window action reactions target the actor readying the named ability, even when it is not the current combat target. Active actor IDs and reaction locks are runtime-only.",'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityUi.cs',
+              '''            ColumnCount = 5,\n            Padding = new Padding(0, 8, 0, 0),\n        };\n        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));\n        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));\n        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 145));\n        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));\n        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));''',
+              '''            ColumnCount = 7,\n            Padding = new Padding(0, 8, 0, 0),\n        };\n        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));\n        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));\n        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));\n        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));\n        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 85));\n        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));\n        reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityUi.cs',
+              '''        _reactionDistance.ValueChanged += (_, _) => OnReactionConfigChanged();\n        _reactionAdd = new Button { Text = "Add", AutoSize = true };''',
+              '''        _reactionDistance.ValueChanged += (_, _) => OnReactionConfigChanged();\n        _reactionActionType = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };\n        _reactionActionType.Items.Add("spell");\n        _reactionActionType.SelectedItem = "spell";\n        _reactionActionName = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Dock = DockStyle.Fill };\n        _reactionActionName.DropDown += (_, _) =>\n        {\n            var sid = _selectedSid;\n            if (!string.IsNullOrWhiteSpace(sid))\n            {\n                EnsureOptionsHydrated(sid, force: true);\n                RefreshReactionActionSpellOptions();\n            }\n        };\n        _reactionAdd = new Button { Text = "Add", AutoSize = true };'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityUi.cs',
+              '''        reactionEditor.Controls.Add(_reactionResponseCombo, 2, 0);\n        reactionEditor.Controls.Add(_reactionDistance, 3, 0);\n        reactionEditor.Controls.Add(_reactionAdd, 4, 0);''',
+              '''        reactionEditor.Controls.Add(_reactionResponseCombo, 2, 0);\n        reactionEditor.Controls.Add(_reactionDistance, 3, 0);\n        reactionEditor.Controls.Add(_reactionActionType, 4, 0);\n        reactionEditor.Controls.Add(_reactionActionName, 5, 0);\n        reactionEditor.Controls.Add(_reactionAdd, 6, 0);'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityUi.cs',
+              '            Text = "Ability-window reactions can turn away, run to a minimum distance, or continuously maintain a chosen range. Enemy-buff reactions pause attacks while the named effect is active.",',
+              '            Text = "Ability-window reactions can turn away, run to a minimum distance, maintain a chosen range, or use a configured spell. Enemy-buff reactions pause attacks while the named effect is active.",'
+          )
+
+          # MainForm logic: model action fields and preserve backward-compatible defaults.
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '    private sealed record ReactionRuleRow(string Trigger, string Name, string Response, double? Distance);',
+              '''    private sealed record ReactionRuleRow(\n        string Trigger,\n        string Name,\n        string Response,\n        double? Distance,\n        string? ActionType = null,\n        string? ActionName = null\n    );'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '            var incoming = SessionStateHelper.GetBool(s, key, false);',
+              '            var incoming = SessionStateHelper.GetBool(s, key, string.Equals(key, "auto_engage", StringComparison.Ordinal));'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '''            foreach (var key in HubUiConstants.BoolKeys)\n            {\n                if (_boolChecks.TryGetValue(key, out var cb))\n                {\n                    cb.Checked = false;\n                }\n            }\n\n            _wsCombo.Items.Clear();''',
+              '''            foreach (var key in HubUiConstants.BoolKeys)\n            {\n                if (_boolChecks.TryGetValue(key, out var cb))\n                {\n                    cb.Checked = false;\n                }\n            }\n            if (_boolChecks.TryGetValue("auto_engage", out var autoEngage))\n            {\n                autoEngage.Checked = true;\n            }\n\n            _wsCombo.Items.Clear();'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '''            _skillchainTargetCombo.SelectedItem = "Auto";\n            _pullerCombo.Items.Clear();''',
+              '''            _skillchainTargetCombo.SelectedItem = "Auto";\n            _magicBurstEnabled.Checked = false;\n            _magicBurstSpell.Items.Clear();\n            _magicBurstSpell.Text = "";\n            _pullerCombo.Items.Clear();'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '''            _reactionName.Text = "";\n            _reactionDistance.Value = 12m;\n            _reactionTriggerCombo.SelectedItem = "ability_window";''',
+              '''            _reactionName.Text = "";\n            _reactionDistance.Value = 12m;\n            _reactionActionType.SelectedItem = "spell";\n            _reactionActionName.Items.Clear();\n            _reactionActionName.Text = "";\n            _reactionTriggerCombo.SelectedItem = "ability_window";'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '''            _skillchainTargetCombo.SelectedItem = SkillchainTargetRuntimeToUi(\n                SessionStateHelper.GetString(s, "skillchain_target", "auto")\n            );\n            var amDisplay = new List<string>(wsOpts);''',
+              '''            _skillchainTargetCombo.SelectedItem = SkillchainTargetRuntimeToUi(\n                SessionStateHelper.GetString(s, "skillchain_target", "auto")\n            );\n            _magicBurstEnabled.Checked = SessionStateHelper.GetBool(s, "magic_burst_enabled", false);\n            RefreshMagicBurstSpellOptions(SessionStateHelper.GetString(s, "spell"));\n            var amDisplay = new List<string>(wsOpts);'''
+          )
+          replace_all(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '''                _pathPullSpellOptions.Clear();\n                _pathPullSpellOptions.AddRange(pullSpellOpts);\n                RefreshKeiSpellOptions();''',
+              '''                _pathPullSpellOptions.Clear();\n                _pathPullSpellOptions.AddRange(pullSpellOpts);\n                RefreshKeiSpellOptions();\n                RefreshMagicBurstSpellOptions();\n                RefreshReactionActionSpellOptions();''',
+              1
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '                    cb.Checked = SessionStateHelper.GetBool(s, key, false);',
+              '                    cb.Checked = SessionStateHelper.GetBool(s, key, string.Equals(key, "auto_engage", StringComparison.Ordinal));'
+          )
+
+          # Replace the reaction load/render/options block with use_action-aware behavior.
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '''                var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range"))\n                    || (trigger == "enemy_buff" && response == "stop_attacking");\n                double? distance = null;\n                if (response is "run_away" or "move_to_range")\n                {\n                    if (!item.TryGetProperty("distance", out var distanceNode)\n                        || distanceNode.ValueKind != JsonValueKind.Number\n                        || !distanceNode.TryGetDouble(out var parsedDistance)\n                        || !double.IsFinite(parsedDistance)\n                        || parsedDistance <= 0)\n                    {\n                        throw new InvalidDataException($"{response} reaction requires a positive finite distance");\n                    }\n                    distance = parsedDistance;\n                }\n                if (valid && name.Length > 0)\n                {\n                    _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance));\n                }''',
+              '''                var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))\n                    || (trigger == "enemy_buff" && response == "stop_attacking");\n                double? distance = null;\n                string? actionType = null;\n                string? actionName = null;\n                if (response is "run_away" or "move_to_range")\n                {\n                    if (!item.TryGetProperty("distance", out var distanceNode)\n                        || distanceNode.ValueKind != JsonValueKind.Number\n                        || !distanceNode.TryGetDouble(out var parsedDistance)\n                        || !double.IsFinite(parsedDistance)\n                        || parsedDistance <= 0)\n                    {\n                        throw new InvalidDataException($"{response} reaction requires a positive finite distance");\n                    }\n                    distance = parsedDistance;\n                }\n                else if (response == "use_action")\n                {\n                    actionType = SessionStateHelper.GetString(item, "action_type").Trim();\n                    actionName = SessionStateHelper.GetString(item, "action_name").Trim();\n                    if (actionType != "spell" || actionName.Length == 0)\n                    {\n                        throw new InvalidDataException("use_action reaction requires action_type 'spell' and a non-empty action_name");\n                    }\n                }\n                if (valid && name.Length > 0)\n                {\n                    _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance, actionType, actionName));\n                }'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '''            var distance = rule.Distance.HasValue ? $" | {rule.Distance.Value:0.0}y" : "";\n            _reactionRuleList.Items.Add($"{rule.Trigger} | {rule.Name} | {rule.Response}{distance}");''',
+              '''            var distance = rule.Distance.HasValue ? $" | {rule.Distance.Value:0.0}y" : "";\n            var action = rule.Response == "use_action" ? $" | {rule.ActionType}: {rule.ActionName}" : "";\n            _reactionRuleList.Items.Add($"{rule.Trigger} | {rule.Name} | {rule.Response}{distance}{action}");'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '            _reactionResponseCombo.Items.AddRange(["turn_away", "run_away", "move_to_range"]);',
+              '            _reactionResponseCombo.Items.AddRange(["turn_away", "run_away", "move_to_range", "use_action"]);'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '''        var response = _reactionResponseCombo.SelectedItem?.ToString();\n        _reactionDistance.Enabled = response is "run_away" or "move_to_range";''',
+              '''        var response = _reactionResponseCombo.SelectedItem?.ToString();\n        _reactionDistance.Enabled = response is "run_away" or "move_to_range";\n        var actionEnabled = response == "use_action";\n        _reactionActionType.Enabled = actionEnabled;\n        _reactionActionName.Enabled = actionEnabled;\n        if (actionEnabled)\n        {\n            _reactionActionType.SelectedItem = "spell";\n            RefreshReactionActionSpellOptions();\n        }'''
+          )
+
+          # Add magic-burst/action option helpers immediately before reaction snapshot loading.
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '    private void ApplyReactionRulesFromSnapshot(JsonElement snapshot)\n    {',
+              '''    private void OnMagicBurstConfigChanged()\n    {\n        if (_suppressEvents || string.IsNullOrWhiteSpace(_selectedSid))\n        {\n            return;\n        }\n        CaptureWorkingProfileFromUi(_selectedSid);\n    }\n\n    private void RefreshMagicBurstSpellOptions(string? selected = null)\n    {\n        selected = string.IsNullOrWhiteSpace(selected) ? (_magicBurstSpell.Text ?? "").Trim() : selected.Trim();\n        _magicBurstSpell.Items.Clear();\n        foreach (var spell in _pathPullSpellOptions)\n        {\n            _magicBurstSpell.Items.Add(spell);\n        }\n        _magicBurstSpell.Text = selected ?? "";\n    }\n\n    private void RefreshReactionActionSpellOptions(string? selected = null)\n    {\n        selected = string.IsNullOrWhiteSpace(selected) ? (_reactionActionName.Text ?? "").Trim() : selected.Trim();\n        _reactionActionName.Items.Clear();\n        foreach (var spell in _pathPullSpellOptions)\n        {\n            _reactionActionName.Items.Add(spell);\n        }\n        _reactionActionName.Text = selected ?? "";\n    }\n\n    private void ApplyReactionRulesFromSnapshot(JsonElement snapshot)\n    {'''
+          )
+
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '''        var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range"))\n            || (trigger == "enemy_buff" && response == "stop_attacking");\n        if (!valid || name.Length == 0)\n        {\n            return;\n        }''',
+              '''        var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))\n            || (trigger == "enemy_buff" && response == "stop_attacking");\n        if (!valid || name.Length == 0)\n        {\n            return;\n        }'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '''        var distance = response is "run_away" or "move_to_range" ? decimal.ToDouble(_reactionDistance.Value) : (double?)null;\n        _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance));\n        _reactionName.Text = "";''',
+              '''        var distance = response is "run_away" or "move_to_range" ? decimal.ToDouble(_reactionDistance.Value) : (double?)null;\n        string? actionType = null;\n        string? actionName = null;\n        if (response == "use_action")\n        {\n            actionType = _reactionActionType.SelectedItem?.ToString() ?? "";\n            actionName = (_reactionActionName.Text ?? "").Trim();\n            if (actionType != "spell" || actionName.Length == 0)\n            {\n                return;\n            }\n        }\n        _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance, actionType, actionName));\n        _reactionName.Text = "";\n        if (response == "use_action")\n        {\n            _reactionActionName.Text = "";\n        }'''
+          )
+
+          # UI profile persistence and migration.
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
+              '    private const int ProfileSchemaVersion = 4;',
+              '    private const int ProfileSchemaVersion = 5;'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
+              '''            ["aftermath_ws"] = (_aftermathCombo.Text ?? "").Trim(),\n            ["skillchain_target"] = SkillchainTargetUiToRuntime(_skillchainTargetCombo.SelectedItem?.ToString()),''',
+              '''            ["aftermath_ws"] = (_aftermathCombo.Text ?? "").Trim(),\n            ["skillchain_target"] = SkillchainTargetUiToRuntime(_skillchainTargetCombo.SelectedItem?.ToString()),\n            ["magic_burst_enabled"] = _magicBurstEnabled.Checked,\n            ["spell"] = (_magicBurstSpell.Text ?? "").Trim(),'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
+              '''            if (rule.Response is "run_away" or "move_to_range")\n            {\n                if (!rule.Distance.HasValue || !double.IsFinite(rule.Distance.Value) || rule.Distance.Value <= 0)\n                {\n                    throw new InvalidDataException($"{rule.Response} reaction requires a positive finite distance");\n                }\n                serialized["distance"] = rule.Distance.Value;\n            }\n            rules.Add(serialized);''',
+              '''            if (rule.Response is "run_away" or "move_to_range")\n            {\n                if (!rule.Distance.HasValue || !double.IsFinite(rule.Distance.Value) || rule.Distance.Value <= 0)\n                {\n                    throw new InvalidDataException($"{rule.Response} reaction requires a positive finite distance");\n                }\n                serialized["distance"] = rule.Distance.Value;\n            }\n            else if (rule.Response == "use_action")\n            {\n                if (rule.ActionType != "spell" || string.IsNullOrWhiteSpace(rule.ActionName))\n                {\n                    throw new InvalidDataException("use_action reaction requires action_type 'spell' and a non-empty action_name");\n                }\n                serialized["action_type"] = rule.ActionType;\n                serialized["action_name"] = rule.ActionName.Trim();\n            }\n            rules.Add(serialized);'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
+              '''            ["skillchain_target"] = "auto",\n            ["aftermath_ws"] = "",''',
+              '''            ["skillchain_target"] = "auto",\n            ["magic_burst_enabled"] = false,\n            ["spell"] = "",\n            ["aftermath_ws"] = "",'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
+              '''        foreach (var key in RequiredDomainBoolKeys)\n        {\n            p[key] = true;\n        }\n\n        return p;''',
+              '''        foreach (var key in RequiredDomainBoolKeys)\n        {\n            p[key] = true;\n        }\n        p["auto_engage"] = true;\n\n        return p;'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
+              '''        if (!root.ContainsKey("skillchain_target"))\n        {\n            root["skillchain_target"] = "auto";\n            changed = true;\n        }\n\n        if (schema < 3)''',
+              '''        if (!root.ContainsKey("skillchain_target"))\n        {\n            root["skillchain_target"] = "auto";\n            changed = true;\n        }\n        if (!root.ContainsKey("auto_engage"))\n        {\n            root["auto_engage"] = true;\n            changed = true;\n        }\n        if (!root.ContainsKey("magic_burst_enabled"))\n        {\n            root["magic_burst_enabled"] = false;\n            changed = true;\n        }\n        if (!root.ContainsKey("spell"))\n        {\n            root["spell"] = "";\n            changed = true;\n        }\n\n        if (schema < 3)'''
+          )
+
+          # Structured Profile V2 writer emits all three new durable settings.
+          replace_once(
+              'UnifiedCombatWinForms/StructuredProfileV2Writer.cs',
+              '            .Add("autotarget", ReadBool(flatProfile, "autotarget", false))\n            .Add("spam",',
+              '            .Add("autotarget", ReadBool(flatProfile, "autotarget", false))\n            .Add("auto_engage", ReadBool(flatProfile, "auto_engage", true))\n            .Add("spam",'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/StructuredProfileV2Writer.cs',
+              '''            .Add("enabled", ReadBool(flatProfile, "spell_active", false))\n            .Add("configured", ReadString(flatProfile, "spell", ""))\n            .Add("dd2_slots", EmptyList());''',
+              '''            .Add("enabled", ReadBool(flatProfile, "spell_active", false))\n            .Add("configured", ReadString(flatProfile, "spell", ""))\n            .Add("magic_burst", ReadBool(flatProfile, "magic_burst_enabled", false))\n            .Add("dd2_slots", EmptyList());'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/StructuredProfileV2Writer.cs',
+              '''            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range"))\n                || (trigger == "enemy_buff" && response == "stop_attacking");''',
+              '''            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))\n                || (trigger == "enemy_buff" && response == "stop_attacking");'''
+          )
+          replace_once(
+              'UnifiedCombatWinForms/StructuredProfileV2Writer.cs',
+              '''                serialized.Add("distance", distance);\n            }\n            list.Add(serialized);''',
+              '''                serialized.Add("distance", distance);\n            }\n            else if (response == "use_action")\n            {\n                var actionType = ReadString(rule, "action_type", "").Trim();\n                var actionName = ReadString(rule, "action_name", "").Trim();\n                if (actionType != "spell" || actionName.Length == 0)\n                {\n                    throw new InvalidDataException("use_action reaction requires action_type 'spell' and a non-empty action_name");\n                }\n                serialized.Add("action_type", actionType);\n                serialized.Add("action_name", actionName);\n            }\n            list.Add(serialized);'''
+          )
+
+          # Canonical Lua schema/defaults/projection.
+          replace_once(
+              'uc_config_normalizer.lua',
+              '''        enabled = true,\n        autotarget = false,\n        spam = false,''',
+              '''        enabled = true,\n        autotarget = false,\n        auto_engage = true,\n        spam = false,'''
+          )
+          replace_once(
+              'uc_config_normalizer.lua',
+              '''    spells = {\n        enabled = false,\n        configured = '',\n        dd2_slots = {},\n    },''',
+              '''    spells = {\n        enabled = false,\n        configured = '',\n        magic_burst = false,\n        dd2_slots = {},\n    },'''
+          )
+          replace_once(
+              'uc_config_normalizer.lua',
+              '''            local valid = (trigger == 'ability_window'\n                    and (response == 'turn_away' or response == 'run_away' or response == 'move_to_range'))\n                or (trigger == 'enemy_buff' and response == 'stop_attacking')''',
+              '''            local valid = (trigger == 'ability_window'\n                    and (response == 'turn_away' or response == 'run_away' or response == 'move_to_range' or response == 'use_action'))\n                or (trigger == 'enemy_buff' and response == 'stop_attacking')'''
+          )
+          replace_once(
+              'uc_config_normalizer.lua',
+              '''                    normalized.distance = entry.distance\n                end\n                out[#out + 1] = normalized''',
+              '''                    normalized.distance = entry.distance\n                elseif response == 'use_action' then\n                    local action_type = normalize_optional_string(entry.action_type)\n                    local action_name = normalize_optional_string(entry.action_name)\n                    if action_type ~= 'spell' then\n                        error(('reactions.rules[%d].action_type must be spell for use_action'):format(i))\n                    end\n                    if action_name == nil then\n                        error(('reactions.rules[%d].action_name is required for use_action'):format(i))\n                    end\n                    normalized.action_type = action_type\n                    normalized.action_name = action_name\n                end\n                out[#out + 1] = normalized'''
+          )
+          replace_once(
+              'uc_config_normalizer.lua',
+              "        if is_table(nested) and table_has_any(nested, { 'enabled', 'autotarget', 'spam', 'closer', 'manual', 'prime', 'static', 'face', 'weaponskill', 'pulling' }) then",
+              "        if is_table(nested) and table_has_any(nested, { 'enabled', 'autotarget', 'auto_engage', 'spam', 'closer', 'manual', 'prime', 'static', 'face', 'weaponskill', 'pulling' }) then"
+          )
+          replace_once(
+              'uc_config_normalizer.lua',
+              '''            combat.enabled = normalize_boolean(nested.enabled, combat.enabled)\n            combat.autotarget = normalize_boolean(nested.autotarget, combat.autotarget)\n            combat.spam = normalize_boolean(nested.spam, combat.spam)''',
+              '''            combat.enabled = normalize_boolean(nested.enabled, combat.enabled)\n            combat.autotarget = normalize_boolean(nested.autotarget, combat.autotarget)\n            combat.auto_engage = normalize_boolean(nested.auto_engage, combat.auto_engage)\n            combat.spam = normalize_boolean(nested.spam, combat.spam)'''
+          )
+          replace_once(
+              'uc_config_normalizer.lua',
+              '''            combat.enabled = normalize_boolean(first_path(source, { path('domain_combat_enabled') }), combat.enabled)\n            combat.autotarget = normalize_boolean(first_path(source, { path('autotarget') }), combat.autotarget)\n            combat.spam = normalize_boolean(first_path(source, { path('spam') }), combat.spam)''',
+              '''            combat.enabled = normalize_boolean(first_path(source, { path('domain_combat_enabled') }), combat.enabled)\n            combat.autotarget = normalize_boolean(first_path(source, { path('autotarget') }), combat.autotarget)\n            combat.auto_engage = normalize_boolean(first_path(source, { path('auto_engage') }), combat.auto_engage)\n            combat.spam = normalize_boolean(first_path(source, { path('spam') }), combat.spam)'''
+          )
+          replace_once(
+              'uc_config_normalizer.lua',
+              "        if is_table(nested) and table_has_any(nested, { 'enabled', 'configured', 'dd2_slots', 'spell' }) then",
+              "        if is_table(nested) and table_has_any(nested, { 'enabled', 'configured', 'magic_burst', 'dd2_slots', 'spell' }) then"
+          )
+          replace_once(
+              'uc_config_normalizer.lua',
+              '''            spells.enabled = normalize_boolean(nested.enabled, spells.enabled)\n            spells.configured = normalize_string(nested.configured or nested.spell, spells.configured)\n            spells.dd2_slots = normalize_list(nested.dd2_slots, spells.dd2_slots)''',
+              '''            spells.enabled = normalize_boolean(nested.enabled, spells.enabled)\n            spells.configured = normalize_string(nested.configured or nested.spell, spells.configured)\n            spells.magic_burst = normalize_boolean(nested.magic_burst, spells.magic_burst)\n            spells.dd2_slots = normalize_list(nested.dd2_slots, spells.dd2_slots)'''
+          )
+          replace_once(
+              'uc_config_normalizer.lua',
+              '''            spells.enabled = normalize_boolean(first_path(source, { path('spell_active') }), spells.enabled)\n            spells.configured = normalize_string(first_path(source, { path('spell') }), spells.configured)\n            spells.dd2_slots = normalize_list(first_path(source, { path('dd2_spell_slots') }), spells.dd2_slots)''',
+              '''            spells.enabled = normalize_boolean(first_path(source, { path('spell_active') }), spells.enabled)\n            spells.configured = normalize_string(first_path(source, { path('spell') }), spells.configured)\n            spells.magic_burst = normalize_boolean(first_path(source, { path('magic_burst_enabled') }), spells.magic_burst)\n            spells.dd2_slots = normalize_list(first_path(source, { path('dd2_spell_slots') }), spells.dd2_slots)'''
+          )
+          replace_once(
+              'uc_active_config.lua',
+              '''\t\tcandidate.domain_combat_enabled = config.combat.enabled\n\t\tcandidate.autotarget = config.combat.autotarget\n\t\tcandidate.spam = config.combat.spam''',
+              '''\t\tcandidate.domain_combat_enabled = config.combat.enabled\n\t\tcandidate.autotarget = config.combat.autotarget\n\t\tcandidate.auto_engage = config.combat.auto_engage\n\t\tcandidate.spam = config.combat.spam'''
+          )
+          replace_once(
+              'uc_active_config.lua',
+              '''\tif type(config.spells) == 'table' then\n\t\tcandidate.spell_active = config.spells.enabled\n\t\tcandidate.spell = config.spells.configured\n\t\tcandidate.dd2_spell_slots = clone_value(config.spells.dd2_slots)\n\tend''',
+              '''\tif type(config.spells) == 'table' then\n\t\tcandidate.spell_active = config.spells.enabled\n\t\tcandidate.spell = config.spells.configured\n\t\tcandidate.magic_burst_enabled = config.spells.magic_burst\n\t\tcandidate.dd2_spell_slots = clone_value(config.spells.dd2_slots)\n\tend'''
+          )
+
+          # C# regression coverage: writer, migration defaults, and UI registry.
+          replace_once(
+              'UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs',
+              '            TestSerializeReactionRules();\n            TestRejectInvalidRunAwayDistance();',
+              '            TestSerializeReactionRules();\n            TestCombatExtensionProfileContract();\n            TestRejectInvalidRunAwayDistance();'
+          )
+          replace_all(
+              'UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs',
+              'profile["profile_schema_version"]!.GetValue<int>(), 4,',
+              'profile["profile_schema_version"]!.GetValue<int>(), 5,',
+              2
+          )
+          replace_once(
+              'UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs',
+              '    private static void TestSerializeShapeAndEscaping()\n    {',
+              '''    private static void TestCombatExtensionProfileContract()\n    {\n        var migrated = new JsonObject { ["profile_schema_version"] = 4 };\n        AssertTrue(MainForm.MigrateProfileInPlace(migrated), "schema-four profile must migrate to combat-extension defaults");\n        AssertTrue(migrated["auto_engage"]!.GetValue<bool>(), "legacy profile must default Auto Engage on");\n        AssertTrue(!migrated["magic_burst_enabled"]!.GetValue<bool>(), "legacy profile must default Magic Burst off");\n        AssertEqual(migrated["spell"]!.GetValue<string>(), "", "legacy profile must default configured spell empty");\n\n        var flat = BuildSampleFlatProfile();\n        flat["auto_engage"] = false;\n        flat["magic_burst_enabled"] = true;\n        flat["spell"] = "Fire V";\n        flat["reaction_enabled"] = true;\n        flat["reaction_rules"] = new JsonArray\n        {\n            new JsonObject\n            {\n                ["trigger"] = "ability_window",\n                ["name"] = "Just Desserts",\n                ["response"] = "use_action",\n                ["action_type"] = "spell",\n                ["action_name"] = "Stun",\n            },\n        };\n        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(\n            flat,\n            new StructuredProfileV2Identity("Niightsiide", "GEO", "RDM")\n        );\n        AssertContains(content, "auto_engage = false", "Auto Engage must serialize independently from Auto Target");\n        AssertContains(content, "configured = \\\"Fire V\\\"", "Magic Burst configured spell missing");\n        AssertContains(content, "magic_burst = true", "Magic Burst toggle missing");\n        AssertContains(content, "response = \\\"use_action\\\"", "use_action reaction response missing");\n        AssertContains(content, "action_type = \\\"spell\\\"", "reaction action type missing");\n        AssertContains(content, "action_name = \\\"Stun\\\"", "reaction action name missing");\n        AssertTrue(HubUiConstants.BoolKeys.Contains("auto_engage"), "Auto Engage must be persisted by the shared UI boolean registry");\n        AssertTrue(HubUiConstants.CombatTargetingUiKeys.Contains("auto_engage"), "Auto Engage must appear in Combat & Targeting UI");\n    }\n\n    private static void TestSerializeShapeAndEscaping()\n    {'''
+          )
+
+          # Lua normalizer regression coverage in the existing suite.
+          replace_once(
+              'tests/replay/harness/selftest_config_normalizer.lua',
+              '''        autotarget = true,\n        spam = true,''',
+              '''        autotarget = true,\n        auto_engage = false,\n        spam = true,'''
+          )
+          replace_once(
+              'tests/replay/harness/selftest_config_normalizer.lua',
+              '''        spell = 'Dia',\n        spell_active = true,\n        dd2_spell_slots = { { spell = 'Dia' } },''',
+              '''        spell = 'Fire V',\n        spell_active = true,\n        magic_burst_enabled = true,\n        dd2_spell_slots = { { spell = 'Dia' } },'''
+          )
+          replace_once(
+              'tests/replay/harness/selftest_config_normalizer.lua',
+              '''        reaction_rules = {\n            { trigger = 'ability_window', name = 'Cold Stare', response = 'turn_away' },''',
+              '''        reaction_rules = {\n            { trigger = 'ability_window', name = 'Just Desserts', response = 'use_action', action_type = 'spell', action_name = 'Stun' },\n            { trigger = 'ability_window', name = 'Cold Stare', response = 'turn_away' },'''
+          )
+
+          # Add assertions near the existing normalized combat/spell/reaction checks.
+          replace_once(
+              'tests/replay/harness/selftest_config_normalizer.lua',
+              "assert_equal(flat_normalized.combat.autotarget, true, 'flat combat autotarget mismatch')",
+              "assert_equal(flat_normalized.combat.autotarget, true, 'flat combat autotarget mismatch')\nassert_equal(flat_normalized.combat.auto_engage, false, 'flat combat auto_engage mismatch')"
+          )
+          replace_once(
+              'tests/replay/harness/selftest_config_normalizer.lua',
+              "assert_equal(flat_normalized.spells.configured, 'Dia', 'flat spell mismatch')",
+              "assert_equal(flat_normalized.spells.configured, 'Fire V', 'flat spell mismatch')\nassert_equal(flat_normalized.spells.magic_burst, true, 'flat magic burst mismatch')"
+          )
+
+          print('combat extension UI/profile patch applied')
+          PY
+
+      - name: Build WinForms
+        shell: pwsh
+        run: dotnet build .\UnifiedCombatWinForms\UnifiedCombatWinForms.csproj -c Release
+
+      - name: Run Profile V2 selftests
+        shell: pwsh
+        run: dotnet run --project .\UnifiedCombatWinForms\UnifiedCombatWinForms.csproj -c Release -- --selftest-profile-v2
+
+      - name: Commit tested changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add UnifiedCombatWinForms/HubUiConstants.cs \
+                  UnifiedCombatWinForms/MainForm.ParityUi.cs \
+                  UnifiedCombatWinForms/MainForm.ParityLogic.cs \
+                  UnifiedCombatWinForms/MainForm.ProfileStore.cs \
+                  UnifiedCombatWinForms/StructuredProfileV2Writer.cs \
+                  UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs \
+                  uc_config_normalizer.lua \
+                  uc_active_config.lua \
+                  tests/replay/harness/selftest_config_normalizer.lua
+          git diff --cached --check
+          git commit -m "Expose combat extensions in profile UI"
+          git push origin HEAD:feature/combat-burst-reactions-auto-engage
