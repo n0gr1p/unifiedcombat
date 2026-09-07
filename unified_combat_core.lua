@@ -2286,9 +2286,13 @@ end
 local function apply_movement(settings, target, executor)
 	set_preengage_approach_active(false)
 	_G.UC_PULLER_APPROACH_BLOCK_UNTIL = 0
-	-- Guard: do not drive combat-close movement from a manually selected target
-	-- unless autotarget is enabled (normal combat ownership) or explicit move mode is on.
-	if (not setting_enabled(settings.autotarget)) and (not setting_enabled(settings.move)) then
+	-- Generic combat-close movement belongs to automatic melee engagement.
+	-- Auto Target may still maintain <t> for support/reaction actions while Auto Engage
+	-- is off, so do not let target ownership alone pull followers into melee range.
+	-- Explicit move mode remains an intentional override for callers that own movement.
+	local explicit_move = setting_enabled(settings.move)
+	local auto_engage = require('uc_combat_extension_config').auto_engage_enabled(settings)
+	if (not explicit_move) and ((not setting_enabled(settings.autotarget)) or (not auto_engage)) then
 		if core.last_run_active then
 			stop_run(executor)
 		end
