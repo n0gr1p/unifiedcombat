@@ -26,6 +26,7 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           import textwrap
           wf = Path('.github/workflows/apply-combat-extension-ui.yml').read_text(encoding='utf-8')
           start = wf.index("          from pathlib import Path\n")
@@ -65,11 +66,20 @@ jobs:
                   raise RuntimeError('failed to locate patch anchor: ' + before[:100])
               script = script.replace(before, after, 1)
 
-          # The second lines in these multiline replacement bodies need the same indentation shift.
           script = script.replace("\\n            combat.auto_engage", "\\n        combat.auto_engage")
           script = script.replace("\\n            combat.spam", "\\n        combat.spam")
           script = script.replace("\\n            spells.magic_burst", "\\n        spells.magic_burst")
           script = script.replace("\\n            spells.dd2_slots", "\\n        spells.dd2_slots")
+
+          # Apply the production/UI patch first. Normalizer regression coverage is added as a
+          # separate focused test after the source is build-clean, avoiding stale fixture anchors.
+          pattern = re.compile(
+              r"(?:replace_once|replace_all)\(\n\s*'tests/replay/harness/selftest_config_normalizer\.lua'.*?\n\s*\)\n",
+              re.S,
+          )
+          script, removed = pattern.subn('', script)
+          if removed < 1:
+              raise RuntimeError('expected to remove selftest_config_normalizer patch operations')
 
           Path('apply_patch.py').write_text(script, encoding='utf-8')
           PY
@@ -93,8 +103,7 @@ jobs:
                   UnifiedCombatWinForms/StructuredProfileV2Writer.cs \
                   UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs \
                   uc_config_normalizer.lua \
-                  uc_active_config.lua \
-                  tests/replay/harness/selftest_config_normalizer.lua
+                  uc_active_config.lua
           git diff --cached --check
           git commit -m "Expose combat extensions in profile UI"
           git push origin HEAD:feature/combat-burst-reactions-auto-engage
