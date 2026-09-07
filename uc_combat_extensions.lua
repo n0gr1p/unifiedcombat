@@ -1,9 +1,3 @@
-local res = require('resources')
-local combat_core = require('unified_combat_core')
-local skillchain_elements = require('uc_skillchain_elements')
-local reaction_runtime = require('uc_reaction_runtime')
-local extension_config = require('uc_combat_extension_config')
-
 local M = {}
 
 local MAGIC_BURST_MIN_WINDOW_S = 6.0
@@ -18,7 +12,12 @@ local function require_function(deps, name)
     return value
 end
 
+local function extension_config()
+    return require('uc_combat_extension_config')
+end
+
 local function spell_resource(name)
+    local res = require('resources')
     if type(res.spells) ~= 'table' or type(res.spells.with) ~= 'function' then
         return nil
     end
@@ -32,6 +31,7 @@ local function spell_element(spell)
     if type(spell.element) == 'string' then
         return spell.element
     end
+    local res = require('resources')
     local element_id = tonumber(spell.element)
     local element = element_id and res.elements and res.elements[element_id] or nil
     return tostring(element and element.en or '')
@@ -107,50 +107,69 @@ local function append_spell(out, ctx, options)
     return true
 end
 
+local function action_reaction_configured(rules)
+    if type(rules) ~= 'table' then
+        return false
+    end
+    for i = 1, #rules do
+        local rule = rules[i]
+        if type(rule) == 'table' and rule.response == 'use_action' then
+            return true
+        end
+    end
+    return false
+end
+
 function M.new(deps)
     local action_ready = require_function(deps, 'action_ready')
     local action_effective_range = require_function(deps, 'action_effective_range')
     local api = {}
 
     function api.auto_engage_enabled(settings)
-        return extension_config.auto_engage_enabled(settings)
+        return extension_config().auto_engage_enabled(settings)
     end
 
     function api.collect_priority_offense(ctx, out)
-        local action_lock = reaction_runtime.get_action_lock()
-        if type(action_lock) == 'table' then
-            local action_type = tostring(action_lock.action_type or ''):lower()
-            local action_name = tostring(action_lock.action_name or '')
-            if action_type == 'spell' and action_name ~= '' then
-                if append_spell(out, ctx, {
-                    action_ready = action_ready,
-                    action_effective_range = action_effective_range,
-                    spell_name = action_name,
-                    target_id = tonumber(action_lock.actor_id) or 0,
-                    target_name = tostring(action_lock.actor_name or action_lock.name or ''),
-                    family_id = 'combat.reaction.action',
-                    id_prefix = 'reaction',
-                    priority_band = REACTION_PRIORITY_BAND,
-                    urgency = 1.0,
-                    reason_code = 'reaction_action',
-                    detail = {
-                        reaction_name = tostring(action_lock.name or ''),
-                        reaction_key = tostring(action_lock.key or ''),
-                    },
-                }) then
-                    return true
+        local config = extension_config()
+        local reaction_rules = config.reaction_rules()
+        if action_reaction_configured(reaction_rules) then
+            local reaction_runtime = require('uc_reaction_runtime')
+            local action_lock = reaction_runtime.get_action_lock()
+            if type(action_lock) == 'table' then
+                local action_type = tostring(action_lock.action_type or ''):lower()
+                local action_name = tostring(action_lock.action_name or '')
+                if action_type == 'spell' and action_name ~= '' then
+                    if append_spell(out, ctx, {
+                        action_ready = action_ready,
+                        action_effective_range = action_effective_range,
+                        spell_name = action_name,
+                        target_id = tonumber(action_lock.actor_id) or 0,
+                        target_name = tostring(action_lock.actor_name or action_lock.name or ''),
+                        family_id = 'combat.reaction.action',
+                        id_prefix = 'reaction',
+                        priority_band = REACTION_PRIORITY_BAND,
+                        urgency = 1.0,
+                        reason_code = 'reaction_action',
+                        detail = {
+                            reaction_name = tostring(action_lock.name or ''),
+                            reaction_key = tostring(action_lock.key or ''),
+                        },
+                    }) then
+                        return true
+                    end
                 end
             end
         end
 
+        local burst = config.magic_burst(ctx.settings)
+        if burst.enabled ~= true or burst.spell == '' then
+            return false
+        end
         local target = ctx.target_present == true and ctx.target or nil
         if not valid_target(target) then
             return false
         end
-        local burst = extension_config.magic_burst(ctx.settings)
-        if burst.enabled ~= true or burst.spell == '' then
-            return false
-        end
+        local combat_core = require('unified_combat_core')
         local state = combat_core.get_skillchain_snapshot(tonumber(target.id) or 0)
         if type(state) ~= 'table' then
             return false
@@ -172,6 +191,7 @@ function M.new(deps)
             return false
         end
         local element = spell_element(spell)
+        local skillchain_elements = require('uc_skillchain_elements')
         if element == '' or not skillchain_elements.contains(property, element) then
             return false
         end
