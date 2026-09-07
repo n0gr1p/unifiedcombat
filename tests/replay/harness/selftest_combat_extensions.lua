@@ -166,9 +166,22 @@ local ok, err = xpcall(function()
         end
         return { spells = spells, elements = {} }
     end
+    local provider_reaction_config = {
+        enabled = true,
+        rules = {
+            {
+                trigger = 'ability_window',
+                name = 'Just Desserts',
+                response = 'use_action',
+                action_type = 'spell',
+                action_name = 'Stun',
+            },
+        },
+    }
     local config_values = {
         ['config.combat.auto_engage'] = true,
         ['config.spells'] = { enabled = false, configured = 'Fire V', magic_burst = true },
+        ['config.reactions'] = provider_reaction_config,
     }
     reset_module('uc_active_config')
     package.preload.uc_active_config = function()
