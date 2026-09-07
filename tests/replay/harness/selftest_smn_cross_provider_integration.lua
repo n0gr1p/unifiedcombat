@@ -168,7 +168,7 @@ local function test_priority_order()
 	assert_equal(actions[2].action_name, 'Crimson Howl', 'Summoner priority 2')
 	assert_equal(actions[3].action_name, 'Assault', 'Summoner priority 3')
 	assert_equal(actions[4].action_name, 'Flaming Crush', 'Summoner priority 4')
-	local critical_cure_score = 220 + 0.70 * 9.9
+	local critical_cure_score = 250 + 0.70 * 9.9
 	local maximum_sleep_score = 142 + 1.00 * 9.9
 	local release_score = 149 + 1.00 * 9.9
 	assert_true(critical_cure_score > release_score, 'Release must remain below critical Cure')

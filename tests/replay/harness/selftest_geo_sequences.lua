@@ -121,6 +121,7 @@ end
 local function new_provider(party_members, pull_state, ability_ready)
 	return geo_maintenance.new({
 		geo_maintenance_priority = 210,
+		geo_creation_priority = 240,
 		action_ready = function(name)
 			if resources[name] ~= nil then
 				return true, 'ready', 'spell'
@@ -433,6 +434,11 @@ no_target_provider.collect(no_target_ctx, no_target_out)
 assert_equal(#no_target_out, 0, 'Blaze must not start without a tracked live enemy')
 assert_equal(no_target_provider.status.reason, 'GEO_TARGET_UNAVAILABLE', 'missing fight target reason mismatch')
 assert_equal(no_target_provider.lane_reserved(), false, 'unstarted Blaze sequence must not reserve the lane')
+assert_equal(
+	no_target_provider.creation_preempts_pull(no_target_ctx),
+	false,
+	'Luopan recovery must not block pulling when no legal Geo target exists'
+)
 
 local party_members = {
 	{
@@ -495,8 +501,48 @@ local pull_provider = new_provider({}, pull_state)
 local pull_ctx = context(base_config())
 out = {}
 pull_provider.collect(pull_ctx, out)
-assert_equal(#out, 0, 'active pull must block ordinary GEO work')
-assert_equal(pull_provider.status.reason, 'pull_active', 'pull admission reason mismatch')
+assert_equal(#out, 1, 'active pull must admit missing-Luopan recovery')
+assert_equal(out[1].action_name, 'Geo-Frailty', 'missing-Luopan recovery action mismatch')
+assert_equal(out[1].priority_band, 240, 'missing-Luopan recovery priority mismatch')
+assert_true(pull_provider.creation_preempts_pull(pull_ctx), 'ready Luopan recovery must preempt pulling')
+
+local pull_indi_first_config = base_config()
+pull_indi_first_config.ordering = 'indi_first'
+local pull_indi_first_provider = new_provider({}, pull_state)
+local pull_indi_first_ctx = context(pull_indi_first_config)
+action = collect_one(pull_indi_first_provider, pull_indi_first_ctx)
+assert_equal(action.action_name, 'Geo-Frailty', 'pull preemption must restore the Luopan before routine Indi')
+
+local pull_blaze_config = base_config()
+pull_blaze_config.luopan.use_blaze_of_glory = true
+local pull_blaze_provider = new_provider({}, pull_state)
+local pull_blaze_ctx = context(pull_blaze_config)
+action = collect_one(pull_blaze_provider, pull_blaze_ctx)
+assert_equal(action.action_name, 'Blaze of Glory', 'ready Blaze must begin recovery during a pull')
+assert_equal(action.priority_band, 240, 'Blaze creation priority mismatch')
+
+local failed_target_provider = new_provider({}, { active = false })
+local failed_target_ctx = context(base_config())
+local alternate_target = {
+	id = 201,
+	name = 'Apex Crab',
+	hpp = 100,
+	distance = 36,
+	x = 11,
+	y = 20,
+	valid_target = true,
+	spawn_type = 16,
+	claim_id = 900,
+}
+failed_target_ctx.mob_array[#failed_target_ctx.mob_array + 1] = alternate_target
+failed_target_ctx.mobs_by_id[alternate_target.id] = alternate_target
+action = collect_one(failed_target_provider, failed_target_ctx)
+assert_equal(action.target_id, 200, 'initial Geo target mismatch')
+failed_target_provider.note_dispatch(action, 1.1)
+assert_true(failed_target_provider.note_failure(action.action_name, 1.2), 'Geo failure must be accepted')
+failed_target_ctx.now = 1.3
+action = collect_one(failed_target_provider, failed_target_ctx)
+assert_equal(action.target_id, 201, 'failed Geo target must be invalidated before retry')
 
 local lowest_hpp_provider = new_provider({}, { active = false })
 local lowest_hpp_ctx = context(base_config())
@@ -594,7 +640,7 @@ radius_ctx.now = 4.0
 radius_ctx.mobs_by_id[200].x = 16.6
 action = collect_one(radius_provider, radius_ctx)
 assert_equal(action.action_name, 'Full Circle', 'enemy outside the luopan radius must dismiss the luopan')
-assert_equal(action.priority_band, 210, 'radius-driven Full Circle must use reposition priority')
+assert_equal(action.priority_band, 240, 'radius-driven Full Circle must use creation priority')
 assert_true(not radius_provider.lane_reserved(), 'replacement must not reserve the lane before luopan dismissal')
 radius_provider.note_dispatch(action, 4.1)
 radius_ctx.now = 5.0
@@ -604,7 +650,7 @@ radius_ctx.pet = {}
 action = collect_one(radius_provider, radius_ctx)
 assert_equal(action.action_name, 'Geo-Frailty', 'dismissed out-of-range luopan must be recast')
 assert_equal(action.target_id, 200, 'replacement Geo must target the current lowest-HPP claimed mob')
-assert_equal(action.priority_band, 210, 'replacement Geo must retain reposition priority')
+assert_equal(action.priority_band, 240, 'replacement Geo must retain creation priority')
 assert_true(not radius_provider.lane_reserved(), 'reposition must preserve emergency scheduler preemption')
 
 local life_config = base_config()

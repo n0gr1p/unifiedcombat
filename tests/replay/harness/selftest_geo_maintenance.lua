@@ -45,6 +45,7 @@ local camp_anchor = {
 local function new_provider()
 	return geo_maintenance.new({
 		geo_maintenance_priority = 210,
+		geo_creation_priority = 240,
 		action_ready = function(name)
 			if resources[name] ~= nil then
 				return true, 'ready', 'spell'
@@ -222,7 +223,7 @@ assert_equal(#out, 1, 'missing effects should emit one action')
 assert_equal(out[1].provider, 'maintenance_geo', 'GEO provider id mismatch')
 assert_equal(out[1].action_name, 'Geo-Frailty', 'geo_first should emit Geo spell')
 assert_equal(out[1].target_id, 200, 'Geo target id mismatch')
-assert_equal(out[1].priority_band, 210, 'Geo spell must use elevated GEO maintenance priority')
+assert_equal(out[1].priority_band, 240, 'Geo spell must use elevated GEO creation priority')
 
 provider.note_dispatch(out[1], 1.1)
 ctx.now = 2.0
@@ -270,6 +271,7 @@ assert_equal(camp_provider.status.reason, 'GEO_AWAY_FROM_CAMP', 'camp hold reaso
 
 local moving_provider = geo_maintenance.new({
 	geo_maintenance_priority = 210,
+	geo_creation_priority = 240,
 	action_ready = function()
 		return true, 'ready', 'spell'
 	end,

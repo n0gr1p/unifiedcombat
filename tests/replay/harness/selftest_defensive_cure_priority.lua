@@ -136,7 +136,7 @@ local function main()
     assert_equal(chosen, self_paralyna, "self Paralyna must remain allowed to outrank cure")
     assert_equal(reason, "BLOCK_DEFENSIVE_NA", "self Paralyna reason mismatch")
 
-    assert_contains(source, "scheduler.PRIORITY_BAND_CRITICAL_CURE = 220", "critical cure scheduler priority band must remain globally pinned")
+    assert_contains(source, "scheduler.PRIORITY_BAND_CRITICAL_CURE = 250", "critical cure scheduler priority band must remain globally pinned")
     local provider_source = read_file("uc_provider_defensive.lua")
     assert_contains(source, "critical_cure_priority = scheduler.PRIORITY_BAND_CRITICAL_CURE", "scheduler must inject the global critical Cure band")
     assert_contains(provider_source, "priority_band = critical_cure_priority", "critical cure proposals must use the injected global priority band")
