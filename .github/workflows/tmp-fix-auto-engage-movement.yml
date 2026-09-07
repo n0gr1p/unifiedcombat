@@ -1,0 +1,48 @@
+name: Temporary auto-engage movement fix
+
+on:
+  push:
+    branches:
+      - feature/combat-burst-reactions-auto-engage
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/combat-burst-reactions-auto-engage
+          fetch-depth: 0
+
+      - name: Patch movement gate
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('unified_combat_core.lua')
+          text = path.read_text()
+          old = '''\t-- Guard: do not drive combat-close movement from a manually selected target\n\t-- unless autotarget is enabled (normal combat ownership) or explicit move mode is on.\n\tif (not setting_enabled(settings.autotarget)) and (not setting_enabled(settings.move)) then\n\t\tif core.last_run_active then\n\t\t\tstop_run(executor)\n\t\tend\n\t\treturn\n\tend\n'''
+          new = '''\t-- Generic combat-close movement belongs to automatic melee engagement.\n\t-- Auto Target may still maintain <t> for support/reaction actions while Auto Engage\n\t-- is off, so do not let target ownership alone pull followers into melee range.\n\t-- Explicit move mode remains an intentional override for callers that own movement.\n\tlocal explicit_move = setting_enabled(settings.move)\n\tlocal auto_engage = require('uc_combat_extension_config').auto_engage_enabled(settings)\n\tif (not explicit_move) and ((not setting_enabled(settings.autotarget)) or (not auto_engage)) then\n\t\tif core.last_run_active then\n\t\t\tstop_run(executor)\n\t\tend\n\t\treturn\n\tend\n'''
+          if old not in text:
+              raise SystemExit('movement guard anchor not found')
+          path.write_text(text.replace(old, new, 1))
+
+      - name: Install Lua
+        run: sudo apt-get update -qq && sudo apt-get install -y lua5.4
+
+      - name: Run focused regression
+        run: lua tests/replay/harness/selftest_zero_hp_actionable_target.lua
+
+      - name: Remove temporary workflow and commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/tmp-fix-auto-engage-movement.yml
+          git add unified_combat_core.lua tests/replay/harness/selftest_zero_hp_actionable_target.lua
+          git commit -m "Gate combat-close movement on auto engage"
+          git push origin HEAD:feature/combat-burst-reactions-auto-engage
+
+# retrigger
