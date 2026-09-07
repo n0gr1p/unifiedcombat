@@ -1,5 +1,3 @@
-local uc_active_config = require('uc_active_config')
-
 local M = {}
 
 local function trim(value)
@@ -7,6 +5,10 @@ local function trim(value)
         return ''
     end
     return value:match('^%s*(.-)%s*$') or ''
+end
+
+local function active_config()
+    return require('uc_active_config')
 end
 
 local function global_settings()
@@ -34,7 +36,7 @@ local function has_action_rule(rules)
 end
 
 function M.auto_engage_enabled(settings)
-    local active_value = uc_active_config.get_path('config.combat.auto_engage')
+    local active_value = active_config().get_path('config.combat.auto_engage')
     if active_value ~= nil then
         return active_value ~= false
     end
@@ -46,7 +48,7 @@ function M.auto_engage_enabled(settings)
 end
 
 function M.magic_burst(settings)
-    local spells = uc_active_config.get_path('config.spells')
+    local spells = active_config().get_path('config.spells')
     if type(spells) == 'table' and spells.magic_burst ~= nil then
         return {
             enabled = spells.magic_burst == true,
@@ -60,7 +62,7 @@ function M.magic_burst(settings)
 end
 
 function M.reaction_rules()
-    local active = uc_active_config.get_path('config.reactions')
+    local active = active_config().get_path('config.reactions')
     local active_rules = type(active) == 'table' and active.enabled == true and type(active.rules) == 'table'
         and active.rules or nil
     local flat = global_settings()
