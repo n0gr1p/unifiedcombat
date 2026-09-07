@@ -84,13 +84,29 @@ jobs:
           python apply_patch.py
           python - <<'PY'
           from pathlib import Path
-          path = Path('UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs')
-          text = path.read_text(encoding='utf-8')
+
+          tests = Path('UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs')
+          text = tests.read_text(encoding='utf-8')
           old = 'HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" })'
           new = 'HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "auto_engage", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" })'
           if text.count(old) != 1:
               raise RuntimeError('expected exactly one combat targeting layout contract')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          tests.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          logic = Path('UnifiedCombatWinForms/MainForm.ParityLogic.cs')
+          text = logic.read_text(encoding='utf-8')
+          old = '''                RefreshKeiSpellOptions();
+                RefreshMagicBurstSpellOptions();
+                RefreshReactionActionSpellOptions();
+                UpdateEncounterUiState();'''
+          new = '''                RefreshKeiSpellOptions();
+                UpdateEncounterUiState();
+                RefreshMagicBurstSpellOptions();
+                RefreshReactionActionSpellOptions();'''
+          count = text.count(old)
+          if count < 2:
+              raise RuntimeError(f'expected at least two Kei refresh ordering blocks, found {count}')
+          logic.write_text(text.replace(old, new), encoding='utf-8')
           PY
       - name: Build WinForms
         shell: pwsh
