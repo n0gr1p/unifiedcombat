@@ -46,27 +46,27 @@ jobs:
               raise RuntimeError('failed to locate obsolete BuildDefaultProfile patch operation')
           script = script.replace(old, new, 1)
 
-          replacements = [
+          simple = [
               (
-                  "'''        enabled = true,\\n        autotarget = false,\\n        spam = false,''',",
-                  "'''            enabled = true,\\n            autotarget = false,\\n            spam = false,''',",
+                  "        enabled = true,\\n        autotarget = false,\\n        spam = false,",
+                  "            enabled = true,\\n            autotarget = false,\\n            spam = false,",
               ),
               (
-                  "'''        enabled = true,\\n        autotarget = false,\\n        auto_engage = true,\\n        spam = false,''')",
-                  "'''            enabled = true,\\n            autotarget = false,\\n            auto_engage = true,\\n            spam = false,''')",
+                  "        enabled = true,\\n        autotarget = false,\\n        auto_engage = true,\\n        spam = false,",
+                  "            enabled = true,\\n            autotarget = false,\\n            auto_engage = true,\\n            spam = false,",
               ),
               (
-                  "'''    spells = {\\n        enabled = false,\\n        configured = '',\\n        dd2_slots = {},\\n    },''',",
-                  "'''        spells = {\\n            enabled = false,\\n            configured = '',\\n            dd2_slots = {},\\n        },''',",
+                  "    spells = {\\n        enabled = false,\\n        configured = '',\\n        dd2_slots = {},\\n    },",
+                  "        spells = {\\n            enabled = false,\\n            configured = '',\\n            dd2_slots = {},\\n        },",
               ),
               (
-                  "'''    spells = {\\n        enabled = false,\\n        configured = '',\\n        magic_burst = false,\\n        dd2_slots = {},\\n    },''')",
-                  "'''        spells = {\\n            enabled = false,\\n            configured = '',\\n            magic_burst = false,\\n            dd2_slots = {},\\n        },''')",
+                  "    spells = {\\n        enabled = false,\\n        configured = '',\\n        magic_burst = false,\\n        dd2_slots = {},\\n    },",
+                  "        spells = {\\n            enabled = false,\\n            configured = '',\\n            magic_burst = false,\\n            dd2_slots = {},\\n        },",
               ),
           ]
-          for before, after in replacements:
+          for before, after in simple:
               if before not in script:
-                  raise RuntimeError('failed to locate canonical-config indentation patch anchor: ' + before[:80])
+                  raise RuntimeError('failed to locate canonical-config patch anchor: ' + before[:80])
               script = script.replace(before, after, 1)
 
           Path('apply_patch.py').write_text(script, encoding='utf-8')
