@@ -31,6 +31,7 @@ jobs:
           start = wf.index("          from pathlib import Path\n")
           end = wf.index("          PY\n", start)
           script = textwrap.dedent(wf[start:end])
+
           old = '''replace_once(
               'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
               ''' + "'''" + '''            ["skillchain_target"] = "auto",\\n            ["aftermath_ws"] = "",''' + "'''" + ''',
@@ -44,6 +45,30 @@ jobs:
           if old not in script:
               raise RuntimeError('failed to locate obsolete BuildDefaultProfile patch operation')
           script = script.replace(old, new, 1)
+
+          replacements = [
+              (
+                  "'''        enabled = true,\\n        autotarget = false,\\n        spam = false,''',",
+                  "'''            enabled = true,\\n            autotarget = false,\\n            spam = false,''',",
+              ),
+              (
+                  "'''        enabled = true,\\n        autotarget = false,\\n        auto_engage = true,\\n        spam = false,''')",
+                  "'''            enabled = true,\\n            autotarget = false,\\n            auto_engage = true,\\n            spam = false,''')",
+              ),
+              (
+                  "'''    spells = {\\n        enabled = false,\\n        configured = '',\\n        dd2_slots = {},\\n    },''',",
+                  "'''        spells = {\\n            enabled = false,\\n            configured = '',\\n            dd2_slots = {},\\n        },''',",
+              ),
+              (
+                  "'''    spells = {\\n        enabled = false,\\n        configured = '',\\n        magic_burst = false,\\n        dd2_slots = {},\\n    },''')",
+                  "'''        spells = {\\n            enabled = false,\\n            configured = '',\\n            magic_burst = false,\\n            dd2_slots = {},\\n        },''')",
+              ),
+          ]
+          for before, after in replacements:
+              if before not in script:
+                  raise RuntimeError('failed to locate canonical-config indentation patch anchor: ' + before[:80])
+              script = script.replace(before, after, 1)
+
           Path('apply_patch.py').write_text(script, encoding='utf-8')
           PY
           python apply_patch.py
