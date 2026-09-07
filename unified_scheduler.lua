@@ -5748,6 +5748,47 @@ function scheduler.p1_dispatch_maintenance_sch(selected, settings)
 	return true, 'BLOCK_SCHED_P1_SCH_MAINTENANCE'
 end
 
+function scheduler.defensive_spell_movement_blocked(selected, action_kind, now_gate)
+	if action_kind ~= 'spell' then
+		return false, nil
+	end
+	local player = windower.ffxi.get_player()
+	local out_of_combat = (tonumber(player and player.status) or 0) ~= 1
+	local preengage_move_active = (rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true)
+	local follow_run_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE_UNTIL')) or 0
+	local follow_run_active = (rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE') == true) or (now_gate < follow_run_until)
+	local follow_catchup_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL')) or 0
+	local follow_needs_catchup = (rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP') == true) or (now_gate < follow_catchup_until)
+	if out_of_combat and preengage_move_active then
+		_G.UC_LAST_SCHED_ACTION = ('[p1]defer_preengage_move:%s->%s'):format(
+			tostring(selected.action_name or ''),
+			tostring(selected.target_name or '')
+		)
+		return true, 'BLOCK_DEFENSIVE_PREENGAGE_MOVE_ACTIVE'
+	end
+	if out_of_combat and (follow_run_active or follow_needs_catchup) then
+		_G.UC_LAST_SCHED_ACTION = ('[p1]defer_follow_move:%s->%s'):format(
+			tostring(selected.action_name or ''),
+			tostring(selected.target_name or '')
+		)
+		scheduler.action_timeline_log('DEFENSIVE_FOLLOW_MOVE_BLOCKED', {
+			action = tostring(selected.action_name or ''),
+			target = tostring(selected.target_name or ''),
+			target_id = tonumber(selected.target_id) or 0,
+			reason = 'BLOCK_DEFENSIVE_FOLLOW_MOVE_ACTIVE',
+			follow_run_active = tostring(follow_run_active),
+			follow_needs_catchup = tostring(follow_needs_catchup),
+			follow_run_remaining_s = ('%.2f'):format(math.max(0, follow_run_until - now_gate)),
+			follow_catchup_remaining_s = ('%.2f'):format(math.max(0, follow_catchup_until - now_gate)),
+		}, ('defensive_follow_move_block:%s:%d'):format(
+			tostring(selected.action_name or ''),
+			tonumber(selected.target_id) or 0
+		), 0.25)
+		return true, 'BLOCK_DEFENSIVE_FOLLOW_MOVE_ACTIVE'
+	end
+	return false, nil
+end
+
 local function p1_dispatch_defensive_internal(selected, settings)
 	if not domain_ownership.is_enabled('defensive') then
 		return false, nil
@@ -5795,40 +5836,10 @@ local function p1_dispatch_defensive_internal(selected, settings)
 			return true, tostring(waltz_reason)
 		end
 	end
-	local player = windower.ffxi.get_player()
-	local out_of_combat = (tonumber(player and player.status) or 0) ~= 1
 	local now_gate = now_s()
-	local preengage_move_active = (rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true)
-	local follow_run_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE_UNTIL')) or 0
-	local follow_run_active = (rawget(_G, 'UC_PARTY_FOLLOW_RUN_ACTIVE') == true) or (now_gate < follow_run_until)
-	local follow_catchup_until = tonumber(rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL')) or 0
-	local follow_needs_catchup = (rawget(_G, 'UC_PARTY_FOLLOW_NEEDS_CATCHUP') == true) or (now_gate < follow_catchup_until)
-	if action_kind == 'spell' and out_of_combat and preengage_move_active then
-		_G.UC_LAST_SCHED_ACTION = ('[p1]defer_preengage_move:%s->%s'):format(
-			tostring(selected.action_name or ''),
-			tostring(selected.target_name or '')
-		)
-		return true, 'BLOCK_DEFENSIVE_PREENGAGE_MOVE_ACTIVE'
-	end
-	if action_kind == 'spell' and out_of_combat and (follow_run_active or follow_needs_catchup) then
-		_G.UC_LAST_SCHED_ACTION = ('[p1]defer_follow_move:%s->%s'):format(
-			tostring(selected.action_name or ''),
-			tostring(selected.target_name or '')
-		)
-		scheduler.action_timeline_log('DEFENSIVE_FOLLOW_MOVE_BLOCKED', {
-			action = tostring(selected.action_name or ''),
-			target = tostring(selected.target_name or ''),
-			target_id = tonumber(selected.target_id) or 0,
-			reason = 'BLOCK_DEFENSIVE_FOLLOW_MOVE_ACTIVE',
-			follow_run_active = tostring(follow_run_active),
-			follow_needs_catchup = tostring(follow_needs_catchup),
-			follow_run_remaining_s = ('%.2f'):format(math.max(0, follow_run_until - now_gate)),
-			follow_catchup_remaining_s = ('%.2f'):format(math.max(0, follow_catchup_until - now_gate)),
-		}, ('defensive_follow_move_block:%s:%d'):format(
-			tostring(selected.action_name or ''),
-			tonumber(selected.target_id) or 0
-		), 0.25)
-		return true, 'BLOCK_DEFENSIVE_FOLLOW_MOVE_ACTIVE'
+	local movement_blocked, movement_reason = scheduler.defensive_spell_movement_blocked(selected, action_kind, now_gate)
+	if movement_blocked then
+		return true, movement_reason
 	end
 	local intent = {
 		kind = 'send_command',
@@ -6835,6 +6846,14 @@ function scheduler.dispatch_selected_plan(settings)
 		if tank_spell_wait_locked then
 			_G.UC_LAST_SCHED_ACTION = ('[p1]tank_spell_wait:%s'):format(tostring(phase.tank_pending_action or ''))
 			return true, 'BLOCK_SCHED_P1_DARKLAUNCH_COMBAT_TANK_SPELL_WAIT'
+		end
+	end
+	-- Defer defensive spells before cast settling can stop follow/preengage movement.
+	-- The defensive sender checks again immediately before dispatch.
+	if selected.provider == 'defensive_internal' and domain_ownership.is_enabled('defensive') then
+		local movement_blocked, movement_reason = scheduler.defensive_spell_movement_blocked(selected, selected.action_type, now_s())
+		if movement_blocked then
+			return true, movement_reason
 		end
 	end
 	local cast_movement_blocked, cast_movement_reason = scheduler.cast_movement_settle_blocked(selected)

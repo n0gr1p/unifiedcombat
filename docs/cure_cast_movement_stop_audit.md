@@ -370,3 +370,30 @@ Smallest plausible implementation shape:
    - defensive JA behavior remains unchanged
    - normal follow/path return resumes after the Cure completes
 5. If the same symptom appears with `defensive_provider = 'healbot'`, capture that separately because the healbot delegate path was not broadly rewritten in T3.1f.
+
+## 2026-09-06: Defer following before cast settling
+
+Niightsiide's WHM/RDM action timeline showed repeated Refresh cast-settle stops
+at roughly 0.6-second intervals while follow still needed to catch up. The
+generic cast-settle check ran before the internal defensive sender's follow
+deferral check, so a spell that would be deferred could stop movement first.
+
+- Extracted the existing follow/catch-up and pre-engage deferral rules into
+  `scheduler.defensive_spell_movement_blocked` in `unified_scheduler.lua`.
+- `dispatch_selected_plan` checks these rules for the owned `defensive_internal`
+  provider before cast settling. The internal sender rechecks immediately before
+  command dispatch using the same helper.
+- Preserved the existing unengaged-player restriction, timestamp holds, blocker
+  reason codes, and follow timeline event. Cast settling and actual cast/post-cast
+  movement locks retain their existing behavior.
+- Added `tests/replay/harness/selftest_defensive_follow_cast_settle.lua` to execute
+  the extracted scheduler functions with simulated movement. It covers repeated
+  follow deferrals without stops/lock changes, pre-engage deferral, normal settling
+  after catch-up, engaged and non-spell behavior, other providers, and the final
+  dispatch-time recheck.
+- Lua 5.1 parsing and the new regression test passed, as did
+  `selftest_spacing_cast_movement_lock.lua` and
+  `selftest_scheduler_defensive_cure_movement_lock.lua`.
+- Live Windower verification remains pending: reload Niightsiide's addon, follow
+  with Refresh pending, confirm smooth movement and follow deferral events without
+  repeated cast-settle holds, then confirm Refresh casts after catching up.
