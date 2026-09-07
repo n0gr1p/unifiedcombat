@@ -53,7 +53,11 @@ reactions = {
 }
 ```
 
-The `use_action` rule becomes a normal authoritative reaction lock. While that lock is active, normal enemy-facing offense remains suppressed, but the matching configured reaction proposal is explicitly allowed through the same reaction gate. The reaction spell is submitted through the normal scheduler proposal path at priority band 240; it does not bypass readiness, recast, target, movement, duplicate-suppression, or action-state ownership.
+The `use_action` rule becomes a normal authoritative reaction lock while its response is armed. Normal enemy-facing offense remains suppressed, but the exact matching reaction proposal is explicitly allowed through the same reaction gate and is submitted through the normal scheduler proposal path at priority band 240. It does not bypass readiness, recast, target, movement, duplicate-suppression, or action-state ownership.
+
+Unlike sustained movement/facing reactions, `use_action` is a one-shot scheduler reservation: once the matching configured action is successfully dispatched to the triggering actor, the reaction lock is consumed immediately. It does not wait for the enemy ability completion packet, because a successful interrupt such as Stun can intentionally prevent that completion packet from ever occurring. Failed or mismatched dispatches do not consume the lock. Existing actor-death/despawn cleanup remains a final stale-lock safety net.
+
+Movement/facing reactions such as `turn_away`, `stop_attacking`, `run_away`, and `move_to_range` retain their full hazard lifecycle and continue to release when the triggering condition resolves or the actor becomes invalid.
 
 ## Initial burst priority
 
