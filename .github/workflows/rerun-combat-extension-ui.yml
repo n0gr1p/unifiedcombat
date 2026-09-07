@@ -84,6 +84,7 @@ jobs:
           python apply_patch.py
           python - <<'PY'
           from pathlib import Path
+          import re
 
           tests = Path('UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs')
           text = tests.read_text(encoding='utf-8')
@@ -95,18 +96,24 @@ jobs:
 
           logic = Path('UnifiedCombatWinForms/MainForm.ParityLogic.cs')
           text = logic.read_text(encoding='utf-8')
-          old = '''                RefreshKeiSpellOptions();
-                RefreshMagicBurstSpellOptions();
-                RefreshReactionActionSpellOptions();
-                UpdateEncounterUiState();'''
-          new = '''                RefreshKeiSpellOptions();
-                UpdateEncounterUiState();
-                RefreshMagicBurstSpellOptions();
-                RefreshReactionActionSpellOptions();'''
-          count = text.count(old)
+          pattern = re.compile(
+              r'(?P<indent>[ \t]*)RefreshKeiSpellOptions\(\);\s*'
+              r'RefreshMagicBurstSpellOptions\(\);\s*'
+              r'RefreshReactionActionSpellOptions\(\);\s*'
+              r'UpdateEncounterUiState\(\);'
+          )
+          def reorder(match):
+              i = match.group('indent')
+              return (
+                  f'{i}RefreshKeiSpellOptions();\n'
+                  f'{i}UpdateEncounterUiState();\n'
+                  f'{i}RefreshMagicBurstSpellOptions();\n'
+                  f'{i}RefreshReactionActionSpellOptions();'
+              )
+          text, count = pattern.subn(reorder, text)
           if count < 2:
               raise RuntimeError(f'expected at least two Kei refresh ordering blocks, found {count}')
-          logic.write_text(text.replace(old, new), encoding='utf-8')
+          logic.write_text(text, encoding='utf-8')
           PY
       - name: Build WinForms
         shell: pwsh
