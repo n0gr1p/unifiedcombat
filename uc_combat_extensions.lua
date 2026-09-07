@@ -45,6 +45,14 @@ local function valid_target(target)
         and (tonumber(target.id) or 0) > 0
 end
 
+local function copy_detail(detail)
+    local out = { allow_target_id_send = true }
+    for key, value in pairs(type(detail) == 'table' and detail or {}) do
+        out[key] = value
+    end
+    return out
+end
+
 local function append_spell(out, ctx, options)
     local spell = spell_resource(options.spell_name)
     if not spell then
@@ -90,7 +98,7 @@ local function append_spell(out, ctx, options)
         can_preempt_movement = true,
         can_preempt_same_band = true,
         reason_code = options.reason_code,
-        detail = options.detail or {},
+        detail = copy_detail(options.detail),
         legacy_command = ('input /ma \"%s\" %d'):format(
             tostring(options.spell_name),
             tonumber(options.target_id) or 0
