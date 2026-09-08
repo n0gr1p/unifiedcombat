@@ -10,6 +10,10 @@ local function assert_true(value, message)
 	end
 end
 
+local original_windower = rawget(_G, 'windower')
+local original_targeting_common = package.loaded.uc_targeting_common
+local original_skillchain_target = package.loaded.uc_sch_skillchain_target
+
 local friendly_claim_id = 5001
 local foreign_claim_id = 9001
 local mobs = {
@@ -94,5 +98,10 @@ mobs[1001].distance = 22 * 22
 picked, reason = target_state.select()
 assert_equal(picked, nil, 'out-of-range friendly claim must not spend Immanence')
 assert_equal(reason, 'no_valid_party_claimed_target', 'out-of-range selection reason')
+
+target_state.clear()
+package.loaded.uc_sch_skillchain_target = original_skillchain_target
+package.loaded.uc_targeting_common = original_targeting_common
+_G.windower = original_windower
 
 io.stdout:write('selftest_sch_skillchain_target: OK\n')
