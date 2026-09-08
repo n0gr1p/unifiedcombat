@@ -83,11 +83,11 @@ local function require_integer(result, parent, key, path, minimum, maximum)
 	local value = parent[key]
 	if type(value) ~= 'number' or value % 1 ~= 0 or value < minimum or value > maximum then
 		add_issue(
-			result,
-			'sch_shape_invalid',
-			path,
-			('%s must be an integer from %d to %d.'):format(path, minimum, maximum)
-		)
+				result,
+				'sch_shape_invalid',
+				path,
+				('%s must be an integer from %d to %d.'):format(path, minimum, maximum)
+			)
 		return false
 	end
 	return true
@@ -420,7 +420,7 @@ local function validate_defensive(result, config)
 	if penury ~= nil then
 		reject_unknown_keys(result, penury, 'sch.defensive.penury', { 'enabled', 'maximum_mpp' })
 		require_boolean(result, penury, 'enabled', 'sch.defensive.penury.enabled')
-		require_integer(result, penury, 'maximum_mpp', 'sch.defensive.penury.maximum_mpp', 0, 100)
+	require_integer(result, penury, 'maximum_mpp', 'sch.defensive.penury.maximum_mpp', 0, 100)
 	end
 end
 
@@ -437,22 +437,11 @@ local function validate_skillchain_plans(result, value, path)
 		else
 			reject_unknown_keys(result, plan, plan_path, { 'result', 'opener', 'closer' })
 			local shape_valid = require_string(result, plan, 'result', plan_path .. '.result')
-			local opener = plan.opener
-			local closer = plan.closer
-			local opener_present = type(opener) == 'string' and opener ~= ''
-			local closer_present = type(closer) == 'string' and closer ~= ''
-			if opener_present ~= closer_present then
-				add_issue(
-					result,
-					'sch_shape_invalid',
-					plan_path,
-					plan_path .. ' must provide both opener and closer, or omit both to use the canonical recipe.'
-				)
-				shape_valid = false
-			elseif opener ~= nil and not opener_present then
+			if plan.opener ~= nil and (type(plan.opener) ~= 'string' or plan.opener == '') then
 				add_issue(result, 'sch_shape_invalid', plan_path .. '.opener', plan_path .. '.opener must be a non-empty string when provided.')
 				shape_valid = false
-			elseif closer ~= nil and not closer_present then
+			end
+			if plan.closer ~= nil and (type(plan.closer) ~= 'string' or plan.closer == '') then
 				add_issue(result, 'sch_shape_invalid', plan_path .. '.closer', plan_path .. '.closer must be a non-empty string when provided.')
 				shape_valid = false
 			end
