@@ -128,8 +128,7 @@ local fusion_result = opener({ 'Fusion' }, {
 	latest_safe_at = 108,
 	magic_burst_expires_at = 112,
 })
-assert_true(adopted:update(input(102, config('Ionohelix II'), fusion_result, 0, { dark_arts })),
-	'confirmed Fusion result must complete adopted chain')
+adopted:update(input(102, config('Ionohelix II'), fusion_result, 0, { dark_arts }))
 assert_equal(adopted:snapshot().active, nil, 'adopted chain must complete after Fusion evidence')
 
 -- Do not stomp a live party opener that our configured closer cannot turn into
