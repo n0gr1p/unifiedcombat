@@ -34,6 +34,56 @@ local function main()
     assert_equal(order[2], "execute:input /ws Test 1001", "execution order")
     assert_equal(order[3], "mark", "action mark order")
 
+    local command_calls = 0
+    local packet_calls = 0
+    result = dispatcher.dispatch_intent({
+        kind = "send_command",
+        command = 'input /ma "Fire" 1001',
+        meta = {
+            action_type = "spell",
+            action_name = "Fire",
+            target_id = 1001,
+            target_name = "Locus Camelopard",
+            provider = "maintenance_sch",
+        },
+    }, {
+        execute = true,
+        send_command = function() command_calls = command_calls + 1 end,
+        cast_spell_packet = function(spell_name, target_id)
+            packet_calls = packet_calls + 1
+            assert_equal(spell_name, "Fire", "packet spell name")
+            assert_equal(target_id, 1001, "packet target id")
+            return true, "OK"
+        end,
+    })
+    assert_equal(result.ok, true, "structured spell packet status")
+    assert_equal(result.executed, true, "structured spell packet execution")
+    assert_equal(result.dispatch_method, "spell_packet", "structured spell dispatch method")
+    assert_equal(packet_calls, 1, "structured spell packet count")
+    assert_equal(command_calls, 0, "structured spell must never use text command")
+
+    result = dispatcher.dispatch_intent({
+        kind = "send_command",
+        command = 'input /ma "Fire" 1001',
+        meta = { action_type = "spell", action_name = "Fire", target_id = 1001 },
+    }, {
+        execute = true,
+        cast_spell_packet = function()
+            return false, "TARGET_NOT_FOUND"
+        end,
+    })
+    assert_equal(result.ok, false, "packet spell rejection status")
+    assert_equal(result.reason, "TARGET_NOT_FOUND", "packet spell rejection reason")
+    assert_equal(result.executed, false, "packet spell rejection execution state")
+
+    result = dispatcher.dispatch_intent({
+        kind = "send_command",
+        command = 'input /ma "Fire" <t>',
+        meta = { action_type = "spell", action_name = "Fire", target_id = 0 },
+    }, { execute = false })
+    assert_equal(result.ok, false, "structured spell missing target status")
+    assert_equal(result.reason, "structured_spell_invalid_target_id", "structured spell missing target reason")
+
     local blocked_calls = 0
     result = dispatcher.dispatch_intent({
         kind = "send_command",
