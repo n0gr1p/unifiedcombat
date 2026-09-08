@@ -26,6 +26,14 @@ local function require_number(deps, name)
 	return value
 end
 
+local function valid_enemy_target(target)
+	return type(target) == 'table'
+		and target.valid_target == true
+		and tonumber(target.spawn_type) == 16
+		and (tonumber(target.hpp) or 0) > 0
+		and (tonumber(target.id) or 0) > 0
+end
+
 function M.new(deps)
 	deps = require_table(deps, 'deps')
 	local bool_setting = require_function(deps, 'bool_setting')
@@ -203,7 +211,7 @@ function M.new(deps)
 				preferred_execute_at = tonumber(skillchain_plan and skillchain_plan.preferred_execute_at) or 0,
 				latest_safe_at = tonumber(skillchain_plan and skillchain_plan.latest_safe_at) or 0,
 			},
-			legacy_command = ('input /ws \"%s\" <t>'):format(ws),
+			legacy_command = ('input /ws "%s" <t>'):format(ws),
 			required_setting = 'weaponskill_active',
 		}
 	end
@@ -346,7 +354,7 @@ function M.new(deps)
 				sleep_configured_count = #configured_sleep_spells,
 				allow_target_id_send = true,
 			},
-			legacy_command = ('input /ma \"%s\" %d'):format(
+			legacy_command = ('input /ma "%s" %d'):format(
 				tostring(best.spell_name),
 				tonumber(best.target_id) or 0
 			),
@@ -583,15 +591,22 @@ function M.new(deps)
 			return
 		end
 		local player = ctx.player
-		if ctx.player_present ~= true or tonumber(player.status) ~= 1 then
+		if ctx.player_present ~= true then
 			return
+		end
+		local target = ctx.target_present == true and ctx.target or nil
+		local engaged = tonumber(player.status) == 1
+		local allow_unengaged = bool_setting(ctx.settings.ability_allow_unengaged, false)
+		if not engaged then
+			if not allow_unengaged or not valid_enemy_target(target) then
+				return
+			end
 		end
 		local tank_mode = bool_setting(tank_enabled(ctx.settings), false)
 		local ordered = collect_ordered_abilities(ctx.settings, 6)
 		if #ordered == 0 then
 			return
 		end
-		local target = ctx.target_present == true and ctx.target or nil
 		local partner_target_set = build_partner_target_set(ctx.settings)
 		for _, name in ipairs(ordered) do
 			local ja = get_ja_resource(name)
@@ -604,7 +619,7 @@ function M.new(deps)
 					local ja_targets = tostring(ja.targets or '')
 					local ja_target_ok = true
 					if ja_targets == '{Enemy}' then
-						if not target or not target.valid_target or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
+						if not valid_enemy_target(target) then
 							ja_target_ok = false
 						end
 						if ja_target_ok and partner_target_set[tonumber(target.id) or 0] == true then
@@ -655,22 +670,23 @@ function M.new(deps)
 							reason_code = 'ability_ready',
 							detail = {
 								ability = tostring(name),
+								unengaged_override = not engaged,
 							},
 							legacy_command = target_kind == 'self'
-								and ('input /ja \"%s\" <me>'):format(tostring(name))
-								or ('input /ja \"%s\" %d'):format(tostring(name), target_id),
+								and ('input /ja "%s" <me>'):format(tostring(name))
+								or ('input /ja "%s" %d'):format(tostring(name), target_id),
 							required_setting = 'ability_active',
 						}
 						break
 					else
-						log_ja_sched(('collect_skip name=\"%s\" reason=TARGET_INVALID status=%s target_id=%s'):format(
+						log_ja_sched(('collect_skip name="%s" reason=TARGET_INVALID status=%s target_id=%s'):format(
 							tostring(name),
 							tostring(player.status or ''),
 							tostring(target and target.id or 0)
 						))
 					end
 				elseif kind == 'ja' then
-					log_ja_sched(('collect_skip name=\"%s\" reason=%s status=%s pending=%s'):format(
+					log_ja_sched(('collect_skip name="%s" reason=%s status=%s pending=%s'):format(
 						tostring(name),
 						tostring(reason or 'NOT_READY'),
 						tostring(player.status or ''),
