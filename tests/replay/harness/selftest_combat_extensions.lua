@@ -21,6 +21,7 @@ local MOCKED_MODULES = {
     'uc_combat_extension_config',
     'uc_reaction_runtime',
     'unified_combat_core',
+    'uc_targeting_common',
     'uc_camp_pull_registry',
     'uc_combat_extensions',
     'uc_provider_combat',
@@ -203,6 +204,10 @@ local ok, err = xpcall(function()
     package.preload.unified_combat_core = function()
         return { get_skillchain_snapshot = function() return current_skillchain end }
     end
+    reset_module('uc_targeting_common')
+    package.preload.uc_targeting_common = function()
+        return { build_friendly_claims = function() return { 123 }, { [123] = true } end }
+    end
     reset_module('uc_camp_pull_registry')
     package.preload.uc_camp_pull_registry = function()
         return { combat_order = function() return nil end }
@@ -261,7 +266,8 @@ local ok, err = xpcall(function()
         player_present = true,
         player = { id = 1, name = 'Niightsiide', status = 0, vitals = { tp = 0 } },
         target_present = true,
-        target = { id = 900, name = 'Zerde', hpp = 100, valid_target = true, spawn_type = 16, claim_id = 123 },
+        target = { id = 900, name = 'Zerde', hpp = 100, valid_target = true, spawn_type = 16, claim_id = 123, distance = 100 },
+        party = {},
         mobs_by_id = {}, mob_array = {},
     }
     current_action_lock = {
