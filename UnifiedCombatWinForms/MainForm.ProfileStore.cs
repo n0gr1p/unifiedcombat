@@ -6,7 +6,7 @@ namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
-    private const int ProfileSchemaVersion = 6;
+    private const int ProfileSchemaVersion = 7;
     private static readonly string[] RequiredDomainBoolKeys =
     [
         "domain_combat_enabled",
@@ -395,6 +395,7 @@ public partial class MainForm
             ["sch_penury_enabled"] = _schPenuryEnabled.Checked,
             ["sch_skillchain_enabled"] = _schSkillchainEnabled.Checked,
             ["sch_skillchain_result"] = ScholarSkillchainResultValue(),
+            ["sch_skillchain_closer"] = ScholarSkillchainCloserValue(),
             ["reaction_enabled"] = _reactionEnabled.Checked,
             ["reaction_rules"] = BuildReactionRulesJson(),
             ["ignore_entries"] = string.Join("|", _ignoreRows.Select(r => $"{r.Id}:{r.Name}")),
@@ -659,6 +660,7 @@ public partial class MainForm
             ["sch_penury_enabled"] = false,
             ["sch_skillchain_enabled"] = false,
             ["sch_skillchain_result"] = "Fusion",
+            ["sch_skillchain_closer"] = "Thunder V",
             ["reaction_enabled"] = false,
             ["reaction_rules"] = new JsonArray(),
             ["spacing_band_min"] = -0.9,
@@ -1086,6 +1088,18 @@ public partial class MainForm
         if (!root.ContainsKey("sch_skillchain_result"))
         {
             root["sch_skillchain_result"] = "Fusion";
+            changed = true;
+        }
+        if (!root.ContainsKey("sch_skillchain_closer"))
+        {
+            var result = root["sch_skillchain_result"]?.GetValue<string>() ?? "Fusion";
+            root["sch_skillchain_closer"] = result switch
+            {
+                "Fragmentation" => "Water V",
+                "Distortion" => "Stone V",
+                "Gravitation" => "Noctohelix II",
+                _ => "Thunder V",
+            };
             changed = true;
         }
 
