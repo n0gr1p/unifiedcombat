@@ -17,6 +17,27 @@ public partial class MainForm
     private CheckBox _schSkillchainEnabled = null!;
     private ComboBox _schSkillchainResult = null!;
     private Label _schSkillchainRecipe = null!;
+    private bool _schSkillchainUiInitialized;
+
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        if (_schSkillchainUiInitialized)
+        {
+            return;
+        }
+        _schSkillchainUiInitialized = true;
+        InitializeScholarSkillchainUi();
+        _schEnabled.CheckedChanged += (_, _) => UpdateScholarSkillchainUiState();
+        listSessions.SelectedIndexChanged += (_, _) =>
+        {
+            if (IsHandleCreated && !IsDisposed)
+            {
+                BeginInvoke(new Action(RefreshScholarSkillchainUiFromSelectedProfile));
+            }
+        };
+        RefreshScholarSkillchainUiFromSelectedProfile();
+    }
 
     private void InitializeScholarSkillchainUi()
     {
