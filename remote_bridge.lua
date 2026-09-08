@@ -829,13 +829,20 @@ local function uc_get_enemy_spell_names()
 		local sub_id = tonumber(p.sub_job_id) or job_id_by_short(p.sub_job)
 		local main_lvl = tonumber(p.main_job_level) or tonumber(p.main_job_lv) or 99
 		local sub_lvl = tonumber(p.sub_job_level) or tonumber(p.sub_job_lv) or 49
+		local jp_spent = 0
+		do
+			local jp = type(p.job_points) == 'table' and p.job_points or nil
+			local mj = tostring(p.main_job or ''):lower()
+			local row = jp and jp[mj] or nil
+			jp_spent = tonumber(row and row.jp_spent) or 0
+		end
 		local jobs = sp.jobs or sp.levels
 		if type(jobs) ~= 'table' then
 			-- If resource does not expose per-job requirements, do not over-filter.
 			return true
 		end
 		local req_main = tonumber(jobs[main_id] or jobs[tostring(main_id)])
-		if req_main and req_main > 0 and main_lvl >= req_main then
+		if req_main and req_main > 0 and (main_lvl >= req_main or jp_spent >= req_main) then
 			return true
 		end
 		local req_sub = tonumber(jobs[sub_id] or jobs[tostring(sub_id)])
@@ -868,7 +875,10 @@ local function uc_get_ability_signature()
 	local main_job = p.main_job or ''
 	local sub_job = p.sub_job or ''
 	local level_sync = info and info.level_sync and tostring(info.level_sync) or ''
-	return table.concat({ main_job, sub_job, level_sync }, '|')
+	local jp = type(p.job_points) == 'table' and p.job_points or nil
+	local jp_row = jp and jp[tostring(main_job):lower()] or nil
+	local jp_spent = tonumber(jp_row and jp_row.jp_spent) or 0
+	return table.concat({ main_job, sub_job, level_sync, tostring(jp_spent) }, '|')
 end
 
 local function uc_get_cached_ability_options()
