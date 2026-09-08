@@ -1,8 +1,33 @@
 local M = {}
 
-local MAGIC_BURST_MIN_WINDOW_S = 6.0
+-- A confirmed skillchain exposes a 10 second MB window. Keep enough guard for
+-- scheduler arbitration plus a geared mage's cast, but do not reserve so much
+-- time that the second burst opportunity is discarded.
+local MAGIC_BURST_MIN_WINDOW_S = 2.5
 local REACTION_PRIORITY_BAND = 240
 local MAGIC_BURST_PRIORITY_BAND = 170
+
+-- A configured elemental nuke is a ceiling, not an all-or-nothing choice.
+-- Walk downward until the highest currently ready spell is found. This both
+-- preserves damage on successive skillchains while the top tier is on recast
+-- and naturally enables a second burst in the same window after the first spell
+-- puts itself on recast.
+local BURST_SPELL_LADDERS = {
+    { 'Fire V', 'Fire IV', 'Fire III', 'Fire II', 'Fire' },
+    { 'Blizzard V', 'Blizzard IV', 'Blizzard III', 'Blizzard II', 'Blizzard' },
+    { 'Aero V', 'Aero IV', 'Aero III', 'Aero II', 'Aero' },
+    { 'Stone V', 'Stone IV', 'Stone III', 'Stone II', 'Stone' },
+    { 'Thunder V', 'Thunder IV', 'Thunder III', 'Thunder II', 'Thunder' },
+    { 'Water V', 'Water IV', 'Water III', 'Water II', 'Water' },
+    { 'Pyrohelix II', 'Pyrohelix' },
+    { 'Cryohelix II', 'Cryohelix' },
+    { 'Anemohelix II', 'Anemohelix' },
+    { 'Geohelix II', 'Geohelix' },
+    { 'Ionohelix II', 'Ionohelix' },
+    { 'Hydrohelix II', 'Hydrohelix' },
+    { 'Luminohelix II', 'Luminohelix' },
+    { 'Noctohelix II', 'Noctohelix' },
+}
 
 local function require_function(deps, name)
     local value = deps[name]
@@ -35,6 +60,49 @@ local function spell_element(spell)
     local element_id = tonumber(spell.element)
     local element = element_id and res.elements and res.elements[element_id] or nil
     return tostring(element and element.en or '')
+end
+
+local function burst_spell_candidates(configured_name)
+    local configured = tostring(configured_name or '')
+    if configured == '' then
+        return {}
+    end
+    for ladder_index = 1, #BURST_SPELL_LADDERS do
+        local ladder = BURST_SPELL_LADDERS[ladder_index]
+        for spell_index = 1, #ladder do
+            if ladder[spell_index] == configured then
+                local out = {}
+                for fallback_index = spell_index, #ladder do
+                    out[#out + 1] = ladder[fallback_index]
+                end
+                return out
+            end
+        end
+    end
+    return { configured }
+end
+
+local function select_ready_burst_spell(configured_name, target_id, action_ready)
+    local candidates = burst_spell_candidates(configured_name)
+    for index = 1, #candidates do
+        local name = candidates[index]
+        local spell = spell_resource(name)
+        if spell then
+            local ready, reason, kind = action_ready(name, target_id)
+            if ready == true and kind == 'spell' then
+                return {
+                    name = name,
+                    spell = spell,
+                    configured = tostring(configured_name or ''),
+                    stepped_down = name ~= tostring(configured_name or ''),
+                    step_index = index,
+                    checked_count = index,
+                    readiness_reason = tostring(reason or ''),
+                }
+            end
+        end
+    end
+    return nil
 end
 
 local function valid_target(target)
@@ -262,29 +330,41 @@ function M.new(deps)
         if burst.enabled ~= true or burst.spell == '' then
             return false
         end
-        local spell = spell_resource(burst.spell)
-        if not spell then
+        local configured_spell = spell_resource(burst.spell)
+        if not configured_spell then
             return false
         end
-        local element = spell_element(spell)
-        local burst_target = magic_burst_target(ctx, spell, element, action_effective_range)
+        local element = spell_element(configured_spell)
+        local burst_target = magic_burst_target(ctx, configured_spell, element, action_effective_range)
         if burst_target == nil then
+            return false
+        end
+        local burst_choice = select_ready_burst_spell(burst.spell, burst_target.target_id, action_ready)
+        if burst_choice == nil then
+            return false
+        end
+        local chosen_element = spell_element(burst_choice.spell)
+        if chosen_element == '' or chosen_element ~= element then
             return false
         end
         return append_spell(out, ctx, {
             action_ready = action_ready,
             action_effective_range = action_effective_range,
-            spell_name = burst.spell,
+            spell_name = burst_choice.name,
             target_id = burst_target.target_id,
             target_name = burst_target.target_name,
             family_id = 'combat.magic_burst',
             id_prefix = 'magic_burst',
             priority_band = MAGIC_BURST_PRIORITY_BAND,
             urgency = 1.0 - math.min(1.0, burst_target.remaining / 10.0),
-            reason_code = 'magic_burst_window',
+            reason_code = burst_choice.stepped_down and 'magic_burst_step_down' or 'magic_burst_window',
             detail = {
                 skillchain_property = burst_target.property,
-                spell_element = element,
+                spell_element = chosen_element,
+                configured_burst_spell = burst_choice.configured,
+                selected_burst_spell = burst_choice.name,
+                burst_step_down = burst_choice.stepped_down,
+                burst_step_index = burst_choice.step_index,
                 magic_burst_expires_at = burst_target.mb_expires,
                 window_remaining_s = burst_target.remaining,
                 selected_target_id = ctx.target_present == true and tonumber(ctx.target and ctx.target.id) or 0,
