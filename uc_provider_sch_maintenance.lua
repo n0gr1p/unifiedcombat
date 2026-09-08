@@ -7,6 +7,7 @@ local sch_maintenance = require('uc_sch_maintenance')
 local sch_party = require('uc_sch_party')
 local sch_runtime = require('uc_sch_runtime')
 local sch_skillchain_runtime = require('uc_sch_skillchain_runtime')
+local sch_skillchain_target = require('uc_sch_skillchain_target')
 local sch_trace = require('uc_sch_trace')
 
 local M = {}
@@ -114,20 +115,8 @@ local function player_progress(player)
 end
 
 local function default_current_target()
-	if type(windower) ~= 'table' or type(windower.ffxi) ~= 'table'
-		or type(windower.ffxi.get_mob_by_target) ~= 'function' then
-		return nil
-	end
-	local target = windower.ffxi.get_mob_by_target('t')
-	if type(target) ~= 'table' or (tonumber(target.id) or 0) <= 0 then
-		return nil
-	end
-	return {
-		id = tonumber(target.id),
-		name = tostring(target.name or ''),
-		hpp = tonumber(target.hpp) or 0,
-		valid_target = target.valid_target ~= false,
-	}
+	local target = sch_skillchain_target.select()
+	return target
 end
 
 local function default_skillchain_snapshot(target_id)
