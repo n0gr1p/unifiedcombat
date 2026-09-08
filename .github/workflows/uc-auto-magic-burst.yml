@@ -1,0 +1,1233 @@
+name: UC auto magic burst family patch
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/uc-auto-magic-burst.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply auto magic burst family implementation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}: {old[:120]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          def replace_private_method(path, signature, replacement):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              start = text.find(signature)
+              if start < 0:
+                  raise SystemExit(f'{path}: method signature not found: {signature}')
+              tail = text[start + len(signature):]
+              m = re.search(r'\n    private\s+(?:static\s+)?', tail)
+              if not m:
+                  raise SystemExit(f'{path}: next private method not found after {signature}')
+              end = start + len(signature) + m.start() + 1
+              p.write_text(text[:start] + replacement.rstrip() + '\n\n' + text[end:], encoding='utf-8')
+
+          # ---------- Runtime auto-family selector ----------
+          Path('uc_magic_burst_auto.lua').write_text(r'''local M = {}
+
+local ELEMENT_PRIORITY = {
+    'Lightning',
+    'Ice',
+    'Fire',
+    'Wind',
+    'Water',
+    'Earth',
+    'Light',
+    'Dark',
+}
+
+local FAMILY_MAX_TIER = {
+    spell = 5,
+    ra = 3,
+    helix = 2,
+}
+
+local FAMILY_SPELLS = {
+    spell = {
+        Fire = { 'Fire', 'Fire II', 'Fire III', 'Fire IV', 'Fire V' },
+        Ice = { 'Blizzard', 'Blizzard II', 'Blizzard III', 'Blizzard IV', 'Blizzard V' },
+        Wind = { 'Aero', 'Aero II', 'Aero III', 'Aero IV', 'Aero V' },
+        Earth = { 'Stone', 'Stone II', 'Stone III', 'Stone IV', 'Stone V' },
+        Lightning = { 'Thunder', 'Thunder II', 'Thunder III', 'Thunder IV', 'Thunder V' },
+        Water = { 'Water', 'Water II', 'Water III', 'Water IV', 'Water V' },
+    },
+    ra = {
+        Fire = { 'Fira', 'Fira II', 'Fira III' },
+        Ice = { 'Blizzara', 'Blizzara II', 'Blizzara III' },
+        Wind = { 'Aerora', 'Aerora II', 'Aerora III' },
+        Earth = { 'Stonera', 'Stonera II', 'Stonera III' },
+        Lightning = { 'Thundara', 'Thundara II', 'Thundara III' },
+        Water = { 'Watera', 'Watera II', 'Watera III' },
+    },
+    helix = {
+        Fire = { 'Pyrohelix', 'Pyrohelix II' },
+        Ice = { 'Cryohelix', 'Cryohelix II' },
+        Wind = { 'Anemohelix', 'Anemohelix II' },
+        Earth = { 'Geohelix', 'Geohelix II' },
+        Lightning = { 'Ionohelix', 'Ionohelix II' },
+        Water = { 'Hydrohelix', 'Hydrohelix II' },
+        Light = { 'Luminohelix', 'Luminohelix II' },
+        Dark = { 'Noctohelix', 'Noctohelix II' },
+    },
+}
+
+local HELIX_TIER_UNAVAILABLE = {
+    BLOCK_DEFENSIVE_UNKNOWN_SPELL = true,
+    BLOCK_DEFENSIVE_NOT_LEARNED = true,
+    BLOCK_DEFENSIVE_JOB_CANNOT_USE_SPELL = true,
+}
+
+local function spell_resource(name)
+    local res = require('resources')
+    if type(res.spells) ~= 'table' or type(res.spells.with) ~= 'function' then
+        return nil
+    end
+    return res.spells:with('en', tostring(name or ''))
+end
+
+local function spell_element(spell)
+    if type(spell) ~= 'table' then
+        return ''
+    end
+    if type(spell.element) == 'string' then
+        return spell.element
+    end
+    local res = require('resources')
+    local element_id = tonumber(spell.element)
+    local element = element_id and res.elements and res.elements[element_id] or nil
+    return tostring(element and element.en or '')
+end
+
+local function target_distance(target)
+    local squared = tonumber(target and target.distance)
+    if squared == nil or squared < 0 then
+        return nil
+    end
+    return math.sqrt(squared)
+end
+
+local function valid_target(target)
+    return type(target) == 'table'
+        and target.valid_target == true
+        and tonumber(target.spawn_type) == 16
+        and (tonumber(target.hpp) or 0) > 0
+        and (tonumber(target.id) or 0) > 0
+end
+
+local function skillchain_property(state)
+    if type(state) ~= 'table' then
+        return ''
+    end
+    local property = tostring(state.last_confirmed_result or '')
+    if property == '' and type(state.active_properties) == 'table' then
+        property = tostring(state.active_properties[1] or '')
+    end
+    return property
+end
+
+local function player_has_buff(ctx, buff_id)
+    local wanted = tonumber(buff_id) or 0
+    if wanted <= 0 then
+        return false
+    end
+    local player = type(ctx) == 'table' and ctx.player or nil
+    for _, observed in pairs(type(player) == 'table' and type(player.buffs) == 'table' and player.buffs or {}) do
+        if tonumber(observed) == wanted then
+            return true
+        end
+    end
+    return false
+end
+
+local function would_spend_sch_stratagem(ctx, family, spell_name)
+    if family ~= 'spell' then
+        return false
+    end
+    local player = type(ctx) == 'table' and ctx.player or nil
+    if type(player) ~= 'table' or tostring(player.main_job or '') ~= 'SCH' then
+        return false
+    end
+    local sch_skillchain = require('uc_sch_skillchain')
+    if sch_skillchain.requires_addendum_black(spell_name) ~= true then
+        return false
+    end
+    local capabilities = require('uc_sch_capabilities')
+    local addendum_black = capabilities.abilities and capabilities.abilities.addendum_black or nil
+    return not player_has_buff(ctx, addendum_black and addendum_black.buff_id)
+end
+
+local function compatible_elements(property)
+    local skillchain_elements = require('uc_skillchain_elements')
+    local out = {}
+    local list = skillchain_elements.elements(property)
+    for i = 1, #list do
+        out[tostring(list[i])] = true
+    end
+    return out
+end
+
+local function resolved_ceiling(family, configured)
+    local family_max = FAMILY_MAX_TIER[family]
+    if family_max == nil then
+        return nil
+    end
+    local ceiling = tonumber(configured) or 0
+    ceiling = math.floor(ceiling)
+    if ceiling <= 0 then
+        return family_max
+    end
+    if ceiling > family_max then
+        return family_max
+    end
+    return ceiling
+end
+
+local function in_range(spell, distance, action_effective_range)
+    if type(spell) ~= 'table' or distance == nil then
+        return false
+    end
+    local max_range = tonumber(action_effective_range(spell.range)) or 0
+    return max_range > 0 and distance <= max_range
+end
+
+local function ready_choice(name, tier, family, target_id, distance, ctx, action_ready, action_effective_range)
+    local spell = spell_resource(name)
+    if not spell or not in_range(spell, distance, action_effective_range) then
+        return nil, 'unavailable'
+    end
+    if would_spend_sch_stratagem(ctx, family, name) then
+        return nil, 'stratagem'
+    end
+    local ready, reason, kind = action_ready(name, target_id)
+    if ready == true and kind == 'spell' then
+        return {
+            name = name,
+            spell = spell,
+            element = spell_element(spell),
+            tier = tier,
+            readiness_reason = tostring(reason or ''),
+        }, nil
+    end
+    return nil, tostring(reason or '')
+end
+
+local function choose_nonhelix(property, family, ceiling, target_id, distance, ctx, action_ready, action_effective_range)
+    local compatible = compatible_elements(property)
+    local table_for_family = FAMILY_SPELLS[family] or {}
+    for tier = ceiling, 1, -1 do
+        for i = 1, #ELEMENT_PRIORITY do
+            local element = ELEMENT_PRIORITY[i]
+            local ladder = table_for_family[element]
+            local name = compatible[element] and ladder and ladder[tier] or nil
+            if name then
+                local choice = ready_choice(name, tier, family, target_id, distance, ctx, action_ready, action_effective_range)
+                if choice then
+                    return choice
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function choose_helix(property, ceiling, target_id, distance, ctx, action_ready, action_effective_range)
+    local compatible = compatible_elements(property)
+    local table_for_family = FAMILY_SPELLS.helix
+    for i = 1, #ELEMENT_PRIORITY do
+        local element = ELEMENT_PRIORITY[i]
+        local ladder = compatible[element] and table_for_family[element] or nil
+        if ladder then
+            local element_has_known_spell = false
+            for tier = ceiling, 1, -1 do
+                local name = ladder[tier]
+                if name then
+                    local spell = spell_resource(name)
+                    if spell and in_range(spell, distance, action_effective_range) then
+                        local ready, reason, kind = action_ready(name, target_id)
+                        if ready == true and kind == 'spell' then
+                            return {
+                                name = name,
+                                spell = spell,
+                                element = spell_element(spell),
+                                tier = tier,
+                                readiness_reason = tostring(reason or ''),
+                            }
+                        end
+                        local reason_text = tostring(reason or '')
+                        if HELIX_TIER_UNAVAILABLE[reason_text] then
+                            -- This tier is not actually available to the current job/character.
+                            -- It is safe to try the lower learned tier, or another compatible
+                            -- element if neither tier exists for this character.
+                        else
+                            -- Recast/MP/other runtime blocks mean a Helix of this element is
+                            -- already unavailable right now. Never throw a weaker or alternate
+                            -- Helix into the window just to replace a non-stacking Helix effect.
+                            return nil
+                        end
+                        element_has_known_spell = true
+                    end
+                end
+            end
+            if element_has_known_spell then
+                -- Both tiers existed as resources but were unavailable-to-character. Continue
+                -- to another compatible element only for that permanent capability case.
+            end
+        end
+    end
+    return nil
+end
+
+local function choose_for_target(property, family, max_tier, target_id, distance, ctx, action_ready, action_effective_range)
+    local ceiling = resolved_ceiling(family, max_tier)
+    if ceiling == nil then
+        return nil
+    end
+    if family == 'helix' then
+        return choose_helix(property, ceiling, target_id, distance, ctx, action_ready, action_effective_range)
+    end
+    return choose_nonhelix(property, family, ceiling, target_id, distance, ctx, action_ready, action_effective_range)
+end
+
+function M.select(ctx, burst, deps)
+    local action_ready = assert(deps and deps.action_ready, 'auto burst requires action_ready')
+    local action_effective_range = assert(deps and deps.action_effective_range, 'auto burst requires action_effective_range')
+    local family = tostring(burst and burst.family or 'spell'):lower()
+    if FAMILY_MAX_TIER[family] == nil then
+        return nil
+    end
+
+    local combat_core = require('unified_combat_core')
+    local targeting_common = require('uc_targeting_common')
+    local party_snapshot = type(ctx.party) == 'table' and ctx.party or {}
+    local _claim_ids, claims_set = targeting_common.build_friendly_claims({ party = party_snapshot })
+    if type(claims_set) ~= 'table' then
+        return nil
+    end
+
+    local now = tonumber(ctx.now) or 0
+    local selected_id = ctx.target_present == true and tonumber(ctx.target and ctx.target.id) or 0
+    local best = nil
+    local seen = {}
+
+    local function consider(target)
+        if not valid_target(target) then
+            return
+        end
+        local target_id = tonumber(target.id) or 0
+        if target_id <= 0 or seen[target_id] then
+            return
+        end
+        seen[target_id] = true
+        local claim_id = tonumber(target.claim_id) or 0
+        if claim_id <= 0 or claims_set[claim_id] ~= true then
+            return
+        end
+        local distance = target_distance(target)
+        if distance == nil then
+            return
+        end
+        local state = combat_core.get_skillchain_snapshot(target_id)
+        if type(state) ~= 'table' then
+            return
+        end
+        local mb_expires = tonumber(state.magic_burst_expires_at) or 0
+        local remaining = mb_expires - now
+        if remaining <= 0 then
+            return
+        end
+        local property = skillchain_property(state)
+        if property == '' then
+            return
+        end
+        local choice = choose_for_target(
+            property,
+            family,
+            burst.max_tier,
+            target_id,
+            distance,
+            ctx,
+            action_ready,
+            action_effective_range
+        )
+        if choice == nil or choice.element == '' then
+            return
+        end
+        local candidate = {
+            name = choice.name,
+            spell = choice.spell,
+            element = choice.element,
+            tier = choice.tier,
+            family = family,
+            target = target,
+            target_id = target_id,
+            target_name = tostring(target.name or ''),
+            property = property,
+            mb_expires = mb_expires,
+            remaining = remaining,
+            distance = distance,
+            selected = target_id == selected_id,
+        }
+        if best == nil
+            or candidate.mb_expires > best.mb_expires
+            or (candidate.mb_expires == best.mb_expires and candidate.selected and not best.selected)
+            or (candidate.mb_expires == best.mb_expires and candidate.selected == best.selected
+                and candidate.distance < best.distance)
+            or (candidate.mb_expires == best.mb_expires and candidate.selected == best.selected
+                and candidate.distance == best.distance and candidate.target_id < best.target_id) then
+            best = candidate
+        end
+    end
+
+    for _, mob in pairs(type(ctx.mobs_by_id) == 'table' and ctx.mobs_by_id or {}) do
+        consider(mob)
+    end
+    if ctx.target_present == true then
+        consider(ctx.target)
+    end
+    return best
+end
+
+return M
+''', encoding='utf-8')
+
+          # ---------- Combat config reader ----------
+          replace_once(
+              'uc_combat_extension_config.lua',
+              "function M.magic_burst(settings)\n    local spells = active_config().get_path('config.spells')\n    if type(spells) == 'table' and spells.magic_burst ~= nil then\n        return {\n            enabled = spells.magic_burst == true,\n            spell = trim(spells.configured),\n        }\n    end\n    return {\n        enabled = flat_value(settings, 'magic_burst_enabled') == true,\n        spell = trim(flat_value(settings, 'spell')),\n    }\nend",
+              """function M.magic_burst(settings)\n    local spells = active_config().get_path('config.spells')\n    local enabled\n    local spell\n    local mode\n    local family\n    local max_tier\n    if type(spells) == 'table' and spells.magic_burst ~= nil then\n        enabled = spells.magic_burst == true\n        spell = trim(spells.configured)\n        mode = trim(spells.magic_burst_mode):lower()\n        family = trim(spells.magic_burst_family):lower()\n        max_tier = tonumber(spells.magic_burst_max_tier)\n    else\n        enabled = flat_value(settings, 'magic_burst_enabled') == true\n        spell = trim(flat_value(settings, 'spell'))\n        mode = trim(flat_value(settings, 'magic_burst_mode')):lower()\n        family = trim(flat_value(settings, 'magic_burst_family')):lower()\n        max_tier = tonumber(flat_value(settings, 'magic_burst_max_tier'))\n    end\n    if mode == '' then mode = 'exact' end\n    if family == '' then family = 'spell' end\n    if mode ~= 'exact' and mode ~= 'auto' then mode = 'exact' end\n    if family ~= 'spell' and family ~= 'ra' and family ~= 'helix' then family = 'spell' end\n    max_tier = math.floor(max_tier or 0)\n    if max_tier < 0 then max_tier = 0 end\n    if max_tier > 5 then max_tier = 5 end\n    return {\n        enabled = enabled,\n        spell = spell,\n        mode = mode,\n        family = family,\n        max_tier = max_tier,\n    }\nend"""
+          )
+
+          # ---------- Combat extension: auto branch while preserving exact behavior ----------
+          p = Path('uc_combat_extensions.lua')
+          text = p.read_text(encoding='utf-8')
+          start_marker = "        local burst = config.magic_burst(ctx.settings)\n"
+          start = text.find(start_marker)
+          if start < 0:
+              raise SystemExit('uc_combat_extensions.lua: burst block start not found')
+          end_marker = "\n    end\n\n    return api"
+          end = text.find(end_marker, start)
+          if end < 0:
+              raise SystemExit('uc_combat_extensions.lua: burst block end not found')
+          new_block = r'''        local burst = config.magic_burst(ctx.settings)
+        if burst.enabled ~= true then
+            return false
+        end
+
+        if burst.mode == 'auto' then
+            local auto_choice = require('uc_magic_burst_auto').select(ctx, burst, {
+                action_ready = action_ready,
+                action_effective_range = action_effective_range,
+            })
+            if auto_choice == nil then
+                return false
+            end
+            return append_spell(out, ctx, {
+                action_ready = action_ready,
+                action_effective_range = action_effective_range,
+                spell_name = auto_choice.name,
+                target_id = auto_choice.target_id,
+                target_name = auto_choice.target_name,
+                family_id = 'combat.magic_burst',
+                id_prefix = 'magic_burst',
+                priority_band = MAGIC_BURST_PRIORITY_BAND,
+                urgency = 1.0 - math.min(1.0, auto_choice.remaining / 10.0),
+                reason_code = 'magic_burst_auto',
+                detail = {
+                    skillchain_property = auto_choice.property,
+                    spell_element = auto_choice.element,
+                    magic_burst_mode = 'auto',
+                    magic_burst_family = auto_choice.family,
+                    magic_burst_max_tier = burst.max_tier,
+                    selected_burst_spell = auto_choice.name,
+                    selected_burst_tier = auto_choice.tier,
+                    auto_burst = true,
+                    magic_burst_expires_at = auto_choice.mb_expires,
+                    window_remaining_s = auto_choice.remaining,
+                    selected_target_id = ctx.target_present == true and tonumber(ctx.target and ctx.target.id) or 0,
+                    off_target = auto_choice.selected ~= true,
+                },
+            })
+        end
+
+        if burst.spell == '' then
+            return false
+        end
+        local configured_spell = spell_resource(burst.spell)
+        if not configured_spell then
+            return false
+        end
+        local element = spell_element(configured_spell)
+        local burst_target = magic_burst_target(ctx, configured_spell, element, action_effective_range)
+        if burst_target == nil then
+            return false
+        end
+        local burst_choice = select_ready_burst_spell(
+            burst.spell,
+            burst_target.target_id,
+            action_ready,
+            ctx
+        )
+        if burst_choice == nil then
+            return false
+        end
+        local chosen_element = spell_element(burst_choice.spell)
+        if chosen_element == '' or chosen_element ~= element then
+            return false
+        end
+        return append_spell(out, ctx, {
+            action_ready = action_ready,
+            action_effective_range = action_effective_range,
+            spell_name = burst_choice.name,
+            target_id = burst_target.target_id,
+            target_name = burst_target.target_name,
+            family_id = 'combat.magic_burst',
+            id_prefix = 'magic_burst',
+            priority_band = MAGIC_BURST_PRIORITY_BAND,
+            urgency = 1.0 - math.min(1.0, burst_target.remaining / 10.0),
+            reason_code = burst_choice.stepped_down and 'magic_burst_step_down' or 'magic_burst_window',
+            detail = {
+                skillchain_property = burst_target.property,
+                spell_element = chosen_element,
+                configured_burst_spell = burst_choice.configured,
+                selected_burst_spell = burst_choice.name,
+                burst_step_down = burst_choice.stepped_down,
+                burst_step_index = burst_choice.step_index,
+                magic_burst_expires_at = burst_target.mb_expires,
+                window_remaining_s = burst_target.remaining,
+                selected_target_id = ctx.target_present == true and tonumber(ctx.target and ctx.target.id) or 0,
+                off_target = burst_target.selected ~= true,
+            },
+        })'''
+          p.write_text(text[:start] + new_block + text[end:], encoding='utf-8')
+
+          # ---------- Canonical config ----------
+          replace_once(
+              'uc_config_normalizer.lua',
+              "        spells = {\n            enabled = false,\n            configured = '',\n            magic_burst = false,\n            dd2_slots = {},\n        },",
+              "        spells = {\n            enabled = false,\n            configured = '',\n            magic_burst = false,\n            magic_burst_mode = 'exact',\n            magic_burst_family = 'spell',\n            magic_burst_max_tier = 0,\n            dd2_slots = {},\n        },"
+          )
+          replace_once(
+              'uc_config_normalizer.lua',
+              "    if is_table(nested) and table_has_any(nested, { 'enabled', 'configured', 'magic_burst', 'dd2_slots', 'spell' }) then\n            spells.enabled = normalize_boolean(nested.enabled, spells.enabled)\n            spells.configured = normalize_string(nested.configured or nested.spell, spells.configured)\n        spells.magic_burst = normalize_boolean(nested.magic_burst, spells.magic_burst)\n        spells.dd2_slots = normalize_list(nested.dd2_slots, spells.dd2_slots)\n    else\n            spells.enabled = normalize_boolean(first_path(source, { path('spell_active') }), spells.enabled)\n            spells.configured = normalize_string(first_path(source, { path('spell') }), spells.configured)\n        spells.magic_burst = normalize_boolean(first_path(source, { path('magic_burst_enabled') }), spells.magic_burst)\n        spells.dd2_slots = normalize_list(first_path(source, { path('dd2_spell_slots') }), spells.dd2_slots)\n    end\nend",
+              """    if is_table(nested) and table_has_any(nested, { 'enabled', 'configured', 'magic_burst', 'magic_burst_mode', 'magic_burst_family', 'magic_burst_max_tier', 'dd2_slots', 'spell' }) then\n        spells.enabled = normalize_boolean(nested.enabled, spells.enabled)\n        spells.configured = normalize_string(nested.configured or nested.spell, spells.configured)\n        spells.magic_burst = normalize_boolean(nested.magic_burst, spells.magic_burst)\n        spells.magic_burst_mode = normalize_string(nested.magic_burst_mode, spells.magic_burst_mode):lower()\n        spells.magic_burst_family = normalize_string(nested.magic_burst_family, spells.magic_burst_family):lower()\n        spells.magic_burst_max_tier = normalize_number(nested.magic_burst_max_tier, spells.magic_burst_max_tier, { integer = true, min = 0, max = 5 })\n        spells.dd2_slots = normalize_list(nested.dd2_slots, spells.dd2_slots)\n    else\n        spells.enabled = normalize_boolean(first_path(source, { path('spell_active') }), spells.enabled)\n        spells.configured = normalize_string(first_path(source, { path('spell') }), spells.configured)\n        spells.magic_burst = normalize_boolean(first_path(source, { path('magic_burst_enabled') }), spells.magic_burst)\n        spells.magic_burst_mode = normalize_string(first_path(source, { path('magic_burst_mode') }), spells.magic_burst_mode):lower()\n        spells.magic_burst_family = normalize_string(first_path(source, { path('magic_burst_family') }), spells.magic_burst_family):lower()\n        spells.magic_burst_max_tier = normalize_number(first_path(source, { path('magic_burst_max_tier') }), spells.magic_burst_max_tier, { integer = true, min = 0, max = 5 })\n        spells.dd2_slots = normalize_list(first_path(source, { path('dd2_spell_slots') }), spells.dd2_slots)\n    end\n    if spells.magic_burst_mode ~= 'exact' and spells.magic_burst_mode ~= 'auto' then\n        error('spells.magic_burst_mode must be exact or auto')\n    end\n    if spells.magic_burst_family ~= 'spell' and spells.magic_burst_family ~= 'ra' and spells.magic_burst_family ~= 'helix' then\n        error('spells.magic_burst_family must be spell, ra, or helix')\n    end\nend"""
+          )
+
+          # Active compatibility projection.
+          replace_once(
+              'uc_active_config.lua',
+              "\t\tcandidate.spell = config.spells.configured\n\t\tcandidate.magic_burst_enabled = config.spells.magic_burst\n\t\tcandidate.dd2_spell_slots = clone_value(config.spells.dd2_slots)",
+              "\t\tcandidate.spell = config.spells.configured\n\t\tcandidate.magic_burst_enabled = config.spells.magic_burst\n\t\tcandidate.magic_burst_mode = config.spells.magic_burst_mode\n\t\tcandidate.magic_burst_family = config.spells.magic_burst_family\n\t\tcandidate.magic_burst_max_tier = config.spells.magic_burst_max_tier\n\t\tcandidate.dd2_spell_slots = clone_value(config.spells.dd2_slots)"
+          )
+
+          # Ownership contract.
+          replace_once(
+              'uc_profile_contract.lua',
+              '    spell = "profile_owned_by_ui",\n    spell_active = "profile_owned_by_ui",',
+              '    spell = "profile_owned_by_ui",\n    spell_active = "profile_owned_by_ui",\n    magic_burst_mode = "profile_owned_by_ui",\n    magic_burst_family = "profile_owned_by_ui",\n    magic_burst_max_tier = "profile_owned_by_ui",'
+          )
+
+          # ---------- WinForms helper partial ----------
+          Path('UnifiedCombatWinForms/MainForm.MagicBurstUi.cs').write_text(r'''using System.Text.Json;
+
+namespace UnifiedCombatWinForms;
+
+public partial class MainForm
+{
+    private ComboBox _magicBurstMaxTier = null!;
+
+    private static readonly string[] MagicBurstAutoSelections =
+    [
+        "Auto Spell",
+        "Auto -ra",
+        "Auto Helix",
+    ];
+
+    private static bool IsMagicBurstAutoSelection(string? value)
+    {
+        return MagicBurstAutoSelections.Contains((value ?? "").Trim(), StringComparer.Ordinal);
+    }
+
+    private static string MagicBurstFamilyForSelection(string? value)
+    {
+        return (value ?? "").Trim() switch
+        {
+            "Auto -ra" => "ra",
+            "Auto Helix" => "helix",
+            "Auto Spell" => "spell",
+            _ => "spell",
+        };
+    }
+
+    private static string MagicBurstAutoDisplay(string family)
+    {
+        return (family ?? "spell").Trim().ToLowerInvariant() switch
+        {
+            "ra" => "Auto -ra",
+            "helix" => "Auto Helix",
+            _ => "Auto Spell",
+        };
+    }
+
+    private string MagicBurstModeValue()
+    {
+        return IsMagicBurstAutoSelection(_magicBurstSpell.Text) ? "auto" : "exact";
+    }
+
+    private string MagicBurstFamilyValue()
+    {
+        return MagicBurstModeValue() == "auto"
+            ? MagicBurstFamilyForSelection(_magicBurstSpell.Text)
+            : "spell";
+    }
+
+    private string MagicBurstPersistedSpellValue(string sid)
+    {
+        if (MagicBurstModeValue() == "exact")
+        {
+            return (_magicBurstSpell.Text ?? "").Trim();
+        }
+        if (_workingProfileBySid.TryGetValue(sid, out var existing)
+            && existing.TryGetPropertyValue("spell", out var node)
+            && node is not null)
+        {
+            try
+            {
+                return (node.GetValue<string>() ?? "").Trim();
+            }
+            catch
+            {
+                // Preserve compatibility by falling back to empty when the legacy value is malformed.
+            }
+        }
+        return "";
+    }
+
+    private int MagicBurstMaxTierValue()
+    {
+        return (_magicBurstMaxTier.SelectedItem?.ToString() ?? "Auto") switch
+        {
+            "I" => 1,
+            "II" => 2,
+            "III" => 3,
+            "IV" => 4,
+            "V" => 5,
+            _ => 0,
+        };
+    }
+
+    private static string MagicBurstTierDisplay(int tier)
+    {
+        return tier switch
+        {
+            1 => "I",
+            2 => "II",
+            3 => "III",
+            4 => "IV",
+            5 => "V",
+            _ => "Auto",
+        };
+    }
+
+    private int MagicBurstFamilyTierLimit()
+    {
+        if (MagicBurstModeValue() != "auto")
+        {
+            return 0;
+        }
+        return MagicBurstFamilyValue() switch
+        {
+            "helix" => 2,
+            "ra" => 3,
+            _ => 5,
+        };
+    }
+
+    private void RefreshMagicBurstTierOptions(int requestedTier)
+    {
+        var previousSuppress = _suppressEvents;
+        _suppressEvents = true;
+        try
+        {
+            var limit = MagicBurstFamilyTierLimit();
+            _magicBurstMaxTier.Items.Clear();
+            _magicBurstMaxTier.Items.Add("Auto");
+            for (var tier = 1; tier <= limit; tier++)
+            {
+                _magicBurstMaxTier.Items.Add(MagicBurstTierDisplay(tier));
+            }
+            var normalized = requestedTier <= 0 ? 0 : Math.Min(requestedTier, limit);
+            var display = MagicBurstTierDisplay(normalized);
+            _magicBurstMaxTier.SelectedItem = display;
+            if (_magicBurstMaxTier.SelectedIndex < 0)
+            {
+                _magicBurstMaxTier.SelectedIndex = 0;
+            }
+            _magicBurstMaxTier.Enabled = limit > 0;
+        }
+        finally
+        {
+            _suppressEvents = previousSuppress;
+        }
+    }
+
+    private void UpdateMagicBurstTierUi()
+    {
+        var currentTier = MagicBurstMaxTierValue();
+        RefreshMagicBurstTierOptions(currentTier);
+    }
+
+    private void ApplyMagicBurstFromSnapshot(JsonElement snapshot)
+    {
+        _magicBurstEnabled.Checked = SessionStateHelper.GetBool(snapshot, "magic_burst_enabled", false);
+        var mode = SessionStateHelper.GetString(snapshot, "magic_burst_mode", "exact").Trim().ToLowerInvariant();
+        var family = SessionStateHelper.GetString(snapshot, "magic_burst_family", "spell").Trim().ToLowerInvariant();
+        var maxTier = Math.Clamp(SessionStateHelper.GetInt(snapshot, "magic_burst_max_tier", 0), 0, 5);
+        if (mode is not ("exact" or "auto"))
+        {
+            throw new InvalidDataException($"Unsupported magic burst mode '{mode}'.");
+        }
+        if (family is not ("spell" or "ra" or "helix"))
+        {
+            throw new InvalidDataException($"Unsupported magic burst family '{family}'.");
+        }
+        var selected = mode == "auto"
+            ? MagicBurstAutoDisplay(family)
+            : SessionStateHelper.GetString(snapshot, "spell");
+        RefreshMagicBurstSpellOptions(selected);
+        RefreshMagicBurstTierOptions(maxTier);
+    }
+}
+''', encoding='utf-8')
+
+          # Add tier control row beneath burst selector.
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityUi.cs',
+              "        leftCol.Controls.Add(_magicBurstSpell, 1, lr);\n        lr++;\n\n        _chkAftermath = MkCtx(\"aftermath_enabled\");",
+              """        leftCol.Controls.Add(_magicBurstSpell, 1, lr);\n        lr++;\n\n        leftCol.Controls.Add(new Label { Text = \"Burst Max Tier\", AutoSize = true, Anchor = AnchorStyles.Left }, 0, lr);\n        _magicBurstMaxTier = new ComboBox\n        {\n            DropDownStyle = ComboBoxStyle.DropDownList,\n            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,\n            MinimumSize = new Size(120, 0),\n        };\n        _magicBurstMaxTier.Items.Add(\"Auto\");\n        _magicBurstMaxTier.SelectedItem = \"Auto\";\n        _magicBurstMaxTier.Enabled = false;\n        _smartWsToolTip.SetToolTip(\n            _magicBurstMaxTier,\n            \"Maximum tier for Auto Spell / Auto -ra / Auto Helix. Auto uses the strongest tier the character can currently use.\"\n        );\n        _magicBurstMaxTier.SelectionChangeCommitted += (_, _) => OnMagicBurstConfigChanged();\n        leftCol.Controls.Add(_magicBurstMaxTier, 1, lr);\n        lr++;\n\n        _chkAftermath = MkCtx(\"aftermath_enabled\");"""
+          )
+
+          # Replace the two magic-burst UI methods with auto-aware versions.
+          replace_private_method(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '    private void RefreshMagicBurstSpellOptions(string? selected = null)',
+              r'''    private void RefreshMagicBurstSpellOptions(string? selected = null)
+    {
+        selected = string.IsNullOrWhiteSpace(selected) ? (_magicBurstSpell.Text ?? "").Trim() : selected.Trim();
+        var options = new List<string>(MagicBurstAutoSelections);
+        foreach (var spell in _pathPullSpellOptions)
+        {
+            if (!string.IsNullOrWhiteSpace(spell) && !options.Contains(spell, StringComparer.Ordinal))
+            {
+                options.Add(spell);
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(selected) && !options.Contains(selected, StringComparer.Ordinal))
+        {
+            options.Insert(MagicBurstAutoSelections.Length, selected);
+        }
+        _magicBurstSpell.Items.Clear();
+        foreach (var option in options)
+        {
+            _magicBurstSpell.Items.Add(option);
+        }
+        var index = options.FindIndex(value => string.Equals(value, selected, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            _magicBurstSpell.SelectedIndex = index;
+        }
+        else
+        {
+            _magicBurstSpell.SelectedIndex = -1;
+            _magicBurstSpell.Text = selected;
+        }
+        UpdateMagicBurstTierUi();
+    }'''
+          )
+
+          replace_private_method(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '    private void OnMagicBurstConfigChanged()',
+              r'''    private void OnMagicBurstConfigChanged()
+    {
+        if (_suppressEvents || string.IsNullOrWhiteSpace(_selectedSid))
+        {
+            return;
+        }
+        var sid = _selectedSid;
+        UpdateMagicBurstTierUi();
+        var mode = MagicBurstModeValue();
+        var family = MagicBurstFamilyValue();
+        var maxTier = MagicBurstMaxTierValue();
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "magic_burst_enabled",
+            ["value"] = _magicBurstEnabled.Checked ? "on" : "off",
+        });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "magic_burst_mode", ["value"] = mode });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "magic_burst_family", ["value"] = family });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "magic_burst_max_tier", ["value"] = maxTier });
+        if (mode == "exact")
+        {
+            Forward(sid, new Dictionary<string, object?>
+            {
+                ["op"] = "set",
+                ["path"] = "spell",
+                ["value"] = (_magicBurstSpell.Text ?? "").Trim(),
+            });
+        }
+        CaptureWorkingProfileFromUi(sid);
+    }'''
+          )
+
+          # Snapshot restore and clear-state hooks.
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              "            _magicBurstEnabled.Checked = SessionStateHelper.GetBool(s, \"magic_burst_enabled\", false);\n            RefreshMagicBurstSpellOptions(SessionStateHelper.GetString(s, \"spell\"));",
+              "            ApplyMagicBurstFromSnapshot(s);"
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              "            _magicBurstEnabled.Checked = false;\n            _magicBurstSpell.Items.Clear();\n            _magicBurstSpell.Text = \"\";",
+              "            _magicBurstEnabled.Checked = false;\n            _magicBurstSpell.Items.Clear();\n            _magicBurstSpell.Text = \"\";\n            _magicBurstMaxTier.Items.Clear();\n            _magicBurstMaxTier.Items.Add(\"Auto\");\n            _magicBurstMaxTier.SelectedItem = \"Auto\";\n            _magicBurstMaxTier.Enabled = false;"
+          )
+
+          # ---------- UI profile persistence + migration ----------
+          replace_once('UnifiedCombatWinForms/MainForm.ProfileStore.cs', 'private const int ProfileSchemaVersion = 7;', 'private const int ProfileSchemaVersion = 8;')
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
+              '            ["magic_burst_enabled"] = _magicBurstEnabled.Checked,\n            ["spell"] = (_magicBurstSpell.Text ?? "").Trim(),',
+              '            ["magic_burst_enabled"] = _magicBurstEnabled.Checked,\n            ["magic_burst_mode"] = MagicBurstModeValue(),\n            ["magic_burst_family"] = MagicBurstFamilyValue(),\n            ["magic_burst_max_tier"] = MagicBurstMaxTierValue(),\n            ["spell"] = MagicBurstPersistedSpellValue(sid),'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
+              '            ["magic_burst_enabled"] = false,\n            ["spell"] = "",',
+              '            ["magic_burst_enabled"] = false,\n            ["magic_burst_mode"] = "exact",\n            ["magic_burst_family"] = "spell",\n            ["magic_burst_max_tier"] = 0,\n            ["spell"] = "",'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
+              '        if (!root.ContainsKey("spell"))\n        {\n            root["spell"] = "";\n            changed = true;\n        }\n        if (!root.ContainsKey("sch_skillchain_enabled"))',
+              '        if (!root.ContainsKey("spell"))\n        {\n            root["spell"] = "";\n            changed = true;\n        }\n        if (!root.ContainsKey("magic_burst_mode"))\n        {\n            root["magic_burst_mode"] = "exact";\n            changed = true;\n        }\n        if (!root.ContainsKey("magic_burst_family"))\n        {\n            root["magic_burst_family"] = "spell";\n            changed = true;\n        }\n        if (!root.ContainsKey("magic_burst_max_tier"))\n        {\n            root["magic_burst_max_tier"] = 0;\n            changed = true;\n        }\n        if (!root.ContainsKey("sch_skillchain_enabled"))'
+          )
+
+          # ---------- Profile V2 writer ----------
+          replace_private_method(
+              'UnifiedCombatWinForms/StructuredProfileV2Writer.cs',
+              '    private static StructuredProfileNode BuildSpells(JsonObject flatProfile)',
+              r'''    private static StructuredProfileNode BuildSpells(JsonObject flatProfile)
+    {
+        var mode = ReadString(flatProfile, "magic_burst_mode", "exact").Trim().ToLowerInvariant();
+        var family = ReadString(flatProfile, "magic_burst_family", "spell").Trim().ToLowerInvariant();
+        if (mode is not ("exact" or "auto"))
+        {
+            throw new InvalidDataException($"magic_burst_mode must be exact or auto: {mode}");
+        }
+        if (family is not ("spell" or "ra" or "helix"))
+        {
+            throw new InvalidDataException($"magic_burst_family must be spell, ra, or helix: {family}");
+        }
+        var maxTier = ReadBoundedInt(flatProfile, "magic_burst_max_tier", 0, 0, 5);
+        return new StructuredProfileNode()
+            .Add("enabled", ReadBool(flatProfile, "spell_active", false))
+            .Add("configured", ReadString(flatProfile, "spell", ""))
+            .Add("magic_burst", ReadBool(flatProfile, "magic_burst_enabled", false))
+            .Add("magic_burst_mode", mode)
+            .Add("magic_burst_family", family)
+            .Add("magic_burst_max_tier", maxTier)
+            .Add("dd2_slots", EmptyList());
+    }'''
+          )
+
+          # Update the one current schema-seven assertion.
+          replace_once(
+              'UnifiedCombatWinForms/ScholarSkillchainProfileTests.cs',
+              'AssertEqual(profile["profile_schema_version"]?.GetValue<int>() ?? 0, 7, "profile schema must migrate to seven");',
+              'AssertEqual(profile["profile_schema_version"]?.GetValue<int>() ?? 0, 8, "profile schema must migrate to eight");'
+          )
+
+          # Focused C# writer assertions without depending on the older unrelated schema assertions.
+          test_path = Path('UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs')
+          test_text = test_path.read_text(encoding='utf-8')
+          call_anchor = '            TestCombatExtensionProfileContract();\n'
+          if test_text.count(call_anchor) != 1:
+              raise SystemExit('writer tests: combat extension call anchor mismatch')
+          test_text = test_text.replace(call_anchor, call_anchor + '            TestAutoMagicBurstProfileContract();\n', 1)
+          method_anchor = '    private static void TestSmartWsAoePreferenceRoundTrip()\n'
+          if test_text.count(method_anchor) != 1:
+              raise SystemExit('writer tests: method insertion anchor mismatch')
+          auto_test = r'''    private static void TestAutoMagicBurstProfileContract()
+    {
+        var migrated = new JsonObject { ["profile_schema_version"] = 7, ["spell"] = "Fire V" };
+        AssertTrue(MainForm.MigrateProfileInPlace(migrated), "schema-seven magic-burst profile must migrate");
+        AssertEqual(migrated["profile_schema_version"]!.GetValue<int>(), 8, "auto-burst migration schema mismatch");
+        AssertEqual(migrated["magic_burst_mode"]!.GetValue<string>(), "exact", "legacy burst mode must remain exact");
+        AssertEqual(migrated["magic_burst_family"]!.GetValue<string>(), "spell", "legacy burst family must default spell");
+        AssertEqual(migrated["magic_burst_max_tier"]!.GetValue<int>(), 0, "legacy burst tier must default Auto");
+        AssertEqual(migrated["spell"]!.GetValue<string>(), "Fire V", "legacy exact burst spell must be preserved");
+
+        var flat = BuildSampleFlatProfile();
+        flat["magic_burst_enabled"] = true;
+        flat["magic_burst_mode"] = "auto";
+        flat["magic_burst_family"] = "helix";
+        flat["magic_burst_max_tier"] = 2;
+        flat["spell"] = "Fire V";
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Nyoourke", "SCH", "RDM")
+        );
+        AssertContains(content, "magic_burst = true", "auto burst enabled flag must serialize");
+        AssertContains(content, "magic_burst_mode = \"auto\"", "auto burst mode must serialize");
+        AssertContains(content, "magic_burst_family = \"helix\"", "auto burst family must serialize");
+        AssertContains(content, "magic_burst_max_tier = 2", "auto burst tier ceiling must serialize");
+        AssertContains(content, "configured = \"Fire V\"", "auto mode must preserve the last exact configured spell");
+
+        flat["magic_burst_max_tier"] = 6;
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Nyoourke", "SCH", "RDM")
+            ),
+            "magic burst tier ceiling above V must fail"
+        );
+    }
+
+'''
+          test_text = test_text.replace(method_anchor, auto_test + method_anchor, 1)
+          test_path.write_text(test_text, encoding='utf-8')
+
+          # ---------- Lua regression coverage ----------
+          Path('tests/replay/harness/selftest_magic_burst_auto_family.lua').write_text(r'''local function assert_true(value, message)
+    if value ~= true then error(message or 'expected true') end
+end
+
+local function assert_equal(actual, expected, message)
+    if actual ~= expected then
+        error(('%s: expected=%s actual=%s'):format(message or 'values differ', tostring(expected), tostring(actual)))
+    end
+end
+
+local MOCKED = {
+    'resources',
+    'uc_active_config',
+    'uc_reaction_runtime',
+    'unified_combat_core',
+    'uc_targeting_common',
+    'uc_sch_skillchain',
+    'uc_sch_capabilities',
+    'uc_combat_extension_config',
+    'uc_magic_burst_auto',
+    'uc_combat_extensions',
+}
+
+local original_loaded, original_preload = {}, {}
+for i = 1, #MOCKED do
+    local name = MOCKED[i]
+    original_loaded[name] = package.loaded[name]
+    original_preload[name] = package.preload[name]
+    package.loaded[name] = nil
+    package.preload[name] = nil
+end
+
+local function restore()
+    for i = 1, #MOCKED do
+        local name = MOCKED[i]
+        package.loaded[name] = original_loaded[name]
+        package.preload[name] = original_preload[name]
+    end
+end
+
+local ok, err = xpcall(function()
+    local burst_mode = 'auto'
+    local burst_family = 'spell'
+    local burst_max_tier = 0
+    local configured_spell = 'Fire V'
+    local readiness = {}
+    local current_skillchain = {
+        last_confirmed_result = 'Fragmentation',
+        active_properties = { 'Fragmentation' },
+        magic_burst_expires_at = 110,
+    }
+
+    local names = {
+        'Fire','Fire II','Fire III','Fire IV','Fire V',
+        'Blizzard','Blizzard II','Blizzard III','Blizzard IV','Blizzard V',
+        'Aero','Aero II','Aero III','Aero IV','Aero V',
+        'Stone','Stone II','Stone III','Stone IV','Stone V',
+        'Thunder','Thunder II','Thunder III','Thunder IV','Thunder V',
+        'Water','Water II','Water III','Water IV','Water V',
+        'Fira','Fira II','Fira III','Blizzara','Blizzara II','Blizzara III',
+        'Aerora','Aerora II','Aerora III','Stonera','Stonera II','Stonera III',
+        'Thundara','Thundara II','Thundara III','Watera','Watera II','Watera III',
+        'Pyrohelix','Pyrohelix II','Cryohelix','Cryohelix II',
+        'Anemohelix','Anemohelix II','Geohelix','Geohelix II',
+        'Ionohelix','Ionohelix II','Hydrohelix','Hydrohelix II',
+        'Luminohelix','Luminohelix II','Noctohelix','Noctohelix II',
+    }
+    local elements = {
+        Fire='Fire', Blizzard='Ice', Aero='Wind', Stone='Earth', Thunder='Lightning', Water='Water',
+        Fira='Fire', Blizzara='Ice', Aerora='Wind', Stonera='Earth', Thundara='Lightning', Watera='Water',
+        Pyrohelix='Fire', Cryohelix='Ice', Anemohelix='Wind', Geohelix='Earth', Ionohelix='Lightning', Hydrohelix='Water',
+        Luminohelix='Light', Noctohelix='Dark',
+    }
+    local function base_name(name)
+        return name:gsub(' V$', ''):gsub(' IV$', ''):gsub(' III$', ''):gsub(' II$', '')
+    end
+    package.preload.resources = function()
+        local spells = {}
+        for i = 1, #names do
+            local name = names[i]
+            spells[i] = { id = i, en = name, element = elements[base_name(name)], range = 12 }
+        end
+        function spells:with(key, value)
+            if key ~= 'en' then return nil end
+            for _, spell in pairs(self) do
+                if type(spell) == 'table' and spell.en == value then return spell end
+            end
+            return nil
+        end
+        return { spells = spells, elements = {} }
+    end
+
+    package.preload.uc_active_config = function()
+        return {
+            get_path = function(path)
+                if path == 'config.spells' then
+                    return {
+                        magic_burst = true,
+                        configured = configured_spell,
+                        magic_burst_mode = burst_mode,
+                        magic_burst_family = burst_family,
+                        magic_burst_max_tier = burst_max_tier,
+                    }
+                end
+                if path == 'config.reactions' then return { enabled = false, rules = {} } end
+                return nil
+            end,
+        }
+    end
+    package.preload.uc_reaction_runtime = function()
+        return { get_action_lock = function() return nil end }
+    end
+    package.preload.unified_combat_core = function()
+        return {
+            get_skillchain_snapshot = function(target_id)
+                return tonumber(target_id) == 900 and current_skillchain or nil
+            end,
+        }
+    end
+    package.preload.uc_targeting_common = function()
+        return {
+            build_friendly_claims = function()
+                return { 123 }, { [123] = true }
+            end,
+        }
+    end
+    package.preload.uc_sch_skillchain = function()
+        return {
+            requires_addendum_black = function(name)
+                return name:find(' IV$', 1) ~= nil or name:find(' V$', 1) ~= nil
+            end,
+        }
+    end
+    package.preload.uc_sch_capabilities = function()
+        return { abilities = { addendum_black = { buff_id = 402 } } }
+    end
+
+    local extension = require('uc_combat_extensions').new({
+        action_ready = function(name)
+            local value = readiness[name]
+            if value == true then return true, 'OK', 'spell' end
+            if type(value) == 'string' then return false, value, 'spell' end
+            return false, 'BLOCK_DEFENSIVE_NOT_LEARNED', 'spell'
+        end,
+        action_effective_range = function() return 20.9 end,
+    })
+
+    local ctx = {
+        now = 100,
+        settings = {},
+        player = { main_job = 'GEO', buffs = {} },
+        target_present = false,
+        target = nil,
+        party = {},
+        mobs_by_id = {
+            [900] = {
+                id = 900, name = 'Target', hpp = 100, valid_target = true,
+                spawn_type = 16, claim_id = 123, distance = 100,
+            },
+        },
+    }
+
+    -- Fragmentation supports Wind + Lightning. Same tier means Thunder is the
+    -- stronger direct-nuke family, so Auto Spell should choose Thunder V.
+    readiness = { ['Thunder V'] = true, ['Aero V'] = true }
+    local out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'Auto Spell must produce a Fragmentation burst')
+    assert_equal(out[1].action_name, 'Thunder V', 'Auto Spell must choose strongest compatible tier-V nuke')
+    assert_equal(out[1].reason_code, 'magic_burst_auto', 'Auto Spell reason mismatch')
+    assert_equal(out[1].detail.magic_burst_family, 'spell', 'Auto Spell family detail mismatch')
+
+    -- Tier ceiling is a maximum, not an exact requirement.
+    burst_max_tier = 3
+    readiness = { ['Thunder V'] = true, ['Thunder IV'] = true, ['Thunder III'] = true, ['Aero III'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'tier-III ceiling must still burst')
+    assert_equal(out[1].action_name, 'Thunder III', 'tier ceiling must suppress IV/V')
+
+    -- With no tier ceiling, another compatible same-tier element beats stepping
+    -- down when the preferred element is on recast.
+    burst_max_tier = 0
+    readiness = { ['Thunder V'] = 'BLOCK_DEFENSIVE_RECAST', ['Aero V'] = true, ['Thunder IV'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'Auto Spell must use another ready compatible top-tier element')
+    assert_equal(out[1].action_name, 'Aero V', 'Auto Spell must prefer ready Aero V over tier-IV fallback')
+
+    -- GEO -ra mode stays in its family and honors its III ceiling.
+    current_skillchain.last_confirmed_result = 'Fusion'
+    current_skillchain.active_properties = { 'Fusion' }
+    burst_family = 'ra'
+    burst_max_tier = 0
+    readiness = { ['Fira III'] = true, ['Fire V'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'Auto -ra must burst Fusion')
+    assert_equal(out[1].action_name, 'Fira III', 'Auto -ra must remain in -ra family')
+    burst_max_tier = 2
+    readiness = { ['Fira III'] = true, ['Fira II'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'Auto -ra II ceiling must burst')
+    assert_equal(out[1].action_name, 'Fira II', 'Auto -ra ceiling must cap at II')
+
+    -- Auto Helix uses one preferred compatible Helix family and never steps down
+    -- merely because Helix II is on recast; nor does it cross into direct nukes.
+    burst_family = 'helix'
+    burst_max_tier = 0
+    readiness = { ['Pyrohelix II'] = true, ['Pyrohelix'] = true, ['Fire V'] = true, ['Luminohelix II'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'Auto Helix must use ready Helix II')
+    assert_equal(out[1].action_name, 'Pyrohelix II', 'Fusion Auto Helix must prefer Pyrohelix II')
+    readiness = { ['Pyrohelix II'] = 'BLOCK_DEFENSIVE_RECAST', ['Pyrohelix'] = true, ['Luminohelix II'] = true, ['Fire V'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out) == false, 'Auto Helix must not replace a cooling Helix with weaker/alternate spell')
+    assert_equal(#out, 0, 'Auto Helix recast must emit no fallback')
+
+    -- Tier I is valid when II is not actually learned/usable by the character.
+    readiness = { ['Pyrohelix II'] = 'BLOCK_DEFENSIVE_NOT_LEARNED', ['Pyrohelix'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'Auto Helix must use learned tier I when tier II is unavailable-to-character')
+    assert_equal(out[1].action_name, 'Pyrohelix', 'Auto Helix learned-tier fallback mismatch')
+
+    -- Auto Spell on SCH must not implicitly spend another stratagem just to gain
+    -- Addendum: Black. In Dark Arts alone, IV/V are skipped and III is selected.
+    burst_family = 'spell'
+    burst_max_tier = 0
+    ctx.player = { main_job = 'SCH', buffs = { 359 } }
+    readiness = { ['Fire V'] = true, ['Fire IV'] = true, ['Fire III'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'SCH Auto Spell must find a zero-stratagem direct nuke')
+    assert_equal(out[1].action_name, 'Fire III', 'SCH Auto Spell must avoid Addendum-required IV/V')
+    ctx.player.buffs = { 402 }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'Addendum-active SCH Auto Spell must burst')
+    assert_equal(out[1].action_name, 'Fire V', 'Addendum-active SCH must regain tier-V ceiling')
+
+    -- Existing exact spell semantics remain intact.
+    burst_mode = 'exact'
+    configured_spell = 'Fire V'
+    readiness = { ['Fire V'] = 'BLOCK_DEFENSIVE_RECAST', ['Fire IV'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'exact mode must retain existing step-down behavior')
+    assert_equal(out[1].action_name, 'Fire IV', 'exact mode regression: Fire V must step down to Fire IV')
+end, debug.traceback)
+
+restore()
+if not ok then error(err) end
+io.stdout:write('selftest_magic_burst_auto_family: OK\n')
+''', encoding='utf-8')
+
+          replace_once(
+              'tests/replay/harness/selftest_all_replay_fixtures.lua',
+              '    "tests/replay/harness/selftest_magic_burst_stepdown.lua",\n',
+              '    "tests/replay/harness/selftest_magic_burst_stepdown.lua",\n    "tests/replay/harness/selftest_magic_burst_auto_family.lua",\n'
+          )
+
+          # Documentation: describe exact vs automatic family selection.
+          doc = Path('docs/combat_extensions.md')
+          doc_text = doc.read_text(encoding='utf-8')
+          marker = '`spells.enabled` remains independent; magic bursting does not require ordinary configured-spell spam to be enabled. The flat compatibility toggle is `magic_burst_enabled` and uses the existing flat `spell` setting for the spell name.'
+          if marker not in doc_text:
+              raise SystemExit('combat_extensions.md: MB documentation marker missing')
+          replacement = marker + r'''
+
+General-purpose bursting can instead set `magic_burst_mode = 'auto'` with one of three families: `spell`, `ra`, or `helix`. `magic_burst_max_tier = 0` means Auto/highest available; positive values are a tier ceiling. Auto selection reads the target's confirmed skillchain property and chooses the strongest compatible ready spell in that family. Direct nukes use tiers I-V, GEO `-ra` uses I-III, and Helix uses I-II. Auto Helix never crosses into direct nukes and does not cast a weaker/alternate Helix merely because the preferred Helix is on recast. Legacy profiles default to `magic_burst_mode = 'exact'` and preserve their configured spell behavior.
+'''
+          doc.write_text(doc_text.replace(marker, replacement, 1), encoding='utf-8')
+
+          # Static sanity checks.
+          checks = {
+              'uc_magic_burst_auto.lua': "local FAMILY_MAX_TIER",
+              'uc_combat_extensions.lua': "reason_code = 'magic_burst_auto'",
+              'uc_config_normalizer.lua': "magic_burst_family = 'spell'",
+              'uc_active_config.lua': 'candidate.magic_burst_max_tier',
+              'uc_profile_contract.lua': 'magic_burst_family = "profile_owned_by_ui"',
+              'UnifiedCombatWinForms/MainForm.MagicBurstUi.cs': 'Auto Helix',
+              'UnifiedCombatWinForms/StructuredProfileV2Writer.cs': '.Add("magic_burst_mode", mode)',
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs': 'private const int ProfileSchemaVersion = 8;',
+          }
+          for path, needle in checks.items():
+              if needle not in Path(path).read_text(encoding='utf-8'):
+                  raise SystemExit(f'{path}: missing expected result {needle!r}')
+          PY
+
+      - name: Run Lua syntax and focused regressions
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.1
+          luac5.1 -p uc_magic_burst_auto.lua
+          luac5.1 -p uc_combat_extension_config.lua
+          luac5.1 -p uc_combat_extensions.lua
+          luac5.1 -p uc_config_normalizer.lua
+          luac5.1 -p uc_active_config.lua
+          lua5.1 tests/replay/harness/selftest_magic_burst_auto_family.lua
+          lua5.1 tests/replay/harness/selftest_magic_burst_stepdown.lua
+          lua5.1 tests/replay/harness/selftest_magic_burst_offtarget.lua
+          lua5.1 tests/replay/harness/selftest_combat_extension_config_schema.lua
+
+      - name: Build WinForms project
+        shell: bash
+        run: |
+          dotnet build UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -p:EnableWindowsTargeting=true --no-restore || \
+          dotnet build UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -p:EnableWindowsTargeting=true
+
+      - name: Commit implementation and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/uc-auto-magic-burst.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add automatic magic burst family selection"
+          git push origin HEAD:master
