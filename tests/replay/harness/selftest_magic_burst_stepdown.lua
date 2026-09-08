@@ -227,12 +227,23 @@ local ok, err = xpcall(function()
     assert_true(extension.collect_priority_offense(ctx, out) == false, 'all tiers on recast must suppress burst')
     assert_equal(#out, 0, 'all tiers on recast proposal count')
 
-    -- Preserve a small landing guard at the end of the 10 second window.
+    -- Keep attempting through the full observed MB window. A cast begun with
+    -- only 0.1 seconds remaining is still worth attempting; if it lands after
+    -- expiry it simply becomes a normal nuke.
     ready_spells = { ['Fire III'] = true }
-    ctx.now = 207.6
+    ctx.now = 209.9
     out = {}
-    assert_true(extension.collect_priority_offense(ctx, out) == false, 'sub-2.5-second window must not start late burst')
-    assert_equal(#out, 0, 'late burst proposal count')
+    assert_true(extension.collect_priority_offense(ctx, out), 'positive remaining MB window must still allow a burst attempt')
+    assert_equal(#out, 1, 'near-expiry burst proposal count')
+    assert_equal(out[1].action_name, 'Fire III', 'near-expiry attempt must use highest ready fallback')
+    assert_true(out[1].detail.window_remaining_s > 0 and out[1].detail.window_remaining_s < 0.2,
+        'near-expiry attempt must preserve actual remaining window')
+
+    -- Once the observed window is expired, the MB responder must stop proposing.
+    ctx.now = 210
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out) == false, 'expired MB window must not propose another burst')
+    assert_equal(#out, 0, 'expired burst proposal count')
 end, debug.traceback)
 
 restore()
