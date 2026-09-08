@@ -6,9 +6,12 @@ local sch_diagnostics = require('uc_sch_diagnostics')
 local sch_maintenance = require('uc_sch_maintenance')
 local sch_party = require('uc_sch_party')
 local sch_runtime = require('uc_sch_runtime')
+local sch_skillchain_runtime = require('uc_sch_skillchain_runtime')
 local sch_trace = require('uc_sch_trace')
 
 local M = {}
+
+sch_skillchain_runtime.install_charge_bridge(sch_runtime)
 
 local function require_table(value, name)
 	if type(value) ~= 'table' then
@@ -110,6 +113,31 @@ local function player_progress(player)
 	return level, present, spent
 end
 
+local function default_current_target()
+	if type(windower) ~= 'table' or type(windower.ffxi) ~= 'table'
+		or type(windower.ffxi.get_mob_by_target) ~= 'function' then
+		return nil
+	end
+	local target = windower.ffxi.get_mob_by_target('t')
+	if type(target) ~= 'table' or (tonumber(target.id) or 0) <= 0 then
+		return nil
+	end
+	return {
+		id = tonumber(target.id),
+		name = tostring(target.name or ''),
+		hpp = tonumber(target.hpp) or 0,
+		valid_target = target.valid_target ~= false,
+	}
+end
+
+local function default_skillchain_snapshot(target_id)
+	local ok, core = pcall(require, 'unified_combat_core')
+	if not ok or type(core) ~= 'table' or type(core.get_skillchain_snapshot) ~= 'function' then
+		return nil
+	end
+	return core.get_skillchain_snapshot(target_id)
+end
+
 function M.new(deps)
 	deps = require_table(deps, 'Scholar provider dependencies')
 	local get_party_members = require_function(deps.get_party_members, 'deps.get_party_members')
@@ -149,6 +177,12 @@ function M.new(deps)
 		error('Scholar provider priorities must be numeric')
 	end
 	local runtime = deps.runtime or sch_runtime
+	local skillchain_runtime = deps.skillchain_runtime or sch_skillchain_runtime.new()
+	local get_current_target = deps.get_current_target or default_current_target
+	local get_skillchain_snapshot = deps.get_skillchain_snapshot or default_skillchain_snapshot
+	if type(get_current_target) ~= 'function' or type(get_skillchain_snapshot) ~= 'function' then
+		error('Scholar provider skillchain dependencies are invalid')
+	end
 	local capture = require_table(deps.capture, 'deps.capture')
 	if type(capture) ~= 'table'
 		or type(capture.start) ~= 'function'
@@ -265,7 +299,9 @@ function M.new(deps)
 			spell_ready = sch_spell_ready,
 			select_cure_spell = select_cure_spell,
 		}, runtime_snapshot)
-		if runtime_snapshot.active_sequence == nil and evaluation.candidate ~= nil then
+		local skillchain_before = skillchain_runtime:snapshot()
+		if runtime_snapshot.active_sequence == nil and skillchain_before.active == nil
+			and evaluation.candidate ~= nil then
 			local plan = clone_value(require_table(
 				evaluation.candidate.plan,
 				'Scholar candidate execution plan'
@@ -286,17 +322,54 @@ function M.new(deps)
 			end
 		end
 		runtime_snapshot = runtime.snapshot()
+		local current_target = get_current_target()
+		local core_skillchain_snapshot = nil
+		if type(current_target) == 'table' and (tonumber(current_target.id) or 0) > 0 then
+			core_skillchain_snapshot = get_skillchain_snapshot(current_target.id)
+		end
+		skillchain_runtime:update({
+			now = ctx.now,
+			config = config,
+			engine_enabled = ctx.engine_enabled,
+			maintenance_enabled = ctx.maintenance_enabled,
+			critical_cure_present = critical_cure_present,
+			standard_sequence_active = runtime_snapshot.active_sequence ~= nil,
+			target = current_target,
+			player_buffs = player.buffs,
+			skillchain_snapshot = core_skillchain_snapshot,
+			charge_snapshot = runtime_snapshot.stratagem,
+		})
+		local skillchain_runtime_snapshot = skillchain_runtime:snapshot()
 		local step, step_reason = runtime.next_step(ctx.now)
+		if step == nil and runtime_snapshot.active_sequence == nil then
+			local skillchain_step, skillchain_reason = skillchain_runtime:next_step(ctx.now)
+			if skillchain_step ~= nil then
+				step = skillchain_step
+				step_reason = ''
+			elseif skillchain_runtime_snapshot.active ~= nil then
+				step_reason = skillchain_reason
+			end
+		end
 		runtime_snapshot = runtime.snapshot()
 		local emitted = false
 		if step ~= nil then
-			local active_sequence = require_table(
-				runtime_snapshot.active_sequence,
-				'Scholar active sequence'
-			)
-			local sequence_domain = tostring(active_sequence.domain or '')
-			local provider_id = sequence_domain == 'defensive'
-				and 'defensive_sch' or 'maintenance_sch'
+			local skillchain_step = step.sch_skillchain == true
+			local active_sequence
+			local sequence_domain
+			local provider_id
+			if skillchain_step then
+				active_sequence = { domain = 'maintenance', purpose = 'immanence_skillchain' }
+				sequence_domain = 'maintenance'
+				provider_id = 'maintenance_sch'
+			else
+				active_sequence = require_table(
+					runtime_snapshot.active_sequence,
+					'Scholar active sequence'
+				)
+				sequence_domain = tostring(active_sequence.domain or '')
+				provider_id = sequence_domain == 'defensive'
+					and 'defensive_sch' or 'maintenance_sch'
+			end
 			local proposal_action_type = step.action_type == 'job_ability'
 				and 'ja' or step.action_type
 			if proposal_action_type ~= 'ja' and proposal_action_type ~= 'spell' then
@@ -304,13 +377,14 @@ function M.new(deps)
 			end
 			local proposal_target_id = tonumber(step.target_id) or 0
 			local proposal_target_name = tostring(step.target_name or '')
-			local target_kind = 'ally'
+			local target_kind = tostring(step.target_kind or 'ally')
 			if proposal_action_type == 'ja' or proposal_target_id == player.id then
 				target_kind = 'self'
 				proposal_target_id = player.id
 				proposal_target_name = player.name
 			end
-			local prepared = runtime_snapshot.lane.class == 'prepared_support'
+			local prepared = step.sch_skillchain == true
+				or runtime_snapshot.lane.class == 'prepared_support'
 			out[#out + 1] = {
 				proposal_id = ('sch.%d.%s.%d'):format(
 					tonumber(step.sequence_generation) or 0,
@@ -333,7 +407,7 @@ function M.new(deps)
 				expires_at = ctx.now + 0.40,
 				commit_deadline = ctx.now + 0.25,
 				movement_policy = proposal_action_type == 'spell' and 'must_stop' or 'none',
-				range_policy = { min = 0.0, max = 12.0, los_required = false },
+				range_policy = { min = 0.0, max = target_kind == 'enemy' and 21.0 or 12.0, los_required = false },
 				recast_key = 'sch:' .. tostring(step.action_name),
 				duplicate_suppression_key = step.duplicate_suppression_key,
 				lock_class = 'support_action',
@@ -351,13 +425,16 @@ function M.new(deps)
 				},
 			}
 			emitted = true
-		elseif runtime_snapshot.active_sequence ~= nil
+		elseif (runtime_snapshot.active_sequence ~= nil or skillchain_runtime_snapshot.active ~= nil)
 			and step_reason ~= 'sequence_action_pending'
-			and step_reason ~= 'sequence_waiting_for_evidence' then
+			and step_reason ~= 'sequence_waiting_for_evidence'
+			and step_reason ~= 'skillchain_action_pending'
+			and step_reason ~= 'skillchain_waiting_for_evidence' then
 			evaluation.first_blocker = step_reason
 		end
 		provider.status = evaluation
 		provider.status.runtime = runtime_snapshot
+		provider.status.skillchain_runtime = skillchain_runtime_snapshot
 		provider.status.party_generation = party_snapshot.generation
 		provider.status.party_roster_signature = party_snapshot.roster_signature
 		provider.status.main_job_level = main_job_level
@@ -372,6 +449,7 @@ function M.new(deps)
 		)
 		local diagnostics_active = evaluation.enabled == true
 			or runtime_snapshot.active_sequence ~= nil
+			or skillchain_runtime_snapshot.active ~= nil
 			or (provider.last_runtime_snapshot ~= nil
 				and provider.last_runtime_snapshot.active_sequence ~= nil)
 		if diagnostics_active then
@@ -410,6 +488,7 @@ function M.new(deps)
 			storms = evaluation.storms and evaluation.storms.state or '',
 			sublimation = evaluation.sublimation and evaluation.sublimation.state or '',
 			lane = runtime_snapshot.lane.class,
+			skillchain_phase = skillchain_runtime_snapshot.active and skillchain_runtime_snapshot.active.phase or '',
 			party_generation = party_snapshot.generation,
 		})
 		if evaluation.enabled and observe_signature ~= provider.last_observe_signature then
@@ -417,7 +496,8 @@ function M.new(deps)
 			log(('SCH_OBSERVE candidate=%s blocker=%s phase=%s lane=%s party_generation=%d'):format(
 				tostring(evaluation.candidate and evaluation.candidate.action_name or ''),
 				tostring(evaluation.first_blocker or ''),
-				tostring(provider.status.runtime.active_sequence and provider.status.runtime.active_sequence.phase or ''),
+				tostring(provider.status.runtime.active_sequence and provider.status.runtime.active_sequence.phase
+					or (provider.status.skillchain_runtime.active and provider.status.skillchain_runtime.active.phase) or ''),
 				tostring(provider.status.runtime.lane.class),
 				party_snapshot.generation
 			))
@@ -531,6 +611,9 @@ function M.new(deps)
 	end
 
 	function provider.note_dispatched(step, now)
+		if type(step) == 'table' and step.sch_skillchain == true then
+			return skillchain_runtime:note_dispatched(step, now)
+		end
 		return runtime.note_dispatched(step, now)
 	end
 

@@ -1,4 +1,5 @@
 local capabilities = require('uc_sch_capabilities')
+local sch_skillchain = require('uc_sch_skillchain')
 
 local M = {}
 
@@ -423,6 +424,37 @@ local function validate_defensive(result, config)
 	end
 end
 
+local function validate_skillchain_plans(result, value, path)
+	local length = array_length(result, value, path)
+	if length == nil then
+		return
+	end
+	for index = 1, length do
+		local plan = value[index]
+		local plan_path = ('%s[%d]'):format(path, index)
+		if type(plan) ~= 'table' then
+			add_issue(result, 'sch_shape_invalid', plan_path, plan_path .. ' must be a table.')
+		else
+			reject_unknown_keys(result, plan, plan_path, { 'result', 'opener', 'closer' })
+			local shape_valid = true
+			shape_valid = require_string(result, plan, 'result', plan_path .. '.result') and shape_valid
+			shape_valid = require_string(result, plan, 'opener', plan_path .. '.opener') and shape_valid
+			shape_valid = require_string(result, plan, 'closer', plan_path .. '.closer') and shape_valid
+			if shape_valid then
+				local normalized, reason = sch_skillchain.validate_plan(plan)
+				if normalized == nil then
+					add_issue(
+						result,
+						'sch_skillchain_plan_invalid',
+						plan_path,
+						('Invalid Scholar Immanence plan: %s.'):format(tostring(reason or 'unknown'))
+					)
+				end
+			end
+		end
+	end
+end
+
 local function validate_offense(result, config)
 	local offense = require_table(result, config, 'offense', 'sch.offense')
 	if offense == nil then return end
@@ -442,17 +474,17 @@ local function validate_offense(result, config)
 		reject_unknown_keys(result, skillchain, 'sch.offense.skillchain', {
 			'enabled', 'allow_party_close', 'plans',
 		})
-		validate_deferred_feature(result, skillchain, 'sch.offense.skillchain')
+		require_boolean(result, skillchain, 'enabled', 'sch.offense.skillchain.enabled')
 		if require_boolean(result, skillchain, 'allow_party_close', 'sch.offense.skillchain.allow_party_close')
 			and skillchain.allow_party_close ~= false then
 			add_issue(
 				result,
-				'sch_deferred_feature_enabled',
+				'sch_policy_unsupported',
 				'sch.offense.skillchain.allow_party_close',
-				'allow_party_close is not implemented in Phase 1.'
+				'Automatic Scholar skillchains currently require allow_party_close = false.'
 			)
 		end
-		validate_empty_array(result, skillchain.plans, 'sch.offense.skillchain.plans')
+		validate_skillchain_plans(result, skillchain.plans, 'sch.offense.skillchain.plans')
 	end
 end
 
