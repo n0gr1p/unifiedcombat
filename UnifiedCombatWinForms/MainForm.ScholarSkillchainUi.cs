@@ -14,8 +14,18 @@ public partial class MainForm
         "Gravitation",
     ];
 
+    private static readonly IReadOnlyDictionary<string, string[]> ScholarSkillchainCloserOptions =
+        new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["Fusion"] = ["Thunder V", "Thunder IV", "Thunder III", "Thunder II", "Thunder"],
+            ["Fragmentation"] = ["Water V", "Water IV", "Water III", "Water II", "Water"],
+            ["Distortion"] = ["Stone V", "Stone IV", "Stone III", "Stone II", "Stone"],
+            ["Gravitation"] = ["Noctohelix II", "Noctohelix"],
+        };
+
     private CheckBox _schSkillchainEnabled = null!;
     private ComboBox _schSkillchainResult = null!;
+    private ComboBox _schSkillchainCloser = null!;
     private Label _schSkillchainRecipe = null!;
     private bool _schSkillchainUiInitialized;
 
@@ -103,8 +113,23 @@ public partial class MainForm
         };
         _schSkillchainResult.Items.AddRange(ScholarSkillchainResults.Cast<object>().ToArray());
         _schSkillchainResult.SelectedItem = "Fusion";
-        _schSkillchainResult.SelectedIndexChanged += (_, _) => OnScholarSkillchainSettingChanged();
+        _schSkillchainResult.SelectedIndexChanged += (_, _) => OnScholarSkillchainResultChanged();
         scholarRoot.Controls.Add(_schSkillchainResult, 1, row++);
+
+        scholarRoot.Controls.Add(
+            new Label { Text = "Closing spell", AutoSize = true, Anchor = AnchorStyles.Left },
+            0,
+            row
+        );
+        _schSkillchainCloser = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 220,
+            Anchor = AnchorStyles.Left,
+        };
+        RefreshScholarSkillchainCloserOptions("Fusion", "Thunder V");
+        _schSkillchainCloser.SelectedIndexChanged += (_, _) => OnScholarSkillchainSettingChanged();
+        scholarRoot.Controls.Add(_schSkillchainCloser, 1, row++);
 
         _schSkillchainRecipe = new Label
         {
@@ -121,6 +146,17 @@ public partial class MainForm
         scholarRoot.SetColumnSpan(_schValidation, 2);
 
         UpdateScholarSkillchainUiState();
+    }
+
+    private void OnScholarSkillchainResultChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var result = ScholarSkillchainResultValue();
+        RefreshScholarSkillchainCloserOptions(result, DefaultScholarSkillchainCloser(result));
+        OnScholarSkillchainSettingChanged();
     }
 
     private void OnScholarSkillchainSettingChanged()
@@ -141,33 +177,101 @@ public partial class MainForm
             : throw new InvalidOperationException($"Unsupported Scholar skillchain result: {result}");
     }
 
-    private static string ScholarSkillchainRecipeText(string result)
+    private string ScholarSkillchainCloserValue()
+    {
+        var result = ScholarSkillchainResultValue();
+        var closer = (_schSkillchainCloser.SelectedItem?.ToString() ?? "").Trim();
+        return ScholarSkillchainCloserOptions[result].Contains(closer, StringComparer.Ordinal)
+            ? closer
+            : throw new InvalidOperationException($"Unsupported Scholar {result} closer: {closer}");
+    }
+
+    private static string DefaultScholarSkillchainCloser(string result)
+    {
+        if (!ScholarSkillchainCloserOptions.TryGetValue(result, out var options) || options.Length == 0)
+        {
+            throw new InvalidOperationException($"Unsupported Scholar skillchain result: {result}");
+        }
+        return options[0];
+    }
+
+    private void RefreshScholarSkillchainCloserOptions(string result, string? selected)
+    {
+        if (_schSkillchainCloser is null)
+        {
+            return;
+        }
+        if (!ScholarSkillchainCloserOptions.TryGetValue(result, out var options))
+        {
+            throw new InvalidOperationException($"Unsupported Scholar skillchain result: {result}");
+        }
+        var wanted = (selected ?? "").Trim();
+        if (!options.Contains(wanted, StringComparer.Ordinal))
+        {
+            wanted = options[0];
+        }
+        var wasSuppressed = _suppressEvents;
+        _suppressEvents = true;
+        try
+        {
+            _schSkillchainCloser.Items.Clear();
+            _schSkillchainCloser.Items.AddRange(options.Cast<object>().ToArray());
+            _schSkillchainCloser.SelectedItem = wanted;
+        }
+        finally
+        {
+            _suppressEvents = wasSuppressed;
+        }
+    }
+
+    private static string ScholarSkillchainOpener(string result)
     {
         return result switch
         {
-            "Fusion" => "Fusion: Fire -> Thunder",
-            "Fragmentation" => "Fragmentation: Blizzard -> Water",
-            "Distortion" => "Distortion: Luminohelix -> Stone",
-            "Gravitation" => "Gravitation: Aero -> Noctohelix",
+            "Fusion" => "Fire",
+            "Fragmentation" => "Blizzard",
+            "Distortion" => "Luminohelix",
+            "Gravitation" => "Aero",
             _ => throw new InvalidOperationException($"Unsupported Scholar skillchain result: {result}"),
         };
     }
 
+    private static bool ScholarCloserRequiresAddendumBlack(string closer)
+    {
+        return closer is "Stone IV" or "Stone V"
+            or "Water IV" or "Water V"
+            or "Aero IV" or "Aero V"
+            or "Fire IV" or "Fire V"
+            or "Blizzard IV" or "Blizzard V"
+            or "Thunder IV" or "Thunder V";
+    }
+
     private void UpdateScholarSkillchainUiState()
     {
-        if (_schSkillchainEnabled is null || _schSkillchainResult is null || _schSkillchainRecipe is null)
+        if (_schSkillchainEnabled is null || _schSkillchainResult is null
+            || _schSkillchainCloser is null || _schSkillchainRecipe is null)
         {
             return;
         }
         var scholarEnabled = _schEnabled is not null && _schEnabled.Checked;
         _schSkillchainEnabled.Enabled = scholarEnabled;
         _schSkillchainResult.Enabled = scholarEnabled && _schSkillchainEnabled.Checked;
+        _schSkillchainCloser.Enabled = scholarEnabled && _schSkillchainEnabled.Checked;
         var result = ScholarSkillchainResultValue();
-        _schSkillchainRecipe.Text = ScholarSkillchainRecipeText(result)
-            + ". UnifiedCombat owns the canonical spell recipe; the profile stores the requested result.";
+        var closer = ScholarSkillchainCloserValue();
+        _schSkillchainRecipe.Text = $"{result}: {ScholarSkillchainOpener(result)} -> {closer}."
+            + (ScholarCloserRequiresAddendumBlack(closer)
+                ? " Tier IV/V closer requires Addendum: Black; UC budgets that extra stratagem when needed."
+                : "")
+            + " The opener stays low tier for timing; the exact closer is profile-controlled.";
     }
 
-    private static void ReadNestedScholarSkillchain(JsonObject profile, ref bool enabled, ref string result)
+    private static void ReadNestedScholarSkillchain(
+        JsonObject profile,
+        ref bool enabled,
+        ref string result,
+        ref string closer
+    )
     {
         if (profile["sch"] is not JsonObject sch
             || sch["offense"] is not JsonObject offense
@@ -190,11 +294,18 @@ public partial class MainForm
         {
             result = nestedResult;
         }
+        if (plan["closer"] is JsonValue closerValue
+            && closerValue.TryGetValue<string>(out var nestedCloser)
+            && ScholarSkillchainCloserOptions[result].Contains(nestedCloser, StringComparer.Ordinal))
+        {
+            closer = nestedCloser;
+        }
     }
 
     private void RefreshScholarSkillchainUiFromSelectedProfile()
     {
-        if (_schSkillchainEnabled is null || _schSkillchainResult is null || string.IsNullOrWhiteSpace(_selectedSid))
+        if (_schSkillchainEnabled is null || _schSkillchainResult is null
+            || _schSkillchainCloser is null || string.IsNullOrWhiteSpace(_selectedSid))
         {
             return;
         }
@@ -215,9 +326,10 @@ public partial class MainForm
 
         var enabled = false;
         var result = "Fusion";
+        var closer = DefaultScholarSkillchainCloser(result);
         if (profile is not null)
         {
-            ReadNestedScholarSkillchain(profile, ref enabled, ref result);
+            ReadNestedScholarSkillchain(profile, ref enabled, ref result, ref closer);
             if (profile.TryGetPropertyValue("sch_skillchain_enabled", out var enabledNode)
                 && enabledNode is JsonValue enabledValue
                 && enabledValue.TryGetValue<bool>(out var parsedEnabled))
@@ -231,6 +343,18 @@ public partial class MainForm
             {
                 result = parsedResult;
             }
+            if (profile.TryGetPropertyValue("sch_skillchain_closer", out var closerNode)
+                && closerNode is JsonValue closerValue
+                && closerValue.TryGetValue<string>(out var parsedCloser)
+                && ScholarSkillchainCloserOptions[result].Contains(parsedCloser, StringComparer.Ordinal))
+            {
+                closer = parsedCloser;
+            }
+        }
+
+        if (!ScholarSkillchainCloserOptions[result].Contains(closer, StringComparer.Ordinal))
+        {
+            closer = DefaultScholarSkillchainCloser(result);
         }
 
         var wasSuppressed = _suppressEvents;
@@ -242,7 +366,9 @@ public partial class MainForm
             if (_schSkillchainResult.SelectedIndex < 0)
             {
                 _schSkillchainResult.SelectedItem = "Fusion";
+                result = "Fusion";
             }
+            RefreshScholarSkillchainCloserOptions(result, closer);
             UpdateScholarSkillchainUiState();
         }
         finally
