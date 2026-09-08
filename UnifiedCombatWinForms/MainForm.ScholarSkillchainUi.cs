@@ -29,14 +29,23 @@ public partial class MainForm
         _schSkillchainUiInitialized = true;
         InitializeScholarSkillchainUi();
         _schEnabled.CheckedChanged += (_, _) => UpdateScholarSkillchainUiState();
-        listSessions.SelectedIndexChanged += (_, _) =>
+        listSessions.SelectedIndexChanged += (_, _) => QueueScholarSkillchainUiRefresh();
+        _activityStatus.TextChanged += (_, _) =>
         {
-            if (IsHandleCreated && !IsDisposed)
+            if (_activityOperationInProgress)
             {
-                BeginInvoke(new Action(RefreshScholarSkillchainUiFromSelectedProfile));
+                QueueScholarSkillchainUiRefresh();
             }
         };
         RefreshScholarSkillchainUiFromSelectedProfile();
+    }
+
+    private void QueueScholarSkillchainUiRefresh()
+    {
+        if (IsHandleCreated && !IsDisposed)
+        {
+            BeginInvoke(new Action(RefreshScholarSkillchainUiFromSelectedProfile));
+        }
     }
 
     private void InitializeScholarSkillchainUi()
@@ -44,6 +53,14 @@ public partial class MainForm
         if (_tabScholar.Controls.OfType<TableLayoutPanel>().FirstOrDefault() is not { } scholarRoot)
         {
             throw new InvalidOperationException("Scholar settings layout is unavailable.");
+        }
+
+        var legacyDeferredNote = scholarRoot.Controls.Cast<Control>()
+            .OfType<Label>()
+            .FirstOrDefault(label => label.Text.Contains("autonomous Immanence chains", StringComparison.Ordinal));
+        if (legacyDeferredNote is not null)
+        {
+            legacyDeferredNote.Text = "Tabula Rasa remains manual.";
         }
 
         scholarRoot.Controls.Remove(_schValidation);
