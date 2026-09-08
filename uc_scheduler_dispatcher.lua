@@ -224,6 +224,46 @@ local function structured_spell_executor(deps)
     return module.cast_spell, ''
 end
 
+local function current_target(deps)
+    if type(deps.get_current_target) == 'function' then
+        local ok, target = pcall(deps.get_current_target)
+        return ok and target or nil
+    end
+    if type(windower) ~= 'table' or type(windower.ffxi) ~= 'table'
+        or type(windower.ffxi.get_mob_by_target) ~= 'function' then
+        return nil
+    end
+    local ok, target = pcall(windower.ffxi.get_mob_by_target, 't')
+    return ok and target or nil
+end
+
+local function validate_structured_action_preconditions(normalized, deps)
+    if normalized.kind ~= 'send_command' then
+        return true, ''
+    end
+    local meta = normalized.meta
+    local is_sch_immanence = meta.action_type == 'ja'
+        and meta.action_name == 'Immanence'
+        and (meta.provider == 'maintenance_sch' or meta.provider == 'defensive_sch')
+    if not is_sch_immanence then
+        return true, ''
+    end
+
+    -- Immanence itself targets the Scholar, so the action target cannot prove
+    -- that the enemy which justified the skillchain still exists. Re-read the
+    -- live selected target immediately before dispatch and fail closed if the
+    -- chain no longer has a viable enemy. This closes the collect->dispatch
+    -- race without teaching the generic JA command builder about skillchains.
+    local target = current_target(deps)
+    if type(target) ~= 'table'
+        or (tonumber(target.id) or 0) <= 0
+        or target.valid_target == false
+        or (tonumber(target.hpp) or 0) <= 0 then
+        return false, 'sch_immanence_no_valid_enemy_target'
+    end
+    return true, ''
+end
+
 local function run_commit_validation(normalized, hooks)
     local revalidate = hooks.revalidate
     if revalidate == nil then
@@ -303,6 +343,17 @@ function M.dispatch_intent(intent, deps, hooks)
         return {
             ok = false,
             reason = commit_reason,
+            executed = false,
+            normalized_intent = normalized,
+        }
+    end
+
+    local precondition_ok, precondition_reason = validate_structured_action_preconditions(normalized, deps)
+    if not precondition_ok then
+        scrub_validation_fields(normalized)
+        return {
+            ok = false,
+            reason = precondition_reason,
             executed = false,
             normalized_intent = normalized,
         }
