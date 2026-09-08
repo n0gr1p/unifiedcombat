@@ -224,17 +224,17 @@ local function structured_spell_executor(deps)
     return module.cast_spell, ''
 end
 
-local function current_target(deps)
-    if type(deps.get_current_target) == 'function' then
-        local ok, target = pcall(deps.get_current_target)
-        return ok and target or nil
+local function validate_sch_skillchain_target(deps)
+    if type(deps.validate_sch_skillchain_target) == 'function' then
+        local ok, reason = deps.validate_sch_skillchain_target()
+        return ok == true, tostring(reason or '')
     end
-    if type(windower) ~= 'table' or type(windower.ffxi) ~= 'table'
-        or type(windower.ffxi.get_mob_by_target) ~= 'function' then
-        return nil
+    local ok, module = pcall(require, 'uc_sch_skillchain_target')
+    if not ok or type(module) ~= 'table' or type(module.validate_bound) ~= 'function' then
+        return false, 'sch_skillchain_target_validator_unavailable'
     end
-    local ok, target = pcall(windower.ffxi.get_mob_by_target, 't')
-    return ok and target or nil
+    local valid, reason = module.validate_bound({ require_cast_range = true })
+    return valid == true, tostring(reason or '')
 end
 
 local function validate_structured_action_preconditions(normalized, deps)
@@ -249,17 +249,13 @@ local function validate_structured_action_preconditions(normalized, deps)
         return true, ''
     end
 
-    -- Immanence itself targets the Scholar, so the action target cannot prove
-    -- that the enemy which justified the skillchain still exists. Re-read the
-    -- live selected target immediately before dispatch and fail closed if the
-    -- chain no longer has a viable enemy. This closes the collect->dispatch
-    -- race without teaching the generic JA command builder about skillchains.
-    local target = current_target(deps)
-    if type(target) ~= 'table'
-        or (tonumber(target.id) or 0) <= 0
-        or target.valid_target == false
-        or (tonumber(target.hpp) or 0) <= 0 then
-        return false, 'sch_immanence_no_valid_enemy_target'
+    -- Immanence targets the Scholar, but the action is only valid while the
+    -- enemy bound to the current skillchain remains a live, in-range friendly
+    -- claim. Never depend on the player's UI target and never silently switch
+    -- to a different mob between proposal and dispatch.
+    local valid, reason = validate_sch_skillchain_target(deps)
+    if not valid then
+        return false, 'sch_immanence_target_invalid:' .. tostring(reason or 'unknown')
     end
     return true, ''
 end
