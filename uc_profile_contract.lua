@@ -71,6 +71,7 @@ local DIRECT_PROFILE_FIELDS = {
     ability5 = "profile_owned_by_ui",
     ability6 = "profile_owned_by_ui",
     ability_active = "profile_owned_by_ui",
+    ability_allow_unengaged = "profile_owned_by_ui",
     abilities = "profile_owned_by_ui",
     wsabilities = "profile_owned_by_ui",
     ws1 = "profile_owned_by_ui",

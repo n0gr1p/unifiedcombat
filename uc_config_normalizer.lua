@@ -926,6 +926,7 @@ local function default_config(meta)
         },
         abilities = {
             enabled = false,
+            allow_unengaged = false,
             configured = {},
             legacy_slots = {},
             wsabilities = {},
@@ -1443,13 +1444,15 @@ end
 local function normalize_list_domain(source, config)
     local abilities = config.abilities
     local nested_abilities = get_path(source, { 'abilities' })
-    if is_table(nested_abilities) and table_has_any(nested_abilities, { 'configured', 'legacy_slots', 'wsabilities', 'enabled' }) then
+    if is_table(nested_abilities) and table_has_any(nested_abilities, { 'configured', 'legacy_slots', 'wsabilities', 'enabled', 'allow_unengaged' }) then
         abilities.enabled = normalize_boolean(nested_abilities.enabled, abilities.enabled)
+        abilities.allow_unengaged = normalize_boolean(nested_abilities.allow_unengaged, abilities.allow_unengaged)
         abilities.configured = normalize_list(nested_abilities.configured, abilities.configured)
         abilities.legacy_slots = normalize_list(nested_abilities.legacy_slots, abilities.legacy_slots)
         abilities.wsabilities = normalize_list(nested_abilities.wsabilities, abilities.wsabilities)
     else
         abilities.enabled = normalize_boolean(first_path(source, { path('ability_active') }), abilities.enabled)
+        abilities.allow_unengaged = normalize_boolean(first_path(source, { path('ability_allow_unengaged') }), abilities.allow_unengaged)
         abilities.configured = normalize_list(first_path(source, { path('abilities') }), abilities.configured)
         abilities.legacy_slots = normalize_list({
             first_path(source, { path('ability1') }),

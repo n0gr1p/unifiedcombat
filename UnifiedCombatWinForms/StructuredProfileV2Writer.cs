@@ -333,6 +333,7 @@ internal static class StructuredProfileV2Writer
         var configured = SplitPipeList(ReadString(flatProfile, "abilities_selected", ""));
         return new StructuredProfileNode()
             .Add("enabled", ReadBool(flatProfile, "ability_active", false))
+            .Add("allow_unengaged", ReadBool(flatProfile, "ability_allow_unengaged", false))
             .Add("configured", configured)
             .Add("legacy_slots", EmptyList())
             .Add("wsabilities", EmptyList());

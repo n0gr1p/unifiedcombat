@@ -559,6 +559,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 
 	if type(config.abilities) == 'table' then
 		candidate.ability_active = config.abilities.enabled
+		candidate.ability_allow_unengaged = config.abilities.allow_unengaged
 		candidate.abilities = clone_value(config.abilities.configured)
 		candidate.wsabilities = clone_value(config.abilities.wsabilities)
 		local legacy_slots = type(config.abilities.legacy_slots) == 'table' and config.abilities.legacy_slots or {}
