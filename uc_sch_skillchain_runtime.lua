@@ -1,5 +1,6 @@
 local capabilities = require('uc_sch_capabilities')
 local skillchain = require('uc_sch_skillchain')
+local skillchain_target = require('uc_sch_skillchain_target')
 
 local M = {}
 
@@ -60,6 +61,7 @@ function M.new()
 end
 
 function Runtime:_abort(reason, now)
+	skillchain_target.clear()
 	self.active = nil
 	self.next_start_at = math.max(tonumber(self.next_start_at) or 0, (tonumber(now) or 0) + 1.0)
 	self.last_result = 'aborted:' .. tostring(reason or 'unknown')
@@ -72,6 +74,7 @@ function Runtime:_complete(snapshot, now)
 	if restart == nil or restart <= now then
 		restart = now + RESTART_FALLBACK_S
 	end
+	skillchain_target.clear()
 	self.active = nil
 	self.next_start_at = restart
 	self.last_result = 'completed'
@@ -96,8 +99,16 @@ function Runtime:_start(plan, target, skillchain_snapshot, now)
 		closer_latest_safe_at = 0,
 		pending = false,
 	}
+	local bound, bind_reason = skillchain_target.bind(target)
+	if not bound then
+		self.active = nil
+		self.last_result = 'aborted:' .. tostring(bind_reason or 'target_bind_failed')
+		self.last_blocker = tostring(bind_reason or 'target_bind_failed')
+		return false
+	end
 	self.last_result = 'started:' .. tostring(plan.result)
 	self.last_blocker = ''
+	return true
 end
 
 local function dark_arts_active(buffs)
@@ -272,7 +283,9 @@ function Runtime:update(input)
 		self.last_blocker = 'no_valid_skillchain_plan'
 		return false
 	end
-	self:_start(plans[1], target, input.skillchain_snapshot, now)
+	if not self:_start(plans[1], target, input.skillchain_snapshot, now) then
+		return false
+	end
 	self:_advance(input)
 	return true
 end
