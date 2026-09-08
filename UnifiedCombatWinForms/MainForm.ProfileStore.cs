@@ -6,7 +6,7 @@ namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
-    private const int ProfileSchemaVersion = 5;
+    private const int ProfileSchemaVersion = 6;
     private static readonly string[] RequiredDomainBoolKeys =
     [
         "domain_combat_enabled",
@@ -393,6 +393,8 @@ public partial class MainForm
             ["sch_accession_status_removal_enabled"] = _schAccessionStatusRemovalEnabled.Checked,
             ["sch_rapture_enabled"] = _schRaptureEnabled.Checked,
             ["sch_penury_enabled"] = _schPenuryEnabled.Checked,
+            ["sch_skillchain_enabled"] = _schSkillchainEnabled.Checked,
+            ["sch_skillchain_result"] = ScholarSkillchainResultValue(),
             ["reaction_enabled"] = _reactionEnabled.Checked,
             ["reaction_rules"] = BuildReactionRulesJson(),
             ["ignore_entries"] = string.Join("|", _ignoreRows.Select(r => $"{r.Id}:{r.Name}")),
@@ -655,6 +657,8 @@ public partial class MainForm
             ["sch_accession_status_removal_enabled"] = false,
             ["sch_rapture_enabled"] = false,
             ["sch_penury_enabled"] = false,
+            ["sch_skillchain_enabled"] = false,
+            ["sch_skillchain_result"] = "Fusion",
             ["reaction_enabled"] = false,
             ["reaction_rules"] = new JsonArray(),
             ["spacing_band_min"] = -0.9,
@@ -1072,6 +1076,16 @@ public partial class MainForm
         if (!root.ContainsKey("spell"))
         {
             root["spell"] = "";
+            changed = true;
+        }
+        if (!root.ContainsKey("sch_skillchain_enabled"))
+        {
+            root["sch_skillchain_enabled"] = false;
+            changed = true;
+        }
+        if (!root.ContainsKey("sch_skillchain_result"))
+        {
+            root["sch_skillchain_result"] = "Fusion";
             changed = true;
         }
 
