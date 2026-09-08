@@ -1313,9 +1313,9 @@ internal static class StructuredProfileV2Writer
     private static readonly IReadOnlyDictionary<string, HashSet<string>> ScholarSkillchainClosers =
         new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
         {
-            ["Fusion"] = new(StringComparer.Ordinal) { "Thunder", "Thunder II", "Thunder III", "Thunder IV", "Thunder V" },
-            ["Fragmentation"] = new(StringComparer.Ordinal) { "Water", "Water II", "Water III", "Water IV", "Water V" },
-            ["Distortion"] = new(StringComparer.Ordinal) { "Stone", "Stone II", "Stone III", "Stone IV", "Stone V" },
+            ["Fusion"] = new(StringComparer.Ordinal) { "Thunder", "Thunder II", "Thunder III", "Thunder IV", "Thunder V", "Ionohelix", "Ionohelix II" },
+            ["Fragmentation"] = new(StringComparer.Ordinal) { "Water", "Water II", "Water III", "Water IV", "Water V", "Hydrohelix", "Hydrohelix II" },
+            ["Distortion"] = new(StringComparer.Ordinal) { "Stone", "Stone II", "Stone III", "Stone IV", "Stone V", "Geohelix", "Geohelix II" },
             ["Gravitation"] = new(StringComparer.Ordinal) { "Noctohelix", "Noctohelix II" },
         };
 
