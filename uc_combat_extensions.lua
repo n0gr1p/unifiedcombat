@@ -12,6 +12,12 @@ local MAGIC_BURST_PRIORITY_BAND = 170
 -- preserves damage on successive skillchains while the top tier is on recast
 -- and naturally enables a second burst in the same window after the first spell
 -- puts itself on recast.
+--
+-- Helix spells are different: a lower-tier Helix is not a useful follow-up
+-- because Helix effects do not stack. For the six normal elements, a configured
+-- Helix therefore falls back to the highest ready direct-damage single-target
+-- nuke of the same element. Light/Dark Helix have no corresponding normal SCH
+-- elemental nuke ladder, so they do not fall back to a weaker Helix.
 local BURST_SPELL_LADDERS = {
     { 'Fire V', 'Fire IV', 'Fire III', 'Fire II', 'Fire' },
     { 'Blizzard V', 'Blizzard IV', 'Blizzard III', 'Blizzard II', 'Blizzard' },
@@ -19,14 +25,22 @@ local BURST_SPELL_LADDERS = {
     { 'Stone V', 'Stone IV', 'Stone III', 'Stone II', 'Stone' },
     { 'Thunder V', 'Thunder IV', 'Thunder III', 'Thunder II', 'Thunder' },
     { 'Water V', 'Water IV', 'Water III', 'Water II', 'Water' },
-    { 'Pyrohelix II', 'Pyrohelix' },
-    { 'Cryohelix II', 'Cryohelix' },
-    { 'Anemohelix II', 'Anemohelix' },
-    { 'Geohelix II', 'Geohelix' },
-    { 'Ionohelix II', 'Ionohelix' },
-    { 'Hydrohelix II', 'Hydrohelix' },
-    { 'Luminohelix II', 'Luminohelix' },
-    { 'Noctohelix II', 'Noctohelix' },
+    { 'Pyrohelix II', 'Fire V', 'Fire IV', 'Fire III', 'Fire II', 'Fire' },
+    { 'Pyrohelix', 'Fire V', 'Fire IV', 'Fire III', 'Fire II', 'Fire' },
+    { 'Cryohelix II', 'Blizzard V', 'Blizzard IV', 'Blizzard III', 'Blizzard II', 'Blizzard' },
+    { 'Cryohelix', 'Blizzard V', 'Blizzard IV', 'Blizzard III', 'Blizzard II', 'Blizzard' },
+    { 'Anemohelix II', 'Aero V', 'Aero IV', 'Aero III', 'Aero II', 'Aero' },
+    { 'Anemohelix', 'Aero V', 'Aero IV', 'Aero III', 'Aero II', 'Aero' },
+    { 'Geohelix II', 'Stone V', 'Stone IV', 'Stone III', 'Stone II', 'Stone' },
+    { 'Geohelix', 'Stone V', 'Stone IV', 'Stone III', 'Stone II', 'Stone' },
+    { 'Ionohelix II', 'Thunder V', 'Thunder IV', 'Thunder III', 'Thunder II', 'Thunder' },
+    { 'Ionohelix', 'Thunder V', 'Thunder IV', 'Thunder III', 'Thunder II', 'Thunder' },
+    { 'Hydrohelix II', 'Water V', 'Water IV', 'Water III', 'Water II', 'Water' },
+    { 'Hydrohelix', 'Water V', 'Water IV', 'Water III', 'Water II', 'Water' },
+    { 'Luminohelix II' },
+    { 'Luminohelix' },
+    { 'Noctohelix II' },
+    { 'Noctohelix' },
 }
 
 local function require_function(deps, name)
