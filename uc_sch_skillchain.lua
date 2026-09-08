@@ -142,6 +142,48 @@ function M.validate_plan(plan)
 	}, ''
 end
 
+-- Return timing/generation evidence when the current target already carries a
+-- skillchain property that the configured closer can extend into the configured
+-- result. This lets SCH spend only the closer Immanence instead of recreating
+-- an opener that the party has already supplied.
+function M.compatible_existing_opener(plan, snapshot, now)
+	if type(plan) ~= 'table' then
+		return nil, 'plan_not_table'
+	end
+	if type(snapshot) ~= 'table' then
+		return nil, 'skillchain_snapshot_missing'
+	end
+	if snapshot.terminal == true then
+		return nil, 'skillchain_snapshot_terminal'
+	end
+	local generation = tonumber(snapshot.generation) or 0
+	local properties = snapshot.active_properties
+	if generation <= 0 or type(properties) ~= 'table' or #properties == 0 then
+		return nil, 'skillchain_snapshot_no_properties'
+	end
+	local current_time = tonumber(now) or 0
+	local latest_safe_at = tonumber(snapshot.latest_safe_at)
+		or tonumber(snapshot.expires_at) or 0
+	if latest_safe_at <= current_time then
+		return nil, 'skillchain_close_window_expired'
+	end
+	local transition = skillchain_state.resolve_properties(
+		properties,
+		{ plan.closer_property },
+		snapshot.chainbound_level
+	)
+	if type(transition) ~= 'table' or transition.property ~= plan.result then
+		return nil, 'skillchain_snapshot_incompatible'
+	end
+	return {
+		generation = generation,
+		execute_at = tonumber(snapshot.preferred_execute_at)
+			or tonumber(snapshot.earliest_close_at) or current_time,
+		latest_safe_at = latest_safe_at,
+		predicted_result = transition.property,
+	}, ''
+end
+
 function M.default_plan()
 	return { result = 'Fusion' }
 end
