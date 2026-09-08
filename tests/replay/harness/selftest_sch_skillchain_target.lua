@@ -104,4 +104,8 @@ package.loaded.uc_sch_skillchain_target = original_skillchain_target
 package.loaded.uc_targeting_common = original_targeting_common
 _G.windower = original_windower
 
+-- Keep the target/binding and target-scoped party-opener adoption regressions
+-- adjacent in the aggregate suite without adding another top-level suite entry.
+dofile('tests/replay/harness/selftest_sch_skillchain_party_close.lua')
+
 io.stdout:write('selftest_sch_skillchain_target: OK\n')
