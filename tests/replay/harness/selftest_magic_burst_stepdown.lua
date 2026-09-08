@@ -183,12 +183,26 @@ local ok, err = xpcall(function()
     assert_true(extension.collect_priority_offense(ctx, out), 'lower configured ceiling must still fallback')
     assert_equal(out[1].action_name, 'Fire II', 'fallback must not step above configured Fire III ceiling')
 
-    -- Helix II follows the same rule and falls back only to its matching Helix I.
+    -- A configured Helix gets first priority while ready.
     configured_spell = 'Pyrohelix II'
-    ready_spells = { ['Pyrohelix'] = true }
+    ready_spells = { ['Pyrohelix II'] = true, ['Fire V'] = true, ['Fire IV'] = true }
     out = {}
-    assert_true(extension.collect_priority_offense(ctx, out), 'Helix II must fallback to Helix I')
-    assert_equal(out[1].action_name, 'Pyrohelix', 'Helix fallback mismatch')
+    assert_true(extension.collect_priority_offense(ctx, out), 'ready Helix II must be used first')
+    assert_equal(out[1].action_name, 'Pyrohelix II', 'configured Helix II must have first burst priority')
+
+    -- Once that Helix is unavailable, never fire the weaker non-stacking Helix I.
+    -- Cross families to the strongest ready direct-damage nuke instead.
+    ready_spells = { ['Pyrohelix'] = true, ['Fire V'] = true, ['Fire IV'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'Helix II recast must fallback to direct nuke')
+    assert_equal(out[1].action_name, 'Fire V', 'Helix fallback must choose strongest direct nuke')
+    assert_true(out[1].action_name ~= 'Pyrohelix', 'Helix fallback must never use weaker non-stacking Helix I')
+
+    -- If the top direct nuke is also cooling down, continue down the direct-nuke ladder.
+    ready_spells = { ['Pyrohelix'] = true, ['Fire III'] = true, ['Fire II'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'Helix fallback must continue down nuke ladder')
+    assert_equal(out[1].action_name, 'Fire III', 'Helix fallback must choose highest ready direct nuke tier')
 
     -- If nothing in the configured family is ready, do not emit a doomed cast.
     configured_spell = 'Fire V'
