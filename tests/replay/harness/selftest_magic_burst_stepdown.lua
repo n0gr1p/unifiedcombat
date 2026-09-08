@@ -124,6 +124,7 @@ local ok, err = xpcall(function()
     local ctx = {
         now = 100,
         settings = {},
+        player = { main_job = 'SCH', buffs = { 359 } }, -- Dark Arts, not Addendum: Black.
         target_present = false,
         target = nil,
         party = {},
@@ -185,18 +186,33 @@ local ok, err = xpcall(function()
 
     -- A configured Helix gets first priority while ready.
     configured_spell = 'Pyrohelix II'
-    ready_spells = { ['Pyrohelix II'] = true, ['Fire V'] = true, ['Fire IV'] = true }
+    ready_spells = { ['Pyrohelix II'] = true, ['Fire V'] = true, ['Fire IV'] = true, ['Fire III'] = true }
     out = {}
     assert_true(extension.collect_priority_offense(ctx, out), 'ready Helix II must be used first')
     assert_equal(out[1].action_name, 'Pyrohelix II', 'configured Helix II must have first burst priority')
 
     -- Once that Helix is unavailable, never fire the weaker non-stacking Helix I.
-    -- Cross families to the strongest ready direct-damage nuke instead.
-    ready_spells = { ['Pyrohelix'] = true, ['Fire V'] = true, ['Fire IV'] = true }
+    -- Dark Arts alone cannot use Fire IV/V without first spending a stratagem on
+    -- Addendum: Black, so the zero-stratagem fallback ceiling is Fire III.
+    ready_spells = {
+        ['Pyrohelix'] = true,
+        ['Fire V'] = true,
+        ['Fire IV'] = true,
+        ['Fire III'] = true,
+        ['Fire II'] = true,
+    }
     out = {}
     assert_true(extension.collect_priority_offense(ctx, out), 'Helix II recast must fallback to direct nuke')
-    assert_equal(out[1].action_name, 'Fire V', 'Helix fallback must choose strongest direct nuke')
+    assert_equal(out[1].action_name, 'Fire III', 'Dark-Arts Helix fallback must avoid Addendum-required tiers')
     assert_true(out[1].action_name ~= 'Pyrohelix', 'Helix fallback must never use weaker non-stacking Helix I')
+
+    -- If Addendum: Black is already active, IV/V require no new stratagem and
+    -- the fallback can use the strongest ready direct nuke.
+    ctx.player.buffs = { 402 }
+    ready_spells = { ['Pyrohelix'] = true, ['Fire V'] = true, ['Fire IV'] = true, ['Fire III'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'existing Addendum: Black must permit high-tier direct fallback')
+    assert_equal(out[1].action_name, 'Fire V', 'Addendum-active Helix fallback must choose strongest ready direct nuke')
 
     -- If the top direct nuke is also cooling down, continue down the direct-nuke ladder.
     ready_spells = { ['Pyrohelix'] = true, ['Fire III'] = true, ['Fire II'] = true }
