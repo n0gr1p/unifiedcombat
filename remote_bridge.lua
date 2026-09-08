@@ -1,15 +1,5 @@
 local function uc_now_s()
-	local s = rawget(_G, 'socket')
-	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
-		local ok, mod = pcall(require, 'socket')
-		if ok then
-			s = mod
-		end
-	end
-	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
-		error('uc_now_s requires LuaSocket socket.gettime')
-	end
-	return s.gettime()
+	return uc_time.now()
 end
 
 --[[
@@ -18,6 +8,7 @@ end
 ]]
 
 local socket = require('socket')
+local uc_time = require('uc_time')
 local json = require('json')
 local res = require('resources')
 local uc_ws_memory = require('uc_ws_memory')
@@ -224,7 +215,7 @@ local function build_session_id()
 	local p = windower.ffxi.get_player()
 	local char = (p and p.name) or 'unknown'
 	local pid = (p and p.id) or 0
-	local now_ms = math.floor((socket.gettime and socket.gettime() or uc_now_s()) * 1000)
+	local now_ms = math.floor(uc_time.now() * 1000)
 	return table.concat({ char, tostring(pid), tostring(now_ms) }, '_')
 end
 

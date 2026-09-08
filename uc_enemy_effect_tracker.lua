@@ -18,17 +18,7 @@ local gain_messages = {
 }
 
 local function now_s()
-	local s = rawget(_G, 'socket')
-	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
-		local ok, mod = pcall(require, 'socket')
-		if ok then
-			s = mod
-		end
-	end
-	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
-		error('uc_enemy_effect_tracker requires LuaSocket socket.gettime')
-	end
-	return s.gettime()
+	return require('uc_time').now()
 end
 
 local function is_enemy_npc_by_id(id)

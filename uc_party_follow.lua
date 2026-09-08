@@ -15,8 +15,8 @@ local movement_dispatcher = require('uc_movement_dispatcher').build({
 	run = windower.ffxi.run,
 	source_prefix = 'party_follow',
 })
-local socket_ok, socket_mod = pcall(require, 'socket')
-local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime or nil
+local uc_time = require('uc_time')
+local socket_gettime = uc_time.gettime
 
 local function now_s()
 	-- C7 unified timing source for follow/movement gating (no os.clock fallback).

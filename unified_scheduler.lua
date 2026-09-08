@@ -19,9 +19,8 @@ local pet_command_coordinator = require('uc_pet_command_coordinator')
 local sleep_status = require('uc_sleep_status')
 sleep_status.validate_resources(res.buffs)
 local recovery_hold = require('uc_recovery_hold')
-local socket_ok, socket_mod = pcall(require, 'socket')
-local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
-	or nil
+local uc_time = require('uc_time')
+local socket_gettime = uc_time.gettime
 local time_source_error_reported = false
 local CAST_MOVEMENT_SETTLE_SECONDS = 0.1
 

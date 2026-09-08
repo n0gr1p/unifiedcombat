@@ -3,17 +3,7 @@ require('chat')
 require('logger')
 
 local function uc_now_s()
-	local s = rawget(_G, 'socket')
-	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
-		local ok, mod = pcall(require, 'socket')
-		if ok then
-			s = mod
-		end
-	end
-	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
-		error('uc_now_s requires LuaSocket socket.gettime')
-	end
-	return s.gettime()
+	return require('uc_time').now()
 end
 
 require('tables')

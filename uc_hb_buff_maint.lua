@@ -1,9 +1,8 @@
 local res = require('resources')
 local uc_active_config = require('uc_active_config')
 local action_metadata = require('uc_scheduler_action_metadata')
-local socket_ok, socket_mod = pcall(require, 'socket')
-local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
-	or nil
+local uc_time = require('uc_time')
+local socket_gettime = uc_time.gettime
 
 local function now_s()
 	return socket_gettime()

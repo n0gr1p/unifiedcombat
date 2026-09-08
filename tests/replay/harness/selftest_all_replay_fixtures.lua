@@ -4,6 +4,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_fixture_runner.lua",
     "tests/replay/harness/selftest_fixture_suite_runner.lua",
     "tests/replay/harness/selftest_runtime_parse.lua",
+    "tests/replay/harness/selftest_time_source_contract.lua",
 	"tests/replay/harness/selftest_camp_anchor.lua",
 	"tests/replay/harness/selftest_camp_pull_registry.lua",
 	"tests/replay/harness/selftest_camp_puller_policy.lua",

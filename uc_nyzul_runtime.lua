@@ -140,8 +140,7 @@ local function party_name_set()
 end
 
 local function next_token()
-	local socket = require('socket')
-	return ('%s:%d'):format(name_key(player_name()), math.floor(socket.gettime() * 1000))
+	return ('%s:%d'):format(name_key(player_name()), math.floor(require('uc_time').now() * 1000))
 end
 
 local function encode_name(value)

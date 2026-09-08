@@ -4,6 +4,7 @@ local RUNTIME_LUA_FILES = {
     "melee_engine.lua",
     "remote_bridge.lua",
     "skills.lua",
+    "uc_time.lua",
     "uc_ability_pipeline.lua",
     "uc_add_control.lua",
     "uc_add_priority.lua",

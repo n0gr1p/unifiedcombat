@@ -14,7 +14,7 @@ Field procedure: `docs/TestResults/scheduler_owned_ws_skillchain_field_test_pack
 
 `WS-SC-0` through `WS-SC-4` are complete. Deadline-aware priority, urgency, commit cancellation, generation-scoped pending-result reservation, and telemetry are active. Initial live Cases A and B proved window timing and both multi-actor replacement variants while exposing overly broad Aeonic prediction and repeated sends for one pending generation. Both findings were corrected, replay-verified, and then field-verified after addon reload. The accepted post-reload evidence is documented in `docs/TestResults/scheduler_owned_ws_skillchain_field_results_2026-07-20.md`.
 
-The approved monotonic runtime clock is `os.clock`. It is sampled at the beginning of incoming action processing and used only for process-local skillchain comparisons. Existing cross-process intent coordination continues to use its existing LuaSocket time domain; the two clocks are never compared directly.
+**Clock policy superseded 2026-09-07:** the approved UnifiedCombat runtime clock is now `uc_time.now`, backed by LuaSocket `socket.gettime`. Skillchain observation, planning, dispatch validation, scheduler context, and magic-burst deadlines share this one domain. The prior `os.clock` exception was removed after a cross-domain magic-burst comparison caused valid burst windows to be rejected.
 
 ## Objective
 
@@ -107,7 +107,7 @@ Initial defaults are taken from the approved rules specification:
 
 These constants belong with the skillchain state/planner, not in profiles. Correctness must not depend on UI configuration.
 
-`WS-SC-0` must identify and prove one approved monotonic runtime clock before `WS-SC-1` begins. `socket.gettime` is the current high-resolution wall-clock source and does not by itself satisfy the monotonic-clock requirement. Do not add a second clock or silently switch clocks when the approved source is unavailable; fail fast under the project's runtime rules.
+`WS-SC-0` uses the project-wide canonical runtime clock in `uc_time`. Do not add a second production clock domain or silently switch clocks when the canonical source is unavailable; fail fast under the project's runtime rules. Tests may inject deterministic fake clocks.
 
 For an accepted source action:
 

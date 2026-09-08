@@ -10,7 +10,7 @@ Approved implementation contract: `docs/scheduler_owned_ws_skillchain_implementa
 
 The scheduler-owned WS path is **implementation-compliant, replay-verified, and field-verified**.
 
-The former global `core.ws_timer` eligibility path is removed. `uc_skillchain_state.lua` now owns target-scoped, generation-versioned resonance and separate magic-burst state using `os.clock`. Incoming successful action results establish earliest, preferred, raw-expiry, and latest-safe times. Misses, interruptions, and propertyless WS preserve the prior state.
+The former global `core.ws_timer` eligibility path is removed. `uc_skillchain_state.lua` now owns target-scoped, generation-versioned resonance and separate magic-burst state using the canonical socket-backed `uc_time.now` runtime clock. Incoming successful action results establish earliest, preferred, raw-expiry, and latest-safe times. Misses, interruptions, and propertyless WS preserve the prior state.
 
 Scheduler proposals now carry a structured continuation plan. The scheduler and the core intent owner both revalidate the target, resonance generation, deadline, ordered effective properties, learned WS, TP, engaged/status state, range, weapon/equipment signature, Aftermath, Diamond Aspis context, reaction hold, and intent identity before the one WS send. Telemetry labels those checks as `rank_commit` and `dispatch_commit`. A successful send reserves that resonance generation until an action result replaces it, preventing repeated `/ws` sends while a non-dispatchable band-131 proposal continues holding routine work out of the result gap. Failed validation is explicit and never falls back to the configured primary WS.
 

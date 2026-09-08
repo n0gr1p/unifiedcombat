@@ -22,6 +22,16 @@ Primary priorities:
 * Be careful with load order, side effects, globals, and `require` behavior.
 * Do not move initialization logic casually. In this addon, require-time and load-time side effects matter.
 
+## Canonical runtime time source
+
+UnifiedCombat runtime/gameplay timing uses one clock domain.
+
+* Use `uc_time.now()` for scheduler, action, movement, reaction, skillchain, magic-burst, timeout, deadline, and other elapsed/runtime timestamps.
+* `uc_time` is backed by LuaSocket `socket.gettime`. Do not use `os.clock()` for UnifiedCombat runtime decisions.
+* Code that legitimately needs the LuaSocket module for networking may still `require('socket')`, but must route time reads through `uc_time`.
+* Tests should inject deterministic/fake `now` functions instead of introducing a second production clock domain.
+* Do not directly compare timestamps from different clock sources. The runtime time-source self-test enforces this contract.
+
 ## Architecture guidance
 
 UnifiedCombat has both runtime addon behavior and external UI/configuration surfaces. Treat architectural direction as task-specific unless it is already established in code or explicitly stated in the prompt.
