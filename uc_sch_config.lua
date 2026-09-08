@@ -436,10 +436,26 @@ local function validate_skillchain_plans(result, value, path)
 			add_issue(result, 'sch_shape_invalid', plan_path, plan_path .. ' must be a table.')
 		else
 			reject_unknown_keys(result, plan, plan_path, { 'result', 'opener', 'closer' })
-			local shape_valid = true
-			shape_valid = require_string(result, plan, 'result', plan_path .. '.result') and shape_valid
-			shape_valid = require_string(result, plan, 'opener', plan_path .. '.opener') and shape_valid
-			shape_valid = require_string(result, plan, 'closer', plan_path .. '.closer') and shape_valid
+			local shape_valid = require_string(result, plan, 'result', plan_path .. '.result')
+			local opener = plan.opener
+			local closer = plan.closer
+			local opener_present = type(opener) == 'string' and opener ~= ''
+			local closer_present = type(closer) == 'string' and closer ~= ''
+			if opener_present ~= closer_present then
+				add_issue(
+					result,
+					'sch_shape_invalid',
+					plan_path,
+					plan_path .. ' must provide both opener and closer, or omit both to use the canonical recipe.'
+				)
+				shape_valid = false
+			elseif opener ~= nil and not opener_present then
+				add_issue(result, 'sch_shape_invalid', plan_path .. '.opener', plan_path .. '.opener must be a non-empty string when provided.')
+				shape_valid = false
+			elseif closer ~= nil and not closer_present then
+				add_issue(result, 'sch_shape_invalid', plan_path .. '.closer', plan_path .. '.closer must be a non-empty string when provided.')
+				shape_valid = false
+			end
 			if shape_valid then
 				local normalized, reason = sch_skillchain.validate_plan(plan)
 				if normalized == nil then
