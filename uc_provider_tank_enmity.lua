@@ -15,6 +15,14 @@ local function require_function(deps, name)
 	return value
 end
 
+local function valid_enemy_target(target)
+	return type(target) == 'table'
+		and target.valid_target == true
+		and tonumber(target.spawn_type) == 16
+		and (tonumber(target.hpp) or 0) > 0
+		and (tonumber(target.id) or 0) > 0
+end
+
 function M.new(deps)
 	deps = require_table(deps, 'deps')
 	local bool_setting = require_function(deps, 'bool_setting')
@@ -32,8 +40,12 @@ function M.new(deps)
 			return
 		end
 		local player = ctx.player
-		if ctx.player_present ~= true or tonumber(player.status) ~= 1 then
-			-- Force initial /attack engagement to occur before enmity actions.
+		if ctx.player_present ~= true then
+			return
+		end
+		local engaged = tonumber(player.status) == 1
+		local allow_unengaged = bool_setting(ctx.settings.ability_allow_unengaged, false)
+		if not engaged and not allow_unengaged then
 			return
 		end
 		local pick = select_tank_enmity(ctx.settings)
@@ -49,11 +61,25 @@ function M.new(deps)
 		if action_name == '' or target_id <= 0 then
 			return
 		end
+		-- The unengaged override is intentionally target-gated. Auto Target may
+		-- establish this target without Auto Engage, or the user may select it
+		-- manually. Never spend a hate action against a stale/dead/non-enemy ID.
+		if not engaged then
+			local mobs_by_id = type(ctx.mobs_by_id) == 'table' and ctx.mobs_by_id or {}
+			if not valid_enemy_target(mobs_by_id[target_id]) then
+				log_tank_sched(('collect_skip action="%s" kind=%s reason=UNENGAGED_TARGET_INVALID target_id=%d'):format(
+					tostring(action_name),
+					tostring(kind),
+					target_id
+				))
+				return
+			end
+		end
 		-- Hard gate at collect-time so unusable tank actions never starve the queue.
 		-- If action is on cooldown / blocked now, do not emit an intent.
 		local ready_ok, ready_reason, ready_kind = action_ready(action_name, target_id)
 		if not ready_ok then
-			log_tank_sched(('collect_skip action=\"%s\" kind=%s reason=%s target_id=%d'):format(
+			log_tank_sched(('collect_skip action="%s" kind=%s reason=%s target_id=%d'):format(
 				tostring(action_name),
 				tostring(kind),
 				tostring(ready_reason or 'NOT_READY'),
@@ -63,7 +89,7 @@ function M.new(deps)
 		end
 		-- Defensive consistency: ensure resolved action kind matches picked kind.
 		if tostring(ready_kind or '') ~= kind then
-			log_tank_sched(('collect_skip action=\"%s\" kind=%s reason=KIND_MISMATCH resolved=%s target_id=%d'):format(
+			log_tank_sched(('collect_skip action="%s" kind=%s reason=KIND_MISMATCH resolved=%s target_id=%d'):format(
 				tostring(action_name),
 				tostring(kind),
 				tostring(ready_kind or ''),
@@ -122,8 +148,8 @@ function M.new(deps)
 				selection_reason = tostring(pick.reason or ''),
 			},
 			legacy_command = (kind == 'spell')
-				and ('input /ma \"%s\" %d'):format(action_name, target_id)
-				or ('input /ja \"%s\" %d'):format(action_name, target_id),
+				and ('input /ma "%s" %d'):format(action_name, target_id)
+				or ('input /ja "%s" %d'):format(action_name, target_id),
 		}
 	end
 
