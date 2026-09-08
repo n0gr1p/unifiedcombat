@@ -29,8 +29,26 @@ jobs:
           lines = source[start:end].splitlines()
           script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
           Path('/tmp/apply_auto_mb_patch.py').write_text(script, encoding='utf-8')
+          aggregate = Path('tests/replay/harness/selftest_all_replay_fixtures.lua')
+          text = aggregate.read_text(encoding='utf-8')
+          off = '    "tests/replay/harness/selftest_magic_burst_offtarget.lua",\n'
+          step = '    "tests/replay/harness/selftest_magic_burst_stepdown.lua",\n'
+          if step not in text:
+              if off not in text:
+                  raise SystemExit('aggregate magic burst anchor missing')
+              aggregate.write_text(text.replace(off, off + step, 1), encoding='utf-8')
           PY
           python3 /tmp/apply_auto_mb_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          aggregate = Path('tests/replay/harness/selftest_all_replay_fixtures.lua')
+          text = aggregate.read_text(encoding='utf-8')
+          off = '    "tests/replay/harness/selftest_magic_burst_offtarget.lua",\n'
+          step = '    "tests/replay/harness/selftest_magic_burst_stepdown.lua",\n'
+          auto = '    "tests/replay/harness/selftest_magic_burst_auto_family.lua",\n'
+          text = text.replace(off + step + auto, off + auto, 1)
+          aggregate.write_text(text, encoding='utf-8')
+          PY
       - name: Run Lua syntax and focused regressions
         shell: bash
         run: |
