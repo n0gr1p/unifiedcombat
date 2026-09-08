@@ -13,6 +13,13 @@ function M.build_action_command(deps, action_name, action_kind, target_member)
 	elseif mode ~= 'self_only' then
 		if target.is_self == true then
 			target_token = '<me>'
+		elseif (tonumber(target.id) or 0) > 0 and target.is_self == false then
+			-- When the caller has explicitly resolved a non-self entity, preserve
+			-- that identity in the Windower command instead of falling back to a
+			-- quoted display name. This keeps off-target scheduler actions (for
+			-- example SCH Immanence spell steps) GearSwap-visible without requiring
+			-- the entity to be the player's current <t>.
+			target_token = tostring(tonumber(target.id) or 0)
 		elseif (tonumber(target.id) or 0) > 0 and target.is_mob == true then
 			target_token = tostring(tonumber(target.id) or 0)
 		elseif target.name and tostring(target.name) ~= '' then
