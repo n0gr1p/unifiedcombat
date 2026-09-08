@@ -17,9 +17,9 @@ public partial class MainForm
     private static readonly IReadOnlyDictionary<string, string[]> ScholarSkillchainCloserOptions =
         new Dictionary<string, string[]>(StringComparer.Ordinal)
         {
-            ["Fusion"] = ["Thunder V", "Thunder IV", "Thunder III", "Thunder II", "Thunder"],
-            ["Fragmentation"] = ["Water V", "Water IV", "Water III", "Water II", "Water"],
-            ["Distortion"] = ["Stone V", "Stone IV", "Stone III", "Stone II", "Stone"],
+            ["Fusion"] = ["Thunder V", "Ionohelix II", "Thunder IV", "Thunder III", "Thunder II", "Thunder", "Ionohelix"],
+            ["Fragmentation"] = ["Water V", "Hydrohelix II", "Water IV", "Water III", "Water II", "Water", "Hydrohelix"],
+            ["Distortion"] = ["Stone V", "Geohelix II", "Stone IV", "Stone III", "Stone II", "Stone", "Geohelix"],
             ["Gravitation"] = ["Noctohelix II", "Noctohelix"],
         };
 
