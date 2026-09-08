@@ -25,6 +25,7 @@ internal static class HubUiConstants
         "partner",
         "autotarget",
         "auto_engage",
+        "ability_allow_unengaged",
         "spam",
         "closer",
         "manual",
@@ -84,6 +85,7 @@ internal static class HubUiConstants
         ["Start_Engine"] = "Run combat engine",
         ["autotarget"] = "Auto Target",
         ["auto_engage"] = "Auto Engage",
+        ["ability_allow_unengaged"] = "Allow Abilities While Unengaged",
         ["spam"] = "Spam",
         ["closer"] = "Closer",
         ["manual"] = "Manual",
@@ -148,7 +150,7 @@ internal static class HubUiConstants
     ];
 
     public static readonly string[] CombatTargetingUiKeys =
-        ["autotarget", "auto_engage", "prime", "spam", "solo", "manual", "pause_automation_while_weakened"];
+        ["autotarget", "auto_engage", "ability_allow_unengaged", "prime", "spam", "solo", "manual", "pause_automation_while_weakened"];
 
     public static readonly string[] SpacingMovementUiKeys = ["face", "spacing", "static", "move"];
 
