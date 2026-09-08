@@ -1,9 +1,9 @@
 local M = {}
 
--- A confirmed skillchain exposes a 10 second MB window. Keep enough guard for
--- scheduler arbitration plus a geared mage's cast, but do not reserve so much
--- time that the second burst opportunity is discarded.
-local MAGIC_BURST_MIN_WINDOW_S = 2.5
+-- A confirmed skillchain exposes a 10 second MB window. Keep evaluating burst
+-- opportunities until the observed window actually expires. A spell that lands
+-- after expiry is still useful as a normal nuke, so there is no artificial
+-- pre-expiry landing guard.
 local REACTION_PRIORITY_BAND = 240
 local MAGIC_BURST_PRIORITY_BAND = 170
 
@@ -222,7 +222,7 @@ local function magic_burst_target(ctx, spell, element, action_effective_range)
         end
         local mb_expires = tonumber(state.magic_burst_expires_at) or 0
         local remaining = mb_expires - (tonumber(ctx.now) or 0)
-        if remaining < MAGIC_BURST_MIN_WINDOW_S then
+        if remaining <= 0 then
             return
         end
         local property = skillchain_property(state)
