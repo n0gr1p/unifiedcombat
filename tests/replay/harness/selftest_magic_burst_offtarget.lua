@@ -195,3 +195,4 @@ if not ok then
 end
 
 io.stdout:write('selftest_magic_burst_offtarget: OK\n')
+dofile('tests/replay/harness/selftest_magic_burst_stepdown.lua')
