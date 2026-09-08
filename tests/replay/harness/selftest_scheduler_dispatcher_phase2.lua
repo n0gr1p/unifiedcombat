@@ -2,7 +2,7 @@ local dispatcher = require("uc_scheduler_dispatcher")
 
 local function assert_equal(actual, expected, message)
     if actual ~= expected then
-        error((message or "values differ") .. ": expected=" .. tostring(expected) .. ", actual=" .. tostring(actual))
+        error((message or "values differ") .. ': expected=' .. tostring(expected) .. ', actual=' .. tostring(actual))
     end
 end
 
@@ -34,6 +34,9 @@ local function main()
     assert_equal(order[2], "execute:input /ws Test 1001", "execution order")
     assert_equal(order[3], "mark", "action mark order")
 
+    -- Structured spells must use the same Windower command transport as other
+    -- player actions so GearSwap sees the normal precast/midcast/aftercast
+    -- lifecycle. A packet executor supplied by an old caller must be ignored.
     local command_calls = 0
     local packet_calls = 0
     result = dispatcher.dispatch_intent({
@@ -48,20 +51,23 @@ local function main()
         },
     }, {
         execute = true,
-        send_command = function() command_calls = command_calls + 1 end,
-        cast_spell_packet = function(spell_name, target_id)
+        send_command = function(command)
+            command_calls = command_calls + 1
+            assert_equal(command, 'input /ma "Fire" 1001', "structured spell command")
+        end,
+        cast_spell_packet = function()
             packet_calls = packet_calls + 1
-            assert_equal(spell_name, "Fire", "packet spell name")
-            assert_equal(target_id, 1001, "packet target id")
             return true, "OK"
         end,
     })
-    assert_equal(result.ok, true, "structured spell packet status")
-    assert_equal(result.executed, true, "structured spell packet execution")
-    assert_equal(result.dispatch_method, "spell_packet", "structured spell dispatch method")
-    assert_equal(packet_calls, 1, "structured spell packet count")
-    assert_equal(command_calls, 0, "structured spell must never use text command")
+    assert_equal(result.ok, true, "structured spell command status")
+    assert_equal(result.executed, true, "structured spell command execution")
+    assert_equal(result.dispatch_method, "send_command", "structured spell dispatch method")
+    assert_equal(command_calls, 1, "structured spell command count")
+    assert_equal(packet_calls, 0, "structured spell must never inject an action packet")
 
+    -- There is deliberately no packet fallback when the command adapter is
+    -- unavailable: fail closed rather than bypass GearSwap.
     result = dispatcher.dispatch_intent({
         kind = "send_command",
         command = 'input /ma "Fire" 1001',
@@ -69,12 +75,21 @@ local function main()
     }, {
         execute = true,
         cast_spell_packet = function()
-            return false, "TARGET_NOT_FOUND"
+            packet_calls = packet_calls + 100
+            return true, "OK"
         end,
     })
-    assert_equal(result.ok, false, "packet spell rejection status")
-    assert_equal(result.reason, "TARGET_NOT_FOUND", "packet spell rejection reason")
-    assert_equal(result.executed, false, "packet spell rejection execution state")
+    assert_equal(result.ok, false, "missing spell command adapter status")
+    assert_equal(result.reason, "missing_dep:send_command", "missing spell command adapter reason")
+    assert_equal(result.executed, false, "missing spell command adapter execution state")
+    assert_equal(packet_calls, 0, "missing command adapter must not fall back to packet casting")
+
+    result = dispatcher.dispatch_intent({
+        kind = "send_command",
+        meta = { action_type = "spell", action_name = "Fire", target_id = 1001 },
+    }, { execute = false })
+    assert_equal(result.ok, false, "structured spell missing command status")
+    assert_equal(result.reason, "missing_command", "structured spell missing command reason")
 
     result = dispatcher.dispatch_intent({
         kind = "send_command",
@@ -102,6 +117,7 @@ local function main()
     })
     assert_equal(result.ok, true, "valid bound-target Immanence status")
     assert_equal(result.executed, true, "valid bound-target Immanence execution")
+    assert_equal(result.dispatch_method, "send_command", "job ability command dispatch method")
     assert_equal(immanence_calls, 1, "valid Immanence dispatch count")
 
     result = dispatcher.dispatch_intent({
