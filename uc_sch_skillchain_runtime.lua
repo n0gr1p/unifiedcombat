@@ -115,6 +115,17 @@ local function dark_arts_active(buffs)
 	return has_buff(buffs, DARK_ARTS_BUFF_ID) or has_buff(buffs, ADDENDUM_BLACK_BUFF_ID)
 end
 
+local function addendum_black_active(buffs)
+	return has_buff(buffs, ADDENDUM_BLACK_BUFF_ID)
+end
+
+local function phase_after_dark_arts(active, buffs)
+	if active.plan.requires_addendum_black == true and not addendum_black_active(buffs) then
+		return 'ensure_addendum_black'
+	end
+	return 'use_immanence_opener'
+end
+
 function Runtime:_advance(input)
 	local active = self.active
 	if active == nil then
@@ -141,17 +152,32 @@ function Runtime:_advance(input)
 	local snapshot = input.skillchain_snapshot
 
 	if active.phase == 'ensure_dark_arts' and dark_arts_active(buffs) then
-		active.phase = 'use_immanence_opener'
+		active.phase = phase_after_dark_arts(active, buffs)
 		active.phase_deadline = now + EVIDENCE_TIMEOUT_S
 		return
 	end
 	if active.phase == 'wait_dark_arts' then
 		if dark_arts_active(buffs) then
-			active.phase = 'use_immanence_opener'
+			active.phase = phase_after_dark_arts(active, buffs)
 			active.pending = false
 			active.phase_deadline = now + EVIDENCE_TIMEOUT_S
 		elseif now > active.phase_deadline then
 			self:_abort('dark_arts_confirmation_timeout', now)
+		end
+		return
+	end
+	if active.phase == 'ensure_addendum_black' and addendum_black_active(buffs) then
+		active.phase = 'use_immanence_opener'
+		active.phase_deadline = now + EVIDENCE_TIMEOUT_S
+		return
+	end
+	if active.phase == 'wait_addendum_black' then
+		if addendum_black_active(buffs) then
+			active.phase = 'use_immanence_opener'
+			active.pending = false
+			active.phase_deadline = now + EVIDENCE_TIMEOUT_S
+		elseif now > active.phase_deadline then
+			self:_abort('addendum_black_confirmation_timeout', now)
 		end
 		return
 	end
@@ -269,21 +295,25 @@ function Runtime:update(input)
 		self.last_blocker = 'existing_magic_burst_window'
 		return false
 	end
-	local charge = input.charge_snapshot or {}
-	if charge.confidence ~= 'confirmed' then
-		self.last_blocker = 'charge_confidence_unknown'
-		return false
-	end
-	if (tonumber(charge.estimated_available) or 0) < 2 then
-		self.last_blocker = 'insufficient_confirmed_charges'
-		return false
-	end
 	local plans = skillchain.plans(config)
 	if #plans == 0 then
 		self.last_blocker = 'no_valid_skillchain_plan'
 		return false
 	end
-	if not self:_start(plans[1], target, input.skillchain_snapshot, now) then
+	local plan = plans[1]
+	local addendum_required = plan.requires_addendum_black == true
+		and not addendum_black_active(input.player_buffs or {})
+	local required_charges = 2 + (addendum_required and 1 or 0)
+	local charge = input.charge_snapshot or {}
+	if charge.confidence ~= 'confirmed' then
+		self.last_blocker = 'charge_confidence_unknown'
+		return false
+	end
+	if (tonumber(charge.estimated_available) or 0) < required_charges then
+		self.last_blocker = 'insufficient_confirmed_charges'
+		return false
+	end
+	if not self:_start(plan, target, input.skillchain_snapshot, now) then
 		return false
 	end
 	self:_advance(input)
@@ -308,6 +338,11 @@ function Runtime:next_step(now)
 	if active.phase == 'ensure_dark_arts' then
 		action_type = 'job_ability'
 		action_name = 'Dark Arts'
+	elseif active.phase == 'ensure_addendum_black' then
+		action_type = 'job_ability'
+		action_name = 'Addendum: Black'
+		uses_charge = true
+		required_available_charges = 3
 	elseif active.phase == 'use_immanence_opener' then
 		action_type = 'job_ability'
 		action_name = 'Immanence'
@@ -372,6 +407,8 @@ function Runtime:note_dispatched(step, now)
 	active.phase_deadline = math.min(active.deadline, (tonumber(now) or 0) + EVIDENCE_TIMEOUT_S)
 	if active.phase == 'ensure_dark_arts' then
 		active.phase = 'wait_dark_arts'
+	elseif active.phase == 'ensure_addendum_black' then
+		active.phase = 'wait_addendum_black'
 	elseif active.phase == 'use_immanence_opener' then
 		active.phase = 'wait_immanence_opener'
 	elseif active.phase == 'cast_opener' then
