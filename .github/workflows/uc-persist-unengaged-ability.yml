@@ -1,0 +1,157 @@
+name: UC persist unengaged ability patch
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/uc-persist-unengaged-ability.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply targeted serialization and projection changes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}: {old!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # WinForms Profile V2 writer: serialize the durable setting in config.abilities.
+          replace_once(
+              'UnifiedCombatWinForms/StructuredProfileV2Writer.cs',
+              '            .Add("enabled", ReadBool(flatProfile, "ability_active", false))\n            .Add("configured", configured)',
+              '            .Add("enabled", ReadBool(flatProfile, "ability_active", false))\n            .Add("allow_unengaged", ReadBool(flatProfile, "ability_allow_unengaged", false))\n            .Add("configured", configured)',
+          )
+
+          # Canonical config: default false, preserve both nested Profile V2 and flat compatibility forms.
+          replace_once(
+              'uc_config_normalizer.lua',
+              "        abilities = {\n            enabled = false,\n            configured = {},",
+              "        abilities = {\n            enabled = false,\n            allow_unengaged = false,\n            configured = {},",
+          )
+          replace_once(
+              'uc_config_normalizer.lua',
+              "    if is_table(nested_abilities) and table_has_any(nested_abilities, { 'configured', 'legacy_slots', 'wsabilities', 'enabled' }) then\n        abilities.enabled = normalize_boolean(nested_abilities.enabled, abilities.enabled)\n        abilities.configured = normalize_list(nested_abilities.configured, abilities.configured)",
+              "    if is_table(nested_abilities) and table_has_any(nested_abilities, { 'configured', 'legacy_slots', 'wsabilities', 'enabled', 'allow_unengaged' }) then\n        abilities.enabled = normalize_boolean(nested_abilities.enabled, abilities.enabled)\n        abilities.allow_unengaged = normalize_boolean(nested_abilities.allow_unengaged, abilities.allow_unengaged)\n        abilities.configured = normalize_list(nested_abilities.configured, abilities.configured)",
+          )
+          replace_once(
+              'uc_config_normalizer.lua',
+              "    else\n        abilities.enabled = normalize_boolean(first_path(source, { path('ability_active') }), abilities.enabled)\n        abilities.configured = normalize_list(first_path(source, { path('abilities') }), abilities.configured)",
+              "    else\n        abilities.enabled = normalize_boolean(first_path(source, { path('ability_active') }), abilities.enabled)\n        abilities.allow_unengaged = normalize_boolean(first_path(source, { path('ability_allow_unengaged') }), abilities.allow_unengaged)\n        abilities.configured = normalize_list(first_path(source, { path('abilities') }), abilities.configured)",
+          )
+
+          # Active compatibility projection consumed by providers/UI snapshots.
+          replace_once(
+              'uc_active_config.lua',
+              "\t\tcandidate.ability_active = config.abilities.enabled\n\t\tcandidate.abilities = clone_value(config.abilities.configured)",
+              "\t\tcandidate.ability_active = config.abilities.enabled\n\t\tcandidate.ability_allow_unengaged = config.abilities.allow_unengaged\n\t\tcandidate.abilities = clone_value(config.abilities.configured)",
+          )
+
+          # Ownership contract: this is a durable UI/profile field, not legacy ambiguity.
+          replace_once(
+              'uc_profile_contract.lua',
+              '    ability_active = "profile_owned_by_ui",\n    abilities = "profile_owned_by_ui",',
+              '    ability_active = "profile_owned_by_ui",\n    ability_allow_unengaged = "profile_owned_by_ui",\n    abilities = "profile_owned_by_ui",',
+          )
+
+          # Focused Lua regression: flat -> canonical, nested -> canonical, active -> flat projection.
+          test_path = Path('tests/replay/harness/selftest_unengaged_ability_profile.lua')
+          test_path.write_text(r'''local normalizer = require('uc_config_normalizer')
+local active_config = require('uc_active_config')
+
+local function assert_equal(actual, expected, message)
+    if actual ~= expected then
+        error((message or 'values differ') .. ': expected=' .. tostring(expected) .. ', actual=' .. tostring(actual))
+    end
+end
+
+local flat = normalizer.normalize({
+    ability_active = true,
+    ability_allow_unengaged = true,
+    abilities = { 'Sentinel' },
+})
+assert_equal(flat.abilities.allow_unengaged, true, 'flat unengaged ability policy must normalize')
+
+local nested = normalizer.normalize({
+    config = {
+        abilities = {
+            enabled = true,
+            allow_unengaged = true,
+            configured = { 'Sentinel' },
+            legacy_slots = {},
+            wsabilities = {},
+        },
+    },
+})
+assert_equal(nested.abilities.allow_unengaged, true, 'nested unengaged ability policy must normalize')
+
+local defaults = normalizer.default_config()
+assert_equal(defaults.abilities.allow_unengaged, false, 'unengaged ability policy must default off')
+
+local active_profile = {
+    version = 2,
+    profile = {
+        schema_version = 2,
+        engine = 'UC',
+        character = 'Testpld',
+        main_job = 'PLD',
+        sub_job = 'WAR',
+        source = 'selftest',
+    },
+    config = nested,
+}
+local projected, projection_error = active_config.project_flat_settings(active_profile, {})
+if type(projected) ~= 'table' then
+    error('active config projection failed: ' .. tostring(projection_error))
+end
+assert_equal(projected.ability_allow_unengaged, true, 'active config must project unengaged ability policy')
+
+io.stdout:write('selftest_unengaged_ability_profile: OK\n')
+''', encoding='utf-8')
+
+          replace_once(
+              'tests/replay/harness/selftest_all_replay_fixtures.lua',
+              '    "tests/replay/harness/selftest_config_normalizer.lua",\n',
+              '    "tests/replay/harness/selftest_config_normalizer.lua",\n    "tests/replay/harness/selftest_unengaged_ability_profile.lua",\n',
+          )
+
+          # Static sanity checks before committing.
+          checks = {
+              'UnifiedCombatWinForms/StructuredProfileV2Writer.cs': '.Add("allow_unengaged", ReadBool(flatProfile, "ability_allow_unengaged", false))',
+              'uc_config_normalizer.lua': 'abilities.allow_unengaged = normalize_boolean',
+              'uc_active_config.lua': 'candidate.ability_allow_unengaged = config.abilities.allow_unengaged',
+              'uc_profile_contract.lua': 'ability_allow_unengaged = "profile_owned_by_ui"',
+          }
+          for path, needle in checks.items():
+              if needle not in Path(path).read_text(encoding='utf-8'):
+                  raise SystemExit(f'{path}: missing expected result {needle!r}')
+          PY
+      - name: Run focused Lua regression
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.1
+          lua5.1 tests/replay/harness/selftest_unengaged_ability_profile.lua
+      - name: Commit patch and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/uc-persist-unengaged-ability.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Persist unengaged ability policy across Profile V2"
+          git push origin HEAD:master
