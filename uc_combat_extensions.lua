@@ -11,7 +11,8 @@ local MAGIC_BURST_PRIORITY_BAND = 170
 -- Walk downward until the highest currently ready spell is found. This both
 -- preserves damage on successive skillchains while the top tier is on recast
 -- and naturally enables a second burst in the same window after the first spell
--- puts itself on recast.
+-- puts itself on recast. GEO -ra spells keep their own III -> II -> I ladders
+-- rather than crossing over to the normal single-target nuke family.
 --
 -- Helix spells are different: a lower-tier Helix is not a useful follow-up
 -- because Helix effects do not stack. For the six normal elements, a configured
@@ -25,6 +26,12 @@ local BURST_SPELL_LADDERS = {
     { 'Stone V', 'Stone IV', 'Stone III', 'Stone II', 'Stone' },
     { 'Thunder V', 'Thunder IV', 'Thunder III', 'Thunder II', 'Thunder' },
     { 'Water V', 'Water IV', 'Water III', 'Water II', 'Water' },
+    { 'Fira III', 'Fira II', 'Fira' },
+    { 'Blizzara III', 'Blizzara II', 'Blizzara' },
+    { 'Aerora III', 'Aerora II', 'Aerora' },
+    { 'Stonera III', 'Stonera II', 'Stonera' },
+    { 'Thundara III', 'Thundara II', 'Thundara' },
+    { 'Watera III', 'Watera II', 'Watera' },
     { 'Pyrohelix II', 'Fire V', 'Fire IV', 'Fire III', 'Fire II', 'Fire' },
     { 'Pyrohelix', 'Fire V', 'Fire IV', 'Fire III', 'Fire II', 'Fire' },
     { 'Cryohelix II', 'Blizzard V', 'Blizzard IV', 'Blizzard III', 'Blizzard II', 'Blizzard' },
