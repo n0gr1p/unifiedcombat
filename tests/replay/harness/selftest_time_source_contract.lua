@@ -63,6 +63,10 @@ local core = read_file('unified_combat_core.lua')
 assert_contains(core, "local uc_time = require('uc_time')", 'core must import canonical clock')
 assert_contains(core, 'now = uc_time.now', 'skillchain runtime must use canonical clock')
 assert_not_contains(core, 'os.clock(', 'skillchain runtime must not use os.clock')
+assert_contains(core, "local function uc_now_s()\n\treturn require('uc_time').now()\nend", 'core early time helper must not capture a later local')
+
+local bridge = read_file('remote_bridge.lua')
+assert_contains(bridge, "local function uc_now_s()\n\treturn require('uc_time').now()\nend", 'remote bridge early time helper must not capture a later local')
 
 local burst = read_file('uc_combat_extensions.lua')
 assert_contains(burst, 'local remaining = mb_expires - (tonumber(ctx.now) or 0)', 'MB window must compare same-domain runtime timestamps')

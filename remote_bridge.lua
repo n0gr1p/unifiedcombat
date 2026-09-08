@@ -1,5 +1,5 @@
 local function uc_now_s()
-	return uc_time.now()
+	return require('uc_time').now()
 end
 
 --[[
