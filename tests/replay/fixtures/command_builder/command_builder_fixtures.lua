@@ -78,6 +78,20 @@ return {
         },
     },
     {
+        fixture_id = "command_builder_spell_explicit_nonself_id",
+        helper = "build_action_command",
+        description = "explicit non-self target id is preserved for GearSwap-visible off-target spell dispatch",
+        input = {
+            deps = deps_with_mode("normal"),
+            action_name = "Fire",
+            action_kind = "spell",
+            target_member = { id = 3456, is_self = false, is_mob = false, name = "Locus Ghost Crab" },
+        },
+        expected = {
+            result = "input /ma \"Fire\" 3456",
+        },
+    },
+    {
         fixture_id = "command_builder_spell_target_name_quotes_stripped",
         helper = "build_action_command",
         description = "target name has embedded quotes stripped",
