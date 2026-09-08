@@ -71,7 +71,8 @@ local function magic_burst_target(ctx, spell, element, action_effective_range)
     local combat_core = require('unified_combat_core')
     local skillchain_elements = require('uc_skillchain_elements')
     local targeting_common = require('uc_targeting_common')
-    local _claim_ids, claims_set = targeting_common.build_friendly_claims()
+    local party_snapshot = type(ctx.party) == 'table' and ctx.party or {}
+    local _claim_ids, claims_set = targeting_common.build_friendly_claims({ party = party_snapshot })
     if type(claims_set) ~= 'table' then
         return nil
     end
