@@ -96,12 +96,47 @@ local function burst_spell_candidates(configured_name)
     return { configured }
 end
 
-local function select_ready_burst_spell(configured_name, target_id, action_ready)
+local function player_has_buff(ctx, buff_id)
+    local wanted = tonumber(buff_id) or 0
+    if wanted <= 0 then
+        return false
+    end
+    local player = type(ctx) == 'table' and ctx.player or nil
+    for _, observed in pairs(type(player) == 'table' and type(player.buffs) == 'table' and player.buffs or {}) do
+        if tonumber(observed) == wanted then
+            return true
+        end
+    end
+    return false
+end
+
+local function is_helix_spell(name)
+    return tostring(name or ''):lower():find('helix', 1, true) ~= nil
+end
+
+local function helix_fallback_requires_new_stratagem(ctx, configured_name, candidate_name)
+    if not is_helix_spell(configured_name) then
+        return false
+    end
+    local player = type(ctx) == 'table' and ctx.player or nil
+    if type(player) ~= 'table' or tostring(player.main_job or '') ~= 'SCH' then
+        return false
+    end
+    local sch_skillchain = require('uc_sch_skillchain')
+    if sch_skillchain.requires_addendum_black(candidate_name) ~= true then
+        return false
+    end
+    local capabilities = require('uc_sch_capabilities')
+    local addendum_black = capabilities.abilities and capabilities.abilities.addendum_black or nil
+    return not player_has_buff(ctx, addendum_black and addendum_black.buff_id)
+end
+
+local function select_ready_burst_spell(configured_name, target_id, action_ready, ctx)
     local candidates = burst_spell_candidates(configured_name)
     for index = 1, #candidates do
         local name = candidates[index]
         local spell = spell_resource(name)
-        if spell then
+        if spell and not helix_fallback_requires_new_stratagem(ctx, configured_name, name) then
             local ready, reason, kind = action_ready(name, target_id)
             if ready == true and kind == 'spell' then
                 return {
@@ -353,7 +388,12 @@ function M.new(deps)
         if burst_target == nil then
             return false
         end
-        local burst_choice = select_ready_burst_spell(burst.spell, burst_target.target_id, action_ready)
+        local burst_choice = select_ready_burst_spell(
+            burst.spell,
+            burst_target.target_id,
+            action_ready,
+            ctx
+        )
         if burst_choice == nil then
             return false
         end
