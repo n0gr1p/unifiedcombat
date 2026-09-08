@@ -79,6 +79,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_deathsickness_recovery_hold.lua",
     "tests/replay/harness/selftest_formation_movement_dispatcher_phase4.lua",
     "tests/replay/harness/selftest_scheduler_providers_phase3.lua",
+    "tests/replay/harness/selftest_unengaged_abilities.lua",
 	"tests/replay/harness/selftest_death_switch_dispatch.lua",
     "tests/replay/harness/selftest_spacing_cast_movement_lock.lua",
     "tests/replay/harness/selftest_movement_priority_arbitration.lua",
