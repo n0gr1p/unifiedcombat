@@ -56,6 +56,9 @@ local ok, err = xpcall(function()
             [5] = { id = 5, en = 'Fire', element = 'Fire', range = 12 },
             [6] = { id = 6, en = 'Pyrohelix II', element = 'Fire', range = 12 },
             [7] = { id = 7, en = 'Pyrohelix', element = 'Fire', range = 12 },
+            [8] = { id = 8, en = 'Fira III', element = 'Fire', range = 12 },
+            [9] = { id = 9, en = 'Fira II', element = 'Fire', range = 12 },
+            [10] = { id = 10, en = 'Fira', element = 'Fire', range = 12 },
         }
         function spells:with(key, value)
             if key ~= 'en' then return nil end
@@ -183,6 +186,25 @@ local ok, err = xpcall(function()
     out = {}
     assert_true(extension.collect_priority_offense(ctx, out), 'lower configured ceiling must still fallback')
     assert_equal(out[1].action_name, 'Fire II', 'fallback must not step above configured Fire III ceiling')
+
+    -- GEO -ra spells keep their own family. A configured Fira III steps down to
+    -- Fira II/Fira and must not cross over to Fire V even if that spell is ready.
+    ctx.player = { main_job = 'GEO', buffs = {} }
+    configured_spell = 'Fira III'
+    ready_spells = { ['Fire V'] = true, ['Fira II'] = true, ['Fira'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'Fira III recast must step down within -ra family')
+    assert_equal(out[1].action_name, 'Fira II', '-ra stepdown must prefer Fira II over unrelated Fire V')
+    assert_equal(out[1].detail.configured_burst_spell, 'Fira III', '-ra stepdown must preserve configured ceiling')
+    assert_equal(out[1].detail.selected_burst_spell, 'Fira II', '-ra selected spell detail mismatch')
+
+    configured_spell = 'Fira II'
+    ready_spells = { ['Fire V'] = true, ['Fira'] = true }
+    out = {}
+    assert_true(extension.collect_priority_offense(ctx, out), 'Fira II recast must fall back to Fira')
+    assert_equal(out[1].action_name, 'Fira', '-ra ladder must reach tier I')
+
+    ctx.player = { main_job = 'SCH', buffs = { 359 } }
 
     -- A configured Helix gets first priority while ready.
     configured_spell = 'Pyrohelix II'
