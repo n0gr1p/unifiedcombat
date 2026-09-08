@@ -9,6 +9,7 @@ internal static class ScholarSkillchainProfileTests
         try
         {
             TestSelectedSkillchainSerializes();
+            TestHelixSkillchainCloserSerializes();
             TestInvalidSkillchainResultRejected();
             TestNonScholarSkillchainRejected();
             TestEditorProfileMigrationAddsSkillchainDefaults();
@@ -51,6 +52,24 @@ internal static class ScholarSkillchainProfileTests
         AssertContains(content, "enabled = true,", "Scholar skillchain enabled state missing");
         AssertContains(content, "plans = {", "Scholar skillchain plan missing");
         AssertContains(content, "result = \"Fragmentation\",", "selected Scholar skillchain result missing");
+        AssertContains(content, "closer = \"Water V\",", "default Fragmentation closer missing");
+    }
+
+    private static void TestHelixSkillchainCloserSerializes()
+    {
+        var flat = BaseProfile();
+        flat["sch_enabled"] = true;
+        flat["sch_skillchain_enabled"] = true;
+        flat["sch_skillchain_result"] = "Fusion";
+        flat["sch_skillchain_closer"] = "Ionohelix II";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Nyoourke", "SCH", "RDM")
+        );
+
+        AssertContains(content, "result = \"Fusion\",", "Fusion result missing for Helix closer");
+        AssertContains(content, "closer = \"Ionohelix II\",", "Ionohelix II closer must serialize");
     }
 
     private static void TestInvalidSkillchainResultRejected()
@@ -92,9 +111,10 @@ internal static class ScholarSkillchainProfileTests
 
         var changed = MainForm.MigrateProfileInPlace(profile);
         AssertTrue(changed, "schema-five profile should migrate");
-        AssertEqual(profile["profile_schema_version"]?.GetValue<int>() ?? 0, 6, "profile schema must migrate to six");
+        AssertEqual(profile["profile_schema_version"]?.GetValue<int>() ?? 0, 7, "profile schema must migrate to seven");
         AssertEqual(profile["sch_skillchain_enabled"]?.GetValue<bool>() ?? true, false, "migrated skillchain must default disabled");
         AssertEqual(profile["sch_skillchain_result"]?.GetValue<string>() ?? "", "Fusion", "migrated skillchain must default to Fusion");
+        AssertEqual(profile["sch_skillchain_closer"]?.GetValue<string>() ?? "", "Thunder V", "migrated Fusion skillchain must default to Thunder V");
     }
 
     private static void AssertContains(string value, string expected, string message)
