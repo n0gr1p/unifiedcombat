@@ -542,7 +542,7 @@ local function job_ability_readiness(ctx, player, ability)
 	}, ''
 end
 
-local function evaluate_arts(ctx, runtime_snapshot)
+local function evaluate_arts(ctx, runtime_snapshot, switch_required)
 	local observed = runtime_snapshot.arts.observed
 	local valid_states = {
 		unknown = true,
@@ -561,9 +561,14 @@ local function evaluate_arts(ctx, runtime_snapshot)
 		candidate = nil,
 		plan = nil,
 		readiness = nil,
+		switch_required = switch_required == true,
 	}
 	if observed == 'light' or observed == 'addendum_white' then
 		result.state = 'satisfied'
+		return result
+	end
+	if switch_required ~= true then
+		result.state = observed == 'unknown' and 'unknown_idle' or 'idle_off_art'
 		return result
 	end
 	if observed == 'unknown' then
@@ -583,40 +588,7 @@ local function evaluate_arts(ctx, runtime_snapshot)
 		result.blocker = 'arts_' .. readiness_blocker
 		return result
 	end
-	local environment = require_table(
-		runtime_snapshot.environment,
-		'Scholar runtime environment'
-	)
-	if type(environment.party_generation) ~= 'number'
-		or environment.party_generation < 0
-		or environment.party_generation % 1 ~= 0 then
-		error('Scholar runtime party generation must be a non-negative integer')
-	end
-	result.plan = {
-		purpose = 'ensure_light_arts',
-		domain = 'maintenance',
-		action_type = 'job_ability',
-		action_name = 'Light Arts',
-		target_id = player.id,
-		target_name = player.name,
-		observed_art = observed,
-		desired_art = 'light',
-		expected_buff_id = capabilities.abilities.light_arts.buff_id,
-		party_generation = environment.party_generation,
-		recast_id = readiness.recast_id,
-		observed_recast = readiness.observed_recast,
-		readiness_source = readiness.source,
-	}
-	result.candidate = action(
-		'job_ability',
-		'Light Arts',
-		player.id,
-		player.name,
-		'sch_light_arts_missing',
-		'arts'
-	)
-	result.candidate.plan = result.plan
-	result.state = 'actionable'
+	result.state = 'switch_ready'
 	return result
 end
 
@@ -816,8 +788,6 @@ function M.evaluate(config, ctx, runtime_snapshot)
 		return result
 	end
 	result.defensive = sch_defensive.evaluate(config.defensive, ctx, runtime_snapshot)
-	result.arts = evaluate_arts(ctx, runtime_snapshot)
-	result.candidate = result.defensive.candidate or result.arts.candidate
 	result.regen = evaluate_regen(
 		config.support.regen,
 		members,
@@ -829,16 +799,22 @@ function M.evaluate(config, ctx, runtime_snapshot)
 	)
 	result.storms = evaluate_storms(config.support.storms, members, runtime_snapshot)
 	result.sublimation = evaluate_sublimation(config.sublimation, ctx, runtime_snapshot)
-	local arts_confirmed = result.arts.state == 'satisfied'
-	if arts_confirmed and result.candidate == nil and result.regen.candidate ~= nil then
-		result.candidate = result.regen.candidate
+
+	local desired_candidate = result.defensive.candidate
+		or result.regen.candidate
+		or result.storms.candidate
+		or result.sublimation.candidate
+	local desired_plan = type(desired_candidate) == 'table' and desired_candidate.plan or nil
+	local light_switch_required = type(desired_plan) == 'table' and desired_plan.required_art == 'light'
+	result.arts = evaluate_arts(ctx, runtime_snapshot, light_switch_required)
+	if desired_candidate ~= nil then
+		if not light_switch_required
+			or result.arts.state == 'satisfied'
+			or result.arts.state == 'switch_ready' then
+			result.candidate = desired_candidate
+		end
 	end
-	if arts_confirmed and result.candidate == nil and result.storms.candidate ~= nil then
-		result.candidate = result.storms.candidate
-	end
-	if arts_confirmed and result.candidate == nil and result.sublimation.candidate ~= nil then
-		result.candidate = result.sublimation.candidate
-	end
+
 	local blockers = {
 		result.defensive.blocker,
 		result.arts.blocker,
