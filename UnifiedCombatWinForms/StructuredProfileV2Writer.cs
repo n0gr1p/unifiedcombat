@@ -1310,6 +1310,26 @@ internal static class StructuredProfileV2Writer
         "Gravitation",
     };
 
+    private static readonly IReadOnlyDictionary<string, HashSet<string>> ScholarSkillchainClosers =
+        new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
+        {
+            ["Fusion"] = new(StringComparer.Ordinal) { "Thunder", "Thunder II", "Thunder III", "Thunder IV", "Thunder V" },
+            ["Fragmentation"] = new(StringComparer.Ordinal) { "Water", "Water II", "Water III", "Water IV", "Water V" },
+            ["Distortion"] = new(StringComparer.Ordinal) { "Stone", "Stone II", "Stone III", "Stone IV", "Stone V" },
+            ["Gravitation"] = new(StringComparer.Ordinal) { "Noctohelix", "Noctohelix II" },
+        };
+
+    private static string DefaultScholarSkillchainCloser(string result)
+    {
+        return result switch
+        {
+            "Fragmentation" => "Water V",
+            "Distortion" => "Stone V",
+            "Gravitation" => "Noctohelix II",
+            _ => "Thunder V",
+        };
+    }
+
     private static bool HasConfiguredScholar(JsonObject flatProfile)
     {
         return ReadOptionalBool(flatProfile, "sch_enabled", false)
@@ -1348,9 +1368,22 @@ internal static class StructuredProfileV2Writer
         {
             throw new InvalidDataException($"Unsupported Scholar skillchain result: {skillchainResult}");
         }
+        var skillchainCloser = ReadString(
+            flatProfile,
+            "sch_skillchain_closer",
+            DefaultScholarSkillchainCloser(skillchainResult)
+        );
+        if (!ScholarSkillchainClosers[skillchainResult].Contains(skillchainCloser))
+        {
+            throw new InvalidDataException(
+                $"Unsupported Scholar {skillchainResult} closer: {skillchainCloser}"
+            );
+        }
         var skillchainPlans = new List<object?>
         {
-            new StructuredProfileNode().Add("result", skillchainResult),
+            new StructuredProfileNode()
+                .Add("result", skillchainResult)
+                .Add("closer", skillchainCloser),
         };
 
         return new StructuredProfileNode()
