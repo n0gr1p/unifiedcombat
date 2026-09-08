@@ -1302,9 +1302,18 @@ internal static class StructuredProfileV2Writer
             );
     }
 
+    private static readonly HashSet<string> ScholarSkillchainResults = new(StringComparer.Ordinal)
+    {
+        "Fusion",
+        "Fragmentation",
+        "Distortion",
+        "Gravitation",
+    };
+
     private static bool HasConfiguredScholar(JsonObject flatProfile)
     {
-        return ReadOptionalBool(flatProfile, "sch_enabled", false);
+        return ReadOptionalBool(flatProfile, "sch_enabled", false)
+            || ReadOptionalBool(flatProfile, "sch_skillchain_enabled", false);
     }
 
     private static StructuredProfileNode? BuildScholar(
@@ -1333,6 +1342,17 @@ internal static class StructuredProfileV2Writer
             0,
             100
         );
+        var skillchainEnabled = ReadOptionalBool(flatProfile, "sch_skillchain_enabled", false);
+        var skillchainResult = ReadString(flatProfile, "sch_skillchain_result", "Fusion");
+        if (!ScholarSkillchainResults.Contains(skillchainResult))
+        {
+            throw new InvalidDataException($"Unsupported Scholar skillchain result: {skillchainResult}");
+        }
+        var skillchainPlans = new List<object?>
+        {
+            new StructuredProfileNode().Add("result", skillchainResult),
+        };
+
         return new StructuredProfileNode()
             .Add("enabled", ReadOptionalBool(flatProfile, "sch_enabled", false))
             .Add("mode", "support")
@@ -1481,9 +1501,9 @@ internal static class StructuredProfileV2Writer
                     .Add(
                         "skillchain",
                         new StructuredProfileNode()
-                            .Add("enabled", false)
+                            .Add("enabled", skillchainEnabled)
                             .Add("allow_party_close", false)
-                            .Add("plans", EmptyList())
+                            .Add("plans", skillchainPlans)
                     )
             );
     }
