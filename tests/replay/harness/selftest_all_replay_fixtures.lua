@@ -30,6 +30,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_profile_v2_autoload_lifecycle.lua",
     "tests/replay/harness/selftest_summoner_configuration.lua",
 	"tests/replay/harness/selftest_sch_configuration.lua",
+	"tests/replay/harness/selftest_sch_skillchain_target.lua",
 	"tests/replay/harness/selftest_sch_capture.lua",
 	"tests/replay/harness/selftest_sch_action_observer.lua",
 	"tests/replay/harness/selftest_sch_action_results.lua",
