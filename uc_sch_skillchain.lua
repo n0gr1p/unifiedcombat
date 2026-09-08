@@ -19,6 +19,16 @@ local spell_families = {
 	{ prefix = 'Hydrohelix', property = 'Reverberation' },
 }
 
+-- Canonical autonomous two-step Immanence recipes. UI/profile consumers select
+-- the desired result; spell ordering remains owned here so recipe knowledge is
+-- not duplicated across the WinForms editor and runtime.
+local canonical_recipes = {
+	Fusion = { opener = 'Fire', closer = 'Thunder' },
+	Fragmentation = { opener = 'Blizzard', closer = 'Water' },
+	Distortion = { opener = 'Luminohelix', closer = 'Stone' },
+	Gravitation = { opener = 'Aero', closer = 'Noctohelix' },
+}
+
 local function trimmed(value)
 	return tostring(value or ''):match('^%s*(.-)%s*$')
 end
@@ -53,6 +63,23 @@ local function normalized_result(value)
 	return property
 end
 
+function M.canonical_recipe(result)
+	local normalized = normalized_result(result)
+	local recipe = normalized and canonical_recipes[normalized] or nil
+	if recipe == nil then
+		return nil
+	end
+	return {
+		result = normalized,
+		opener = recipe.opener,
+		closer = recipe.closer,
+	}
+end
+
+function M.supported_results()
+	return { 'Fusion', 'Fragmentation', 'Distortion', 'Gravitation' }
+end
+
 function M.validate_plan(plan)
 	if type(plan) ~= 'table' then
 		return nil, 'plan_not_table'
@@ -63,11 +90,15 @@ function M.validate_plan(plan)
 	end
 	local opener = trimmed(plan.opener)
 	local closer = trimmed(plan.closer)
-	if opener == '' then
-		return nil, 'opener_required'
-	end
-	if closer == '' then
-		return nil, 'closer_required'
+	if opener == '' and closer == '' then
+		local recipe = M.canonical_recipe(result)
+		if recipe == nil then
+			return nil, 'canonical_recipe_unavailable'
+		end
+		opener = recipe.opener
+		closer = recipe.closer
+	elseif opener == '' or closer == '' then
+		return nil, 'opener_and_closer_must_be_paired'
 	end
 	local opener_property = M.spell_property(opener)
 	if opener_property == nil then
@@ -91,11 +122,7 @@ function M.validate_plan(plan)
 end
 
 function M.default_plan()
-	return {
-		result = 'Fusion',
-		opener = 'Fire',
-		closer = 'Thunder',
-	}
+	return { result = 'Fusion' }
 end
 
 function M.plans(config)
