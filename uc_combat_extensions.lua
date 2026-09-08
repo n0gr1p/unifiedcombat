@@ -45,6 +45,102 @@ local function valid_target(target)
         and (tonumber(target.id) or 0) > 0
 end
 
+local function target_distance(target)
+    local squared = tonumber(target and target.distance)
+    if squared == nil or squared < 0 then
+        return nil
+    end
+    return math.sqrt(squared)
+end
+
+local function skillchain_property(state)
+    if type(state) ~= 'table' then
+        return ''
+    end
+    local property = tostring(state.last_confirmed_result or '')
+    if property == '' and type(state.active_properties) == 'table' then
+        property = tostring(state.active_properties[1] or '')
+    end
+    return property
+end
+
+local function magic_burst_target(ctx, spell, element, action_effective_range)
+    if element == '' then
+        return nil
+    end
+    local combat_core = require('unified_combat_core')
+    local skillchain_elements = require('uc_skillchain_elements')
+    local targeting_common = require('uc_targeting_common')
+    local _claim_ids, claims_set = targeting_common.build_friendly_claims()
+    if type(claims_set) ~= 'table' then
+        return nil
+    end
+
+    local max_range = tonumber(action_effective_range(spell.range)) or 0
+    local selected_id = ctx.target_present == true and tonumber(ctx.target and ctx.target.id) or 0
+    local best = nil
+    local seen = {}
+
+    local function consider(target)
+        if not valid_target(target) then
+            return
+        end
+        local target_id = tonumber(target.id) or 0
+        if target_id <= 0 or seen[target_id] then
+            return
+        end
+        seen[target_id] = true
+        local claim_id = tonumber(target.claim_id) or 0
+        if claim_id <= 0 or claims_set[claim_id] ~= true then
+            return
+        end
+        local distance = target_distance(target)
+        if distance == nil or max_range <= 0 or distance > max_range then
+            return
+        end
+        local state = combat_core.get_skillchain_snapshot(target_id)
+        if type(state) ~= 'table' then
+            return
+        end
+        local mb_expires = tonumber(state.magic_burst_expires_at) or 0
+        local remaining = mb_expires - (tonumber(ctx.now) or 0)
+        if remaining < MAGIC_BURST_MIN_WINDOW_S then
+            return
+        end
+        local property = skillchain_property(state)
+        if property == '' or not skillchain_elements.contains(property, element) then
+            return
+        end
+        local candidate = {
+            target = target,
+            target_id = target_id,
+            target_name = tostring(target.name or ''),
+            property = property,
+            mb_expires = mb_expires,
+            remaining = remaining,
+            distance = distance,
+            selected = target_id == selected_id,
+        }
+        if best == nil
+            or candidate.mb_expires > best.mb_expires
+            or (candidate.mb_expires == best.mb_expires and candidate.selected and not best.selected)
+            or (candidate.mb_expires == best.mb_expires and candidate.selected == best.selected
+                and candidate.distance < best.distance)
+            or (candidate.mb_expires == best.mb_expires and candidate.selected == best.selected
+                and candidate.distance == best.distance and candidate.target_id < best.target_id) then
+            best = candidate
+        end
+    end
+
+    for _, mob in pairs(type(ctx.mobs_by_id) == 'table' and ctx.mobs_by_id or {}) do
+        consider(mob)
+    end
+    if ctx.target_present == true then
+        consider(ctx.target)
+    end
+    return best
+end
+
 local function copy_detail(detail)
     local out = { allow_target_id_send = true }
     for key, value in pairs(type(detail) == 'table' and detail or {}) do
@@ -165,52 +261,33 @@ function M.new(deps)
         if burst.enabled ~= true or burst.spell == '' then
             return false
         end
-        local target = ctx.target_present == true and ctx.target or nil
-        if not valid_target(target) then
-            return false
-        end
-        local combat_core = require('unified_combat_core')
-        local state = combat_core.get_skillchain_snapshot(tonumber(target.id) or 0)
-        if type(state) ~= 'table' then
-            return false
-        end
-        local mb_expires = tonumber(state.magic_burst_expires_at) or 0
-        local remaining = mb_expires - (tonumber(ctx.now) or 0)
-        if remaining < MAGIC_BURST_MIN_WINDOW_S then
-            return false
-        end
-        local property = tostring(state.last_confirmed_result or '')
-        if property == '' and type(state.active_properties) == 'table' then
-            property = tostring(state.active_properties[1] or '')
-        end
-        if property == '' then
-            return false
-        end
         local spell = spell_resource(burst.spell)
         if not spell then
             return false
         end
         local element = spell_element(spell)
-        local skillchain_elements = require('uc_skillchain_elements')
-        if element == '' or not skillchain_elements.contains(property, element) then
+        local burst_target = magic_burst_target(ctx, spell, element, action_effective_range)
+        if burst_target == nil then
             return false
         end
         return append_spell(out, ctx, {
             action_ready = action_ready,
             action_effective_range = action_effective_range,
             spell_name = burst.spell,
-            target_id = tonumber(target.id) or 0,
-            target_name = tostring(target.name or ''),
+            target_id = burst_target.target_id,
+            target_name = burst_target.target_name,
             family_id = 'combat.magic_burst',
             id_prefix = 'magic_burst',
             priority_band = MAGIC_BURST_PRIORITY_BAND,
-            urgency = 1.0 - math.min(1.0, remaining / 10.0),
+            urgency = 1.0 - math.min(1.0, burst_target.remaining / 10.0),
             reason_code = 'magic_burst_window',
             detail = {
-                skillchain_property = property,
+                skillchain_property = burst_target.property,
                 spell_element = element,
-                magic_burst_expires_at = mb_expires,
-                window_remaining_s = remaining,
+                magic_burst_expires_at = burst_target.mb_expires,
+                window_remaining_s = burst_target.remaining,
+                selected_target_id = ctx.target_present == true and tonumber(ctx.target and ctx.target.id) or 0,
+                off_target = burst_target.selected ~= true,
             },
         })
     end
