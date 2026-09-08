@@ -6,6 +6,13 @@ acceptance on all active profiles; live path-follow remains an accepted risk.
 Runtime behavior intent: active UnifiedCombat domains are scheduler-owned when
 enabled, with no engine core fallback or retained legacy core executor.
 
+> **2026-09-08 player-action transport correction:** normal player spells,
+> job abilities, and weapon skills are initiated through the central Windower
+> command path so GearSwap receives its normal player-action lifecycle. The
+> direct spell action-packet executor was removed. Packet handling remains in
+> the observation/confirmation/state-tracking path and in explicitly classified
+> non-spell control adapters.
+
 ## Purpose
 
 This is the current repository-wide inventory for command, movement, target,
@@ -54,12 +61,13 @@ that only constructs an intent is not thereby classified as a direct executor.
 | File | Current call sites | Domain / responsibility | Migration target |
 | --- | --- | --- | --- |
 | `unified_scheduler.lua` | `/ma`: 5069, 5167; `/ja`: 4263, 4776, 4846 | Dispatch-stage intent construction only; tracked action, target, turn, and movement execution is dispatcher-owned | Retain pure dispatch construction; no direct executor may return |
+| `uc_scheduler_dispatcher.lua` | Injected `send_command` dependency for `send_command` intents | Central final execution boundary for serialized player `/ma`, `/ja`, and `/ws` actions; preserves GearSwap-visible initiation while retaining commit validation and post-send hooks | Retain command execution here; do not add packet-injected spell/JA/WS fallback |
 | `uc_provider_combat.lua` | `/ws`: 183; `/ma`: 326; `/ja`: 622, 623 | Proposal `legacy_command` construction only; no execution | Retain only while proposal compatibility requires the field |
 | `uc_provider_tank_enmity.lua` | `/ma`: 125; `/ja`: 126 | Proposal `legacy_command` construction only; no execution | Retain only while proposal compatibility requires the field |
 | `uc_scheduler_party_state.lua` | injected `send_ipc_message`: 91 | Scheduler party-state IPC encoding, throttling, send, receive, and lookup | Retain as the explicit party-state IPC owner |
 | `unified_combat_core.lua` | `send_ipc`: 340, 351; `/ma`: 1999; `/ja`: 2015; `/ws`: 3174 | Scheduler-facing selection/decision helpers, WS coordination IPC, and pure action intent construction. Command execution is dependency-injected and dispatcher-backed | Retain the required decision helpers and explicit WS IPC ownership; no direct command, movement, turn, target, or attack executor may return |
-| `uc_attack.lua` | `packets.inject`: 54, 74, 101 | Engage, switch-target, and disengage packet executor | Dispatcher-owned attack adapter |
-| `uc_settarget.lua` | `packets.inject`: 31 | Target selection packet executor | Dispatcher-owned target adapter |
+| `uc_attack.lua` | `packets.inject`: 54, 74, 101 | Engage, switch-target, and disengage packet executor; not spell/JA/WS initiation | Dispatcher-owned attack adapter |
+| `uc_settarget.lua` | `packets.inject`: 31 | Target selection packet executor; not spell/JA/WS initiation | Dispatcher-owned target adapter |
 | `uc_add_control.lua` | `send_command`: 433, 474, 476; `/attack`: 433 | Add-control retarget sequence | Dispatcher-owned target/attack sequence |
 | `uc_movement_dispatcher.lua` | Injected run/turn/mover execution through `uc_scheduler_dispatcher.lua` | Single active UnifiedCombat movement execution API | Retain as the movement adapter; domain owners must not bypass it |
 | `UnifiedCombat.lua` | No tracked movement call | Lifecycle reset decision owner | Uses `uc_movement_dispatcher.lua`; retain lifecycle decision ownership |
@@ -89,35 +97,40 @@ Detailed per-pattern counts for every row are pinned in the machine allowlist.
 
 ## Zero-match coverage
 
-The verification scan currently discovers 135 non-test Lua files. Nineteen
-contain one or more tracked patterns. The other 116 files are still scanned and
-must remain free of tracked side-effect surfaces unless the allowlist and this
-inventory are deliberately updated.
+The guard scans every discovered non-test Lua file, including files with zero
+tracked patterns. Exact runtime-file, allowlisted-file, and hit counts are taken
+from the current machine test output instead of being duplicated here as a
+stale snapshot.
 
 ## Ownership findings
 
 1. `unified_scheduler.lua` has no tracked direct call expression, including
    command, movement, turn, target, engage, switch, or disengage execution.
-2. Active scheduler, formation, follow, pathing, Nyzul, and lifecycle movement
+2. Normal player spell, job-ability, and weapon-skill initiation reaches the
+   injected `send_command` adapter through `uc_scheduler_dispatcher.lua`; there
+   is no direct spell action-packet fallback in the active scheduler path.
+3. Packet parsing/observation remains separate from initiation and continues to
+   drive start/completion confirmation and action-state reconciliation.
+4. Active scheduler, formation, follow, pathing, Nyzul, and lifecycle movement
    reaches the injected Windower/mover adapter through
    `uc_movement_dispatcher.lua` and `uc_scheduler_dispatcher.lua`.
-3. Follow and pathing remain independent movement decision owners, but their
+5. Follow and pathing remain independent movement decision owners, but their
    direct-run exceptions are removed. Pathing now also honors the movement
    domain; follow honors the follow domain.
-4. `_G.UC_CoreCombatTickOnce`, `core.combat_tick_once`, and
+6. `_G.UC_CoreCombatTickOnce`, `core.combat_tick_once`, and
    `run_unified_combat` are deleted; there is no legacy core execution entrypoint.
-5. Scheduler pull requires `uc_scheduler_pull_executor.lua`, so the core pull
+7. Scheduler pull requires `uc_scheduler_pull_executor.lua`, so the core pull
    decision helper cannot select an implicit direct executor.
-6. Scheduler-owned skillchain WS execution uses dispatcher commit validation
+8. Scheduler-owned skillchain WS execution uses dispatcher commit validation
    and exactly-once post-send generation marking; core retains only command
    construction for that path.
-7. IPC is intentionally tracked but is not automatically assumed to belong to
+9. IPC is intentionally tracked but is not automatically assumed to belong to
    the combat dispatcher. Scheduler party-state IPC is owned by
    `uc_scheduler_party_state.lua`.
-8. Phase 3 providers do not execute commands, movement, targeting, attack, or
+10. Phase 3 providers do not execute commands, movement, targeting, attack, or
    packet operations. The combat and tank providers retain only the exact
    legacy command strings carried by their proposal records.
-9. The direct-pattern inventory does not treat injected local function calls as
+11. The direct-pattern inventory does not treat injected local function calls as
    direct `windower.ffxi.run(...)` expressions. The focused
    `selftest_movement_dispatcher_phase4.lua` contract pins the adapter wiring and
    prohibits direct run calls from migrated owners.
