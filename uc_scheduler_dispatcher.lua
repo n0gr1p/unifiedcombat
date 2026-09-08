@@ -1,9 +1,10 @@
 local M = {}
 local recovery_hold = require('uc_recovery_hold')
 
--- Scheduler-owned side effects cross this contract exactly once. Callers supply
--- the concrete Windower/packet adapter as an injected dependency; there is no
--- direct fallback when validation or dependency execution is rejected.
+-- Scheduler-owned side effects cross this contract exactly once. Ordinary
+-- command/movement adapters remain injected dependencies. Structured spell
+-- intents are deliberately routed through the canonical uc_spell_packet
+-- adapter so scheduler spell execution never degrades into a text /ma command.
 -- revalidate runs immediately before execution, and on_executed runs exactly
 -- once after successful execution so pending/action state can commit atomically.
 
@@ -87,6 +88,12 @@ local function normalize_intent_internal(intent)
         reason = as_string(intent.reason),
         meta = {
             heading = tonumber(meta.heading),
+            action_type = as_string(meta.action_type):lower(),
+            action_name = as_string(meta.action_name),
+            target_id = as_number(meta.target_id),
+            target_name = as_string(meta.target_name),
+            target_kind = as_string(meta.target_kind),
+            provider = as_string(meta.provider),
         },
         payload = payload,
         _validation = {
@@ -95,7 +102,7 @@ local function normalize_intent_internal(intent)
             run_x_numeric = payload._run_x_numeric,
             run_y_numeric = payload._run_y_numeric,
         },
-    }    
+    }
 end
 
 function M.normalize_intent(intent)
@@ -136,6 +143,15 @@ function M.validate_intent(intent)
     end
 
     if kind == "send_command" then
+        if n.meta.action_type == "spell" then
+            if n.meta.action_name == "" then
+                return false, "structured_spell_missing_action_name"
+            end
+            if n.meta.target_id <= 0 then
+                return false, "structured_spell_invalid_target_id"
+            end
+            return true, ""
+        end
         if n.payload.command == "" then
             return false, "missing_command"
         end
@@ -195,6 +211,17 @@ local function require_dep_fn(deps, key)
         return nil, "missing_dep:" .. key
     end
     return fn, ""
+end
+
+local function structured_spell_executor(deps)
+    if type(deps.cast_spell_packet) == 'function' then
+        return deps.cast_spell_packet, ''
+    end
+    local ok, module = pcall(require, 'uc_spell_packet')
+    if not ok or type(module) ~= 'table' or type(module.cast_spell) ~= 'function' then
+        return nil, 'spell_packet_adapter_unavailable'
+    end
+    return module.cast_spell, ''
 end
 
 local function run_commit_validation(normalized, hooks)
@@ -285,20 +312,50 @@ function M.dispatch_intent(intent, deps, hooks)
     local err = ""
     local dep_result = nil
     local dep_reason = nil
+    local dispatch_method = kind
 
     if kind == "send_command" then
-        local fn
-        fn, err = require_dep_fn(deps, "send_command")
-        if not fn then
-            scrub_validation_fields(normalized)
-            return {
-                ok = false,
-                reason = err,
-                executed = false,
-                normalized_intent = normalized,
-            }
+        if normalized.meta.action_type == 'spell' then
+            local fn
+            fn, err = structured_spell_executor(deps)
+            if not fn then
+                scrub_validation_fields(normalized)
+                return {
+                    ok = false,
+                    reason = err,
+                    executed = false,
+                    normalized_intent = normalized,
+                }
+            end
+            dep_result, dep_reason = fn(normalized.meta.action_name, normalized.meta.target_id)
+            dispatch_method = 'spell_packet'
+            if dep_result ~= true then
+                scrub_validation_fields(normalized)
+                return {
+                    ok = false,
+                    reason = tostring(dep_reason or 'spell_packet_rejected'),
+                    executed = false,
+                    dep_result = dep_result,
+                    dep_reason = dep_reason,
+                    dispatch_method = dispatch_method,
+                    normalized_intent = normalized,
+                }
+            end
+        else
+            local fn
+            fn, err = require_dep_fn(deps, "send_command")
+            if not fn then
+                scrub_validation_fields(normalized)
+                return {
+                    ok = false,
+                    reason = err,
+                    executed = false,
+                    normalized_intent = normalized,
+                }
+            end
+            fn(normalized.payload.command)
+            dispatch_method = 'send_command'
         end
-        fn(normalized.payload.command)
     elseif kind == "run" then
         local fn
         fn, err = require_dep_fn(deps, "run")
@@ -448,6 +505,7 @@ function M.dispatch_intent(intent, deps, hooks)
         executed = true,
         dep_result = dep_result,
         dep_reason = dep_reason,
+        dispatch_method = dispatch_method,
         normalized_intent = normalized,
     }
     run_executed_hook(normalized, result, hooks)
