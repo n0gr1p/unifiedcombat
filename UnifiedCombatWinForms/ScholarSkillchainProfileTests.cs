@@ -111,7 +111,7 @@ internal static class ScholarSkillchainProfileTests
 
         var changed = MainForm.MigrateProfileInPlace(profile);
         AssertTrue(changed, "schema-five profile should migrate");
-        AssertEqual(profile["profile_schema_version"]?.GetValue<int>() ?? 0, 7, "profile schema must migrate to seven");
+        AssertEqual(profile["profile_schema_version"]?.GetValue<int>() ?? 0, 8, "profile schema must migrate to eight");
         AssertEqual(profile["sch_skillchain_enabled"]?.GetValue<bool>() ?? true, false, "migrated skillchain must default disabled");
         AssertEqual(profile["sch_skillchain_result"]?.GetValue<string>() ?? "", "Fusion", "migrated skillchain must default to Fusion");
         AssertEqual(profile["sch_skillchain_closer"]?.GetValue<string>() ?? "", "Thunder V", "migrated Fusion skillchain must default to Thunder V");

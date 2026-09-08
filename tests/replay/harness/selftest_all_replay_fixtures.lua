@@ -147,6 +147,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_reaction_runtime.lua",
     "tests/replay/harness/selftest_combat_extensions.lua",
     "tests/replay/harness/selftest_magic_burst_offtarget.lua",
+    "tests/replay/harness/selftest_magic_burst_auto_family.lua",
 	"tests/replay/harness/selftest_encounter_state.lua",
 	"tests/replay/harness/selftest_encounter_runtime.lua",
 	"tests/replay/harness/selftest_kei_encounter.lua",

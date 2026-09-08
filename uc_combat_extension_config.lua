@@ -49,15 +49,37 @@ end
 
 function M.magic_burst(settings)
     local spells = active_config().get_path('config.spells')
+    local enabled
+    local spell
+    local mode
+    local family
+    local max_tier
     if type(spells) == 'table' and spells.magic_burst ~= nil then
-        return {
-            enabled = spells.magic_burst == true,
-            spell = trim(spells.configured),
-        }
+        enabled = spells.magic_burst == true
+        spell = trim(spells.configured)
+        mode = trim(spells.magic_burst_mode):lower()
+        family = trim(spells.magic_burst_family):lower()
+        max_tier = tonumber(spells.magic_burst_max_tier)
+    else
+        enabled = flat_value(settings, 'magic_burst_enabled') == true
+        spell = trim(flat_value(settings, 'spell'))
+        mode = trim(flat_value(settings, 'magic_burst_mode')):lower()
+        family = trim(flat_value(settings, 'magic_burst_family')):lower()
+        max_tier = tonumber(flat_value(settings, 'magic_burst_max_tier'))
     end
+    if mode == '' then mode = 'exact' end
+    if family == '' then family = 'spell' end
+    if mode ~= 'exact' and mode ~= 'auto' then mode = 'exact' end
+    if family ~= 'spell' and family ~= 'ra' and family ~= 'helix' then family = 'spell' end
+    max_tier = math.floor(max_tier or 0)
+    if max_tier < 0 then max_tier = 0 end
+    if max_tier > 5 then max_tier = 5 end
     return {
-        enabled = flat_value(settings, 'magic_burst_enabled') == true,
-        spell = trim(flat_value(settings, 'spell')),
+        enabled = enabled,
+        spell = spell,
+        mode = mode,
+        family = family,
+        max_tier = max_tier,
     }
 end
 

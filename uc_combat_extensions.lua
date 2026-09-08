@@ -383,54 +383,94 @@ function M.new(deps)
         end
 
         local burst = config.magic_burst(ctx.settings)
-        if burst.enabled ~= true or burst.spell == '' then
-            return false
+        if burst.enabled ~= true then
+  return false
+        end
+
+        if burst.mode == 'auto' then
+  local auto_choice = require('uc_magic_burst_auto').select(ctx, burst, {
+      action_ready = action_ready,
+      action_effective_range = action_effective_range,
+  })
+  if auto_choice == nil then
+      return false
+  end
+  return append_spell(out, ctx, {
+      action_ready = action_ready,
+      action_effective_range = action_effective_range,
+      spell_name = auto_choice.name,
+      target_id = auto_choice.target_id,
+      target_name = auto_choice.target_name,
+      family_id = 'combat.magic_burst',
+      id_prefix = 'magic_burst',
+      priority_band = MAGIC_BURST_PRIORITY_BAND,
+      urgency = 1.0 - math.min(1.0, auto_choice.remaining / 10.0),
+      reason_code = 'magic_burst_auto',
+      detail = {
+          skillchain_property = auto_choice.property,
+          spell_element = auto_choice.element,
+          magic_burst_mode = 'auto',
+          magic_burst_family = auto_choice.family,
+          magic_burst_max_tier = burst.max_tier,
+          selected_burst_spell = auto_choice.name,
+          selected_burst_tier = auto_choice.tier,
+          auto_burst = true,
+          magic_burst_expires_at = auto_choice.mb_expires,
+          window_remaining_s = auto_choice.remaining,
+          selected_target_id = ctx.target_present == true and tonumber(ctx.target and ctx.target.id) or 0,
+          off_target = auto_choice.selected ~= true,
+      },
+  })
+        end
+
+        if burst.spell == '' then
+  return false
         end
         local configured_spell = spell_resource(burst.spell)
         if not configured_spell then
-            return false
+  return false
         end
         local element = spell_element(configured_spell)
         local burst_target = magic_burst_target(ctx, configured_spell, element, action_effective_range)
         if burst_target == nil then
-            return false
+  return false
         end
         local burst_choice = select_ready_burst_spell(
-            burst.spell,
-            burst_target.target_id,
-            action_ready,
-            ctx
+  burst.spell,
+  burst_target.target_id,
+  action_ready,
+  ctx
         )
         if burst_choice == nil then
-            return false
+  return false
         end
         local chosen_element = spell_element(burst_choice.spell)
         if chosen_element == '' or chosen_element ~= element then
-            return false
+  return false
         end
         return append_spell(out, ctx, {
-            action_ready = action_ready,
-            action_effective_range = action_effective_range,
-            spell_name = burst_choice.name,
-            target_id = burst_target.target_id,
-            target_name = burst_target.target_name,
-            family_id = 'combat.magic_burst',
-            id_prefix = 'magic_burst',
-            priority_band = MAGIC_BURST_PRIORITY_BAND,
-            urgency = 1.0 - math.min(1.0, burst_target.remaining / 10.0),
-            reason_code = burst_choice.stepped_down and 'magic_burst_step_down' or 'magic_burst_window',
-            detail = {
-                skillchain_property = burst_target.property,
-                spell_element = chosen_element,
-                configured_burst_spell = burst_choice.configured,
-                selected_burst_spell = burst_choice.name,
-                burst_step_down = burst_choice.stepped_down,
-                burst_step_index = burst_choice.step_index,
-                magic_burst_expires_at = burst_target.mb_expires,
-                window_remaining_s = burst_target.remaining,
-                selected_target_id = ctx.target_present == true and tonumber(ctx.target and ctx.target.id) or 0,
-                off_target = burst_target.selected ~= true,
-            },
+  action_ready = action_ready,
+  action_effective_range = action_effective_range,
+  spell_name = burst_choice.name,
+  target_id = burst_target.target_id,
+  target_name = burst_target.target_name,
+  family_id = 'combat.magic_burst',
+  id_prefix = 'magic_burst',
+  priority_band = MAGIC_BURST_PRIORITY_BAND,
+  urgency = 1.0 - math.min(1.0, burst_target.remaining / 10.0),
+  reason_code = burst_choice.stepped_down and 'magic_burst_step_down' or 'magic_burst_window',
+  detail = {
+      skillchain_property = burst_target.property,
+      spell_element = chosen_element,
+      configured_burst_spell = burst_choice.configured,
+      selected_burst_spell = burst_choice.name,
+      burst_step_down = burst_choice.stepped_down,
+      burst_step_index = burst_choice.step_index,
+      magic_burst_expires_at = burst_target.mb_expires,
+      window_remaining_s = burst_target.remaining,
+      selected_target_id = ctx.target_present == true and tonumber(ctx.target and ctx.target.id) or 0,
+      off_target = burst_target.selected ~= true,
+  },
         })
     end
 

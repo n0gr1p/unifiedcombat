@@ -1009,6 +1009,9 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.spell_active = config.spells.enabled
 		candidate.spell = config.spells.configured
 		candidate.magic_burst_enabled = config.spells.magic_burst
+		candidate.magic_burst_mode = config.spells.magic_burst_mode
+		candidate.magic_burst_family = config.spells.magic_burst_family
+		candidate.magic_burst_max_tier = config.spells.magic_burst_max_tier
 		candidate.dd2_spell_slots = clone_value(config.spells.dd2_slots)
 	end
 

@@ -1124,6 +1124,9 @@ local function default_config(meta)
             enabled = false,
             configured = '',
             magic_burst = false,
+            magic_burst_mode = 'exact',
+            magic_burst_family = 'spell',
+            magic_burst_max_tier = 0,
             dd2_slots = {},
         },
         maintenance = {
@@ -2308,16 +2311,28 @@ end
 local function normalize_spells(source, config)
     local spells = config.spells
     local nested = get_path(source, { 'spells' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'configured', 'magic_burst', 'dd2_slots', 'spell' }) then
-            spells.enabled = normalize_boolean(nested.enabled, spells.enabled)
-            spells.configured = normalize_string(nested.configured or nested.spell, spells.configured)
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'configured', 'magic_burst', 'magic_burst_mode', 'magic_burst_family', 'magic_burst_max_tier', 'dd2_slots', 'spell' }) then
+        spells.enabled = normalize_boolean(nested.enabled, spells.enabled)
+        spells.configured = normalize_string(nested.configured or nested.spell, spells.configured)
         spells.magic_burst = normalize_boolean(nested.magic_burst, spells.magic_burst)
+        spells.magic_burst_mode = normalize_string(nested.magic_burst_mode, spells.magic_burst_mode):lower()
+        spells.magic_burst_family = normalize_string(nested.magic_burst_family, spells.magic_burst_family):lower()
+        spells.magic_burst_max_tier = normalize_number(nested.magic_burst_max_tier, spells.magic_burst_max_tier, { integer = true, min = 0, max = 5 })
         spells.dd2_slots = normalize_list(nested.dd2_slots, spells.dd2_slots)
     else
-            spells.enabled = normalize_boolean(first_path(source, { path('spell_active') }), spells.enabled)
-            spells.configured = normalize_string(first_path(source, { path('spell') }), spells.configured)
+        spells.enabled = normalize_boolean(first_path(source, { path('spell_active') }), spells.enabled)
+        spells.configured = normalize_string(first_path(source, { path('spell') }), spells.configured)
         spells.magic_burst = normalize_boolean(first_path(source, { path('magic_burst_enabled') }), spells.magic_burst)
+        spells.magic_burst_mode = normalize_string(first_path(source, { path('magic_burst_mode') }), spells.magic_burst_mode):lower()
+        spells.magic_burst_family = normalize_string(first_path(source, { path('magic_burst_family') }), spells.magic_burst_family):lower()
+        spells.magic_burst_max_tier = normalize_number(first_path(source, { path('magic_burst_max_tier') }), spells.magic_burst_max_tier, { integer = true, min = 0, max = 5 })
         spells.dd2_slots = normalize_list(first_path(source, { path('dd2_spell_slots') }), spells.dd2_slots)
+    end
+    if spells.magic_burst_mode ~= 'exact' and spells.magic_burst_mode ~= 'auto' then
+        error('spells.magic_burst_mode must be exact or auto')
+    end
+    if spells.magic_burst_family ~= 'spell' and spells.magic_burst_family ~= 'ra' and spells.magic_burst_family ~= 'helix' then
+        error('spells.magic_burst_family must be spell, ra, or helix')
     end
 end
 

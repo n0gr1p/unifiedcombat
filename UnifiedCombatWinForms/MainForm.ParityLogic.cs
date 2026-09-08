@@ -382,6 +382,10 @@ public partial class MainForm
             _magicBurstEnabled.Checked = false;
             _magicBurstSpell.Items.Clear();
             _magicBurstSpell.Text = "";
+            _magicBurstMaxTier.Items.Clear();
+            _magicBurstMaxTier.Items.Add("Auto");
+            _magicBurstMaxTier.SelectedItem = "Auto";
+            _magicBurstMaxTier.Enabled = false;
             _pullerCombo.Items.Clear();
 			_pullerLeashSource.SelectedItem = "Player";
 			_campStatus.Text = "Camp not set";
@@ -704,8 +708,7 @@ public partial class MainForm
             _skillchainTargetCombo.SelectedItem = SkillchainTargetRuntimeToUi(
                 SessionStateHelper.GetString(s, "skillchain_target", "auto")
             );
-            _magicBurstEnabled.Checked = SessionStateHelper.GetBool(s, "magic_burst_enabled", false);
-            RefreshMagicBurstSpellOptions(SessionStateHelper.GetString(s, "spell"));
+            ApplyMagicBurstFromSnapshot(s);
             var amDisplay = new List<string>(wsOpts);
             var amRaw = SessionStateHelper.GetString(s, "aftermath_ws");
             if (!string.IsNullOrEmpty(amRaw) && !amDisplay.Contains(amRaw))
@@ -2520,20 +2523,65 @@ public partial class MainForm
     {
         if (_suppressEvents || string.IsNullOrWhiteSpace(_selectedSid))
         {
-            return;
+  return;
         }
-        CaptureWorkingProfileFromUi(_selectedSid);
+        var sid = _selectedSid;
+        UpdateMagicBurstTierUi();
+        var mode = MagicBurstModeValue();
+        var family = MagicBurstFamilyValue();
+        var maxTier = MagicBurstMaxTierValue();
+        Forward(sid, new Dictionary<string, object?>
+        {
+  ["op"] = "set",
+  ["path"] = "magic_burst_enabled",
+  ["value"] = _magicBurstEnabled.Checked ? "on" : "off",
+        });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "magic_burst_mode", ["value"] = mode });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "magic_burst_family", ["value"] = family });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "magic_burst_max_tier", ["value"] = maxTier });
+        if (mode == "exact")
+        {
+  Forward(sid, new Dictionary<string, object?>
+  {
+      ["op"] = "set",
+      ["path"] = "spell",
+      ["value"] = (_magicBurstSpell.Text ?? "").Trim(),
+  });
+        }
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void RefreshMagicBurstSpellOptions(string? selected = null)
     {
         selected = string.IsNullOrWhiteSpace(selected) ? (_magicBurstSpell.Text ?? "").Trim() : selected.Trim();
-        _magicBurstSpell.Items.Clear();
+        var options = new List<string>(MagicBurstAutoSelections);
         foreach (var spell in _pathPullSpellOptions)
         {
-            _magicBurstSpell.Items.Add(spell);
+  if (!string.IsNullOrWhiteSpace(spell) && !options.Contains(spell, StringComparer.Ordinal))
+  {
+      options.Add(spell);
+  }
         }
-        _magicBurstSpell.Text = selected ?? "";
+        if (!string.IsNullOrWhiteSpace(selected) && !options.Contains(selected, StringComparer.Ordinal))
+        {
+  options.Insert(MagicBurstAutoSelections.Length, selected);
+        }
+        _magicBurstSpell.Items.Clear();
+        foreach (var option in options)
+        {
+  _magicBurstSpell.Items.Add(option);
+        }
+        var index = options.FindIndex(value => string.Equals(value, selected, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+  _magicBurstSpell.SelectedIndex = index;
+        }
+        else
+        {
+  _magicBurstSpell.SelectedIndex = -1;
+  _magicBurstSpell.Text = selected;
+        }
+        UpdateMagicBurstTierUi();
     }
 
     private void RefreshReactionActionSpellOptions(string? selected = null)

@@ -6,7 +6,7 @@ namespace UnifiedCombatWinForms;
 
 public partial class MainForm
 {
-    private const int ProfileSchemaVersion = 7;
+    private const int ProfileSchemaVersion = 8;
     private static readonly string[] RequiredDomainBoolKeys =
     [
         "domain_combat_enabled",
@@ -183,7 +183,10 @@ public partial class MainForm
             ["aftermath_ws"] = (_aftermathCombo.Text ?? "").Trim(),
             ["skillchain_target"] = SkillchainTargetUiToRuntime(_skillchainTargetCombo.SelectedItem?.ToString()),
             ["magic_burst_enabled"] = _magicBurstEnabled.Checked,
-            ["spell"] = (_magicBurstSpell.Text ?? "").Trim(),
+            ["magic_burst_mode"] = MagicBurstModeValue(),
+            ["magic_burst_family"] = MagicBurstFamilyValue(),
+            ["magic_burst_max_tier"] = MagicBurstMaxTierValue(),
+            ["spell"] = MagicBurstPersistedSpellValue(sid),
             ["path_pull_action_type"] = _pathPullActionType.SelectedItem?.ToString() ?? "ja",
             ["path_pull_action_name"] = (_pathPullActionName.Text ?? "").Trim(),
             ["geo_maintenance_enabled"] = _geoEnabled.Checked,
@@ -520,6 +523,9 @@ public partial class MainForm
             ["fast_skillchain"] = false,
             ["aftermath_ws"] = "",
             ["magic_burst_enabled"] = false,
+            ["magic_burst_mode"] = "exact",
+            ["magic_burst_family"] = "spell",
+            ["magic_burst_max_tier"] = 0,
             ["spell"] = "",
             ["defensive_provider"] = "internal",
             ["defensive_critical_hpp"] = 35,
@@ -1078,6 +1084,21 @@ public partial class MainForm
         if (!root.ContainsKey("spell"))
         {
             root["spell"] = "";
+            changed = true;
+        }
+        if (!root.ContainsKey("magic_burst_mode"))
+        {
+            root["magic_burst_mode"] = "exact";
+            changed = true;
+        }
+        if (!root.ContainsKey("magic_burst_family"))
+        {
+            root["magic_burst_family"] = "spell";
+            changed = true;
+        }
+        if (!root.ContainsKey("magic_burst_max_tier"))
+        {
+            root["magic_burst_max_tier"] = 0;
             changed = true;
         }
         if (!root.ContainsKey("sch_skillchain_enabled"))

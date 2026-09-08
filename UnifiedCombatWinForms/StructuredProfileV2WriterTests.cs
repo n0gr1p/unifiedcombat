@@ -78,6 +78,7 @@ internal static class StructuredProfileV2WriterTests
             TestScholarUiOfflineContract();
             TestSerializeReactionRules();
             TestCombatExtensionProfileContract();
+            TestAutoMagicBurstProfileContract();
             TestRejectInvalidRunAwayDistance();
             TestDisabledEmptyReactionsAreOmitted();
             TestReactionUiEditsAreLocalUntilSave();
@@ -1678,6 +1679,42 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "distance = 17.5", "move-to-range raw target distance missing");
         AssertNotContains(content, "actor_id", "runtime actor ids must not be durable reaction config");
         AssertNotContains(content, "effect_id", "resolved runtime effect ids must not be durable reaction config");
+    }
+
+    private static void TestAutoMagicBurstProfileContract()
+    {
+        var migrated = new JsonObject { ["profile_schema_version"] = 7, ["spell"] = "Fire V" };
+        AssertTrue(MainForm.MigrateProfileInPlace(migrated), "schema-seven magic-burst profile must migrate");
+        AssertEqual(migrated["profile_schema_version"]!.GetValue<int>(), 8, "auto-burst migration schema mismatch");
+        AssertEqual(migrated["magic_burst_mode"]!.GetValue<string>(), "exact", "legacy burst mode must remain exact");
+        AssertEqual(migrated["magic_burst_family"]!.GetValue<string>(), "spell", "legacy burst family must default spell");
+        AssertEqual(migrated["magic_burst_max_tier"]!.GetValue<int>(), 0, "legacy burst tier must default Auto");
+        AssertEqual(migrated["spell"]!.GetValue<string>(), "Fire V", "legacy exact burst spell must be preserved");
+
+        var flat = BuildSampleFlatProfile();
+        flat["magic_burst_enabled"] = true;
+        flat["magic_burst_mode"] = "auto";
+        flat["magic_burst_family"] = "helix";
+        flat["magic_burst_max_tier"] = 2;
+        flat["spell"] = "Fire V";
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+  flat,
+  new StructuredProfileV2Identity("Nyoourke", "SCH", "RDM")
+        );
+        AssertContains(content, "magic_burst = true", "auto burst enabled flag must serialize");
+        AssertContains(content, "magic_burst_mode = \"auto\"", "auto burst mode must serialize");
+        AssertContains(content, "magic_burst_family = \"helix\"", "auto burst family must serialize");
+        AssertContains(content, "magic_burst_max_tier = 2", "auto burst tier ceiling must serialize");
+        AssertContains(content, "configured = \"Fire V\"", "auto mode must preserve the last exact configured spell");
+
+        flat["magic_burst_max_tier"] = 6;
+        AssertThrows<InvalidDataException>(
+  () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+      flat,
+      new StructuredProfileV2Identity("Nyoourke", "SCH", "RDM")
+  ),
+  "magic burst tier ceiling above V must fail"
+        );
     }
 
     private static void TestSmartWsAoePreferenceRoundTrip()

@@ -546,6 +546,24 @@ public partial class MainForm
         leftCol.Controls.Add(_magicBurstSpell, 1, lr);
         lr++;
 
+        leftCol.Controls.Add(new Label { Text = "Burst Max Tier", AutoSize = true, Anchor = AnchorStyles.Left }, 0, lr);
+        _magicBurstMaxTier = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(120, 0),
+        };
+        _magicBurstMaxTier.Items.Add("Auto");
+        _magicBurstMaxTier.SelectedItem = "Auto";
+        _magicBurstMaxTier.Enabled = false;
+        _smartWsToolTip.SetToolTip(
+            _magicBurstMaxTier,
+            "Maximum tier for Auto Spell / Auto -ra / Auto Helix. Auto uses the strongest tier the character can currently use."
+        );
+        _magicBurstMaxTier.SelectionChangeCommitted += (_, _) => OnMagicBurstConfigChanged();
+        leftCol.Controls.Add(_magicBurstMaxTier, 1, lr);
+        lr++;
+
         _chkAftermath = MkCtx("aftermath_enabled");
         leftCol.Controls.Add(_chkAftermath, 0, lr);
         _aftermathCombo = new ComboBox

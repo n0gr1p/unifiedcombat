@@ -990,11 +990,25 @@ internal static class StructuredProfileV2Writer
 
     private static StructuredProfileNode BuildSpells(JsonObject flatProfile)
     {
+        var mode = ReadString(flatProfile, "magic_burst_mode", "exact").Trim().ToLowerInvariant();
+        var family = ReadString(flatProfile, "magic_burst_family", "spell").Trim().ToLowerInvariant();
+        if (mode is not ("exact" or "auto"))
+        {
+  throw new InvalidDataException($"magic_burst_mode must be exact or auto: {mode}");
+        }
+        if (family is not ("spell" or "ra" or "helix"))
+        {
+  throw new InvalidDataException($"magic_burst_family must be spell, ra, or helix: {family}");
+        }
+        var maxTier = ReadBoundedInt(flatProfile, "magic_burst_max_tier", 0, 0, 5);
         return new StructuredProfileNode()
-            .Add("enabled", ReadBool(flatProfile, "spell_active", false))
-            .Add("configured", ReadString(flatProfile, "spell", ""))
-            .Add("magic_burst", ReadBool(flatProfile, "magic_burst_enabled", false))
-            .Add("dd2_slots", EmptyList());
+  .Add("enabled", ReadBool(flatProfile, "spell_active", false))
+  .Add("configured", ReadString(flatProfile, "spell", ""))
+  .Add("magic_burst", ReadBool(flatProfile, "magic_burst_enabled", false))
+  .Add("magic_burst_mode", mode)
+  .Add("magic_burst_family", family)
+  .Add("magic_burst_max_tier", maxTier)
+  .Add("dd2_slots", EmptyList());
     }
 
     private static bool HasConfiguredCorMaintenance(JsonObject flatProfile)

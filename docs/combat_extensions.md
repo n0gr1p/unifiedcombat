@@ -34,6 +34,9 @@ spells = {
 
 `spells.enabled` remains independent; magic bursting does not require ordinary configured-spell spam to be enabled. The flat compatibility toggle is `magic_burst_enabled` and uses the existing flat `spell` setting for the spell name.
 
+General-purpose bursting can instead set `magic_burst_mode = 'auto'` with one of three families: `spell`, `ra`, or `helix`. `magic_burst_max_tier = 0` means Auto/highest available; positive values are a tier ceiling. Auto selection reads the target's confirmed skillchain property and chooses the strongest compatible ready spell in that family. Direct nukes use tiers I-V, GEO `-ra` uses I-III, and Helix uses I-II. Auto Helix never crosses into direct nukes and does not cast a weaker/alternate Helix merely because the preferred Helix is on recast. Legacy profiles default to `magic_burst_mode = 'exact'` and preserve their configured spell behavior.
+
+
 ## Ability-window action reactions
 
 Existing movement/facing reactions are unchanged. A new `use_action` response is accepted for `ability_window` rules. The first implementation intentionally supports spells only and fails closed for other action types.
