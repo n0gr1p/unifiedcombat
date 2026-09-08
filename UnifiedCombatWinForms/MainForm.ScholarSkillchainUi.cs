@@ -46,7 +46,6 @@ public partial class MainForm
             throw new InvalidOperationException("Scholar settings layout is unavailable.");
         }
 
-        // Keep the existing validation line at the bottom after inserting the offense section.
         scholarRoot.Controls.Remove(_schValidation);
         var row = scholarRoot.Controls.Cast<Control>()
             .Select(control => scholarRoot.GetRow(control))
@@ -151,6 +150,31 @@ public partial class MainForm
             + ". UnifiedCombat owns the canonical spell recipe; the profile stores the requested result.";
     }
 
+    private static void ReadNestedScholarSkillchain(JsonObject profile, ref bool enabled, ref string result)
+    {
+        if (profile["sch"] is not JsonObject sch
+            || sch["offense"] is not JsonObject offense
+            || offense["skillchain"] is not JsonObject skillchain)
+        {
+            return;
+        }
+        if (skillchain["enabled"] is JsonValue enabledValue
+            && enabledValue.TryGetValue<bool>(out var nestedEnabled))
+        {
+            enabled = nestedEnabled;
+        }
+        if (skillchain["plans"] is not JsonArray plans || plans.Count == 0 || plans[0] is not JsonObject plan)
+        {
+            return;
+        }
+        if (plan["result"] is JsonValue resultValue
+            && resultValue.TryGetValue<string>(out var nestedResult)
+            && ScholarSkillchainResults.Contains(nestedResult, StringComparer.Ordinal))
+        {
+            result = nestedResult;
+        }
+    }
+
     private void RefreshScholarSkillchainUiFromSelectedProfile()
     {
         if (_schSkillchainEnabled is null || _schSkillchainResult is null || string.IsNullOrWhiteSpace(_selectedSid))
@@ -176,6 +200,7 @@ public partial class MainForm
         var result = "Fusion";
         if (profile is not null)
         {
+            ReadNestedScholarSkillchain(profile, ref enabled, ref result);
             if (profile.TryGetPropertyValue("sch_skillchain_enabled", out var enabledNode)
                 && enabledNode is JsonValue enabledValue
                 && enabledValue.TryGetValue<bool>(out var parsedEnabled))
