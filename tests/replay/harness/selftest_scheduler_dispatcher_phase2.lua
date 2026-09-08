@@ -84,6 +84,46 @@ local function main()
     assert_equal(result.ok, false, "structured spell missing target status")
     assert_equal(result.reason, "structured_spell_invalid_target_id", "structured spell missing target reason")
 
+    local immanence_calls = 0
+    result = dispatcher.dispatch_intent({
+        kind = "send_command",
+        command = 'input /ja "Immanence" <me>',
+        meta = {
+            action_type = "ja",
+            action_name = "Immanence",
+            provider = "maintenance_sch",
+        },
+    }, {
+        execute = true,
+        send_command = function() immanence_calls = immanence_calls + 1 end,
+        validate_sch_skillchain_target = function()
+            return true, "OK"
+        end,
+    })
+    assert_equal(result.ok, true, "valid bound-target Immanence status")
+    assert_equal(result.executed, true, "valid bound-target Immanence execution")
+    assert_equal(immanence_calls, 1, "valid Immanence dispatch count")
+
+    result = dispatcher.dispatch_intent({
+        kind = "send_command",
+        command = 'input /ja "Immanence" <me>',
+        meta = {
+            action_type = "ja",
+            action_name = "Immanence",
+            provider = "maintenance_sch",
+        },
+    }, {
+        execute = true,
+        send_command = function() immanence_calls = immanence_calls + 100 end,
+        validate_sch_skillchain_target = function()
+            return false, "target_not_party_claimed"
+        end,
+    })
+    assert_equal(result.ok, false, "invalid bound-target Immanence status")
+    assert_equal(result.reason, "sch_immanence_target_invalid:target_not_party_claimed", "invalid Immanence target reason")
+    assert_equal(result.executed, false, "invalid bound-target Immanence execution")
+    assert_equal(immanence_calls, 1, "invalid Immanence must not dispatch")
+
     local blocked_calls = 0
     result = dispatcher.dispatch_intent({
         kind = "send_command",
