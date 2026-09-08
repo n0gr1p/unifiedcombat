@@ -19,14 +19,29 @@ local spell_families = {
 	{ prefix = 'Hydrohelix', property = 'Reverberation' },
 }
 
--- Canonical autonomous two-step Immanence recipes. UI/profile consumers select
--- the desired result; spell ordering remains owned here so recipe knowledge is
--- not duplicated across the WinForms editor and runtime.
+-- Canonical autonomous two-step Immanence recipes define only the skillchain
+-- families. Profiles may override either exact spell independently without
+-- duplicating the other side of the recipe.
 local canonical_recipes = {
 	Fusion = { opener = 'Fire', closer = 'Thunder' },
 	Fragmentation = { opener = 'Blizzard', closer = 'Water' },
 	Distortion = { opener = 'Luminohelix', closer = 'Stone' },
 	Gravitation = { opener = 'Aero', closer = 'Noctohelix' },
+}
+
+local addendum_black_spells = {
+	['Stone IV'] = true,
+	['Stone V'] = true,
+	['Water IV'] = true,
+	['Water V'] = true,
+	['Aero IV'] = true,
+	['Aero V'] = true,
+	['Fire IV'] = true,
+	['Fire V'] = true,
+	['Blizzard IV'] = true,
+	['Blizzard V'] = true,
+	['Thunder IV'] = true,
+	['Thunder V'] = true,
 }
 
 local function trimmed(value)
@@ -53,6 +68,10 @@ function M.spell_property(spell_name)
 		end
 	end
 	return nil
+end
+
+function M.requires_addendum_black(spell_name)
+	return addendum_black_spells[trimmed(spell_name)] == true
 end
 
 local function normalized_result(value)
@@ -88,17 +107,17 @@ function M.validate_plan(plan)
 	if result == nil then
 		return nil, 'result_unsupported'
 	end
+	local recipe = M.canonical_recipe(result)
+	if recipe == nil then
+		return nil, 'canonical_recipe_unavailable'
+	end
 	local opener = trimmed(plan.opener)
 	local closer = trimmed(plan.closer)
-	if opener == '' and closer == '' then
-		local recipe = M.canonical_recipe(result)
-		if recipe == nil then
-			return nil, 'canonical_recipe_unavailable'
-		end
+	if opener == '' then
 		opener = recipe.opener
+	end
+	if closer == '' then
 		closer = recipe.closer
-	elseif opener == '' or closer == '' then
-		return nil, 'opener_and_closer_must_be_paired'
 	end
 	local opener_property = M.spell_property(opener)
 	if opener_property == nil then
@@ -118,6 +137,8 @@ function M.validate_plan(plan)
 		closer = closer,
 		opener_property = opener_property,
 		closer_property = closer_property,
+		requires_addendum_black = M.requires_addendum_black(opener)
+			or M.requires_addendum_black(closer),
 	}, ''
 end
 
