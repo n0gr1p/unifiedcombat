@@ -8,6 +8,8 @@ Canonical tracker audited: `RFC/UnifiedCombat_scheduler_refactor_tracking.md`
 
 ## Post-audit remediation
 
+**2026-09-07 clock resolution:** the previously documented scheduler/skillchain clock conflict is resolved. UnifiedCombat runtime timing is standardized on the socket-backed `uc_time` source, and a static replay guard rejects runtime `os.clock` and direct `socket.gettime()` calls outside that module.
+
 Phase 0 findings were resolved on 2026-07-24 after the point-in-time audit:
 
 - `docs/side_effect_inventory.md` now records the current execution surface;

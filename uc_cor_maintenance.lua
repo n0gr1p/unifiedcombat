@@ -1,17 +1,7 @@
 local uc_active_config = require('uc_active_config')
 
 local function uc_now_s()
-	local s = rawget(_G, 'socket')
-	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
-		local ok, mod = pcall(require, 'socket')
-		if ok then
-			s = mod
-		end
-	end
-	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
-		error('uc_now_s requires LuaSocket socket.gettime')
-	end
-	return s.gettime()
+	return require('uc_time').now()
 end
 
 local mod = {}

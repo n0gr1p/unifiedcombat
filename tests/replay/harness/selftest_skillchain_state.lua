@@ -93,13 +93,11 @@ local function test_clock_contract()
 	local ok = pcall(function()
 		skillchain.new({})
 	end)
-	assert_false(ok, 'runtime must reject missing monotonic clock')
-	local previous = os.clock()
-	for _ = 1, 1000 do
-		local current = os.clock()
-		assert_true(current >= previous, 'Windower runtime clock contract must be monotonic')
-		previous = current
-	end
+	assert_false(ok, 'runtime must reject missing injected clock')
+	local runtime, clock = new_runtime(100)
+	assert_true(runtime ~= nil, 'runtime must accept injected deterministic clock')
+	clock.now = 101
+	assert_equal(clock.now, 101, 'injected clock must remain caller-controlled')
 end
 
 local function test_action_family_classification()

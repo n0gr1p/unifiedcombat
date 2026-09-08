@@ -59,6 +59,9 @@ return {
         ["uc_camp_anchor.lua"] = {
             direct_ipc_send = 8,
         },
+        ["uc_combat_extensions.lua"] = {
+            command_magic = 1,
+        },
         ["uc_nyzul_runtime.lua"] = {
             direct_ipc_send = 2,
         },

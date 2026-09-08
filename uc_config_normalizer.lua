@@ -383,7 +383,7 @@ local function normalize_reaction_rules(value)
             local name = normalize_optional_string(entry.name)
             local response = normalize_optional_string(entry.response)
             local valid = (trigger == 'ability_window'
-                    and (response == 'turn_away' or response == 'run_away' or response == 'move_to_range'))
+                    and (response == 'turn_away' or response == 'run_away' or response == 'move_to_range' or response == 'use_action'))
                 or (trigger == 'enemy_buff' and response == 'stop_attacking')
             local key = trigger and name and (trigger .. ':' .. name:lower()) or nil
             if valid and name ~= nil and key ~= nil and not seen[key] then
@@ -402,6 +402,17 @@ local function normalize_reaction_rules(value)
                         error(('reactions.rules[%d].distance must be a finite number greater than zero for %s'):format(i, response))
                     end
                     normalized.distance = entry.distance
+                elseif response == 'use_action' then
+                    local action_type = normalize_optional_string(entry.action_type)
+                    local action_name = normalize_optional_string(entry.action_name)
+                    if action_type ~= 'spell' then
+                        error(('reactions.rules[%d].action_type must be spell for use_action'):format(i))
+                    end
+                    if action_name == nil then
+                        error(('reactions.rules[%d].action_name is required for use_action'):format(i))
+                    end
+                    normalized.action_type = action_type
+                    normalized.action_name = action_name
                 end
                 out[#out + 1] = normalized
             end
@@ -892,6 +903,7 @@ local function default_config(meta)
         combat = {
             enabled = true,
             autotarget = false,
+            auto_engage = true,
             spam = false,
             closer = false,
             manual = false,
@@ -1110,6 +1122,7 @@ local function default_config(meta)
         spells = {
             enabled = false,
             configured = '',
+            magic_burst = false,
             dd2_slots = {},
         },
         maintenance = {
@@ -1494,9 +1507,10 @@ end
 local function normalize_combat(source, config)
     local combat = config.combat
     local nested = get_path(source, { 'combat' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'autotarget', 'spam', 'closer', 'manual', 'prime', 'static', 'face', 'weaponskill', 'pulling' }) then
-        combat.enabled = normalize_boolean(nested.enabled, combat.enabled)
-        combat.autotarget = normalize_boolean(nested.autotarget, combat.autotarget)
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'autotarget', 'auto_engage', 'spam', 'closer', 'manual', 'prime', 'static', 'face', 'weaponskill', 'pulling' }) then
+            combat.enabled = normalize_boolean(nested.enabled, combat.enabled)
+            combat.autotarget = normalize_boolean(nested.autotarget, combat.autotarget)
+        combat.auto_engage = normalize_boolean(nested.auto_engage, combat.auto_engage)
         combat.spam = normalize_boolean(nested.spam, combat.spam)
         combat.closer = normalize_boolean(nested.closer, combat.closer)
         combat.manual = normalize_boolean(nested.manual, combat.manual)
@@ -1516,8 +1530,9 @@ local function normalize_combat(source, config)
         combat.weaponskill.aftermath_ws = normalize_string(nested_ws.aftermath_ws, combat.weaponskill.aftermath_ws)
         combat.pulling = normalize_camp_pulling(nested.pulling)
     else
-        combat.enabled = normalize_boolean(first_path(source, { path('domain_combat_enabled') }), combat.enabled)
-        combat.autotarget = normalize_boolean(first_path(source, { path('autotarget') }), combat.autotarget)
+            combat.enabled = normalize_boolean(first_path(source, { path('domain_combat_enabled') }), combat.enabled)
+            combat.autotarget = normalize_boolean(first_path(source, { path('autotarget') }), combat.autotarget)
+        combat.auto_engage = normalize_boolean(first_path(source, { path('auto_engage') }), combat.auto_engage)
         combat.spam = normalize_boolean(first_path(source, { path('spam') }), combat.spam)
         combat.closer = normalize_boolean(first_path(source, { path('closer') }), combat.closer)
         combat.manual = normalize_boolean(first_path(source, { path('manual') }), combat.manual)
@@ -2290,13 +2305,15 @@ end
 local function normalize_spells(source, config)
     local spells = config.spells
     local nested = get_path(source, { 'spells' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'configured', 'dd2_slots', 'spell' }) then
-        spells.enabled = normalize_boolean(nested.enabled, spells.enabled)
-        spells.configured = normalize_string(nested.configured or nested.spell, spells.configured)
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'configured', 'magic_burst', 'dd2_slots', 'spell' }) then
+            spells.enabled = normalize_boolean(nested.enabled, spells.enabled)
+            spells.configured = normalize_string(nested.configured or nested.spell, spells.configured)
+        spells.magic_burst = normalize_boolean(nested.magic_burst, spells.magic_burst)
         spells.dd2_slots = normalize_list(nested.dd2_slots, spells.dd2_slots)
     else
-        spells.enabled = normalize_boolean(first_path(source, { path('spell_active') }), spells.enabled)
-        spells.configured = normalize_string(first_path(source, { path('spell') }), spells.configured)
+            spells.enabled = normalize_boolean(first_path(source, { path('spell_active') }), spells.enabled)
+            spells.configured = normalize_string(first_path(source, { path('spell') }), spells.configured)
+        spells.magic_burst = normalize_boolean(first_path(source, { path('magic_burst_enabled') }), spells.magic_burst)
         spells.dd2_slots = normalize_list(first_path(source, { path('dd2_spell_slots') }), spells.dd2_slots)
     end
 end

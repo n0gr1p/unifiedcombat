@@ -1,4 +1,5 @@
 local camp_pull_registry = require('uc_camp_pull_registry')
+local combat_extensions = require('uc_combat_extensions')
 
 local M = {}
 
@@ -68,6 +69,10 @@ function M.new(deps)
 	local default_engage_priority = require_number(deps, 'default_engage_priority')
 	local tank_engage_urgency = require_number(deps, 'tank_engage_urgency')
 	local default_engage_urgency = require_number(deps, 'default_engage_urgency')
+	local extensions = combat_extensions.new({
+		action_ready = action_ready,
+		action_effective_range = action_effective_range,
+	})
 
 	local provider = {}
 
@@ -75,6 +80,9 @@ function M.new(deps)
 		require_table(ctx, 'ctx')
 		require_table(out, 'out')
 		if not bool_setting(rawget(_G, 'Start_Engine'), false) then
+			return
+		end
+		if extensions.collect_priority_offense(ctx, out) then
 			return
 		end
 		if not bool_setting(ctx.settings.weaponskill_active, false) then
@@ -358,6 +366,9 @@ function M.new(deps)
 		if not bool_setting(combat_autotarget(ctx.settings), false) then
 			return
 		end
+		if not extensions.auto_engage_enabled(ctx.settings) then
+			return
+		end
 		local player = ctx.player
 		if ctx.player_present ~= true then
 			return
@@ -442,9 +453,6 @@ function M.new(deps)
 			if current_target_id == fight_leader_force_target_id then
 				return
 			end
-			-- Engaged add control owns target changes between configured adds and the
-			-- leader target. The target-control provider will select the leader again
-			-- when no configured add remains.
 			if bool_setting(add_control_enabled(ctx.settings), false) then
 				return
 			end

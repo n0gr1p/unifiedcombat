@@ -136,6 +136,37 @@ local invalid_actor = reactions.on_action({
 }, 900, 1.3, false)
 assert_true(invalid_actor.activated == nil, 'invalid or non-enemy action actor must not activate a reaction')
 
+local stale_ready = reactions.on_action({
+    actor_id = 903,
+    category = 7,
+    targets = { { actions = { { param = 284 } } } },
+}, 900, 1.4, true)
+local stale_lock = reactions.evaluate(0, {}, 1.5)
+assert_equal(stale_lock.actor_id, 903, 'ability window must remain active while its actor is live')
+local geo_proposal = {
+    provider = 'maintenance_geo', action_type = 'spell', target_kind = 'mob',
+    family_id = 'maintenance.geo.current_enemy', target_id = 903,
+}
+local ws_proposal = {
+    provider = 'combat', action_type = 'ws', target_kind = 'mob',
+    family_id = 'combat.ws.primary', target_id = 903,
+}
+assert_true(reactions.blocks_proposal(stale_lock, geo_proposal),
+    'active reaction must hold current-enemy GEO proposals')
+assert_true(reactions.blocks_proposal(stale_lock, ws_proposal),
+    'active reaction must hold weapon-skill proposals')
+local invalidated_lock = reactions.prune_invalid_ability_windows(function(actor_id)
+    return actor_id ~= 903
+end)
+assert_equal(invalidated_lock.key, stale_ready.activated.key,
+    'dead or despawned actor must release its unmatched ability window')
+local after_invalidation = reactions.evaluate(0, {}, 1.6)
+assert_true(after_invalidation == nil, 'invalid actor must not leave a scheduler-wide reaction lock')
+assert_true(not reactions.blocks_proposal(after_invalidation, geo_proposal),
+    'invalid actor cleanup must unblock current-enemy GEO proposals')
+assert_true(not reactions.blocks_proposal(after_invalidation, ws_proposal),
+    'invalid actor cleanup must unblock weapon-skill proposals')
+
 local ready = reactions.on_action({
     actor_id = 900,
     category = 7,
@@ -462,6 +493,8 @@ assert_true(source:find("'REACTION_RUN_AWAY'", 1, true) ~= nil, 'movement coordi
 assert_true(source:find("'REACTION_MOVE_TO_RANGE'", 1, true) ~= nil, 'movement coordinator must publish move-to-range ownership mode')
 assert_true(source:find("UC_MOVEMENT_OWNER = 'scheduler_reaction'", 1, true) ~= nil, 'distance reactions must use scheduler movement ownership')
 assert_true(source:find('scheduler.apply_reaction_movement', 1, true) ~= nil, 'distance reactions must share one scheduler movement path')
+assert_true(source:find('reaction_runtime.prune_invalid_ability_windows(function(actor_id)', 1, true) ~= nil,
+    'scheduler refresh must release unmatched ability windows when their actors disappear')
 assert_true(source:find('reaction_movement_executor().stop({', 1, true) ~= nil, 'reaction movement completion must dispatch an explicit movement stop')
 local movement_start = assert(source:find('function scheduler.apply_reaction_movement(lock, formation_runtime)', 1, true))
 local movement_end = assert(source:find('function scheduler.apply_reaction_run_away(lock, formation_runtime)', movement_start, true))

@@ -64,6 +64,11 @@ package.loaded['uc_path_hunter'] = {
         return false
     end,
 }
+package.loaded['uc_combat_extension_config'] = {
+    auto_engage_enabled = function(settings)
+        return type(settings) ~= 'table' or settings.auto_engage ~= false
+    end,
+}
 
 windower = {
     addon_path = '',
@@ -206,6 +211,28 @@ local function main()
     moved = core.apply_movement_for_scheduler({ move = true }, movement_executor)
     assert_true(moved, 'different live target must still produce movement intent')
     assert_equal(#windower.ffxi_run_calls > 0, true, 'different live target must still call run')
+
+    core.last_death_target_id = 0
+    core.last_death_at = 0
+    core.last_run_active = false
+    _G.__TEST_TARGET = make_target({ id = 1003, hpp = 100, x = 10, y = 0 })
+    windower.ffxi_run_calls = {}
+    moved = core.apply_movement_for_scheduler({ autotarget = true, auto_engage = false }, movement_executor)
+    assert_false(moved, 'auto engage off must suppress generic combat-close movement')
+    assert_equal(#windower.ffxi_run_calls, 0, 'auto engage off must not issue a combat-close run command')
+    assert_false(_G.UC_PREENGAGE_APPROACH_ACTIVE == true, 'auto engage off must not claim preengage approach ownership')
+
+    core.last_run_active = false
+    windower.ffxi_run_calls = {}
+    moved = core.apply_movement_for_scheduler({ autotarget = true, auto_engage = true }, movement_executor)
+    assert_true(moved, 'auto engage on must preserve generic combat-close movement')
+    assert_true(#windower.ffxi_run_calls > 0, 'auto engage on must still issue combat-close movement')
+
+    core.last_run_active = false
+    windower.ffxi_run_calls = {}
+    moved = core.apply_movement_for_scheduler({ autotarget = true, auto_engage = false, move = true }, movement_executor)
+    assert_true(moved, 'explicit move mode must remain allowed when auto engage is off')
+    assert_true(#windower.ffxi_run_calls > 0, 'explicit move mode must still issue movement when auto engage is off')
 
     io.stdout:write('selftest_zero_hp_actionable_target: OK\n')
 end

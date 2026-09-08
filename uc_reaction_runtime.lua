@@ -1,5 +1,6 @@
 local res = require('resources')
 local uc_active_config = require('uc_active_config')
+local extension_config = require('uc_combat_extension_config')
 
 local M = {}
 
@@ -31,13 +32,15 @@ end
 
 local function configured()
 	local configured_rules = {}
-	local config = uc_active_config.get_path('config.reactions')
-	if type(config) == 'table' and config.enabled == true then
-		if type(config.rules) ~= 'table' then
-			error('enabled config.reactions requires rules')
-		end
-		for i = 1, #config.rules do
-			configured_rules[#configured_rules + 1] = config.rules[i]
+	local rules = extension_config.reaction_rules()
+	if type(rules) == 'table' then
+		for i = 1, #rules do
+			local rule = rules[i]
+			local ok, err = extension_config.validate_action_rule(rule)
+			if ok ~= true then
+				error(('invalid reaction rule %d: %s'):format(i, tostring(err or 'invalid')))
+			end
+			configured_rules[#configured_rules + 1] = rule
 		end
 	end
 	local encounter = uc_active_config.get_path('config.encounter')
@@ -69,6 +72,8 @@ local function rule_signature(rules)
 				tostring(rule.name or ''),
 				tostring(rule.response or ''),
 				tostring(rule.distance or ''),
+				tostring(rule.action_type or ''),
+				tostring(rule.action_name or ''),
 			}, '\031')
 		end
 	end
@@ -196,8 +201,13 @@ local function prune_unconfigured_locks(rules)
 		local rule = matching_rule(rules, lock.trigger, lock.name)
 		local configured_distance = rule and tonumber(rule.distance) or nil
 		local active_distance = tonumber(lock.distance)
+		local action_changed = lock.response == 'use_action' and (
+			tostring(rule and rule.action_type or '') ~= tostring(lock.action_type or '')
+			or tostring(rule and rule.action_name or '') ~= tostring(lock.action_name or '')
+		)
 		if rule == nil
 			or rule.response ~= lock.response
+			or action_changed
 			or (response_owns_movement(lock.response) and configured_distance ~= active_distance) then
 			locks[key] = nil
 		end
@@ -285,6 +295,10 @@ function M.on_action(act, current_target_id, now, actor_is_valid_enemy)
 			rule_index = rule_index,
 			turn_applied = false,
 		}
+		if rule.response == 'use_action' then
+			locks[key].action_type = trim(rule.action_type):lower()
+			locks[key].action_name = trim(rule.action_name)
+		end
 		if response_owns_movement(rule.response) then
 			locks[key].distance = rule.distance
 			if rule.response == 'run_away' then
@@ -316,6 +330,27 @@ function M.on_action(act, current_target_id, now, actor_is_valid_enemy)
 		end
 	end
 	return result
+end
+
+function M.prune_invalid_ability_windows(actor_is_valid_enemy)
+	if type(actor_is_valid_enemy) ~= 'function' then
+		error('reaction ability-window pruning requires an enemy-validity function')
+	end
+	local active_before = copy_lock(select_active_lock())
+	for key, lock in pairs(locks) do
+		if lock.trigger == 'ability_window'
+			and actor_is_valid_enemy(tonumber(lock.actor_id) or 0) ~= true then
+			locks[key] = nil
+		end
+	end
+	if not actor_has_lock(last_active_target_id) then
+		last_active_target_id = 0
+	end
+	if active_before and locks[tostring(active_before.key or '')] == nil then
+		last_transition = 'actor_unavailable:' .. tostring(active_before.name or '')
+		return active_before
+	end
+	return nil
 end
 
 function M.evaluate(current_target_id, effects, now)
@@ -403,7 +438,8 @@ local function lock_response(lock)
 	if response ~= 'turn_away'
 		and response ~= 'stop_attacking'
 		and response ~= 'run_away'
-		and response ~= 'move_to_range' then
+		and response ~= 'move_to_range'
+		and response ~= 'use_action' then
 		error('uc_reaction_runtime received unsupported reaction response: ' .. response)
 	end
 	return response
@@ -419,6 +455,14 @@ function M.owns_movement(lock)
 		return false
 	end
 	return response_owns_movement(lock_response(lock))
+end
+
+function M.get_action_lock()
+	local active = select_active_lock()
+	if type(active) == 'table' and lock_response(active) == 'use_action' then
+		return copy_lock(active)
+	end
+	return nil
 end
 
 local function finite_coordinate(value)
@@ -618,6 +662,16 @@ function M.blocks_proposal(lock, proposal)
 	local target_kind = tostring(proposal.target_kind or '')
 	local family_id = tostring(proposal.family_id or '')
 	local reason_code = tostring(proposal.reason_code or '')
+	if response == 'use_action' then
+		if provider == 'combat'
+			and family_id == 'combat.reaction.action'
+			and action_type == tostring(lock.action_type or '')
+			and tostring(proposal.action_name or '') == tostring(lock.action_name or '')
+			and target_kind == 'mob'
+			and (tonumber(proposal.target_id) or 0) == (tonumber(lock.actor_id) or 0) then
+			return false
+		end
+	end
 	if response == 'stop_attacking' then
 		if reason_code == 'enemy_buff_remove'
 			and provider == 'defensive_internal'

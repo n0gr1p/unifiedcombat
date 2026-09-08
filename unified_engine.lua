@@ -1,9 +1,8 @@
 local scheduler = require('unified_scheduler')
 local core = require('unified_combat_core')
 local texts_ok, texts = pcall(require, 'texts')
-local socket_ok, socket_mod = pcall(require, 'socket')
-local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
-	or nil
+local uc_time = require('uc_time')
+local socket_gettime = uc_time.gettime
 local time_source_error_reported = false
 
 local engine = {

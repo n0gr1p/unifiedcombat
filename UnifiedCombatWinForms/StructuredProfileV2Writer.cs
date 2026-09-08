@@ -257,6 +257,7 @@ internal static class StructuredProfileV2Writer
         return new StructuredProfileNode()
             .Add("enabled", ReadRequiredBool(flatProfile, "domain_combat_enabled"))
             .Add("autotarget", ReadBool(flatProfile, "autotarget", false))
+            .Add("auto_engage", ReadBool(flatProfile, "auto_engage", true))
             .Add("spam", ReadBool(flatProfile, "spam", false))
             .Add("closer", ReadBool(flatProfile, "closer", false))
             .Add("manual", ReadBool(flatProfile, "manual", false))
@@ -991,6 +992,7 @@ internal static class StructuredProfileV2Writer
         return new StructuredProfileNode()
             .Add("enabled", ReadBool(flatProfile, "spell_active", false))
             .Add("configured", ReadString(flatProfile, "spell", ""))
+            .Add("magic_burst", ReadBool(flatProfile, "magic_burst_enabled", false))
             .Add("dd2_slots", EmptyList());
     }
 
@@ -2294,7 +2296,7 @@ internal static class StructuredProfileV2Writer
             var trigger = ReadString(rule, "trigger", "").Trim();
             var name = ReadString(rule, "name", "").Trim();
             var response = ReadString(rule, "response", "").Trim();
-            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range"))
+            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))
                 || (trigger == "enemy_buff" && response == "stop_attacking");
             if (!valid || name.Length == 0)
             {
@@ -2315,6 +2317,17 @@ internal static class StructuredProfileV2Writer
                     throw new InvalidDataException($"{response} reaction requires a positive finite distance");
                 }
                 serialized.Add("distance", distance);
+            }
+            else if (response == "use_action")
+            {
+                var actionType = ReadString(rule, "action_type", "").Trim();
+                var actionName = ReadString(rule, "action_name", "").Trim();
+                if (actionType != "spell" || actionName.Length == 0)
+                {
+                    throw new InvalidDataException("use_action reaction requires action_type 'spell' and a non-empty action_name");
+                }
+                serialized.Add("action_type", actionType);
+                serialized.Add("action_name", actionName);
             }
             list.Add(serialized);
         }

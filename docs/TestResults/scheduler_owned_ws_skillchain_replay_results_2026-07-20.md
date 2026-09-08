@@ -70,7 +70,7 @@ PASS (line-ending conversion warnings only; no whitespace errors)
 
 ## Clock decision
 
-`os.clock` is the approved monotonic source for process-local skillchain observation, planning, and commit comparisons. The implementation fails fast if it is unavailable. LuaSocket wall-clock time remains limited to the existing cross-process coordination domain; deadlines are translated by remaining duration and clocks are not directly compared.
+**Superseded 2026-09-07:** UnifiedCombat runtime timing now uses the canonical socket-backed `uc_time` clock. The former process-local `os.clock` exception caused a real magic-burst failure when `magic_burst_expires_at` was compared directly with scheduler `ctx.now`. Skillchain observation, planning, commit comparisons, and magic-burst deadlines now share the same `socket.gettime` domain; runtime code must not introduce a separate `os.clock` timing domain.
 
 ## Field evidence status
 

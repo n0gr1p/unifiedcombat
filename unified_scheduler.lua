@@ -19,9 +19,8 @@ local pet_command_coordinator = require('uc_pet_command_coordinator')
 local sleep_status = require('uc_sleep_status')
 sleep_status.validate_resources(res.buffs)
 local recovery_hold = require('uc_recovery_hold')
-local socket_ok, socket_mod = pcall(require, 'socket')
-local socket_gettime = (socket_ok and type(socket_mod) == 'table' and type(socket_mod.gettime) == 'function') and socket_mod.gettime
-	or nil
+local uc_time = require('uc_time')
+local socket_gettime = uc_time.gettime
 local time_source_error_reported = false
 local CAST_MOVEMENT_SETTLE_SECONDS = 0.1
 
@@ -2451,14 +2450,30 @@ function scheduler.apply_reaction_run_away(lock, formation_runtime)
 end
 
 function scheduler.refresh_reaction_lock()
+	local refresh_now = now_s()
 	local target = windower.ffxi.get_mob_by_target('t')
 	local target_id = tonumber(target and target.id) or 0
 	local effects = target_id > 0 and enemy_effect_tracker.get_effects(target_id) or {}
 	local previous_lock = rawget(_G, 'UC_REACTION_LOCK')
-	local lock, released_target_id = require('uc_reaction_runtime').evaluate(target_id, effects, now_s())
+	local reaction_runtime = require('uc_reaction_runtime')
+	local invalidated_lock = reaction_runtime.prune_invalid_ability_windows(function(actor_id)
+		local actor = windower.ffxi.get_mob_by_id(actor_id)
+		return actor ~= nil and combat_core.is_live_actionable_combat_target(actor, refresh_now, true)
+	end)
+	local lock, released_target_id = reaction_runtime.evaluate(target_id, effects, refresh_now)
 	local camp_lane_reserved = scheduler.providers.camp_puller.active()
 	_G.UC_REACTION_LOCK = lock
-	if require('uc_reaction_runtime').owns_movement(previous_lock)
+	if invalidated_lock then
+		scheduler.action_timeline_log('REACTION_CLEARED', {
+			ability = tostring(invalidated_lock.name or ''),
+			response = tostring(invalidated_lock.response or ''),
+			reason = 'actor_unavailable',
+		}, ('reaction_cleared:%s:%d'):format(
+			tostring(invalidated_lock.name or ''),
+			tonumber(invalidated_lock.actor_id) or 0
+		), 0)
+	end
+	if reaction_runtime.owns_movement(previous_lock)
 		and (type(lock) ~= 'table' or tostring(lock.key or '') ~= tostring(previous_lock.key or '')) then
 		scheduler.release_reaction_movement(previous_lock, 'REACTION_MOVEMENT_EVALUATION_RELEASE')
 	end

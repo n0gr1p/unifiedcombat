@@ -10,16 +10,13 @@ local MAGIC_CATEGORY = 0x03
 local PET_OBSERVE_TIMEOUT_S = 6.0
 local PET_OBSERVE_INTERVAL_S = 0.20
 
-local socket_ok, socket_mod = pcall(require, 'socket')
-local socket_gettime = socket_ok and type(socket_mod) == 'table' and socket_mod.gettime or nil
+local uc_time = require('uc_time')
+local socket_gettime = uc_time.gettime
 local trace_sequence = 0
 local registered = false
 
 local function now_s()
-	if type(socket_gettime) == 'function' then
-		return socket_gettime()
-	end
-	return os.time()
+	return uc_time.now()
 end
 
 local function timestamp()

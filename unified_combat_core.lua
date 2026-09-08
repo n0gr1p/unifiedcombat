@@ -1,15 +1,5 @@
 local function uc_now_s()
-	local s = rawget(_G, 'socket')
-	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
-		local ok, mod = pcall(require, 'socket')
-		if ok then
-			s = mod
-		end
-	end
-	if type(s) ~= 'table' or type(s.gettime) ~= 'function' then
-		error('uc_now_s requires LuaSocket socket.gettime')
-	end
-	return s.gettime()
+	return require('uc_time').now()
 end
 
 local res = require('resources')
@@ -24,14 +14,11 @@ local uc_add_control = require('uc_add_control')
 local uc_targeting_common = require('uc_targeting_common')
 local uc_path_hunter = require('uc_path_hunter')
 local uc_skillchain_state = require('uc_skillchain_state')
+local uc_time = require('uc_time')
 local uc_ws_selector = require('uc_ws_selector')
 local uc_camp_anchor = require('uc_camp_anchor')
 local uc_camp_pull_registry = require('uc_camp_pull_registry')
 local aftermath_table = dofile(windower.addon_path .. 'docs/aftermath_table.lua')
-
-if type(os.clock) ~= 'function' then
-	error('unified_combat_core requires monotonic os.clock for skillchain timing')
-end
 
 local function skillchain_telemetry(event_code, fields)
 	local logger = rawget(_G, 'UC_ACTION_TIMELINE_LOG')
@@ -41,7 +28,7 @@ local function skillchain_telemetry(event_code, fields)
 end
 
 local skillchain_runtime = uc_skillchain_state.new({
-	now = os.clock,
+	now = uc_time.now,
 	telemetry = skillchain_telemetry,
 })
 
@@ -2286,9 +2273,13 @@ end
 local function apply_movement(settings, target, executor)
 	set_preengage_approach_active(false)
 	_G.UC_PULLER_APPROACH_BLOCK_UNTIL = 0
-	-- Guard: do not drive combat-close movement from a manually selected target
-	-- unless autotarget is enabled (normal combat ownership) or explicit move mode is on.
-	if (not setting_enabled(settings.autotarget)) and (not setting_enabled(settings.move)) then
+	-- Generic combat-close movement belongs to automatic melee engagement.
+	-- Auto Target may still maintain <t> for support/reaction actions while Auto Engage
+	-- is off, so do not let target ownership alone pull followers into melee range.
+	-- Explicit move mode remains an intentional override for callers that own movement.
+	local explicit_move = setting_enabled(settings.move)
+	local auto_engage = require('uc_combat_extension_config').auto_engage_enabled(settings)
+	if (not explicit_move) and ((not setting_enabled(settings.autotarget)) or (not auto_engage)) then
 		if core.last_run_active then
 			stop_run(executor)
 		end
@@ -2675,7 +2666,7 @@ function core.on_action(act)
 	if not act or type(ActionPacket) ~= 'table' or type(ActionPacket.new) ~= 'function' then
 		return
 	end
-	local skillchain_observed_at = os.clock()
+	local skillchain_observed_at = uc_time.now()
 	local ok, actionpacket = pcall(ActionPacket.new, act)
 	if not ok or not actionpacket then
 		return
@@ -3166,7 +3157,7 @@ local function select_smart_ws(settings, target_id)
 	end
 	local actor_context = local_skillchain_actor_context()
 	local state = skillchain_runtime:get_state(tid)
-	local now = os.clock()
+	local now = uc_time.now()
 	local fast_restart = fast_skillchain_restart_enabled(settings, state)
 	local resonance_active = state
 		and state.terminal ~= true
@@ -3329,7 +3320,7 @@ function core.revalidate_skillchain_plan(plan, settings, expected_target_id, exp
 	local current_target_id = tonumber(current_target and current_target.id) or 0
 	local reaction_lock = rawget(_G, 'UC_REACTION_LOCK')
 	local ok, reason = skillchain_runtime:revalidate_plan(plan, {
-		now = os.clock(),
+		now = uc_time.now(),
 		engine_enabled = rawget(_G, 'Start_Engine') == true and setting_enabled(settings and settings.weaponskill_active),
 		current_target_id = current_target_id,
 		target_valid = target_valid and true or false,
@@ -3386,7 +3377,7 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillcha
 			)
 		end
 		hooks.on_executed = function()
-			local marked, mark_reason = skillchain_runtime:mark_plan_dispatched(skillchain_plan, os.clock())
+			local marked, mark_reason = skillchain_runtime:mark_plan_dispatched(skillchain_plan, uc_time.now())
 			if not marked then
 				error('skillchain dispatch sent without generation reservation: ' .. tostring(mark_reason))
 			end
