@@ -47,6 +47,19 @@ local function contains(values, wanted)
 	return false
 end
 
+local function live_skillchain_window(snapshot, now)
+	if type(snapshot) ~= 'table' or snapshot.terminal == true then
+		return false
+	end
+	local properties = snapshot.active_properties
+	if type(properties) ~= 'table' or #properties == 0 then
+		return false
+	end
+	local latest_safe_at = tonumber(snapshot.latest_safe_at)
+		or tonumber(snapshot.expires_at) or 0
+	return latest_safe_at > (tonumber(now) or 0)
+end
+
 local Runtime = {}
 Runtime.__index = Runtime
 
@@ -82,8 +95,13 @@ function Runtime:_complete(snapshot, now)
 	return true, ''
 end
 
-function Runtime:_start(plan, target, skillchain_snapshot, now)
+function Runtime:_start(plan, target, skillchain_snapshot, now, existing_opener)
 	self.generation = self.generation + 1
+	local opportunistic_close = type(existing_opener) == 'table'
+	local deadline = now + SEQUENCE_TIMEOUT_S
+	if opportunistic_close then
+		deadline = math.min(deadline, tonumber(existing_opener.latest_safe_at) or deadline)
+	end
 	self.active = {
 		generation = self.generation,
 		phase = 'ensure_dark_arts',
@@ -91,12 +109,13 @@ function Runtime:_start(plan, target, skillchain_snapshot, now)
 		target_id = tonumber(target.id) or 0,
 		target_name = tostring(target.name or ''),
 		started_at = now,
-		deadline = now + SEQUENCE_TIMEOUT_S,
-		phase_deadline = now + EVIDENCE_TIMEOUT_S,
+		deadline = deadline,
+		phase_deadline = math.min(deadline, now + EVIDENCE_TIMEOUT_S),
 		baseline_generation = tonumber(skillchain_snapshot and skillchain_snapshot.generation) or 0,
-		opener_generation = 0,
-		closer_execute_at = 0,
-		closer_latest_safe_at = 0,
+		opener_generation = opportunistic_close and (tonumber(existing_opener.generation) or 0) or 0,
+		closer_execute_at = opportunistic_close and (tonumber(existing_opener.execute_at) or now) or 0,
+		closer_latest_safe_at = opportunistic_close and (tonumber(existing_opener.latest_safe_at) or deadline) or 0,
+		opportunistic_close = opportunistic_close,
 		pending = false,
 	}
 	local bound, bind_reason = skillchain_target.bind(target)
@@ -106,7 +125,7 @@ function Runtime:_start(plan, target, skillchain_snapshot, now)
 		self.last_blocker = tostring(bind_reason or 'target_bind_failed')
 		return false
 	end
-	self.last_result = 'started:' .. tostring(plan.result)
+	self.last_result = (opportunistic_close and 'started_party_close:' or 'started:') .. tostring(plan.result)
 	self.last_blocker = ''
 	return true
 end
@@ -119,11 +138,18 @@ local function addendum_black_active(buffs)
 	return has_buff(buffs, ADDENDUM_BLACK_BUFF_ID)
 end
 
+local function phase_after_prerequisites(active)
+	if active.opportunistic_close == true then
+		return 'wait_closer_timing'
+	end
+	return 'use_immanence_opener'
+end
+
 local function phase_after_dark_arts(active, buffs)
 	if active.plan.requires_addendum_black == true and not addendum_black_active(buffs) then
 		return 'ensure_addendum_black'
 	end
-	return 'use_immanence_opener'
+	return phase_after_prerequisites(active)
 end
 
 function Runtime:_advance(input)
@@ -151,31 +177,47 @@ function Runtime:_advance(input)
 	local buffs = input.player_buffs or {}
 	local snapshot = input.skillchain_snapshot
 
+	-- Before the closer spell is dispatched, an opportunistic party opener must
+	-- still be the exact compatible skillchain generation we chose. If another
+	-- party action changes it, fail closed rather than wasting Immanence on a
+	-- stale or incompatible continuation.
+	if active.opportunistic_close == true and active.phase ~= 'wait_result' then
+		local existing = skillchain.compatible_existing_opener(active.plan, snapshot, now)
+		if type(existing) ~= 'table'
+			or tonumber(existing.generation) ~= tonumber(active.opener_generation) then
+			self:_abort('party_opener_changed_or_incompatible', now)
+			return
+		end
+		active.closer_execute_at = tonumber(existing.execute_at) or active.closer_execute_at
+		active.closer_latest_safe_at = tonumber(existing.latest_safe_at) or active.closer_latest_safe_at
+		active.deadline = math.min(active.deadline, active.closer_latest_safe_at)
+	end
+
 	if active.phase == 'ensure_dark_arts' and dark_arts_active(buffs) then
 		active.phase = phase_after_dark_arts(active, buffs)
-		active.phase_deadline = now + EVIDENCE_TIMEOUT_S
+		active.phase_deadline = math.min(active.deadline, now + EVIDENCE_TIMEOUT_S)
 		return
 	end
 	if active.phase == 'wait_dark_arts' then
 		if dark_arts_active(buffs) then
 			active.phase = phase_after_dark_arts(active, buffs)
 			active.pending = false
-			active.phase_deadline = now + EVIDENCE_TIMEOUT_S
+			active.phase_deadline = math.min(active.deadline, now + EVIDENCE_TIMEOUT_S)
 		elseif now > active.phase_deadline then
 			self:_abort('dark_arts_confirmation_timeout', now)
 		end
 		return
 	end
 	if active.phase == 'ensure_addendum_black' and addendum_black_active(buffs) then
-		active.phase = 'use_immanence_opener'
-		active.phase_deadline = now + EVIDENCE_TIMEOUT_S
+		active.phase = phase_after_prerequisites(active)
+		active.phase_deadline = math.min(active.deadline, now + EVIDENCE_TIMEOUT_S)
 		return
 	end
 	if active.phase == 'wait_addendum_black' then
 		if addendum_black_active(buffs) then
-			active.phase = 'use_immanence_opener'
+			active.phase = phase_after_prerequisites(active)
 			active.pending = false
-			active.phase_deadline = now + EVIDENCE_TIMEOUT_S
+			active.phase_deadline = math.min(active.deadline, now + EVIDENCE_TIMEOUT_S)
 		elseif now > active.phase_deadline then
 			self:_abort('addendum_black_confirmation_timeout', now)
 		end
@@ -289,21 +331,26 @@ function Runtime:update(input)
 		self.last_blocker = 'no_valid_enemy_target'
 		return false
 	end
-	local existing_burst_until = tonumber(input.skillchain_snapshot and input.skillchain_snapshot.magic_burst_expires_at) or 0
-	if existing_burst_until > now then
-		self.next_start_at = math.max(self.next_start_at, existing_burst_until)
-		self.last_blocker = 'existing_magic_burst_window'
-		return false
-	end
 	local plans = skillchain.plans(config)
 	if #plans == 0 then
 		self.last_blocker = 'no_valid_skillchain_plan'
 		return false
 	end
 	local plan = plans[1]
+	local existing_opener = skillchain.compatible_existing_opener(plan, input.skillchain_snapshot, now)
+	if existing_opener == nil and live_skillchain_window(input.skillchain_snapshot, now) then
+		self.last_blocker = 'existing_skillchain_window_incompatible'
+		return false
+	end
+	local existing_burst_until = tonumber(input.skillchain_snapshot and input.skillchain_snapshot.magic_burst_expires_at) or 0
+	if existing_opener == nil and existing_burst_until > now then
+		self.next_start_at = math.max(self.next_start_at, existing_burst_until)
+		self.last_blocker = 'existing_magic_burst_window'
+		return false
+	end
 	local addendum_required = plan.requires_addendum_black == true
 		and not addendum_black_active(input.player_buffs or {})
-	local required_charges = 2 + (addendum_required and 1 or 0)
+	local required_charges = (existing_opener ~= nil and 1 or 2) + (addendum_required and 1 or 0)
 	local charge = input.charge_snapshot or {}
 	if charge.confidence ~= 'confirmed' then
 		self.last_blocker = 'charge_confidence_unknown'
@@ -313,7 +360,7 @@ function Runtime:update(input)
 		self.last_blocker = 'insufficient_confirmed_charges'
 		return false
 	end
-	if not self:_start(plan, target, input.skillchain_snapshot, now) then
+	if not self:_start(plan, target, input.skillchain_snapshot, now, existing_opener) then
 		return false
 	end
 	self:_advance(input)
@@ -342,7 +389,7 @@ function Runtime:next_step(now)
 		action_type = 'job_ability'
 		action_name = 'Addendum: Black'
 		uses_charge = true
-		required_available_charges = 3
+		required_available_charges = active.opportunistic_close == true and 2 or 3
 	elseif active.phase == 'use_immanence_opener' then
 		action_type = 'job_ability'
 		action_name = 'Immanence'
