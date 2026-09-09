@@ -153,7 +153,7 @@ local function file_log(text)
 		if not f then
 			return
 		end
-		f:write(pf_timestamp(), '	', text:gsub('\r?\n', ' '), '\n')
+		f:write(pf_timestamp(), '\t', text:gsub('\r?\n', ' '), '\n')
 		f:close()
 	end)
 end
@@ -279,11 +279,8 @@ end
 
 local function formation_movement_active()
 	local status = rawget(_G, 'UC_FORMATION_STATUS')
-	local formation = uc_active_config.get_path('config.movement.formation')
 	local movement_domain_enabled = uc_active_config.get_path('config.ownership.domain_movement_enabled')
 	return movement_domain_enabled == true
-		and type(formation) == 'table'
-		and formation.enabled == true
 		and type(status) == 'table'
 		and status.enabled == true
 		and tostring(status.phase or '') == 'active'
@@ -454,7 +451,7 @@ local function zone_follow_replay(zone_line, zone_type, leader_zone, lx, ly, mh_
 		))
 		return
 	end
-	file_log(('event=REPLAY_PACKET_SEND id=0x05E line=%s type=%s mh=%s raw=\"%s\" %s'):format(
+	file_log(('event=REPLAY_PACKET_SEND id=0x05E line=%s type=%s mh=%s raw="%s" %s'):format(
 		tostring(zone_line),
 		tostring(zone_type),
 		tostring(mh_door_menu),
@@ -489,7 +486,7 @@ recent_local_request = function(window_s)
 end
 
 local function ipc_dispatch_zone(msg)
-	file_log(('event=IPC_ZONE_RECV_RAW msg=\"%s\" %s'):format(tostring(msg), state_snapshot()))
+	file_log(('event=IPC_ZONE_RECV_RAW msg="%s" %s'):format(tostring(msg), state_snapshot()))
 	local args = {}
 	for part in msg:lower():gmatch('%S+') do
 		args[#args + 1] = part
@@ -613,7 +610,7 @@ function M.outgoing_chunk(id, data, blocked, injected)
 			return packets.parse('outgoing', data)
 		end)
 		if okp and pktp then
-			file_log(('event=OUT_05E_PACKET_OBSERVED_FOLLOWER id=0x05E line=%s type=%s mh=%s injected=%s raw=\"%s\" %s'):format(
+			file_log(('event=OUT_05E_PACKET_OBSERVED_FOLLOWER id=0x05E line=%s type=%s mh=%s injected=%s raw="%s" %s'):format(
 				tostring(pktp['Zone Line']),
 				tostring(pktp['Type']),
 				tostring(pktp['MH Door Menu']),
@@ -651,7 +648,7 @@ function M.outgoing_chunk(id, data, blocked, injected)
 		local zl = pkt['Zone Line']
 		local zt = pkt['Type']
 		local zmh = pkt['MH Door Menu']
-		file_log(('event=OUT_05E_PACKET_OBSERVED id=0x05E line=%s type=%s mh=%s raw=\"%s\" %s'):format(
+		file_log(('event=OUT_05E_PACKET_OBSERVED id=0x05E line=%s type=%s mh=%s raw="%s" %s'):format(
 			tostring(zl),
 			tostring(zt),
 			tostring(zmh),
@@ -1041,4 +1038,3 @@ function M.prerender()
 end
 
 return M
-
