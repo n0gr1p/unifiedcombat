@@ -395,7 +395,11 @@ function M.extend(base)
 
     function base.blocks_movement(lock)
         if type(lock) == 'table' and tostring(lock.response or '') == 'use_sequence' then
-            return false
+            -- Freeze ordinary movement as soon as an atomic action sequence
+            -- activates.  A setup JA such as Elemental Seal can execute while
+            -- moving, but its required spell must not lose the ability window
+            -- waiting for formation/follow movement to settle afterwards.
+            return true
         end
         return base_blocks_movement(lock)
     end

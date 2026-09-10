@@ -80,6 +80,7 @@ assert_equal(ready.activated.response, 'use_sequence', 'sequence activation resp
 assert_equal(ready.activated.action_name, 'Elemental Seal', 'first sequence action')
 assert_true(ready.activated.action_optional, 'Elemental Seal must be optional')
 assert_equal(ready.activated.step_index, 1, 'first sequence step index')
+assert_true(reactions.blocks_movement(ready.activated), 'atomic sequence must freeze normal movement immediately')
 
 assert_true(reactions.blocks_proposal(ready.activated, {
     provider = 'defensive_internal',
@@ -176,6 +177,17 @@ local api = sequence_extensions.new({
     end,
     action_effective_range = function() return 20 end,
 })
+local old_windower = rawget(_G, 'windower')
+_G.windower = {
+    ffxi = {
+        get_mob_by_id = function(id)
+            if tonumber(id) == 900 then
+                return { id = 900, name = 'Zerde' }
+            end
+            return nil
+        end,
+    },
+}
 local out = {}
 local claimed = api.collect_priority_offense({
     now = 40.0,
@@ -185,7 +197,15 @@ assert_true(claimed, 'sequence provider must reserve priority offense path')
 assert_equal(skip_calls, 1, 'unavailable optional setup must be skipped exactly once')
 assert_equal(#out, 1, 'required Stun must still be proposed')
 assert_equal(out[1].action_name, 'Stun', 'required terminal action after optional skip')
+assert_equal(out[1].target_name, 'Zerde', 'actor-targeted sequence proposal must name the actor, not the triggering ability')
 assert_equal(out[1].family_id, 'combat.reaction.sequence', 'sequence proposal family')
+_G.windower = old_windower
+
+local scheduler_source = assert(io.open('unified_scheduler.lua', 'rb')):read('*a')
+assert_true(
+    scheduler_source:find("if response == 'use_action' or response == 'use_sequence' then", 1, true) ~= nil,
+    'scheduler activation handler must accept action-bearing reaction responses'
+)
 
 -- Normalizer wrapper must preserve durable sequence shape while allowing the
 -- legacy normalizer to process the rest of the profile unchanged.
