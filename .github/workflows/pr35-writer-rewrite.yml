@@ -1,0 +1,82 @@
+name: PR35 narrow writer rewrite
+
+on:
+  push:
+    branches:
+      - feature/reaction-action-sequences
+
+permissions:
+  contents: write
+
+jobs:
+  rewrite:
+    if: contains(github.event.head_commit.message, '[rewrite-writer]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore master writer and apply sequence-only patch
+        run: |
+          git show origin/master:UnifiedCombatWinForms/StructuredProfileV2Writer.cs > UnifiedCombatWinForms/StructuredProfileV2Writer.cs
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('UnifiedCombatWinForms/StructuredProfileV2Writer.cs')
+          s = p.read_text()
+          old = '''            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))
+                || (trigger == "enemy_buff" && response == "stop_attacking");'''
+          new = '''            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action" || response == "use_sequence"))
+                || (trigger == "enemy_buff" && response == "stop_attacking");'''
+          if s.count(old) != 1:
+              raise SystemExit(f'valid-response patch anchor count={s.count(old)}')
+          s = s.replace(old, new)
+          anchor = '''            else if (response == "use_action")
+            {
+                var actionType = ReadString(rule, "action_type", "").Trim();
+                var actionName = ReadString(rule, "action_name", "").Trim();
+                if (actionType != "spell" || actionName.Length == 0)
+                {
+                    throw new InvalidDataException("use_action reaction requires action_type 'spell' and a non-empty action_name");
+                }
+                serialized.Add("action_type", actionType);
+                serialized.Add("action_name", actionName);
+            }
+            list.Add(serialized);'''
+          replacement = '''            else if (response == "use_action")
+            {
+                var actionType = ReadString(rule, "action_type", "").Trim();
+                var actionName = ReadString(rule, "action_name", "").Trim();
+                if (actionType != "spell" || actionName.Length == 0)
+                {
+                    throw new InvalidDataException("use_action reaction requires action_type 'spell' and a non-empty action_name");
+                }
+                serialized.Add("action_type", actionType);
+                serialized.Add("action_name", actionName);
+            }
+            else if (response == "use_sequence")
+            {
+                var sequence = ReactionSequenceProfileCodec.ParseRule(rule);
+                var steps = new List<object?>(sequence.Steps.Count);
+                foreach (var step in sequence.Steps)
+                {
+                    steps.Add(
+                        new StructuredProfileNode()
+                            .Add("action_type", step.ActionType)
+                            .Add("action_name", step.ActionName)
+                            .Add("target", step.Target)
+                            .Add("optional", step.Optional)
+                    );
+                }
+                serialized.Add("steps", steps);
+            }
+            list.Add(serialized);'''
+          if s.count(anchor) != 1:
+              raise SystemExit(f'sequence patch anchor count={s.count(anchor)}')
+          p.write_text(s.replace(anchor, replacement))
+          PY
+          git rm .github/workflows/pr35-writer-rewrite.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add UnifiedCombatWinForms/StructuredProfileV2Writer.cs
+          git commit -m "Narrow structured profile sequence serialization"
+          git push
