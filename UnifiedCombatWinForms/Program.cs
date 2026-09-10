@@ -9,6 +9,12 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Any(arg => string.Equals(arg, "--selftest-reaction-sequence", StringComparison.Ordinal)))
+        {
+            Environment.ExitCode = ReactionSequenceProfileCodecTests.Run();
+            return;
+        }
+
         if (args.Any(arg => string.Equals(arg, "--selftest-profile-v2", StringComparison.Ordinal)))
         {
             var profileStatus = StructuredProfileV2WriterTests.Run();
