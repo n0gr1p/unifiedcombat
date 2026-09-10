@@ -26,6 +26,20 @@ local function ja_resource(name)
     return res.job_abilities:with('en', tostring(name or ''))
 end
 
+local function mob_name_by_id(id)
+    local windower_ref = rawget(_G, 'windower')
+    local ffxi = type(windower_ref) == 'table' and windower_ref.ffxi or nil
+    local get_mob_by_id = type(ffxi) == 'table' and ffxi.get_mob_by_id or nil
+    if type(get_mob_by_id) ~= 'function' then
+        return ''
+    end
+    local ok, mob = pcall(get_mob_by_id, tonumber(id) or 0)
+    if not ok or type(mob) ~= 'table' then
+        return ''
+    end
+    return tostring(mob.name or '')
+end
+
 local function append_sequence_action(out, ctx, action_lock, action_ready, action_effective_range)
     local action_type = tostring(action_lock.action_type or ''):lower()
     local action_name = tostring(action_lock.action_name or '')
@@ -42,7 +56,13 @@ local function append_sequence_action(out, ctx, action_lock, action_ready, actio
         target_kind = 'self'
     elseif action_target == 'actor' then
         target_id = tonumber(action_lock.actor_id) or 0
-        target_name = tostring(action_lock.actor_name or action_lock.name or '')
+        target_name = tostring(action_lock.actor_name or '')
+        if target_name == '' then
+            target_name = mob_name_by_id(target_id)
+        end
+        if target_name == '' then
+            target_name = tostring(target_id)
+        end
         target_kind = 'mob'
     else
         return false, 'invalid_target'

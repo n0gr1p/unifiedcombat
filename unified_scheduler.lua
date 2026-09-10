@@ -2305,6 +2305,11 @@ function scheduler.apply_reaction_response(lock)
 		lock.turn_applied = true
 		return true
 	end
+	if response == 'use_action' or response == 'use_sequence' then
+		-- Action-bearing reactions are executed by the combat proposal path.
+		-- Activation itself has no immediate facing/disengage side effect.
+		return true
+	end
 	if response ~= 'stop_attacking' then
 		error('unified_scheduler received unsupported reaction response: ' .. response)
 	end
