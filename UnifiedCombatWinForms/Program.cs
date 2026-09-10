@@ -12,7 +12,13 @@ internal static class Program
         if (args.Any(arg => string.Equals(arg, "--selftest-profile-v2", StringComparison.Ordinal)))
         {
             var profileStatus = StructuredProfileV2WriterTests.Run();
-            Environment.ExitCode = profileStatus != 0 ? profileStatus : ScholarSkillchainProfileTests.Run();
+            if (profileStatus != 0)
+            {
+                Environment.ExitCode = profileStatus;
+                return;
+            }
+            var scholarStatus = ScholarSkillchainProfileTests.Run();
+            Environment.ExitCode = scholarStatus != 0 ? scholarStatus : ReactionSequenceProfileCodecTests.Run();
             return;
         }
 
