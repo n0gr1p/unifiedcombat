@@ -1,5 +1,6 @@
 local M = {}
 local recovery_hold = require('uc_recovery_hold')
+local uc_time = require('uc_time')
 
 local function require_table(value, name)
     if type(value) ~= "table" then
@@ -22,24 +23,82 @@ local function timeline_log(event_code, fields, dedupe_key, interval)
     end
 end
 
+local function local_player_id()
+    local windower_ref = rawget(_G, 'windower')
+    local ffxi = type(windower_ref) == 'table' and windower_ref.ffxi or nil
+    local get_player = type(ffxi) == 'table' and ffxi.get_player or nil
+    if type(get_player) ~= 'function' then
+        return 0
+    end
+    local ok, player = pcall(get_player)
+    if not ok or type(player) ~= 'table' then
+        return 0
+    end
+    return tonumber(player.id) or 0
+end
+
 local function consume_dispatched_reaction_action(intent)
     local meta = type(intent.meta) == 'table' and intent.meta or nil
-    if meta == nil or tostring(meta.target_kind or '') ~= 'mob' then
+    if meta == nil then
         return nil
     end
 
     local action_type = tostring(meta.action_type or ''):lower()
     local action_name = tostring(meta.action_name or '')
+    local target_kind = tostring(meta.target_kind or '')
     local target_id = tonumber(meta.target_id) or 0
-    if (action_type ~= 'spell' and action_type ~= 'ja')
-        or action_name == ''
-        or target_id <= 0 then
+    if (action_type ~= 'spell' and action_type ~= 'ja') or action_name == '' then
         return nil
     end
 
     local reaction_runtime = require('uc_reaction_runtime')
     local lock = reaction_runtime.get_action_lock()
-    if type(lock) ~= 'table'
+    if type(lock) ~= 'table' then
+        return nil
+    end
+
+    if tostring(lock.response or '') == 'use_sequence' then
+        local player_id = local_player_id()
+        if target_kind == 'self' and target_id <= 0 then
+            target_id = player_id
+        end
+        local marked, reason = reaction_runtime.note_sequence_action_dispatched(
+            lock.key,
+            action_type,
+            action_name,
+            target_kind,
+            target_id,
+            player_id,
+            uc_time.now()
+        )
+        if marked ~= true then
+            return nil
+        end
+        timeline_log('REACTION_SEQUENCE_STEP_DISPATCHED', {
+            ability = tostring(lock.name or ''),
+            response = 'use_sequence',
+            action_type = action_type,
+            action = action_name,
+            target_kind = target_kind,
+            target_id = target_id,
+            actor_id = tonumber(lock.actor_id) or 0,
+            step_index = tonumber(lock.step_index) or 1,
+            step_count = tonumber(lock.step_count) or 0,
+            optional = lock.action_optional == true and '1' or '0',
+            reason = tostring(reason or 'dispatched'),
+        }, ('reaction_sequence_step_dispatched:%s:%d:%d'):format(
+            tostring(lock.name or ''),
+            tonumber(lock.actor_id) or 0,
+            tonumber(lock.step_index) or 1
+        ), 0)
+        return {
+            sequence_step_dispatched = true,
+            key = tostring(lock.key or ''),
+        }
+    end
+
+    if tostring(lock.response or '') ~= 'use_action'
+        or target_kind ~= 'mob'
         or tostring(lock.action_type or ''):lower() ~= action_type
         or tostring(lock.action_name or '') ~= action_name
         or (tonumber(lock.actor_id) or 0) ~= target_id then
@@ -83,6 +142,7 @@ function M.apply_command_ownership(opts)
         command_present = command_present,
         reaction_released = false,
         reaction_key = "",
+        reaction_sequence_step_dispatched = false,
     }
 
     if not command_present then
@@ -99,10 +159,13 @@ function M.apply_command_ownership(opts)
     status.dispatch_reason = type(dispatch_result) == "table" and tostring(dispatch_result.reason or "") or "missing_dispatch_result"
 
     if status.dispatch_ok then
-        local released = consume_dispatched_reaction_action(intent)
-        if type(released) == 'table' then
+        local consumed = consume_dispatched_reaction_action(intent)
+        if type(consumed) == 'table' and consumed.sequence_step_dispatched == true then
+            status.reaction_sequence_step_dispatched = true
+            status.reaction_key = tostring(consumed.key or '')
+        elseif type(consumed) == 'table' then
             status.reaction_released = true
-            status.reaction_key = tostring(released.key or '')
+            status.reaction_key = tostring(consumed.key or '')
         end
     end
 
