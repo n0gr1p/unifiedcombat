@@ -16,18 +16,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
-      - name: Apply narrow writer patch in verification workspace
-        run: python tools/patch_reaction_sequence_writer.py
       - name: Build WinForms
         run: dotnet build UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release
-      - name: Profile v2 self-tests
-        run: dotnet run --project UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --no-build -- --selftest-profile-v2
+      - name: Reaction sequence persistence self-test
+        run: dotnet run --project UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --no-build -- --selftest-reaction-sequence
       - name: Activity profile self-tests
         run: dotnet run --project UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --no-build -- --selftest-activity-profiles
-      - uses: actions/upload-artifact@v4
-        with:
-          name: patched-structured-profile-writer
-          path: UnifiedCombatWinForms/StructuredProfileV2Writer.cs
 
   lua-sequence:
     runs-on: ubuntu-latest
