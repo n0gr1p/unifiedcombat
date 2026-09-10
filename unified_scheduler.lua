@@ -33,6 +33,7 @@ do
 end
 
 local scheduler = {
+	runtime_revision = '20260910-sequence-dispatch-2',
 	last_action_at = 0,
 	action_delay = 1.5,
 	attempted = {},

@@ -6,6 +6,7 @@ local socket_gettime = uc_time.gettime
 local time_source_error_reported = false
 
 local engine = {
+	runtime_revision = '20260910-runtime-refresh-1',
 	running = false,
 	tick_interval = 0.20,
 	processing = false,
