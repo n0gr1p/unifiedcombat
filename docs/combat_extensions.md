@@ -1,10 +1,10 @@
 # Generic magic burst, action reactions, and auto-engage
 
-This feature branch adds three generic combat controls without encounter-specific Zerde code.
+This feature set adds generic combat controls without encounter-specific Zerde code.
 
 ## Architecture
 
-The runtime behavior is integrated through the canonical `uc_provider_combat.lua` and `uc_reaction_runtime.lua` modules. There are no shadow `_base` copies or compatibility wrappers. Small focused helpers own only the new combat-extension configuration reads and priority-offense proposal construction.
+Runtime behavior remains on the existing combat-provider and reaction-runtime call paths. Reaction sequences are layered through thin compatibility wrappers so the legacy single-action reaction behavior remains unchanged while the sequence state machine stays isolated and reviewable. The durable profile remains the source of truth; sequence progress is runtime-only state.
 
 ## Auto-engage
 
@@ -22,7 +22,7 @@ The flat compatibility setting is `auto_engage`.
 
 ## Magic burst
 
-Magic bursting reuses the existing configured spell and the authoritative skillchain snapshot. Set the desired burst spell in `config.spells.configured` and arm burst use with `magic_burst = true`. The spell is proposed only when its element is valid for the confirmed skillchain and at least six seconds remain in the tracked burst window.
+Magic bursting reuses the existing configured spell and the authoritative skillchain snapshot. Set the desired burst spell in `config.spells.configured` and arm burst use with `magic_burst = true`.
 
 ```lua
 spells = {
@@ -36,10 +36,9 @@ spells = {
 
 General-purpose bursting can instead set `magic_burst_mode = 'auto'` with one of three families: `spell`, `ra`, or `helix`. `magic_burst_max_tier = 0` means Auto/highest available; positive values are a tier ceiling. Auto selection reads the target's confirmed skillchain property and chooses the strongest compatible ready spell in that family. Direct nukes use tiers I-V, GEO `-ra` uses I-III, and Helix uses I-II. Auto Helix never crosses into direct nukes and does not cast a weaker/alternate Helix merely because the preferred Helix is on recast. Legacy profiles default to `magic_burst_mode = 'exact'` and preserve their configured spell behavior.
 
-
 ## Ability-window action reactions
 
-Existing movement/facing reactions are unchanged. A new `use_action` response is accepted for `ability_window` rules. The first implementation intentionally supports spells only and fails closed for other action types.
+Existing movement/facing reactions are unchanged. `use_action` remains the backward-compatible one-shot spell response for `ability_window` rules.
 
 ```lua
 reactions = {
@@ -56,12 +55,53 @@ reactions = {
 }
 ```
 
-The `use_action` rule becomes a normal authoritative reaction lock while its response is armed. Normal enemy-facing offense remains suppressed, but the exact matching reaction proposal is explicitly allowed through the same reaction gate and is submitted through the normal scheduler proposal path at priority band 240. It does not bypass readiness, recast, target, movement, duplicate-suppression, or action-state ownership.
+The `use_action` rule becomes a normal authoritative reaction lock while its response is armed. The exact matching reaction proposal is submitted through the normal scheduler proposal path at priority band 240. It does not bypass readiness, recast, target, movement, duplicate-suppression, or action-state ownership. Once the matching action is successfully dispatched, legacy `use_action` consumes its lock immediately.
 
-Unlike sustained movement/facing reactions, `use_action` is a one-shot scheduler reservation: once the matching configured action is successfully dispatched to the triggering actor, the reaction lock is consumed immediately. It does not wait for the enemy ability completion packet, because a successful interrupt such as Stun can intentionally prevent that completion packet from ever occurring. Failed or mismatched dispatches do not consume the lock. Existing actor-death/despawn cleanup remains a final stale-lock safety net.
+### Atomic action sequences
+
+`use_sequence` adds a generic ordered action sequence to an `ability_window` reaction. Each step declares an action type, action name, target, and whether the step is optional.
+
+```lua
+reactions = {
+    enabled = true,
+    rules = {
+        {
+            trigger = 'ability_window',
+            name = 'Just Desserts',
+            response = 'use_sequence',
+            steps = {
+                {
+                    action_type = 'ja',
+                    action_name = 'Elemental Seal',
+                    target = 'self',
+                    optional = true,
+                },
+                {
+                    action_type = 'spell',
+                    action_name = 'Stun',
+                    target = 'actor',
+                    optional = false,
+                },
+            },
+        },
+    },
+}
+```
+
+Sequence rules are deliberately generic: supported step action types are `ja` and `spell`; supported targets are `self` and `actor`. The final step must be required. The runtime does not contain Zerde-, Elemental-Seal-, or Stun-specific policy.
+
+An unavailable optional step is skipped immediately. Therefore a sequence such as optional Elemental Seal followed by required Stun still attempts Stun when Elemental Seal is on recast, unavailable, or otherwise fails readiness. A required step is never skipped; the sequence keeps ownership and retries while the triggering enemy ability window remains active.
+
+Once a sequence activates, it owns the scheduler action lane atomically. All ordinary proposals, including support actions, are rejected while the sequence is active; only the exact current sequence step is admitted. Doom emergency handling remains outside this ordinary proposal gate as before.
+
+Dispatch does not advance or release a sequence. The runtime records the local actor that dispatched the step and waits for the matching local action-result packet. Job-ability completion advances to the next step. Completion of the required terminal spell releases the sequence, including a resolved resist result because the requested action was still completed. If the triggering enemy ability completes first, or the actor becomes invalid, the active sequence is aborted and its lock is released.
+
+This completion-driven behavior avoids the stale-lock problem that would result from waiting only for the enemy ability completion packet: a successful interrupt can prevent that packet from ever occurring.
+
+Sequence progress (`step_index`, dispatch state, local actor correlation, and timestamps) is runtime-only. Durable configuration contains only the configured steps.
 
 Movement/facing reactions such as `turn_away`, `stop_attacking`, `run_away`, and `move_to_range` retain their full hazard lifecycle and continue to release when the triggering condition resolves or the actor becomes invalid.
 
 ## Initial burst priority
 
-Magic-burst proposals use priority band 170. This puts an armed, time-limited burst above normal WS continuation while keeping critical defensive actions above it. The six-second minimum remaining window is intentionally conservative for this first implementation and is isolated in `uc_combat_extensions.lua` for future tuning without changing the skillchain state contract.
+Magic-burst proposals use priority band 170. Reaction actions and reaction-sequence steps use priority band 240. This keeps time-critical reactions above normal WS and burst work while still using the normal scheduler dispatch/readiness/action-state pipeline.

@@ -2364,7 +2364,7 @@ internal static class StructuredProfileV2Writer
             var trigger = ReadString(rule, "trigger", "").Trim();
             var name = ReadString(rule, "name", "").Trim();
             var response = ReadString(rule, "response", "").Trim();
-            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))
+            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action" || response == "use_sequence"))
                 || (trigger == "enemy_buff" && response == "stop_attacking");
             if (!valid || name.Length == 0)
             {
@@ -2396,6 +2396,22 @@ internal static class StructuredProfileV2Writer
                 }
                 serialized.Add("action_type", actionType);
                 serialized.Add("action_name", actionName);
+            }
+            else if (response == "use_sequence")
+            {
+                var sequence = ReactionSequenceProfileCodec.ParseRule(rule);
+                var steps = new List<object?>(sequence.Steps.Count);
+                foreach (var step in sequence.Steps)
+                {
+                    steps.Add(
+                        new StructuredProfileNode()
+                            .Add("action_type", step.ActionType)
+                            .Add("action_name", step.ActionName)
+                            .Add("target", step.Target)
+                            .Add("optional", step.Optional)
+                    );
+                }
+                serialized.Add("steps", steps);
             }
             list.Add(serialized);
         }

@@ -28,11 +28,36 @@ local function has_action_rule(rules)
         return false
     end
     for i = 1, #rules do
-        if type(rules[i]) == 'table' and rules[i].response == 'use_action' then
+        if type(rules[i]) == 'table'
+            and (rules[i].response == 'use_action' or rules[i].response == 'use_sequence') then
             return true
         end
     end
     return false
+end
+
+local function validate_sequence_step(step, index, count)
+    if type(step) ~= 'table' then
+        return false, ('use_sequence step %d must be a table'):format(index)
+    end
+    local action_type = trim(step.action_type):lower()
+    if action_type ~= 'spell' and action_type ~= 'ja' then
+        return false, ('use_sequence step %d action_type must be spell or ja'):format(index)
+    end
+    if trim(step.action_name) == '' then
+        return false, ('use_sequence step %d requires action_name'):format(index)
+    end
+    local target = trim(step.target):lower()
+    if target ~= 'self' and target ~= 'actor' then
+        return false, ('use_sequence step %d target must be self or actor'):format(index)
+    end
+    if step.optional ~= nil and type(step.optional) ~= 'boolean' then
+        return false, ('use_sequence step %d optional must be boolean'):format(index)
+    end
+    if index == count and step.optional == true then
+        return false, 'use_sequence final step must be required'
+    end
+    return true
 end
 
 function M.auto_engage_enabled(settings)
@@ -91,10 +116,10 @@ function M.reaction_rules()
     local flat_rules = flat.reaction_enabled == true and type(flat.reaction_rules) == 'table'
         and flat.reaction_rules or nil
 
-    -- Structured v2 is authoritative when it contains the new action-rule shape.
-    -- During legacy flat-settings startup, the old normalizer can legitimately
-    -- project the older reaction subset into active config. Preserve the full
-    -- flat rule list in that case instead of silently dropping use_action.
+    -- Structured v2 is authoritative when it contains an action-bearing rule.
+    -- During legacy flat-settings startup, the normalizer can legitimately
+    -- project an older reaction subset into active config. Preserve the full
+    -- flat rule list in that case instead of silently dropping action metadata.
     if has_action_rule(active_rules) then
         return active_rules
     end
@@ -105,17 +130,35 @@ function M.reaction_rules()
 end
 
 function M.validate_action_rule(rule)
-    if type(rule) ~= 'table' or rule.response ~= 'use_action' then
+    if type(rule) ~= 'table' then
+        return true
+    end
+    if rule.response == 'use_action' then
+        if rule.trigger ~= 'ability_window' then
+            return false, 'use_action reactions require ability_window trigger'
+        end
+        if trim(rule.action_type):lower() ~= 'spell' then
+            return false, 'use_action currently supports only spell actions'
+        end
+        if trim(rule.action_name) == '' then
+            return false, 'use_action reactions require action_name'
+        end
+        return true
+    end
+    if rule.response ~= 'use_sequence' then
         return true
     end
     if rule.trigger ~= 'ability_window' then
-        return false, 'use_action reactions require ability_window trigger'
+        return false, 'use_sequence reactions require ability_window trigger'
     end
-    if trim(rule.action_type):lower() ~= 'spell' then
-        return false, 'use_action currently supports only spell actions'
+    if type(rule.steps) ~= 'table' or #rule.steps == 0 then
+        return false, 'use_sequence reactions require at least one step'
     end
-    if trim(rule.action_name) == '' then
-        return false, 'use_action reactions require action_name'
+    for i = 1, #rule.steps do
+        local ok, err = validate_sequence_step(rule.steps[i], i, #rule.steps)
+        if not ok then
+            return false, err
+        end
     end
     return true
 end

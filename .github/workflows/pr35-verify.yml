@@ -1,0 +1,35 @@
+name: PR35 reaction sequence verification
+
+on:
+  push:
+    branches:
+      - feature/reaction-action-sequences
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  winforms:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Build WinForms
+        run: dotnet build UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release
+      - name: Reaction sequence persistence self-test
+        run: dotnet run --project UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --no-build -- --selftest-reaction-sequence
+      - name: Activity profile self-tests
+        run: dotnet run --project UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --no-build -- --selftest-activity-profiles
+
+  lua-sequence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: Reaction sequence runtime self-test
+        run: lua5.1 tests/replay/harness/selftest_reaction_action_sequence.lua
+      - name: Reaction sequence ownership self-test
+        run: lua5.1 tests/replay/harness/selftest_reaction_sequence_command_ownership.lua
