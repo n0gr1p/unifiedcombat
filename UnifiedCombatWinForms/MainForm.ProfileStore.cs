@@ -475,6 +475,7 @@ public partial class MainForm
             }
             rules.Add(serialized);
         }
+        AppendReactionSequenceRules(rules);
         return rules;
     }
 
