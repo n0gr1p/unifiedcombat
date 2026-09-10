@@ -1,0 +1,66 @@
+name: Apply reaction sequence writer patch
+
+on:
+  push:
+    branches:
+      - feature/reaction-action-sequences
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('UnifiedCombatWinForms/StructuredProfileV2Writer.cs')
+          s = p.read_text()
+          old = 'response == "move_to_range" || response == "use_action"))'
+          new = 'response == "move_to_range" || response == "use_action" || response == "use_sequence"))'
+          if s.count(old) != 1:
+              raise SystemExit('could not locate reaction response validation')
+          s = s.replace(old, new, 1)
+
+          marker = '            list.Add(serialized);\n'
+          use_action = '            else if (response == "use_action")\n'
+          start = s.find(use_action)
+          if start < 0:
+              raise SystemExit('could not locate use_action branch')
+          pos = s.find(marker, start)
+          if pos < 0:
+              raise SystemExit('could not locate reaction list append')
+          block = '''            else if (response == "use_sequence")
+            {
+                var sequence = ReactionSequenceProfileCodec.ParseRule(rule);
+                var steps = new List<object?>(sequence.Steps.Count);
+                foreach (var step in sequence.Steps)
+                {
+                    steps.Add(
+                        new StructuredProfileNode()
+                            .Add("action_type", step.ActionType)
+                            .Add("action_name", step.ActionName)
+                            .Add("target", step.Target)
+                            .Add("optional", step.Optional)
+                    );
+                }
+                serialized.Add("steps", steps);
+            }
+'''
+          s = s[:pos] + block + s[pos:]
+          p.write_text(s)
+          PY
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add UnifiedCombatWinForms/StructuredProfileV2Writer.cs
+          git rm -f .github/workflows/pr35-apply-writer.yml .github/workflows/pr35-writer-rewrite.yml
+          git commit -m "Serialize reaction sequences in structured profiles"
+          git push
