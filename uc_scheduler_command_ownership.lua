@@ -1,6 +1,5 @@
 local M = {}
 local recovery_hold = require('uc_recovery_hold')
-local uc_time = require('uc_time')
 
 local function require_table(value, name)
     if type(value) ~= "table" then
@@ -69,7 +68,7 @@ local function consume_dispatched_reaction_action(intent)
             target_kind,
             target_id,
             player_id,
-            uc_time.now()
+            require('uc_time').now()
         )
         if marked ~= true then
             return nil
