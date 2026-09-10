@@ -16,41 +16,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Restore master writer and apply sequence-only patch
+      - name: Restore base writer and apply sequence-only patch
+        shell: bash
         run: |
-          git show origin/master:UnifiedCombatWinForms/StructuredProfileV2Writer.cs > UnifiedCombatWinForms/StructuredProfileV2Writer.cs
+          set -euxo pipefail
+          git show 0289702b5934ce5cb61d6f9fa5f8f533a4e492b4:UnifiedCombatWinForms/StructuredProfileV2Writer.cs > UnifiedCombatWinForms/StructuredProfileV2Writer.cs
           python3 - <<'PY'
           from pathlib import Path
           p = Path('UnifiedCombatWinForms/StructuredProfileV2Writer.cs')
           s = p.read_text()
-          old = '''            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))
-                || (trigger == "enemy_buff" && response == "stop_attacking");'''
-          new = '''            var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action" || response == "use_sequence"))
-                || (trigger == "enemy_buff" && response == "stop_attacking");'''
-          if s.count(old) != 1:
-              raise SystemExit(f'valid-response patch anchor count={s.count(old)}')
-          s = s.replace(old, new)
-          anchor = '''            else if (response == "use_action")
-            {
-                var actionType = ReadString(rule, "action_type", "").Trim();
-                var actionName = ReadString(rule, "action_name", "").Trim();
-                if (actionType != "spell" || actionName.Length == 0)
-                {
-                    throw new InvalidDataException("use_action reaction requires action_type 'spell' and a non-empty action_name");
-                }
-                serialized.Add("action_type", actionType);
+          needle = 'response == "move_to_range" || response == "use_action"))'
+          if s.count(needle) != 1:
+              raise SystemExit(f'valid-response needle count={s.count(needle)}')
+          s = s.replace(needle, 'response == "move_to_range" || response == "use_action" || response == "use_sequence"))', 1)
+
+          needle = '''                serialized.Add("action_type", actionType);
                 serialized.Add("action_name", actionName);
             }
             list.Add(serialized);'''
-          replacement = '''            else if (response == "use_action")
-            {
-                var actionType = ReadString(rule, "action_type", "").Trim();
-                var actionName = ReadString(rule, "action_name", "").Trim();
-                if (actionType != "spell" || actionName.Length == 0)
-                {
-                    throw new InvalidDataException("use_action reaction requires action_type 'spell' and a non-empty action_name");
-                }
-                serialized.Add("action_type", actionType);
+          replacement = '''                serialized.Add("action_type", actionType);
                 serialized.Add("action_name", actionName);
             }
             else if (response == "use_sequence")
@@ -70,9 +54,9 @@ jobs:
                 serialized.Add("steps", steps);
             }
             list.Add(serialized);'''
-          if s.count(anchor) != 1:
-              raise SystemExit(f'sequence patch anchor count={s.count(anchor)}')
-          p.write_text(s.replace(anchor, replacement))
+          if s.count(needle) != 1:
+              raise SystemExit(f'sequence needle count={s.count(needle)}')
+          p.write_text(s.replace(needle, replacement, 1))
           PY
           git rm .github/workflows/pr35-writer-rewrite.yml
           git config user.name github-actions[bot]
