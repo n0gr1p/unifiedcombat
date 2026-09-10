@@ -16,6 +16,12 @@ end
 
 uc_prefer_addon_local_libs()
 
+-- Windower keeps Lua's package.loaded table alive across addon reloads. Force all
+-- UnifiedCombat-owned modules to be required from the current files on disk.
+package.loaded.uc_runtime_bootstrap = nil
+local uc_runtime_bootstrap = require('uc_runtime_bootstrap')
+local UC_RUNTIME_BOOT = uc_runtime_bootstrap.begin({ addon_path = windower.addon_path })
+
 require('lor/lor_utils')
 require('tables')
 local uc_runtime_overrides = require('uc_runtime_overrides')
@@ -518,9 +524,27 @@ _G.UC_IsFollowParticipant = uc_is_follow_participant
 require('remote_bridge')
 local UC_COMBAT_CORE = require('unified_combat_core')
 local UC_UNIFIED_ENGINE = require('unified_engine')
+local UC_UNIFIED_SCHEDULER = require('unified_scheduler')
 local uc_party_follow = require('uc_party_follow')
 local uc_nyzul_runtime = require('uc_nyzul_runtime')
 local uc_pathing = require('uc_pathing')
+
+local UC_RUNTIME_OK, UC_RUNTIME_STATUS = uc_runtime_bootstrap.finalize(UC_RUNTIME_BOOT, {
+	scheduler = UC_UNIFIED_SCHEDULER,
+	engine = UC_UNIFIED_ENGINE,
+})
+if not UC_RUNTIME_OK then
+	error('UnifiedCombat runtime integrity check failed: ' .. tostring(UC_RUNTIME_STATUS.integrity_error or 'unknown mismatch'))
+end
+windower.add_to_chat(207, uc_runtime_bootstrap.summary_line(UC_RUNTIME_STATUS))
+if type(_G.UC_ACTION_TIMELINE_LOG) == 'function' then
+	_G.UC_ACTION_TIMELINE_LOG(
+		'RUNTIME_FINGERPRINT',
+		uc_runtime_bootstrap.timeline_fields(UC_RUNTIME_STATUS),
+		'runtime_fingerprint',
+		0
+	)
+end
 
 local function uc_update_engine()
 	UC_ENGINE = 'UC'
@@ -3284,6 +3308,12 @@ windower.register_event('addon command', function(...)
 	elseif a == 'port' and args[2] then
 		_G.UC_REMOTE_PORT = tonumber(args[2]) or 27182
 		windower.add_to_chat(207, 'UnifiedCombat remote port: ' .. tostring(_G.UC_REMOTE_PORT))
+		return
+	elseif a == 'runtime' or a == 'fingerprint' then
+		local runtime_status = rawget(_G, 'UC_RUNTIME_FINGERPRINT')
+		for _, line in ipairs(uc_runtime_bootstrap.status_lines(runtime_status)) do
+			windower.add_to_chat(runtime_status and runtime_status.integrity_ok == false and 167 or 207, line)
+		end
 		return
 	elseif a == 'engine' then
 		windower.add_to_chat(207, 'UnifiedCombat engine: ' .. UC_ENGINE)
