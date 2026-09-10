@@ -25,18 +25,23 @@ jobs:
           from pathlib import Path
           p = Path('UnifiedCombatWinForms/StructuredProfileV2Writer.cs')
           s = p.read_text()
-          needle = 'response == "move_to_range" || response == "use_action"))'
-          if s.count(needle) != 1:
-              raise SystemExit(f'valid-response needle count={s.count(needle)}')
-          s = s.replace(needle, 'response == "move_to_range" || response == "use_action" || response == "use_sequence"))', 1)
+          valid = 'response == "move_to_range" || response == "use_action"))'
+          if s.count(valid) != 1:
+              raise SystemExit(f'valid-response marker count={s.count(valid)}')
+          s = s.replace(valid, 'response == "move_to_range" || response == "use_action" || response == "use_sequence"))', 1)
 
-          needle = '''                serialized.Add("action_type", actionType);
-                serialized.Add("action_name", actionName);
-            }
-            list.Add(serialized);'''
-          replacement = '''                serialized.Add("action_type", actionType);
-                serialized.Add("action_name", actionName);
-            }
+          action_marker = 'serialized.Add("action_name", actionName);'
+          if s.count(action_marker) != 1:
+              raise SystemExit(f'action-name marker count={s.count(action_marker)}')
+          action_pos = s.index(action_marker) + len(action_marker)
+          list_marker = 'list.Add(serialized);'
+          list_pos = s.find(list_marker, action_pos)
+          if list_pos < 0:
+              raise SystemExit('list marker not found after use_action block')
+          close_pos = s.rfind('}', action_pos, list_pos)
+          if close_pos < 0:
+              raise SystemExit('use_action closing brace not found')
+          insertion = '''
             else if (response == "use_sequence")
             {
                 var sequence = ReactionSequenceProfileCodec.ParseRule(rule);
@@ -53,10 +58,9 @@ jobs:
                 }
                 serialized.Add("steps", steps);
             }
-            list.Add(serialized);'''
-          if s.count(needle) != 1:
-              raise SystemExit(f'sequence needle count={s.count(needle)}')
-          p.write_text(s.replace(needle, replacement, 1))
+'''
+          s = s[:close_pos+1] + insertion + s[close_pos+1:]
+          p.write_text(s)
           PY
           git rm .github/workflows/pr35-writer-rewrite.yml
           git config user.name github-actions[bot]
