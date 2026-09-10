@@ -10,14 +10,18 @@ permissions:
 
 jobs:
   patch-and-test:
-    if: github.event.head_commit.message == 'Fix runtime fingerprint patch guard'
+    if: github.event.head_commit.message == 'Run runtime fingerprint implementation'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Apply runtime fingerprint patch
-        run: python3 tools/patch_runtime_fingerprint.py
+        run: |
+          python3 tools/patch_runtime_fingerprint.py
+          # Keep this implementation commit runtime-only. The connected GitHub
+          # app will clean up temporary workflow/tooling after CI succeeds.
+          git checkout -- .github/workflows/pr35-verify.yml
       - name: Install Lua 5.1
         run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: Parse changed Lua files
@@ -37,15 +41,14 @@ jobs:
         run: |
           set -euo pipefail
           actual="$(git status --short | cut -c4- | sort)"
-          expected="$(printf '%s\n' .github/workflows/pr35-verify.yml UnifiedCombat.lua tests/replay/harness/selftest_runtime_bootstrap.lua uc_runtime_bootstrap.lua unified_engine.lua unified_scheduler.lua | sort)"
+          expected="$(printf '%s\n' UnifiedCombat.lua tests/replay/harness/selftest_runtime_bootstrap.lua uc_runtime_bootstrap.lua unified_engine.lua unified_scheduler.lua | sort)"
           printf '%s\n' "$actual"
           test "$actual" = "$expected"
-      - name: Commit implementation and remove temporary tooling
+      - name: Commit implementation
         run: |
           set -euo pipefail
-          rm -f .github/workflows/runtime-fingerprint-patch.yml tools/patch_runtime_fingerprint.py
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
+          git add UnifiedCombat.lua unified_engine.lua unified_scheduler.lua uc_runtime_bootstrap.lua tests/replay/harness/selftest_runtime_bootstrap.lua
           git commit -m "Add UnifiedCombat runtime fingerprinting"
           git push origin HEAD:fix/runtime-fingerprint
