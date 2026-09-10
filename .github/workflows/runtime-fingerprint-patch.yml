@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   patch-and-test:
-    if: github.event.head_commit.message == 'Add runtime fingerprint patch workflow'
+    if: github.event.head_commit.message == 'Fix runtime fingerprint patch guard'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,8 +36,10 @@ jobs:
       - name: Verify diff scope
         run: |
           set -euo pipefail
-          git diff --name-only
-          test "$(git diff --name-only | sort)" = "$(printf '%s\n' .github/workflows/pr35-verify.yml UnifiedCombat.lua tests/replay/harness/selftest_runtime_bootstrap.lua uc_runtime_bootstrap.lua unified_engine.lua unified_scheduler.lua | sort)"
+          actual="$(git status --short | cut -c4- | sort)"
+          expected="$(printf '%s\n' .github/workflows/pr35-verify.yml UnifiedCombat.lua tests/replay/harness/selftest_runtime_bootstrap.lua uc_runtime_bootstrap.lua unified_engine.lua unified_scheduler.lua | sort)"
+          printf '%s\n' "$actual"
+          test "$actual" = "$expected"
       - name: Commit implementation and remove temporary tooling
         run: |
           set -euo pipefail
