@@ -194,7 +194,7 @@ internal static class StructuredProfileV2WriterTests
         };
 
         AssertTrue(MainForm.MigrateProfileInPlace(profile), "schema-two profile must migrate");
-        AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 5, "migrated schema version mismatch");
+        AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 8, "migrated schema version mismatch");
         AssertTrue(!profile["domain_combat_enabled"]!.GetValue<bool>(), "explicit combat domain value must be preserved");
         AssertTrue(profile["domain_defensive_enabled"]!.GetValue<bool>(), "missing defensive domain must migrate enabled");
         AssertTrue(profile["domain_movement_enabled"]!.GetValue<bool>(), "missing movement domain must migrate enabled");
@@ -254,7 +254,7 @@ internal static class StructuredProfileV2WriterTests
             ["kei_fullers_run_away_distance"] = 12.0,
         };
         AssertTrue(MainForm.MigrateProfileInPlace(profile), "schema-three Kei profile must migrate");
-        AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 5, "Kei migration schema version mismatch");
+        AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 8, "Kei migration schema version mismatch");
         AssertTrue(profile["kei_fullers_target_distance"]!.GetValue<double>() == 12.0, "Kei target distance migration mismatch");
         AssertTrue(!profile.ContainsKey("kei_fullers_run_away_distance"), "Kei legacy distance must be removed after migration");
 
@@ -648,7 +648,7 @@ internal static class StructuredProfileV2WriterTests
             "defensive controls must be registered in the General defensive section"
         );
         AssertTrue(
-            HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "auto_engage", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" }),
+            HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "auto_engage", "ability_allow_unengaged", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" }),
             "combat and targeting controls must be registered together"
         );
         AssertTrue(
@@ -1195,7 +1195,7 @@ internal static class StructuredProfileV2WriterTests
             ?? throw new InvalidOperationException("addon root unavailable for BRD UI source test");
         var source = File.ReadAllText(Path.Combine(root, "UnifiedCombatWinForms", "MainForm.ParityLogic.cs"));
         var start = source.IndexOf("private void EnsureBrdTabVisibility", StringComparison.Ordinal);
-        var end = source.IndexOf("private void ApplyCorRollFromSnapshot", start, StringComparison.Ordinal);
+        var end = source.IndexOf("private void OnMagicBurstConfigChanged", start, StringComparison.Ordinal);
         AssertTrue(start >= 0 && end > start, "BRD UI handler source range missing");
         var brdHandlers = source[start..end];
         AssertNotContains(brdHandlers, "Forward(", "BRD durable controls must not emit live bridge traffic");
