@@ -19,8 +19,8 @@ jobs:
           dotnet-version: '9.0.x'
       - name: Build WinForms
         run: dotnet build UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release
-      - name: Profile v2 self-test
-        run: dotnet run --project UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --no-build -- --selftest-profile-v2
+      - name: RUN tank profile persistence self-test
+        run: dotnet run --project UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --no-build -- --selftest-run-tank-profile
       - name: Reaction sequence persistence self-test
         run: dotnet run --project UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --no-build -- --selftest-reaction-sequence
       - name: Activity profile self-tests
