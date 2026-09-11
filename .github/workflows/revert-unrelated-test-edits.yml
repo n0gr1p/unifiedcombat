@@ -1,0 +1,48 @@
+name: Revert unrelated test edits
+
+on:
+  push:
+    branches:
+      - feature/run-tank-automation
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: ${{ !contains(github.event.head_commit.message, '[test-cleanup-done]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/run-tank-automation
+      - name: Revert unrelated legacy-test changes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs')
+          s = p.read_text(encoding='utf-8')
+          replacements = {
+            'new[] { "autotarget", "auto_engage", "ability_allow_unengaged", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" }':
+              'new[] { "autotarget", "auto_engage", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" }',
+            'AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 8, "migrated schema version mismatch");':
+              'AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 5, "migrated schema version mismatch");',
+            'AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 8, "Kei migration schema version mismatch");':
+              'AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 5, "Kei migration schema version mismatch");',
+          }
+          changed = False
+          for old, new in replacements.items():
+              if old in s:
+                  s = s.replace(old, new, 1)
+                  changed = True
+          if changed:
+              p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit cleanup
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Revert unrelated profile-v2 test edits [test-cleanup-done]'
+          git push origin HEAD:feature/run-tank-automation
