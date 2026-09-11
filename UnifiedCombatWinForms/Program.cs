@@ -15,6 +15,12 @@ internal static class Program
             return;
         }
 
+        if (args.Any(arg => string.Equals(arg, "--selftest-run-tank-profile", StringComparison.Ordinal)))
+        {
+            Environment.ExitCode = RunTankProfileTests.Run();
+            return;
+        }
+
         if (args.Any(arg => string.Equals(arg, "--selftest-profile-v2", StringComparison.Ordinal)))
         {
             var profileStatus = StructuredProfileV2WriterTests.Run();
