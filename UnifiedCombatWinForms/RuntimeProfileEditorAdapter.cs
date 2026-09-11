@@ -34,6 +34,7 @@ internal static class RuntimeProfileEditorAdapter
         profile["party_follow_selected"] = RequiredString(profile, "party_follow_leader_name");
         CopyStringArrayAsPipe(profile, "abilities", "abilities_selected");
         CopyStringArrayAsPipe(profile, "tank_enmity_actions", "tank_enmity_actions");
+        FlattenRunTank(profile);
         CopyStringArrayAsPipe(profile, "nyzul_parking_order", "nyzul_parking_order");
         CopyStringArrayAsPipe(profile, "formation_required_party_names", "formation_required_party_names");
         CopyStringArrayAsPipe(profile, "brd_songs", "brd_songs");
@@ -101,6 +102,30 @@ internal static class RuntimeProfileEditorAdapter
             entries.Add($"{i + 1}:{name}");
         }
         profile[destinationKey] = string.Join("|", entries);
+    }
+
+    private static void FlattenRunTank(JsonObject profile)
+    {
+        if (!profile.TryGetPropertyValue("tank_run", out var source) || source is null)
+        {
+            return;
+        }
+        var run = source as JsonObject
+            ?? throw new InvalidDataException("Runtime active config 'tank_run' must be an object.");
+        var runes = RequiredObject(run, "runes", "tank_run.runes");
+        var foil = RequiredObject(run, "foil", "tank_run.foil");
+        var wards = RequiredObject(run, "wards", "tank_run.wards");
+        var magic = RequiredObject(run, "magic_support", "tank_run.magic_support");
+        profile["run_tank_enabled"] = RequiredValue(run, "enabled", "tank_run.enabled");
+        profile["run_tank_runes_maintain"] = RequiredValue(runes, "maintain", "tank_run.runes.maintain");
+        profile["run_tank_runes"] = JoinStringArray(RequiredArray(runes, "desired", "tank_run.runes.desired"), "tank_run.runes.desired");
+        profile["run_tank_foil"] = RequiredValue(foil, "enabled", "tank_run.foil.enabled");
+        foreach (var key in new[] { "vallation", "valiance", "pflug", "swordplay", "battuta", "one_for_all" })
+        {
+            profile[$"run_tank_{key}"] = RequiredValue(wards, key, $"tank_run.wards.{key}");
+        }
+        profile["run_tank_gambit"] = RequiredValue(magic, "gambit", "tank_run.magic_support.gambit");
+        profile["run_tank_rayke"] = RequiredValue(magic, "rayke", "tank_run.magic_support.rayke");
     }
 
     private static void FlattenCampPulling(JsonObject profile)

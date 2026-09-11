@@ -974,7 +974,53 @@ internal static class StructuredProfileV2Writer
     {
         return new StructuredProfileNode()
             .Add("enabled", ReadBool(flatProfile, "tank", false))
-            .Add("enmity", new StructuredProfileNode().Add("actions", SplitPipeList(ReadString(flatProfile, "tank_enmity_actions", ""))));
+            .Add("enmity", new StructuredProfileNode().Add("actions", SplitPipeList(ReadString(flatProfile, "tank_enmity_actions", ""))))
+            .Add("run", BuildRunTank(flatProfile));
+    }
+
+    private static StructuredProfileNode BuildRunTank(JsonObject flatProfile)
+    {
+        var runes = SplitPipeList(ReadString(flatProfile, "run_tank_runes", ""));
+        var canonicalRunes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Ignis"] = "Ignis", ["Gelus"] = "Gelus", ["Flabra"] = "Flabra", ["Tellus"] = "Tellus",
+            ["Sulpor"] = "Sulpor", ["Unda"] = "Unda", ["Lux"] = "Lux", ["Tenebrae"] = "Tenebrae",
+        };
+        for (var i = 0; i < runes.Count; i++)
+        {
+            var raw = (runes[i]?.ToString() ?? string.Empty).Trim();
+            if (!canonicalRunes.TryGetValue(raw, out var canonical))
+            {
+                throw new InvalidDataException($"RUN rune '{raw}' is not a Rune Enchantment.");
+            }
+            runes[i] = canonical;
+        }
+        if (runes.Count != 0 && runes.Count != 3)
+        {
+            throw new InvalidDataException("RUN rune list must be empty or contain exactly three runes.");
+        }
+        var vallation = ReadBool(flatProfile, "run_tank_vallation", false);
+        var valiance = ReadBool(flatProfile, "run_tank_valiance", false);
+        if (vallation && valiance)
+        {
+            throw new InvalidDataException("RUN automation cannot enable both Vallation and Valiance.");
+        }
+        return new StructuredProfileNode()
+            .Add("enabled", ReadBool(flatProfile, "run_tank_enabled", false))
+            .Add("runes", new StructuredProfileNode()
+                .Add("maintain", ReadBool(flatProfile, "run_tank_runes_maintain", true))
+                .Add("desired", runes))
+            .Add("foil", new StructuredProfileNode().Add("enabled", ReadBool(flatProfile, "run_tank_foil", true)))
+            .Add("wards", new StructuredProfileNode()
+                .Add("vallation", vallation)
+                .Add("valiance", valiance)
+                .Add("pflug", ReadBool(flatProfile, "run_tank_pflug", false))
+                .Add("swordplay", ReadBool(flatProfile, "run_tank_swordplay", false))
+                .Add("battuta", ReadBool(flatProfile, "run_tank_battuta", false))
+                .Add("one_for_all", ReadBool(flatProfile, "run_tank_one_for_all", false)))
+            .Add("magic_support", new StructuredProfileNode()
+                .Add("gambit", ReadBool(flatProfile, "run_tank_gambit", false))
+                .Add("rayke", ReadBool(flatProfile, "run_tank_rayke", false)));
     }
 
     private static StructuredProfileNode BuildSleep(JsonObject flatProfile)

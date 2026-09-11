@@ -28,8 +28,15 @@ function M.new(deps)
 	local bool_setting = require_function(deps, 'bool_setting')
 	local select_tank_enmity = require_function(deps, 'select_tank_enmity')
 	local action_ready = require_function(deps, 'action_ready')
+	local action_effective_range = require_function(deps, 'action_effective_range')
 	local log_tank_sched = require_function(deps, 'log_tank_sched')
 	local clamp_urgency = require_function(deps, 'clamp_urgency')
+	local run_provider = require('uc_provider_run_tank').new({
+		action_ready = action_ready,
+		action_effective_range = action_effective_range,
+		log_tank_sched = log_tank_sched,
+		clamp_urgency = clamp_urgency,
+	})
 
 	local provider = {}
 
@@ -43,6 +50,7 @@ function M.new(deps)
 		if ctx.player_present ~= true then
 			return
 		end
+		run_provider.collect(ctx, out)
 		local engaged = tonumber(player.status) == 1
 		local allow_unengaged = bool_setting(ctx.settings.ability_allow_unengaged, false)
 		if not engaged and not allow_unengaged then

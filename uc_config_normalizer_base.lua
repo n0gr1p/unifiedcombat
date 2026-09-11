@@ -1,6 +1,7 @@
 local M = {}
 local uc_sch_config = require('uc_sch_config')
 local uc_pup_config = require('uc_pup_config')
+local uc_run_config = require('uc_run_config')
 
 local CURRENT_CANONICAL_CONFIG_VERSION = 1
 
@@ -1113,6 +1114,7 @@ local function default_config(meta)
             enmity = {
                 actions = {},
             },
+            run = uc_run_config.default_config(),
         },
         sleep = {
             enabled = false,
@@ -2253,13 +2255,15 @@ end
 local function normalize_tank(source, config)
     local tank = config.tank
     local nested = get_path(source, { 'tank' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'enmity' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'enmity', 'run' }) then
         tank.enabled = normalize_boolean(nested.enabled, tank.enabled)
         local enmity = is_table(nested.enmity) and nested.enmity or {}
         tank.enmity.actions = normalize_list(enmity.actions, tank.enmity.actions)
+        tank.run = uc_run_config.normalize(nested.run)
     else
         tank.enabled = normalize_boolean(first_path(source, { path('tank') }), tank.enabled)
         tank.enmity.actions = normalize_list(first_path(source, { path('tank_enmity_actions') }), tank.enmity.actions)
+        tank.run = uc_run_config.normalize(nil, source)
     end
 end
 
