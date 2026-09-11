@@ -20,7 +20,9 @@ jobs:
         with:
           python-version: '3.x'
       - name: Apply guarded patch
-        run: python tools/apply_run_tank_patch.py
+        run: |
+          python tools/apply_run_tank_patch.py
+          rm -f .github/workflows/run-tank-verify.yml
       - name: Commit generated changes
         run: |
           git config user.name github-actions[bot]
