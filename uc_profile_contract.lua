@@ -54,6 +54,7 @@ local PREFIX_CLASSIFICATION = {
     path_ = "profile_owned_by_ui",
     target_ = "profile_owned_by_ui",
     reaction_ = "profile_owned_by_ui",
+    run_tank_ = "profile_owned_by_ui",
     party_follow_ = "profile_owned_by_ui",
     fight_follow_ = "profile_owned_by_ui",
     spacing_ = "profile_owned_by_ui",

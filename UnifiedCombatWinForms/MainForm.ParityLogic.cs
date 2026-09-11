@@ -516,6 +516,18 @@ public partial class MainForm
             _tankEnmityTypeCombo.SelectedItem = "ja";
             _tankEnmityNameCombo.Items.Clear();
             _tankEnmityNameCombo.Text = "";
+            _runTankEnabled.Checked = false;
+            _runRunesMaintain.Checked = true;
+            _runRunes.Text = "";
+            _runFoil.Checked = true;
+            _runVallation.Checked = false;
+            _runValiance.Checked = false;
+            _runPflug.Checked = false;
+            _runSwordplay.Checked = false;
+            _runBattuta.Checked = false;
+            _runOneForAll.Checked = false;
+            _runGambit.Checked = false;
+            _runRayke.Checked = false;
             _pathHunterName.Text = "";
             _corRoll1Combo.Items.Clear();
             _corRoll2Combo.Items.Clear();
@@ -859,6 +871,18 @@ public partial class MainForm
                 _tankEnmityRows = tankEnmityActions.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
                 RebindTankEnmityListUi();
             }
+            _runTankEnabled.Checked = SessionStateHelper.GetBool(s, "run_tank_enabled", false);
+            _runRunesMaintain.Checked = SessionStateHelper.GetBool(s, "run_tank_runes_maintain", true);
+            _runRunes.Text = SessionStateHelper.GetString(s, "run_tank_runes");
+            _runFoil.Checked = SessionStateHelper.GetBool(s, "run_tank_foil", true);
+            _runVallation.Checked = SessionStateHelper.GetBool(s, "run_tank_vallation", false);
+            _runValiance.Checked = SessionStateHelper.GetBool(s, "run_tank_valiance", false);
+            _runPflug.Checked = SessionStateHelper.GetBool(s, "run_tank_pflug", false);
+            _runSwordplay.Checked = SessionStateHelper.GetBool(s, "run_tank_swordplay", false);
+            _runBattuta.Checked = SessionStateHelper.GetBool(s, "run_tank_battuta", false);
+            _runOneForAll.Checked = SessionStateHelper.GetBool(s, "run_tank_one_for_all", false);
+            _runGambit.Checked = SessionStateHelper.GetBool(s, "run_tank_gambit", false);
+            _runRayke.Checked = SessionStateHelper.GetBool(s, "run_tank_rayke", false);
             var pullTypeIncoming = SessionStateHelper.GetString(s, "path_pull_action_type", "ja");
             if (!string.Equals(pullTypeIncoming, "spell", StringComparison.OrdinalIgnoreCase))
             {

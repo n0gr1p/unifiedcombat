@@ -996,6 +996,9 @@ local function apply_structured_config_to_candidate(candidate, config)
 		if type(config.tank.enmity) == 'table' then
 			candidate.tank_enmity_actions = clone_value(config.tank.enmity.actions)
 		end
+		if type(config.tank.run) == 'table' then
+			candidate.tank_run = clone_value(config.tank.run)
+		end
 	end
 
 	if type(config.sleep) == 'table' then

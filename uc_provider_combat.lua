@@ -603,7 +603,10 @@ function M.new(deps)
 			end
 		end
 		local tank_mode = bool_setting(tank_enabled(ctx.settings), false)
-		local ordered = collect_ordered_abilities(ctx.settings, 6)
+		local ordered = require('uc_run_ownership').filter_generic_abilities(
+			ctx.settings,
+			collect_ordered_abilities(ctx.settings, 6)
+		)
 		if #ordered == 0 then
 			return
 		end

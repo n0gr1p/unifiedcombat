@@ -8267,6 +8267,7 @@ scheduler.providers.tank_enmity = require('uc_provider_tank_enmity').new({
 	bool_setting = bool_setting,
 	select_tank_enmity = combat_core.select_tank_enmity_for_scheduler,
 	action_ready = action_ready,
+	action_effective_range = action_effective_range,
 	log_tank_sched = log_tank_sched,
 	clamp_urgency = p1_clamp_urgency,
 })

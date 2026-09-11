@@ -322,6 +322,18 @@ public partial class MainForm
     private Button _tankEnmityRemove = null!;
     private Button _tankEnmityUp = null!;
     private Button _tankEnmityDown = null!;
+    private CheckBox _runTankEnabled = null!;
+    private CheckBox _runRunesMaintain = null!;
+    private TextBox _runRunes = null!;
+    private CheckBox _runFoil = null!;
+    private CheckBox _runVallation = null!;
+    private CheckBox _runValiance = null!;
+    private CheckBox _runPflug = null!;
+    private CheckBox _runSwordplay = null!;
+    private CheckBox _runBattuta = null!;
+    private CheckBox _runOneForAll = null!;
+    private CheckBox _runGambit = null!;
+    private CheckBox _runRayke = null!;
 
     private void BuildParityEditor(Panel host, FlowLayoutPanel sessionActionsFooter)
     {
@@ -1120,6 +1132,40 @@ public partial class MainForm
         tankBtnRow.Controls.Add(_tankEnmityUp);
         tankBtnRow.Controls.Add(_tankEnmityDown);
         tankFlow.Controls.Add(tankBtnRow);
+
+        tankFlow.Controls.Add(new Label { Text = "Rune Fencer automation", AutoSize = true, Padding = new Padding(0, 10, 0, 2) });
+        _runTankEnabled = new CheckBox { Text = "Enable RUN automation", AutoSize = true };
+        tankFlow.Controls.Add(_runTankEnabled);
+        var runeRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        runeRow.Controls.Add(new Label { Text = "Runes", AutoSize = true, Padding = new Padding(0, 6, 4, 0) });
+        _runRunes = new TextBox { Width = 250, PlaceholderText = "Ignis|Ignis|Ignis" };
+        runeRow.Controls.Add(_runRunes);
+        _runRunesMaintain = new CheckBox { Text = "Maintain", AutoSize = true, Checked = true };
+        runeRow.Controls.Add(_runRunesMaintain);
+        tankFlow.Controls.Add(runeRow);
+        _runFoil = new CheckBox { Text = "Maintain Foil", AutoSize = true, Checked = true };
+        tankFlow.Controls.Add(_runFoil);
+        var wardRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true };
+        _runVallation = new CheckBox { Text = "Vallation", AutoSize = true };
+        _runValiance = new CheckBox { Text = "Valiance", AutoSize = true };
+        _runPflug = new CheckBox { Text = "Pflug", AutoSize = true };
+        _runBattuta = new CheckBox { Text = "Battuta", AutoSize = true };
+        _runSwordplay = new CheckBox { Text = "Swordplay", AutoSize = true };
+        _runOneForAll = new CheckBox { Text = "One for All", AutoSize = true };
+        wardRow.Controls.Add(_runVallation);
+        wardRow.Controls.Add(_runValiance);
+        wardRow.Controls.Add(_runPflug);
+        wardRow.Controls.Add(_runBattuta);
+        wardRow.Controls.Add(_runSwordplay);
+        wardRow.Controls.Add(_runOneForAll);
+        tankFlow.Controls.Add(wardRow);
+        var magicRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        _runGambit = new CheckBox { Text = "Gambit", AutoSize = true };
+        _runRayke = new CheckBox { Text = "Rayke", AutoSize = true };
+        magicRow.Controls.Add(_runGambit);
+        magicRow.Controls.Add(_runRayke);
+        tankFlow.Controls.Add(magicRow);
+
         tankGroup.SetContent(tankFlow);
         g.Controls.Add(tankGroup, 0, gRow++);
 
