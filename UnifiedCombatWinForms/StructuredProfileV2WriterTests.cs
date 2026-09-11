@@ -648,7 +648,7 @@ internal static class StructuredProfileV2WriterTests
             "defensive controls must be registered in the General defensive section"
         );
         AssertTrue(
-            HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "auto_engage", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" }),
+            HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "auto_engage", "ability_allow_unengaged", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" }),
             "combat and targeting controls must be registered together"
         );
         AssertTrue(
