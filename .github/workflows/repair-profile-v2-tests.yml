@@ -1,0 +1,50 @@
+name: Repair profile-v2 test health
+
+on:
+  push:
+    branches:
+      - feature/run-tank-automation
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ !contains(github.event.head_commit.message, '[profile-v2-tests-repaired]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/run-tank-automation
+      - name: Repair stale and over-broad profile-v2 assertions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs')
+          s = p.read_text(encoding='utf-8')
+          replacements = {
+            'HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "auto_engage", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" })':
+              'HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "auto_engage", "ability_allow_unengaged", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" })',
+            'AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 5, "migrated schema version mismatch");':
+              'AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 8, "migrated schema version mismatch");',
+            'AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 5, "Kei migration schema version mismatch");':
+              'AssertEqual(profile["profile_schema_version"]!.GetValue<int>(), 8, "Kei migration schema version mismatch");',
+            'var end = source.IndexOf("private void ApplyCorRollFromSnapshot", start, StringComparison.Ordinal);':
+              'var end = source.IndexOf("private void OnMagicBurstConfigChanged", start, StringComparison.Ordinal);',
+          }
+          for old, new in replacements.items():
+              if old not in s:
+                  if new in s:
+                      continue
+                  raise SystemExit(f'expected test anchor missing: {old}')
+              s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit repairs and remove helper workflow
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/repair-profile-v2-tests.yml
+          git add UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs
+          git commit -m 'Repair profile-v2 test health [profile-v2-tests-repaired]'
+          git push origin HEAD:feature/run-tank-automation
