@@ -113,6 +113,13 @@ end
 function M.normalize(value, flat_source)
     local out = M.default_config()
     local structured = type(value) == 'table' and value or nil
+    -- uc_active_config projects the canonical RUN domain into the runtime
+    -- compatibility mirror `tank_run`. Treat that mirror as authoritative when
+    -- normalizing projected settings; the copied base settings may still contain
+    -- stale run_tank_* editor fields from the previously active profile.
+    if structured == nil and type(flat_source) == 'table' and type(flat_source.tank_run) == 'table' then
+        structured = flat_source.tank_run
+    end
     if structured ~= nil then
         out.enabled = bool(structured.enabled, out.enabled, 'config.tank.run.enabled')
         local runes = type(structured.runes) == 'table' and structured.runes or {}

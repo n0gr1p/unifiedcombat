@@ -74,6 +74,25 @@ local normalized = run_config.normalize({
 assert_equal(normalized.runes.desired[1], 'Ignis', 'rune canonicalization')
 assert_equal(#normalized.runes.desired, 3, 'rune count')
 
+-- Active-config projection stores RUN in the structured compatibility mirror
+-- `tank_run`. Normalizing projected settings must preserve that domain even if
+-- stale run_tank_* UI fields are also present in the base settings table.
+local projected = run_config.normalize(nil, {
+    tank_run = {
+        enabled = true,
+        runes = { maintain = true, desired = { 'Tenebrae', 'Tenebrae', 'Tenebrae' } },
+        foil = { enabled = true },
+        wards = { valiance = true, pflug = true },
+        magic_support = { gambit = false, rayke = false },
+    },
+    run_tank_enabled = false,
+    run_tank_runes = 'Ignis|Ignis|Ignis',
+})
+assert_true(projected.enabled, 'projected tank_run mirror must preserve enabled=true')
+assert_equal(projected.runes.desired[1], 'Tenebrae', 'projected tank_run mirror must beat stale flat rune fields')
+assert_true(projected.wards.valiance, 'projected tank_run mirror must preserve ward settings')
+assert_true(projected.wards.pflug, 'projected tank_run mirror must preserve Pflug setting')
+
 local bad_ok = pcall(function()
     run_config.normalize({ enabled = true, runes = { desired = { 'Ignis', 'Ignis' } } })
 end)
