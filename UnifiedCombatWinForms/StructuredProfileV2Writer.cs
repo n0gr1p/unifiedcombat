@@ -988,7 +988,7 @@ internal static class StructuredProfileV2Writer
         };
         for (var i = 0; i < runes.Count; i++)
         {
-            var raw = runes[i].Trim();
+            var raw = (runes[i]?.ToString() ?? string.Empty).Trim();
             if (!canonicalRunes.TryGetValue(raw, out var canonical))
             {
                 throw new InvalidDataException($"RUN rune '{raw}' is not a Rune Enchantment.");
