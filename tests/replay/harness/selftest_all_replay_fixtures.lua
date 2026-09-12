@@ -83,6 +83,7 @@ local SELFTESTS = {
 	"tests/replay/harness/selftest_death_switch_dispatch.lua",
     "tests/replay/harness/selftest_spacing_cast_movement_lock.lua",
     "tests/replay/harness/selftest_movement_priority_arbitration.lua",
+    "tests/replay/harness/selftest_pathing_preengage_yield.lua",
 	"tests/replay/harness/selftest_nyzul_runtime.lua",
     "tests/replay/harness/selftest_zero_hp_actionable_target.lua",
     "tests/replay/harness/selftest_alliance_target_scope.lua",
