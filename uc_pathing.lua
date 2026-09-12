@@ -1040,8 +1040,11 @@ local function tick_follow(settings)
 		local why = tostring(combat_pause_why or 'UNKNOWN')
 		local owner_pause = (why:find('^OWNER_', 1, false) ~= nil)
 		local pull_approach_pause = (why == 'PULL_APPROACH')
+		local preengage_pause = (why == 'PREENGAGE')
+		local combat_transition_pause = (why:find('^COMBAT_TRANSITION:', 1, false) ~= nil)
 		-- Yield-only pauses: another movement source should continue driving motion.
-		if not owner_pause and not pull_approach_pause then
+		local yield_only = owner_pause or pull_approach_pause or preengage_pause or combat_transition_pause
+		if not yield_only then
 			stop_move()
 		end
 		follow_pause_reason = 'COMBAT_PAUSE:' .. why
