@@ -49,6 +49,35 @@ local function heading_meta(meta, heading)
 	return out
 end
 
+local function timeline_log(event_code, fields)
+	local logger = rawget(_G, 'UC_ACTION_TIMELINE_LOG')
+	if type(logger) == 'function' then
+		pcall(logger, event_code, fields, nil, 0)
+	end
+end
+
+local function trace_fields(operation, intent, owner_before, result)
+	local meta = type(intent.meta) == 'table' and intent.meta or {}
+	return {
+		operation = tostring(operation or ''),
+		kind = tostring(intent.kind or ''),
+		source = tostring(intent.source or ''),
+		target_id = tonumber(intent.target_id) or tonumber(meta.target_id) or 0,
+		run_x = tonumber(intent.run_x),
+		run_y = tonumber(intent.run_y),
+		heading = tonumber(intent.heading) or tonumber(meta.heading),
+		owner_before = tostring(owner_before or ''),
+		owner_after = tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or ''),
+		lock_until = tonumber(rawget(_G, 'UC_MOVEMENT_LOCK_UNTIL')) or 0,
+		movement_mode = tostring(rawget(_G, 'UC_MOVEMENT_MODE') or ''),
+		preengage = rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true,
+		ok = type(result) == 'table' and result.ok == true,
+		executed = type(result) == 'table' and result.executed == true,
+		result_reason = type(result) == 'table' and tostring(result.reason or '') or '',
+		meta_reason = tostring(meta.reason or ''),
+	}
+end
+
 function M.build(opts)
 	opts = require_table(opts, 'opts')
 	local dispatcher = require_table(opts.dispatcher, 'opts.dispatcher')
@@ -76,7 +105,9 @@ function M.build(opts)
 
 	local function dispatch(operation, intent, deps, hooks)
 		intent.source = sources[operation]
+		local owner_before = rawget(_G, 'UC_MOVEMENT_OWNER')
 		local result = dispatcher.dispatch_intent(intent, deps, hooks)
+		timeline_log('MOVEMENT_DISPATCH', trace_fields(operation, intent, owner_before, result))
 		if type(result) == 'table' and result.reason == recovery_hold.BLOCK_REASON then
 			return result
 		end
