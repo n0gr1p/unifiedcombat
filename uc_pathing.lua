@@ -894,11 +894,13 @@ local function should_pause_for_combat(settings)
 end
 
 local function stop_move()
-	movement_dispatcher.stop()
-	if tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or '') == 'path' then
-		_G.UC_MOVEMENT_OWNER = 'none'
-		_G.UC_MOVEMENT_LOCK_UNTIL = uc_now_s()
+	if tostring(rawget(_G, 'UC_MOVEMENT_OWNER') or '') ~= 'path' then
+		return false
 	end
+	movement_dispatcher.stop()
+	_G.UC_MOVEMENT_OWNER = 'none'
+	_G.UC_MOVEMENT_LOCK_UNTIL = uc_now_s()
+	return true
 end
 
 local function run_to_point(me, point)
