@@ -1,6 +1,8 @@
 local M = {}
 local recovery_hold = require('uc_recovery_hold')
 
+local cor_light_shot_handled = {}
+
 local function require_table(value, name)
     if type(value) ~= "table" then
         error(name .. " must be a table")
@@ -34,6 +36,26 @@ local function local_player_id()
         return 0
     end
     return tonumber(player.id) or 0
+end
+
+local function tracked_dia_generation(target_id)
+    local tid = tonumber(target_id) or 0
+    if tid <= 0 then
+        return '', nil
+    end
+    local tracker = require('uc_enemy_effect_tracker')
+    if type(tracker.get_effects) ~= 'function' then
+        return '', nil
+    end
+    for _, effect in ipairs(tracker.get_effects(tid)) do
+        if tonumber(effect and effect.effect_id) == 134 then
+            local seen_at = tonumber(effect.seen_at) or 0
+            if seen_at > 0 then
+                return ('%.6f'):format(seen_at), effect
+            end
+        end
+    end
+    return '', nil
 end
 
 local function consume_dispatched_reaction_action(intent)
@@ -136,13 +158,24 @@ local function prepare_cor_targeted_utility(intent)
         return false, 'cor_light_shot_target_resolver_missing'
     end
     local target = cor.resolve_pending_light_shot_target()
-    if type(target) ~= 'table' or (tonumber(target.id) or 0) <= 0 then
+    local target_id = tonumber(target and target.id) or 0
+    if type(target) ~= 'table' or target_id <= 0 then
         return false, 'cor_light_shot_target_stale'
     end
+
+    local generation = tracked_dia_generation(target_id)
+    if generation == '' then
+        return false, 'cor_light_shot_dia_not_tracked'
+    end
+    if cor_light_shot_handled[target_id] == generation then
+        return false, 'cor_light_shot_dia_already_handled'
+    end
+
     intent.command = 'input /ja "Light Shot" <t>'
     meta.target_kind = 'mob'
-    meta.target_id = tonumber(target.id) or 0
+    meta.target_id = target_id
     meta.target_name = tostring(target.name or '')
+    meta.cor_dia_generation = generation
     return true, ''
 end
 
@@ -154,11 +187,23 @@ local function consume_dispatched_cor_targeted_utility(intent)
         or tostring(meta.action_name or '') ~= 'Light Shot' then
         return false
     end
-    local cor = require('uc_cor_maintenance')
-    if type(cor.note_light_shot_dispatched) ~= 'function' then
+
+    local target_id = tonumber(meta.target_id) or 0
+    local generation = tostring(meta.cor_dia_generation or '')
+    if target_id <= 0 or generation == '' then
         return false
     end
-    return cor.note_light_shot_dispatched(tonumber(meta.target_id) or 0) == true
+    local current_generation = tracked_dia_generation(target_id)
+    if current_generation == '' or current_generation ~= generation then
+        return false
+    end
+
+    cor_light_shot_handled[target_id] = generation
+    local cor = require('uc_cor_maintenance')
+    if type(cor.note_light_shot_dispatched) == 'function' then
+        pcall(cor.note_light_shot_dispatched, target_id)
+    end
+    return true
 end
 
 function M.apply_command_ownership(opts)
@@ -189,9 +234,8 @@ function M.apply_command_ownership(opts)
 
     local prepared, prepare_reason = prepare_cor_targeted_utility(intent)
     if not prepared then
-        -- Treat a stale current-target/Dia generation as a safe no-op. Because
-        -- nothing was dispatched, the generation remains eligible for a later
-        -- maintenance tick if it becomes valid again.
+        -- A stale target, missing tracked Dia, or already-consumed Dia generation
+        -- is a safe no-op. Nothing is marked handled unless a dispatch succeeds.
         status.dispatch_ok = true
         status.dispatch_reason = prepare_reason
         return status
