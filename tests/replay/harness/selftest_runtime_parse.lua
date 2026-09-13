@@ -33,6 +33,7 @@ local RUNTIME_LUA_FILES = {
     "uc_path_hunter.lua",
     "uc_pathing.lua",
     "uc_config_normalizer.lua",
+    "uc_config_normalizer_cor.lua",
     "uc_config_runtime.lua",
     "uc_config_status_export.lua",
     "uc_domain_ownership.lua",

@@ -1,4 +1,5 @@
 local uc_active_config = require('uc_active_config')
+local res = require('resources')
 
 local function uc_now_s()
 	return require('uc_time').now()
@@ -45,12 +46,29 @@ local rolls = {
 local finish_act = { [2] = true, [3] = true, [5] = true }
 local start_act = { [7] = true, [8] = true, [9] = true, [12] = true }
 
+local DIA_SPELLS = {
+	[23] = 60,
+	[24] = 120,
+	[25] = 180,
+}
+local DIA_GAIN_MESSAGES = {
+	[2] = true, [230] = true, [236] = true, [237] = true, [252] = true,
+	[264] = true, [266] = true, [268] = true, [269] = true, [270] = true,
+	[271] = true, [272] = true, [329] = true, [330] = true, [331] = true,
+	[332] = true, [333] = true, [334] = true, [335] = true,
+}
+local LIGHT_SHOT_ID = 131
+local LIGHT_SHOT_RANGE = 20.0
+
 local state = {
 	roll_value_by_buff = {},
 	active_roll_id = 0,
 	bust_roll_id = 0,
 	is_busy = false,
 	busy_until = 0,
+	dia_by_target = {},
+	light_shot_handled = {},
+	pending_light_shot = nil,
 }
 
 local DOUBLE_UP_CHANCE_BUFF_ID = 308
@@ -122,6 +140,10 @@ local function cor_roll_range_require_ids(settings)
 	return active_value_or_flat('config.maintenance.cor.range_require_ids', settings and settings.cor_roll_range_require_ids)
 end
 
+local function cor_light_shot_dia(settings)
+	return active_value_or_flat('config.maintenance.cor.light_shot_dia', settings and settings.cor_light_shot_dia) == true
+end
+
 local roll_by_name = {}
 for _, info in pairs(rolls) do
 	local n = tostring(info.en or "")
@@ -146,6 +168,19 @@ local function make_action(ja_name, reason_code, urgency, detail)
 		target_kind = "self",
 		target_name = "<me>",
 		target_id = 0,
+		reason_code = reason_code,
+		urgency = urgency,
+		detail = detail or {},
+	}
+end
+
+local function make_target_action(ja_name, target, reason_code, urgency, detail)
+	return {
+		action_name = ja_name,
+		action_type = "ja",
+		target_kind = "enemy",
+		target_name = tostring(target and target.name or ""),
+		target_id = tonumber(target and target.id) or 0,
 		reason_code = reason_code,
 		urgency = urgency,
 		detail = detail or {},
@@ -216,6 +251,143 @@ local function in_required_roll_range(settings, max_range)
 	return true, nil
 end
 
+local function dia_generation(row)
+	if type(row) ~= 'table' then
+		return ''
+	end
+	return table.concat({
+		tostring(tonumber(row.spell_id) or 0),
+		('%.6f'):format(tonumber(row.seen_at) or 0),
+	}, ':')
+end
+
+local function prune_dia(now)
+	for target_id, row in pairs(state.dia_by_target) do
+		local expires_at = tonumber(row and row.expires_at) or 0
+		if expires_at > 0 and expires_at <= now then
+			state.dia_by_target[target_id] = nil
+			state.light_shot_handled[target_id] = nil
+			if type(state.pending_light_shot) == 'table'
+				and tonumber(state.pending_light_shot.target_id) == tonumber(target_id) then
+				state.pending_light_shot = nil
+			end
+		end
+	end
+end
+
+local function light_shot_ready()
+	local ja = res.job_abilities and res.job_abilities[LIGHT_SHOT_ID] or nil
+	local recast_id = tonumber(ja and ja.recast_id)
+	if recast_id == nil then
+		return false
+	end
+	local recasts = windower.ffxi.get_ability_recasts() or {}
+	return (tonumber(recasts[recast_id]) or 0) <= 0
+end
+
+local function observe_action_for_dia(act, me_id)
+	if type(act) ~= 'table' or type(act.targets) ~= 'table' then
+		return
+	end
+	local category = tonumber(act.category) or 0
+	local action_id = tonumber(act.param) or 0
+	local now = uc_now_s()
+	if category == 4 and DIA_SPELLS[action_id] then
+		for _, target in ipairs(act.targets) do
+			local tid = tonumber(target and target.id) or 0
+			local first = type(target and target.actions) == 'table' and target.actions[1] or nil
+			local message = tonumber(first and (first.message or first.message_id)) or 0
+			if tid > 0 and DIA_GAIN_MESSAGES[message] == true then
+				state.dia_by_target[tid] = {
+					spell_id = action_id,
+					seen_at = now,
+					expires_at = now + DIA_SPELLS[action_id],
+				}
+			end
+		end
+	elseif category == 6 and action_id == LIGHT_SHOT_ID and tonumber(act.actor_id) == me_id then
+		for _, target in ipairs(act.targets) do
+			local tid = tonumber(target and target.id) or 0
+			local row = state.dia_by_target[tid]
+			if tid > 0 and row then
+				state.light_shot_handled[tid] = dia_generation(row)
+			end
+			if type(state.pending_light_shot) == 'table'
+				and tonumber(state.pending_light_shot.target_id) == tid then
+				state.pending_light_shot = nil
+			end
+		end
+	end
+end
+
+function mod.resolve_pending_light_shot_target()
+	local pending = state.pending_light_shot
+	if type(pending) ~= 'table' then
+		return nil
+	end
+	local target = windower.ffxi.get_mob_by_target('t')
+	local tid = tonumber(target and target.id) or 0
+	if not target or target.valid_target == false or tonumber(target.spawn_type) ~= 16
+		or (tonumber(target.hpp) or 0) <= 0 or tid ~= (tonumber(pending.target_id) or 0) then
+		return nil
+	end
+	local row = state.dia_by_target[tid]
+	local generation = dia_generation(row)
+	if generation == '' or generation ~= tostring(pending.generation or '')
+		or state.light_shot_handled[tid] == generation then
+		return nil
+	end
+	return target
+end
+
+local function propose_dia_light_shot(settings, player)
+	if tostring(player and player.main_job or '') ~= 'COR' or not cor_light_shot_dia(settings) then
+		state.pending_light_shot = nil
+		return nil
+	end
+	local now = uc_now_s()
+	prune_dia(now)
+	local target = windower.ffxi.get_mob_by_target('t')
+	if not target or target.valid_target == false or tonumber(target.spawn_type) ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
+		state.pending_light_shot = nil
+		return nil
+	end
+	local tid = tonumber(target.id) or 0
+	local row = state.dia_by_target[tid]
+	if tid <= 0 or type(row) ~= 'table' or not DIA_SPELLS[tonumber(row.spell_id) or 0] then
+		state.pending_light_shot = nil
+		return nil
+	end
+	local generation = dia_generation(row)
+	if generation == '' or state.light_shot_handled[tid] == generation then
+		state.pending_light_shot = nil
+		return nil
+	end
+	local distance = target.distance and target.distance:sqrt() or 999
+	if distance > LIGHT_SHOT_RANGE then
+		state.pending_light_shot = nil
+		cor_diag(('dia_shot_range:%d'):format(tid), ('skip Light Shot target=%s id=%d reason=range dist=%.2f'):format(tostring(target.name or ''), tid, distance))
+		return nil
+	end
+	if not light_shot_ready() then
+		state.pending_light_shot = nil
+		cor_diag(('dia_shot_recast:%d:%s'):format(tid, generation), ('skip Light Shot target=%s id=%d reason=recast dia=%d'):format(tostring(target.name or ''), tid, tonumber(row.spell_id) or 0))
+		return nil
+	end
+	state.pending_light_shot = {
+		target_id = tid,
+		generation = generation,
+	}
+	cor_diag(('dia_shot:%d:%s'):format(tid, generation), ('pick action="Light Shot" target="%s" id=%d dia_spell_id=%d generation=%s'):format(tostring(target.name or ''), tid, tonumber(row.spell_id) or 0, generation))
+	return make_target_action('Light Shot', target, 'cor_light_shot_dia', 0.82, {
+		cor_utility = 'light_shot_dia',
+		dia_spell_id = tonumber(row.spell_id) or 0,
+		dia_seen_at = tonumber(row.seen_at) or 0,
+		dia_generation = generation,
+		range = LIGHT_SHOT_RANGE,
+	})
+end
+
 function mod.update_from_incoming_chunk(id, data)
 	if type(id) ~= "number" or type(data) ~= "string" then
 		return
@@ -226,6 +398,12 @@ function mod.update_from_incoming_chunk(id, data)
 		return
 	end
 	if id == 0x028 then
+		if windower.packets and type(windower.packets.parse_action) == 'function' then
+			local ok, act = pcall(windower.packets.parse_action, data)
+			if ok and type(act) == 'table' then
+				observe_action_for_dia(act, me_id)
+			end
+		end
 		local actor_id = data:unpack("I", 6)
 		if actor_id ~= me_id then
 			return
@@ -255,6 +433,19 @@ function mod.update_from_incoming_chunk(id, data)
 			elseif message == 426 and roll then
 				state.roll_value_by_buff[roll.buff] = nil
 				state.bust_roll_id = tonumber(param) or 0
+			end
+		end
+	elseif id == 0x029 then
+		local target_id = data:unpack('I', 0x09)
+		local effect_id = data:unpack('I', 0x0D)
+		local message_id = data:unpack('H', 0x19) % 32768
+		if target_id > 0 and (((message_id == 204 or message_id == 206) and effect_id == 134)
+			or message_id == 6 or message_id == 20 or message_id == 113 or message_id == 406 or message_id == 605 or message_id == 646) then
+			state.dia_by_target[target_id] = nil
+			state.light_shot_handled[target_id] = nil
+			if type(state.pending_light_shot) == 'table'
+				and tonumber(state.pending_light_shot.target_id) == target_id then
+				state.pending_light_shot = nil
 			end
 		end
 	elseif id == 0x063 and data:byte(5) == 9 then
@@ -296,6 +487,12 @@ function mod.propose(settings)
 		cor_diag("busy", ("skip busy_until=%.2f now=%.2f"):format(tonumber(state.busy_until) or 0, uc_now_s()))
 		return nil
 	end
+
+	local light_shot = propose_dia_light_shot(settings, p)
+	if light_shot then
+		return light_shot
+	end
+
 	local max_range = roll_aoe_range(settings or {})
 	local in_range, bad_id = in_required_roll_range(settings or {}, max_range)
 	if not in_range then
@@ -307,11 +504,9 @@ function mod.propose(settings)
 	local infos = { roll_by_name[normalize_roll_name(roll1)], roll_by_name[normalize_roll_name(roll2)] }
 	local roll_count = (main == "COR") and 2 or 1
 	local crooked_slot = tonumber(cor_crooked_roll_slot(settings)) or 0
-	-- Crooked Cards is main-COR only; completely disable for sub-COR path.
 	if main ~= "COR" then
 		crooked_slot = 0
 	end
-	-- Guard against stale/invalid profile values.
 	if crooked_slot < 0 or crooked_slot > 2 then
 		crooked_slot = 0
 	end
@@ -323,8 +518,9 @@ function mod.propose(settings)
 			tonumber(recasts[96] or 0), tonumber(recasts[193] or 0)
 		),
 		("cfg main=%s sub=%s rolls=[%s,%s] source=%s roll_count=%d crooked_slot=%d elevens=%s max_range=%.1f recast96=%d recast193=%d has601=%s"):format(
-			main, sub, tostring(roll1), tostring(roll2), tostring(source), tonumber(roll_count) or 0, tonumber(crooked_slot) or 0, tostring(elevens),
-			tonumber(max_range) or 0, tonumber(recasts[96] or 0), tonumber(recasts[193] or 0), tostring(has_buff(p, 601))
+			main, sub, tostring(roll1), tostring(roll2), tostring(source), tonumber(roll_count) or 0,
+			tonumber(crooked_slot) or 0, tostring(elevens), tonumber(max_range) or 0,
+			tonumber(recasts[96] or 0), tonumber(recasts[193] or 0), tostring(has_buff(p, 601))
 		)
 	)
 
