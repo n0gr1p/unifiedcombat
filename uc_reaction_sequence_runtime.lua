@@ -189,6 +189,9 @@ local function local_sequence_completion(act)
         return nil
     end
     local action_type = trim(step.action_type):lower()
+    if action_type == 'pet' then
+        return nil
+    end
     local observed_name = local_action_name(act, action_type)
     if observed_name == '' or canonical(observed_name) ~= canonical(step.action_name) then
         return nil
@@ -327,13 +330,13 @@ function M.extend(base)
         return activated, released and 'sequence_complete' or 'skipped'
     end
 
-    function base.note_sequence_action_dispatched(key_value, action_type, action_name, target_kind, target_id, player_id, now)
+    function base.note_sequence_action_dispatched(key_value, action_type, action_name, target_kind, target_id, action_actor_id, now)
         local lock = sequence_locks[tostring(key_value or '')]
         if type(lock) ~= 'table' then
             return false, 'sequence_not_active'
         end
         if lock.step_state ~= 'pending' then
-            return false, 'step_not_pending'
+            return false, 'step_already_dispatched'
         end
         local step = current_step(lock)
         if type(step) ~= 'table' then
@@ -350,17 +353,60 @@ function M.extend(base)
             or (expected_target == 'actor' and (tonumber(target_id) or 0) ~= (tonumber(lock.actor_id) or 0)) then
             return false, 'dispatch_does_not_match_current_step'
         end
-        local local_id = tonumber(player_id) or 0
-        if local_id <= 0 then
-            return false, 'player_id_unavailable'
+        local action_actor = tonumber(action_actor_id) or 0
+        if action_actor <= 0 then
+            return false, 'action_actor_unavailable'
         end
         lock.step_state = 'dispatched'
-        lock.dispatched_actor_id = local_id
+        lock.dispatched_actor_id = action_actor
         lock.dispatched_at = tonumber(now) or 0
         lock.dispatched_action_type = expected_type
         lock.dispatched_action_name = expected_name
         last_transition = ('dispatched:%d:%s'):format(tonumber(lock.step_index) or 1, tostring(lock.name or ''))
         return true, 'dispatched'
+    end
+
+    function base.note_sequence_pet_command_completed(key_value, action_name, target_id, pet_id, reason)
+        local lock = sequence_locks[tostring(key_value or '')]
+        if type(lock) ~= 'table' then
+            return nil, 'sequence_not_active'
+        end
+        local step = current_step(lock)
+        if type(step) ~= 'table'
+            or trim(step.action_type):lower() ~= 'pet'
+            or lock.step_state ~= 'dispatched'
+            or canonical(step.action_name) ~= canonical(action_name)
+            or trim(step.target):lower() ~= 'actor'
+            or (tonumber(target_id) or 0) ~= (tonumber(lock.actor_id) or 0)
+            or (tonumber(pet_id) or 0) ~= (tonumber(lock.dispatched_actor_id) or 0) then
+            return public_lock(lock), 'pet_completion_mismatch'
+        end
+        local activated, released = advance_step(lock, 'pet_' .. tostring(reason or 'complete'))
+        return activated or released, released and 'sequence_complete' or 'advanced'
+    end
+
+    function base.note_sequence_pet_command_failed(key_value, action_name, target_id, pet_id, reason)
+        local lock = sequence_locks[tostring(key_value or '')]
+        if type(lock) ~= 'table' then
+            return nil, 'sequence_not_active'
+        end
+        local step = current_step(lock)
+        if type(step) ~= 'table'
+            or trim(step.action_type):lower() ~= 'pet'
+            or canonical(step.action_name) ~= canonical(action_name)
+            or trim(step.target):lower() ~= 'actor'
+            or (tonumber(target_id) or 0) ~= (tonumber(lock.actor_id) or 0)
+            or (tonumber(pet_id) or 0) ~= (tonumber(lock.dispatched_actor_id) or 0) then
+            return public_lock(lock), 'pet_failure_mismatch'
+        end
+        lock.step_state = 'pending'
+        lock.dispatched_actor_id = 0
+        lock.dispatched_at = 0
+        lock.dispatched_action_type = ''
+        lock.dispatched_action_name = ''
+        lock.last_step_reason = 'pet_' .. tostring(reason or 'failed')
+        last_transition = ('retry:%d:%s'):format(tonumber(lock.step_index) or 1, tostring(lock.name or ''))
+        return public_lock(lock), 'retry'
     end
 
     function base.blocks_proposal(lock, proposal)
@@ -379,9 +425,11 @@ function M.extend(base)
                 or expected_target == 'actor'
                     and tostring(proposal.target_kind or '') == 'mob'
                     and (tonumber(proposal.target_id) or 0) == (tonumber(authoritative.actor_id) or 0)
-            if tostring(proposal.provider or '') == 'combat'
+            local expected_type = trim(step.action_type):lower()
+            local expected_provider = expected_type == 'pet' and 'pet_combat' or 'combat'
+            if tostring(proposal.provider or '') == expected_provider
                 and tostring(proposal.family_id or '') == 'combat.reaction.sequence'
-                and tostring(proposal.action_type or '') == trim(step.action_type):lower()
+                and tostring(proposal.action_type or '') == expected_type
                 and canonical(proposal.action_name) == canonical(step.action_name)
                 and target_matches then
                 return false
@@ -395,10 +443,7 @@ function M.extend(base)
 
     function base.blocks_movement(lock)
         if type(lock) == 'table' and tostring(lock.response or '') == 'use_sequence' then
-            -- Freeze ordinary movement as soon as an atomic action sequence
-            -- activates.  A setup JA such as Elemental Seal can execute while
-            -- moving, but its required spell must not lose the ability window
-            -- waiting for formation/follow movement to settle afterwards.
+            -- Freeze ordinary movement as soon as an atomic action sequence activates.
             return true
         end
         return base_blocks_movement(lock)
