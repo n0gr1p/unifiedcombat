@@ -39,8 +39,7 @@ public partial class MainForm
             return;
         }
 
-        var reactionsTab = _settingsTabs.TabPages.Cast<TabPage>()
-            .FirstOrDefault(tab => string.Equals(tab.Text, "Reactions", StringComparison.Ordinal));
+        var reactionsTab = _settingsTabs.TabPages.Cast<TabPage>().FirstOrDefault(tab => string.Equals(tab.Text, "Reactions", StringComparison.Ordinal));
         var root = reactionsTab?.Controls.OfType<TableLayoutPanel>().FirstOrDefault();
         if (root is null)
         {
@@ -57,7 +56,7 @@ public partial class MainForm
         root.Controls.Add(heading);
         root.Controls.Add(new Label
         {
-            Text = "Run ordered JA/spell steps when an enemy begins the named ability. Optional setup steps are skipped when unavailable; the final step must be required. The reaction lane stays reserved between steps.",
+            Text = "Run ordered JA/spell/pet steps when an enemy begins the named ability. Optional setup steps are skipped when unavailable; the final step must be required. Pet actions currently support Assault and Deploy against the triggering actor. The reaction lane stays reserved between steps.",
             AutoSize = true,
             MaximumSize = new Size(760, 0),
             Padding = new Padding(0, 0, 0, 6),
@@ -106,9 +105,16 @@ public partial class MainForm
         stepEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 85));
 
         _reactionSequenceStepType = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
-        _reactionSequenceStepType.Items.AddRange(["ja", "spell"]);
+        _reactionSequenceStepType.Items.AddRange(["ja", "spell", "pet"]);
         _reactionSequenceStepType.SelectedItem = "ja";
-        _reactionSequenceStepType.SelectedIndexChanged += (_, _) => RefreshReactionSequenceActionOptions();
+        _reactionSequenceStepType.SelectedIndexChanged += (_, _) =>
+        {
+            if (string.Equals(_reactionSequenceStepType.SelectedItem?.ToString(), "pet", StringComparison.Ordinal))
+            {
+                _reactionSequenceStepTarget.SelectedItem = "actor";
+            }
+            RefreshReactionSequenceActionOptions();
+        };
 
         _reactionSequenceStepName = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Dock = DockStyle.Fill };
         _reactionSequenceStepName.DropDown += (_, _) =>
@@ -189,9 +195,12 @@ public partial class MainForm
         }
         var selected = (_reactionSequenceStepName.Text ?? "").Trim();
         var type = _reactionSequenceStepType.SelectedItem?.ToString() ?? "ja";
-        IEnumerable<string> source = type == "spell"
-            ? _pathPullSpellOptions
-            : _pathPullJaOptions.Concat(_abilityOptions);
+        IEnumerable<string> source = type switch
+        {
+            "spell" => _pathPullSpellOptions,
+            "pet" => ["Assault", "Deploy"],
+            _ => _pathPullJaOptions.Concat(_abilityOptions),
+        };
         var options = source
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.Ordinal)
@@ -214,13 +223,24 @@ public partial class MainForm
         var actionType = _reactionSequenceStepType.SelectedItem?.ToString() ?? "";
         var actionName = (_reactionSequenceStepName.Text ?? "").Trim();
         var target = _reactionSequenceStepTarget.SelectedItem?.ToString() ?? "";
-        if (actionType is not ("ja" or "spell") || actionName.Length == 0 || target is not ("self" or "actor"))
+        if (actionType is not ("ja" or "spell" or "pet") || actionName.Length == 0 || target is not ("self" or "actor"))
         {
             _reactionSequenceValidation.Text = "Each step requires an action type, action name, and self/actor target.";
             _reactionSequenceValidation.ForeColor = Color.Firebrick;
             return;
         }
-        _reactionSequenceDraftSteps.Add(new ReactionSequenceStep(actionType, actionName, target, _reactionSequenceStepOptional.Checked));
+        var candidate = new ReactionSequenceStep(actionType, actionName, target, _reactionSequenceStepOptional.Checked);
+        try
+        {
+            ReactionSequenceProfileCodec.Validate(new ReactionSequenceRule("draft", [candidate with { Optional = false }]));
+        }
+        catch (InvalidDataException ex)
+        {
+            _reactionSequenceValidation.Text = ex.Message;
+            _reactionSequenceValidation.ForeColor = Color.Firebrick;
+            return;
+        }
+        _reactionSequenceDraftSteps.Add(candidate);
         _reactionSequenceStepName.Text = "";
         _reactionSequenceStepOptional.Checked = false;
         RebindReactionSequenceStepList(_reactionSequenceDraftSteps.Count - 1);
@@ -275,8 +295,7 @@ public partial class MainForm
             _reactionSequenceValidation.ForeColor = Color.Firebrick;
             return;
         }
-        var duplicate = _reactionSequenceRules.FindIndex((rule) =>
-            string.Equals(rule.Name, name, StringComparison.OrdinalIgnoreCase));
+        var duplicate = _reactionSequenceRules.FindIndex((rule) => string.Equals(rule.Name, name, StringComparison.OrdinalIgnoreCase));
         if (duplicate >= 0 && duplicate != _reactionSequenceEditIndex)
         {
             _reactionSequenceValidation.Text = $"A sequence for '{name}' already exists.";

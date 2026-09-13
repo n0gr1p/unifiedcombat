@@ -134,6 +134,44 @@ local window_complete = reactions.on_action({ actor_id = 900, category = 11, par
 assert_true(type(window_complete.released) == 'table', 'enemy ability completion must abort/release active sequence')
 assert_true(reactions.get_action_lock() == nil, 'ability-window completion must clear sequence lock')
 
+-- Pet-command sequence steps are dispatched by the shared pet coordinator and
+-- advance only when that coordinator confirms the pet is on the requested actor.
+sequence_rule.steps = {
+    { action_type = 'pet', action_name = 'Assault', target = 'actor', optional = false },
+}
+reactions.reset('pet_test')
+ready = reactions.on_action({
+    actor_id = 900,
+    category = 7,
+    targets = { { actions = { { param = 100 } } } },
+}, 900, 35.0, true)
+assert_equal(ready.activated.action_type, 'pet', 'pet sequence action type')
+assert_equal(ready.activated.action_name, 'Assault', 'pet sequence action name')
+assert_true(not reactions.blocks_proposal(ready.activated, {
+    provider = 'pet_combat',
+    family_id = 'combat.reaction.sequence',
+    action_type = 'pet',
+    action_name = 'Assault',
+    target_kind = 'mob',
+    target_id = 900,
+}), 'reaction lock must admit its exact pet proposal')
+marked = reactions.note_sequence_action_dispatched(
+    ready.activated.key, 'pet', 'Assault', 'mob', 900, 200, 35.1
+)
+assert_true(marked, 'Assault dispatch must be accepted')
+assert_equal(reactions.get_action_lock().step_state, 'dispatched', 'pet sequence holds while Assault is pending')
+local pet_complete, pet_complete_reason = reactions.note_sequence_pet_command_completed(
+    ready.activated.key, 'Assault', 900, 200, 'pet_engaged_observed'
+)
+assert_equal(pet_complete_reason, 'sequence_complete', 'terminal Assault completes reaction sequence')
+assert_true(type(pet_complete) == 'table', 'pet completion returns released sequence')
+assert_true(reactions.get_action_lock() == nil, 'pet completion clears terminal sequence lock')
+
+sequence_rule.steps = {
+    { action_type = 'ja', action_name = 'Elemental Seal', target = 'self', optional = true },
+    { action_type = 'spell', action_name = 'Stun', target = 'actor', optional = false },
+}
+
 -- Provider wrapper: unavailable optional Elemental Seal must be skipped immediately
 -- and required Stun must still be emitted in the same collection pass.
 local provider_lock = {
@@ -199,6 +237,30 @@ assert_equal(#out, 1, 'required Stun must still be proposed')
 assert_equal(out[1].action_name, 'Stun', 'required terminal action after optional skip')
 assert_equal(out[1].target_name, 'Zerde', 'actor-targeted sequence proposal must name the actor, not the triggering ability')
 assert_equal(out[1].family_id, 'combat.reaction.sequence', 'sequence proposal family')
+
+provider_lock = {
+    key = 'sequence:pet', response = 'use_sequence', name = 'Just Desserts', actor_id = 900,
+    step_index = 1, step_count = 1, step_state = 'pending',
+    action_type = 'pet', action_name = 'Assault', action_target = 'actor', action_optional = false,
+}
+out = {}
+claimed = api.collect_priority_offense({
+    now = 41.0,
+    player = { id = 1, name = 'Terrasjr' },
+    pet_present = true,
+    pet_id = 200,
+    combat_generation = 4,
+}, out)
+assert_true(claimed, 'pet sequence provider must reserve priority offense path')
+assert_equal(#out, 1, 'pet sequence proposal count')
+assert_equal(out[1].provider, 'pet_combat', 'pet sequence must use shared pet provider')
+assert_equal(out[1].action_type, 'pet', 'pet sequence proposal action type')
+assert_equal(out[1].action_name, 'Assault', 'pet sequence proposal action name')
+assert_equal(out[1].target_id, 900, 'pet sequence proposal target')
+assert_equal(out[1].detail.pet_command.kind, 'assault', 'pet sequence command kind')
+assert_equal(out[1].detail.pet_command.pet_id, 200, 'pet sequence command pet id')
+assert_equal(out[1].detail.pet_command.combat_generation, 4, 'pet sequence command combat generation')
+assert_equal(out[1].detail.pet_command.reaction_key, 'sequence:pet', 'pet sequence command reaction correlation')
 _G.windower = old_windower
 
 local scheduler_source = assert(io.open('unified_scheduler.lua', 'rb')):read('*a')
@@ -235,5 +297,16 @@ assert_equal(normalized.reactions.rules[1].response, 'use_sequence', 'sequence r
 assert_equal(normalized.reactions.rules[1].steps[1].action_name, 'Elemental Seal', 'sequence setup step persistence')
 assert_equal(normalized.reactions.rules[1].steps[2].action_name, 'Stun', 'sequence terminal step persistence')
 assert_true(normalized.reactions.rules[1].steps[1].optional, 'sequence optional flag persistence')
+
+local normalized_pet = normalizer.normalize({
+    config = { reactions = { enabled = true, rules = {
+        {
+            trigger = 'ability_window', name = 'Just Desserts', response = 'use_sequence',
+            steps = { { action_type = 'pet', action_name = 'Assault', target = 'actor', optional = false } },
+        },
+    } } },
+})
+assert_equal(normalized_pet.reactions.rules[1].steps[1].action_type, 'pet', 'pet sequence action type persistence')
+assert_equal(normalized_pet.reactions.rules[1].steps[1].action_name, 'Assault', 'pet sequence action persistence')
 
 print('selftest_reaction_action_sequence: PASS')

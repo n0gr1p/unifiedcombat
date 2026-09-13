@@ -69,6 +69,8 @@ local function finish(state, now, outcome, reason)
 		pet_id = pending.pet_id,
 		target_id = pending.target_id,
 		combat_generation = pending.combat_generation,
+		reaction_key = pending.reaction_key,
+		reaction_step_index = pending.reaction_step_index,
 		at = now,
 	}
 	if outcome == 'complete' then
@@ -218,6 +220,20 @@ function M.begin(state, command, now)
 		end
 		pending.recast_before = before
 	end
+	if type(pending.reaction_key) == 'string' and pending.reaction_key ~= '' then
+		local marked, mark_reason = require('uc_reaction_runtime').note_sequence_action_dispatched(
+			pending.reaction_key,
+			'pet',
+			pending.action_name,
+			'mob',
+			pending.target_id,
+			pending.pet_id,
+			now
+		)
+		if marked ~= true then
+			error('reaction pet command dispatch could not be correlated: ' .. tostring(mark_reason))
+		end
+	end
 	state.pending = pending
 	state.last_event = {
 		outcome = 'pending',
@@ -225,6 +241,8 @@ function M.begin(state, command, now)
 		kind = pending.kind,
 		action_name = pending.action_name,
 		retry_key = pending.retry_key,
+		reaction_key = pending.reaction_key,
+		reaction_step_index = pending.reaction_step_index,
 		at = now,
 	}
 	return pending
@@ -262,9 +280,6 @@ function M.observe(state, ctx)
 		if ctx.pet_present == true and current_pet_id > 0 then
 			return finish(state, now, 'complete', 'automaton_appeared')
 		end
-		-- Recast consumption acknowledges the JA, but completion remains
-		-- observation-driven: the command owns the lane until an automaton exists
-		-- or the normal watchdog/failure path resolves it.
 		recast_consumed(pending, ctx)
 	else
 		local pet_matches = ctx.pet_present == true and current_pet_id == pending.pet_id

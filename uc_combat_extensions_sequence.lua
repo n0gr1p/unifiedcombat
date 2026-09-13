@@ -40,6 +40,89 @@ local function mob_name_by_id(id)
     return tostring(mob.name or '')
 end
 
+local function append_pet_sequence_action(out, ctx, action_lock, target_id, target_name, target_kind)
+    if target_kind ~= 'mob' then
+        return false, 'pet_target_must_be_actor'
+    end
+    if ctx.pet_present ~= true or (tonumber(ctx.pet_id) or 0) <= 0 then
+        return false, 'pet_unavailable'
+    end
+    local combat_generation = tonumber(ctx.combat_generation) or 0
+    if combat_generation <= 0 then
+        return false, 'pet_combat_generation_unavailable'
+    end
+    local action_name = tostring(action_lock.action_name or '')
+    local kind = action_name:lower()
+    if kind ~= 'assault' and kind ~= 'deploy' then
+        return false, 'unsupported_pet_action'
+    end
+    local pet_id = tonumber(ctx.pet_id) or 0
+    local step_index = tonumber(action_lock.step_index) or 1
+    local retry_key = ('reaction:%s:%d:%s:%d:%d'):format(
+        tostring(action_lock.key or ''),
+        step_index,
+        kind,
+        pet_id,
+        target_id
+    )
+    local command = {
+        kind = kind,
+        action_name = action_name,
+        pet_id = pet_id,
+        target_id = target_id,
+        combat_generation = combat_generation,
+        retry_key = retry_key,
+        reaction_key = tostring(action_lock.key or ''),
+        reaction_step_index = step_index,
+    }
+    out[#out + 1] = {
+        proposal_id = ('combat.reaction.sequence.%d.%s.%d.%d'):format(
+            step_index,
+            action_name,
+            target_id,
+            math.floor((tonumber(ctx.now) or 0) * 1000)
+        ),
+        family_id = 'combat.reaction.sequence',
+        provider = 'pet_combat',
+        action_type = 'pet',
+        action_name = action_name,
+        target_kind = target_kind,
+        target_id = target_id,
+        target_name = target_name,
+        priority_band = REACTION_PRIORITY_BAND,
+        urgency = 1.0,
+        starvation_eligible = false,
+        created_at = ctx.now,
+        expires_at = ctx.now + 0.30,
+        commit_deadline = ctx.now + 0.20,
+        movement_policy = 'none',
+        range_policy = { min = 0.0, max = 20.0, los_required = false },
+        recast_key = retry_key,
+        duplicate_suppression_key = retry_key,
+        lock_class = 'pet_command',
+        expected_ack = 'pet_command',
+        expected_effect = 'pet_engaged_observed',
+        sticky = false,
+        can_preempt_movement = true,
+        can_preempt_same_band = true,
+        reason_code = 'reaction_sequence_pet',
+        detail = {
+            allow_target_id_send = true,
+            reaction_name = tostring(action_lock.name or ''),
+            reaction_key = tostring(action_lock.key or ''),
+            reaction_step_index = step_index,
+            reaction_step_count = tonumber(action_lock.step_count) or 0,
+            reaction_step_optional = action_lock.action_optional == true,
+            pet_command = command,
+            pet_id = pet_id,
+            target_id = target_id,
+            combat_generation = combat_generation,
+        },
+        legacy_command = '',
+    }
+    return true, 'ready'
+end
+
 local function append_sequence_action(out, ctx, action_lock, action_ready, action_effective_range)
     local action_type = tostring(action_lock.action_type or ''):lower()
     local action_name = tostring(action_lock.action_name or '')
@@ -69,6 +152,10 @@ local function append_sequence_action(out, ctx, action_lock, action_ready, actio
     end
     if target_id <= 0 then
         return false, 'target_unavailable'
+    end
+
+    if action_type == 'pet' then
+        return append_pet_sequence_action(out, ctx, action_lock, target_id, target_name, target_kind)
     end
 
     local ready, ready_reason, ready_kind = action_ready(action_name, target_id)
@@ -126,7 +213,7 @@ local function append_sequence_action(out, ctx, action_lock, action_ready, actio
             target_id
         ),
         lock_class = 'offense_action',
-        expected_ack = action_type == 'spell' and 'action_start' or 'action_start',
+        expected_ack = 'action_start',
         expected_effect = action_type == 'spell' and 'spell_effect' or 'ja_effect',
         sticky = false,
         can_preempt_movement = true,
@@ -194,8 +281,8 @@ function M.wrap(base)
                             return true
                         end
                     else
-                        -- Required terminal work is never skipped. Keep the sequence
-                        -- lane reserved and retry while the enemy ability window lives.
+                        -- Required work is never skipped. Keep the sequence lane
+                        -- reserved and retry while the enemy ability window lives.
                         return true
                     end
                 end

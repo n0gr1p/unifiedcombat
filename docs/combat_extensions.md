@@ -88,17 +88,37 @@ reactions = {
 }
 ```
 
-Sequence rules are deliberately generic: supported step action types are `ja` and `spell`; supported targets are `self` and `actor`. The final step must be required. The runtime does not contain Zerde-, Elemental-Seal-, or Stun-specific policy.
+Sequence rules are deliberately generic: supported step action types are `ja`, `spell`, and `pet`; supported targets are `self` and `actor`. Pet steps currently support target-directed `Assault` and `Deploy`, and therefore require `target = 'actor'`. The final step must be required. The runtime does not contain Zerde-, Elemental-Seal-, Stun-, or encounter-specific pet policy.
+
+A Summoner can therefore stage an avatar onto the triggering enemy immediately when its ability window opens:
+
+```lua
+{
+    trigger = 'ability_window',
+    name = 'Just Desserts',
+    response = 'use_sequence',
+    steps = {
+        {
+            action_type = 'pet',
+            action_name = 'Assault',
+            target = 'actor',
+            optional = false,
+        },
+    },
+}
+```
+
+Pet steps use the existing shared pet-command coordinator instead of sending `/pet` commands through a second path. Dispatch captures the exact pet ID, triggering actor ID, and combat generation. The reaction step remains dispatched until the coordinator observes that pet on the requested actor (or another authoritative Assault/Deploy completion signal). A failed or timed-out pet command returns the step to pending and respects the coordinator's retry backoff while the enemy ability window remains active.
 
 An unavailable optional step is skipped immediately. Therefore a sequence such as optional Elemental Seal followed by required Stun still attempts Stun when Elemental Seal is on recast, unavailable, or otherwise fails readiness. A required step is never skipped; the sequence keeps ownership and retries while the triggering enemy ability window remains active.
 
 Once a sequence activates, it owns the scheduler action lane atomically. All ordinary proposals, including support actions, are rejected while the sequence is active; only the exact current sequence step is admitted. Doom emergency handling remains outside this ordinary proposal gate as before.
 
-Dispatch does not advance or release a sequence. The runtime records the local actor that dispatched the step and waits for the matching local action-result packet. Job-ability completion advances to the next step. Completion of the required terminal spell releases the sequence, including a resolved resist result because the requested action was still completed. If the triggering enemy ability completes first, or the actor becomes invalid, the active sequence is aborted and its lock is released.
+Dispatch does not advance or release a sequence. Spell and job-ability steps advance from their matching local action-result packet. Pet steps advance from shared pet-command completion evidence. Completion of the required terminal step releases the sequence. If the triggering enemy ability completes first, or the actor becomes invalid, the active sequence is aborted and its lock is released.
 
 This completion-driven behavior avoids the stale-lock problem that would result from waiting only for the enemy ability completion packet: a successful interrupt can prevent that packet from ever occurring.
 
-Sequence progress (`step_index`, dispatch state, local actor correlation, and timestamps) is runtime-only. Durable configuration contains only the configured steps.
+Sequence progress (`step_index`, dispatch state, action/pet correlation, and timestamps) is runtime-only. Durable configuration contains only the configured steps.
 
 Movement/facing reactions such as `turn_away`, `stop_attacking`, `run_away`, and `move_to_range` retain their full hazard lifecycle and continue to release when the triggering condition resolves or the actor becomes invalid.
 

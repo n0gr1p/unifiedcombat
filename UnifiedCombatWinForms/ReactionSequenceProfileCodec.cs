@@ -16,6 +16,12 @@ internal sealed record ReactionSequenceRule(
 
 internal static class ReactionSequenceProfileCodec
 {
+    private static readonly HashSet<string> SupportedPetActions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Assault",
+        "Deploy",
+    };
+
     internal static ReactionSequenceRule ParseRule(JsonObject rule)
     {
         var trigger = ReadString(rule, "trigger");
@@ -111,9 +117,9 @@ internal static class ReactionSequenceProfileCodec
         for (var i = 0; i < rule.Steps.Count; i++)
         {
             var step = rule.Steps[i];
-            if (step.ActionType is not ("spell" or "ja"))
+            if (step.ActionType is not ("spell" or "ja" or "pet"))
             {
-                throw new InvalidDataException($"use_sequence step {i + 1} action_type must be spell or ja");
+                throw new InvalidDataException($"use_sequence step {i + 1} action_type must be spell, ja, or pet");
             }
             if (string.IsNullOrWhiteSpace(step.ActionName))
             {
@@ -122,6 +128,17 @@ internal static class ReactionSequenceProfileCodec
             if (step.Target is not ("self" or "actor"))
             {
                 throw new InvalidDataException($"use_sequence step {i + 1} target must be self or actor");
+            }
+            if (step.ActionType == "pet")
+            {
+                if (step.Target != "actor")
+                {
+                    throw new InvalidDataException($"use_sequence step {i + 1} pet actions currently require actor target");
+                }
+                if (!SupportedPetActions.Contains(step.ActionName))
+                {
+                    throw new InvalidDataException($"use_sequence step {i + 1} unsupported pet action: {step.ActionName}");
+                }
             }
             if (i == rule.Steps.Count - 1 && step.Optional)
             {
