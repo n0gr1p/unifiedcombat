@@ -218,6 +218,26 @@ function M.new(deps)
 		if event.outcome == 'complete' and (event.kind == 'assault' or event.kind == 'deploy') then
 			pet_combat_state.mark_engaged(state, event.combat_generation, event.pet_id)
 		end
+		if type(event.reaction_key) == 'string' and event.reaction_key ~= '' then
+			local reactions = require('uc_reaction_runtime')
+			if event.outcome == 'complete' then
+				reactions.note_sequence_pet_command_completed(
+					event.reaction_key,
+					event.action_name,
+					event.target_id,
+					event.pet_id,
+					event.reason
+				)
+			elseif event.outcome == 'failed' then
+				reactions.note_sequence_pet_command_failed(
+					event.reaction_key,
+					event.action_name,
+					event.target_id,
+					event.pet_id,
+					event.reason
+				)
+			end
+		end
 		if type(adapter.observe_coordinator_event) == 'function' then
 			adapter.observe_coordinator_event(event)
 		end
@@ -246,9 +266,6 @@ function M.new(deps)
 			return
 		end
 
-		-- Job-specific persistent pet work is collected before combat-target work.
-		-- This allows PUP Activate and Maneuver maintenance while no hostile target
-		-- exists, without introducing a separate action loop.
 		if type(adapter.maintenance) == 'function' then
 			local maintenance = adapter.maintenance(snapshot, ctx)
 			if type(maintenance) == 'table' then
@@ -361,6 +378,28 @@ function M.new(deps)
 		local snapshot = adapter.snapshot(ctx)
 		local detail = require_table(selected.detail, 'selected.detail')
 		local command = type(detail.pet_command) == 'table' and detail.pet_command or nil
+		local reaction_key = tostring(detail.reaction_key or (command and command.reaction_key) or '')
+		if reaction_key ~= '' then
+			if command == nil or (command.kind ~= 'assault' and command.kind ~= 'deploy') then
+				return false, 'reaction_pet_command_invalid'
+			end
+			if snapshot.correct_pet ~= true or tonumber(ctx.pet_id) ~= tonumber(command.pet_id) then
+				return false, 'stale_pet'
+			end
+			if tonumber(ctx.combat_generation) ~= tonumber(command.combat_generation)
+				or tonumber(ctx.target_id) ~= tonumber(command.target_id)
+				or ctx.target_valid ~= true
+				or (tonumber(ctx.target_hpp) or 0) <= 0 then
+				return false, 'stale_target'
+			end
+			if command.kind == 'assault' and snapshot._job_adapter ~= 'SMN' then
+				return false, 'assault_requires_summoner'
+			end
+			if command.kind == 'deploy' and snapshot._job_adapter ~= 'PUP' then
+				return false, 'deploy_requires_puppetmaster'
+			end
+			return true, ''
+		end
 		if command ~= nil
 			and (command.kind == 'assault' or command.kind == 'deploy')
 			and snapshot.correct_pet == true then
