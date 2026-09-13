@@ -1,0 +1,105 @@
+name: Apply COR Light Shot stale Dia fix
+
+on:
+  push:
+    branches:
+      - fix/cor-lightshot-stale-dia
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/cor-lightshot-stale-dia
+          fetch-depth: 0
+      - name: Apply fix
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}: {old!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'uc_cor_maintenance.lua',
+              'local LIGHT_SHOT_ID = 131\nlocal LIGHT_SHOT_RANGE = 20.0\n',
+              'local LIGHT_SHOT_ID = 131\nlocal LIGHT_SHOT_RANGE = 20.0\nlocal DIA_EFFECT_ID = 134\n'
+          )
+          replace_once(
+              'uc_cor_maintenance.lua',
+              '\tpending_light_shot = nil,\n}\n',
+              '\tpending_light_shot = nil,\n\tauthoritative_enemy_effects = nil,\n}\n'
+          )
+          replace_once(
+              'uc_cor_maintenance.lua',
+              '\tend\nend\n\nlocal function light_shot_ready()\n',
+              '''\tend\nend\n\nlocal function authoritative_dia_matches(target_id, row)\n\tif type(row) ~= 'table' then\n\t\treturn false\n\tend\n\tlocal me = windower.ffxi.get_mob_by_target('me')\n\tlocal me_id = tonumber(me and me.id) or 0\n\tlocal actor_id = tonumber(row.actor_id) or 0\n\tif me_id > 0 and actor_id == me_id then\n\t\treturn true\n\tend\n\tlocal map = state.authoritative_enemy_effects\n\tlocal effects = type(map) == 'table' and map[tonumber(target_id) or 0] or nil\n\tlocal authoritative = type(effects) == 'table' and effects[DIA_EFFECT_ID] or nil\n\tif type(authoritative) ~= 'table' then\n\t\treturn false\n\tend\n\tlocal spell_id = tonumber(row.spell_id) or 0\n\tif not DIA_SPELLS[spell_id] or tonumber(authoritative.action_id) ~= spell_id then\n\t\treturn false\n\tend\n\tlocal local_seen = tonumber(row.seen_at) or 0\n\tlocal authoritative_seen = tonumber(authoritative.seen_at) or 0\n\tif local_seen > 0 and authoritative_seen > 0 and math.abs(local_seen - authoritative_seen) > 1.5 then\n\t\treturn false\n\tend\n\treturn true\nend\n\nlocal function light_shot_ready()\n'''
+          )
+          replace_once(
+              'uc_cor_maintenance.lua',
+              '\t\t\t\tstate.dia_by_target[tid] = {\n\t\t\t\t\tspell_id = action_id,\n\t\t\t\t\tseen_at = now,\n',
+              '\t\t\t\tstate.dia_by_target[tid] = {\n\t\t\t\t\tspell_id = action_id,\n\t\t\t\t\tactor_id = tonumber(act.actor_id) or 0,\n\t\t\t\t\tseen_at = now,\n'
+          )
+          replace_once(
+              'uc_cor_maintenance.lua',
+              "\tlocal row = state.dia_by_target[tid]\n\tlocal generation = dia_generation(row)\n\tif generation == '' or generation ~= tostring(pending.generation or '')\n",
+              "\tlocal row = state.dia_by_target[tid]\n\tif not authoritative_dia_matches(tid, row) then\n\t\treturn nil\n\tend\n\tlocal generation = dia_generation(row)\n\tif generation == '' or generation ~= tostring(pending.generation or '')\n"
+          )
+          replace_once(
+              'uc_cor_maintenance.lua',
+              "\tlocal row = state.dia_by_target[tid]\n\tif tid <= 0 or type(row) ~= 'table' or not DIA_SPELLS[tonumber(row.spell_id) or 0] then\n",
+              "\tlocal row = state.dia_by_target[tid]\n\tif tid <= 0 or type(row) ~= 'table' or not DIA_SPELLS[tonumber(row.spell_id) or 0]\n\t\tor not authoritative_dia_matches(tid, row) then\n"
+          )
+          replace_once(
+              'uc_cor_maintenance.lua',
+              'function mod.propose(settings)\n\tlocal p = windower.ffxi.get_player()\n',
+              "function mod.propose(settings, enemy_effect_state)\n\tstate.authoritative_enemy_effects = type(enemy_effect_state) == 'table' and enemy_effect_state or nil\n\tlocal p = windower.ffxi.get_player()\n"
+          )
+
+          replace_once(
+              'uc_provider_maintenance.lua',
+              '\t\tif job == \'COR\' then\n\t\t\tlocal action = cor_propose(ctx.settings)\n',
+              "\t\tif job == 'COR' then\n\t\t\tlocal action = cor_propose(ctx.settings, phase1.effectiveTargets or {})\n"
+          )
+
+          replace_once(
+              'uc_scheduler_enemy_effect_state.lua',
+              "\t\t\tM.set(phase1, target_id, effect_id, source, at, nil, now)\n",
+              "\t\t\tM.set(phase1, target_id, effect_id, source, at, tonumber(entry[2]) or 0, now, id)\n"
+          )
+
+          replace_once(
+              'tests/replay/harness/selftest_cor_dia_lightshot_static.lua',
+              "local normalizer_entry = read('uc_config_normalizer.lua')\n",
+              "local normalizer_entry = read('uc_config_normalizer.lua')\nlocal provider = read('uc_provider_maintenance.lua')\nlocal enemy_state = read('uc_scheduler_enemy_effect_state.lua')\n"
+          )
+          replace_once(
+              'tests/replay/harness/selftest_cor_dia_lightshot_static.lua',
+              "assert_contains(cor, \"reason_code = reason_code\", 'targeted utility action must flow through COR maintenance proposals')\n",
+              "assert_contains(cor, \"reason_code = reason_code\", 'targeted utility action must flow through COR maintenance proposals')\nassert_contains(cor, 'authoritative_dia_matches', 'Light Shot must validate Dia against authoritative enemy effect state')\nassert_contains(cor, 'actor_id = tonumber(act.actor_id) or 0', 'Dia observations must retain caster identity')\nassert_contains(provider, 'cor_propose(ctx.settings, phase1.effectiveTargets or {})', 'COR maintenance must receive authoritative enemy effect state')\nassert_contains(enemy_state, 'tonumber(entry[2]) or 0, now, id', 'enemy spell effects must retain catalog duration and action identity')\n"
+          )
+
+          replace_once(
+              '.github/workflows/pr35-verify.yml',
+              '      - name: Config normalizer self-test\n        run: lua5.1 tests/replay/harness/selftest_config_normalizer.lua\n',
+              '      - name: Config normalizer self-test\n        run: lua5.1 tests/replay/harness/selftest_config_normalizer.lua\n      - name: COR Dia Light Shot self-test\n        run: lua5.1 tests/replay/harness/selftest_cor_dia_lightshot_static.lua\n'
+          )
+
+      - name: Verify source
+        run: git diff --check
+      - name: Commit source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uc_cor_maintenance.lua uc_provider_maintenance.lua uc_scheduler_enemy_effect_state.lua tests/replay/harness/selftest_cor_dia_lightshot_static.lua .github/workflows/pr35-verify.yml
+          git commit -m "Guard COR Light Shot against stale Dia state"
+          git push origin HEAD:fix/cor-lightshot-stale-dia
