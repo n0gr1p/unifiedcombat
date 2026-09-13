@@ -1083,6 +1083,7 @@ internal static class StructuredProfileV2Writer
                     .Add("crooked_roll_slot", ReadInt(flatProfile, "cor_crooked_roll_slot", 0))
                     .Add("elevens", ReadBool(flatProfile, "cor_elevens", false))
                     .Add("luzaf_range_override", ReadBool(flatProfile, "cor_luzaf_range_override", false))
+                    .Add("light_shot_dia", ReadBool(flatProfile, "cor_light_shot_dia", true))
                     .Add("range_selected", ReadString(flatProfile, "cor_roll_range_selected", ""))
                     .Add("range_require_ids", EmptyList())
             );

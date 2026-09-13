@@ -1026,6 +1026,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.cor_crooked_roll_slot = config.maintenance.cor.crooked_roll_slot
 			candidate.cor_elevens = config.maintenance.cor.elevens
 			candidate.cor_luzaf_range_override = config.maintenance.cor.luzaf_range_override
+			candidate.cor_light_shot_dia = config.maintenance.cor.light_shot_dia
 			candidate.cor_roll_range_selected = config.maintenance.cor.range_selected
 			candidate.cor_roll_range_require_ids = clone_value(config.maintenance.cor.range_require_ids)
 		end
