@@ -28,7 +28,7 @@ internal static class ReactionSequenceProfileCodecTests
             AssertEqual(parsed.Steps[1].Optional, false, "terminal required flag");
 
             var petSequence = new ReactionSequenceRule(
-                "Just Desserts",
+                "Pet Test Ability",
                 new List<ReactionSequenceStep>
                 {
                     new("pet", "Assault", "actor", false),
