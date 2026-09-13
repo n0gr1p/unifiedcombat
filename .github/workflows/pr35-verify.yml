@@ -5,86 +5,11 @@ on:
     branches:
       - feature/reaction-action-sequences
       - feature/run-tank-automation
-      - feature/cor-light-shot-dia-ui
   pull_request:
     branches:
       - master
 
-permissions:
-  contents: write
-
 jobs:
-  patch-cor-light-shot-dia-ui:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/cor-light-shot-dia-ui'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feature/cor-light-shot-dia-ui
-          fetch-depth: 0
-      - name: Apply COR Light Shot Dia UI changes
-        shell: python
-        run: |
-          from pathlib import Path
-
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text(encoding='utf-8')
-              if new in text:
-                  return
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected one match, found {count}: {old!r}')
-              p.write_text(text.replace(old, new, 1), encoding='utf-8')
-
-          replace_once(
-              'UnifiedCombatWinForms/HubUiConstants.cs',
-              '        "domain_follow_enabled",\n        "path_recording",\n',
-              '        "domain_follow_enabled",\n        "cor_light_shot_dia",\n        "path_recording",\n'
-          )
-          replace_once(
-              'UnifiedCombatWinForms/HubUiConstants.cs',
-              '        ["domain_follow_enabled"] = "Party-follow domain enabled",\n        ["ability_active"] = "Abilities",\n',
-              '        ["domain_follow_enabled"] = "Party-follow domain enabled",\n        ["cor_light_shot_dia"] = "Light Shot active Dia",\n        ["ability_active"] = "Abilities",\n'
-          )
-
-          replace_once(
-              'UnifiedCombatWinForms/MainForm.ParityUi.cs',
-              '        corFlags.Controls.Add(_corLuzafRangeOverride);\n        corRoot.Controls.Add(corFlags);\n',
-              '        corFlags.Controls.Add(_corLuzafRangeOverride);\n        corFlags.Controls.Add(CreateGlobalBoolCheckBox("cor_light_shot_dia"));\n        corRoot.Controls.Add(corFlags);\n'
-          )
-
-          replace_once(
-              'UnifiedCombatWinForms/StructuredProfileV2Writer.cs',
-              '                    .Add("luzaf_range_override", ReadBool(flatProfile, "cor_luzaf_range_override", false))\n                    .Add("range_selected", ReadString(flatProfile, "cor_roll_range_selected", ""))\n',
-              '                    .Add("luzaf_range_override", ReadBool(flatProfile, "cor_luzaf_range_override", false))\n                    .Add("light_shot_dia", ReadBool(flatProfile, "cor_light_shot_dia", true))\n                    .Add("range_selected", ReadString(flatProfile, "cor_roll_range_selected", ""))\n'
-          )
-
-          replace_once(
-              'uc_active_config.lua',
-              '\t\t\tcandidate.cor_luzaf_range_override = config.maintenance.cor.luzaf_range_override\n\t\t\tcandidate.cor_roll_range_selected = config.maintenance.cor.range_selected\n',
-              '\t\t\tcandidate.cor_luzaf_range_override = config.maintenance.cor.luzaf_range_override\n\t\t\tcandidate.cor_light_shot_dia = config.maintenance.cor.light_shot_dia\n\t\t\tcandidate.cor_roll_range_selected = config.maintenance.cor.range_selected\n'
-          )
-
-          replace_once(
-              'UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs',
-              '        AssertTrue(HubUiConstants.CombatTargetingUiKeys.Contains("auto_engage"), "Auto Engage must appear in Combat & Targeting UI");\n',
-              '        AssertTrue(HubUiConstants.CombatTargetingUiKeys.Contains("auto_engage"), "Auto Engage must appear in Combat & Targeting UI");\n        AssertTrue(HubUiConstants.BoolKeys.Contains("cor_light_shot_dia"), "COR Light Shot Dia must persist through the shared UI boolean registry");\n'
-          )
-
-      - name: Commit source changes
-        run: |
-          if git diff --quiet; then
-            echo "No source patch needed"
-            exit 0
-          fi
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add UnifiedCombatWinForms/HubUiConstants.cs UnifiedCombatWinForms/MainForm.ParityUi.cs UnifiedCombatWinForms/StructuredProfileV2Writer.cs UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs uc_active_config.lua
-          git commit -m "Add COR Light Shot Dia UI toggle"
-          git push origin HEAD:feature/cor-light-shot-dia-ui
-
   winforms:
     runs-on: windows-latest
     steps:
