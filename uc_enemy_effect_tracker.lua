@@ -1,6 +1,9 @@
 local M = {}
 
 local tracked = {}
+local always_observed_effects = {
+	[134] = true, -- Dia; consumed by COR Dia -> Light Shot automation.
+}
 
 local death_messages = {
 	[6] = true, [20] = true, [97] = true, [113] = true, [406] = true, [605] = true, [646] = true,
@@ -104,7 +107,8 @@ end
 function M.observe_effect(target_id, effect_id, source, observed_set)
 	local tid = tonumber(target_id) or 0
 	local eid = tonumber(effect_id) or 0
-	if type(observed_set) ~= 'table' or observed_set[eid] ~= true then
+	local requested = type(observed_set) == 'table' and observed_set[eid] == true
+	if not requested and always_observed_effects[eid] ~= true then
 		return nil
 	end
 	if not is_enemy_npc_by_id(tid) then
