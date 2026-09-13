@@ -59,6 +59,7 @@ internal static class HubUiConstants
         "domain_movement_enabled",
         "domain_maintenance_enabled",
         "domain_follow_enabled",
+        "cor_light_shot_dia",
         "path_recording",
         "path_follow_enabled",
     ];
@@ -120,6 +121,7 @@ internal static class HubUiConstants
         ["domain_movement_enabled"] = "Movement domain enabled",
         ["domain_maintenance_enabled"] = "Maintenance domain enabled",
         ["domain_follow_enabled"] = "Party-follow domain enabled",
+        ["cor_light_shot_dia"] = "Light Shot active Dia",
         ["ability_active"] = "Abilities",
         ["weaponskill_active"] = "Weapon Skill",
         ["aftermath_enabled"] = "Aftermath",

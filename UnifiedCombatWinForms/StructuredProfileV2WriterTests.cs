@@ -306,6 +306,7 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "action_name = \"Stun\"", "reaction action name missing");
         AssertTrue(HubUiConstants.BoolKeys.Contains("auto_engage"), "Auto Engage must be persisted by the shared UI boolean registry");
         AssertTrue(HubUiConstants.CombatTargetingUiKeys.Contains("auto_engage"), "Auto Engage must appear in Combat & Targeting UI");
+        AssertTrue(HubUiConstants.BoolKeys.Contains("cor_light_shot_dia"), "COR Light Shot Dia must persist through the shared UI boolean registry");
     }
 
     private static void TestSerializeShapeAndEscaping()

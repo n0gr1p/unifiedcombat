@@ -2179,6 +2179,7 @@ public partial class MainForm
         _corLuzafRangeOverride = new UcToggle { Text = "Force Luzaf range (16y)", AutoSize = true };
         _corLuzafRangeOverride.CheckedChanged += (_, _) => OnCorFlagChanged("cor_luzaf_range_override", _corLuzafRangeOverride.Checked);
         corFlags.Controls.Add(_corLuzafRangeOverride);
+        corFlags.Controls.Add(CreateGlobalBoolCheckBox("cor_light_shot_dia"));
         corRoot.Controls.Add(corFlags);
         corRoot.Controls.Add(
             new Label
