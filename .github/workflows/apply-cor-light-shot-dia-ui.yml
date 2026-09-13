@@ -1,0 +1,107 @@
+name: Apply COR Light Shot Dia UI patch
+
+on:
+  push:
+    branches:
+      - feature/cor-light-shot-dia-ui
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/cor-light-shot-dia-ui
+          fetch-depth: 0
+      - name: Apply focused source changes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}: {old!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityUi.cs',
+              '    private CheckBox _corElevens = null!;\n    private CheckBox _corLuzafRangeOverride = null!;\n',
+              '    private CheckBox _corElevens = null!;\n    private CheckBox _corLuzafRangeOverride = null!;\n    private CheckBox _corLightShotDia = null!;\n'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityUi.cs',
+              '        _corLuzafRangeOverride = new UcToggle { Text = "Force Luzaf range (16y)", AutoSize = true };\n        _corLuzafRangeOverride.CheckedChanged += (_, _) => OnCorFlagChanged("cor_luzaf_range_override", _corLuzafRangeOverride.Checked);\n        corFlags.Controls.Add(_corLuzafRangeOverride);\n        corRoot.Controls.Add(corFlags);\n',
+              '        _corLuzafRangeOverride = new UcToggle { Text = "Force Luzaf range (16y)", AutoSize = true };\n        _corLuzafRangeOverride.CheckedChanged += (_, _) => OnCorFlagChanged("cor_luzaf_range_override", _corLuzafRangeOverride.Checked);\n        corFlags.Controls.Add(_corLuzafRangeOverride);\n        _corLightShotDia = new UcToggle { Text = "Light Shot active Dia", AutoSize = true };\n        _corLightShotDia.CheckedChanged += (_, _) => OnCorFlagChanged("cor_light_shot_dia", _corLightShotDia.Checked);\n        corFlags.Controls.Add(_corLightShotDia);\n        corRoot.Controls.Add(corFlags);\n'
+          )
+
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ProfileStore.cs',
+              '            ["cor_elevens"] = _corElevens.Checked,\n            ["cor_luzaf_range_override"] = _corLuzafRangeOverride.Checked,\n            ["cor_roll_range_selected"] = string.Join(\n',
+              '            ["cor_elevens"] = _corElevens.Checked,\n            ["cor_luzaf_range_override"] = _corLuzafRangeOverride.Checked,\n            ["cor_light_shot_dia"] = _corLightShotDia.Checked,\n            ["cor_roll_range_selected"] = string.Join(\n'
+          )
+
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '            _corElevens.Checked = false;\n            _corLuzafRangeOverride.Checked = false;\n            _corElevens.Enabled = false;\n            _corLuzafRangeOverride.Enabled = false;\n',
+              '            _corElevens.Checked = false;\n            _corLuzafRangeOverride.Checked = false;\n            _corLightShotDia.Checked = false;\n            _corElevens.Enabled = false;\n            _corLuzafRangeOverride.Enabled = false;\n            _corLightShotDia.Enabled = false;\n'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '                _corElevens.Enabled = true;\n                _corLuzafRangeOverride.Enabled = true;\n                _corElevens.Checked = SessionStateHelper.GetBool(s, "cor_elevens", false);\n                _corLuzafRangeOverride.Checked = SessionStateHelper.GetBool(s, "cor_luzaf_range_override", false);\n',
+              '                _corElevens.Enabled = true;\n                _corLuzafRangeOverride.Enabled = true;\n                _corLightShotDia.Enabled = true;\n                _corElevens.Checked = SessionStateHelper.GetBool(s, "cor_elevens", false);\n                _corLuzafRangeOverride.Checked = SessionStateHelper.GetBool(s, "cor_luzaf_range_override", false);\n                _corLightShotDia.Checked = SessionStateHelper.GetBool(s, "cor_light_shot_dia", true);\n'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/MainForm.ParityLogic.cs',
+              '        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "cor_luzaf_range_override", ["value"] = _corLuzafRangeOverride.Checked ? "on" : "off" });\n',
+              '        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "cor_luzaf_range_override", ["value"] = _corLuzafRangeOverride.Checked ? "on" : "off" });\n        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "cor_light_shot_dia", ["value"] = _corLightShotDia.Checked ? "on" : "off" });\n'
+          )
+
+          replace_once(
+              'UnifiedCombatWinForms/StructuredProfileV2Writer.cs',
+              '                    .Add("elevens", ReadBool(flatProfile, "cor_elevens", false))\n                    .Add("luzaf_range_override", ReadBool(flatProfile, "cor_luzaf_range_override", false))\n                    .Add("range_selected", ReadString(flatProfile, "cor_roll_range_selected", ""))\n',
+              '                    .Add("elevens", ReadBool(flatProfile, "cor_elevens", false))\n                    .Add("luzaf_range_override", ReadBool(flatProfile, "cor_luzaf_range_override", false))\n                    .Add("light_shot_dia", ReadBool(flatProfile, "cor_light_shot_dia", true))\n                    .Add("range_selected", ReadString(flatProfile, "cor_roll_range_selected", ""))\n'
+          )
+
+          replace_once(
+              'uc_active_config.lua',
+              '\t\t\tcandidate.cor_elevens = config.maintenance.cor.elevens\n\t\t\tcandidate.cor_luzaf_range_override = config.maintenance.cor.luzaf_range_override\n\t\t\tcandidate.cor_roll_range_selected = config.maintenance.cor.range_selected\n',
+              '\t\t\tcandidate.cor_elevens = config.maintenance.cor.elevens\n\t\t\tcandidate.cor_luzaf_range_override = config.maintenance.cor.luzaf_range_override\n\t\t\tcandidate.cor_light_shot_dia = config.maintenance.cor.light_shot_dia\n\t\t\tcandidate.cor_roll_range_selected = config.maintenance.cor.range_selected\n'
+          )
+
+          replace_once(
+              'UnifiedCombat.lua',
+              '\t\tcor_elevens = false,\n\t\tcor_luzaf_range_override = false,\n\t\tcor_roll_range_selected = \'\',\n',
+              '\t\tcor_elevens = false,\n\t\tcor_luzaf_range_override = false,\n\t\tcor_light_shot_dia = true,\n\t\tcor_roll_range_selected = \'\',\n'
+          )
+
+          replace_once(
+              'UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs',
+              '        AssertTrue(HubUiConstants.CombatTargetingUiKeys.Contains("auto_engage"), "Auto Engage must appear in Combat & Targeting UI");\n',
+              '        AssertTrue(HubUiConstants.CombatTargetingUiKeys.Contains("auto_engage"), "Auto Engage must appear in Combat & Targeting UI");\n        AssertContains(ui, "Light Shot active Dia", "COR Light Shot Dia toggle must be visible in the COR tab");\n        AssertContains(ui, "OnCorFlagChanged(\\\"cor_light_shot_dia\\\"", "COR Light Shot Dia toggle must use the COR flag persistence path");\n'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs',
+              '        flat["cor_luzaf_range_override"] = false;\n        flat["cor_roll_range_selected"] = "";\n',
+              '        flat["cor_luzaf_range_override"] = false;\n        flat["cor_light_shot_dia"] = false;\n        flat["cor_roll_range_selected"] = "";\n'
+          )
+          replace_once(
+              'UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs',
+              '        AssertContains(content, "luzaf_range_override = false", "COR Luzaf-range flag missing");\n',
+              '        AssertContains(content, "luzaf_range_override = false", "COR Luzaf-range flag missing");\n        AssertContains(content, "light_shot_dia = false", "COR Light Shot Dia flag missing");\n'
+          )
+
+      - name: Verify diff
+        run: git diff --check && git diff --stat
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add UnifiedCombat.lua uc_active_config.lua UnifiedCombatWinForms/MainForm.ParityUi.cs UnifiedCombatWinForms/MainForm.ParityLogic.cs UnifiedCombatWinForms/MainForm.ProfileStore.cs UnifiedCombatWinForms/StructuredProfileV2Writer.cs UnifiedCombatWinForms/StructuredProfileV2WriterTests.cs
+          git commit -m "Add COR Light Shot Dia UI toggle"
+          git push origin HEAD:feature/cor-light-shot-dia-ui
