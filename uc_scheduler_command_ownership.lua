@@ -123,6 +123,29 @@ local function consume_dispatched_reaction_action(intent)
     return released
 end
 
+local function prepare_cor_targeted_utility(intent)
+    local meta = type(intent.meta) == 'table' and intent.meta or nil
+    if meta == nil
+        or tostring(meta.provider or '') ~= 'maintenance_cor'
+        or tostring(meta.action_type or '') ~= 'ja'
+        or tostring(meta.action_name or '') ~= 'Light Shot' then
+        return true, ''
+    end
+    local cor = require('uc_cor_maintenance')
+    if type(cor.resolve_pending_light_shot_target) ~= 'function' then
+        return false, 'cor_light_shot_target_resolver_missing'
+    end
+    local target = cor.resolve_pending_light_shot_target()
+    if type(target) ~= 'table' or (tonumber(target.id) or 0) <= 0 then
+        return false, 'cor_light_shot_target_stale'
+    end
+    intent.command = 'input /ja "Light Shot" <t>'
+    meta.target_kind = 'mob'
+    meta.target_id = tonumber(target.id) or 0
+    meta.target_name = tostring(target.name or '')
+    return true, ''
+end
+
 function M.apply_command_ownership(opts)
     opts = require_table(opts, "opts")
     local intent = require_table(opts.intent, "opts.intent")
@@ -146,6 +169,16 @@ function M.apply_command_ownership(opts)
 
     if not command_present then
         status.dispatch_reason = "missing_command"
+        return status
+    end
+
+    local prepared, prepare_reason = prepare_cor_targeted_utility(intent)
+    if not prepared then
+        -- Treat a stale current-target/Dia generation as a safe no-op. The COR
+        -- utility does not mark the Dia handled, so a later maintenance tick can
+        -- retry if the same generation becomes the current target again.
+        status.dispatch_ok = true
+        status.dispatch_reason = prepare_reason
         return status
     end
 
