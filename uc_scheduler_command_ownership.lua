@@ -146,6 +146,21 @@ local function prepare_cor_targeted_utility(intent)
     return true, ''
 end
 
+local function consume_dispatched_cor_targeted_utility(intent)
+    local meta = type(intent.meta) == 'table' and intent.meta or nil
+    if meta == nil
+        or tostring(meta.provider or '') ~= 'maintenance_cor'
+        or tostring(meta.action_type or '') ~= 'ja'
+        or tostring(meta.action_name or '') ~= 'Light Shot' then
+        return false
+    end
+    local cor = require('uc_cor_maintenance')
+    if type(cor.note_light_shot_dispatched) ~= 'function' then
+        return false
+    end
+    return cor.note_light_shot_dispatched(tonumber(meta.target_id) or 0) == true
+end
+
 function M.apply_command_ownership(opts)
     opts = require_table(opts, "opts")
     local intent = require_table(opts.intent, "opts.intent")
@@ -174,9 +189,9 @@ function M.apply_command_ownership(opts)
 
     local prepared, prepare_reason = prepare_cor_targeted_utility(intent)
     if not prepared then
-        -- Treat a stale current-target/Dia generation as a safe no-op. The COR
-        -- utility does not mark the Dia handled, so a later maintenance tick can
-        -- retry if the same generation becomes the current target again.
+        -- Treat a stale current-target/Dia generation as a safe no-op. Because
+        -- nothing was dispatched, the generation remains eligible for a later
+        -- maintenance tick if it becomes valid again.
         status.dispatch_ok = true
         status.dispatch_reason = prepare_reason
         return status
@@ -191,6 +206,7 @@ function M.apply_command_ownership(opts)
     status.dispatch_reason = type(dispatch_result) == "table" and tostring(dispatch_result.reason or "") or "missing_dispatch_result"
 
     if status.dispatch_ok then
+        consume_dispatched_cor_targeted_utility(intent)
         local consumed = consume_dispatched_reaction_action(intent)
         if type(consumed) == 'table' and consumed.sequence_step_dispatched == true then
             status.reaction_sequence_step_dispatched = true
