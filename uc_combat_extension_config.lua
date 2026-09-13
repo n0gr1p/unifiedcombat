@@ -1,5 +1,10 @@
 local M = {}
 
+local REACTION_PET_ACTIONS = {
+    assault = true,
+    deploy = true,
+}
+
 local function trim(value)
     if type(value) ~= 'string' then
         return ''
@@ -41,15 +46,24 @@ local function validate_sequence_step(step, index, count)
         return false, ('use_sequence step %d must be a table'):format(index)
     end
     local action_type = trim(step.action_type):lower()
-    if action_type ~= 'spell' and action_type ~= 'ja' then
-        return false, ('use_sequence step %d action_type must be spell or ja'):format(index)
+    if action_type ~= 'spell' and action_type ~= 'ja' and action_type ~= 'pet' then
+        return false, ('use_sequence step %d action_type must be spell, ja, or pet'):format(index)
     end
-    if trim(step.action_name) == '' then
+    local action_name = trim(step.action_name)
+    if action_name == '' then
         return false, ('use_sequence step %d requires action_name'):format(index)
     end
     local target = trim(step.target):lower()
     if target ~= 'self' and target ~= 'actor' then
         return false, ('use_sequence step %d target must be self or actor'):format(index)
+    end
+    if action_type == 'pet' then
+        if target ~= 'actor' then
+            return false, ('use_sequence step %d pet actions currently require actor target'):format(index)
+        end
+        if REACTION_PET_ACTIONS[action_name:lower()] ~= true then
+            return false, ('use_sequence step %d unsupported pet action: %s'):format(index, action_name)
+        end
     end
     if step.optional ~= nil and type(step.optional) ~= 'boolean' then
         return false, ('use_sequence step %d optional must be boolean'):format(index)
