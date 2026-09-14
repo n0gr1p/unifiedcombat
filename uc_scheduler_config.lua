@@ -86,6 +86,11 @@ function M.tank_enmity_actions(settings)
     return M.active_value_or_flat('config.tank.enmity.actions', s.tank_enmity_actions)
 end
 
+function M.tank_enmity_include_pets(settings)
+    local s = settings_or_default(settings)
+    return active_bool_or_flat('config.tank.enmity.include_pets', s.tank_enmity_include_pets)
+end
+
 function M.defensive_enemy_buffs_remove(settings)
     local s = settings_or_default(settings)
     return M.active_value_or_flat('config.defensive.enemy_buffs.remove', s.def_remove_enemy_buffs)
