@@ -6544,6 +6544,11 @@ local function p1_dispatch_combat(selected, settings, phase)
 					stop = run_stop_ownership_status.stop,
 				}
 			end
+			local self_spell_target_id = tonumber((windower.ffxi.get_player() or {}).id) or 0
+			if self_spell_target_id <= 0 then
+				log_combat_sched(('dispatch_drop reason=SPELL_SELF_TARGET_MISSING spell=\"%s\"'):format(tostring(spell)))
+				return false, nil
+			end
 			local spell_self_command = ('input /ma \"%s\" <me>'):format(spell)
 			local intent = {
 				kind = 'send_command',
@@ -6552,7 +6557,9 @@ local function p1_dispatch_combat(selected, settings, phase)
 				meta = {
 					action_type = tostring(action_type or ''),
 					action_name = spell,
+					target_id = self_spell_target_id,
 					target_kind = tostring(target_kind or ''),
+					provider = tostring(selected.provider or 'combat'),
 				},
 			}
 			local dispatcher = require('uc_scheduler_dispatcher')
@@ -6575,10 +6582,16 @@ local function p1_dispatch_combat(selected, settings, phase)
 				dispatch_reason = command_ownership_status.dispatch_reason,
 				fallback_used = command_ownership_status.fallback_used,
 			}
+			if command_ownership_status.dispatch_ok ~= true then
+				log_combat_sched(('dispatch_drop reason=SPELL_SELF_DISPATCH_FAILED spell=\"%s\" dispatch_reason=%s'):format(
+					tostring(spell), tostring(command_ownership_status.dispatch_reason or '')
+				))
+				return false, nil
+			end
 			action_mark_sent('spell', {
 				action_name = spell,
 				provider = 'combat',
-				target_id = tonumber((windower.ffxi.get_player() or {}).id) or 0,
+				target_id = self_spell_target_id,
 				target_name = tostring(selected.target_name or ''),
 				target_kind = tostring(target_kind or ''),
 			})
@@ -6587,7 +6600,7 @@ local function p1_dispatch_combat(selected, settings, phase)
 				provider = 'combat',
 				kind = 'spell',
 				target = tostring(selected.target_name or ''),
-				target_id = tonumber((windower.ffxi.get_player() or {}).id) or 0,
+				target_id = self_spell_target_id,
 				cast_type = tostring(action_type or ''),
 				action_token = tostring(tonumber((action_state() or {}).action_token) or 0),
 			}, ('spell_sent:%s:self'):format(tostring(spell or '')), 0.05)

@@ -154,6 +154,21 @@ player.buffs[#player.buffs + 1] = 7101
 out = collect()
 assert_equal(out[1].action_name, 'Foil', 'Foil should follow core ward')
 assert_equal(out[1].action_type, 'spell', 'Foil action kind')
+assert_equal(out[1].target_kind, 'self', 'Foil must remain self-targeted')
+assert_equal(out[1].target_id, player.id, 'Foil self proposal must carry RUN player id')
+
+player.status = 0
+settings.ability_allow_unengaged = true
+out = collect()
+assert_equal(out[1].action_name, 'Foil', 'unengaged RUN with a valid enemy may maintain Foil')
+assert_equal(out[1].target_id, player.id, 'unengaged Foil must still target RUN player id')
+player.status = 1
+settings.ability_allow_unengaged = false
+
+ready.Foil = false
+out = collect()
+assert_equal(out[1].action_name, 'Gambit', 'unavailable Foil must not starve Gambit')
+ready.Foil = nil
 
 player.buffs[#player.buffs + 1] = 7201
 out = collect()
