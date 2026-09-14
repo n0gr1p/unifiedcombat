@@ -43,21 +43,16 @@ local function configured_enmity_actions(settings)
 	local source = scheduler_config.tank_enmity_actions(settings)
 	if type(source) == 'string' then
 		local parsed = {}
-		for token in source:gmatch('[^|]+') do
-			parsed[#parsed + 1] = token
-		end
+		for token in source:gmatch('[^|]+') do parsed[#parsed + 1] = token end
 		source = parsed
 	end
 	if type(source) ~= 'table' then return {} end
 	local actions = {}
 	for i = 1, #source do
 		local entry = source[i]
-		local name = ''
-		if type(entry) == 'table' then
-			name = tostring(entry.name or entry.entry or entry.raw or '')
-		else
-			name = tostring(entry or '')
-		end
+		local name = type(entry) == 'table'
+			and tostring(entry.name or entry.entry or entry.raw or '')
+			or tostring(entry or '')
 		local _, explicit_name = name:match('^(%a+)%s*:%s*(.+)$')
 		if explicit_name ~= nil then name = explicit_name end
 		name = name:match('^%s*(.-)%s*$') or ''
@@ -76,17 +71,13 @@ local function action_range(action_name, kind, action_effective_range)
 end
 
 local function pet_pick(settings, player, action_ready, action_effective_range)
-	if scheduler_config.tank_enmity_include_pets(settings) ~= true then
-		return nil
-	end
+	if scheduler_config.tank_enmity_include_pets(settings) ~= true then return nil end
 	local violation = pet_enmity.find_violation(settings, player)
-	if type(violation) ~= 'table' or type(violation.mob) ~= 'table' then
-		return nil
-	end
+	if type(violation) ~= 'table' or type(violation.mob) ~= 'table' then return nil end
 	local target_id = tonumber(violation.mob.id) or 0
 	if target_id <= 0 then return nil end
 	for _, action_name in ipairs(configured_enmity_actions(settings)) do
-		local ready, reason, kind = action_ready(action_name, target_id)
+		local ready, _, kind = action_ready(action_name, target_id)
 		kind = tostring(kind or ''):lower()
 		if ready == true and (kind == 'ja' or kind == 'spell') then
 			return {
@@ -105,9 +96,6 @@ local function pet_pick(settings, player, action_ready, action_effective_range)
 				action_range = action_range(action_name, kind, action_effective_range),
 				reason = 'PET_ENMITY_READY',
 			}
-		elseif reason ~= nil then
-			-- Continue through the configured recovery list just like the ordinary
-			-- tank lane does when an earlier action is unavailable.
 		end
 	end
 	return nil
@@ -126,6 +114,33 @@ local function prefer_pet_pick(pet, player_pick)
 	local player_mob_hpp = tonumber(player_pick.mob_hpp) or 0
 	if pet_mob_hpp ~= player_mob_hpp then return pet_mob_hpp > player_mob_hpp and pet or player_pick end
 	return (tonumber(pet.target_id) or math.huge) < (tonumber(player_pick.target_id) or math.huge) and pet or player_pick
+end
+
+local function emit_pet_violation(pick, action_name, kind, log_tank_sched)
+	if tostring(pick.victim_kind or '') ~= 'pet' then return end
+	log_tank_sched(('pet_enmity_violation mob="%s" victim="%s" victim_id=%d owner="%s" owner_id=%d recovery="%s" kind=%s'):format(
+		tostring(pick.target_name or ''),
+		tostring(pick.victim_name or ''),
+		tonumber(pick.victim_id) or 0,
+		tostring(pick.owner_name or ''),
+		tonumber(pick.owner_id) or 0,
+		tostring(action_name or ''),
+		tostring(kind or '')
+	))
+	local timeline = rawget(_G, 'UC_ACTION_TIMELINE_LOG')
+	if type(timeline) == 'function' then
+		pcall(timeline, 'TANK_ENMITY_VIOLATION', {
+			mob = tostring(pick.target_name or ''),
+			mob_id = tonumber(pick.target_id) or 0,
+			victim = tostring(pick.victim_name or ''),
+			victim_id = tonumber(pick.victim_id) or 0,
+			victim_kind = 'pet',
+			owner = tostring(pick.owner_name or ''),
+			owner_id = tonumber(pick.owner_id) or 0,
+			recovery = tostring(action_name or ''),
+			action_type = tostring(kind or ''),
+		}, ('tank_pet_enmity:%d:%d'):format(tonumber(pick.target_id) or 0, tonumber(pick.victim_id) or 0), 0.5)
+	end
 end
 
 function M.new(deps)
@@ -148,35 +163,23 @@ function M.new(deps)
 	function provider.collect(ctx, out)
 		require_table(ctx, 'ctx')
 		require_table(out, 'out')
-		if not bool_setting(rawget(_G, 'Start_Engine'), false) then
-			return
-		end
+		if not bool_setting(rawget(_G, 'Start_Engine'), false) then return end
 		local player = ctx.player
-		if ctx.player_present ~= true then
-			return
-		end
+		if ctx.player_present ~= true then return end
 		run_provider.collect(ctx, out)
 		local engaged = tonumber(player.status) == 1
 		local allow_unengaged = bool_setting(ctx.settings.ability_allow_unengaged, false)
-		if not engaged and not allow_unengaged then
-			return
-		end
+		if not engaged and not allow_unengaged then return end
 		local pick = prefer_pet_pick(
 			pet_pick(ctx.settings, player, action_ready, action_effective_range),
 			select_tank_enmity(ctx.settings)
 		)
-		if type(pick) ~= 'table' then
-			return
-		end
+		if type(pick) ~= 'table' then return end
 		local kind = tostring(pick.kind or ''):lower()
-		if kind ~= 'ja' and kind ~= 'spell' then
-			return
-		end
+		if kind ~= 'ja' and kind ~= 'spell' then return end
 		local action_name = tostring(pick.name or '')
 		local target_id = tonumber(pick.target_id) or 0
-		if action_name == '' or target_id <= 0 then
-			return
-		end
+		if action_name == '' or target_id <= 0 then return end
 		if not engaged then
 			local mobs_by_id = type(ctx.mobs_by_id) == 'table' and ctx.mobs_by_id or {}
 			if not valid_enemy_target(mobs_by_id[target_id]) then
@@ -196,6 +199,7 @@ function M.new(deps)
 				tostring(action_name), tostring(kind), tostring(ready_kind or ''), target_id))
 			return
 		end
+		emit_pet_violation(pick, action_name, kind, log_tank_sched)
 		local prio = 96
 		local urgency = 0.85
 		local victim_hpp = tonumber(pick.victim_hpp) or 0
