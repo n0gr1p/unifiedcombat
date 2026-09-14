@@ -252,7 +252,8 @@ function M.new(deps)
             return
         end
 
-        if engaged and cfg.foil.enabled then
+        local enemy = current_enemy(ctx)
+        if cfg.foil.enabled and (engaged or enemy ~= nil) then
             local foil_sid = status_id_for_action('Foil', 'spell')
             if foil_sid <= 0 or not has_buff(player, foil_sid) then
                 if ready('Foil', tonumber(player.id) or 0, 'spell') then
@@ -265,24 +266,21 @@ function M.new(deps)
             end
         end
 
-        if engaged and #desired == 3 then
-            local enemy = current_enemy(ctx)
-            if enemy then
-                local magic = cfg.magic_support or {}
-                for _, entry in ipairs({
-                    { key = 'gambit', name = 'Gambit', reason = 'RUN_GAMBIT_READY' },
-                    { key = 'rayke', name = 'Rayke', reason = 'RUN_RAYKE_READY' },
-                }) do
-                    if magic[entry.key] and ready(entry.name, tonumber(enemy.id) or 0, 'ja') then
-                        local resource = resource_by_name(res.job_abilities, entry.name)
-                        local range = action_effective_range(resource and resource.range or 0)
-                        add_proposal(ctx, out, {
-                            kind = 'ja', name = entry.name, target_kind = 'mob', target_id = enemy.id,
-                            target_name = enemy.name, max_range = range, reason = entry.reason,
-                            category = 'magic_support', urgency = 0.72, desired_runes = desired, observed_runes = observed,
-                        })
-                        return
-                    end
+        if #desired == 3 and enemy then
+            local magic = cfg.magic_support or {}
+            for _, entry in ipairs({
+                { key = 'gambit', name = 'Gambit', reason = 'RUN_GAMBIT_READY' },
+                { key = 'rayke', name = 'Rayke', reason = 'RUN_RAYKE_READY' },
+            }) do
+                if magic[entry.key] and ready(entry.name, tonumber(enemy.id) or 0, 'ja') then
+                    local resource = resource_by_name(res.job_abilities, entry.name)
+                    local range = action_effective_range(resource and resource.range or 0)
+                    add_proposal(ctx, out, {
+                        kind = 'ja', name = entry.name, target_kind = 'mob', target_id = enemy.id,
+                        target_name = enemy.name, max_range = range, reason = entry.reason,
+                        category = 'magic_support', urgency = 0.72, desired_runes = desired, observed_runes = observed,
+                    })
+                    return
                 end
             end
         end
