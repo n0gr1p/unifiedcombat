@@ -1,0 +1,43 @@
+name: Patch Zerde issue 3 no-TP
+
+on:
+  push:
+    branches:
+      - fix/zerde-run-foil-dispatch-3
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/zerde-run-foil-dispatch-3
+      - name: Apply patch
+        run: python3 .github/scripts/patch_zerde_issue3_no_tp.py
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: Run focused Lua tests
+        run: |
+          lua5.1 tests/replay/harness/selftest_run_tank.lua
+          lua5.1 tests/replay/harness/selftest_run_no_tp_mode.lua
+          lua5.1 tests/replay/harness/selftest_run_foil_dispatch.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_dispatcher_phase2.lua
+          lua5.1 tests/replay/harness/selftest_formation_activation.lua
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Run RUN profile tests
+        run: |
+          dotnet build UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release
+          dotnet run --project UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --no-build -- --selftest-run-tank-profile
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add uc_run_config.lua uc_provider_run_tank.lua uc_scheduler_action_predicates.lua uc_run_no_tp.lua unified_scheduler.lua tests/replay/harness/selftest_run_tank.lua tests/replay/harness/selftest_run_no_tp_mode.lua UnifiedCombatWinForms/MainForm.ParityUi.cs UnifiedCombatWinForms/MainForm.ProfileStore.cs UnifiedCombatWinForms/MainForm.ParityLogic.cs UnifiedCombatWinForms/StructuredProfileV2Writer.cs UnifiedCombatWinForms/RuntimeProfileEditorAdapter.cs UnifiedCombatWinForms/RunTankProfileTests.cs docs/run_tank_automation.md docs/zerde_uc_issue_tracker.md
+          git commit -m "Add optional RUN no-TP mode"
+          git push origin HEAD:fix/zerde-run-foil-dispatch-3
