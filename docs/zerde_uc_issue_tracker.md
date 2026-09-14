@@ -10,7 +10,7 @@ Encounter setup currently uses RUN / 2x SMN / GEO / BRD / COR with player Auto E
 
 | # | Issue | Status | Notes |
 | --- | --- | --- | --- |
-| 1 | Optional pet-aware tank enmity recovery | OPEN | Tank recovery currently recognizes player victims but not party/alliance pets. |
+| 1 | Optional pet-aware tank enmity recovery | COMPLETE | Implemented and regression-tested; in-game pet-enmity breach testing passed. Final completion commit `bd1a35f`. |
 | 2 | GEO Indi ownership/reconciliation | OPEN | A pre-existing Indi-Malaise was not retained as owned during the Zerde opening and UC attempted to recast it. |
 | 3 | RUN Foil dispatch/ack failure | OPEN | Foil is proposed as a self-targeted spell, but the observed run repeatedly treated it as sent without a corresponding cast; the loop also starved Gambit/Rayke. |
 | 4 | Tank enmity priority inversion | OPEN | Reactive tank enmity recovery is priority 96 while generic configured tank JAs are priority 99. |
@@ -19,6 +19,8 @@ Encounter setup currently uses RUN / 2x SMN / GEO / BRD / COR with player Auto E
 ---
 
 ## 1. Optional pet-aware tank enmity recovery
+
+**Status: COMPLETE**
 
 ### Problem
 
@@ -35,6 +37,10 @@ Add an opt-in tank-enmity setting that treats pets owned by friendly party/allia
 - Pet victim diagnostics include pet identity and, when resolvable, owner identity.
 - Existing player-only tank enmity behavior is unchanged.
 - Add focused regression coverage for enabled and disabled pet-victim behavior.
+
+### Completion
+
+Implementation history includes `f3b6fdc` (pet-aware detection), `ac52f75` (tank recovery integration), `7cc883e` (UI toggle), `42a5fa1` / `d4a34a6` (regression coverage), `1ae0951` / `45aeee9` (Profile V2 projection and persistence), and final completion commit `bd1a35f` (normalization, live-toggle precedence, and final validation coverage). In-game testing of actual pet enmity breaches passed on 2026-09-14.
 
 ---
 
