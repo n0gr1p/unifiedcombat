@@ -34,6 +34,7 @@ internal static class RunTankProfileTests
             ["domain_follow_enabled"] = true,
             ["tank"] = true,
             ["tank_enmity_actions"] = "Flash",
+            ["tank_enmity_include_pets"] = true,
             ["run_tank_enabled"] = true,
             ["run_tank_runes_maintain"] = true,
             ["run_tank_runes"] = "Ignis|Ignis|Ignis",
@@ -57,6 +58,7 @@ internal static class RunTankProfileTests
         );
 
         AssertContains(lua, "tank = {", "tank block");
+        AssertContains(lua, "include_pets = true", "tank pet enmity serialization");
         AssertContains(lua, "run = {", "RUN block");
         AssertContains(lua, "desired = {", "rune list");
         AssertContains(lua, "\"Ignis\"", "Ignis rune serialization");
