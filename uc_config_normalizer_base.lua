@@ -1113,6 +1113,7 @@ local function default_config(meta)
             enabled = false,
             enmity = {
                 actions = {},
+                include_pets = false,
             },
             run = uc_run_config.default_config(),
         },
@@ -2259,10 +2260,12 @@ local function normalize_tank(source, config)
         tank.enabled = normalize_boolean(nested.enabled, tank.enabled)
         local enmity = is_table(nested.enmity) and nested.enmity or {}
         tank.enmity.actions = normalize_list(enmity.actions, tank.enmity.actions)
+        tank.enmity.include_pets = normalize_boolean(enmity.include_pets, tank.enmity.include_pets)
         tank.run = uc_run_config.normalize(nested.run)
     else
         tank.enabled = normalize_boolean(first_path(source, { path('tank') }), tank.enabled)
         tank.enmity.actions = normalize_list(first_path(source, { path('tank_enmity_actions') }), tank.enmity.actions)
+        tank.enmity.include_pets = normalize_boolean(first_path(source, { path('tank_enmity_include_pets') }), tank.enmity.include_pets)
         tank.run = uc_run_config.normalize(nil, source)
     end
 end
