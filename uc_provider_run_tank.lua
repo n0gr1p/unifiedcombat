@@ -268,6 +268,10 @@ function M.new(deps)
 
         if #desired == 3 and enemy then
             local magic = cfg.magic_support or {}
+            if (magic.gambit or magic.rayke) and not engaged then
+                publish('waiting', 'RUN_MAGIC_SUPPORT_REQUIRES_ENGAGED', '', desired, observed)
+                return
+            end
             for _, entry in ipairs({
                 { key = 'gambit', name = 'Gambit', reason = 'RUN_GAMBIT_READY' },
                 { key = 'rayke', name = 'Rayke', reason = 'RUN_RAYKE_READY' },

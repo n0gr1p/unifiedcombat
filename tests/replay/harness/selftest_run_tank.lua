@@ -66,6 +66,7 @@ local provider_module = require('uc_provider_run_tank')
 
 local normalized = run_config.normalize({
     enabled = true,
+    no_tp_mode = true,
     runes = { maintain = true, desired = { 'ignis', 'Ignis', 'IGNIS' } },
     foil = { enabled = true },
     wards = { vallation = true },
@@ -73,6 +74,7 @@ local normalized = run_config.normalize({
 })
 assert_equal(normalized.runes.desired[1], 'Ignis', 'rune canonicalization')
 assert_equal(#normalized.runes.desired, 3, 'rune count')
+assert_true(normalized.no_tp_mode, 'structured no-TP mode normalization')
 
 -- Active-config projection stores RUN in the structured compatibility mirror
 -- `tank_run`. Normalizing projected settings must preserve that domain even if
@@ -80,6 +82,7 @@ assert_equal(#normalized.runes.desired, 3, 'rune count')
 local projected = run_config.normalize(nil, {
     tank_run = {
         enabled = true,
+        no_tp_mode = true,
         runes = { maintain = true, desired = { 'Tenebrae', 'Tenebrae', 'Tenebrae' } },
         foil = { enabled = true },
         wards = { valiance = true, pflug = true },
@@ -89,6 +92,7 @@ local projected = run_config.normalize(nil, {
     run_tank_runes = 'Ignis|Ignis|Ignis',
 })
 assert_true(projected.enabled, 'projected tank_run mirror must preserve enabled=true')
+assert_true(projected.no_tp_mode, 'projected tank_run mirror must preserve no-TP mode')
 assert_equal(projected.runes.desired[1], 'Tenebrae', 'projected tank_run mirror must beat stale flat rune fields')
 assert_true(projected.wards.valiance, 'projected tank_run mirror must preserve ward settings')
 assert_true(projected.wards.pflug, 'projected tank_run mirror must preserve Pflug setting')
@@ -154,10 +158,32 @@ player.buffs[#player.buffs + 1] = 7101
 out = collect()
 assert_equal(out[1].action_name, 'Foil', 'Foil should follow core ward')
 assert_equal(out[1].action_type, 'spell', 'Foil action kind')
+assert_equal(out[1].target_kind, 'self', 'Foil must remain self-targeted')
+assert_equal(out[1].target_id, player.id, 'Foil self proposal must carry RUN player id')
+
+player.status = 0
+settings.ability_allow_unengaged = true
+out = collect()
+assert_equal(out[1].action_name, 'Foil', 'unengaged RUN with a valid enemy may maintain Foil')
+assert_equal(out[1].target_id, player.id, 'unengaged Foil must still target RUN player id')
+player.status = 1
+settings.ability_allow_unengaged = false
+
+ready.Foil = false
+out = collect()
+assert_equal(out[1].action_name, 'Gambit', 'unavailable Foil must not starve Gambit')
+ready.Foil = nil
 
 player.buffs[#player.buffs + 1] = 7201
+player.status = 0
+settings.ability_allow_unengaged = true
 out = collect()
-assert_equal(out[1].action_name, 'Gambit', 'Gambit should precede Rayke')
+assert_equal(#out, 0, 'Gambit/Rayke must not be proposed while RUN is disengaged')
+assert_equal(_G.UC_RUN_TANK_STATUS.reason, 'RUN_MAGIC_SUPPORT_REQUIRES_ENGAGED', 'disengaged magic-support diagnostic')
+player.status = 1
+settings.ability_allow_unengaged = false
+out = collect()
+assert_equal(out[1].action_name, 'Gambit', 'Gambit should precede Rayke once engaged')
 assert_equal(out[1].target_kind, 'mob', 'Gambit target')
 
 ready.Gambit = false

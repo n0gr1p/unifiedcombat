@@ -36,6 +36,7 @@ internal static class RunTankProfileTests
             ["tank_enmity_actions"] = "Flash",
             ["tank_enmity_include_pets"] = true,
             ["run_tank_enabled"] = true,
+            ["run_tank_no_tp_mode"] = true,
             ["run_tank_runes_maintain"] = true,
             ["run_tank_runes"] = "Ignis|Ignis|Ignis",
             ["run_tank_foil"] = true,
@@ -62,6 +63,7 @@ internal static class RunTankProfileTests
         AssertEqual(HubUiConstants.BoolKeys.Contains("tank_enmity_include_pets"), true, "tank pet enmity persistence registry");
         AssertEqual(HubUiConstants.CombatTargetingUiKeys.Contains("tank_enmity_include_pets"), true, "tank pet enmity Combat & Targeting registry");
         AssertContains(lua, "run = {", "RUN block");
+        AssertContains(lua, "no_tp_mode = true", "RUN no-TP serialization");
         AssertContains(lua, "desired = {", "rune list");
         AssertContains(lua, "\"Ignis\"", "Ignis rune serialization");
         AssertContains(lua, "foil = {", "Foil block");
@@ -81,6 +83,7 @@ internal static class RunTankProfileTests
             ["tank_run"] = new JsonObject
             {
                 ["enabled"] = true,
+                ["no_tp_mode"] = true,
                 ["runes"] = new JsonObject
                 {
                     ["maintain"] = true,
@@ -109,6 +112,7 @@ internal static class RunTankProfileTests
         var profile = RuntimeProfileEditorAdapter.Build(sessionDoc.RootElement, activeDoc.RootElement);
 
         AssertEqual(profile["run_tank_enabled"]?.GetValue<bool>(), true, "runtime RUN enabled");
+        AssertEqual(profile["run_tank_no_tp_mode"]?.GetValue<bool>(), true, "runtime RUN no-TP mode");
         AssertEqual(profile["run_tank_runes_maintain"]?.GetValue<bool>(), true, "runtime rune maintenance");
         AssertEqual(profile["run_tank_runes"]?.GetValue<string>(), "Ignis|Ignis|Ignis", "runtime rune list");
         AssertEqual(profile["run_tank_foil"]?.GetValue<bool>(), true, "runtime Foil");

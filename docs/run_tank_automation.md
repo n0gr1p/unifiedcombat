@@ -20,6 +20,7 @@ tank = {
     },
     run = {
         enabled = true,
+        no_tp_mode = false,
         runes = {
             maintain = true,
             desired = { 'Ignis', 'Ignis', 'Ignis' },
@@ -43,7 +44,13 @@ tank = {
 
 The desired rune list must be empty or contain exactly three runes. Vallation and Valiance cannot both be enabled.
 
-When `ability_allow_unengaged` is enabled, RUN automation may operate while the player remains disengaged. This is intentional for encounters where melee TP feed is undesirable. Foil may be maintained once a valid enemy target exists even if the RUN is not engaged, and Gambit/Rayke may be used against that valid current enemy without requiring player melee engagement.
+`ability_allow_unengaged` may allow self-target RUN maintenance such as runes, wards, and Foil while the player is disengaged. **Gambit and Rayke require the RUN to be engaged with the enemy.** Their engagement requirement is independent of facing direction: both remain usable while the RUN is facing away from the mob.
+
+### Optional no-TP mode
+
+`no_tp_mode = true` keeps an already-engaged RUN facing away from the current live enemy target. The movement coordinator reapplies that facing policy every tick, and the combat dispatcher preserves it when sending RUN actions. This suppresses normal melee swings and therefore avoids ordinary melee TP feed while still allowing Foil, Gambit, and Rayke according to their normal readiness rules.
+
+No-TP mode does **not** engage or disengage the player. Existing Auto Engage behavior or manual control remains responsible for entering combat. It is default-off, so normal facing behavior is unchanged unless explicitly enabled. Because the RUN is facing away, parrying is not available while the mode is actively holding that facing.
 
 ## Ordering
 
@@ -54,8 +61,8 @@ The policy order is:
 1. converge the configured rune stack;
 2. establish Vallation/Valiance and configured wards;
 3. maintain Foil once combat has a valid enemy target (or while already engaged);
-4. use Gambit, then rebuild consumed runes;
-5. use Rayke, then rebuild consumed runes.
+4. once engaged, use Gambit, then rebuild consumed runes;
+5. once engaged, use Rayke, then rebuild consumed runes.
 
 Liement suppresses Vallation/Valiance restoration while Liement is active.
 

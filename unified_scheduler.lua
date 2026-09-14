@@ -2616,7 +2616,12 @@ local function run_movement_coordinator_tick()
 		local t = windower.ffxi.get_mob_by_target('t')
 		local tid = tonumber(t and t.id) or 0
 		if tid > 0 then
-			p1_apply_face_to_target(s, tid)
+			local no_tp_tid = require('uc_run_no_tp').target_id(s, p, t)
+			if no_tp_tid > 0 then
+				p1_apply_face_to_target(s, no_tp_tid, true, true, 'unified_scheduler:run_no_tp')
+			else
+				p1_apply_face_to_target(s, tid)
+			end
 		end
 	end
 	local freeze_prep_until = tonumber(rawget(_G, 'UC_MOVE_FREEZE_PREP_UNTIL')) or 0
@@ -2844,6 +2849,10 @@ end
 
 local function ja_requires_engaged_front(name, ja)
 	return require('uc_scheduler_action_predicates').ja_requires_engaged_front(name, ja)
+end
+
+local function ja_requires_engaged(name, ja)
+	return require('uc_scheduler_action_predicates').ja_requires_engaged(name, ja)
 end
 
 local function get_party_members(ctx)
@@ -3628,8 +3637,9 @@ local function ja_ready(name, target_id)
 			return false, 'BLOCK_CHIVALRY_MP_TOO_HIGH'
 		end
 	end
+	local requires_engaged = ja_requires_engaged(name, ja)
 	local requires_engaged_front = ja_requires_engaged_front(name, ja)
-	if requires_engaged_front and status ~= 1 then
+	if requires_engaged and status ~= 1 then
 		return false, 'BLOCK_JA_REQUIRES_ENGAGED'
 	end
 	if ja_targets_enemy(ja) then
@@ -5129,7 +5139,7 @@ function p1_combat_helpers.spell_target_dispatch_ready(selected, expected_tid, t
 	return true
 end
 
-p1_apply_face_to_target = function(settings, target_id, turn_away, force_face)
+p1_apply_face_to_target = function(settings, target_id, turn_away, force_face, source_override)
 	if turn_away ~= true and force_face ~= true and not bool_setting(settings and settings.face, false) then
 		return false
 	end
@@ -5166,7 +5176,9 @@ p1_apply_face_to_target = function(settings, target_id, turn_away, force_face)
 	if heading then
 		local intent = {
 			kind = 'turn',
-			source = turn_away == true and 'unified_scheduler:reaction_turn_away' or 'unified_scheduler:T2.3c_darklaunch',
+			source = tostring(source_override or '') ~= ''
+				and tostring(source_override)
+				or (turn_away == true and 'unified_scheduler:reaction_turn_away' or 'unified_scheduler:T2.3c_darklaunch'),
 			heading = heading,
 			meta = {
 				target_id = tid,
@@ -6033,7 +6045,16 @@ local function p1_dispatch_combat(selected, settings, phase)
 	if not domain_ownership.is_enabled('combat') then
 		return false, nil
 	end
-	p1_apply_face_to_target(settings, tonumber(selected.target_id) or 0)
+	do
+		local player = windower.ffxi.get_player()
+		local current_target = windower.ffxi.get_mob_by_target('t')
+		local no_tp_tid = require('uc_run_no_tp').target_id(settings, player, current_target)
+		if no_tp_tid > 0 then
+			p1_apply_face_to_target(settings, no_tp_tid, true, true, 'unified_scheduler:run_no_tp')
+		else
+			p1_apply_face_to_target(settings, tonumber(selected.target_id) or 0)
+		end
+	end
 	log_combat_sched(('dispatch_select type=%s name=\"%s\" target=\"%s\" tid=%d provider=%s family=%s'):format(
 		tostring(selected.action_type or ''),
 		tostring(selected.action_name or ''),
@@ -6544,6 +6565,11 @@ local function p1_dispatch_combat(selected, settings, phase)
 					stop = run_stop_ownership_status.stop,
 				}
 			end
+			local self_spell_target_id = tonumber((windower.ffxi.get_player() or {}).id) or 0
+			if self_spell_target_id <= 0 then
+				log_combat_sched(('dispatch_drop reason=SPELL_SELF_TARGET_MISSING spell=\"%s\"'):format(tostring(spell)))
+				return false, nil
+			end
 			local spell_self_command = ('input /ma \"%s\" <me>'):format(spell)
 			local intent = {
 				kind = 'send_command',
@@ -6552,7 +6578,9 @@ local function p1_dispatch_combat(selected, settings, phase)
 				meta = {
 					action_type = tostring(action_type or ''),
 					action_name = spell,
+					target_id = self_spell_target_id,
 					target_kind = tostring(target_kind or ''),
+					provider = tostring(selected.provider or 'combat'),
 				},
 			}
 			local dispatcher = require('uc_scheduler_dispatcher')
@@ -6575,10 +6603,16 @@ local function p1_dispatch_combat(selected, settings, phase)
 				dispatch_reason = command_ownership_status.dispatch_reason,
 				fallback_used = command_ownership_status.fallback_used,
 			}
+			if command_ownership_status.dispatch_ok ~= true then
+				log_combat_sched(('dispatch_drop reason=SPELL_SELF_DISPATCH_FAILED spell=\"%s\" dispatch_reason=%s'):format(
+					tostring(spell), tostring(command_ownership_status.dispatch_reason or '')
+				))
+				return false, nil
+			end
 			action_mark_sent('spell', {
 				action_name = spell,
 				provider = 'combat',
-				target_id = tonumber((windower.ffxi.get_player() or {}).id) or 0,
+				target_id = self_spell_target_id,
 				target_name = tostring(selected.target_name or ''),
 				target_kind = tostring(target_kind or ''),
 			})
@@ -6587,7 +6621,7 @@ local function p1_dispatch_combat(selected, settings, phase)
 				provider = 'combat',
 				kind = 'spell',
 				target = tostring(selected.target_name or ''),
-				target_id = tonumber((windower.ffxi.get_player() or {}).id) or 0,
+				target_id = self_spell_target_id,
 				cast_type = tostring(action_type or ''),
 				action_token = tostring(tonumber((action_state() or {}).action_token) or 0),
 			}, ('spell_sent:%s:self'):format(tostring(spell or '')), 0.05)

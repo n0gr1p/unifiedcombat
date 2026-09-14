@@ -117,6 +117,9 @@ internal static class RuntimeProfileEditorAdapter
         var wards = RequiredObject(run, "wards", "tank_run.wards");
         var magic = RequiredObject(run, "magic_support", "tank_run.magic_support");
         profile["run_tank_enabled"] = RequiredValue(run, "enabled", "tank_run.enabled");
+        profile["run_tank_no_tp_mode"] = run.TryGetPropertyValue("no_tp_mode", out var noTpMode) && noTpMode is not null
+            ? noTpMode.DeepClone()
+            : JsonValue.Create(false);
         profile["run_tank_runes_maintain"] = RequiredValue(runes, "maintain", "tank_run.runes.maintain");
         profile["run_tank_runes"] = JoinStringArray(RequiredArray(runes, "desired", "tank_run.runes.desired"), "tank_run.runes.desired");
         profile["run_tank_foil"] = RequiredValue(foil, "enabled", "tank_run.foil.enabled");
