@@ -29,8 +29,9 @@ jobs:
           lua5.1 tests/replay/harness/selftest_command_ownership_runtime.lua
       - name: Commit patch
         run: |
+          git checkout -- .github/workflows/pr35-verify.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add unified_scheduler.lua tests/replay/harness/selftest_run_tank.lua tests/replay/harness/selftest_run_foil_dispatch.lua .github/workflows/pr35-verify.yml
+          git add unified_scheduler.lua tests/replay/harness/selftest_run_tank.lua tests/replay/harness/selftest_run_foil_dispatch.lua
           git commit -m "Fix RUN Foil self spell dispatch"
           git push origin HEAD:fix/zerde-run-foil-dispatch-3
