@@ -43,6 +43,8 @@ tank = {
 
 The desired rune list must be empty or contain exactly three runes. Vallation and Valiance cannot both be enabled.
 
+When `ability_allow_unengaged` is enabled, RUN automation may operate while the player remains disengaged. This is intentional for encounters where melee TP feed is undesirable. Foil may be maintained once a valid enemy target exists even if the RUN is not engaged, and Gambit/Rayke may be used against that valid current enemy without requiring player melee engagement.
+
 ## Ordering
 
 The provider emits at most one RUN proposal per scheduler tick. Routine RUN work is priority band 94, immediately below existing tank-enmity recovery at band 96.
@@ -51,7 +53,7 @@ The policy order is:
 
 1. converge the configured rune stack;
 2. establish Vallation/Valiance and configured wards;
-3. maintain Foil while engaged;
+3. maintain Foil once combat has a valid enemy target (or while already engaged);
 4. use Gambit, then rebuild consumed runes;
 5. use Rayke, then rebuild consumed runes.
 
