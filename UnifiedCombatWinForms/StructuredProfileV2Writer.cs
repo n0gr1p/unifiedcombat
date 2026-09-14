@@ -1012,6 +1012,7 @@ internal static class StructuredProfileV2Writer
         }
         return new StructuredProfileNode()
             .Add("enabled", ReadBool(flatProfile, "run_tank_enabled", false))
+            .Add("no_tp_mode", ReadBool(flatProfile, "run_tank_no_tp_mode", false))
             .Add("runes", new StructuredProfileNode()
                 .Add("maintain", ReadBool(flatProfile, "run_tank_runes_maintain", true))
                 .Add("desired", runes))

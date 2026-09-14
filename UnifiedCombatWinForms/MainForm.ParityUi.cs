@@ -323,6 +323,7 @@ public partial class MainForm
     private Button _tankEnmityUp = null!;
     private Button _tankEnmityDown = null!;
     private CheckBox _runTankEnabled = null!;
+    private CheckBox _runNoTpMode = null!;
     private CheckBox _runRunesMaintain = null!;
     private TextBox _runRunes = null!;
     private CheckBox _runFoil = null!;
@@ -1136,6 +1137,8 @@ public partial class MainForm
         tankFlow.Controls.Add(new Label { Text = "Rune Fencer automation", AutoSize = true, Padding = new Padding(0, 10, 0, 2) });
         _runTankEnabled = new CheckBox { Text = "Enable RUN automation", AutoSize = true };
         tankFlow.Controls.Add(_runTankEnabled);
+        _runNoTpMode = new CheckBox { Text = "No-TP mode (engaged + face away)", AutoSize = true };
+        tankFlow.Controls.Add(_runNoTpMode);
         var runeRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         runeRow.Controls.Add(new Label { Text = "Runes", AutoSize = true, Padding = new Padding(0, 6, 4, 0) });
         _runRunes = new TextBox { Width = 250, PlaceholderText = "Ignis|Ignis|Ignis" };

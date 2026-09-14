@@ -81,6 +81,7 @@ end
 function M.default_config()
     return {
         enabled = false,
+        no_tp_mode = false,
         runes = {
             maintain = true,
             desired = {},
@@ -122,6 +123,7 @@ function M.normalize(value, flat_source)
     end
     if structured ~= nil then
         out.enabled = bool(structured.enabled, out.enabled, 'config.tank.run.enabled')
+        out.no_tp_mode = bool(structured.no_tp_mode, out.no_tp_mode, 'config.tank.run.no_tp_mode')
         local runes = type(structured.runes) == 'table' and structured.runes or {}
         out.runes.maintain = bool(runes.maintain, out.runes.maintain, 'config.tank.run.runes.maintain')
         out.runes.desired = normalize_runes(runes.desired)
@@ -139,6 +141,7 @@ function M.normalize(value, flat_source)
         out.magic_support.rayke = bool(magic.rayke, out.magic_support.rayke, 'config.tank.run.magic_support.rayke')
     else
         out.enabled = bool(flat_value(flat_source, 'run_tank_enabled'), out.enabled, 'run_tank_enabled')
+        out.no_tp_mode = bool(flat_value(flat_source, 'run_tank_no_tp_mode'), out.no_tp_mode, 'run_tank_no_tp_mode')
         out.runes.maintain = bool(flat_value(flat_source, 'run_tank_runes_maintain'), out.runes.maintain, 'run_tank_runes_maintain')
         out.runes.desired = normalize_runes(flat_value(flat_source, 'run_tank_runes') or {})
         out.foil.enabled = bool(flat_value(flat_source, 'run_tank_foil'), out.foil.enabled, 'run_tank_foil')

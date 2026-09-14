@@ -12,7 +12,7 @@ Encounter setup currently uses RUN / 2x SMN / GEO / BRD / COR with player Auto E
 | --- | --- | --- | --- |
 | 1 | Optional pet-aware tank enmity recovery | COMPLETE | Opt-in party/alliance-pet victim detection shipped and passed in-game Zerde validation. |
 | 2 | GEO Indi ownership/reconciliation | NOT A BUG | The pre-pull Indi was legitimately stripped when Geas Fete Confrontation began; the combat-start recast was required. |
-| 3 | RUN Foil dispatch/ack failure | READY FOR REVIEW | Root cause was invalid structured metadata for combat self-spells: Foil's player target id was dropped before dispatcher validation. |
+| 3 | RUN Foil dispatch + no-TP RUN mode | READY FOR REVIEW | Fixes Foil self-spell dispatch, corrects Gambit/Rayke engagement semantics, and adds optional engaged-facing-away no-TP mode. |
 | 4 | Tank enmity priority inversion | OPEN | Reactive tank enmity recovery is priority 96 while generic configured tank JAs are priority 99. |
 | 5 | Phantom spell-action / spell ownership stall | OPEN | UC believed Cure III had been sent, no cast started, and spell-action ownership remained occupied long enough to delay Geo-Frailty until nearly the second Just Desserts. |
 
@@ -54,7 +54,7 @@ PR #44, which attempted to preserve GEO ownership across soft transitions, was c
 
 ---
 
-## 3. RUN Foil dispatch/ack failure
+## 3. RUN Foil dispatch + no-TP RUN mode
 
 ### Status
 
@@ -109,9 +109,28 @@ Investigation showed this Foil incident was a **pre-dispatch structured-intent v
 
 Issue #5 remains responsible for the separate, evidenced case where a spell command is considered dispatched but no real cast begins and ownership remains occupied too long.
 
+### Corrected RUN engagement/facing mechanics
+
+Follow-up in-game verification established that Gambit and Rayke cannot be used while the RUN is disengaged. The earlier RUN design and documentation incorrectly allowed those enemy-targeted Effusions whenever a valid enemy was selected. They **can**, however, be used while the RUN is engaged and facing away from the enemy.
+
+Issue #3 therefore also includes the smallest general correction:
+
+- Gambit and Rayke require true player engagement before readiness/proposal.
+- Their engagement requirement is separate from front-arc requirements; facing away must not block them.
+- Optional `tank.run.no_tp_mode` keeps an engaged RUN persistently facing away from the current live enemy, suppressing normal melee swings/TP feed.
+- No-TP mode does not own engagement; Auto Engage or manual control still enters combat.
+- No-TP mode is default-off and must not alter normal facing when disabled.
+- While facing away, the RUN cannot parry; no-TP mode intentionally trades that defensive benefit for reduced melee TP feed.
+
 ### In-game acceptance
 
-A small RUN validation against any normal target is sufficient; another full Zerde attempt is not required. Expected result: when Foil is missing and ready, Niightsiide sends one real self-targeted Foil cast with a normal cast-start/completion lifecycle, after which Gambit/Rayke remain reachable according to readiness and priority.
+A small RUN validation against any normal target is sufficient; another full Zerde attempt is not required. Expected results:
+
+1. missing/ready Foil produces one real self-targeted cast with a normal lifecycle;
+2. Gambit/Rayke are not proposed while Niightsiide is disengaged;
+3. with no-TP mode enabled and Niightsiide engaged, UC keeps him facing away;
+4. Gambit/Rayke still execute while that away-facing is held;
+5. disabling no-TP mode restores ordinary facing behavior.
 
 ---
 

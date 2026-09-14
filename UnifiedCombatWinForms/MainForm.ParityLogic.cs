@@ -517,6 +517,7 @@ public partial class MainForm
             _tankEnmityNameCombo.Items.Clear();
             _tankEnmityNameCombo.Text = "";
             _runTankEnabled.Checked = false;
+            _runNoTpMode.Checked = false;
             _runRunesMaintain.Checked = true;
             _runRunes.Text = "";
             _runFoil.Checked = true;
@@ -872,6 +873,7 @@ public partial class MainForm
                 RebindTankEnmityListUi();
             }
             _runTankEnabled.Checked = SessionStateHelper.GetBool(s, "run_tank_enabled", false);
+            _runNoTpMode.Checked = SessionStateHelper.GetBool(s, "run_tank_no_tp_mode", false);
             _runRunesMaintain.Checked = SessionStateHelper.GetBool(s, "run_tank_runes_maintain", true);
             _runRunes.Text = SessionStateHelper.GetString(s, "run_tank_runes");
             _runFoil.Checked = SessionStateHelper.GetBool(s, "run_tank_foil", true);
