@@ -18,6 +18,7 @@ replace_once('uc_provider_combat.lua', 'local priority_band = tank_mode and 99 o
 p = Path('tests/replay/harness/selftest_tank_configured_ja_starvation.lua')
 text = p.read_text()
 repls = {
+    'local ordered = collect_ordered_abilities(ctx.settings, 6)': "local ordered = require('uc_run_ownership').filter_generic_abilities(",
     'local priority_band = tank_mode and 99 or 70': 'local priority_band = tank_mode and 96 or 70',
     "'tank-mode configured JAs must use the safer higher band without changing DPS baseline'": "'tank-mode configured JAs must stay below reactive tank-enmity recovery without changing DPS baseline'",
     'local prio = 96': 'local prio = 99',
