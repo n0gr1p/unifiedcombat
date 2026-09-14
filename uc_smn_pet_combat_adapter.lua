@@ -19,6 +19,13 @@ local function require_function(deps, name)
 	return value
 end
 
+local function timeline_log(event_code, fields, dedupe_key, interval)
+	local logger = rawget(_G, 'UC_ACTION_TIMELINE_LOG')
+	if type(logger) == 'function' then
+		pcall(logger, event_code, fields, dedupe_key, interval or 0)
+	end
+end
+
 function M.new(deps)
 	deps = require_table(deps, 'deps')
 	local get_ja_resource = require_function(deps, 'get_ja_resource')
@@ -27,6 +34,31 @@ function M.new(deps)
 	local active_job_adapter = 'NONE'
 
 	local adapter = {}
+
+	local function emit_rage_check(ctx, action_name, eligible, reason, fields)
+		local payload = {
+			action = tostring(action_name or ''),
+			eligible = eligible == true,
+			reason = tostring(reason or ''),
+			pet_id = tonumber(ctx.pet_id) or 0,
+			target_id = tonumber(ctx.target_id) or tonumber(ctx.target and ctx.target.id) or 0,
+			target_hpp = tonumber(ctx.target_hpp) or tonumber(ctx.target and ctx.target.hpp) or 0,
+			pet_tp = tonumber(ctx.pet_tp) or 0,
+			astral_conduit = type(ctx.player) == 'table'
+				and type(ctx.player.buffs) == 'table'
+				and runtime.has_buff(ctx.player, runtime.BUFF_ASTRAL_CONDUIT)
+				or false,
+		}
+		for key, value in pairs(type(fields) == 'table' and fields or {}) do
+			payload[key] = value
+		end
+		local key = ('smn_rage:%s:%s:%d'):format(
+			tostring(action_name or ''),
+			tostring(reason or ''),
+			tonumber(payload.target_id) or 0
+		)
+		timeline_log('SMN_RAGE_CHECK', payload, key, 1.0)
+	end
 
 	function adapter.snapshot(ctx)
 		require_table(ctx, 'ctx')
@@ -119,6 +151,7 @@ function M.new(deps)
 			or snapshot.validation.rage == nil then
 			return nil
 		end
+		local rage = snapshot.validation.rage
 		if configured.usage ~= 'on_cooldown' then
 			error('unsupported Summoner offensive action usage: ' .. tostring(configured.usage))
 		end
@@ -132,6 +165,9 @@ function M.new(deps)
 				error('Summoner Rage target HPP threshold must be numeric when the target HPP gate is enabled')
 			end
 			if target_hpp <= target_hpp_above then
+				emit_rage_check(ctx, rage.name, false, 'target_hpp_gate', {
+					target_hpp_above = target_hpp_above,
+				})
 				return nil
 			end
 		end
@@ -139,20 +175,21 @@ function M.new(deps)
 			local pet_tp = ctx.pet_tp
 			local pet_tp_above = configured.pet_tp_above
 			if pet_tp == nil then
+				emit_rage_check(ctx, rage.name, false, 'pet_tp_unavailable', {
+					pet_tp_above = pet_tp_above,
+				})
 				return nil
 			end
 			if type(pet_tp_above) ~= 'number' then
 				error('Summoner pet TP threshold must be numeric when the pet TP gate is enabled')
 			end
 			if pet_tp <= pet_tp_above then
+				emit_rage_check(ctx, rage.name, false, 'pet_tp_gate', {
+					pet_tp_above = pet_tp_above,
+				})
 				return nil
 			end
 		end
-		local ready = runtime.recast_ready(ctx, runtime.RECAST_RAGE)
-		if not ready then
-			return nil
-		end
-		local rage = snapshot.validation.rage
 		local resource = get_ja_resource(rage.name)
 		if resource == nil then
 			error('Summoner Rage resource missing: ' .. rage.name)
@@ -162,14 +199,38 @@ function M.new(deps)
 		if mp_cost == nil then
 			error('Summoner Rage MP cost must be numeric')
 		end
-		if player_mp < mp_cost then
-			return nil
-		end
 		local range = action_effective_range(resource.range)
-		local distance = runtime.pet_distance(ctx.pet, ctx.target)
-		if distance == nil or distance > range then
+		local distance, center_distance, pet_model_size, target_model_size = runtime.pet_distance(ctx.pet, ctx.target)
+		local recast_value = type(ctx.ability_recasts) == 'table'
+			and tonumber(ctx.ability_recasts[runtime.RECAST_RAGE]) or nil
+		local diagnostic = {
+			mp = player_mp,
+			mp_cost = mp_cost,
+			recast = recast_value,
+			center_distance = center_distance,
+			pet_model_size = pet_model_size,
+			target_model_size = target_model_size,
+			edge_distance = distance,
+			range = range,
+		}
+		local ready, recast_reason = runtime.recast_ready(ctx, runtime.RECAST_RAGE)
+		if not ready then
+			emit_rage_check(ctx, rage.name, false, recast_reason, diagnostic)
 			return nil
 		end
+		if player_mp < mp_cost then
+			emit_rage_check(ctx, rage.name, false, 'insufficient_mp', diagnostic)
+			return nil
+		end
+		if distance == nil then
+			emit_rage_check(ctx, rage.name, false, 'distance_unavailable', diagnostic)
+			return nil
+		end
+		if distance > range then
+			emit_rage_check(ctx, rage.name, false, 'out_of_range', diagnostic)
+			return nil
+		end
+		emit_rage_check(ctx, rage.name, true, 'eligible', diagnostic)
 		return {
 			action_name = rage.name,
 			priority_band = runtime.PRIORITY_RAGE,
