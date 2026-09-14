@@ -10,9 +10,9 @@ Encounter setup currently uses RUN / 2x SMN / GEO / BRD / COR with player Auto E
 
 | # | Issue | Status | Notes |
 | --- | --- | --- | --- |
-| 1 | Optional pet-aware tank enmity recovery | OPEN | Tank recovery currently recognizes player victims but not party/alliance pets. |
-| 2 | GEO Indi ownership/reconciliation | OPEN | A pre-existing Indi-Malaise was not retained as owned during the Zerde opening and UC attempted to recast it. |
-| 3 | RUN Foil dispatch/ack failure | OPEN | Foil is proposed as a self-targeted spell, but the observed run repeatedly treated it as sent without a corresponding cast; the loop also starved Gambit/Rayke. |
+| 1 | Optional pet-aware tank enmity recovery | COMPLETE | Opt-in party/alliance-pet victim detection shipped and passed in-game Zerde validation. |
+| 2 | GEO Indi ownership/reconciliation | NOT A BUG | The pre-pull Indi was legitimately stripped when Geas Fete Confrontation began; the combat-start recast was required. |
+| 3 | RUN Foil dispatch/ack failure | READY FOR REVIEW | Root cause was invalid structured metadata for combat self-spells: Foil's player target id was dropped before dispatcher validation. |
 | 4 | Tank enmity priority inversion | OPEN | Reactive tank enmity recovery is priority 96 while generic configured tank JAs are priority 99. |
 | 5 | Phantom spell-action / spell ownership stall | OPEN | UC believed Cure III had been sent, no cast started, and spell-action ownership remained occupied long enough to delay Geo-Frailty until nearly the second Just Desserts. |
 
@@ -20,65 +20,98 @@ Encounter setup currently uses RUN / 2x SMN / GEO / BRD / COR with player Auto E
 
 ## 1. Optional pet-aware tank enmity recovery
 
+### Status
+
+**COMPLETE**
+
+Implemented and merged on `master` through commit `bd1a35f` (`Complete pet-aware tank enmity #1`). In-game pet-enmity breach testing passed on 2026-09-14.
+
 ### Problem
 
-The tank enmity workflow only reacts when an enemy is targeting a recognized friendly player. Summoned pets are not included in that friendly-victim set. In the Zerde burn this allows Zerde to turn onto an Ifrit without triggering Flash/Provoke recovery. Once Zerde turns, an avatar that was deliberately positioned behind the mob can become frontal and receive Amnesia, stopping Rage pacts.
+The tank enmity workflow only reacted when an enemy was targeting a recognized friendly player. Summoned pets were not included in that friendly-victim set. In the Zerde burn this allowed Zerde to turn onto an Ifrit without triggering Flash/Provoke recovery.
 
-### Required behavior
+### Result
 
-Add an opt-in tank-enmity setting that treats pets owned by friendly party/alliance members as valid enmity-violation victims. This must be scoped to tank enmity detection; do not globally redefine friendly combat members or claim ownership to include pets.
-
-### Acceptance criteria
-
-- Default behavior remains unchanged when the option is disabled.
-- When enabled, an enemy targeting a friendly party pet can trigger the same tank enmity recovery path used for a non-tank party member.
-- Pet victim diagnostics include pet identity and, when resolvable, owner identity.
-- Existing player-only tank enmity behavior is unchanged.
-- Add focused regression coverage for enabled and disabled pet-victim behavior.
+An opt-in tank-enmity setting now treats pets owned by friendly party/alliance members as valid enmity-violation victims without globally redefining friendly combat members. Existing player-only behavior remains unchanged when the option is disabled.
 
 ---
 
 ## 2. GEO Indi ownership/reconciliation
 
-### Problem
+### Status
 
-A pre-pull Indi-Malaise was active, but the GEO maintenance runtime later lost ownership and attempted to cast Indi-Malaise again during the burn window.
+**NOT A BUG / CLOSED WITHOUT CODE CHANGE**
 
-### Investigation targets
+### Original observation
 
-- How `owned_indi_spell` is established after an observed successful Indi cast.
-- How ownership is reconciled from the generic Indi-Colure buff.
-- Whether an engine/config/activity transition clears identity while the actual buff remains active.
-- Whether a pending token timeout or unrelated sequence transition can clear ownership incorrectly.
+A pre-pull Indi-Malaise was active and UC cast Indi-Malaise again shortly after the Zerde fight began. This initially looked like lost GEO ownership.
 
-### Acceptance criteria
+### Corrected root cause
 
-- A successfully observed owned Indi remains owned while the corresponding Indi-Colure effect is still active.
-- Legitimate loss/replacement of the Indi effect still clears/replaces ownership.
-- Pre-pull Indi maintenance does not issue a redundant recast during the Zerde opening.
-- Regression coverage reproduces the pre-pull-to-combat transition.
+The log sequence shows the first Indi-Malaise was cast before the Geas Fete confrontation began. Starting the confrontation strips active Geomancy effects. The later Indi-Malaise was therefore a legitimate restoration after the real Indi-Colure effect disappeared, not a redundant automation recast.
+
+PR #44, which attempted to preserve GEO ownership across soft transitions, was closed unmerged after this was established. No GEO ownership change from that PR belongs on `master`.
 
 ---
 
 ## 3. RUN Foil dispatch/ack failure
 
-### Problem
+### Status
 
-The RUN provider correctly proposes Foil as a self-targeted spell, but the observed Zerde run repeatedly treated Foil as sent without an actual cast packet. Because the RUN provider returns after proposing Foil, repeated Foil failure also prevents Gambit/Rayke from being reached.
+**READY FOR REVIEW**
 
-### Investigation targets
+Implementation commit: `84a9993` (`Fix RUN Foil self spell dispatch`).
 
-- Structured self-target spell construction for RUN Foil.
-- The `structured_spell_invalid_target_id` errors seen in the same run and whether they are related to Foil.
-- Spell dispatch ownership/ack lifecycle for self-targeted combat-provider spells.
-- Failure/backoff behavior so one broken Foil attempt cannot indefinitely starve later RUN support actions.
+### Observed failure
 
-### Acceptance criteria
+The RUN provider correctly proposed Foil as a self-targeted spell. The Zerde run then showed `structured_spell_invalid_target_id`, Foil being represented as sent, no corresponding Foil cast start, and repeated retries that prevented the provider from reaching Gambit/Rayke.
 
-- Foil dispatches to the RUN and produces a real cast/action lifecycle.
-- Self-targeted Foil never uses the enemy as its spell target.
-- A failed Foil attempt enters bounded retry/backoff and does not permanently starve Gambit/Rayke.
-- Add focused regression coverage for unengaged RUN usage with a valid enemy selected.
+### Root cause
+
+The provider was not the problem: its self-target proposal already carried the RUN player's valid id and used `/ma "Foil" <me>`.
+
+The combat self-spell dispatch branch rebuilt that proposal into a structured `send_command` intent but omitted `meta.target_id`. `uc_scheduler_dispatcher` intentionally rejects every structured spell whose target id is zero, producing exactly the `structured_spell_invalid_target_id` error seen in the run.
+
+The same self-spell branch also proceeded to mark spell ownership after command ownership returned, instead of explicitly requiring successful command dispatch first. This made the historical failure appear downstream as a sent/no-cast Foil lifecycle.
+
+### Fix
+
+- Resolve the local player id once for every combat self-spell and fail closed if it is unavailable.
+- Carry that player id into the structured spell intent as `meta.target_id`.
+- Preserve provider metadata on the intent.
+- Require successful command dispatch before `action_mark_sent`, `SPELL_SENT`, and phase-1 pending ownership are recorded.
+- Reuse the same validated player id for action-state and timeline target metadata.
+
+This is a general combat self-spell fix; it is not hard-coded to Foil.
+
+### Verification
+
+Focused coverage now verifies:
+
+- Foil proposals are `target_kind='self'` and carry the RUN player's id.
+- Unengaged RUN automation with a valid enemy selected still proposes Foil to the RUN, never the enemy.
+- A valid structured Foil intent passes dispatcher validation and executes `/ma "Foil" <me>`.
+- A structured self-spell missing its player target id fails closed and executes no command.
+- Spell ownership is marked only after the self-spell dispatch-success guard.
+- If Foil is unavailable at readiness time, the RUN provider falls through to Gambit rather than starving later support actions.
+
+Focused Lua tests passed together:
+
+- `selftest_run_tank.lua`
+- `selftest_run_foil_dispatch.lua`
+- `selftest_scheduler_dispatcher_phase2.lua`
+- `selftest_command_ownership_static.lua`
+- `selftest_command_ownership_runtime.lua`
+
+### Scope boundary with issue #5
+
+Investigation showed this Foil incident was a **pre-dispatch structured-intent validation failure**, not evidence of a successfully dispatched Foil command that later failed to produce a cast-start acknowledgement. Therefore issue #3 does not change the generic 8-second spell action-state timeout or invent a new global no-start timeout.
+
+Issue #5 remains responsible for the separate, evidenced case where a spell command is considered dispatched but no real cast begins and ownership remains occupied too long.
+
+### In-game acceptance
+
+A small RUN validation against any normal target is sufficient; another full Zerde attempt is not required. Expected result: when Foil is missing and ready, Niightsiide sends one real self-targeted Foil cast with a normal cast-start/completion lifecycle, after which Gambit/Rayke remain reachable according to readiness and priority.
 
 ---
 
@@ -112,7 +145,7 @@ During the Zerde opening UC recorded Cure III on Redrogue as sent, but no cast b
 - Exact path that marks a structured spell as sent before a real cast start.
 - Ack timeout/release behavior for spells with no outgoing cast packet.
 - Whether the failure is in dispatcher result handling, action ownership, pending spell state, or provider revalidation.
-- Whether the same failure class can affect Foil.
+- Whether the same failure class can affect other successfully dispatched spells.
 
 ### Acceptance criteria
 
