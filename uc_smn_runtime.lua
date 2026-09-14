@@ -7,6 +7,7 @@ local M = {
 	RECAST_WARD = 174,
 	RECAST_FAVOR = 176,
 	BUFF_FAVOR = 431,
+	BUFF_ASTRAL_CONDUIT = 504,
 	PRIORITY_RELEASE = 149,
 	PRIORITY_FAVOR = 149,
 	PRIORITY_WARD = 148,
@@ -227,7 +228,11 @@ function M.pet_distance(pet, target)
 	end
 	local dx = target_x - pet_x
 	local dy = target_y - pet_y
-	return math.sqrt((dx * dx) + (dy * dy))
+	local center_distance = math.sqrt((dx * dx) + (dy * dy))
+	local pet_model_size = math.max(0, tonumber(pet.model_size) or 0)
+	local target_model_size = math.max(0, tonumber(target.model_size) or 0)
+	local edge_distance = math.max(0, center_distance - pet_model_size - target_model_size)
+	return edge_distance, center_distance, pet_model_size, target_model_size
 end
 
 return M
