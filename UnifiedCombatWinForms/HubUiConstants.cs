@@ -26,6 +26,7 @@ internal static class HubUiConstants
         "autotarget",
         "auto_engage",
         "ability_allow_unengaged",
+        "tank_enmity_include_pets",
         "spam",
         "closer",
         "manual",
@@ -87,6 +88,7 @@ internal static class HubUiConstants
         ["autotarget"] = "Auto Target",
         ["auto_engage"] = "Auto Engage",
         ["ability_allow_unengaged"] = "Allow Abilities While Unengaged",
+        ["tank_enmity_include_pets"] = "Tank: Treat Party Pets as Enmity Violations",
         ["spam"] = "Spam",
         ["closer"] = "Closer",
         ["manual"] = "Manual",
@@ -152,7 +154,7 @@ internal static class HubUiConstants
     ];
 
     public static readonly string[] CombatTargetingUiKeys =
-        ["autotarget", "auto_engage", "ability_allow_unengaged", "prime", "spam", "solo", "manual", "pause_automation_while_weakened"];
+        ["autotarget", "auto_engage", "ability_allow_unengaged", "tank_enmity_include_pets", "prime", "spam", "solo", "manual", "pause_automation_while_weakened"];
 
     public static readonly string[] SpacingMovementUiKeys = ["face", "spacing", "static", "move"];
 
@@ -183,7 +185,7 @@ internal static class HubUiConstants
         "Ninja Roll",
         "Drachen Roll",
         "Evoker's Roll",
-        "Magus's Roll",
+        "Magus' Roll",
         "Corsair's Roll",
         "Puppet Roll",
         "Dancer's Roll",
