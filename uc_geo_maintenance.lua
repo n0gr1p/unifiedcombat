@@ -244,12 +244,7 @@ function M.new(deps)
 		}
 	end
 
-	local function reset_identity()
-		provider.state.owned_geo_spell = nil
-		provider.state.owned_geo_blaze_enhanced = false
-		provider.state.owned_indi_spell = nil
-		provider.state.owned_entrust_spell = nil
-		provider.state.owned_entrust_target_id = 0
+	local function reset_runtime()
 		provider.state.enemy_target_id = 0
 		provider.state.ecliptic_luopan_id = 0
 		provider.state.pending = nil
@@ -257,6 +252,15 @@ function M.new(deps)
 		provider.state.next_retry_at = 0
 		provider.state.failed_geo_target_id = 0
 		provider.state.failed_geo_target_until = 0
+	end
+
+	local function reset_identity()
+		provider.state.owned_geo_spell = nil
+		provider.state.owned_geo_blaze_enhanced = false
+		provider.state.owned_indi_spell = nil
+		provider.state.owned_entrust_spell = nil
+		provider.state.owned_entrust_target_id = 0
+		reset_runtime()
 	end
 
 	local function config_from_context(ctx)
@@ -1025,12 +1029,12 @@ function M.new(deps)
 		require_table(out, 'out')
 		local config = config_from_context(ctx)
 		if rawget(_G, 'Start_Engine') ~= true then
-			reset_identity()
+			reset_runtime()
 			publish_status('engine_off', '')
 			return
 		end
 		if config.enabled ~= true then
-			reset_identity()
+			reset_runtime()
 			publish_status('disabled', '')
 			return
 		end
@@ -1595,9 +1599,14 @@ function M.new(deps)
 	end
 
 	function provider.reset(reason)
-		reset_identity()
+		local reset_reason = tostring(reason or 'GEO_RESET')
+		if reset_reason == 'GEO_MAINTENANCE_DOMAIN_DISABLED' then
+			reset_runtime()
+		else
+			reset_identity()
+		end
 		provider.state.bolster_armed = false
-		publish_status('reset', tostring(reason or 'GEO_RESET'))
+		publish_status('reset', reset_reason)
 	end
 
 	return provider
