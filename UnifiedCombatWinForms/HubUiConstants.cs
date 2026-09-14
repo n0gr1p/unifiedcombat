@@ -185,7 +185,7 @@ internal static class HubUiConstants
         "Ninja Roll",
         "Drachen Roll",
         "Evoker's Roll",
-        "Magus' Roll",
+        "Magus's Roll",
         "Corsair's Roll",
         "Puppet Roll",
         "Dancer's Roll",
