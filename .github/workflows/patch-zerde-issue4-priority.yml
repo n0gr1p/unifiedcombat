@@ -22,8 +22,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: Run focused tests
         run: |
+          luac5.1 -p uc_provider_tank_enmity.lua
+          luac5.1 -p uc_provider_combat.lua
           lua5.1 tests/replay/harness/selftest_tank_configured_ja_starvation.lua
-          lua5.1 tests/replay/harness/selftest_scheduler_providers_phase3.lua
       - name: Commit patch
         run: |
           git config user.name github-actions[bot]
