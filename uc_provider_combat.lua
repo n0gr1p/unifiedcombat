@@ -644,7 +644,7 @@ function M.new(deps)
 						end
 					end
 					if ja_target_ok then
-						local priority_band = tank_mode and 99 or 70
+						local priority_band = tank_mode and 96 or 70
 						out[#out + 1] = {
 							proposal_id = ('combat.ja.%s.%d.%d'):format(tostring(name), target_id, math.floor(ctx.now * 1000)),
 							family_id = 'combat.ja.primary',

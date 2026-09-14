@@ -12,8 +12,8 @@ Encounter setup currently uses RUN / 2x SMN / GEO / BRD / COR with player Auto E
 | --- | --- | --- | --- |
 | 1 | Optional pet-aware tank enmity recovery | COMPLETE | Opt-in party/alliance-pet victim detection shipped and passed in-game Zerde validation. |
 | 2 | GEO Indi ownership/reconciliation | NOT A BUG | The pre-pull Indi was legitimately stripped when Geas Fete Confrontation began; the combat-start recast was required. |
-| 3 | RUN Foil dispatch + no-TP RUN mode | READY FOR REVIEW | Fixes Foil self-spell dispatch, corrects Gambit/Rayke engagement semantics, and adds optional engaged-facing-away no-TP mode. |
-| 4 | Tank enmity priority inversion | OPEN | Reactive tank enmity recovery is priority 96 while generic configured tank JAs are priority 99. |
+| 3 | RUN Foil dispatch + no-TP RUN mode | COMPLETE | In-game validation passed: Foil, Gambit, Rayke, and engaged-facing-away back-tanking all worked as intended. |
+| 4 | Tank enmity priority inversion | READY FOR REVIEW | Reactive tank enmity recovery is now priority 99; routine tank-mode configured JAs are priority 96; DPS configured JAs remain 70. |
 | 5 | Phantom spell-action / spell ownership stall | OPEN | UC believed Cure III had been sent, no cast started, and spell-action ownership remained occupied long enough to delay Geo-Frailty until nearly the second Just Desserts. |
 
 ---
@@ -136,6 +136,10 @@ A small RUN validation against any normal target is sufficient; another full Zer
 
 ## 4. Tank enmity priority inversion
 
+### Status
+
+**READY FOR REVIEW**
+
 ### Problem
 
 Reactive tank enmity recovery currently runs at priority band 96 while generic configured JAs in tank mode run at priority band 99. This lets routine configured JAs outrank a detected hate-loss recovery.
@@ -143,6 +147,10 @@ Reactive tank enmity recovery currently runs at priority band 96 while generic c
 ### Required behavior
 
 Define a scheduler ordering where reactive tank enmity recovery outranks routine configured tank JAs while preserving higher-priority emergency sustain/defensive work.
+
+### Fix
+
+Swap only the two tank priority bands: reactive tank-enmity recovery `96 -> 99`, routine tank-mode configured JAs `99 -> 96`. Non-tank configured JAs remain at 70. No scheduler arbitration mechanics change.
 
 ### Acceptance criteria
 

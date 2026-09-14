@@ -200,7 +200,7 @@ function M.new(deps)
 			return
 		end
 		emit_pet_violation(pick, action_name, kind, log_tank_sched)
-		local prio = 96
+		local prio = 99
 		local urgency = 0.85
 		local victim_hpp = tonumber(pick.victim_hpp) or 0
 		if victim_hpp > 0 then
