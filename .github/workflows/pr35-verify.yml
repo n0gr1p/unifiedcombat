@@ -37,6 +37,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: RUN tank self-test
         run: lua5.1 tests/replay/harness/selftest_run_tank.lua
+      - name: RUN no-TP mode self-test
+        run: lua5.1 tests/replay/harness/selftest_run_no_tp_mode.lua
       - name: RUN Foil dispatch self-test
         run: lua5.1 tests/replay/harness/selftest_run_foil_dispatch.lua
       - name: Config normalizer self-test
