@@ -1,0 +1,166 @@
+name: Patch Zerde issue 3
+
+on:
+  push:
+    branches:
+      - fix/zerde-run-foil-dispatch-3
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/zerde-run-foil-dispatch-3
+      - name: Apply focused RUN Foil fix and tests
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          scheduler_path = Path('unified_scheduler.lua')
+          text = scheduler_path.read_text()
+
+          old = '''\t\t\tlocal spell_self_command = ('input /ma \\\"%s\\\" <me>'):format(spell)\n\t\t\tlocal intent = {\n\t\t\t\tkind = 'send_command',\n\t\t\t\tsource = 'unified_scheduler:T2.3h_darklaunch',\n\t\t\t\tcommand = spell_self_command,\n\t\t\t\tmeta = {\n\t\t\t\t\taction_type = tostring(action_type or ''),\n\t\t\t\t\taction_name = spell,\n\t\t\t\t\ttarget_kind = tostring(target_kind or ''),\n\t\t\t\t},\n\t\t\t}\n'''
+          new = '''\t\t\tlocal self_spell_target_id = tonumber((windower.ffxi.get_player() or {}).id) or 0\n\t\t\tif self_spell_target_id <= 0 then\n\t\t\t\tlog_combat_sched(('dispatch_drop reason=SPELL_SELF_TARGET_MISSING spell=\\\"%s\\\"'):format(tostring(spell)))\n\t\t\t\treturn false, nil\n\t\t\tend\n\t\t\tlocal spell_self_command = ('input /ma \\\"%s\\\" <me>'):format(spell)\n\t\t\tlocal intent = {\n\t\t\t\tkind = 'send_command',\n\t\t\t\tsource = 'unified_scheduler:T2.3h_darklaunch',\n\t\t\t\tcommand = spell_self_command,\n\t\t\t\tmeta = {\n\t\t\t\t\taction_type = tostring(action_type or ''),\n\t\t\t\t\taction_name = spell,\n\t\t\t\t\ttarget_id = self_spell_target_id,\n\t\t\t\t\ttarget_kind = tostring(target_kind or ''),\n\t\t\t\t\tprovider = tostring(selected.provider or 'combat'),\n\t\t\t\t},\n\t\t\t}\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one self-spell intent block, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          old_guard = '''\t\t\t\tfallback_used = command_ownership_status.fallback_used,\n\t\t\t}\n\t\t\taction_mark_sent('spell', {\n'''
+          new_guard = '''\t\t\t\tfallback_used = command_ownership_status.fallback_used,\n\t\t\t}\n\t\t\tif command_ownership_status.dispatch_ok ~= true then\n\t\t\t\tlog_combat_sched(('dispatch_drop reason=SPELL_SELF_DISPATCH_FAILED spell=\\\"%s\\\" dispatch_reason=%s'):format(\n\t\t\t\t\ttostring(spell), tostring(command_ownership_status.dispatch_reason or '')\n\t\t\t\t))\n\t\t\t\treturn false, nil\n\t\t\tend\n\t\t\taction_mark_sent('spell', {\n'''
+          marker = '_G.UC_SCHED_P1_DARKLAUNCH_SPELL_SELF_COMMAND_VALIDATE'
+          marker_at = text.find(marker)
+          if marker_at < 0:
+              raise SystemExit('self-spell validation marker missing')
+          guard_at = text.find(old_guard, marker_at)
+          if guard_at < 0:
+              raise SystemExit('self-spell action_mark_sent guard insertion point missing')
+          text = text[:guard_at] + text[guard_at:].replace(old_guard, new_guard, 1)
+
+          # Reuse the validated id for ownership/logging so all self-spell state agrees.
+          block_start = text.find('local self_spell_target_id', marker_at - 2000)
+          block_end = text.find("_G.UC_LAST_SCHED_ACTION = ('[p1]spell:", block_start)
+          if block_start < 0 or block_end < 0:
+              raise SystemExit('self-spell block bounds missing')
+          block = text[block_start:block_end]
+          block = block.replace("target_id = tonumber((windower.ffxi.get_player() or {}).id) or 0,", "target_id = self_spell_target_id,")
+          text = text[:block_start] + block + text[block_end:]
+          scheduler_path.write_text(text)
+
+          test_path = Path('tests/replay/harness/selftest_run_foil_dispatch.lua')
+          test_path.write_text(r'''package.path = './?.lua;./?/?.lua;' .. package.path
+
+local dispatcher = require('uc_scheduler_dispatcher')
+
+local function assert_true(value, message)
+    if value ~= true then error(message or 'expected true') end
+end
+
+local function assert_equal(actual, expected, message)
+    if actual ~= expected then
+        error((message or 'values differ') .. ': expected=' .. tostring(expected) .. ' actual=' .. tostring(actual))
+    end
+end
+
+local function assert_contains(haystack, needle, message)
+    if not tostring(haystack):find(tostring(needle), 1, true) then
+        error((message or 'missing text') .. ': ' .. tostring(needle))
+    end
+end
+
+local scheduler_source = assert(io.open('unified_scheduler.lua', 'r')):read('*a')
+local block_start = assert(scheduler_source:find('local self_spell_target_id', 1, true), 'self spell target-id block missing')
+local block_end = assert(scheduler_source:find("_G.UC_LAST_SCHED_ACTION = ('[p1]spell:", block_start, true), 'self spell block end missing')
+local block = scheduler_source:sub(block_start, block_end)
+assert_contains(block, "local self_spell_target_id = tonumber((windower.ffxi.get_player() or {}).id) or 0", 'self spell must resolve player id')
+assert_contains(block, 'target_id = self_spell_target_id', 'structured self spell must carry player target id')
+assert_contains(block, "provider = tostring(selected.provider or 'combat')", 'structured self spell must carry provider identity')
+assert_contains(block, "if command_ownership_status.dispatch_ok ~= true then", 'failed self spell dispatch must be rejected')
+local guard_pos = assert(block:find("if command_ownership_status.dispatch_ok ~= true then", 1, true))
+local mark_pos = assert(block:find("action_mark_sent('spell'", 1, true))
+assert_true(guard_pos < mark_pos, 'dispatch failure guard must run before spell ownership is marked')
+
+local calls = 0
+local command = ''
+local result = dispatcher.dispatch_intent({
+    kind = 'send_command',
+    source = 'test:run_foil',
+    command = 'input /ma "Foil" <me>',
+    meta = {
+        action_type = 'spell',
+        action_name = 'Foil',
+        target_id = 560699,
+        target_kind = 'self',
+        provider = 'combat',
+    },
+}, {
+    execute = true,
+    send_command = function(value)
+        calls = calls + 1
+        command = value
+    end,
+})
+assert_true(result.ok, 'valid RUN Foil self intent must validate')
+assert_true(result.executed, 'valid RUN Foil self intent must execute')
+assert_equal(calls, 1, 'Foil command dispatch count')
+assert_equal(command, 'input /ma "Foil" <me>', 'Foil must remain self-targeted')
+
+calls = 0
+result = dispatcher.dispatch_intent({
+    kind = 'send_command',
+    command = 'input /ma "Foil" <me>',
+    meta = {
+        action_type = 'spell',
+        action_name = 'Foil',
+        target_id = 0,
+        target_kind = 'self',
+        provider = 'combat',
+    },
+}, {
+    execute = true,
+    send_command = function() calls = calls + 1 end,
+})
+assert_equal(result.ok, false, 'missing self target id must fail closed')
+assert_equal(result.reason, 'structured_spell_invalid_target_id', 'missing self target rejection reason')
+assert_equal(calls, 0, 'rejected Foil must not execute a command')
+
+print('RUN Foil dispatch self-test: ok')
+''')
+
+          run_test_path = Path('tests/replay/harness/selftest_run_tank.lua')
+          run_test = run_test_path.read_text()
+          old_test = '''assert_equal(out[1].action_name, 'Foil', 'Foil should follow core ward')\nassert_equal(out[1].action_type, 'spell', 'Foil action kind')\n\nplayer.buffs[#player.buffs + 1] = 7201\n'''
+          new_test = '''assert_equal(out[1].action_name, 'Foil', 'Foil should follow core ward')\nassert_equal(out[1].action_type, 'spell', 'Foil action kind')\nassert_equal(out[1].target_kind, 'self', 'Foil must remain self-targeted')\nassert_equal(out[1].target_id, player.id, 'Foil self proposal must carry RUN player id')\n\nplayer.status = 0\nsettings.ability_allow_unengaged = true\nout = collect()\nassert_equal(out[1].action_name, 'Foil', 'unengaged RUN with a valid enemy may maintain Foil')\nassert_equal(out[1].target_id, player.id, 'unengaged Foil must still target RUN player id')\nplayer.status = 1\nsettings.ability_allow_unengaged = false\n\nready.Foil = false\nout = collect()\nassert_equal(out[1].action_name, 'Gambit', 'unavailable Foil must not starve Gambit')\nready.Foil = nil\n\nplayer.buffs[#player.buffs + 1] = 7201\n'''
+          if run_test.count(old_test) != 1:
+              raise SystemExit(f'expected one RUN Foil test insertion point, found {run_test.count(old_test)}')
+          run_test_path.write_text(run_test.replace(old_test, new_test, 1))
+
+          workflow_path = Path('.github/workflows/pr35-verify.yml')
+          workflow = workflow_path.read_text()
+          old_step = '''      - name: RUN tank self-test\n        run: lua5.1 tests/replay/harness/selftest_run_tank.lua\n'''
+          new_step = '''      - name: RUN tank self-test\n        run: lua5.1 tests/replay/harness/selftest_run_tank.lua\n      - name: RUN Foil dispatch self-test\n        run: lua5.1 tests/replay/harness/selftest_run_foil_dispatch.lua\n'''
+          if workflow.count(old_step) != 1:
+              raise SystemExit(f'expected one RUN test workflow step, found {workflow.count(old_step)}')
+          workflow_path.write_text(workflow.replace(old_step, new_step, 1))
+          PY
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: Run focused tests
+        run: |
+          lua5.1 tests/replay/harness/selftest_run_tank.lua
+          lua5.1 tests/replay/harness/selftest_run_foil_dispatch.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_dispatcher_phase2.lua
+          lua5.1 tests/replay/harness/selftest_command_ownership_static.lua
+          lua5.1 tests/replay/harness/selftest_command_ownership_runtime.lua
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add unified_scheduler.lua tests/replay/harness/selftest_run_tank.lua tests/replay/harness/selftest_run_foil_dispatch.lua .github/workflows/pr35-verify.yml
+          git commit -m "Fix RUN Foil self spell dispatch"
+          git push origin HEAD:fix/zerde-run-foil-dispatch-3
