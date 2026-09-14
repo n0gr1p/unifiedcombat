@@ -11,7 +11,7 @@ Encounter setup currently uses RUN / 2x SMN / GEO / BRD / COR with player Auto E
 | # | Issue | Status | Notes |
 | --- | --- | --- | --- |
 | 1 | Optional pet-aware tank enmity recovery | COMPLETE | Implemented and regression-tested; in-game pet-enmity breach testing passed. Final completion commit `bd1a35f`. |
-| 2 | GEO Indi ownership/reconciliation | OPEN | A pre-existing Indi-Malaise was not retained as owned during the Zerde opening and UC attempted to recast it. |
+| 2 | GEO Indi ownership/reconciliation | READY FOR REVIEW | Soft engine/config/maintenance-domain transitions no longer discard observed GEO effect identity. Regression `fe4e5aa`; implementation `7d4d1b9`. |
 | 3 | RUN Foil dispatch/ack failure | OPEN | Foil is proposed as a self-targeted spell, but the observed run repeatedly treated it as sent without a corresponding cast; the loop also starved Gambit/Rayke. |
 | 4 | Tank enmity priority inversion | OPEN | Reactive tank enmity recovery is priority 96 while generic configured tank JAs are priority 99. |
 | 5 | Phantom spell-action / spell ownership stall | OPEN | UC believed Cure III had been sent, no cast started, and spell-action ownership remained occupied long enough to delay Geo-Frailty until nearly the second Just Desserts. |
@@ -46,6 +46,8 @@ Implementation history includes `f3b6fdc` (pet-aware detection), `ac52f75` (tank
 
 ## 2. GEO Indi ownership/reconciliation
 
+**Status: READY FOR REVIEW**
+
 ### Problem
 
 A pre-pull Indi-Malaise was active, but the GEO maintenance runtime later lost ownership and attempted to cast Indi-Malaise again during the burn window.
@@ -57,12 +59,24 @@ A pre-pull Indi-Malaise was active, but the GEO maintenance runtime later lost o
 - Whether an engine/config/activity transition clears identity while the actual buff remains active.
 - Whether a pending token timeout or unrelated sequence transition can clear ownership incorrectly.
 
+### Root cause
+
+The provider correctly establishes `owned_indi_spell` only after a UC-dispatched Indi is followed by observation of the generic Indi-Colure buff. The exact spell identity cannot be reconstructed from that generic buff alone. However, the lifecycle reset path used the same `reset_identity()` operation for both hard invalidation and soft engine/config/activity transitions. Turning the engine off, temporarily disabling GEO maintenance, or resetting the maintenance domain could therefore discard the exact owned spell identity even though the in-game Indi-Colure effect was still active. A pending-token timeout by itself only clears the pending token and was not the identity-loss cause.
+
+### Fix
+
+Split transient runtime cleanup from effect-identity cleanup. Soft transitions clear pending/sequence/retry/target state but retain the observed Geo/Indi/Entrust identities. Hard resets such as zone/job/death/reseed still clear identity. On the next enabled collection tick, real buff absence still clears `owned_indi_spell`, while a configured spell change compares against the retained old identity and legitimately proposes replacement.
+
 ### Acceptance criteria
 
 - A successfully observed owned Indi remains owned while the corresponding Indi-Colure effect is still active.
 - Legitimate loss/replacement of the Indi effect still clears/replaces ownership.
 - Pre-pull Indi maintenance does not issue a redundant recast during the Zerde opening.
 - Regression coverage reproduces the pre-pull-to-combat transition.
+
+### Verification
+
+Focused regression added in `fe4e5aa` and wired into PR verification. Implementation commit `7d4d1b9` passes `selftest_geo_indi_ownership.lua`, `selftest_geo_maintenance.lua`, and `selftest_geo_sequences.lua`. Coverage includes pre-pull owned Indi -> engine-off/on combat startup, config disable/reenable, maintenance-domain handoff, unrelated pending timeout, legitimate configured replacement, and actual Indi-Colure loss.
 
 ---
 
