@@ -88,7 +88,11 @@ end
 
 function M.tank_enmity_include_pets(settings)
     local s = settings_or_default(settings)
-    return active_bool_or_flat('config.tank.enmity.include_pets', s.tank_enmity_include_pets)
+    local flat_value = rawget(s, 'tank_enmity_include_pets')
+    if flat_value ~= nil then
+        return truthy(flat_value)
+    end
+    return active_bool_or_flat('config.tank.enmity.include_pets', nil)
 end
 
 function M.defensive_enemy_buffs_remove(settings)
