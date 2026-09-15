@@ -17,7 +17,9 @@ jobs:
         with:
           ref: fix/zerde-spell-no-start-timeout-5
       - name: Apply patch
-        run: python3 .github/scripts/patch_zerde_issue5_no_start.py
+        run: |
+          sed -i 's/clock = 20.50/clock = 11.50/; s/clock = 21.75/clock = 12.75/' .github/scripts/patch_zerde_issue5_no_start.py
+          python3 .github/scripts/patch_zerde_issue5_no_start.py
       - name: Install Lua 5.1
         run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: Validate
