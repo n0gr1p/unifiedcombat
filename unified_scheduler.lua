@@ -2129,6 +2129,34 @@ function scheduler.action_timeline_note_spell_sent(fields)
 	end
 end
 
+function scheduler.on_spell_no_start_timeout(now, st)
+	local at = tonumber(now) or now_s()
+	st = type(st) == 'table' and st or action_state()
+	scheduler.p1_pending_mark_failed(at, 'spell_no_start_timeout', 0)
+	if scheduler.defensive_spell_waiting == true then
+		scheduler.clear_defensive_spell_wait_state()
+	end
+	local phase = scheduler.phase1
+	if type(phase) == 'table' and tonumber(phase.tank_pending_target_id) and tonumber(phase.tank_pending_target_id) ~= 0 then
+		scheduler.p1_clear_tank_spell_wait_state(phase)
+	end
+	local current_lock_until = tonumber(_G.UC_MOVEMENT_LOCK_UNTIL) or 0
+	if current_lock_until > at then
+		_G.UC_MOVEMENT_LOCK_UNTIL = at
+	end
+	scheduler.action_timeline_log('SPELL_NO_START_RETRY_RELEASED', {
+		spell = tostring(st.last_action_name or ''),
+		provider = tostring(st.last_action_provider or ''),
+		target = tostring(st.last_target_name or ''),
+		target_id = tonumber(st.last_target_id) or 0,
+		action_token = tostring(tonumber(st.action_token) or 0),
+		reason = 'spell_no_start_timeout',
+	}, ('spell_no_start_retry_released:%s:%s'):format(
+		tostring(st.last_action_name or ''), tostring(tonumber(st.action_token) or 0)
+	), 0.05)
+	return true
+end
+
 function scheduler.handle_local_spell_action_message(phase, now, player, msg, st, message_id, message_param)
 	local matched, match_reason = scheduler.match_active_spell_token_to_cast_finish(msg, st)
 	if not matched then

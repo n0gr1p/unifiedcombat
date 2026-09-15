@@ -705,33 +705,50 @@ function M.action_is_acting(scheduler, now_s)
 	local sent_at = tonumber(st.last_sent_at) or 0
 	local packet_start_at = tonumber(st.packet_start_at) or 0
 	local timeout = tonumber(st.lag_timeout) or 8.0
-	if send_kind == 'ja' then
+	local timeout_outcome = 'timeout'
+	if send_kind == 'spell' and packet_start_at <= 0 then
+		timeout = tonumber(st.spell_no_start_timeout) or 1.0
+		timeout_outcome = 'no_start_timeout'
+	elseif send_kind == 'ja' then
 		timeout = tonumber(st.ja_lag_timeout) or 1.0
 	end
 	if start_at > 0 and end_at < start_at and (now - start_at) > timeout then
 		if send_kind == 'spell' then
-			local applied, prior = mark_terminal_outcome(st, now, 'timeout', {
+			local applied, prior = mark_terminal_outcome(st, now, timeout_outcome, {
 				message_id = tonumber(st.last_action_message_id) or 0,
 				message_param = tonumber(st.last_action_message_param) or 0,
 			})
 			if applied then
-				note_missing_high_level_spell_sent(st, now, 'SPELL_TIMEOUT_RELEASE')
+				local lifecycle_event = timeout_outcome == 'no_start_timeout'
+					and 'SPELL_NO_START_TIMEOUT_RELEASE'
+					or 'SPELL_TIMEOUT_RELEASE'
+				note_missing_high_level_spell_sent(st, now, lifecycle_event)
 				st.timeout_release_at = now
-				timeline_log('SPELL_TIMEOUT_RELEASE', spell_elapsed_fields(st, now, {
-					release_reason = 'timeout',
+				local timeout_fields = spell_elapsed_fields(st, now, {
+					release_reason = timeout_outcome,
 					old_kind = send_kind,
 					message_id = tonumber(st.last_action_message_id) or 0,
 					packet_start_detected = (packet_start_at > 0) and '1' or '0',
-				last_local_message_id = tonumber(st.last_action_message_id) or 0,
-				last_local_message_param = tonumber(st.last_action_message_param) or 0,
-				last_ignored_message_id = tonumber(st.last_ignored_action_message_id) or 0,
-				last_ignored_message_param = tonumber(st.last_ignored_action_message_param) or 0,
-				accepted_completion_after_timeout = st.accepted_completion_after_timeout and '1' or '0',
-			}), ('spell_timeout_release:%s'):format(tostring(st.last_action_name or '')), 0.25)
+					last_local_message_id = tonumber(st.last_action_message_id) or 0,
+					last_local_message_param = tonumber(st.last_action_message_param) or 0,
+					last_ignored_message_id = tonumber(st.last_ignored_action_message_id) or 0,
+					last_ignored_message_param = tonumber(st.last_ignored_action_message_param) or 0,
+					accepted_completion_after_timeout = st.accepted_completion_after_timeout and '1' or '0',
+				})
+				timeline_log(lifecycle_event, timeout_fields,
+					('spell_timeout_release:%s:%s'):format(timeout_outcome, tostring(st.last_action_name or '')), 0.25)
+				-- Keep the historical aggregate timeout event for diagnostics that already consume it.
+				if lifecycle_event ~= 'SPELL_TIMEOUT_RELEASE' then
+					timeline_log('SPELL_TIMEOUT_RELEASE', timeout_fields,
+						('spell_timeout_release:%s'):format(tostring(st.last_action_name or '')), 0.25)
+				end
 				if type(scheduler.emit_spell_lifecycle_timeout_candidate_summary) == 'function' then
 					scheduler.emit_spell_lifecycle_timeout_candidate_summary(scheduler, now_s, st)
 				end
-				emit_spell_action_release(st, now, 'timeout', 'timeout')
+				if timeout_outcome == 'no_start_timeout' and type(scheduler.on_spell_no_start_timeout) == 'function' then
+					scheduler.on_spell_no_start_timeout(now, st)
+				end
+				emit_spell_action_release(st, now, timeout_outcome, timeout_outcome)
 			else
 				st.last_completion_ignore_reason = 'already_terminal_' .. tostring(prior or '')
 			end
@@ -750,9 +767,15 @@ function M.action_is_acting(scheduler, now_s)
 	end
 	local last = st.last_acting_state == true
 	if last and not acting then
-		st.action_delay = 0.5
-		st.last_action = now
-		st.cooldown_until = math.max(tonumber(st.cooldown_until) or 0, now + 0.5)
+		if send_kind == 'spell' and tostring(st.terminal_outcome or '') == 'no_start_timeout' then
+			st.action_delay = 0
+			st.last_action = now
+			st.cooldown_until = now
+		else
+			st.action_delay = 0.5
+			st.last_action = now
+			st.cooldown_until = math.max(tonumber(st.cooldown_until) or 0, now + 0.5)
+		end
 	elseif (not last) and acting then
 		st.action_delay = 0.6
 	end
