@@ -20,6 +20,19 @@ jobs:
         run: |
           sed -i 's/clock = 20.50/clock = 11.50/; s/clock = 21.75/clock = 12.75/' .github/scripts/patch_zerde_issue5_no_start.py
           python3 .github/scripts/patch_zerde_issue5_no_start.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('tests/replay/harness/selftest_action_economy_timeline_logging.lua')
+          lines = p.read_text().splitlines()
+          hits = 0
+          for i, line in enumerate(lines):
+              if 'addon_path =' in line:
+                  lines[i] = '        addon_path = "./",'
+                  hits += 1
+          if hits != 1:
+              raise SystemExit(f'expected one addon_path line, found {hits}')
+          p.write_text('\n'.join(lines) + '\n')
+          PY
       - name: Install Lua 5.1
         run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: Validate
