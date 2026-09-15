@@ -13,8 +13,8 @@ Encounter setup currently uses RUN / 2x SMN / GEO / BRD / COR with player Auto E
 | 1 | Optional pet-aware tank enmity recovery | COMPLETE | Opt-in party/alliance-pet victim detection shipped and passed in-game Zerde validation. |
 | 2 | GEO Indi ownership/reconciliation | NOT A BUG | The pre-pull Indi was legitimately stripped when Geas Fete Confrontation began; the combat-start recast was required. |
 | 3 | RUN Foil dispatch + no-TP RUN mode | COMPLETE | In-game validation passed: Foil, Gambit, Rayke, and engaged-facing-away back-tanking all worked as intended. |
-| 4 | Tank enmity priority inversion | READY FOR REVIEW | Reactive tank enmity recovery is now priority 99; routine tank-mode configured JAs are priority 96; DPS configured JAs remain 70. |
-| 5 | Phantom spell-action / spell ownership stall | OPEN | UC believed Cure III had been sent, no cast started, and spell-action ownership remained occupied long enough to delay Geo-Frailty until nearly the second Just Desserts. |
+| 4 | Tank enmity priority inversion | COMPLETE | Merged through PR #46. Reactive tank enmity recovery is priority 99; routine tank-mode configured JAs are priority 96; DPS configured JAs remain 70. |
+| 5 | Phantom spell-action / spell ownership stall | READY FOR REVIEW | A dispatched spell with no cast-start acknowledgement now releases ownership after 1.0s and returns to normal scheduler arbitration; post-start lifecycle timeout remains 8.0s. |
 
 ---
 
@@ -138,7 +138,7 @@ A small RUN validation against any normal target is sufficient; another full Zer
 
 ### Status
 
-**READY FOR REVIEW**
+**COMPLETE — merged via PR #46**
 
 ### Problem
 
@@ -167,12 +167,18 @@ Swap only the two tank priority bands: reactive tank-enmity recovery `96 -> 99`,
 
 During the Zerde opening UC recorded Cure III on Redrogue as sent, but no cast began. Spell-action ownership remained occupied for roughly ten seconds, delaying Geo-Frailty until almost the second Just Desserts.
 
-### Investigation targets
+### Evidence and decision
 
-- Exact path that marks a structured spell as sent before a real cast start.
-- Ack timeout/release behavior for spells with no outgoing cast packet.
-- Whether the failure is in dispatcher result handling, action ownership, pending spell state, or provider revalidation.
-- Whether the same failure class can affect other successfully dispatched spells.
+The action timeline provides 3,072 successful spell-start acknowledgements. 99.35% arrived within 1.0 second. Twenty successful starts (0.65%) arrived after 1.0 second, with one extreme 2.13-second outlier. The accepted tradeoff is to retry that small delayed-ack edge case rather than let a genuine no-op hold the scheduler for the existing ~8-second fallback window.
+
+### Fix
+
+- Before any cast-start packet is observed, spell action-state uses a 1.0-second acknowledgement timeout.
+- Crossing that deadline records `no_start_timeout`, releases action-state ownership, clears scheduler pending ownership/wait flags, and returns control to normal scheduler arbitration. It does not unconditionally send a duplicate command.
+- No extra generic 0.5-second action tail is added after a no-start release.
+- Once a cast-start packet is observed, the existing 8.0-second spell lifecycle safety timeout remains in force.
+- Existing `SPELL_TIMEOUT_RELEASE` diagnostics are preserved and a dedicated `SPELL_NO_START_TIMEOUT_RELEASE` event identifies this path.
+- Explicit server rejection/interruption continues to release immediately through its existing path.
 
 ### Acceptance criteria
 

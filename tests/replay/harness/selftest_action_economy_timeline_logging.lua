@@ -232,13 +232,31 @@ local function run_action_state_timeout_test(action_state)
         target_name = "Redrogue",
         target_kind = "self",
     })
-    clock = 19
+    clock = 10.99
+    assert_equal(action_state.action_is_acting(scheduler, now_s), true, "pre-start spell ownership must remain live before one second")
+    clock = 11.01
     local before_timeout = #events + 1
-    assert_equal(action_state.action_is_acting(scheduler, now_s), false, "timeout fallback must release an uncompleted spell cast")
-    assert_event_after(events, before_timeout, "SPELL_TIMEOUT_RELEASE", "timeout fallback must emit timeout release")
-    assert_event_after(events, before_timeout, "SPELL_LIFECYCLE_TIMEOUT_CANDIDATE_SUMMARY", "timeout fallback must emit probe candidate summary")
-    assert_event_after(events, before_timeout, "SPELL_ACTION_STATE_RELEASE", "timeout fallback must emit action-state release")
-    assert_no_event_after(events, before_timeout, "POST_SPELL_TAIL_START", "timeout fallback must not start post-spell tail")
+    assert_equal(action_state.action_is_acting(scheduler, now_s), false, "one-second no-start timeout must release an unacknowledged spell cast")
+    assert_event_after(events, before_timeout, "SPELL_NO_START_TIMEOUT_RELEASE", "no-start timeout must emit dedicated release event")
+    assert_event_after(events, before_timeout, "SPELL_TIMEOUT_RELEASE", "no-start timeout must preserve aggregate timeout event")
+    assert_event_after(events, before_timeout, "SPELL_LIFECYCLE_TIMEOUT_CANDIDATE_SUMMARY", "no-start timeout must emit probe candidate summary")
+    assert_event_after(events, before_timeout, "SPELL_ACTION_STATE_RELEASE", "no-start timeout must emit action-state release")
+    assert_no_event_after(events, before_timeout, "POST_SPELL_TAIL_START", "no-start timeout must not start post-spell tail")
+    assert_equal(scheduler.action_state.terminal_outcome, "no_start_timeout", "no-start release must record a distinct terminal outcome")
+    assert_close(tonumber(scheduler.action_state.cooldown_until) or 0, clock, 0.0001, "no-start release must not add the generic half-second retry tail")
+    action_state.action_mark_sent_with_meta(scheduler, "spell", now_s, {
+        action_name = "Haste",
+        provider = "defensive_internal",
+        def_action_type = "buff",
+        target_id = 123,
+        target_name = "Redrogue",
+        target_kind = "self",
+    })
+    clock = 11.50
+    action_state.note_local_spell_packet_start(scheduler, now_s, { message_id = 8 })
+    clock = 12.75
+    assert_equal(action_state.action_is_acting(scheduler, now_s), true, "observed cast start must switch back to the existing post-start lifecycle timeout")
+
     _G.UC_ACTION_TIMELINE_LOG = old_sink
 end
 
@@ -257,7 +275,7 @@ local function run_scheduler_lifecycle_tests()
         [999] = { id = 999, name = "Other" },
     }
     _G.windower = {
-        addon_path = "C:\\Program Files (x86)\\Windower\\addons\\UnifiedCombat\\",
+        addon_path = "./",
         add_to_chat = function() end,
         send_ipc_message = function() end,
         packets = { parse_action = function() return {} end },
@@ -590,9 +608,10 @@ local function run_scheduler_lifecycle_tests()
     })
     local before_timeout = #events + 1
     local before_timeout_record = #records + 1
-    clock = clock + 8.2
-    assert_equal(action_state.action_is_acting(scheduler, now_s), false, "timeout must still release when no cast-complete or interrupt text arrives")
-    assert_event_after(events, before_timeout, "SPELL_TIMEOUT_RELEASE", "timeout fallback must emit timeout release")
+    clock = clock + 1.2
+    assert_equal(action_state.action_is_acting(scheduler, now_s), false, "no-start timeout must release when no cast-start acknowledgement arrives")
+    assert_event_after(events, before_timeout, "SPELL_NO_START_TIMEOUT_RELEASE", "one-second no-start fallback must emit dedicated timeout release")
+    assert_event_after(events, before_timeout, "SPELL_TIMEOUT_RELEASE", "no-start fallback must preserve aggregate timeout release")
     assert_event_after(events, before_timeout, "SPELL_ACTION_STATE_RELEASE", "timeout fallback must emit action-state release")
     assert_no_event_after(events, before_timeout, "POST_SPELL_TAIL_START", "timeout fallback must not start post-spell tail")
     local summary = assert_record_after(records, before_timeout_record, "SPELL_LIFECYCLE_TIMEOUT_CANDIDATE_SUMMARY", "timeout must emit candidate summary")
@@ -631,7 +650,11 @@ local function main()
     assert_contains(action_state_source, "SPELL_CAST_INTERRUPTED_DETECTED", "cast-interrupted lifecycle event must exist")
     assert_contains(action_state_source, "mark_terminal_outcome(st, now, 'cast_complete'", "cast-complete terminal outcome must be explicit")
     assert_contains(action_state_source, "mark_terminal_outcome(st, now, 'cast_interrupted'", "cast-interrupted terminal outcome must be explicit")
-    assert_contains(action_state_source, "local timeout = tonumber(st.lag_timeout) or 8.0", "timeout duration must remain unchanged")
+    assert_contains(action_state_source, "timeout = tonumber(st.spell_no_start_timeout) or 1.0", "spell pre-start acknowledgement timeout must be one second")
+    assert_contains(action_state_source, "local timeout = tonumber(st.lag_timeout) or 8.0", "post-start spell lifecycle safety timeout must remain eight seconds")
+    assert_contains(action_state_source, "SPELL_NO_START_TIMEOUT_RELEASE", "dedicated no-start timeout event must exist")
+    assert_contains(scheduler_source, "function scheduler.on_spell_no_start_timeout(now, st)", "scheduler no-start cleanup hook must exist")
+    assert_contains(scheduler_source, "scheduler.p1_pending_mark_failed(at, 'spell_no_start_timeout', 0)", "no-start cleanup must release pending duplicate ownership without extra retry delay")
     assert_contains(scheduler_source, "function scheduler.spell_lifecycle_probe_enabled()", "probe flag helper must exist")
     assert_contains(scheduler_source, "UC_SPELL_LIFECYCLE_PROBE", "probe flag must be named explicitly")
     assert_contains(scheduler_source, "SPELL_LIFECYCLE_PROBE_LOCAL_EVENT", "active local event probe must exist")
