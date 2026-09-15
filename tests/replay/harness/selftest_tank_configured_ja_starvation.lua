@@ -47,28 +47,28 @@ local function main()
     assert_true(tank_enmity_pos < generic_ja_pos, 'tank-enmity collector must still run before generic configured JAs')
 
     assert_contains(generic_slice, "if not bool_setting(ctx.settings.ability_active, false) then", 'generic configured JAs must stay gated by ability_active')
-    assert_contains(generic_slice, "local ordered = collect_ordered_abilities(ctx.settings, 6)", 'generic configured JAs must still come from the configured ability list')
+    assert_contains(generic_slice, "local ordered = require('uc_run_ownership').filter_generic_abilities(", 'generic configured JAs must still come from the configured ability list')
     assert_contains(generic_slice, "local tank_mode = bool_setting(tank_enabled(ctx.settings), false)", 'generic configured JAs must read the tank flag for tank-mode weighting')
-    assert_contains(generic_slice, "local priority_band = tank_mode and 99 or 70", 'tank-mode configured JAs must use the safer higher band without changing DPS baseline')
+    assert_contains(generic_slice, "local priority_band = tank_mode and 96 or 70", 'tank-mode configured JAs must stay below reactive tank-enmity recovery without changing DPS baseline')
     assert_contains(generic_slice, "required_setting = 'ability_active'", 'generic configured JAs must keep the explicit setting dependency')
 
-    assert_contains(tank_slice, "local pick = select_tank_enmity(ctx.settings)", 'tank-enmity lane must remain separate from generic configured JAs')
-    assert_contains(tank_slice, "local prio = 96", 'tank-enmity lane must keep the higher tank priority band')
+    assert_contains(tank_slice, "local pick = prefer_pet_pick(", 'tank-enmity lane must remain separate from generic configured JAs')
+    assert_contains(tank_slice, "local prio = 99", 'tank-enmity lane must outrank routine tank configured JAs')
     assert_contains(tank_slice, "tank_enmity = true", 'tank-enmity lane must keep its tank-specific detail marker')
 
     local tank_configured_ja = {
         name = "tank configured JA",
-        priority_band = 99,
+        priority_band = 96,
         urgency = 0.35,
     }
     local low_urgency_tank_enmity = {
         name = "low urgency tank enmity",
-        priority_band = 96,
+        priority_band = 99,
         urgency = 0.60,
     }
     local urgent_tank_enmity = {
         name = "urgent tank enmity",
-        priority_band = 96,
+        priority_band = 99,
         urgency = 0.95,
     }
     local normal_ws = {
@@ -87,9 +87,9 @@ local function main()
         urgency = 0.35,
     }
 
-    assert_true(score(tank_configured_ja) > score(low_urgency_tank_enmity), 'tank-mode configured JAs must outrank low-urgency tank-enmity actions')
+    assert_true(score(low_urgency_tank_enmity) > score(tank_configured_ja), 'tank-enmity recovery must outrank routine tank-mode configured JAs')
     assert_true(score(tank_configured_ja) > score(normal_ws), 'tank-mode configured JAs must outrank normal WS-level offense')
-    assert_true(score(urgent_tank_enmity) > score(tank_configured_ja), 'urgent tank-enmity actions must still outrank tank-mode configured JAs')
+    assert_true(score(urgent_tank_enmity) > score(tank_configured_ja), 'urgent tank-enmity actions must outrank tank-mode configured JAs')
     assert_true(score(critical_cure) > score(tank_configured_ja), 'critical cure must still outrank tank-mode configured JAs')
     assert_true(score(dps_configured_ja) == score(normal_ws), 'DPS configured JAs must keep the existing baseline band')
 

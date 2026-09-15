@@ -7,9 +7,9 @@
   - tank-enmity JAs/spells in `p1_collect_combat_tank_enmity`
 - Generic configured JAs are gated by `ability_active` and built from `ability_pipeline.collect_ordered(ctx.settings, 6)`.
 - Tank-enmity actions are gated by `tank` + `autotarget`, sourced from `tank_enmity_actions`, and do not depend on `ability_active`.
-- `p1_collect_proposals` evaluates `p1_collect_combat_tank_enmity(ctx, out)` before `p1_collect_combat_ja(ctx, out)`, and the tank-enmity lane uses `priority_band = 96` while generic configured JAs use `priority_band = 70`.
+- `p1_collect_proposals` evaluates `p1_collect_combat_tank_enmity(ctx, out)` before `p1_collect_combat_ja(ctx, out)`, and the tank-enmity lane uses `priority_band = 99` while generic configured JAs use `priority_band = 70`.
 - `uc_new_settings_defaults()` still sets `ability_active = false`, so a clean baseline leaves the generic configured-JA lane off unless the user explicitly enables it.
-- `T3.6o` raised tank-mode configured JAs to `priority_band = 99` while leaving the non-tank baseline at `70`, so the tank lane now has a fairer scheduling window without changing the DPS baseline.
+- `T3.6o` raised tank-mode configured JAs to `priority_band = 96` while leaving the non-tank baseline at `70`, so the tank lane now has a fairer scheduling window without changing the DPS baseline.
 - `T3.6p` promoted the remaining tank-enmity spell self run-stop seam default-on; that ownership change is separate from the configured-JA tuning.
 - `T3.6q` closed the tank run-stop promotion phase without changing the configured-JA tuning.
 - `T3.6s` keeps that tuning as part of the final scheduler ownership baseline.
