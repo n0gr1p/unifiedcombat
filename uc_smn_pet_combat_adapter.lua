@@ -1,7 +1,6 @@
 local capabilities = require('uc_smn_capabilities')
 local runtime = require('uc_smn_runtime')
 local pup_adapter_module = require('uc_pup_pet_combat_adapter')
-local rage_gate = require('uc_reaction_smn_rage_gate')
 
 local M = {}
 
@@ -153,7 +152,7 @@ function M.new(deps)
 			return nil
 		end
 		local rage = snapshot.validation.rage
-		local held, hold_reason, hold = rage_gate.should_hold(ctx.target_id)
+		local held, hold_reason, hold = require('uc_reaction_runtime').smn_rage_should_hold(ctx.target_id)
 		if held == true then
 			emit_rage_check(ctx, rage.name, false, hold_reason or 'reaction_pretrigger_hold', {
 				reaction_rule_index = type(hold) == 'table' and hold.rule_index or nil,
