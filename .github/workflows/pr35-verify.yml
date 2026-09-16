@@ -10,63 +10,7 @@ on:
     branches:
       - master
 
-permissions:
-  contents: write
-
 jobs:
-  profile-writer-patch:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feature/reaction-once-per-instance
-      - name: Apply once-per-instance Profile V2 persistence patch
-        run: |
-          if [ "$GITHUB_EVENT_NAME" != "push" ]; then
-            exit 0
-          fi
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          path = Path('UnifiedCombatWinForms/StructuredProfileV2Writer.cs')
-          text = path.read_text(encoding='utf-8')
-          if 'serialized.Add("once_per_instance", true);' in text:
-              raise SystemExit(0)
-
-          pattern = re.compile(
-              r'(?m)^(?P<i>[ \t]*)var serialized = new StructuredProfileNode\(\)\r?\n'
-              r'(?P=i)[ \t]+\.Add\("trigger", trigger\)\r?\n'
-              r'(?P=i)[ \t]+\.Add\("name", name\)\r?\n'
-              r'(?P=i)[ \t]+\.Add\("response", response\);'
-          )
-          match = pattern.search(text)
-          if match is None:
-              raise SystemExit('StructuredProfileV2Writer reaction serialization anchor not found')
-
-          indent = match.group('i')
-          extra = (
-              '\n' + indent + 'if (ReadOptionalBool(rule, "once_per_instance", false))\n'
-              + indent + '{\n'
-              + indent + '    if (trigger != "ability_window")\n'
-              + indent + '    {\n'
-              + indent + '        throw new InvalidDataException("once_per_instance reactions require ability_window trigger");\n'
-              + indent + '    }\n'
-              + indent + '    serialized.Add("once_per_instance", true);\n'
-              + indent + '}'
-          )
-          text = text[:match.end()] + extra + text[match.end():]
-          path.write_text(text, encoding='utf-8')
-          PY
-          if git diff --quiet -- UnifiedCombatWinForms/StructuredProfileV2Writer.cs; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add UnifiedCombatWinForms/StructuredProfileV2Writer.cs
-          git commit -m "Persist once-per-instance reaction rules in Profile V2"
-          git push origin HEAD:feature/reaction-once-per-instance
-
   winforms:
     runs-on: windows-latest
     steps:
