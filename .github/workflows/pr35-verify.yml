@@ -10,7 +10,58 @@ on:
     branches:
       - master
 
+permissions:
+  contents: write
+
 jobs:
+  profile-writer-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/reaction-once-per-instance
+      - name: Apply once-per-instance Profile V2 persistence patch
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != "push" ]; then
+            exit 0
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('UnifiedCombatWinForms/StructuredProfileV2Writer.cs')
+          text = path.read_text(encoding='utf-8')
+          old = '''            var serialized = new StructuredProfileNode()
+                .Add("trigger", trigger)
+                .Add("name", name)
+                .Add("response", response);
+'''
+          new = '''            var serialized = new StructuredProfileNode()
+                .Add("trigger", trigger)
+                .Add("name", name)
+                .Add("response", response);
+            if (ReadOptionalBool(rule, "once_per_instance", false))
+            {
+                if (trigger != "ability_window")
+                {
+                    throw new InvalidDataException("once_per_instance reactions require ability_window trigger");
+                }
+                serialized.Add("once_per_instance", true);
+            }
+'''
+          if new in text:
+              raise SystemExit(0)
+          if old not in text:
+              raise SystemExit('StructuredProfileV2Writer reaction serialization anchor not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          if git diff --quiet -- UnifiedCombatWinForms/StructuredProfileV2Writer.cs; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add UnifiedCombatWinForms/StructuredProfileV2Writer.cs
+          git commit -m "Persist once-per-instance reaction rules in Profile V2"
+          git push origin HEAD:feature/reaction-once-per-instance
+
   winforms:
     runs-on: windows-latest
     steps:
@@ -20,7 +71,6 @@ jobs:
           dotnet-version: '9.0.x'
       - name: Build WinForms
         run: dotnet build UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release
-      # Keep the full repository profile suite in addition to feature-specific coverage.
       - name: Full profile v2 self-test
         run: dotnet run --project UnifiedCombatWinForms/UnifiedCombatWinForms.csproj -c Release --no-build -- --selftest-profile-v2
       - name: RUN tank profile persistence self-test
