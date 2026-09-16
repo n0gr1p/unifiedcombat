@@ -64,7 +64,7 @@ local function placeholder_rules(rules)
         local rule = rules[i]
         if type(rule) == 'table' and rule.response == 'use_sequence' then
             rules[i] = {
-                trigger = rule.trigger,
+                trigger = 'ability_window',
                 name = rule.name,
                 response = 'turn_away',
             }
@@ -126,8 +126,9 @@ local function normalize_sequence_step(step, index, count)
 end
 
 local function normalize_sequence_rule(rule, index)
-    if trim(rule.trigger) ~= 'ability_window' then
-        error(('reactions.rules[%d] use_sequence requires ability_window trigger'):format(index))
+    local trigger = trim(rule.trigger)
+    if trigger ~= 'ability_window' and trigger ~= 'party_action_complete' then
+        error(('reactions.rules[%d] use_sequence requires ability_window or party_action_complete trigger'):format(index))
     end
     local name = trim(rule.name)
     if name == '' then
@@ -136,16 +137,28 @@ local function normalize_sequence_rule(rule, index)
     if type(rule.steps) ~= 'table' or #rule.steps == 0 then
         error(('reactions.rules[%d] use_sequence requires at least one step'):format(index))
     end
-    local steps = {}
-    for step_index = 1, #rule.steps do
-        steps[step_index] = normalize_sequence_step(rule.steps[step_index], step_index, #rule.steps)
-    end
-    return {
-        trigger = 'ability_window',
+    local normalized = {
+        trigger = trigger,
         name = name,
         response = 'use_sequence',
-        steps = steps,
+        steps = {},
     }
+    if trigger == 'party_action_complete' then
+        local source_name = trim(rule.source_name)
+        if source_name == '' then
+            error(('reactions.rules[%d] party_action_complete requires source_name'):format(index))
+        end
+        local trigger_action_type = trim(rule.action_type):lower()
+        if trigger_action_type ~= 'spell' and trigger_action_type ~= 'ja' then
+            error(('reactions.rules[%d] party_action_complete action_type must be spell or ja'):format(index))
+        end
+        normalized.source_name = source_name
+        normalized.action_type = trigger_action_type
+    end
+    for step_index = 1, #rule.steps do
+        normalized.steps[step_index] = normalize_sequence_step(rule.steps[step_index], step_index, #rule.steps)
+    end
+    return normalized
 end
 
 function M.wrap(base)
