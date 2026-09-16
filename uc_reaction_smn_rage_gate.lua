@@ -1,4 +1,5 @@
 local extension_config = require('uc_combat_extension_config')
+local party_action_event = require('uc_party_action_event')
 
 local M = {}
 
@@ -113,11 +114,11 @@ function M.should_hold(actor_id)
         return false, 'no_hold_rule', nil
     end
     local bucket = actor_bucket(id, false)
-    local configured = 0
+    local available = 0
     for i = 1, #rules do
         local rule = rules[i]
-        if hold_enabled(rule) then
-            configured = configured + 1
+        if hold_enabled(rule) and party_action_event.party_member_actor_id(rule.source_name) > 0 then
+            available = available + 1
             local identity = rule_identity(rule, i)
             if type(bucket) ~= 'table' or bucket[identity] ~= true then
                 return true, 'reaction_pretrigger_hold', {
@@ -130,10 +131,10 @@ function M.should_hold(actor_id)
             end
         end
     end
-    if configured > 0 then
+    if available > 0 then
         return false, 'reaction_sequence_released', nil
     end
-    return false, 'no_hold_rule', nil
+    return false, 'reaction_source_unavailable', nil
 end
 
 function M.extend(base)
