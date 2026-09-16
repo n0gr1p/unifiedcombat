@@ -1,5 +1,6 @@
 local res = require('resources')
 local extension_config = require('uc_combat_extension_config')
+local party_action_event = require('uc_party_action_event')
 
 local M = {}
 
@@ -27,7 +28,7 @@ local function ability_name_from_action(act, category)
     return trim(ability and ability.en)
 end
 
-local function matching_rule(name)
+local function matching_ability_rule(name)
     local wanted = canonical(name)
     local rules = extension_config.reaction_rules()
     for i = 1, #(rules or {}) do
@@ -41,13 +42,34 @@ local function matching_rule(name)
     return nil, nil
 end
 
+local function matching_party_rule(event)
+    if type(event) ~= 'table' then
+        return nil, nil
+    end
+    local rules = extension_config.reaction_rules()
+    for i = 1, #(rules or {}) do
+        local rule = rules[i]
+        if type(rule) == 'table'
+            and rule.trigger == 'party_action_complete'
+            and canonical(rule.action_type) == canonical(event.action_type)
+            and canonical(rule.name) == canonical(event.action_name) then
+            local source_id = party_action_event.party_member_actor_id(rule.source_name)
+            if source_id > 0 and source_id == tonumber(event.actor_id) then
+                return rule, i
+            end
+        end
+    end
+    return nil, nil
+end
+
 local function rule_identity(rule, rule_index)
     return table.concat({
         tostring(tonumber(rule_index) or 0),
         canonical(rule and rule.trigger),
+        canonical(rule and rule.source_name),
+        canonical(rule and rule.action_type),
         canonical(rule and rule.name),
         canonical(rule and rule.response),
-        canonical(rule and rule.action_type),
         canonical(rule and rule.action_name),
     }, '\031')
 end
@@ -167,34 +189,46 @@ function M.extend(base)
 
     function base.on_action(act, current_target_id, now, actor_is_valid_enemy)
         local category = tonumber(type(act) == 'table' and act.category) or 0
-        local actor_id = tonumber(type(act) == 'table' and act.actor_id) or 0
+        local event_actor_id = tonumber(type(act) == 'table' and act.actor_id) or 0
         local ability_name = (category == 7 or category == 11) and ability_name_from_action(act, category) or ''
         local rule, rule_index = nil, nil
+        local instance_actor_id = 0
 
-        if category == 7 and actor_id > 0 and ability_name ~= '' then
-            rule, rule_index = matching_rule(ability_name)
-            if type(rule) == 'table' and rule.once_per_instance == true
-                and (is_consumed(rule, rule_index, actor_id) or is_pending(rule, rule_index, actor_id)) then
-                return {
-                    once_per_instance_suppressed = true,
-                    actor_id = actor_id,
-                    ability_name = ability_name,
-                }
+        if category == 7 and event_actor_id > 0 and ability_name ~= '' then
+            rule, rule_index = matching_ability_rule(ability_name)
+            instance_actor_id = event_actor_id
+        else
+            local event = party_action_event.completed(act)
+            if type(event) == 'table' then
+                rule, rule_index = matching_party_rule(event)
+                instance_actor_id = tonumber(current_target_id) or 0
             end
+        end
+
+        if type(rule) == 'table' and rule.once_per_instance == true and instance_actor_id > 0
+            and (is_consumed(rule, rule_index, instance_actor_id) or is_pending(rule, rule_index, instance_actor_id)) then
+            return {
+                once_per_instance_suppressed = true,
+                actor_id = instance_actor_id,
+                event_actor_id = event_actor_id,
+                ability_name = ability_name,
+                action_name = trim(rule.name),
+                trigger = trim(rule.trigger),
+            }
         end
 
         local result = base_on_action(act, current_target_id, now, actor_is_valid_enemy)
         cleanup_released(result)
 
-        if category == 7
-            and type(rule) == 'table'
+        if type(rule) == 'table'
             and rule.once_per_instance == true
             and type(result) == 'table'
             and type(result.activated) == 'table' then
+            local activated_actor_id = tonumber(result.activated.actor_id) or instance_actor_id
             if tostring(result.activated.response or '') == 'use_sequence' then
-                register_pending(result.activated.key, rule, rule_index, actor_id)
+                register_pending(result.activated.key, rule, rule_index, activated_actor_id)
             else
-                mark_consumed(rule, rule_index, actor_id)
+                mark_consumed(rule, rule_index, activated_actor_id)
             end
         end
         return result
