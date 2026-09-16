@@ -15,7 +15,8 @@ internal sealed record ReactionSequenceRule(
     bool OncePerInstance = false,
     string Trigger = "ability_window",
     string SourceName = "",
-    string TriggerActionType = ""
+    string TriggerActionType = "",
+    bool HoldSmnRageUntilSequenceComplete = false
 );
 
 internal static class ReactionSequenceProfileCodec
@@ -64,7 +65,8 @@ internal static class ReactionSequenceProfileCodec
             ReadOptionalBool(rule, "once_per_instance", false),
             trigger,
             ReadString(rule, "source_name"),
-            ReadString(rule, "action_type").ToLowerInvariant()
+            ReadString(rule, "action_type").ToLowerInvariant(),
+            ReadOptionalBool(rule, "hold_smn_rage_until_sequence_complete", false)
         );
         Validate(result);
         return result;
@@ -122,6 +124,10 @@ internal static class ReactionSequenceProfileCodec
         {
             json["once_per_instance"] = true;
         }
+        if (rule.HoldSmnRageUntilSequenceComplete)
+        {
+            json["hold_smn_rage_until_sequence_complete"] = true;
+        }
         return json;
     }
 
@@ -144,6 +150,17 @@ internal static class ReactionSequenceProfileCodec
             if (rule.TriggerActionType is not ("spell" or "ja"))
             {
                 throw new InvalidDataException("party_action_complete action type must be spell or ja");
+            }
+        }
+        if (rule.HoldSmnRageUntilSequenceComplete)
+        {
+            if (rule.Trigger != "party_action_complete")
+            {
+                throw new InvalidDataException("SMN Rage hold requires Party Action Complete trigger");
+            }
+            if (!rule.OncePerInstance)
+            {
+                throw new InvalidDataException("SMN Rage hold requires Once per mob instance");
             }
         }
         if (rule.Steps is null || rule.Steps.Count == 0)
