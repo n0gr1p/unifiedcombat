@@ -12,7 +12,10 @@ internal sealed record ReactionSequenceStep(
 internal sealed record ReactionSequenceRule(
     string Name,
     IReadOnlyList<ReactionSequenceStep> Steps,
-    bool OncePerInstance = false
+    bool OncePerInstance = false,
+    string Trigger = "ability_window",
+    string SourceName = "",
+    string TriggerActionType = ""
 );
 
 internal static class ReactionSequenceProfileCodec
@@ -28,13 +31,13 @@ internal static class ReactionSequenceProfileCodec
         var trigger = ReadString(rule, "trigger");
         var response = ReadString(rule, "response");
         var name = ReadString(rule, "name");
-        if (trigger != "ability_window" || response != "use_sequence")
+        if (trigger is not ("ability_window" or "party_action_complete") || response != "use_sequence")
         {
-            throw new InvalidDataException("reaction sequence rule must use ability_window/use_sequence");
+            throw new InvalidDataException("reaction sequence rule must use ability_window/use_sequence or party_action_complete/use_sequence");
         }
         if (name.Length == 0)
         {
-            throw new InvalidDataException("use_sequence reaction requires a non-empty ability name");
+            throw new InvalidDataException("use_sequence reaction requires a non-empty trigger action name");
         }
         if (!rule.TryGetPropertyValue("steps", out var stepsNode) || stepsNode is not JsonArray steps || steps.Count == 0)
         {
@@ -58,7 +61,10 @@ internal static class ReactionSequenceProfileCodec
         var result = new ReactionSequenceRule(
             name,
             parsed,
-            ReadOptionalBool(rule, "once_per_instance", false)
+            ReadOptionalBool(rule, "once_per_instance", false),
+            trigger,
+            ReadString(rule, "source_name"),
+            ReadString(rule, "action_type").ToLowerInvariant()
         );
         Validate(result);
         return result;
@@ -102,11 +108,16 @@ internal static class ReactionSequenceProfileCodec
         }
         var json = new JsonObject
         {
-            ["trigger"] = "ability_window",
+            ["trigger"] = rule.Trigger,
             ["name"] = rule.Name,
             ["response"] = "use_sequence",
             ["steps"] = steps,
         };
+        if (rule.Trigger == "party_action_complete")
+        {
+            json["source_name"] = rule.SourceName;
+            json["action_type"] = rule.TriggerActionType;
+        }
         if (rule.OncePerInstance)
         {
             json["once_per_instance"] = true;
@@ -116,9 +127,24 @@ internal static class ReactionSequenceProfileCodec
 
     internal static void Validate(ReactionSequenceRule rule)
     {
+        if (rule.Trigger is not ("ability_window" or "party_action_complete"))
+        {
+            throw new InvalidDataException("use_sequence trigger must be ability_window or party_action_complete");
+        }
         if (string.IsNullOrWhiteSpace(rule.Name))
         {
-            throw new InvalidDataException("use_sequence reaction requires a non-empty ability name");
+            throw new InvalidDataException("use_sequence reaction requires a non-empty trigger action name");
+        }
+        if (rule.Trigger == "party_action_complete")
+        {
+            if (string.IsNullOrWhiteSpace(rule.SourceName))
+            {
+                throw new InvalidDataException("party_action_complete reaction requires a source party member");
+            }
+            if (rule.TriggerActionType is not ("spell" or "ja"))
+            {
+                throw new InvalidDataException("party_action_complete action type must be spell or ja");
+            }
         }
         if (rule.Steps is null || rule.Steps.Count == 0)
         {
