@@ -151,6 +151,10 @@ function M.extend(base)
     local base_reset = base.reset
     local base_status = base.status
 
+    function base.smn_rage_should_hold(actor_id)
+        return M.should_hold(actor_id)
+    end
+
     function base.on_action(act, current_target_id, now, actor_is_valid_enemy)
         local result = base_on_action(act, current_target_id, now, actor_is_valid_enemy)
         if type(result) == 'table' then
