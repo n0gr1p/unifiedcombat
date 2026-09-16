@@ -21,6 +21,7 @@ internal static class ReactionSequenceProfileCodecTests
             AssertEqual(json.ContainsKey("once_per_instance"), false, "legacy sequence omits once-per-instance field");
             var parsed = ReactionSequenceProfileCodec.ParseRule(json);
             AssertEqual(parsed.Name, "Just Desserts", "sequence name round-trip");
+            AssertEqual(parsed.Trigger, "ability_window", "legacy sequence trigger round-trip");
             AssertEqual(parsed.OncePerInstance, false, "legacy sequence once-per-instance default");
             AssertEqual(parsed.Steps.Count, 2, "sequence step count");
             AssertEqual(parsed.Steps[0].ActionName, "Elemental Seal", "setup action");
@@ -42,6 +43,28 @@ internal static class ReactionSequenceProfileCodecTests
             AssertEqual(onceJson["once_per_instance"]?.GetValue<bool>(), true, "one-shot JSON flag");
             var onceParsed = ReactionSequenceProfileCodec.ParseRule(onceJson);
             AssertEqual(onceParsed.OncePerInstance, true, "one-shot codec round-trip");
+
+            var partySequence = new ReactionSequenceRule(
+                "Indi-Malaise",
+                new List<ReactionSequenceStep>
+                {
+                    new("ja", "Astral Flow", "self", false),
+                    new("ja", "Astral Conduit", "self", false),
+                },
+                true,
+                "party_action_complete",
+                "Etamame",
+                "spell"
+            );
+            var partyJson = ReactionSequenceProfileCodec.ToJsonRule(partySequence);
+            AssertEqual(partyJson["trigger"]?.GetValue<string>(), "party_action_complete", "party trigger JSON");
+            AssertEqual(partyJson["source_name"]?.GetValue<string>(), "Etamame", "party source JSON");
+            AssertEqual(partyJson["action_type"]?.GetValue<string>(), "spell", "party action type JSON");
+            var partyParsed = ReactionSequenceProfileCodec.ParseRule(partyJson);
+            AssertEqual(partyParsed.Trigger, "party_action_complete", "party trigger round-trip");
+            AssertEqual(partyParsed.SourceName, "Etamame", "party source round-trip");
+            AssertEqual(partyParsed.TriggerActionType, "spell", "party action type round-trip");
+            AssertEqual(partyParsed.OncePerInstance, true, "party one-shot round-trip");
 
             var petSequence = new ReactionSequenceRule(
                 "Pet Test Ability",
@@ -65,7 +88,7 @@ internal static class ReactionSequenceProfileCodecTests
                 ["domain_maintenance_enabled"] = true,
                 ["domain_follow_enabled"] = true,
                 ["reaction_enabled"] = true,
-                ["reaction_rules"] = new JsonArray { onceJson.DeepClone(), petJson.DeepClone() },
+                ["reaction_rules"] = new JsonArray { onceJson.DeepClone(), partyJson.DeepClone(), petJson.DeepClone() },
             };
             var lua = StructuredProfileV2Writer.BuildStructuredProfileFile(
                 flat,
@@ -75,6 +98,10 @@ internal static class ReactionSequenceProfileCodecTests
             AssertContains(lua, "once_per_instance = true", "structured one-shot flag");
             AssertContains(lua, "action_name = \"Astral Flow\"", "structured one-shot opener");
             AssertContains(lua, "action_name = \"Astral Conduit\"", "structured one-shot terminal action");
+            AssertContains(lua, "trigger = \"party_action_complete\"", "structured party trigger");
+            AssertContains(lua, "source_name = \"Etamame\"", "structured party source");
+            AssertContains(lua, "action_type = \"spell\"", "structured party trigger action type");
+            AssertContains(lua, "name = \"Indi-Malaise\"", "structured party trigger action");
             AssertContains(lua, "action_type = \"pet\"", "structured pet action type");
             AssertContains(lua, "action_name = \"Assault\"", "structured pet action name");
 
@@ -123,6 +150,24 @@ internal static class ReactionSequenceProfileCodecTests
                 failed = true;
             }
             AssertEqual(failed, true, "unsupported pet action must fail");
+
+            failed = false;
+            try
+            {
+                ReactionSequenceProfileCodec.Validate(new ReactionSequenceRule(
+                    "Indi-Malaise",
+                    new List<ReactionSequenceStep> { new("ja", "Astral Flow", "self", false) },
+                    true,
+                    "party_action_complete",
+                    "",
+                    "spell"
+                ));
+            }
+            catch (InvalidDataException)
+            {
+                failed = true;
+            }
+            AssertEqual(failed, true, "party action trigger requires source member");
 
             Console.WriteLine("ReactionSequenceProfileCodecTests: OK");
             return 0;
