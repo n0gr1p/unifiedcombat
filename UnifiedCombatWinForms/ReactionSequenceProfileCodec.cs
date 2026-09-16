@@ -100,14 +100,18 @@ internal static class ReactionSequenceProfileCodec
                 ["optional"] = step.Optional,
             });
         }
-        return new JsonObject
+        var json = new JsonObject
         {
             ["trigger"] = "ability_window",
             ["name"] = rule.Name,
             ["response"] = "use_sequence",
-            ["once_per_instance"] = rule.OncePerInstance,
             ["steps"] = steps,
         };
+        if (rule.OncePerInstance)
+        {
+            json["once_per_instance"] = true;
+        }
+        return json;
     }
 
     internal static void Validate(ReactionSequenceRule rule)
