@@ -1,0 +1,58 @@
+name: Apply reaction once persistence patch
+
+on:
+  push:
+    branches:
+      - feature/reaction-once-per-instance
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/reaction-once-per-instance
+      - name: Patch structured profile writer
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('UnifiedCombatWinForms/StructuredProfileV2Writer.cs')
+          text = path.read_text(encoding='utf-8')
+          old = '''            var serialized = new StructuredProfileNode()
+                .Add("trigger", trigger)
+                .Add("name", name)
+                .Add("response", response);
+'''
+          new = '''            var serialized = new StructuredProfileNode()
+                .Add("trigger", trigger)
+                .Add("name", name)
+                .Add("response", response);
+            if (ReadOptionalBool(rule, "once_per_instance", false))
+            {
+                if (trigger != "ability_window")
+                {
+                    throw new InvalidDataException("once_per_instance reactions require ability_window trigger");
+                }
+                serialized.Add("once_per_instance", true);
+            }
+'''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('StructuredProfileV2Writer reaction serialization anchor not found')
+              text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
+
+          workflow = Path('.github/workflows/reaction-once-source-patch.yml')
+          workflow.unlink()
+      - name: Commit source patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add UnifiedCombatWinForms/StructuredProfileV2Writer.cs .github/workflows/reaction-once-source-patch.yml
+          git commit -m "Persist once-per-instance reaction rules in Profile V2"
+          git push origin HEAD:feature/reaction-once-per-instance
