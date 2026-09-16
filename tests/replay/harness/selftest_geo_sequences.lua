@@ -198,6 +198,30 @@ end
 local original_engine = rawget(_G, 'Start_Engine')
 rawset(_G, 'Start_Engine', true)
 
+local active_pull_config = base_config()
+active_pull_config.luopan.use_life_cycle = true
+local active_pull_state = {
+	active = false,
+}
+local active_pull_provider = new_provider({}, active_pull_state)
+local active_pull_ctx = context(active_pull_config)
+local action = collect_one(active_pull_provider, active_pull_ctx)
+assert_equal(action.action_name, 'Geo-Frailty', 'active-pull regression setup must create the luopan')
+active_pull_provider.note_dispatch(action, 1.1)
+active_pull_ctx.now = 2.0
+mark_luopan(active_pull_ctx, 299, 25, 10, 20)
+active_pull_state.active = true
+action = collect_one(active_pull_provider, active_pull_ctx)
+assert_equal(action.action_name, 'Indi-Haste', 'active pull with a luopan must not suppress missing Indi')
+active_pull_provider.note_dispatch(action, 2.1)
+active_pull_ctx.now = 3.0
+active_pull_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+local active_pull_out = {}
+active_pull_provider.collect(active_pull_ctx, active_pull_out)
+assert_equal(#active_pull_out, 0, 'active pull must still defer optional luopan maintenance')
+assert_equal(active_pull_provider.status.state, 'blocked', 'active-pull optional maintenance hold state mismatch')
+assert_equal(active_pull_provider.status.detail, 'pull_active', 'active-pull optional maintenance hold detail mismatch')
+
 local blaze_config = base_config()
 blaze_config.luopan.use_blaze_of_glory = true
 local blaze_pull_state = {
@@ -206,7 +230,7 @@ local blaze_pull_state = {
 }
 local blaze_provider = new_provider({}, blaze_pull_state)
 local blaze_ctx = context(blaze_config)
-local action = collect_one(blaze_provider, blaze_ctx)
+action = collect_one(blaze_provider, blaze_ctx)
 assert_equal(action.action_name, 'Blaze of Glory', 'Blaze must precede enhanced Geo')
 assert_equal(action.action_type, 'ja', 'Blaze proposal type mismatch')
 blaze_provider.note_dispatch(action, 1.1)

@@ -1111,10 +1111,6 @@ function M.new(deps)
 			return
 		end
 		local pull_in_progress = pull_active()
-		if pull_in_progress and geo_present then
-			publish_status('blocked', 'pull_active')
-			return
-		end
 		if ctx.now < provider.state.next_retry_at then
 			publish_status('backoff', 'sequence_retry')
 			return
@@ -1218,6 +1214,15 @@ function M.new(deps)
 				contracts.indi.max_range,
 				geo_satisfied and 0.70 or 0.80
 			)
+		end
+
+		if pull_in_progress and geo_present then
+			if not indi_satisfied then
+				emit_indi()
+			else
+				publish_status('blocked', 'pull_active')
+			end
+			return
 		end
 
 		if config.ordering == 'indi_first' then
