@@ -37,8 +37,11 @@ function M.wrap(base)
                     if type(rule.once_per_instance) ~= 'boolean' then
                         error(('reactions.rules[%d].once_per_instance must be boolean'):format(i))
                     end
-                    if rule.once_per_instance == true and tostring(rule.trigger or '') ~= 'ability_window' then
-                        error(('reactions.rules[%d].once_per_instance requires ability_window trigger'):format(i))
+                    local trigger = tostring(rule.trigger or '')
+                    if rule.once_per_instance == true
+                        and trigger ~= 'ability_window'
+                        and trigger ~= 'party_action_complete' then
+                        error(('reactions.rules[%d].once_per_instance requires ability_window or party_action_complete trigger'):format(i))
                     end
                 end
             end
