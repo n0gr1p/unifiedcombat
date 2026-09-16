@@ -2427,7 +2427,7 @@ internal static class StructuredProfileV2Writer
                 .Add("trigger", trigger)
                 .Add("name", name)
                 .Add("response", response);
-            if (ReadOptionalBool(rule, "once_per_instance", false))
+            if (ReadBool(rule, "once_per_instance", false))
             {
                 if (trigger != "ability_window")
                 {
