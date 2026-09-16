@@ -55,8 +55,10 @@ function M.wrap(base)
         for i = 1, math.min(#raw_rules, #config.reactions.rules) do
             local raw = raw_rules[i]
             local normalized = config.reactions.rules[i]
-            if type(raw) == 'table' and type(normalized) == 'table' then
-                normalized.once_per_instance = raw.once_per_instance == true
+            if type(raw) == 'table'
+                and type(normalized) == 'table'
+                and raw.once_per_instance ~= nil then
+                normalized.once_per_instance = raw.once_per_instance
             end
         end
         return config
