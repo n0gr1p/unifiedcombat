@@ -2447,6 +2447,18 @@ internal static class StructuredProfileV2Writer
                 }
                 serialized.Add("once_per_instance", true);
             }
+            if (ReadBool(rule, "hold_smn_rage_until_sequence_complete", false))
+            {
+                if (trigger != "party_action_complete" || response != "use_sequence")
+                {
+                    throw new InvalidDataException("SMN Rage hold requires party_action_complete/use_sequence");
+                }
+                if (!ReadBool(rule, "once_per_instance", false))
+                {
+                    throw new InvalidDataException("SMN Rage hold requires once_per_instance=true");
+                }
+                serialized.Add("hold_smn_rage_until_sequence_complete", true);
+            }
             if (response is "run_away" or "move_to_range")
             {
                 if (!rule.TryGetPropertyValue("distance", out var distanceNode)
