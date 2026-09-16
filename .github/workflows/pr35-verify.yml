@@ -5,6 +5,7 @@ on:
     branches:
       - feature/reaction-action-sequences
       - feature/run-tank-automation
+      - feature/reaction-once-per-instance
   pull_request:
     branches:
       - master
@@ -51,3 +52,7 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_reaction_action_sequence.lua
       - name: Reaction sequence ownership self-test
         run: lua5.1 tests/replay/harness/selftest_reaction_sequence_command_ownership.lua
+      - name: Reaction once-per-instance self-test
+        run: lua5.1 tests/replay/harness/selftest_reaction_once_per_instance.lua
+      - name: Reaction sequence fail-open self-test
+        run: lua5.1 tests/replay/harness/selftest_reaction_sequence_fail_open.lua
