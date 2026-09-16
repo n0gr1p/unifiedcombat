@@ -9,6 +9,7 @@ public partial class MainForm
     private readonly List<ReactionSequenceStep> _reactionSequenceDraftSteps = [];
     private ListBox _reactionSequenceRuleList = null!;
     private TextBox _reactionSequenceName = null!;
+    private CheckBox _reactionSequenceOncePerInstance = null!;
     private ListBox _reactionSequenceStepList = null!;
     private ComboBox _reactionSequenceStepType = null!;
     private ComboBox _reactionSequenceStepName = null!;
@@ -81,6 +82,13 @@ public partial class MainForm
         ruleNameRow.Controls.Add(new Label { Text = "Enemy ability", AutoSize = true, Padding = new Padding(0, 5, 8, 0) });
         _reactionSequenceName = new TextBox { Width = 280, PlaceholderText = "Just Desserts" };
         ruleNameRow.Controls.Add(_reactionSequenceName);
+        _reactionSequenceOncePerInstance = new CheckBox
+        {
+            Text = "Once per mob instance",
+            AutoSize = true,
+            Padding = new Padding(12, 2, 0, 0),
+        };
+        ruleNameRow.Controls.Add(_reactionSequenceOncePerInstance);
         root.Controls.Add(ruleNameRow);
 
         _reactionSequenceStepList = new ListBox
@@ -276,7 +284,11 @@ public partial class MainForm
     private void OnReactionSequenceSave()
     {
         var name = (_reactionSequenceName.Text ?? "").Trim();
-        var candidate = new ReactionSequenceRule(name, _reactionSequenceDraftSteps.ToList());
+        var candidate = new ReactionSequenceRule(
+            name,
+            _reactionSequenceDraftSteps.ToList(),
+            _reactionSequenceOncePerInstance.Checked
+        );
         try
         {
             ReactionSequenceProfileCodec.Validate(candidate);
@@ -347,6 +359,7 @@ public partial class MainForm
         var rule = _reactionSequenceRules[index];
         _reactionSequenceEditIndex = index;
         _reactionSequenceName.Text = rule.Name;
+        _reactionSequenceOncePerInstance.Checked = rule.OncePerInstance;
         _reactionSequenceDraftSteps.Clear();
         _reactionSequenceDraftSteps.AddRange(rule.Steps);
         _reactionSequenceSave.Text = "Update sequence";
@@ -358,6 +371,7 @@ public partial class MainForm
     {
         _reactionSequenceEditIndex = -1;
         _reactionSequenceName.Text = "";
+        _reactionSequenceOncePerInstance.Checked = false;
         _reactionSequenceDraftSteps.Clear();
         _reactionSequenceStepList.Items.Clear();
         _reactionSequenceStepName.Text = "";
@@ -376,7 +390,8 @@ public partial class MainForm
         foreach (var rule in _reactionSequenceRules)
         {
             var actions = string.Join(" -> ", rule.Steps.Select(FormatReactionSequenceStep));
-            _reactionSequenceRuleList.Items.Add($"ability_window | {rule.Name} | {actions}");
+            var once = rule.OncePerInstance ? " | once per mob" : "";
+            _reactionSequenceRuleList.Items.Add($"ability_window | {rule.Name}{once} | {actions}");
         }
         if (selectedIndex >= 0 && _reactionSequenceRuleList.Items.Count > 0)
         {
