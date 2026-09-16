@@ -16,6 +16,7 @@ public partial class MainForm
     private Label _reactionSequenceTriggerActionTypeLabel = null!;
     private Label _reactionSequenceNameLabel = null!;
     private CheckBox _reactionSequenceOncePerInstance = null!;
+    private CheckBox _reactionSequenceHoldSmnRage = null!;
     private ListBox _reactionSequenceStepList = null!;
     private ComboBox _reactionSequenceStepType = null!;
     private ComboBox _reactionSequenceStepName = null!;
@@ -124,7 +125,7 @@ public partial class MainForm
         {
             AutoSize = true,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Padding = new Padding(0, 4, 0, 0),
         };
         _reactionSequenceNameLabel = new Label { Text = "Enemy ability", AutoSize = true, Padding = new Padding(0, 5, 8, 0) };
@@ -139,6 +140,20 @@ public partial class MainForm
             Padding = new Padding(12, 2, 0, 0),
         };
         ruleNameRow.Controls.Add(_reactionSequenceOncePerInstance);
+        _reactionSequenceHoldSmnRage = new CheckBox
+        {
+            Text = "Hold SMN Rage until sequence completes",
+            AutoSize = true,
+            Padding = new Padding(12, 2, 0, 0),
+        };
+        _reactionSequenceHoldSmnRage.CheckedChanged += (_, _) =>
+        {
+            if (_reactionSequenceHoldSmnRage.Checked)
+            {
+                _reactionSequenceOncePerInstance.Checked = true;
+            }
+        };
+        ruleNameRow.Controls.Add(_reactionSequenceHoldSmnRage);
         root.Controls.Add(ruleNameRow);
 
         _reactionSequenceStepList = new ListBox
@@ -332,6 +347,11 @@ public partial class MainForm
         _reactionSequenceSource.Visible = partyTrigger;
         _reactionSequenceTriggerActionTypeLabel.Visible = partyTrigger;
         _reactionSequenceTriggerActionType.Visible = partyTrigger;
+        _reactionSequenceHoldSmnRage.Visible = partyTrigger;
+        if (!partyTrigger)
+        {
+            _reactionSequenceHoldSmnRage.Checked = false;
+        }
         _reactionSequenceNameLabel.Text = partyTrigger ? "Completed action" : "Enemy ability";
         if (partyTrigger)
         {
@@ -440,7 +460,8 @@ public partial class MainForm
             _reactionSequenceOncePerInstance.Checked,
             trigger,
             sourceName,
-            triggerActionType
+            triggerActionType,
+            _reactionSequenceHoldSmnRage.Checked
         );
         try
         {
@@ -524,6 +545,7 @@ public partial class MainForm
         }
         _reactionSequenceName.Text = rule.Name;
         _reactionSequenceOncePerInstance.Checked = rule.OncePerInstance;
+        _reactionSequenceHoldSmnRage.Checked = rule.HoldSmnRageUntilSequenceComplete;
         _reactionSequenceDraftSteps.Clear();
         _reactionSequenceDraftSteps.AddRange(rule.Steps);
         _reactionSequenceSave.Text = "Update sequence";
@@ -540,6 +562,7 @@ public partial class MainForm
         _reactionSequenceTriggerActionType.SelectedItem = "spell";
         _reactionSequenceName.Text = "";
         _reactionSequenceOncePerInstance.Checked = false;
+        _reactionSequenceHoldSmnRage.Checked = false;
         _reactionSequenceDraftSteps.Clear();
         _reactionSequenceStepList.Items.Clear();
         _reactionSequenceStepName.Text = "";
@@ -560,10 +583,11 @@ public partial class MainForm
         {
             var actions = string.Join(" -> ", rule.Steps.Select(FormatReactionSequenceStep));
             var once = rule.OncePerInstance ? " | once per mob" : "";
+            var rageHold = rule.HoldSmnRageUntilSequenceComplete ? " | hold SMN Rage" : "";
             var trigger = rule.Trigger == "party_action_complete"
                 ? $"party_action_complete | {rule.SourceName} | {rule.TriggerActionType}: {rule.Name}"
                 : $"ability_window | {rule.Name}";
-            _reactionSequenceRuleList.Items.Add($"{trigger}{once} | {actions}");
+            _reactionSequenceRuleList.Items.Add($"{trigger}{once}{rageHold} | {actions}");
         }
         if (selectedIndex >= 0 && _reactionSequenceRuleList.Items.Count > 0)
         {
@@ -671,6 +695,12 @@ public partial class MainForm
         if (_reactionSequenceDraftSteps.Count > 0 && _reactionSequenceDraftSteps[^1].Optional)
         {
             _reactionSequenceValidation.Text = "The final sequence step must be required. Add the terminal step or make the current final step required.";
+            _reactionSequenceValidation.ForeColor = Color.Firebrick;
+            return;
+        }
+        if (_reactionSequenceHoldSmnRage.Checked && !_reactionSequenceOncePerInstance.Checked)
+        {
+            _reactionSequenceValidation.Text = "Holding SMN Rage requires Once per mob instance.";
             _reactionSequenceValidation.ForeColor = Color.Firebrick;
             return;
         }
