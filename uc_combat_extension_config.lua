@@ -192,6 +192,18 @@ function M.validate_action_rule(rule)
         and rule.trigger ~= 'party_action_complete' then
         return false, 'once_per_instance reactions require ability_window or party_action_complete trigger'
     end
+    if rule.hold_smn_rage_until_sequence_complete ~= nil
+        and type(rule.hold_smn_rage_until_sequence_complete) ~= 'boolean' then
+        return false, 'hold_smn_rage_until_sequence_complete must be boolean'
+    end
+    if rule.hold_smn_rage_until_sequence_complete == true then
+        if rule.trigger ~= 'party_action_complete' or rule.response ~= 'use_sequence' then
+            return false, 'SMN Rage hold requires party_action_complete/use_sequence'
+        end
+        if rule.once_per_instance ~= true then
+            return false, 'SMN Rage hold requires once_per_instance=true'
+        end
+    end
     if rule.trigger == 'party_action_complete' then
         if trim(rule.source_name) == '' then
             return false, 'party_action_complete reactions require source_name'
