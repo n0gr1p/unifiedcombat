@@ -8,7 +8,13 @@ public partial class MainForm
     private readonly List<ReactionSequenceRule> _reactionSequenceRules = [];
     private readonly List<ReactionSequenceStep> _reactionSequenceDraftSteps = [];
     private ListBox _reactionSequenceRuleList = null!;
-    private TextBox _reactionSequenceName = null!;
+    private ComboBox _reactionSequenceTrigger = null!;
+    private ComboBox _reactionSequenceSource = null!;
+    private ComboBox _reactionSequenceTriggerActionType = null!;
+    private ComboBox _reactionSequenceName = null!;
+    private Label _reactionSequenceSourceLabel = null!;
+    private Label _reactionSequenceTriggerActionTypeLabel = null!;
+    private Label _reactionSequenceNameLabel = null!;
     private CheckBox _reactionSequenceOncePerInstance = null!;
     private ListBox _reactionSequenceStepList = null!;
     private ComboBox _reactionSequenceStepType = null!;
@@ -32,6 +38,18 @@ public partial class MainForm
         base.OnShown(e);
         EnsureReactionSequenceUi();
     }
+
+    private static string ReactionTriggerFromUi(string? value) => value switch
+    {
+        "Party Action Complete" => "party_action_complete",
+        _ => "ability_window",
+    };
+
+    private static string ReactionTriggerToUi(string? value) => value switch
+    {
+        "party_action_complete" => "Party Action Complete",
+        _ => "Enemy Ability",
+    };
 
     private void EnsureReactionSequenceUi()
     {
@@ -57,7 +75,7 @@ public partial class MainForm
         root.Controls.Add(heading);
         root.Controls.Add(new Label
         {
-            Text = "Run ordered JA/spell/pet steps when an enemy begins the named ability. Optional setup steps are skipped when unavailable; the final step must be required. Pet actions currently support Assault and Deploy against the triggering actor. The reaction lane stays reserved between steps.",
+            Text = "Run ordered JA/spell/pet steps when an enemy begins an ability or when a selected party member completes a spell/JA. Party-action triggers are scoped to the current enemy instance; the reaction lane stays reserved between sequence steps.",
             AutoSize = true,
             MaximumSize = new Size(760, 0),
             Padding = new Padding(0, 0, 0, 6),
@@ -72,15 +90,47 @@ public partial class MainForm
         _reactionSequenceRuleList.SelectedIndexChanged += (_, _) => OnReactionSequenceRuleSelected();
         root.Controls.Add(_reactionSequenceRuleList);
 
+        var triggerRow = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Padding = new Padding(0, 6, 0, 0),
+        };
+        triggerRow.Controls.Add(new Label { Text = "Trigger", AutoSize = true, Padding = new Padding(0, 5, 8, 0) });
+        _reactionSequenceTrigger = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 175 };
+        _reactionSequenceTrigger.Items.AddRange(["Enemy Ability", "Party Action Complete"]);
+        _reactionSequenceTrigger.SelectedItem = "Enemy Ability";
+        _reactionSequenceTrigger.SelectedIndexChanged += (_, _) => RefreshReactionSequenceTriggerEditor();
+        triggerRow.Controls.Add(_reactionSequenceTrigger);
+
+        _reactionSequenceSourceLabel = new Label { Text = "Source", AutoSize = true, Padding = new Padding(12, 5, 8, 0) };
+        triggerRow.Controls.Add(_reactionSequenceSourceLabel);
+        _reactionSequenceSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Width = 150 };
+        _reactionSequenceSource.DropDown += (_, _) => RefreshReactionSequencePartyOptions();
+        _reactionSequenceSource.SelectedIndexChanged += (_, _) => RefreshReactionSequenceTriggerActionOptions();
+        triggerRow.Controls.Add(_reactionSequenceSource);
+
+        _reactionSequenceTriggerActionTypeLabel = new Label { Text = "Action type", AutoSize = true, Padding = new Padding(12, 5, 8, 0) };
+        triggerRow.Controls.Add(_reactionSequenceTriggerActionTypeLabel);
+        _reactionSequenceTriggerActionType = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 75 };
+        _reactionSequenceTriggerActionType.Items.AddRange(["spell", "ja"]);
+        _reactionSequenceTriggerActionType.SelectedItem = "spell";
+        _reactionSequenceTriggerActionType.SelectedIndexChanged += (_, _) => RefreshReactionSequenceTriggerActionOptions();
+        triggerRow.Controls.Add(_reactionSequenceTriggerActionType);
+        root.Controls.Add(triggerRow);
+
         var ruleNameRow = new FlowLayoutPanel
         {
             AutoSize = true,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
-            Padding = new Padding(0, 6, 0, 0),
+            Padding = new Padding(0, 4, 0, 0),
         };
-        ruleNameRow.Controls.Add(new Label { Text = "Enemy ability", AutoSize = true, Padding = new Padding(0, 5, 8, 0) });
-        _reactionSequenceName = new TextBox { Width = 280, PlaceholderText = "Just Desserts" };
+        _reactionSequenceNameLabel = new Label { Text = "Enemy ability", AutoSize = true, Padding = new Padding(0, 5, 8, 0) };
+        ruleNameRow.Controls.Add(_reactionSequenceNameLabel);
+        _reactionSequenceName = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Width = 280 };
+        _reactionSequenceName.DropDown += (_, _) => RefreshReactionSequenceTriggerActionOptions();
         ruleNameRow.Controls.Add(_reactionSequenceName);
         _reactionSequenceOncePerInstance = new CheckBox
         {
@@ -192,7 +242,102 @@ public partial class MainForm
         listSessions.SelectedIndexChanged += (_, _) => BeginInvoke(LoadReactionSequencesForSelectedSession);
         _activityReapply.Click += (_, _) => BeginInvoke(LoadReactionSequencesForSelectedSession);
         LoadReactionSequencesForSelectedSession();
+        RefreshReactionSequenceTriggerEditor();
         UpdateReactionSequenceValidation();
+    }
+
+    private void RefreshReactionSequencePartyOptions()
+    {
+        if (!_reactionSequenceUiInitialized)
+        {
+            return;
+        }
+        var selected = SelectedPartyName(_reactionSequenceSource);
+        var names = CurrentSelectablePartyNameOptions(_partyOptions);
+        BindPartyCombo(_reactionSequenceSource, names, selected);
+    }
+
+    private static IEnumerable<string> SplitReactionOptionText(string? value)
+    {
+        return (value ?? "")
+            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(item => item.Length > 0);
+    }
+
+    private IEnumerable<string> ReactionTriggerOptionsForSource(string sourceName, string actionType)
+    {
+        sourceName = NormalizePartyName(sourceName);
+        var sourceSid = _sessionMetaBySid
+            .FirstOrDefault(pair => string.Equals(pair.Value.CharName, sourceName, StringComparison.OrdinalIgnoreCase))
+            .Key;
+        if (!string.IsNullOrWhiteSpace(sourceSid) && _workingProfileBySid.TryGetValue(sourceSid, out var profile))
+        {
+            var key = actionType == "spell" ? "path_pull_spell_options" : "path_pull_ja_options";
+            var primary = profile[key]?.ToString();
+            var options = SplitReactionOptionText(primary).ToList();
+            if (actionType == "ja")
+            {
+                options.AddRange(SplitReactionOptionText(profile["ability_options"]?.ToString()));
+            }
+            if (options.Count > 0)
+            {
+                return options;
+            }
+        }
+        return actionType == "spell"
+            ? _pathPullSpellOptions
+            : _pathPullJaOptions.Concat(_abilityOptions);
+    }
+
+    private void RefreshReactionSequenceTriggerActionOptions()
+    {
+        if (!_reactionSequenceUiInitialized)
+        {
+            return;
+        }
+        var selected = (_reactionSequenceName.Text ?? "").Trim();
+        var trigger = ReactionTriggerFromUi(_reactionSequenceTrigger.SelectedItem?.ToString());
+        IEnumerable<string> source = Array.Empty<string>();
+        if (trigger == "party_action_complete")
+        {
+            var sourceName = SelectedPartyName(_reactionSequenceSource);
+            var actionType = _reactionSequenceTriggerActionType.SelectedItem?.ToString() ?? "spell";
+            source = ReactionTriggerOptionsForSource(sourceName, actionType);
+        }
+        var options = source
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(value => value, StringComparer.Ordinal)
+            .ToList();
+        if (selected.Length > 0 && !options.Contains(selected, StringComparer.Ordinal))
+        {
+            options.Insert(0, selected);
+        }
+        _reactionSequenceName.Items.Clear();
+        foreach (var option in options)
+        {
+            _reactionSequenceName.Items.Add(option);
+        }
+        _reactionSequenceName.Text = selected;
+    }
+
+    private void RefreshReactionSequenceTriggerEditor()
+    {
+        if (!_reactionSequenceUiInitialized)
+        {
+            return;
+        }
+        var partyTrigger = ReactionTriggerFromUi(_reactionSequenceTrigger.SelectedItem?.ToString()) == "party_action_complete";
+        _reactionSequenceSourceLabel.Visible = partyTrigger;
+        _reactionSequenceSource.Visible = partyTrigger;
+        _reactionSequenceTriggerActionTypeLabel.Visible = partyTrigger;
+        _reactionSequenceTriggerActionType.Visible = partyTrigger;
+        _reactionSequenceNameLabel.Text = partyTrigger ? "Completed action" : "Enemy ability";
+        if (partyTrigger)
+        {
+            RefreshReactionSequencePartyOptions();
+        }
+        RefreshReactionSequenceTriggerActionOptions();
     }
 
     private void RefreshReactionSequenceActionOptions()
@@ -283,11 +428,19 @@ public partial class MainForm
 
     private void OnReactionSequenceSave()
     {
+        var trigger = ReactionTriggerFromUi(_reactionSequenceTrigger.SelectedItem?.ToString());
         var name = (_reactionSequenceName.Text ?? "").Trim();
+        var sourceName = trigger == "party_action_complete" ? SelectedPartyName(_reactionSequenceSource) : "";
+        var triggerActionType = trigger == "party_action_complete"
+            ? _reactionSequenceTriggerActionType.SelectedItem?.ToString() ?? ""
+            : "";
         var candidate = new ReactionSequenceRule(
             name,
             _reactionSequenceDraftSteps.ToList(),
-            _reactionSequenceOncePerInstance.Checked
+            _reactionSequenceOncePerInstance.Checked,
+            trigger,
+            sourceName,
+            triggerActionType
         );
         try
         {
@@ -300,17 +453,21 @@ public partial class MainForm
             return;
         }
 
-        if (_reactionRules.Any(rule => string.Equals(rule.Trigger, "ability_window", StringComparison.Ordinal)
+        if (_reactionRules.Any(rule => string.Equals(rule.Trigger, trigger, StringComparison.Ordinal)
             && string.Equals(rule.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
-            _reactionSequenceValidation.Text = $"Remove the existing ability-window reaction for '{name}' before adding a sequence for the same ability.";
+            _reactionSequenceValidation.Text = $"Remove the existing {trigger} reaction for '{name}' before adding a sequence for the same action.";
             _reactionSequenceValidation.ForeColor = Color.Firebrick;
             return;
         }
-        var duplicate = _reactionSequenceRules.FindIndex((rule) => string.Equals(rule.Name, name, StringComparison.OrdinalIgnoreCase));
+        var duplicate = _reactionSequenceRules.FindIndex(rule =>
+            string.Equals(rule.Trigger, trigger, StringComparison.Ordinal)
+            && string.Equals(rule.SourceName, sourceName, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(rule.TriggerActionType, triggerActionType, StringComparison.Ordinal)
+            && string.Equals(rule.Name, name, StringComparison.OrdinalIgnoreCase));
         if (duplicate >= 0 && duplicate != _reactionSequenceEditIndex)
         {
-            _reactionSequenceValidation.Text = $"A sequence for '{name}' already exists.";
+            _reactionSequenceValidation.Text = $"A matching sequence for '{name}' already exists.";
             _reactionSequenceValidation.ForeColor = Color.Firebrick;
             return;
         }
@@ -358,11 +515,19 @@ public partial class MainForm
         }
         var rule = _reactionSequenceRules[index];
         _reactionSequenceEditIndex = index;
+        _reactionSequenceTrigger.SelectedItem = ReactionTriggerToUi(rule.Trigger);
+        RefreshReactionSequencePartyOptions();
+        if (rule.Trigger == "party_action_complete")
+        {
+            BindPartyCombo(_reactionSequenceSource, CurrentSelectablePartyNameOptions(_partyOptions), rule.SourceName);
+            _reactionSequenceTriggerActionType.SelectedItem = rule.TriggerActionType;
+        }
         _reactionSequenceName.Text = rule.Name;
         _reactionSequenceOncePerInstance.Checked = rule.OncePerInstance;
         _reactionSequenceDraftSteps.Clear();
         _reactionSequenceDraftSteps.AddRange(rule.Steps);
         _reactionSequenceSave.Text = "Update sequence";
+        RefreshReactionSequenceTriggerEditor();
         RebindReactionSequenceStepList();
         UpdateReactionSequenceValidation();
     }
@@ -370,6 +535,9 @@ public partial class MainForm
     private void ClearReactionSequenceEditor(bool clearSelection = true)
     {
         _reactionSequenceEditIndex = -1;
+        _reactionSequenceTrigger.SelectedItem = "Enemy Ability";
+        _reactionSequenceSource.Text = "";
+        _reactionSequenceTriggerActionType.SelectedItem = "spell";
         _reactionSequenceName.Text = "";
         _reactionSequenceOncePerInstance.Checked = false;
         _reactionSequenceDraftSteps.Clear();
@@ -381,6 +549,7 @@ public partial class MainForm
         {
             _reactionSequenceRuleList.ClearSelected();
         }
+        RefreshReactionSequenceTriggerEditor();
         UpdateReactionSequenceValidation();
     }
 
@@ -391,7 +560,10 @@ public partial class MainForm
         {
             var actions = string.Join(" -> ", rule.Steps.Select(FormatReactionSequenceStep));
             var once = rule.OncePerInstance ? " | once per mob" : "";
-            _reactionSequenceRuleList.Items.Add($"ability_window | {rule.Name}{once} | {actions}");
+            var trigger = rule.Trigger == "party_action_complete"
+                ? $"party_action_complete | {rule.SourceName} | {rule.TriggerActionType}: {rule.Name}"
+                : $"ability_window | {rule.Name}";
+            _reactionSequenceRuleList.Items.Add($"{trigger}{once} | {actions}");
         }
         if (selectedIndex >= 0 && _reactionSequenceRuleList.Items.Count > 0)
         {
@@ -470,9 +642,14 @@ public partial class MainForm
                 }
                 var trigger = existingRule["trigger"]?.GetValue<string>() ?? "";
                 var name = existingRule["name"]?.GetValue<string>() ?? "";
-                if (trigger == "ability_window" && string.Equals(name, sequence.Name, StringComparison.OrdinalIgnoreCase))
+                var sourceName = existingRule["source_name"]?.GetValue<string>() ?? "";
+                var actionType = existingRule["action_type"]?.GetValue<string>() ?? "";
+                if (trigger == sequence.Trigger
+                    && string.Equals(name, sequence.Name, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(sourceName, sequence.SourceName, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(actionType, sequence.TriggerActionType, StringComparison.Ordinal))
                 {
-                    throw new InvalidDataException($"duplicate ability-window reaction: {sequence.Name}");
+                    throw new InvalidDataException($"duplicate {sequence.Trigger} reaction: {sequence.Name}");
                 }
             }
             rules.Add(ReactionSequenceProfileCodec.ToJsonRule(sequence));
