@@ -22,9 +22,6 @@ jobs:
           ref: feature/reaction-once-per-instance
       - name: Fix Profile V2 once-per-instance boolean reader
         run: |
-          if [ "$GITHUB_EVENT_NAME" != "push" ]; then
-            exit 0
-          fi
           python3 -c 'from pathlib import Path; p=Path("UnifiedCombatWinForms/StructuredProfileV2Writer.cs"); s=p.read_text(encoding="utf-8"); old="ReadOptionalBool(rule, \"once_per_instance\", false)"; new="ReadBool(rule, \"once_per_instance\", false)"; assert old in s or new in s; p.write_text(s.replace(old,new,1),encoding="utf-8")'
           if git diff --quiet -- UnifiedCombatWinForms/StructuredProfileV2Writer.cs; then
             exit 0
