@@ -56,12 +56,24 @@ local rule = {
     },
 }
 
+local ja_rule = {
+    trigger = 'party_action_complete',
+    source_name = 'Etamame',
+    action_type = 'ja',
+    name = 'Entrust',
+    response = 'use_sequence',
+    steps = {
+        { action_type = 'ja', action_name = 'Astral Flow', target = 'self', optional = false },
+    },
+}
+
 package.loaded.uc_combat_extension_config = nil
 package.preload.uc_combat_extension_config = function()
     return {
-        reaction_rules = function() return { rule } end,
+        reaction_rules = function() return { rule, ja_rule } end,
         validate_action_rule = function(candidate)
-            return candidate == rule, candidate == rule and nil or 'unexpected rule'
+            local valid = candidate == rule or candidate == ja_rule
+            return valid, valid and nil or 'unexpected rule'
         end,
     }
 end
@@ -98,12 +110,21 @@ assert_true(wrong_action.activated == nil, 'different completed spell must not a
 local no_enemy = reactions.on_action({ actor_id = 200, category = 4, param = 501 }, 0, 1.2, false)
 assert_true(no_enemy.activated == nil, 'matching party action without current enemy must not activate')
 
+local ja_ready = reactions.on_action({ actor_id = 200, category = 6, param = 601 }, 900, 1.3, false)
+assert_true(type(ja_ready.activated) == 'table', 'matching party job ability completion must activate sequence')
+assert_equal(ja_ready.activated.completed_action_type, 'ja', 'job ability trigger type')
+assert_equal(ja_ready.activated.completed_action_name, 'Entrust', 'job ability trigger name')
+assert_equal(ja_ready.activated.event_actor_id, 200, 'job ability event actor')
+local ja_released = reactions.cancel(ja_ready.activated.key, 'selftest')
+assert_true(type(ja_released) == 'table', 'job ability reaction must use ordinary cancellable sequence lock')
+
 local ready = reactions.on_action({ actor_id = 200, category = 4, param = 501 }, 900, 2.0, false)
 assert_true(type(ready.activated) == 'table', 'matching party action completion must activate sequence')
 assert_equal(ready.activated.trigger, 'party_action_complete', 'trigger type')
 assert_equal(ready.activated.actor_id, 900, 'enemy instance must own reaction lock')
 assert_equal(ready.activated.event_actor_id, 200, 'party member must be recorded separately')
 assert_equal(ready.activated.event_actor_name, 'Etamame', 'party member name')
+assert_equal(ready.activated.completed_action_type, 'spell', 'completed spell type')
 assert_equal(ready.activated.completed_action_name, 'Indi-Malaise', 'completed action name')
 
 local duplicate_pending = reactions.on_action({ actor_id = 200, category = 4, param = 501 }, 900, 2.1, false)
