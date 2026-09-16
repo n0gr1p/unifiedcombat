@@ -48,14 +48,15 @@ local mode = 'idle'
 local active_lock = nil
 local fake_base = {}
 
-function fake_base.on_action()
+function fake_base.on_action(_, current_target_id)
+    local actor_id = tonumber(current_target_id) or 0
     if mode == 'activate' then
         active_lock = {
-            key = 'party_action_complete:900:etamame:spell:indi-malaise',
+            key = ('party_action_complete:%d:etamame:spell:indi-malaise'):format(actor_id),
             trigger = 'party_action_complete',
             name = 'Indi-Malaise',
             response = 'use_sequence',
-            actor_id = 900,
+            actor_id = actor_id,
             event_actor_id = 200,
             event_actor_name = 'Etamame',
             completed_action_type = 'spell',
@@ -122,27 +123,12 @@ assert_false(held, 'terminal sequence completion must release Rage')
 assert_equal(reason, 'reaction_sequence_released', 'completed release reason')
 assert_equal(reactions.status().smn_rage_gate.released_count, 1, 'released gate count')
 
-mode = 'activate'
-reactions.on_action({}, 901, 3.0, false)
--- The fake lock always uses actor 900; reset so cancellation can exercise a fresh instance cleanly.
-reactions.reset('test-reset')
 held = gate.should_hold(901)
 assert_true(held, 'new enemy instance must begin held')
-
 mode = 'activate'
-local second = reactions.on_action({}, 901, 4.0, false)
-second.activated.actor_id = 901
-active_lock.actor_id = 901
--- Re-feed the corrected activation shape so the gate owns actor 901.
-mode = 'idle'
-reactions.reset('actor-correction')
-active_lock = second.activated
-mode = 'activate'
-fake_base.on_action = function()
-    return { activated = active_lock }
-end
-reactions.on_action({}, 901, 4.1, false)
-local released = reactions.cancel(active_lock.key, 'required_opener_unavailable')
+local second = reactions.on_action({}, 901, 3.0, false)
+assert_true(type(second.activated) == 'table', 'second enemy must activate its own sequence')
+local released = reactions.cancel(second.activated.key, 'required_opener_unavailable')
 assert_true(type(released) == 'table', 'cancel must return released lock')
 held, reason = gate.should_hold(901)
 assert_false(held, 'sequence cancellation must fail open Rage')
@@ -154,5 +140,8 @@ end)
 assert_equal(reactions.status().smn_rage_gate.released_count, 0, 'invalid enemy cleanup must clear released state')
 held = gate.should_hold(900)
 assert_true(held, 'cleared/reused enemy instance must re-arm hold')
+
+reactions.reset('final')
+assert_equal(reactions.status().smn_rage_gate.released_count, 0, 'reset must clear Rage gate state')
 
 print('selftest_reaction_smn_rage_hold: OK')
