@@ -150,8 +150,22 @@ function M.validate_action_rule(rule)
     if rule.once_per_instance ~= nil and type(rule.once_per_instance) ~= 'boolean' then
         return false, 'once_per_instance must be boolean'
     end
-    if rule.once_per_instance == true and rule.trigger ~= 'ability_window' then
-        return false, 'once_per_instance reactions require ability_window trigger'
+    if rule.once_per_instance == true
+        and rule.trigger ~= 'ability_window'
+        and rule.trigger ~= 'party_action_complete' then
+        return false, 'once_per_instance reactions require ability_window or party_action_complete trigger'
+    end
+    if rule.trigger == 'party_action_complete' then
+        if trim(rule.source_name) == '' then
+            return false, 'party_action_complete reactions require source_name'
+        end
+        local trigger_action_type = trim(rule.action_type):lower()
+        if trigger_action_type ~= 'spell' and trigger_action_type ~= 'ja' then
+            return false, 'party_action_complete action_type must be spell or ja'
+        end
+        if trim(rule.name) == '' then
+            return false, 'party_action_complete reactions require action name'
+        end
     end
     if rule.response == 'use_action' then
         if rule.trigger ~= 'ability_window' then
@@ -168,8 +182,8 @@ function M.validate_action_rule(rule)
     if rule.response ~= 'use_sequence' then
         return true
     end
-    if rule.trigger ~= 'ability_window' then
-        return false, 'use_sequence reactions require ability_window trigger'
+    if rule.trigger ~= 'ability_window' and rule.trigger ~= 'party_action_complete' then
+        return false, 'use_sequence reactions require ability_window or party_action_complete trigger'
     end
     if type(rule.steps) ~= 'table' or #rule.steps == 0 then
         return false, 'use_sequence reactions require at least one step'
