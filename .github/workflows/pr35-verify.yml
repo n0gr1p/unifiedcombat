@@ -10,28 +10,7 @@ on:
     branches:
       - master
 
-permissions:
-  contents: write
-
 jobs:
-  profile-writer-fix:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feature/reaction-once-per-instance
-      - name: Fix Profile V2 once-per-instance boolean reader
-        run: |
-          python3 -c 'from pathlib import Path; p=Path("UnifiedCombatWinForms/StructuredProfileV2Writer.cs"); s=p.read_text(encoding="utf-8"); old="ReadOptionalBool(rule, \"once_per_instance\", false)"; new="ReadBool(rule, \"once_per_instance\", false)"; assert old in s or new in s; p.write_text(s.replace(old,new,1),encoding="utf-8")'
-          if git diff --quiet -- UnifiedCombatWinForms/StructuredProfileV2Writer.cs; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add UnifiedCombatWinForms/StructuredProfileV2Writer.cs
-          git commit -m "Use Profile V2 boolean reader for one-shot reactions"
-          git push origin HEAD:feature/reaction-once-per-instance
-
   winforms:
     runs-on: windows-latest
     steps:
