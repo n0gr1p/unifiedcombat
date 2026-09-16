@@ -41,6 +41,43 @@ local function has_action_rule(rules)
     return false
 end
 
+local function reaction_identity(rule)
+    if type(rule) ~= 'table' then
+        return ''
+    end
+    return table.concat({
+        trim(rule.trigger):lower(),
+        trim(rule.source_name):lower(),
+        trim(rule.action_type):lower(),
+        trim(rule.name):lower(),
+        trim(rule.response):lower(),
+    }, '\031')
+end
+
+local function merge_party_action_rules(active_rules, flat_rules)
+    local merged = {}
+    local seen = {}
+    for i = 1, #(active_rules or {}) do
+        local rule = active_rules[i]
+        merged[#merged + 1] = rule
+        local identity = reaction_identity(rule)
+        if identity ~= '' then
+            seen[identity] = true
+        end
+    end
+    for i = 1, #(flat_rules or {}) do
+        local rule = flat_rules[i]
+        if type(rule) == 'table' and rule.trigger == 'party_action_complete' then
+            local identity = reaction_identity(rule)
+            if identity ~= '' and seen[identity] ~= true then
+                merged[#merged + 1] = rule
+                seen[identity] = true
+            end
+        end
+    end
+    return merged
+end
+
 local function validate_sequence_step(step, index, count)
     if type(step) ~= 'table' then
         return false, ('use_sequence step %d must be a table'):format(index)
@@ -130,12 +167,12 @@ function M.reaction_rules()
     local flat_rules = flat.reaction_enabled == true and type(flat.reaction_rules) == 'table'
         and flat.reaction_rules or nil
 
-    -- Structured v2 is authoritative when it contains an action-bearing rule.
-    -- During legacy flat-settings startup, the normalizer can legitimately
-    -- project an older reaction subset into active config. Preserve the full
-    -- flat rule list in that case instead of silently dropping action metadata.
+    -- Structured v2 remains authoritative for existing reactions. Party-action
+    -- rules are also merged from the flat UI projection so mixed profiles cannot
+    -- lose a newly configured party trigger during the structured-profile
+    -- compatibility window.
     if has_action_rule(active_rules) then
-        return active_rules
+        return merge_party_action_rules(active_rules, flat_rules)
     end
     if has_action_rule(flat_rules) then
         return flat_rules
