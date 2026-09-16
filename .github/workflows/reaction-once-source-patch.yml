@@ -17,8 +17,8 @@ jobs:
         with:
           ref: feature/reaction-once-per-instance
       - name: Patch structured profile writer
-        shell: python {0}
         run: |
+          python3 - <<'PY'
           from pathlib import Path
 
           path = Path('UnifiedCombatWinForms/StructuredProfileV2Writer.cs')
@@ -47,8 +47,8 @@ jobs:
               text = text.replace(old, new, 1)
               path.write_text(text, encoding='utf-8')
 
-          workflow = Path('.github/workflows/reaction-once-source-patch.yml')
-          workflow.unlink()
+          Path('.github/workflows/reaction-once-source-patch.yml').unlink()
+          PY
       - name: Commit source patch
         run: |
           git config user.name "github-actions[bot]"
