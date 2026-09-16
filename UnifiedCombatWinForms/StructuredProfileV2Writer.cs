@@ -834,22 +834,22 @@ internal static class StructuredProfileV2Writer
     private static StructuredProfileNode BuildFollow(JsonObject flatProfile)
     {
         var partnerNames = ParseNameList(ReadString(flatProfile, "partner_entries", ""));
-		var leashSource = ReadString(flatProfile, "puller_leash_source", "player").Trim().ToLowerInvariant();
-		if (leashSource is not ("player" or "camp"))
-		{
-			throw new InvalidDataException($"puller_leash_source must be player or camp, got '{leashSource}'.");
-		}
+        var leashSource = ReadString(flatProfile, "puller_leash_source", "player").Trim().ToLowerInvariant();
+        if (leashSource is not ("player" or "camp"))
+        {
+            throw new InvalidDataException($"puller_leash_source must be player or camp, got '{leashSource}'.");
+        }
         var partner = new StructuredProfileNode()
             .Add("enabled", ReadBool(flatProfile, "partner", false))
             .Add("secondary_enabled", partnerNames.Count > 1)
             .Add("names", partnerNames)
             .Add("puller", ReadBool(flatProfile, "puller", false))
-			.Add("leash_source", leashSource)
+            .Add("leash_source", leashSource)
             .Add("engage_range", Math.Clamp(ReadDouble(flatProfile, "puller_engage_range", 6.0), 0.1, 50.0))
             .Add("puller_distance_only", ReadBool(flatProfile, "puller_distance_only", false));
 
         var pullerName = ReadString(flatProfile, "puller_selected", ReadString(flatProfile, "puller_name", ""));
-		if (leashSource == "player" && !string.IsNullOrWhiteSpace(pullerName))
+        if (leashSource == "player" && !string.IsNullOrWhiteSpace(pullerName))
         {
             partner.Add("puller_name", pullerName);
         }
@@ -1095,43 +1095,43 @@ internal static class StructuredProfileV2Writer
             );
         }
 
-		var isBrdProfile = string.Equals(SafeJobComponent(identity.MainJob), "BRD", StringComparison.Ordinal)
-			|| string.Equals(SafeJobComponent(identity.SubJob), "BRD", StringComparison.Ordinal);
-		if (isBrdProfile)
-		{
-			var useNitro = ReadBool(flatProfile, "brd_use_nitro", false);
-			var useSoulVoice = ReadBool(flatProfile, "brd_use_soul_voice", false);
-			var targetedSongs = ParseBardTargetedSongs(ReadString(flatProfile, "brd_targeted_songs", ""));
-			ValidateBardTargetedSongNames(
-				targetedSongs,
-				SplitPipeList(ReadString(flatProfile, "brd_song_options", ""))
-					.Select(value => value?.ToString() ?? "")
-					.Where(value => value.Length > 0)
-					.ToList()
-			);
-			if (useSoulVoice && !useNitro)
-			{
-				throw new InvalidDataException("BRD Soul Voice requires NITRO.");
-			}
-			maintenance.Add(
-				"brd",
-				new StructuredProfileNode()
-					.Add("enabled", ReadBool(flatProfile, "brd_maintenance_enabled", false))
-					.Add("songs", SplitPipeList(ReadString(flatProfile, "brd_songs", "")))
-					.Add("dummy_songs", SplitPipeList(ReadString(flatProfile, "brd_dummy_songs", "")))
-					.Add("use_nitro", useNitro)
-					.Add("use_soul_voice", useSoulVoice)
-					.Add("use_clarion_call", ReadBool(flatProfile, "brd_use_clarion_call", false))
-					.Add("use_marcato", ReadBool(flatProfile, "brd_use_marcato", false))
-					.Add("marcato_song", ReadString(flatProfile, "brd_marcato_song", ""))
-					.Add("targeted_songs", BuildBardTargetedSongs(targetedSongs))
-					.Add("recovery_range_yalms", ReadBoundedDouble(flatProfile, "brd_recovery_range_yalms", 9.9, 1.0, 20.0))
-					.Add("reposition_for_party_songs", ReadBool(flatProfile, "brd_reposition_for_party_songs", false))
-					.Add("recovery_ignore_names", SplitPipeList(ReadString(flatProfile, "brd_recovery_ignore_names", "")))
-			);
-		}
+        var isBrdProfile = string.Equals(SafeJobComponent(identity.MainJob), "BRD", StringComparison.Ordinal)
+            || string.Equals(SafeJobComponent(identity.SubJob), "BRD", StringComparison.Ordinal);
+        if (isBrdProfile)
+        {
+            var useNitro = ReadBool(flatProfile, "brd_use_nitro", false);
+            var useSoulVoice = ReadBool(flatProfile, "brd_use_soul_voice", false);
+            var targetedSongs = ParseBardTargetedSongs(ReadString(flatProfile, "brd_targeted_songs", ""));
+            ValidateBardTargetedSongNames(
+                targetedSongs,
+                SplitPipeList(ReadString(flatProfile, "brd_song_options", ""))
+                    .Select(value => value?.ToString() ?? "")
+                    .Where(value => value.Length > 0)
+                    .ToList()
+            );
+            if (useSoulVoice && !useNitro)
+            {
+                throw new InvalidDataException("BRD Soul Voice requires NITRO.");
+            }
+            maintenance.Add(
+                "brd",
+                new StructuredProfileNode()
+                    .Add("enabled", ReadBool(flatProfile, "brd_maintenance_enabled", false))
+                    .Add("songs", SplitPipeList(ReadString(flatProfile, "brd_songs", "")))
+                    .Add("dummy_songs", SplitPipeList(ReadString(flatProfile, "brd_dummy_songs", "")))
+                    .Add("use_nitro", useNitro)
+                    .Add("use_soul_voice", useSoulVoice)
+                    .Add("use_clarion_call", ReadBool(flatProfile, "brd_use_clarion_call", false))
+                    .Add("use_marcato", ReadBool(flatProfile, "brd_use_marcato", false))
+                    .Add("marcato_song", ReadString(flatProfile, "brd_marcato_song", ""))
+                    .Add("targeted_songs", BuildBardTargetedSongs(targetedSongs))
+                    .Add("recovery_range_yalms", ReadBoundedDouble(flatProfile, "brd_recovery_range_yalms", 9.9, 1.0, 20.0))
+                    .Add("reposition_for_party_songs", ReadBool(flatProfile, "brd_reposition_for_party_songs", false))
+                    .Add("recovery_ignore_names", SplitPipeList(ReadString(flatProfile, "brd_recovery_ignore_names", "")))
+            );
+        }
 
-		maintenance.Add("geo", BuildGeoMaintenance(flatProfile));
+        maintenance.Add("geo", BuildGeoMaintenance(flatProfile));
 
         return maintenance;
     }
@@ -1217,7 +1217,7 @@ internal static class StructuredProfileV2Writer
             || ReadBool(flatProfile, "summoner_avatar_favor", false)
             || ReadBool(flatProfile, "summoner_ward_enabled", false)
             || ReadString(flatProfile, "summoner_ward_action", "") != ""
-			|| ReadString(flatProfile, "summoner_ward_actions", "") != ""
+            || ReadString(flatProfile, "summoner_ward_actions", "") != ""
             || ReadBool(flatProfile, "summoner_engage_on_combat_start", false)
             || ReadBool(flatProfile, "summoner_rage_enabled", false)
             || ReadOptionalBool(flatProfile, "summoner_rage_target_hpp_above_enabled", false)
@@ -1239,21 +1239,21 @@ internal static class StructuredProfileV2Writer
         {
             return null;
         }
-		var wardActionsText = ReadString(flatProfile, "summoner_ward_actions", "");
-		var legacyWardAction = ReadString(flatProfile, "summoner_ward_action", "");
-		if (wardActionsText.Length == 0 && legacyWardAction.Length != 0)
-		{
-			wardActionsText = legacyWardAction;
-		}
-		var wardActions = SplitPipeList(wardActionsText);
-		if (legacyWardAction.Length != 0
-			&& wardActions.Count > 0
-			&& !string.Equals(wardActions[0]?.ToString(), legacyWardAction, StringComparison.Ordinal))
-		{
-			throw new InvalidDataException(
-				"summoner_ward_action must match the first summoner_ward_actions entry."
-			);
-		}
+        var wardActionsText = ReadString(flatProfile, "summoner_ward_actions", "");
+        var legacyWardAction = ReadString(flatProfile, "summoner_ward_action", "");
+        if (wardActionsText.Length == 0 && legacyWardAction.Length != 0)
+        {
+            wardActionsText = legacyWardAction;
+        }
+        var wardActions = SplitPipeList(wardActionsText);
+        if (legacyWardAction.Length != 0
+            && wardActions.Count > 0
+            && !string.Equals(wardActions[0]?.ToString(), legacyWardAction, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "summoner_ward_action must match the first summoner_ward_actions entry."
+            );
+        }
 
         return new StructuredProfileNode()
             .Add("enabled", ReadBool(flatProfile, "summoner_enabled", false))
@@ -1266,7 +1266,7 @@ internal static class StructuredProfileV2Writer
                         "ward",
                         new StructuredProfileNode()
                             .Add("enabled", ReadBool(flatProfile, "summoner_ward_enabled", false))
-							.Add("actions", wardActions)
+                            .Add("actions", wardActions)
                     )
             )
             .Add(
@@ -2147,23 +2147,23 @@ internal static class StructuredProfileV2Writer
         return ReadFormationNumber(flatProfile, key, 0, minimum, maximum);
     }
 
-	private static double ReadBoundedDouble(JsonObject flatProfile, string key, double defaultValue, double minimum, double maximum)
-	{
-		if (!flatProfile.TryGetPropertyValue(key, out var node) || node is null)
-		{
-			return defaultValue;
-		}
-		var raw = ReadString(flatProfile, key, "");
-		if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
-		{
-			throw new InvalidDataException($"setting {key} is not numeric: {raw}");
-		}
-		if (value < minimum || value > maximum)
-		{
-			throw new InvalidDataException($"setting {key} is outside {minimum}..{maximum}: {value}");
-		}
-		return value;
-	}
+    private static double ReadBoundedDouble(JsonObject flatProfile, string key, double defaultValue, double minimum, double maximum)
+    {
+        if (!flatProfile.TryGetPropertyValue(key, out var node) || node is null)
+        {
+            return defaultValue;
+        }
+        var raw = ReadString(flatProfile, key, "");
+        if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            throw new InvalidDataException($"setting {key} is not numeric: {raw}");
+        }
+        if (value < minimum || value > maximum)
+        {
+            throw new InvalidDataException($"setting {key} is outside {minimum}..{maximum}: {value}");
+        }
+        return value;
+    }
 
     private static bool ReadFormationBool(JsonObject flatProfile, string key, bool defaultValue)
     {
@@ -2298,91 +2298,91 @@ internal static class StructuredProfileV2Writer
         return list;
     }
 
-	internal static List<BardTargetedSongSet> ParseBardTargetedSongs(string value)
-	{
-		var sets = new List<BardTargetedSongSet>();
-		var assignedRecipients = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-		foreach (var rawEntry in value.Split('|', StringSplitOptions.RemoveEmptyEntries))
-		{
-			var entry = rawEntry.Trim();
-			var separatorIndex = entry.IndexOf(':');
-			if (separatorIndex <= 0 || separatorIndex >= entry.Length - 1)
-			{
-				throw new InvalidDataException($"BRD targeted song entry must be Recipients:PrioritySongs: {entry}");
-			}
-			var recipients = entry[..separatorIndex]
-				.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-				.ToArray();
-			var songs = entry[(separatorIndex + 1)..]
-				.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-				.ToArray();
-			if (recipients.Length == 0 || songs.Length == 0)
-			{
-				throw new InvalidDataException($"BRD targeted song entry requires recipients and songs: {entry}");
-			}
-			if (recipients.Distinct(StringComparer.OrdinalIgnoreCase).Count() != recipients.Length)
-			{
-				throw new InvalidDataException($"BRD targeted song entry repeats a recipient: {entry}");
-			}
-			if (songs.Distinct(StringComparer.Ordinal).Count() != songs.Length)
-			{
-				throw new InvalidDataException($"BRD targeted song entry repeats a song: {entry}");
-			}
-			foreach (var recipient in recipients)
-			{
-				if (!assignedRecipients.Add(recipient))
-				{
-					throw new InvalidDataException($"BRD targeted song recipient appears more than once: {recipient}");
-				}
-			}
-			sets.Add(new BardTargetedSongSet(recipients, songs));
-		}
-		if (!string.IsNullOrWhiteSpace(value) && sets.Count == 0)
-		{
-			throw new InvalidDataException("BRD targeted songs contain no valid recipient/song entries.");
-		}
-		return sets;
-	}
+    internal static List<BardTargetedSongSet> ParseBardTargetedSongs(string value)
+    {
+        var sets = new List<BardTargetedSongSet>();
+        var assignedRecipients = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rawEntry in value.Split('|', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var entry = rawEntry.Trim();
+            var separatorIndex = entry.IndexOf(':');
+            if (separatorIndex <= 0 || separatorIndex >= entry.Length - 1)
+            {
+                throw new InvalidDataException($"BRD targeted song entry must be Recipients:PrioritySongs: {entry}");
+            }
+            var recipients = entry[..separatorIndex]
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToArray();
+            var songs = entry[(separatorIndex + 1)..]
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToArray();
+            if (recipients.Length == 0 || songs.Length == 0)
+            {
+                throw new InvalidDataException($"BRD targeted song entry requires recipients and songs: {entry}");
+            }
+            if (recipients.Distinct(StringComparer.OrdinalIgnoreCase).Count() != recipients.Length)
+            {
+                throw new InvalidDataException($"BRD targeted song entry repeats a recipient: {entry}");
+            }
+            if (songs.Distinct(StringComparer.Ordinal).Count() != songs.Length)
+            {
+                throw new InvalidDataException($"BRD targeted song entry repeats a song: {entry}");
+            }
+            foreach (var recipient in recipients)
+            {
+                if (!assignedRecipients.Add(recipient))
+                {
+                    throw new InvalidDataException($"BRD targeted song recipient appears more than once: {recipient}");
+                }
+            }
+            sets.Add(new BardTargetedSongSet(recipients, songs));
+        }
+        if (!string.IsNullOrWhiteSpace(value) && sets.Count == 0)
+        {
+            throw new InvalidDataException("BRD targeted songs contain no valid recipient/song entries.");
+        }
+        return sets;
+    }
 
-	private static void ValidateBardTargetedSongNames(
-		IReadOnlyList<BardTargetedSongSet> targetedSongs,
-		IReadOnlyList<string> availableSongs
-	)
-	{
-		if (targetedSongs.Count == 0)
-		{
-			return;
-		}
-		if (availableSongs.Count == 0)
-		{
-			throw new InvalidDataException(
-				"BRD targeted songs require hydrated BRD song options. Refresh the BRD session before saving."
-			);
-		}
-		var available = new HashSet<string>(availableSongs, StringComparer.Ordinal);
-		foreach (var set in targetedSongs)
-		{
-			foreach (var song in set.PrioritySongs)
-			{
-				if (!available.Contains(song))
-				{
-					throw new InvalidDataException($"BRD targeted song is unavailable or invalid: {song}");
-				}
-			}
-		}
-	}
+    private static void ValidateBardTargetedSongNames(
+        IReadOnlyList<BardTargetedSongSet> targetedSongs,
+        IReadOnlyList<string> availableSongs
+    )
+    {
+        if (targetedSongs.Count == 0)
+        {
+            return;
+        }
+        if (availableSongs.Count == 0)
+        {
+            throw new InvalidDataException(
+                "BRD targeted songs require hydrated BRD song options. Refresh the BRD session before saving."
+            );
+        }
+        var available = new HashSet<string>(availableSongs, StringComparer.Ordinal);
+        foreach (var set in targetedSongs)
+        {
+            foreach (var song in set.PrioritySongs)
+            {
+                if (!available.Contains(song))
+                {
+                    throw new InvalidDataException($"BRD targeted song is unavailable or invalid: {song}");
+                }
+            }
+        }
+    }
 
-	private static List<object?> BuildBardTargetedSongs(IReadOnlyList<BardTargetedSongSet> sets)
-	{
-		var list = new List<object?>();
-		foreach (var set in sets)
-		{
-			list.Add(new StructuredProfileNode()
-				.Add("recipients", set.Recipients.Cast<object?>().ToList())
-				.Add("priority_songs", set.PrioritySongs.Cast<object?>().ToList()));
-		}
-		return list;
-	}
+    private static List<object?> BuildBardTargetedSongs(IReadOnlyList<BardTargetedSongSet> sets)
+    {
+        var list = new List<object?>();
+        foreach (var set in sets)
+        {
+            list.Add(new StructuredProfileNode()
+                .Add("recipients", set.Recipients.Cast<object?>().ToList())
+                .Add("priority_songs", set.PrioritySongs.Cast<object?>().ToList()));
+        }
+        return list;
+    }
 
     private static List<object?> BuildTargetedBuffs(string value)
     {
@@ -2418,6 +2418,7 @@ internal static class StructuredProfileV2Writer
             var name = ReadString(rule, "name", "").Trim();
             var response = ReadString(rule, "response", "").Trim();
             var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action" || response == "use_sequence"))
+                || (trigger == "party_action_complete" && response == "use_sequence")
                 || (trigger == "enemy_buff" && response == "stop_attacking");
             if (!valid || name.Length == 0)
             {
@@ -2427,11 +2428,22 @@ internal static class StructuredProfileV2Writer
                 .Add("trigger", trigger)
                 .Add("name", name)
                 .Add("response", response);
+            if (trigger == "party_action_complete")
+            {
+                var sourceName = ReadString(rule, "source_name", "").Trim();
+                var triggerActionType = ReadString(rule, "action_type", "").Trim().ToLowerInvariant();
+                if (sourceName.Length == 0 || triggerActionType is not ("spell" or "ja"))
+                {
+                    throw new InvalidDataException("party_action_complete reaction requires source_name and action_type spell/ja");
+                }
+                serialized.Add("source_name", sourceName);
+                serialized.Add("action_type", triggerActionType);
+            }
             if (ReadBool(rule, "once_per_instance", false))
             {
-                if (trigger != "ability_window")
+                if (trigger is not ("ability_window" or "party_action_complete"))
                 {
-                    throw new InvalidDataException("once_per_instance reactions require ability_window trigger");
+                    throw new InvalidDataException("once_per_instance reactions require ability_window or party_action_complete trigger");
                 }
                 serialized.Add("once_per_instance", true);
             }
