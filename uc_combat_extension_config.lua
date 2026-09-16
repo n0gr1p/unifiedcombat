@@ -147,6 +147,12 @@ function M.validate_action_rule(rule)
     if type(rule) ~= 'table' then
         return true
     end
+    if rule.once_per_instance ~= nil and type(rule.once_per_instance) ~= 'boolean' then
+        return false, 'once_per_instance must be boolean'
+    end
+    if rule.once_per_instance == true and rule.trigger ~= 'ability_window' then
+        return false, 'once_per_instance reactions require ability_window trigger'
+    end
     if rule.response == 'use_action' then
         if rule.trigger ~= 'ability_window' then
             return false, 'use_action reactions require ability_window trigger'
