@@ -3,6 +3,7 @@ name: UnifiedCombat PR verification
 on:
   push:
     branches:
+      - master
       - feature/reaction-action-sequences
       - feature/run-tank-automation
       - feature/reaction-once-per-instance
@@ -53,5 +54,7 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_reaction_sequence_command_ownership.lua
       - name: Reaction once-per-instance self-test
         run: lua5.1 tests/replay/harness/selftest_reaction_once_per_instance.lua
+      - name: Party action completion reaction self-test
+        run: lua5.1 tests/replay/harness/selftest_reaction_party_action_complete.lua
       - name: Reaction sequence fail-open self-test
         run: lua5.1 tests/replay/harness/selftest_reaction_sequence_fail_open.lua
