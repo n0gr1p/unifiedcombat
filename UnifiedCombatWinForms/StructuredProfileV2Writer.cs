@@ -2427,6 +2427,14 @@ internal static class StructuredProfileV2Writer
                 .Add("trigger", trigger)
                 .Add("name", name)
                 .Add("response", response);
+            if (ReadOptionalBool(rule, "once_per_instance", false))
+            {
+                if (trigger != "ability_window")
+                {
+                    throw new InvalidDataException("once_per_instance reactions require ability_window trigger");
+                }
+                serialized.Add("once_per_instance", true);
+            }
             if (response is "run_away" or "move_to_range")
             {
                 if (!rule.TryGetPropertyValue("distance", out var distanceNode)
