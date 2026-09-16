@@ -18,14 +18,30 @@ internal static class ReactionSequenceProfileCodecTests
             );
 
             var json = ReactionSequenceProfileCodec.ToJsonRule(sequence);
+            AssertEqual(json.ContainsKey("once_per_instance"), false, "legacy sequence omits once-per-instance field");
             var parsed = ReactionSequenceProfileCodec.ParseRule(json);
             AssertEqual(parsed.Name, "Just Desserts", "sequence name round-trip");
+            AssertEqual(parsed.OncePerInstance, false, "legacy sequence once-per-instance default");
             AssertEqual(parsed.Steps.Count, 2, "sequence step count");
             AssertEqual(parsed.Steps[0].ActionName, "Elemental Seal", "setup action");
             AssertEqual(parsed.Steps[0].Optional, true, "setup optional flag");
             AssertEqual(parsed.Steps[1].ActionName, "Stun", "terminal action");
             AssertEqual(parsed.Steps[1].Target, "actor", "terminal target");
             AssertEqual(parsed.Steps[1].Optional, false, "terminal required flag");
+
+            var onceSequence = new ReactionSequenceRule(
+                "Just Desserts",
+                new List<ReactionSequenceStep>
+                {
+                    new("ja", "Astral Flow", "self", false),
+                    new("ja", "Astral Conduit", "self", false),
+                },
+                true
+            );
+            var onceJson = ReactionSequenceProfileCodec.ToJsonRule(onceSequence);
+            AssertEqual(onceJson["once_per_instance"]?.GetValue<bool>(), true, "one-shot JSON flag");
+            var onceParsed = ReactionSequenceProfileCodec.ParseRule(onceJson);
+            AssertEqual(onceParsed.OncePerInstance, true, "one-shot codec round-trip");
 
             var petSequence = new ReactionSequenceRule(
                 "Pet Test Ability",
@@ -49,19 +65,16 @@ internal static class ReactionSequenceProfileCodecTests
                 ["domain_maintenance_enabled"] = true,
                 ["domain_follow_enabled"] = true,
                 ["reaction_enabled"] = true,
-                ["reaction_rules"] = new JsonArray { json.DeepClone(), petJson.DeepClone() },
+                ["reaction_rules"] = new JsonArray { onceJson.DeepClone(), petJson.DeepClone() },
             };
             var lua = StructuredProfileV2Writer.BuildStructuredProfileFile(
                 flat,
                 new StructuredProfileV2Identity("Etamame", "RDM", "BLM")
             );
             AssertContains(lua, "response = \"use_sequence\"", "structured sequence response");
-            AssertContains(lua, "action_name = \"Elemental Seal\"", "structured setup action");
-            AssertContains(lua, "target = \"self\"", "structured setup target");
-            AssertContains(lua, "optional = true", "structured optional setup");
-            AssertContains(lua, "action_name = \"Stun\"", "structured terminal action");
-            AssertContains(lua, "target = \"actor\"", "structured terminal target");
-            AssertContains(lua, "optional = false", "structured required terminal");
+            AssertContains(lua, "once_per_instance = true", "structured one-shot flag");
+            AssertContains(lua, "action_name = \"Astral Flow\"", "structured one-shot opener");
+            AssertContains(lua, "action_name = \"Astral Conduit\"", "structured one-shot terminal action");
             AssertContains(lua, "action_type = \"pet\"", "structured pet action type");
             AssertContains(lua, "action_name = \"Assault\"", "structured pet action name");
 
