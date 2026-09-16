@@ -17,7 +17,7 @@ jobs:
         with:
           ref: feature/reaction-once-per-instance
       - name: Patch structured profile writer
-        shell: python
+        shell: python {0}
         run: |
           from pathlib import Path
 
