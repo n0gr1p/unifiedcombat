@@ -20,6 +20,7 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
 
           path = Path("UnifiedCombatWinForms/StructuredProfileV2Writer.cs")
           text = path.read_text(encoding="utf-8")
@@ -28,39 +29,41 @@ jobs:
               print("writer already patched")
               raise SystemExit(0)
 
-          old = '''            if (ReadBool(rule, "once_per_instance", false))
-            {
-                if (trigger is not ("ability_window" or "party_action_complete"))
-                {
-                    throw new InvalidDataException("once_per_instance reactions require ability_window or party_action_complete trigger");
-                }
-                serialized.Add("once_per_instance", true);
-            }
-            if (response is "run_away" or "move_to_range")'''
-          new = '''            if (ReadBool(rule, "once_per_instance", false))
-            {
-                if (trigger is not ("ability_window" or "party_action_complete"))
-                {
-                    throw new InvalidDataException("once_per_instance reactions require ability_window or party_action_complete trigger");
-                }
-                serialized.Add("once_per_instance", true);
-            }
-            if (ReadBool(rule, "hold_smn_rage_until_sequence_complete", false))
-            {
-                if (trigger != "party_action_complete" || response != "use_sequence")
-                {
-                    throw new InvalidDataException("SMN Rage hold requires party_action_complete/use_sequence");
-                }
-                if (!ReadBool(rule, "once_per_instance", false))
-                {
-                    throw new InvalidDataException("SMN Rage hold requires once_per_instance=true");
-                }
-                serialized.Add("hold_smn_rage_until_sequence_complete", true);
-            }
-            if (response is "run_away" or "move_to_range")'''
-          if text.count(old) != 1:
-              raise SystemExit(f"expected exactly one serializer seam, found {text.count(old)}")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          pattern = re.compile(
+              r'(?P<indent>\s*)if \(ReadBool\(rule, "once_per_instance", false\)\)\r?\n'
+              r'(?P=indent)\{\r?\n'
+              r'(?P<body>.*?)'
+              r'(?P=indent)\}\r?\n'
+              r'(?P=indent)if \(response is "run_away" or "move_to_range"\)',
+              re.DOTALL,
+          )
+          matches = list(pattern.finditer(text))
+          if len(matches) != 1:
+              raise SystemExit(f"expected exactly one serializer seam, found {len(matches)}")
+
+          match = matches[0]
+          indent = match.group('indent')
+          original_once = match.group(0).rsplit(
+              f'{indent}if (response is "run_away" or "move_to_range")', 1
+          )[0]
+          block = (
+              original_once
+              + f'{indent}if (ReadBool(rule, "hold_smn_rage_until_sequence_complete", false))\n'
+              + f'{indent}{{\n'
+              + f'{indent}    if (trigger != "party_action_complete" || response != "use_sequence")\n'
+              + f'{indent}    {{\n'
+              + f'{indent}        throw new InvalidDataException("SMN Rage hold requires party_action_complete/use_sequence");\n'
+              + f'{indent}    }}\n'
+              + f'{indent}    if (!ReadBool(rule, "once_per_instance", false))\n'
+              + f'{indent}    {{\n'
+              + f'{indent}        throw new InvalidDataException("SMN Rage hold requires once_per_instance=true");\n'
+              + f'{indent}    }}\n'
+              + f'{indent}    serialized.Add("hold_smn_rage_until_sequence_complete", true);\n'
+              + f'{indent}}}\n'
+              + f'{indent}if (response is "run_away" or "move_to_range")'
+          )
+          text = text[:match.start()] + block + text[match.end():]
+          path.write_text(text, encoding="utf-8")
       - name: Commit writer patch
         run: |
           if git diff --quiet; then
