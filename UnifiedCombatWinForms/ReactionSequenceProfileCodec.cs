@@ -11,7 +11,8 @@ internal sealed record ReactionSequenceStep(
 
 internal sealed record ReactionSequenceRule(
     string Name,
-    IReadOnlyList<ReactionSequenceStep> Steps
+    IReadOnlyList<ReactionSequenceStep> Steps,
+    bool OncePerInstance = false
 );
 
 internal static class ReactionSequenceProfileCodec
@@ -54,7 +55,11 @@ internal static class ReactionSequenceProfileCodec
             parsed.Add(new ReactionSequenceStep(actionType, actionName, target, optional));
         }
 
-        var result = new ReactionSequenceRule(name, parsed);
+        var result = new ReactionSequenceRule(
+            name,
+            parsed,
+            ReadOptionalBool(rule, "once_per_instance", false)
+        );
         Validate(result);
         return result;
     }
@@ -100,6 +105,7 @@ internal static class ReactionSequenceProfileCodec
             ["trigger"] = "ability_window",
             ["name"] = rule.Name,
             ["response"] = "use_sequence",
+            ["once_per_instance"] = rule.OncePerInstance,
             ["steps"] = steps,
         };
     }
