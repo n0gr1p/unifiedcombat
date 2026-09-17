@@ -14,6 +14,7 @@ local SOURCE_FILES = {
 	'uc_reaction_sequence_runtime.lua',
 	'uc_reaction_party_sequence_runtime.lua',
 	'uc_reaction_once_runtime.lua',
+	'uc_reaction_smn_rage_gate.lua',
 	'uc_party_action_event.lua',
 	'uc_combat_extensions_sequence.lua',
 	'uc_combat_extensions_once.lua',

@@ -152,6 +152,16 @@ function M.new(deps)
 			return nil
 		end
 		local rage = snapshot.validation.rage
+		local held, hold_reason, hold = require('uc_reaction_runtime').smn_rage_should_hold(ctx.target_id)
+		if held == true then
+			emit_rage_check(ctx, rage.name, false, hold_reason or 'reaction_pretrigger_hold', {
+				reaction_rule_index = type(hold) == 'table' and hold.rule_index or nil,
+				reaction_source_name = type(hold) == 'table' and hold.source_name or nil,
+				reaction_action_type = type(hold) == 'table' and hold.action_type or nil,
+				reaction_action_name = type(hold) == 'table' and hold.action_name or nil,
+			})
+			return nil
+		end
 		if configured.usage ~= 'on_cooldown' then
 			error('unsupported Summoner offensive action usage: ' .. tostring(configured.usage))
 		end

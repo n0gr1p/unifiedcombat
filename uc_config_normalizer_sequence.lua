@@ -143,6 +143,19 @@ local function normalize_sequence_rule(rule, index)
         response = 'use_sequence',
         steps = {},
     }
+    if rule.hold_smn_rage_until_sequence_complete ~= nil
+        and type(rule.hold_smn_rage_until_sequence_complete) ~= 'boolean' then
+        error(('reactions.rules[%d].hold_smn_rage_until_sequence_complete must be boolean'):format(index))
+    end
+    if rule.hold_smn_rage_until_sequence_complete == true then
+        if trigger ~= 'party_action_complete' then
+            error(('reactions.rules[%d] SMN Rage hold requires party_action_complete trigger'):format(index))
+        end
+        if rule.once_per_instance ~= true then
+            error(('reactions.rules[%d] SMN Rage hold requires once_per_instance=true'):format(index))
+        end
+        normalized.hold_smn_rage_until_sequence_complete = true
+    end
     if trigger == 'party_action_complete' then
         local source_name = trim(rule.source_name)
         if source_name == '' then

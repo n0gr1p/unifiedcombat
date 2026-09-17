@@ -19,10 +19,12 @@ internal static class ReactionSequenceProfileCodecTests
 
             var json = ReactionSequenceProfileCodec.ToJsonRule(sequence);
             AssertEqual(json.ContainsKey("once_per_instance"), false, "legacy sequence omits once-per-instance field");
+            AssertEqual(json.ContainsKey("hold_smn_rage_until_sequence_complete"), false, "legacy sequence omits SMN Rage hold field");
             var parsed = ReactionSequenceProfileCodec.ParseRule(json);
             AssertEqual(parsed.Name, "Just Desserts", "sequence name round-trip");
             AssertEqual(parsed.Trigger, "ability_window", "legacy sequence trigger round-trip");
             AssertEqual(parsed.OncePerInstance, false, "legacy sequence once-per-instance default");
+            AssertEqual(parsed.HoldSmnRageUntilSequenceComplete, false, "legacy sequence SMN Rage hold default");
             AssertEqual(parsed.Steps.Count, 2, "sequence step count");
             AssertEqual(parsed.Steps[0].ActionName, "Elemental Seal", "setup action");
             AssertEqual(parsed.Steps[0].Optional, true, "setup optional flag");
@@ -54,17 +56,20 @@ internal static class ReactionSequenceProfileCodecTests
                 true,
                 "party_action_complete",
                 "Etamame",
-                "spell"
+                "spell",
+                true
             );
             var partyJson = ReactionSequenceProfileCodec.ToJsonRule(partySequence);
             AssertEqual(partyJson["trigger"]?.GetValue<string>(), "party_action_complete", "party trigger JSON");
             AssertEqual(partyJson["source_name"]?.GetValue<string>(), "Etamame", "party source JSON");
             AssertEqual(partyJson["action_type"]?.GetValue<string>(), "spell", "party action type JSON");
+            AssertEqual(partyJson["hold_smn_rage_until_sequence_complete"]?.GetValue<bool>(), true, "SMN Rage hold JSON flag");
             var partyParsed = ReactionSequenceProfileCodec.ParseRule(partyJson);
             AssertEqual(partyParsed.Trigger, "party_action_complete", "party trigger round-trip");
             AssertEqual(partyParsed.SourceName, "Etamame", "party source round-trip");
             AssertEqual(partyParsed.TriggerActionType, "spell", "party action type round-trip");
             AssertEqual(partyParsed.OncePerInstance, true, "party one-shot round-trip");
+            AssertEqual(partyParsed.HoldSmnRageUntilSequenceComplete, true, "SMN Rage hold round-trip");
 
             var petSequence = new ReactionSequenceRule(
                 "Pet Test Ability",
@@ -102,6 +107,7 @@ internal static class ReactionSequenceProfileCodecTests
             AssertContains(lua, "source_name = \"Etamame\"", "structured party source");
             AssertContains(lua, "action_type = \"spell\"", "structured party trigger action type");
             AssertContains(lua, "name = \"Indi-Malaise\"", "structured party trigger action");
+            AssertContains(lua, "hold_smn_rage_until_sequence_complete = true", "structured SMN Rage hold flag");
             AssertContains(lua, "action_type = \"pet\"", "structured pet action type");
             AssertContains(lua, "action_name = \"Assault\"", "structured pet action name");
 
@@ -168,6 +174,44 @@ internal static class ReactionSequenceProfileCodecTests
                 failed = true;
             }
             AssertEqual(failed, true, "party action trigger requires source member");
+
+            failed = false;
+            try
+            {
+                ReactionSequenceProfileCodec.Validate(new ReactionSequenceRule(
+                    "Indi-Malaise",
+                    new List<ReactionSequenceStep> { new("ja", "Astral Flow", "self", false) },
+                    false,
+                    "party_action_complete",
+                    "Etamame",
+                    "spell",
+                    true
+                ));
+            }
+            catch (InvalidDataException)
+            {
+                failed = true;
+            }
+            AssertEqual(failed, true, "SMN Rage hold requires once-per-instance");
+
+            failed = false;
+            try
+            {
+                ReactionSequenceProfileCodec.Validate(new ReactionSequenceRule(
+                    "Just Desserts",
+                    new List<ReactionSequenceStep> { new("ja", "Astral Flow", "self", false) },
+                    true,
+                    "ability_window",
+                    "",
+                    "",
+                    true
+                ));
+            }
+            catch (InvalidDataException)
+            {
+                failed = true;
+            }
+            AssertEqual(failed, true, "SMN Rage hold requires party-action trigger");
 
             Console.WriteLine("ReactionSequenceProfileCodecTests: OK");
             return 0;
