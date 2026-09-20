@@ -600,6 +600,61 @@ local function main()
 		'fixture:confirmed_accession_geometry', 'ready Regen geometry source mismatch')
 	assert_true(ready_result.candidate.observe_only == nil, 'ready Regen candidate must be executable')
 
+	local accession_storm_config = base_config()
+	accession_storm_config.support.regen.enabled = true
+	accession_storm_config.support.regen.spells = { 'Aurorastorm II' }
+	accession_storm_config.support.regen.minimum_coverage = 3
+	local accession_storm_members = members()
+	accession_storm_members[3].buffs = {}
+	local accession_storm_result = maintenance.evaluate(accession_storm_config, {
+		now = 100,
+		player = player(),
+		party_members = accession_storm_members,
+		area_mechanics = {
+			confidence = 'confirmed',
+			model_key = 'Accession|party',
+			source = 'fixture:confirmed_accession_geometry',
+			radius_yalms = 4,
+			max_coordinate_age_s = 1,
+			distance_metric = 'horizontal',
+		},
+		spell_ready = maintenance_spell_ready,
+	}, runtime_snapshot('light', 'confirmed', 2))
+	assert_equal(accession_storm_result.candidate.action_name, 'Accession',
+		'Accession Storm II must prepare Accession first')
+	assert_equal(accession_storm_result.regen.plan.spell, 'Aurorastorm II',
+		'Accession Storm II plan spell mismatch')
+	assert_equal(accession_storm_result.regen.plan.buff_family, 'storm',
+		'Accession Storm II must use storm ownership')
+	assert_equal(accession_storm_result.regen.plan.stratagems[1], 'Accession',
+		'Accession Storm II first stratagem mismatch')
+	assert_equal(accession_storm_result.regen.plan.stratagems[2], 'Perpetuance',
+		'Accession Storm II second stratagem mismatch')
+	assert_equal(#accession_storm_result.regen.plan.expected_recipients, 3,
+		'Accession Storm II expected coverage mismatch')
+
+	local conflicting_storm_members = members()
+	conflicting_storm_members[2].buffs = { 590 }
+	conflicting_storm_members[3].buffs = {}
+	local conflicting_storm_result = maintenance.evaluate(accession_storm_config, {
+		now = 100,
+		player = player(),
+		party_members = conflicting_storm_members,
+		area_mechanics = {
+			confidence = 'confirmed',
+			model_key = 'Accession|party',
+			source = 'fixture:confirmed_accession_geometry',
+			radius_yalms = 4,
+			max_coordinate_age_s = 1,
+			distance_metric = 'horizontal',
+		},
+		spell_ready = maintenance_spell_ready,
+	}, runtime_snapshot('light', 'confirmed', 2))
+	assert_true(conflicting_storm_result.candidate == nil,
+		'Accession Storm II must not overwrite an unowned conflicting Storm')
+	assert_equal(conflicting_storm_result.regen.blocker, 'accession_no_safe_anchor',
+		'Accession Storm II conflicting Storm blocker mismatch')
+
 	local list_config = base_config()
 	list_config.support.regen.enabled = true
 	list_config.support.regen.spells = { 'Regen V', 'Phalanx' }
