@@ -45,6 +45,14 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_run_foil_dispatch.lua
       - name: Config normalizer self-test
         run: lua5.1 tests/replay/harness/selftest_config_normalizer.lua
+      - name: Scholar configuration self-test
+        run: lua5.1 tests/replay/harness/selftest_sch_configuration.lua
+      - name: Scholar maintenance self-test
+        run: lua5.1 tests/replay/harness/selftest_sch_maintenance.lua
+      - name: Scholar duration self-test
+        run: lua5.1 tests/replay/harness/selftest_sch_duration.lua
+      - name: Scholar action-result self-test
+        run: lua5.1 tests/replay/harness/selftest_sch_action_results.lua
       - name: Tank pet enmity config self-test
         run: lua5.1 tests/replay/harness/selftest_tank_pet_enmity_config.lua
       - name: Tank pet enmity provider self-test
