@@ -1520,7 +1520,7 @@ internal static class StructuredProfileV2WriterTests
         flat["sch_regen_enabled"] = true;
         flat["sch_regen_minimum_coverage"] = 5;
         flat["sch_regen_refresh_before_s"] = 30;
-        flat["sch_accession_perpetuance_spells"] = "Regen V|Protect V|Phalanx";
+        flat["sch_accession_perpetuance_spells"] = "Regen V|Aurorastorm II|Protect V|Phalanx";
         flat["sch_storms_enabled"] = true;
         flat["sch_storm_assignments"] = "Sandstorm II:Tank,Healer|Hailstorm II:Wizard";
         flat["sch_storms_refresh_before_s"] = 40;
@@ -1542,6 +1542,7 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "emergency_off_art_casts = false", "Scholar off-Art policy must serialize");
         AssertContains(content, "minimum_coverage = 5", "Scholar Regen coverage must serialize");
         AssertContains(content, "\"Protect V\"", "Scholar ordered maintenance list must serialize");
+        AssertContains(content, "\"Aurorastorm II\"", "Scholar Accession Storm II must serialize");
         AssertContains(content, "\"Phalanx\"", "Scholar self-anchor maintenance spell must serialize");
         AssertContains(content, "spell = \"Sandstorm II\"", "Scholar storm assignment spell missing");
         AssertContains(content, "\"Tank\"", "Scholar storm target missing");
