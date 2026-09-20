@@ -669,8 +669,8 @@ local function main()
 		'non-conflicting missing Storm recipient mismatch')
 	assert_equal(conflicting_storm_result.regen.unowned_existing_recipient_ids[1], 1002,
 		'conflicting Storm recipient must be classified unsafe-only')
-	assert_equal(conflicting_storm_result.regen.blocker, 'accession_no_safe_anchor',
-		'Accession Storm II conflicting Storm blocker mismatch')
+	assert_equal(conflicting_storm_result.regen.blocker, 'coverage_below_minimum',
+		'Accession Storm II conflicting Storm coverage blocker mismatch')
 
 	local embrava_config = base_config()
 	embrava_config.support.regen.enabled = true
