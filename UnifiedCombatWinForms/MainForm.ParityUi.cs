@@ -929,6 +929,7 @@ public partial class MainForm
         listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         _grpAddPri = new UcSection("Fight Add Priority — only listed enemies are eligible; Move Up/Down changes the order.")
         {
