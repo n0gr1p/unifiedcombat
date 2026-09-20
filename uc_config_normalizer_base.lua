@@ -918,6 +918,7 @@ local function default_config(meta)
                 minimum_tp = 1000,
                 allow_aoe = true,
                 fast_skillchain = false,
+                no_skillchain_targets = {},
                 skillchain_target = 'auto',
                 wait_ignore_names = {},
                 aftermath_enabled = false,
@@ -1533,6 +1534,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.minimum_tp = normalize_weaponskill_minimum_tp(nested_ws.minimum_tp, combat.weaponskill.minimum_tp)
         combat.weaponskill.allow_aoe = normalize_boolean(nested_ws.allow_aoe, combat.weaponskill.allow_aoe)
         combat.weaponskill.fast_skillchain = normalize_boolean(nested_ws.fast_skillchain, combat.weaponskill.fast_skillchain)
+        combat.weaponskill.no_skillchain_targets = normalize_list(nested_ws.no_skillchain_targets, combat.weaponskill.no_skillchain_targets)
         combat.weaponskill.skillchain_target = normalize_skillchain_target(nested_ws.skillchain_target, combat.weaponskill.skillchain_target)
         combat.weaponskill.wait_ignore_names = normalize_list(nested_ws.wait_ignore_names, combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(nested_ws.aftermath_enabled, combat.weaponskill.aftermath_enabled)
@@ -1554,6 +1556,7 @@ local function normalize_combat(source, config)
         combat.weaponskill.minimum_tp = normalize_weaponskill_minimum_tp(first_path(source, { path('weaponskill_min_tp') }), combat.weaponskill.minimum_tp)
         combat.weaponskill.allow_aoe = normalize_boolean(first_path(source, { path('weaponskill_allow_aoe') }), combat.weaponskill.allow_aoe)
         combat.weaponskill.fast_skillchain = normalize_boolean(first_path(source, { path('fast_skillchain') }), combat.weaponskill.fast_skillchain)
+        combat.weaponskill.no_skillchain_targets = normalize_list(first_path(source, { path('weaponskill_no_skillchain_targets') }), combat.weaponskill.no_skillchain_targets)
         combat.weaponskill.skillchain_target = normalize_skillchain_target(first_path(source, { path('skillchain_target') }), combat.weaponskill.skillchain_target)
         combat.weaponskill.wait_ignore_names = normalize_list(first_path(source, { path('wait_ignore_names') }), combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(first_path(source, { path('aftermath_enabled') }), combat.weaponskill.aftermath_enabled)
