@@ -99,6 +99,13 @@ local function evaluate_accession_maintenance_spell(
 			selected = nil,
 		},
 	}
+	if spell.requires_tabula_rasa == true
+		and runtime_snapshot.stratagem.tabula_rasa_active ~= true then
+		result.state = 'blocked'
+		result.blocker = 'tabula_rasa_required'
+		return result
+	end
+
 	local members_by_id = {}
 	for i = 1, #members do
 		local member = members[i]
