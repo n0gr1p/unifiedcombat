@@ -655,6 +655,46 @@ local function main()
 	assert_equal(conflicting_storm_result.regen.blocker, 'accession_no_safe_anchor',
 		'Accession Storm II conflicting Storm blocker mismatch')
 
+	local embrava_config = base_config()
+	embrava_config.support.regen.enabled = true
+	embrava_config.support.regen.spells = { 'Embrava' }
+	embrava_config.support.regen.minimum_coverage = 3
+	local embrava_blocked = maintenance.evaluate(embrava_config, {
+		now = 100,
+		player = player(),
+		party_members = members(),
+		area_mechanics = {
+			confidence = 'confirmed',
+			model_key = 'Accession|party',
+			source = 'fixture:confirmed_accession_geometry',
+			radius_yalms = 4,
+			max_coordinate_age_s = 1,
+			distance_metric = 'horizontal',
+		},
+		spell_ready = maintenance_spell_ready,
+	}, runtime_snapshot('light', 'confirmed', 2))
+	assert_equal(embrava_blocked.regen.blocker, 'tabula_rasa_required',
+		'Embrava maintenance must require active Tabula Rasa')
+
+	local embrava_snapshot = runtime_snapshot('light', 'confirmed', 2)
+	embrava_snapshot.stratagem.tabula_rasa_active = true
+	local embrava_ready = maintenance.evaluate(embrava_config, {
+		now = 100,
+		player = player(),
+		party_members = members(),
+		area_mechanics = {
+			confidence = 'confirmed',
+			model_key = 'Accession|party',
+			source = 'fixture:confirmed_accession_geometry',
+			radius_yalms = 4,
+			max_coordinate_age_s = 1,
+			distance_metric = 'horizontal',
+		},
+		spell_ready = maintenance_spell_ready,
+	}, embrava_snapshot)
+	assert_equal(embrava_ready.candidate.action_name, 'Accession',
+		'active Tabula Rasa must allow configured Embrava preparation')
+
 	local list_config = base_config()
 	list_config.support.regen.enabled = true
 	list_config.support.regen.spells = { 'Regen V', 'Phalanx' }
