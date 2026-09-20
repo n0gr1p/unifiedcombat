@@ -10,6 +10,8 @@ internal static class ScholarCapabilities
         "Barfire", "Barblizzard", "Baraero", "Barstone", "Barthunder", "Barwater",
         "Barsleep", "Barpoison", "Barparalyze", "Barblind", "Barsilence",
         "Barpetrify", "Barvirus", "Baramnesia",
+        "Sandstorm II", "Rainstorm II", "Windstorm II", "Firestorm II",
+        "Hailstorm II", "Thunderstorm II", "Voidstorm II", "Aurorastorm II",
     ];
 
     internal static readonly IReadOnlyDictionary<string, string> AccessionExclusiveGroups =
@@ -35,6 +37,14 @@ internal static class ScholarCapabilities
             ["Barpetrify"] = "Bar-status",
             ["Barvirus"] = "Bar-status",
             ["Baramnesia"] = "Bar-status",
+            ["Sandstorm II"] = "Storm",
+            ["Rainstorm II"] = "Storm",
+            ["Windstorm II"] = "Storm",
+            ["Firestorm II"] = "Storm",
+            ["Hailstorm II"] = "Storm",
+            ["Thunderstorm II"] = "Storm",
+            ["Voidstorm II"] = "Storm",
+            ["Aurorastorm II"] = "Storm",
         };
 
     internal static readonly IReadOnlyList<string> StormNames =
