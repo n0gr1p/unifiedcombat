@@ -134,6 +134,10 @@ local function main()
 	local runtime = require('uc_sch_runtime')
 
 	local arts_config = base_config()
+	arts_config.support.storms.enabled = true
+	arts_config.support.storms.assignments = {
+		{ spell = 'Thunderstorm II', targets = { 'Nyoourke' } },
+	}
 	local arts_result = maintenance.evaluate(arts_config, {
 		now = 100,
 		player = player(),
