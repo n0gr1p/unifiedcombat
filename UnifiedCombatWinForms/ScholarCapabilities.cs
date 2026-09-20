@@ -51,14 +51,6 @@ internal static class ScholarCapabilities
             ["Barstone"] = "Bar-element",
             ["Barthunder"] = "Bar-element",
             ["Barwater"] = "Bar-element",
-            ["Barsleep"] = "Bar-status",
-            ["Barpoison"] = "Bar-status",
-            ["Barparalyze"] = "Bar-status",
-            ["Barblind"] = "Bar-status",
-            ["Barsilence"] = "Bar-status",
-            ["Barpetrify"] = "Bar-status",
-            ["Barvirus"] = "Bar-status",
-            ["Baramnesia"] = "Bar-status",
             ["Sandstorm"] = "Storm",
             ["Rainstorm"] = "Storm",
             ["Windstorm"] = "Storm",
@@ -75,8 +67,6 @@ internal static class ScholarCapabilities
             ["Thunderstorm II"] = "Storm",
             ["Voidstorm II"] = "Storm",
             ["Aurorastorm II"] = "Storm",
-            ["Animus Augeo"] = "Animus",
-            ["Animus Minuo"] = "Animus",
         };
 
     internal static readonly IReadOnlyList<string> StormNames =
