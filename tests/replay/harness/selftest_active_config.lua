@@ -99,6 +99,7 @@ local function build_flat_settings()
 		ws_mode = 'smart',
 		weaponskill_allow_aoe = false,
 		fast_skillchain = true,
+		weaponskill_no_skillchain_targets = { 'Gyre' },
 		skillchain_target = 'light',
 		autotarget = true,
 		spam = true,
@@ -226,6 +227,7 @@ local function main()
 	assert_equal(active_profile.profile.source, 'UC_SETTINGS', 'active profile source mismatch')
 	assert_equal(active_profile.config.combat.weaponskill.primary, 'Savage Blade', 'active combat WS mismatch')
 	assert_equal(active_profile.config.combat.weaponskill.wait_ignore_names[1], 'Niightsiide', 'active wait ignore names mismatch')
+	assert_equal(active_profile.config.combat.weaponskill.no_skillchain_targets[1], 'Gyre', 'active no-skillchain target mismatch')
 	assert_true(active_profile.config.ownership.profile_v2_auto_reload_on_change == nil, 'active config must ignore legacy auto-reload flag')
 	assert_equal(active_profile.config.ownership.pause_automation_while_weakened, true, 'active recovery hold mismatch')
 	assert_equal(active_profile.config.defensive.na.limit_enabled, true, 'active status-removal limit mismatch')
@@ -293,6 +295,7 @@ local function main()
 	assert_equal(projected.ws1, 'Savage Blade', 'projected ws1 mismatch')
 	assert_equal(projected.weaponskill_allow_aoe, false, 'projected Smart WS AoE preference mismatch')
 	assert_equal(projected.fast_skillchain, true, 'projected Fast Skillchain preference mismatch')
+	assert_equal(projected.weaponskill_no_skillchain_targets[1], 'Gyre', 'projected no-skillchain target mismatch')
 	assert_equal(projected.skillchain_target, 'light', 'projected skillchain target mismatch')
 	assert_equal(projected.sleep, true, 'projected sleep mismatch')
 	assert_equal(projected.sleepspell, 'Horde Lullaby II', 'projected sleep mirror mismatch')
