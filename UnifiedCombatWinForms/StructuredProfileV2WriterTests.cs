@@ -1569,7 +1569,7 @@ internal static class StructuredProfileV2WriterTests
 		AssertEqual(maintenanceSpells.Count, 3, "Scholar maintenance spell count mismatch");
 		AssertEqual(maintenanceSpells[2], "Phalanx", "Scholar maintenance order mismatch");
 		AssertThrows<InvalidDataException>(
-			() => StructuredProfileV2Writer.ParseScholarAccessionMaintenanceSpells("Regen IV"),
+			() => StructuredProfileV2Writer.ParseScholarAccessionMaintenanceSpells("Haste"),
 			"unsupported Scholar maintenance spell must fail"
 		);
 		AssertThrows<InvalidDataException>(
