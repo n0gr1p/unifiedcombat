@@ -536,10 +536,12 @@ local function main()
 		),
 		arts_before_sublimation
 	)
-	assert_equal(arts_priority_result.candidate.action_name, 'Light Arts',
-		'Light Arts must retain priority over Sublimation activation')
+	assert_equal(arts_priority_result.candidate.action_name, 'Sublimation',
+		'Sublimation must not force an unrelated Light Arts switch')
+	assert_equal(arts_priority_result.arts.state, 'idle_off_art',
+		'Light Arts must remain demand-driven when the selected plan does not require it')
 	assert_equal(arts_priority_result.sublimation.plan.purpose, 'sublimation_activate',
-		'Sublimation plan must remain visible while Arts has priority')
+		'Sublimation plan must remain directly actionable off-Art')
 
 	local regen_config = base_config()
 	regen_config.support.regen.enabled = true
@@ -1187,22 +1189,18 @@ local function main()
 		ability_recasts = { [228] = 0, [231] = 0 },
 	}, arts_out)
 	local arts_status = provider.status_snapshot()
-	assert_equal(#arts_out, 1, 'ready Light Arts plan must emit one live proposal')
-	assert_equal(arts_out[1].action_name, 'Light Arts', 'live Light Arts proposal mismatch')
-	assert_equal(arts_status.candidate.action_name, 'Light Arts',
-		'provider Light Arts candidate mismatch')
-	assert_equal(arts_status.arts.plan.purpose, 'ensure_light_arts',
-		'provider Light Arts plan purpose mismatch')
-	assert_equal(arts_status.arts.plan.recast_id, 228,
-		'provider Light Arts recast id mismatch')
+	assert_equal(#arts_out, 1, 'Light Arts sequence prerequisite must emit one live proposal')
+	assert_equal(arts_out[1].action_name, 'Light Arts', 'live Light Arts prerequisite mismatch')
+	assert_equal(arts_status.candidate.action_name, 'Thunderstorm II',
+		'provider status must retain the downstream storm candidate')
+	assert_equal(arts_status.arts.state, 'switch_ready',
+		'provider status must expose the demand-driven Light Arts prerequisite')
+	assert_equal(arts_status.runtime.active_sequence.purpose, 'targeted_storm',
+		'provider runtime must own the downstream storm sequence')
+	assert_equal(arts_status.runtime.active_sequence.phase, 'ensure_art',
+		'provider runtime must begin the storm sequence by ensuring Light Arts')
 	assert_equal(arts_status.proposals_emitted, 1,
-		'provider ready Light Arts proposal count mismatch')
-	local arts_status_lines = provider.status_lines(270)
-	assert_true(arts_status_lines[3]:find(
-		'plan=ensure_light_arts recast=228/0 readiness=unified_scheduler:action_ready',
-		1,
-		true
-	) ~= nil, 'provider status must expose the complete Light Arts plan')
+		'provider ready Light Arts prerequisite proposal count mismatch')
 
 	local defensive_config = base_config()
 	defensive_config.defensive.accession_cure.enabled = true
