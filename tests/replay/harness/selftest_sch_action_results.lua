@@ -119,7 +119,7 @@ local function main()
 	})
 	assert_equal(thunderstorm.outcome, 'success',
 		'captured Thunderstorm II result mismatch')
-	local unknown_catalog = module.production_catalog('spell', 'Regen IV')
+	local unknown_catalog = module.production_catalog('spell', 'Haste')
 	assert_equal(unknown_catalog.confidence, 'unknown',
 		'uncaptured exact action must remain unknown')
 
