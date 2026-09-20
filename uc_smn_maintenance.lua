@@ -180,6 +180,19 @@ function M.new(deps)
 			return
 		end
 		local primary_avatar = capabilities.avatar(config.avatar)
+		local conduit_active = runtime.has_buff(ctx.player, runtime.BUFF_ASTRAL_CONDUIT)
+		if conduit_active
+			and ctx.pet_present == true
+			and ctx.pet_name == primary_avatar.name then
+			provider.status.desired_avatar = primary_avatar.name
+			provider.status.current_pet = ctx.pet_name
+			provider.status.favor = config.maintenance.avatar_favor
+				and (runtime.has_buff(ctx.player, runtime.BUFF_FAVOR) and 'satisfied' or 'suppressed_conduit')
+				or 'disabled'
+			provider.status.ward = config.maintenance.ward.enabled and 'suppressed_conduit' or 'disabled'
+			set_status('conduit_hold', primary_avatar.name)
+			return
+		end
 		local avatar, due_ward, ward_state, ward_resource = desired_avatar(config, validation, ctx)
 		provider.status.desired_avatar = avatar.name
 		provider.status.current_pet = ''
