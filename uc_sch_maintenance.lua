@@ -139,9 +139,10 @@ local function evaluate_accession_maintenance_spell(
 					end
 				end
 				if not desired_present then
-					result.missing_recipient_ids[#result.missing_recipient_ids + 1] = member_id
 					if exclusive_conflict_present then
 						result.unowned_existing_recipient_ids[#result.unowned_existing_recipient_ids + 1] = member_id
+					else
+						result.missing_recipient_ids[#result.missing_recipient_ids + 1] = member_id
 					end
 				else
 					local families = runtime_snapshot.owned_buffs[member_id]
