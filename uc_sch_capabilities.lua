@@ -98,6 +98,8 @@ for _, spell in pairs(M.storm_spells) do
 	spell.cast_time_s = 2.0
 	spell.recast_id = spell.id
 	spell.range = 12
+	spell.anchor_policy = 'party'
+	spell.exclusive_group = 'storm'
 end
 
 M.embrava = {
@@ -119,7 +121,7 @@ function M.accession_maintenance_spell(name)
 	if type(name) ~= 'string' then
 		return nil
 	end
-	return M.accession_maintenance_spells[name]
+	return M.accession_maintenance_spells[name] or M.storm_spells[name]
 end
 
 function M.accession_ownership_family(name)
@@ -127,7 +129,30 @@ function M.accession_ownership_family(name)
 	if spell == nil then
 		return nil
 	end
+	if M.storm_spells[name] ~= nil then
+		return 'storm'
+	end
 	return 'accession_' .. tostring(spell.status_id)
+end
+
+function M.accession_exclusive_status_ids(name)
+	local spell = M.accession_maintenance_spell(name)
+	if spell == nil or spell.exclusive_group == nil then
+		return {}
+	end
+	local out = {}
+	for _, candidate in pairs(M.accession_maintenance_spells) do
+		if candidate.exclusive_group == spell.exclusive_group then
+			out[#out + 1] = candidate.status_id
+		end
+	end
+	for _, candidate in pairs(M.storm_spells) do
+		if candidate.exclusive_group == spell.exclusive_group then
+			out[#out + 1] = candidate.status_id
+		end
+	end
+	table.sort(out)
+	return out
 end
 
 function M.storm_spell(name)
