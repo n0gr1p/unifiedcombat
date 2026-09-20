@@ -663,6 +663,12 @@ local function main()
 	}, runtime_snapshot('light', 'confirmed', 2))
 	assert_true(conflicting_storm_result.candidate == nil,
 		'Accession Storm II must not overwrite an unowned conflicting Storm')
+	assert_equal(conflicting_storm_result.regen.missing_recipient_ids[1], 1001,
+		'conflicting Storm recipient must not be classified as eligible')
+	assert_equal(conflicting_storm_result.regen.missing_recipient_ids[2], 1003,
+		'non-conflicting missing Storm recipient mismatch')
+	assert_equal(conflicting_storm_result.regen.unowned_existing_recipient_ids[1], 1002,
+		'conflicting Storm recipient must be classified unsafe-only')
 	assert_equal(conflicting_storm_result.regen.blocker, 'accession_no_safe_anchor',
 		'Accession Storm II conflicting Storm blocker mismatch')
 
