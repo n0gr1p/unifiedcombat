@@ -17,6 +17,15 @@ local FAILURE_MESSAGE_IDS = {
 
 local OVERLOAD_BUFF_ID = 299
 
+-- Astral Conduit suppresses the normal Blood Pact recast, so Rage commands
+-- cannot use recast consumption as their primary serialization barrier.
+-- Wait briefly for the readying packet, then hold the pet lane through the
+-- actual pact result. Failed launch attempts retry quickly without exponential
+-- backoff so a transient "pet still acting" rejection does not waste Conduit.
+local DEFAULT_CONDUIT_RAGE_START_TIMEOUT = 1.25
+local DEFAULT_CONDUIT_RAGE_FINISH_TIMEOUT = 4.0
+local DEFAULT_CONDUIT_RAGE_BACKOFF = 0.20
+
 local function require_table(value, name)
 	if type(value) ~= 'table' then
 		error(name .. ' must be a table')
@@ -80,9 +89,15 @@ local function finish(state, now, outcome, reason)
 	else
 		local count = (state.failure_counts[pending.retry_key] or 0) + 1
 		state.failure_counts[pending.retry_key] = count
-		local delay = state.backoff_base * (2 ^ (count - 1))
-		if delay > state.backoff_max then
-			delay = state.backoff_max
+		local conduit_rage = pending.kind == 'rage' and pending.astral_conduit == true
+		local delay
+		if conduit_rage then
+			delay = state.conduit_rage_backoff
+		else
+			delay = state.backoff_base * (2 ^ (count - 1))
+			if delay > state.backoff_max then
+				delay = state.backoff_max
+			end
 		end
 		state.retry_until[pending.retry_key] = now + delay
 		event.retry_delay = delay
@@ -153,6 +168,18 @@ function M.new(options)
 		),
 		backoff_base = require_positive_number(options.backoff_base, 'pet command backoff_base'),
 		backoff_max = require_positive_number(options.backoff_max, 'pet command backoff_max'),
+		conduit_rage_start_timeout = require_positive_number(
+			options.conduit_rage_start_timeout or DEFAULT_CONDUIT_RAGE_START_TIMEOUT,
+			'pet command conduit_rage_start_timeout'
+		),
+		conduit_rage_finish_timeout = require_positive_number(
+			options.conduit_rage_finish_timeout or DEFAULT_CONDUIT_RAGE_FINISH_TIMEOUT,
+			'pet command conduit_rage_finish_timeout'
+		),
+		conduit_rage_backoff = require_positive_number(
+			options.conduit_rage_backoff or DEFAULT_CONDUIT_RAGE_BACKOFF,
+			'pet command conduit_rage_backoff'
+		),
 		pending = nil,
 		retry_until = {},
 		failure_counts = {},
@@ -212,7 +239,11 @@ function M.begin(state, command, now)
 	end
 	local pending = copy_command(command)
 	pending.dispatched_at = now
-	pending.deadline = now + state.timeout
+	pending.deadline = now + (
+		pending.kind == 'rage' and pending.astral_conduit == true
+			and state.conduit_rage_start_timeout
+			or state.timeout
+	)
 	if pending.recast_id ~= nil then
 		local before = tonumber(pending.recast_before)
 		if before == nil or before < 0 then
@@ -317,7 +348,7 @@ function M.observe(state, ctx)
 			if not target_is_current_and_live(pending, ctx) then
 				return finish(state, now, 'failed', 'stale_target')
 			end
-			if recast_consumed(pending, ctx) then
+			if pending.astral_conduit ~= true and recast_consumed(pending, ctx) then
 				return finish(state, now, 'complete', 'rage_recast_consumed')
 			end
 		elseif pending.kind == 'maneuver' then
@@ -331,6 +362,16 @@ function M.observe(state, ctx)
 	end
 
 	if now >= pending.deadline then
+		if pending.kind == 'rage' and pending.astral_conduit == true then
+			return finish(
+				state,
+				now,
+				'failed',
+				pending.action_observed_at ~= nil
+					and 'conduit_rage_finish_timeout'
+					or 'conduit_rage_start_timeout'
+			)
+		end
 		return finish(state, now, 'failed', 'timeout')
 	end
 	return nil
@@ -370,6 +411,13 @@ function M.observe_action(state, act, now)
 	if pending.kind == 'ward' then
 		pending.action_observed_at = now
 		pending.deadline = now + state.ward_effect_timeout
+		return nil
+	end
+	if pending.kind == 'rage'
+		and pending.astral_conduit == true
+		and tonumber(act.category) == 7 then
+		pending.action_observed_at = now
+		pending.deadline = now + state.conduit_rage_finish_timeout
 		return nil
 	end
 	return finish(state, now, 'complete', 'pet_action_completed')
