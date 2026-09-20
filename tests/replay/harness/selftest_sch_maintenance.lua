@@ -151,15 +151,16 @@ local function main()
 			return true, '', 'ja'
 		end,
 	}, runtime_snapshot('none', 'unknown', 0))
-	assert_equal(arts_result.candidate.action_name, 'Light Arts', 'missing Arts candidate mismatch')
-	assert_true(arts_result.candidate.observe_only == nil, 'Arts candidate must be executable')
-	assert_equal(arts_result.arts.plan.purpose, 'ensure_light_arts', 'Arts plan purpose mismatch')
-	assert_equal(arts_result.arts.plan.expected_buff_id, 358, 'Arts expected buff mismatch')
-	assert_equal(arts_result.arts.plan.recast_id, 228, 'Arts recast id mismatch')
-	assert_equal(arts_result.arts.plan.readiness_source, 'fixture:scheduler_action_ready',
+	assert_equal(arts_result.candidate.action_name, 'Thunderstorm II',
+		'downstream plan must remain the maintenance proposal while Light Arts is switch-ready')
+	assert_true(arts_result.candidate.observe_only == nil, 'storm candidate must remain executable')
+	assert_equal(arts_result.arts.state, 'switch_ready', 'Arts switch-ready state mismatch')
+	assert_true(arts_result.arts.switch_required, 'downstream plan must require Light Arts')
+	assert_equal(arts_result.arts.readiness.recast_id, 228, 'Arts readiness recast mismatch')
+	assert_equal(arts_result.arts.readiness.source, 'fixture:scheduler_action_ready',
 		'Arts readiness source mismatch')
-	assert_true(arts_result.candidate.plan == arts_result.arts.plan,
-		'Arts candidate must carry the exact plan')
+	assert_equal(arts_result.candidate.plan.required_art, 'light',
+		'downstream plan must carry its Light Arts prerequisite')
 	local unknown_arts_result = maintenance.evaluate(arts_config, {
 		now = 100,
 		player = player(),
@@ -228,8 +229,12 @@ local function main()
 			return true, '', 'ja'
 		end,
 	}, runtime_snapshot('none', 'unknown', 0))
-	assert_equal(storm_without_arts.candidate.action_name, 'Light Arts',
-		'Light Arts must retain priority over an actionable storm')
+	assert_equal(storm_without_arts.candidate.action_name, 'Thunderstorm II',
+		'downstream storm must remain proposed while Light Arts is switch-ready')
+	assert_equal(storm_without_arts.arts.state, 'switch_ready',
+		'missing Light Arts must be represented as a sequence prerequisite')
+	assert_equal(storm_without_arts.candidate.plan.required_art, 'light',
+		'storm plan must retain the Light Arts prerequisite')
 	assert_equal(storm_without_arts.storms.plan.spell, 'Thunderstorm II',
 		'storm diagnostics must retain the exact downstream plan while Arts is missing')
 
