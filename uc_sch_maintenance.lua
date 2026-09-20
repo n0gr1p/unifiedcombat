@@ -81,6 +81,7 @@ local function evaluate_accession_maintenance_spell(
 		error('Scholar Accession maintenance spell is not in the capability catalog')
 	end
 	local ownership_family = capabilities.accession_ownership_family(spell_name)
+	local exclusive_status_ids = capabilities.accession_exclusive_status_ids(spell_name)
 	local result = {
 		spell = spell_name,
 		state = 'evaluating',
@@ -98,6 +99,13 @@ local function evaluate_accession_maintenance_spell(
 			selected = nil,
 		},
 	}
+	if spell.requires_tabula_rasa == true
+		and runtime_snapshot.stratagem.tabula_rasa_active ~= true then
+		result.state = 'blocked'
+		result.blocker = 'tabula_rasa_required'
+		return result
+	end
+
 	local members_by_id = {}
 	for i = 1, #members do
 		local member = members[i]
@@ -118,18 +126,35 @@ local function evaluate_accession_maintenance_spell(
 		if member.hpp > 0 then
 			if type(member.buffs) ~= 'table' then
 				result.unknown_recipient_ids[#result.unknown_recipient_ids + 1] = member_id
-			elseif not has_buff(member.buffs, spell.status_id) then
-				result.missing_recipient_ids[#result.missing_recipient_ids + 1] = member_id
 			else
-				local families = runtime_snapshot.owned_buffs[member_id]
-				local owner = type(families) == 'table' and families[ownership_family] or nil
-				if type(owner) == 'table'
-					and owner.exact_spell == spell_name
-					and owner.status_id == spell.status_id
-					and owner.presence == 'present' then
-					result.owned_present_recipient_ids[#result.owned_present_recipient_ids + 1] = member_id
+				local desired_present = has_buff(member.buffs, spell.status_id)
+				local exclusive_conflict_present = false
+				if not desired_present then
+					for status_index = 1, #exclusive_status_ids do
+						local status_id = exclusive_status_ids[status_index]
+						if status_id ~= spell.status_id and has_buff(member.buffs, status_id) then
+							exclusive_conflict_present = true
+							break
+						end
+					end
+				end
+				if not desired_present then
+					if exclusive_conflict_present then
+						result.unowned_existing_recipient_ids[#result.unowned_existing_recipient_ids + 1] = member_id
+					else
+						result.missing_recipient_ids[#result.missing_recipient_ids + 1] = member_id
+					end
 				else
-					result.unowned_existing_recipient_ids[#result.unowned_existing_recipient_ids + 1] = member_id
+					local families = runtime_snapshot.owned_buffs[member_id]
+					local owner = type(families) == 'table' and families[ownership_family] or nil
+					if type(owner) == 'table'
+						and owner.exact_spell == spell_name
+						and owner.status_id == spell.status_id
+						and owner.presence == 'present' then
+						result.owned_present_recipient_ids[#result.owned_present_recipient_ids + 1] = member_id
+					else
+						result.unowned_existing_recipient_ids[#result.unowned_existing_recipient_ids + 1] = member_id
+					end
 				end
 			end
 		end

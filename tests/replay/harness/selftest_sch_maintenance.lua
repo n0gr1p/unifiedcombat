@@ -134,6 +134,10 @@ local function main()
 	local runtime = require('uc_sch_runtime')
 
 	local arts_config = base_config()
+	arts_config.support.storms.enabled = true
+	arts_config.support.storms.assignments = {
+		{ spell = 'Thunderstorm II', targets = { 'Nyoourke' } },
+	}
 	local arts_result = maintenance.evaluate(arts_config, {
 		now = 100,
 		player = player(),
@@ -147,15 +151,16 @@ local function main()
 			return true, '', 'ja'
 		end,
 	}, runtime_snapshot('none', 'unknown', 0))
-	assert_equal(arts_result.candidate.action_name, 'Light Arts', 'missing Arts candidate mismatch')
-	assert_true(arts_result.candidate.observe_only == nil, 'Arts candidate must be executable')
-	assert_equal(arts_result.arts.plan.purpose, 'ensure_light_arts', 'Arts plan purpose mismatch')
-	assert_equal(arts_result.arts.plan.expected_buff_id, 358, 'Arts expected buff mismatch')
-	assert_equal(arts_result.arts.plan.recast_id, 228, 'Arts recast id mismatch')
-	assert_equal(arts_result.arts.plan.readiness_source, 'fixture:scheduler_action_ready',
+	assert_equal(arts_result.candidate.action_name, 'Thunderstorm II',
+		'downstream plan must remain the maintenance proposal while Light Arts is switch-ready')
+	assert_true(arts_result.candidate.observe_only == nil, 'storm candidate must remain executable')
+	assert_equal(arts_result.arts.state, 'switch_ready', 'Arts switch-ready state mismatch')
+	assert_true(arts_result.arts.switch_required, 'downstream plan must require Light Arts')
+	assert_equal(arts_result.arts.readiness.recast_id, 228, 'Arts readiness recast mismatch')
+	assert_equal(arts_result.arts.readiness.source, 'fixture:scheduler_action_ready',
 		'Arts readiness source mismatch')
-	assert_true(arts_result.candidate.plan == arts_result.arts.plan,
-		'Arts candidate must carry the exact plan')
+	assert_equal(arts_result.candidate.plan.required_art, 'light',
+		'downstream plan must carry its Light Arts prerequisite')
 	local unknown_arts_result = maintenance.evaluate(arts_config, {
 		now = 100,
 		player = player(),
@@ -224,8 +229,12 @@ local function main()
 			return true, '', 'ja'
 		end,
 	}, runtime_snapshot('none', 'unknown', 0))
-	assert_equal(storm_without_arts.candidate.action_name, 'Light Arts',
-		'Light Arts must retain priority over an actionable storm')
+	assert_equal(storm_without_arts.candidate.action_name, 'Thunderstorm II',
+		'downstream storm must remain proposed while Light Arts is switch-ready')
+	assert_equal(storm_without_arts.arts.state, 'switch_ready',
+		'missing Light Arts must be represented as a sequence prerequisite')
+	assert_equal(storm_without_arts.candidate.plan.required_art, 'light',
+		'storm plan must retain the Light Arts prerequisite')
 	assert_equal(storm_without_arts.storms.plan.spell, 'Thunderstorm II',
 		'storm diagnostics must retain the exact downstream plan while Arts is missing')
 
@@ -527,10 +536,12 @@ local function main()
 		),
 		arts_before_sublimation
 	)
-	assert_equal(arts_priority_result.candidate.action_name, 'Light Arts',
-		'Light Arts must retain priority over Sublimation activation')
+	assert_equal(arts_priority_result.candidate.action_name, 'Sublimation',
+		'Sublimation must not force an unrelated Light Arts switch')
+	assert_equal(arts_priority_result.arts.state, 'idle_off_art',
+		'Light Arts must remain demand-driven when the selected plan does not require it')
 	assert_equal(arts_priority_result.sublimation.plan.purpose, 'sublimation_activate',
-		'Sublimation plan must remain visible while Arts has priority')
+		'Sublimation plan must remain directly actionable off-Art')
 
 	local regen_config = base_config()
 	regen_config.support.regen.enabled = true
@@ -599,6 +610,107 @@ local function main()
 	assert_equal(ready_result.regen.plan.geometry_source,
 		'fixture:confirmed_accession_geometry', 'ready Regen geometry source mismatch')
 	assert_true(ready_result.candidate.observe_only == nil, 'ready Regen candidate must be executable')
+
+	local accession_storm_config = base_config()
+	accession_storm_config.support.regen.enabled = true
+	accession_storm_config.support.regen.spells = { 'Aurorastorm II' }
+	accession_storm_config.support.regen.minimum_coverage = 3
+	local accession_storm_members = members()
+	accession_storm_members[3].buffs = {}
+	local accession_storm_result = maintenance.evaluate(accession_storm_config, {
+		now = 100,
+		player = player(),
+		party_members = accession_storm_members,
+		area_mechanics = {
+			confidence = 'confirmed',
+			model_key = 'Accession|party',
+			source = 'fixture:confirmed_accession_geometry',
+			radius_yalms = 4,
+			max_coordinate_age_s = 1,
+			distance_metric = 'horizontal',
+		},
+		spell_ready = maintenance_spell_ready,
+	}, runtime_snapshot('light', 'confirmed', 2))
+	assert_equal(accession_storm_result.candidate.action_name, 'Accession',
+		'Accession Storm II must prepare Accession first')
+	assert_equal(accession_storm_result.regen.plan.spell, 'Aurorastorm II',
+		'Accession Storm II plan spell mismatch')
+	assert_equal(accession_storm_result.regen.plan.buff_family, 'storm',
+		'Accession Storm II must use storm ownership')
+	assert_equal(accession_storm_result.regen.plan.stratagems[1], 'Accession',
+		'Accession Storm II first stratagem mismatch')
+	assert_equal(accession_storm_result.regen.plan.stratagems[2], 'Perpetuance',
+		'Accession Storm II second stratagem mismatch')
+	assert_equal(#accession_storm_result.regen.plan.expected_recipients, 3,
+		'Accession Storm II expected coverage mismatch')
+
+	local conflicting_storm_members = members()
+	conflicting_storm_members[2].buffs = { 590 }
+	conflicting_storm_members[3].buffs = {}
+	local conflicting_storm_result = maintenance.evaluate(accession_storm_config, {
+		now = 100,
+		player = player(),
+		party_members = conflicting_storm_members,
+		area_mechanics = {
+			confidence = 'confirmed',
+			model_key = 'Accession|party',
+			source = 'fixture:confirmed_accession_geometry',
+			radius_yalms = 4,
+			max_coordinate_age_s = 1,
+			distance_metric = 'horizontal',
+		},
+		spell_ready = maintenance_spell_ready,
+	}, runtime_snapshot('light', 'confirmed', 2))
+	assert_true(conflicting_storm_result.candidate == nil,
+		'Accession Storm II must not overwrite an unowned conflicting Storm')
+	assert_equal(conflicting_storm_result.regen.missing_recipient_ids[1], 1001,
+		'conflicting Storm recipient must not be classified as eligible')
+	assert_equal(conflicting_storm_result.regen.missing_recipient_ids[2], 1003,
+		'non-conflicting missing Storm recipient mismatch')
+	assert_equal(conflicting_storm_result.regen.unowned_existing_recipient_ids[1], 1002,
+		'conflicting Storm recipient must be classified unsafe-only')
+	assert_equal(conflicting_storm_result.regen.blocker, 'coverage_below_minimum',
+		'Accession Storm II conflicting Storm coverage blocker mismatch')
+
+	local embrava_config = base_config()
+	embrava_config.support.regen.enabled = true
+	embrava_config.support.regen.spells = { 'Embrava' }
+	embrava_config.support.regen.minimum_coverage = 3
+	local embrava_blocked = maintenance.evaluate(embrava_config, {
+		now = 100,
+		player = player(),
+		party_members = members(),
+		area_mechanics = {
+			confidence = 'confirmed',
+			model_key = 'Accession|party',
+			source = 'fixture:confirmed_accession_geometry',
+			radius_yalms = 4,
+			max_coordinate_age_s = 1,
+			distance_metric = 'horizontal',
+		},
+		spell_ready = maintenance_spell_ready,
+	}, runtime_snapshot('light', 'confirmed', 2))
+	assert_equal(embrava_blocked.regen.blocker, 'tabula_rasa_required',
+		'Embrava maintenance must require active Tabula Rasa')
+
+	local embrava_snapshot = runtime_snapshot('light', 'confirmed', 2)
+	embrava_snapshot.stratagem.tabula_rasa_active = true
+	local embrava_ready = maintenance.evaluate(embrava_config, {
+		now = 100,
+		player = player(),
+		party_members = members(),
+		area_mechanics = {
+			confidence = 'confirmed',
+			model_key = 'Accession|party',
+			source = 'fixture:confirmed_accession_geometry',
+			radius_yalms = 4,
+			max_coordinate_age_s = 1,
+			distance_metric = 'horizontal',
+		},
+		spell_ready = maintenance_spell_ready,
+	}, embrava_snapshot)
+	assert_equal(embrava_ready.candidate.action_name, 'Accession',
+		'active Tabula Rasa must allow configured Embrava preparation')
 
 	local list_config = base_config()
 	list_config.support.regen.enabled = true
@@ -1083,22 +1195,18 @@ local function main()
 		ability_recasts = { [228] = 0, [231] = 0 },
 	}, arts_out)
 	local arts_status = provider.status_snapshot()
-	assert_equal(#arts_out, 1, 'ready Light Arts plan must emit one live proposal')
-	assert_equal(arts_out[1].action_name, 'Light Arts', 'live Light Arts proposal mismatch')
-	assert_equal(arts_status.candidate.action_name, 'Light Arts',
-		'provider Light Arts candidate mismatch')
-	assert_equal(arts_status.arts.plan.purpose, 'ensure_light_arts',
-		'provider Light Arts plan purpose mismatch')
-	assert_equal(arts_status.arts.plan.recast_id, 228,
-		'provider Light Arts recast id mismatch')
+	assert_equal(#arts_out, 1, 'Light Arts sequence prerequisite must emit one live proposal')
+	assert_equal(arts_out[1].action_name, 'Light Arts', 'live Light Arts prerequisite mismatch')
+	assert_equal(arts_status.candidate.action_name, 'Thunderstorm II',
+		'provider status must retain the downstream storm candidate')
+	assert_equal(arts_status.arts.state, 'switch_ready',
+		'provider status must expose the demand-driven Light Arts prerequisite')
+	assert_equal(arts_status.runtime.active_sequence.purpose, 'targeted_storm',
+		'provider runtime must own the downstream storm sequence')
+	assert_equal(arts_status.runtime.active_sequence.phase, 'ensure_art',
+		'provider runtime must begin the storm sequence by ensuring Light Arts')
 	assert_equal(arts_status.proposals_emitted, 1,
-		'provider ready Light Arts proposal count mismatch')
-	local arts_status_lines = provider.status_lines(270)
-	assert_true(arts_status_lines[3]:find(
-		'plan=ensure_light_arts recast=228/0 readiness=unified_scheduler:action_ready',
-		1,
-		true
-	) ~= nil, 'provider status must expose the complete Light Arts plan')
+		'provider ready Light Arts prerequisite proposal count mismatch')
 
 	local defensive_config = base_config()
 	defensive_config.defensive.accession_cure.enabled = true
