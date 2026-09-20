@@ -58,6 +58,14 @@ function M.validate(command)
 		error('unsupported pet command kind: ' .. kind)
 	end
 	require_nonempty_string(command.action_name, 'pet command action_name')
+	if command.astral_conduit ~= nil then
+		if kind ~= 'rage' then
+			error('pet command astral_conduit is only valid for Rage commands')
+		end
+		if type(command.astral_conduit) ~= 'boolean' then
+			error('pet command astral_conduit must be boolean')
+		end
+	end
 	if kind ~= 'activate' then
 		require_positive_integer(command.pet_id, 'pet command pet_id')
 	end
