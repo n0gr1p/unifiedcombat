@@ -154,6 +154,26 @@ local function contains_kind(actions, kind)
 	return false
 end
 
+local function find_kind(actions, kind)
+	for _, action in ipairs(actions) do
+		if type(action.detail) == 'table'
+			and type(action.detail.pet_command) == 'table'
+			and action.detail.pet_command.kind == kind then
+			return action
+		end
+	end
+	return nil
+end
+
+local function contains_action(actions, name)
+	for _, action in ipairs(actions) do
+		if action.action_name == name then
+			return true
+		end
+	end
+	return false
+end
+
 local function score(action)
 	return action.priority_band + action.urgency * 9.9
 end
@@ -211,6 +231,30 @@ local function test_shared_serialization()
 	assert_true(contains_kind(actions, 'rage'), 'Ward backoff must not starve Rage')
 end
 
+local function test_astral_conduit_focus()
+	local ctx = context()
+	ctx.player.buffs = { 504 }
+	local actions = collect_all(ctx)
+
+	assert_equal(
+		contains_action(actions, 'Avatar\'s Favor'),
+		false,
+		'Avatar Favor maintenance must not steal Astral Conduit action time'
+	)
+	assert_equal(
+		contains_action(actions, 'Crimson Howl'),
+		false,
+		'Ward maintenance must not steal Astral Conduit action time'
+	)
+	local rage = find_kind(actions, 'rage')
+	assert_true(rage ~= nil, 'Rage must remain available during Astral Conduit')
+	assert_equal(
+		rage.detail.pet_command.astral_conduit,
+		true,
+		'Rage command must carry Astral Conduit lifecycle metadata'
+	)
+end
+
 local function test_optional_rage_gates()
 	local ctx = context()
 	ctx.pet_tp = nil
@@ -253,6 +297,7 @@ end
 
 test_priority_order()
 test_shared_serialization()
+test_astral_conduit_focus()
 test_optional_rage_gates()
 
 print('selftest_smn_cross_provider_integration: OK')
