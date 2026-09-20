@@ -1419,6 +1419,7 @@ public partial class MainForm
 
     private void RenderNoSkillchainTargetList(JsonElement s)
     {
+        _noSkillchainTargetCurrent.Enabled = true;
         var newRows = SessionStateHelper.ParseIgnoreEntriesFrom(s, "no_skillchain_target_entries");
         if (newRows.SequenceEqual(_noSkillchainTargetRows) && _noSkillchainTargetList.Items.Count == newRows.Count)
         {
