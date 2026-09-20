@@ -152,6 +152,10 @@ function M.new(deps)
 			return nil
 		end
 		local rage = snapshot.validation.rage
+		local astral_conduit = type(ctx.player) == 'table'
+			and type(ctx.player.buffs) == 'table'
+			and runtime.has_buff(ctx.player, runtime.BUFF_ASTRAL_CONDUIT)
+			or false
 		local held, hold_reason, hold = require('uc_reaction_runtime').smn_rage_should_hold(ctx.target_id)
 		if held == true then
 			emit_rage_check(ctx, rage.name, false, hold_reason or 'reaction_pretrigger_hold', {
@@ -214,6 +218,7 @@ function M.new(deps)
 		local recast_value = type(ctx.ability_recasts) == 'table'
 			and tonumber(ctx.ability_recasts[runtime.RECAST_RAGE]) or nil
 		local diagnostic = {
+			astral_conduit = astral_conduit,
 			mp = player_mp,
 			mp_cost = mp_cost,
 			recast = recast_value,
@@ -259,6 +264,7 @@ function M.new(deps)
 				pet_id = snapshot.pet_id,
 				target_id = ctx.target_id,
 				combat_generation = ctx.combat_generation,
+				astral_conduit = astral_conduit,
 				retry_key = ('smn:rage:%s'):format(rage.name),
 			},
 		}
