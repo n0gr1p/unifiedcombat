@@ -15,6 +15,7 @@ local uc_ws_memory = require('uc_ws_memory')
 local uc_ignore = require('uc_ignore')
 local uc_partner_list = require('uc_partner_list')
 local uc_target_ignore = require('uc_target_ignore')
+local uc_no_skillchain_targets = require('uc_no_skillchain_targets')
 local uc_add_priority = require('uc_add_priority')
 local uc_path_hunter = require('uc_path_hunter')
 local uc_config_runtime = require('uc_config_runtime')
@@ -1299,6 +1300,16 @@ local function process_line(line)
 			uc_partner_list.sync_legacy_partner_fields(s)
 		end
 		last_state_send = 0
+	elseif op == 'no_skillchain_target_replace_names' then
+		local s = _G.UC_SETTINGS
+		if s then
+			local vals = uc_split_pipe(msg.value)
+			s.weaponskill_no_skillchain_targets = {}
+			for _, name in ipairs(vals) do
+				uc_no_skillchain_targets.append_name(s, name)
+			end
+		end
+		last_state_send = 0
 	elseif op == 'target_ignore_replace_names' then
 		local s = _G.UC_SETTINGS
 		if s then
@@ -1437,6 +1448,29 @@ local function process_line(line)
 			else
 				_G.UC_LAST_IGNORE_OP = tostring(why or 'IGNORE_REMOVE_FAIL')
 			end
+		end
+		last_state_send = 0
+	elseif op == 'no_skillchain_target_add' then
+		local s = _G.UC_SETTINGS
+		local name = uc_trim(msg.name)
+		if s and name ~= '' then
+			uc_no_skillchain_targets.append_name(s, name)
+		end
+		last_state_send = 0
+	elseif op == 'no_skillchain_target_add_current' then
+		local s = _G.UC_SETTINGS
+		if s then
+			local tname, tid = uc_current_target_snapshot()
+			if tid ~= 0 then
+				uc_no_skillchain_targets.append_name(s, tname)
+			end
+		end
+		last_state_send = 0
+	elseif op == 'no_skillchain_target_remove' then
+		local s = _G.UC_SETTINGS
+		local idx = uc_remote_list_index(msg, line)
+		if s and idx then
+			uc_no_skillchain_targets.remove_index(s, math.floor(idx + 0.5))
 		end
 		last_state_send = 0
 	elseif op == 'target_ignore_add' then

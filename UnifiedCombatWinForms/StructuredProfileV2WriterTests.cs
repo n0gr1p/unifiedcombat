@@ -17,6 +17,7 @@ internal static class StructuredProfileV2WriterTests
             TestSmartWsAoeUiPersistenceContract();
 			TestFastSkillchainRoundTrip();
 			TestFastSkillchainUiPersistenceContract();
+            TestNoSkillchainTargetRoundTrip();
             TestStatusRemovalLimitProfileContract();
             TestSerializeOmitsRetiredOwnershipMarkers();
             TestParseTargetedBuffs();
@@ -1791,6 +1792,28 @@ internal static class StructuredProfileV2WriterTests
 			"Fast Skillchain UI save path missing");
 		AssertContains(store, "[\"fast_skillchain\"] = false", "Fast Skillchain UI profile default must be false");
 	}
+
+    private static void TestNoSkillchainTargetRoundTrip()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["no_skillchain_target_entries"] = "1:Gyre [1]|2:Other Add [2]";
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Terrasjr", "SAM", "WAR")
+        );
+
+        AssertContains(content, "no_skillchain_targets = {", "no-skillchain target list must serialize");
+        AssertContains(content, "\"Gyre\"", "Gyre target must serialize");
+        AssertContains(content, "\"Other Add\"", "second no-skillchain target must serialize");
+        AssertNotContains(content, "Gyre [1]", "display index must not serialize");
+
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+        AssertContains(ui, "No Skillchain Targets", "no-skillchain target UI section missing");
+        AssertContains(logic, "no_skillchain_target_replace_names", "no-skillchain target live update missing");
+        AssertContains(store, "[\"no_skillchain_target_entries\"]", "no-skillchain target profile persistence missing");
+    }
 
     private static void TestRejectInvalidRunAwayDistance()
     {

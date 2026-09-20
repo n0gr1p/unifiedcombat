@@ -546,6 +546,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.weaponskill_min_tp = config.combat.weaponskill.minimum_tp
 			candidate.weaponskill_allow_aoe = config.combat.weaponskill.allow_aoe
 			candidate.fast_skillchain = config.combat.weaponskill.fast_skillchain
+			candidate.weaponskill_no_skillchain_targets = clone_value(config.combat.weaponskill.no_skillchain_targets)
 			candidate.skillchain_target = config.combat.weaponskill.skillchain_target
 			candidate.wait_ignore_names = clone_value(config.combat.weaponskill.wait_ignore_names)
 			candidate.aftermath_enabled = config.combat.weaponskill.aftermath_enabled

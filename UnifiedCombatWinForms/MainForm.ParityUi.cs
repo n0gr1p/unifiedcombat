@@ -99,6 +99,12 @@ public partial class MainForm
     private Button _targetIgnByName = null!;
     private Button _targetIgnCurTarget = null!;
     private Button _targetIgnRemove = null!;
+    private UcSection _grpNoSkillchainTargets = null!;
+    private ListBox _noSkillchainTargetList = null!;
+    private TextBox _noSkillchainTargetName = null!;
+    private Button _noSkillchainTargetByName = null!;
+    private Button _noSkillchainTargetCurrent = null!;
+    private Button _noSkillchainTargetRemove = null!;
     private Button _btnSave = null!;
     private Button _btnToggleEngine = null!;
     private Button _btnReloadAddon = null!;
@@ -923,6 +929,7 @@ public partial class MainForm
         listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        listsSplit.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         _grpAddPri = new UcSection("Fight Add Priority — only listed enemies are eligible; Move Up/Down changes the order.")
         {
@@ -1033,6 +1040,31 @@ public partial class MainForm
         _grpTargetIgn.SetContent(tiFlow);
         listsSplit.Controls.Add(_grpTargetIgn, 1, 1);
 
+        _grpNoSkillchainTargets = new UcSection("No Skillchain Targets — listed mobs still allow weapon skills, but UC will not use a WS that would create a skillchain.")
+        {
+            Dock = DockStyle.Fill,
+            MinimumSize = new Size(200, 120),
+        };
+        var nsFlow = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
+        _noSkillchainTargetList = new ListBox { Height = 80, IntegralHeight = false, Dock = DockStyle.Top, Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top };
+        nsFlow.Controls.Add(_noSkillchainTargetList);
+        var nsRow = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 6, 0, 0) };
+        nsRow.Controls.Add(new Label { Text = "Mob name:", AutoSize = true });
+        _noSkillchainTargetName = new TextBox { Width = 220 };
+        nsRow.Controls.Add(_noSkillchainTargetName);
+        _noSkillchainTargetByName = new Button { Text = "Add by name", AutoSize = true };
+        _noSkillchainTargetByName.Click += (_, _) => NoSkillchainTargetAddByName();
+        nsRow.Controls.Add(_noSkillchainTargetByName);
+        _noSkillchainTargetCurrent = new Button { Text = "Add current target", AutoSize = true };
+        _noSkillchainTargetCurrent.Click += (_, _) => NoSkillchainTargetAddCurrent();
+        nsRow.Controls.Add(_noSkillchainTargetCurrent);
+        _noSkillchainTargetRemove = new Button { Text = "Remove selected", AutoSize = true };
+        _noSkillchainTargetRemove.Click += (_, _) => NoSkillchainTargetRemove();
+        nsRow.Controls.Add(_noSkillchainTargetRemove);
+        nsFlow.Controls.Add(nsRow);
+        _grpNoSkillchainTargets.SetContent(nsFlow);
+        listsSplit.Controls.Add(_grpNoSkillchainTargets, 1, 2);
+
         _grpSleepSpells = new UcSection("Sleep Spells — ordered list used for pre-engage and in-combat Sleep selection.")
         {
             Dock = DockStyle.Fill,
@@ -1073,7 +1105,7 @@ public partial class MainForm
         sleepRow.Controls.Add(_sleepSpellDown);
         sleepFlow.Controls.Add(sleepRow);
         _grpSleepSpells.SetContent(sleepFlow);
-        listsSplit.Controls.Add(_grpSleepSpells, 0, 2);
+        listsSplit.Controls.Add(_grpSleepSpells, 0, 3);
         listsSplit.SetColumnSpan(_grpSleepSpells, 2);
 
         g.Controls.Add(listsSplit, 0, gRow++);

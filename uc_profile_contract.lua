@@ -248,6 +248,7 @@ local DIRECT_PROFILE_FIELDS = {
     sleep_max_target_range = "profile_owned_by_ui",
     dd2_spell_slots = "profile_owned_by_ui",
     wait_ignore_names = "profile_owned_by_ui",
+    weaponskill_no_skillchain_targets = "profile_owned_by_ui",
     ignore = "profile_owned_by_ui",
     target_ignore_names = "profile_owned_by_ui",
     reaction_enabled = "profile_owned_by_ui",

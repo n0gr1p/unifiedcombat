@@ -8,6 +8,7 @@ local uc_ability_pipeline = require('uc_ability_pipeline')
 local uc_ws_memory = require('uc_ws_memory')
 local uc_ignore = require('uc_ignore')
 local uc_target_ignore = require('uc_target_ignore')
+local uc_no_skillchain_targets = require('uc_no_skillchain_targets')
 local uc_partner_list = require('uc_partner_list')
 local uc_fight_leader = require('uc_fight_leader')
 local uc_add_control = require('uc_add_control')
@@ -3115,6 +3116,44 @@ local function fast_skillchain_restart_enabled(settings, state)
 	return state.terminal == true
 end
 
+local function no_skillchain_target_active(settings, target_id)
+	local tid = tonumber(target_id) or 0
+	if tid <= 0 then
+		return false
+	end
+	local target = windower.ffxi.get_mob_by_id(tid)
+	return uc_no_skillchain_targets.is_mob_blocked(settings, target)
+end
+
+local function ws_would_skillchain(target_id, ws_id_or_name, actor_context)
+	local tid = tonumber(target_id) or 0
+	if tid <= 0 then
+		return false
+	end
+	local state = skillchain_runtime:get_state(tid)
+	if type(state) ~= 'table' or state.terminal == true or #(state.active_properties or {}) == 0 then
+		return false
+	end
+	local now = uc_time.now()
+	if now > skillchain_runtime:expiry_for_actor(tid, actor_context and actor_context.actor_id) then
+		return false
+	end
+	local skill = ws_skill_by_id_or_name(ws_id_or_name)
+	local properties = effective_ws_properties(skill, actor_context)
+	return uc_skillchain_state.resolve_properties(
+		state.active_properties,
+		properties,
+		state.chainbound_level
+	) ~= nil
+end
+
+local function no_skillchain_target_blocks_ws(settings, target_id, ws_id_or_name, actor_context)
+	if not no_skillchain_target_active(settings, target_id) then
+		return false
+	end
+	return ws_would_skillchain(target_id, ws_id_or_name, actor_context)
+end
+
 local function select_smart_ws(settings, target_id)
 	local tid = tonumber(target_id) or 0
 	if tid <= 0 then
@@ -3145,6 +3184,11 @@ local function select_smart_ws(settings, target_id)
 	if spam_on then
 		local aftermath_ws, aftermath_reason = select_aftermath_maintenance_ws(settings, player)
 		if aftermath_reason then
+			if aftermath_ws ~= '' and no_skillchain_target_blocks_ws(
+				settings, tid, aftermath_ws, local_skillchain_actor_context()
+			) then
+				return '', 'NO_SKILLCHAIN_TARGET_HOLD'
+			end
 			return aftermath_ws, aftermath_reason
 		end
 		if primary_ws == '' or not uc_ws_memory.valid_ws_name(primary_ws) then
@@ -3153,10 +3197,14 @@ local function select_smart_ws(settings, target_id)
 		if not ordinary_weaponskill_tp_ready(settings, player) then
 			return '', 'WS_MIN_TP_HOLD'
 		end
+		if no_skillchain_target_blocks_ws(settings, tid, primary_ws, local_skillchain_actor_context()) then
+			return '', 'NO_SKILLCHAIN_TARGET_HOLD'
+		end
 		return primary_ws, 'READY_SPAM'
 	end
 	local actor_context = local_skillchain_actor_context()
 	local state = skillchain_runtime:get_state(tid)
+	local suppress_skillchains = no_skillchain_target_active(settings, tid)
 	local now = uc_time.now()
 	local fast_restart = fast_skillchain_restart_enabled(settings, state)
 	local resonance_active = state
@@ -3184,6 +3232,9 @@ local function select_smart_ws(settings, target_id)
 	end
 	local aftermath_ws, aftermath_reason = select_aftermath_maintenance_ws(settings, player)
 	if aftermath_reason then
+		if aftermath_ws ~= '' and no_skillchain_target_blocks_ws(settings, tid, aftermath_ws, actor_context) then
+			return '', 'NO_SKILLCHAIN_TARGET_HOLD'
+		end
 		if aftermath_ws ~= '' and not smart_ws_allowed(settings, aftermath_ws) then
 			return '', 'AFTERMATH_WS_AOE_BLOCKED'
 		end
@@ -3191,6 +3242,18 @@ local function select_smart_ws(settings, target_id)
 	end
 	if not ordinary_weaponskill_tp_ready(settings, player) then
 		return '', 'WS_MIN_TP_HOLD'
+	end
+	if resonance_active and suppress_skillchains then
+		if primary_ws == '' or not uc_ws_memory.valid_ws_name(primary_ws) then
+			return '', 'PRIMARY_WS_INVALID'
+		end
+		if no_skillchain_target_blocks_ws(settings, tid, primary_ws, actor_context) then
+			return '', 'NO_SKILLCHAIN_TARGET_HOLD'
+		end
+		if not smart_ws_allowed(settings, primary_ws) then
+			return '', 'PRIMARY_WS_AOE_BLOCKED'
+		end
+		return primary_ws, 'READY'
 	end
 	if resonance_active then
 		local plan, plan_reason = skillchain_runtime:plan_continuation(
@@ -3286,6 +3349,14 @@ function core.select_ws_plan_for_scheduler(settings, target_id)
 	}, tostring(ws_reason or '')
 end
 
+function core.revalidate_no_skillchain_target(settings, target_id, ws_id_or_name)
+	local actor_context = local_skillchain_actor_context()
+	if no_skillchain_target_blocks_ws(settings or {}, target_id, ws_id_or_name, actor_context) then
+		return false, 'NO_SKILLCHAIN_TARGET_HOLD'
+	end
+	return true, ''
+end
+
 function core.revalidate_smart_ws_aoe(settings, ws_id_or_name)
 	if not smart_ws_allowed(settings or {}, ws_id_or_name) then
 		return false, 'SMART_WS_AOE_BLOCKED'
@@ -3296,6 +3367,10 @@ end
 function core.revalidate_skillchain_plan(plan, settings, expected_target_id, expected_ws_name, commit_stage)
 	if type(plan) ~= 'table' then
 		return false, 'SC_INTENT_LOST'
+	end
+	local sc_allowed, sc_reason = core.revalidate_no_skillchain_target(settings, expected_target_id, plan.ws_id)
+	if not sc_allowed then
+		return false, sc_reason
 	end
 	local aoe_allowed, aoe_reason = core.revalidate_smart_ws_aoe(settings, plan.ws_id)
 	if not aoe_allowed then
@@ -3360,6 +3435,10 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillcha
 	end
 	if target_distance(target) > WS_DISPATCH_MAX_DISTANCE then
 		return false, 'WS_OUT_OF_RANGE'
+	end
+	local sc_allowed, sc_reason = core.revalidate_no_skillchain_target(settings or get_settings(), tid, ws)
+	if not sc_allowed then
+		return false, sc_reason
 	end
 	local ok, why = ws_intent_gate(settings or get_settings(), ws, tid, skillchain_plan)
 	if not ok then

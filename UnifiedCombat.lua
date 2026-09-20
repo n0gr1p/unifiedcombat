@@ -212,6 +212,7 @@ local function uc_new_settings_defaults()
 		weaponskill_min_tp = 1000,
 		weaponskill_allow_aoe = true,
 		fast_skillchain = false,
+		weaponskill_no_skillchain_targets = {},
 		aftermath_enabled = false,
 		aftermath_ws = '',
 		autotarget = false,
@@ -638,7 +639,7 @@ end
 local PROFILE_KEYS = {
 	'ability1', 'ability2', 'ability3', 'ability4', 'ability5', 'ability6',
 	'ability_active', 'abilities', 'wsabilities',
-	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode', 'weaponskill_min_tp', 'weaponskill_allow_aoe', 'fast_skillchain',
+	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode', 'weaponskill_min_tp', 'weaponskill_allow_aoe', 'fast_skillchain', 'weaponskill_no_skillchain_targets',
 	'aftermath_enabled', 'aftermath_ws',
 	'engine_mode',
 	'show_ingame_ui',
