@@ -3184,6 +3184,11 @@ local function select_smart_ws(settings, target_id)
 	if spam_on then
 		local aftermath_ws, aftermath_reason = select_aftermath_maintenance_ws(settings, player)
 		if aftermath_reason then
+			if aftermath_ws ~= '' and no_skillchain_target_blocks_ws(
+				settings, tid, aftermath_ws, local_skillchain_actor_context()
+			) then
+				return '', 'NO_SKILLCHAIN_TARGET_HOLD'
+			end
 			return aftermath_ws, aftermath_reason
 		end
 		if primary_ws == '' or not uc_ws_memory.valid_ws_name(primary_ws) then
@@ -3191,6 +3196,9 @@ local function select_smart_ws(settings, target_id)
 		end
 		if not ordinary_weaponskill_tp_ready(settings, player) then
 			return '', 'WS_MIN_TP_HOLD'
+		end
+		if no_skillchain_target_blocks_ws(settings, tid, primary_ws, local_skillchain_actor_context()) then
+			return '', 'NO_SKILLCHAIN_TARGET_HOLD'
 		end
 		return primary_ws, 'READY_SPAM'
 	end
@@ -3224,6 +3232,9 @@ local function select_smart_ws(settings, target_id)
 	end
 	local aftermath_ws, aftermath_reason = select_aftermath_maintenance_ws(settings, player)
 	if aftermath_reason then
+		if aftermath_ws ~= '' and no_skillchain_target_blocks_ws(settings, tid, aftermath_ws, actor_context) then
+			return '', 'NO_SKILLCHAIN_TARGET_HOLD'
+		end
 		if aftermath_ws ~= '' and not smart_ws_allowed(settings, aftermath_ws) then
 			return '', 'AFTERMATH_WS_AOE_BLOCKED'
 		end
