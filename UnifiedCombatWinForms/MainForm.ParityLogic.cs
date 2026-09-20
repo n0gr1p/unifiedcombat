@@ -349,6 +349,7 @@ public partial class MainForm
         RenderIgnoreList(s);
         RenderPartnerList(s);
         RenderTargetIgnoreList(s);
+        RenderNoSkillchainTargetList(s);
         RenderAddPriorityList(s);
         RenderSleepSpellList(s);
         RenderPathHunterList(s);
@@ -596,17 +597,20 @@ public partial class MainForm
             _ignoreList.Items.Clear();
             _partnerList.Items.Clear();
             _targetIgnList.Items.Clear();
+            _noSkillchainTargetList.Items.Clear();
             _addPriList.Items.Clear();
             _sleepSpellList.Items.Clear();
             _ignoreRows = [];
             _partnerRows = [];
             _targetIgnoreRows = [];
+            _noSkillchainTargetRows = [];
             _addPriorityRows = [];
             _sleepSpellRows = [];
             _selectedAbilities.Clear();
             _abilityOptions.Clear();
             _ignoreCurTarget.Enabled = false;
             _targetIgnCurTarget.Enabled = false;
+            _noSkillchainTargetCurrent.Enabled = false;
             _addPriCurTarget.Enabled = false;
             _partnerCurTarget.Enabled = false;
             _pullerCombo.Enabled = false;
@@ -1411,6 +1415,18 @@ public partial class MainForm
                 }
             }
         }
+    }
+
+    private void RenderNoSkillchainTargetList(JsonElement s)
+    {
+        var newRows = SessionStateHelper.ParseIgnoreEntriesFrom(s, "no_skillchain_target_entries");
+        if (newRows.SequenceEqual(_noSkillchainTargetRows) && _noSkillchainTargetList.Items.Count == newRows.Count)
+        {
+            return;
+        }
+
+        _noSkillchainTargetRows = newRows;
+        RebindNoSkillchainTargetListUi();
     }
 
     private void RenderAddPriorityList(JsonElement s)
@@ -5278,6 +5294,65 @@ public partial class MainForm
         );
     }
 
+    private void NoSkillchainTargetAddByName()
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var name = _noSkillchainTargetName.Text.Trim();
+        if (name.Length == 0)
+        {
+            return;
+        }
+        if (!HasName(_noSkillchainTargetRows, name))
+        {
+            _noSkillchainTargetRows.Add((NextSlot(_noSkillchainTargetRows), name));
+            RebindNoSkillchainTargetListUi();
+        }
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "no_skillchain_target_add", ["name"] = name });
+    }
+
+    private void NoSkillchainTargetAddCurrent()
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "no_skillchain_target_add_current" });
+    }
+
+    private void NoSkillchainTargetRemove()
+    {
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+        var idx = _noSkillchainTargetList.SelectedIndex;
+        if (idx < 0 || idx >= _noSkillchainTargetRows.Count)
+        {
+            return;
+        }
+        var slot = _noSkillchainTargetRows[idx].Slot;
+        _noSkillchainTargetRows.RemoveAt(idx);
+        for (var i = 0; i < _noSkillchainTargetRows.Count; i++)
+        {
+            _noSkillchainTargetRows[i] = (i + 1, _noSkillchainTargetRows[i].Name);
+        }
+        RebindNoSkillchainTargetListUi();
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "no_skillchain_target_remove",
+            ["index"] = slot,
+            ["slot"] = slot,
+        });
+    }
+
     private void AddPriorityByName()
     {
         var sid = RequireSelectedSid();
@@ -5714,6 +5789,15 @@ public partial class MainForm
         }
     }
 
+    private void RebindNoSkillchainTargetListUi()
+    {
+        _noSkillchainTargetList.Items.Clear();
+        foreach (var (slot, name) in _noSkillchainTargetRows)
+        {
+            _noSkillchainTargetList.Items.Add($"{name} [{slot}]");
+        }
+    }
+
     private void RebindAddPriorityListUi()
     {
         _addPriList.Items.Clear();
@@ -5789,6 +5873,7 @@ public partial class MainForm
         Forward(sid, new Dictionary<string, object?> { ["op"] = "ignore_replace_names", ["value"] = string.Join("|", _ignoreRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "target_ignore_replace_names", ["value"] = string.Join("|", _targetIgnoreRows.Select(r => r.Name)) });
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "no_skillchain_target_replace_names", ["value"] = string.Join("|", _noSkillchainTargetRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "add_priority_replace_names", ["value"] = string.Join("|", _addPriorityRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = string.Join("|", _sleepSpellRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_replace_names", ["value"] = string.Join("|", _pathHunterRows.Select(r => r.Name)) });
