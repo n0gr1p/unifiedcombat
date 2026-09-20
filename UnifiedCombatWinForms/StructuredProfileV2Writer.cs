@@ -273,6 +273,7 @@ internal static class StructuredProfileV2Writer
                     .Add("minimum_tp", ReadBoundedInt(flatProfile, "weaponskill_min_tp", 1000, 1000, 3000))
                     .Add("allow_aoe", ReadBool(flatProfile, "weaponskill_allow_aoe", true))
                     .Add("fast_skillchain", ReadBool(flatProfile, "fast_skillchain", false))
+                    .Add("no_skillchain_targets", ParseNameList(ReadString(flatProfile, "no_skillchain_target_entries", "")))
                     .Add("skillchain_target", ReadSkillchainTarget(flatProfile))
                     .Add("wait_ignore_names", ParseNameList(ReadString(flatProfile, "ignore_entries", "")))
                     .Add("aftermath_enabled", ReadBool(flatProfile, "aftermath_enabled", false))
