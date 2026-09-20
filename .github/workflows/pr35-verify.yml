@@ -49,6 +49,8 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_sch_configuration.lua
       - name: Scholar maintenance self-test
         run: lua5.1 tests/replay/harness/selftest_sch_maintenance.lua
+      - name: Scholar runtime self-test
+        run: lua5.1 tests/replay/harness/selftest_sch_runtime.lua
       - name: Scholar duration self-test
         run: lua5.1 tests/replay/harness/selftest_sch_duration.lua
       - name: Scholar action-result self-test
