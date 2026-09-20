@@ -41,6 +41,7 @@ internal static class RuntimeProfileEditorAdapter
         CopyStringArrayAsPipe(profile, "brd_dummy_songs", "brd_dummy_songs");
         CopyStringArrayAsPipe(profile, "brd_recovery_ignore_names", "brd_recovery_ignore_names");
         CopyNameArrayAsEntries(profile, "wait_ignore_names", "ignore_entries");
+        CopyNameArrayAsEntries(profile, "weaponskill_no_skillchain_targets", "no_skillchain_target_entries");
         CopyNameArrayAsEntries(profile, "partner_names", "partner_entries");
         CopyNameArrayAsEntries(profile, "target_ignore_names", "target_ignore_entries");
         CopyNameArrayAsEntries(profile, "add_priority_names", "add_priority_entries");
