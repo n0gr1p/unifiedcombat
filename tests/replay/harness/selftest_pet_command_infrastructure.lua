@@ -280,6 +280,45 @@ local function test_failure_timeout_and_backoff()
 	assert_equal(allowed, true, 'second backoff expiry')
 end
 
+local function test_conduit_rage_lifecycle()
+	local state = new_state()
+	local command = base_command('rage')
+	command.astral_conduit = true
+
+	coordinator.begin(state, command, 1.0)
+	local readying = coordinator.observe_action(state, {
+		category = 7,
+		actor_id = 200,
+		param = 164,
+		targets = { { id = 300 } },
+	}, 1.2)
+	assert_equal(readying, nil, 'Conduit Rage readying packet must not release the pet lane')
+	assert_true(coordinator.is_pending(state), 'Conduit Rage must remain pending through readying')
+
+	local still_pending = coordinator.observe(state, context(3.8))
+	assert_equal(still_pending, nil, 'Conduit Rage readying must extend beyond the generic 2.5 second timeout')
+	assert_true(coordinator.is_pending(state), 'Conduit Rage must remain pending until the result packet')
+
+	local completed = coordinator.observe_action(state, {
+		category = 13,
+		actor_id = 200,
+		param = 164,
+		targets = { { id = 300 } },
+	}, 4.0)
+	assert_equal(completed.outcome, 'complete', 'Conduit Rage result outcome')
+	assert_equal(completed.reason, 'pet_action_completed', 'Conduit Rage result completion')
+
+	coordinator.begin(state, command, 5.0)
+	local timed_out = coordinator.observe(state, context(6.3))
+	assert_equal(timed_out.reason, 'conduit_rage_start_timeout', 'Conduit Rage launch watchdog')
+	assert_equal(timed_out.retry_delay, 0.20, 'Conduit Rage must use fast non-exponential retry')
+
+	local allowed = coordinator.can_attempt(state, 'smn:rage', 6.49)
+	assert_equal(allowed, false, 'Conduit Rage fast retry must still serialize the retry window')
+	allowed = coordinator.can_attempt(state, 'smn:rage', 6.50)
+	assert_equal(allowed, true, 'Conduit Rage fast retry expiry')
+end
+
 local function test_pet_pending_does_not_lock_movement()
 	local scheduler = {
 		phase1 = {
@@ -306,6 +345,7 @@ test_context_capture()
 test_serialization_and_completion()
 test_action_events_and_stale_identity()
 test_failure_timeout_and_backoff()
+test_conduit_rage_lifecycle()
 test_pet_pending_does_not_lock_movement()
 
 print('selftest_pet_command_infrastructure: OK')
