@@ -119,6 +119,16 @@ local function main()
 	assert_true(find_issue(invalid_maintenance_result.errors, 'sch_accession_maintenance_spell_unsupported') ~= nil,
 		'maintenance spell issue mismatch')
 
+	local stackable_status_bars = valid_config()
+	stackable_status_bars.support.regen.spells = { 'Barsleep', 'Barpoison' }
+	assert_true(config_module.validate(stackable_status_bars, { main_job = 'SCH' }).valid,
+		'status Barspells must remain independently maintainable')
+
+	local stackable_animus = valid_config()
+	stackable_animus.support.regen.spells = { 'Animus Augeo', 'Animus Minuo' }
+	assert_true(config_module.validate(stackable_animus, { main_job = 'SCH' }).valid,
+		'Animus spells must not be rejected as a configuration family conflict')
+
 	local conflicting_buffs = valid_config()
 	conflicting_buffs.support.regen.spells = { 'Enfire', 'Enwater' }
 	local conflicting_buffs_result = config_module.validate(conflicting_buffs, { main_job = 'SCH' })
