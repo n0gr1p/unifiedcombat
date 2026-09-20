@@ -1961,7 +1961,7 @@ public partial class MainForm
             Width = 430,
             Anchor = AnchorStyles.Left | AnchorStyles.Right,
             Text = "Regen V",
-            PlaceholderText = "Regen V|Protect V|Shell V|Adloquium|Phalanx",
+            PlaceholderText = "Regen V|Aurorastorm II|Protect V|Shell V|Adloquium|Phalanx",
         };
         _schAccessionPerpetuanceSpells.TextChanged += (_, _) => OnScholarSettingChanged();
         scholarRoot.Controls.Add(_schAccessionPerpetuanceSpells, 1, scholarRow++);
