@@ -57,6 +57,10 @@ local function main()
 	assert_equal(capabilities.accession_maintenance_spell('Phalanx').anchor_policy, 'self',
 		'Phalanx maintenance anchor policy mismatch')
 	assert_equal(capabilities.storm_spell('Aurorastorm II').status_id, 595, 'Aurorastorm II status mismatch')
+	assert_equal(capabilities.accession_maintenance_spell('Aurorastorm II').status_id, 595,
+		'Aurorastorm II must be available to Accession + Perpetuance maintenance')
+	assert_equal(capabilities.accession_ownership_family('Aurorastorm II'), 'storm',
+		'Accession Storm II must share storm ownership')
 	assert_true(capabilities.storm_spell('Aurorastorm') == nil, 'Phase 1 must not accept Storm I')
 
 	local missing = normalizer.normalize({}, { main_job = 'SCH' })
@@ -106,6 +110,23 @@ local function main()
 	assert_true(not conflicting_buffs_result.valid, 'mutually exclusive maintenance buffs must fail validation')
 	assert_true(find_issue(conflicting_buffs_result.errors, 'sch_accession_maintenance_spell_conflict') ~= nil,
 		'maintenance conflict issue mismatch')
+
+	local storm_maintenance = valid_config()
+	storm_maintenance.support.regen.spells = { 'Aurorastorm II' }
+	assert_true(config_module.validate(storm_maintenance, { main_job = 'SCH' }).valid,
+		'Storm II must validate in Accession + Perpetuance maintenance')
+
+	local conflicting_storm_maintenance = valid_config()
+	conflicting_storm_maintenance.support.regen.spells = { 'Aurorastorm II', 'Thunderstorm II' }
+	local conflicting_storm_maintenance_result = config_module.validate(
+		conflicting_storm_maintenance,
+		{ main_job = 'SCH' }
+	)
+	assert_true(not conflicting_storm_maintenance_result.valid,
+		'multiple Storm II maintenance spells must conflict')
+	assert_true(find_issue(conflicting_storm_maintenance_result.errors,
+		'sch_accession_maintenance_spell_conflict') ~= nil,
+		'Storm II maintenance conflict issue mismatch')
 
 	local invalid_stratagems = valid_config()
 	invalid_stratagems.support.regen.stratagems = { 'Accession' }
