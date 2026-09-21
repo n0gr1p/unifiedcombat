@@ -20,6 +20,7 @@ internal static class RuntimeProfileEditorAdapter
             "weaponskill_options",
             "path_pull_ja_options",
             "path_pull_spell_options",
+            "resurrection_options",
             "cor_roll_options",
             "brd_song_options",
             "party_options",
