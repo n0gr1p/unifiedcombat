@@ -4885,6 +4885,28 @@ public partial class MainForm
 		OnNyzulConfigChanged();
 	}
 
+    private void OnDefProviderSelected()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        var prov = (_defProviderCombo.SelectedItem as string) ?? "internal";
+        if (prov != "internal" && prov != "healbot")
+        {
+            prov = "internal";
+        }
+
+        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_provider", ["value"] = prov });
+    }
+
     private void ApplyDefResurrectionPriority(JsonElement s)
     {
         var configured = SessionStateHelper.SplitOptions(
@@ -4992,28 +5014,6 @@ public partial class MainForm
         _defResurrectionPriority.Items.Insert(next, item);
         _defResurrectionPriority.SelectedIndex = next;
         SendDefResurrectionPriority();
-    }
-
-    private void OnDefProviderSelected()
-    {
-        if (_suppressEvents)
-        {
-            return;
-        }
-
-        var sid = RequireSelectedSid();
-        if (sid is null)
-        {
-            return;
-        }
-
-        var prov = (_defProviderCombo.SelectedItem as string) ?? "internal";
-        if (prov != "internal" && prov != "healbot")
-        {
-            prov = "internal";
-        }
-
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_provider", ["value"] = prov });
     }
 
     private static string CleanStatusRemovalPriority(string raw)
