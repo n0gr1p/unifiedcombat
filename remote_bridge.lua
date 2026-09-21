@@ -867,6 +867,58 @@ local function uc_get_enemy_spell_names()
 	return uc_unique_sorted(out)
 end
 
+local function uc_get_resurrection_spell_names()
+	local allowed = {
+		['Arise'] = true,
+		['Raise III'] = true,
+		['Raise II'] = true,
+		['Raise'] = true,
+	}
+	local function known_flag(v)
+		return v == true or v == 1 or v == 'true'
+	end
+	local function job_id_by_short(short_name)
+		local j = res.jobs:with('english_short', tostring(short_name or ''))
+		return tonumber(j and j.id) or 0
+	end
+	local function usable(sp)
+		if type(sp) ~= 'table' then return false end
+		local p = windower.ffxi.get_player() or {}
+		local main_id = tonumber(p.main_job_id) or job_id_by_short(p.main_job)
+		local sub_id = tonumber(p.sub_job_id) or job_id_by_short(p.sub_job)
+		local main_lvl = tonumber(p.main_job_level) or tonumber(p.main_job_lv) or 99
+		local sub_lvl = tonumber(p.sub_job_level) or tonumber(p.sub_job_lv) or 49
+		local jp_spent = 0
+		local jp = type(p.job_points) == 'table' and p.job_points or nil
+		local row = jp and jp[tostring(p.main_job or ''):lower()] or nil
+		jp_spent = tonumber(row and row.jp_spent) or 0
+		local jobs = sp.jobs or sp.levels
+		if type(jobs) ~= 'table' then return true end
+		local req_main = tonumber(jobs[main_id] or jobs[tostring(main_id)])
+		if req_main and req_main > 0 and (main_lvl >= req_main or jp_spent >= req_main) then return true end
+		local req_sub = tonumber(jobs[sub_id] or jobs[tostring(sub_id)])
+		return req_sub ~= nil and req_sub > 0 and sub_lvl >= req_sub
+	end
+	local out = {}
+	local known = windower.ffxi.get_spells() or {}
+	for id, has in pairs(known) do
+		if known_flag(has) then
+			local sp = res.spells[tonumber(id) or 0]
+			if sp and allowed[sp.en] == true and usable(sp) then
+				out[#out + 1] = sp.en
+			end
+		end
+	end
+	local preferred = { 'Arise', 'Raise III', 'Raise II', 'Raise' }
+	local present = {}
+	for _, name in ipairs(out) do present[name] = true end
+	local ordered = {}
+	for _, name in ipairs(preferred) do
+		if present[name] then ordered[#ordered + 1] = name end
+	end
+	return ordered
+end
+
 local function uc_get_ability_signature()
 	local p = windower.ffxi.get_player()
 	local info = windower.ffxi.get_info()
@@ -1081,6 +1133,7 @@ local function process_line(line)
 			weaponskill_options = uc_join_pipe(uc_get_weaponskill_names()),
 			path_pull_ja_options = select(1, uc_get_cached_pull_action_options()),
 			path_pull_spell_options = select(2, uc_get_cached_pull_action_options()),
+			resurrection_options = uc_join_pipe(uc_get_resurrection_spell_names()),
 			cor_roll_options = uc_join_pipe(uc_get_roll_ability_names()),
 			brd_song_options = uc_join_pipe(uc_get_bard_song_names()),
 			party_options = uc_join_pipe(select(1, uc_get_party_name_maps(false))),

@@ -4385,6 +4385,7 @@ local function p1_collect_proposals(ctx)
 		defensive_evidence_current = true
 		scheduler.providers.charm_sleeper.collect(ctx, out)
 		scheduler.providers.sleep_waker.collect(ctx, out)
+		scheduler.providers.defensive.collect_resurrection(ctx, out)
 		scheduler.providers.enemy_debuff_maintenance.collect(ctx, out)
 		scheduler.providers.enemy_buff_removal.collect(ctx, out)
 		scheduler.providers.defensive.collect_internal(ctx, out)
@@ -5942,6 +5943,11 @@ local function p1_dispatch_defensive_internal(selected, settings)
 		and detail.cure_intent == 'sleep_wake' then
 		scheduler.providers.sleep_waker.note_dispatch(selected, now_gate)
 	end
+	if defensive_command_ownership_status.dispatch_ok == true
+		and type(detail) == 'table'
+		and detail.def_action_type == 'resurrection' then
+		scheduler.providers.defensive.note_dispatch(selected, now_gate)
+	end
 	local target_hpp = tonumber(type(detail) == 'table' and detail.target_hpp or -1) or -1
 	scheduler.p1_maybe_clear_pending_engage_for_selected_critical(settings, selected)
 	local can_apply_defensive_spell_lock = (
@@ -5965,7 +5971,9 @@ local function p1_dispatch_defensive_internal(selected, settings)
 		local is_cure = tostring(type(detail) == 'table' and detail.def_action_type or '') == 'cure'
 		local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', settings and settings.defensive_critical_hpp)) or 35
 		local event_code = 'MAINT_BUFF_DISPATCHED'
-		if is_cure then
+		if tostring(type(detail) == 'table' and detail.def_action_type or '') == 'resurrection' then
+			event_code = 'RESURRECTION_DISPATCHED'
+		elseif is_cure then
 			if tostring(type(detail) == 'table' and detail.cure_intent or '') == 'sleep_wake' then
 				event_code = 'SLEEP_WAKE_DISPATCHED'
 			else
@@ -8247,6 +8255,9 @@ scheduler.providers.defensive = require('uc_provider_defensive').new({
 		return action_effective_range(resource.range)
 	end,
 	build_action_command = build_action_command,
+	get_party_members = get_party_members,
+	in_party_cast_range = in_party_cast_range,
+	log = log_def_sched,
 	cure_target_allowed = function(target_id, target_kind)
 		if tostring(target_kind or '') == 'self' then
 			return true

@@ -346,6 +346,15 @@ internal static class StructuredProfileV2Writer
             .Add("enabled", ReadBool(flatProfile, "defensive_enabled", false))
             .Add("provider", ReadString(flatProfile, "defensive_provider", "internal"))
             .Add(
+                "resurrection",
+                new StructuredProfileNode()
+                    .Add("enabled", ReadBool(flatProfile, "defensive_resurrection_enabled", false))
+                    .Add(
+                        "priority",
+                        SplitPipeList(ReadString(flatProfile, "defensive_resurrection_priority", "Arise|Raise III|Raise II|Raise"))
+                    )
+            )
+            .Add(
                 "cure",
                 new StructuredProfileNode()
                     .Add("enabled", ReadBool(flatProfile, "defensive_cure_enabled", false))

@@ -936,6 +936,10 @@ local function default_config(meta)
         defensive = {
             enabled = false,
             provider = 'internal',
+            resurrection = {
+                enabled = false,
+                priority = { 'Arise', 'Raise III', 'Raise II', 'Raise' },
+            },
             cure = {
                 enabled = false,
                 min_tier = 3,
@@ -1568,9 +1572,12 @@ end
 local function normalize_defensive(source, config)
     local defensive = config.defensive
     local nested = get_path(source, { 'defensive' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'provider', 'cure', 'waltz', 'doom', 'charm_sleeper', 'sleep_waker', 'na', 'enemy_buffs', 'enemy_debuffs', 'buffs', 'thresholds' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'provider', 'resurrection', 'cure', 'waltz', 'doom', 'charm_sleeper', 'sleep_waker', 'na', 'enemy_buffs', 'enemy_debuffs', 'buffs', 'thresholds' }) then
         defensive.enabled = normalize_boolean(nested.enabled, defensive.enabled)
         defensive.provider = normalize_string(nested.provider, defensive.provider)
+        local resurrection = is_table(nested.resurrection) and nested.resurrection or {}
+        defensive.resurrection.enabled = normalize_boolean(resurrection.enabled, defensive.resurrection.enabled)
+        defensive.resurrection.priority = normalize_pipe_string_list(resurrection.priority, defensive.resurrection.priority)
         local cure = is_table(nested.cure) and nested.cure or {}
         defensive.cure.enabled = normalize_boolean(cure.enabled, defensive.cure.enabled)
         defensive.cure.min_tier = normalize_number(cure.min_tier, defensive.cure.min_tier, { integer = true })
@@ -1612,6 +1619,8 @@ local function normalize_defensive(source, config)
     else
         defensive.enabled = normalize_boolean(first_path(source, { path('defensive_enabled') }), defensive.enabled)
         defensive.provider = normalize_string(first_path(source, { path('defensive_provider') }), defensive.provider)
+        defensive.resurrection.enabled = normalize_boolean(first_path(source, { path('defensive_resurrection_enabled') }), defensive.resurrection.enabled)
+        defensive.resurrection.priority = normalize_pipe_string_list(first_path(source, { path('defensive_resurrection_priority') }), defensive.resurrection.priority)
         defensive.cure.enabled = normalize_boolean(first_path(source, { path('defensive_cure_enabled') }), defensive.cure.enabled)
         defensive.cure.min_tier = normalize_number(first_path(source, { path('def_heal_min_tier_cure') }), defensive.cure.min_tier, { integer = true })
         defensive.cure.max_tier = normalize_number(first_path(source, { path('def_heal_max_tier_cure') }), defensive.cure.max_tier, { integer = true })

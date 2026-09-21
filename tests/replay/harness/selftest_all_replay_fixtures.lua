@@ -95,6 +95,7 @@ local SELFTESTS = {
 	"tests/replay/harness/selftest_na_status_removal_priority.lua",
 	"tests/replay/harness/selftest_charm_sleeper.lua",
 	"tests/replay/harness/selftest_sleep_waker.lua",
+	"tests/replay/harness/selftest_defensive_resurrection.lua",
     "tests/replay/harness/selftest_tank_engage_priority.lua",
     "tests/replay/harness/selftest_fight_leader_engage.lua",
     "tests/replay/harness/selftest_tank_configured_ja_starvation.lua",

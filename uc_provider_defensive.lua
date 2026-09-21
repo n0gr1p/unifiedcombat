@@ -1,5 +1,15 @@
 local M = {}
 
+local RESURRECTION_OBSERVATION_GATE_S = 0.35
+local RESURRECTION_ATTEMPT_GAP_S = 30.0
+local DEFAULT_RESURRECTION_PRIORITY = { 'Arise', 'Raise III', 'Raise II', 'Raise' }
+local RESURRECTION_NAMES = {
+	['Arise'] = true,
+	['Raise III'] = true,
+	['Raise II'] = true,
+	['Raise'] = true,
+}
+
 local function require_table(value, name)
 	if type(value) ~= 'table' then
 		error(('uc_provider_defensive %s must be a table'):format(name))
@@ -26,12 +36,198 @@ function M.new(deps)
 	local build_action_command = require_function(deps, 'build_action_command')
 	local cure_target_allowed = require_function(deps, 'cure_target_allowed')
 	local clamp_urgency = require_function(deps, 'clamp_urgency')
+	local get_party_members = deps.get_party_members
+	if get_party_members ~= nil and type(get_party_members) ~= 'function' then
+		error('uc_provider_defensive deps.get_party_members must be a function')
+	end
+	local in_party_cast_range = deps.in_party_cast_range
+	if in_party_cast_range ~= nil and type(in_party_cast_range) ~= 'function' then
+		error('uc_provider_defensive deps.in_party_cast_range must be a function')
+	end
+	local log = type(deps.log) == 'function' and deps.log or function() end
 	local critical_cure_priority = tonumber(deps.critical_cure_priority)
 	if critical_cure_priority == nil then
 		error('uc_provider_defensive deps.critical_cure_priority must be numeric')
 	end
 
+	local resurrection_state = {
+		observed = {},
+		attempts = {},
+	}
 	local provider = {}
+
+	local function parse_resurrection_priority(value)
+		local out = {}
+		local seen = {}
+		local function add(name)
+			name = tostring(name or ''):gsub('^%s+', ''):gsub('%s+$', '')
+			if RESURRECTION_NAMES[name] == true and not seen[name] then
+				seen[name] = true
+				out[#out + 1] = name
+			end
+		end
+		if type(value) == 'table' then
+			for i = 1, #value do
+				add(value[i])
+			end
+		elseif type(value) == 'string' then
+			for name in value:gmatch('[^|,]+') do
+				add(name)
+			end
+		end
+		if #out == 0 then
+			for _, name in ipairs(DEFAULT_RESURRECTION_PRIORITY) do
+				add(name)
+			end
+		end
+		return out
+	end
+
+	local function clear_resurrection_target(target_id)
+		local tid = tonumber(target_id) or 0
+		if tid > 0 then
+			resurrection_state.observed[tid] = nil
+			resurrection_state.attempts[tid] = nil
+		end
+	end
+
+	function provider.collect_resurrection(ctx, out)
+		require_table(ctx, 'ctx')
+		require_table(out, 'out')
+		if type(get_party_members) ~= 'function' or type(in_party_cast_range) ~= 'function' then
+			return
+		end
+		local settings = require_table(ctx.settings, 'ctx.settings')
+		local enabled = bool_setting(
+			active_value_or_flat('config.defensive.enabled', settings.defensive_enabled),
+			false
+		) and bool_setting(
+			active_value_or_flat('config.defensive.resurrection.enabled', settings.defensive_resurrection_enabled),
+			false
+		)
+		if not enabled then
+			resurrection_state.observed = {}
+			resurrection_state.attempts = {}
+			return
+		end
+
+		local priority = parse_resurrection_priority(active_value_or_flat(
+			'config.defensive.resurrection.priority',
+			settings.defensive_resurrection_priority
+		))
+		local active_dead_ids = {}
+		for _, member in ipairs(get_party_members(ctx)) do
+			local tid = tonumber(member.id) or 0
+			local hpp = tonumber(member.hpp) or 100
+			local is_human_ally = tid > 0
+				and member.is_self ~= true
+				and member.is_npc ~= true
+				and tonumber(member.spawn_type) ~= 14
+			if is_human_ally and hpp <= 0 then
+				active_dead_ids[tid] = true
+				if not in_party_cast_range(member) then
+					log(('RESURRECTION_REJECT target="%s" reason=OUT_OF_RANGE'):format(tostring(member.name or '?')))
+				else
+					local observed = resurrection_state.observed[tid]
+					if type(observed) ~= 'table' then
+						resurrection_state.observed[tid] = { first_seen_at = ctx.now }
+						log(('RESURRECTION_REJECT target="%s" reason=OBSERVATION_GATE'):format(tostring(member.name or '?')))
+					elseif (ctx.now - (tonumber(observed.first_seen_at) or ctx.now)) >= RESURRECTION_OBSERVATION_GATE_S then
+						local attempt = resurrection_state.attempts[tid]
+						if type(attempt) == 'table' and (ctx.now - (tonumber(attempt.at) or 0)) < RESURRECTION_ATTEMPT_GAP_S then
+							log(('RESURRECTION_REJECT target="%s" reason=ATTEMPT_GATE'):format(tostring(member.name or '?')))
+						else
+							for index, action_name in ipairs(priority) do
+								local ready, ready_reason, action_kind = action_ready(action_name, tid)
+								if ready and action_kind == 'spell' then
+									local target_range = action_range(action_name, 'spell')
+									if type(target_range) ~= 'number' or target_range < 0 then
+										error(('resurrection action range is invalid for %s'):format(action_name))
+									end
+									out[#out + 1] = {
+										proposal_id = ('def.internal.resurrection.%s.%d.%d'):format(action_name, tid, math.floor(ctx.now * 1000)),
+										family_id = 'def.internal.resurrection',
+										provider = 'defensive_internal',
+										action_type = 'spell',
+										action_name = action_name,
+										target_kind = 'ally',
+										target_id = tid,
+										target_name = tostring(member.name or ''),
+										priority_band = critical_cure_priority,
+										urgency = clamp_urgency(1.0),
+										starvation_eligible = false,
+										created_at = ctx.now,
+										expires_at = ctx.now + 0.40,
+										commit_deadline = ctx.now + 0.25,
+										movement_policy = 'must_stop',
+										range_policy = { min = 0.0, max = target_range, los_required = true },
+										recast_key = ('spell:%s'):format(action_name),
+										duplicate_suppression_key = ('resurrection:%d'):format(tid),
+										lock_class = 'support_action',
+										expected_ack = 'action_start',
+										expected_effect = 'spell_effect',
+										sticky = false,
+										can_preempt_movement = true,
+										can_preempt_same_band = false,
+										reason_code = 'downed_party_member',
+										detail = {
+											def_action_type = 'resurrection',
+											target_hpp = 0,
+											resurrection_priority_index = index,
+										},
+										legacy_command = build_action_command(action_name, 'spell', member),
+									}
+									log(('RESURRECTION_ACCEPT target="%s" action="%s" priority=%d'):format(
+										tostring(member.name or '?'), action_name, index
+									))
+									break
+								else
+									log(('RESURRECTION_SKIP target="%s" action="%s" reason=%s'):format(
+										tostring(member.name or '?'), action_name, tostring(ready_reason or 'NOT_READY')
+									))
+								end
+							end
+						end
+					end
+				end
+			else
+				clear_resurrection_target(tid)
+			end
+		end
+		for tid in pairs(resurrection_state.observed) do
+			if active_dead_ids[tid] ~= true then
+				clear_resurrection_target(tid)
+			end
+		end
+		for tid in pairs(resurrection_state.attempts) do
+			if active_dead_ids[tid] ~= true then
+				clear_resurrection_target(tid)
+			end
+		end
+	end
+
+	function provider.note_dispatch(selected, at)
+		local detail = type(selected) == 'table' and selected.detail or nil
+		if type(detail) ~= 'table' or detail.def_action_type ~= 'resurrection' then
+			return false
+		end
+		local tid = tonumber(selected.target_id) or 0
+		local dispatched_at = tonumber(at)
+		if tid <= 0 or dispatched_at == nil then
+			error('resurrection dispatch requires target id and numeric time')
+		end
+		resurrection_state.attempts[tid] = {
+			at = dispatched_at,
+			action_name = tostring(selected.action_name or ''),
+		}
+		return true
+	end
+
+	provider._resurrection_test = {
+		state = resurrection_state,
+		observation_gate_s = RESURRECTION_OBSERVATION_GATE_S,
+		attempt_gap_s = RESURRECTION_ATTEMPT_GAP_S,
+	}
 
 	function provider.collect_internal(ctx, out)
 		require_table(ctx, 'ctx')
