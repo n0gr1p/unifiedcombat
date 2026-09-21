@@ -572,6 +572,10 @@ local function apply_structured_config_to_candidate(candidate, config)
 	if type(config.defensive) == 'table' then
 		candidate.defensive_enabled = config.defensive.enabled
 		candidate.defensive_provider = config.defensive.provider
+		if type(config.defensive.resurrection) == 'table' then
+			candidate.defensive_resurrection_enabled = config.defensive.resurrection.enabled
+			candidate.defensive_resurrection_priority = clone_value(config.defensive.resurrection.priority)
+		end
 		if type(config.defensive.cure) == 'table' then
 			candidate.defensive_cure_enabled = config.defensive.cure.enabled
 			candidate.def_heal_min_tier_cure = config.defensive.cure.min_tier
