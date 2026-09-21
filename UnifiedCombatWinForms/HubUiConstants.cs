@@ -9,6 +9,7 @@ internal static class HubUiConstants
         "show_ingame_ui",
         "defensive_enabled",
         "defensive_cure_enabled",
+        "defensive_resurrection_enabled",
         "defensive_curaga_enabled",
         "defensive_waltz_enabled",
         "defensive_doom_water",
@@ -71,6 +72,7 @@ internal static class HubUiConstants
     {
         ["defensive_enabled"] = "Healer Enabled",
         ["defensive_cure_enabled"] = "Allow Cures",
+        ["defensive_resurrection_enabled"] = "Raise downed teammates",
         ["defensive_curaga_enabled"] = "Use Curaga",
         ["defensive_waltz_enabled"] = "Use Dancer Waltzes",
         ["defensive_doom_water"] = "Doom water",
@@ -139,6 +141,7 @@ internal static class HubUiConstants
     [
         "defensive_enabled",
         "defensive_cure_enabled",
+        "defensive_resurrection_enabled",
         "defensive_curaga_enabled",
         "defensive_waltz_enabled",
         "defensive_doom_water",
