@@ -632,6 +632,7 @@ internal static class StructuredProfileV2WriterTests
                 {
                     "defensive_enabled",
                     "defensive_cure_enabled",
+                    "defensive_resurrection_enabled",
                     "defensive_curaga_enabled",
                     "defensive_waltz_enabled",
                     "defensive_doom_water",
@@ -2415,6 +2416,8 @@ internal static class StructuredProfileV2WriterTests
             ["aftermath_ws"] = "Atonement",
             ["defensive_enabled"] = true,
             ["defensive_provider"] = "internal",
+            ["defensive_resurrection_enabled"] = true,
+            ["defensive_resurrection_priority"] = "Arise|Raise III|Raise",
             ["defensive_cure_enabled"] = true,
             ["def_heal_min_tier_cure"] = 3,
             ["def_heal_max_tier_cure"] = 4,
