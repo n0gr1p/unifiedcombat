@@ -376,10 +376,10 @@ return M
 							end
 						end
 					end
+				end
+			else
+				clear_resurrection_target(tid)
 			end
-		else
-			clear_resurrection_target(tid)
-		end
 		end
 		for tid in pairs(resurrection_state.observed) do
 			if active_dead_ids[tid] ~= true then
