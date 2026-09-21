@@ -20,6 +20,7 @@ internal static class RuntimeProfileEditorAdapter
             "weaponskill_options",
             "path_pull_ja_options",
             "path_pull_spell_options",
+            "resurrection_options",
             "cor_roll_options",
             "brd_song_options",
             "party_options",
@@ -33,6 +34,7 @@ internal static class RuntimeProfileEditorAdapter
 
         profile["party_follow_selected"] = RequiredString(profile, "party_follow_leader_name");
         CopyStringArrayAsPipe(profile, "abilities", "abilities_selected");
+        CopyStringArrayAsPipe(profile, "defensive_resurrection_priority", "defensive_resurrection_priority");
         CopyStringArrayAsPipe(profile, "tank_enmity_actions", "tank_enmity_actions");
         FlattenRunTank(profile);
         CopyStringArrayAsPipe(profile, "nyzul_parking_order", "nyzul_parking_order");
