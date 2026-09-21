@@ -660,6 +660,7 @@ public partial class MainForm
         var wsOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("weaponskill_options", out var wso) ? wso : default);
         var pullJaOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("path_pull_ja_options", out var pjo) ? pjo : default);
         var pullSpellOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("path_pull_spell_options", out var pso) ? pso : default);
+        var resurrectionOpts = SessionStateHelper.SplitOptions(s.TryGetProperty("resurrection_options", out var rso) ? rso : default);
         var tankEnmityActions = SessionStateHelper.SplitOptions(s.TryGetProperty("tank_enmity_actions", out var tea) ? tea : default);
         var partyOptsLive = CurrentSelectablePartyNameOptions(
             SessionStateHelper.SplitOptions(s.TryGetProperty("party_options", out var pto) ? pto : default)
@@ -809,6 +810,13 @@ public partial class MainForm
             _defHealMaxTier.Text = SessionStateHelper.GetString(s, "def_heal_max_tier_cure", "4");
             _defHealMinMissingHp.Text = SessionStateHelper.GetString(s, "def_heal_min_missing_hp", "250");
             _defHealIgnoreTrusts.Checked = SessionStateHelper.GetBool(s, "def_heal_ignore_trusts", true);
+            if (!SequenceEqualOrdinal(_defResurrectionOptions, resurrectionOpts))
+            {
+                _defResurrectionOptions.Clear();
+                _defResurrectionOptions.AddRange(resurrectionOpts);
+            }
+            ApplyDefResurrectionPriority(s);
+            RefreshDefResurrectionOptions();
             _defCuragaMinTargets.Value = Math.Clamp(SessionStateHelper.GetInt(s, "defensive_curaga_min_targets", 3), 2, 6);
             _defWaltzTpReserve.Value = Math.Clamp(SessionStateHelper.GetInt(s, "defensive_waltz_tp_reserve", 0), 0, 3000);
             _defDivineWaltzMinTargets.Value = Math.Clamp(SessionStateHelper.GetInt(s, "defensive_divine_waltz_min_targets", 3), 2, 6);
@@ -1008,10 +1016,11 @@ public partial class MainForm
         var hasWs = s.TryGetProperty("weaponskill_options", out var wso) && wso.ValueKind == JsonValueKind.String;
         var hasPullJa = s.TryGetProperty("path_pull_ja_options", out var pjo) && pjo.ValueKind == JsonValueKind.String;
         var hasPullSpell = s.TryGetProperty("path_pull_spell_options", out var pso) && pso.ValueKind == JsonValueKind.String;
+        var hasResurrection = s.TryGetProperty("resurrection_options", out var rso) && rso.ValueKind == JsonValueKind.String;
         var hasCorRolls = s.TryGetProperty("cor_roll_options", out var cro) && cro.ValueKind == JsonValueKind.String;
         var hasBrdSongs = s.TryGetProperty("brd_song_options", out var bso) && bso.ValueKind == JsonValueKind.String;
         var hasPartyOpts = s.TryGetProperty("party_options", out var po) && po.ValueKind == JsonValueKind.String;
-        if (!hasAbility && !hasWs && !hasPullJa && !hasPullSpell && !hasCorRolls && !hasBrdSongs && !hasPartyOpts)
+        if (!hasAbility && !hasWs && !hasPullJa && !hasPullSpell && !hasResurrection && !hasCorRolls && !hasBrdSongs && !hasPartyOpts)
         {
             return;
         }
@@ -1020,6 +1029,7 @@ public partial class MainForm
         var wsOpts = SessionStateHelper.SplitOptions(hasWs ? wso : default);
         var pullJaOpts = SessionStateHelper.SplitOptions(hasPullJa ? pjo : default);
         var pullSpellOpts = SessionStateHelper.SplitOptions(hasPullSpell ? pso : default);
+        var resurrectionOpts = SessionStateHelper.SplitOptions(hasResurrection ? rso : default);
         var corRollOpts = SessionStateHelper.SplitOptions(hasCorRolls ? cro : default);
         var brdSongOpts = SessionStateHelper.SplitOptions(hasBrdSongs ? bso : default);
         var partyOpts = CurrentSelectablePartyNameOptions(SessionStateHelper.SplitOptions(hasPartyOpts ? po : default));
@@ -1067,6 +1077,13 @@ public partial class MainForm
                 UpdateEncounterUiState();
                 RefreshMagicBurstSpellOptions();
                 RefreshReactionActionSpellOptions();
+                changed = true;
+            }
+            if (hasResurrection && !SequenceEqualOrdinal(_defResurrectionOptions, resurrectionOpts))
+            {
+                _defResurrectionOptions.Clear();
+                _defResurrectionOptions.AddRange(resurrectionOpts);
+                RefreshDefResurrectionOptions();
                 changed = true;
             }
             if (hasCorRolls && !SequenceEqualOrdinal(_corRollOptions, corRollOpts))
@@ -4867,6 +4884,115 @@ public partial class MainForm
 		_nyzulParkingList.SelectedIndex = next;
 		OnNyzulConfigChanged();
 	}
+
+    private void ApplyDefResurrectionPriority(JsonElement s)
+    {
+        var configured = SessionStateHelper.SplitOptions(
+            s.TryGetProperty("defensive_resurrection_priority", out var priority) ? priority : default
+        );
+        if (configured.Count == 0)
+        {
+            configured = new List<string> { "Arise", "Raise III", "Raise II", "Raise" };
+        }
+        _defResurrectionPriority.BeginUpdate();
+        try
+        {
+            _defResurrectionPriority.Items.Clear();
+            foreach (var name in configured.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                _defResurrectionPriority.Items.Add(name);
+            }
+        }
+        finally
+        {
+            _defResurrectionPriority.EndUpdate();
+        }
+    }
+
+    private void RefreshDefResurrectionOptions()
+    {
+        var current = _defResurrectionCombo.SelectedItem?.ToString() ?? "";
+        var available = _defResurrectionOptions
+            .Where(x => !_defResurrectionPriority.Items.Cast<object>()
+                .Any(y => string.Equals(y?.ToString(), x, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        ComboBoxOptionUpdater.ReplaceItemsPreservingTextIfChanged(_defResurrectionCombo, available, current);
+        if (_defResurrectionCombo.SelectedIndex < 0 && _defResurrectionCombo.Items.Count > 0)
+        {
+            _defResurrectionCombo.SelectedIndex = 0;
+        }
+    }
+
+    private void SendDefResurrectionPriority()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+        var value = string.Join("|", _defResurrectionPriority.Items.Cast<object>()
+            .Select(x => x?.ToString()?.Trim() ?? "")
+            .Where(x => x.Length > 0));
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "defensive_resurrection_priority",
+            ["value"] = value,
+        });
+    }
+
+    private void AddDefResurrection()
+    {
+        var name = _defResurrectionCombo.SelectedItem?.ToString()?.Trim() ?? "";
+        if (name.Length == 0)
+        {
+            return;
+        }
+        if (_defResurrectionPriority.Items.Cast<object>().Any(
+            x => string.Equals(x?.ToString(), name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+        _defResurrectionPriority.Items.Add(name);
+        _defResurrectionPriority.SelectedIndex = _defResurrectionPriority.Items.Count - 1;
+        SendDefResurrectionPriority();
+        RefreshDefResurrectionOptions();
+    }
+
+    private void RemoveDefResurrection()
+    {
+        var index = _defResurrectionPriority.SelectedIndex;
+        if (index < 0)
+        {
+            return;
+        }
+        _defResurrectionPriority.Items.RemoveAt(index);
+        if (_defResurrectionPriority.Items.Count > 0)
+        {
+            _defResurrectionPriority.SelectedIndex = Math.Min(index, _defResurrectionPriority.Items.Count - 1);
+        }
+        SendDefResurrectionPriority();
+        RefreshDefResurrectionOptions();
+    }
+
+    private void MoveDefResurrection(int delta)
+    {
+        var index = _defResurrectionPriority.SelectedIndex;
+        var next = index + delta;
+        if (index < 0 || next < 0 || next >= _defResurrectionPriority.Items.Count)
+        {
+            return;
+        }
+        var item = _defResurrectionPriority.Items[index];
+        _defResurrectionPriority.Items.RemoveAt(index);
+        _defResurrectionPriority.Items.Insert(next, item);
+        _defResurrectionPriority.SelectedIndex = next;
+        SendDefResurrectionPriority();
+    }
 
     private void OnDefProviderSelected()
     {
