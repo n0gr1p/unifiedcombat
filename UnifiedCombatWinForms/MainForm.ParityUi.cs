@@ -54,6 +54,13 @@ public partial class MainForm
     private TextBox _defHealMaxTier = null!;
     private TextBox _defHealMinMissingHp = null!;
     private CheckBox _defHealIgnoreTrusts = null!;
+    private ComboBox _defResurrectionCombo = null!;
+    private ListBox _defResurrectionPriority = null!;
+    private Button _defResurrectionAdd = null!;
+    private Button _defResurrectionRemove = null!;
+    private Button _defResurrectionUp = null!;
+    private Button _defResurrectionDown = null!;
+    private readonly List<string> _defResurrectionOptions = [];
     private NumericUpDown _defCuragaMinTargets = null!;
     private NumericUpDown _defWaltzTpReserve = null!;
     private NumericUpDown _defDivineWaltzMinTargets = null!;
@@ -692,6 +699,36 @@ public partial class MainForm
         rightCol.Controls.Add(defensiveToggles, 0, dr);
         rightCol.SetColumnSpan(defensiveToggles, 2);
         dr++;
+
+        rightCol.Controls.Add(new Label { Text = "Resurrection Priority", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
+        var resurrectionPanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            Dock = DockStyle.Top,
+        };
+        var resurrectionPick = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        _defResurrectionCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 170 };
+        _defResurrectionAdd = new Button { Text = "Add", AutoSize = true };
+        _defResurrectionAdd.Click += (_, _) => AddDefResurrection();
+        resurrectionPick.Controls.Add(_defResurrectionCombo);
+        resurrectionPick.Controls.Add(_defResurrectionAdd);
+        resurrectionPanel.Controls.Add(resurrectionPick);
+        _defResurrectionPriority = new ListBox { Width = 220, Height = 72, IntegralHeight = false };
+        resurrectionPanel.Controls.Add(_defResurrectionPriority);
+        var resurrectionButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        _defResurrectionRemove = new Button { Text = "Remove", AutoSize = true };
+        _defResurrectionRemove.Click += (_, _) => RemoveDefResurrection();
+        _defResurrectionUp = new Button { Text = "Up", AutoSize = true };
+        _defResurrectionUp.Click += (_, _) => MoveDefResurrection(-1);
+        _defResurrectionDown = new Button { Text = "Down", AutoSize = true };
+        _defResurrectionDown.Click += (_, _) => MoveDefResurrection(1);
+        resurrectionButtons.Controls.AddRange(new Control[] { _defResurrectionRemove, _defResurrectionUp, _defResurrectionDown });
+        resurrectionPanel.Controls.Add(resurrectionButtons);
+        rightCol.Controls.Add(resurrectionPanel, 1, dr);
+        dr++;
+
         rightCol.Controls.Add(new Label { Text = "Status Removal Priority", AutoSize = true, Anchor = AnchorStyles.Left }, 0, dr);
         _defNaPriority = new TextBox
         {
