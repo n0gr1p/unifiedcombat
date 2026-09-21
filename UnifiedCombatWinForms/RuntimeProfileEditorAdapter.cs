@@ -33,6 +33,7 @@ internal static class RuntimeProfileEditorAdapter
 
         profile["party_follow_selected"] = RequiredString(profile, "party_follow_leader_name");
         CopyStringArrayAsPipe(profile, "abilities", "abilities_selected");
+        CopyStringArrayAsPipe(profile, "defensive_resurrection_priority", "defensive_resurrection_priority");
         CopyStringArrayAsPipe(profile, "tank_enmity_actions", "tank_enmity_actions");
         FlattenRunTank(profile);
         CopyStringArrayAsPipe(profile, "nyzul_parking_order", "nyzul_parking_order");
