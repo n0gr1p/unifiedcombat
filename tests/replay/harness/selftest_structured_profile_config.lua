@@ -368,6 +368,35 @@ local function main()
 	local recovery_default_diff = profile_v2.diff_durable_config(recovery_default, legacy_recovery_profile)
 	assert_equal(recovery_default_diff.count, 0, "profiles missing recovery hold must remain compatible with default false")
 
+	local legacy_resurrection_payload = build_structured_payload()
+	assert_true(
+		legacy_resurrection_payload.config.defensive.resurrection == nil,
+		"legacy resurrection regression fixture must omit the new resurrection subdomain"
+	)
+	local current_with_resurrection = build_flat_settings()
+	current_with_resurrection.defensive_resurrection_enabled = true
+	current_with_resurrection.defensive_resurrection_priority = { "Arise", "Raise III" }
+	local legacy_resurrection_apply = profile_v2.build_settings_candidate_from_structured_profile(
+		current_with_resurrection,
+		legacy_resurrection_payload,
+		{ character = "Redrogue", main_job = "PLD", sub_job = "WAR" }
+	)
+	assert_true(
+		legacy_resurrection_apply.ok == true,
+		"pre-resurrection Profile V2 must still convert when the live session currently has Raise enabled: "
+			.. tostring(legacy_resurrection_apply.error or legacy_resurrection_apply.detail)
+	)
+	assert_equal(
+		legacy_resurrection_apply.candidate_config.defensive.resurrection.enabled,
+		false,
+		"pre-resurrection Profile V2 must default resurrection disabled"
+	)
+	assert_equal(
+		legacy_resurrection_apply.candidate_config.defensive.resurrection.priority[1],
+		"Arise",
+		"pre-resurrection Profile V2 must receive the canonical resurrection priority"
+	)
+
     local unrelated_ownership = deep_clone(structured_config)
     unrelated_ownership.ownership.domain_follow_enabled = false
     local unrelated_diff = profile_v2.diff_durable_config(unrelated_ownership, structured_config)
