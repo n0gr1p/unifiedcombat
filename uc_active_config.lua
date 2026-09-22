@@ -393,6 +393,36 @@ local function normalize_defensive_compatibility(config)
 	end
 	local defensive = config.defensive
 
+	local resurrection = defensive.resurrection
+	if resurrection == nil then
+		-- Profiles captured before resurrection support existed must remain valid.
+		-- Treat the missing subdomain as the feature's safe default rather than
+		-- inheriting a newer live session's resurrection settings.
+		defensive.resurrection = {
+			enabled = false,
+			priority = { 'Arise', 'Raise III', 'Raise II', 'Raise' },
+		}
+	elseif type(resurrection) ~= 'table' then
+		return false, 'config.defensive.resurrection must be a table'
+	else
+		if resurrection.enabled == nil then
+			resurrection.enabled = false
+		elseif type(resurrection.enabled) ~= 'boolean' then
+			return false, 'config.defensive.resurrection.enabled must be a boolean'
+		end
+		if resurrection.priority == nil then
+			resurrection.priority = { 'Arise', 'Raise III', 'Raise II', 'Raise' }
+		elseif type(resurrection.priority) ~= 'table' then
+			return false, 'config.defensive.resurrection.priority must be a table'
+		else
+			for i = 1, #resurrection.priority do
+				if type(resurrection.priority[i]) ~= 'string' then
+					return false, 'config.defensive.resurrection.priority entries must be strings'
+				end
+			end
+		end
+	end
+
 	if type(defensive.cure) == 'table' then
 		local curaga = defensive.cure.curaga
 		if curaga == nil then
