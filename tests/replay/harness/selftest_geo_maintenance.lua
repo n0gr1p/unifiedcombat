@@ -317,8 +317,22 @@ local moving_provider = geo_maintenance.new({
 })
 out = {}
 moving_provider.collect(context(7.0), out)
-assert_equal(#out, 0, 'moving player must not emit GEO spells')
-assert_equal(moving_provider.status.reason, 'player_moving', 'moving hold reason mismatch')
+assert_equal(#out, 1, 'moving player must still emit scheduler-coordinated GEO recovery')
+assert_equal(out[1].action_name, 'Geo-Frailty', 'moving GEO recovery action mismatch')
+assert_equal(out[1].priority_band, 240, 'moving GEO recovery must retain creation priority')
+
+local dead_luopan_provider = new_provider()
+local dead_luopan_ctx = context(8.0)
+converge_owned_luopan(dead_luopan_provider, dead_luopan_ctx, 10, 20)
+dead_luopan_ctx.now = dead_luopan_ctx.now + 1.0
+dead_luopan_ctx.pet_present = true
+dead_luopan_ctx.pet_id = 300
+dead_luopan_ctx.pet.hpp = 0
+out = {}
+dead_luopan_provider.collect(dead_luopan_ctx, out)
+assert_equal(#out, 1, '0-HP Luopan must be treated as absent and immediately recreated')
+assert_equal(out[1].action_name, 'Geo-Frailty', 'dead Luopan recovery action mismatch')
+assert_equal(out[1].priority_band, 240, 'dead Luopan recovery must use GEO creation priority')
 
 local camp_outside_provider = new_provider()
 local camp_outside_ctx = context(10.0)
