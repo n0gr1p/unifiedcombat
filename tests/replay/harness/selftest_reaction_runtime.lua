@@ -470,15 +470,7 @@ package.loaded.uc_enemy_effect_tracker = nil
 local tracker = require('uc_enemy_effect_tracker')
 local tracked_set = { [33] = true, [173] = true }
 package.loaded.uc_tb_effect_table = nil
--- Production Windower runs on Windows and TargetBar uses Windows separators.
--- Normalize only inside this Linux replay harness so the production loader
--- remains identical to the live addon.
-local original_dofile = dofile
-_G.dofile = function(path)
-    return original_dofile((tostring(path):gsub('\\', '/')))
-end
 local tb_effect_table = require('uc_tb_effect_table')
-_G.dofile = original_dofile
 local function observe_catalog_action(action)
     local events = {}
     tb_effect_table.apply_from_action(action, 800, function(target_id, effect_id, source)

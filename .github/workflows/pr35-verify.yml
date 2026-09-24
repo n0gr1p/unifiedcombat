@@ -35,8 +35,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Lua 5.1 and LuaSocket
-        run: sudo apt-get update && sudo apt-get install -y lua5.1 lua-socket
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: RUN tank self-test
         run: lua5.1 tests/replay/harness/selftest_run_tank.lua
       - name: RUN no-TP mode self-test
@@ -61,8 +61,8 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_tank_pet_enmity_config.lua
       - name: Tank pet enmity provider self-test
         run: lua5.1 tests/replay/harness/selftest_tank_pet_enmity_provider.lua
-      - name: Reaction runtime self-test
-        run: lua5.1 tests/replay/harness/selftest_reaction_runtime.lua
+      - name: Reaction event-window self-test
+        run: lua5.1 tests/replay/harness/selftest_reaction_event_window.lua
       - name: Reaction sequence runtime self-test
         run: lua5.1 tests/replay/harness/selftest_reaction_action_sequence.lua
       - name: Reaction sequence ownership self-test
