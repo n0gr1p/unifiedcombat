@@ -193,7 +193,9 @@ function M.new(deps)
 			failed_geo_target_id = 0,
 			failed_geo_target_until = 0,
 			bolster_armed = false,
+			diag_last_luopan_signature = '',
 		},
+
 	}
 
 	local function canonical_reason(state, detail)
@@ -254,6 +256,94 @@ function M.new(deps)
 				and provider.state.sequence.awaiting_enemy_target == true or false,
 			bolster_armed = provider.state.bolster_armed == true,
 		}
+	end
+
+	local function geo_diag_fields(ctx, config, geo_present)
+		local pending = type(provider.state.pending) == 'table' and provider.state.pending or nil
+		local sequence = type(provider.state.sequence) == 'table' and provider.state.sequence or nil
+		local pet = type(ctx.pet) == 'table' and ctx.pet or nil
+		local pet_hpp = finite_number(pet and pet.hpp)
+		local pending_age = ''
+		if pending ~= nil and finite_number(pending.sent_at) ~= nil then
+			pending_age = ('%.2f'):format(math.max(0, ctx.now - tonumber(pending.sent_at)))
+		end
+		return {
+			at = ('%.3f'):format(tonumber(ctx.now) or 0),
+			pet_present = tostring(ctx.pet_present == true),
+			pet_id = tonumber(ctx.pet_id) or 0,
+			pet_index = tonumber(ctx.pet_index) or 0,
+			pet_name = tostring(ctx.pet_name or (pet and pet.name) or ''),
+			pet_status = tonumber(ctx.pet_status) or tonumber(pet and pet.status) or -1,
+			pet_hpp = pet_hpp == nil and 'nil' or tostring(pet_hpp),
+			luopan_present = tostring(geo_present == true),
+			owned_geo_spell = tostring(provider.state.owned_geo_spell or ''),
+			configured_geo_spell = tostring(config.geo_spell or ''),
+			geo_satisfied = tostring(geo_present == true
+				and provider.state.owned_geo_spell == config.geo_spell),
+			sequence_kind = tostring(sequence and sequence.kind or ''),
+			sequence_step = tostring(sequence and sequence.step or ''),
+			sequence_atomic = tostring(sequence and sequence.atomic == true or false),
+			pending_kind = tostring(pending and pending.kind or ''),
+			pending_spell = tostring(pending and pending.spell or ''),
+			pending_age_s = pending_age,
+			retry_remaining_s = ('%.2f'):format(math.max(
+				0,
+				(tonumber(provider.state.next_retry_at) or 0) - (tonumber(ctx.now) or 0)
+			)),
+		}
+	end
+
+	local function copy_fields(fields)
+		local copy = {}
+		for key, value in pairs(fields or {}) do
+			copy[key] = value
+		end
+		return copy
+	end
+
+	local function trace_luopan_state(ctx, config, geo_present)
+		local fields = geo_diag_fields(ctx, config, geo_present)
+		_G.UC_GEO_DIAGNOSTIC_STATUS = copy_fields(fields)
+		local signature = table.concat({
+			fields.pet_present,
+			tostring(fields.pet_id),
+			tostring(fields.pet_index),
+			fields.pet_hpp,
+			fields.luopan_present,
+			fields.owned_geo_spell,
+			fields.configured_geo_spell,
+			fields.sequence_kind,
+			fields.sequence_step,
+			fields.pending_kind,
+		}, '|')
+		if signature ~= provider.state.diag_last_luopan_signature then
+			provider.state.diag_last_luopan_signature = signature
+			action_timeline_log('GEO_LUOPAN_STATE', fields, 'geo_luopan_state:' .. signature, 0)
+		end
+	end
+
+	local function trace_geo_create_decision(ctx, config, geo_present, outcome, reason, extra)
+		if geo_present == true then
+			return
+		end
+		local fields = geo_diag_fields(ctx, config, geo_present)
+		fields.outcome = tostring(outcome or '')
+		fields.reason = tostring(reason or '')
+		if type(extra) == 'table' then
+			for key, value in pairs(extra) do
+				fields[key] = value
+			end
+		end
+		_G.UC_GEO_DIAGNOSTIC_STATUS = copy_fields(fields)
+		local key = table.concat({
+			'geo_create_decision',
+			fields.outcome,
+			fields.reason,
+			fields.sequence_kind,
+			fields.sequence_step,
+			fields.pending_kind,
+		}, ':')
+		action_timeline_log('GEO_CREATE_DECISION', fields, key, 5.0)
 	end
 
 	local function reset_identity()
@@ -1070,6 +1160,7 @@ function M.new(deps)
 		local geo_present, indi_present = observe_identity(ctx)
 		observe_sequence(ctx, config)
 		local at_camp, camp_reason = camp_ready(ctx, config)
+		trace_luopan_state(ctx, config, geo_present)
 		local sequence = provider.state.sequence
 		if type(sequence) == 'table'
 			and sequence.kind == 'geo_create'
@@ -1095,6 +1186,9 @@ function M.new(deps)
 		-- while following can starve luopan recovery indefinitely.
 		if not at_camp then
 			publish_status('blocked', camp_reason)
+			trace_geo_create_decision(ctx, config, geo_present, 'blocked', camp_reason, {
+				stage = 'camp_ready',
+			})
 			return
 		end
 
@@ -1104,13 +1198,32 @@ function M.new(deps)
 				and pull_active()
 				and not sequence_restores_missing_luopan(sequence, ctx) then
 				publish_status('sequence_held', 'pull_active')
+				trace_geo_create_decision(ctx, config, geo_present, 'blocked', 'sequence_held:pull_active', {
+					stage = 'active_sequence',
+				})
 				return
 			end
+			local proposal_count = #out
 			collect_sequence(ctx, out, config, contracts)
+			if not geo_present then
+				trace_geo_create_decision(
+					ctx,
+					config,
+					geo_present,
+					#out > proposal_count and 'proposed' or 'blocked',
+					#out > proposal_count
+						and tostring(out[#out] and out[#out].action_name or provider.status.detail)
+						or (tostring(provider.status.state) .. ':' .. tostring(provider.status.detail)),
+					{ stage = 'active_sequence' }
+				)
+			end
 			return
 		end
 		if provider.state.pending ~= nil then
 			publish_status('awaiting_effect', provider.state.pending.kind)
+			trace_geo_create_decision(ctx, config, geo_present, 'blocked', 'awaiting_effect:' .. tostring(provider.state.pending.kind), {
+				stage = 'provider_pending',
+			})
 			return
 		end
 		if geo_present and provider.state.owned_geo_spell == nil then
@@ -1119,11 +1232,17 @@ function M.new(deps)
 		end
 		if indi_present and provider.state.owned_indi_spell == nil then
 			publish_status('unknown_existing', 'indi_wait_for_clear')
+			trace_geo_create_decision(ctx, config, geo_present, 'blocked', 'indi_wait_for_clear', {
+				stage = 'unknown_existing',
+			})
 			return
 		end
 		local pull_in_progress = pull_active()
 		if ctx.now < provider.state.next_retry_at then
 			publish_status('backoff', 'sequence_retry')
+			trace_geo_create_decision(ctx, config, geo_present, 'blocked', 'sequence_retry', {
+				stage = 'retry_backoff',
+			})
 			return
 		end
 
@@ -1133,11 +1252,21 @@ function M.new(deps)
 		local function geo_target_is_ready()
 			if geo_target == nil then
 				publish_status('geo_blocked', geo_target_reason)
+				trace_geo_create_decision(ctx, config, geo_present, 'blocked', geo_target_reason, {
+					stage = 'geo_target',
+				})
 				return false
 			end
-			local target_at_camp, target_camp_reason = enemy_geo_camp_ready(ctx, config, geo_target)
+			local target_at_camp, target_camp_reason, target_camp_distance =
+				enemy_geo_camp_ready(ctx, config, geo_target)
 			if not target_at_camp then
 				publish_status('geo_blocked', target_camp_reason)
+				trace_geo_create_decision(ctx, config, geo_present, 'blocked', target_camp_reason, {
+					stage = 'geo_target_camp',
+					target_id = tonumber(geo_target.id) or 0,
+					target = tostring(geo_target.name or ''),
+					target_camp_distance = target_camp_distance and ('%.2f'):format(target_camp_distance) or '',
+				})
 				return false
 			end
 			return true
@@ -1146,9 +1275,22 @@ function M.new(deps)
 			if not geo_target_is_ready() then
 				return
 			end
+			local proposal_count = #out
 			local enhance, consumed = blaze_upgrade_ready(ctx, config)
 			begin_geo_creation(config, true, geo_target.id, enhance, consumed)
 			collect_sequence(ctx, out, config, contracts)
+			if not geo_present then
+				trace_geo_create_decision(
+					ctx,
+					config,
+					geo_present,
+					#out > proposal_count and 'proposed' or 'blocked',
+					#out > proposal_count
+						and tostring(out[#out] and out[#out].action_name or provider.status.detail)
+						or (tostring(provider.status.state) .. ':' .. tostring(provider.status.detail)),
+					{ stage = 'replacement_sequence' }
+				)
+			end
 		end
 		if geo_present and not geo_satisfied then
 			begin_replacement()
@@ -1193,21 +1335,36 @@ function M.new(deps)
 			if not geo_target_is_ready() then
 				return
 			end
+			local proposal_count = #out
 			local enhance, consumed = blaze_upgrade_ready(ctx, config)
 			if enhance then
 				begin_geo_creation(config, false, geo_target.id, true, consumed)
 				collect_sequence(ctx, out, config, contracts)
-				return
+			else
+				emit_spell(
+					ctx,
+					out,
+					'geo',
+					config.geo_spell,
+					geo_target,
+					geo_target_kind,
+					contracts.geo.max_range,
+					indi_satisfied and 0.70 or 0.85
+				)
 			end
-			emit_spell(
+			trace_geo_create_decision(
 				ctx,
-				out,
-				'geo',
-				config.geo_spell,
-				geo_target,
-				geo_target_kind,
-				contracts.geo.max_range,
-				indi_satisfied and 0.70 or 0.85
+				config,
+				geo_present,
+				#out > proposal_count and 'proposed' or 'blocked',
+				#out > proposal_count
+					and tostring(out[#out] and out[#out].action_name or provider.status.detail)
+					or (tostring(provider.status.state) .. ':' .. tostring(provider.status.detail)),
+				{
+					stage = enhance and 'geo_create_sequence' or 'direct_geo',
+					target_id = tonumber(geo_target.id) or 0,
+					target = tostring(geo_target.name or ''),
+				}
 			)
 		end
 		local function emit_indi()
@@ -1238,7 +1395,18 @@ function M.new(deps)
 
 		if config.ordering == 'indi_first' then
 			if not indi_satisfied and not (pull_in_progress and not geo_present) then
+				local proposal_count = #out
 				emit_indi()
+				trace_geo_create_decision(
+					ctx,
+					config,
+					geo_present,
+					'blocked',
+					#out > proposal_count
+						and 'ordering_indi_first:indi_proposed'
+						or ('ordering_indi_first:' .. tostring(provider.status.state) .. ':' .. tostring(provider.status.detail)),
+					{ stage = 'ordering' }
+				)
 				return
 			elseif not geo_satisfied then
 				emit_geo()
