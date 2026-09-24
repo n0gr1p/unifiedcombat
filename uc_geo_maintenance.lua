@@ -45,6 +45,18 @@ local function finite_number(value)
 	return number
 end
 
+local function luopan_present(ctx)
+	if type(ctx) ~= 'table' or not luopan_present(ctx) then
+		return false
+	end
+	local pet = type(ctx.pet) == 'table' and ctx.pet or nil
+	local hpp = finite_number(pet and pet.hpp)
+	-- Windower can briefly retain the pet entity after a Luopan dies. Treat a
+	-- known 0-HP pet as absent while preserving fail-closed behavior when HPP
+	-- is unavailable.
+	return hpp == nil or hpp > 0
+end
+
 local function has_buff(player, buff_id)
 	local buffs = type(player) == 'table' and player.buffs or nil
 	if type(buffs) ~= 'table' then
@@ -599,7 +611,7 @@ function M.new(deps)
 	end
 
 	local function observe_identity(ctx)
-		local geo_present = ctx.pet_present == true
+		local geo_present = luopan_present(ctx)
 		local indi_present = has_buff(ctx.player, INDI_COLURE_BUFF_ID)
 		local pending = provider.state.pending
 		if type(pending) == 'table' then
@@ -705,7 +717,7 @@ function M.new(deps)
 	local function luopan_misplaced(ctx, config)
 		if config.luopan.placement ~= 'camp'
 			or config.luopan.replace_out_of_position ~= true
-			or ctx.pet_present ~= true then
+			or not luopan_present(ctx) then
 			return false, nil
 		end
 		local anchor, reason = resolve_camp_anchor()
@@ -724,7 +736,7 @@ function M.new(deps)
 		-- the legal spell target is not the Luopan's placement anchor in that mode.
 		if config.luopan.placement == 'camp'
 			or tostring(config.geo_target.kind or '') ~= 'current_enemy'
-			or ctx.pet_present ~= true
+			or not luopan_present(ctx)
 			or target == nil then
 			return false, nil, nil
 		end
@@ -781,7 +793,7 @@ function M.new(deps)
 			return
 		end
 		if sequence.kind == 'geo_create' then
-			if sequence.step == 'full_circle' and ctx.pet_present ~= true then
+			if sequence.step == 'full_circle' and not luopan_present(ctx) then
 				provider.state.pending = nil
 				if sequence.blaze_enhanced == true and not has_buff(ctx.player, BLAZE_OF_GLORY_BUFF_ID) then
 					sequence.step = 'blaze'
@@ -794,7 +806,7 @@ function M.new(deps)
 				sequence.atomic = true
 				sequence.awaiting_enemy_target = false
 			elseif sequence.step == 'geo_spell'
-				and ctx.pet_present == true
+				and luopan_present(ctx)
 				and provider.state.owned_geo_spell == config.geo_spell
 				and provider.state.owned_geo_blaze_enhanced == (sequence.blaze_enhanced == true) then
 				provider.state.pending = nil
@@ -841,7 +853,7 @@ function M.new(deps)
 		end
 		if sequence.kind == 'geo_create' then
 			if sequence.step == 'full_circle' then
-				if ctx.pet_present ~= true then
+				if not luopan_present(ctx) then
 					error('GEO Full Circle sequence retained after luopan absence')
 				end
 				emit_ja(ctx, out, 'Full Circle', 'pet_absent', 0.95, sequence)
@@ -891,7 +903,7 @@ function M.new(deps)
 				return true
 			end
 			if sequence.step == 'ecliptic' then
-				if ctx.pet_present ~= true then
+				if not luopan_present(ctx) then
 					provider.state.sequence = nil
 					publish_status('sequence_failed', 'luopan_missing_before_ecliptic')
 					return true
@@ -947,7 +959,7 @@ function M.new(deps)
 	end
 
 	local function sequence_restores_missing_luopan(sequence, ctx)
-		return ctx.pet_present ~= true
+		return not luopan_present(ctx)
 			and type(sequence) == 'table'
 			and sequence.kind == 'geo_create'
 			and (sequence.step == 'full_circle'
@@ -978,7 +990,7 @@ function M.new(deps)
 			or config.enabled ~= true
 			or ctx.player_present ~= true
 			or tostring(ctx.player.main_job or '') ~= 'GEO'
-			or ctx.pet_present == true then
+			or luopan_present(ctx) then
 			return false
 		end
 		if type(ctx.player.vitals) == 'table' and tonumber(ctx.player.vitals.hpp) == 0 then
@@ -1078,10 +1090,9 @@ function M.new(deps)
 				)
 			end
 		end
-		if player_is_moving() then
-			publish_status('blocked', 'player_moving')
-			return
-		end
+		-- Movement is resolved by scheduler dispatch. GEO proposals are marked
+		-- must_stop/can_preempt_movement, so suppressing proposal collection
+		-- while following can starve luopan recovery indefinitely.
 		if not at_camp then
 			publish_status('blocked', camp_reason)
 			return
@@ -1253,12 +1264,12 @@ function M.new(deps)
 		elseif provider.state.bolster_armed == true then
 			emit_ja(ctx, out, 'Bolster', 'bolster_complete', 0.95, nil)
 		elseif config.luopan.use_life_cycle == true
-			and ctx.pet_present == true
+			and luopan_present(ctx)
 			and finite_number(ctx.pet.hpp) ~= nil
 			and tonumber(ctx.pet.hpp) < tonumber(config.luopan.life_cycle_hpp) then
 			emit_ja(ctx, out, 'Life Cycle', 'life_cycle_complete', 0.90, nil)
 		elseif config.luopan.use_ecliptic_attrition == true
-			and ctx.pet_present == true
+			and luopan_present(ctx)
 			and provider.state.ecliptic_luopan_id ~= tonumber(ctx.pet_id) then
 			provider.state.sequence = {
 				kind = 'geo_create',
@@ -1326,7 +1337,7 @@ function M.new(deps)
 		if pull_active()
 			and not (type(sequence) == 'table' and sequence.atomic == true)
 			and not sequence_restores_missing_luopan(sequence, ctx)
-			and not (kind == 'geo' and ctx.pet_present ~= true) then
+			and not (kind == 'geo' and not luopan_present(ctx)) then
 			return false, 'pull_active'
 		end
 		if tostring(selected.action_type or '') == 'ja' then
@@ -1335,7 +1346,7 @@ function M.new(deps)
 				return type(sequence) == 'table'
 					and sequence.kind == 'geo_create'
 					and sequence.step == 'full_circle'
-					and ctx.pet_present == true,
+					and luopan_present(ctx),
 					'stale_full_circle'
 			elseif action_name == 'Blaze of Glory' then
 				return type(sequence) == 'table'
@@ -1347,7 +1358,7 @@ function M.new(deps)
 				return type(sequence) == 'table'
 					and sequence.kind == 'geo_create'
 					and sequence.step == 'ecliptic'
-					and ctx.pet_present == true,
+					and luopan_present(ctx),
 					'stale_ecliptic'
 			elseif action_name == 'Entrust' then
 				return type(sequence) == 'table'
@@ -1357,7 +1368,7 @@ function M.new(deps)
 					'stale_entrust'
 			elseif action_name == 'Life Cycle' then
 				return config.luopan.use_life_cycle == true
-					and ctx.pet_present == true
+					and luopan_present(ctx)
 					and finite_number(ctx.pet.hpp) ~= nil
 					and tonumber(ctx.pet.hpp) < tonumber(config.luopan.life_cycle_hpp),
 					'stale_life_cycle'
@@ -1370,7 +1381,7 @@ function M.new(deps)
 			if tostring(selected.action_name or '') ~= config.geo_spell then
 				return false, 'geo_configuration_changed'
 			end
-			if ctx.pet_present == true then
+			if luopan_present(ctx) then
 				return false, 'luopan_present'
 			end
 			local target, target_kind, reason = resolve_geo_target(ctx, config, sequence)
