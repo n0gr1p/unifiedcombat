@@ -168,7 +168,7 @@
       "note": "BG Wiki distinguishes basic Dispel from strong Dispel; basic Dispel generally removes magic/basic JA effects, while strong Dispel can remove broader categories such as SP abilities."
     }
   ],
-  "buff_count": 209,
+  "buff_count": 210,
   "buffs": [
     {
       "name": "Haste",
@@ -16076,6 +16076,95 @@
           "type": "Strong Dispel effect",
           "name": "Strong Dispel",
           "jobs": []
+        }
+      ],
+      "notes": "Assumes the target is not flagged immune/resistant and the effect was applied in a normal removable way. Boss-specific variants can override normal removal rules."
+    },
+    {
+      "name": "Endark",
+      "buff_ids": [
+        288
+      ],
+      "aliases_or_related_effect_names": [
+        "Endark II"
+      ],
+      "category": "offensive/additional damage",
+      "danger_weight": 4,
+      "danger_label": "high",
+      "priority_rationale": "Adds dark additional damage to enemy melee attacks; remove on dangerous melee bosses such as Odin Prime.",
+      "monster_or_boss_sources": [
+        "Odin Prime",
+        "Dark Knight-style mobs"
+      ],
+      "example_sources_or_uses": [
+        "Endark",
+        "Endark II"
+      ],
+      "removal_tier": "basic_dispel",
+      "removable_by": [
+        {
+          "type": "Black Magic / Enfeebling Magic",
+          "name": "Dispel",
+          "jobs": [
+            "RDM",
+            "SCH via Addendum: Black"
+          ]
+        },
+        {
+          "type": "Song",
+          "name": "Magic Finale",
+          "jobs": [
+            "BRD"
+          ]
+        },
+        {
+          "type": "Quick Draw",
+          "name": "Dark Shot",
+          "jobs": [
+            "COR"
+          ]
+        },
+        {
+          "type": "Blood Pact: Ward",
+          "name": "Lunar Roar",
+          "jobs": [
+            "SMN with Fenrir"
+          ]
+        },
+        {
+          "type": "Blue Magic",
+          "name": "Blank Gaze",
+          "jobs": [
+            "BLU"
+          ]
+        },
+        {
+          "type": "Blue Magic",
+          "name": "Geist Wall",
+          "jobs": [
+            "BLU"
+          ]
+        },
+        {
+          "type": "Blue Magic",
+          "name": "Voracious Trunk",
+          "jobs": [
+            "BLU"
+          ]
+        },
+        {
+          "type": "Blue Magic",
+          "name": "Osmosis",
+          "jobs": [
+            "BLU"
+          ]
+        },
+        {
+          "type": "Job Trait + Job Ability",
+          "name": "Aura Steal / Steal",
+          "jobs": [
+            "THF"
+          ]
         }
       ],
       "notes": "Assumes the target is not flagged immune/resistant and the effect was applied in a normal removable way. Boss-specific variants can override normal removal rules."
