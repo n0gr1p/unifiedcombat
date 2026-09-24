@@ -4849,6 +4849,38 @@ local function p1_run_dry(settings, ctx)
 	scheduler.p1_update_pending_state(ctx)
 	local proposals = p1_collect_proposals(ctx)
 	local ranked, reject_counts, locks, rejected = p1_rank(ctx, proposals)
+	local function is_geo_creation_candidate(proposal)
+		return type(proposal) == 'table'
+			and tostring(proposal.provider or '') == 'maintenance_geo'
+			and tostring(proposal.action_type or '') == 'spell'
+			and tostring(type(proposal.detail) == 'table' and proposal.detail.geo_kind or '') == 'geo'
+			and tonumber(proposal.priority_band) == tonumber(scheduler.PRIORITY_BAND_GEO_CREATION)
+	end
+	local function find_geo_creation(list)
+		if type(list) ~= 'table' then
+			return nil
+		end
+		for i = 1, #list do
+			if is_geo_creation_candidate(list[i]) then
+				return list[i]
+			end
+		end
+		return nil
+	end
+	local function find_geo_reject(list)
+		if type(list) ~= 'table' then
+			return nil
+		end
+		for i = 1, #list do
+			local item = list[i]
+			if type(item) == 'table'
+				and tostring(item.provider or '') == 'maintenance_geo'
+				and tostring(item.family or '') == 'maintenance.geo.geo' then
+				return item
+			end
+		end
+		return nil
+	end
 	local function is_maint_spell_candidate(proposal)
 		if type(proposal) ~= 'table' then
 			return false
@@ -4912,11 +4944,61 @@ local function p1_run_dry(settings, ctx)
 	end
 	local plan = p1_build_dispatch_plan(ctx, selected)
 	local commit_ok, commit_reason = p1_revalidate_plan_commit(ctx, selected, plan)
+	local commit_selected = selected
 	if selected and not commit_ok then
 		selected = nil
 		plan = nil
 	end
 	do
+		local geo_proposed = find_geo_creation(proposals)
+		local geo_ranked = find_geo_creation(ranked)
+		local geo_rejected = find_geo_reject(rejected)
+		if geo_proposed ~= nil then
+			local outcome = 'ranking_lost'
+			local reason = 'lower_score'
+			if geo_rejected ~= nil then
+				outcome = 'validation_rejected'
+				reason = tostring(geo_rejected.reason or 'invalid')
+			elseif geo_ranked ~= nil
+				and type(commit_selected) == 'table'
+				and tostring(commit_selected.proposal_id or '') == tostring(geo_ranked.proposal_id or '') then
+				if commit_ok then
+					outcome = 'selected'
+					reason = 'selected'
+				else
+					outcome = 'commit_rejected'
+					reason = tostring(commit_reason or 'commit_invalidated')
+				end
+			elseif geo_ranked == nil then
+				outcome = 'validation_rejected'
+				reason = 'not_ranked'
+			end
+			local top = type(commit_selected) == 'table' and commit_selected or ranked[1]
+			_G.UC_GEO_SCHED_DIAGNOSTIC_STATUS = {
+				proposal_id = tostring(geo_proposed.proposal_id or ''),
+				action = tostring(geo_proposed.action_name or ''),
+				target_id = tonumber(geo_proposed.target_id) or 0,
+				outcome = outcome,
+				reason = reason,
+				top_provider = tostring(top and top.provider or ''),
+				top_action = tostring(top and top.action_name or ''),
+			}
+			scheduler.action_timeline_log('GEO_CREATE_SCHED_OUTCOME', {
+				proposal_id = tostring(geo_proposed.proposal_id or ''),
+				action = tostring(geo_proposed.action_name or ''),
+				target_id = tonumber(geo_proposed.target_id) or 0,
+				outcome = outcome,
+				reason = reason,
+				band = tonumber(geo_proposed.priority_band) or 0,
+				urgency = ('%.2f'):format(p1_clamp_urgency(geo_proposed.urgency)),
+				top_provider = tostring(top and top.provider or ''),
+				top_action = tostring(top and top.action_name or ''),
+			}, ('geo_create_sched:%s:%s:%s'):format(
+				outcome,
+				reason,
+				tostring(top and top.provider or '')
+			), 1.0)
+		end
 		local best_maint = best_maint_candidate(ranked)
 		local top = type(selected) == 'table' and selected or ranked[1]
 		if best_maint and top and best_maint ~= top then
@@ -6785,18 +6867,36 @@ local function p1_dispatch_geo_maintenance(selected, settings)
 	end
 	local blocked, block_reason = action_dispatch_blocked()
 	if blocked then
+		scheduler.action_timeline_log('GEO_CREATE_DISPATCH_BLOCKED', {
+			action = tostring(selected.action_name or ''),
+			target_id = tonumber(selected.target_id) or 0,
+			reason = tostring(block_reason or 'action_dispatch_blocked'),
+			stage = 'action_state',
+		}, ('geo_dispatch_blocked:action_state:%s'):format(tostring(block_reason or '')), 0.5)
 		return true, block_reason
 	end
 	local ctx = p1_build_ctx(settings)
 	local valid, reason = scheduler.providers.geo_maintenance.revalidate(selected, ctx)
 	if not valid then
 		_G.UC_LAST_SCHED_ACTION = '[geo]commit_rejected:' .. tostring(reason)
+		scheduler.action_timeline_log('GEO_CREATE_DISPATCH_BLOCKED', {
+			action = tostring(selected.action_name or ''),
+			target_id = tonumber(selected.target_id) or 0,
+			reason = tostring(reason or 'provider_revalidation'),
+			stage = 'provider_revalidate',
+		}, ('geo_dispatch_blocked:revalidate:%s'):format(tostring(reason or '')), 0.5)
 		return false, nil
 	end
 	local action_name = tostring(selected.action_name or '')
 	local ready, ready_reason, ready_kind = action_ready(action_name, tonumber(selected.target_id) or 0)
 	if not ready or ready_kind ~= action_type then
 		_G.UC_LAST_SCHED_ACTION = '[geo]not_ready:' .. tostring(ready_reason)
+		scheduler.action_timeline_log('GEO_CREATE_DISPATCH_BLOCKED', {
+			action = action_name,
+			target_id = tonumber(selected.target_id) or 0,
+			reason = tostring(ready_reason or ready_kind or 'not_ready'),
+			stage = 'action_ready',
+		}, ('geo_dispatch_blocked:not_ready:%s'):format(tostring(ready_reason or ready_kind or '')), 0.5)
 		return false, nil
 	end
 	if action_name == '' or action_name:find('"', 1, true) then
@@ -6836,7 +6936,24 @@ local function p1_dispatch_geo_maintenance(selected, settings)
 		send_command = windower.send_command,
 	})
 	if type(result) ~= 'table' or result.ok ~= true or result.executed ~= true then
+		scheduler.action_timeline_log('GEO_CREATE_DISPATCH_BLOCKED', {
+			action = action_name,
+			target_id = target_member.id,
+			reason = tostring(type(result) == 'table' and (result.reason or result.error) or 'dispatch_failed'),
+			stage = 'dispatcher',
+		}, ('geo_dispatch_blocked:dispatcher:%s'):format(action_name), 0.5)
 		return false, nil
+	end
+	if geo_kind == 'geo' then
+		scheduler.action_timeline_log('GEO_CREATE_DISPATCHED', {
+			proposal_id = tostring(selected.proposal_id or ''),
+			action = action_name,
+			target = target_member.name,
+			target_id = target_member.id,
+			provider = 'maintenance_geo',
+			band = tonumber(selected.priority_band) or 0,
+			urgency = ('%.2f'):format(p1_clamp_urgency(selected.urgency)),
+		}, ('geo_create_dispatched:%s:%d'):format(action_name, target_member.id), 0)
 	end
 	if geo_kind == 'entrust' then
 		scheduler.action_timeline_log('GEO_ENTRUST_DISPATCH', {

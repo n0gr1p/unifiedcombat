@@ -42,7 +42,8 @@ local camp_anchor = {
 	y = 20,
 }
 
-local function new_provider()
+local function new_provider(timeline_events)
+	timeline_events = type(timeline_events) == 'table' and timeline_events or {}
 	return geo_maintenance.new({
 		geo_maintenance_priority = 210,
 		geo_creation_priority = 240,
@@ -89,7 +90,11 @@ local function new_provider()
 		end,
 		log = function()
 		end,
-		action_timeline_log = function()
+		action_timeline_log = function(event_code, fields)
+			timeline_events[#timeline_events + 1] = {
+				event_code = tostring(event_code or ''),
+				fields = fields,
+			}
 		end,
 	})
 end
@@ -321,7 +326,8 @@ assert_equal(#out, 1, 'moving player must still emit scheduler-coordinated GEO r
 assert_equal(out[1].action_name, 'Geo-Frailty', 'moving GEO recovery action mismatch')
 assert_equal(out[1].priority_band, 240, 'moving GEO recovery must retain creation priority')
 
-local dead_luopan_provider = new_provider()
+local dead_luopan_events = {}
+local dead_luopan_provider = new_provider(dead_luopan_events)
 local dead_luopan_ctx = context(8.0)
 converge_owned_luopan(dead_luopan_provider, dead_luopan_ctx, 10, 20)
 dead_luopan_ctx.now = dead_luopan_ctx.now + 1.0
@@ -333,6 +339,47 @@ dead_luopan_provider.collect(dead_luopan_ctx, out)
 assert_equal(#out, 1, '0-HP Luopan must be treated as absent and immediately recreated')
 assert_equal(out[1].action_name, 'Geo-Frailty', 'dead Luopan recovery action mismatch')
 assert_equal(out[1].priority_band, 240, 'dead Luopan recovery must use GEO creation priority')
+assert_true(type(_G.UC_GEO_DIAGNOSTIC_STATUS) == 'table', 'GEO diagnostic overlay missing')
+assert_equal(_G.UC_GEO_DIAGNOSTIC_STATUS.luopan_present, 'false', 'dead Luopan diagnostic presence mismatch')
+assert_equal(_G.UC_GEO_DIAGNOSTIC_STATUS.outcome, 'proposed', 'dead Luopan diagnostic outcome mismatch')
+assert_equal(_G.UC_GEO_DIAGNOSTIC_STATUS.reason, 'Geo-Frailty', 'dead Luopan diagnostic proposal mismatch')
+local saw_dead_state = false
+local saw_create_decision = false
+for _, event in ipairs(dead_luopan_events) do
+	if event.event_code == 'GEO_LUOPAN_STATE'
+		and type(event.fields) == 'table'
+		and event.fields.pet_hpp == '0'
+		and event.fields.luopan_present == 'false' then
+		saw_dead_state = true
+	elseif event.event_code == 'GEO_CREATE_DECISION'
+		and type(event.fields) == 'table'
+		and event.fields.outcome == 'proposed'
+		and event.fields.reason == 'Geo-Frailty' then
+		saw_create_decision = true
+	end
+end
+assert_true(saw_dead_state, 'dead Luopan state transition diagnostic missing')
+assert_true(saw_create_decision, 'dead Luopan creation decision diagnostic missing')
+
+local blocked_diag_events = {}
+local blocked_diag_provider = new_provider(blocked_diag_events)
+local blocked_diag_ctx = context(9.0)
+blocked_diag_ctx.me.x = 15
+out = {}
+blocked_diag_provider.collect(blocked_diag_ctx, out)
+assert_equal(#out, 0, 'blocked dead Luopan diagnostic must not invent a proposal')
+assert_equal(_G.UC_GEO_DIAGNOSTIC_STATUS.outcome, 'blocked', 'blocked diagnostic outcome mismatch')
+assert_equal(_G.UC_GEO_DIAGNOSTIC_STATUS.reason, 'outside_camp_tolerance', 'blocked diagnostic reason mismatch')
+local saw_blocked_decision = false
+for _, event in ipairs(blocked_diag_events) do
+	if event.event_code == 'GEO_CREATE_DECISION'
+		and type(event.fields) == 'table'
+		and event.fields.outcome == 'blocked'
+		and event.fields.reason == 'outside_camp_tolerance' then
+		saw_blocked_decision = true
+	end
+end
+assert_true(saw_blocked_decision, 'blocked GEO creation diagnostic missing exact gate')
 
 local camp_outside_provider = new_provider()
 local camp_outside_ctx = context(10.0)
