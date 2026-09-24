@@ -278,6 +278,11 @@ public partial class MainForm
     private NumericUpDown _reactionDistance = null!;
     private ComboBox _reactionActionType = null!;
     private ComboBox _reactionActionName = null!;
+    private FlowLayoutPanel _reactionLifecycleEditor = null!;
+    private ComboBox _reactionActivateEvent = null!;
+    private ComboBox _reactionReleaseEvent = null!;
+    private TextBox _reactionReleaseName = null!;
+    private NumericUpDown _reactionConfirmationTimeout = null!;
     private Button _reactionAdd = null!;
     private Button _reactionRemove = null!;
     private Button _reactionUp = null!;
@@ -2430,7 +2435,7 @@ public partial class MainForm
         reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
         reactionEditor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
         _reactionTriggerCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
-        _reactionTriggerCombo.Items.AddRange(["ability_window", "enemy_buff"]);
+        _reactionTriggerCombo.Items.AddRange(["ability_window", "enemy_buff", "event_window"]);
         _reactionTriggerCombo.SelectedIndexChanged += (_, _) => OnReactionTriggerChanged();
         _reactionName = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Cold Stare" };
         _reactionResponseCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
@@ -2468,6 +2473,42 @@ public partial class MainForm
         reactionEditor.Controls.Add(_reactionActionName, 5, 0);
         reactionEditor.Controls.Add(_reactionAdd, 6, 0);
         reactionRoot.Controls.Add(reactionEditor);
+        _reactionLifecycleEditor = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Padding = new Padding(0, 6, 0, 0),
+            Visible = false,
+        };
+        _reactionLifecycleEditor.Controls.Add(new Label { Text = "Activate", AutoSize = true, Padding = new Padding(0, 5, 4, 0) });
+        _reactionActivateEvent = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
+        _reactionActivateEvent.Items.AddRange(["spell_start", "ability_start", "buff_gained"]);
+        _reactionActivateEvent.SelectedItem = "spell_start";
+        _reactionActivateEvent.SelectedIndexChanged += (_, _) => RefreshReactionDistanceState();
+        _reactionLifecycleEditor.Controls.Add(_reactionActivateEvent);
+        _reactionLifecycleEditor.Controls.Add(new Label { Text = "Release", AutoSize = true, Padding = new Padding(10, 5, 4, 0) });
+        _reactionReleaseEvent = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
+        _reactionReleaseEvent.Items.AddRange(["buff_lost", "spell_end", "ability_end"]);
+        _reactionReleaseEvent.SelectedItem = "buff_lost";
+        _reactionReleaseEvent.SelectedIndexChanged += (_, _) => RefreshReactionDistanceState();
+        _reactionLifecycleEditor.Controls.Add(_reactionReleaseEvent);
+        _reactionLifecycleEditor.Controls.Add(new Label { Text = "Release name", AutoSize = true, Padding = new Padding(10, 5, 4, 0) });
+        _reactionReleaseName = new TextBox { Width = 170, PlaceholderText = "Dread Spikes" };
+        _reactionLifecycleEditor.Controls.Add(_reactionReleaseName);
+        _reactionLifecycleEditor.Controls.Add(new Label { Text = "No-buff timeout", AutoSize = true, Padding = new Padding(10, 5, 4, 0) });
+        _reactionConfirmationTimeout = new NumericUpDown
+        {
+            Minimum = 0.1m,
+            Maximum = 10m,
+            Value = 1.5m,
+            DecimalPlaces = 1,
+            Increment = 0.1m,
+            Width = 65,
+        };
+        _reactionLifecycleEditor.Controls.Add(_reactionConfirmationTimeout);
+        _reactionLifecycleEditor.Controls.Add(new Label { Text = "s", AutoSize = true, Padding = new Padding(0, 5, 0, 0) });
+        reactionRoot.Controls.Add(_reactionLifecycleEditor);
         var reactionButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         _reactionRemove = new Button { Text = "Remove", AutoSize = true };
         _reactionRemove.Click += (_, _) => OnReactionRuleRemove();
@@ -2479,7 +2520,7 @@ public partial class MainForm
         reactionRoot.Controls.Add(reactionButtons);
         reactionRoot.Controls.Add(new Label
         {
-            Text = "Ability-window reactions can turn away, run to a minimum distance, maintain a chosen range, or use a configured spell. Enemy-buff reactions pause attacks while the named effect is active.",
+            Text = "Ability-window reactions handle enemy abilities. Enemy-buff reactions preserve the existing buff-gained/buff-lost stop behavior. Event-window reactions independently choose activation and release events; buff-loss releases can wait briefly for the expected buff after a spell or ability completes.",
             AutoSize = true,
             Padding = new Padding(0, 8, 0, 0),
         });

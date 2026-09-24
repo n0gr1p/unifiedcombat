@@ -70,6 +70,18 @@ The disabled, empty domain is optional so profiles created before reactions exis
 - Enemy-buff reactions are scoped to the current combat target because they suppress attacks against that affected target.
 - Unresolved names fail closed and are reported by reaction status; IDs are never guessed or persisted.
 
+### Event Window
+
+- `trigger = "event_window"`
+- `response = "stop_attacking"`
+- `activate_event` is one of `spell_start`, `ability_start`, or `buff_gained`.
+- `release_event` is one of `spell_end`, `ability_end`, or `buff_lost`; `release_name` may differ from the activation name.
+- Spell/ability starts are observed directly from Windower action categories 8/7, so safety work can begin before a resulting buff is applied.
+- For `buff_lost` releases, the runtime holds continuously across action completion while waiting for the expected buff. Once seen, actual buff loss is authoritative.
+- If the expected buff never appears, `confirmation_timeout_seconds` releases the hold after action completion rather than leaving combat suspended indefinitely.
+- Event-window stop-attacking rules are scoped to the current combat target.
+- Legacy `enemy_buff` and `ability_window` rules remain valid and retain their existing behavior.
+
 ## Scheduler Behavior
 
 - Reaction turns use the existing scheduler turn dispatcher and turn-ownership module.

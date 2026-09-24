@@ -12,7 +12,11 @@ public partial class MainForm
         string Response,
         double? Distance,
         string? ActionType = null,
-        string? ActionName = null
+        string? ActionName = null,
+        string? ActivateEvent = null,
+        string? ReleaseEvent = null,
+        string? ReleaseName = null,
+        double? ConfirmationTimeoutSeconds = null
     );
     private sealed record NamedFormationRow(string MobName, JsonObject Geometry);
 
@@ -2669,11 +2673,17 @@ public partial class MainForm
                 var trigger = SessionStateHelper.GetString(item, "trigger").Trim();
                 var name = SessionStateHelper.GetString(item, "name").Trim();
                 var response = SessionStateHelper.GetString(item, "response").Trim();
+                var activateEvent = SessionStateHelper.GetString(item, "activate_event").Trim();
                 var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))
-                    || (trigger == "enemy_buff" && response == "stop_attacking");
+                    || (trigger == "enemy_buff" && response == "stop_attacking")
+                    || (trigger == "event_window" && response == "stop_attacking"
+                        && activateEvent is "spell_start" or "ability_start" or "buff_gained");
                 double? distance = null;
                 string? actionType = null;
                 string? actionName = null;
+                string? releaseEvent = null;
+                string? releaseName = null;
+                double? confirmationTimeoutSeconds = null;
                 if (response is "run_away" or "move_to_range")
                 {
                     if (!item.TryGetProperty("distance", out var distanceNode)
@@ -2695,9 +2705,43 @@ public partial class MainForm
                         throw new InvalidDataException("use_action reaction requires action_type 'spell' and a non-empty action_name");
                     }
                 }
+                if (trigger == "event_window")
+                {
+                    releaseEvent = SessionStateHelper.GetString(item, "release_event").Trim();
+                    releaseName = SessionStateHelper.GetString(item, "release_name", name).Trim();
+                    if (releaseEvent is not ("spell_end" or "ability_end" or "buff_lost") || releaseName.Length == 0)
+                    {
+                        throw new InvalidDataException("event_window reaction requires a valid release_event and release_name");
+                    }
+                    if (releaseEvent == "buff_lost")
+                    {
+                        confirmationTimeoutSeconds = item.TryGetProperty("confirmation_timeout_seconds", out var timeoutNode)
+                            && timeoutNode.ValueKind == JsonValueKind.Number
+                            && timeoutNode.TryGetDouble(out var parsedTimeout)
+                            ? parsedTimeout
+                            : 1.5;
+                        if (!double.IsFinite(confirmationTimeoutSeconds.Value)
+                            || confirmationTimeoutSeconds.Value <= 0
+                            || confirmationTimeoutSeconds.Value > 10)
+                        {
+                            throw new InvalidDataException("event_window confirmation timeout must be > 0 and <= 10 seconds");
+                        }
+                    }
+                }
                 if (valid && name.Length > 0)
                 {
-                    _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance, actionType, actionName));
+                    _reactionRules.Add(new ReactionRuleRow(
+                        trigger,
+                        name,
+                        response,
+                        distance,
+                        actionType,
+                        actionName,
+                        activateEvent.Length == 0 ? null : activateEvent,
+                        releaseEvent,
+                        releaseName,
+                        confirmationTimeoutSeconds
+                    ));
                 }
             }
         }
@@ -2711,7 +2755,11 @@ public partial class MainForm
         {
             var distance = rule.Distance.HasValue ? $" | {rule.Distance.Value:0.0}y" : "";
             var action = rule.Response == "use_action" ? $" | {rule.ActionType}: {rule.ActionName}" : "";
-            _reactionRuleList.Items.Add($"{rule.Trigger} | {rule.Name} | {rule.Response}{distance}{action}");
+            var lifecycle = rule.Trigger == "event_window"
+                ? $" | {rule.ActivateEvent}:{rule.Name} -> {rule.ReleaseEvent}:{rule.ReleaseName}"
+                    + (rule.ConfirmationTimeoutSeconds.HasValue ? $" | confirm {rule.ConfirmationTimeoutSeconds.Value:0.0}s" : "")
+                : "";
+            _reactionRuleList.Items.Add($"{rule.Trigger} | {rule.Name} | {rule.Response}{distance}{action}{lifecycle}");
         }
         if (_reactionRuleList.Items.Count > 0 && selectedIndex >= 0)
         {
@@ -2722,7 +2770,9 @@ public partial class MainForm
     private void RefreshReactionResponseOptions()
     {
         _reactionResponseCombo.Items.Clear();
-        if (string.Equals(_reactionTriggerCombo.SelectedItem?.ToString(), "enemy_buff", StringComparison.Ordinal))
+        var trigger = _reactionTriggerCombo.SelectedItem?.ToString();
+        if (string.Equals(trigger, "enemy_buff", StringComparison.Ordinal)
+            || string.Equals(trigger, "event_window", StringComparison.Ordinal))
         {
             _reactionResponseCombo.Items.Add("stop_attacking");
         }
@@ -2736,11 +2786,16 @@ public partial class MainForm
 
     private void RefreshReactionDistanceState()
     {
+        var trigger = _reactionTriggerCombo.SelectedItem?.ToString();
         var response = _reactionResponseCombo.SelectedItem?.ToString();
         _reactionDistance.Enabled = response is "run_away" or "move_to_range";
         var actionEnabled = response == "use_action";
         _reactionActionType.Enabled = actionEnabled;
         _reactionActionName.Enabled = actionEnabled;
+        var lifecycleEnabled = string.Equals(trigger, "event_window", StringComparison.Ordinal);
+        _reactionLifecycleEditor.Visible = lifecycleEnabled;
+        _reactionConfirmationTimeout.Enabled = lifecycleEnabled
+            && string.Equals(_reactionReleaseEvent.SelectedItem?.ToString(), "buff_lost", StringComparison.Ordinal);
         if (actionEnabled)
         {
             _reactionActionType.SelectedItem = "spell";
@@ -3585,14 +3640,18 @@ public partial class MainForm
         var trigger = _reactionTriggerCombo.SelectedItem?.ToString() ?? "";
         var name = (_reactionName.Text ?? "").Trim();
         var response = _reactionResponseCombo.SelectedItem?.ToString() ?? "";
+        var activateEvent = trigger == "event_window" ? _reactionActivateEvent.SelectedItem?.ToString() ?? "" : "";
         var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))
-            || (trigger == "enemy_buff" && response == "stop_attacking");
+            || (trigger == "enemy_buff" && response == "stop_attacking")
+            || (trigger == "event_window" && response == "stop_attacking"
+                && activateEvent is "spell_start" or "ability_start" or "buff_gained");
         if (!valid || name.Length == 0)
         {
             return;
         }
         if (_reactionRules.Any(x => string.Equals(x.Trigger, trigger, StringComparison.Ordinal)
-            && string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)))
+            && string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)
+            && (trigger != "event_window" || string.Equals(x.ActivateEvent, activateEvent, StringComparison.Ordinal))))
         {
             return;
         }
@@ -3608,8 +3667,43 @@ public partial class MainForm
                 return;
             }
         }
-        _reactionRules.Add(new ReactionRuleRow(trigger, name, response, distance, actionType, actionName));
+        string? releaseEvent = null;
+        string? releaseName = null;
+        double? confirmationTimeoutSeconds = null;
+        if (trigger == "event_window")
+        {
+            releaseEvent = _reactionReleaseEvent.SelectedItem?.ToString() ?? "";
+            releaseName = (_reactionReleaseName.Text ?? "").Trim();
+            if (releaseName.Length == 0)
+            {
+                releaseName = name;
+            }
+            if (releaseEvent is not ("spell_end" or "ability_end" or "buff_lost"))
+            {
+                return;
+            }
+            if (releaseEvent == "buff_lost")
+            {
+                confirmationTimeoutSeconds = decimal.ToDouble(_reactionConfirmationTimeout.Value);
+            }
+        }
+        _reactionRules.Add(new ReactionRuleRow(
+            trigger,
+            name,
+            response,
+            distance,
+            actionType,
+            actionName,
+            activateEvent.Length == 0 ? null : activateEvent,
+            releaseEvent,
+            releaseName,
+            confirmationTimeoutSeconds
+        ));
         _reactionName.Text = "";
+        if (trigger == "event_window")
+        {
+            _reactionReleaseName.Text = "";
+        }
         if (response == "use_action")
         {
             _reactionActionName.Text = "";

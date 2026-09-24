@@ -2427,9 +2427,12 @@ internal static class StructuredProfileV2Writer
             var trigger = ReadString(rule, "trigger", "").Trim();
             var name = ReadString(rule, "name", "").Trim();
             var response = ReadString(rule, "response", "").Trim();
+            var activateEvent = ReadString(rule, "activate_event", "").Trim();
             var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action" || response == "use_sequence"))
                 || (trigger == "party_action_complete" && response == "use_sequence")
-                || (trigger == "enemy_buff" && response == "stop_attacking");
+                || (trigger == "enemy_buff" && response == "stop_attacking")
+                || (trigger == "event_window" && response == "stop_attacking"
+                    && activateEvent is "spell_start" or "ability_start" or "buff_gained");
             if (!valid || name.Length == 0)
             {
                 continue;
@@ -2438,6 +2441,27 @@ internal static class StructuredProfileV2Writer
                 .Add("trigger", trigger)
                 .Add("name", name)
                 .Add("response", response);
+            if (trigger == "event_window")
+            {
+                var releaseEvent = ReadString(rule, "release_event", "").Trim();
+                var releaseName = ReadString(rule, "release_name", name).Trim();
+                if (releaseEvent is not ("spell_end" or "ability_end" or "buff_lost") || releaseName.Length == 0)
+                {
+                    throw new InvalidDataException("event_window reaction requires release_event and release_name");
+                }
+                serialized.Add("activate_event", activateEvent);
+                serialized.Add("release_event", releaseEvent);
+                serialized.Add("release_name", releaseName);
+                if (releaseEvent == "buff_lost")
+                {
+                    var timeout = ReadDouble(rule, "confirmation_timeout_seconds", 1.5);
+                    if (!double.IsFinite(timeout) || timeout <= 0 || timeout > 10)
+                    {
+                        throw new InvalidDataException("event_window confirmation timeout must be > 0 and <= 10 seconds");
+                    }
+                    serialized.Add("confirmation_timeout_seconds", timeout);
+                }
+            }
             if (trigger == "party_action_complete")
             {
                 var sourceName = ReadString(rule, "source_name", "").Trim();

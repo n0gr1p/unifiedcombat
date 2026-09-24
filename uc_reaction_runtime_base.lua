@@ -9,6 +9,7 @@ local last_active_target_id = 0
 local watch_cache_signature = nil
 local watch_cache_set = {}
 local watch_cache_names = {}
+local watch_cache_ids = {}
 local watch_cache_unresolved = {}
 local last_transition = 'none'
 local RUN_AWAY_STOP_TOLERANCE = 0.15
@@ -74,6 +75,10 @@ local function rule_signature(rules)
 				tostring(rule.distance or ''),
 				tostring(rule.action_type or ''),
 				tostring(rule.action_name or ''),
+				tostring(rule.activate_event or ''),
+				tostring(rule.release_event or ''),
+				tostring(rule.release_name or ''),
+				tostring(rule.confirmation_timeout_seconds or ''),
 			}, '\031')
 		end
 	end
@@ -88,15 +93,28 @@ local function refresh_effect_watch_cache(rules)
 	watch_cache_signature = signature
 	watch_cache_set = {}
 	watch_cache_names = {}
+	watch_cache_ids = {}
 	watch_cache_unresolved = {}
 
 	local requested = {}
+	local function request_buff(name)
+		local display = trim(name)
+		if display ~= '' then
+			requested[canonical(display)] = display
+		end
+	end
 	for i = 1, #rules do
 		local rule = rules[i]
-		if type(rule) == 'table' and rule.trigger == 'enemy_buff' then
-			local name = trim(rule.name)
-			if name ~= '' then
-				requested[canonical(name)] = name
+		if type(rule) == 'table' then
+			if rule.trigger == 'enemy_buff' then
+				request_buff(rule.name)
+			elseif rule.trigger == 'event_window' then
+				if rule.activate_event == 'buff_gained' then
+					request_buff(rule.name)
+				end
+				if rule.release_event == 'buff_lost' then
+					request_buff(rule.release_name)
+				end
 			end
 		end
 	end
@@ -109,6 +127,7 @@ local function refresh_effect_watch_cache(rules)
 			if effect_id > 0 then
 				watch_cache_set[effect_id] = true
 				watch_cache_names[effect_id] = requested[key]
+				watch_cache_ids[key] = effect_id
 				resolved[key] = true
 			end
 		end
@@ -196,18 +215,43 @@ local function matching_rule(rules, trigger, name)
 	return nil, nil
 end
 
+local function matching_event_window_rule(rules, activate_event, name)
+	local wanted = canonical(name)
+	for i = 1, #rules do
+		local rule = rules[i]
+		if type(rule) == 'table'
+			and rule.trigger == 'event_window'
+			and tostring(rule.activate_event or '') == tostring(activate_event or '')
+			and canonical(rule.name) == wanted then
+			return rule, i
+		end
+	end
+	return nil, nil
+end
+
 local function prune_unconfigured_locks(rules)
 	for key, lock in pairs(locks) do
-		local rule = matching_rule(rules, lock.trigger, lock.name)
+		local rule
+		if lock.trigger == 'event_window' then
+			rule = matching_event_window_rule(rules, lock.activate_event, lock.name)
+		else
+			rule = matching_rule(rules, lock.trigger, lock.name)
+		end
 		local configured_distance = rule and tonumber(rule.distance) or nil
 		local active_distance = tonumber(lock.distance)
 		local action_changed = lock.response == 'use_action' and (
 			tostring(rule and rule.action_type or '') ~= tostring(lock.action_type or '')
 			or tostring(rule and rule.action_name or '') ~= tostring(lock.action_name or '')
-		)
+			)
+		local lifecycle_changed = lock.trigger == 'event_window' and (
+			tostring(rule and rule.release_event or '') ~= tostring(lock.release_event or '')
+			or canonical(rule and rule.release_name or '') ~= canonical(lock.release_name or '')
+			or tonumber(rule and rule.confirmation_timeout_seconds) ~= tonumber(lock.confirmation_timeout_seconds)
+			)
 		if rule == nil
 			or rule.response ~= lock.response
 			or action_changed
+			or lifecycle_changed
 			or (response_owns_movement(lock.response) and configured_distance ~= active_distance) then
 			locks[key] = nil
 		end
@@ -225,6 +269,84 @@ local function ability_name_from_action(act, category)
 	end
 	local ability = ability_id > 0 and res.monster_abilities and res.monster_abilities[ability_id] or nil
 	return trim(ability and ability.en), ability_id
+end
+
+local function spell_name_from_action(act)
+	local spell_id = tonumber(type(act) == 'table' and act.param) or 0
+	local spell = spell_id > 0 and res.spells and res.spells[spell_id] or nil
+	return trim(spell and spell.en), spell_id
+end
+
+local function event_from_action(act, category)
+	if category == 8 then
+		local name, id = spell_name_from_action(act)
+		return 'spell_start', name, id
+	elseif category == 4 then
+		local name, id = spell_name_from_action(act)
+		return 'spell_end', name, id
+	elseif category == 7 then
+		local name, id = ability_name_from_action(act, category)
+		return 'ability_start', name, id
+	elseif category == 11 then
+		local name, id = ability_name_from_action(act, category)
+		return 'ability_end', name, id
+	end
+	return '', '', 0
+end
+
+local function event_window_key(rule, actor_id)
+	return lock_key(
+		'event_window:' .. tostring(rule.activate_event or ''),
+		actor_id,
+		rule.name
+	)
+end
+
+local function activate_event_window(rule, rule_index, actor_id, action_id, now)
+	local key = event_window_key(rule, actor_id)
+	local lock = {
+		key = key,
+		trigger = 'event_window',
+		name = trim(rule.name),
+		response = rule.response,
+		actor_id = actor_id,
+		action_id = tonumber(action_id) or 0,
+		started_at = tonumber(now) or 0,
+		rule_index = rule_index,
+		turn_applied = false,
+		activate_event = tostring(rule.activate_event or ''),
+		release_event = tostring(rule.release_event or ''),
+		release_name = trim(rule.release_name),
+		confirmation_timeout_seconds = tonumber(rule.confirmation_timeout_seconds),
+		release_armed = false,
+		phase = 'active',
+	}
+	if lock.release_event == 'buff_lost' then
+		lock.release_effect_id = tonumber(watch_cache_ids[canonical(lock.release_name)]) or 0
+	end
+	locks[key] = lock
+	last_active_target_id = actor_id
+	last_transition = ('activated:%s:%s'):format(lock.activate_event, lock.name)
+	return copy_lock(lock)
+end
+
+local function release_lock(key, transition)
+	local released = copy_lock(locks[key])
+	if released == nil then
+		return nil, nil, nil
+	end
+	locks[key] = nil
+	last_transition = transition
+	if tonumber(released.actor_id) == last_active_target_id then
+		last_active_target_id = 0
+		local replacement = select_active_lock()
+		if replacement then
+			replacement.turn_applied = false
+			return released, copy_lock(replacement), nil
+		end
+		return released, nil, tonumber(released.actor_id) or 0
+	end
+	return released, nil, nil
 end
 
 local function clear_other_ability_windows(actor_id, keep_key)
@@ -265,13 +387,67 @@ function M.on_action(act, current_target_id, now, actor_is_valid_enemy)
 	if type(act) ~= 'table' then
 		return result
 	end
+	refresh_effect_watch_cache(rules)
 	local category = tonumber(act.category) or 0
-	if category ~= 7 and category ~= 11 then
+	if category ~= 4 and category ~= 7 and category ~= 8 and category ~= 11 then
 		return result
 	end
 	local actor_id = tonumber(act.actor_id) or 0
+	local event_name, action_name, action_id = event_from_action(act, category)
+	if actor_id <= 0 or event_name == '' or action_name == '' then
+		return result
+	end
+
+	-- Generic lifecycle reactions are intentionally target-scoped for
+	-- stop_attacking: an unrelated enemy casting the same spell must not
+	-- disengage the character from the mob they are actually fighting.
+	if event_name == 'spell_start' or event_name == 'ability_start' then
+		local rule, rule_index = matching_event_window_rule(rules, event_name, action_name)
+		if rule ~= nil
+			and actor_is_valid_enemy == true
+			and tonumber(current_target_id) == actor_id then
+			result.activated = activate_event_window(rule, rule_index, actor_id, action_id, now)
+			return result
+		end
+	end
+
+	-- Action completion can either be the configured release itself or the
+	-- point where a start->buff lifecycle begins waiting for confirmation.
+	if event_name == 'spell_end' or event_name == 'ability_end' then
+		for key, lock in pairs(locks) do
+			if lock.trigger == 'event_window' and tonumber(lock.actor_id) == actor_id then
+				if tostring(lock.release_event or '') == event_name
+					and canonical(lock.release_name) == canonical(action_name) then
+					local released, replacement, released_target_id = release_lock(
+						key,
+						('released:%s:%s'):format(event_name, action_name)
+					)
+					result.released = released
+					result.activated = replacement
+					result.released_target_id = released_target_id
+					return result
+				end
+				local activation_completed =
+					(lock.activate_event == 'spell_start' and event_name == 'spell_end')
+					or (lock.activate_event == 'ability_start' and event_name == 'ability_end')
+				if activation_completed and canonical(lock.name) == canonical(action_name)
+					and lock.release_event == 'buff_lost'
+					and lock.release_armed ~= true then
+					local timeout = tonumber(lock.confirmation_timeout_seconds) or 1.5
+					lock.confirmation_deadline = (tonumber(now) or 0) + timeout
+					lock.phase = 'awaiting_confirmation'
+					last_transition = 'awaiting_confirmation:' .. lock.name
+				end
+			end
+		end
+	end
+
+	-- Preserve legacy ability_window behavior unchanged.
+	if category ~= 7 and category ~= 11 then
+		return result
+	end
 	local ability_name, ability_id = ability_name_from_action(act, category)
-	if actor_id <= 0 or ability_name == '' then
+	if ability_name == '' then
 		return result
 	end
 	local key = lock_key('ability_window', actor_id, ability_name)
@@ -315,19 +491,10 @@ function M.on_action(act, current_target_id, now, actor_is_valid_enemy)
 	end
 
 	if locks[key] ~= nil then
-		result.released = copy_lock(locks[key])
-		locks[key] = nil
-		last_transition = 'complete:' .. ability_name
-		if last_active_target_id == actor_id then
-			last_active_target_id = 0
-			local replacement = select_active_lock()
-			if replacement then
-				replacement.turn_applied = false
-				result.activated = copy_lock(replacement)
-			else
-				result.released_target_id = actor_id
-			end
-		end
+		local released, replacement, released_target_id = release_lock(key, 'complete:' .. ability_name)
+		result.released = released
+		result.activated = replacement
+		result.released_target_id = released_target_id
 	end
 	return result
 end
@@ -338,7 +505,7 @@ function M.prune_invalid_ability_windows(actor_is_valid_enemy)
 	end
 	local active_before = copy_lock(select_active_lock())
 	for key, lock in pairs(locks) do
-		if lock.trigger == 'ability_window'
+		if (lock.trigger == 'ability_window' or lock.trigger == 'event_window')
 			and actor_is_valid_enemy(tonumber(lock.actor_id) or 0) ~= true then
 			locks[key] = nil
 		end
@@ -355,6 +522,7 @@ end
 
 function M.evaluate(current_target_id, effects, now)
 	local target_id = tonumber(current_target_id) or 0
+	local now_value = tonumber(now) or 0
 	local enabled, rules = configured()
 	if not enabled then
 		local released = M.reset('config_disabled')
@@ -367,6 +535,10 @@ function M.evaluate(current_target_id, effects, now)
 	for key, lock in pairs(locks) do
 		if lock.trigger == 'enemy_buff' and tonumber(lock.actor_id) ~= target_id then
 			locks[key] = nil
+		elseif lock.trigger == 'event_window'
+			and lock.response == 'stop_attacking'
+			and tonumber(lock.actor_id) ~= target_id then
+			locks[key] = nil
 		end
 	end
 
@@ -377,11 +549,40 @@ function M.evaluate(current_target_id, effects, now)
 			active_effects[effect_id] = true
 		end
 	end
+
+	-- Existing enemy_buff rules retain their original gain/loss lifecycle.
 	for key, lock in pairs(locks) do
 		if lock.trigger == 'enemy_buff' and active_effects[tonumber(lock.effect_id) or 0] ~= true then
 			locks[key] = nil
 		end
 	end
+
+	-- A generic lifecycle may activate before its eventual buff exists.  Once
+	-- the release buff is observed, buff loss is authoritative.  Until then,
+	-- a post-completion confirmation deadline prevents an interrupted/failed
+	-- spell from holding attacks indefinitely.
+	for key, lock in pairs(locks) do
+		if lock.trigger == 'event_window' and lock.release_event == 'buff_lost' then
+			local effect_id = tonumber(lock.release_effect_id) or 0
+			local buff_active = effect_id > 0 and active_effects[effect_id] == true
+			if buff_active then
+				if lock.release_armed ~= true then
+					lock.release_armed = true
+					lock.confirmation_deadline = nil
+					lock.phase = 'confirmed'
+					last_transition = 'confirmed:buff_gained:' .. lock.release_name
+				end
+			elseif lock.release_armed == true then
+				locks[key] = nil
+				last_transition = 'released:buff_lost:' .. lock.release_name
+			elseif (tonumber(lock.confirmation_deadline) or 0) > 0
+				and now_value >= tonumber(lock.confirmation_deadline) then
+				locks[key] = nil
+				last_transition = 'released:confirmation_timeout:' .. lock.release_name
+			end
+		end
+	end
+
 	for effect_id in pairs(active_effects) do
 		local name = watch_cache_names[effect_id]
 		local rule, rule_index = matching_rule(rules, 'enemy_buff', name)
@@ -395,11 +596,24 @@ function M.evaluate(current_target_id, effects, now)
 					response = rule.response,
 					actor_id = target_id,
 					effect_id = effect_id,
-					started_at = tonumber(now) or 0,
+					started_at = now_value,
 					rule_index = rule_index,
 					turn_applied = false,
 				}
 				last_transition = 'effect_gain:' .. name
+			end
+		end
+		local lifecycle_rule, lifecycle_index = matching_event_window_rule(rules, 'buff_gained', name)
+		if lifecycle_rule and target_id > 0 then
+			local key = event_window_key(lifecycle_rule, target_id)
+			if locks[key] == nil then
+				activate_event_window(lifecycle_rule, lifecycle_index, target_id, effect_id, now_value)
+				local lock = locks[key]
+				if lock and lock.release_event == 'buff_lost'
+					and tonumber(lock.release_effect_id) == effect_id then
+					lock.release_armed = true
+					lock.phase = 'confirmed'
+				end
 			end
 		end
 	end
@@ -416,7 +630,9 @@ function M.evaluate(current_target_id, effects, now)
 		end
 	elseif previously_active_actor_id > 0 then
 		released_target_id = previously_active_actor_id
-		last_transition = 'released'
+		if not tostring(last_transition):find('released:', 1, true) then
+			last_transition = 'released'
+		end
 	end
 	return copy_lock(active), released_target_id
 end

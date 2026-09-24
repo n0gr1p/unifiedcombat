@@ -23,6 +23,9 @@ package.preload.resources = function()
             [33] = { id = 33, en = 'Haste' },
             [173] = { id = 173, en = 'Dread Spikes' },
         },
+        spells = {
+            [901] = { id = 901, en = 'Dread Spikes' },
+        },
     }
 end
 
@@ -37,6 +40,15 @@ local rules = {
     { trigger = 'enemy_buff', name = 'Dread Spikes', response = 'stop_attacking' },
     { trigger = 'ability_window', name = 'Dancing Fullers', response = 'run_away', distance = 12.0 },
     { trigger = 'ability_window', name = 'Range Pulse', response = 'move_to_range', distance = 12.0 },
+    {
+        trigger = 'event_window',
+        name = 'Dread Spikes',
+        response = 'stop_attacking',
+        activate_event = 'spell_start',
+        release_event = 'buff_lost',
+        release_name = 'Dread Spikes',
+        confirmation_timeout_seconds = 1.5,
+    },
 }
 local meta = { character = 'Redrogue', main_job = 'BRD', sub_job = 'WHM' }
 local normalized = normalizer.normalize({
@@ -46,10 +58,13 @@ local normalized = normalizer.normalize({
     },
 }, meta)
 assert_true(normalized.reactions.enabled, 'structured reaction enabled flag must normalize')
-assert_equal(#normalized.reactions.rules, 4, 'structured reaction rules must normalize')
+assert_equal(#normalized.reactions.rules, 5, 'structured reaction rules must normalize')
 assert_equal(normalized.reactions.rules[1].name, 'Cold Stare', 'ability rule name must survive normalize')
 assert_equal(normalized.reactions.rules[3].distance, 12.0, 'run-away target distance must survive normalize')
 assert_equal(normalized.reactions.rules[4].distance, 12.0, 'move-to-range target distance must survive normalize')
+assert_equal(normalized.reactions.rules[5].activate_event, 'spell_start', 'event-window activation event must survive normalize')
+assert_equal(normalized.reactions.rules[5].release_event, 'buff_lost', 'event-window release event must survive normalize')
+assert_equal(normalized.reactions.rules[5].confirmation_timeout_seconds, 1.5, 'event-window confirmation timeout must survive normalize')
 
 local invalid_distance_ok, invalid_distance_error = pcall(normalizer.normalize, {
     reactions = {
@@ -352,6 +367,47 @@ assert_true(replacement_move == nil, 'cancellation must leave no stale move-to-r
 
 local watch = reactions.effect_watch_set()
 assert_true(watch[173] == true, 'configured enemy buff must resolve to the live Dread Spikes effect id')
+reactions.reset('event_window_test')
+local spell_start = reactions.on_action({
+    actor_id = 900,
+    category = 8,
+    param = 901,
+}, 900, 10.0, true)
+assert_true(type(spell_start.activated) == 'table', 'Dread Spikes cast start must activate event-window stop')
+assert_equal(spell_start.activated.trigger, 'event_window', 'cast-start reaction must create an event-window lock')
+assert_equal(spell_start.activated.phase, 'active', 'cast-start reaction must begin active')
+assert_true(reactions.requires_disengage(spell_start.activated, 1), 'cast-start event-window must disengage immediately')
+
+local spell_complete = reactions.on_action({
+    actor_id = 900,
+    category = 4,
+    param = 901,
+}, 900, 10.5, true)
+assert_true(spell_complete.released == nil, 'spell completion must not release before expected buff confirmation')
+local waiting = reactions.evaluate(900, {}, 10.6)
+assert_equal(waiting.phase, 'awaiting_confirmation', 'spell completion must enter buff confirmation hold')
+
+local confirmed = reactions.evaluate(900, { { effect_id = 173 } }, 10.7)
+assert_equal(confirmed.phase, 'confirmed', 'observed Dread Spikes must confirm the event-window hold')
+local still_confirmed = reactions.evaluate(900, { { effect_id = 173 } }, 12.5)
+assert_true(type(still_confirmed) == 'table', 'confirmed lifecycle must ignore the no-buff timeout while buff remains active')
+local released_lifecycle, released_lifecycle_target = reactions.evaluate(900, {}, 12.6)
+assert_true(released_lifecycle == nil, 'buff loss must release the event-window hold')
+assert_equal(released_lifecycle_target, 900, 'buff-loss release must request normal reaction release handling')
+
+local failed_start = reactions.on_action({
+    actor_id = 900,
+    category = 8,
+    param = 901,
+}, 900, 20.0, true)
+assert_true(type(failed_start.activated) == 'table', 'second Dread Spikes cast start must react')
+reactions.on_action({ actor_id = 900, category = 4, param = 901 }, 900, 20.5, true)
+local before_timeout = reactions.evaluate(900, {}, 21.9)
+assert_true(type(before_timeout) == 'table', 'missing expected buff must remain held before confirmation timeout')
+local after_timeout, timeout_target = reactions.evaluate(900, {}, 22.01)
+assert_true(after_timeout == nil, 'missing expected buff must release after confirmation timeout')
+assert_equal(timeout_target, 900, 'confirmation timeout must request reaction release handling')
+
 local buff_lock = reactions.evaluate(900, { { effect_id = 173 } }, 4)
 assert_equal(buff_lock.name, 'Dread Spikes', 'tracked enemy buff must activate stop-attacking lock')
 assert_equal(buff_lock.response, 'stop_attacking', 'enemy buff response mismatch')

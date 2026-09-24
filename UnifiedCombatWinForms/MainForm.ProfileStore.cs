@@ -472,6 +472,28 @@ public partial class MainForm
                 ["name"] = rule.Name,
                 ["response"] = rule.Response,
             };
+            if (rule.Trigger == "event_window")
+            {
+                if (rule.Response != "stop_attacking"
+                    || rule.ActivateEvent is not ("spell_start" or "ability_start" or "buff_gained")
+                    || rule.ReleaseEvent is not ("spell_end" or "ability_end" or "buff_lost")
+                    || string.IsNullOrWhiteSpace(rule.ReleaseName))
+                {
+                    throw new InvalidDataException("event_window reaction is incomplete");
+                }
+                serialized["activate_event"] = rule.ActivateEvent;
+                serialized["release_event"] = rule.ReleaseEvent;
+                serialized["release_name"] = rule.ReleaseName.Trim();
+                if (rule.ReleaseEvent == "buff_lost")
+                {
+                    var timeout = rule.ConfirmationTimeoutSeconds ?? 1.5;
+                    if (!double.IsFinite(timeout) || timeout <= 0 || timeout > 10)
+                    {
+                        throw new InvalidDataException("event_window confirmation timeout must be > 0 and <= 10 seconds");
+                    }
+                    serialized["confirmation_timeout_seconds"] = timeout;
+                }
+            }
             if (rule.Response is "run_away" or "move_to_range")
             {
                 if (!rule.Distance.HasValue || !double.IsFinite(rule.Distance.Value) || rule.Distance.Value <= 0)

@@ -377,16 +377,36 @@ local function normalize_reaction_rules(value)
     if type(value) ~= 'table' then
         return out
     end
+    local allowed_activate_events = {
+        spell_start = true,
+        ability_start = true,
+        buff_gained = true,
+    }
+    local allowed_release_events = {
+        spell_end = true,
+        ability_end = true,
+        buff_lost = true,
+    }
     for i = 1, #value do
         local entry = value[i]
         if type(entry) == 'table' then
             local trigger = normalize_optional_string(entry.trigger)
             local name = normalize_optional_string(entry.name)
             local response = normalize_optional_string(entry.response)
+            local activate_event = trigger == 'event_window' and normalize_optional_string(entry.activate_event) or nil
             local valid = (trigger == 'ability_window'
                     and (response == 'turn_away' or response == 'run_away' or response == 'move_to_range' or response == 'use_action'))
                 or (trigger == 'enemy_buff' and response == 'stop_attacking')
-            local key = trigger and name and (trigger .. ':' .. name:lower()) or nil
+                or (trigger == 'event_window' and response == 'stop_attacking'
+                    and allowed_activate_events[activate_event] == true)
+            local key = nil
+            if trigger and name then
+                if trigger == 'event_window' then
+                    key = trigger .. ':' .. tostring(activate_event or '') .. ':' .. name:lower()
+                else
+                    key = trigger .. ':' .. name:lower()
+                end
+            end
             if valid and name ~= nil and key ~= nil and not seen[key] then
                 seen[key] = true
                 local normalized = {
@@ -394,6 +414,33 @@ local function normalize_reaction_rules(value)
                     name = name,
                     response = response,
                 }
+                if trigger == 'event_window' then
+                    local release_event = normalize_optional_string(entry.release_event)
+                    if allowed_release_events[release_event] ~= true then
+                        error(('reactions.rules[%d].release_event must be spell_end, ability_end, or buff_lost'):format(i))
+                    end
+                    local release_name = normalize_optional_string(entry.release_name) or name
+                    normalized.activate_event = activate_event
+                    normalized.release_event = release_event
+                    normalized.release_name = release_name
+                    if release_event == 'buff_lost' then
+                        local timeout = entry.confirmation_timeout_seconds
+                        if timeout == nil then
+                            timeout = 1.5
+                        end
+                        if type(timeout) ~= 'number'
+                            or timeout ~= timeout
+                            or timeout == math.huge
+                            or timeout == -math.huge
+                            or timeout <= 0
+                            or timeout > 10 then
+                            error(('reactions.rules[%d].confirmation_timeout_seconds must be a finite number greater than zero and at most 10'):format(i))
+                        end
+                        normalized.confirmation_timeout_seconds = timeout
+                    elseif entry.confirmation_timeout_seconds ~= nil then
+                        error(('reactions.rules[%d].confirmation_timeout_seconds is only valid when release_event is buff_lost'):format(i))
+                    end
+                end
                 if response == 'run_away' or response == 'move_to_range' then
                     if type(entry.distance) ~= 'number'
                         or entry.distance ~= entry.distance

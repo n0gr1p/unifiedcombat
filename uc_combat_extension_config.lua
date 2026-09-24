@@ -192,6 +192,34 @@ function M.validate_action_rule(rule)
         and rule.trigger ~= 'party_action_complete' then
         return false, 'once_per_instance reactions require ability_window or party_action_complete trigger'
     end
+    if rule.trigger == 'event_window' then
+        if rule.response ~= 'stop_attacking' then
+            return false, 'event_window currently supports only stop_attacking'
+        end
+        local activate_event = trim(rule.activate_event):lower()
+        if activate_event ~= 'spell_start'
+            and activate_event ~= 'ability_start'
+            and activate_event ~= 'buff_gained' then
+            return false, 'event_window activate_event must be spell_start, ability_start, or buff_gained'
+        end
+        local release_event = trim(rule.release_event):lower()
+        if release_event ~= 'spell_end'
+            and release_event ~= 'ability_end'
+            and release_event ~= 'buff_lost' then
+            return false, 'event_window release_event must be spell_end, ability_end, or buff_lost'
+        end
+        if trim(rule.name) == '' or trim(rule.release_name) == '' then
+            return false, 'event_window requires activation and release names'
+        end
+        if release_event == 'buff_lost' then
+            local timeout = tonumber(rule.confirmation_timeout_seconds)
+            if timeout == nil or timeout <= 0 or timeout > 10 then
+                return false, 'event_window buff_lost release requires confirmation_timeout_seconds > 0 and <= 10'
+            end
+        elseif rule.confirmation_timeout_seconds ~= nil then
+            return false, 'event_window confirmation timeout is only valid for buff_lost release'
+        end
+    end
     if rule.hold_smn_rage_until_sequence_complete ~= nil
         and type(rule.hold_smn_rage_until_sequence_complete) ~= 'boolean' then
         return false, 'hold_smn_rage_until_sequence_complete must be boolean'
