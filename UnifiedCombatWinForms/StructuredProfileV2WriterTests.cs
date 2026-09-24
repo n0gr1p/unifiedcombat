@@ -1707,6 +1707,16 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "release_name = \"Dread Spikes\"", "event-window release name missing");
         AssertContains(content, "confirmation_timeout_seconds = 1.5", "event-window confirmation timeout missing");
         AssertContains(content, "response = \"turn_away\"", "event-window turn-away response missing");
+        var reactionLogic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        var addStart = reactionLogic.IndexOf("private void OnReactionRuleAdd()", StringComparison.Ordinal);
+        var addEnd = reactionLogic.IndexOf("private void OnReactionRuleRemove()", addStart, StringComparison.Ordinal);
+        AssertTrue(addStart >= 0 && addEnd > addStart, "reaction add-handler source range missing");
+        var addHandler = reactionLogic[addStart..addEnd];
+        AssertContains(
+            addHandler,
+            "(response is \"stop_attacking\" or \"turn_away\")",
+            "event-window Add handler must accept turn-away"
+        );
         AssertNotContains(content, "actor_id", "runtime actor ids must not be durable reaction config");
         AssertNotContains(content, "effect_id", "resolved runtime effect ids must not be durable reaction config");
     }

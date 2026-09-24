@@ -3646,7 +3646,7 @@ public partial class MainForm
         var activateEvent = trigger == "event_window" ? _reactionActivateEvent.SelectedItem?.ToString() ?? "" : "";
         var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))
             || (trigger == "enemy_buff" && response == "stop_attacking")
-            || (trigger == "event_window" && response == "stop_attacking"
+            || (trigger == "event_window" && (response is "stop_attacking" or "turn_away")
                 && activateEvent is "spell_start" or "ability_start" or "buff_gained");
         if (!valid || name.Length == 0)
         {
