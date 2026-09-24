@@ -388,7 +388,16 @@ local waiting = reactions.evaluate(900, {}, 10.6)
 assert_equal(waiting.phase, 'awaiting_confirmation', 'spell completion must enter buff confirmation hold')
 
 local confirmed = reactions.evaluate(900, { { effect_id = 173 } }, 10.7)
-assert_equal(confirmed.phase, 'confirmed', 'observed Dread Spikes must confirm the event-window hold')
+assert_true(type(confirmed) == 'table', 'observed Dread Spikes must keep a stop-attacking reaction active')
+local confirmed_lifecycle = nil
+for _, active in ipairs(reactions.status().active or {}) do
+    if active.trigger == 'event_window' and active.name == 'Dread Spikes' then
+        confirmed_lifecycle = active
+        break
+    end
+end
+assert_true(type(confirmed_lifecycle) == 'table', 'event-window lock must coexist with the legacy enemy-buff rule')
+assert_equal(confirmed_lifecycle.phase, 'confirmed', 'observed Dread Spikes must confirm the event-window hold')
 local still_confirmed = reactions.evaluate(900, { { effect_id = 173 } }, 12.5)
 assert_true(type(still_confirmed) == 'table', 'confirmed lifecycle must ignore the no-buff timeout while buff remains active')
 local released_lifecycle, released_lifecycle_target = reactions.evaluate(900, {}, 12.6)
