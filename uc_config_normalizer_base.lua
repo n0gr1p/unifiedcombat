@@ -397,12 +397,13 @@ local function normalize_reaction_rules(value)
             local valid = (trigger == 'ability_window'
                     and (response == 'turn_away' or response == 'run_away' or response == 'move_to_range' or response == 'use_action'))
                 or (trigger == 'enemy_buff' and response == 'stop_attacking')
-                or (trigger == 'event_window' and response == 'stop_attacking'
+                or (trigger == 'event_window'
+                    and (response == 'stop_attacking' or response == 'turn_away')
                     and allowed_activate_events[activate_event] == true)
             local key = nil
             if trigger and name then
                 if trigger == 'event_window' then
-                    key = trigger .. ':' .. tostring(activate_event or '') .. ':' .. name:lower()
+                    key = trigger .. ':' .. tostring(activate_event or '') .. ':' .. name:lower() .. ':' .. tostring(response or '')
                 else
                     key = trigger .. ':' .. name:lower()
                 end

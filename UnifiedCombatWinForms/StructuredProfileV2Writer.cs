@@ -2431,7 +2431,7 @@ internal static class StructuredProfileV2Writer
             var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action" || response == "use_sequence"))
                 || (trigger == "party_action_complete" && response == "use_sequence")
                 || (trigger == "enemy_buff" && response == "stop_attacking")
-                || (trigger == "event_window" && response == "stop_attacking"
+                || (trigger == "event_window" && (response is "stop_attacking" or "turn_away")
                     && activateEvent is "spell_start" or "ability_start" or "buff_gained");
             if (!valid || name.Length == 0)
             {

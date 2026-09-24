@@ -474,7 +474,7 @@ public partial class MainForm
             };
             if (rule.Trigger == "event_window")
             {
-                if (rule.Response != "stop_attacking"
+                if (rule.Response is not ("stop_attacking" or "turn_away")
                     || rule.ActivateEvent is not ("spell_start" or "ability_start" or "buff_gained")
                     || rule.ReleaseEvent is not ("spell_end" or "ability_end" or "buff_lost")
                     || string.IsNullOrWhiteSpace(rule.ReleaseName))

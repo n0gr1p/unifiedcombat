@@ -1674,6 +1674,16 @@ internal static class StructuredProfileV2WriterTests
                 ["release_name"] = "Dread Spikes",
                 ["confirmation_timeout_seconds"] = 1.5,
             },
+            new JsonObject
+            {
+                ["trigger"] = "event_window",
+                ["name"] = "Dread Spikes",
+                ["response"] = "turn_away",
+                ["activate_event"] = "spell_start",
+                ["release_event"] = "buff_lost",
+                ["release_name"] = "Dread Spikes",
+                ["confirmation_timeout_seconds"] = 1.5,
+            },
         };
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
@@ -1696,6 +1706,7 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "release_event = \"buff_lost\"", "event-window release missing");
         AssertContains(content, "release_name = \"Dread Spikes\"", "event-window release name missing");
         AssertContains(content, "confirmation_timeout_seconds = 1.5", "event-window confirmation timeout missing");
+        AssertContains(content, "response = \"turn_away\"", "event-window turn-away response missing");
         AssertNotContains(content, "actor_id", "runtime actor ids must not be durable reaction config");
         AssertNotContains(content, "effect_id", "resolved runtime effect ids must not be durable reaction config");
     }

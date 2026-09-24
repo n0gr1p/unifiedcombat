@@ -2437,7 +2437,7 @@ public partial class MainForm
         _reactionTriggerCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
         _reactionTriggerCombo.Items.AddRange(["ability_window", "enemy_buff", "event_window"]);
         _reactionTriggerCombo.SelectedIndexChanged += (_, _) => OnReactionTriggerChanged();
-        _reactionName = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Cold Stare" };
+        _reactionName = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Activate name (e.g. Dread Spikes)" };
         _reactionResponseCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
         _reactionResponseCombo.SelectedIndexChanged += (_, _) => RefreshReactionDistanceState();
         _reactionDistance = new NumericUpDown
@@ -2520,7 +2520,7 @@ public partial class MainForm
         reactionRoot.Controls.Add(reactionButtons);
         reactionRoot.Controls.Add(new Label
         {
-            Text = "Ability-window reactions handle enemy abilities. Enemy-buff reactions preserve the existing buff-gained/buff-lost stop behavior. Event-window reactions independently choose activation and release events; buff-loss releases can wait briefly for the expected buff after a spell or ability completes.",
+            Text = "Ability-window reactions handle enemy abilities. Enemy-buff reactions preserve the existing buff-gained/buff-lost stop behavior. Event-window reactions can stop attacking or turn away, independently choose activation and release events, and may be stacked as separate rules for the same hazard.",
             AutoSize = true,
             Padding = new Padding(0, 8, 0, 0),
         });

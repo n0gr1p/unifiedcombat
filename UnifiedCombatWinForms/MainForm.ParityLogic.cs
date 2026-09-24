@@ -2676,7 +2676,7 @@ public partial class MainForm
                 var activateEvent = SessionStateHelper.GetString(item, "activate_event").Trim();
                 var valid = (trigger == "ability_window" && (response == "turn_away" || response == "run_away" || response == "move_to_range" || response == "use_action"))
                     || (trigger == "enemy_buff" && response == "stop_attacking")
-                    || (trigger == "event_window" && response == "stop_attacking"
+                    || (trigger == "event_window" && (response is "stop_attacking" or "turn_away")
                         && activateEvent is "spell_start" or "ability_start" or "buff_gained");
                 double? distance = null;
                 string? actionType = null;
@@ -2771,10 +2771,13 @@ public partial class MainForm
     {
         _reactionResponseCombo.Items.Clear();
         var trigger = _reactionTriggerCombo.SelectedItem?.ToString();
-        if (string.Equals(trigger, "enemy_buff", StringComparison.Ordinal)
-            || string.Equals(trigger, "event_window", StringComparison.Ordinal))
+        if (string.Equals(trigger, "enemy_buff", StringComparison.Ordinal))
         {
             _reactionResponseCombo.Items.Add("stop_attacking");
+        }
+        else if (string.Equals(trigger, "event_window", StringComparison.Ordinal))
+        {
+            _reactionResponseCombo.Items.AddRange(["stop_attacking", "turn_away"]);
         }
         else
         {
@@ -3651,7 +3654,9 @@ public partial class MainForm
         }
         if (_reactionRules.Any(x => string.Equals(x.Trigger, trigger, StringComparison.Ordinal)
             && string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)
-            && (trigger != "event_window" || string.Equals(x.ActivateEvent, activateEvent, StringComparison.Ordinal))))
+            && (trigger != "event_window"
+                || (string.Equals(x.ActivateEvent, activateEvent, StringComparison.Ordinal)
+                    && string.Equals(x.Response, response, StringComparison.Ordinal)))))
         {
             return;
         }

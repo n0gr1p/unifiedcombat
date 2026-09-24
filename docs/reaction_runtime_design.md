@@ -73,10 +73,11 @@ The disabled, empty domain is optional so profiles created before reactions exis
 ### Event Window
 
 - `trigger = "event_window"`
-- `response = "stop_attacking"`
+- `response` is `stop_attacking` or `turn_away`; separate rules may use both responses for the same lifecycle.
 - `activate_event` is one of `spell_start`, `ability_start`, or `buff_gained`.
 - `release_event` is one of `spell_end`, `ability_end`, or `buff_lost`; `release_name` may differ from the activation name.
 - Spell/ability starts are observed directly from Windower action categories 8/7, so safety work can begin before a resulting buff is applied.
+- Category-8 spell starts resolve the spell resource id from `act.targets[1].actions[1].param`; `act.param` is not treated as the spell id for begin-cast packets.
 - For `buff_lost` releases, the runtime holds continuously across action completion while waiting for the expected buff. Once seen, actual buff loss is authoritative.
 - If the expected buff never appears, `confirmation_timeout_seconds` releases the hold after action completion rather than leaving combat suspended indefinitely.
 - An authoritative cast-interrupted action message releases a `spell_start` lifecycle immediately; the confirmation timeout remains the fallback for normally completed casts whose expected buff never appears.

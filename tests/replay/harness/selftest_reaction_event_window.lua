@@ -42,6 +42,15 @@ local rules = {
         release_name = 'Dread Spikes',
         confirmation_timeout_seconds = 1.5,
     },
+    {
+        trigger = 'event_window',
+        name = 'Dread Spikes',
+        response = 'turn_away',
+        activate_event = 'spell_start',
+        release_event = 'buff_lost',
+        release_name = 'Dread Spikes',
+        confirmation_timeout_seconds = 1.5,
+    },
 }
 
 local meta = { character = 'Testchar', main_job = 'MNK', sub_job = 'WAR' }
@@ -52,11 +61,12 @@ local normalized = normalizer.normalize({
     },
 }, meta)
 
-assert_equal(#normalized.reactions.rules, 2, 'reaction lifecycle rules must normalize')
+assert_equal(#normalized.reactions.rules, 3, 'reaction lifecycle rules must normalize')
 assert_equal(normalized.reactions.rules[2].activate_event, 'spell_start', 'activation event must normalize')
 assert_equal(normalized.reactions.rules[2].release_event, 'buff_lost', 'release event must normalize')
 assert_equal(normalized.reactions.rules[2].release_name, 'Dread Spikes', 'release name must normalize')
 assert_equal(normalized.reactions.rules[2].confirmation_timeout_seconds, 1.5, 'confirmation timeout must normalize')
+assert_equal(normalized.reactions.rules[3].response, 'turn_away', 'turn-away event-window response must normalize')
 
 local payload = {
     version = 2,
@@ -87,18 +97,31 @@ assert_true(watch[173] == true, 'release buff must be included in the observed e
 local start = reactions.on_action({
     actor_id = 900,
     category = 8,
-    param = 901,
+    param = 24931,
+    targets = {
+        { id = 900, actions = { { param = 901 } } },
+    },
 }, 900, 10.0, true)
 assert_true(type(start.activated) == 'table', 'spell start must activate the lifecycle')
+assert_true(type(start.activated_all) == 'table', 'spell start must expose all matching event-window reactions')
+assert_equal(#start.activated_all, 2, 'spell start must activate both stop-attacking and turn-away rules')
+assert_equal(start.activated_all[1].response, 'stop_attacking', 'first Dread Spikes response must stop attacks')
+assert_equal(start.activated_all[2].response, 'turn_away', 'second Dread Spikes response must turn away')
 assert_equal(start.activated.trigger, 'event_window', 'spell start must create an event-window lock')
 assert_equal(start.activated.phase, 'active', 'new lifecycle must begin active')
-assert_true(reactions.requires_disengage(start.activated, 1), 'spell-start lifecycle must request immediate disengage')
+assert_true(reactions.requires_disengage(start.activated_all[1], 1), 'spell-start stop reaction must request immediate disengage')
+local turn_lock = reactions.active_response_lock(900, 'turn_away')
+assert_true(type(turn_lock) == 'table', 'spell start must expose a concurrent turn-away lock')
+assert_true(reactions.blocks_movement(turn_lock), 'turn-away lifecycle must hold normal facing/movement')
 
 reactions.reset('off_target')
 local off_target = reactions.on_action({
     actor_id = 901,
     category = 8,
-    param = 901,
+    param = 24931,
+    targets = {
+        { id = 901, actions = { { param = 901 } } },
+    },
 }, 900, 11.0, true)
 assert_true(off_target.activated == nil, 'stop-attacking spell-start lifecycle must be current-target scoped')
 
@@ -106,7 +129,10 @@ reactions.reset('confirmation')
 start = reactions.on_action({
     actor_id = 900,
     category = 8,
-    param = 901,
+    param = 24931,
+    targets = {
+        { id = 900, actions = { { param = 901 } } },
+    },
 }, 900, 20.0, true)
 assert_true(type(start.activated) == 'table', 'confirmation test cast must activate')
 local complete = reactions.on_action({
@@ -131,6 +157,9 @@ for _, lock in ipairs(reactions.status().active or {}) do
 end
 assert_true(type(lifecycle) == 'table', 'event-window lock must remain active after buff gain')
 assert_equal(lifecycle.phase, 'confirmed', 'buff gain must confirm event-window lifecycle')
+local confirmed_turn = reactions.active_response_lock(900, 'turn_away')
+assert_true(type(confirmed_turn) == 'table', 'turn-away lifecycle must remain active after buff confirmation')
+assert_equal(confirmed_turn.phase, 'confirmed', 'turn-away lifecycle must confirm on the same buff')
 assert_true(type(legacy) == 'table', 'legacy enemy-buff rule must coexist with event-window lifecycle')
 
 local after_timeout = reactions.evaluate(900, { { effect_id = 173 } }, 23.0)
@@ -143,7 +172,10 @@ reactions.reset('interruption')
 start = reactions.on_action({
     actor_id = 900,
     category = 8,
-    param = 901,
+    param = 24931,
+    targets = {
+        { id = 900, actions = { { param = 901 } } },
+    },
 }, 900, 30.0, true)
 assert_true(type(start.activated) == 'table', 'interruption test cast must activate')
 local interrupted = reactions.on_action_message({
@@ -159,7 +191,10 @@ reactions.reset('missing_buff')
 start = reactions.on_action({
     actor_id = 900,
     category = 8,
-    param = 901,
+    param = 24931,
+    targets = {
+        { id = 900, actions = { { param = 901 } } },
+    },
 }, 900, 40.0, true)
 assert_true(type(start.activated) == 'table', 'missing-buff test cast must activate')
 reactions.on_action({

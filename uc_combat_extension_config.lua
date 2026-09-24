@@ -193,8 +193,8 @@ function M.validate_action_rule(rule)
         return false, 'once_per_instance reactions require ability_window or party_action_complete trigger'
     end
     if rule.trigger == 'event_window' then
-        if rule.response ~= 'stop_attacking' then
-            return false, 'event_window currently supports only stop_attacking'
+        if rule.response ~= 'stop_attacking' and rule.response ~= 'turn_away' then
+            return false, 'event_window supports only stop_attacking or turn_away'
         end
         local activate_event = trim(rule.activate_event):lower()
         if activate_event ~= 'spell_start'

@@ -2518,6 +2518,14 @@ function scheduler.refresh_reaction_lock()
 	if not camp_lane_reserved and lock and lock.turn_applied ~= true then
 		scheduler.apply_reaction_response(lock)
 	end
+	if not camp_lane_reserved and target_id > 0 then
+		local turn_lock = reaction_runtime.active_response_lock(target_id, 'turn_away')
+		if type(turn_lock) == 'table'
+			and (type(lock) ~= 'table' or tostring(turn_lock.key or '') ~= tostring(lock.key or ''))
+			and turn_lock.turn_applied ~= true then
+			scheduler.apply_reaction_response(turn_lock)
+		end
+	end
 	return lock
 end
 
@@ -2637,6 +2645,20 @@ local function run_movement_coordinator_tick()
 			_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_REACTION_HOLD'
 			return false, 'MOVE_COORD_REACTION_HOLD'
 		end
+	end
+	local current_target = windower.ffxi.get_mob_by_target('t')
+	local current_target_id = tonumber(current_target and current_target.id) or 0
+	local concurrent_turn_lock = current_target_id > 0
+		and require('uc_reaction_runtime').active_response_lock(current_target_id, 'turn_away')
+		or nil
+	if type(concurrent_turn_lock) == 'table' then
+		if concurrent_turn_lock.turn_applied ~= true then
+			scheduler.apply_reaction_response(concurrent_turn_lock)
+		end
+		formation_runtime.stop('FORMATION_REACTION_HOLD')
+		_G.UC_MOVEMENT_MODE = 'REACTION_HOLD'
+		_G.UC_MOVEMENT_BLOCK_REASON = 'MOVE_COORD_REACTION_HOLD'
+		return false, 'MOVE_COORD_REACTION_HOLD'
 	end
 	-- Facing is coordinator-owned and evaluated every movement tick.
 	-- C5 rule is enforced inside p1_apply_face_to_target (valid live combat mob only).
@@ -7485,22 +7507,31 @@ function scheduler.on_action(act)
 				observed_at,
 				reaction_actor_is_valid_enemy
 			)
-			if type(reaction_event.released) == 'table' then
-				scheduler.release_reaction_movement(reaction_event.released, 'REACTION_ABILITY_WINDOW_COMPLETE')
+			local released_reactions = type(reaction_event.released_all) == 'table'
+				and reaction_event.released_all
+				or (type(reaction_event.released) == 'table' and { reaction_event.released } or {})
+			for _, released_reaction in ipairs(released_reactions) do
+				scheduler.release_reaction_movement(released_reaction, 'REACTION_ABILITY_WINDOW_COMPLETE')
 			end
 			if type(reaction_event.activated) == 'table' then
 				_G.UC_REACTION_LOCK = reaction_event.activated
-				scheduler.action_timeline_log('REACTION_ACTIVATED', {
-					ability = tostring(reaction_event.activated.name or ''),
-					response = tostring(reaction_event.activated.response or ''),
-					actor_id = tonumber(reaction_event.activated.actor_id) or 0,
-					target_distance = tonumber(reaction_event.activated.distance),
-				}, ('reaction_activated:%s:%d'):format(
-					tostring(reaction_event.activated.name or ''),
-					tonumber(reaction_event.activated.actor_id) or 0
-				), 0)
-				if not scheduler.providers.camp_puller.active() then
-					scheduler.apply_reaction_response(reaction_event.activated)
+				local activated_reactions = type(reaction_event.activated_all) == 'table'
+					and reaction_event.activated_all
+					or { reaction_event.activated }
+				for _, activated_reaction in ipairs(activated_reactions) do
+					scheduler.action_timeline_log('REACTION_ACTIVATED', {
+						ability = tostring(activated_reaction.name or ''),
+						response = tostring(activated_reaction.response or ''),
+						actor_id = tonumber(activated_reaction.actor_id) or 0,
+						target_distance = tonumber(activated_reaction.distance),
+					}, ('reaction_activated:%s:%s:%d'):format(
+						tostring(activated_reaction.name or ''),
+						tostring(activated_reaction.response or ''),
+						tonumber(activated_reaction.actor_id) or 0
+					), 0)
+					if not scheduler.providers.camp_puller.active() then
+						scheduler.apply_reaction_response(activated_reaction)
+					end
 				end
 			elseif (tonumber(reaction_event.released_target_id) or 0) > 0 then
 				_G.UC_REACTION_LOCK = nil
@@ -7797,21 +7828,30 @@ function scheduler.on_action_message(msg)
 			target_id,
 			now_s()
 		)
-		if type(reaction_event.released) == 'table' then
-			scheduler.release_reaction_movement(reaction_event.released, 'REACTION_EVENT_WINDOW_INTERRUPTED')
+		local released_reactions = type(reaction_event.released_all) == 'table'
+			and reaction_event.released_all
+			or (type(reaction_event.released) == 'table' and { reaction_event.released } or {})
+		for _, released_reaction in ipairs(released_reactions) do
+			scheduler.release_reaction_movement(released_reaction, 'REACTION_EVENT_WINDOW_INTERRUPTED')
 			scheduler.action_timeline_log('REACTION_CLEARED', {
-				ability = tostring(reaction_event.released.name or ''),
-				response = tostring(reaction_event.released.response or ''),
+				ability = tostring(released_reaction.name or ''),
+				response = tostring(released_reaction.response or ''),
 				reason = 'spell_interrupted',
-			}, ('reaction_cleared:%s:%d'):format(
-				tostring(reaction_event.released.name or ''),
-				tonumber(reaction_event.released.actor_id) or 0
+			}, ('reaction_cleared:%s:%s:%d'):format(
+				tostring(released_reaction.name or ''),
+				tostring(released_reaction.response or ''),
+				tonumber(released_reaction.actor_id) or 0
 			), 0)
 		end
 		if type(reaction_event.activated) == 'table' then
 			_G.UC_REACTION_LOCK = reaction_event.activated
+			local activated_reactions = type(reaction_event.activated_all) == 'table'
+				and reaction_event.activated_all
+				or { reaction_event.activated }
 			if not scheduler.providers.camp_puller.active() then
-				scheduler.apply_reaction_response(reaction_event.activated)
+				for _, activated_reaction in ipairs(activated_reactions) do
+					scheduler.apply_reaction_response(activated_reaction)
+				end
 			end
 		elseif type(reaction_event.released) == 'table' then
 			_G.UC_REACTION_LOCK = nil
