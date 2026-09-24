@@ -7789,6 +7789,39 @@ function scheduler.on_action_message(msg)
 	local my_id = tonumber(player and player.id) or 0
 	local actor_id = tonumber(msg and msg.actor_id) or 0
 	local message_id = tonumber(msg and msg.message_id) or 0
+	if rawget(_G, 'Start_Engine') == true and actor_id > 0 and message_id ~= 0 then
+		local target = windower.ffxi.get_mob_by_target('t')
+		local target_id = tonumber(target and target.id) or 0
+		local reaction_event = require('uc_reaction_runtime').on_action_message(
+			msg,
+			target_id,
+			now_s()
+		)
+		if type(reaction_event.released) == 'table' then
+			scheduler.release_reaction_movement(reaction_event.released, 'REACTION_EVENT_WINDOW_INTERRUPTED')
+			scheduler.action_timeline_log('REACTION_CLEARED', {
+				ability = tostring(reaction_event.released.name or ''),
+				response = tostring(reaction_event.released.response or ''),
+				reason = 'spell_interrupted',
+			}, ('reaction_cleared:%s:%d'):format(
+				tostring(reaction_event.released.name or ''),
+				tonumber(reaction_event.released.actor_id) or 0
+			), 0)
+		end
+		if type(reaction_event.activated) == 'table' then
+			_G.UC_REACTION_LOCK = reaction_event.activated
+			if not scheduler.providers.camp_puller.active() then
+				scheduler.apply_reaction_response(reaction_event.activated)
+			end
+		elseif type(reaction_event.released) == 'table' then
+			_G.UC_REACTION_LOCK = nil
+			if (tonumber(reaction_event.released_target_id) or 0) > 0
+				and target_id > 0
+				and not scheduler.providers.camp_puller.active() then
+				scheduler.apply_reaction_turn({ actor_id = target_id }, false)
+			end
+		end
+	end
 	local message_param = tonumber(msg and msg.param_1) or tonumber(msg and msg.param) or 0
 	local now = now_s()
 	scheduler.providers.sch_maintenance.observe_action_message(msg, my_id, now)

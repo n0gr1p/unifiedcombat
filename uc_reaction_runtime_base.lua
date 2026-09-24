@@ -499,6 +499,39 @@ function M.on_action(act, current_target_id, now, actor_is_valid_enemy)
 	return result
 end
 
+function M.on_action_message(msg, current_target_id, now)
+	local result = {}
+	local enabled, rules = configured()
+	if not enabled or type(msg) ~= 'table' then
+		return result
+	end
+	local message_id = tonumber(msg.message_id) or 0
+	if message_id ~= 16 then
+		return result
+	end
+	local actor_id = tonumber(msg.actor_id) or 0
+	if actor_id <= 0 or actor_id ~= (tonumber(current_target_id) or 0) then
+		return result
+	end
+	prune_unconfigured_locks(rules)
+	for key, lock in pairs(locks) do
+		if lock.trigger == 'event_window'
+			and tonumber(lock.actor_id) == actor_id
+			and lock.activate_event == 'spell_start'
+			and lock.phase == 'active' then
+			local released, replacement, released_target_id = release_lock(
+				key,
+				'released:spell_interrupted:' .. tostring(lock.name or '')
+			)
+			result.released = released
+			result.activated = replacement
+			result.released_target_id = released_target_id
+			return result
+		end
+	end
+	return result
+end
+
 function M.prune_invalid_ability_windows(actor_is_valid_enemy)
 	if type(actor_is_valid_enemy) ~= 'function' then
 		error('reaction ability-window pruning requires an enemy-validity function')

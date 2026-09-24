@@ -79,6 +79,7 @@ The disabled, empty domain is optional so profiles created before reactions exis
 - Spell/ability starts are observed directly from Windower action categories 8/7, so safety work can begin before a resulting buff is applied.
 - For `buff_lost` releases, the runtime holds continuously across action completion while waiting for the expected buff. Once seen, actual buff loss is authoritative.
 - If the expected buff never appears, `confirmation_timeout_seconds` releases the hold after action completion rather than leaving combat suspended indefinitely.
+- An authoritative cast-interrupted action message releases a `spell_start` lifecycle immediately; the confirmation timeout remains the fallback for normally completed casts whose expected buff never appears.
 - Event-window stop-attacking rules are scoped to the current combat target.
 - Legacy `enemy_buff` and `ability_window` rules remain valid and retain their existing behavior.
 

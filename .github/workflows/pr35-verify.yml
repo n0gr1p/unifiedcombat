@@ -61,6 +61,8 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_tank_pet_enmity_config.lua
       - name: Tank pet enmity provider self-test
         run: lua5.1 tests/replay/harness/selftest_tank_pet_enmity_provider.lua
+      - name: Reaction runtime self-test
+        run: lua5.1 tests/replay/harness/selftest_reaction_runtime.lua
       - name: Reaction sequence runtime self-test
         run: lua5.1 tests/replay/harness/selftest_reaction_action_sequence.lua
       - name: Reaction sequence ownership self-test

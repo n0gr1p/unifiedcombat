@@ -395,16 +395,31 @@ local released_lifecycle, released_lifecycle_target = reactions.evaluate(900, {}
 assert_true(released_lifecycle == nil, 'buff loss must release the event-window hold')
 assert_equal(released_lifecycle_target, 900, 'buff-loss release must request normal reaction release handling')
 
-local failed_start = reactions.on_action({
+local interrupted_start = reactions.on_action({
     actor_id = 900,
     category = 8,
     param = 901,
 }, 900, 20.0, true)
-assert_true(type(failed_start.activated) == 'table', 'second Dread Spikes cast start must react')
-reactions.on_action({ actor_id = 900, category = 4, param = 901 }, 900, 20.5, true)
-local before_timeout = reactions.evaluate(900, {}, 21.9)
+assert_true(type(interrupted_start.activated) == 'table', 'second Dread Spikes cast start must react')
+local interrupted = reactions.on_action_message({
+    actor_id = 900,
+    target_id = 900,
+    message_id = 16,
+}, 900, 20.2)
+assert_true(type(interrupted.released) == 'table', 'cast interruption must immediately release the event-window hold')
+assert_equal(interrupted.released_target_id, 900, 'cast interruption must request normal reaction release handling')
+assert_true(reactions.evaluate(900, {}, 20.3) == nil, 'interrupted cast must leave no stale lifecycle lock')
+
+local failed_start = reactions.on_action({
+    actor_id = 900,
+    category = 8,
+    param = 901,
+}, 900, 21.0, true)
+assert_true(type(failed_start.activated) == 'table', 'post-interruption Dread Spikes cast start must react again')
+reactions.on_action({ actor_id = 900, category = 4, param = 901 }, 900, 21.5, true)
+local before_timeout = reactions.evaluate(900, {}, 22.9)
 assert_true(type(before_timeout) == 'table', 'missing expected buff must remain held before confirmation timeout')
-local after_timeout, timeout_target = reactions.evaluate(900, {}, 22.01)
+local after_timeout, timeout_target = reactions.evaluate(900, {}, 23.01)
 assert_true(after_timeout == nil, 'missing expected buff must release after confirmation timeout')
 assert_equal(timeout_target, 900, 'confirmation timeout must request reaction release handling')
 
