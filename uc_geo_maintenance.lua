@@ -46,7 +46,7 @@ local function finite_number(value)
 end
 
 local function luopan_present(ctx)
-	if type(ctx) ~= 'table' or not luopan_present(ctx) then
+	if type(ctx) ~= 'table' or ctx.pet_present ~= true then
 		return false
 	end
 	local pet = type(ctx.pet) == 'table' and ctx.pet or nil
