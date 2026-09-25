@@ -39,6 +39,7 @@ internal static class HubUiConstants
         "sub2",
         "move",
         "debug",
+        "log_action_timeline",
         "log_combat_sched",
         "log_ja_sched",
         "log_ja_debug",
@@ -102,6 +103,7 @@ internal static class HubUiConstants
         ["sub2"] = "Sub2",
         ["move"] = "Move",
         ["debug"] = "Debug",
+        ["log_action_timeline"] = "Log: action timeline",
         ["log_combat_sched"] = "Log: combat scheduler",
         ["log_ja_sched"] = "Log: JA scheduler",
         ["log_ja_debug"] = "Log: JA debug",
@@ -164,6 +166,7 @@ internal static class HubUiConstants
     public static readonly string[] DiagnosticsUiKeys =
     [
         "debug",
+        "log_action_timeline",
         "log_combat_sched",
         "log_ja_sched",
         "log_ja_debug",

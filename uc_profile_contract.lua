@@ -221,6 +221,7 @@ local DIRECT_PROFILE_FIELDS = {
     named_formations_enabled = "profile_owned_by_ui",
     named_formation_entries = "profile_owned_by_ui",
     debug = "profile_owned_by_ui",
+    log_action_timeline = "profile_owned_by_ui",
     log_combat_sched = "profile_owned_by_ui",
     log_ja_sched = "profile_owned_by_ui",
     log_ja_debug = "profile_owned_by_ui",

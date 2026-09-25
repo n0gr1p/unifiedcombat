@@ -41,6 +41,19 @@ function M.debug_enabled(settings)
     return active_bool_or_flat('config.debug.enabled', s.debug)
 end
 
+function M.debug_action_timeline(settings)
+    local active_value = uc_active_config.get_path('config.debug.action_timeline')
+    if active_value ~= nil then
+        return active_value == true
+    end
+    local s = settings_or_default(settings)
+    local flat_value = rawget(s, 'log_action_timeline')
+    if flat_value ~= nil then
+        return truthy(flat_value)
+    end
+    return rawget(_G, 'UC_DEBUG_ACTION_TIMELINE') == true
+end
+
 function M.debug_log_combat_sched(settings)
     local s = settings_or_default(settings)
     return active_bool_or_flat('config.debug.combat_sched', s.log_combat_sched)

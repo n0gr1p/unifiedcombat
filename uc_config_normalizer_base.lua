@@ -2458,8 +2458,9 @@ end
 local function normalize_debug(source, config)
     local debug = config.debug
     local nested = get_path(source, { 'debug' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'combat_sched', 'ja_sched', 'ja_debug', 'def_sched', 'tank_sched' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'action_timeline', 'combat_sched', 'ja_sched', 'ja_debug', 'def_sched', 'tank_sched' }) then
         debug.enabled = normalize_boolean(nested.enabled, debug.enabled)
+        debug.action_timeline = normalize_boolean(nested.action_timeline, debug.action_timeline)
         debug.combat_sched = normalize_boolean(nested.combat_sched, debug.combat_sched)
         debug.ja_sched = normalize_boolean(nested.ja_sched, debug.ja_sched)
         debug.ja_debug = normalize_boolean(nested.ja_debug, debug.ja_debug)
@@ -2467,6 +2468,7 @@ local function normalize_debug(source, config)
         debug.tank_sched = normalize_boolean(nested.tank_sched, debug.tank_sched)
     else
         debug.enabled = normalize_boolean(first_path(source, { path('debug') }), debug.enabled)
+        debug.action_timeline = normalize_boolean(first_path(source, { path('log_action_timeline') }), debug.action_timeline)
         debug.combat_sched = normalize_boolean(first_path(source, { path('log_combat_sched') }), debug.combat_sched)
         debug.ja_sched = normalize_boolean(first_path(source, { path('log_ja_sched') }), debug.ja_sched)
         debug.ja_debug = normalize_boolean(first_path(source, { path('log_ja_debug') }), debug.ja_debug)

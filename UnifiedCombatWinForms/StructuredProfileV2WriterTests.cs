@@ -28,6 +28,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeIncludesProfileV2AutoReloadWhenEnabled();
             TestProfileV2AutoReloadIsPartOfPersistedBoolSet();
             TestRecoveryHoldProfileAndUiContract();
+            TestActionTimelineLoggingProfileAndUiContract();
             TestSchedulerAlignedWinFormsLayoutContract();
             TestDomainOwnershipUiContract();
             TestDomainOwnershipRequiresExplicitBooleans();
@@ -695,6 +696,24 @@ internal static class StructuredProfileV2WriterTests
         AssertEqual(HubUiConstants.BoolLabel("pause_automation_while_weakened"), "Pause automation while weakened", "recovery hold label mismatch");
         var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
         AssertContains(ui, "While weakened after Raise", "recovery hold tooltip must explain manual recovery positioning");
+    }
+
+    private static void TestActionTimelineLoggingProfileAndUiContract()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["log_action_timeline"] = true;
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Ponponponponpon", "GEO", "RDM")
+        );
+
+        AssertContains(content, "action_timeline = true", "action timeline logging must serialize into profile v2 debug config");
+        AssertTrue(HubUiConstants.GlobalBoolKeys.Contains("log_action_timeline"), "action timeline logging must persist as a global UI boolean");
+        AssertTrue(HubUiConstants.DiagnosticsUiKeys.Contains("log_action_timeline"), "action timeline logging must render in Scheduler diagnostics");
+        AssertEqual(HubUiConstants.BoolLabel("log_action_timeline"), "Log: action timeline", "action timeline label mismatch");
+
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        AssertContains(ui, "file watcher applies valid changes automatically", "Scheduler UI must describe Save as watcher-applied");
     }
 
     private static void TestSerializeIncludesPullerNameWhenSelected()
@@ -2552,6 +2571,7 @@ internal static class StructuredProfileV2WriterTests
             ["cor_luzaf_range_override"] = false,
             ["cor_roll_range_selected"] = "Front\"Line",
             ["debug"] = true,
+            ["log_action_timeline"] = false,
             ["log_combat_sched"] = false,
             ["log_ja_sched"] = false,
             ["log_ja_debug"] = false,

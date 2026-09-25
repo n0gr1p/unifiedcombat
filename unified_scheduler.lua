@@ -1990,7 +1990,7 @@ scheduler.action_timeline_state = scheduler.action_timeline_state or {
 }
 
 function scheduler.action_timeline_enabled()
-	return rawget(_G, 'UC_DEBUG_ACTION_TIMELINE') == true
+	return uc_scheduler_config.debug_action_timeline(get_settings())
 end
 
 function scheduler.action_timeline_player_name()

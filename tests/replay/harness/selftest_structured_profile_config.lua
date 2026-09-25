@@ -122,6 +122,7 @@ local function build_flat_settings()
         spell_active = true,
         spell = "Dia",
         debug = true,
+        log_action_timeline = true,
         log_def_sched = true,
         domain_defensive_enabled = true,
         domain_movement_enabled = true,
@@ -240,6 +241,7 @@ local function build_structured_payload()
             },
             debug = {
                 enabled = true,
+                action_timeline = true,
                 def_sched = true,
             },
             ownership = {
@@ -308,6 +310,7 @@ local function assert_common_config(config, source)
     assert_equal(config.spells.enabled, true, source .. " spells enabled mismatch")
     assert_equal(config.spells.configured, "Dia", source .. " spell configured mismatch")
     assert_equal(config.debug.enabled, true, source .. " debug enabled mismatch")
+    assert_equal(config.debug.action_timeline, true, source .. " action timeline debug mismatch")
     assert_equal(config.debug.def_sched, true, source .. " debug defensive scheduler mismatch")
     assert_equal(config.ownership.domain_combat_enabled, true, source .. " combat domain mismatch")
     assert_equal(config.ownership.pause_automation_while_weakened, true, source .. " recovery hold mismatch")

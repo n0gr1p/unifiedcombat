@@ -2540,7 +2540,7 @@ public partial class MainForm
         sch.Controls.Add(
             new Label
             {
-                Text = "Runtime domains: these settings authoritatively enable participation. Save the profile and reload/apply profile v2 for changes to take effect.",
+                Text = "Runtime domains: these settings authoritatively enable participation. Save the profile; the addon file watcher applies valid changes automatically.",
                 AutoSize = true,
                 Padding = new Padding(0, 0, 0, 8),
             }

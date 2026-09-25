@@ -680,7 +680,7 @@ local PROFILE_KEYS = {
 	'fight_leader', 'fight_leader_id', 'party_follow', 'party_follow_id', 'party_follow_leader_name', 'party_follow_min', 'party_follow_max', 'fight_follow_min', 'fight_follow_hold_s',
 	'nyzul_coordinator_name', 'nyzul_anchor_name', 'nyzul_parking_order',
 	'add_control', 'add_priority_names',
-	'sub', 'sub2', 'move', 'debug', 'log_combat_sched', 'log_ja_sched', 'log_ja_debug', 'log_def_sched', 'log_tank_sched', 'solo', 'aeonic', 'color', 'tank', 'sleep', 'command', 'hunter',
+	'sub', 'sub2', 'move', 'debug', 'log_action_timeline', 'log_combat_sched', 'log_ja_sched', 'log_ja_debug', 'log_def_sched', 'log_tank_sched', 'solo', 'aeonic', 'color', 'tank', 'sleep', 'command', 'hunter',
 	'tank_enmity_actions',
 	'target1', 'target2', 'target3', 'targets',
 	'targetability', 'targetability_active',

@@ -29,6 +29,7 @@ local function main()
 	local previous_windower = rawget(_G, 'windower')
 	local previous_active_profile = rawget(_G, 'UC_ACTIVE_PROFILE')
 	local previous_settings = rawget(_G, 'UC_SETTINGS')
+	local previous_action_timeline = rawget(_G, 'UC_DEBUG_ACTION_TIMELINE')
 
 	package.loaded['uc_active_config'] = nil
 	package.loaded['uc_config_normalizer'] = nil
@@ -51,6 +52,7 @@ local function main()
 	local scheduler_config = require('uc_scheduler_config')
 	local flat = {
 		debug = false,
+		log_action_timeline = false,
 		log_combat_sched = false,
 		log_ja_sched = false,
 		log_ja_debug = false,
@@ -66,6 +68,7 @@ local function main()
 	set_active_profile(active_config, {
 		debug = {
 			enabled = true,
+			action_timeline = true,
 			combat_sched = true,
 			ja_sched = true,
 			ja_debug = true,
@@ -91,6 +94,7 @@ local function main()
 	})
 
 	assert_equal(scheduler_config.debug_enabled(flat), true, 'debug enabled should prefer active config')
+	assert_equal(scheduler_config.debug_action_timeline(flat), true, 'action timeline should prefer active config')
 	assert_equal(scheduler_config.debug_log_combat_sched(flat), true, 'combat scheduler log gate should prefer active config')
 	assert_equal(scheduler_config.debug_log_ja_sched(flat), true, 'ja scheduler log gate should prefer active config')
 	assert_equal(scheduler_config.debug_log_ja_debug(flat), true, 'ja debug log gate should prefer active config')
@@ -114,6 +118,7 @@ local function main()
 
 	local fallback = {
 		debug = true,
+		log_action_timeline = true,
 		log_combat_sched = true,
 		log_ja_sched = true,
 		log_ja_debug = true,
@@ -127,6 +132,7 @@ local function main()
 	}
 
 	assert_equal(scheduler_config.debug_enabled(fallback), true, 'debug enabled should preserve flat fallback when active path is missing')
+	assert_equal(scheduler_config.debug_action_timeline(fallback), true, 'action timeline should preserve flat fallback when active path is missing')
 	assert_equal(scheduler_config.debug_log_combat_sched(fallback), true, 'combat scheduler log gate should preserve flat fallback when active path is missing')
 	assert_equal(scheduler_config.debug_log_ja_sched(fallback), true, 'ja scheduler log gate should preserve flat fallback when active path is missing')
 	assert_equal(scheduler_config.debug_log_ja_debug(fallback), true, 'ja debug log gate should preserve flat fallback when active path is missing')
@@ -138,6 +144,17 @@ local function main()
 	assert_equal(scheduler_config.defensive_enemy_buffs_remove(fallback), true, 'enemy-buff removal should preserve flat fallback when active path is missing')
 	assert_equal(scheduler_config.tank_enmity_actions(fallback)[1], 'spell:Foil', 'tank enmity actions should preserve flat fallback when active path is missing')
 
+	rawset(_G, 'UC_DEBUG_ACTION_TIMELINE', true)
+	fallback.log_action_timeline = nil
+	assert_equal(scheduler_config.debug_action_timeline(fallback), true, 'legacy action timeline global must remain the final fallback when profile and flat values are absent')
+	set_active_profile(active_config, {
+		debug = { action_timeline = false },
+	})
+	assert_equal(scheduler_config.debug_action_timeline(fallback), false, 'explicit active-profile false must override the legacy action timeline global')
+	set_active_profile(active_config, {
+		debug = {},
+	})
+
 	rawset(_G, 'UC_SETTINGS', fallback)
 	assert_true(scheduler_config.debug_enabled(), 'global settings fallback should remain available')
 	assert_equal(scheduler_config.tank_enmity_actions()[1], 'spell:Foil', 'global settings table should back facade fallback reads')
@@ -145,6 +162,7 @@ local function main()
 	rawset(_G, 'windower', previous_windower)
 	rawset(_G, 'UC_ACTIVE_PROFILE', previous_active_profile)
 	rawset(_G, 'UC_SETTINGS', previous_settings)
+	rawset(_G, 'UC_DEBUG_ACTION_TIMELINE', previous_action_timeline)
 	package.loaded['uc_scheduler_config'] = nil
 	package.loaded['uc_active_config'] = nil
 	package.loaded['uc_config_normalizer'] = nil

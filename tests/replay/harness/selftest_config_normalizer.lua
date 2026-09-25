@@ -242,6 +242,7 @@ local function build_flat_settings()
         path_pull_action_type = 'spell',
         path_pull_action_name = 'Dia',
         debug = true,
+        log_action_timeline = true,
         log_combat_sched = true,
         log_ja_sched = true,
         log_ja_debug = true,
@@ -547,6 +548,7 @@ local function build_nested_settings()
         },
         debug = {
             enabled = true,
+            action_timeline = true,
             combat_sched = true,
             ja_sched = true,
             ja_debug = true,
@@ -606,6 +608,7 @@ local function main()
     assert_true(type(default_from_normalize.combat) == 'table', 'combat domain missing')
     assert_true(type(default_from_normalize.abilities) == 'table', 'abilities domain missing')
     assert_true(type(default_from_normalize.defensive) == 'table', 'defensive domain missing')
+    assert_true(default_from_normalize.debug.action_timeline == nil, 'missing action timeline setting must preserve legacy fallback')
     assert_true(type(default_from_normalize.encounter) == 'table', 'encounter domain missing')
     assert_equal(default_from_normalize.encounter.enabled, false, 'encounter must default disabled')
     assert_equal(default_from_normalize.defensive.na.limit_enabled, false, 'status-removal limiting must default disabled')
@@ -708,6 +711,7 @@ local function main()
     assert_equal(flat_config.maintenance.brd.marcato_song, 'Honor March', 'flat BRD Marcato song mismatch')
 	assert_equal(flat_config.maintenance.brd.recovery_range_yalms, 12.4, 'flat BRD recovery range mismatch')
 	assert_equal(flat_config.maintenance.brd.reposition_for_party_songs, true, 'flat BRD reposition policy mismatch')
+    assert_equal(flat_config.debug.action_timeline, true, 'flat action timeline debug flag mismatch')
     assert_equal(flat_config.debug.ja_debug, true, 'debug flag mismatch')
     assert_equal(flat_config.ownership.domain_maintenance_enabled, false, 'maintenance domain mismatch')
     assert_equal(flat_config.ownership.pause_automation_while_weakened, true, 'flat recovery hold mismatch')
@@ -726,6 +730,7 @@ local function main()
     assert_equal(nested_config.profile.character, 'Neo', 'nested profile character mismatch')
     assert_equal(nested_config.profile.main_job, 'BRD', 'nested profile main_job mismatch')
     assert_equal(nested_config.profile.source, 'bridge', 'nested profile source mismatch')
+    assert_equal(nested_config.debug.action_timeline, true, 'nested action timeline debug flag mismatch')
     assert_equal(nested_config.combat.enabled, false, 'nested combat enabled mismatch')
     assert_equal(nested_config.combat.weaponskill.enabled, true, 'nested combat ws enabled mismatch')
 	assert_equal(nested_config.combat.weaponskill.allow_aoe, false, 'nested Smart WS AoE preference mismatch')

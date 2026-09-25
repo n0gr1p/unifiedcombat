@@ -1725,6 +1725,7 @@ internal static class StructuredProfileV2Writer
     {
         return new StructuredProfileNode()
             .Add("enabled", ReadBool(flatProfile, "debug", false))
+            .Add("action_timeline", ReadBool(flatProfile, "log_action_timeline", false))
             .Add("combat_sched", ReadBool(flatProfile, "log_combat_sched", false))
             .Add("ja_sched", ReadBool(flatProfile, "log_ja_sched", false))
             .Add("ja_debug", ReadBool(flatProfile, "log_ja_debug", false))

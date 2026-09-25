@@ -1224,6 +1224,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 
 	if type(config.debug) == 'table' then
 		candidate.debug = config.debug.enabled
+		candidate.log_action_timeline = config.debug.action_timeline
 		candidate.log_combat_sched = config.debug.combat_sched
 		candidate.log_ja_sched = config.debug.ja_sched
 		candidate.log_ja_debug = config.debug.ja_debug
