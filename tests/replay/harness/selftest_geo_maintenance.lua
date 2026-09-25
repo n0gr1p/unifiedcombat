@@ -42,35 +42,45 @@ local camp_anchor = {
 	y = 20,
 }
 
-local function new_provider(timeline_events)
+local function new_provider(timeline_events, counters)
 	timeline_events = type(timeline_events) == 'table' and timeline_events or {}
+	counters = type(counters) == 'table' and counters or {}
+	local function bump(name)
+		counters[name] = (tonumber(counters[name]) or 0) + 1
+	end
 	return geo_maintenance.new({
 		geo_maintenance_priority = 210,
 		geo_creation_priority = 240,
 		action_ready = function(name)
+			bump('action_ready')
 			if resources[name] ~= nil then
 				return true, 'ready', 'spell'
 			end
 			return true, 'ready', 'ja'
 		end,
 		get_spell_resource = function(name)
+			bump('get_spell_resource')
 			return resources[name]
 		end,
 		get_ja_resource = function(name)
+			bump('get_ja_resource')
 			return {
 				id = 1000,
 				en = name,
 			}
 		end,
 		get_party_members = function()
+			bump('get_party_members')
 			return {}
 		end,
 		get_friendly_claims = function()
+			bump('get_friendly_claims')
 			return {
 				[900] = true,
 			}
 		end,
 		resolve_camp_anchor = function()
+			bump('resolve_camp_anchor')
 			return camp_anchor, 'CAMP_READY'
 		end,
 		action_effective_range = function()
@@ -381,6 +391,25 @@ for _, event in ipairs(blocked_diag_events) do
 end
 assert_true(saw_blocked_decision, 'blocked GEO creation diagnostic missing exact gate')
 
+local healthy_block_counters = {}
+local healthy_block_provider = new_provider({}, healthy_block_counters)
+local healthy_block_ctx = context(9.5)
+converge_owned_luopan(healthy_block_provider, healthy_block_ctx, 10, 20)
+healthy_block_ctx.now = healthy_block_ctx.now + 1.0
+healthy_block_ctx.me.x = 15
+out = {}
+healthy_block_provider.collect(healthy_block_ctx, out)
+assert_equal(healthy_block_provider.status.reason, 'GEO_AWAY_FROM_CAMP',
+	'healthy slow spatial pass must publish camp blocker')
+local blocked_camp_checks = tonumber(healthy_block_counters.resolve_camp_anchor) or 0
+healthy_block_ctx.now = healthy_block_ctx.now + 0.20
+out = {}
+healthy_block_provider.collect(healthy_block_ctx, out)
+assert_equal(healthy_block_provider.status.reason, 'GEO_AWAY_FROM_CAMP',
+	'healthy fast observation must preserve the last spatial blocker')
+assert_equal(tonumber(healthy_block_counters.resolve_camp_anchor) or 0, blocked_camp_checks,
+	'healthy fast observation must not repeat blocked camp geometry before slow cadence')
+
 local camp_outside_provider = new_provider()
 local camp_outside_ctx = context(10.0)
 camp_outside_ctx.settings.config.maintenance.geo.luopan.placement = 'camp'
@@ -449,6 +478,60 @@ local target_centered_sequence = target_centered_provider.status_snapshot().sequ
 assert_true(type(target_centered_sequence) == 'table', 'target-centered replacement sequence missing')
 assert_equal(target_centered_sequence.step, 'full_circle', 'target-centered replacement step mismatch')
 assert_true(target_centered_sequence.replacement, 'target-centered replacement flag missing')
+
+local perf_counters = {}
+local perf_provider = new_provider({}, perf_counters)
+local perf_ctx = context(40.0)
+converge_owned_luopan(perf_provider, perf_ctx, 10, 20)
+local baseline_spell_resource = tonumber(perf_counters.get_spell_resource) or 0
+local baseline_ja_resource = tonumber(perf_counters.get_ja_resource) or 0
+local baseline_camp = tonumber(perf_counters.resolve_camp_anchor) or 0
+local baseline_claims = tonumber(perf_counters.get_friendly_claims) or 0
+local baseline_ready = tonumber(perf_counters.action_ready) or 0
+
+perf_ctx.now = perf_ctx.now + 0.20
+out = {}
+perf_provider.collect(perf_ctx, out)
+assert_equal(#out, 0, 'healthy GEO fast observation must not invent work')
+assert_equal(tonumber(perf_counters.get_spell_resource) or 0, baseline_spell_resource,
+	'healthy fast observation must reuse cached spell contracts')
+assert_equal(tonumber(perf_counters.get_ja_resource) or 0, baseline_ja_resource,
+	'healthy fast observation must reuse cached ability contracts')
+assert_equal(tonumber(perf_counters.resolve_camp_anchor) or 0, baseline_camp,
+	'healthy fast observation must skip camp geometry between slow checks')
+assert_equal(tonumber(perf_counters.get_friendly_claims) or 0, baseline_claims,
+	'healthy fast observation must skip enemy target scans between slow checks')
+assert_equal(tonumber(perf_counters.action_ready) or 0, baseline_ready,
+	'healthy fast observation must skip readiness work when effects are satisfied')
+
+perf_ctx.now = perf_ctx.now + 0.20
+perf_ctx.player.buffs = {}
+out = {}
+perf_provider.collect(perf_ctx, out)
+assert_equal(#out, 1, 'missing Indi must be proposed on the next 5 Hz GEO observation')
+assert_equal(out[1].action_name, 'Indi-Haste', 'missing Indi fast observation action mismatch')
+assert_equal(tonumber(perf_counters.get_friendly_claims) or 0, baseline_claims,
+	'missing Indi self-cast must not scan enemy targets')
+
+local cached_spell_resource = tonumber(perf_counters.get_spell_resource) or 0
+perf_ctx.settings.config.maintenance.geo.camp_tolerance_yalms = 1.25
+perf_ctx.now = perf_ctx.now + 0.20
+out = {}
+perf_provider.collect(perf_ctx, out)
+assert_true((tonumber(perf_counters.get_spell_resource) or 0) > cached_spell_resource,
+	'GEO config changes must invalidate cached resource contracts')
+
+local engine_guard_provider = new_provider()
+local engine_guard_ctx = context(45.0)
+rawset(_G, 'Start_Engine', false)
+out = {}
+engine_guard_provider.collect(engine_guard_ctx, out)
+assert_equal(#out, 0, 'engine-off GEO collection must remain a no-op')
+rawset(_G, 'Start_Engine', true)
+engine_guard_ctx.player.main_job = 'WHM'
+out = {}
+engine_guard_provider.collect(engine_guard_ctx, out)
+assert_equal(#out, 0, 'non-GEO jobs must remain a no-op in the 5 Hz provider path')
 
 if original_engine == nil then
 	rawset(_G, 'Start_Engine', nil)

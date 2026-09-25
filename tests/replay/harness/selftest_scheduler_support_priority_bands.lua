@@ -46,6 +46,7 @@ local function main()
     local defensive_provider = read_file("uc_provider_defensive.lua")
     local sleep_waker_provider = read_file("uc_provider_sleep_waker.lua")
     local maintenance_provider = read_file("uc_provider_maintenance.lua")
+    local geo_provider = read_file("uc_geo_maintenance.lua")
     local proposals_source = read_file("uc_scheduler_proposals.lua")
     local ranker_source = read_file("uc_scheduler_ranker.lua")
 
@@ -62,6 +63,8 @@ local function main()
     assert_contains(source, "scheduler.PRIORITY_BAND_ENGAGE_BYPASS = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION", "engage bypass threshold must begin at skillchain continuation")
 
     assert_true(score(250, 0.00) > score(240, 1.00), "critical Cure must beat maximum GEO creation urgency")
+    assert_true(score(240, 1.00) > score(210, 1.00),
+        "missing-Luopan creation must beat maximum routine GEO maintenance urgency")
     assert_true(score(240, 0.00) > score(225, 1.00), "GEO creation must beat maximum camp-pull recovery urgency")
     assert_true(score(210, 0.00) > score(200, 1.00), "GEO maintenance must beat maximum Bard maintenance urgency")
     assert_true(score(210, 0.00) > score(150, 1.00), "GEO maintenance must beat maximum prepared Scholar urgency")
@@ -119,6 +122,27 @@ local function main()
         "BRD provider cadence must use the same job eligibility as maintenance collection")
     assert_contains(source, "and (brd_provider_active or sch_fast_tick_active",
         "BRD provider must be collected every scheduler tick")
+    local geo_tick_block = source:match(
+        "if maintenance_enabled\n\t\tand not camp_journey_active\n\t\tand main_job == 'GEO' then(.-)\n\tend"
+    )
+    assert_true(type(geo_tick_block) == "string",
+        "failed to capture dedicated 5 Hz GEO collection block")
+    assert_contains(geo_tick_block, "scheduler.providers.geo_maintenance.collect(ctx, out)",
+        "GEO provider must participate every scheduler tick")
+    assert_not_contains(geo_tick_block, "scheduler.providers.maintenance.collect(ctx, out)",
+        "5 Hz GEO collection must not accelerate generic maintenance")
+    assert_not_contains(geo_tick_block, "scheduler.providers.summoner_maintenance.collect(ctx, out)",
+        "5 Hz GEO collection must not accelerate Summoner maintenance")
+    assert_not_contains(source, "scheduler.providers.geo_maintenance.requires_fast_tick(ctx)",
+        "scheduler must not encode GEO-specific fast-tick reasons")
+    assert_contains(geo_provider, "local function validate_config_cached(config)",
+        "GEO 5 Hz path must cache resource/config contracts")
+    assert_contains(geo_provider, "if not fast_work and not slow_due then",
+        "healthy GEO observations must short-circuit before expensive maintenance")
+    assert_contains(geo_provider, "if slow_due then",
+        "spatial GEO maintenance must retain a bounded slow cadence")
+    assert_contains(geo_provider, "local function ensure_geo_target()",
+        "GEO target resolution must remain lazy")
     assert_contains(source, "and (require('uc_sch_runtime').requires_fast_tick()",
         "active Scholar sequences must be collected every scheduler tick")
     assert_contains(source, "or scheduler.providers.sch_maintenance.trace_active())",

@@ -4413,9 +4413,10 @@ local function p1_collect_proposals(ctx)
 		scheduler.providers.defensive.collect_internal(ctx, out)
 		scheduler.providers.defensive.collect_healbot(ctx, out)
 	end
-	-- BRD sequencing participates every scheduler tick so lower-band defensive
-	-- work cannot enter between song lifecycle transitions. Other maintenance
-	-- providers retain the engine's 1 Hz collection cadence.
+	-- BRD sequencing, active SCH sequencing, and GEO state observation
+	-- participate every scheduler tick. GEO internally keeps expensive spatial
+	-- sanity checks on a slower cadence when its configured effects are healthy.
+	-- Other maintenance retains the engine's 1 Hz collection cadence.
 	local player = ctx.player or {}
 	local main_job = tostring(player.main_job or '')
 	local sub_job = tostring(player.sub_job or '')
@@ -4441,6 +4442,10 @@ local function p1_collect_proposals(ctx)
 			scheduler.providers.sch_maintenance.collect(ctx, out)
 			sch_provider_collected = true
 		end
+	end
+	if maintenance_enabled
+		and not camp_journey_active
+		and main_job == 'GEO' then
 		scheduler.providers.geo_maintenance.collect(ctx, out)
 	end
 	if not sch_provider_collected and not camp_journey_active and main_job == 'SCH'
