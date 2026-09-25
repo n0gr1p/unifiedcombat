@@ -4413,9 +4413,10 @@ local function p1_collect_proposals(ctx)
 		scheduler.providers.defensive.collect_internal(ctx, out)
 		scheduler.providers.defensive.collect_healbot(ctx, out)
 	end
-	-- BRD sequencing participates every scheduler tick so lower-band defensive
-	-- work cannot enter between song lifecycle transitions. Other maintenance
-	-- providers retain the engine's 1 Hz collection cadence.
+	-- BRD sequencing and active SCH sequencing participate every scheduler tick.
+	-- Missing-Luopan GEO recovery also gets a provider-only fast pass so routine
+	-- work cannot consume the first action slot that opens after a cast. All
+	-- other maintenance retains the engine's 1 Hz collection cadence.
 	local player = ctx.player or {}
 	local main_job = tostring(player.main_job or '')
 	local sub_job = tostring(player.sub_job or '')
