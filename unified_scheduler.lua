@@ -4413,10 +4413,10 @@ local function p1_collect_proposals(ctx)
 		scheduler.providers.defensive.collect_internal(ctx, out)
 		scheduler.providers.defensive.collect_healbot(ctx, out)
 	end
-	-- BRD sequencing and active SCH sequencing participate every scheduler tick.
-	-- Missing-Luopan GEO recovery also gets a provider-only fast pass so routine
-	-- work cannot consume the first action slot that opens after a cast. All
-	-- other maintenance retains the engine's 1 Hz collection cadence.
+	-- BRD sequencing, active SCH sequencing, and GEO state observation
+	-- participate every scheduler tick. GEO internally keeps expensive spatial
+	-- sanity checks on a slower cadence when its configured effects are healthy.
+	-- Other maintenance retains the engine's 1 Hz collection cadence.
 	local player = ctx.player or {}
 	local main_job = tostring(player.main_job or '')
 	local sub_job = tostring(player.sub_job or '')
@@ -4430,11 +4430,7 @@ local function p1_collect_proposals(ctx)
 		and (require('uc_sch_runtime').requires_fast_tick()
 			or scheduler.providers.sch_maintenance.trace_active())
 	local camp_journey_active = scheduler.providers.camp_puller.active()
-	local geo_fast_tick_active = maintenance_enabled
-		and main_job == 'GEO'
-		and scheduler.providers.geo_maintenance.requires_fast_tick(ctx)
 	local sch_provider_collected = false
-	local geo_provider_collected = false
 	if maintenance_enabled
 		and not camp_journey_active
 		and (brd_provider_active or sch_fast_tick_active
@@ -4446,14 +4442,11 @@ local function p1_collect_proposals(ctx)
 			scheduler.providers.sch_maintenance.collect(ctx, out)
 			sch_provider_collected = true
 		end
-		scheduler.providers.geo_maintenance.collect(ctx, out)
-		geo_provider_collected = true
 	end
-	if not geo_provider_collected
+	if maintenance_enabled
 		and not camp_journey_active
-		and geo_fast_tick_active then
+		and main_job == 'GEO' then
 		scheduler.providers.geo_maintenance.collect(ctx, out)
-		geo_provider_collected = true
 	end
 	if not sch_provider_collected and not camp_journey_active and main_job == 'SCH'
 		and (sch_fast_tick_active or (defensive_enabled and defensive_evidence_current)) then
