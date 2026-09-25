@@ -1073,6 +1073,25 @@ function M.new(deps)
 		return true, nil, target
 	end
 
+	function provider.requires_fast_tick(ctx)
+		require_table(ctx, 'ctx')
+		local config = config_from_context(ctx)
+		if rawget(_G, 'Start_Engine') ~= true
+			or config.enabled ~= true
+			or ctx.player_present ~= true
+			or tostring(ctx.player.main_job or '') ~= 'GEO' then
+			return false
+		end
+		if type(ctx.player.vitals) == 'table' and tonumber(ctx.player.vitals.hpp) == 0 then
+			return false
+		end
+		-- Missing-Luopan recovery must participate at the scheduler's 5 Hz cadence.
+		-- This predicate is intentionally broader than immediate action readiness:
+		-- while another action is finishing, GEO must keep re-entering arbitration
+		-- so lower-priority routine work cannot consume the first open action slot.
+		return not luopan_present(ctx)
+	end
+
 	function provider.creation_preempts_pull(ctx)
 		require_table(ctx, 'ctx')
 		local config = config_from_context(ctx)
