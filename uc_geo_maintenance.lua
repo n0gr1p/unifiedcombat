@@ -4,6 +4,7 @@ local INDI_COLURE_BUFF_ID = 612
 local ENTRUST_BUFF_ID = 584
 local BLAZE_OF_GLORY_BUFF_ID = 569
 local EFFECT_OBSERVATION_TIMEOUT = 8.0
+local SLOW_MAINTENANCE_INTERVAL = 1.0
 local SPELL_RANGE_EPSILON = 0.25
 local ENTRUST_SPELL_MAX_RANGE_YALMS = 20.9
 local ENEMY_LUOPAN_EFFECT_RADIUS_YALMS = 6.5
@@ -194,6 +195,10 @@ function M.new(deps)
 			failed_geo_target_until = 0,
 			bolster_armed = false,
 			diag_last_luopan_signature = '',
+			next_slow_maintenance_at = 0,
+			config_contract_signature = '',
+			config_contracts = nil,
+			config_validation_reason = nil,
 		},
 
 	}
@@ -375,6 +380,34 @@ function M.new(deps)
 		return config
 	end
 
+	local function config_contract_signature(config)
+		local target = type(config.geo_target) == 'table' and config.geo_target or {}
+		local luopan = type(config.luopan) == 'table' and config.luopan or {}
+		local entrust = type(config.entrust) == 'table' and config.entrust or {}
+		return table.concat({
+			tostring(config.enabled == true),
+			tostring(config.geo_spell or ''),
+			tostring(target.kind or ''),
+			tostring(target.name or ''),
+			tostring(config.indi_spell or ''),
+			tostring(config.ordering or ''),
+			tostring(config.require_camp == true),
+			tostring(config.camp_tolerance_yalms or ''),
+			tostring(config.enemy_geo_requires_camp_radius == true),
+			tostring(config.unknown_existing_policy or ''),
+			tostring(luopan.placement or ''),
+			tostring(luopan.use_blaze_of_glory == true),
+			tostring(luopan.use_ecliptic_attrition == true),
+			tostring(luopan.use_life_cycle == true),
+			tostring(luopan.life_cycle_hpp or ''),
+			tostring(luopan.replace_out_of_position == true),
+			tostring(luopan.max_camp_distance_yalms or ''),
+			tostring(entrust.enabled == true),
+			tostring(entrust.spell or ''),
+			tostring(entrust.target_name or ''),
+		}, '|')
+	end
+
 	local function spell_contract(spell_name, prefix, target_kind)
 		if type(spell_name) ~= 'string' or not spell_name:match('^' .. prefix .. '%-') then
 			return nil, 'invalid_' .. prefix:lower() .. '_spell_name'
@@ -496,6 +529,17 @@ function M.new(deps)
 			indi = indi,
 			entrust = entrust_spell,
 		}, nil
+	end
+
+	local function validate_config_cached(config)
+		local signature = config_contract_signature(config)
+		if signature ~= provider.state.config_contract_signature then
+			provider.state.config_contract_signature = signature
+			provider.state.config_contracts, provider.state.config_validation_reason =
+				validate_config(config)
+			provider.state.next_slow_maintenance_at = 0
+		end
+		return provider.state.config_contracts, provider.state.config_validation_reason
 	end
 
 	local function resolve_party_target(ctx, configured_name)
@@ -1073,25 +1117,6 @@ function M.new(deps)
 		return true, nil, target
 	end
 
-	function provider.requires_fast_tick(ctx)
-		require_table(ctx, 'ctx')
-		local config = config_from_context(ctx)
-		if rawget(_G, 'Start_Engine') ~= true
-			or config.enabled ~= true
-			or ctx.player_present ~= true
-			or tostring(ctx.player.main_job or '') ~= 'GEO' then
-			return false
-		end
-		if type(ctx.player.vitals) == 'table' and tonumber(ctx.player.vitals.hpp) == 0 then
-			return false
-		end
-		-- Missing-Luopan recovery must participate at the scheduler's 5 Hz cadence.
-		-- This predicate is intentionally broader than immediate action readiness:
-		-- while another action is finishing, GEO must keep re-entering arbitration
-		-- so lower-priority routine work cannot consume the first open action slot.
-		return not luopan_present(ctx)
-	end
-
 	function provider.creation_preempts_pull(ctx)
 		require_table(ctx, 'ctx')
 		local config = config_from_context(ctx)
@@ -1105,7 +1130,7 @@ function M.new(deps)
 		if type(ctx.player.vitals) == 'table' and tonumber(ctx.player.vitals.hpp) == 0 then
 			return false
 		end
-		local contracts = validate_config(config)
+		local contracts = validate_config_cached(config)
 		if contracts == nil then
 			return false
 		end
@@ -1170,7 +1195,7 @@ function M.new(deps)
 			publish_status('not_geomancer', '')
 			return
 		end
-		local contracts, validation_reason = validate_config(config)
+		local contracts, validation_reason = validate_config_cached(config)
 		if contracts == nil then
 			publish_status('invalid_config', validation_reason)
 			log('GEO_MAINT_SKIP state=invalid_config reason=' .. tostring(validation_reason))
@@ -1178,9 +1203,39 @@ function M.new(deps)
 		end
 		local geo_present, indi_present = observe_identity(ctx)
 		observe_sequence(ctx, config)
-		local at_camp, camp_reason = camp_ready(ctx, config)
 		trace_luopan_state(ctx, config, geo_present)
 		local sequence = provider.state.sequence
+		local geo_satisfied = geo_present and provider.state.owned_geo_spell == config.geo_spell
+		local indi_satisfied = indi_present and provider.state.owned_indi_spell == config.indi_spell
+		local pet_hpp = finite_number(ctx.pet and ctx.pet.hpp)
+		local life_cycle_due = config.luopan.use_life_cycle == true
+			and geo_present
+			and pet_hpp ~= nil
+			and pet_hpp < tonumber(config.luopan.life_cycle_hpp)
+		local ecliptic_due = config.luopan.use_ecliptic_attrition == true
+			and geo_present
+			and provider.state.ecliptic_luopan_id ~= tonumber(ctx.pet_id)
+		local blaze_upgrade_pending = config.luopan.use_blaze_of_glory == true
+			and geo_present
+			and provider.state.owned_geo_blaze_enhanced ~= true
+		local fast_work = type(sequence) == 'table'
+			or provider.state.pending ~= nil
+			or not geo_satisfied
+			or not indi_satisfied
+			or provider.state.bolster_armed == true
+			or life_cycle_due
+			or ecliptic_due
+			or blaze_upgrade_pending
+			or config.entrust.enabled == true
+		local slow_due = ctx.now >= (tonumber(provider.state.next_slow_maintenance_at) or 0)
+		if not fast_work and not slow_due then
+			publish_status('converged', '')
+			return
+		end
+		if slow_due then
+			provider.state.next_slow_maintenance_at = ctx.now + SLOW_MAINTENANCE_INTERVAL
+		end
+		local at_camp, camp_reason = camp_ready(ctx, config)
 		if type(sequence) == 'table'
 			and sequence.kind == 'geo_create'
 			and sequence.step == 'geo_spell'
@@ -1265,10 +1320,19 @@ function M.new(deps)
 			return
 		end
 
-		local geo_satisfied = geo_present and provider.state.owned_geo_spell == config.geo_spell
-		local indi_satisfied = indi_present and provider.state.owned_indi_spell == config.indi_spell
-		local geo_target, geo_target_kind, geo_target_reason = resolve_geo_target(ctx, config, nil)
+		local geo_target = nil
+		local geo_target_kind = nil
+		local geo_target_reason = nil
+		local geo_target_resolved = false
+		local function ensure_geo_target()
+			if not geo_target_resolved then
+				geo_target, geo_target_kind, geo_target_reason = resolve_geo_target(ctx, config, nil)
+				geo_target_resolved = true
+			end
+			return geo_target
+		end
 		local function geo_target_is_ready()
+			ensure_geo_target()
 			if geo_target == nil then
 				publish_status('geo_blocked', geo_target_reason)
 				trace_geo_create_decision(ctx, config, geo_present, 'blocked', geo_target_reason, {
@@ -1315,16 +1379,19 @@ function M.new(deps)
 			begin_replacement()
 			return
 		end
-		local misplaced, placement_reason = luopan_misplaced(ctx, config)
-		if placement_reason ~= nil then
-			publish_status('blocked', placement_reason)
-			return
+		if slow_due then
+			local misplaced, placement_reason = luopan_misplaced(ctx, config)
+			if placement_reason ~= nil then
+				publish_status('blocked', placement_reason)
+				return
+			end
+			if misplaced then
+				begin_replacement()
+				return
+			end
 		end
-		if misplaced then
-			begin_replacement()
-			return
-		end
-		if geo_satisfied then
+		if slow_due and geo_satisfied then
+			ensure_geo_target()
 			local outside_radius, radius_reason, radius_distance =
 				luopan_outside_enemy_radius(ctx, config, geo_target)
 			if radius_reason ~= nil then
@@ -1504,7 +1571,7 @@ function M.new(deps)
 		require_table(selected, 'selected')
 		require_table(ctx, 'ctx')
 		local config = config_from_context(ctx)
-		local contracts, validation_reason = validate_config(config)
+		local contracts, validation_reason = validate_config_cached(config)
 		if contracts == nil then
 			return false, validation_reason
 		end
