@@ -222,6 +222,8 @@ assert_equal(independent_out[1].action_name, 'Geo-Frailty', 'independent camp pl
 
 local provider = new_provider()
 local ctx = context(1.0)
+assert_true(provider.requires_fast_tick(ctx),
+	'missing Luopan must enable 5 Hz GEO recovery collection')
 local out = {}
 provider.collect(ctx, out)
 assert_equal(#out, 1, 'missing effects should emit one action')
@@ -240,6 +242,8 @@ ctx.pet = {
 	y = 20,
 }
 out = {}
+assert_true(not provider.requires_fast_tick(ctx),
+	'observed live Luopan must return GEO to normal maintenance cadence')
 provider.collect(ctx, out)
 assert_equal(#out, 1, 'observed luopan should advance to Indi')
 assert_equal(out[1].action_name, 'Indi-Haste', 'Indi follow-up mismatch')
@@ -334,6 +338,8 @@ dead_luopan_ctx.now = dead_luopan_ctx.now + 1.0
 dead_luopan_ctx.pet_present = true
 dead_luopan_ctx.pet_id = 300
 dead_luopan_ctx.pet.hpp = 0
+assert_true(dead_luopan_provider.requires_fast_tick(dead_luopan_ctx),
+	'0-HP Luopan must immediately re-enable 5 Hz GEO recovery collection')
 out = {}
 dead_luopan_provider.collect(dead_luopan_ctx, out)
 assert_equal(#out, 1, '0-HP Luopan must be treated as absent and immediately recreated')
@@ -449,6 +455,16 @@ local target_centered_sequence = target_centered_provider.status_snapshot().sequ
 assert_true(type(target_centered_sequence) == 'table', 'target-centered replacement sequence missing')
 assert_equal(target_centered_sequence.step, 'full_circle', 'target-centered replacement step mismatch')
 assert_true(target_centered_sequence.replacement, 'target-centered replacement flag missing')
+
+local engine_off_fast_tick_provider = new_provider()
+local engine_off_fast_tick_ctx = context(40.0)
+rawset(_G, 'Start_Engine', false)
+assert_true(not engine_off_fast_tick_provider.requires_fast_tick(engine_off_fast_tick_ctx),
+	'engine-off GEO must not request fast collection')
+rawset(_G, 'Start_Engine', true)
+engine_off_fast_tick_ctx.player.main_job = 'WHM'
+assert_true(not engine_off_fast_tick_provider.requires_fast_tick(engine_off_fast_tick_ctx),
+	'non-GEO jobs must not request GEO fast collection')
 
 if original_engine == nil then
 	rawset(_G, 'Start_Engine', nil)
