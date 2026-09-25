@@ -391,6 +391,25 @@ for _, event in ipairs(blocked_diag_events) do
 end
 assert_true(saw_blocked_decision, 'blocked GEO creation diagnostic missing exact gate')
 
+local healthy_block_counters = {}
+local healthy_block_provider = new_provider({}, healthy_block_counters)
+local healthy_block_ctx = context(9.5)
+converge_owned_luopan(healthy_block_provider, healthy_block_ctx, 10, 20)
+healthy_block_ctx.now = healthy_block_ctx.now + 1.0
+healthy_block_ctx.me.x = 15
+out = {}
+healthy_block_provider.collect(healthy_block_ctx, out)
+assert_equal(healthy_block_provider.status.reason, 'GEO_AWAY_FROM_CAMP',
+	'healthy slow spatial pass must publish camp blocker')
+local blocked_camp_checks = tonumber(healthy_block_counters.resolve_camp_anchor) or 0
+healthy_block_ctx.now = healthy_block_ctx.now + 0.20
+out = {}
+healthy_block_provider.collect(healthy_block_ctx, out)
+assert_equal(healthy_block_provider.status.reason, 'GEO_AWAY_FROM_CAMP',
+	'healthy fast observation must preserve the last spatial blocker')
+assert_equal(tonumber(healthy_block_counters.resolve_camp_anchor) or 0, blocked_camp_checks,
+	'healthy fast observation must not repeat blocked camp geometry before slow cadence')
+
 local camp_outside_provider = new_provider()
 local camp_outside_ctx = context(10.0)
 camp_outside_ctx.settings.config.maintenance.geo.luopan.placement = 'camp'
