@@ -364,6 +364,7 @@ function M.new(deps)
 		provider.state.next_retry_at = 0
 		provider.state.failed_geo_target_id = 0
 		provider.state.failed_geo_target_until = 0
+		provider.state.next_slow_maintenance_at = 0
 	end
 
 	local function config_from_context(ctx)
@@ -1218,6 +1219,16 @@ function M.new(deps)
 		local blaze_upgrade_pending = config.luopan.use_blaze_of_glory == true
 			and geo_present
 			and provider.state.owned_geo_blaze_enhanced ~= true
+		local entrust_due = false
+		if config.entrust.enabled == true then
+			local entrusted_member = resolve_party_target(ctx, config.entrust.target_name)
+			local entrusted_member_id = tonumber(entrusted_member and entrusted_member.id) or 0
+			entrust_due = entrusted_member == nil
+				or type(entrusted_member.buffs) ~= 'table'
+				or provider.state.owned_entrust_spell ~= config.entrust.spell
+				or provider.state.owned_entrust_target_id ~= entrusted_member_id
+				or not member_has_buff(entrusted_member, INDI_COLURE_BUFF_ID)
+		end
 		local fast_work = type(sequence) == 'table'
 			or provider.state.pending ~= nil
 			or not geo_satisfied
@@ -1226,7 +1237,7 @@ function M.new(deps)
 			or life_cycle_due
 			or ecliptic_due
 			or blaze_upgrade_pending
-			or config.entrust.enabled == true
+			or entrust_due
 		local slow_due = ctx.now >= (tonumber(provider.state.next_slow_maintenance_at) or 0)
 		if not fast_work and not slow_due then
 			publish_status('converged', '')
