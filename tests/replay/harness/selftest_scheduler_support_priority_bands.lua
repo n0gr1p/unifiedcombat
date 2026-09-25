@@ -46,6 +46,7 @@ local function main()
     local defensive_provider = read_file("uc_provider_defensive.lua")
     local sleep_waker_provider = read_file("uc_provider_sleep_waker.lua")
     local maintenance_provider = read_file("uc_provider_maintenance.lua")
+    local geo_provider = read_file("uc_geo_maintenance.lua")
     local proposals_source = read_file("uc_scheduler_proposals.lua")
     local ranker_source = read_file("uc_scheduler_ranker.lua")
 
@@ -121,25 +122,27 @@ local function main()
         "BRD provider cadence must use the same job eligibility as maintenance collection")
     assert_contains(source, "and (brd_provider_active or sch_fast_tick_active",
         "BRD provider must be collected every scheduler tick")
-    assert_contains(source, "local geo_fast_tick_active = maintenance_enabled",
-        "missing-Luopan recovery must have a dedicated scheduler fast-tick gate")
-    assert_contains(source, "scheduler.providers.geo_maintenance.requires_fast_tick(ctx)",
-        "scheduler must ask the GEO provider whether missing-Luopan recovery needs 5 Hz collection")
-    assert_contains(source, "if not geo_provider_collected",
-        "scheduler must avoid duplicate GEO collection on ordinary maintenance ticks")
-    local geo_fast_block = source:match(
-        "if not geo_provider_collected(.-)if not sch_provider_collected"
+    local geo_tick_block = source:match(
+        "if maintenance_enabled\n\t\tand not camp_journey_active\n\t\tand main_job == 'GEO' then(.-)\n\tend"
     )
-    assert_true(type(geo_fast_block) == "string",
-        "failed to capture GEO fast-tick collection block")
-    assert_contains(geo_fast_block, "and geo_fast_tick_active then",
-        "GEO fast pass must be conditional on missing-Luopan recovery")
-    assert_contains(geo_fast_block, "scheduler.providers.geo_maintenance.collect(ctx, out)",
-        "GEO fast pass must recollect the missing-Luopan proposal every scheduler tick")
-    assert_not_contains(geo_fast_block, "scheduler.providers.maintenance.collect(ctx, out)",
-        "GEO recovery fast pass must not accelerate generic maintenance")
-    assert_not_contains(geo_fast_block, "scheduler.providers.summoner_maintenance.collect(ctx, out)",
-        "GEO recovery fast pass must not accelerate Summoner maintenance")
+    assert_true(type(geo_tick_block) == "string",
+        "failed to capture dedicated 5 Hz GEO collection block")
+    assert_contains(geo_tick_block, "scheduler.providers.geo_maintenance.collect(ctx, out)",
+        "GEO provider must participate every scheduler tick")
+    assert_not_contains(geo_tick_block, "scheduler.providers.maintenance.collect(ctx, out)",
+        "5 Hz GEO collection must not accelerate generic maintenance")
+    assert_not_contains(geo_tick_block, "scheduler.providers.summoner_maintenance.collect(ctx, out)",
+        "5 Hz GEO collection must not accelerate Summoner maintenance")
+    assert_not_contains(source, "scheduler.providers.geo_maintenance.requires_fast_tick(ctx)",
+        "scheduler must not encode GEO-specific fast-tick reasons")
+    assert_contains(geo_provider, "local function validate_config_cached(config)",
+        "GEO 5 Hz path must cache resource/config contracts")
+    assert_contains(geo_provider, "if not fast_work and not slow_due then",
+        "healthy GEO observations must short-circuit before expensive maintenance")
+    assert_contains(geo_provider, "if slow_due then",
+        "spatial GEO maintenance must retain a bounded slow cadence")
+    assert_contains(geo_provider, "local function ensure_geo_target()",
+        "GEO target resolution must remain lazy")
     assert_contains(source, "and (require('uc_sch_runtime').requires_fast_tick()",
         "active Scholar sequences must be collected every scheduler tick")
     assert_contains(source, "or scheduler.providers.sch_maintenance.trace_active())",
