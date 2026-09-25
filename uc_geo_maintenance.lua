@@ -748,12 +748,14 @@ function M.new(deps)
 	local function observe_identity(ctx)
 		local geo_present = luopan_present(ctx)
 		local indi_present = has_buff(ctx.player, INDI_COLURE_BUFF_ID)
+		local identity_changed = false
 		local pending = provider.state.pending
 		if type(pending) == 'table' then
 			local effect = tostring(pending.effect or pending.kind or '')
 			local observed = (effect == 'geo' and geo_present)
 				or (effect == 'indi' and indi_present)
 			if observed then
+				identity_changed = true
 				if effect == 'geo' then
 					provider.state.owned_geo_spell = pending.spell
 					provider.state.owned_geo_blaze_enhanced = pending.blaze_enhanced == true
@@ -762,6 +764,7 @@ function M.new(deps)
 				end
 				provider.state.pending = nil
 			elseif ctx.now - pending.sent_at > EFFECT_OBSERVATION_TIMEOUT then
+				identity_changed = true
 				log(('GEO_MAINT_PENDING_TIMEOUT kind=%s spell="%s"'):format(
 					tostring(pending.kind),
 					tostring(pending.spell)
@@ -770,6 +773,10 @@ function M.new(deps)
 			end
 		end
 		if not geo_present then
+			if provider.state.owned_geo_spell ~= nil
+				or provider.state.owned_geo_blaze_enhanced == true then
+				identity_changed = true
+			end
 			provider.state.owned_geo_spell = nil
 			provider.state.owned_geo_blaze_enhanced = false
 			if provider.state.pending and provider.state.pending.kind == 'geo' then
@@ -777,9 +784,12 @@ function M.new(deps)
 			end
 		end
 		if not indi_present then
+			if provider.state.owned_indi_spell ~= nil then
+				identity_changed = true
+			end
 			provider.state.owned_indi_spell = nil
 		end
-		return geo_present, indi_present
+		return geo_present, indi_present, identity_changed
 	end
 
 	local function emit_spell(ctx, out, kind, spell_name, target, target_kind, max_range, urgency, sequence)
@@ -1202,7 +1212,7 @@ function M.new(deps)
 			log('GEO_MAINT_SKIP state=invalid_config reason=' .. tostring(validation_reason))
 			return
 		end
-		local geo_present, indi_present = observe_identity(ctx)
+		local geo_present, indi_present, identity_changed = observe_identity(ctx)
 		observe_sequence(ctx, config)
 		trace_luopan_state(ctx, config, geo_present)
 		local sequence = provider.state.sequence
@@ -1240,7 +1250,9 @@ function M.new(deps)
 			or entrust_due
 		local slow_due = ctx.now >= (tonumber(provider.state.next_slow_maintenance_at) or 0)
 		if not fast_work and not slow_due then
-			publish_status('converged', '')
+			if identity_changed then
+				publish_status('converged', '')
+			end
 			return
 		end
 		if slow_due then
