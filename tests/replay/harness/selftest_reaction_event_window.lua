@@ -209,3 +209,55 @@ assert_true(after_confirmation_timeout == nil, 'missing buff must release after 
 assert_equal(timeout_target, 900, 'confirmation timeout must restore normal reaction ownership')
 
 print('selftest_reaction_event_window: OK')
+
+
+local function read_file(path)
+    local fh = assert(io.open(path, 'r'))
+    local content = fh:read('*a')
+    fh:close()
+    return content
+end
+
+local function assert_before(source, first_text, second_text, message)
+    local first = assert(source:find(first_text, 1, true), 'missing source text: ' .. first_text)
+    local second = assert(source:find(second_text, 1, true), 'missing source text: ' .. second_text)
+    assert_true(first < second, message)
+end
+
+local unified_source = read_file('UnifiedCombat.lua')
+assert_before(
+    unified_source,
+    "_G.UC_SCHED_OnReactionAction(act, observed_at)",
+    "uc_encounter_runtime.observe(observed_at)",
+    'reaction prepass must run before encounter bookkeeping'
+)
+assert_before(
+    unified_source,
+    "_G.UC_SCHED_OnReactionAction(act, observed_at)",
+    "UC_COMBAT_CORE.on_action(act)",
+    'reaction prepass must run before combat-core action observation'
+)
+assert_before(
+    unified_source,
+    "_G.UC_SCHED_OnReactionAction(act, observed_at)",
+    "_G.UC_SCHED_OnAction(act)",
+    'reaction prepass must run before normal scheduler action observation'
+)
+
+local scheduler_source = read_file('unified_scheduler.lua')
+local prepass_start = assert(scheduler_source:find('function scheduler.on_reaction_action(act, packet_received_at)', 1, true))
+local normal_action_start = assert(scheduler_source:find('function scheduler.on_action(act)', 1, true))
+assert_true(prepass_start < normal_action_start, 'reaction prepass must be defined independently of normal action processing')
+local normal_action_body = scheduler_source:sub(normal_action_start)
+assert_true(
+    normal_action_body:find("require('uc_reaction_runtime').on_action(", 1, true) == nil,
+    'normal scheduler action path must not process reactions a second time'
+)
+assert_true(
+    scheduler_source:find("scheduler.action_timeline_log('REACTION_FASTPATH'", 1, true) ~= nil,
+    'reaction prepass must emit fast-path timing telemetry'
+)
+assert_true(
+    scheduler_source:find('_G.UC_LAST_REACTION_TIMINGS = timing_records', 1, true) ~= nil,
+    'reaction prepass must retain the latest timing snapshot in memory'
+)

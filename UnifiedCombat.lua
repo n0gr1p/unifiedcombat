@@ -2357,6 +2357,14 @@ local function uc_register_action_listener()
 	ap_listener_id = ActionPacket.open_listener(function(act_org, act_mod)
 		local act = act_org
 		local observed_at = uc_now_s()
+
+		-- Safety reactions are the first UnifiedCombat consumer of an action packet.
+		-- Keep this ahead of encounter/core/scheduler bookkeeping so spell-start
+		-- reactions can turn/disengage with the minimum addon-side latency.
+		if type(_G.UC_SCHED_OnReactionAction) == 'function' then
+			_G.UC_SCHED_OnReactionAction(act, observed_at)
+		end
+
 		uc_encounter_runtime.observe(observed_at)
 		uc_encounter_runtime.on_action(act, observed_at)
 		if UC_COMBAT_CORE and type(UC_COMBAT_CORE.on_action) == 'function' then

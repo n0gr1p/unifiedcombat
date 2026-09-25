@@ -7583,6 +7583,114 @@ function scheduler.seed_cached_status_snapshot()
 	return true
 end
 
+local function reaction_timing_ms(started_at, ended_at)
+	local start_value = tonumber(started_at) or 0
+	local end_value = tonumber(ended_at) or start_value
+	return ('%.3f'):format(math.max(0, (end_value - start_value) * 1000))
+end
+
+local function reaction_timing_seconds(value)
+	return ('%.6f'):format(tonumber(value) or 0)
+end
+
+function scheduler.on_reaction_action(act, packet_received_at)
+	if type(act) ~= 'table' or rawget(_G, 'Start_Engine') ~= true then
+		return false
+	end
+
+	local received_at = tonumber(packet_received_at) or now_s()
+	local get_target = windower.ffxi.get_mob_by_target
+	local target = type(get_target) == 'function' and get_target('t') or nil
+	local current_target_id = tonumber(target and target.id) or 0
+	local reaction_actor_id = tonumber(act.actor_id) or 0
+	local reaction_actor = reaction_actor_id > 0 and windower.ffxi.get_mob_by_id(reaction_actor_id) or nil
+	local reaction_actor_is_valid_enemy = reaction_actor ~= nil
+		and reaction_actor.valid_target == true
+		and (tonumber(reaction_actor.spawn_type) or 0) == 16
+		and (tonumber(reaction_actor.hpp) or 0) > 0
+
+	local reaction_event = require('uc_reaction_runtime').on_action(
+		act,
+		current_target_id,
+		received_at,
+		reaction_actor_is_valid_enemy
+	)
+	local matched_at = now_s()
+
+	local released_reactions = type(reaction_event.released_all) == 'table'
+		and reaction_event.released_all
+		or (type(reaction_event.released) == 'table' and { reaction_event.released } or {})
+	for _, released_reaction in ipairs(released_reactions) do
+		scheduler.release_reaction_movement(released_reaction, 'REACTION_ABILITY_WINDOW_COMPLETE')
+	end
+
+	if type(reaction_event.activated) == 'table' then
+		_G.UC_REACTION_LOCK = reaction_event.activated
+		local activated_reactions = type(reaction_event.activated_all) == 'table'
+			and reaction_event.activated_all
+			or { reaction_event.activated }
+		local timing_records = {}
+		local camp_lane_reserved = scheduler.providers.camp_puller.active()
+
+		-- Execute every configured response before doing any timeline file I/O.
+		-- This keeps sibling safety actions (for example turn_away then
+		-- stop_attacking) adjacent on the hot path.
+		for _, activated_reaction in ipairs(activated_reactions) do
+			local dispatch_started_at = now_s()
+			local applied = false
+			if not camp_lane_reserved then
+				applied = scheduler.apply_reaction_response(activated_reaction) == true
+			end
+			local dispatch_done_at = now_s()
+			timing_records[#timing_records + 1] = {
+				ability = tostring(activated_reaction.name or ''),
+				response = tostring(activated_reaction.response or ''),
+				actor_id = tonumber(activated_reaction.actor_id) or 0,
+				target_distance = tonumber(activated_reaction.distance),
+				packet_received_at = reaction_timing_seconds(received_at),
+				match_done_at = reaction_timing_seconds(matched_at),
+				dispatch_started_at = reaction_timing_seconds(dispatch_started_at),
+				dispatch_done_at = reaction_timing_seconds(dispatch_done_at),
+				rx_to_match_ms = reaction_timing_ms(received_at, matched_at),
+				rx_to_dispatch_start_ms = reaction_timing_ms(received_at, dispatch_started_at),
+				rx_to_dispatch_done_ms = reaction_timing_ms(received_at, dispatch_done_at),
+				dispatch_duration_ms = reaction_timing_ms(dispatch_started_at, dispatch_done_at),
+				applied = applied and 'true' or 'false',
+				camp_lane_reserved = camp_lane_reserved and 'true' or 'false',
+			}
+		end
+
+		local prepass_done_at = now_s()
+		for _, timing in ipairs(timing_records) do
+			timing.prepass_done_at = reaction_timing_seconds(prepass_done_at)
+			timing.rx_to_prepass_done_ms = reaction_timing_ms(received_at, prepass_done_at)
+		end
+		_G.UC_LAST_REACTION_TIMINGS = timing_records
+		_G.UC_LAST_REACTION_TIMING = timing_records[#timing_records]
+
+		-- Telemetry is deliberately deferred until every immediate safety side
+		-- effect has been dispatched so logging can never delay a sibling response.
+		for _, timing in ipairs(timing_records) do
+			scheduler.action_timeline_log('REACTION_FASTPATH', timing, (
+				'reaction_fastpath:%s:%s:%d'
+			):format(
+				tostring(timing.ability or ''),
+				tostring(timing.response or ''),
+				tonumber(timing.actor_id) or 0
+			), 0)
+		end
+		return true
+	end
+
+	if (tonumber(reaction_event.released_target_id) or 0) > 0 then
+		_G.UC_REACTION_LOCK = nil
+		if current_target_id > 0 and not scheduler.providers.camp_puller.active() then
+			scheduler.apply_reaction_turn({ actor_id = current_target_id }, false)
+		end
+	end
+	return false
+end
+
 function scheduler.on_action(act)
 	if type(act) == 'table' then
 		local p = windower.ffxi.get_player()
@@ -7614,56 +7722,6 @@ function scheduler.on_action(act)
 		end
 		scheduler.observe_local_sleep_action(act, player_id, observed_at)
 		scheduler.providers.charm_sleeper.observe_action(act, player_id, observed_at)
-		if rawget(_G, 'Start_Engine') == true then
-			local get_target = windower.ffxi.get_mob_by_target
-			local target = type(get_target) == 'function' and get_target('t') or nil
-			local reaction_actor_id = tonumber(act.actor_id) or 0
-			local reaction_actor = reaction_actor_id > 0 and windower.ffxi.get_mob_by_id(reaction_actor_id) or nil
-			local reaction_actor_is_valid_enemy = reaction_actor ~= nil
-				and reaction_actor.valid_target == true
-				and (tonumber(reaction_actor.spawn_type) or 0) == 16
-				and (tonumber(reaction_actor.hpp) or 0) > 0
-			local reaction_event = require('uc_reaction_runtime').on_action(
-				act,
-				tonumber(target and target.id) or 0,
-				observed_at,
-				reaction_actor_is_valid_enemy
-			)
-			local released_reactions = type(reaction_event.released_all) == 'table'
-				and reaction_event.released_all
-				or (type(reaction_event.released) == 'table' and { reaction_event.released } or {})
-			for _, released_reaction in ipairs(released_reactions) do
-				scheduler.release_reaction_movement(released_reaction, 'REACTION_ABILITY_WINDOW_COMPLETE')
-			end
-			if type(reaction_event.activated) == 'table' then
-				_G.UC_REACTION_LOCK = reaction_event.activated
-				local activated_reactions = type(reaction_event.activated_all) == 'table'
-					and reaction_event.activated_all
-					or { reaction_event.activated }
-				for _, activated_reaction in ipairs(activated_reactions) do
-					scheduler.action_timeline_log('REACTION_ACTIVATED', {
-						ability = tostring(activated_reaction.name or ''),
-						response = tostring(activated_reaction.response or ''),
-						actor_id = tonumber(activated_reaction.actor_id) or 0,
-						target_distance = tonumber(activated_reaction.distance),
-					}, ('reaction_activated:%s:%s:%d'):format(
-						tostring(activated_reaction.name or ''),
-						tostring(activated_reaction.response or ''),
-						tonumber(activated_reaction.actor_id) or 0
-					), 0)
-					if not scheduler.providers.camp_puller.active() then
-						scheduler.apply_reaction_response(activated_reaction)
-					end
-				end
-			elseif (tonumber(reaction_event.released_target_id) or 0) > 0 then
-				_G.UC_REACTION_LOCK = nil
-				local current_target_id = tonumber(target and target.id) or 0
-				if current_target_id > 0
-					and not scheduler.providers.camp_puller.active() then
-					scheduler.apply_reaction_turn({ actor_id = current_target_id }, false)
-				end
-			end
-		end
 		local observed_effect_set = scheduler.reaction_observed_effect_set()
 		local catalog_events = {}
 		tb_effect_table.apply_from_action(
@@ -8072,6 +8130,13 @@ function scheduler.on_action_message(msg)
 	end
 	if message_id ~= 0 then
 		scheduler.p1_pending_mark_complete(now, ('msg_%d'):format(message_id))
+	end
+end
+
+_G.UC_SCHED_OnReactionAction = function(act, observed_at)
+	local ok = pcall(scheduler.on_reaction_action, act, observed_at)
+	if not ok then
+		-- Reaction hooks are best-effort; never destabilize the ActionPacket listener.
 	end
 end
 

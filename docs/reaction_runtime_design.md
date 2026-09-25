@@ -86,6 +86,7 @@ The disabled, empty domain is optional so profiles created before reactions exis
 
 ## Scheduler Behavior
 
+- The ActionPacket listener invokes the reaction prepass immediately after capturing the canonical receive timestamp and before encounter runtime, combat-core, or normal scheduler action bookkeeping.
 - Reaction turns use the existing scheduler turn dispatcher and turn-ownership module.
 - Both distance-bearing responses use the existing scheduler movement facade and dispatcher under `scheduler_reaction` ownership.
 - The scheduler holds movement and suppresses ordinary face-to-target while a reaction is active.
@@ -106,6 +107,8 @@ The disabled, empty domain is optional so profiles created before reactions exis
 - No speculative completion timeout is used. Missing completion evidence remains visible through diagnostics rather than being hidden by a guessed timer.
 
 ## Diagnostics
+
+When a reaction activates, the prepass records packet-to-match and packet-to-dispatch timing for each immediate response. The latest activation is available in `_G.UC_LAST_REACTION_TIMING`, all sibling responses from that packet are available in `_G.UC_LAST_REACTION_TIMINGS`, and action-timeline logging emits `REACTION_FASTPATH` after all immediate safety side effects have already been dispatched. This ordering keeps diagnostic file I/O off the safety hot path.
 
 `//uc reactions status` reports:
 
