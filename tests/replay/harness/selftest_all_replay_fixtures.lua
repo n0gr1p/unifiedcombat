@@ -157,6 +157,7 @@ local SELFTESTS = {
 	"tests/replay/harness/selftest_encounter_runtime.lua",
 	"tests/replay/harness/selftest_kei_encounter.lua",
 	"tests/replay/harness/selftest_kei_configuration.lua",
+	"tests/replay/harness/selftest_saved_by_bell_encounter.lua",
 	"tests/replay/harness/selftest_encounter_policy.lua",
 	"tests/replay/harness/selftest_encounter_field_log_audit.lua",
     "tests/replay/harness/selftest_lilith_easy_encounter.lua",
