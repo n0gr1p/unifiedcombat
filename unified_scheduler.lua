@@ -4443,6 +4443,7 @@ local function p1_collect_proposals(ctx)
 		scheduler.providers.combat.collect_ja(ctx, out)
 		scheduler.providers.pet_combat.collect(ctx, out)
 		scheduler.providers.kei.collect(ctx, out)
+		scheduler.providers.saved_by_bell.collect(ctx, out)
 	end
 	-- 2 Hz defensive
 	if domain_ownership.is_enabled('defensive')
@@ -7255,7 +7256,7 @@ function scheduler.dispatch_selected_plan(settings)
 	if provider == 'camp_puller' then
 		return p1_dispatch_camp_puller(selected, settings)
 	end
-	if provider == 'combat' or provider == 'encounter_kei' then
+	if provider == 'combat' or provider == 'encounter_kei' or provider == 'encounter_saved_by_bell' then
 		return p1_dispatch_combat(selected, settings, phase)
 	end
 	if provider == 'defensive_internal' then
@@ -8806,6 +8807,13 @@ scheduler.providers.kei = require('uc_provider_kei').new({
 	end,
 	keepalive_priority = scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION,
 	opportunistic_priority = 70,
+})
+scheduler.providers.saved_by_bell = require('uc_provider_saved_by_bell').new({
+	snapshot = require('uc_saved_by_bell_encounter').snapshot,
+	action_ready = action_ready,
+	clamp_urgency = p1_clamp_urgency,
+	get_mob_by_id = windower.ffxi.get_mob_by_id,
+	priority_band = 140,
 })
 scheduler.providers.camp_puller = require('uc_camp_puller').new({
 	resolve_camp_anchor = require('uc_camp_anchor').resolve_current_anchor,
