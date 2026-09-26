@@ -129,4 +129,9 @@ local ranker_source = ranker_file:read('*a')
 ranker_file:close()
 assert_true(ranker_source:find("action_type == 'item'", 1, true) ~= nil, 'item actions must participate in pending conflict arbitration')
 
+local locks_file = assert(io.open('./uc_scheduler_locks.lua', 'r'))
+local locks_source = locks_file:read('*a')
+locks_file:close()
+assert_true(locks_source:find("action_type == 'item'", 1, true) ~= nil, 'item actions must honor hard cast locks')
+
 io.stdout:write('selftest_food_maintenance: OK\n')
