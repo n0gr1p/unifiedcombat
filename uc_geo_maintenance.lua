@@ -1150,6 +1150,38 @@ function M.new(deps)
 		return true, nil, target
 	end
 
+	local function sequence_serves_missing_core_geo(sequence, geo_satisfied)
+		return type(sequence) == 'table'
+			and sequence.kind == 'geo_create'
+			and geo_satisfied ~= true
+			and (sequence.step == 'full_circle'
+				or sequence.step == 'blaze'
+				or sequence.step == 'geo_spell')
+	end
+
+	local function preempt_optional_sequence_for_core(ctx, geo_satisfied, indi_satisfied)
+		local sequence = provider.state.sequence
+		if type(sequence) ~= 'table'
+			or provider.state.pending ~= nil
+			or (geo_satisfied == true and indi_satisfied == true)
+			or sequence_serves_missing_core_geo(sequence, geo_satisfied) then
+			return false
+		end
+		action_timeline_log('GEO_OPTIONAL_SEQUENCE_PREEMPTED', {
+			sequence_kind = tostring(sequence.kind or ''),
+			sequence_step = tostring(sequence.step or ''),
+			geo_satisfied = tostring(geo_satisfied == true),
+			indi_satisfied = tostring(indi_satisfied == true),
+			reason = 'core_field_missing',
+		}, ('geo_optional_preempt:%s:%s'):format(
+			tostring(sequence.kind or ''),
+			tostring(sequence.step or '')
+		), 0.25)
+		provider.state.sequence = nil
+		publish_status('sequence_preempted', 'core_field_missing')
+		return true
+	end
+
 	function provider.creation_preempts_pull(ctx)
 		require_table(ctx, 'ctx')
 		local config = config_from_context(ctx)
@@ -1240,6 +1272,9 @@ function M.new(deps)
 		local sequence = provider.state.sequence
 		local geo_satisfied = geo_present and provider.state.owned_geo_spell == config.geo_spell
 		local indi_satisfied = indi_present and provider.state.owned_indi_spell == config.indi_spell
+		if preempt_optional_sequence_for_core(ctx, geo_satisfied, indi_satisfied) then
+			sequence = nil
+		end
 		local pet_hpp = finite_number(ctx.pet and ctx.pet.hpp)
 		local life_cycle_due = config.luopan.use_life_cycle == true
 			and geo_present
@@ -1401,7 +1436,13 @@ function M.new(deps)
 		end
 		local function begin_replacement()
 			if not geo_target_is_ready() then
-				return
+				return false
+			end
+			local full_circle_ready, full_circle_reason, full_circle_kind =
+				action_ready('Full Circle', ctx.player_id)
+			if full_circle_ready ~= true or full_circle_kind ~= 'ja' then
+				publish_status('ja_blocked', tostring(full_circle_reason or full_circle_kind))
+				return false
 			end
 			local proposal_count = #out
 			local enhance, consumed = blaze_upgrade_ready(ctx, config)
@@ -1419,9 +1460,12 @@ function M.new(deps)
 					{ stage = 'replacement_sequence' }
 				)
 			end
+			return #out > proposal_count
 		end
 		if geo_present and not geo_satisfied then
-			begin_replacement()
+			if not begin_replacement() and not indi_satisfied then
+				emit_indi()
+			end
 			return
 		end
 		if slow_due then
@@ -1430,8 +1474,7 @@ function M.new(deps)
 				publish_status('blocked', placement_reason)
 				return
 			end
-			if misplaced then
-				begin_replacement()
+			if misplaced and begin_replacement() then
 				return
 			end
 		end
@@ -1457,8 +1500,9 @@ function M.new(deps)
 					tonumber(ctx.pet_id) or 0,
 					tonumber(geo_target.id) or 0
 				), 0.50)
-				begin_replacement()
-				return
+				if begin_replacement() then
+					return
+				end
 			end
 		end
 
