@@ -1595,63 +1595,101 @@ function M.new(deps)
 			return
 		end
 
+		local optional_due = false
 		local blaze_ready, blaze_consumed = blaze_upgrade_ready(ctx, config)
 		if geo_present
 			and provider.state.owned_geo_blaze_enhanced ~= true
 			and blaze_ready then
-			if not geo_target_is_ready() then
+			optional_due = true
+			if begin_replacement() then
 				return
 			end
-			begin_geo_creation(config, true, geo_target.id, true, blaze_consumed)
-			collect_sequence(ctx, out, config, contracts)
-		elseif provider.state.bolster_armed == true then
-			emit_ja(ctx, out, 'Bolster', 'bolster_complete', 0.95, nil)
-		elseif config.luopan.use_life_cycle == true
+		end
+
+		if provider.state.bolster_armed == true then
+			optional_due = true
+			if emit_ja(ctx, out, 'Bolster', 'bolster_complete', 0.95, nil) then
+				return
+			end
+		end
+
+		if config.luopan.use_life_cycle == true
 			and luopan_present(ctx)
 			and finite_number(ctx.pet.hpp) ~= nil
 			and tonumber(ctx.pet.hpp) < tonumber(config.luopan.life_cycle_hpp) then
-			emit_ja(ctx, out, 'Life Cycle', 'life_cycle_complete', 0.90, nil)
-		elseif config.luopan.use_ecliptic_attrition == true
+			optional_due = true
+			if emit_ja(ctx, out, 'Life Cycle', 'life_cycle_complete', 0.90, nil) then
+				return
+			end
+		end
+
+		if config.luopan.use_ecliptic_attrition == true
 			and luopan_present(ctx)
 			and provider.state.ecliptic_luopan_id ~= tonumber(ctx.pet_id) then
-			provider.state.sequence = {
-				kind = 'geo_create',
-				step = 'ecliptic',
-				atomic = false,
-			}
-			collect_sequence(ctx, out, config, contracts)
-		elseif config.entrust.enabled == true then
+			optional_due = true
+			local ready, ready_reason, action_kind =
+				action_ready('Ecliptic Attrition', ctx.player_id)
+			if ready == true and action_kind == 'ja' then
+				provider.state.sequence = {
+					kind = 'geo_create',
+					step = 'ecliptic',
+					atomic = false,
+				}
+				collect_sequence(ctx, out, config, contracts)
+				if #out > 0 then
+					return
+				end
+			else
+				publish_status('ja_blocked', tostring(ready_reason or action_kind))
+			end
+		end
+
+		if config.entrust.enabled == true and entrust_due then
+			optional_due = true
 			local member = resolve_party_target(ctx, config.entrust.target_name)
 			if member == nil then
 				publish_status('entrust_blocked', 'configured_party_member_unavailable')
-				return
-			end
-			local member_id = tonumber(member.id) or 0
-			local entrusted = provider.state.owned_entrust_spell == config.entrust.spell
-				and provider.state.owned_entrust_target_id == member_id
-				and member_has_buff(member, INDI_COLURE_BUFF_ID)
-			if entrusted then
-				publish_status('converged', '')
-				return
-			end
-			if type(member.buffs) ~= 'table' then
+			elseif type(member.buffs) ~= 'table' then
 				publish_status('entrust_blocked', 'target_buff_state_unavailable')
-				return
+			else
+				local member_id = tonumber(member.id) or 0
+				if member_has_buff(member, INDI_COLURE_BUFF_ID) then
+					publish_status('unknown_existing', 'entrust_target_indi_wait_for_clear')
+				elseif has_buff(ctx.player, ENTRUST_BUFF_ID) then
+					provider.state.sequence = {
+						kind = 'entrust',
+						step = 'entrust_spell',
+						atomic = true,
+						target_id = member_id,
+					}
+					collect_sequence(ctx, out, config, contracts)
+					if #out > 0 then
+						return
+					end
+				else
+					local ready, ready_reason, action_kind =
+						action_ready('Entrust', ctx.player_id)
+					if ready == true and action_kind == 'ja' then
+						provider.state.owned_entrust_spell = nil
+						provider.state.owned_entrust_target_id = 0
+						provider.state.sequence = {
+							kind = 'entrust',
+							step = 'entrust_ja',
+							atomic = false,
+							target_id = member_id,
+						}
+						collect_sequence(ctx, out, config, contracts)
+						if #out > 0 then
+							return
+						end
+					else
+						publish_status('ja_blocked', tostring(ready_reason or action_kind))
+					end
+				end
 			end
-			if member_has_buff(member, INDI_COLURE_BUFF_ID) then
-				publish_status('unknown_existing', 'entrust_target_indi_wait_for_clear')
-				return
-			end
-			provider.state.owned_entrust_spell = nil
-			provider.state.owned_entrust_target_id = 0
-			provider.state.sequence = {
-				kind = 'entrust',
-				step = 'entrust_ja',
-				atomic = false,
-				target_id = member_id,
-			}
-			collect_sequence(ctx, out, config, contracts)
-		else
+		end
+
+		if not optional_due then
 			publish_status('converged', '')
 		end
 	end
