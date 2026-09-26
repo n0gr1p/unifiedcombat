@@ -896,6 +896,59 @@ life_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
 action = collect_one(life_provider, life_ctx)
 assert_equal(action.action_name, 'Life Cycle', 'low luopan HPP must propose Life Cycle')
 
+local life_fallthrough_config = base_config()
+life_fallthrough_config.luopan.use_life_cycle = true
+life_fallthrough_config.luopan.use_ecliptic_attrition = true
+local life_fallthrough_abilities = {
+	['Life Cycle'] = false,
+	['Ecliptic Attrition'] = true,
+}
+local life_fallthrough_provider = new_provider(
+	{},
+	{ active = false },
+	life_fallthrough_abilities
+)
+local life_fallthrough_ctx = context(life_fallthrough_config)
+action = collect_one(life_fallthrough_provider, life_fallthrough_ctx)
+life_fallthrough_provider.note_dispatch(action, 1.1)
+life_fallthrough_ctx.now = 2.0
+mark_luopan(life_fallthrough_ctx, 321, 40, 10, 20)
+action = collect_one(life_fallthrough_provider, life_fallthrough_ctx)
+life_fallthrough_provider.note_dispatch(action, 2.1)
+life_fallthrough_ctx.now = 3.0
+life_fallthrough_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+action = collect_one(life_fallthrough_provider, life_fallthrough_ctx)
+assert_equal(action.action_name, 'Ecliptic Attrition',
+	'Life Cycle on cooldown must fall through to ready Ecliptic')
+
+local bolster_fallthrough_config = base_config()
+bolster_fallthrough_config.luopan.use_life_cycle = true
+local bolster_fallthrough_abilities = {
+	Bolster = false,
+	['Life Cycle'] = true,
+}
+local bolster_fallthrough_provider = new_provider(
+	{},
+	{ active = false },
+	bolster_fallthrough_abilities
+)
+local bolster_fallthrough_ctx = context(bolster_fallthrough_config)
+action = collect_one(bolster_fallthrough_provider, bolster_fallthrough_ctx)
+bolster_fallthrough_provider.note_dispatch(action, 1.1)
+bolster_fallthrough_ctx.now = 2.0
+mark_luopan(bolster_fallthrough_ctx, 322, 40, 10, 20)
+action = collect_one(bolster_fallthrough_provider, bolster_fallthrough_ctx)
+bolster_fallthrough_provider.note_dispatch(action, 2.1)
+bolster_fallthrough_ctx.now = 3.0
+bolster_fallthrough_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+local bolster_ok = bolster_fallthrough_provider.arm_bolster(true)
+assert_true(bolster_ok, 'Bolster fallthrough setup failed to arm')
+action = collect_one(bolster_fallthrough_provider, bolster_fallthrough_ctx)
+assert_equal(action.action_name, 'Life Cycle',
+	'Bolster on cooldown must fall through to ready Life Cycle')
+assert_true(bolster_fallthrough_provider.status_snapshot().bolster_armed,
+	'unavailable Bolster must remain armed for a later retry')
+
 local placement_config = base_config()
 placement_config.luopan.placement = 'camp'
 placement_config.luopan.replace_out_of_position = true
