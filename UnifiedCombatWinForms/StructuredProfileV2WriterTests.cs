@@ -41,6 +41,7 @@ internal static class StructuredProfileV2WriterTests
             TestSerializeIncludesPullerNameWhenSelected();
 			TestSerializeCampLeashSourceWithoutPullerName();
             TestSerializeGeoMaintenance();
+            TestSerializeFoodMaintenance();
             TestSerializeCampPulling();
             TestGeoPullUiOfflineContract();
 			TestSerializeIncludesPartnerNames();
@@ -759,6 +760,40 @@ internal static class StructuredProfileV2WriterTests
 		AssertContains(bridge, "camp_z = camp_status.z", "runtime bridge must expose camp z");
 		AssertContains(bridge, "camp_coordinate_mode = camp_status.coordinate_mode", "runtime bridge must expose camp coordinate mode");
 	}
+
+    private static void TestSerializeFoodMaintenance()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["food_enabled"] = true;
+        flat["food_item"] = "Grape Daifuku";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Niightsiide", "WHM", "SCH")
+        );
+
+        AssertContains(content, "food = {", "food maintenance domain must serialize");
+        AssertContains(content, "item = \"Grape Daifuku\"", "configured food item must serialize");
+
+        flat["food_item"] = "";
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Niightsiide", "WHM", "SCH")
+            ),
+            "enabled food maintenance must require an item name"
+        );
+
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        AssertContains(ui, "Text = \"Use Food\"", "food enable control must exist");
+        AssertContains(ui, "PlaceholderText = \"Food item name\"", "food item control must exist");
+        AssertContains(store, "[\"food_enabled\"] = _foodEnabled.Checked", "food enabled state must persist");
+        AssertContains(store, "[\"food_item\"] = (_foodItem.Text ?? \"\").Trim()", "food item name must persist");
+        AssertContains(logic, "SessionStateHelper.GetBool(s, \"food_enabled\", false)", "food enabled state must reload");
+        AssertContains(logic, "SessionStateHelper.GetString(s, \"food_item\", \"\")", "food item name must reload");
+    }
 
     private static void TestSerializeGeoMaintenance()
     {
