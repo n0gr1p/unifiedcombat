@@ -1082,6 +1082,10 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.brd_targeted_songs = serialize_brd_targeted_songs(config.maintenance.brd.targeted_songs)
 		end
 		candidate.maintenance_geo = clone_value(config.maintenance.geo)
+		if type(config.maintenance.food) == 'table' then
+			candidate.food_enabled = config.maintenance.food.enabled == true
+			candidate.food_item = tostring(config.maintenance.food.item or '')
+		end
 	end
 
 	if type(config.summoner) == 'table' then
