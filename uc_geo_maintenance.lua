@@ -796,12 +796,12 @@ function M.new(deps)
 		local in_range, range_reason = target_in_range(ctx, target, max_range)
 		if not in_range then
 			publish_status(kind .. '_blocked', range_reason)
-			return
+			return false
 		end
 		local ready, ready_reason, action_kind = action_ready(spell_name, tonumber(target.id))
 		if not ready or action_kind ~= 'spell' then
 			publish_status(kind .. '_blocked', tostring(ready_reason or action_kind))
-			return
+			return false
 		end
 		local priority_band = geo_maintenance_priority
 		if kind == 'geo' then
@@ -823,13 +823,14 @@ function M.new(deps)
 			blaze_enhanced = sequence and sequence.blaze_enhanced == true,
 		})
 		publish_status(kind .. '_proposed', spell_name)
+		return true
 	end
 
 	local function emit_ja(ctx, out, action_name, effect, urgency, sequence)
 		local ready, ready_reason, action_kind = action_ready(action_name, ctx.player_id)
 		if not ready or action_kind ~= 'ja' then
 			publish_status('ja_blocked', tostring(ready_reason or action_kind))
-			return
+			return false
 		end
 		local priority_band = geo_maintenance_priority
 		if type(sequence) == 'table'
@@ -853,6 +854,7 @@ function M.new(deps)
 			sequence_step = sequence and sequence.step or '',
 		})
 		publish_status('ja_proposed', action_name)
+		return true
 	end
 
 	local function member_has_buff(member, buff_id)
@@ -956,8 +958,15 @@ function M.new(deps)
 				and provider.state.owned_geo_blaze_enhanced == (sequence.blaze_enhanced == true) then
 				provider.state.pending = nil
 				if config.luopan.use_ecliptic_attrition == true then
-					sequence.step = 'ecliptic'
-					sequence.atomic = false
+					local ready, ready_reason, action_kind =
+						action_ready('Ecliptic Attrition', ctx.player_id)
+					if ready == true and action_kind == 'ja' then
+						sequence.step = 'ecliptic'
+						sequence.atomic = false
+					else
+						provider.state.sequence = nil
+						publish_status('ja_blocked', tostring(ready_reason or action_kind))
+					end
 				else
 					provider.state.sequence = nil
 				end
@@ -1001,7 +1010,9 @@ function M.new(deps)
 				if not luopan_present(ctx) then
 					error('GEO Full Circle sequence retained after luopan absence')
 				end
-				emit_ja(ctx, out, 'Full Circle', 'pet_absent', 0.95, sequence)
+				if not emit_ja(ctx, out, 'Full Circle', 'pet_absent', 0.95, sequence) then
+					provider.state.sequence = nil
+				end
 				return true
 			end
 			if sequence.step == 'blaze' then
@@ -1017,7 +1028,12 @@ function M.new(deps)
 					return true
 				end
 				set_sequence_enemy_wait(sequence, false, 'enemy_inside_camp_radius')
-				emit_ja(ctx, out, 'Blaze of Glory', 'blaze_buff', 0.95, sequence)
+				if not emit_ja(ctx, out, 'Blaze of Glory', 'blaze_buff', 0.95, sequence) then
+					sequence.step = 'geo_spell'
+					sequence.atomic = false
+					sequence.blaze_enhanced = false
+					return collect_sequence(ctx, out, config, contracts)
+				end
 				return true
 			end
 			if sequence.step == 'geo_spell' then
@@ -1054,7 +1070,9 @@ function M.new(deps)
 					return true
 				end
 				sequence.luopan_id = tonumber(ctx.pet_id) or 0
-				emit_ja(ctx, out, 'Ecliptic Attrition', 'ecliptic_complete', 0.90, sequence)
+				if not emit_ja(ctx, out, 'Ecliptic Attrition', 'ecliptic_complete', 0.90, sequence) then
+					provider.state.sequence = nil
+				end
 				return true
 			end
 			error('unsupported GEO creation sequence step: ' .. tostring(sequence.step))
@@ -1068,7 +1086,9 @@ function M.new(deps)
 				return true
 			end
 			if sequence.step == 'entrust_ja' then
-				emit_ja(ctx, out, 'Entrust', 'entrust_buff', 0.90, sequence)
+				if not emit_ja(ctx, out, 'Entrust', 'entrust_buff', 0.90, sequence) then
+					provider.state.sequence = nil
+				end
 				return true
 			end
 			if sequence.step == 'entrust_spell' then
@@ -1085,7 +1105,7 @@ function M.new(deps)
 					publish_status('sequence_failed', range_reason)
 					return true
 				end
-				emit_spell(
+				if not emit_spell(
 					ctx,
 					out,
 					'entrust',
@@ -1095,7 +1115,9 @@ function M.new(deps)
 					contracts.entrust.max_range,
 					1.0,
 					sequence
-				)
+				) then
+					provider.state.sequence = nil
+				end
 				return true
 			end
 			error('unsupported Entrust sequence step: ' .. tostring(sequence.step))
@@ -1128,6 +1150,38 @@ function M.new(deps)
 		return true, nil, target
 	end
 
+	local function sequence_serves_missing_core_geo(sequence, geo_satisfied)
+		return type(sequence) == 'table'
+			and sequence.kind == 'geo_create'
+			and geo_satisfied ~= true
+			and (sequence.step == 'full_circle'
+				or sequence.step == 'blaze'
+				or sequence.step == 'geo_spell')
+	end
+
+	local function preempt_optional_sequence_for_core(ctx, geo_satisfied, indi_satisfied)
+		local sequence = provider.state.sequence
+		if type(sequence) ~= 'table'
+			or provider.state.pending ~= nil
+			or (geo_satisfied == true and indi_satisfied == true)
+			or sequence_serves_missing_core_geo(sequence, geo_satisfied) then
+			return false
+		end
+		action_timeline_log('GEO_OPTIONAL_SEQUENCE_PREEMPTED', {
+			sequence_kind = tostring(sequence.kind or ''),
+			sequence_step = tostring(sequence.step or ''),
+			geo_satisfied = tostring(geo_satisfied == true),
+			indi_satisfied = tostring(indi_satisfied == true),
+			reason = 'core_field_missing',
+		}, ('geo_optional_preempt:%s:%s'):format(
+			tostring(sequence.kind or ''),
+			tostring(sequence.step or '')
+		), 0.25)
+		provider.state.sequence = nil
+		publish_status('sequence_preempted', 'core_field_missing')
+		return true
+	end
+
 	function provider.creation_preempts_pull(ctx)
 		require_table(ctx, 'ctx')
 		local config = config_from_context(ctx)
@@ -1158,14 +1212,14 @@ function M.new(deps)
 			return false
 		end
 		local sequence = provider.state.sequence
-		if type(sequence) == 'table' and not sequence_restores_missing_luopan(sequence, ctx) then
-			return false
-		end
-		local target_ready, _, target = creation_target_ready(ctx, config, contracts, sequence)
+		local creation_sequence = sequence_restores_missing_luopan(sequence, ctx)
+			and sequence or nil
+		local target_ready, _, target =
+			creation_target_ready(ctx, config, contracts, creation_sequence)
 		if not target_ready then
 			return false
 		end
-		if type(sequence) == 'table' and sequence.step == 'blaze' then
+		if type(creation_sequence) == 'table' and creation_sequence.step == 'blaze' then
 			local ready, _, action_kind = action_ready('Blaze of Glory', ctx.player_id)
 			return ready == true and action_kind == 'ja'
 		end
@@ -1218,6 +1272,9 @@ function M.new(deps)
 		local sequence = provider.state.sequence
 		local geo_satisfied = geo_present and provider.state.owned_geo_spell == config.geo_spell
 		local indi_satisfied = indi_present and provider.state.owned_indi_spell == config.indi_spell
+		if preempt_optional_sequence_for_core(ctx, geo_satisfied, indi_satisfied) then
+			sequence = nil
+		end
 		local pet_hpp = finite_number(ctx.pet and ctx.pet.hpp)
 		local life_cycle_due = config.luopan.use_life_cycle == true
 			and geo_present
@@ -1379,7 +1436,13 @@ function M.new(deps)
 		end
 		local function begin_replacement()
 			if not geo_target_is_ready() then
-				return
+				return false
+			end
+			local full_circle_ready, full_circle_reason, full_circle_kind =
+				action_ready('Full Circle', ctx.player_id)
+			if full_circle_ready ~= true or full_circle_kind ~= 'ja' then
+				publish_status('ja_blocked', tostring(full_circle_reason or full_circle_kind))
+				return false
 			end
 			local proposal_count = #out
 			local enhance, consumed = blaze_upgrade_ready(ctx, config)
@@ -1397,9 +1460,12 @@ function M.new(deps)
 					{ stage = 'replacement_sequence' }
 				)
 			end
+			return #out > proposal_count
 		end
 		if geo_present and not geo_satisfied then
-			begin_replacement()
+			if not begin_replacement() and not indi_satisfied then
+				emit_indi()
+			end
 			return
 		end
 		if slow_due then
@@ -1408,8 +1474,7 @@ function M.new(deps)
 				publish_status('blocked', placement_reason)
 				return
 			end
-			if misplaced then
-				begin_replacement()
+			if misplaced and begin_replacement() then
 				return
 			end
 		end
@@ -1435,8 +1500,9 @@ function M.new(deps)
 					tonumber(ctx.pet_id) or 0,
 					tonumber(geo_target.id) or 0
 				), 0.50)
-				begin_replacement()
-				return
+				if begin_replacement() then
+					return
+				end
 			end
 		end
 
@@ -1529,63 +1595,101 @@ function M.new(deps)
 			return
 		end
 
+		local optional_due = false
 		local blaze_ready, blaze_consumed = blaze_upgrade_ready(ctx, config)
 		if geo_present
 			and provider.state.owned_geo_blaze_enhanced ~= true
 			and blaze_ready then
-			if not geo_target_is_ready() then
+			optional_due = true
+			if begin_replacement() then
 				return
 			end
-			begin_geo_creation(config, true, geo_target.id, true, blaze_consumed)
-			collect_sequence(ctx, out, config, contracts)
-		elseif provider.state.bolster_armed == true then
-			emit_ja(ctx, out, 'Bolster', 'bolster_complete', 0.95, nil)
-		elseif config.luopan.use_life_cycle == true
+		end
+
+		if provider.state.bolster_armed == true then
+			optional_due = true
+			if emit_ja(ctx, out, 'Bolster', 'bolster_complete', 0.95, nil) then
+				return
+			end
+		end
+
+		if config.luopan.use_life_cycle == true
 			and luopan_present(ctx)
 			and finite_number(ctx.pet.hpp) ~= nil
 			and tonumber(ctx.pet.hpp) < tonumber(config.luopan.life_cycle_hpp) then
-			emit_ja(ctx, out, 'Life Cycle', 'life_cycle_complete', 0.90, nil)
-		elseif config.luopan.use_ecliptic_attrition == true
+			optional_due = true
+			if emit_ja(ctx, out, 'Life Cycle', 'life_cycle_complete', 0.90, nil) then
+				return
+			end
+		end
+
+		if config.luopan.use_ecliptic_attrition == true
 			and luopan_present(ctx)
 			and provider.state.ecliptic_luopan_id ~= tonumber(ctx.pet_id) then
-			provider.state.sequence = {
-				kind = 'geo_create',
-				step = 'ecliptic',
-				atomic = false,
-			}
-			collect_sequence(ctx, out, config, contracts)
-		elseif config.entrust.enabled == true then
+			optional_due = true
+			local ready, ready_reason, action_kind =
+				action_ready('Ecliptic Attrition', ctx.player_id)
+			if ready == true and action_kind == 'ja' then
+				provider.state.sequence = {
+					kind = 'geo_create',
+					step = 'ecliptic',
+					atomic = false,
+				}
+				collect_sequence(ctx, out, config, contracts)
+				if #out > 0 then
+					return
+				end
+			else
+				publish_status('ja_blocked', tostring(ready_reason or action_kind))
+			end
+		end
+
+		if config.entrust.enabled == true and entrust_due then
+			optional_due = true
 			local member = resolve_party_target(ctx, config.entrust.target_name)
 			if member == nil then
 				publish_status('entrust_blocked', 'configured_party_member_unavailable')
-				return
-			end
-			local member_id = tonumber(member.id) or 0
-			local entrusted = provider.state.owned_entrust_spell == config.entrust.spell
-				and provider.state.owned_entrust_target_id == member_id
-				and member_has_buff(member, INDI_COLURE_BUFF_ID)
-			if entrusted then
-				publish_status('converged', '')
-				return
-			end
-			if type(member.buffs) ~= 'table' then
+			elseif type(member.buffs) ~= 'table' then
 				publish_status('entrust_blocked', 'target_buff_state_unavailable')
-				return
+			else
+				local member_id = tonumber(member.id) or 0
+				if member_has_buff(member, INDI_COLURE_BUFF_ID) then
+					publish_status('unknown_existing', 'entrust_target_indi_wait_for_clear')
+				elseif has_buff(ctx.player, ENTRUST_BUFF_ID) then
+					provider.state.sequence = {
+						kind = 'entrust',
+						step = 'entrust_spell',
+						atomic = true,
+						target_id = member_id,
+					}
+					collect_sequence(ctx, out, config, contracts)
+					if #out > 0 then
+						return
+					end
+				else
+					local ready, ready_reason, action_kind =
+						action_ready('Entrust', ctx.player_id)
+					if ready == true and action_kind == 'ja' then
+						provider.state.owned_entrust_spell = nil
+						provider.state.owned_entrust_target_id = 0
+						provider.state.sequence = {
+							kind = 'entrust',
+							step = 'entrust_ja',
+							atomic = false,
+							target_id = member_id,
+						}
+						collect_sequence(ctx, out, config, contracts)
+						if #out > 0 then
+							return
+						end
+					else
+						publish_status('ja_blocked', tostring(ready_reason or action_kind))
+					end
+				end
 			end
-			if member_has_buff(member, INDI_COLURE_BUFF_ID) then
-				publish_status('unknown_existing', 'entrust_target_indi_wait_for_clear')
-				return
-			end
-			provider.state.owned_entrust_spell = nil
-			provider.state.owned_entrust_target_id = 0
-			provider.state.sequence = {
-				kind = 'entrust',
-				step = 'entrust_ja',
-				atomic = false,
-				target_id = member_id,
-			}
-			collect_sequence(ctx, out, config, contracts)
-		else
+		end
+
+		if not optional_due then
 			publish_status('converged', '')
 		end
 	end

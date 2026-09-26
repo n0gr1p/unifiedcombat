@@ -124,6 +124,9 @@ local function new_provider(party_members, pull_state, ability_ready)
 		geo_creation_priority = 240,
 		action_ready = function(name)
 			if resources[name] ~= nil then
+				if type(ability_ready) == 'table' and ability_ready[name] == false then
+					return false, 'recast', 'spell'
+				end
 				return true, 'ready', 'spell'
 			end
 			if type(ability_ready) == 'table' and ability_ready[name] == false then
@@ -356,6 +359,75 @@ assert_equal(
 	'expired enhanced luopan must be replaced normally while Blaze is unavailable'
 )
 
+local full_circle_config = base_config()
+full_circle_config.luopan.use_blaze_of_glory = true
+local full_circle_abilities = {
+	['Blaze of Glory'] = false,
+	['Full Circle'] = false,
+}
+local full_circle_provider = new_provider({}, { active = false }, full_circle_abilities)
+local full_circle_ctx = context(full_circle_config)
+action = collect_one(full_circle_provider, full_circle_ctx)
+assert_equal(action.action_name, 'Geo-Frailty',
+	'Full Circle regression setup must create a normal luopan while Blaze is unavailable')
+full_circle_provider.note_dispatch(action, 1.1)
+full_circle_ctx.now = 2.0
+mark_luopan(full_circle_ctx, 303, 100, 10, 20)
+action = collect_one(full_circle_provider, full_circle_ctx)
+full_circle_provider.note_dispatch(action, 2.1)
+full_circle_ctx.now = 3.0
+full_circle_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+full_circle_abilities['Blaze of Glory'] = true
+local full_circle_out = {}
+full_circle_provider.collect(full_circle_ctx, full_circle_out)
+assert_equal(#full_circle_out, 0,
+	'Full Circle on cooldown must not admit an upgrade sequence')
+assert_equal(full_circle_provider.status_snapshot().sequence, nil,
+	'Full Circle on cooldown must not retain replacement ownership')
+full_circle_ctx.now = 3.2
+full_circle_ctx.pet_present = false
+full_circle_ctx.pet_id = 0
+full_circle_ctx.pet = {}
+action = collect_one(full_circle_provider, full_circle_ctx)
+assert_equal(action.action_name, 'Blaze of Glory',
+	'missing Luopan must recover even while Full Circle remains unavailable')
+assert_equal(action.priority_band, 240,
+	'missing-Luopan Blaze recovery must retain creation priority')
+
+local blaze_fallback_config = base_config()
+blaze_fallback_config.luopan.use_blaze_of_glory = true
+local blaze_fallback_abilities = {
+	['Blaze of Glory'] = false,
+	['Full Circle'] = true,
+}
+local blaze_fallback_provider = new_provider({}, { active = false }, blaze_fallback_abilities)
+local blaze_fallback_ctx = context(blaze_fallback_config)
+action = collect_one(blaze_fallback_provider, blaze_fallback_ctx)
+assert_equal(action.action_name, 'Geo-Frailty',
+	'Blaze fallback setup must start with a normal luopan')
+blaze_fallback_provider.note_dispatch(action, 1.1)
+blaze_fallback_ctx.now = 2.0
+mark_luopan(blaze_fallback_ctx, 304, 100, 10, 20)
+action = collect_one(blaze_fallback_provider, blaze_fallback_ctx)
+blaze_fallback_provider.note_dispatch(action, 2.1)
+blaze_fallback_ctx.now = 3.0
+blaze_fallback_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+blaze_fallback_abilities['Blaze of Glory'] = true
+action = collect_one(blaze_fallback_provider, blaze_fallback_ctx)
+assert_equal(action.action_name, 'Full Circle',
+	'ready Blaze upgrade must begin with Full Circle')
+blaze_fallback_provider.note_dispatch(action, 3.1)
+blaze_fallback_ctx.now = 4.0
+blaze_fallback_ctx.pet_present = false
+blaze_fallback_ctx.pet_id = 0
+blaze_fallback_ctx.pet = {}
+blaze_fallback_abilities['Blaze of Glory'] = false
+action = collect_one(blaze_fallback_provider, blaze_fallback_ctx)
+assert_equal(action.action_name, 'Geo-Frailty',
+	'Blaze becoming unavailable after Full Circle must fall back to normal Geo')
+assert_equal(action.priority_band, 240,
+	'Blaze fallback Geo must remain core creation priority')
+
 local ecliptic_config = base_config()
 ecliptic_config.luopan.use_blaze_of_glory = true
 ecliptic_config.luopan.use_ecliptic_attrition = true
@@ -374,28 +446,33 @@ assert_equal(action.action_name, 'Geo-Frailty', 'Ecliptic sequence must create t
 ecliptic_provider.note_dispatch(action, 2.1)
 ecliptic_ctx.now = 3.0
 mark_luopan(ecliptic_ctx, 305, 100, 10, 20)
+action = collect_one(ecliptic_provider, ecliptic_ctx)
+assert_equal(action.action_name, 'Indi-Haste',
+	'Ecliptic on recast must not block missing core Indi')
+assert_equal(
+	ecliptic_provider.status_snapshot().sequence,
+	nil,
+	'unavailable Ecliptic follow-up must not retain sequence ownership'
+)
+ecliptic_provider.note_dispatch(action, 3.1)
+ecliptic_ctx.now = 4.0
+ecliptic_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
 local ecliptic_out = {}
 ecliptic_provider.collect(ecliptic_ctx, ecliptic_out)
-assert_equal(#ecliptic_out, 0, 'Ecliptic on recast must not emit a proposal')
+assert_equal(#ecliptic_out, 0, 'Ecliptic on recast must remain opportunistic')
 assert_equal(ecliptic_provider.status.state, 'ja_blocked', 'Ecliptic recast blocker state mismatch')
 assert_equal(ecliptic_provider.status.detail, 'recast', 'Ecliptic recast blocker detail mismatch')
-assert_equal(
-	ecliptic_provider.lane_reserved(),
-	false,
-	'confirmed enhanced Geo must release the atomic lane while Ecliptic is on recast'
-)
+assert_equal(ecliptic_provider.status_snapshot().sequence, nil,
+	'Ecliptic on recast must not create a persistent sequence')
 ecliptic_pull_state.active = true
-ecliptic_ctx.now = 4.0
+ecliptic_ctx.now = 4.2
 ecliptic_out = {}
 ecliptic_provider.collect(ecliptic_ctx, ecliptic_out)
-assert_equal(#ecliptic_out, 0, 'active pull must defer the non-atomic Ecliptic follow-up')
-assert_equal(ecliptic_provider.status.state, 'sequence_held', 'active-pull Ecliptic hold state mismatch')
-assert_equal(ecliptic_provider.status.detail, 'pull_active', 'active-pull Ecliptic hold detail mismatch')
-assert_equal(
-	ecliptic_provider.lane_reserved(),
-	false,
-	'non-atomic Ecliptic follow-up must not reserve the GEO lane during a pull'
-)
+assert_equal(#ecliptic_out, 0, 'active pull must defer optional Ecliptic work')
+assert_equal(ecliptic_provider.status.state, 'blocked', 'active-pull optional hold state mismatch')
+assert_equal(ecliptic_provider.status.detail, 'pull_active', 'active-pull optional hold detail mismatch')
+assert_equal(ecliptic_provider.status_snapshot().sequence, nil,
+	'pull deferral must not retain unavailable Ecliptic state')
 ecliptic_pull_state.active = false
 ecliptic_abilities['Ecliptic Attrition'] = true
 ecliptic_ctx.now = 5.0
@@ -445,8 +522,10 @@ assert_equal(completed, true, 'exact Ecliptic action identity must complete desp
 assert_equal(completion_reason, 'geo_ja_action_identity', 'GEO JA completion reason mismatch')
 assert_equal(ecliptic_provider.lane_reserved(), false, 'Ecliptic completion must leave the GEO lane released')
 ecliptic_ctx.now = 6.0
-action = collect_one(ecliptic_provider, ecliptic_ctx)
-assert_equal(action.action_name, 'Indi-Haste', 'Ecliptic completion must advance ordinary maintenance')
+ecliptic_out = {}
+ecliptic_provider.collect(ecliptic_ctx, ecliptic_out)
+assert_equal(#ecliptic_out, 0,
+	'Ecliptic completion must leave already-satisfied core maintenance converged')
 
 local no_target_config = base_config()
 no_target_config.luopan.use_blaze_of_glory = true
@@ -519,6 +598,140 @@ entrust_provider.collect(entrust_ctx, out)
 assert_equal(#out, 0, 'observed entrusted Indi must finish sequence')
 assert_equal(entrust_provider.status.state, 'converged', 'Entrust convergence state mismatch')
 assert_equal(entrust_provider.lane_reserved(), false, 'completed Entrust must release lane')
+
+local entrust_cooldown_members = {
+	{
+		id = 111,
+		name = 'EntrustCooldownTank',
+		buffs = {},
+	},
+}
+local entrust_cooldown_config = base_config()
+entrust_cooldown_config.entrust.enabled = true
+entrust_cooldown_config.entrust.spell = 'Indi-Fury'
+entrust_cooldown_config.entrust.target_name = 'EntrustCooldownTank'
+local entrust_cooldown_abilities = {
+	Entrust = false,
+}
+local entrust_cooldown_provider = new_provider(
+	entrust_cooldown_members,
+	{ active = false },
+	entrust_cooldown_abilities
+)
+local entrust_cooldown_ctx = context(entrust_cooldown_config)
+entrust_cooldown_ctx.mobs_by_id[111] = { id = 111, distance = 16 }
+action = collect_one(entrust_cooldown_provider, entrust_cooldown_ctx)
+entrust_cooldown_provider.note_dispatch(action, 1.1)
+entrust_cooldown_ctx.now = 2.0
+mark_luopan(entrust_cooldown_ctx, 311, 100, 10, 20)
+action = collect_one(entrust_cooldown_provider, entrust_cooldown_ctx)
+entrust_cooldown_provider.note_dispatch(action, 2.1)
+entrust_cooldown_ctx.now = 3.0
+entrust_cooldown_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+local entrust_cooldown_out = {}
+entrust_cooldown_provider.collect(entrust_cooldown_ctx, entrust_cooldown_out)
+assert_equal(#entrust_cooldown_out, 0, 'Entrust on cooldown must remain opportunistic')
+assert_equal(entrust_cooldown_provider.status_snapshot().sequence, nil,
+	'Entrust on cooldown must not create a persistent sequence')
+entrust_cooldown_ctx.now = 3.2
+entrust_cooldown_ctx.pet_present = false
+entrust_cooldown_ctx.pet_id = 0
+entrust_cooldown_ctx.pet = {}
+action = collect_one(entrust_cooldown_provider, entrust_cooldown_ctx)
+assert_equal(action.action_name, 'Geo-Frailty',
+	'Entrust cooldown must never block missing-Luopan recovery')
+assert_equal(action.priority_band, 240,
+	'Entrust cooldown recovery must retain GEO creation priority')
+
+local stale_entrust_members = {
+	{
+		id = 112,
+		name = 'StaleEntrustTank',
+		buffs = {},
+	},
+}
+local stale_entrust_config = base_config()
+stale_entrust_config.entrust.enabled = true
+stale_entrust_config.entrust.spell = 'Indi-Fury'
+stale_entrust_config.entrust.target_name = 'StaleEntrustTank'
+local stale_entrust_pull_state = { active = false }
+local stale_entrust_provider = new_provider(stale_entrust_members, stale_entrust_pull_state, {})
+local stale_entrust_ctx = context(stale_entrust_config)
+stale_entrust_ctx.mobs_by_id[112] = { id = 112, distance = 16 }
+action = collect_one(stale_entrust_provider, stale_entrust_ctx)
+stale_entrust_provider.note_dispatch(action, 1.1)
+stale_entrust_ctx.now = 2.0
+mark_luopan(stale_entrust_ctx, 312, 100, 10, 20)
+action = collect_one(stale_entrust_provider, stale_entrust_ctx)
+stale_entrust_provider.note_dispatch(action, 2.1)
+stale_entrust_ctx.now = 3.0
+stale_entrust_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+action = collect_one(stale_entrust_provider, stale_entrust_ctx)
+assert_equal(action.action_name, 'Entrust', 'stale Entrust setup must admit the optional JA')
+assert_equal(stale_entrust_provider.status_snapshot().sequence.step, 'entrust_ja',
+	'stale Entrust setup sequence mismatch')
+stale_entrust_ctx.now = 3.2
+stale_entrust_pull_state.active = true
+stale_entrust_ctx.pet_present = false
+stale_entrust_ctx.pet_id = 0
+stale_entrust_ctx.pet = {}
+assert_true(
+	stale_entrust_provider.creation_preempts_pull(stale_entrust_ctx),
+	'missing Luopan must preempt camp pulling despite a stale optional Entrust sequence'
+)
+stale_entrust_pull_state.active = false
+action = collect_one(stale_entrust_provider, stale_entrust_ctx)
+assert_equal(action.action_name, 'Geo-Frailty',
+	'missing Luopan must preempt an undispatched Entrust sequence')
+assert_true(
+	stale_entrust_provider.status_snapshot().sequence == nil
+		or stale_entrust_provider.status_snapshot().sequence.kind == 'geo_create',
+	'core recovery must remove unrelated Entrust sequence ownership'
+)
+
+local entrust_spell_members = {
+	{
+		id = 113,
+		name = 'EntrustSpellTank',
+		buffs = {},
+	},
+}
+local entrust_spell_config = base_config()
+entrust_spell_config.entrust.enabled = true
+entrust_spell_config.entrust.spell = 'Indi-Fury'
+entrust_spell_config.entrust.target_name = 'EntrustSpellTank'
+local entrust_spell_abilities = {
+	['Indi-Fury'] = false,
+}
+local entrust_spell_provider = new_provider(
+	entrust_spell_members,
+	{ active = false },
+	entrust_spell_abilities
+)
+local entrust_spell_ctx = context(entrust_spell_config)
+entrust_spell_ctx.mobs_by_id[113] = { id = 113, distance = 16 }
+action = collect_one(entrust_spell_provider, entrust_spell_ctx)
+entrust_spell_provider.note_dispatch(action, 1.1)
+entrust_spell_ctx.now = 2.0
+mark_luopan(entrust_spell_ctx, 313, 100, 10, 20)
+action = collect_one(entrust_spell_provider, entrust_spell_ctx)
+entrust_spell_provider.note_dispatch(action, 2.1)
+entrust_spell_ctx.now = 3.0
+entrust_spell_ctx.player.buffs = {
+	geo_maintenance.INDI_COLURE_BUFF_ID,
+	geo_maintenance.ENTRUST_BUFF_ID,
+}
+local entrust_spell_out = {}
+entrust_spell_provider.collect(entrust_spell_ctx, entrust_spell_out)
+assert_equal(#entrust_spell_out, 0,
+	'unavailable entrusted Indi must not emit a proposal')
+assert_equal(entrust_spell_provider.status_snapshot().sequence, nil,
+	'unavailable entrusted Indi must relinquish optional sequence ownership')
+entrust_spell_abilities['Indi-Fury'] = true
+entrust_spell_ctx.now = 3.2
+action = collect_one(entrust_spell_provider, entrust_spell_ctx)
+assert_equal(action.action_name, 'Indi-Fury',
+	'active Entrust buff must retry the entrusted spell without recasting Entrust')
 
 local pull_state = { active = true }
 local pull_provider = new_provider({}, pull_state)
@@ -691,6 +904,59 @@ life_ctx.now = 3.0
 life_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
 action = collect_one(life_provider, life_ctx)
 assert_equal(action.action_name, 'Life Cycle', 'low luopan HPP must propose Life Cycle')
+
+local life_fallthrough_config = base_config()
+life_fallthrough_config.luopan.use_life_cycle = true
+life_fallthrough_config.luopan.use_ecliptic_attrition = true
+local life_fallthrough_abilities = {
+	['Life Cycle'] = false,
+	['Ecliptic Attrition'] = true,
+}
+local life_fallthrough_provider = new_provider(
+	{},
+	{ active = false },
+	life_fallthrough_abilities
+)
+local life_fallthrough_ctx = context(life_fallthrough_config)
+action = collect_one(life_fallthrough_provider, life_fallthrough_ctx)
+life_fallthrough_provider.note_dispatch(action, 1.1)
+life_fallthrough_ctx.now = 2.0
+mark_luopan(life_fallthrough_ctx, 321, 40, 10, 20)
+action = collect_one(life_fallthrough_provider, life_fallthrough_ctx)
+life_fallthrough_provider.note_dispatch(action, 2.1)
+life_fallthrough_ctx.now = 3.0
+life_fallthrough_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+action = collect_one(life_fallthrough_provider, life_fallthrough_ctx)
+assert_equal(action.action_name, 'Ecliptic Attrition',
+	'Life Cycle on cooldown must fall through to ready Ecliptic')
+
+local bolster_fallthrough_config = base_config()
+bolster_fallthrough_config.luopan.use_life_cycle = true
+local bolster_fallthrough_abilities = {
+	Bolster = false,
+	['Life Cycle'] = true,
+}
+local bolster_fallthrough_provider = new_provider(
+	{},
+	{ active = false },
+	bolster_fallthrough_abilities
+)
+local bolster_fallthrough_ctx = context(bolster_fallthrough_config)
+action = collect_one(bolster_fallthrough_provider, bolster_fallthrough_ctx)
+bolster_fallthrough_provider.note_dispatch(action, 1.1)
+bolster_fallthrough_ctx.now = 2.0
+mark_luopan(bolster_fallthrough_ctx, 322, 40, 10, 20)
+action = collect_one(bolster_fallthrough_provider, bolster_fallthrough_ctx)
+bolster_fallthrough_provider.note_dispatch(action, 2.1)
+bolster_fallthrough_ctx.now = 3.0
+bolster_fallthrough_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+local bolster_ok = bolster_fallthrough_provider.arm_bolster(true)
+assert_true(bolster_ok, 'Bolster fallthrough setup failed to arm')
+action = collect_one(bolster_fallthrough_provider, bolster_fallthrough_ctx)
+assert_equal(action.action_name, 'Life Cycle',
+	'Bolster on cooldown must fall through to ready Life Cycle')
+assert_true(bolster_fallthrough_provider.status_snapshot().bolster_armed,
+	'unavailable Bolster must remain armed for a later retry')
 
 local placement_config = base_config()
 placement_config.luopan.placement = 'camp'
