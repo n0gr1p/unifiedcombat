@@ -327,6 +327,11 @@ function M.observe_snapshot(snapshot)
 			state.unbound_luopans[id] = nil
 		end
 	end
+	for id in pairs(state.seen_luopans) do
+		if current[id] == nil then
+			state.seen_luopans[id] = nil
+		end
+	end
 
 	return true, 'ACTIVE'
 end
