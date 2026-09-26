@@ -522,8 +522,10 @@ assert_equal(completed, true, 'exact Ecliptic action identity must complete desp
 assert_equal(completion_reason, 'geo_ja_action_identity', 'GEO JA completion reason mismatch')
 assert_equal(ecliptic_provider.lane_reserved(), false, 'Ecliptic completion must leave the GEO lane released')
 ecliptic_ctx.now = 6.0
-action = collect_one(ecliptic_provider, ecliptic_ctx)
-assert_equal(action.action_name, 'Indi-Haste', 'Ecliptic completion must advance ordinary maintenance')
+ecliptic_out = {}
+ecliptic_provider.collect(ecliptic_ctx, ecliptic_out)
+assert_equal(#ecliptic_out, 0,
+	'Ecliptic completion must leave already-satisfied core maintenance converged')
 
 local no_target_config = base_config()
 no_target_config.luopan.use_blaze_of_glory = true
