@@ -2835,6 +2835,7 @@ public partial class MainForm
             "Ghatjot — Sortie Area A" => "sortie_ghatjot",
             "Dhartok — Sortie Area E (validation pending)" => "sortie_dhartok",
             "Kei — Omen" => "kei",
+            "Saved by the Bell — GEO Ergon quest" => "saved_by_the_bell",
             _ => throw new InvalidOperationException("unsupported encounter selection"),
         };
     }
@@ -2870,6 +2871,7 @@ public partial class MainForm
             "sortie_ghatjot" => "Ghatjot — Sortie Area A",
             "sortie_dhartok" => "Dhartok — Sortie Area E (validation pending)",
             "kei" => "Kei — Omen",
+            "saved_by_the_bell" => "Saved by the Bell — GEO Ergon quest",
             _ => throw new InvalidDataException($"unsupported encounter ID in UI profile: {encounterId}"),
         };
         var repeatDefault = encounterId == "sortie_dhartok" ? "warn" : "off";
@@ -2990,11 +2992,12 @@ public partial class MainForm
         _encounterConfigPanel.Enabled = enabled;
         var isDhartok = EncounterIdValue() == "sortie_dhartok";
         var isKei = EncounterIdValue() == "kei";
+        var isSavedByBell = EncounterIdValue() == "saved_by_the_bell";
         _keiConfigPanel.Visible = isKei;
         _encounterRepeatActionWall.Enabled = enabled && isDhartok;
         _encounterRepeatActionGuard.Enabled = enabled && isDhartok;
-        _encounterWaterDamage.Enabled = enabled && !isKei;
-        _encounterWaterSkillchain.Enabled = enabled && !isKei;
+        _encounterWaterDamage.Enabled = enabled && !isKei && !isSavedByBell;
+        _encounterWaterSkillchain.Enabled = enabled && !isKei && !isSavedByBell;
         _keiConfigPanel.Enabled = enabled && isKei;
         var valid = ValidateEncounterConfiguration(out var error);
         _encounterValidation.Text = !enabled
@@ -3003,6 +3006,8 @@ public partial class MainForm
                 ? error
                 : isKei
                     ? "Kei elemental maintenance and Dancing Fullers reaction are ready to save."
+                : isSavedByBell
+                    ? "Saved by the Bell Luopan weakness automation is ready to save."
                 : isDhartok
                     ? "Dhartok policy and validated cloud tracking are ready to save."
                     : "Ghatjot safeguards are ready to save."
