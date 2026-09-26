@@ -356,7 +356,8 @@ function M.on_action(act, now, context)
 		return false, 'NOT_BYGONE_GEOMANCER'
 	end
 	context = type(context) == 'table' and context or {}
-	if tostring(context.actor_name or BOSS_NAME) ~= BOSS_NAME then
+	local actor_name = tostring(context.actor_name or '')
+	if actor_name ~= '' and actor_name ~= BOSS_NAME then
 		return false, 'NOT_BYGONE_GEOMANCER'
 	end
 	local spell_name, spell_id = spell_name_from_action(act, category)
