@@ -654,7 +654,8 @@ local stale_entrust_config = base_config()
 stale_entrust_config.entrust.enabled = true
 stale_entrust_config.entrust.spell = 'Indi-Fury'
 stale_entrust_config.entrust.target_name = 'StaleEntrustTank'
-local stale_entrust_provider = new_provider(stale_entrust_members, { active = false }, {})
+local stale_entrust_pull_state = { active = false }
+local stale_entrust_provider = new_provider(stale_entrust_members, stale_entrust_pull_state, {})
 local stale_entrust_ctx = context(stale_entrust_config)
 stale_entrust_ctx.mobs_by_id[112] = { id = 112, distance = 16 }
 action = collect_one(stale_entrust_provider, stale_entrust_ctx)
@@ -670,9 +671,15 @@ assert_equal(action.action_name, 'Entrust', 'stale Entrust setup must admit the 
 assert_equal(stale_entrust_provider.status_snapshot().sequence.step, 'entrust_ja',
 	'stale Entrust setup sequence mismatch')
 stale_entrust_ctx.now = 3.2
+stale_entrust_pull_state.active = true
 stale_entrust_ctx.pet_present = false
 stale_entrust_ctx.pet_id = 0
 stale_entrust_ctx.pet = {}
+assert_true(
+	stale_entrust_provider.creation_preempts_pull(stale_entrust_ctx),
+	'missing Luopan must preempt camp pulling despite a stale optional Entrust sequence'
+)
+stale_entrust_pull_state.active = false
 action = collect_one(stale_entrust_provider, stale_entrust_ctx)
 assert_equal(action.action_name, 'Geo-Frailty',
 	'missing Luopan must preempt an undispatched Entrust sequence')
