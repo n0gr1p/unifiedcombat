@@ -1,7 +1,7 @@
 local M = {}
 local ENGAGE_ACTION_TAIL_S = 0.35
 local SPELL_SUCCESS_TAIL_S = 0.2
-local SPELL_ACTION_PACKET_SUCCESS_TAIL_S = 3.0
+local SPELL_ACTION_PACKET_SUCCESS_TAIL_S = 2.75
 local WS_RESULT_TAIL_S = 0.5
 
 local function spell_success_tail_s(meta)
