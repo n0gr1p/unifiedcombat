@@ -77,6 +77,9 @@ return {
         ["uc_provider_kei.lua"] = {
             command_magic = 1,
         },
+        ["uc_provider_saved_by_bell.lua"] = {
+            command_magic = 1,
+        },
         ["uc_provider_tank_enmity.lua"] = {
             command_magic = 1,
             command_ability = 1,
