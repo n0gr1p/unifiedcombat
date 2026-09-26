@@ -3973,6 +3973,7 @@ local function build_defensive_candidates(ctx)
 	local aoe_members = {}
 	local injured_members = {}
 	local injured_ids = {}
+	local critical_injured_ids = {}
 	local missing_gate = math.max(0, tonumber(scheduler.active_value_or_flat('config.defensive.cure.min_missing_hp', s.def_heal_min_missing_hp)) or 250)
 	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', s.defensive_critical_hpp)) or 35
 	local actor_silenced = waltz_enabled and player_has_named_buff(windower.ffxi.get_player(), 'silence') == true
@@ -4057,6 +4058,9 @@ local function build_defensive_candidates(ctx)
 				if missing_hp >= missing_gate then
 					injured_members[#injured_members + 1] = m
 					injured_ids[#injured_ids + 1] = m.id
+					if (tonumber(m.hpp) or 100) <= critical_hpp then
+						critical_injured_ids[#critical_injured_ids + 1] = m.id
+					end
 					if in_party_cast_range(m) then
 						log_def_sched(('CURE_CANDIDATE target="%s" hp=%d hpp=%d missing=%d gate=%d in_range=1'):format(
 							tostring(m.name or '?'), tonumber(m.hp) or 0, tonumber(m.hpp) or 0,
@@ -4166,6 +4170,44 @@ local function build_defensive_candidates(ctx)
 	end
 
 	if cure_enabled and curaga_enabled and not actor_silenced then
+		local critical_multicure_admitted = false
+		if #critical_injured_ids >= 2 then
+			local critical_result = healing.plan_aoe({
+				now = now,
+				members = aoe_members,
+				injured_recipient_ids = critical_injured_ids,
+				minimum_targets = 2,
+				mechanics = healing.mechanics.curaga,
+				member_priority = member_priority,
+				estimate_missing_hp = estimate_missing_hp,
+			})
+			if critical_result.state == 'ready' then
+				local name = choose_curaga_action(critical_result.selected)
+				if name and attempt_allowed('cure', critical_result.selected.anchor_name, name, now, 2.5) then
+					local candidate = aoe_action_from_plan(name, 'spell', critical_result.selected)
+					candidate.critical_multicure = true
+					candidate.critical_coverage_count = critical_result.selected.coverage_count
+					local admitted, admit_reason = admit_aoe(candidate)
+					if admitted then
+						critical_multicure_admitted = true
+						log_def_sched(('CRITICAL_MULTICURE_ACCEPT action="%s" anchor="%s" anchor_id=%d anchor_dist=%.2f radius=%.1f critical_coverage=%d covered="%s" aggregate_missing=%d lowest_hpp=%d'):format(
+							name, critical_result.selected.anchor_name, critical_result.selected.anchor_id, critical_result.selected.anchor_distance,
+							critical_result.selected.radius, critical_result.selected.coverage_count, table.concat(critical_result.selected.covered_names, '|'),
+							critical_result.selected.aggregate_missing_hp, critical_result.selected.lowest_covered_hpp
+						))
+					else
+						log_def_sched(('CRITICAL_MULTICURE_REJECT action="%s" reason=%s'):format(name, admit_reason))
+					end
+				elseif not name then
+					log_def_sched('CRITICAL_MULTICURE_REJECT reason=NO_READY_CURAGA')
+				else
+					log_def_sched(('CRITICAL_MULTICURE_REJECT action="%s" reason=ATTEMPT_THROTTLE'):format(name))
+				end
+			else
+				log_def_sched(('CRITICAL_MULTICURE_REJECT reason=%s'):format(tostring(critical_result.blocker)))
+			end
+		end
+		if not critical_multicure_admitted then
 		local result = healing.plan_aoe({
 			now = now,
 			members = aoe_members,
@@ -4195,8 +4237,8 @@ local function build_defensive_candidates(ctx)
 		else
 			log_def_sched(('AOE_HEAL_REJECT family=Curaga reason=%s'):format(tostring(result.blocker)))
 		end
+		end
 	end
-
 	if cure_enabled and waltz_enabled then
 		local result = healing.plan_aoe({
 			now = now,
