@@ -1211,6 +1211,10 @@ local function default_config(meta)
 				reposition_for_party_songs = false,
             },
             geo = clone_value(DEFAULT_GEO_MAINTENANCE),
+            food = {
+                enabled = false,
+                item = '',
+            },
         },
         puppetmaster = uc_pup_config.default_config(),
         summoner = {
@@ -2406,7 +2410,7 @@ end
 local function normalize_maintenance(source, config)
     local maintenance = config.maintenance
     local nested = get_path(source, { 'maintenance' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'cor', 'brd', 'geo' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'cor', 'brd', 'geo', 'food' }) then
         maintenance.enabled = normalize_boolean(nested.enabled, maintenance.enabled)
         local cor = is_table(nested.cor) and nested.cor or {}
         maintenance.cor.roll_1 = normalize_string(cor.roll_1, maintenance.cor.roll_1)
@@ -2429,6 +2433,12 @@ local function normalize_maintenance(source, config)
 		maintenance.brd.recovery_range_yalms = normalize_number(brd.recovery_range_yalms, maintenance.brd.recovery_range_yalms, { min = 1.0, max = 20.0 })
 		maintenance.brd.recovery_ignore_names = normalize_pipe_string_list(brd.recovery_ignore_names, maintenance.brd.recovery_ignore_names)
 		maintenance.brd.reposition_for_party_songs = normalize_boolean(brd.reposition_for_party_songs, maintenance.brd.reposition_for_party_songs)
+        local food = is_table(nested.food) and nested.food or {}
+        maintenance.food.enabled = normalize_boolean(food.enabled, maintenance.food.enabled)
+        maintenance.food.item = normalize_string(food.item, maintenance.food.item)
+        if maintenance.food.enabled and maintenance.food.item == '' then
+            error('maintenance.food.item is required when food maintenance is enabled')
+        end
         maintenance.geo = normalize_geo_maintenance(nested.geo)
     else
         maintenance.enabled = normalize_boolean(first_path(source, { path('domain_maintenance_enabled') }), maintenance.enabled)
@@ -2451,6 +2461,11 @@ local function normalize_maintenance(source, config)
 		maintenance.brd.recovery_range_yalms = normalize_number(first_path(source, { path('brd_recovery_range_yalms') }), maintenance.brd.recovery_range_yalms, { min = 1.0, max = 20.0 })
 		maintenance.brd.recovery_ignore_names = normalize_pipe_string_list(first_path(source, { path('brd_recovery_ignore_names') }), maintenance.brd.recovery_ignore_names)
 		maintenance.brd.reposition_for_party_songs = normalize_boolean(first_path(source, { path('brd_reposition_for_party_songs') }), maintenance.brd.reposition_for_party_songs)
+        maintenance.food.enabled = normalize_boolean(first_path(source, { path('food_enabled') }), maintenance.food.enabled)
+        maintenance.food.item = normalize_string(first_path(source, { path('food_item') }), maintenance.food.item)
+        if maintenance.food.enabled and maintenance.food.item == '' then
+            error('maintenance.food.item is required when food maintenance is enabled')
+        end
         maintenance.geo = normalize_geo_maintenance(first_path(source, { path('maintenance_geo') }))
     end
 end
