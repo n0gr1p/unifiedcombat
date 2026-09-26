@@ -1371,7 +1371,7 @@ public partial class MainForm
         var encounterRow = 0;
         _encounterConfigPanel.Controls.Add(new Label { Text = "Encounter", AutoSize = true, Anchor = AnchorStyles.Left }, 0, encounterRow);
         _encounterId = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
-        _encounterId.Items.AddRange(["Ghatjot — Sortie Area A", "Dhartok — Sortie Area E (validation pending)", "Kei — Omen"]);
+        _encounterId.Items.AddRange(["Ghatjot — Sortie Area A", "Dhartok — Sortie Area E (validation pending)", "Kei — Omen", "Saved by the Bell — GEO Ergon quest"]);
         _encounterId.SelectedIndex = 0;
         _encounterId.SelectedIndexChanged += (_, _) => OnEncounterSelectionChanged();
         _encounterConfigPanel.Controls.Add(_encounterId, 1, encounterRow++);
