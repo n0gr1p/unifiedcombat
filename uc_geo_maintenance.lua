@@ -1212,14 +1212,14 @@ function M.new(deps)
 			return false
 		end
 		local sequence = provider.state.sequence
-		if type(sequence) == 'table' and not sequence_restores_missing_luopan(sequence, ctx) then
-			return false
-		end
-		local target_ready, _, target = creation_target_ready(ctx, config, contracts, sequence)
+		local creation_sequence = sequence_restores_missing_luopan(sequence, ctx)
+			and sequence or nil
+		local target_ready, _, target =
+			creation_target_ready(ctx, config, contracts, creation_sequence)
 		if not target_ready then
 			return false
 		end
-		if type(sequence) == 'table' and sequence.step == 'blaze' then
+		if type(creation_sequence) == 'table' and creation_sequence.step == 'blaze' then
 			local ready, _, action_kind = action_ready('Blaze of Glory', ctx.player_id)
 			return ready == true and action_kind == 'ja'
 		end
