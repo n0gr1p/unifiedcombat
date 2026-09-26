@@ -235,7 +235,7 @@ local function pick_durable_config_domains(config, meta)
 	end
 	if type(out.encounter) == 'table'
 		and out.encounter.enabled == true
-		and out.encounter.id == 'kei' then
+		and (out.encounter.id == 'kei' or out.encounter.id == 'saved_by_the_bell') then
 		out.encounter.policy = nil
 		out.encounter.tuning = nil
 	end

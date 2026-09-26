@@ -1274,6 +1274,7 @@ local ENCOUNTER_IDS = {
     sortie_ghatjot = true,
     sortie_dhartok = true,
     kei = true,
+    saved_by_the_bell = true,
 }
 
 local GENERIC_FORMATION_ENCOUNTER_IDS = {
@@ -1315,7 +1316,7 @@ local function normalize_encounter_id(value, enabled)
         return ''
     end
     if ENCOUNTER_IDS[encounter_id] ~= true then
-        error('config.encounter.id must be sortie_ghatjot, sortie_dhartok, or kei')
+        error('config.encounter.id must be sortie_ghatjot, sortie_dhartok, kei, or saved_by_the_bell')
     end
     return encounter_id
 end

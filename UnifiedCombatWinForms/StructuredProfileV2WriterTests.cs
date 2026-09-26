@@ -42,6 +42,7 @@ internal static class StructuredProfileV2WriterTests
 			TestSerializeCampLeashSourceWithoutPullerName();
             TestSerializeGeoMaintenance();
             TestSerializeFoodMaintenance();
+            TestSerializeSavedByTheBellEncounter();
             TestSerializeCampPulling();
             TestGeoPullUiOfflineContract();
 			TestSerializeIncludesPartnerNames();
@@ -793,6 +794,26 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(store, "[\"food_item\"] = (_foodItem.Text ?? \"\").Trim()", "food item name must persist");
         AssertContains(logic, "SessionStateHelper.GetBool(s, \"food_enabled\", false)", "food enabled state must reload");
         AssertContains(logic, "SessionStateHelper.GetString(s, \"food_item\", \"\")", "food item name must reload");
+    }
+
+    private static void TestSerializeSavedByTheBellEncounter()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["encounter_enabled"] = true;
+        flat["encounter_id"] = "saved_by_the_bell";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Ponponponponpon", "GEO", "RDM")
+        );
+
+        AssertContains(content, "id = \"saved_by_the_bell\"", "Saved by the Bell encounter ID must serialize");
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        AssertContains(ui, "Saved by the Bell — GEO Ergon quest", "Saved by the Bell encounter choice must exist");
+        AssertContains(logic, "\"Saved by the Bell — GEO Ergon quest\" => \"saved_by_the_bell\"", "Saved by the Bell UI selection must map to runtime ID");
+        AssertContains(logic, "\"saved_by_the_bell\" => \"Saved by the Bell — GEO Ergon quest\"", "Saved by the Bell runtime ID must map back to UI");
+        AssertContains(logic, "Saved by the Bell Luopan weakness automation is ready to save.", "Saved by the Bell UI status text must explain the automation");
     }
 
     private static void TestSerializeGeoMaintenance()

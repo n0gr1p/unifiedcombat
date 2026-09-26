@@ -795,7 +795,13 @@ local function main()
 
     assert_error_contains(function()
         normalizer.normalize({ encounter = { enabled = true, id = 'ghatjot' } }, meta)
-    end, 'must be sortie_ghatjot, sortie_dhartok, or kei', 'unsupported encounter identity must fail')
+    end, 'must be sortie_ghatjot, sortie_dhartok, kei, or saved_by_the_bell', 'unsupported encounter identity must fail')
+
+    local saved_by_bell = normalizer.normalize({
+        encounter = { enabled = true, id = 'saved_by_the_bell' },
+    }, meta)
+    assert_equal(saved_by_bell.encounter.enabled, true, 'Saved by the Bell encounter must normalize enabled')
+    assert_equal(saved_by_bell.encounter.id, 'saved_by_the_bell', 'Saved by the Bell encounter ID mismatch')
 
     assert_error_contains(function()
         normalizer.normalize({

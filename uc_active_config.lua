@@ -660,7 +660,9 @@ local function apply_structured_config_to_candidate(candidate, config)
 	if type(config.encounter) == 'table' then
 		local encounter = config.encounter
 		local definition = require('uc_encounter_registry').get(encounter.id)
-		if encounter.enabled == true and definition == nil and encounter.id ~= 'kei' then
+		if encounter.enabled == true and definition == nil
+			and encounter.id ~= 'kei'
+			and encounter.id ~= 'saved_by_the_bell' then
 			error('enabled config.encounter has an unsupported id')
 		end
 		candidate.encounter_enabled = encounter.enabled == true
@@ -689,6 +691,11 @@ local function apply_structured_config_to_candidate(candidate, config)
 			end
 			candidate.kei_fullers_target_distance = encounter.kei.fullers.target_distance
 			candidate.kei_fullers_prearm_hpp_margin = encounter.kei.fullers.prearm_hpp_margin
+		elseif encounter.id == 'saved_by_the_bell' and encounter.enabled == true then
+			candidate.encounter_water_damage = nil
+			candidate.encounter_water_skillchain = nil
+			candidate.encounter_repeat_action_wall = nil
+			candidate.encounter_repeat_action_guard_s = nil
 		elseif definition ~= nil then
 			local policy = type(encounter.policy) == 'table' and encounter.policy or {}
 			local tuning = type(encounter.tuning) == 'table' and encounter.tuning or {}

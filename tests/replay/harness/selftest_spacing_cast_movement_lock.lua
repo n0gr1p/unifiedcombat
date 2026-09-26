@@ -72,7 +72,7 @@ assert_contains(settle_body, "return true, 'BLOCK_SCHED_CAST_MOVEMENT_SETTLE'", 
 assert_before(
 	selected_dispatch_body,
 	'scheduler.cast_movement_settle_blocked(selected)',
-	"if provider == 'combat' or provider == 'encounter_kei' then",
+	"if provider == 'combat' or provider == 'encounter_kei' or provider == 'encounter_saved_by_bell' then",
 	'all scheduler spell providers must pass through movement settle before dispatch'
 )
 if combat_dispatch_body:find('COMBAT_SPELL_SETTLE', 1, true)

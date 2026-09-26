@@ -422,9 +422,16 @@ internal static class StructuredProfileV2Writer
                 throw new InvalidDataException("enabled encounter requires an encounter ID");
             }
         }
-        else if (encounterId is not ("sortie_ghatjot" or "sortie_dhartok" or "kei"))
+        else if (encounterId is not ("sortie_ghatjot" or "sortie_dhartok" or "kei" or "saved_by_the_bell"))
         {
             throw new InvalidDataException($"unsupported encounter ID: {encounterId}");
+        }
+
+        if (encounterId == "saved_by_the_bell")
+        {
+            return new StructuredProfileNode()
+                .Add("enabled", enabled)
+                .Add("id", encounterId);
         }
 
         if (encounterId == "kei")
