@@ -1141,6 +1141,19 @@ internal static class StructuredProfileV2Writer
             );
         }
 
+        var foodEnabled = ReadBool(flatProfile, "food_enabled", false);
+        var foodItem = ReadString(flatProfile, "food_item", "").Trim();
+        if (foodEnabled && foodItem.Length == 0)
+        {
+            throw new InvalidDataException("Enabled food maintenance requires a food item name.");
+        }
+        maintenance.Add(
+            "food",
+            new StructuredProfileNode()
+                .Add("enabled", foodEnabled)
+                .Add("item", foodItem)
+        );
+
         maintenance.Add("geo", BuildGeoMaintenance(flatProfile));
 
         return maintenance;
