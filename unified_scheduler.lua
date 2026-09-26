@@ -4208,35 +4208,35 @@ local function build_defensive_candidates(ctx)
 			end
 		end
 		if not critical_multicure_admitted then
-		local result = healing.plan_aoe({
-			now = now,
-			members = aoe_members,
-			injured_recipient_ids = injured_ids,
-			minimum_targets = curaga_min_targets,
-			mechanics = healing.mechanics.curaga,
-			member_priority = member_priority,
-			estimate_missing_hp = estimate_missing_hp,
-		})
-		if result.state == 'ready' then
-			local name = choose_curaga_action(result.selected)
-			if name and attempt_allowed('cure', result.selected.anchor_name, name, now, 2.5) then
-				local candidate = aoe_action_from_plan(name, 'spell', result.selected)
-				local admitted, admit_reason = admit_aoe(candidate)
-				if admitted then
-					log_def_sched(('AOE_HEAL_ACCEPT action="%s" kind=spell anchor="%s" anchor_id=%d anchor_dist=%.2f radius=%.1f coverage=%d covered="%s" aggregate_missing=%d lowest_hpp=%d'):format(
-						name, result.selected.anchor_name, result.selected.anchor_id, result.selected.anchor_distance,
-						result.selected.radius, result.selected.coverage_count, table.concat(result.selected.covered_names, '|'),
-						result.selected.aggregate_missing_hp, result.selected.lowest_covered_hpp
-					))
-				else
-					log_def_sched(('AOE_HEAL_REJECT family=Curaga action="%s" reason=%s'):format(name, admit_reason))
+			local result = healing.plan_aoe({
+				now = now,
+				members = aoe_members,
+				injured_recipient_ids = injured_ids,
+				minimum_targets = curaga_min_targets,
+				mechanics = healing.mechanics.curaga,
+				member_priority = member_priority,
+				estimate_missing_hp = estimate_missing_hp,
+			})
+			if result.state == 'ready' then
+				local name = choose_curaga_action(result.selected)
+				if name and attempt_allowed('cure', result.selected.anchor_name, name, now, 2.5) then
+					local candidate = aoe_action_from_plan(name, 'spell', result.selected)
+					local admitted, admit_reason = admit_aoe(candidate)
+					if admitted then
+						log_def_sched(('AOE_HEAL_ACCEPT action="%s" kind=spell anchor="%s" anchor_id=%d anchor_dist=%.2f radius=%.1f coverage=%d covered="%s" aggregate_missing=%d lowest_hpp=%d'):format(
+							name, result.selected.anchor_name, result.selected.anchor_id, result.selected.anchor_distance,
+							result.selected.radius, result.selected.coverage_count, table.concat(result.selected.covered_names, '|'),
+							result.selected.aggregate_missing_hp, result.selected.lowest_covered_hpp
+						))
+					else
+						log_def_sched(('AOE_HEAL_REJECT family=Curaga action="%s" reason=%s'):format(name, admit_reason))
+					end
+				elseif not name then
+					log_def_sched('AOE_HEAL_REJECT family=Curaga reason=NO_READY_CURAGA')
 				end
-			elseif not name then
-				log_def_sched('AOE_HEAL_REJECT family=Curaga reason=NO_READY_CURAGA')
+			else
+				log_def_sched(('AOE_HEAL_REJECT family=Curaga reason=%s'):format(tostring(result.blocker)))
 			end
-		else
-			log_def_sched(('AOE_HEAL_REJECT family=Curaga reason=%s'):format(tostring(result.blocker)))
-		end
 		end
 	end
 	if cure_enabled and waltz_enabled then
