@@ -79,6 +79,10 @@ function M.new(deps)
 		return inventory_has_item(item_name)
 	end
 
+	function provider.player_is_moving()
+		return player_is_moving()
+	end
+
 	function provider.collect(ctx, out)
 		ctx = require_table(ctx, 'food maintenance context')
 		out = require_table(out, 'food maintenance proposal list')
