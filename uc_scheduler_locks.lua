@@ -54,7 +54,8 @@ function M.p1_hard_lock_reject(locks, proposal)
 	if locks.zone_guard_lock and locks.zone_guard_lock.hard and action_type ~= 'move' then
 		return 'zone_guard'
 	end
-	if (action_type == 'spell' or action_type == 'ja' or action_type == 'ws' or action_type == 'pet')
+	if (action_type == 'spell' or action_type == 'ja' or action_type == 'ws'
+		or action_type == 'item' or action_type == 'pet')
 		and locks.cast_lock and locks.cast_lock.hard then
 		return 'hard_locked'
 	end

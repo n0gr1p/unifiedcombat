@@ -1874,6 +1874,7 @@ scheduler.PRIORITY_BAND_SCH_DEFENSIVE = 145
 scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131
 scheduler.PRIORITY_BAND_SLEEP = 142
 scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 210
+scheduler.PRIORITY_BAND_FOOD_MAINTENANCE = 50
 scheduler.PRIORITY_BAND_GEO_CREATION = 240
 scheduler.PRIORITY_BAND_DEATH_SWITCH = 148
 scheduler.PRIORITY_BAND_SLEEP_WAKE = 149
@@ -4478,6 +4479,7 @@ local function p1_collect_proposals(ctx)
 		and (brd_provider_active or sch_fast_tick_active
 			or ctx.now >= (tonumber(s._sched_next_maintenance_at) or 0)) then
 		scheduler.providers.maintenance.collect(ctx, out)
+		scheduler.providers.food.collect(ctx, out)
 		scheduler.providers.summoner_maintenance.collect(ctx, out)
 		if main_job == 'SCH' then
 			ctx.sch_defensive_evidence_current = defensive_evidence_current
@@ -5679,6 +5681,85 @@ local function p1_dispatch_camp_puller(selected, settings)
 	)
 	_G.UC_LAST_SCHED_ACTION = ('[camp_pull]%s:%s'):format(action_type, action_name)
 	return true, 'BLOCK_SCHED_CAMP_PULL_ACTION'
+end
+
+local function p1_dispatch_maintenance_food(selected, settings)
+	if not domain_ownership.is_enabled('maintenance') then
+		return false, nil
+	end
+	if tostring(selected.action_type or '') ~= 'item' then
+		error('food maintenance dispatcher requires an item action')
+	end
+	local item_name = tostring(selected.action_name or '')
+	if item_name == '' then
+		return false, nil
+	end
+	local player = windower.ffxi.get_player() or {}
+	if scheduler.providers.food.has_food_buff(player) then
+		log_def_sched(('FOOD_MAINT_DISPATCH_SKIP item="%s" reason=FOOD_ALREADY_ACTIVE'):format(item_name))
+		return false, nil
+	end
+	if scheduler.providers.food.player_is_moving() then
+		log_def_sched(('FOOD_MAINT_DISPATCH_SKIP item="%s" reason=PLAYER_MOVING'):format(item_name))
+		return false, nil
+	end
+	local available = scheduler.providers.food.inventory_has_item(item_name)
+	if not available then
+		log_def_sched(('FOOD_MAINT_DISPATCH_SKIP item="%s" reason=ITEM_NOT_IN_INVENTORY'):format(item_name))
+		return false, nil
+	end
+	local blocked, block_reason = action_dispatch_blocked()
+	if blocked then
+		return true, block_reason
+	end
+	local player_id = tonumber(player.id) or 0
+	local player_name = tostring(player.name or '')
+	local command = build_action_command(item_name, 'item', {
+		id = player_id,
+		name = player_name,
+		is_self = true,
+	})
+	local result = require('uc_scheduler_dispatcher').dispatch_intent({
+		kind = 'send_command',
+		source = 'unified_scheduler:maintenance_food',
+		command = command,
+		meta = {
+			action_type = 'item',
+			action_name = item_name,
+			provider = 'maintenance_food',
+			target_id = player_id,
+			target_name = player_name,
+		},
+	}, {
+		execute = true,
+		send_command = windower.send_command,
+	})
+	if type(result) ~= 'table' or result.ok ~= true or result.executed ~= true then
+		log_def_sched(('FOOD_MAINT_DISPATCH_SKIP item="%s" reason=%s'):format(
+			item_name,
+			tostring(type(result) == 'table' and result.reason or 'dispatcher_failed')
+		))
+		return false, nil
+	end
+	action_mark_sent('item', {
+		action_name = item_name,
+		provider = 'maintenance_food',
+		target_id = player_id,
+		target_name = player_name,
+		target_kind = 'self',
+	})
+	local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
+	scheduler.record_dispatch(ctx)
+	scheduler.p1_set_pending_globals()
+	_G.UC_SCHED_P1_LOCK_SUMMARY = scheduler.p1_build_lock_summary(ctx, scheduler.p1_get_locks(ctx))
+	_G.UC_LAST_SCHED_ACTION = ('[p1]food:%s'):format(item_name)
+	scheduler.action_timeline_log('FOOD_MAINT_DISPATCHED', {
+		item = item_name,
+		provider = 'maintenance_food',
+		band = tonumber(selected.priority_band) or 0,
+		action_token = tostring(tonumber((action_state() or {}).action_token) or 0),
+	}, ('food_dispatch:%s'):format(item_name), 0.05)
+	return true, 'BLOCK_SCHED_P1_FOOD_MAINTENANCE'
 end
 
 local function p1_dispatch_maintenance_cor(selected, settings, provider)
@@ -7193,6 +7274,9 @@ function scheduler.dispatch_selected_plan(settings)
 	end
 	if provider == 'defensive_healbot' then
 		return p1_dispatch_defensive_healbot(selected, settings)
+	end
+	if provider == 'maintenance_food' then
+		return p1_dispatch_maintenance_food(selected, settings)
 	end
 	if provider == 'maintenance_cor' then
 		return p1_dispatch_maintenance_cor(selected, settings, provider)
@@ -8786,6 +8870,19 @@ scheduler.providers.camp_puller = require('uc_camp_puller').new({
 		end
 		return action_is_acting()
 	end,
+})
+scheduler.providers.food = require('uc_provider_food').new({
+	get_items = windower.ffxi.get_items,
+	player_is_moving = smn_player_is_moving,
+	clamp_urgency = p1_clamp_urgency,
+	build_action_command = build_action_command,
+	buff_resources = res.buffs,
+	item_resources = res.items,
+	log = log_def_sched,
+	action_timeline_log = function(...)
+		return scheduler.action_timeline_log(...)
+	end,
+	priority_band = scheduler.PRIORITY_BAND_FOOD_MAINTENANCE,
 })
 scheduler.providers.maintenance = require('uc_provider_maintenance').new({
 	bool_setting = bool_setting,

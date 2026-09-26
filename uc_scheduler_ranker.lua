@@ -79,7 +79,7 @@ function M.validate_proposal(ctx, proposal, deps)
 			and pending_lock_class ~= proposal_lock_class then
 			local action_type = tostring(proposal.action_type or '')
 			if action_type == 'spell' or action_type == 'ja'
-				or action_type == 'ws' or action_type == 'move' then
+				or action_type == 'ws' or action_type == 'item' or action_type == 'move' then
 				return false, 'pending_conflict'
 			end
 		end

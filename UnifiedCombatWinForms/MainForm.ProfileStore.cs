@@ -427,6 +427,8 @@ public partial class MainForm
             ["ws1"] = (_wsCombo.Text ?? "").Trim(),
             ["ws_mode"] = string.Equals(_wsModeCombo.SelectedItem?.ToString(), "Primary Only (No SC)", StringComparison.Ordinal) ? "primary_no_sc" : "smart",
             ["weaponskill_min_tp"] = decimal.ToInt32(_wsMinimumTp.Value),
+            ["food_enabled"] = _foodEnabled.Checked,
+            ["food_item"] = (_foodItem.Text ?? "").Trim(),
             ["weaponskill_allow_aoe"] = _chkWsAllowAoe.Checked,
             ["fast_skillchain"] = _chkFastSkillchain.Checked,
         };

@@ -14,6 +14,8 @@ public partial class MainForm
     private NumericUpDown _wsMinimumTp = null!;
     private CheckBox _chkWsAllowAoe = null!;
     private CheckBox _chkFastSkillchain = null!;
+    private CheckBox _foodEnabled = null!;
+    private TextBox _foodItem = null!;
     private ComboBox _skillchainTargetCombo = null!;
     private CheckBox _magicBurstEnabled = null!;
     private ComboBox _magicBurstSpell = null!;
@@ -437,6 +439,21 @@ public partial class MainForm
         }
         leftCol.Controls.Add(combatToggles, 0, lr);
         leftCol.SetColumnSpan(combatToggles, 2);
+        lr++;
+
+        _foodEnabled = new UcToggle
+        {
+            Text = "Use Food",
+            AutoSize = true,
+        };
+        leftCol.Controls.Add(_foodEnabled, 0, lr);
+        _foodItem = new TextBox
+        {
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(120, 0),
+            PlaceholderText = "Food item name",
+        };
+        leftCol.Controls.Add(_foodItem, 1, lr);
         lr++;
 
         var wsLab = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };

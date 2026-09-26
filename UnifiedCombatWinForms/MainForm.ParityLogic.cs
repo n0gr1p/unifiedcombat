@@ -320,6 +320,8 @@ public partial class MainForm
             var wsMode = SessionStateHelper.GetString(s, "ws_mode", "smart");
             _wsModeCombo.SelectedItem = WsModeRuntimeToUi(wsMode);
             _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
+            _foodEnabled.Checked = SessionStateHelper.GetBool(s, "food_enabled", false);
+            _foodItem.Text = SessionStateHelper.GetString(s, "food_item", "");
             _chkWsAllowAoe.Checked = SessionStateHelper.GetBool(s, "weaponskill_allow_aoe", true);
             _chkFastSkillchain.Checked = SessionStateHelper.GetBool(s, "fast_skillchain", false);
             _skillchainTargetCombo.SelectedItem = SkillchainTargetRuntimeToUi(
@@ -381,6 +383,8 @@ public partial class MainForm
             _wsCombo.Items.Clear();
             _wsModeCombo.SelectedItem = "Smart";
             _wsMinimumTp.Value = 1000;
+            _foodEnabled.Checked = false;
+            _foodItem.Text = "";
             _chkWsAllowAoe.Checked = true;
             _chkFastSkillchain.Checked = false;
             _skillchainTargetCombo.SelectedItem = "Auto";
