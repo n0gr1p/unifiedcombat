@@ -796,12 +796,12 @@ function M.new(deps)
 		local in_range, range_reason = target_in_range(ctx, target, max_range)
 		if not in_range then
 			publish_status(kind .. '_blocked', range_reason)
-			return
+			return false
 		end
 		local ready, ready_reason, action_kind = action_ready(spell_name, tonumber(target.id))
 		if not ready or action_kind ~= 'spell' then
 			publish_status(kind .. '_blocked', tostring(ready_reason or action_kind))
-			return
+			return false
 		end
 		local priority_band = geo_maintenance_priority
 		if kind == 'geo' then
@@ -823,13 +823,14 @@ function M.new(deps)
 			blaze_enhanced = sequence and sequence.blaze_enhanced == true,
 		})
 		publish_status(kind .. '_proposed', spell_name)
+		return true
 	end
 
 	local function emit_ja(ctx, out, action_name, effect, urgency, sequence)
 		local ready, ready_reason, action_kind = action_ready(action_name, ctx.player_id)
 		if not ready or action_kind ~= 'ja' then
 			publish_status('ja_blocked', tostring(ready_reason or action_kind))
-			return
+			return false
 		end
 		local priority_band = geo_maintenance_priority
 		if type(sequence) == 'table'
@@ -853,6 +854,7 @@ function M.new(deps)
 			sequence_step = sequence and sequence.step or '',
 		})
 		publish_status('ja_proposed', action_name)
+		return true
 	end
 
 	local function member_has_buff(member, buff_id)
@@ -956,8 +958,15 @@ function M.new(deps)
 				and provider.state.owned_geo_blaze_enhanced == (sequence.blaze_enhanced == true) then
 				provider.state.pending = nil
 				if config.luopan.use_ecliptic_attrition == true then
-					sequence.step = 'ecliptic'
-					sequence.atomic = false
+					local ready, ready_reason, action_kind =
+						action_ready('Ecliptic Attrition', ctx.player_id)
+					if ready == true and action_kind == 'ja' then
+						sequence.step = 'ecliptic'
+						sequence.atomic = false
+					else
+						provider.state.sequence = nil
+						publish_status('ja_blocked', tostring(ready_reason or action_kind))
+					end
 				else
 					provider.state.sequence = nil
 				end
@@ -1001,7 +1010,9 @@ function M.new(deps)
 				if not luopan_present(ctx) then
 					error('GEO Full Circle sequence retained after luopan absence')
 				end
-				emit_ja(ctx, out, 'Full Circle', 'pet_absent', 0.95, sequence)
+				if not emit_ja(ctx, out, 'Full Circle', 'pet_absent', 0.95, sequence) then
+					provider.state.sequence = nil
+				end
 				return true
 			end
 			if sequence.step == 'blaze' then
@@ -1017,7 +1028,12 @@ function M.new(deps)
 					return true
 				end
 				set_sequence_enemy_wait(sequence, false, 'enemy_inside_camp_radius')
-				emit_ja(ctx, out, 'Blaze of Glory', 'blaze_buff', 0.95, sequence)
+				if not emit_ja(ctx, out, 'Blaze of Glory', 'blaze_buff', 0.95, sequence) then
+					sequence.step = 'geo_spell'
+					sequence.atomic = false
+					sequence.blaze_enhanced = false
+					return collect_sequence(ctx, out, config, contracts)
+				end
 				return true
 			end
 			if sequence.step == 'geo_spell' then
@@ -1054,7 +1070,9 @@ function M.new(deps)
 					return true
 				end
 				sequence.luopan_id = tonumber(ctx.pet_id) or 0
-				emit_ja(ctx, out, 'Ecliptic Attrition', 'ecliptic_complete', 0.90, sequence)
+				if not emit_ja(ctx, out, 'Ecliptic Attrition', 'ecliptic_complete', 0.90, sequence) then
+					provider.state.sequence = nil
+				end
 				return true
 			end
 			error('unsupported GEO creation sequence step: ' .. tostring(sequence.step))
@@ -1068,7 +1086,9 @@ function M.new(deps)
 				return true
 			end
 			if sequence.step == 'entrust_ja' then
-				emit_ja(ctx, out, 'Entrust', 'entrust_buff', 0.90, sequence)
+				if not emit_ja(ctx, out, 'Entrust', 'entrust_buff', 0.90, sequence) then
+					provider.state.sequence = nil
+				end
 				return true
 			end
 			if sequence.step == 'entrust_spell' then
@@ -1085,7 +1105,7 @@ function M.new(deps)
 					publish_status('sequence_failed', range_reason)
 					return true
 				end
-				emit_spell(
+				if not emit_spell(
 					ctx,
 					out,
 					'entrust',
@@ -1095,7 +1115,9 @@ function M.new(deps)
 					contracts.entrust.max_range,
 					1.0,
 					sequence
-				)
+				) then
+					provider.state.sequence = nil
+				end
 				return true
 			end
 			error('unsupported Entrust sequence step: ' .. tostring(sequence.step))
