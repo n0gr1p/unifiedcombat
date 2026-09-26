@@ -528,6 +528,133 @@ assert_equal(#out, 0, 'observed entrusted Indi must finish sequence')
 assert_equal(entrust_provider.status.state, 'converged', 'Entrust convergence state mismatch')
 assert_equal(entrust_provider.lane_reserved(), false, 'completed Entrust must release lane')
 
+local entrust_cooldown_members = {
+	{
+		id = 111,
+		name = 'EntrustCooldownTank',
+		buffs = {},
+	},
+}
+local entrust_cooldown_config = base_config()
+entrust_cooldown_config.entrust.enabled = true
+entrust_cooldown_config.entrust.spell = 'Indi-Fury'
+entrust_cooldown_config.entrust.target_name = 'EntrustCooldownTank'
+local entrust_cooldown_abilities = {
+	Entrust = false,
+}
+local entrust_cooldown_provider = new_provider(
+	entrust_cooldown_members,
+	{ active = false },
+	entrust_cooldown_abilities
+)
+local entrust_cooldown_ctx = context(entrust_cooldown_config)
+entrust_cooldown_ctx.mobs_by_id[111] = { id = 111, distance = 16 }
+action = collect_one(entrust_cooldown_provider, entrust_cooldown_ctx)
+entrust_cooldown_provider.note_dispatch(action, 1.1)
+entrust_cooldown_ctx.now = 2.0
+mark_luopan(entrust_cooldown_ctx, 311, 100, 10, 20)
+action = collect_one(entrust_cooldown_provider, entrust_cooldown_ctx)
+entrust_cooldown_provider.note_dispatch(action, 2.1)
+entrust_cooldown_ctx.now = 3.0
+entrust_cooldown_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+local entrust_cooldown_out = {}
+entrust_cooldown_provider.collect(entrust_cooldown_ctx, entrust_cooldown_out)
+assert_equal(#entrust_cooldown_out, 0, 'Entrust on cooldown must remain opportunistic')
+assert_equal(entrust_cooldown_provider.status_snapshot().sequence, nil,
+	'Entrust on cooldown must not create a persistent sequence')
+entrust_cooldown_ctx.now = 3.2
+entrust_cooldown_ctx.pet_present = false
+entrust_cooldown_ctx.pet_id = 0
+entrust_cooldown_ctx.pet = {}
+action = collect_one(entrust_cooldown_provider, entrust_cooldown_ctx)
+assert_equal(action.action_name, 'Geo-Frailty',
+	'Entrust cooldown must never block missing-Luopan recovery')
+assert_equal(action.priority_band, 240,
+	'Entrust cooldown recovery must retain GEO creation priority')
+
+local stale_entrust_members = {
+	{
+		id = 112,
+		name = 'StaleEntrustTank',
+		buffs = {},
+	},
+}
+local stale_entrust_config = base_config()
+stale_entrust_config.entrust.enabled = true
+stale_entrust_config.entrust.spell = 'Indi-Fury'
+stale_entrust_config.entrust.target_name = 'StaleEntrustTank'
+local stale_entrust_provider = new_provider(stale_entrust_members, { active = false }, {})
+local stale_entrust_ctx = context(stale_entrust_config)
+stale_entrust_ctx.mobs_by_id[112] = { id = 112, distance = 16 }
+action = collect_one(stale_entrust_provider, stale_entrust_ctx)
+stale_entrust_provider.note_dispatch(action, 1.1)
+stale_entrust_ctx.now = 2.0
+mark_luopan(stale_entrust_ctx, 312, 100, 10, 20)
+action = collect_one(stale_entrust_provider, stale_entrust_ctx)
+stale_entrust_provider.note_dispatch(action, 2.1)
+stale_entrust_ctx.now = 3.0
+stale_entrust_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+action = collect_one(stale_entrust_provider, stale_entrust_ctx)
+assert_equal(action.action_name, 'Entrust', 'stale Entrust setup must admit the optional JA')
+assert_equal(stale_entrust_provider.status_snapshot().sequence.step, 'entrust_ja',
+	'stale Entrust setup sequence mismatch')
+stale_entrust_ctx.now = 3.2
+stale_entrust_ctx.pet_present = false
+stale_entrust_ctx.pet_id = 0
+stale_entrust_ctx.pet = {}
+action = collect_one(stale_entrust_provider, stale_entrust_ctx)
+assert_equal(action.action_name, 'Geo-Frailty',
+	'missing Luopan must preempt an undispatched Entrust sequence')
+assert_true(
+	stale_entrust_provider.status_snapshot().sequence == nil
+		or stale_entrust_provider.status_snapshot().sequence.kind == 'geo_create',
+	'core recovery must remove unrelated Entrust sequence ownership'
+)
+
+local entrust_spell_members = {
+	{
+		id = 113,
+		name = 'EntrustSpellTank',
+		buffs = {},
+	},
+}
+local entrust_spell_config = base_config()
+entrust_spell_config.entrust.enabled = true
+entrust_spell_config.entrust.spell = 'Indi-Fury'
+entrust_spell_config.entrust.target_name = 'EntrustSpellTank'
+local entrust_spell_abilities = {
+	['Indi-Fury'] = false,
+}
+local entrust_spell_provider = new_provider(
+	entrust_spell_members,
+	{ active = false },
+	entrust_spell_abilities
+)
+local entrust_spell_ctx = context(entrust_spell_config)
+entrust_spell_ctx.mobs_by_id[113] = { id = 113, distance = 16 }
+action = collect_one(entrust_spell_provider, entrust_spell_ctx)
+entrust_spell_provider.note_dispatch(action, 1.1)
+entrust_spell_ctx.now = 2.0
+mark_luopan(entrust_spell_ctx, 313, 100, 10, 20)
+action = collect_one(entrust_spell_provider, entrust_spell_ctx)
+entrust_spell_provider.note_dispatch(action, 2.1)
+entrust_spell_ctx.now = 3.0
+entrust_spell_ctx.player.buffs = {
+	geo_maintenance.INDI_COLURE_BUFF_ID,
+	geo_maintenance.ENTRUST_BUFF_ID,
+}
+local entrust_spell_out = {}
+entrust_spell_provider.collect(entrust_spell_ctx, entrust_spell_out)
+assert_equal(#entrust_spell_out, 0,
+	'unavailable entrusted Indi must not emit a proposal')
+assert_equal(entrust_spell_provider.status_snapshot().sequence, nil,
+	'unavailable entrusted Indi must relinquish optional sequence ownership')
+entrust_spell_abilities['Indi-Fury'] = true
+entrust_spell_ctx.now = 3.2
+action = collect_one(entrust_spell_provider, entrust_spell_ctx)
+assert_equal(action.action_name, 'Indi-Fury',
+	'active Entrust buff must retry the entrusted spell without recasting Entrust')
+
 local pull_state = { active = true }
 local pull_provider = new_provider({}, pull_state)
 local pull_ctx = context(base_config())
