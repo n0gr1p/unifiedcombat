@@ -122,6 +122,38 @@ local aoe_allowed, aoe_reason = healing.should_admit_aoe(critical_single, routin
 assert_true(not aoe_allowed, 'critical single-target Cure must not be displaced merely by minimum AoE coverage')
 assert_equal(aoe_reason, 'CRITICAL_SINGLE_TARGET_PRESERVED', 'critical single-target protection reason')
 
+local critical_multicure = {
+	aoe = true,
+	coverage_count = 2,
+	aggregate_missing_hp = 1800,
+	lowest_covered_hpp = 18,
+	critical_multicure = true,
+	critical_coverage_count = 2,
+}
+local multicure_allowed, multicure_reason = healing.should_admit_aoe(critical_single, critical_multicure, 35)
+assert_true(multicure_allowed, 'Curaga covering two critical recipients must override a critical single-target Cure')
+assert_equal(multicure_reason, 'CRITICAL_MULTICURE_OVERRIDE', 'critical multicure override reason')
+
+local insufficient_critical_multicure = {
+	aoe = true,
+	coverage_count = 2,
+	aggregate_missing_hp = 1800,
+	lowest_covered_hpp = 18,
+	critical_multicure = true,
+	critical_coverage_count = 1,
+}
+local insufficient_allowed, insufficient_reason = healing.should_admit_aoe(critical_single, insufficient_critical_multicure, 35)
+assert_true(not insufficient_allowed, 'Curaga covering fewer than two critical recipients must not override a critical single-target Cure')
+assert_equal(insufficient_reason, 'CRITICAL_SINGLE_TARGET_PRESERVED', 'single critical recipient must keep single-target protection')
+
+local scheduler_file = assert(io.open('./unified_scheduler.lua', 'r'))
+local scheduler_source = scheduler_file:read('*a')
+scheduler_file:close()
+assert_true(scheduler_source:find('local critical_injured_ids = {}', 1, true) ~= nil, 'scheduler must track critical injured recipients separately')
+assert_true(scheduler_source:find('injured_recipient_ids = critical_injured_ids', 1, true) ~= nil, 'scheduler must plan emergency Curaga from critical recipients')
+assert_true(scheduler_source:find('minimum_targets = 2', 1, true) ~= nil, 'critical multicure must trigger at two recipients independent of normal Curaga minimum')
+assert_true(scheduler_source:find('candidate.critical_multicure = true', 1, true) ~= nil, 'scheduler must mark emergency Curaga candidates for admission override')
+
 assert_equal(healing.mechanics.curing_waltz_ranges['Curing Waltz'], 20.6, 'Curing Waltz I range')
 assert_equal(healing.mechanics.curing_waltz_ranges['Curing Waltz II'], 20.6, 'Curing Waltz II range')
 assert_equal(healing.mechanics.curing_waltz_ranges['Curing Waltz III'], 20.7, 'Curing Waltz III range')

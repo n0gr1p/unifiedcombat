@@ -212,8 +212,13 @@ end
 
 function M.should_admit_aoe(current, candidate, critical_hpp)
 	if type(candidate) ~= 'table' then return false, 'NO_AOE_ACTION' end
+	local critical_multicure = candidate.critical_multicure == true
+		and (tonumber(candidate.critical_coverage_count) or 0) >= 2
 	if type(current) == 'table' and current.aoe ~= true
 		and (tonumber(current.target and current.target.hpp) or 100) <= tonumber(critical_hpp) then
+		if critical_multicure then
+			return true, 'CRITICAL_MULTICURE_OVERRIDE'
+		end
 		return false, 'CRITICAL_SINGLE_TARGET_PRESERVED'
 	end
 	if type(current) ~= 'table' or current.aoe ~= true then return true, '' end
