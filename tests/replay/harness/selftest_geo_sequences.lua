@@ -359,6 +359,75 @@ assert_equal(
 	'expired enhanced luopan must be replaced normally while Blaze is unavailable'
 )
 
+local full_circle_config = base_config()
+full_circle_config.luopan.use_blaze_of_glory = true
+local full_circle_abilities = {
+	['Blaze of Glory'] = false,
+	['Full Circle'] = false,
+}
+local full_circle_provider = new_provider({}, { active = false }, full_circle_abilities)
+local full_circle_ctx = context(full_circle_config)
+action = collect_one(full_circle_provider, full_circle_ctx)
+assert_equal(action.action_name, 'Geo-Frailty',
+	'Full Circle regression setup must create a normal luopan while Blaze is unavailable')
+full_circle_provider.note_dispatch(action, 1.1)
+full_circle_ctx.now = 2.0
+mark_luopan(full_circle_ctx, 303, 100, 10, 20)
+action = collect_one(full_circle_provider, full_circle_ctx)
+full_circle_provider.note_dispatch(action, 2.1)
+full_circle_ctx.now = 3.0
+full_circle_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+full_circle_abilities['Blaze of Glory'] = true
+local full_circle_out = {}
+full_circle_provider.collect(full_circle_ctx, full_circle_out)
+assert_equal(#full_circle_out, 0,
+	'Full Circle on cooldown must not admit an upgrade sequence')
+assert_equal(full_circle_provider.status_snapshot().sequence, nil,
+	'Full Circle on cooldown must not retain replacement ownership')
+full_circle_ctx.now = 3.2
+full_circle_ctx.pet_present = false
+full_circle_ctx.pet_id = 0
+full_circle_ctx.pet = {}
+action = collect_one(full_circle_provider, full_circle_ctx)
+assert_equal(action.action_name, 'Blaze of Glory',
+	'missing Luopan must recover even while Full Circle remains unavailable')
+assert_equal(action.priority_band, 240,
+	'missing-Luopan Blaze recovery must retain creation priority')
+
+local blaze_fallback_config = base_config()
+blaze_fallback_config.luopan.use_blaze_of_glory = true
+local blaze_fallback_abilities = {
+	['Blaze of Glory'] = false,
+	['Full Circle'] = true,
+}
+local blaze_fallback_provider = new_provider({}, { active = false }, blaze_fallback_abilities)
+local blaze_fallback_ctx = context(blaze_fallback_config)
+action = collect_one(blaze_fallback_provider, blaze_fallback_ctx)
+assert_equal(action.action_name, 'Geo-Frailty',
+	'Blaze fallback setup must start with a normal luopan')
+blaze_fallback_provider.note_dispatch(action, 1.1)
+blaze_fallback_ctx.now = 2.0
+mark_luopan(blaze_fallback_ctx, 304, 100, 10, 20)
+action = collect_one(blaze_fallback_provider, blaze_fallback_ctx)
+blaze_fallback_provider.note_dispatch(action, 2.1)
+blaze_fallback_ctx.now = 3.0
+blaze_fallback_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
+blaze_fallback_abilities['Blaze of Glory'] = true
+action = collect_one(blaze_fallback_provider, blaze_fallback_ctx)
+assert_equal(action.action_name, 'Full Circle',
+	'ready Blaze upgrade must begin with Full Circle')
+blaze_fallback_provider.note_dispatch(action, 3.1)
+blaze_fallback_ctx.now = 4.0
+blaze_fallback_ctx.pet_present = false
+blaze_fallback_ctx.pet_id = 0
+blaze_fallback_ctx.pet = {}
+blaze_fallback_abilities['Blaze of Glory'] = false
+action = collect_one(blaze_fallback_provider, blaze_fallback_ctx)
+assert_equal(action.action_name, 'Geo-Frailty',
+	'Blaze becoming unavailable after Full Circle must fall back to normal Geo')
+assert_equal(action.priority_band, 240,
+	'Blaze fallback Geo must remain core creation priority')
+
 local ecliptic_config = base_config()
 ecliptic_config.luopan.use_blaze_of_glory = true
 ecliptic_config.luopan.use_ecliptic_attrition = true
