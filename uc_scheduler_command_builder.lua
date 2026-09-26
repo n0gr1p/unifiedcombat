@@ -2,6 +2,9 @@ local M = {}
 
 function M.build_action_command(deps, action_name, action_kind, target_member)
 	local target = target_member or {}
+	if action_kind == 'item' then
+		return ('input /item "%s" <me>'):format(tostring(action_name))
+	end
 	local mode = deps.action_target_mode(action_name, action_kind)
 	local target_token = '<me>'
 	if target.use_entity_id == true then
