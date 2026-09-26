@@ -5699,7 +5699,7 @@ local function p1_dispatch_maintenance_food(selected, settings)
 		log_def_sched(('FOOD_MAINT_DISPATCH_SKIP item="%s" reason=FOOD_ALREADY_ACTIVE'):format(item_name))
 		return false, nil
 	end
-	if smn_player_is_moving() then
+	if scheduler.providers.food.player_is_moving() then
 		log_def_sched(('FOOD_MAINT_DISPATCH_SKIP item="%s" reason=PLAYER_MOVING'):format(item_name))
 		return false, nil
 	end
