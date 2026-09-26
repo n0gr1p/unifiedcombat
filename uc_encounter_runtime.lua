@@ -2,6 +2,7 @@ local res = require('resources')
 local uc_active_config = require('uc_active_config')
 local encounter_state = require('uc_encounter_state')
 local kei_encounter = require('uc_kei_encounter')
+local saved_by_bell_encounter = require('uc_saved_by_bell_encounter')
 local party_buff_tracker = require('uc_party_buff_tracker')
 
 local M = {}
@@ -99,6 +100,63 @@ local function encounter_actors()
 	return actors
 end
 
+local function saved_by_bell_observation()
+	local boss = nil
+	local luopans = {}
+	local local_pet = windower.ffxi.get_mob_by_target('pet')
+	local local_pet_id = tonumber(local_pet and local_pet.id) or 0
+	local mob_array = windower.ffxi.get_mob_array()
+	if type(mob_array) == 'table' then
+		for _, mob in pairs(mob_array) do
+			local name = tostring(mob and mob.name or '')
+			local id = tonumber(mob and mob.id) or 0
+			if name == saved_by_bell_encounter.BOSS_NAME and id > 0 then
+				boss = {
+					id = id,
+					name = name,
+					x = tonumber(mob.x),
+					y = tonumber(mob.y),
+					z = tonumber(mob.z),
+					facing = tonumber(mob.facing),
+					hpp = tonumber(mob.hpp),
+					status = tonumber(mob.status),
+				}
+			elseif name == saved_by_bell_encounter.LUOPAN_NAME
+				and id > 0
+				and id ~= local_pet_id
+				and (tonumber(mob.hpp) or 0) > 0 then
+				luopans[#luopans + 1] = {
+					id = id,
+					name = name,
+					x = tonumber(mob.x),
+					y = tonumber(mob.y),
+					z = tonumber(mob.z),
+					hpp = tonumber(mob.hpp),
+					status = tonumber(mob.status),
+					valid_target = mob.valid_target,
+				}
+			end
+		end
+	end
+	table.sort(luopans, function(left, right)
+		return (tonumber(left.id) or 0) < (tonumber(right.id) or 0)
+	end)
+	local player = windower.ffxi.get_player()
+	local player_id = tonumber(player and player.id) or 0
+	local player_mob = player_id > 0 and windower.ffxi.get_mob_by_id(player_id) or nil
+	return {
+		boss = boss,
+		luopans = luopans,
+		player_id = player_id,
+		player_name = tostring(player and player.name or ''),
+		player_position = player_mob and {
+			x = tonumber(player_mob.x),
+			y = tonumber(player_mob.y),
+			z = tonumber(player_mob.z),
+		} or nil,
+	}
+end
+
 local function buff_names(buff_ids)
 	local names = {}
 	for i = 1, #(buff_ids or {}) do
@@ -169,6 +227,18 @@ function M.observe(now)
 		error('uc_encounter_runtime.observe requires now')
 	end
 	local config = encounter_config()
+	if config.enabled == true and config.id == 'saved_by_the_bell' then
+		encounter_state.configure({ enabled = false, id = '' }, 'saved_by_the_bell_selected')
+		kei_encounter.configure({ enabled = false, id = '' })
+		local configured, configure_reason = saved_by_bell_encounter.configure(config)
+		if not configured then
+			return false, configure_reason
+		end
+		local observation = saved_by_bell_observation()
+		observation.now = observed_at
+		return saved_by_bell_encounter.observe_snapshot(observation)
+	end
+	saved_by_bell_encounter.configure({ enabled = false, id = '' })
 	if config.enabled == true and config.id == 'kei' then
 		encounter_state.configure({ enabled = false, id = '' }, 'kei_encounter_selected')
 		local configured, configure_reason = kei_encounter.configure(config)
@@ -338,6 +408,24 @@ function M.on_action(act, now)
 	if observed_at == nil then
 		error('uc_encounter_runtime.on_action requires now')
 	end
+	local actor_id = tonumber(act.actor_id) or 0
+	local actor = actor_id > 0 and windower.ffxi.get_mob_by_id(actor_id) or nil
+	local _, target_position = authoritative_target(act)
+	local player = windower.ffxi.get_player()
+	local player_id = tonumber(player and player.id) or 0
+	local player_mob = player_id > 0 and windower.ffxi.get_mob_by_id(player_id) or nil
+	local saved_ok, saved_reason = saved_by_bell_encounter.on_action(act, observed_at, {
+		actor_name = tostring(actor and actor.name or ''),
+		target_position = target_position,
+		player_position = player_mob and {
+			x = tonumber(player_mob.x),
+			y = tonumber(player_mob.y),
+			z = tonumber(player_mob.z),
+		} or nil,
+	})
+	if saved_by_bell_encounter.snapshot().enabled == true then
+		return saved_ok, saved_reason
+	end
 	local kei_ok, kei_reason = kei_encounter.on_action(act, observed_at)
 	if kei_encounter.snapshot().enabled == true then
 		return kei_ok, kei_reason
@@ -425,6 +513,9 @@ function M.observe_boss_defeat(target_id)
 end
 
 function M.validate_proposal(ctx, proposal)
+	if saved_by_bell_encounter.snapshot().enabled == true then
+		return true, ''
+	end
 	if kei_encounter.snapshot().enabled == true then
 		return true, ''
 	end
@@ -450,9 +541,14 @@ function M.reset(reason)
 	last_snapshot_signature = ''
 	encounter_state.reset(reason)
 	kei_encounter.reset(reason)
+	saved_by_bell_encounter.reset(reason)
 end
 
 function M.snapshot()
+	local saved_snapshot = saved_by_bell_encounter.snapshot()
+	if saved_snapshot.enabled == true then
+		return saved_snapshot
+	end
 	local kei_snapshot = kei_encounter.snapshot()
 	if kei_snapshot.enabled == true then
 		return kei_snapshot
@@ -477,6 +573,33 @@ local function point_text(point)
 end
 
 function M.status_lines()
+	local saved = saved_by_bell_encounter.snapshot()
+	if saved.enabled == true then
+		local boss = saved.boss or {}
+		local tracked = 0
+		for _ in pairs(saved.luopans or {}) do
+			tracked = tracked + 1
+		end
+		local unbound = 0
+		for _ in pairs(saved.unbound_luopans or {}) do
+			unbound = unbound + 1
+		end
+		return {
+			('encounter enabled=true configured=saved_by_the_bell phase=%s error=%s'):format(
+				tostring(saved.phase or ''), tostring(saved.error or '')
+			),
+			('boss name=%s id=%d hpp=%s status=%s'):format(
+				tostring(boss.name or ''), tonumber(boss.id) or 0,
+				tostring(boss.hpp or ''), tostring(boss.status or '')
+			),
+			('luopans tracked=%d unbound=%d pending_geo_casts=%d destroyed=%d'):format(
+				tracked, unbound, #(saved.pending_casts or {}), tonumber(saved.destroyed_count) or 0
+			),
+			('last_transition=%s last_reset_reason=%s'):format(
+				tostring(saved.last_transition or ''), tostring(saved.last_reset_reason or '')
+			),
+		}
+	end
 	local kei = kei_encounter.snapshot()
 	if kei.enabled == true then
 		local boss = kei.boss or {}
