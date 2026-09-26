@@ -127,6 +127,10 @@ local function choose_pending_for_luopan(luopan)
 		return nil
 	end
 	if #state.pending_casts == 1 then
+		local d = distance(luopan, state.pending_casts[1].expected_position)
+		if d ~= nil and d > POSITION_MATCH_MAX_YALMS then
+			return nil
+		end
 		return 1
 	end
 
