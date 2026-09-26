@@ -124,6 +124,9 @@ local function new_provider(party_members, pull_state, ability_ready)
 		geo_creation_priority = 240,
 		action_ready = function(name)
 			if resources[name] ~= nil then
+				if type(ability_ready) == 'table' and ability_ready[name] == false then
+					return false, 'recast', 'spell'
+				end
 				return true, 'ready', 'spell'
 			end
 			if type(ability_ready) == 'table' and ability_ready[name] == false then
@@ -374,28 +377,33 @@ assert_equal(action.action_name, 'Geo-Frailty', 'Ecliptic sequence must create t
 ecliptic_provider.note_dispatch(action, 2.1)
 ecliptic_ctx.now = 3.0
 mark_luopan(ecliptic_ctx, 305, 100, 10, 20)
+action = collect_one(ecliptic_provider, ecliptic_ctx)
+assert_equal(action.action_name, 'Indi-Haste',
+	'Ecliptic on recast must not block missing core Indi')
+assert_equal(
+	ecliptic_provider.status_snapshot().sequence,
+	nil,
+	'unavailable Ecliptic follow-up must not retain sequence ownership'
+)
+ecliptic_provider.note_dispatch(action, 3.1)
+ecliptic_ctx.now = 4.0
+ecliptic_ctx.player.buffs = { geo_maintenance.INDI_COLURE_BUFF_ID }
 local ecliptic_out = {}
 ecliptic_provider.collect(ecliptic_ctx, ecliptic_out)
-assert_equal(#ecliptic_out, 0, 'Ecliptic on recast must not emit a proposal')
+assert_equal(#ecliptic_out, 0, 'Ecliptic on recast must remain opportunistic')
 assert_equal(ecliptic_provider.status.state, 'ja_blocked', 'Ecliptic recast blocker state mismatch')
 assert_equal(ecliptic_provider.status.detail, 'recast', 'Ecliptic recast blocker detail mismatch')
-assert_equal(
-	ecliptic_provider.lane_reserved(),
-	false,
-	'confirmed enhanced Geo must release the atomic lane while Ecliptic is on recast'
-)
+assert_equal(ecliptic_provider.status_snapshot().sequence, nil,
+	'Ecliptic on recast must not create a persistent sequence')
 ecliptic_pull_state.active = true
-ecliptic_ctx.now = 4.0
+ecliptic_ctx.now = 4.2
 ecliptic_out = {}
 ecliptic_provider.collect(ecliptic_ctx, ecliptic_out)
-assert_equal(#ecliptic_out, 0, 'active pull must defer the non-atomic Ecliptic follow-up')
-assert_equal(ecliptic_provider.status.state, 'sequence_held', 'active-pull Ecliptic hold state mismatch')
-assert_equal(ecliptic_provider.status.detail, 'pull_active', 'active-pull Ecliptic hold detail mismatch')
-assert_equal(
-	ecliptic_provider.lane_reserved(),
-	false,
-	'non-atomic Ecliptic follow-up must not reserve the GEO lane during a pull'
-)
+assert_equal(#ecliptic_out, 0, 'active pull must defer optional Ecliptic work')
+assert_equal(ecliptic_provider.status.state, 'blocked', 'active-pull optional hold state mismatch')
+assert_equal(ecliptic_provider.status.detail, 'pull_active', 'active-pull optional hold detail mismatch')
+assert_equal(ecliptic_provider.status_snapshot().sequence, nil,
+	'pull deferral must not retain unavailable Ecliptic state')
 ecliptic_pull_state.active = false
 ecliptic_abilities['Ecliptic Attrition'] = true
 ecliptic_ctx.now = 5.0
