@@ -38,6 +38,7 @@ The human call-site inventory is:
 | `unified_combat_core.lua` | WS coordination IPC plus pure `/ma`, `/ja`, and `/ws` intent construction | Scheduler-facing selectors retain their established contracts while all execution is explicitly injected through dispatcher-backed executors | Retain required decision helpers and WS IPC; do not reintroduce direct command, movement, turn, target, or attack execution |
 | `uc_attack.lua` | Action packet injection | Dispatcher-owned low-level adapter for engage/switch/disengage control actions, not spell/JA/WS initiation | Retain as the dispatcher adapter |
 | `uc_settarget.lua` | Target packet injection | Dispatcher-owned low-level adapter for target selection, not spell/JA/WS initiation | Retain as the dispatcher adapter |
+| `uc_raise_accept.lua` | Raise-dialog action packet injection | Opt-in local lifecycle acknowledgement while KO'd; category is restricted to Raise and Tractor is rejected | Retain as a reviewed scheduler-bypass exception because no combat action can occur while KO'd |
 | `uc_add_control.lua` | Attack-off, select-target, and attack command sequence | Behavior-sensitive add retarget flow | Migrate the full ordered sequence atomically |
 | `uc_party_follow.lua` | IPC and zone packet injection | Independent follow position sharing and zone replay; movement itself is migrated | Retain IPC/injection under the Phase 4 ownership decision |
 | `uc_nyzul_runtime.lua` | IPC | Nyzul coordination behavior; movement stop is migrated | Retain while Nyzul remains its IPC state owner |

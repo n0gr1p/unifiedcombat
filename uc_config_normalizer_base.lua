@@ -1255,6 +1255,7 @@ local function default_config(meta)
             domain_movement_enabled = true,
             domain_maintenance_enabled = true,
             domain_follow_enabled = true,
+            auto_accept_raise = false,
             pause_automation_while_weakened = false,
         },
         legacy = {
@@ -2496,12 +2497,13 @@ end
 local function normalize_ownership(source, config)
     local ownership = config.ownership
     local nested = get_path(source, { 'ownership' })
-    if is_table(nested) and table_has_any(nested, { 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled', 'pause_automation_while_weakened' }) then
+    if is_table(nested) and table_has_any(nested, { 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled', 'auto_accept_raise', 'pause_automation_while_weakened' }) then
         ownership.domain_combat_enabled = normalize_boolean(nested.domain_combat_enabled, ownership.domain_combat_enabled)
         ownership.domain_defensive_enabled = normalize_boolean(nested.domain_defensive_enabled, ownership.domain_defensive_enabled)
         ownership.domain_movement_enabled = normalize_boolean(nested.domain_movement_enabled, ownership.domain_movement_enabled)
         ownership.domain_maintenance_enabled = normalize_boolean(nested.domain_maintenance_enabled, ownership.domain_maintenance_enabled)
         ownership.domain_follow_enabled = normalize_boolean(nested.domain_follow_enabled, ownership.domain_follow_enabled)
+        ownership.auto_accept_raise = normalize_boolean(nested.auto_accept_raise, ownership.auto_accept_raise)
         ownership.pause_automation_while_weakened = normalize_boolean(nested.pause_automation_while_weakened, ownership.pause_automation_while_weakened)
     else
         ownership.domain_combat_enabled = normalize_boolean(first_path(source, { path('domain_combat_enabled') }), ownership.domain_combat_enabled)
@@ -2509,6 +2511,7 @@ local function normalize_ownership(source, config)
         ownership.domain_movement_enabled = normalize_boolean(first_path(source, { path('domain_movement_enabled') }), ownership.domain_movement_enabled)
         ownership.domain_maintenance_enabled = normalize_boolean(first_path(source, { path('domain_maintenance_enabled') }), ownership.domain_maintenance_enabled)
         ownership.domain_follow_enabled = normalize_boolean(first_path(source, { path('domain_follow_enabled') }), ownership.domain_follow_enabled)
+        ownership.auto_accept_raise = normalize_boolean(first_path(source, { path('auto_accept_raise') }), ownership.auto_accept_raise)
         ownership.pause_automation_while_weakened = normalize_boolean(first_path(source, { path('pause_automation_while_weakened') }), ownership.pause_automation_while_weakened)
     end
 end

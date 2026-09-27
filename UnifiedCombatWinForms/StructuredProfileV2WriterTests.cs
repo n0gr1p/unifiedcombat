@@ -654,7 +654,7 @@ internal static class StructuredProfileV2WriterTests
             "defensive controls must be registered in the General defensive section"
         );
         AssertTrue(
-            HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "auto_engage", "ability_allow_unengaged", "tank_enmity_include_pets", "prime", "spam", "solo", "manual", "pause_automation_while_weakened" }),
+            HubUiConstants.CombatTargetingUiKeys.SequenceEqual(new[] { "autotarget", "auto_engage", "ability_allow_unengaged", "tank_enmity_include_pets", "prime", "spam", "solo", "manual", "auto_accept_raise", "pause_automation_while_weakened" }),
             "combat and targeting controls must be registered together"
         );
         AssertTrue(
@@ -688,15 +688,20 @@ internal static class StructuredProfileV2WriterTests
     private static void TestRecoveryHoldProfileAndUiContract()
     {
         var flat = BuildSampleFlatProfile();
+        flat["auto_accept_raise"] = true;
         flat["pause_automation_while_weakened"] = true;
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             flat,
             new StructuredProfileV2Identity("Redrogue", "PLD", "WAR")
         );
+        AssertContains(content, "auto_accept_raise = true", "auto-accept Raise must serialize into profile v2 ownership");
         AssertContains(content, "pause_automation_while_weakened = true", "recovery hold must serialize into profile v2 ownership");
+        AssertTrue(HubUiConstants.GlobalBoolKeys.Contains("auto_accept_raise"), "auto-accept Raise must persist as a global UI boolean");
         AssertTrue(HubUiConstants.GlobalBoolKeys.Contains("pause_automation_while_weakened"), "recovery hold must persist as a global UI boolean");
+        AssertEqual(HubUiConstants.BoolLabel("auto_accept_raise"), "Auto accept Raise", "auto-accept Raise label mismatch");
         AssertEqual(HubUiConstants.BoolLabel("pause_automation_while_weakened"), "Pause automation while weakened", "recovery hold label mismatch");
         var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        AssertContains(ui, "Tractor dialogs are never accepted", "auto-accept Raise tooltip must document Tractor exclusion");
         AssertContains(ui, "While weakened after Raise", "recovery hold tooltip must explain manual recovery positioning");
     }
 

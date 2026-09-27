@@ -429,7 +429,14 @@ public partial class MainForm
         {
             var toggle = MkGlobal(key);
             combatToggles.Controls.Add(toggle);
-            if (key == "pause_automation_while_weakened")
+            if (key == "auto_accept_raise")
+            {
+                _recoveryHoldToolTip.SetToolTip(
+                    toggle,
+                    "Automatically accepts Raise dialogs while KO'd. Tractor dialogs are never accepted."
+                );
+            }
+            else if (key == "pause_automation_while_weakened")
             {
                 _recoveryHoldToolTip.SetToolTip(
                     toggle,

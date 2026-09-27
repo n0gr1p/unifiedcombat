@@ -1761,6 +1761,7 @@ internal static class StructuredProfileV2Writer
             .Add("domain_movement_enabled", ReadRequiredBool(flatProfile, "domain_movement_enabled"))
             .Add("domain_maintenance_enabled", ReadRequiredBool(flatProfile, "domain_maintenance_enabled"))
             .Add("domain_follow_enabled", ReadRequiredBool(flatProfile, "domain_follow_enabled"))
+            .Add("auto_accept_raise", ReadBool(flatProfile, "auto_accept_raise", false))
             .Add("pause_automation_while_weakened", ReadBool(flatProfile, "pause_automation_while_weakened", false));
     }
 

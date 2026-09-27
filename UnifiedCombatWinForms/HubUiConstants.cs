@@ -56,6 +56,7 @@ internal static class HubUiConstants
         "puller_distance_only",
         "fight_leader",
         "party_follow",
+        "auto_accept_raise",
         "pause_automation_while_weakened",
         "domain_combat_enabled",
         "domain_defensive_enabled",
@@ -121,6 +122,7 @@ internal static class HubUiConstants
         ["fight_leader"] = "Enable Fight Leader",
         ["party_follow"] = "Follow Party Member While Idle",
         ["add_control"] = "Allow Off-Leader Adds",
+        ["auto_accept_raise"] = "Auto accept Raise",
         ["pause_automation_while_weakened"] = "Pause automation while weakened",
         ["domain_combat_enabled"] = "Combat domain enabled",
         ["domain_defensive_enabled"] = "Defensive domain enabled",
@@ -159,7 +161,7 @@ internal static class HubUiConstants
     ];
 
     public static readonly string[] CombatTargetingUiKeys =
-        ["autotarget", "auto_engage", "ability_allow_unengaged", "tank_enmity_include_pets", "prime", "spam", "solo", "manual", "pause_automation_while_weakened"];
+        ["autotarget", "auto_engage", "ability_allow_unengaged", "tank_enmity_include_pets", "prime", "spam", "solo", "manual", "auto_accept_raise", "pause_automation_while_weakened"];
 
     public static readonly string[] SpacingMovementUiKeys = ["face", "spacing", "static", "move"];
 

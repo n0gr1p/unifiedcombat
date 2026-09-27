@@ -97,6 +97,9 @@ return {
         ["uc_settarget.lua"] = {
             packet_inject = 1,
         },
+        ["uc_raise_accept.lua"] = {
+            packet_inject = 1,
+        },
         ["unified_combat_core.lua"] = {
             direct_ipc_send = 2,
             command_magic = 1,

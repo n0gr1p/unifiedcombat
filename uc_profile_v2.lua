@@ -345,6 +345,14 @@ local function canonicalize_optional_control_ranges(current_config, target_confi
 		end
 	end
 
+	if target_ownership and target_ownership.auto_accept_raise == nil then
+		target_ownership.auto_accept_raise = false
+		local current_ownership = type(current_config.ownership) == 'table' and current_config.ownership or nil
+		if current_ownership and current_ownership.auto_accept_raise == nil then
+			current_ownership.auto_accept_raise = false
+		end
+	end
+
 	if type(target_config.summoner) ~= 'table' then
 		-- Profiles written before Summoner automation became a durable v2 domain
 		-- continue to mean "Summoner automation disabled".

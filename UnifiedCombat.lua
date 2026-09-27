@@ -26,6 +26,8 @@ require('lor/lor_utils')
 require('tables')
 local uc_runtime_overrides = require('uc_runtime_overrides')
 local uc_recovery_hold = require('uc_recovery_hold')
+local uc_raise_accept = require('uc_raise_accept')
+uc_raise_accept.register()
 local uc_lifecycle_movement = require('uc_movement_dispatcher').build({
 	dispatcher = require('uc_scheduler_dispatcher'),
 	run = windower.ffxi.run,
@@ -347,6 +349,7 @@ local function uc_new_settings_defaults()
 		defensive_buffs = '',
 		defensive_targeted_buffs = '',
 		engine_enabled = false,
+		auto_accept_raise = false,
 		pause_automation_while_weakened = false,
 		domain_combat_enabled = true,
 		domain_defensive_enabled = true,
@@ -650,7 +653,7 @@ local PROFILE_KEYS = {
 	'defensive_curaga_min_targets', 'defensive_waltz_tp_reserve', 'defensive_divine_waltz_min_targets',
 	'defensive_overwrite_enabled', 'defensive_overwrite_interval', 'defensive_buff_self_only', 'defensive_buffs',
 	'defensive_targeted_buffs',
-	'engine_enabled', 'pause_automation_while_weakened', 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled',
+	'engine_enabled', 'auto_accept_raise', 'pause_automation_while_weakened', 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled',
 	'cor_roll_1', 'cor_roll_2', 'cor_crooked_roll_slot', 'cor_elevens', 'cor_luzaf_range_override', 'cor_roll_range_selected', 'cor_roll_range_require_ids',
 	'summoner_enabled', 'summoner_avatar', 'summoner_avatar_favor',
 	'summoner_ward_enabled', 'summoner_ward_action', 'summoner_ward_actions',
@@ -1912,6 +1915,9 @@ local function uc_normalize_domain_settings(s)
 	end
 	if s.domain_follow_enabled == nil then
 		s.domain_follow_enabled = true
+	end
+	if s.auto_accept_raise == nil then
+		s.auto_accept_raise = false
 	end
 	if s.pause_automation_while_weakened == nil then
 		s.pause_automation_while_weakened = false

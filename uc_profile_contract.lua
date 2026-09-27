@@ -84,6 +84,7 @@ local DIRECT_PROFILE_FIELDS = {
     aftermath_ws = "profile_owned_by_ui",
     engine_mode = "profile_owned_by_ui",
     show_ingame_ui = "profile_owned_by_ui",
+    auto_accept_raise = "profile_owned_by_ui",
     pause_automation_while_weakened = "profile_owned_by_ui",
     defensive_enabled = "profile_owned_by_ui",
     defensive_provider = "profile_owned_by_ui",
