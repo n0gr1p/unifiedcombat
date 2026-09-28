@@ -279,7 +279,21 @@ internal static class StructuredProfileV2Writer
                     .Add("aftermath_enabled", ReadBool(flatProfile, "aftermath_enabled", false))
                     .Add("aftermath_ws", ReadString(flatProfile, "aftermath_ws", ""))
             )
+            .Add("recurring_spells", BuildRecurringCombatSpells(flatProfile))
             .Add("pulling", BuildCampPulling(flatProfile));
+    }
+
+    private static StructuredProfileNode BuildRecurringCombatSpells(JsonObject flatProfile)
+    {
+        var enabled = ReadBool(flatProfile, "recurring_spells_enabled", false);
+        var spells = SplitPipeList(ReadString(flatProfile, "recurring_spells", ""));
+        if (enabled && spells.Count == 0)
+        {
+            throw new InvalidDataException("Enabled recurring combat spells require at least one spell.");
+        }
+        return new StructuredProfileNode()
+            .Add("enabled", enabled)
+            .Add("list", spells);
     }
 
     private static StructuredProfileNode BuildCampPulling(JsonObject flatProfile)
