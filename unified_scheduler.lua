@@ -1873,6 +1873,7 @@ scheduler.PRIORITY_BAND_SCH_PREPARED = 150
 scheduler.PRIORITY_BAND_SCH_DEFENSIVE = 145
 scheduler.PRIORITY_BAND_SKILLCHAIN_CONTINUATION = 131
 scheduler.PRIORITY_BAND_SLEEP = 142
+scheduler.PRIORITY_BAND_RECURRING_SPELL = 70
 scheduler.PRIORITY_BAND_GEO_MAINTENANCE = 210
 scheduler.PRIORITY_BAND_FOOD_MAINTENANCE = 50
 scheduler.PRIORITY_BAND_GEO_CREATION = 240
@@ -4439,6 +4440,7 @@ local function p1_collect_proposals(ctx)
 		end
 		scheduler.providers.tank_enmity.collect(ctx, out)
 		scheduler.providers.combat.collect_sleep(ctx, out)
+		scheduler.providers.recurring_spells.collect(ctx, out)
 		scheduler.providers.combat.collect_offense(ctx, out)
 		scheduler.providers.combat.collect_ja(ctx, out)
 		scheduler.providers.pet_combat.collect(ctx, out)
@@ -8749,6 +8751,21 @@ scheduler.providers.target_control = require('uc_provider_target_control').new({
 	tank_target_urgency = scheduler.TANK_TARGET_ACQUIRE_URGENCY,
 	death_switch_priority = scheduler.PRIORITY_BAND_DEATH_SWITCH,
 	death_switch_urgency = 1.0,
+})
+scheduler.providers.recurring_spells = require('uc_provider_recurring_spells').new({
+	bool_setting = bool_setting,
+	active_value_or_flat = scheduler.active_value_or_flat,
+	get_spell_resource = get_spell_resource,
+	action_ready = action_ready,
+	action_effective_range = action_effective_range,
+	clamp_urgency = p1_clamp_urgency,
+	combat_domain_enabled = function()
+		return domain_ownership.is_enabled('combat')
+	end,
+	action_timeline_log = function(...)
+		return scheduler.action_timeline_log(...)
+	end,
+	priority_band = scheduler.PRIORITY_BAND_RECURRING_SPELL,
 })
 scheduler.providers.combat = require('uc_provider_combat').new({
 	bool_setting = bool_setting,
