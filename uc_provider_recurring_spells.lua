@@ -34,7 +34,7 @@ end
 local function spell_targets_enemy(spell)
 	local targets = spell and spell.targets
 	if type(targets) == 'number' then
-		return targets == 32
+		return (math.floor(targets) % 64) >= 32
 	end
 	if type(targets) == 'table' then
 		return targets.Enemy == true or targets.enemy == true
