@@ -16,6 +16,8 @@ public partial class MainForm
     private CheckBox _chkFastSkillchain = null!;
     private CheckBox _foodEnabled = null!;
     private TextBox _foodItem = null!;
+    private CheckBox _recurringSpellsEnabled = null!;
+    private TextBox _recurringSpells = null!;
     private ComboBox _skillchainTargetCombo = null!;
     private CheckBox _magicBurstEnabled = null!;
     private ComboBox _magicBurstSpell = null!;
@@ -461,6 +463,21 @@ public partial class MainForm
             PlaceholderText = "Food item name",
         };
         leftCol.Controls.Add(_foodItem, 1, lr);
+        lr++;
+
+        _recurringSpellsEnabled = new UcToggle
+        {
+            Text = "Recurring Spells",
+            AutoSize = true,
+        };
+        leftCol.Controls.Add(_recurringSpellsEnabled, 0, lr);
+        _recurringSpells = new TextBox
+        {
+            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
+            MinimumSize = new Size(120, 0),
+            PlaceholderText = "Absorb-TP|Absorb-STR",
+        };
+        leftCol.Controls.Add(_recurringSpells, 1, lr);
         lr++;
 
         var wsLab = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
