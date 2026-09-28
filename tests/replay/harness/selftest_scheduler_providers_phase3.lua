@@ -1,6 +1,7 @@
 local PROVIDER_PATHS = {
     "uc_provider_defensive.lua",
     "uc_provider_combat.lua",
+    "uc_provider_recurring_spells.lua",
     "uc_provider_tank_enmity.lua",
     "uc_provider_enemy_buff_removal.lua",
     "uc_provider_enemy_debuff_maintenance.lua",
@@ -99,6 +100,7 @@ local function assert_scheduler_wiring()
         "scheduler.providers.target_control.collect_pull(ctx, out)",
         "scheduler.providers.tank_enmity.collect(ctx, out)",
         "scheduler.providers.combat.collect_sleep(ctx, out)",
+        "scheduler.providers.recurring_spells.collect(ctx, out)",
         "scheduler.providers.combat.collect_offense(ctx, out)",
         "scheduler.providers.combat.collect_ja(ctx, out)",
         "scheduler.providers.enemy_buff_removal.collect(ctx, out)",

@@ -583,6 +583,10 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.aftermath_ws = config.combat.weaponskill.aftermath_ws
 			candidate.ignore = resolve_party_member_ids_by_names(config.combat.weaponskill.wait_ignore_names)
 		end
+		if type(config.combat.recurring_spells) == 'table' then
+			candidate.recurring_spells_enabled = config.combat.recurring_spells.enabled == true
+			candidate.recurring_spells = table.concat(config.combat.recurring_spells.list or {}, '|')
+		end
 		if type(config.combat.pulling) == 'table' then
 			candidate.camp_pulling = clone_value(config.combat.pulling)
 		end

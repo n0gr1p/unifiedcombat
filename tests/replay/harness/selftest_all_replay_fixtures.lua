@@ -122,6 +122,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_bard_song_identity_tracking.lua",
     "tests/replay/harness/selftest_brd_maintenance.lua",
     "tests/replay/harness/selftest_food_maintenance.lua",
+    "tests/replay/harness/selftest_recurring_spells.lua",
     "tests/replay/harness/selftest_brd_positioning.lua",
     "tests/replay/harness/selftest_brd_maintenance_movement_safety.lua",
     "tests/replay/harness/selftest_party_buff_tracker.lua",
