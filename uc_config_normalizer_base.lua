@@ -973,6 +973,10 @@ local function default_config(meta)
                 aftermath_ws = '',
             },
             pulling = clone_value(DEFAULT_CAMP_PULLING),
+            recurring_spells = {
+                enabled = false,
+                list = {},
+            },
         },
         abilities = {
             enabled = false,
@@ -1575,7 +1579,7 @@ end
 local function normalize_combat(source, config)
     local combat = config.combat
     local nested = get_path(source, { 'combat' })
-    if is_table(nested) and table_has_any(nested, { 'enabled', 'autotarget', 'auto_engage', 'spam', 'closer', 'manual', 'prime', 'static', 'face', 'weaponskill', 'pulling' }) then
+    if is_table(nested) and table_has_any(nested, { 'enabled', 'autotarget', 'auto_engage', 'spam', 'closer', 'manual', 'prime', 'static', 'face', 'weaponskill', 'pulling', 'recurring_spells' }) then
             combat.enabled = normalize_boolean(nested.enabled, combat.enabled)
             combat.autotarget = normalize_boolean(nested.autotarget, combat.autotarget)
         combat.auto_engage = normalize_boolean(nested.auto_engage, combat.auto_engage)
@@ -1597,6 +1601,12 @@ local function normalize_combat(source, config)
         combat.weaponskill.wait_ignore_names = normalize_list(nested_ws.wait_ignore_names, combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(nested_ws.aftermath_enabled, combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(nested_ws.aftermath_ws, combat.weaponskill.aftermath_ws)
+        local recurring_spells = is_table(nested.recurring_spells) and nested.recurring_spells or {}
+        combat.recurring_spells.enabled = normalize_boolean(recurring_spells.enabled, combat.recurring_spells.enabled)
+        combat.recurring_spells.list = normalize_pipe_string_list(recurring_spells.list, combat.recurring_spells.list)
+        if combat.recurring_spells.enabled and #combat.recurring_spells.list == 0 then
+            error('combat.recurring_spells.list requires at least one spell when enabled')
+        end
         combat.pulling = normalize_camp_pulling(nested.pulling)
     else
             combat.enabled = normalize_boolean(first_path(source, { path('domain_combat_enabled') }), combat.enabled)
@@ -1619,6 +1629,11 @@ local function normalize_combat(source, config)
         combat.weaponskill.wait_ignore_names = normalize_list(first_path(source, { path('wait_ignore_names') }), combat.weaponskill.wait_ignore_names)
         combat.weaponskill.aftermath_enabled = normalize_boolean(first_path(source, { path('aftermath_enabled') }), combat.weaponskill.aftermath_enabled)
         combat.weaponskill.aftermath_ws = normalize_string(first_path(source, { path('aftermath_ws') }), combat.weaponskill.aftermath_ws)
+        combat.recurring_spells.enabled = normalize_boolean(first_path(source, { path('recurring_spells_enabled') }), combat.recurring_spells.enabled)
+        combat.recurring_spells.list = normalize_pipe_string_list(first_path(source, { path('recurring_spells') }), combat.recurring_spells.list)
+        if combat.recurring_spells.enabled and #combat.recurring_spells.list == 0 then
+            error('combat.recurring_spells.list requires at least one spell when enabled')
+        end
         combat.pulling = normalize_camp_pulling(first_path(source, { path('camp_pulling') }))
     end
 end
