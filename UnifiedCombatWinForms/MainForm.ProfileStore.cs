@@ -429,6 +429,8 @@ public partial class MainForm
             ["weaponskill_min_tp"] = decimal.ToInt32(_wsMinimumTp.Value),
             ["food_enabled"] = _foodEnabled.Checked,
             ["food_item"] = (_foodItem.Text ?? "").Trim(),
+            ["recurring_spells_enabled"] = _recurringSpellsEnabled.Checked,
+            ["recurring_spells"] = (_recurringSpells.Text ?? "").Trim(),
             ["weaponskill_allow_aoe"] = _chkWsAllowAoe.Checked,
             ["fast_skillchain"] = _chkFastSkillchain.Checked,
         };
