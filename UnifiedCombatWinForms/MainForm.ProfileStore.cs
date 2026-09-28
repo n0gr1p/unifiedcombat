@@ -565,6 +565,8 @@ public partial class MainForm
             ["weaponskill_min_tp"] = 1000,
             ["weaponskill_allow_aoe"] = true,
             ["fast_skillchain"] = false,
+            ["recurring_spells_enabled"] = false,
+            ["recurring_spells"] = "",
             ["no_skillchain_target_entries"] = "",
             ["aftermath_ws"] = "",
             ["magic_burst_enabled"] = false,
