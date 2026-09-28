@@ -322,6 +322,8 @@ public partial class MainForm
             _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
             _foodEnabled.Checked = SessionStateHelper.GetBool(s, "food_enabled", false);
             _foodItem.Text = SessionStateHelper.GetString(s, "food_item", "");
+            _recurringSpellsEnabled.Checked = SessionStateHelper.GetBool(s, "recurring_spells_enabled", false);
+            _recurringSpells.Text = SessionStateHelper.GetString(s, "recurring_spells", "");
             _chkWsAllowAoe.Checked = SessionStateHelper.GetBool(s, "weaponskill_allow_aoe", true);
             _chkFastSkillchain.Checked = SessionStateHelper.GetBool(s, "fast_skillchain", false);
             _skillchainTargetCombo.SelectedItem = SkillchainTargetRuntimeToUi(
@@ -385,6 +387,8 @@ public partial class MainForm
             _wsMinimumTp.Value = 1000;
             _foodEnabled.Checked = false;
             _foodItem.Text = "";
+            _recurringSpellsEnabled.Checked = false;
+            _recurringSpells.Text = "";
             _chkWsAllowAoe.Checked = true;
             _chkFastSkillchain.Checked = false;
             _skillchainTargetCombo.SelectedItem = "Auto";
