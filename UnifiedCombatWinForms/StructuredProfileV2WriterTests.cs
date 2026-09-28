@@ -42,6 +42,7 @@ internal static class StructuredProfileV2WriterTests
 			TestSerializeCampLeashSourceWithoutPullerName();
             TestSerializeGeoMaintenance();
             TestSerializeFoodMaintenance();
+            TestSerializeRecurringCombatSpells();
             TestSerializeSavedByTheBellEncounter();
             TestSerializeCampPulling();
             TestGeoPullUiOfflineContract();
@@ -799,6 +800,43 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(store, "[\"food_item\"] = (_foodItem.Text ?? \"\").Trim()", "food item name must persist");
         AssertContains(logic, "SessionStateHelper.GetBool(s, \"food_enabled\", false)", "food enabled state must reload");
         AssertContains(logic, "SessionStateHelper.GetString(s, \"food_item\", \"\")", "food item name must reload");
+    }
+
+    private static void TestSerializeRecurringCombatSpells()
+    {
+        var flat = BuildSampleFlatProfile();
+        flat["recurring_spells_enabled"] = true;
+        flat["recurring_spells"] = "Absorb-TP|Absorb-STR|Absorb-DEX";
+
+        var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
+            flat,
+            new StructuredProfileV2Identity("Terrasjr", "DRK", "SAM")
+        );
+
+        AssertContains(content, "recurring_spells = {", "recurring combat spell config must serialize");
+        AssertContains(content, "enabled = true", "recurring combat spell enabled flag must serialize");
+        AssertContains(content, ""Absorb-TP"", "first recurring combat spell must serialize");
+        AssertContains(content, ""Absorb-STR"", "second recurring combat spell must serialize");
+        AssertContains(content, ""Absorb-DEX"", "third recurring combat spell must serialize");
+
+        flat["recurring_spells"] = "";
+        AssertThrows<InvalidDataException>(
+            () => StructuredProfileV2Writer.BuildStructuredProfileFile(
+                flat,
+                new StructuredProfileV2Identity("Terrasjr", "DRK", "SAM")
+            ),
+            "enabled recurring combat spells must require at least one spell"
+        );
+
+        var ui = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityUi.cs");
+        var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        AssertContains(ui, "Text = "Recurring Spells"", "recurring spell enable control must exist");
+        AssertContains(ui, "PlaceholderText = "Absorb-TP|Absorb-STR"", "recurring spell list control must exist");
+        AssertContains(store, "["recurring_spells_enabled"] = _recurringSpellsEnabled.Checked", "recurring spell enabled state must persist");
+        AssertContains(store, "["recurring_spells"] = (_recurringSpells.Text ?? "").Trim()", "recurring spell list must persist");
+        AssertContains(logic, "SessionStateHelper.GetBool(s, "recurring_spells_enabled", false)", "recurring spell enabled state must reload");
+        AssertContains(logic, "SessionStateHelper.GetString(s, "recurring_spells", "")", "recurring spell list must reload");
     }
 
     private static void TestSerializeSavedByTheBellEncounter()
