@@ -400,6 +400,40 @@ local function main()
 		"pre-resurrection Profile V2 must receive the canonical resurrection priority"
 	)
 
+	local legacy_recurring_payload = build_structured_payload()
+	assert_true(
+		legacy_recurring_payload.config.combat.recurring_spells == nil,
+		"legacy recurring-spell regression fixture must omit the new combat subdomain"
+	)
+	local current_with_recurring_spells = build_flat_settings()
+	current_with_recurring_spells.recurring_spells_enabled = true
+	current_with_recurring_spells.recurring_spells = "Absorb-TP|Absorb-STR"
+	local legacy_recurring_apply = profile_v2.build_settings_candidate_from_structured_profile(
+		current_with_recurring_spells,
+		legacy_recurring_payload,
+		{ character = "Redrogue", main_job = "PLD", sub_job = "WAR" }
+	)
+	assert_true(
+		legacy_recurring_apply.ok == true,
+		"pre-recurring-spells Profile V2 must not inherit the live session recurring spell list: "
+			.. tostring(legacy_recurring_apply.error or legacy_recurring_apply.detail)
+	)
+	assert_equal(
+		legacy_recurring_apply.candidate_config.combat.recurring_spells.enabled,
+		false,
+		"pre-recurring-spells Profile V2 must default recurring spells disabled"
+	)
+	assert_equal(
+		#legacy_recurring_apply.candidate_config.combat.recurring_spells.list,
+		0,
+		"pre-recurring-spells Profile V2 must default the recurring spell list empty"
+	)
+	assert_equal(
+		legacy_recurring_apply.candidate.recurring_spells,
+		"",
+		"pre-recurring-spells Profile V2 projection must clear stale live recurring spells"
+	)
+
     local unrelated_ownership = deep_clone(structured_config)
     unrelated_ownership.ownership.domain_follow_enabled = false
     local unrelated_diff = profile_v2.diff_durable_config(unrelated_ownership, structured_config)
