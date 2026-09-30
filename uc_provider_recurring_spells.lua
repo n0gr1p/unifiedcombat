@@ -79,6 +79,7 @@ function M.new(deps)
 	local get_spell_resource = require_function(deps, 'get_spell_resource')
 	local action_ready = require_function(deps, 'action_ready')
 	local action_effective_range = require_function(deps, 'action_effective_range')
+	local build_friendly_claims = require_function(deps, 'build_friendly_claims')
 	local clamp_urgency = require_function(deps, 'clamp_urgency')
 	local combat_domain_enabled = require_function(deps, 'combat_domain_enabled')
 	local timeline_log = require_function(deps, 'action_timeline_log')
@@ -106,10 +107,15 @@ function M.new(deps)
 			error('Recurring combat spells are enabled but no spells are configured')
 		end
 
-		local player = ctx.player
-		if ctx.player_present ~= true or tonumber(player and player.status) ~= 1 then return end
+		if ctx.player_present ~= true then return end
 		local target = ctx.target
 		if ctx.target_present ~= true or not valid_enemy_target(target) then return end
+		local _, friendly_claim_set = build_friendly_claims(ctx)
+		if type(friendly_claim_set) ~= 'table' then
+			error('Recurring combat spell friendly claim builder must return a claim set table')
+		end
+		local claim_id = tonumber(target.claim_id) or 0
+		if claim_id <= 0 or friendly_claim_set[claim_id] ~= true then return end
 		local target_id = tonumber(target.id) or 0
 
 		for index, spell_name in ipairs(names) do
@@ -157,6 +163,8 @@ function M.new(deps)
 					reason_code = 'recurring_spell_ready',
 					detail = {
 						allow_target_id_send = true,
+						require_current_target = true,
+						require_friendly_claim = true,
 						recurring_spell = true,
 						configured_index = index,
 					},
