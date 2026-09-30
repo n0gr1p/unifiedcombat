@@ -1329,6 +1329,7 @@ function M.build_active_profile_from_v2_payload(payload, context)
 		compatibility_source.combat = {
 			pulling = config.combat.pulling,
 			weaponskill = config.combat.weaponskill,
+			recurring_spells = config.combat.recurring_spells,
 		}
 	end
 	if type(config.maintenance) == 'table' then
@@ -1344,6 +1345,7 @@ function M.build_active_profile_from_v2_payload(payload, context)
 		if type(config.combat) == 'table' then
 			config.combat.pulling = clone_value(normalized_or_err.combat.pulling)
 			config.combat.weaponskill = clone_value(normalized_or_err.combat.weaponskill)
+			config.combat.recurring_spells = clone_value(normalized_or_err.combat.recurring_spells)
 		end
 		if type(config.maintenance) == 'table' then
 			config.maintenance.geo = clone_value(normalized_or_err.maintenance.geo)
