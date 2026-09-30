@@ -5306,11 +5306,26 @@ function p1_combat_helpers.target_distance_to_id(target_id)
 end
 
 function p1_combat_helpers.spell_target_dispatch_ready(selected, expected_tid, tank_enmity)
-	if (tank_enmity or (type(selected.detail) == 'table' and selected.detail.allow_target_id_send == true)) and expected_tid > 0 then
+	local detail = type(selected.detail) == 'table' and selected.detail or {}
+	if detail.require_current_target == true then
+		local current_target = windower.ffxi.get_mob_by_target('t')
+		if not current_target or not current_target.valid_target
+			or (tonumber(current_target.id) or 0) ~= expected_tid then
+			return false
+		end
+	end
+	if (tank_enmity or detail.allow_target_id_send == true) and expected_tid > 0 then
 		local max_range = math.max(0, p1_number(selected.range_policy and selected.range_policy.max, 0))
 		local dist, mob = p1_combat_helpers.target_distance_to_id(expected_tid)
 		if not mob or not combat_core.is_live_actionable_combat_target(mob, now_s(), true) then
 			return false
+		end
+		if detail.require_friendly_claim == true then
+			local _, claims_set = uc_targeting_common.build_friendly_claims()
+			local claim_id = tonumber(mob.claim_id) or 0
+			if claim_id <= 0 or type(claims_set) ~= 'table' or claims_set[claim_id] ~= true then
+				return false
+			end
 		end
 		if max_range > 0 and dist and dist > max_range then
 			return false
@@ -8758,6 +8773,11 @@ scheduler.providers.recurring_spells = require('uc_provider_recurring_spells').n
 	get_spell_resource = get_spell_resource,
 	action_ready = action_ready,
 	action_effective_range = action_effective_range,
+	build_friendly_claims = function(ctx)
+		return uc_targeting_common.build_friendly_claims({
+			party = type(ctx) == 'table' and ctx.party or nil,
+		})
+	end,
 	clamp_urgency = p1_clamp_urgency,
 	combat_domain_enabled = function()
 		return domain_ownership.is_enabled('combat')
