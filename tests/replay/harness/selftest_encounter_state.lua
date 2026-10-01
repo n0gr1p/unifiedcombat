@@ -1,6 +1,7 @@
 local encounter = require('uc_encounter_state')
 
 local SORTIE_ZONE_ID = 133
+local SORTIE_ALT_ZONE_ID = 189
 
 local function assert_true(condition, message)
 	if condition ~= true then
@@ -59,6 +60,10 @@ assert_equal(reason, 'ZONE_UNRESOLVED', 'missing-zone-id reason mismatch')
 ok, reason = observe(1.0, { boss(1001, 'Ghatjot', 0, 100, 10, 20) }, {}, 100)
 assert_false(ok, 'same-named actor outside Sortie must not bind')
 assert_equal(reason, 'NOT_IN_SORTIE', 'wrong-zone reason mismatch')
+
+ok, reason = observe(1.5, { boss(1001, 'Ghatjot', 0, 100, 10, 20) }, {}, SORTIE_ALT_ZONE_ID)
+assert_true(ok, 'Ghatjot should bind in the alternate Sortie U3 instance')
+encounter.reset('sortie_u3_acceptance_complete')
 
 ok, reason = observe(2.0, { boss(1001, 'Dhartok', 0, 100, 10, 20) })
 assert_false(ok, 'wrong configured actor must not bind')
