@@ -1757,10 +1757,20 @@ local function doom_water_dependencies(settings)
 end
 
 local function try_doom_water_emergency(settings)
-	return require('uc_doom_water').step(
+	local blocked, reason = require('uc_doom_water').step(
 		scheduler.doom_water_state,
 		doom_water_dependencies(settings)
 	)
+	if blocked ~= true and doom_water_enabled(settings) then
+		local player = windower.ffxi.get_player()
+		if player ~= nil and player_has_doom(player) then
+			-- Holy Water was not a viable action. Force the normal defensive
+			-- provider to consider Cursna/status removal on this same scheduler tick
+			-- instead of waiting for the next 2 Hz defensive cadence.
+			settings._sched_next_defensive_at = 0
+		end
+	end
+	return blocked, reason
 end
 
 function scheduler.on_add_item(bag, index, item_id, count)
