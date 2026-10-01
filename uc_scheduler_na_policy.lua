@@ -65,7 +65,7 @@ function M.choose_status_removal(members, options, deps)
 				local buff_res = deps.buffs and deps.buffs[buff_id] or nil
 				local status_name = buff_res and buff_res.en or ''
 				local spell = deps.debuff_map[status_name] or deps.debuff_spell_for_buff_id(buff_id)
-				local status_key = deps.normalize_status_removal_key(buff_res)
+				local status_key = deps.normalize_status_removal_key(buff_res, buff_id)
 				local status_rank = limited and policy.rank_by_key[status_key] or nil
 				if spell and (not limited or status_rank ~= nil) then
 					local action_name = nil
