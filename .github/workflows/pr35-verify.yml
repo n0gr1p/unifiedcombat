@@ -41,6 +41,8 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_runtime_parse.lua
       - name: Doom Holy Water staging self-test
         run: lua5.1 tests/replay/harness/selftest_doom_water.lua
+      - name: Doom Holy Water integration self-test
+        run: lua5.1 tests/replay/harness/selftest_doom_water_integration.lua
       - name: RUN tank self-test
         run: lua5.1 tests/replay/harness/selftest_run_tank.lua
       - name: RUN no-TP mode self-test
