@@ -135,9 +135,12 @@ local function reserve_lane(deps, reason)
 	fn(reason)
 end
 
-local function use_ready_water(state, deps, now_value)
+local function use_ready_water(state, deps, now_value, confirmed_count)
 	reserve_lane(deps, 'DOOM_HOLY_WATER_READY')
-	local ready = inventory_item_count(deps, state.item_id)
+	local ready = tonumber(confirmed_count) or 0
+	if ready <= 0 then
+		ready = inventory_item_count(deps, state.item_id)
+	end
 	if ready <= 0 then
 		M.reset(state, 'READY_ITEM_MISSING')
 		log(deps, 'DOOM_WATER_UNAVAILABLE reason=READY_ITEM_MISSING fallback=STATUS_REMOVAL')
@@ -233,7 +236,6 @@ function M.step(state, deps)
 		return false, 'DOOM_WATER_SOURCE_SLOT_INVALID'
 	end
 
-	reserve_lane(deps, 'DOOM_HOLY_WATER_STAGING')
 	local ok, result = pcall(require_function(deps, 'get_item'), source.bag, source.slot, 1)
 	if not ok or result == false then
 		M.reset(state, 'STAGE_REQUEST_FAILED')
@@ -241,6 +243,7 @@ function M.step(state, deps)
 		return false, 'DOOM_WATER_STAGE_REQUEST_FAILED'
 	end
 
+	reserve_lane(deps, 'DOOM_HOLY_WATER_STAGING')
 	state.phase = 'staging'
 	state.requested_at = now_value
 	state.source_bag = source.bag
@@ -271,7 +274,7 @@ function M.on_add_item(state, bag, index, item_id, count, deps)
 		tonumber(index) or 0,
 		tonumber(count) or 0
 	))
-	return use_ready_water(state, deps, require_function(deps, 'now')())
+	return use_ready_water(state, deps, require_function(deps, 'now')(), math.max(1, tonumber(count) or 0))
 end
 
 function M.status(state)
