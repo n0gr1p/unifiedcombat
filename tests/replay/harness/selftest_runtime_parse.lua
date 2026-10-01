@@ -37,6 +37,7 @@ local RUNTIME_LUA_FILES = {
     "uc_config_runtime.lua",
     "uc_config_status_export.lua",
     "uc_domain_ownership.lua",
+    "uc_doom_water.lua",
     "uc_combat_formation.lua",
     "uc_combat_extension_config.lua",
     "uc_combat_extensions.lua",
