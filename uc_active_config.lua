@@ -870,6 +870,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.path_hunter_ignore_cooldown_s = config.movement.path.hunter_ignore_cooldown_s
 			candidate.path_pull_action_type = config.movement.path.pull_action_type
 			candidate.path_pull_action_name = config.movement.path.pull_action_name
+			candidate.path_pull_attack_fallback_enabled = config.movement.path.pull_attack_fallback_enabled
 		end
 	end
 
