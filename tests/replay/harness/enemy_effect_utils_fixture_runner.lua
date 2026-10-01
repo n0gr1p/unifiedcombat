@@ -5,7 +5,7 @@ local M = {}
 
 local function call_helper(helper, input)
     if helper == "normalize_status_removal_key" then
-        return utils.normalize_status_removal_key(input and input.buff_res)
+        return utils.normalize_status_removal_key(input and input.buff_res, input and input.buff_id)
     end
     if helper == "danger_weight_to_priority" then
         return utils.danger_weight_to_priority(input and input.w)

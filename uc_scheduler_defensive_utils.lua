@@ -6,14 +6,32 @@ local debuff_spell_mapping = {
 	['blindness'] = 'Blindna',
 	['poison'] = 'Poisona',
 	['petrification'] = 'Stona',
+	['petrify'] = 'Stona',
+	['petrified'] = 'Stona',
 	['curse'] = 'Cursna',
 	['disease'] = 'Viruna',
 	['plague'] = 'Viruna',
 }
 
+local debuff_spell_by_buff_id = {
+	[3] = 'Poisona',
+	[4] = 'Paralyna',
+	[5] = 'Blindna',
+	[6] = 'Silena',
+	[7] = 'Stona',
+	[8] = 'Viruna',
+	[9] = 'Cursna',
+	[31] = 'Viruna',
+}
+
 function M.debuff_spell_for_buff_id(res_table, buff_id)
+	local numeric_buff_id = tonumber(buff_id) or 0
+	local id_mapped = debuff_spell_by_buff_id[numeric_buff_id]
+	if id_mapped then
+		return id_mapped
+	end
 	local buffs = res_table and res_table.buffs
-	local b = buffs and buffs[buff_id] or nil
+	local b = buffs and buffs[numeric_buff_id] or nil
 	local en = b and b.en and b.en:lower() or ''
 	if en == '' then
 		return nil

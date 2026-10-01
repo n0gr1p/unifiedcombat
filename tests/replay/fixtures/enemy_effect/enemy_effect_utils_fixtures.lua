@@ -77,6 +77,42 @@ return {
         },
     },
     {
+        fixture_id = "enemy_utils_normalize_petrification",
+        helper = "normalize_status_removal_key",
+        description = "Windower Petrification resource name normalizes to the canonical key",
+        input = {
+            buff_res = { en = "petrification" },
+            buff_id = 7,
+        },
+        expected = {
+            result = "petrification",
+        },
+    },
+    {
+        fixture_id = "enemy_utils_normalize_petrified_alias",
+        helper = "normalize_status_removal_key",
+        description = "petrified resource aliases normalize to Petrification",
+        input = {
+            buff_res = { en = "Petrified" },
+            buff_id = 7,
+        },
+        expected = {
+            result = "petrification",
+        },
+    },
+    {
+        fixture_id = "enemy_utils_normalize_petrification_id_fallback",
+        helper = "normalize_status_removal_key",
+        description = "buff id 7 remains recognizable even if the resource row is unavailable",
+        input = {
+            buff_res = nil,
+            buff_id = 7,
+        },
+        expected = {
+            result = "petrification",
+        },
+    },
+    {
         fixture_id = "enemy_utils_danger_weight_nil_priority_72",
         helper = "danger_weight_to_priority",
         description = "nil weight maps through tonumber fallback to priority 72",

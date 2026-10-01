@@ -2936,11 +2936,13 @@ local function get_party_members(ctx)
 			if hp > 0 and hpp > 0 then
 				max_hp = math.floor((hp / hpp) * 100 + 0.5)
 			end
-			local buffs = nil
-			if type(packet_buffs) == 'table' and type(packet_buffs.buffs) == 'table' then
-				buffs = packet_buffs.buffs
-				buff_source = 'packet_076'
-			end
+			local buffs
+			buffs, buff_source = require('uc_scheduler_party_state').select_member_buffs(
+				is_self,
+				is_self and player and player.buffs or nil,
+				ipc,
+				packet_buffs
+			)
 			-- Source of truth for self state must be local player object, not party snapshot/IPC.
 			if is_self and player and player.vitals then
 				source = 'self_local'
@@ -2965,10 +2967,6 @@ local function get_party_members(ctx)
 				mp = tonumber(ipc.mp) or mp
 				max_mp = tonumber(ipc.max_mp) or max_mp
 				mpp = tonumber(ipc.mpp) or mpp
-				if buffs == nil and type(ipc.buffs) == 'table' then
-					buffs = ipc.buffs
-					buff_source = 'ipc'
-				end
 			end
 			-- Never let IPC override local self authoritative state.
 			if is_self and player and player.vitals then

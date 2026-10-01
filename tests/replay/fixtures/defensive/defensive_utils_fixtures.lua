@@ -18,6 +18,20 @@ return {
         expected = { result = "Paralyna" },
     },
     {
+        fixture_id = "defensive_debuff_spell_petrification_id_7",
+        helper = "debuff_spell_for_buff_id",
+        description = "Windower Petrification buff id 7 maps directly to Stona",
+        input = { res_table = res_with_buffs({ [7] = { en = "petrification" } }), buff_id = 7 },
+        expected = { result = "Stona" },
+    },
+    {
+        fixture_id = "defensive_debuff_spell_petrification_id_7_without_resource",
+        helper = "debuff_spell_for_buff_id",
+        description = "Petrification id 7 still maps to Stona when resource lookup is unavailable",
+        input = { res_table = res_with_buffs({}), buff_id = 7 },
+        expected = { result = "Stona" },
+    },
+    {
         fixture_id = "defensive_debuff_spell_unknown_returns_nil",
         helper = "debuff_spell_for_buff_id",
         description = "unknown debuff returns nil",

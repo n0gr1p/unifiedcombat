@@ -74,4 +74,14 @@ assert_equal(state.by_id[100], nil, 'expired entry deleted')
 
 assert_equal(party_state.apply_message(state, 'other|1|100|Name|200|1|1|1|1|1|1||1', deps), false, 'foreign prefix rejected')
 
+local selected_buffs, selected_source = party_state.select_member_buffs(false, nil, { buffs = { 7 } }, { buffs = { 33 } })
+assert_equal(selected_buffs[1], 7, 'fresh remote IPC buffs must beat packet 0x076 state')
+assert_equal(selected_source, 'ipc', 'remote UC member buff source must be IPC')
+selected_buffs, selected_source = party_state.select_member_buffs(false, nil, nil, { buffs = { 33 } })
+assert_equal(selected_buffs[1], 33, 'packet 0x076 must remain fallback for members without IPC')
+assert_equal(selected_source, 'packet_076', 'packet fallback source mismatch')
+selected_buffs, selected_source = party_state.select_member_buffs(true, { 7 }, { buffs = { 33 } }, { buffs = { 40 } })
+assert_equal(selected_buffs[1], 7, 'local self buffs must remain authoritative')
+assert_equal(selected_source, 'self_local', 'self buff source mismatch')
+
 io.stdout:write('selftest_scheduler_party_state: OK\n')
