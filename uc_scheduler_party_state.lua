@@ -142,6 +142,19 @@ function M.apply_message(state, message, deps)
 	return true
 end
 
+function M.select_member_buffs(is_self, local_buffs, ipc_entry, packet_entry)
+	if is_self == true and type(local_buffs) == 'table' then
+		return local_buffs, 'self_local'
+	end
+	if type(ipc_entry) == 'table' and type(ipc_entry.buffs) == 'table' then
+		return ipc_entry.buffs, 'ipc'
+	end
+	if type(packet_entry) == 'table' and type(packet_entry.buffs) == 'table' then
+		return packet_entry.buffs, 'packet_076'
+	end
+	return nil, 'missing'
+end
+
 function M.get_entry(state, member_id, member_name, deps)
 	if type(state) ~= 'table' then
 		error('uc_scheduler_party_state requires state')
