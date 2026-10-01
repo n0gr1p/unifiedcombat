@@ -1,6 +1,7 @@
 local res = require('resources')
 local uc_active_config = require('uc_active_config')
 local encounter_state = require('uc_encounter_state')
+local encounter_registry = require('uc_encounter_registry')
 local kei_encounter = require('uc_kei_encounter')
 local saved_by_bell_encounter = require('uc_saved_by_bell_encounter')
 local party_buff_tracker = require('uc_party_buff_tracker')
@@ -9,16 +10,6 @@ local M = {}
 
 local last_snapshot_signature = ''
 
-local RAW_ACTOR_NAMES = {
-	Ghatjot = true,
-	Dhartok = true,
-	Kei = true,
-}
-
-local SORTIE_ZONE_IDS = {
-	[133] = true,
-	[189] = true,
-}
 
 local function emit(event_code, fields, key, interval)
 	local logger = rawget(_G, 'UC_ACTION_TIMELINE_LOG')
@@ -64,6 +55,15 @@ local function encounter_config()
 		out.kei = config.kei
 	end
 	return out
+end
+
+local function configured_actor_name()
+	local config = encounter_config()
+	if config.enabled ~= true then
+		return ''
+	end
+	local definition = encounter_registry.get(config.id)
+	return tostring(definition and definition.actor_name or '')
 end
 
 local function current_zone_id()
@@ -372,16 +372,14 @@ local function raw_target_summaries(act)
 end
 
 local function emit_raw_encounter_candidate(act, category, ability_name, ability_id, observed_at)
-	local observed_zone_id = current_zone_id()
-	if SORTIE_ZONE_IDS[observed_zone_id] ~= true then
-		return false
-	end
 	local actor_id = tonumber(act.actor_id) or 0
 	local actor = actor_id > 0 and windower.ffxi.get_mob_by_id(actor_id) or nil
 	local actor_name = tostring(actor and actor.name or '')
-	if RAW_ACTOR_NAMES[actor_name] ~= true then
+	local expected_actor_name = configured_actor_name()
+	if expected_actor_name == '' or actor_name ~= expected_actor_name then
 		return false
 	end
+	local observed_zone_id = current_zone_id()
 	local targets_summary, actions_summary = raw_target_summaries(act)
 	emit('ENCOUNTER_RAW_ABILITY_CANDIDATE', {
 		actor_id = actor_id,
@@ -474,7 +472,8 @@ function M.observe_action_result(event)
 	local target_id = tonumber(event.target_id) or 0
 	local target = target_id > 0 and windower.ffxi.get_mob_by_id(target_id) or nil
 	local target_name = tostring(target and target.name or '')
-	if SORTIE_ZONE_IDS[current_zone_id()] == true and RAW_ACTOR_NAMES[target_name] == true then
+	local expected_actor_name = configured_actor_name()
+	if expected_actor_name ~= '' and target_name == expected_actor_name then
 		emit('ENCOUNTER_RAW_ACTION_RESULT_CANDIDATE', {
 			action_class = tostring(event.action_class or ''),
 			action_key = tostring(event.action_key or ''),
