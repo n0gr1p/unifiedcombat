@@ -241,6 +241,7 @@ local function build_flat_settings()
         path_hunter_ignore_cooldown_s = 30.0,
         path_pull_action_type = 'spell',
         path_pull_action_name = 'Dia',
+        path_pull_attack_fallback_enabled = true,
         debug = true,
         log_action_timeline = true,
         log_combat_sched = true,
@@ -429,6 +430,7 @@ local function build_nested_settings()
                 hunter_ignore_cooldown_s = 3,
                 pull_action_type = 'ja',
                 pull_action_name = 'Provoke',
+                pull_attack_fallback_enabled = true,
             },
         },
         follow = {
@@ -681,6 +683,7 @@ local function main()
     assert_equal(flat_config.movement.spacing.band_min, -1.2, 'spacing band min mismatch')
     assert_equal(flat_config.movement.path.file_name, 'route.json', 'path file mismatch')
     assert_equal(flat_config.movement.path.hunter_targets[1], 'Target A', 'path hunter targets mismatch')
+    assert_equal(flat_config.movement.path.pull_attack_fallback_enabled, true, 'flat path pull attack fallback mismatch')
     assert_equal(flat_config.follow.party.leader_name, 'Leader', 'party follow leader mismatch')
     assert_equal(flat_config.follow.partner.secondary_enabled, true, 'partner2 mismatch')
     assert_equal(flat_config.follow.partner.puller_name, 'Niightsiide', 'flat puller name mismatch')
@@ -759,6 +762,7 @@ local function main()
     assert_equal(nested_config.movement.formation.required_party_names[2], 'Etamame', 'nested formation required party mismatch')
     assert_equal(nested_config.movement.formation.healer.sample_step_deg, 5, 'nested formation healer sample mismatch')
     assert_equal(nested_config.movement.path.points[1].x, 1, 'nested path points mismatch')
+    assert_equal(nested_config.movement.path.pull_attack_fallback_enabled, true, 'nested path pull attack fallback mismatch')
     assert_equal(nested_config.maintenance.brd.enabled, true, 'nested maintenance BRD enabled mismatch')
     assert_equal(nested_config.maintenance.brd.songs[2], 'Victory March', 'nested maintenance BRD song mismatch')
     assert_equal(nested_config.maintenance.brd.dummy_songs[1], "Army's Paeon", 'nested maintenance BRD dummy mismatch')
