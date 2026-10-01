@@ -5,8 +5,6 @@ local definitions = {
 		id = 'sortie_ghatjot',
 		family = 'sortie_plovid',
 		actor_name = 'Ghatjot',
-		zone_id = 133,
-		zone_name = "Outer Ra'Kaznar [U2]",
 		policy = {
 			water_damage = 'enforce',
 			water_skillchain = 'enforce',
@@ -20,8 +18,6 @@ local definitions = {
 		id = 'sortie_dhartok',
 		family = 'sortie_plovid',
 		actor_name = 'Dhartok',
-		zone_id = 133,
-		zone_name = "Outer Ra'Kaznar [U2]",
 		policy = {
 			water_damage = 'enforce',
 			water_skillchain = 'enforce',
@@ -52,8 +48,6 @@ local function copy_definition(definition)
 		id = definition.id,
 		family = definition.family,
 		actor_name = definition.actor_name,
-		zone_id = definition.zone_id,
-		zone_name = definition.zone_name,
 		policy = copy_table(definition.policy),
 		tuning = copy_table(definition.tuning),
 	}

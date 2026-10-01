@@ -45,7 +45,7 @@ end
 
 package.loaded.resources = {
 	zones = {
-		[133] = { en = "Outer Ra'Kaznar [U2]" },
+		[999] = { en = 'Unexpected Diagnostic Zone' },
 	},
 	buffs = {
 		[101] = { en = 'Poison' },
@@ -84,7 +84,7 @@ package.loaded.uc_party_buff_tracker = {
 _G.windower = {
 	ffxi = {
 		get_info = function()
-			return { zone = 133 }
+			return { zone = 999 }
 		end,
 		get_mob_array = function()
 			return mobs
@@ -163,8 +163,8 @@ assert_true(ok, 'runtime should resolve Cesspool resource')
 assert_equal(reason, 'CESSPOOL_TELEMETRY_STARTED', 'runtime Cesspool reason mismatch')
 assert_equal(timeline_events[#timeline_events - 1].event_code, 'ENCOUNTER_RAW_ABILITY_CANDIDATE', 'raw capture event missing')
 assert_equal(timeline_events[#timeline_events - 1].fields.actor_name, 'Dhartok', 'raw capture actor mismatch')
-assert_equal(timeline_events[#timeline_events - 1].fields.zone_id, 133, 'raw capture zone id mismatch')
-assert_equal(timeline_events[#timeline_events - 1].fields.zone_name, "Outer Ra'Kaznar [U2]", 'raw capture zone name mismatch')
+assert_equal(timeline_events[#timeline_events - 1].fields.zone_id, 999, 'raw capture zone id must remain diagnostic only')
+assert_equal(timeline_events[#timeline_events - 1].fields.zone_name, 'Unexpected Diagnostic Zone', 'raw capture zone name must remain diagnostic only')
 assert_equal(timeline_events[#timeline_events - 1].fields.target_count, 1, 'raw capture target count mismatch')
 assert_true(
 	timeline_events[#timeline_events - 1].fields.targets_summary:find('id=4001', 1, true) ~= nil,
@@ -238,13 +238,8 @@ ok, reason = runtime.on_action({
 	},
 }, 21.0)
 assert_equal(ok, false, 'disabled encounter state must not observe raw candidate as active state')
-assert_equal(reason, 'ENCOUNTER_UNRESOLVED', 'disabled raw capture state reason mismatch')
-assert_equal(#timeline_events, raw_count + 1, 'disabled encounter must still emit one raw capture event')
-assert_equal(timeline_events[#timeline_events].event_code, 'ENCOUNTER_RAW_ABILITY_CANDIDATE', 'disabled raw event mismatch')
-assert_true(
-	timeline_events[#timeline_events].fields.actions_summary:find('message=101', 1, true) ~= nil,
-	'disabled raw capture action details missing'
-)
+assert_equal(reason, 'ENCOUNTER_UNRESOLVED', 'disabled encounter state reason mismatch')
+assert_equal(#timeline_events, raw_count, 'disabled encounter must not emit configured-encounter raw telemetry')
 
 raw_count = #timeline_events
 ok, reason = runtime.observe_action_result({
@@ -258,13 +253,7 @@ ok, reason = runtime.observe_action_result({
 })
 assert_equal(ok, false, 'disabled encounter state must not store raw action result candidate')
 assert_equal(reason, 'DHARTOK_UNRESOLVED', 'disabled raw action result state reason mismatch')
-assert_equal(#timeline_events, raw_count + 1, 'disabled encounter must emit one raw action result event')
-assert_equal(
-	timeline_events[#timeline_events].event_code,
-	'ENCOUNTER_RAW_ACTION_RESULT_CANDIDATE',
-	'disabled raw action result event mismatch'
-)
-assert_equal(timeline_events[#timeline_events].fields.success, true, 'raw action result success mismatch')
+assert_equal(#timeline_events, raw_count, 'disabled encounter must not emit configured-encounter action telemetry')
 
 package.loaded.uc_encounter_runtime = saved_encounter_runtime
 package.loaded.uc_encounter_state = saved_encounter_state

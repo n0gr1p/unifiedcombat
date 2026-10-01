@@ -317,14 +317,6 @@ function M.observe_snapshot(snapshot)
 	if now == nil then
 		error('uc_encounter_state.observe_snapshot requires snapshot.now')
 	end
-	local zone_id = tonumber(snapshot.zone_id)
-	if zone_id ~= definition.zone_id then
-		return invalidate_binding(
-			zone_id == nil and 'ZONE_UNRESOLVED' or 'NOT_IN_SORTIE',
-			'encounter_zone_unresolved'
-		)
-	end
-
 	local matches = {}
 	for i = 1, #(snapshot.actors or {}) do
 		local actor = snapshot.actors[i]
