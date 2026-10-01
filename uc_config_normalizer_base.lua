@@ -2183,7 +2183,7 @@ local function normalize_movement(source, config)
         movement.path.hunter_ignore_cooldown_s = normalize_number(first_path(source, { path('path_hunter_ignore_cooldown_s') }), movement.path.hunter_ignore_cooldown_s)
         movement.path.pull_action_type = normalize_string(first_path(source, { path('path_pull_action_type') }), movement.path.pull_action_type)
         movement.path.pull_action_name = normalize_string(first_path(source, { path('path_pull_action_name') }), movement.path.pull_action_name)
-        movement.path.pull_attack_fallback_enabled = normalize_bool(first_path(source, { path('path_pull_attack_fallback_enabled') }), movement.path.pull_attack_fallback_enabled)
+        movement.path.pull_attack_fallback_enabled = normalize_boolean(first_path(source, { path('path_pull_attack_fallback_enabled') }), movement.path.pull_attack_fallback_enabled)
     end
 end
 
