@@ -2437,6 +2437,14 @@ windower.register_event('incoming text', function(original, modified, mode, bloc
 	end
 end)
 
+windower.register_event('add item', function(bag, index, item_id, count)
+	if type(_G.UC_SCHED_OnAddItem) == 'function' then
+		pcall(function()
+			_G.UC_SCHED_OnAddItem(bag, index, item_id, count)
+		end)
+	end
+end)
+
 windower.register_event('ipc message', function(msg)
 	uc_camp_anchor.on_ipc_message(msg)
 	local info = windower.ffxi.get_info()

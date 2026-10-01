@@ -111,12 +111,11 @@ local scheduler = {
 	defensive_pending_action = '',
 	defensive_pending_target_id = 0,
 	defensive_pending_sent_at = 0,
+	doom_water_state = require('uc_doom_water').new_state(),
 }
 
 local can_act_statuses = { [0] = true, [1] = true, [5] = true, [85] = true }
 local doom_buff_id = nil
-local doom_last_item_at = 0
-local DOOM_ITEM_COOLDOWN = 1.2
 local choose_cure_spell
 local camp_pulling_config
 local p1_build_pull_executor
@@ -1637,39 +1636,33 @@ local function player_has_doom(player)
 	return require('uc_scheduler_defensive_utils').player_has_doom(resolve_doom_buff_id, player)
 end
 
-local function try_doom_water_emergency(settings)
-	if not bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', settings and settings.defensive_enabled), false) then
-		return false, nil
-	end
-	if not bool_setting(scheduler.active_value_or_flat('config.defensive.doom.holy_water_enabled', settings and settings.defensive_doom_water), false) then
-		return false, nil
-	end
-	local p = windower.ffxi.get_player()
-	if not p then
-		return false, nil
-	end
-	if not player_has_doom(p) then
-		return false, nil
-	end
+local function doom_water_enabled(settings)
+	return domain_ownership.is_enabled('defensive')
+		and bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', settings and settings.defensive_enabled), false)
+		and bool_setting(scheduler.active_value_or_flat('config.defensive.doom.holy_water_enabled', settings and settings.defensive_doom_water), false)
+end
+
+local function reserve_doom_water_lane(reason)
+	local lane_reason = tostring(reason or 'DOOM_HOLY_WATER')
 	local stop_intent = {
 		kind = 'run_stop',
-		source = 'unified_scheduler:T2.4j_darklaunch',
+		source = 'unified_scheduler:doom_water_lane',
 		meta = {
-			reason = 'DOOM_HOLY_WATER',
+			reason = lane_reason,
 			action_type = 'item',
 			action_name = 'Holy Water',
 		},
 	}
 	local dispatcher = require('uc_scheduler_dispatcher')
-	local _stop_intent_ok, _stop_intent_reason = dispatcher.validate_intent(stop_intent)
+	local stop_ok, stop_reason = dispatcher.validate_intent(stop_intent)
 	local run_stop_ownership_status = require('uc_scheduler_run_stop_ownership').apply_run_stop_ownership({
 		dispatcher = dispatcher,
 		run = windower.ffxi.run,
 		intent = stop_intent,
 	})
 	_G.UC_SCHED_P1_DARKLAUNCH_RUN_STOP_DOOM_HOLY_WATER_VALIDATE = {
-		ok = _stop_intent_ok and true or false,
-		reason = _stop_intent_reason,
+		ok = stop_ok and true or false,
+		reason = stop_reason,
 		kind = stop_intent.kind,
 		source = stop_intent.source,
 		ownership_enabled = run_stop_ownership_status.ownership_enabled,
@@ -1680,11 +1673,6 @@ local function try_doom_water_emergency(settings)
 		stop = run_stop_ownership_status.stop,
 	}
 	local now = now_s()
-	if now - doom_last_item_at < DOOM_ITEM_COOLDOWN then
-		_G.UC_LAST_SCHED_ACTION = '[doom]holding_for_item_reuse'
-		return true, 'BLOCK_DOOM_WATER_HOLD'
-	end
-	doom_last_item_at = now
 	local sch_lane = require('uc_sch_runtime').lane_status()
 	if sch_lane.reserved and not sch_lane.atomic then
 		local preempted, preempt_reason = require('uc_sch_runtime').preempt(
@@ -1702,10 +1690,14 @@ local function try_doom_water_emergency(settings)
 			tostring(sch_lane.class)
 		))
 	end
+	return true
+end
+
+local function dispatch_doom_holy_water()
 	local doom_holy_water_command = 'input /item "Holy Water" <me>'
 	local intent = {
 		kind = 'send_command',
-		source = 'unified_scheduler:T2.3k_darklaunch',
+		source = 'unified_scheduler:doom_water_use',
 		command = doom_holy_water_command,
 		meta = {
 			action_type = 'item',
@@ -1713,7 +1705,8 @@ local function try_doom_water_emergency(settings)
 			reason = 'doom_emergency',
 		},
 	}
-	local _intent_ok, _intent_reason = dispatcher.validate_intent(intent)
+	local dispatcher = require('uc_scheduler_dispatcher')
+	local intent_ok, intent_reason = dispatcher.validate_intent(intent)
 	local command_ownership_status = require('uc_scheduler_command_ownership').apply_command_ownership({
 		dispatcher = dispatcher,
 		send_command = windower.send_command,
@@ -1721,8 +1714,8 @@ local function try_doom_water_emergency(settings)
 		command = doom_holy_water_command,
 	})
 	_G.UC_SCHED_P1_DARKLAUNCH_DOOM_HOLY_WATER_COMMAND_VALIDATE = {
-		ok = _intent_ok and true or false,
-		reason = _intent_reason,
+		ok = intent_ok and true or false,
+		reason = intent_reason,
 		kind = intent.kind,
 		source = intent.source,
 		command_present = command_ownership_status.command_present,
@@ -1732,8 +1725,68 @@ local function try_doom_water_emergency(settings)
 		dispatch_reason = command_ownership_status.dispatch_reason,
 		fallback_used = command_ownership_status.fallback_used,
 	}
-	_G.UC_LAST_SCHED_ACTION = '[doom]holy_water'
-	return true, 'BLOCK_DOOM_WATER'
+	if command_ownership_status.dispatch_ok == true then
+		_G.UC_LAST_SCHED_ACTION = '[doom]holy_water'
+		return true
+	end
+	log_def_sched(('DOOM_WATER_DISPATCH_REJECT reason=%s'):format(
+		tostring(command_ownership_status.dispatch_reason or '')
+	))
+	return false
+end
+
+local function doom_water_dependencies(settings)
+	return {
+		now = now_s,
+		enabled = function()
+			return doom_water_enabled(settings)
+		end,
+		player_has_doom = function()
+			local player = windower.ffxi.get_player()
+			return player ~= nil and player_has_doom(player)
+		end,
+		get_items = windower.ffxi.get_items,
+		get_bag_info = windower.ffxi.get_bag_info,
+		get_item = windower.ffxi.get_item,
+		item_resources = res.items,
+		bag_resources = res.bags,
+		reserve_lane = reserve_doom_water_lane,
+		use_holy_water = dispatch_doom_holy_water,
+		log = log_def_sched,
+	}
+end
+
+local function try_doom_water_emergency(settings)
+	local blocked, reason = require('uc_doom_water').step(
+		scheduler.doom_water_state,
+		doom_water_dependencies(settings)
+	)
+	if blocked ~= true and doom_water_enabled(settings) then
+		local player = windower.ffxi.get_player()
+		if player ~= nil and player_has_doom(player) then
+			-- Holy Water was not a viable action. Force the normal defensive
+			-- provider to consider Cursna/status removal on this same scheduler tick
+			-- instead of waiting for the next 2 Hz defensive cadence.
+			settings._sched_next_defensive_at = 0
+		end
+	end
+	return blocked, reason
+end
+
+function scheduler.on_add_item(bag, index, item_id, count)
+	local settings = get_settings()
+	local acted, reason = require('uc_doom_water').on_add_item(
+		scheduler.doom_water_state,
+		bag,
+		index,
+		item_id,
+		count,
+		doom_water_dependencies(settings)
+	)
+	if acted then
+		_G.UC_LAST_BLOCK_REASON = tostring(reason or 'BLOCK_DOOM_WATER')
+	end
+	return acted, reason
 end
 
 local function build_partner_target_set(settings)
@@ -7595,6 +7648,7 @@ end
 function scheduler.on_incoming_chunk(id, data)
 	local nid = tonumber(id) or 0
 	if nid == 0x00A or nid == 0x00B then
+		require('uc_doom_water').reset(scheduler.doom_water_state, 'ZONE_CHANGE')
 		enemy_effect_tracker.clear_all()
 		scheduler.providers.charm_sleeper.reset('ZONE_CHANGE')
 		scheduler.providers.sleep_waker.reset('ZONE_CHANGE')
@@ -8314,6 +8368,14 @@ _G.UC_SCHED_OnIncomingText = function(original, modified, mode, blocked)
 	local ok = pcall(scheduler.on_incoming_text, original, modified, mode, blocked)
 	if not ok then
 		-- scheduler hooks are best-effort; never destabilize combat tick.
+	end
+end
+
+_G.UC_SCHED_OnAddItem = function(bag, index, item_id, count)
+	local ok = pcall(scheduler.on_add_item, bag, index, item_id, count)
+	if not ok then
+		-- Inventory confirmation hooks are best-effort; the staging timeout
+		-- releases the Doom lane and allows normal status removal to recover.
 	end
 end
 
