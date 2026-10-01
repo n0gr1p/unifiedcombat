@@ -1,7 +1,6 @@
 local encounter = require('uc_encounter_state')
 
 local SORTIE_ZONE_ID = 133
-local SORTIE_ALT_ZONE_ID = 189
 
 local function assert_true(condition, message)
 	if condition ~= true then
@@ -50,20 +49,18 @@ assert_equal(reason, 'CONFIGURED', 'initial configuration reason mismatch')
 local ok
 ok, reason = encounter.observe_snapshot({
 	now = 0.5,
-	zone_name = "Outer Ra'Kaznar [U2]",
+	zone_name = 'Untrusted Diagnostic Zone',
 	actors = { boss(1001, 'Ghatjot', 0, 100, 10, 20) },
 	members = {},
 })
-assert_false(ok, 'zone name without authoritative zone id must not bind')
-assert_equal(reason, 'ZONE_UNRESOLVED', 'missing-zone-id reason mismatch')
+assert_true(ok, 'configured Ghatjot must bind without a zone id')
+assert_equal(reason, 'ORIGIN_CAPTURE_STABILIZING', 'zone-independent bind reason mismatch')
+encounter.reset('zone_independent_missing_zone_complete')
 
-ok, reason = observe(1.0, { boss(1001, 'Ghatjot', 0, 100, 10, 20) }, {}, 100)
-assert_false(ok, 'same-named actor outside Sortie must not bind')
-assert_equal(reason, 'NOT_IN_SORTIE', 'wrong-zone reason mismatch')
-
-ok, reason = observe(1.5, { boss(1001, 'Ghatjot', 0, 100, 10, 20) }, {}, SORTIE_ALT_ZONE_ID)
-assert_true(ok, 'Ghatjot should bind in the alternate Sortie U3 instance')
-encounter.reset('sortie_u3_acceptance_complete')
+ok, reason = observe(1.0, { boss(1001, 'Ghatjot', 0, 100, 10, 20) }, {}, 999)
+assert_true(ok, 'configured Ghatjot must bind regardless of reported zone id')
+assert_equal(reason, 'ORIGIN_CAPTURE_STABILIZING', 'arbitrary-zone bind reason mismatch')
+encounter.reset('zone_independent_arbitrary_zone_complete')
 
 ok, reason = observe(2.0, { boss(1001, 'Dhartok', 0, 100, 10, 20) })
 assert_false(ok, 'wrong configured actor must not bind')
@@ -80,7 +77,7 @@ ok, reason = observe(4.0, { boss(1001, 'Ghatjot', 0, 100, 10, 20) }, {
 	{ id = 2001, name = 'MemberA', source = 'party_packet_0x076', buff_names = { 'Poison' } },
 	{ id = 2002, name = 'MemberB', source = 'local_player', buff_names = { 'Taint' } },
 })
-assert_true(ok, 'single configured actor in Sortie should bind')
+assert_true(ok, 'single configured actor should bind by encounter identity and exact name')
 assert_equal(reason, 'ORIGIN_CAPTURE_STABILIZING', 'first origin sample reason mismatch')
 
 ok, reason = observe(4.6, { boss(1001, 'Ghatjot', 0, 100, 10, 20, 0.75) }, {
