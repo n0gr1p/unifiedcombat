@@ -2646,6 +2646,7 @@ internal static class StructuredProfileV2WriterTests
             ["path_hunter_ignore_cooldown_s"] = 20,
             ["path_pull_action_type"] = "ja",
             ["path_pull_action_name"] = "Provoke",
+            ["path_pull_attack_fallback_enabled"] = true,
             ["party_follow"] = true,
             ["party_follow_selected"] = "Leader",
             ["party_follow_min"] = 1,
