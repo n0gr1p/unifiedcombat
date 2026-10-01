@@ -15,7 +15,10 @@ local RAW_ACTOR_NAMES = {
 	Kei = true,
 }
 
-local SORTIE_ZONE_ID = 133
+local SORTIE_ZONE_IDS = {
+	[133] = true,
+	[189] = true,
+}
 
 local function emit(event_code, fields, key, interval)
 	local logger = rawget(_G, 'UC_ACTION_TIMELINE_LOG')
@@ -370,7 +373,7 @@ end
 
 local function emit_raw_encounter_candidate(act, category, ability_name, ability_id, observed_at)
 	local observed_zone_id = current_zone_id()
-	if observed_zone_id ~= SORTIE_ZONE_ID then
+	if SORTIE_ZONE_IDS[observed_zone_id] ~= true then
 		return false
 	end
 	local actor_id = tonumber(act.actor_id) or 0
@@ -471,7 +474,7 @@ function M.observe_action_result(event)
 	local target_id = tonumber(event.target_id) or 0
 	local target = target_id > 0 and windower.ffxi.get_mob_by_id(target_id) or nil
 	local target_name = tostring(target and target.name or '')
-	if current_zone_id() == SORTIE_ZONE_ID and RAW_ACTOR_NAMES[target_name] == true then
+	if SORTIE_ZONE_IDS[current_zone_id()] == true and RAW_ACTOR_NAMES[target_name] == true then
 		emit('ENCOUNTER_RAW_ACTION_RESULT_CANDIDATE', {
 			action_class = tostring(event.action_class or ''),
 			action_key = tostring(event.action_key or ''),
