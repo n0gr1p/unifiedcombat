@@ -710,7 +710,7 @@ local function apply_set(path, value)
 		return
 	end
 	t[key] = value
-	if key == 'path_recording' or key == 'path_follow_enabled' then
+	if key == 'path_recording' or key == 'path_follow_enabled' or key == 'path_pull_attack_fallback_enabled' then
 		last_state_send = 0
 	end
 end

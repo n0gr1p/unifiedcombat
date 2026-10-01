@@ -482,6 +482,7 @@ function M.new(deps)
 			return
 		end
 		local pull_owner_state = 'inactive'
+		local hunter_attack_fallback = false
 		local pull_pick = select_pull(ctx.settings)
 		if type(pull_pick) == 'table' then
 			local pull_tid = tonumber(pull_pick.target_id) or 0
@@ -492,15 +493,23 @@ function M.new(deps)
 				pull_tid
 			)
 			if pull_tid > 0 and this_tid > 0 and pull_tid == this_tid then
-				if debug_enabled(ctx.settings) then
-					_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:pull_owner tid=%d action=%s:%s'):format(
-						this_tid,
-						tostring(pull_pick.action_type or ''),
-						tostring(pull_pick.action_name or '')
+				if pull_pick.attack_fallback == true then
+					hunter_attack_fallback = true
+					pull_owner_state = ('attack_fallback:%s:%d'):format(
+						tostring(pull_pick.fallback_reason or 'PULL_RECAST'),
+						pull_tid
 					)
+				else
+					if debug_enabled(ctx.settings) then
+						_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:pull_owner tid=%d action=%s:%s'):format(
+							this_tid,
+							tostring(pull_pick.action_type or ''),
+							tostring(pull_pick.action_name or '')
+						)
+					end
+					log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', target, 'pull_owner', pull_owner_state, 'not_checked')
+					return
 				end
-				log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', target, 'pull_owner', pull_owner_state, 'not_checked')
-				return
 			end
 		end
 		local _, claims_set = build_friendly_claims()
@@ -512,14 +521,19 @@ function M.new(deps)
 		local prime_unclaimed_ok = prime_unclaimed_party_aggressive_ok(ctx.settings, target, party_ids)
 		local force_leader_engage = fight_leader_force_target_id > 0
 			and fight_leader_force_target_id == (tonumber(target.id) or 0)
-		local claim_check = ('party_claimed=%s,camp_pull=%s,prime_unclaimed=%s,force_leader=%s,claim_id=%d'):format(
+		local claim_check = ('party_claimed=%s,camp_pull=%s,prime_unclaimed=%s,force_leader=%s,hunter_fallback=%s,claim_id=%d'):format(
 			party_claimed_ok and '1' or '0',
 			camp_pull_ok and tostring(camp_pull_order) or '0',
 			prime_unclaimed_ok and '1' or '0',
 			force_leader_engage and '1' or '0',
+			hunter_attack_fallback and '1' or '0',
 			claim_id
 		)
-		if not party_claimed_ok and not camp_pull_ok and not prime_unclaimed_ok and not force_leader_engage then
+		if not party_claimed_ok
+			and not camp_pull_ok
+			and not prime_unclaimed_ok
+			and not force_leader_engage
+			and not hunter_attack_fallback then
 			if debug_enabled(ctx.settings) then
 				_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:policy claim=%d st=%d prime=%s'):format(
 					claim_id,
@@ -575,8 +589,11 @@ function M.new(deps)
 			sticky = true,
 			can_preempt_movement = true,
 			can_preempt_same_band = false,
-			reason_code = 'engage_ready',
-			detail = {},
+			reason_code = hunter_attack_fallback and 'hunter_attack_fallback' or 'engage_ready',
+			detail = {
+				hunter_attack_fallback = hunter_attack_fallback,
+				fallback_reason = hunter_attack_fallback and tostring(pull_pick and pull_pick.fallback_reason or '') or '',
+			},
 			required_setting = 'autotarget',
 		}
 	end

@@ -3682,6 +3682,22 @@ function core.select_pull_for_scheduler(settings)
 	if not resource then
 		return nil
 	end
+	local ready, ready_reason = pull_action_ready(action_type, action_name)
+	if ready ~= true
+		and ready_reason == 'PULL_RECAST'
+		and setting_enabled(s.path_pull_attack_fallback_enabled) then
+		return {
+			target_id = tonumber(target.id) or 0,
+			target_name = tostring(target.name or ''),
+			action_type = 'attack',
+			action_name = 'attack',
+			attack_fallback = true,
+			fallback_reason = ready_reason,
+			dist = tonumber(target_real_distance(target)) or 999,
+			range_max = 30.0,
+			in_range = true,
+		}
+	end
 	local max_range = action_effective_range(resource.range)
 	if max_range <= 0 then
 		max_range = (action_type == 'spell') and 20 or 10

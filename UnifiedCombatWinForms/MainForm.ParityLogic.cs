@@ -515,6 +515,7 @@ public partial class MainForm
             _pathHunterIgnoreCooldown.Text = "20";
             _pathPullActionType.SelectedItem = "ja";
             _pathPullActionName.Items.Clear();
+            _pathPullAttackFallback.Checked = false;
             _pathPullJaOptions.Clear();
             _pathPullSpellOptions.Clear();
             _pathHunterList.Items.Clear();
@@ -923,6 +924,7 @@ public partial class MainForm
             {
                 RefreshPathPullActionNameOptions(pullTypeIncoming, pullNameIncoming);
             }
+            _pathPullAttackFallback.Checked = SessionStateHelper.GetBool(s, "path_pull_attack_fallback_enabled", false);
             if (_tankEnmityTypeCombo.SelectedItem is not string tenType || (tenType != "ja" && tenType != "spell"))
             {
                 _tankEnmityTypeCombo.SelectedItem = "ja";
@@ -4221,6 +4223,27 @@ public partial class MainForm
 
         var name = (_pathPullActionName.Text ?? "").Trim();
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "path_pull_action_name", ["value"] = name });
+    }
+
+    private void OnPathPullAttackFallbackChanged()
+    {
+        if (_suppressEvents)
+        {
+            return;
+        }
+
+        var sid = RequireSelectedSid();
+        if (sid is null)
+        {
+            return;
+        }
+
+        Forward(sid, new Dictionary<string, object?>
+        {
+            ["op"] = "set",
+            ["path"] = "path_pull_attack_fallback_enabled",
+            ["value"] = _pathPullAttackFallback.Checked,
+        });
     }
 
     private void OnPathHunterAdd()

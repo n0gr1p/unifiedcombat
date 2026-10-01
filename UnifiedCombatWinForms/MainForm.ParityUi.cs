@@ -335,6 +335,7 @@ public partial class MainForm
     private TextBox _pathHunterIgnoreCooldown = null!;
     private ComboBox _pathPullActionType = null!;
     private ComboBox _pathPullActionName = null!;
+    private CheckBox _pathPullAttackFallback = null!;
     private Button _pathHunterAdd = null!;
     private Button _pathHunterRemove = null!;
     private ListBox _tankEnmityList = null!;
@@ -1813,6 +1814,16 @@ public partial class MainForm
         };
         _pathPullActionName.SelectedIndexChanged += (_, _) => OnPathPullActionNameChanged();
         path.Controls.Add(_pathPullActionName, 1, pathRow++);
+        _pathPullAttackFallback = new CheckBox
+        {
+            Text = "Attack target when pull action is on cooldown",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+        };
+        _pathPullAttackFallback.CheckedChanged += (_, _) => OnPathPullAttackFallbackChanged();
+        path.Controls.Add(_pathPullAttackFallback, 0, pathRow);
+        path.SetColumnSpan(_pathPullAttackFallback, 2);
+        pathRow++;
         path.Controls.Add(new Label { Text = "Path hunter targets", AutoSize = true, Anchor = AnchorStyles.Left }, 0, pathRow);
         pathRow++;
         _pathHunterList = new ListBox

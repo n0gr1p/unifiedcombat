@@ -2460,6 +2460,7 @@ internal static class StructuredProfileV2WriterTests
         );
 
         AssertContains(content, "engage_range = 9.5", "puller engage range must serialize under follow.partner");
+        AssertContains(content, "pull_attack_fallback_enabled = true", "path hunter pull cooldown attack fallback must serialize under movement.path");
         AssertContains(content, "max_target_range = 14", "sleep target range must serialize under config.sleep");
         AssertContains(content, "enabled = true", "Sleep enabled state must serialize from the UI control");
         AssertContains(content, "\"Horde Lullaby II\"", "ordered Sleep spells must serialize from UI profile entries");
@@ -2646,6 +2647,7 @@ internal static class StructuredProfileV2WriterTests
             ["path_hunter_ignore_cooldown_s"] = 20,
             ["path_pull_action_type"] = "ja",
             ["path_pull_action_name"] = "Provoke",
+            ["path_pull_attack_fallback_enabled"] = true,
             ["party_follow"] = true,
             ["party_follow_selected"] = "Leader",
             ["party_follow_min"] = 1,

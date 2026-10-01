@@ -559,6 +559,7 @@ internal static class StructuredProfileV2Writer
                     .Add("hunter_ignore_cooldown_s", ReadDouble(flatProfile, "path_hunter_ignore_cooldown_s", 20.0))
                     .Add("pull_action_type", ReadString(flatProfile, "path_pull_action_type", "ja"))
                     .Add("pull_action_name", ReadString(flatProfile, "path_pull_action_name", ""))
+                    .Add("pull_attack_fallback_enabled", ReadBool(flatProfile, "path_pull_attack_fallback_enabled", false))
             );
         if (ReadFormationBool(flatProfile, "formation_enabled", false))
         {

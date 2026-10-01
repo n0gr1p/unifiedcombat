@@ -133,6 +133,7 @@ local DIRECT_PROFILE_FIELDS = {
     path_hunter_ignore_cooldown_s = "profile_owned_by_ui",
     path_pull_action_type = "profile_owned_by_ui",
     path_pull_action_name = "profile_owned_by_ui",
+    path_pull_attack_fallback_enabled = "profile_owned_by_ui",
     autotarget = "profile_owned_by_ui",
     spam = "profile_owned_by_ui",
     closer = "profile_owned_by_ui",
