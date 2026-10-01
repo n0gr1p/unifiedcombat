@@ -75,6 +75,42 @@ local function assert_provider_purity()
     end
 end
 
+local function assert_path_hunter_attack_fallback_contract()
+    local core_source = read_file("unified_combat_core.lua")
+    local combat_source = read_file("uc_provider_combat.lua")
+
+    assert_contains(
+        core_source,
+        "ready_reason == 'PULL_RECAST'",
+        "path hunter attack fallback must be limited to pull recast"
+    )
+    assert_contains(
+        core_source,
+        "setting_enabled(s.path_pull_attack_fallback_enabled)",
+        "path hunter attack fallback must remain explicitly configurable"
+    )
+    assert_contains(
+        core_source,
+        "attack_fallback = true",
+        "path hunter selector must advertise attack fallback intent"
+    )
+    assert_contains(
+        combat_source,
+        "if pull_pick.attack_fallback == true then",
+        "combat engage provider must recognize the hunter attack fallback"
+    )
+    assert_contains(
+        combat_source,
+        "and not hunter_attack_fallback then",
+        "hunter attack fallback must explicitly bypass only the ordinary unclaimed engage gate"
+    )
+    assert_contains(
+        combat_source,
+        "hunter_attack_fallback and 'hunter_attack_fallback' or 'engage_ready'",
+        "fallback engage proposals must retain diagnostic provenance"
+    )
+end
+
 local function assert_scheduler_wiring()
     local source = read_file("unified_scheduler.lua")
     local removed_collectors = {
@@ -447,6 +483,7 @@ end
 
 local function main()
     assert_provider_purity()
+    assert_path_hunter_attack_fallback_contract()
     assert_scheduler_wiring()
     assert_fail_fast_factories()
     assert_defensive_proposal_shape()
