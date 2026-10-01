@@ -2125,6 +2125,7 @@ local function normalize_movement(source, config)
         movement.path.hunter_ignore_cooldown_s = normalize_number(path_cfg.hunter_ignore_cooldown_s, movement.path.hunter_ignore_cooldown_s)
         movement.path.pull_action_type = normalize_string(path_cfg.pull_action_type, movement.path.pull_action_type)
         movement.path.pull_action_name = normalize_string(path_cfg.pull_action_name, movement.path.pull_action_name)
+        movement.path.pull_attack_fallback_enabled = normalize_boolean(path_cfg.pull_attack_fallback_enabled, movement.path.pull_attack_fallback_enabled)
     else
         movement.enabled = normalize_boolean(first_path(source, { path('domain_movement_enabled') }), movement.enabled)
         movement.move = normalize_boolean(first_path(source, { path('move') }), movement.move)
