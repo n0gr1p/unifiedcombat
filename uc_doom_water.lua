@@ -136,7 +136,6 @@ local function reserve_lane(deps, reason)
 end
 
 local function use_ready_water(state, deps, now_value, confirmed_count)
-	reserve_lane(deps, 'DOOM_HOLY_WATER_READY')
 	local ready = tonumber(confirmed_count) or 0
 	if ready <= 0 then
 		ready = inventory_item_count(deps, state.item_id)
@@ -146,6 +145,7 @@ local function use_ready_water(state, deps, now_value, confirmed_count)
 		log(deps, 'DOOM_WATER_UNAVAILABLE reason=READY_ITEM_MISSING fallback=STATUS_REMOVAL')
 		return false, 'DOOM_WATER_READY_ITEM_MISSING'
 	end
+	reserve_lane(deps, 'DOOM_HOLY_WATER_READY')
 	if (now_value - (tonumber(state.last_item_at) or -math.huge)) < M.ITEM_REUSE_S then
 		state.last_reason = 'ITEM_REUSE_HOLD'
 		return true, 'BLOCK_DOOM_WATER_HOLD'
