@@ -27,8 +27,15 @@ function M.validate_proposal(ctx, proposal, deps)
 
 	local bool_setting = require_function(deps, 'bool_setting')
 	local required_setting = tostring(proposal.required_setting or '')
-	if required_setting ~= '' and not bool_setting(ctx.settings[required_setting], false) then
-		return false, 'settings_disabled'
+	if required_setting ~= '' then
+		local required_value = require_function(deps, 'required_setting_value')(ctx.config, required_setting)
+		local enabled = required_value
+		if enabled == nil then
+			enabled = bool_setting(ctx.settings[required_setting], false)
+		end
+		if enabled ~= true then
+			return false, 'settings_disabled'
+		end
 	end
 	if proposals.created_age(ctx, proposal) > 0.8 then
 		return false, 'stale_snapshot'
