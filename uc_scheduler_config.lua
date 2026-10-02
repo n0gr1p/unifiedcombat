@@ -95,6 +95,16 @@ function M.combat_weaponskill_enabled_from_config(config)
     return type(weaponskill) == 'table' and weaponskill.enabled == true
 end
 
+function M.abilities_enabled_from_config(config)
+    local abilities = type(config) == 'table' and config.abilities or nil
+    return type(abilities) == 'table' and abilities.enabled == true
+end
+
+function M.abilities_allow_unengaged_from_config(config)
+    local abilities = type(config) == 'table' and config.abilities or nil
+    return type(abilities) == 'table' and abilities.allow_unengaged == true
+end
+
 function M.combat_prime(settings)
     local s = settings_or_default(settings)
     return M.active_value_or_flat('config.combat.prime', s.prime)
