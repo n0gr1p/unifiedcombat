@@ -74,7 +74,7 @@ return {
 			["ctx_settings"] = 2,
 		},
 		["uc_provider_combat.lua"] = {
-			["ctx_settings"] = 28,
+			["ctx_settings"] = 26,
 		},
 		["uc_provider_run_tank.lua"] = {
 			["ctx_settings"] = 3,
@@ -90,7 +90,7 @@ return {
 			["ctx_settings"] = 3,
 		},
 		["uc_provider_target_control.lua"] = {
-			["ctx_settings"] = 6,
+			["ctx_settings"] = 4,
 		},
 		["uc_pup_pet_combat_adapter.lua"] = {
 			["ctx_settings"] = 1,
