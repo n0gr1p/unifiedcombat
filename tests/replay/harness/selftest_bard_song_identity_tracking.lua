@@ -88,6 +88,24 @@ local function make_members(buff_ids)
 	}
 end
 
+local function buff_config(list)
+	return {
+		defensive = {
+			buffs = {
+				enabled = true,
+				list = list or '',
+				targeted = {},
+				self_only = true,
+				overwrite_enabled = false,
+				overwrite_interval = 150,
+			},
+		},
+		maintenance = {
+			brd = { enabled = false },
+		},
+	}
+end
+
 local function pick_spell(settings, buff_ids)
 	local picked = hb_buff_maint.choose(settings, make_members(buff_ids), make_helpers())
 	return picked and picked.spell or nil
@@ -96,26 +114,11 @@ end
 local function main()
 	hb_buff_maint._reset_test_state()
 
-	local duo_settings = {
-		defensive_buffs = 'Honor March|Victory March',
-		defensive_targeted_buffs = '',
-		defensive_buff_self_only = true,
-		defensive_overwrite_enabled = false,
-	}
+	local duo_settings = buff_config('Honor March|Victory March')
 
-	local single_settings = {
-		defensive_buffs = 'Honor March',
-		defensive_targeted_buffs = '',
-		defensive_buff_self_only = true,
-		defensive_overwrite_enabled = false,
-	}
+	local single_settings = buff_config('Honor March')
 
-	local nonsong_settings = {
-		defensive_buffs = 'Protect',
-		defensive_targeted_buffs = '',
-		defensive_buff_self_only = true,
-		defensive_overwrite_enabled = false,
-	}
+	local nonsong_settings = buff_config('Protect')
 
 	assert_equal(pick_spell(duo_settings, {}), 'Honor March', 'first configured March should be chosen when none are active')
 

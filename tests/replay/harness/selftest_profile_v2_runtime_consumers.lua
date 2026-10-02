@@ -345,7 +345,7 @@ local function main()
 		cor_roll_range_require_ids = {},
 		abilities = {},
 	}
-	local cor_action = cor_maintenance.propose(cor_flat)
+	local cor_action = cor_maintenance.propose(active_config.get_config())
 	assert_true(type(cor_action) == 'table', 'cor maintenance should propose a roll from active config')
 	assert_equal(cor_action.action_name, 'Chaos Roll', 'cor maintenance must consume active config rolls')
 
@@ -464,7 +464,7 @@ local function main()
 			buffs = {},
 		},
 	}
-	local picked = hb_buff_maint.choose(brd_general_flat, brd_members, helpers)
+	local picked = hb_buff_maint.choose(active_config.get_config(), brd_members, helpers)
 	assert_true(picked == nil, 'dedicated BRD maintenance must own songs instead of defensive_internal')
 
 	set_active_profile(active_config, {
@@ -507,7 +507,7 @@ local function main()
 			buffs = {},
 		},
 	}
-	picked = hb_buff_maint.choose(targeted_active_flat, targeted_active_members, helpers)
+	picked = hb_buff_maint.choose(active_config.get_config(), targeted_active_members, helpers)
 	assert_true(type(picked) == 'table', 'legacy targeted maintenance should remain available when dedicated BRD maintenance is absent')
 	assert_equal(picked.spell, 'Victory March', 'structured targeted maintenance must prefer active config targeted entries over the flat compatibility string')
 
@@ -548,10 +548,8 @@ local function main()
 			buffs = {},
 		},
 	}
-	local targeted_pick = hb_buff_maint.choose(targeted_flat, targeted_members, helpers)
-	assert_true(type(targeted_pick) == 'table', 'BRD targeted maintenance should return a candidate')
-	assert_equal(targeted_pick.target.name, 'Target', 'BRD targeted maintenance must honor the target name from the flat compatibility string')
-	assert_equal(targeted_pick.spell, 'Victory March', 'BRD targeted maintenance must honor the flat targeted buff entry when no structured path exists')
+	local targeted_pick = hb_buff_maint.choose(active_config.get_config(), targeted_members, helpers)
+	assert_equal(targeted_pick, nil, 'BRD targeted maintenance must not consult flat compatibility when canonical targeted config is absent')
 
 	rawset(_G, 'windower', previous_windower)
 	rawset(_G, 'socket', previous_socket)

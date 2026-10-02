@@ -184,7 +184,7 @@ function M.new(deps)
 			return true, nil, 0
 		end
 		if job == 'COR' then
-			local action = cor_propose(ctx.settings)
+			local action = cor_propose(ctx.config)
 			if action and action.action_name and action.action_name ~= '' then
 				local key = 'cor_rolls'
 				local next_at = number(gate[key], 0)

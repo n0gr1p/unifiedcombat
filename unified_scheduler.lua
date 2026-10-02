@@ -4058,7 +4058,7 @@ local function build_defensive_candidates(ctx)
 					buff_members[#buff_members + 1] = m
 				end
 			end
-			picked = hb_buff_maint.choose(s, buff_members, {
+			picked = hb_buff_maint.choose(type(ctx.config) == 'table' and ctx.config or {}, buff_members, {
 				bool_setting = bool_setting,
 				in_party_cast_range = in_party_cast_range,
 				action_ready = action_ready,
