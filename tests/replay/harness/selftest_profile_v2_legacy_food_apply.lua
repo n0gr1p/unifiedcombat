@@ -60,16 +60,30 @@ assert_true(type(loaded_profile.config.maintenance.food) == 'table', 'legacy loa
 assert_false(loaded_profile.config.maintenance.food.enabled, 'missing legacy food enabled must default false')
 assert_equal(loaded_profile.config.maintenance.food.item, '', 'missing legacy food item must default empty')
 
-local projected, projection_error = active_config.project_flat_settings(loaded_profile, live_settings)
-assert_true(type(projected) == 'table', 'legacy Profile V2 should project: ' .. tostring(projection_error))
-assert_false(projected.food_enabled, 'legacy apply must replace stale live food_enabled=true')
-assert_equal(projected.food_item, '', 'legacy apply must replace stale live food item')
-
--- This is the same conversion invariant Activity Apply enforces: after
--- canonical Profile V2 -> flat compatibility projection -> durable rebuild,
--- there must be no config mismatch against the saved legacy profile.
-local candidate_config = profile_v2.build_durable_config(projected, meta)
-local round_trip = profile_v2.diff_durable_config(candidate_config, legacy_payload.config)
-assert_equal(round_trip.count, 0, 'legacy food apply must not produce a structured profile conversion mismatch')
+local apply_result = profile_v2.build_settings_candidate_from_structured_profile(
+	live_settings,
+	legacy_payload,
+	meta
+)
+assert_true(type(apply_result) == 'table', 'legacy Profile V2 conversion must return a result')
+assert_true(
+	apply_result.ok == true,
+	'legacy Profile V2 conversion must succeed: '
+		.. tostring(apply_result.error or '')
+		.. ' '
+		.. tostring(apply_result.detail or '')
+)
+assert_false(apply_result.candidate.food_enabled, 'legacy apply must replace stale live food_enabled=true')
+assert_equal(apply_result.candidate.food_item, '', 'legacy apply must replace stale live food item')
+assert_false(
+	apply_result.active_profile.config.maintenance.food.enabled,
+	'converted active Profile V2 must keep the disabled food default'
+)
+assert_equal(
+	apply_result.active_profile.config.maintenance.food.item,
+	'',
+	'converted active Profile V2 must keep the empty food item default'
+)
+assert_equal(apply_result.diff_count, 0, 'legacy food apply must not produce a structured profile conversion mismatch')
 
 io.stdout:write('selftest_profile_v2_legacy_food_apply: OK\n')
