@@ -56,6 +56,7 @@ Semantic notes:
 
 - High-value live/global seams are `UnifiedCombat.lua`, `remote_bridge.lua`, `uc_scheduler_context_utils.lua`, `unified_combat_core.lua`, `unified_engine.lua`, `uc_pathing.lua`, `uc_party_follow.lua`, `uc_raise_accept.lua`, `uc_recovery_hold.lua`, `uc_geo_camp_placement.lua`, and `uc_combat_extension_config.lua`.
 - `uc_active_config.lua` is intentionally both canonical owner and flat projector during migration.
+- `UnifiedCombat.lua` currently invokes `sync_flat_settings_in_place(...)` three times during bootstrap/apply compatibility publication; the CI guard surfaced these existing seams and the Phase 0 baseline now records them explicitly.
 - `uc_config_runtime.lua` and `uc_config_normalizer_base.lua` include compatibility/source metadata markers as well as migration helpers; literal counts alone are not consumer counts.
 - `melee_engine.lua`, `dd2_module.lua`, and `build_dd2_module.py` are legacy-sensitive and should not be removed until active ownership/callers are proven.
 
