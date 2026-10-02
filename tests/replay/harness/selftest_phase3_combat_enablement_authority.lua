@@ -172,10 +172,11 @@ local function main()
 	rawset(_G, 'UC_SETTINGS', { autotarget = false, auto_engage = false })
 	assert_true(scheduler_config.combat_autotarget_from_config({ combat = { autotarget = true } }),
 		'canonical autotarget true must beat flat false')
-	assert_false(scheduler_config.combat_autotarget_from_config({ combat = { autotarget = false } }),
-		'canonical autotarget false must beat flat true')
 	assert_true(extension_config.auto_engage_enabled_from_config({ combat = { auto_engage = true } }),
 		'canonical auto-engage true must beat flat false')
+	rawset(_G, 'UC_SETTINGS', { autotarget = true, auto_engage = true })
+	assert_false(scheduler_config.combat_autotarget_from_config({ combat = { autotarget = false } }),
+		'canonical autotarget false must beat flat true')
 	assert_false(extension_config.auto_engage_enabled_from_config({ combat = { auto_engage = false } }),
 		'canonical auto-engage false must beat flat true')
 	rawset(_G, 'UC_SETTINGS', previous_settings)
