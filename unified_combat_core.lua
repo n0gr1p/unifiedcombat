@@ -3623,7 +3623,7 @@ function core.select_target_for_scheduler(settings, config)
 	}
 end
 
-function core.revalidate_death_switch_for_scheduler(settings, config, target_id, incumbent_id)
+function core.revalidate_death_switch_for_scheduler(settings, target_id, incumbent_id, config)
 	local tid = tonumber(target_id) or 0
 	local expected_incumbent_id = tonumber(incumbent_id) or 0
 	if tid <= 0 or expected_incumbent_id <= 0 then
