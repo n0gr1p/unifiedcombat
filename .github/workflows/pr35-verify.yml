@@ -63,6 +63,21 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_scheduler_tick_context_static.lua
       - name: Scheduler context utils fixture self-test
         run: lua5.1 tests/replay/harness/selftest_context_utils_fixtures.lua
+      - name: Phase 2 canonical leaf self-tests
+        run: |
+          lua5.1 tests/replay/harness/selftest_food_maintenance.lua
+          lua5.1 tests/replay/harness/selftest_recurring_spells.lua
+          lua5.1 tests/replay/harness/selftest_defensive_resurrection.lua
+          lua5.1 tests/replay/harness/selftest_enemy_debuff_maintenance.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_providers_phase3.lua
+          lua5.1 tests/replay/harness/selftest_raise_accept.lua
+          lua5.1 tests/replay/harness/selftest_deathsickness_recovery_hold.lua
+          lua5.1 tests/replay/harness/selftest_geo_camp_placement.lua
+          lua5.1 tests/replay/harness/selftest_hb_buff_maint_majesty_priority.lua
+          lua5.1 tests/replay/harness/selftest_bard_song_identity_tracking.lua
+          lua5.1 tests/replay/harness/selftest_active_config_defensive_maintenance_readers.lua
+          lua5.1 tests/replay/harness/selftest_profile_v2_runtime_consumers.lua
+          lua5.1 tests/replay/harness/selftest_active_config_consumer_migration.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test

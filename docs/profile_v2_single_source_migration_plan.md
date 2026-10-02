@@ -192,7 +192,7 @@ Exit criteria:
 
 ### Phase 2 — Migrate low-risk leaf consumers
 
-Status: **NOT STARTED**
+Status: **IN PROGRESS — implementation complete; CI and live-game verification pending**
 
 Candidate order:
 
@@ -217,8 +217,8 @@ For each slice:
 
 Exit criteria:
 
-- [ ] selected leaf consumers no longer depend on flat durable fields;
-- [ ] compatibility behavior is covered by tests at the boundary, not inside each consumer.
+- [x] selected leaf consumers no longer depend on flat durable fields;
+- [x] compatibility behavior is covered by tests at the boundary, not inside each consumer.
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
@@ -433,6 +433,18 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Legacy Profile V2 maintenance domains now materialize `food = { enabled = false, item = '' }` before canonical-to-flat compatibility projection, preventing stale live food settings from leaking into conversion validation.
 - The focused regression reproduces the Etamame SAM/DRG Activity Apply failure shape and asserts the exact structured conversion path returns zero mismatch.
 - The hotfix was merged to `master` as `c8a084b9a29dd412e99fa3cf5dec4e0e90cf1b3f` and has been incorporated into this migration branch before Phase 2.
+
+### 2026-10-02 — Phase 2 low-risk leaf migration implemented
+
+- Food maintenance and recurring combat spells now consume only the canonical scheduler snapshot at `ctx.config`; stale `ctx.settings` values are deliberately ignored.
+- Defensive provider gates/resurrection, enemy-buff removal, and enemy-debuff maintenance now consume `ctx.config.defensive.*` directly.
+- Raise acceptance and weakened recovery-hold now read only `uc_active_config`; their direct `UC_SETTINGS` fallback paths were removed.
+- GEO camp placement now reads only `config.maintenance.geo` from active Profile V2 state.
+- Defensive buff maintenance now receives canonical config explicitly from the scheduler, including structured targeted buffs and BRD ownership state; its hidden active-config/global fallback was removed.
+- COR maintenance now receives canonical config explicitly from the maintenance provider. Roll policy, range requirements, Light Shot-on-Dia policy, and ability-derived roll fallback stay inside canonical `config.maintenance.cor` / `config.abilities.configured`.
+- The Phase 0 allowlist shrank by 11 source-file entries / 60 literal flat-surface hits. The remaining `uc_scheduler_action_state.lua` debug-only `UC_SETTINGS` reader is intentionally deferred with the core scheduler work in Phase 3 rather than widening this leaf migration.
+- Deterministic tests include intentionally conflicting stale flat values so a migrated leaf fails if flat compatibility regains authority.
+- Live-game verification is still required after CI, especially food, recurring spells, defensive maintenance, COR upkeep, raise acceptance, recovery hold, and GEO camp placement.
 
 ## Working checklist
 

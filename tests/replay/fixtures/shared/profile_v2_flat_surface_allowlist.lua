@@ -55,17 +55,8 @@ return {
 		["uc_config_runtime.lua"] = {
 			["uc_settings"] = 2,
 		},
-		["uc_cor_maintenance.lua"] = {
-			["active_value_or_flat"] = 8,
-		},
-		["uc_geo_camp_placement.lua"] = {
-			["uc_settings"] = 1,
-		},
 		["uc_geo_maintenance.lua"] = {
 			["ctx_settings"] = 3,
-		},
-		["uc_hb_buff_maint.lua"] = {
-			["active_value_or_flat"] = 5,
 		},
 		["uc_party_follow.lua"] = {
 			["active_value_or_flat"] = 7,
@@ -84,29 +75,6 @@ return {
 		},
 		["uc_provider_combat.lua"] = {
 			["ctx_settings"] = 28,
-		},
-		["uc_provider_defensive.lua"] = {
-			["active_value_or_flat"] = 9,
-			["ctx_settings"] = 8,
-		},
-		["uc_provider_enemy_buff_removal.lua"] = {
-			["active_value_or_flat"] = 5,
-			["ctx_settings"] = 5,
-		},
-		["uc_provider_enemy_debuff_maintenance.lua"] = {
-			["active_value_or_flat"] = 3,
-			["ctx_settings"] = 3,
-		},
-		["uc_provider_food.lua"] = {
-			["active_value_or_flat"] = 2,
-			["ctx_settings"] = 2,
-		},
-		["uc_provider_maintenance.lua"] = {
-			["ctx_settings"] = 1,
-		},
-		["uc_provider_recurring_spells.lua"] = {
-			["active_value_or_flat"] = 2,
-			["ctx_settings"] = 4,
 		},
 		["uc_provider_run_tank.lua"] = {
 			["ctx_settings"] = 3,
@@ -129,12 +97,6 @@ return {
 		},
 		["uc_pup_runtime.lua"] = {
 			["ctx_settings"] = 1,
-		},
-		["uc_raise_accept.lua"] = {
-			["uc_settings"] = 1,
-		},
-		["uc_recovery_hold.lua"] = {
-			["uc_settings"] = 1,
 		},
 		["uc_runtime_overrides.lua"] = {
 			["uc_settings"] = 1,

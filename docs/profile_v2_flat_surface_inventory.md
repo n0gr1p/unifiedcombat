@@ -203,6 +203,26 @@ Phase 1 adds an explicit canonical configuration view to every scheduler tick co
 
 This establishes the seam for Phase 2: leaf providers can migrate from `ctx.settings` / `active_value_or_flat` to `ctx.config` one family at a time without adding new global config reads.
 
+## Phase 2 flat-surface burn-down
+
+The Phase 0 tables above remain a frozen historical baseline. Phase 2 removes the following allowlist entries entirely because these files no longer contain any guarded flat durable-config surface:
+
+- `uc_provider_food.lua`
+- `uc_provider_recurring_spells.lua`
+- `uc_provider_defensive.lua`
+- `uc_provider_enemy_buff_removal.lua`
+- `uc_provider_enemy_debuff_maintenance.lua`
+- `uc_provider_maintenance.lua` (the COR subordinate call now receives `ctx.config`)
+- `uc_hb_buff_maint.lua`
+- `uc_cor_maintenance.lua`
+- `uc_geo_camp_placement.lua`
+- `uc_raise_accept.lua`
+- `uc_recovery_hold.lua`
+
+That is a reduction of **11 allowlisted source files and 60 guarded literal hits** from the Phase 0 debt surface. Compatibility conversion remains centralized at the Profile V2/flat publication boundary; these leaf consumers no longer implement their own flat fallback.
+
+`uc_scheduler_action_state.lua` still has one debug-only `UC_SETTINGS` read. It is intentionally retained for Phase 3 because that reader is embedded in core action-state/diagnostic behavior rather than a low-risk leaf provider.
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.
