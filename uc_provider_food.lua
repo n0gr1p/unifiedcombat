@@ -21,6 +21,7 @@ end
 function M.new(deps)
 	deps = require_table(deps, 'uc_provider_food dependencies')
 	local get_items = require_function(deps, 'get_items')
+	local active_value_or_flat = require_function(deps, 'active_value_or_flat')
 	local player_is_moving = require_function(deps, 'player_is_moving')
 	local clamp_urgency = require_function(deps, 'clamp_urgency')
 	local build_action_command = require_function(deps, 'build_action_command')
@@ -93,12 +94,93 @@ function M.new(deps)
 		state.next_check_at = now + CHECK_INTERVAL_S
 
 		local settings = type(ctx.settings) == 'table' and ctx.settings or {}
-		local maintenance = type(settings.maintenance) == 'table' and settings.maintenance or {}
-		local config = type(maintenance.food) == 'table' and maintenance.food or {}
-		if config.enabled ~= true then
+		local enabled = active_value_or_flat(
+			'config.maintenance.food.enabled',
+			settings.food_enabled
+		)
+		if enabled ~= true then
 			return
 		end
-		local item_name = tostring(config.item or ''):match('^%s*(.-)%s*$')
+		local item_name = tostring(active_value_or_flat(
+			'config.maintenance.food.item',
+			settings.food_item
+		) or ''):match('^%s*(.-)%s*		if item_name == '' then
+			return
+		end
+		local player = ctx.player
+		if type(player) ~= 'table' or (tonumber(player.id) or 0) <= 0 then
+			return
+		end
+		if has_food_buff(player) then
+			return
+		end
+		if player_is_moving() then
+			return
+		end
+
+		local available, count = inventory_has_item(item_name)
+		if not available then
+			if now >= state.next_missing_log_at then
+				state.next_missing_log_at = now + MISSING_LOG_INTERVAL_S
+				log(('FOOD_MAINT_REJECT item="%s" reason=ITEM_NOT_IN_INVENTORY'):format(item_name))
+				timeline_log('FOOD_MAINT_MISSING_ITEM', {
+					item = item_name,
+					reason = 'ITEM_NOT_IN_INVENTORY',
+				}, ('food_missing:%s'):format(item_name), MISSING_LOG_INTERVAL_S)
+			end
+			return
+		end
+
+		local player_id = tonumber(player.id) or 0
+		local player_name = tostring(player.name or '')
+		out[#out + 1] = {
+			proposal_id = ('maint.food.%d'):format(math.floor(now * 1000)),
+			family_id = 'maintenance.food',
+			provider = 'maintenance_food',
+			action_type = 'item',
+			action_name = item_name,
+			target_kind = 'self',
+			target_id = player_id,
+			target_name = player_name,
+			priority_band = priority_band,
+			urgency = clamp_urgency(0.10),
+			starvation_eligible = true,
+			created_at = now,
+			expires_at = now + 0.40,
+			commit_deadline = now + 0.25,
+			movement_policy = 'must_stop',
+			range_policy = { min = 0.0, max = 0.0, los_required = false },
+			recast_key = 'item:' .. item_name,
+			duplicate_suppression_key = 'maint:food:' .. item_name,
+			lock_class = 'support_action',
+			expected_ack = 'action_start',
+			expected_effect = 'food_buff',
+			sticky = true,
+			can_preempt_movement = false,
+			can_preempt_same_band = false,
+			reason_code = 'food_missing',
+			detail = {
+				food_item = item_name,
+				inventory_count = count,
+			},
+			legacy_command = build_action_command(item_name, 'item', {
+				id = player_id,
+				name = player_name,
+				is_self = true,
+			}),
+		}
+		timeline_log('FOOD_MAINT_PROPOSED', {
+			item = item_name,
+			count = count,
+			band = priority_band,
+		}, ('food_proposed:%s'):format(item_name), 0.50)
+	end
+
+	return provider
+end
+
+return M
+)
 		if item_name == '' then
 			return
 		end
