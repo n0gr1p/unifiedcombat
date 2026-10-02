@@ -1,4 +1,5 @@
 package.loaded['uc_hb_buff_maint'] = nil
+package.loaded['uc_time'] = { gettime = function() return 100 end }
 
 windower = windower or {}
 windower.addon_path = './'
