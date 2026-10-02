@@ -48,7 +48,8 @@ function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, 
 		end
 		local aoe_allowed, aoe_reason = combat_core.revalidate_smart_ws_aoe(
 			ctx.settings or {},
-			selected.action_name
+			selected.action_name,
+			ctx.config
 		)
 		if not aoe_allowed then
 			return false, aoe_reason
@@ -63,7 +64,8 @@ function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, 
 			ctx.settings or {},
 			selected.target_id,
 			selected.action_name,
-			'rank_commit'
+			'rank_commit',
+			ctx.config
 		)
 	end
 	local target_kind = tostring(selected.target_kind or 'none')
