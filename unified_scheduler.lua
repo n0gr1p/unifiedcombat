@@ -1823,7 +1823,7 @@ function scheduler.sleep_max_target_distance(settings)
 	return configured
 end
 
-function scheduler.try_partner_tiebreak(settings)
+function scheduler.try_partner_tiebreak(settings, config)
 	if not bool_setting(settings and settings.partner, false) then
 		return false, nil
 	end
@@ -1856,7 +1856,7 @@ function scheduler.try_partner_tiebreak(settings)
 
 	local decision = require('uc_scheduler_partner_arbitration').decide({
 		partner_enabled = true,
-		autotarget_enabled = bool_setting(uc_scheduler_config.combat_autotarget(settings), false),
+		autotarget_enabled = bool_setting(type(config) == 'table' and uc_scheduler_config.combat_autotarget_from_config(config) or uc_scheduler_config.combat_autotarget(settings), false),
 		my_id = player and player.id,
 		player_status = player and player.status,
 		current_target = current,
@@ -5249,7 +5249,8 @@ function scheduler.p1_dispatch_target_control(selected, ctx)
 				return combat_core.revalidate_death_switch_for_scheduler(
 					ctx.settings,
 					tid,
-					detail.death_switch_incumbent_id
+					detail.death_switch_incumbent_id,
+					ctx.config
 				)
 			end,
 		})
@@ -7532,7 +7533,7 @@ function scheduler.process_tick(cadence)
 		camp_lane_reserved = scheduler.providers.camp_puller.active()
 	end
 	if combat_domain_enabled and not camp_lane_reserved then
-		local partner_blocked, partner_reason = scheduler.try_partner_tiebreak(s)
+		local partner_blocked, partner_reason = scheduler.try_partner_tiebreak(s, get_tick_ctx().config)
 		if partner_blocked then
 			return true, partner_reason
 		end
@@ -8808,7 +8809,7 @@ scheduler.providers.tank_enmity = require('uc_provider_tank_enmity').new({
 })
 scheduler.providers.target_control = require('uc_provider_target_control').new({
 	bool_setting = bool_setting,
-	combat_autotarget = uc_scheduler_config.combat_autotarget,
+	combat_autotarget = uc_scheduler_config.combat_autotarget_from_config,
 	combat_domain_enabled = function()
 		return domain_ownership.is_enabled('combat')
 	end,
@@ -8863,7 +8864,7 @@ scheduler.providers.combat = require('uc_provider_combat').new({
 	sleep_max_target_distance = scheduler.sleep_max_target_distance,
 	target_sleep_suppressed = scheduler.target_sleep_suppressed,
 	select_sleep_spell = scheduler.select_sleep_spell_for_target,
-	combat_autotarget = uc_scheduler_config.combat_autotarget,
+	combat_autotarget = uc_scheduler_config.combat_autotarget_from_config,
 	tank_enabled = uc_scheduler_config.tank_enabled,
 	debug_enabled = uc_scheduler_config.debug_enabled,
 	combat_prime = uc_scheduler_config.combat_prime,
