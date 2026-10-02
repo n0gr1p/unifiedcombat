@@ -18,9 +18,6 @@ local function generic_deps(ability_name, ja_targets)
 			if value == nil then return default_value end
 			return value == true
 		end,
-		abilities_allow_unengaged = function(config)
-			return type(config) == 'table' and type(config.abilities) == 'table' and config.abilities.allow_unengaged == true
-		end,
 		clamp_urgency = function(value) return value end,
 		build_partner_target_set = function() return {} end,
 		select_ws_plan = function() return nil end,
@@ -101,7 +98,7 @@ local ok, err = xpcall(function()
 	local ctx = {
 		now = 10,
 		config = { abilities = { enabled = true, allow_unengaged = false, configured = { 'Provoke' }, legacy_slots = {} } },
-		settings = { ability_active = true, ability_allow_unengaged = false },
+		settings = { ability_active = false, ability_allow_unengaged = true },
 		player_present = true,
 		player = { id = 1, name = 'PLD', status = 0, vitals = { tp = 0 } },
 		target_present = true,
@@ -114,6 +111,7 @@ local ok, err = xpcall(function()
 
 	-- Toggle on still requires a live enemy target; it is not an idle prebuff switch.
 	ctx.config.abilities.allow_unengaged = true
+	ctx.settings.ability_allow_unengaged = false
 	ctx.target_present = false
 	ctx.target = nil
 	out = {}
@@ -141,6 +139,7 @@ local ok, err = xpcall(function()
 	-- Engaged behavior is unchanged even when the new toggle is off.
 	ctx.player.status = 1
 	ctx.config.abilities.allow_unengaged = false
+	ctx.settings.ability_allow_unengaged = true
 	out = {}
 	provider.collect_ja(ctx, out)
 	assert_equal(#out, 1, 'engaged JA behavior must remain unchanged')
@@ -151,6 +150,9 @@ local ok, err = xpcall(function()
 		bool_setting = function(value, default_value)
 			if value == nil then return default_value end
 			return value == true
+		end,
+		abilities_allow_unengaged = function(config)
+			return type(config) == 'table' and type(config.abilities) == 'table' and config.abilities.allow_unengaged == true
 		end,
 		select_tank_enmity = function()
 			return {
@@ -163,13 +165,15 @@ local ok, err = xpcall(function()
 		clamp_urgency = function(value) return value end,
 	})
 	ctx.player.status = 0
-	ctx.settings.ability_allow_unengaged = false
+	ctx.config.abilities.allow_unengaged = false
+	ctx.settings.ability_allow_unengaged = true
 	ctx.mobs_by_id = { [900] = enemy_target(900) }
 	out = {}
 	tank_provider.collect(ctx, out)
 	assert_equal(#out, 0, 'tank enmity must remain gated while override is off')
 
-	ctx.settings.ability_allow_unengaged = true
+	ctx.config.abilities.allow_unengaged = true
+	ctx.settings.ability_allow_unengaged = false
 	out = {}
 	tank_provider.collect(ctx, out)
 	assert_equal(#out, 1, 'tank enmity must be usable unengaged with valid target')
