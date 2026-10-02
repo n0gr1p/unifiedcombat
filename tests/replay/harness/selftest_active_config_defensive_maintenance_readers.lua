@@ -234,7 +234,7 @@ local function main()
             },
         },
     })
-    picked = hb_buff_maint.choose(hb_targeted_flat, {
+    picked = hb_buff_maint.choose(active_config.get_config(), {
         {
             name = 'Target',
             is_self = false,
@@ -259,7 +259,7 @@ local function main()
             },
         },
     })
-    picked = hb_buff_maint.choose(hb_self_only_flat, {
+    picked = hb_buff_maint.choose(active_config.get_config(), {
         {
             name = 'Ally',
             is_self = false,
