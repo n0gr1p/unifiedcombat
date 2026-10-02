@@ -232,6 +232,16 @@ The first Phase 3 slice removes four additional indirect flat-context reads from
 - Core target selection, tank-enmity selection, death-switch revalidation, partner arbitration, and pre-engage combat-close movement now receive canonical tick config for autotarget/auto-engage decisions.
 - Legacy compatibility helpers remain available for unmigrated callers, so this slice narrows the authoritative runtime surface without forcing unrelated Phase 3 domains to migrate early.
 
+## Phase 3 weaponskill configuration burn-down
+
+The second Phase 3 slice moves scheduler-owned weaponskill policy to canonical Profile V2 authority:
+
+- `uc_provider_combat.lua`: `ctx.settings` count reduced from 26 to 25 by replacing the flat `weaponskill_active` gate with canonical `config.combat.weaponskill.enabled`.
+- The planner builds a canonical WS settings view that overrides primary WS, mode, minimum TP, AoE policy, Fast Skillchain, no-SC target list, skillchain target, wait-ignore names, aftermath policy, `combat.spam`, and canonical legacy `solo`.
+- Rank-commit Smart-AoE and skillchain revalidation now receive `ctx.config`; final WS intent dispatch receives canonical config as well.
+- `ctx.settings` remains intentionally available to the planner only for not-yet-migrated non-WS dependencies, notably Chivalry's `ability_active` reservation gate. That dependency is assigned to the Phase 3 abilities slice.
+- Existing legacy direct-call tests remain valid when canonical config is omitted, preserving rollback/compatibility while scheduler-owned execution is canonical.
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.
