@@ -305,6 +305,30 @@ local settings = {
 	aftermath_ws = 'Knights of Round',
 }
 
+local function canonical_ws_config()
+	return {
+		combat = {
+			spam = false,
+			weaponskill = {
+				enabled = true,
+				primary = 'Savage Blade',
+				mode = 'smart',
+				minimum_tp = 1000,
+				allow_aoe = true,
+				fast_skillchain = false,
+				no_skillchain_targets = {},
+				skillchain_target = 'auto',
+				wait_ignore_names = {},
+				aftermath_enabled = false,
+				aftermath_ws = 'Knights of Round',
+			},
+		},
+		legacy = {
+			solo = false,
+		},
+	}
+end
+
 local function select()
 	install_active_resonance()
 	return core.select_ws_plan_for_scheduler(settings, 9001)
@@ -862,6 +886,125 @@ local function test_non_skillchain_primary_ws_arbitration_is_name_based()
 	assert_equal(reason, 'WS_INTENT_WAIT_REMOTE:100', 'ordinary primary same-WS behavior must remain unchanged')
 end
 
+local function test_canonical_weaponskill_config_authority()
+	ability_recasts[20] = 30
+	player.buffs = {}
+	learned_weapon_skills = { 10, 11, 30, 42 }
+	local config = canonical_ws_config()
+
+	-- Canonical primary/minimum TP/spam/solo/aftermath must beat contradictory flat values.
+	core.resonating[9001] = nil
+	settings.weaponskill = 'Aeolian Edge'
+	settings.ws1 = 'Aeolian Edge'
+	settings.ws_mode = 'primary_no_sc'
+	settings.weaponskill_min_tp = 1000
+	settings.weaponskill_allow_aoe = false
+	settings.spam = true
+	settings.solo = true
+	settings.aftermath_enabled = true
+	settings.aftermath_ws = 'Aeolian Edge'
+	config.combat.weaponskill.primary = 'Savage Blade'
+	config.combat.weaponskill.mode = 'smart'
+	config.combat.weaponskill.minimum_tp = 2000
+	config.combat.weaponskill.allow_aoe = true
+	config.combat.spam = false
+	config.legacy.solo = false
+	config.combat.weaponskill.aftermath_enabled = false
+	player.vitals.tp = 1500
+	local selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_equal(selection, nil, 'canonical minimum TP must beat lower flat threshold')
+	assert_equal(reason, 'WS_MIN_TP_HOLD', 'canonical minimum TP hold reason mismatch')
+	player.vitals.tp = 2000
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_true(type(selection) == 'table', 'canonical primary WS must become selectable at canonical TP threshold')
+	assert_equal(selection.ws_name, 'Savage Blade', 'canonical primary WS must beat conflicting flat primary')
+	assert_equal(reason, 'READY', 'canonical spam/solo/aftermath off must preserve normal Smart ready reason')
+
+	-- AoE policy must honor canonical false and canonical true in both contradictory directions.
+	core.resonating[9001] = nil
+	player.vitals.tp = 1000
+	settings.weaponskill = 'Savage Blade'
+	settings.ws1 = 'Savage Blade'
+	settings.weaponskill_allow_aoe = true
+	config.combat.weaponskill.primary = 'Aeolian Edge'
+	config.combat.weaponskill.minimum_tp = 1000
+	config.combat.weaponskill.allow_aoe = false
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_equal(selection, nil, 'canonical AoE off must beat flat AoE on')
+	assert_equal(reason, 'PRIMARY_WS_AOE_BLOCKED', 'canonical AoE-off reason mismatch')
+	settings.weaponskill_allow_aoe = false
+	config.combat.weaponskill.allow_aoe = true
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_true(type(selection) == 'table', 'canonical AoE on must beat flat AoE off')
+	assert_equal(selection.ws_name, 'Aeolian Edge', 'canonical AoE primary must remain authoritative')
+
+	-- Mode must come from canonical config across active resonance.
+	settings.ws_mode = 'smart'
+	config.combat.weaponskill.primary = 'Savage Blade'
+	config.combat.weaponskill.allow_aoe = true
+	config.combat.weaponskill.mode = 'primary_no_sc'
+	install_active_resonance()
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_equal(selection, nil, 'canonical primary_no_sc must hold during an active resonance')
+	assert_equal(reason, 'WS_MODE_PRIMARY_ONLY_SC_HOLD', 'canonical primary_no_sc hold reason mismatch')
+	settings.ws_mode = 'primary_no_sc'
+	config.combat.weaponskill.mode = 'smart'
+	install_active_resonance()
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_true(type(selection) == 'table', 'canonical Smart mode must beat flat primary_no_sc')
+	assert_equal(reason, 'SC_READY', 'canonical Smart continuation reason mismatch')
+	assert_equal(selection.ws_name, 'Test Single Continuation', 'canonical Smart mode must plan the continuation')
+
+	-- Aftermath policy must come from canonical config.
+	core.resonating[9001] = nil
+	settings.aftermath_enabled = false
+	settings.aftermath_ws = 'Aeolian Edge'
+	config.combat.weaponskill.mode = 'smart'
+	config.combat.weaponskill.primary = 'Savage Blade'
+	config.combat.weaponskill.aftermath_enabled = true
+	config.combat.weaponskill.aftermath_ws = 'Knights of Round'
+	player.vitals.tp = 2500
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_equal(selection, nil, 'canonical aftermath maintenance must reserve TP')
+	assert_equal(reason, 'AM_HOLD_TP', 'canonical aftermath hold reason mismatch')
+	player.vitals.tp = 3000
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_true(type(selection) == 'table', 'canonical aftermath WS must dispatch at 3000 TP')
+	assert_equal(reason, 'AM_READY', 'canonical aftermath ready reason mismatch')
+	assert_equal(selection.ws_name, 'Knights of Round', 'canonical aftermath WS must beat conflicting flat value')
+
+	-- Fast Skillchain must preserve explicit canonical false/true.
+	settings.fast_skillchain = true
+	config.combat.weaponskill.aftermath_enabled = false
+	config.combat.weaponskill.fast_skillchain = false
+	config.combat.weaponskill.primary = 'Savage Blade'
+	player.vitals.tp = 1000
+	install_high_level_skillchain_result(4, true)
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_equal(selection, nil, 'canonical fast-skillchain false must beat flat true')
+	assert_equal(reason, 'SC_TERMINAL', 'canonical fast-skillchain false reason mismatch')
+	settings.fast_skillchain = false
+	config.combat.weaponskill.fast_skillchain = true
+	install_high_level_skillchain_result(4, true)
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_true(type(selection) == 'table', 'canonical fast-skillchain true must beat flat false')
+	assert_equal(reason, 'READY', 'canonical fast-skillchain restart reason mismatch')
+
+	-- Restore baseline values used by the legacy compatibility tests below/above.
+	settings.weaponskill = 'Savage Blade'
+	settings.ws1 = nil
+	settings.ws_mode = 'smart'
+	settings.weaponskill_min_tp = 1000
+	settings.weaponskill_allow_aoe = true
+	settings.spam = false
+	settings.solo = false
+	settings.fast_skillchain = false
+	settings.aftermath_enabled = false
+	settings.aftermath_ws = 'Knights of Round'
+	player.vitals.tp = 1000
+	core.resonating[9001] = nil
+end
+
 local function restore_test_environment()
 	for _, module_name in ipairs(TEST_MODULE_NAMES) do
 		package.loaded[module_name] = saved_modules[module_name]
@@ -893,6 +1036,7 @@ local function main()
 	test_smart_continuation_candidate_filtering()
 	test_smart_primary_and_aftermath_aoe_restriction()
 	test_aoe_restriction_scope_and_revalidation()
+	test_canonical_weaponskill_config_authority()
 	end)
 	restore_test_environment()
 	if not ok then
