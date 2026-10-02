@@ -427,6 +427,13 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Draft PR #73 is the long-lived migration/CI surface. Verification run 36981070413 passed both `lua-sequence` and `winforms` after the guardrail baseline and fixture-count expectations were corrected.
 - The new guardrail immediately found three pre-existing `UnifiedCombat.lua` flat-sync call sites that the initial mechanical audit had missed; they are now explicitly baselined rather than silently ignored.
 
+### 2026-10-02 — Mainline legacy-food compatibility hotfix incorporated
+
+- Mainline PR #74 fixed Activity/Profile V2 apply failures for profiles created before `maintenance.food` existed.
+- Legacy Profile V2 maintenance domains now materialize `food = { enabled = false, item = '' }` before canonical-to-flat compatibility projection, preventing stale live food settings from leaking into conversion validation.
+- The focused regression reproduces the Etamame SAM/DRG Activity Apply failure shape and asserts the exact structured conversion path returns zero mismatch.
+- The hotfix was merged to `master` as `c8a084b9a29dd412e99fa3cf5dec4e0e90cf1b3f` and has been incorporated into this migration branch before Phase 2.
+
 ## Working checklist
 
 When completing any migration slice:
