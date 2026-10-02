@@ -70,6 +70,7 @@ jobs:
           lua5.1 tests/replay/harness/selftest_defensive_resurrection.lua
           lua5.1 tests/replay/harness/selftest_enemy_debuff_maintenance.lua
           lua5.1 tests/replay/harness/selftest_phase2_canonical_leaf_consumers.lua
+          lua5.1 tests/replay/harness/selftest_phase2_canonical_authority.lua
           lua5.1 tests/replay/harness/selftest_raise_accept.lua
           lua5.1 tests/replay/harness/selftest_deathsickness_recovery_hold.lua
           lua5.1 tests/replay/harness/selftest_geo_camp_placement.lua
