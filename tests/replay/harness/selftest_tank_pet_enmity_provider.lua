@@ -61,6 +61,9 @@ local provider = require('uc_provider_tank_enmity').new({
 		if value == nil then return default_value end
 		return value == true
 	end,
+	abilities_allow_unengaged = function(config)
+		return type(config) == 'table' and type(config.abilities) == 'table' and config.abilities.allow_unengaged == true
+	end,
 	select_tank_enmity = function() return nil end,
 	action_ready = function(name, target_id)
 		if name == 'Flash' and target_id == enemy.id then return true, '', 'spell' end
@@ -73,6 +76,7 @@ local provider = require('uc_provider_tank_enmity').new({
 
 local ctx = {
 	now = 10,
+	config = { abilities = { enabled = true, allow_unengaged = true, configured = {}, legacy_slots = {} } },
 	settings = { tank = true, ability_allow_unengaged = true },
 	player_present = true,
 	player = tank,
