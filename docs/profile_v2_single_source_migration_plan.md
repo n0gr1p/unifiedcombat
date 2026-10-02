@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **NOT STARTED**
+Status: **IN PROGRESS — combat enablement/autotarget slice implemented; CI verification pending**
 
 Domains to treat separately:
 
@@ -450,6 +450,19 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Workflow run `37016053323` passed both `lua-sequence` and `winforms`; the canonical-authority matrix reported `21/21 PASS`.
 - Live-game smoke verification remains before merge, especially food, recurring spells, defensive maintenance, COR upkeep, raise acceptance, recovery hold, and GEO camp placement.
 - Phase 2 implementation began with `0f707e1863846dcc74d0dd56cb791cbbf8bbb0ed`; the verified Phase 2 head is `a396671884229447f10ea85d5399e69a58003275`.
+
+### 2026-10-02 — Phase 3 combat enablement/autotarget slice implemented
+
+- Began Phase 3 with the smallest core domain: combat enablement/target acquisition gates, specifically canonical `config.combat.autotarget` and `config.combat.auto_engage`.
+- Added canonical-only scheduler helpers for autotarget and auto-engage while retaining compatibility helpers for unmigrated non-scheduler callers.
+- Migrated scheduler-owned target acquisition and engage gates to `ctx.config`; contradictory flat `ctx.settings.autotarget` / `auto_engage` values can no longer change those provider decisions.
+- Passed canonical tick config through core target selection, tank-enmity selection, death-switch revalidation, partner arbitration, and pre-engage combat-close movement so hidden flat autotarget fallbacks do not survive behind provider boundaries.
+- Added `tests/replay/harness/selftest_phase3_combat_enablement_authority.lua` with contradictory canonical-vs-flat cases for autotarget and auto-engage plus static wiring assertions.
+- Added the new Phase 3 proof to PR CI and the aggregate replay suite.
+- Reduced the flat-surface guard by four `ctx.settings` hits: two from `uc_provider_target_control.lua` and two from `uc_provider_combat.lua`.
+- Existing combat-extension provider coverage now supplies canonical combat config explicitly; legacy helper fallback tests remain intact for callers that have not migrated yet.
+- No weaponskill, ability, pulling, target-priority, tank-policy, ranking, or dispatch semantics are intentionally changed by this slice.
+- Live-game smoke verification remains required after automated CI is green.
 
 ## Working checklist
 
