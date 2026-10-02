@@ -146,6 +146,7 @@ end
 function M.new(deps)
 	deps = require_table(deps, 'deps')
 	local bool_setting = require_function(deps, 'bool_setting')
+	local abilities_allow_unengaged = require_function(deps, 'abilities_allow_unengaged')
 	local select_tank_enmity = require_function(deps, 'select_tank_enmity')
 	local action_ready = require_function(deps, 'action_ready')
 	local action_effective_range = require_function(deps, 'action_effective_range')
@@ -168,7 +169,7 @@ function M.new(deps)
 		if ctx.player_present ~= true then return end
 		run_provider.collect(ctx, out)
 		local engaged = tonumber(player.status) == 1
-		local allow_unengaged = bool_setting(ctx.settings.ability_allow_unengaged, false)
+		local allow_unengaged = bool_setting(abilities_allow_unengaged(ctx.config), false)
 		if not engaged and not allow_unengaged then return end
 		local pick = prefer_pet_pick(
 			pet_pick(ctx.settings, player, action_ready, action_effective_range),
