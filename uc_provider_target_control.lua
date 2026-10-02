@@ -56,7 +56,7 @@ function M.new(deps)
 		end
 		local engaged = tonumber(player.status) == 1
 		local add_control_retarget = engaged and add_control_enabled(ctx.settings)
-		local pick = select_target(ctx.settings)
+		local pick = select_target(ctx.settings, ctx.config)
 		if type(pick) ~= 'table' then
 			return
 		end
