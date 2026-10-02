@@ -371,10 +371,10 @@ function M.new(deps)
 		if not bool_setting(combat_domain_enabled(), false) then
 			return
 		end
-		if not bool_setting(combat_autotarget(ctx.settings), false) then
+		if not bool_setting(combat_autotarget(ctx.config), false) then
 			return
 		end
-		if not extensions.auto_engage_enabled(ctx.settings) then
+		if not extensions.auto_engage_enabled_from_config(ctx.config) then
 			return
 		end
 		local player = ctx.player
