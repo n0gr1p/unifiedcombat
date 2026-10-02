@@ -20,6 +20,13 @@ local deps = {
 		end
 		return value == true
 	end,
+	required_setting_value = function(config, name)
+		local values = type(config) == 'table' and config.required_settings or nil
+		if type(values) == 'table' then
+			return values[name]
+		end
+		return nil
+	end,
 	phase1 = phase1,
 	pending_engage_live = function()
 		return false
@@ -91,6 +98,7 @@ end
 local ctx = {
 	now = 100,
 	settings = {},
+	config = { required_settings = {} },
 	player_status = 1,
 }
 
@@ -103,6 +111,24 @@ disabled.required_setting = 'enabled'
 local disabled_ok, disabled_reason = ranker.validate_proposal(ctx, disabled, deps)
 assert_equal(disabled_ok, false, 'disabled proposal rejected')
 assert_equal(disabled_reason, 'settings_disabled', 'disabled rejection reason')
+
+ctx.settings.ability_active = false
+ctx.config.required_settings.ability_active = true
+local canonical_on = proposal('canonical_on', 'combat', 70, 0, 101)
+canonical_on.required_setting = 'ability_active'
+local canonical_on_ok, canonical_on_reason = ranker.validate_proposal(ctx, canonical_on, deps)
+assert_equal(canonical_on_ok, true, 'canonical required setting true must beat flat false')
+assert_equal(canonical_on_reason, '', 'canonical required setting true reason')
+
+ctx.settings.ability_active = true
+ctx.config.required_settings.ability_active = false
+local canonical_off = proposal('canonical_off', 'combat', 70, 0, 101)
+canonical_off.required_setting = 'ability_active'
+local canonical_off_ok, canonical_off_reason = ranker.validate_proposal(ctx, canonical_off, deps)
+assert_equal(canonical_off_ok, false, 'canonical required setting false must beat flat true')
+assert_equal(canonical_off_reason, 'settings_disabled', 'canonical required setting false reason')
+ctx.settings.ability_active = nil
+ctx.config.required_settings.ability_active = nil
 
 local stale = proposal('stale', 'combat', 70, 0, 101)
 stale.created_at = 99
