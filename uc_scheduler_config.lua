@@ -79,6 +79,11 @@ function M.debug_log_tank_sched(settings)
     return active_bool_or_flat('config.debug.tank_sched', s.log_tank_sched)
 end
 
+function M.combat_autotarget_from_config(config)
+    local combat = type(config) == 'table' and config.combat or nil
+    return type(combat) == 'table' and combat.autotarget == true
+end
+
 function M.combat_autotarget(settings)
     local s = settings_or_default(settings)
     return M.active_value_or_flat('config.combat.autotarget', s.autotarget)
