@@ -187,6 +187,7 @@ local ok, err = xpcall(function()
 			}
 		end,
 		action_ready = function() return true, 'OK', 'ja' end,
+		action_effective_range = function() return 20 end,
 		log_tank_sched = function() end,
 		clamp_urgency = function(value) return value end,
 	})
