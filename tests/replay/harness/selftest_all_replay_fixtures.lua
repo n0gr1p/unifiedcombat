@@ -17,6 +17,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_active_config_defensive_maintenance_readers.lua",
     "tests/replay/harness/selftest_profile_v2_runtime_consumers.lua",
     "tests/replay/harness/selftest_phase2_canonical_authority.lua",
+    "tests/replay/harness/selftest_phase3_combat_enablement_authority.lua",
     "tests/replay/harness/selftest_configurable_control_ranges.lua",
     "tests/replay/harness/selftest_profile_v2_source_of_truth_contract.lua",
     "tests/replay/harness/selftest_profile_v2_flat_surface_guard.lua",
