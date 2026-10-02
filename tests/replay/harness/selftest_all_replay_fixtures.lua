@@ -18,6 +18,8 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_profile_v2_runtime_consumers.lua",
     "tests/replay/harness/selftest_configurable_control_ranges.lua",
     "tests/replay/harness/selftest_profile_v2_source_of_truth_contract.lua",
+    "tests/replay/harness/selftest_profile_v2_flat_surface_guard.lua",
+    "tests/replay/harness/selftest_profile_v2_mixed_shape_characterization.lua",
     "tests/replay/harness/selftest_runtime_overrides.lua",
     "tests/replay/harness/selftest_add_control_priority_eligibility.lua",
     "tests/replay/harness/selftest_scheduler_config_readers.lua",

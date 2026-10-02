@@ -111,7 +111,7 @@ The migration is also not an excuse to rewrite scheduler behavior, ranking, acti
 
 ### Known runtime flat consumers / mixed consumers
 
-This list is a working inventory, not yet a completed exhaustive audit.
+The Phase 0 baseline is frozen in `docs/profile_v2_flat_surface_inventory.md`; the table below remains the higher-level migration view.
 
 | Consumer / family | Current pattern | Initial risk |
 | --- | --- | --- |
@@ -144,7 +144,7 @@ This list is a working inventory, not yet a completed exhaustive audit.
 
 ### Phase 0 — Inventory and guardrails
 
-Status: **IN PROGRESS**
+Status: **COMPLETE — baseline frozen; Phase 1 is next**
 
 Goals:
 
@@ -162,14 +162,14 @@ Goals:
 
 Exit criteria:
 
-- [ ] flat producer inventory complete;
-- [ ] flat consumer inventory complete;
-- [ ] field classification complete;
-- [ ] flat-to-canonical path map complete;
-- [ ] unknown/unmapped fields explicitly listed;
-- [ ] guardrail test added;
-- [ ] mixed maintenance regression fixture added;
-- [ ] no runtime behavior intentionally changed.
+- [x] flat producer inventory complete;
+- [x] flat consumer inventory complete;
+- [x] field classification complete;
+- [x] flat-to-canonical path map complete;
+- [x] unknown/unmapped fields explicitly listed;
+- [x] guardrail test added;
+- [x] mixed maintenance characterization/regression fixture added;
+- [x] no runtime behavior intentionally changed.
 
 ### Phase 1 — Establish the canonical runtime read boundary
 
@@ -405,6 +405,15 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Confirmed BRD song maintenance is intentionally blocked in configured city zones, including Rabao.
 - Confirmed the observed "BRD never sings" case in Rabao was expected city-zone behavior, not evidence of a current BRD config regression.
 - The configuration migration remains necessary because the mixed flat/nested model is still structural technical debt.
+
+### 2026-10-02 — Phase 0 inventory and guardrails completed
+
+- Added `docs/profile_v2_flat_surface_inventory.md` as the detailed producer/consumer and field-ownership baseline.
+- Added a repository-wide source guardrail that freezes direct `UC_SETTINGS`, indirect `ctx.settings`, `active_value_or_flat`, canonical-to-flat projection, bridge flat mutation, and WinForms flat write/translation seams.
+- Added a machine-readable allowlist with exact current source occurrence counts. Future migration slices should shrink it; new flat seams fail the guardrail unless explicitly reviewed.
+- Classified durable field families, runtime/transient state, compatibility-only aliases, and explicit ambiguous ownership decisions.
+- Added the mixed nested-food + flat-BRD maintenance characterization fixture. It records the current known normalizer defect without changing runtime behavior.
+- Phase 0 made documentation/test-only changes; no scheduler/provider/gameplay behavior changed.
 
 ## Working checklist
 
