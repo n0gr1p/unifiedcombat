@@ -225,30 +225,6 @@ local function assert_missing_new_defensive_settings_apply(profile_v2, exporter,
 	assert_equal(result.candidate.defensive_enemy_debuffs, '', 'missing enemy debuff list must project as empty')
 end
 
-local function assert_missing_new_food_settings_apply(profile_v2, exporter, contract, make_fake_fs_fn, flat, profile, durable_path)
-	local legacy_profile = deep_clone(profile)
-	legacy_profile.config.maintenance.food = nil
-	local settings = deep_clone(flat)
-	settings.food_enabled = true
-	settings.food_item = 'Grape Daifuku'
-	local deps = make_fake_fs_fn({
-		[durable_path] = profile_v2.serialize_structured_profile(legacy_profile),
-	})
-	local result = exporter.apply_structured_profile_file_to_settings(settings, {
-		character = 'Redrogue',
-		main_job = 'PLD',
-		sub_job = 'WAR',
-	}, contract.validate_structured_profile_config, deps)
-	assert_true(result.ok == true, 'structured profile missing food settings must apply cleanly')
-	assert_true(result.diff_count > 0, 'legacy food apply should report the stale live food values it will replace')
-	local round_trip = profile_v2.diff_durable_config(result.candidate_config, legacy_profile.config)
-	assert_equal(round_trip.count, 0, 'structured profile missing food settings must round-trip without conversion mismatch')
-	assert_false(result.candidate.food_enabled, 'missing food enabled value must project as false')
-	assert_equal(result.candidate.food_item, '', 'missing food item must project as empty')
-	assert_false(result.active_profile.config.maintenance.food.enabled, 'active Profile V2 must materialize disabled food default')
-	assert_equal(result.active_profile.config.maintenance.food.item, '', 'active Profile V2 must materialize empty food item default')
-end
-
 local function load_profile_v2_apply_from_addon(addon_source, exporter_stub, validator_stub)
 	local apply_block = extract_source_block(
 		addon_source,
@@ -941,10 +917,6 @@ local function build_expected_config()
 		},
 		maintenance = {
 			enabled = true,
-			food = {
-				enabled = false,
-				item = '',
-			},
 			geo = {
 				enabled = false,
 				geo_target = {
@@ -1794,7 +1766,6 @@ local function main()
 	assert_equal(#no_diff_state.rename_calls, 0, 'structured profile apply should not rename files on no-diff apply')
 
 	assert_missing_new_defensive_settings_apply(profile_v2, exporter, contract, make_fake_fs, flat, profile, durable_path)
-	assert_missing_new_food_settings_apply(profile_v2, exporter, contract, make_fake_fs, flat, profile, durable_path)
 
 	no_diff_settings = deep_clone(profile)
 	no_diff_settings.config.follow.nyzul = nil
