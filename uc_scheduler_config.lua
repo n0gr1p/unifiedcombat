@@ -105,6 +105,20 @@ function M.abilities_allow_unengaged_from_config(config)
     return type(abilities) == 'table' and abilities.allow_unengaged == true
 end
 
+function M.required_setting_value_from_config(config, setting_name)
+    local name = tostring(setting_name or '')
+    if name == 'autotarget' then
+        return M.combat_autotarget_from_config(config)
+    end
+    if name == 'weaponskill_active' then
+        return M.combat_weaponskill_enabled_from_config(config)
+    end
+    if name == 'ability_active' then
+        return M.abilities_enabled_from_config(config)
+    end
+    return nil
+end
+
 function M.combat_prime(settings)
     local s = settings_or_default(settings)
     return M.active_value_or_flat('config.combat.prime', s.prime)
