@@ -424,6 +424,8 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Added deterministic fixture/static coverage for active-config lookup, missing-config fallback, one-sample-per-context behavior, and scheduler wiring.
 - No proposal provider, ranking rule, dispatch path, or durable config consumer changed in this phase; the Phase 0 flat allowlist is intentionally unchanged.
 - PR verification now runs the flat-surface guard, mixed-shape characterization, scheduler canonical-context tests, and context-utils fixtures on every migration PR update.
+- Draft PR #73 is the long-lived migration/CI surface. Verification run 36981070413 passed both `lua-sequence` and `winforms` after the guardrail baseline and fixture-count expectations were corrected.
+- The new guardrail immediately found three pre-existing `UnifiedCombat.lua` flat-sync call sites that the initial mechanical audit had missed; they are now explicitly baselined rather than silently ignored.
 
 ## Working checklist
 
