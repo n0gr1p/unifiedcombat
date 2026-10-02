@@ -3057,6 +3057,40 @@ local function chivalry_ws_reservation_reason(settings, player)
 	return 'CHIVALRY_READY'
 end
 
+local function scheduler_weaponskill_settings_view(settings, config)
+	local base = settings or get_settings() or {}
+	local view = {}
+	for key, value in pairs(base) do
+		view[key] = value
+	end
+	if type(config) ~= 'table' then
+		return view
+	end
+	local combat = type(config.combat) == 'table' and config.combat or nil
+	local weaponskill = type(combat) == 'table' and combat.weaponskill or nil
+	if type(weaponskill) ~= 'table' then
+		error('scheduler weaponskill config requires config.combat.weaponskill')
+	end
+	view.weaponskill_active = weaponskill.enabled == true
+	view.weaponskill = tostring(weaponskill.primary or '')
+	view.ws1 = view.weaponskill
+	view.ws_mode = tostring(weaponskill.mode or 'smart')
+	view.weaponskill_min_tp = weaponskill.minimum_tp
+	view.weaponskill_allow_aoe = weaponskill.allow_aoe ~= false
+	view.fast_skillchain = weaponskill.fast_skillchain == true
+	view.weaponskill_no_skillchain_targets = weaponskill.no_skillchain_targets or {}
+	view.skillchain_target = tostring(weaponskill.skillchain_target or 'auto')
+	view.wait_ignore_names = weaponskill.wait_ignore_names or {}
+	view.aftermath_enabled = weaponskill.aftermath_enabled == true
+	view.aftermath_ws = tostring(weaponskill.aftermath_ws or '')
+	view.spam = combat.spam == true
+	local legacy = type(config.legacy) == 'table' and config.legacy or nil
+	if type(legacy) == 'table' and legacy.solo ~= nil then
+		view.solo = legacy.solo == true
+	end
+	return view
+end
+
 local function select_aftermath_maintenance_ws(settings, player)
 	if not setting_enabled(settings and settings.aftermath_enabled) then
 		return nil, nil
@@ -3320,13 +3354,15 @@ function core.assert_no_job_branch()
 	return true
 end
 
-function core.select_smart_ws_for_scheduler(settings, target_id)
-	local ws_name, ws_reason = select_smart_ws(settings or {}, target_id)
+function core.select_smart_ws_for_scheduler(settings, target_id, config)
+	local ws_settings = scheduler_weaponskill_settings_view(settings, config)
+	local ws_name, ws_reason = select_smart_ws(ws_settings, target_id)
 	return tostring(ws_name or ''), tostring(ws_reason or '')
 end
 
-function core.select_ws_plan_for_scheduler(settings, target_id)
-	local ws_name, ws_reason, skillchain_plan = select_smart_ws(settings or {}, target_id)
+function core.select_ws_plan_for_scheduler(settings, target_id, config)
+	local ws_settings = scheduler_weaponskill_settings_view(settings, config)
+	local ws_name, ws_reason, skillchain_plan = select_smart_ws(ws_settings, target_id)
 	if tostring(ws_name or '') == '' then
 		return nil, tostring(ws_reason or '')
 	end
@@ -3337,7 +3373,7 @@ function core.select_ws_plan_for_scheduler(settings, target_id)
 		or ws_reason == 'SC_WINDOW_HIGH_RISK'
 		or ws_reason == 'SC_NOT_READY'
 		or ws_reason == 'SC_DISPATCH_PENDING_RESULT' then
-		required_tp = require_weaponskill_minimum_tp(settings)
+		required_tp = require_weaponskill_minimum_tp(ws_settings)
 	elseif ws_reason == 'AM_READY' then
 		required_tp = 3000
 	elseif ws_reason == 'WS_MODE_PRIMARY_ONLY_READY' then
@@ -3350,36 +3386,39 @@ function core.select_ws_plan_for_scheduler(settings, target_id)
 		reason = tostring(ws_reason or ''),
 		skillchain_plan = skillchain_plan,
 		required_tp = required_tp,
-		smart_aoe_guard = get_ws_mode(settings) == 'smart'
-			and not setting_enabled(settings.spam)
-			and not setting_enabled(settings.solo),
+		smart_aoe_guard = get_ws_mode(ws_settings) == 'smart'
+			and not setting_enabled(ws_settings.spam)
+			and not setting_enabled(ws_settings.solo),
 	}, tostring(ws_reason or '')
 end
 
-function core.revalidate_no_skillchain_target(settings, target_id, ws_id_or_name)
+function core.revalidate_no_skillchain_target(settings, target_id, ws_id_or_name, config)
+	local ws_settings = scheduler_weaponskill_settings_view(settings, config)
 	local actor_context = local_skillchain_actor_context()
-	if no_skillchain_target_blocks_ws(settings or {}, target_id, ws_id_or_name, actor_context) then
+	if no_skillchain_target_blocks_ws(ws_settings, target_id, ws_id_or_name, actor_context) then
 		return false, 'NO_SKILLCHAIN_TARGET_HOLD'
 	end
 	return true, ''
 end
 
-function core.revalidate_smart_ws_aoe(settings, ws_id_or_name)
-	if not smart_ws_allowed(settings or {}, ws_id_or_name) then
+function core.revalidate_smart_ws_aoe(settings, ws_id_or_name, config)
+	local ws_settings = scheduler_weaponskill_settings_view(settings, config)
+	if not smart_ws_allowed(ws_settings, ws_id_or_name) then
 		return false, 'SMART_WS_AOE_BLOCKED'
 	end
 	return true, ''
 end
 
-function core.revalidate_skillchain_plan(plan, settings, expected_target_id, expected_ws_name, commit_stage)
+function core.revalidate_skillchain_plan(plan, settings, expected_target_id, expected_ws_name, commit_stage, config)
 	if type(plan) ~= 'table' then
 		return false, 'SC_INTENT_LOST'
 	end
-	local sc_allowed, sc_reason = core.revalidate_no_skillchain_target(settings, expected_target_id, plan.ws_id)
+	local ws_settings = scheduler_weaponskill_settings_view(settings, config)
+	local sc_allowed, sc_reason = core.revalidate_no_skillchain_target(ws_settings, expected_target_id, plan.ws_id)
 	if not sc_allowed then
 		return false, sc_reason
 	end
-	local aoe_allowed, aoe_reason = core.revalidate_smart_ws_aoe(settings, plan.ws_id)
+	local aoe_allowed, aoe_reason = core.revalidate_smart_ws_aoe(ws_settings, plan.ws_id)
 	if not aoe_allowed then
 		return false, aoe_reason
 	end
@@ -3403,7 +3442,7 @@ function core.revalidate_skillchain_plan(plan, settings, expected_target_id, exp
 	local reaction_lock = rawget(_G, 'UC_REACTION_LOCK')
 	local ok, reason = skillchain_runtime:revalidate_plan(plan, {
 		now = uc_time.now(),
-		engine_enabled = rawget(_G, 'Start_Engine') == true and setting_enabled(settings and settings.weaponskill_active),
+		engine_enabled = rawget(_G, 'Start_Engine') == true and setting_enabled(ws_settings.weaponskill_active),
 		current_target_id = current_target_id,
 		target_valid = target_valid and true or false,
 		ws_available = ws_name == tostring(plan.ws_name or '') and ws_is_currently_available(plan.ws_id),
@@ -3415,7 +3454,7 @@ function core.revalidate_skillchain_plan(plan, settings, expected_target_id, exp
 		range_valid = target_valid and target_distance(target) <= WS_DISPATCH_MAX_DISTANCE or false,
 		reaction_hold = type(reaction_lock) == 'table',
 		intent_valid = target_id == tonumber(plan.target_id) and ws_name == tostring(plan.ws_name or ''),
-		skillchain_target = settings and settings.skillchain_target or 'auto',
+		skillchain_target = ws_settings.skillchain_target or 'auto',
 		actor_context = actor_context,
 		effective_properties = effective_properties,
 		commit_stage = tostring(commit_stage or 'unspecified'),
@@ -3423,7 +3462,8 @@ function core.revalidate_skillchain_plan(plan, settings, expected_target_id, exp
 	return ok, reason
 end
 
-function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillchain_plan)
+function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillchain_plan, config)
+	local ws_settings = scheduler_weaponskill_settings_view(settings, config)
 	local ws = tostring(ws_name or '')
 	local tid = tonumber(target_id) or 0
 	if ws == '' or tid <= 0 then
@@ -3443,11 +3483,11 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillcha
 	if target_distance(target) > WS_DISPATCH_MAX_DISTANCE then
 		return false, 'WS_OUT_OF_RANGE'
 	end
-	local sc_allowed, sc_reason = core.revalidate_no_skillchain_target(settings or get_settings(), tid, ws)
+	local sc_allowed, sc_reason = core.revalidate_no_skillchain_target(ws_settings, tid, ws)
 	if not sc_allowed then
 		return false, sc_reason
 	end
-	local ok, why = ws_intent_gate(settings or get_settings(), ws, tid, skillchain_plan)
+	local ok, why = ws_intent_gate(ws_settings, ws, tid, skillchain_plan)
 	if not ok then
 		return false, tostring(why or 'WS_INTENT_BLOCK')
 	end
@@ -3456,7 +3496,7 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillcha
 		hooks.revalidate = function()
 			return core.revalidate_skillchain_plan(
 				skillchain_plan,
-				settings or get_settings(),
+				ws_settings,
 				tid,
 				ws,
 				'dispatch_commit'
@@ -3469,7 +3509,7 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillcha
 			end
 			return true
 		end
-	elseif fast_skillchain_restart_enabled(settings or get_settings(), skillchain_runtime:get_state(tid)) then
+	elseif fast_skillchain_restart_enabled(ws_settings, skillchain_runtime:get_state(tid)) then
 		hooks.on_executed = function()
 			skillchain_runtime:clear_target(tid, 'fast_skillchain_restart')
 			return true
