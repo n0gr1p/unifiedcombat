@@ -2271,7 +2271,7 @@ local function run_heading_guarded(target, me, heading, tag, is_retreat_intent, 
 	return true
 end
 
-local function apply_movement(settings, target, executor)
+local function apply_movement(settings, target, executor, config)
 	set_preengage_approach_active(false)
 	_G.UC_PULLER_APPROACH_BLOCK_UNTIL = 0
 	-- Generic combat-close movement belongs to automatic melee engagement.
@@ -2279,8 +2279,15 @@ local function apply_movement(settings, target, executor)
 	-- is off, so do not let target ownership alone pull followers into melee range.
 	-- Explicit move mode remains an intentional override for callers that own movement.
 	local explicit_move = setting_enabled(settings.move)
-	local auto_engage = require('uc_combat_extension_config').auto_engage_enabled(settings)
-	if (not explicit_move) and ((not setting_enabled(settings.autotarget)) or (not auto_engage)) then
+	local scheduler_config = require('uc_scheduler_config')
+	local autotarget = type(config) == 'table'
+		and scheduler_config.combat_autotarget_from_config(config)
+		or scheduler_config.combat_autotarget(settings)
+	local extension_config = require('uc_combat_extension_config')
+	local auto_engage = type(config) == 'table'
+		and extension_config.auto_engage_enabled_from_config(config)
+		or extension_config.auto_engage_enabled(settings)
+	if (not explicit_move) and ((not setting_enabled(autotarget)) or (not auto_engage)) then
 		if core.last_run_active then
 			stop_run(executor)
 		end
@@ -3745,14 +3752,14 @@ function core.dispatch_pull_for_scheduler(settings, target_id, executor)
 	return false, 'PULL_NOT_APPLICABLE'
 end
 
-function core.apply_movement_for_scheduler(settings, movement_executor)
+function core.apply_movement_for_scheduler(settings, movement_executor, config)
 	if type(movement_executor) ~= 'table' then
 		error('core.apply_movement_for_scheduler movement_executor must be a table')
 	end
 	local s = settings or get_settings() or {}
 	local current = get_current_target()
 	local before_run = (core.last_run_active == true)
-	apply_movement(s, current, movement_executor)
+	apply_movement(s, current, movement_executor, config)
 	local after_run = (core.last_run_active == true)
 	local preengage = (rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true)
 	-- Movement coordinator should only claim ownership when this tick produced
