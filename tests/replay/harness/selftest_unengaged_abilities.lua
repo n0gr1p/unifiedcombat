@@ -11,6 +11,16 @@ local function assert_true(value, message)
 end
 
 local original_start_engine = rawget(_G, 'Start_Engine')
+local saved_modules = {}
+for _, name in ipairs({
+	'resources',
+	'uc_scheduler_config',
+	'uc_provider_run_tank',
+	'uc_tank_pet_enmity',
+	'uc_provider_tank_enmity',
+}) do
+	saved_modules[name] = package.loaded[name]
+end
 
 local function generic_deps(ability_name, ja_targets)
 	return {
@@ -146,6 +156,22 @@ local ok, err = xpcall(function()
 
 	-- Dedicated tank-enmity provider has the same gate so PLD's tank action list
 	-- does not remain partially engagement-locked.
+	package.loaded.resources = {
+		spells = { with = function() return nil end },
+		job_abilities = { with = function() return nil end },
+	}
+	package.loaded.uc_scheduler_config = {
+		tank_enmity_include_pets = function() return false end,
+	}
+	package.loaded.uc_provider_run_tank = {
+		new = function()
+			return { collect = function() end }
+		end,
+	}
+	package.loaded.uc_tank_pet_enmity = {
+		find_violation = function() return nil end,
+	}
+	package.loaded.uc_provider_tank_enmity = nil
 	local tank_provider = require('uc_provider_tank_enmity').new({
 		bool_setting = function(value, default_value)
 			if value == nil then return default_value end
@@ -186,6 +212,9 @@ local ok, err = xpcall(function()
 end, debug.traceback)
 
 _G.Start_Engine = original_start_engine
+for name, value in pairs(saved_modules) do
+	package.loaded[name] = value
+end
 if not ok then
 	error(err)
 end
