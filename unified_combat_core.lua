@@ -3084,6 +3084,16 @@ local function scheduler_weaponskill_settings_view(settings, config)
 	view.aftermath_enabled = weaponskill.aftermath_enabled == true
 	view.aftermath_ws = tostring(weaponskill.aftermath_ws or '')
 	view.spam = combat.spam == true
+	local abilities = type(config.abilities) == 'table' and config.abilities or nil
+	if type(abilities) == 'table' then
+		view.ability_active = abilities.enabled == true
+		view.ability_allow_unengaged = abilities.allow_unengaged == true
+		view.abilities = abilities.configured or {}
+		local legacy_slots = type(abilities.legacy_slots) == 'table' and abilities.legacy_slots or {}
+		for i = 1, 6 do
+			view['ability' .. tostring(i)] = legacy_slots[i]
+		end
+	end
 	local legacy = type(config.legacy) == 'table' and config.legacy or nil
 	if type(legacy) == 'table' and legacy.solo ~= nil then
 		view.solo = legacy.solo == true
