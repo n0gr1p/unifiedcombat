@@ -10,18 +10,6 @@ local runtime = {
 	transition_count = 0,
 }
 
-local function truthy(value)
-	if value == true or value == 1 then
-		return true
-	end
-	if type(value) == 'string' then
-		local normalized = value:lower()
-		return normalized == 'true' or normalized == 'on'
-			or normalized == '1' or normalized == 'yes'
-	end
-	return false
-end
-
 local function current_player()
 	local windower_ref = rawget(_G, 'windower')
 	local ffxi = type(windower_ref) == 'table' and windower_ref.ffxi or nil
@@ -47,12 +35,8 @@ function M.validate_resources(buffs)
 	return true
 end
 
-function M.setting_enabled(settings)
-	local configured = active_config.get_path('config.ownership.pause_automation_while_weakened')
-	if configured ~= nil then
-		return configured == true
-	end
-	return truthy(type(settings) == 'table' and settings.pause_automation_while_weakened or nil)
+function M.setting_enabled()
+	return active_config.get_path('config.ownership.pause_automation_while_weakened') == true
 end
 
 function M.player_is_weakened(player)
@@ -69,15 +53,15 @@ function M.player_is_weakened(player)
 	return false
 end
 
-function M.active(settings, player)
-	if not M.setting_enabled(settings) then
+function M.active(_, player)
+	if not M.setting_enabled() then
 		return false
 	end
 	return M.player_is_weakened(player or current_player())
 end
 
 function M.current()
-	return M.active(rawget(_G, 'UC_SETTINGS'), nil)
+	return M.active(nil, nil)
 end
 
 local function publish(active)

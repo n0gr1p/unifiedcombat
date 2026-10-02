@@ -42,17 +42,9 @@ local function geo_spell_name(spell_id)
 end
 
 local function geo_config()
-	local active = nil
-	local ok_active, value = pcall(uc_active_config.get_path, 'config.maintenance.geo')
-	if ok_active and type(value) == 'table' then
-		active = value
-	end
-	if active ~= nil then
-		return active
-	end
-	local settings = rawget(_G, 'UC_SETTINGS')
-	if type(settings) == 'table' and type(settings.maintenance_geo) == 'table' then
-		return settings.maintenance_geo
+	local value = uc_active_config.get_path('config.maintenance.geo')
+	if type(value) == 'table' then
+		return value
 	end
 	return nil
 end

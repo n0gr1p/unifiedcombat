@@ -115,6 +115,12 @@ windower = {
 	end,
 }
 
+rawset(_G, 'UC_SETTINGS', {
+	maintenance_geo = {
+		luopan = { placement = 'target' },
+	},
+})
+
 package.loaded['uc_geo_camp_placement'] = nil
 local placement = require('uc_geo_camp_placement')
 

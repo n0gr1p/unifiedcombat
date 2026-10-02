@@ -50,7 +50,7 @@ rawset(_G, 'windower', {
 		end,
 	},
 })
-rawset(_G, 'UC_SETTINGS', {})
+rawset(_G, 'UC_SETTINGS', { pause_automation_while_weakened = true })
 
 local recovery_hold = require('uc_recovery_hold')
 local dispatcher = require('uc_scheduler_dispatcher')
@@ -64,7 +64,7 @@ assert_false(recovery_hold.player_is_weakened({ buffs = { 2, 3 } }), 'unrelated 
 
 configured = nil
 player.buffs = { 1 }
-assert_false(recovery_hold.current(), 'missing setting must default off')
+assert_false(recovery_hold.current(), 'missing canonical setting must default off even when flat compatibility is true')
 
 local command_calls = 0
 local function send_command()

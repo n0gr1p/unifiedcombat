@@ -84,11 +84,11 @@ package.loaded.uc_raise_accept = nil
 local raise_accept = require('uc_raise_accept')
 
 configured = nil
-assert_true(raise_accept.setting_enabled(rawget(_G, 'UC_SETTINGS')), 'flat compatibility setting should enable auto-accept')
+assert_false(raise_accept.setting_enabled(), 'missing canonical setting must stay disabled even when flat compatibility is true')
 configured = false
-assert_false(raise_accept.setting_enabled(rawget(_G, 'UC_SETTINGS')), 'active config false must override flat true')
+assert_false(raise_accept.setting_enabled(), 'canonical false must disable auto-accept')
 configured = true
-assert_true(raise_accept.setting_enabled({ auto_accept_raise = false }), 'active config true must override flat false')
+assert_true(raise_accept.setting_enabled(), 'canonical true must enable auto-accept')
 
 local ok, reason = raise_accept.on_incoming_chunk(0x0F9, 'raise', now)
 assert_true(ok, 'dead player should accept Raise: ' .. tostring(reason))
