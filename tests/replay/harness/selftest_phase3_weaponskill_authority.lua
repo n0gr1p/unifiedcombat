@@ -73,6 +73,8 @@ local function make_provider(observed)
 			}, 'READY'
 		end,
 		weaponskill_enabled = scheduler_config.combat_weaponskill_enabled_from_config,
+		abilities_enabled = function() return false end,
+		abilities_allow_unengaged = function() return false end,
 		action_timeline_log = function() end,
 		combat_domain_enabled = function() return true end,
 		sleep_enabled = function() return false end,
