@@ -242,6 +242,17 @@ The second Phase 3 slice moves scheduler-owned weaponskill policy to canonical P
 - `ctx.settings` remains intentionally available to the planner only for not-yet-migrated non-WS dependencies, notably Chivalry's `ability_active` reservation gate. That dependency is assigned to the Phase 3 abilities slice.
 - Existing legacy direct-call tests remain valid when canonical config is omitted, preserving rollback/compatibility while scheduler-owned execution is canonical.
 
+## Phase 3 abilities burn-down
+
+The third Phase 3 slice moves scheduler-owned configured ability policy to canonical Profile V2 authority:
+
+- `uc_provider_combat.lua`: `ctx.settings` count reduced from 25 to 22 by moving `ability_active`, `ability_allow_unengaged`, and configured ability-list selection to `ctx.config`.
+- `uc_provider_tank_enmity.lua`: `ctx.settings` count reduced from 3 to 2 by moving the shared allow-unengaged policy to `config.abilities.allow_unengaged`.
+- Chivalry reservation inside the WS planner now receives canonical `config.abilities.enabled`, `configured`, and `legacy_slots`.
+- The scheduler ranker no longer reasserts stale flat authority for migrated `autotarget`, `weaponskill_active`, or `ability_active` proposal dependencies. Unmigrated required-setting names retain their compatibility fallback.
+- Remaining generic-JA `ctx.settings` reads are for separately owned concerns such as RUN JA ownership filtering, tank weighting, partner targeting, and other not-yet-migrated domains—not for ability configuration authority.
+- `abilities.wsabilities` remains a legacy-engine compatibility field; the scheduler configured-JA provider does not consume it.
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.
