@@ -346,6 +346,10 @@ function M.new(deps)
     local action_effective_range = require_function(deps, 'action_effective_range')
     local api = {}
 
+    function api.auto_engage_enabled_from_config(config)
+        return extension_config().auto_engage_enabled_from_config(config)
+    end
+
     function api.auto_engage_enabled(settings)
         return extension_config().auto_engage_enabled(settings)
     end
