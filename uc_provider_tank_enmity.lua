@@ -172,7 +172,7 @@ function M.new(deps)
 		if not engaged and not allow_unengaged then return end
 		local pick = prefer_pet_pick(
 			pet_pick(ctx.settings, player, action_ready, action_effective_range),
-			select_tank_enmity(ctx.settings)
+			select_tank_enmity(ctx.settings, ctx.config)
 		)
 		if type(pick) ~= 'table' then return end
 		local kind = tostring(pick.kind or ''):lower()
