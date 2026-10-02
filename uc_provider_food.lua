@@ -104,7 +104,8 @@ function M.new(deps)
 		local item_name = tostring(active_value_or_flat(
 			'config.maintenance.food.item',
 			settings.food_item
-		) or ''):match('^%s*(.-)%s*
+		) or '')
+		if item_name == '' then
 			return
 		end
 		local player = ctx.player
