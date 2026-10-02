@@ -2891,7 +2891,7 @@ local function run_movement_coordinator_tick()
 		turn = windower.ffxi.turn,
 	})
 	local ok_call, call_err = pcall(function()
-		ok = combat_core.apply_movement_for_scheduler(s, movement_executor) == true
+		ok = combat_core.apply_movement_for_scheduler(s, movement_executor, get_tick_ctx().config) == true
 	end)
 	if not ok_call then
 		_G.UC_LAST_SCHED_ACTION = '[move]error:' .. tostring(call_err or '')
