@@ -387,6 +387,22 @@ local function is_structured_profile(value)
 	return type(value) == 'table' and value.version == 2 and type(value.profile) == 'table' and type(value.config) == 'table'
 end
 
+local function normalize_maintenance_compatibility(config)
+	if type(config.maintenance) ~= 'table' then
+		return
+	end
+	-- Profiles written before food maintenance existed already own the
+	-- maintenance domain, but have no food subtree. Treat the missing leaf as
+	-- the canonical disabled default so projection replaces stale live food
+	-- settings instead of inheriting them from the current session.
+	if config.maintenance.food == nil then
+		config.maintenance.food = {
+			enabled = false,
+			item = '',
+		}
+	end
+end
+
 local function normalize_defensive_compatibility(config)
 	if type(config.defensive) ~= 'table' then
 		return true
@@ -1305,6 +1321,7 @@ function M.build_active_profile_from_v2_payload(payload, context)
 	local meta = resolve_meta(context, 'UC_PROFILE_V2')
 	local profile = build_profile_record(payload.profile, meta, 'UC_PROFILE_V2')
 	local config = pick_durable_config_domains(payload.config, profile)
+	normalize_maintenance_compatibility(config)
 	local defensive_ok, defensive_err = normalize_defensive_compatibility(config)
 	if defensive_ok ~= true then
 		return nil, defensive_err
