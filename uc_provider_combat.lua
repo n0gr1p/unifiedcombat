@@ -40,6 +40,7 @@ function M.new(deps)
 	local clamp_urgency = require_function(deps, 'clamp_urgency')
 	local build_partner_target_set = require_function(deps, 'build_partner_target_set')
 	local select_ws_plan = require_function(deps, 'select_ws_plan')
+	local weaponskill_enabled = require_function(deps, 'weaponskill_enabled')
 	local action_timeline_log = require_function(deps, 'action_timeline_log')
 	local combat_domain_enabled = require_function(deps, 'combat_domain_enabled')
 	local sleep_enabled = require_function(deps, 'sleep_enabled')
@@ -93,7 +94,7 @@ function M.new(deps)
 		if extensions.collect_priority_offense(ctx, out) then
 			return
 		end
-		if not bool_setting(ctx.settings.weaponskill_active, false) then
+		if not bool_setting(weaponskill_enabled(ctx.config), false) then
 			return
 		end
 		local player = ctx.player
@@ -113,7 +114,7 @@ function M.new(deps)
 		if partner_target_set[tonumber(target.id) or 0] == true then
 			return
 		end
-		local ws_selection, ws_pick_reason = select_ws_plan(ctx.settings, tonumber(target.id) or 0)
+		local ws_selection, ws_pick_reason = select_ws_plan(ctx.settings, tonumber(target.id) or 0, ctx.config)
 		if type(ws_selection) ~= 'table' then
 			return
 		end
