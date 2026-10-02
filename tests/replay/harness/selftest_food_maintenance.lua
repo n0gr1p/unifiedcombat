@@ -82,7 +82,7 @@ assert_equal(active_proposal[1].action_name, 'Marine Stewpot', 'active structure
 active_config = {}
 inventory = { enabled = true, [1] = { id = 1001, count = 3 } }
 
-assert_equal(#collect(3.0, true, 'Grape Daifuku', { 251 }), 0, 'existing Food buff must never be overwritten')
+assert_equal(#collect(3.2, true, 'Grape Daifuku', { 251 }), 0, 'existing Food buff must never be overwritten')
 
 moving = true
 assert_equal(#collect(4.0, true, 'Grape Daifuku'), 0, 'food must wait while the player is moving')
