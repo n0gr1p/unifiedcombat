@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **IN PROGRESS — combat enablement/autotarget slice implemented; CI verification pending**
+Status: **IN PROGRESS — combat enablement/autotarget slice implemented and CI-proven**
 
 Domains to treat separately:
 
@@ -462,7 +462,9 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Reduced the flat-surface guard by four `ctx.settings` hits: two from `uc_provider_target_control.lua` and two from `uc_provider_combat.lua`.
 - Existing combat-extension provider coverage now supplies canonical combat config explicitly; legacy helper fallback tests remain intact for callers that have not migrated yet.
 - No weaponskill, ability, pulling, target-priority, tank-policy, ranking, or dispatch semantics are intentionally changed by this slice.
-- Live-game smoke verification remains required after automated CI is green.
+- During contradictory-state proof, the first canonical auto-engage implementation exposed a Lua false-value bug: `condition and value or nil` collapsed explicit canonical `false` to `nil`, incorrectly restoring the default `true`. The canonical accessor was corrected to preserve explicit false, and the regression now proves both directions.
+- Automated proof on branch head `cf827cd87f0eafe8b9917743d97ed7a2015944b2`: workflow `37023674659` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 2 canonical-authority coverage PASS, the new Phase 3 combat enablement canonical-authority test PASS, and the flat-surface guard PASS.
+- Live-game smoke verification remains required before the Phase 3 core migration is considered complete.
 
 ## Working checklist
 
