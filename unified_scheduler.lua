@@ -6379,7 +6379,7 @@ local function p1_dispatch_defensive_healbot(selected, settings)
 	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_HEALBOT'
 end
 
-local function p1_dispatch_combat(selected, settings, phase)
+local function p1_dispatch_combat(selected, settings, phase, config)
 	_G.UC_TANK_ENMITY_BLOCK = ''
 	if not domain_ownership.is_enabled('combat') then
 		return false, nil
@@ -6527,7 +6527,7 @@ local function p1_dispatch_combat(selected, settings, phase)
 		if not combat_core or type(combat_core.try_dispatch_ws_with_intent) ~= 'function' then
 			error('scheduler combat WS dispatch requires core intent owner')
 		end
-		local sent, why = combat_core.try_dispatch_ws_with_intent(ws, expected_tid, settings, selected.skillchain_plan)
+		local sent, why = combat_core.try_dispatch_ws_with_intent(ws, expected_tid, settings, selected.skillchain_plan, config)
 		if not sent then
 			_G.UC_LAST_SCHED_ACTION = ('[p1]ws_hold:%s:%s'):format(ws, tostring(why or 'BLOCK'))
 			if type(selected.skillchain_plan) == 'table' then
@@ -7327,7 +7327,7 @@ function scheduler.dispatch_selected_plan(settings)
 		return p1_dispatch_camp_puller(selected, settings)
 	end
 	if provider == 'combat' or provider == 'encounter_kei' or provider == 'encounter_saved_by_bell' then
-		return p1_dispatch_combat(selected, settings, phase)
+		return p1_dispatch_combat(selected, settings, phase, require('uc_scheduler_context_utils').get_config())
 	end
 	if provider == 'defensive_internal' then
 		_G.UC_DEFENSIVE_CHAIN_ACTION = {
@@ -8850,6 +8850,7 @@ scheduler.providers.combat = require('uc_provider_combat').new({
 	clamp_urgency = p1_clamp_urgency,
 	build_partner_target_set = build_partner_target_set,
 	select_ws_plan = combat_core.select_ws_plan_for_scheduler,
+	weaponskill_enabled = uc_scheduler_config.combat_weaponskill_enabled_from_config,
 	action_timeline_log = function(...)
 		return scheduler.action_timeline_log(...)
 	end,
