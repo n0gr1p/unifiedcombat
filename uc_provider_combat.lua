@@ -65,6 +65,8 @@ function M.new(deps)
 	local pending_engage_state = require_function(deps, 'pending_engage_state')
 	local pending_engage_live = require_function(deps, 'pending_engage_live')
 	local collect_ordered_abilities = require_function(deps, 'collect_ordered_abilities')
+	local abilities_enabled = require_function(deps, 'abilities_enabled')
+	local abilities_allow_unengaged = require_function(deps, 'abilities_allow_unengaged')
 	local get_ja_resource = require_function(deps, 'get_ja_resource')
 	local action_ready = require_function(deps, 'action_ready')
 	local action_effective_range = require_function(deps, 'action_effective_range')
@@ -605,7 +607,7 @@ function M.new(deps)
 		if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 			return
 		end
-		if not bool_setting(ctx.settings.ability_active, false) then
+		if not bool_setting(abilities_enabled(ctx.config), false) then
 			return
 		end
 		local player = ctx.player
@@ -614,7 +616,7 @@ function M.new(deps)
 		end
 		local target = ctx.target_present == true and ctx.target or nil
 		local engaged = tonumber(player.status) == 1
-		local allow_unengaged = bool_setting(ctx.settings.ability_allow_unengaged, false)
+		local allow_unengaged = bool_setting(abilities_allow_unengaged(ctx.config), false)
 		if not engaged then
 			if not allow_unengaged or not valid_enemy_target(target) then
 				return
@@ -623,7 +625,7 @@ function M.new(deps)
 		local tank_mode = bool_setting(tank_enabled(ctx.settings), false)
 		local ordered = require('uc_run_ownership').filter_generic_abilities(
 			ctx.settings,
-			collect_ordered_abilities(ctx.settings, 6)
+			collect_ordered_abilities(ctx.config, 6)
 		)
 		if #ordered == 0 then
 			return
