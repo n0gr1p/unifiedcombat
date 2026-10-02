@@ -192,7 +192,7 @@ Exit criteria:
 
 ### Phase 2 — Migrate low-risk leaf consumers
 
-Status: **IN PROGRESS — implementation complete; CI and live-game verification pending**
+Status: **COMPLETE — canonical leaf migration implemented and CI green; live-game smoke verification remains before merge**
 
 Candidate order:
 
@@ -444,8 +444,9 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - COR maintenance now receives canonical config explicitly from the maintenance provider. Roll policy, range requirements, Light Shot-on-Dia policy, and ability-derived roll fallback stay inside canonical `config.maintenance.cor` / `config.abilities.configured`.
 - The Phase 0 allowlist shrank by 11 source-file entries / 60 literal flat-surface hits. The remaining `uc_scheduler_action_state.lua` debug-only `UC_SETTINGS` reader is intentionally deferred with the core scheduler work in Phase 3 rather than widening this leaf migration.
 - Deterministic tests include intentionally conflicting stale flat values so a migrated leaf fails if flat compatibility regains authority.
-- Live-game verification is still required after CI, especially food, recurring spells, defensive maintenance, COR upkeep, raise acceptance, recovery hold, and GEO camp placement.
-- Phase 2 implementation commits: `0f707e1863846dcc74d0dd56cb791cbbf8bbb0ed`, `f9fdf6d7548ec15b6e5731573466e01f20402940`, `ad27e321feb8827002777262cef9965b091d94b9`, and `e10518987262f3efbba3e2c3129913bf53fdc1a8`.
+- Full PR CI passed at Phase 2 verification head `a396671884229447f10ea85d5399e69a58003275` (workflow run `36992724235`): both Lua and WinForms jobs succeeded, including the flat-surface guard and the dedicated Phase 2 canonical-leaf suite.
+- Live-game smoke verification remains before merge, especially food, recurring spells, defensive maintenance, COR upkeep, raise acceptance, recovery hold, and GEO camp placement.
+- Phase 2 implementation began with `0f707e1863846dcc74d0dd56cb791cbbf8bbb0ed`; the verified Phase 2 head is `a396671884229447f10ea85d5399e69a58003275`.
 
 ## Working checklist
 
