@@ -3520,22 +3520,26 @@ function core.reset_skillchain_state(reason)
 	ws_intent_clear_pending()
 end
 
-local function scheduler_settings_view(settings)
+local function scheduler_settings_view(settings, config)
 	local base = settings or get_settings() or {}
 	local view = {}
 	for key, value in pairs(base) do
 		view[key] = value
 	end
 	local scheduler_config = require('uc_scheduler_config')
-	view.autotarget = scheduler_config.combat_autotarget(base)
+	if type(config) == 'table' then
+		view.autotarget = scheduler_config.combat_autotarget_from_config(config)
+	else
+		view.autotarget = scheduler_config.combat_autotarget(base)
+	end
 	view.prime = scheduler_config.combat_prime(base)
 	view.tank = scheduler_config.tank_enabled(base)
 	view.tank_enmity_actions = scheduler_config.tank_enmity_actions(base)
 	return view
 end
 
-function core.select_tank_enmity_for_scheduler(settings)
-	local s = scheduler_settings_view(settings)
+function core.select_tank_enmity_for_scheduler(settings, config)
+	local s = scheduler_settings_view(settings, config)
 	if not setting_enabled(s.tank) or not setting_enabled(s.autotarget) then
 		return nil
 	end
@@ -3589,8 +3593,8 @@ function core.select_tank_enmity_for_scheduler(settings)
 	return nil
 end
 
-function core.select_target_for_scheduler(settings)
-	local s = scheduler_settings_view(settings)
+function core.select_target_for_scheduler(settings, config)
+	local s = scheduler_settings_view(settings, config)
 	if not setting_enabled(s.autotarget) then
 		return nil
 	end
@@ -3619,7 +3623,7 @@ function core.select_target_for_scheduler(settings)
 	}
 end
 
-function core.revalidate_death_switch_for_scheduler(settings, target_id, incumbent_id)
+function core.revalidate_death_switch_for_scheduler(settings, config, target_id, incumbent_id)
 	local tid = tonumber(target_id) or 0
 	local expected_incumbent_id = tonumber(incumbent_id) or 0
 	if tid <= 0 or expected_incumbent_id <= 0 then
@@ -3646,7 +3650,7 @@ function core.revalidate_death_switch_for_scheduler(settings, target_id, incumbe
 	if not is_live_actionable_combat_target(destination, uc_now_s(), true) then
 		return false, 'death_switch_destination_invalid'
 	end
-	local selected = core.select_target_for_scheduler(settings)
+	local selected = core.select_target_for_scheduler(settings, config)
 	if type(selected) ~= 'table'
 		or selected.death_switch ~= true
 		or tonumber(selected.death_switch_incumbent_id) ~= expected_incumbent_id
