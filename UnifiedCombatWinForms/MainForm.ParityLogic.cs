@@ -734,6 +734,10 @@ public partial class MainForm
             var wsMode = SessionStateHelper.GetString(s, "ws_mode", "smart");
             _wsModeCombo.SelectedItem = WsModeRuntimeToUi(wsMode);
             _wsMinimumTp.Value = ReadWeaponskillMinimumTp(s);
+            _foodEnabled.Checked = SessionStateHelper.GetBool(s, "food_enabled", false);
+            _foodItem.Text = SessionStateHelper.GetString(s, "food_item", "");
+            _recurringSpellsEnabled.Checked = SessionStateHelper.GetBool(s, "recurring_spells_enabled", false);
+            _recurringSpells.Text = SessionStateHelper.GetString(s, "recurring_spells", "");
             _chkWsAllowAoe.Checked = SessionStateHelper.GetBool(s, "weaponskill_allow_aoe", true);
             _chkFastSkillchain.Checked = SessionStateHelper.GetBool(s, "fast_skillchain", false);
             _skillchainTargetCombo.SelectedItem = SkillchainTargetRuntimeToUi(

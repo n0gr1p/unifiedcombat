@@ -800,6 +800,12 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(store, "[\"food_item\"] = (_foodItem.Text ?? \"\").Trim()", "food item name must persist");
         AssertContains(logic, "SessionStateHelper.GetBool(s, \"food_enabled\", false)", "food enabled state must reload");
         AssertContains(logic, "SessionStateHelper.GetString(s, \"food_item\", \"\")", "food item name must reload");
+        var fillStart = logic.IndexOf("private void FillFromSession(string sid, JsonElement s)", StringComparison.Ordinal);
+        var fillEnd = logic.IndexOf("private void ApplyOptionsFromSnapshotIfPresent", fillStart, StringComparison.Ordinal);
+        AssertTrue(fillStart >= 0 && fillEnd > fillStart, "full session-fill source range missing");
+        var fullSessionFill = logic[fillStart..fillEnd];
+        AssertContains(fullSessionFill, "_foodEnabled.Checked = SessionStateHelper.GetBool(s, \"food_enabled\", false)", "session switching must reload food enabled state");
+        AssertContains(fullSessionFill, "_foodItem.Text = SessionStateHelper.GetString(s, \"food_item\", \"\")", "session switching must reload food item state");
     }
 
     private static void TestSerializeRecurringCombatSpells()
@@ -837,6 +843,12 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(store, "[\"recurring_spells\"] = (_recurringSpells.Text ?? \"\").Trim()", "recurring spell list must persist");
         AssertContains(logic, "SessionStateHelper.GetBool(s, \"recurring_spells_enabled\", false)", "recurring spell enabled state must reload");
         AssertContains(logic, "SessionStateHelper.GetString(s, \"recurring_spells\", \"\")", "recurring spell list must reload");
+        var fillStart = logic.IndexOf("private void FillFromSession(string sid, JsonElement s)", StringComparison.Ordinal);
+        var fillEnd = logic.IndexOf("private void ApplyOptionsFromSnapshotIfPresent", fillStart, StringComparison.Ordinal);
+        AssertTrue(fillStart >= 0 && fillEnd > fillStart, "full session-fill source range missing");
+        var fullSessionFill = logic[fillStart..fillEnd];
+        AssertContains(fullSessionFill, "_recurringSpellsEnabled.Checked = SessionStateHelper.GetBool(s, \"recurring_spells_enabled\", false)", "session switching must reload recurring spell enabled state");
+        AssertContains(fullSessionFill, "_recurringSpells.Text = SessionStateHelper.GetString(s, \"recurring_spells\", \"\")", "session switching must reload recurring spell list");
     }
 
     private static void TestSerializeSavedByTheBellEncounter()
