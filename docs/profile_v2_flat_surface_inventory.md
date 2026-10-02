@@ -223,6 +223,15 @@ That is a reduction of **11 allowlisted source files and 60 guarded literal hits
 
 `uc_scheduler_action_state.lua` still has one debug-only `UC_SETTINGS` read. It is intentionally retained for Phase 3 because that reader is embedded in core action-state/diagnostic behavior rather than a low-risk leaf provider.
 
+## Phase 3 combat enablement/autotarget burn-down
+
+The first Phase 3 slice removes four additional indirect flat-context reads from scheduler-owned combat gating:
+
+- `uc_provider_target_control.lua`: `ctx.settings` count reduced from 6 to 4 by moving both autotarget gates to `ctx.config`.
+- `uc_provider_combat.lua`: `ctx.settings` count reduced from 28 to 26 by moving autotarget and auto-engage gates to `ctx.config`.
+- Core target selection, tank-enmity selection, death-switch revalidation, partner arbitration, and pre-engage combat-close movement now receive canonical tick config for autotarget/auto-engage decisions.
+- Legacy compatibility helpers remain available for unmigrated callers, so this slice narrows the authoritative runtime surface without forcing unrelated Phase 3 domains to migrate early.
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.
