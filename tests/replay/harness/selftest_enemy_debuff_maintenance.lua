@@ -97,7 +97,7 @@ out = {}
 provider.collect(context(0), out)
 assert_equal(out[1].action_name, 'Distract III', 'confirmed first debuff must advance to next configured debuff')
 
-settings.defensive_enemy_debuffs = 'Dia II'
+config.defensive.enemy_debuffs.list = 'Dia II'
 effects = {
 	[2001] = { [134] = { action_id = 25 } },
 	[2002] = { [134] = { action_id = 25 } },
@@ -106,7 +106,7 @@ out = {}
 provider.collect(context(0), out)
 assert_equal(#out, 0, 'stronger observed tier must satisfy configured weaker tier')
 
-settings.defensive_enemy_debuffs = 'Dia III'
+config.defensive.enemy_debuffs.list = 'Dia III'
 effects = {
 	[2001] = { [134] = { action_id = 24 } },
 	[2002] = { [134] = { action_id = 24 } },
@@ -130,14 +130,14 @@ out = {}
 provider.collect(context(0), out)
 assert_equal(#out, 0, 'per-target attempt gates must suppress retry spam')
 
-settings.defensive_enemy_debuffs = 'Dia III|Bio III'
+config.defensive.enemy_debuffs.list = 'Dia III|Bio III'
 local conflict_ok = pcall(function()
 	provider.collect(context(0), {})
 end)
 assert_equal(conflict_ok, false, 'mutually overwriting configured debuffs must fail fast')
 
-settings.def_maintain_enemy_debuffs = false
-settings.defensive_enemy_debuffs = 'Dia III'
+config.defensive.enemy_debuffs.enabled = false
+config.defensive.enemy_debuffs.list = 'Dia III'
 out = {}
 provider.collect(context(0), out)
 assert_equal(#out, 0, 'disabled maintenance must emit nothing')
