@@ -14,30 +14,39 @@ local function normalize_path(path)
     return tostring(path or ""):gsub("\\", "/"):gsub("^%./", "")
 end
 
+local function is_scanned_source(path)
+    local normalized = normalize_path(path)
+    if not (normalized:match("%.lua$") or normalized:match("%.cs$") or normalized:match("%.py$")) then
+        return false
+    end
+    local excluded_prefixes = {
+        "tests/",
+        "docs/",
+        "RFC/",
+        "RFC_",
+        "SMN_RFC/",
+        "GEO_PULLER_RFC/",
+        "UnifiedCombatWinForms/%TEMP%/",
+        "UnifiedCombatWinForms/bin/",
+        "UnifiedCombatWinForms/obj/",
+    }
+    for _, prefix in ipairs(excluded_prefixes) do
+        if normalized:sub(1, #prefix) == prefix then
+            return false
+        end
+    end
+    return true
+end
+
 local function discover_source_files()
-    local command = table.concat({
-        "rg --files",
-        "-g \"*.lua\"",
-        "-g \"*.cs\"",
-        "-g \"*.py\"",
-        "-g \"!tests/**\"",
-        "-g \"!docs/**\"",
-        "-g \"!RFC/**\"",
-        "-g \"!RFC_*/**\"",
-        "-g \"!SMN_RFC/**\"",
-        "-g \"!GEO_PULLER_RFC/**\"",
-        "-g \"!UnifiedCombatWinForms/%TEMP%/**\"",
-        "-g \"!UnifiedCombatWinForms/bin/**\"",
-        "-g \"!UnifiedCombatWinForms/obj/**\""
-    }, " ")
-    local pipe = io.popen(command, "r")
+    local pipe = io.popen("git ls-files", "r")
     if not pipe then
-        error("profile-v2 flat-surface guard requires rg for repository-wide discovery")
+        error("profile-v2 flat-surface guard requires a Git working tree for repository-wide discovery")
     end
     local out = {}
     for line in pipe:lines() do
         local path = normalize_path(line)
-        if path ~= "" then
+        if path ~= "" and is_scanned_source(path) then
             out[#out + 1] = path
         end
     end
