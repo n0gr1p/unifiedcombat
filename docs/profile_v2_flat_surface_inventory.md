@@ -190,6 +190,18 @@ These are not missing from the audit; they are intentionally deferred ownership 
 
 Phase 0 intentionally does **not** change runtime behavior. `tests/replay/fixtures/maintenance/mixed_profile_v2_food_flat_brd.lua` and `selftest_profile_v2_mixed_shape_characterization.lua` record the current defect plus a fully nested control case. When the migration fixes the normalizer boundary, that characterization must be inverted into a positive sibling-isolation regression.
 
+## Phase 1 canonical scheduler read boundary
+
+Phase 1 adds an explicit canonical configuration view to every scheduler tick context without changing any existing consumer semantics:
+
+- `uc_scheduler_context_utils.get_config()` is the scheduler-side canonical accessor and delegates to `uc_active_config.get_config()`.
+- `uc_scheduler_context.build(...)` receives that accessor as an injected dependency, samples it once per context build, and publishes the result as `ctx.config`.
+- `ctx.settings` remains unchanged for every existing unmigrated consumer.
+- No provider or scheduler decision reader is migrated in Phase 1; therefore the Phase 0 flat-surface allowlist does not shrink yet.
+- Deterministic context tests prove canonical config identity, one-sample-per-context behavior, empty fallback when no active Profile V2 exists, and explicit scheduler wiring.
+
+This establishes the seam for Phase 2: leaf providers can migrate from `ctx.settings` / `active_value_or_flat` to `ctx.config` one family at a time without adding new global config reads.
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.

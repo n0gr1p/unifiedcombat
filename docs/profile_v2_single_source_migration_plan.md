@@ -173,7 +173,7 @@ Exit criteria:
 
 ### Phase 1 — Establish the canonical runtime read boundary
 
-Status: **NOT STARTED**
+Status: **COMPLETE — canonical scheduler context seam established**
 
 Goals:
 
@@ -185,10 +185,10 @@ Goals:
 
 Exit criteria:
 
-- [ ] scheduler context carries canonical config explicitly;
-- [ ] canonical context has deterministic tests;
-- [ ] unmigrated flat callers remain behaviorally unchanged;
-- [ ] no new flat runtime readers introduced.
+- [x] scheduler context carries canonical config explicitly;
+- [x] canonical context has deterministic tests;
+- [x] unmigrated flat callers remain behaviorally unchanged;
+- [x] no new flat runtime readers introduced.
 
 ### Phase 2 — Migrate low-risk leaf consumers
 
@@ -414,6 +414,15 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Classified durable field families, runtime/transient state, compatibility-only aliases, and explicit ambiguous ownership decisions.
 - Added the mixed nested-food + flat-BRD maintenance characterization fixture. It records the current known normalizer defect without changing runtime behavior.
 - Phase 0 made documentation/test-only changes; no scheduler/provider/gameplay behavior changed.
+
+### 2026-10-02 — Phase 1 canonical runtime read boundary completed
+
+- Added `uc_scheduler_context_utils.get_config()` as the scheduler-owned canonical accessor over the applied `_G.UC_ACTIVE_PROFILE.config`.
+- Scheduler tick contexts now expose `ctx.config` alongside the unchanged compatibility `ctx.settings` surface.
+- Canonical config is sampled once when the tick context is built and passed by identity; providers do not reparse Profile V2 files.
+- The context builder remains dependency-injected and does not directly require `uc_active_config`.
+- Added deterministic fixture/static coverage for active-config lookup, missing-config fallback, one-sample-per-context behavior, and scheduler wiring.
+- No proposal provider, ranking rule, dispatch path, or durable config consumer changed in this phase; the Phase 0 flat allowlist is intentionally unchanged.
 
 ## Working checklist
 

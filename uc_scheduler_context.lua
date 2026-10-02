@@ -121,8 +121,11 @@ function M.build(settings, phase1, deps)
 	local get_mob_by_index = require_function(deps, 'get_mob_by_index')
 	local get_party = require_function(deps, 'get_party')
 	local get_mob_array = require_function(deps, 'get_mob_array')
+	local get_config = require_function(deps, 'get_config')
 	local now = require_function(deps, 'now')
 
+	local raw_config = get_config()
+	local config = type(raw_config) == 'table' and raw_config or {}
 	local raw_player = get_player()
 	local raw_me = get_mob_by_target('me')
 	local raw_target = get_mob_by_target('t')
@@ -180,6 +183,7 @@ function M.build(settings, phase1, deps)
 	local ctx = {
 		now = now(),
 		tick = phase1.tick,
+		config = config,
 		settings = settings or {},
 		player = player,
 		player_present = raw_player ~= nil,

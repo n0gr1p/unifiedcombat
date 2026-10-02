@@ -9,6 +9,14 @@ function M.get_settings()
 	return rawget(_G, 'UC_SETTINGS') or {}
 end
 
+function M.get_config()
+	local config = require('uc_active_config').get_config()
+	if type(config) == 'table' then
+		return config
+	end
+	return {}
+end
+
 function M.is_city_zone_for_maintenance(maintenance_blocked_zone_names)
 	local info = windower.ffxi.get_info()
 	if not info then

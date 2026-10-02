@@ -4425,6 +4425,7 @@ end
 
 local function p1_build_ctx(settings)
 	local ctx = require('uc_scheduler_context').build(settings, scheduler.phase1, {
+		get_config = require('uc_scheduler_context_utils').get_config,
 		get_player = windower.ffxi.get_player,
 		get_mob_by_target = windower.ffxi.get_mob_by_target,
 		get_mob_by_index = windower.ffxi.get_mob_by_index,
