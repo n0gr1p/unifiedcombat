@@ -111,6 +111,15 @@ local function validate_sequence_step(step, index, count)
     return true
 end
 
+function M.auto_engage_enabled_from_config(config)
+    local combat = type(config) == 'table' and config.combat or nil
+    local value = type(combat) == 'table' and combat.auto_engage or nil
+    if value == nil then
+        return true
+    end
+    return value ~= false
+end
+
 function M.auto_engage_enabled(settings)
     local active_value = active_config().get_path('config.combat.auto_engage')
     if active_value ~= nil then
