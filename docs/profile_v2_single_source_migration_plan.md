@@ -445,6 +445,9 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - The Phase 0 allowlist shrank by 11 source-file entries / 60 literal flat-surface hits. The remaining `uc_scheduler_action_state.lua` debug-only `UC_SETTINGS` reader is intentionally deferred with the core scheduler work in Phase 3 rather than widening this leaf migration.
 - Deterministic tests include intentionally conflicting stale flat values so a migrated leaf fails if flat compatibility regains authority.
 - Full PR CI passed at Phase 2 verification head `a396671884229447f10ea85d5399e69a58003275` (workflow run `36992724235`): both Lua and WinForms jobs succeeded, including the flat-surface guard and the dedicated Phase 2 canonical-leaf suite.
+- Added `tests/replay/harness/selftest_phase2_canonical_authority.lua`: a dedicated 21-case contradictory-state matrix whose only purpose is to prove canonical Profile V2 values beat deliberately opposite flat compatibility values across every Phase 2 consumer family.
+- The matrix covers food, recurring spells, defensive provider/critical threshold, resurrection, enemy buff removal, enemy debuff maintenance, COR routing, defensive buff maintenance, COR roll selection, GEO placement, Raise acceptance, and weakened recovery hold. Both enable/disable directions are exercised where a boolean gate exists.
+- Workflow run `37016053323` passed both `lua-sequence` and `winforms`; the canonical-authority matrix reported `21/21 PASS`.
 - Live-game smoke verification remains before merge, especially food, recurring spells, defensive maintenance, COR upkeep, raise acceptance, recovery hold, and GEO camp placement.
 - Phase 2 implementation began with `0f707e1863846dcc74d0dd56cb791cbbf8bbb0ed`; the verified Phase 2 head is `a396671884229447f10ea85d5399e69a58003275`.
 
