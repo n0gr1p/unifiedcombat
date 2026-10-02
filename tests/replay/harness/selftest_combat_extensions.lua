@@ -262,6 +262,7 @@ local ok, err = xpcall(function()
     _G.Start_Engine = true
     local ctx = {
         now = 100,
+        config = { combat = { autotarget = true, auto_engage = true } },
         settings = { weaponskill_active = false },
         player_present = true,
         player = { id = 1, name = 'Niightsiide', status = 0, vitals = { tp = 0 } },
@@ -295,6 +296,7 @@ local ok, err = xpcall(function()
     provider.collect_offense(ctx, proposals)
     assert_equal(#proposals, 0, 'short remaining burst window must not create a late proposal')
     config_values['config.combat.auto_engage'] = false
+    ctx.config.combat.auto_engage = false
     proposals = {}
     provider.collect_engage(ctx, proposals)
     assert_equal(#proposals, 0, 'auto_engage=false must suppress engage proposals only')
