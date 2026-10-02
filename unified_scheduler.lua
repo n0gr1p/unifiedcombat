@@ -8978,6 +8978,7 @@ scheduler.providers.camp_puller = require('uc_camp_puller').new({
 })
 scheduler.providers.food = require('uc_provider_food').new({
 	get_items = windower.ffxi.get_items,
+	active_value_or_flat = scheduler.active_value_or_flat,
 	player_is_moving = smn_player_is_moving,
 	clamp_urgency = p1_clamp_urgency,
 	build_action_command = build_action_command,
