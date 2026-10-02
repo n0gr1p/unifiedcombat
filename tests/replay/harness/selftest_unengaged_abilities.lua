@@ -21,6 +21,8 @@ local function generic_deps(ability_name, ja_targets)
 		clamp_urgency = function(value) return value end,
 		build_partner_target_set = function() return {} end,
 		select_ws_plan = function() return nil end,
+        weaponskill_enabled = function() return false end,
+		weaponskill_enabled = function() return false end,
 		action_timeline_log = function() end,
 		combat_domain_enabled = function() return true end,
 		sleep_enabled = function() return false end,
