@@ -74,7 +74,7 @@ return {
 			["ctx_settings"] = 2,
 		},
 		["uc_provider_combat.lua"] = {
-			["ctx_settings"] = 25,
+			["ctx_settings"] = 22,
 		},
 		["uc_provider_run_tank.lua"] = {
 			["ctx_settings"] = 3,
@@ -87,7 +87,7 @@ return {
 			["ctx_settings"] = 2,
 		},
 		["uc_provider_tank_enmity.lua"] = {
-			["ctx_settings"] = 3,
+			["ctx_settings"] = 2,
 		},
 		["uc_provider_target_control.lua"] = {
 			["ctx_settings"] = 4,
