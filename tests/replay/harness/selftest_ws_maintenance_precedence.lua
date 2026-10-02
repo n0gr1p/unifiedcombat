@@ -323,6 +323,13 @@ local function canonical_ws_config()
 				aftermath_ws = 'Knights of Round',
 			},
 		},
+		abilities = {
+			enabled = true,
+			allow_unengaged = false,
+			configured = { 'Chivalry' },
+			legacy_slots = {},
+			wsabilities = {},
+		},
 		legacy = {
 			solo = false,
 		},
@@ -886,6 +893,59 @@ local function test_non_skillchain_primary_ws_arbitration_is_name_based()
 	assert_equal(reason, 'WS_INTENT_WAIT_REMOTE:100', 'ordinary primary same-WS behavior must remain unchanged')
 end
 
+local function test_canonical_chivalry_ability_authority()
+	ability_recasts[20] = 0
+	player.buffs = {}
+	player.vitals.mp = 0
+	player.vitals.tp = 1500
+	learned_weapon_skills = { 10, 11, 30, 42 }
+	local config = canonical_ws_config()
+
+	-- Canonical enabled/list must beat flat disabled/empty state.
+	settings.ability_active = false
+	settings.abilities = {}
+	config.abilities.enabled = true
+	config.abilities.configured = { 'Chivalry' }
+	config.abilities.legacy_slots = {}
+	install_active_resonance()
+	local selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_equal(selection, nil, 'canonical Chivalry enabled/list must reserve TP despite flat disabled state')
+	assert_equal(reason, 'CHIVALRY_HOLD_TP', 'canonical Chivalry reservation reason mismatch')
+
+	-- Canonical disable must beat flat enabled/list state.
+	settings.ability_active = true
+	settings.abilities = { 'Chivalry' }
+	config.abilities.enabled = false
+	install_active_resonance()
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_true(type(selection) == 'table', 'canonical ability disable must release flat Chivalry reservation')
+	assert_equal(reason, 'SC_READY', 'canonical ability disable should restore skillchain planning')
+
+	-- Canonical configured list must beat a conflicting flat Chivalry list.
+	config.abilities.enabled = true
+	config.abilities.configured = { 'Sentinel' }
+	config.abilities.legacy_slots = {}
+	install_active_resonance()
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_true(type(selection) == 'table', 'canonical non-Chivalry configured list must beat flat Chivalry list')
+	assert_equal(reason, 'SC_READY', 'canonical configured ability list should release Chivalry reservation')
+
+	-- Canonical legacy slots remain the fallback when configured is empty.
+	settings.ability_active = false
+	settings.abilities = {}
+	config.abilities.configured = {}
+	config.abilities.legacy_slots = { 'Chivalry' }
+	install_active_resonance()
+	selection, reason = core.select_ws_plan_for_scheduler(settings, 9001, config)
+	assert_equal(selection, nil, 'canonical legacy-slot Chivalry fallback must reserve TP')
+	assert_equal(reason, 'CHIVALRY_HOLD_TP', 'canonical legacy-slot Chivalry reason mismatch')
+
+	settings.ability_active = true
+	settings.abilities = { 'Chivalry' }
+	player.vitals.tp = 1000
+	core.resonating[9001] = nil
+end
+
 local function test_canonical_weaponskill_config_authority()
 	ability_recasts[20] = 30
 	player.buffs = {}
@@ -1036,6 +1096,7 @@ local function main()
 	test_smart_continuation_candidate_filtering()
 	test_smart_primary_and_aftermath_aoe_restriction()
 	test_aoe_restriction_scope_and_revalidation()
+	test_canonical_chivalry_ability_authority()
 	test_canonical_weaponskill_config_authority()
 	end)
 	restore_test_environment()
