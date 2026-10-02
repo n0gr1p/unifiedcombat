@@ -941,6 +941,10 @@ local function build_expected_config()
 		},
 		maintenance = {
 			enabled = true,
+			food = {
+				enabled = false,
+				item = '',
+			},
 			geo = {
 				enabled = false,
 				geo_target = {
