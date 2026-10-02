@@ -18,11 +18,19 @@ local function generic_deps(ability_name, ja_targets)
 			if value == nil then return default_value end
 			return value == true
 		end,
+		abilities_allow_unengaged = function(config)
+			return type(config) == 'table' and type(config.abilities) == 'table' and config.abilities.allow_unengaged == true
+		end,
 		clamp_urgency = function(value) return value end,
 		build_partner_target_set = function() return {} end,
 		select_ws_plan = function() return nil end,
-        weaponskill_enabled = function() return false end,
 		weaponskill_enabled = function() return false end,
+		abilities_enabled = function(config)
+			return type(config) == 'table' and type(config.abilities) == 'table' and config.abilities.enabled == true
+		end,
+		abilities_allow_unengaged = function(config)
+			return type(config) == 'table' and type(config.abilities) == 'table' and config.abilities.allow_unengaged == true
+		end,
 		action_timeline_log = function() end,
 		combat_domain_enabled = function() return true end,
 		sleep_enabled = function() return false end,
@@ -46,7 +54,10 @@ local function generic_deps(ability_name, ja_targets)
 		prime_unclaimed_party_aggressive_ok = function() return false end,
 		pending_engage_state = function() return nil end,
 		pending_engage_live = function() return false end,
-		collect_ordered_abilities = function() return { ability_name } end,
+		collect_ordered_abilities = function(config)
+			if type(config) == 'table' and type(config.abilities) == 'table' then return { ability_name } end
+			return {}
+		end,
 		get_ja_resource = function(name)
 			if name ~= ability_name then return nil end
 			return { name = name, targets = ja_targets, range = 0 }
@@ -89,6 +100,7 @@ local ok, err = xpcall(function()
 	local provider = combat_provider.new(generic_deps('Provoke', '{Enemy}'))
 	local ctx = {
 		now = 10,
+		config = { abilities = { enabled = true, allow_unengaged = false, configured = { 'Provoke' }, legacy_slots = {} } },
 		settings = { ability_active = true, ability_allow_unengaged = false },
 		player_present = true,
 		player = { id = 1, name = 'PLD', status = 0, vitals = { tp = 0 } },
@@ -101,7 +113,7 @@ local ok, err = xpcall(function()
 	assert_equal(#out, 0, 'toggle-off unengaged JA must remain gated')
 
 	-- Toggle on still requires a live enemy target; it is not an idle prebuff switch.
-	ctx.settings.ability_allow_unengaged = true
+	ctx.config.abilities.allow_unengaged = true
 	ctx.target_present = false
 	ctx.target = nil
 	out = {}
@@ -128,7 +140,7 @@ local ok, err = xpcall(function()
 
 	-- Engaged behavior is unchanged even when the new toggle is off.
 	ctx.player.status = 1
-	ctx.settings.ability_allow_unengaged = false
+	ctx.config.abilities.allow_unengaged = false
 	out = {}
 	provider.collect_ja(ctx, out)
 	assert_equal(#out, 1, 'engaged JA behavior must remain unchanged')
