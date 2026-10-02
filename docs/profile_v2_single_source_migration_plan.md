@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **IN PROGRESS — combat enablement/autotarget slice implemented and CI-proven**
+Status: **IN PROGRESS — combat enablement/autotarget and weaponskill slices implemented and CI-proven**
 
 Domains to treat separately:
 
@@ -465,6 +465,22 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - During contradictory-state proof, the first canonical auto-engage implementation exposed a Lua false-value bug: `condition and value or nil` collapsed explicit canonical `false` to `nil`, incorrectly restoring the default `true`. The canonical accessor was corrected to preserve explicit false, and the regression now proves both directions.
 - Automated proof on branch head `cf827cd87f0eafe8b9917743d97ed7a2015944b2`: workflow `37023674659` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 2 canonical-authority coverage PASS, the new Phase 3 combat enablement canonical-authority test PASS, and the flat-surface guard PASS.
 - Live-game smoke verification remains required before the Phase 3 core migration is considered complete.
+
+### 2026-10-02 — Phase 3 weaponskill configuration slice implemented
+
+- Migrated the full scheduler-owned weaponskill decision path to canonical Profile V2 authority.
+- Canonical WS policy now covers `config.combat.weaponskill.enabled`, primary WS, mode, minimum TP, AoE permission, Fast Skillchain, no-skillchain target names, skillchain target preference, ally-wait ignore names, aftermath enablement, and aftermath WS.
+- Included canonical `config.combat.spam` and `config.legacy.solo` in the WS view because both directly alter weaponskill arbitration/bypass behavior.
+- Deliberately left `ability_active` as a compatibility input for Chivalry reservation; that belongs to the next Phase 3 abilities slice.
+- Proposal collection now gates WS enablement from `ctx.config`; the core planner receives canonical config and overlays all WS-owned durable fields before selecting an action.
+- Canonical config is carried through rank-commit Smart-AoE/skillchain revalidation and final WS intent dispatch, preventing a canonical proposal from being revalidated against stale flat WS policy.
+- Added `tests/replay/harness/selftest_phase3_weaponskill_authority.lua` to prove canonical WS enablement beats opposite flat state and to statically require every WS-owned field at the canonical boundary.
+- Extended `selftest_ws_maintenance_precedence.lua` with real-core contradictory-state cases proving canonical primary WS, minimum TP, AoE policy in both directions, Smart vs primary-only mode, aftermath policy, and Fast Skillchain false/true behavior.
+- Added the weaponskill authority suite to normal PR CI and the aggregate replay suite.
+- Reduced `uc_provider_combat.lua` flat-context guard count from 26 to 25 by removing the flat `weaponskill_active` provider gate. The remaining `ctx.settings` handoff exists for explicitly unmigrated non-WS inputs such as Chivalry's ability gate.
+- Automated proof on branch head `7191d7a550dcb467e3e1166f787c2f3ba719dde4`: workflow `37027431136` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 combat-enable authority PASS, Phase 3 weaponskill canonical-authority PASS, WS maintenance/skillchain precedence PASS, and the flat-surface guard PASS.
+- No intentional weaponskill ranking, timing, TP threshold semantics, skillchain planning semantics, or dispatch behavior changed except that canonical Profile V2 now wins when flat compatibility state conflicts.
+- Live-game smoke verification remains required for representative Smart WS, spam/solo, primary-no-SC, aftermath, and Fast Skillchain configurations before Phase 3 is complete.
 
 ## Working checklist
 
