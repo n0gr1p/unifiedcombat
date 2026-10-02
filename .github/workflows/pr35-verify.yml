@@ -51,6 +51,16 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_run_foil_dispatch.lua
       - name: Config normalizer self-test
         run: lua5.1 tests/replay/harness/selftest_config_normalizer.lua
+      - name: Profile V2 flat-surface guard self-test
+        run: lua5.1 tests/replay/harness/selftest_profile_v2_flat_surface_guard.lua
+      - name: Profile V2 mixed-shape characterization self-test
+        run: lua5.1 tests/replay/harness/selftest_profile_v2_mixed_shape_characterization.lua
+      - name: Scheduler canonical context self-test
+        run: lua5.1 tests/replay/harness/selftest_scheduler_context.lua
+      - name: Scheduler canonical context static self-test
+        run: lua5.1 tests/replay/harness/selftest_scheduler_tick_context_static.lua
+      - name: Scheduler context utils fixture self-test
+        run: lua5.1 tests/replay/harness/selftest_context_utils_fixtures.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test

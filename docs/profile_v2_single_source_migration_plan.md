@@ -423,6 +423,7 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - The context builder remains dependency-injected and does not directly require `uc_active_config`.
 - Added deterministic fixture/static coverage for active-config lookup, missing-config fallback, one-sample-per-context behavior, and scheduler wiring.
 - No proposal provider, ranking rule, dispatch path, or durable config consumer changed in this phase; the Phase 0 flat allowlist is intentionally unchanged.
+- PR verification now runs the flat-surface guard, mixed-shape characterization, scheduler canonical-context tests, and context-utils fixtures on every migration PR update.
 
 ## Working checklist
 
