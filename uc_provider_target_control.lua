@@ -47,7 +47,7 @@ function M.new(deps)
 		if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 			return
 		end
-		if not bool_setting(combat_autotarget(ctx.settings), false) then
+		if not bool_setting(combat_autotarget(ctx.config), false) then
 			return
 		end
 		local player = ctx.player
@@ -139,7 +139,7 @@ function M.new(deps)
 		if not bool_setting(combat_domain_enabled(), false) then
 			return
 		end
-		if not bool_setting(combat_autotarget(ctx.settings), false) then
+		if not bool_setting(combat_autotarget(ctx.config), false) then
 			return
 		end
 		local pick = select_pull(ctx.settings)
