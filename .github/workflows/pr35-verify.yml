@@ -79,6 +79,8 @@ jobs:
           lua5.1 tests/replay/harness/selftest_active_config_defensive_maintenance_readers.lua
           lua5.1 tests/replay/harness/selftest_profile_v2_runtime_consumers.lua
           lua5.1 tests/replay/harness/selftest_active_config_consumer_migration.lua
+      - name: Phase 3 combat enablement canonical-authority self-test
+        run: lua5.1 tests/replay/harness/selftest_phase3_combat_enablement_authority.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
