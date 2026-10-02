@@ -115,6 +115,9 @@ local function main()
 			get_items = function()
 				return { enabled = false }
 			end,
+			get_mob_by_target = function()
+				return nil
+			end,
 			get_mob_by_id = function()
 				return {
 					id = 77,

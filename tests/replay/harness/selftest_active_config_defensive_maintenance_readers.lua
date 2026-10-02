@@ -130,6 +130,9 @@ local function main()
             get_items = function()
                 return { enabled = false }
             end,
+            get_mob_by_target = function()
+                return nil
+            end,
             get_mob_by_id = function(id)
                 return fake_members_by_id[tonumber(id) or 0]
             end,
