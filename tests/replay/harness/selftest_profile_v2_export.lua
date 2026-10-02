@@ -240,7 +240,9 @@ local function assert_missing_new_food_settings_apply(profile_v2, exporter, cont
 		sub_job = 'WAR',
 	}, contract.validate_structured_profile_config, deps)
 	assert_true(result.ok == true, 'structured profile missing food settings must apply cleanly')
-	assert_equal(result.diff_count, 0, 'structured profile missing food settings must round-trip without conversion mismatch')
+	assert_true(result.diff_count > 0, 'legacy food apply should report the stale live food values it will replace')
+	local round_trip = profile_v2.diff_durable_config(result.candidate_config, legacy_profile.config)
+	assert_equal(round_trip.count, 0, 'structured profile missing food settings must round-trip without conversion mismatch')
 	assert_false(result.candidate.food_enabled, 'missing food enabled value must project as false')
 	assert_equal(result.candidate.food_item, '', 'missing food item must project as empty')
 	assert_false(result.active_profile.config.maintenance.food.enabled, 'active Profile V2 must materialize disabled food default')
