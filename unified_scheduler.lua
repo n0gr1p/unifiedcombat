@@ -4782,6 +4782,7 @@ end
 local function p1_ranker_dependencies()
 	return {
 		bool_setting = bool_setting,
+		required_setting_value = uc_scheduler_config.required_setting_value_from_config,
 		phase1 = scheduler.phase1,
 		pending_engage_live = scheduler.p1_pending_engage_live,
 		pending_engage_state = scheduler.p1_pending_engage_state,
