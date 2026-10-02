@@ -155,6 +155,18 @@ local function assert_scheduler_wiring()
         local module_name = path:gsub("%.lua$", "")
         assert_contains(source, "require('" .. module_name .. "').new({", "scheduler must initialize " .. module_name)
     end
+
+    for _, path in ipairs({
+        "uc_provider_defensive.lua",
+        "uc_provider_enemy_buff_removal.lua",
+        "uc_provider_enemy_debuff_maintenance.lua",
+        "uc_provider_recurring_spells.lua",
+    }) do
+        local provider_source = read_file(path)
+        assert_contains(provider_source, "ctx.config", path .. " must consume canonical scheduler config")
+        assert_not_contains(provider_source, "ctx.settings", path .. " must not fall back to flat scheduler settings")
+        assert_not_contains(provider_source, "active_value_or_flat", path .. " must not retain flat fallback helpers")
+    end
 end
 
 local function assert_fail_fast_factories()
@@ -182,7 +194,6 @@ local function assert_defensive_proposal_shape()
 	}
     local provider = require("uc_provider_defensive").new({
         bool_setting = function(value) return value == true end,
-        active_value_or_flat = function(_, flat_value) return flat_value end,
         build_defensive_candidates = function() return { "candidate" } end,
         choose_defensive_action = function()
 			return defensive_action, "critical_cure"
@@ -201,10 +212,17 @@ local function assert_defensive_proposal_shape()
     local proposals = {}
     provider.collect_internal({
         now = 12.5,
+        config = {
+            defensive = {
+                enabled = true,
+                provider = "internal",
+                thresholds = { critical_hpp = 35 },
+            },
+        },
         settings = {
-            defensive_enabled = true,
-            defensive_provider = "internal",
-            defensive_critical_hpp = 35,
+            defensive_enabled = false,
+            defensive_provider = "healbot",
+            defensive_critical_hpp = 1,
         },
     }, proposals)
     assert_equal(#proposals, 1, "defensive provider proposal count")
@@ -234,7 +252,8 @@ local function assert_defensive_proposal_shape()
 	proposals = {}
 	provider.collect_internal({
 		now = 12.75,
-		settings = { defensive_enabled = true, defensive_provider = "internal", defensive_critical_hpp = 35 },
+		config = { defensive = { enabled = true, provider = "internal", thresholds = { critical_hpp = 35 } } },
+		settings = { defensive_enabled = false, defensive_provider = "healbot", defensive_critical_hpp = 1 },
 	}, proposals)
 	assert_equal(#proposals, 1, "Waltz defensive proposal count")
 	local waltz = proposals[1]
@@ -258,7 +277,8 @@ local function assert_defensive_proposal_shape()
 	proposals = {}
 	provider.collect_internal({
 		now = 12.9,
-		settings = { defensive_enabled = true, defensive_provider = "internal", defensive_critical_hpp = 35 },
+		config = { defensive = { enabled = true, provider = "internal", thresholds = { critical_hpp = 35 } } },
+		settings = { defensive_enabled = false, defensive_provider = "healbot", defensive_critical_hpp = 1 },
 	}, proposals)
 	assert_equal(#proposals, 1, "Curing Waltz proposal count")
 	local curing_waltz = proposals[1]
@@ -286,9 +306,16 @@ local function assert_defensive_proposal_shape()
     provider.collect_healbot({
         now = 13,
         player_id = 1,
+        config = {
+            defensive = {
+                enabled = true,
+                provider = "healbot",
+                thresholds = { critical_hpp = 35 },
+            },
+        },
         settings = {
-            defensive_enabled = true,
-            defensive_provider = "healbot",
+            defensive_enabled = false,
+            defensive_provider = "internal",
         },
     }, proposals)
     assert_equal(#proposals, 0, "HealBot Cure must reject a disallowed charmed target")
@@ -296,9 +323,16 @@ local function assert_defensive_proposal_shape()
     provider.collect_healbot({
         now = 14,
         player_id = 1,
+        config = {
+            defensive = {
+                enabled = true,
+                provider = "healbot",
+                thresholds = { critical_hpp = 35 },
+            },
+        },
         settings = {
-            defensive_enabled = true,
-            defensive_provider = "healbot",
+            defensive_enabled = false,
+            defensive_provider = "internal",
         },
     }, proposals)
     assert_equal(#proposals, 1, "HealBot Cure must emit when target safety allows it")

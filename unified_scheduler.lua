@@ -8708,7 +8708,6 @@ scheduler.providers.geo_maintenance = require('uc_geo_maintenance').new({
 })
 scheduler.providers.defensive = require('uc_provider_defensive').new({
 	bool_setting = bool_setting,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	build_defensive_candidates = build_defensive_candidates,
 	choose_defensive_action = choose_defensive_action,
 	action_ready = action_ready,
@@ -8768,7 +8767,6 @@ scheduler.providers.sleep_waker = require('uc_provider_sleep_waker').new({
 })
 scheduler.providers.enemy_buff_removal = require('uc_provider_enemy_buff_removal').new({
 	bool_setting = bool_setting,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	log = enemy_dispel_log,
 	build_friendly_claims = uc_targeting_common.build_friendly_claims,
 	list_targets = enemy_effect_tracker.list_targets,
@@ -8786,7 +8784,6 @@ scheduler.providers.enemy_buff_removal = require('uc_provider_enemy_buff_removal
 })
 scheduler.providers.enemy_debuff_maintenance = require('uc_provider_enemy_debuff_maintenance').new({
 	bool_setting = bool_setting,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	get_spell_resource = get_spell_resource,
 	get_spell_by_id = function(spell_id)
 		return res.spells[tonumber(spell_id) or 0]
@@ -8830,7 +8827,6 @@ scheduler.providers.target_control = require('uc_provider_target_control').new({
 })
 scheduler.providers.recurring_spells = require('uc_provider_recurring_spells').new({
 	bool_setting = bool_setting,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	get_spell_resource = get_spell_resource,
 	action_ready = action_ready,
 	action_effective_range = action_effective_range,
@@ -8979,7 +8975,6 @@ scheduler.providers.camp_puller = require('uc_camp_puller').new({
 })
 scheduler.providers.food = require('uc_provider_food').new({
 	get_items = windower.ffxi.get_items,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	player_is_moving = smn_player_is_moving,
 	clamp_urgency = p1_clamp_urgency,
 	build_action_command = build_action_command,

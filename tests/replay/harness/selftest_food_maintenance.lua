@@ -19,18 +19,10 @@ local inventory = {
 	enabled = true,
 	[1] = { id = 1001, count = 3 },
 }
-local active_config = {}
 local provider = food.new({
 	get_items = function(bag)
 		assert_equal(bag, 'Inventory', 'food must only inspect usable Inventory')
 		return inventory
-	end,
-	active_value_or_flat = function(path, flat_value)
-		local value = active_config[path]
-		if value ~= nil then
-			return value
-		end
-		return flat_value
 	end,
 	player_is_moving = function() return moving end,
 	clamp_urgency = function(v) return v end,
@@ -53,15 +45,23 @@ local function collect(now, enabled, item, buffs)
 	provider.collect({
 		now = now,
 		player = { id = 123, name = 'Niightsiide', buffs = buffs or {} },
+		config = {
+			maintenance = {
+				food = {
+					enabled = enabled,
+					item = item or '',
+				},
+			},
+		},
 		settings = {
-			food_enabled = enabled,
-			food_item = item or '',
+			food_enabled = not enabled,
+			food_item = 'Flat State Must Be Ignored',
 		},
 	}, out)
 	return out
 end
 
-assert_equal(#collect(1.0, false, 'Grape Daifuku'), 0, 'disabled flat food maintenance must emit nothing')
+assert_equal(#collect(1.0, false, 'Grape Daifuku'), 0, 'disabled canonical food maintenance must emit nothing')
 
 local proposal = collect(2.0, true, 'Grape Daifuku')
 assert_equal(#proposal, 1, 'missing Food buff with inventory food must emit one proposal')
@@ -73,13 +73,23 @@ assert_equal(proposal[1].target_kind, 'self', 'food target kind')
 assert_equal(proposal[1].legacy_command, 'input /item "Grape Daifuku" <me>', 'food command')
 assert_equal(proposal[1].movement_policy, 'must_stop', 'food must request a stopped action lane')
 
-active_config['config.maintenance.food.enabled'] = true
-active_config['config.maintenance.food.item'] = 'Marine Stewpot'
 inventory = { enabled = true, [1] = { id = 1002, count = 1 } }
-local active_proposal = collect(2.6, false, 'Grape Daifuku')
-assert_equal(#active_proposal, 1, 'active structured food config must override flat compatibility fields')
-assert_equal(active_proposal[1].action_name, 'Marine Stewpot', 'active structured food item must win over flat fallback')
-active_config = {}
+local canonical_out = {}
+provider.collect({
+	now = 2.6,
+	player = { id = 123, name = 'Niightsiide', buffs = {} },
+	config = {
+		maintenance = {
+			food = { enabled = true, item = 'Marine Stewpot' },
+		},
+	},
+	settings = {
+		food_enabled = false,
+		food_item = 'Grape Daifuku',
+	},
+}, canonical_out)
+assert_equal(#canonical_out, 1, 'canonical food config must drive maintenance even when flat compatibility disagrees')
+assert_equal(canonical_out[1].action_name, 'Marine Stewpot', 'canonical food item must be authoritative')
 inventory = { enabled = true, [1] = { id = 1001, count = 3 } }
 
 assert_equal(#collect(3.2, true, 'Grape Daifuku', { 251 }), 0, 'existing Food buff must never be overwritten')
@@ -138,7 +148,7 @@ local scheduler_source = scheduler_file:read('*a')
 scheduler_file:close()
 assert_true(scheduler_source:find('scheduler.PRIORITY_BAND_FOOD_MAINTENANCE = 50', 1, true) ~= nil, 'food priority band missing')
 assert_true(scheduler_source:find('scheduler.providers.food.collect(ctx, out)', 1, true) ~= nil, 'food provider collection missing')
-assert_true(scheduler_source:find('active_value_or_flat = scheduler.active_value_or_flat', 1, true) ~= nil, 'food provider must receive active config reader')
+assert_true(scheduler_source:find("scheduler.providers.food = require('uc_provider_food').new({", 1, true) ~= nil, 'food provider initialization missing')
 assert_true(scheduler_source:find("if provider == 'maintenance_food' then", 1, true) ~= nil, 'food dispatch routing missing')
 assert_true(scheduler_source:find("action_mark_sent('item'", 1, true) ~= nil, 'food dispatch must enter scheduler action state')
 

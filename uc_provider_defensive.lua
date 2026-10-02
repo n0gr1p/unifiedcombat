@@ -28,7 +28,6 @@ end
 function M.new(deps)
 	deps = require_table(deps, 'deps')
 	local bool_setting = require_function(deps, 'bool_setting')
-	local active_value_or_flat = require_function(deps, 'active_value_or_flat')
 	local build_defensive_candidates = require_function(deps, 'build_defensive_candidates')
 	local choose_defensive_action = require_function(deps, 'choose_defensive_action')
 	local action_ready = require_function(deps, 'action_ready')
@@ -54,6 +53,11 @@ function M.new(deps)
 		observed = {},
 		attempts = {},
 	}
+	local function defensive_config(ctx)
+		local config = type(ctx) == 'table' and type(ctx.config) == 'table' and ctx.config or {}
+		return type(config.defensive) == 'table' and config.defensive or {}
+	end
+
 	local provider = {}
 
 	local function parse_resurrection_priority(value)
@@ -97,24 +101,17 @@ function M.new(deps)
 		if type(get_party_members) ~= 'function' or type(in_party_cast_range) ~= 'function' then
 			return
 		end
-		local settings = require_table(ctx.settings, 'ctx.settings')
-		local enabled = bool_setting(
-			active_value_or_flat('config.defensive.enabled', settings.defensive_enabled),
-			false
-		) and bool_setting(
-			active_value_or_flat('config.defensive.resurrection.enabled', settings.defensive_resurrection_enabled),
-			false
-		)
+		local config = defensive_config(ctx)
+		local resurrection = type(config.resurrection) == 'table' and config.resurrection or {}
+		local enabled = bool_setting(config.enabled, false)
+			and bool_setting(resurrection.enabled, false)
 		if not enabled then
 			resurrection_state.observed = {}
 			resurrection_state.attempts = {}
 			return
 		end
 
-		local priority = parse_resurrection_priority(active_value_or_flat(
-			'config.defensive.resurrection.priority',
-			settings.defensive_resurrection_priority
-		))
+		local priority = parse_resurrection_priority(resurrection.priority)
 		local active_dead_ids = {}
 		for _, member in ipairs(get_party_members(ctx)) do
 			local tid = tonumber(member.id) or 0
@@ -232,10 +229,11 @@ function M.new(deps)
 	function provider.collect_internal(ctx, out)
 		require_table(ctx, 'ctx')
 		require_table(out, 'out')
-		if not bool_setting(active_value_or_flat('config.defensive.enabled', ctx.settings.defensive_enabled), false) then
+		local config = defensive_config(ctx)
+		if not bool_setting(config.enabled, false) then
 			return
 		end
-		if tostring(active_value_or_flat('config.defensive.provider', ctx.settings.defensive_provider) or 'internal') ~= 'internal' then
+		if tostring(config.provider or 'internal') ~= 'internal' then
 			return
 		end
 		local candidates = build_defensive_candidates(ctx)
@@ -258,7 +256,8 @@ function M.new(deps)
 		local target_id = tonumber(action.target.id) or 0
 		local target_name = tostring(action.target.name or '')
 		local target_hpp = tonumber(action.lowest_covered_hpp) or tonumber(action.target.hpp) or -1
-		local critical_hpp = tonumber(active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings.defensive_critical_hpp)) or 35
+		local thresholds = type(config.thresholds) == 'table' and config.thresholds or {}
+		local critical_hpp = tonumber(thresholds.critical_hpp) or 35
 		local priority_band = 100
 		if tostring(action.type or '') == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp then
 			priority_band = critical_cure_priority
@@ -335,10 +334,11 @@ function M.new(deps)
 	function provider.collect_healbot(ctx, out)
 		require_table(ctx, 'ctx')
 		require_table(out, 'out')
-		if not bool_setting(active_value_or_flat('config.defensive.enabled', ctx.settings.defensive_enabled), false) then
+		local config = defensive_config(ctx)
+		if not bool_setting(config.enabled, false) then
 			return
 		end
-		if tostring(active_value_or_flat('config.defensive.provider', ctx.settings.defensive_provider) or 'internal') ~= 'healbot' then
+		if tostring(config.provider or 'internal') ~= 'healbot' then
 			return
 		end
 		local ok_actions = type(rawget(_G, 'actions')) == 'table' and type(_G.actions.get_defensive_action) == 'function'
@@ -363,7 +363,8 @@ function M.new(deps)
 			return
 		end
 		local target_hpp = tonumber(target_obj.hpp) or -1
-		local critical_hpp = tonumber(active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings.defensive_critical_hpp)) or 35
+		local thresholds = type(config.thresholds) == 'table' and config.thresholds or {}
+		local critical_hpp = tonumber(thresholds.critical_hpp) or 35
 		local priority_band = 100
 		if atype == 'cure' and target_hpp > 0 and target_hpp <= critical_hpp then
 			priority_band = critical_cure_priority

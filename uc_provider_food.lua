@@ -21,7 +21,6 @@ end
 function M.new(deps)
 	deps = require_table(deps, 'uc_provider_food dependencies')
 	local get_items = require_function(deps, 'get_items')
-	local active_value_or_flat = require_function(deps, 'active_value_or_flat')
 	local player_is_moving = require_function(deps, 'player_is_moving')
 	local clamp_urgency = require_function(deps, 'clamp_urgency')
 	local build_action_command = require_function(deps, 'build_action_command')
@@ -93,18 +92,13 @@ function M.new(deps)
 		end
 		state.next_check_at = now + CHECK_INTERVAL_S
 
-		local settings = type(ctx.settings) == 'table' and ctx.settings or {}
-		local enabled = active_value_or_flat(
-			'config.maintenance.food.enabled',
-			settings.food_enabled
-		)
-		if enabled ~= true then
+		local config = type(ctx.config) == 'table' and ctx.config or {}
+		local maintenance = type(config.maintenance) == 'table' and config.maintenance or {}
+		local food = type(maintenance.food) == 'table' and maintenance.food or {}
+		if food.enabled ~= true then
 			return
 		end
-		local item_name = tostring(active_value_or_flat(
-			'config.maintenance.food.item',
-			settings.food_item
-		) or '')
+		local item_name = tostring(food.item or '')
 		if item_name == '' then
 			return
 		end

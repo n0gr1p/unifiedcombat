@@ -18,7 +18,6 @@ end
 function M.new(deps)
 	deps = require_table(deps, 'deps')
 	local bool_setting = require_function(deps, 'bool_setting')
-	local active_value_or_flat = require_function(deps, 'active_value_or_flat')
 	local log = require_function(deps, 'log')
 	local build_friendly_claims = require_function(deps, 'build_friendly_claims')
 	local list_targets = require_function(deps, 'list_targets')
@@ -39,16 +38,19 @@ function M.new(deps)
 	function provider.collect(ctx, out)
 		require_table(ctx, 'ctx')
 		require_table(out, 'out')
+		local config = type(ctx.config) == 'table' and ctx.config or {}
+		local defensive = type(config.defensive) == 'table' and config.defensive or {}
+		local enemy_buffs = type(defensive.enemy_buffs) == 'table' and defensive.enemy_buffs or {}
 		log(('ENEMY_DISPEL_TICK def_enabled=%s remove_enemy=%s provider=%s domain_defensive=true'):format(
-			tostring(bool_setting(active_value_or_flat('config.defensive.enabled', ctx.settings.defensive_enabled), false)),
-			tostring(bool_setting(active_value_or_flat('config.defensive.enemy_buffs.remove', ctx.settings.def_remove_enemy_buffs), false)),
-			tostring(active_value_or_flat('config.defensive.provider', ctx.settings.defensive_provider) or '')
+			tostring(bool_setting(defensive.enabled, false)),
+			tostring(bool_setting(enemy_buffs.remove, false)),
+			tostring(defensive.provider or '')
 		))
-		if not bool_setting(active_value_or_flat('config.defensive.enabled', ctx.settings.defensive_enabled), false) then
+		if not bool_setting(defensive.enabled, false) then
 			log('ENEMY_DISPEL_SKIP reason=DEFENSIVE_DISABLED')
 			return
 		end
-		if not bool_setting(active_value_or_flat('config.defensive.enemy_buffs.remove', ctx.settings.def_remove_enemy_buffs), false) then
+		if not bool_setting(enemy_buffs.remove, false) then
 			log('ENEMY_DISPEL_SKIP reason=TOGGLE_OFF')
 			return
 		end

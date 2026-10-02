@@ -20,10 +20,14 @@ end
 
 local effects = {}
 local attempts_blocked = {}
-local settings = {
-	defensive_enabled = true,
-	def_maintain_enemy_debuffs = true,
-	defensive_enemy_debuffs = 'Dia III|Distract III',
+local config = {
+	defensive = {
+		enabled = true,
+		enemy_debuffs = {
+			enabled = true,
+			list = 'Dia III|Distract III',
+		},
+	},
 }
 
 local function distance(value)
@@ -36,7 +40,6 @@ end
 
 local provider = require('uc_provider_enemy_debuff_maintenance').new({
 	bool_setting = function(value) return value == true end,
-	active_value_or_flat = function(_, flat_value) return flat_value end,
 	get_spell_resource = function(name) return spells_by_name[name] end,
 	get_spell_by_id = function(id) return spells[id] end,
 	build_friendly_claims = function() return { 1001 }, { [1001] = true } end,
@@ -58,7 +61,12 @@ local provider = require('uc_provider_enemy_debuff_maintenance').new({
 local function context(target_id)
 	return {
 		now = 50,
-		settings = settings,
+		config = config,
+		settings = {
+			defensive_enabled = false,
+			def_maintain_enemy_debuffs = false,
+			defensive_enemy_debuffs = 'Bio III',
+		},
 		target_id_snapshot = target_id or 0,
 		mobs_by_id = {
 			[2001] = { id = 2001, name = 'Near Mob', valid_target = true, spawn_type = 16, hpp = 80, claim_id = 1001, distance = distance(8) },
