@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **IN PROGRESS — combat enablement/autotarget and weaponskill slices implemented and CI-proven**
+Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, and abilities slices implemented and CI-proven**
 
 Domains to treat separately:
 
@@ -481,6 +481,24 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Automated proof on branch head `7191d7a550dcb467e3e1166f787c2f3ba719dde4`: workflow `37027431136` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 combat-enable authority PASS, Phase 3 weaponskill canonical-authority PASS, WS maintenance/skillchain precedence PASS, and the flat-surface guard PASS.
 - No intentional weaponskill ranking, timing, TP threshold semantics, skillchain planning semantics, or dispatch behavior changed except that canonical Profile V2 now wins when flat compatibility state conflicts.
 - Live-game smoke verification remains required for representative Smart WS, spam/solo, primary-no-SC, aftermath, and Fast Skillchain configurations before Phase 3 is complete.
+
+### 2026-10-02 — Phase 3 abilities slice implemented
+
+- Migrated scheduler-owned generic configured-JA authority to canonical `config.abilities`: enablement, allow-unengaged policy, configured ability ordering, and legacy-slot fallback.
+- Added `uc_ability_pipeline.collect_ordered_from_config`; scheduler generic JA collection now chooses the ability list from Profile V2 before applying unrelated RUN ownership filtering.
+- Migrated the shared allow-unengaged policy in `uc_provider_tank_enmity.lua` to canonical `config.abilities.allow_unengaged`.
+- Closed the deferred Chivalry dependency from the WS slice: the scheduler WS settings view now overlays canonical ability enablement, configured abilities, and legacy slots before Chivalry TP-reservation logic runs.
+- Discovered a hidden post-proposal authority leak in `uc_scheduler_ranker.lua`: proposals carrying `required_setting` were rechecked directly against `ctx.settings`. This could silently override canonical `autotarget`, `weaponskill_active`, and `ability_active` decisions after a proposal had already been built.
+- Added `uc_scheduler_config.required_setting_value_from_config` and migrated ranker validation so those three already-migrated settings revalidate against canonical config; unknown/unmigrated required settings such as Sleep intentionally retain the flat fallback.
+- Added `tests/replay/harness/selftest_phase3_abilities_authority.lua` covering canonical ability enable/disable, configured-list precedence, legacy-slot fallback, unengaged policy, required-setting resolution, and static scheduler/core/ranker wiring.
+- Strengthened `selftest_unengaged_abilities.lua` so generic and tank lanes both test canonical OFF + flat ON and canonical ON + flat OFF.
+- Extended `selftest_ws_maintenance_precedence.lua` with real-core contradictory Chivalry cases: canonical enabled/list beats flat disabled/empty, canonical disable beats flat enabled, canonical configured list beats flat Chivalry, and canonical legacy-slot fallback still reserves TP.
+- Extended `selftest_scheduler_ranker.lua` with contradictory canonical required-setting cases.
+- Reduced the flat-surface guard by four more hits: `uc_provider_combat.lua` from 25 to 22 `ctx.settings` reads and `uc_provider_tank_enmity.lua` from 3 to 2.
+- `config.abilities.wsabilities` is not consumed by the scheduler configured-JA path; it remains projected for legacy-engine compatibility and is not being misrepresented as part of this scheduler-domain cutover.
+- Automated proof on implementation head `eda088b075eee3084d23728fa7d529ac4435314c`: workflow `37045140212` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 combat-enable authority PASS, Phase 3 weaponskill authority PASS, Phase 3 abilities authority PASS, contradictory unengaged tests PASS, ranker authority PASS, Chivalry/WS precedence PASS, and the flat-surface guard PASS.
+- No intentional JA priority, readiness, targeting, range, or dispatch semantics changed; the behavioral change is authority only—canonical Profile V2 wins over conflicting flat compatibility state.
+- Live-game smoke verification remains required for configured self/enemy JAs, unengaged override behavior, tank-enmity unengaged actions, and Chivalry TP reservation before Phase 3 is complete.
 
 ## Working checklist
 
