@@ -85,6 +85,12 @@ jobs:
         run: |
           lua5.1 tests/replay/harness/selftest_phase3_weaponskill_authority.lua
           lua5.1 tests/replay/harness/selftest_ws_maintenance_precedence.lua
+      - name: Phase 3 abilities canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_abilities_authority.lua
+          lua5.1 tests/replay/harness/selftest_unengaged_abilities.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_ranker.lua
+          lua5.1 tests/replay/harness/selftest_ws_maintenance_precedence.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
