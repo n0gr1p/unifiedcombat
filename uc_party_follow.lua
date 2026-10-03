@@ -8,6 +8,7 @@ local M = {}
 local packets = require('packets')
 local uc_active_config = require('uc_active_config')
 local uc_camp_puller = require('uc_camp_puller')
+local uc_follow_config = require('uc_follow_config')
 local uc_nyzul_runtime = require('uc_nyzul_runtime')
 local uc_recovery_hold = require('uc_recovery_hold')
 local movement_dispatcher = require('uc_movement_dispatcher').build({
@@ -82,36 +83,41 @@ local function debug_enabled()
 	return s and truthy(s.debug) or false
 end
 
-local function active_value_or_flat(path, flat_value)
-	local active_value = uc_active_config.get_path(path)
-	if active_value ~= nil then
-		return active_value
-	end
-	return flat_value
+local function active_follow_config()
+	local config = uc_active_config.get_config()
+	return type(config) == 'table' and config or {}
 end
 
-local function party_follow_enabled(s)
-	return active_value_or_flat('config.follow.party.enabled', s and s.party_follow) == true
+local function follow_enabled()
+	return uc_follow_config.enabled(active_follow_config())
 end
 
-local function party_follow_id(s)
-	return tonumber(active_value_or_flat('config.follow.party.leader_id', s and s.party_follow_id)) or 0
+local function party_follow_enabled(_)
+	local party = uc_follow_config.party(active_follow_config())
+	return type(party) == 'table' and party.enabled == true
 end
 
-local function party_follow_leader_name(s)
-	return active_value_or_flat('config.follow.party.leader_name', s and s.party_follow_leader_name)
+local function party_follow_id(_)
+	return uc_follow_config.party_leader_id(active_follow_config())
 end
 
-local function party_follow_min(s)
-	return tonumber(active_value_or_flat('config.follow.party.min', s and s.party_follow_min)) or 0.5
+local function party_follow_leader_name(_)
+	return uc_follow_config.party_leader_name(active_follow_config())
 end
 
-local function party_follow_max(s)
-	return tonumber(active_value_or_flat('config.follow.party.max', s and s.party_follow_max)) or 50
+local function party_follow_min(_)
+	local party = uc_follow_config.party(active_follow_config())
+	return tonumber(type(party) == 'table' and party.min) or 0.5
 end
 
-local function fight_follow_min(s)
-	return tonumber(active_value_or_flat('config.follow.fight.min', s and s.fight_follow_min))
+local function party_follow_max(_)
+	local party = uc_follow_config.party(active_follow_config())
+	return tonumber(type(party) == 'table' and party.max) or 50
+end
+
+local function fight_follow_min(_)
+	local fight = uc_follow_config.fight(active_follow_config())
+	return tonumber(type(fight) == 'table' and fight.min)
 end
 
 local function path_sep()
@@ -340,7 +346,7 @@ end
 
 local function refresh_ff_following_from_settings()
 	local s = _G.UC_SETTINGS
-	if not s or not party_follow_enabled(s) then
+	if not s or not follow_enabled() or not party_follow_enabled(s) then
 		ff_following = nil
 		ff_target = nil
 		return
