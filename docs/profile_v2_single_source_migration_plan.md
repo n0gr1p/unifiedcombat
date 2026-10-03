@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, and abilities slices implemented and CI-proven**
+Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, abilities, and target-control/priority-ignore slices implemented and CI-proven**
 
 Domains to treat separately:
 
@@ -499,6 +499,23 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Automated proof on implementation head `eda088b075eee3084d23728fa7d529ac4435314c`: workflow `37045140212` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 combat-enable authority PASS, Phase 3 weaponskill authority PASS, Phase 3 abilities authority PASS, contradictory unengaged tests PASS, ranker authority PASS, Chivalry/WS precedence PASS, and the flat-surface guard PASS.
 - No intentional JA priority, readiness, targeting, range, or dispatch semantics changed; the behavioral change is authority only—canonical Profile V2 wins over conflicting flat compatibility state.
 - Live-game smoke verification remains required for configured self/enemy JAs, unengaged override behavior, tank-enmity unengaged actions, and Chivalry TP reservation before Phase 3 is complete.
+
+### 2026-10-02 — Phase 3 target-control and ignore/priority slice implemented
+
+- Migrated scheduler-owned targeting authority for `config.targeting.add_control`, the ordered target/add priority list, and `config.targeting.target_ignore_names`.
+- Added canonical targeting accessors in `uc_scheduler_config.lua`.
+- The scheduler priority rule is now explicit: `config.targeting.targets` is authoritative when non-empty; normalized `config.targeting.add_priority_names` remains only the compatibility fallback.
+- `unified_combat_core.lua` overlays canonical Add Control, priority names, and target-ignore names into the scheduler settings view before target selection, tank target selection, death-switch revalidation, and Add Control evaluation.
+- `uc_provider_target_control.lua` now passes `ctx.config` into Add Control enablement as well as target selection.
+- `uc_provider_combat.lua` fight-leader engage arbitration now consults the same canonical Add Control gate, preventing engage and target-control lanes from disagreeing when flat compatibility state conflicts.
+- Added `tests/replay/harness/selftest_phase3_targeting_authority.lua` proving canonical Add Control ON + flat OFF permits engaged retarget, canonical OFF + flat ON blocks it, canonical target ordering wins over conflicting flat priority order, and canonical target-ignore names win over conflicting flat ignore state.
+- Updated the existing Add Control priority contract test for the canonical-context helper signatures.
+- Added the targeting authority suite to normal PR CI and the aggregate replay suite.
+- Flat-surface counts intentionally do not drop in this slice: Add Control still receives `ctx.settings` because fight-leader enablement is a separate follow/fight-leader domain that has not migrated yet. Target-owned fields within that mixed view are canonical.
+- `config.targeting.targetability` and `config.targeting.ignore` are not scheduler target-selection inputs today; they remain legacy-engine/UI compatibility fields and are not being falsely claimed as migrated scheduler consumers.
+- Automated proof on implementation head `51a8d1ddc62ef75b0c771ba0aefb7c241cd8e629`: workflow `37085163385` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 combat-enable authority PASS, Phase 3 weaponskill authority PASS, Phase 3 abilities authority PASS, Phase 3 targeting authority PASS, Add Control priority eligibility PASS, and the flat-surface guard PASS.
+- No intentional target ranking, claim policy, death-switch, Add Control eligibility, or engage-dispatch semantics changed except canonical Profile V2 now wins when targeting compatibility state conflicts.
+- Live-game smoke verification remains required for Add Control retargeting, ordered add selection, target-ignore behavior, and fight-leader handoff before Phase 3 is complete.
 
 ## Working checklist
 
