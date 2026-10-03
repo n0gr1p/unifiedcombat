@@ -124,6 +124,34 @@ function M.combat_prime(settings)
     return M.active_value_or_flat('config.combat.prime', s.prime)
 end
 
+function M.targeting_add_control_from_config(config)
+    local targeting = type(config) == 'table' and config.targeting or nil
+    return type(targeting) == 'table' and targeting.add_control == true
+end
+
+function M.targeting_priority_names_from_config(config)
+    local targeting = type(config) == 'table' and config.targeting or nil
+    if type(targeting) ~= 'table' then
+        return {}
+    end
+    local names = targeting.targets
+    if type(names) ~= 'table' or #names == 0 then
+        names = targeting.add_priority_names
+    end
+    if type(names) ~= 'table' then
+        return {}
+    end
+    return names
+end
+
+function M.targeting_ignore_names_from_config(config)
+    local targeting = type(config) == 'table' and config.targeting or nil
+    if type(targeting) ~= 'table' or type(targeting.target_ignore_names) ~= 'table' then
+        return {}
+    end
+    return targeting.target_ignore_names
+end
+
 function M.tank_enabled(settings)
     local s = settings_or_default(settings)
     return M.active_value_or_flat('config.tank.enabled', s.tank)
