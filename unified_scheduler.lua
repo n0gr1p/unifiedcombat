@@ -1611,10 +1611,10 @@ local function get_settings()
 end
 
 camp_pulling_config = function()
-	local settings = get_settings()
-	local config = settings.camp_pulling
+	local root = require('uc_scheduler_context_utils').get_config()
+	local config = uc_scheduler_config.combat_pulling_from_config(root)
 	if type(config) ~= 'table' then
-		error('normalized combat.pulling configuration is required')
+		error('normalized canonical combat.pulling configuration is required')
 	end
 	return config
 end
@@ -5676,9 +5676,9 @@ local function p1_dispatch_camp_puller(selected, settings)
 		_G.UC_LAST_SCHED_ACTION = '[camp_pull]commit_rejected:' .. tostring(reason)
 		return false, nil
 	end
-	local config = ctx.settings.camp_pulling
+	local config = uc_scheduler_config.combat_pulling_from_config(ctx.config)
 	if type(config) ~= 'table' then
-		error('camp pull dispatch requires normalized configuration')
+		error('camp pull dispatch requires normalized canonical configuration')
 	end
 	local action_type = tostring(selected.action_type or '')
 	local executor = p1_build_pull_executor()
@@ -8933,8 +8933,9 @@ scheduler.providers.camp_puller = require('uc_camp_puller').new({
 		local _, id_set = uc_targeting_common.get_friendly_combat_member_ids()
 		return id_set
 	end,
-	ignored = function(settings, mob)
-		return require('uc_target_ignore').is_mob_blocked(settings, mob)
+	ignored = function(config, mob)
+		local names = uc_scheduler_config.targeting_ignore_names_from_config(config)
+		return require('uc_target_ignore').is_mob_blocked({ target_ignore_names = names }, mob)
 	end,
 	get_spell_resource = get_spell_resource,
 	get_ja_resource = get_ja_resource,
