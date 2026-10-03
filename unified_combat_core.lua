@@ -293,8 +293,44 @@ local function list_has_name(list, name)
 	return false
 end
 
-local function movement_model_size_floor(settings)
-	local n = tonumber(settings and settings.spacing_model_size_floor)
+local DEFAULT_MOVEMENT_SPACING = {
+	enabled = false,
+	band_min = -0.9,
+	band_max = 0.4,
+	model_size_floor = DEFAULT_MOVEMENT_MODEL_SIZE_FLOOR,
+	use_prediction = true,
+	lookahead_s = 0.25,
+	repel_hold_ticks = 5,
+	overlap_deadband = 0.10,
+	repel_weight = 0.35,
+	band_deadband = 0.20,
+}
+
+local function movement_spacing_config(settings, config)
+	if type(config) == 'table' then
+		local canonical = require('uc_scheduler_config').movement_spacing_from_config(config)
+		if type(canonical) == 'table' then
+			return canonical
+		end
+		return DEFAULT_MOVEMENT_SPACING
+	end
+	settings = settings or {}
+	return {
+		enabled = setting_enabled(settings.spacing),
+		band_min = settings.spacing_band_min,
+		band_max = settings.spacing_band_max,
+		model_size_floor = settings.spacing_model_size_floor,
+		use_prediction = settings.spacing_use_prediction,
+		lookahead_s = settings.spacing_lookahead_s,
+		repel_hold_ticks = settings.spacing_repel_hold_ticks,
+		overlap_deadband = settings.spacing_overlap_deadband,
+		repel_weight = settings.spacing_repel_weight,
+		band_deadband = settings.spacing_band_deadband,
+	}
+end
+
+local function movement_model_size_floor(spacing)
+	local n = tonumber(spacing and spacing.model_size_floor)
 	if n == nil then
 		n = DEFAULT_MOVEMENT_MODEL_SIZE_FLOOR
 	end
@@ -542,16 +578,16 @@ local function movement_model_size_raw(mob)
 	return tonumber(mob and mob.model_size) or 0
 end
 
-local function movement_target_model_size(mob, settings)
+local function movement_target_model_size(mob, spacing)
 	local n = tonumber(mob and mob.model_size) or 0
-	local floor = movement_model_size_floor(settings or get_settings())
+	local floor = movement_model_size_floor(spacing)
 	if n < floor then
 		return floor
 	end
 	return n
 end
 
-local function target_real_distance_movement(mob, settings)
+local function target_real_distance_movement(mob, spacing)
 	if not mob then
 		return 999
 	end
@@ -559,7 +595,7 @@ local function target_real_distance_movement(mob, settings)
 	if not me or mob.distance == nil then
 		return 999
 	end
-	return mob.distance:sqrt() - movement_target_model_size(mob, settings) - movement_model_size_raw(me)
+	return mob.distance:sqrt() - movement_target_model_size(mob, spacing) - movement_model_size_raw(me)
 end
 
 local function mob_distance(a, b)
