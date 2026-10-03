@@ -157,6 +157,18 @@ local function read_all(path)
     fh:close()
     return source
 end
+local function count_plain(source, needle)
+    local count = 0
+    local start = 1
+    while true do
+        local at = source:find(needle, start, true)
+        if at == nil then break end
+        count = count + 1
+        start = at + #needle
+    end
+    return count
+end
+
 
 local movement_executor = {
     stop = function()
@@ -341,6 +353,22 @@ local function test_static_wiring()
     assert_contains(scheduler_source,
         'combat_core.apply_movement_for_scheduler(s, movement_executor, get_tick_ctx().config)',
         'scheduler movement coordinator must pass canonical tick config into core movement')
+    local legacy_spacing_tokens = {
+        'settings.spacing)',
+        'settings.spacing_band_min',
+        'settings.spacing_band_max',
+        'settings.spacing_model_size_floor',
+        'settings.spacing_use_prediction',
+        'settings.spacing_lookahead_s',
+        'settings.spacing_repel_hold_ticks',
+        'settings.spacing_overlap_deadband',
+        'settings.spacing_repel_weight',
+        'settings.spacing_band_deadband',
+    }
+    for _, token in ipairs(legacy_spacing_tokens) do
+        assert_equal(count_plain(core_source, token), 1,
+            'legacy spacing token must exist only in the explicit no-config compatibility projection: ' .. token)
+    end
 end
 
 local function main()
