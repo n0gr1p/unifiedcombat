@@ -447,14 +447,53 @@ local function main()
     assert_true(#run_calls > 0, 'party follow prerender must issue movement for a named leader with no durable id')
 
     _G.Start_Engine = true
-    _G.UC_SETTINGS.camp_pulling.enabled = true
+    _G.UC_SETTINGS.camp_pulling.enabled = false
+    set_active_profile({
+        combat = {
+            pulling = { enabled = true },
+        },
+        follow = {
+            party = {
+                enabled = true,
+                leader_id = 0,
+                leader_name = 'Leader',
+                min = 1.25,
+                max = 22,
+            },
+        },
+    })
     _G.UC_PARTY_FOLLOW_NEEDS_CATCHUP = true
     _G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL = _G.__TEST_NOW + 0.4
     follow.prerender()
     assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP, false,
-        'camp-puller movement ownership must clear party-follow catch-up intent')
+        'canonical camp-puller ON + flat OFF must clear party-follow catch-up intent')
     assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL, 0,
-        'camp-puller movement ownership must clear the party-follow catch-up hold window')
+        'canonical camp-puller ownership must clear the party-follow catch-up hold window')
+
+    _G.UC_SETTINGS.camp_pulling.enabled = true
+    set_active_profile({
+        combat = {
+            pulling = { enabled = false },
+        },
+        follow = {
+            party = {
+                enabled = true,
+                leader_id = 0,
+                leader_name = 'Leader',
+                min = 1.25,
+                max = 22,
+            },
+        },
+    })
+    run_calls = {}
+    _G.UC_MOVEMENT_OWNER = nil
+    _G.UC_MOVEMENT_LOCK_UNTIL = nil
+    follow.prerender()
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'follow',
+        'canonical camp-puller OFF + flat ON must not suppress party follow')
+    assert_true(#run_calls > 0,
+        'canonical camp-puller OFF must allow party-follow movement despite flat ON')
+
     _G.UC_SETTINGS.camp_pulling.enabled = false
     _G.Start_Engine = false
     follow.prerender()
