@@ -829,7 +829,7 @@ local function spacing_dist_xy(ax, ay, bx, by)
 	return math.sqrt((dx * dx) + (dy * dy))
 end
 
-local function spacing_collect_agents(me, settings)
+local function spacing_collect_agents(me)
 	local out = {}
 	local party = windower.ffxi.get_party() or {}
 	local keys = { 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }
@@ -895,8 +895,8 @@ local function spacing_predict_target(target, st, use_prediction, lookahead_s)
 	return px, py
 end
 
-local function spacing_compute_band(target, agents, min_real, max_real, settings)
-	local tmodel = movement_target_model_size(target, settings)
+local function spacing_compute_band(target, agents, min_real, max_real, spacing)
+	local tmodel = movement_target_model_size(target, spacing)
 	local sum_model = 0
 	local count = 0
 	for _, a in ipairs(agents) do
@@ -917,37 +917,37 @@ local function spacing_compute_band(target, agents, min_real, max_real, settings
 	return min_range, max_range, preferred, emergency_margin
 end
 
-local function spacing_compute_heading(settings, me, target, min_real, max_real)
+local function spacing_compute_heading(spacing, me, target, min_real, max_real)
 	local st = core.spacing or {}
 	st.tick = (tonumber(st.tick) or 0) + 1
 	core.spacing = st
-	local use_prediction = setting_enabled(settings.spacing_use_prediction)
-	local lookahead_s = tonumber(settings.spacing_lookahead_s) or 0.25
+	local use_prediction = setting_enabled(spacing.use_prediction)
+	local lookahead_s = tonumber(spacing.lookahead_s) or 0.25
 	if lookahead_s < 0 then
 		lookahead_s = 0
 	elseif lookahead_s > 1.5 then
 		lookahead_s = 1.5
 	end
 
-	local band_dead = tonumber(settings.spacing_band_deadband) or 0.20
+	local band_dead = tonumber(spacing.band_deadband) or 0.20
 	if band_dead < 0.05 then
 		band_dead = 0.05
 	elseif band_dead > 1.0 then
 		band_dead = 1.0
 	end
-	local repel_weight = tonumber(settings.spacing_repel_weight) or 0.35
+	local repel_weight = tonumber(spacing.repel_weight) or 0.35
 	if repel_weight < 0.05 then
 		repel_weight = 0.05
 	elseif repel_weight > 1.5 then
 		repel_weight = 1.5
 	end
-	local repel_deadband = tonumber(settings.spacing_overlap_deadband) or 0.10
+	local repel_deadband = tonumber(spacing.overlap_deadband) or 0.10
 	if repel_deadband < 0.05 then
 		repel_deadband = 0.05
 	elseif repel_deadband > 1.0 then
 		repel_deadband = 1.0
 	end
-	local hold_s = tonumber(settings.spacing_repel_hold_ticks) or 5
+	local hold_s = tonumber(spacing.repel_hold_ticks) or 5
 	hold_s = hold_s * 0.04
 	if hold_s < 0.08 then
 		hold_s = 0.08
@@ -955,13 +955,13 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 		hold_s = 0.35
 	end
 
-	local agents = spacing_collect_agents(me, settings)
+	local agents = spacing_collect_agents(me)
 	local local_id = tonumber(me and me.id) or 0
 	if local_id <= 0 or #agents == 0 then
 		return nil, 'HOLD_POSITION'
 	end
 	local tx, ty = spacing_predict_target(target, st, use_prediction, lookahead_s)
-	local min_range, max_range, preferred_radius = spacing_compute_band(target, agents, min_real, max_real, settings)
+	local min_range, max_range, preferred_radius = spacing_compute_band(target, agents, min_real, max_real, spacing)
 	local mode = 'HOLD_POSITION'
 	local dist_t = spacing_dist_xy(me.x, me.y, tx, ty)
 	local rvx, rvy = 0, 0
@@ -1027,7 +1027,7 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 				tonumber(me and me.model_size) or 0,
 				me_model,
 				tonumber(target and target.model_size) or 0,
-				movement_target_model_size(target, settings)
+				movement_target_model_size(target, spacing)
 			)
 			return nil, 'HOLD_POSITION'
 		end
@@ -1072,7 +1072,7 @@ end
 
 -- Real-time spacing-aware approach heading:
 -- attract toward target while repelling from nearby party members.
-local function uc_spacing_aware_approach_heading(settings, me, target)
+local function uc_spacing_aware_approach_heading(spacing, me, target)
 	if not me or not target or me.x == nil or me.y == nil or target.x == nil or target.y == nil then
 		return nil
 	end
@@ -1098,7 +1098,7 @@ local function uc_spacing_aware_approach_heading(settings, me, target)
 		if pid ~= 0 and pid ~= me.id then
 			local member = windower.ffxi.get_mob_by_id(pid)
 			if member and member.x ~= nil and member.y ~= nil then
-				local pdist = mob_real_distance_movement(me, member, settings)
+				local pdist = mob_real_distance_movement(me, member, spacing)
 				if pdist < repel_range then
 					local dx = me.x - member.x
 					local dy = me.y - member.y
@@ -2342,6 +2342,7 @@ local function apply_movement(settings, target, executor, config)
 		_G.UC_MOVE_DIAG = 'move_skip_not_actionable_target'
 		return
 	end
+	local spacing = movement_spacing_config(settings, config)
 	local puller_allowed = puller_engage_allowed(settings, target)
 	if not puller_allowed then
 		-- Puller gate blocks combat-close movement: explicitly stop current run vector and
@@ -2351,10 +2352,10 @@ local function apply_movement(settings, target, executor, config)
 		_G.UC_PULLER_APPROACH_BLOCK_UNTIL = uc_now_s() + 0.6
 		return
 	end
-	local dist = target_real_distance_movement(target, settings)
+	local dist = target_real_distance_movement(target, spacing)
 	-- Comfortable fight-distance band around target.
-	local max_range = tonumber(settings.spacing_band_max) or 0.4
-	local min_range = tonumber(settings.spacing_band_min) or -0.9
+	local max_range = tonumber(spacing.band_max) or 0.4
+	local min_range = tonumber(spacing.band_min) or -0.9
 	if min_range < -5 then
 		min_range = -5
 	elseif min_range > 2 then
@@ -2374,9 +2375,9 @@ local function apply_movement(settings, target, executor, config)
 	local g = ensure_move_guard_state()
 	movement_guard_sample(g, me, dist, uc_now_s())
 	-- Spacing is combat-only behavior; never apply it while out of combat/following.
-	local spacing_on = setting_enabled(settings.spacing) and p and (tonumber(p.status) or 0) == 1
+	local spacing_on = setting_enabled(spacing.enabled) and p and (tonumber(p.status) or 0) == 1
 	if spacing_on and me then
-		local heading, mode = spacing_compute_heading(settings, me, target, min_range, max_range)
+		local heading, mode = spacing_compute_heading(spacing, me, target, min_range, max_range)
 		if mode == 'HOLD_POSITION' then
 			if core.last_run_active then
 				stop_run(executor)
@@ -2428,7 +2429,7 @@ local function apply_movement(settings, target, executor, config)
 	if dist > max_range then
 		local moved = false
 		if spacing_on and me then
-			local heading = uc_spacing_aware_approach_heading(settings, me, target)
+			local heading = uc_spacing_aware_approach_heading(spacing, me, target)
 			if heading then
 				moved = run_heading_guarded(target, me, heading, 'close_spacing', false, executor)
 			end
