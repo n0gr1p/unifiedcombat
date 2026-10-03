@@ -467,6 +467,10 @@ end
 local function uc_domain_enabled(s, key)
 	local st = s or _G.UC_SETTINGS or {}
 	if key == 'follow' then
+		local active = require('uc_active_config').get_path('config.ownership.domain_follow_enabled')
+		if type(active) == 'boolean' then
+			return active
+		end
 		return uc_truthy(st.domain_follow_enabled)
 	end
 	if not uc_truthy(st.engine_enabled) then
@@ -521,6 +525,15 @@ end
 
 local function uc_is_follow_participant(s)
 	local st = s or _G.UC_SETTINGS or {}
+	local active_config = require('uc_active_config').get_config()
+	if type(active_config) == 'table' then
+		local follow_config = require('uc_follow_config')
+		local party = follow_config.party(active_config)
+		return uc_domain_enabled(st, 'follow')
+			and follow_config.enabled(active_config)
+			and type(party) == 'table'
+			and party.enabled == true
+	end
 	return uc_domain_enabled(st, 'follow') and uc_truthy(st.party_follow)
 end
 
