@@ -264,6 +264,18 @@ The fourth Phase 3 slice moves scheduler-owned targeting policy to canonical Pro
 - No guard-count reduction is expected in this slice because Add Control still needs the unmigrated fight-leader compatibility context from `ctx.settings`.
 - `targeting.targetability` and `targeting.ignore` are not scheduler targeting consumers and remain legacy/UI compatibility surfaces.
 
+## Phase 3 tank/enmity burn-down
+
+The fifth Phase 3 slice moves common tank/enmity policy to canonical Profile V2 authority:
+
+- `uc_provider_combat.lua`: `ctx.settings` count reduced from 22 to 20 by moving engage and configured-JA tank weighting to canonical `config.tank.enabled`.
+- `uc_provider_target_control.lua`: `ctx.settings` count reduced from 4 to 3 by moving tank target-acquire weighting to canonical tank state.
+- `uc_provider_run_tank.lua`: `ctx.settings` count reduced from 3 to 1 by moving the shared tank-enabled gate and ability allow-unengaged gate to canonical config. The remaining settings handoff feeds the not-yet-migrated RUN-specific `tank.run` subsystem.
+- `uc_provider_tank_enmity.lua` retains two settings handoffs for compatibility context used by separately owned target/friendly helpers, while tank enablement, enmity actions, include-pets, and pet target-ignore policy are all canonical.
+- Tank-enmity proposals are rank-gated by canonical `tank`, and final dispatch revalidates canonical tank enablement plus configured-action membership.
+- RUN no-TP facing now receives canonical tank state at both movement and combat-dispatch call sites.
+- The pet-enmity path now has an explicit canonical tank-enabled gate; it can no longer emit recovery actions when Profile V2 tank mode is off.
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.
