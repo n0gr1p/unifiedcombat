@@ -2721,7 +2721,7 @@ local function run_movement_coordinator_tick()
 		local t = windower.ffxi.get_mob_by_target('t')
 		local tid = tonumber(t and t.id) or 0
 		if tid > 0 then
-			local no_tp_tid = require('uc_run_no_tp').target_id(s, p, t)
+			local no_tp_tid = require('uc_run_no_tp').target_id(s, p, t, require('uc_scheduler_context_utils').get_config())
 			if no_tp_tid > 0 then
 				p1_apply_face_to_target(s, no_tp_tid, true, true, 'unified_scheduler:run_no_tp')
 			else
@@ -6388,7 +6388,7 @@ local function p1_dispatch_combat(selected, settings, phase, config)
 	do
 		local player = windower.ffxi.get_player()
 		local current_target = windower.ffxi.get_mob_by_target('t')
-		local no_tp_tid = require('uc_run_no_tp').target_id(settings, player, current_target)
+		local no_tp_tid = require('uc_run_no_tp').target_id(settings, player, current_target, config)
 		if no_tp_tid > 0 then
 			p1_apply_face_to_target(settings, no_tp_tid, true, true, 'unified_scheduler:run_no_tp')
 		else
