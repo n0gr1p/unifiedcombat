@@ -127,6 +127,15 @@ function M.combat_prime(settings)
     return M.active_value_or_flat('config.combat.prime', s.prime)
 end
 
+function M.movement_spacing_from_config(config)
+    local movement = type(config) == 'table' and config.movement or nil
+    local spacing = type(movement) == 'table' and movement.spacing or nil
+    if type(spacing) ~= 'table' then
+        return nil
+    end
+    return spacing
+end
+
 function M.combat_pulling_from_config(config)
     local combat = type(config) == 'table' and config.combat or nil
     local pulling = type(combat) == 'table' and combat.pulling or nil
