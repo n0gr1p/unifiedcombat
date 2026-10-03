@@ -136,6 +136,7 @@ function M.new(deps)
             can_preempt_movement = true,
             can_preempt_same_band = false,
             reason_code = spec.reason,
+            required_setting = 'tank',
             detail = {
                 run_tank = true,
                 category = spec.category,
