@@ -243,6 +243,7 @@ function M.new(deps)
 			can_preempt_movement = true,
 			can_preempt_same_band = true,
 			reason_code = 'tank_enmity_violation',
+			required_setting = 'tank',
 			detail = {
 				tank_enmity = true,
 				victim_id = tonumber(pick.victim_id) or 0,
