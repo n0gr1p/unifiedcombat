@@ -5,6 +5,7 @@ end
 local files = require('files')
 local res = require('resources')
 local uc_active_config = require('uc_active_config')
+local uc_follow_config = require('uc_follow_config')
 local uc_camp_puller = require('uc_camp_puller')
 local domain_ownership = require('uc_domain_ownership')
 local uc_party_follow = require('uc_party_follow')
@@ -78,12 +79,19 @@ local function path_resume_index_window(settings)
 	return tonumber(active_value_or_flat('config.movement.path.resume_index_window', settings and settings.path_resume_index_window)) or 12
 end
 
-local function party_follow_enabled(settings)
-	return active_value_or_flat('config.follow.party.enabled', settings and settings.party_follow) == true
+local function party_follow_enabled(_)
+	local config = uc_active_config.get_config()
+	if type(config) ~= 'table' or not uc_follow_config.enabled(config) then
+		return false
+	end
+	local party = uc_follow_config.party(config)
+	return type(party) == 'table' and party.enabled == true
 end
 
-local function party_follow_id(settings)
-	return tonumber(active_value_or_flat('config.follow.party.leader_id', settings and settings.party_follow_id)) or 0
+local function party_follow_id(_)
+	local config = uc_active_config.get_config()
+	if type(config) ~= 'table' then return 0 end
+	return uc_follow_config.party_leader_id(config)
 end
 
 local function sanitize_name(s)
