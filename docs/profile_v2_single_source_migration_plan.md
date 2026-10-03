@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, abilities, target-control/priority-ignore, tank/enmity, and pulling slices implemented and CI-proven**
+Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, abilities, target-control/priority-ignore, tank/enmity, pulling, and spacing slices implemented and CI-proven**
 
 Domains to treat separately:
 
@@ -555,6 +555,25 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Automated proof on implementation head `a9967ee43f09d27f382df13867dd15cb441bcc40`: workflow `37086936986` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 pulling authority PASS, full camp-puller state machine PASS, camp-puller policy PASS, movement-priority arbitration PASS, all earlier Phase 3 authority suites PASS, and the flat-surface guard PASS.
 - No intentional pull candidate ranking, quota policy, leash geometry, action readiness/range, retry policy, lane priority, or dispatch semantics changed except that canonical Profile V2 now wins over conflicting flat camp-pulling state.
 - Live-game smoke verification remains required for camp lane acquisition, pull action execution, canonical disable during an active journey, target-ignore filtering, return-to-camp behavior, and movement handoff before Phase 3 is complete.
+
+### 2026-10-03 — Phase 3 spacing slice implemented
+
+- Migrated the unified scheduler/core spacing domain to canonical `config.movement.spacing` authority.
+- Added `uc_scheduler_config.movement_spacing_from_config` as the canonical spacing accessor.
+- `unified_combat_core.lua` now resolves one spacing view per movement tick from the canonical config passed by `unified_scheduler.lua`.
+- Canonical authority covers the complete spacing subtree: `enabled`, `band_min`, `band_max`, `model_size_floor`, `use_prediction`, `lookahead_s`, `repel_hold_ticks`, `overlap_deadband`, `repel_weight`, and `band_deadband`.
+- The migration intentionally includes `band_min`, `band_max`, and `model_size_floor` even when spacing is disabled because those values also define ordinary combat-close stop distance and model-size compensation.
+- When canonical config is present but `movement.spacing` is absent, combat movement uses the normalized spacing defaults rather than falling back to conflicting flat spacing state.
+- Direct no-config compatibility callers retain the old flat spacing projection through one centralized `movement_spacing_config(settings, config)` fallback. A regression asserts every legacy `settings.spacing*` token in core appears exactly once, inside that compatibility projection.
+- Added `tests/replay/harness/selftest_phase3_spacing_authority.lua` proving canonical spacing ON + flat OFF executes the spacing solver, canonical spacing OFF + flat ON does not execute flat spacing behavior, canonical `band_max` wins while spacing is disabled, and canonical `model_size_floor` changes combat-close stopping distance despite conflicting flat values.
+- The regression also proves the scheduler continues passing the tick-stable canonical config into `core.apply_movement_for_scheduler`.
+- Updated the movement-facade and spacing cast-lock contract fixtures to the current canonical-config call/dispatcher signatures while preserving their original movement ownership and cast-freeze ordering assertions.
+- No flat-surface guard count drops in this slice because the compatibility-only flat spacing projection remains intentionally present for direct legacy callers; the new spacing regression mechanically prevents those flat reads from spreading elsewhere in unified core movement.
+- Source audit found no additional unified scheduler/core consumers of the spacing tuning fields outside `unified_combat_core.lua`.
+- `melee_engine.lua`, `dd2_module.lua`, and the generated/legacy DD2 engine retain flat spacing reads. They are already classified in the migration ledger as legacy-sensitive engines and explicitly short-circuit when the unified engine owns execution; they are not being falsely claimed as migrated by this Phase 3 scheduler/core slice.
+- Automated proof on implementation head `460db4c695e93be08a14a664e3c30e1e78d6f5a6`: workflow `37121903528` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 spacing authority PASS, scheduler movement facade PASS, spacing cast-lock PASS, all earlier Phase 3 authority suites PASS, and the flat-surface guard PASS.
+- No intentional spacing geometry, prediction, repel weighting, deadband, cast-freeze, movement ownership, or combat-close semantics changed except canonical Profile V2 now wins over conflicting flat spacing state on the unified scheduler path.
+- Live-game smoke verification remains required for spacing enable/disable, close/retreat band behavior, party overlap repulsion, moving-target prediction, and spacing interaction with cast freezes before Phase 3 is complete.
 
 ## Working checklist
 
