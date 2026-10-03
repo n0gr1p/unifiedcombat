@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, abilities, target-control/priority-ignore, tank/enmity, pulling, and spacing slices implemented and CI-proven**
+Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, abilities, target-control/priority-ignore, tank/enmity, pulling, spacing, and follow slices implemented and CI-proven**
 
 Domains to treat separately:
 
@@ -574,6 +574,29 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Automated proof on implementation head `460db4c695e93be08a14a664e3c30e1e78d6f5a6`: workflow `37121903528` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 spacing authority PASS, scheduler movement facade PASS, spacing cast-lock PASS, all earlier Phase 3 authority suites PASS, and the flat-surface guard PASS.
 - No intentional spacing geometry, prediction, repel weighting, deadband, cast-freeze, movement ownership, or combat-close semantics changed except canonical Profile V2 now wins over conflicting flat spacing state on the unified scheduler path.
 - Live-game smoke verification remains required for spacing enable/disable, close/retreat band behavior, party overlap repulsion, moving-target prediction, and spacing interaction with cast freezes before Phase 3 is complete.
+
+### 2026-10-03 — Phase 3 follow slice implemented
+
+- Migrated the unified follow domain to canonical Profile V2 authority across party follow, fight-follow timing/leader selection, partner coordination, puller leash policy, and path-vs-follow movement ownership.
+- Added `uc_follow_config.lua` as the canonical follow runtime adapter for `config.follow.party`, `config.follow.fight`, `config.follow.partner`, and `config.follow.nyzul`.
+- Durable names remain the source of truth; party/fight/partner/puller IDs are resolved from the live party at runtime. Legacy configured IDs are used only when the corresponding canonical name is absent/unresolvable, and camp leash mode intentionally resolves no player puller ID.
+- `uc_party_follow.lua` no longer contains any `active_value_or_flat` follow readers. Party enablement, leader identity/name, follow min/max, and fight-follow minimum now read canonical follow config directly.
+- `config.follow.enabled` is part of the party-follow gate. Partial canonical profiles that omit the parent flag preserve the normalizer's default of enabled=true rather than accidentally disabling follow.
+- Follow participation now honors both canonical `config.ownership.domain_follow_enabled` and canonical `config.follow.enabled` / `config.follow.party.enabled`.
+- `uc_pathing.lua` now uses canonical follow policy when deciding whether party follow owns movement, while its own `config.movement.path` settings remain deferred to the next pathing slice.
+- `uc_runtime_overrides.lua` fight-leader accessors are now canonical-first. Conflicting flat `fight_leader`, `fight_leader_name`, and `fight_leader_id` state can no longer override Profile V2.
+- `unified_combat_core.lua` overlays canonical follow partner policy into its scheduler runtime view, so partner target ownership, fight-leader targeting, and puller/camp leash movement consume canonical `config.follow.partner` values.
+- `unified_scheduler.lua` partner tiebreak arbitration now uses canonical partner enablement/IDs and canonical target-ignore policy; fight-follow hold duration now comes from canonical `config.follow.fight.hold_s`.
+- Combat-provider partner target-set calls now pass `ctx.config`, so WS/sleep/ability partner exclusions use canonical partner state.
+- Nyzul follow policy was already canonical: `uc_nyzul_runtime.lua` reads `config.follow.nyzul.*` directly, so no runtime churn was required there.
+- Added `tests/replay/harness/selftest_phase3_follow_authority.lua` proving live canonical name→ID resolution, canonical party/fight/partner/puller projection over contradictory flat state, canonical fight-leader ON/OFF precedence, and camp-leash runtime-ID behavior.
+- Strengthened `selftest_movement_priority_arbitration.lua` so canonical party-follow behavior is proven both against conflicting flat state and with missing canonical follow policy failing closed instead of falling back to flat.
+- Updated runtime-overrides, active-config-consumer, configurable-control-range, and partner-arbitration contracts for the new authority boundary.
+- Flat-surface guard burn-down: `uc_party_follow.lua` `active_value_or_flat` count 7→0; `uc_pathing.lua` 9→7 by removing its two follow-related fallback readers.
+- Legacy-sensitive `melee_engine.lua` / `dd2_module.lua` retain their own flat follow/partner settings and remain separately classified compatibility debt outside the unified scheduler follow slice.
+- Automated proof on implementation head `272149baa442a03b65b0e1757fadf2a73a926281`: workflow `37143116074` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 follow authority PASS, movement-priority arbitration PASS, runtime-overrides PASS, partner-arbitration PASS, all earlier Phase 3 authority suites PASS, and the flat-surface guard PASS.
+- No intentional party-follow geometry, zone replay, combat transition suppression, partner arbitration ranking, puller leash geometry, or fight-follow timing semantics changed except canonical Profile V2 now wins over conflicting flat follow state.
+- Live-game smoke verification remains required for same-zone party follow, zone replay, fight-follow distance changes, partner target coordination, player/camp puller leash modes, and follow/path movement handoff before Phase 3 is complete.
 
 ## Working checklist
 
