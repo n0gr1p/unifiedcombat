@@ -95,6 +95,14 @@ jobs:
         run: |
           lua5.1 tests/replay/harness/selftest_phase3_targeting_authority.lua
           lua5.1 tests/replay/harness/selftest_add_control_priority_eligibility.lua
+      - name: Phase 3 tank-enmity canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_tank_enmity_authority.lua
+          lua5.1 tests/replay/harness/selftest_tank_pet_enmity_provider.lua
+          lua5.1 tests/replay/harness/selftest_run_tank.lua
+          lua5.1 tests/replay/harness/selftest_run_no_tp_mode.lua
+          lua5.1 tests/replay/harness/selftest_tank_configured_ja_starvation.lua
+          lua5.1 tests/replay/harness/selftest_tank_engage_priority.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
