@@ -3586,18 +3586,10 @@ local function scheduler_settings_view(settings, config)
 	local scheduler_config = require('uc_scheduler_config')
 	if type(config) == 'table' then
 		view.autotarget = scheduler_config.combat_autotarget_from_config(config)
-		local targeting = type(config.targeting) == 'table' and config.targeting or nil
-		if type(targeting) == 'table' then
-			view.add_control = targeting.add_control == true
-			local priority_names = targeting.targets
-			if type(priority_names) ~= 'table' or #priority_names == 0 then
-				priority_names = targeting.add_priority_names
-			end
-			view.add_priority_names = type(priority_names) == 'table' and priority_names or {}
-			view.targets = view.add_priority_names
-			view.target_ignore_names = type(targeting.target_ignore_names) == 'table'
-				and targeting.target_ignore_names or {}
-		end
+		view.add_control = scheduler_config.targeting_add_control_from_config(config)
+		view.add_priority_names = scheduler_config.targeting_priority_names_from_config(config)
+		view.targets = view.add_priority_names
+		view.target_ignore_names = scheduler_config.targeting_ignore_names_from_config(config)
 	else
 		view.autotarget = scheduler_config.combat_autotarget(base)
 	end
