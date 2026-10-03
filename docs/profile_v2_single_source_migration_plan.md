@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, abilities, and target-control/priority-ignore slices implemented and CI-proven**
+Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, abilities, target-control/priority-ignore, and tank/enmity slices implemented and CI-proven**
 
 Domains to treat separately:
 
@@ -516,6 +516,26 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Automated proof on implementation head `51a8d1ddc62ef75b0c771ba0aefb7c241cd8e629`: workflow `37085163385` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 combat-enable authority PASS, Phase 3 weaponskill authority PASS, Phase 3 abilities authority PASS, Phase 3 targeting authority PASS, Add Control priority eligibility PASS, and the flat-surface guard PASS.
 - No intentional target ranking, claim policy, death-switch, Add Control eligibility, or engage-dispatch semantics changed except canonical Profile V2 now wins when targeting compatibility state conflicts.
 - Live-game smoke verification remains required for Add Control retargeting, ordered add selection, target-ignore behavior, and fight-leader handoff before Phase 3 is complete.
+
+### 2026-10-02 — Phase 3 tank/enmity configuration slice implemented
+
+- Migrated common scheduler-owned tank authority to canonical Profile V2: `config.tank.enabled`, ordered `config.tank.enmity.actions`, and `config.tank.enmity.include_pets`.
+- Added canonical tank/enmity accessors and an exact configured-action matcher in `uc_scheduler_config.lua`.
+- `unified_combat_core.lua` now overlays canonical tank enablement and enmity actions into the scheduler settings view before tank violation selection.
+- Combat engage weighting, generic-JA tank weighting, and target-acquire tank weighting now read `tank.enabled` from `ctx.config`.
+- `uc_provider_tank_enmity.lua` now fails closed when canonical tank mode is disabled, uses canonical include-pets and enmity actions, and overlays canonical target-ignore names into pet-enmity violation selection.
+- Fixed a real pre-existing authority/safety gap: the pet-enmity branch did not independently gate on tank enabled, so a pet recovery proposal could bypass the normal player-enmity path's tank gate. The provider now applies the canonical tank gate before either path.
+- Tank-enmity and RUN-tank proposals now carry `required_setting = 'tank'`; the scheduler ranker resolves that dependency from canonical config.
+- Final tank-enmity dispatch revalidates both canonical tank enablement and whether the selected recovery action is still present in the canonical enmity list, preventing a stale proposal from dispatching after a profile change.
+- The shared top-level tank gate in `uc_provider_run_tank.lua` now reads canonical config. RUN-specific rune/ward/Foil policy under `config.tank.run` remains a separate subsystem and was not otherwise migrated in this slice.
+- Fixed a cross-domain leak from the completed abilities slice: RUN tank's unengaged gate now uses canonical `config.abilities.allow_unengaged`.
+- Fixed a movement/dispatch authority leak: RUN no-TP facing now receives canonical tank config in both the movement coordinator and combat dispatcher, so stale flat `tank=true` cannot keep no-TP facing active after canonical tank disable.
+- Added `tests/replay/harness/selftest_phase3_tank_enmity_authority.lua` proving canonical tank ON + flat OFF, canonical tank OFF + flat ON, canonical action-list precedence, include-pets precedence, canonical pet target-ignore projection, ranker tank resolution, and dispatch-time canonical revalidation wiring.
+- Strengthened the existing pet-enmity, RUN tank, RUN no-TP, tank priority/starvation, provider-shape, and migration-contract fixtures for the new canonical boundary.
+- Reduced flat-context guard counts: `uc_provider_combat.lua` 22→20, `uc_provider_target_control.lua` 4→3, and `uc_provider_run_tank.lua` 3→1. `uc_provider_tank_enmity.lua` remains at 2 because it still passes compatibility context into separately owned target/friendly-selection helpers while all tank-owned fields are canonical.
+- Automated proof on implementation head `447767bf7a8370e1e16b8949bd611a23f348ea7a`: workflow `37086243234` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 tank-enmity authority PASS, pet-enmity provider/config PASS, RUN tank PASS, RUN no-TP PASS, all earlier Phase 3 authority suites PASS, and the flat-surface guard PASS.
+- No intentional tank priority bands, victim ranking, action readiness, range, dispatch method, RUN rune/ward policy, or engage semantics changed except canonical Profile V2 now wins over conflicting flat tank/enmity state and stale tank proposals fail closed.
+- Live-game smoke verification remains required for PLD/RUN tank target acquisition, player and pet enmity recovery, canonical tank disable, configured recovery-action changes, and RUN no-TP facing before Phase 3 is complete.
 
 ## Working checklist
 
