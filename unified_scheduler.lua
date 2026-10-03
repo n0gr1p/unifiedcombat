@@ -1789,11 +1789,30 @@ function scheduler.on_add_item(bag, index, item_id, count)
 	return acted, reason
 end
 
-local function build_partner_target_set(settings)
-	return require('uc_scheduler_context_utils').build_partner_target_set({
-		bool_setting = bool_setting,
-		uc_partner_list = uc_partner_list,
-	}, settings)
+local function build_partner_target_set(settings, config)
+	local follow_config = require('uc_follow_config')
+	local enabled = false
+	local partner_ids = {}
+	if type(config) == 'table' and type(follow_config.partner(config)) == 'table' then
+		enabled = follow_config.partner(config).enabled == true
+		partner_ids = follow_config.partner_ids(config)
+	else
+		enabled = bool_setting(settings and settings.partner, false)
+		partner_ids = uc_partner_list.as_ordered_ids(settings or {})
+	end
+	local out = {}
+	if not enabled then
+		return out
+	end
+	for _, pid in ipairs(partner_ids) do
+		local pm = windower.ffxi.get_mob_by_id(tonumber(pid) or 0)
+		if pm and pm.target_index then
+			local tm = windower.ffxi.get_mob_by_index(pm.target_index)
+			local tid = tonumber(tm and tm.id) or 0
+			if tid > 0 then out[tid] = true end
+		end
+	end
+	return out
 end
 
 function scheduler.sleep_spell_list_from_settings(settings)
@@ -1824,14 +1843,22 @@ function scheduler.sleep_max_target_distance(settings)
 end
 
 function scheduler.try_partner_tiebreak(settings, config)
-	if not bool_setting(settings and settings.partner, false) then
+	local follow_config = require('uc_follow_config')
+	local partner_cfg = type(config) == 'table' and follow_config.partner(config) or nil
+	local partner_enabled = type(partner_cfg) == 'table'
+		and partner_cfg.enabled == true
+		or bool_setting(settings and settings.partner, false)
+	if not partner_enabled then
 		return false, nil
 	end
 
+	local partner_ids = type(partner_cfg) == 'table'
+		and follow_config.partner_ids(config)
+		or uc_partner_list.as_ordered_ids(settings)
 	local player = windower.ffxi.get_player()
 	local current = windower.ffxi.get_mob_by_target('t')
 	local partner_snapshots = {}
-	for _, partner_id in ipairs(uc_partner_list.as_ordered_ids(settings)) do
+	for _, partner_id in ipairs(partner_ids) do
 		local partner = windower.ffxi.get_mob_by_id(partner_id)
 		local target = partner and partner.target_index and windower.ffxi.get_mob_by_index(partner.target_index) or nil
 		partner_snapshots[#partner_snapshots + 1] = {
@@ -1847,9 +1874,15 @@ function scheduler.try_partner_tiebreak(settings, config)
 	local _, claims_set = uc_targeting_common.build_friendly_claims()
 	assert(type(claims_set) == 'table', 'scheduler partner arbitration requires friendly claims')
 	local blocked_mob_ids = {}
+	local ignore_context = settings
+	if type(config) == 'table' then
+		ignore_context = {
+			target_ignore_names = uc_scheduler_config.targeting_ignore_names_from_config(config),
+		}
+	end
 	for _, mob in pairs(mobs) do
 		local mob_id = tonumber(mob and mob.id) or 0
-		if mob_id > 0 and require('uc_target_ignore').is_mob_blocked(settings, mob) then
+		if mob_id > 0 and require('uc_target_ignore').is_mob_blocked(ignore_context, mob) then
 			blocked_mob_ids[mob_id] = true
 		end
 	end
@@ -2835,7 +2868,9 @@ local function run_movement_coordinator_tick()
 	end
 	-- Keep fight-follow hold semantics only for active combat participants.
 	if engaged and combat_participant then
-		local hold_s = tonumber(s and s.fight_follow_hold_s) or 8.0
+		local fight_cfg = require('uc_follow_config').fight(get_tick_ctx().config)
+		local hold_s = tonumber(type(fight_cfg) == 'table' and fight_cfg.hold_s)
+		if hold_s == nil then hold_s = tonumber(s and s.fight_follow_hold_s) or 8.0 end
 		if hold_s < 0 then
 			hold_s = 0
 		elseif hold_s > 30 then
