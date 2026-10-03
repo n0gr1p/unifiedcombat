@@ -6406,6 +6406,16 @@ local function p1_dispatch_combat(selected, settings, phase, config)
 	local action_type = tostring(selected.action_type or '')
 	local tank_enmity = p1_is_tank_enmity_selected(selected)
 	local expected_tid = tonumber(selected.target_id) or 0
+	if tank_enmity and type(config) == 'table' then
+		if uc_scheduler_config.tank_enabled_from_config(config) ~= true then
+			tank_enmity_diag('TANK_ENMITY_DROP_TANK_DISABLED', selected, '')
+			return false, nil
+		end
+		if not uc_scheduler_config.tank_enmity_action_configured_from_config(config, selected.action_name) then
+			tank_enmity_diag('TANK_ENMITY_DROP_ACTION_UNCONFIGURED', selected, '')
+			return false, nil
+		end
+	end
 	local target_kind = tostring(selected.target_kind or 'self')
 	if action_type ~= 'engage' then
 		_G.UC_ACTION_TIMELINE_CURRENT_ACTION = nil
