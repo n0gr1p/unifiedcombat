@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, abilities, target-control/priority-ignore, and tank/enmity slices implemented and CI-proven**
+Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, abilities, target-control/priority-ignore, tank/enmity, and pulling slices implemented and CI-proven**
 
 Domains to treat separately:
 
@@ -536,6 +536,25 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Automated proof on implementation head `447767bf7a8370e1e16b8949bd611a23f348ea7a`: workflow `37086243234` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 tank-enmity authority PASS, pet-enmity provider/config PASS, RUN tank PASS, RUN no-TP PASS, all earlier Phase 3 authority suites PASS, and the flat-surface guard PASS.
 - No intentional tank priority bands, victim ranking, action readiness, range, dispatch method, RUN rune/ward policy, or engage semantics changed except canonical Profile V2 now wins over conflicting flat tank/enmity state and stale tank proposals fail closed.
 - Live-game smoke verification remains required for PLD/RUN tank target acquisition, player and pet enmity recovery, canonical tank disable, configured recovery-action changes, and RUN no-TP facing before Phase 3 is complete.
+
+### 2026-10-02 — Phase 3 pulling slice implemented
+
+- Migrated the modern camp-puller domain, `config.combat.pulling`, to canonical Profile V2 authority across lane acquisition, proposal collection, candidate revalidation, movement ownership, action-result handling, and final dispatch revalidation.
+- Added `uc_scheduler_config.combat_pulling_from_config` as the canonical accessor.
+- `uc_camp_puller.lua` now reads `ctx.config.combat.pulling` directly and has zero `ctx.settings` reads.
+- Camp-puller candidate ignore checks now receive canonical `ctx.config` and reuse canonical `config.targeting.target_ignore_names`; stale flat ignore state can no longer alter pull candidate selection.
+- `unified_scheduler.lua` now resolves camp-pulling configuration from `uc_scheduler_context_utils.get_config()` for movement reservation and asynchronous action-result paths, and final camp-puller dispatch revalidates against the fresh canonical tick config.
+- Party-follow and route/path movement ownership checks now read `config.combat.pulling` from `uc_active_config`, so stale flat `camp_pulling.enabled` cannot make movement consumers disagree with the scheduler. Missing canonical pull config fails closed as disabled rather than falling back to flat state.
+- Strengthened `selftest_camp_puller.lua` so its full state-machine run uses canonical pulling enabled while the flat compatibility mirror is disabled.
+- Added `tests/replay/harness/selftest_phase3_pulling_authority.lua` covering canonical ON + flat OFF lane acquisition, canonical OFF + flat ON fail-closed behavior, canonical target-ignore authority, and static scheduler/follow/pathing wiring.
+- Strengthened `selftest_movement_priority_arbitration.lua` with both contradictory directions for cross-domain movement ownership: canonical pull ON + flat OFF suppresses follow, while canonical pull OFF + flat ON does not.
+- Added the pulling authority suite to normal PR CI and the aggregate replay suite.
+- Reduced the flat-surface guard further: `uc_camp_puller.lua` from 4 to 0 `ctx.settings` hits and `unified_scheduler.lua` from 12 to 11.
+- Final branch audit found no remaining runtime reads of the flat `camp_pulling` mirror in `uc_camp_puller.lua`, `unified_scheduler.lua`, `uc_party_follow.lua`, or `uc_pathing.lua`; remaining appearances are compatibility projection/default surfaces and canonical helper names.
+- The older hunter/path pull action (`path_pull_action_type`, `path_pull_action_name`, hunter/path-follow gates) belongs to `config.movement.path` and is intentionally deferred to the later pathing slice rather than being mixed into this pulling cutover.
+- Automated proof on implementation head `a9967ee43f09d27f382df13867dd15cb441bcc40`: workflow `37086936986` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 pulling authority PASS, full camp-puller state machine PASS, camp-puller policy PASS, movement-priority arbitration PASS, all earlier Phase 3 authority suites PASS, and the flat-surface guard PASS.
+- No intentional pull candidate ranking, quota policy, leash geometry, action readiness/range, retry policy, lane priority, or dispatch semantics changed except that canonical Profile V2 now wins over conflicting flat camp-pulling state.
+- Live-game smoke verification remains required for camp lane acquisition, pull action execution, canonical disable during an active journey, target-ignore filtering, return-to-camp behavior, and movement handoff before Phase 3 is complete.
 
 ## Working checklist
 
