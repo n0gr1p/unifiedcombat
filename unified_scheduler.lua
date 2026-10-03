@@ -8815,7 +8815,7 @@ scheduler.providers.target_control = require('uc_provider_target_control').new({
 	combat_domain_enabled = function()
 		return domain_ownership.is_enabled('combat')
 	end,
-	tank_enabled = uc_scheduler_config.tank_enabled,
+	tank_enabled = uc_scheduler_config.tank_enabled_from_config,
 	select_target = combat_core.select_target_for_scheduler,
 	add_control_enabled = combat_core.add_control_enabled_for_scheduler,
 	select_pull = combat_core.select_pull_for_scheduler,
@@ -8868,7 +8868,7 @@ scheduler.providers.combat = require('uc_provider_combat').new({
 	target_sleep_suppressed = scheduler.target_sleep_suppressed,
 	select_sleep_spell = scheduler.select_sleep_spell_for_target,
 	combat_autotarget = uc_scheduler_config.combat_autotarget_from_config,
-	tank_enabled = uc_scheduler_config.tank_enabled,
+	tank_enabled = uc_scheduler_config.tank_enabled_from_config,
 	debug_enabled = uc_scheduler_config.debug_enabled,
 	combat_prime = uc_scheduler_config.combat_prime,
 	fight_leader_enabled = require('uc_runtime_overrides').fight_leader_enabled,
