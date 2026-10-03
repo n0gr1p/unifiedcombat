@@ -152,6 +152,26 @@ function M.targeting_ignore_names_from_config(config)
     return targeting.target_ignore_names
 end
 
+function M.tank_enabled_from_config(config)
+    local tank = type(config) == 'table' and config.tank or nil
+    return type(tank) == 'table' and tank.enabled == true
+end
+
+function M.tank_enmity_actions_from_config(config)
+    local tank = type(config) == 'table' and config.tank or nil
+    local enmity = type(tank) == 'table' and tank.enmity or nil
+    if type(enmity) ~= 'table' or type(enmity.actions) ~= 'table' then
+        return {}
+    end
+    return enmity.actions
+end
+
+function M.tank_enmity_include_pets_from_config(config)
+    local tank = type(config) == 'table' and config.tank or nil
+    local enmity = type(tank) == 'table' and tank.enmity or nil
+    return type(enmity) == 'table' and enmity.include_pets == true
+end
+
 function M.tank_enabled(settings)
     local s = settings_or_default(settings)
     return M.active_value_or_flat('config.tank.enabled', s.tank)
