@@ -212,14 +212,14 @@ function M.new(deps)
             publish('inactive', 'RUN_JOB_REQUIRED', '', {}, {})
             return
         end
-        if not bool_setting(scheduler_config.tank_enabled(ctx.settings)) then return end
+        if not bool_setting(scheduler_config.tank_enabled_from_config(ctx.config)) then return end
         local cfg = run_config.active(ctx.settings)
         if cfg.enabled ~= true then
             publish('disabled', 'RUN_AUTOMATION_DISABLED', '', cfg.runes.desired, {})
             return
         end
         local engaged = tonumber(player.status) == 1
-        if not engaged and not bool_setting(ctx.settings.ability_allow_unengaged) then return end
+        if not engaged and not bool_setting(scheduler_config.abilities_allow_unengaged_from_config(ctx.config)) then return end
         local desired = cfg.runes.desired or {}
         local observed = {}
 
