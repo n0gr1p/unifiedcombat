@@ -73,7 +73,7 @@ function M.new(deps)
 		if tid <= 0 then
 			return
 		end
-		local tank_mode = bool_setting(tank_enabled(ctx.settings), false)
+		local tank_mode = bool_setting(tank_enabled(ctx.config), false)
 		local priority_band = death_switch and death_switch_priority or (tank_mode and tank_target_priority or 84)
 		local urgency = death_switch and death_switch_urgency or (tank_mode and tank_target_urgency or 0.55)
 		local cur = ctx.target_present == true and ctx.target or nil
