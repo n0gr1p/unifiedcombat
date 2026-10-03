@@ -46,7 +46,7 @@ local movement_body = function_body(
 )
 local combat_dispatch_body = function_body(
 	source,
-	'local function p1_dispatch_combat(selected, settings, phase)',
+	'local function p1_dispatch_combat(selected, settings, phase, config)',
 	'local function p1_dispatch_summoner_maintenance(selected, settings)'
 )
 local selected_dispatch_body = function_body(
