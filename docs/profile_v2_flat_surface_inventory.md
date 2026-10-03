@@ -299,6 +299,19 @@ The seventh Phase 3 slice moves unified scheduler/core spacing policy to canonic
 - Legacy-sensitive `melee_engine.lua` and `dd2_module.lua` still proxy/read flat settings and remain separately classified migration debt. Their execution is bypassed when the unified engine is active.
 - `config.movement.move`, formation policy, follow policy, pathing policy, and other movement-owned durable settings remain separate later Phase 3 domains.
 
+## Phase 3 follow burn-down
+
+The eighth Phase 3 slice moves unified follow policy to canonical Profile V2 authority:
+
+- `uc_party_follow.lua`: `active_value_or_flat` count reduced from 7 to 0. Party enablement, leader identity/name, distances, and fight-follow minimum are canonical.
+- `uc_pathing.lua`: `active_value_or_flat` count reduced from 9 to 7 by moving only its party-follow ownership checks to canonical follow config. The remaining seven reads belong to the later pathing domain.
+- Fight-leader enablement/identity readers are canonical-first; projected flat fight-leader state no longer has override authority.
+- Partner and puller policy are projected into runtime-only resolved IDs from canonical names at the scheduler/core boundary. Those IDs remain transient and are not written back into Profile V2.
+- Scheduler partner arbitration and combat-provider partner target sets now use canonical partner state.
+- `config.ownership.domain_follow_enabled`, `config.follow.enabled`, and `config.follow.party.enabled` remain distinct canonical gates.
+- Nyzul follow configuration was already canonical and required no migration.
+- Legacy-sensitive melee/DD2 engines remain separately tracked flat ownership debt.
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.
