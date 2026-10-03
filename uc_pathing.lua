@@ -22,7 +22,7 @@ local mod = {}
 local function canonical_camp_pulling_config()
 	local config = uc_active_config.get_path('config.combat.pulling')
 	if type(config) ~= 'table' then
-		error('normalized canonical combat.pulling configuration is required')
+		return { enabled = false }
 	end
 	return config
 end
