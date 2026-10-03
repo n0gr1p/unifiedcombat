@@ -19,6 +19,14 @@ local texts_ok, texts = pcall(require, 'texts')
 
 local mod = {}
 
+local function canonical_camp_pulling_config()
+	local config = uc_active_config.get_path('config.combat.pulling')
+	if type(config) ~= 'table' then
+		error('normalized canonical combat.pulling configuration is required')
+	end
+	return config
+end
+
 local last_recording = false
 local last_follow_enabled = false
 local last_tick_at = 0
@@ -834,7 +842,7 @@ local function should_pause_for_combat(settings)
 	if not Start_Engine then
 		return false, 'ENGINE_OFF'
 	end
-	if uc_camp_puller.movement_reserved(settings.camp_pulling) then
+	if uc_camp_puller.movement_reserved(canonical_camp_pulling_config()) then
 		return true, 'OWNER_camp_puller'
 	end
 	local now = uc_now_s()
