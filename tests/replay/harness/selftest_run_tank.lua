@@ -52,7 +52,12 @@ package.loaded.resources = {
     buffs = resources(buff_entries),
 }
 package.loaded.uc_scheduler_config = {
-    tank_enabled = function(settings) return settings and settings.tank end,
+    tank_enabled_from_config = function(config)
+        return type(config) == 'table' and type(config.tank) == 'table' and config.tank.enabled == true
+    end,
+    abilities_allow_unengaged_from_config = function(config)
+        return type(config) == 'table' and type(config.abilities) == 'table' and config.abilities.allow_unengaged == true
+    end,
 }
 package.loaded.uc_active_config = {
     get_path = function() return nil end,
@@ -136,6 +141,10 @@ local function collect()
     provider.collect({
         now = 10.0,
         settings = settings,
+        config = {
+            tank = { enabled = true },
+            abilities = { allow_unengaged = settings.ability_allow_unengaged == true },
+        },
         player = player,
         player_present = true,
         target = target,
