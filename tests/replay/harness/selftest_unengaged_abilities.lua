@@ -161,7 +161,12 @@ local ok, err = xpcall(function()
 		job_abilities = { with = function() return nil end },
 	}
 	package.loaded.uc_scheduler_config = {
-		tank_enmity_include_pets = function() return false end,
+		tank_enabled_from_config = function(config)
+			return type(config) == 'table' and type(config.tank) == 'table' and config.tank.enabled == true
+		end,
+		tank_enmity_actions_from_config = function() return {} end,
+		tank_enmity_include_pets_from_config = function() return false end,
+		targeting_ignore_names_from_config = function() return {} end,
 	}
 	package.loaded.uc_provider_run_tank = {
 		new = function()
@@ -192,6 +197,8 @@ local ok, err = xpcall(function()
 		clamp_urgency = function(value) return value end,
 	})
 	ctx.player.status = 0
+	ctx.config.tank = { enabled = true, enmity = { actions = { 'ja:Provoke' }, include_pets = false } }
+	ctx.config.targeting = { target_ignore_names = {} }
 	ctx.config.abilities.allow_unengaged = false
 	ctx.settings.ability_allow_unengaged = true
 	ctx.mobs_by_id = { [900] = enemy_target(900) }
