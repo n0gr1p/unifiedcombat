@@ -112,7 +112,7 @@ function M.new(deps)
 			or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
 			return
 		end
-		local partner_target_set = build_partner_target_set(ctx.settings)
+		local partner_target_set = build_partner_target_set(ctx.settings, ctx.config)
 		if partner_target_set[tonumber(target.id) or 0] == true then
 			return
 		end
@@ -282,7 +282,7 @@ function M.new(deps)
 			current_target_id = tonumber(current_target.id) or 0
 		end
 		local _, claims_set = build_friendly_claims()
-		local partner_target_set = build_partner_target_set(ctx.settings)
+		local partner_target_set = build_partner_target_set(ctx.settings, ctx.config)
 		local best = nil
 		local marray = ctx.mob_array
 		for _, mob in pairs(marray) do
@@ -630,7 +630,7 @@ function M.new(deps)
 		if #ordered == 0 then
 			return
 		end
-		local partner_target_set = build_partner_target_set(ctx.settings)
+		local partner_target_set = build_partner_target_set(ctx.settings, ctx.config)
 		for _, name in ipairs(ordered) do
 			local ja = get_ja_resource(name)
 			if ja then
