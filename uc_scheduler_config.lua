@@ -116,6 +116,9 @@ function M.required_setting_value_from_config(config, setting_name)
     if name == 'ability_active' then
         return M.abilities_enabled_from_config(config)
     end
+    if name == 'tank' then
+        return M.tank_enabled_from_config(config)
+    end
     return nil
 end
 
@@ -170,6 +173,101 @@ function M.tank_enmity_include_pets_from_config(config)
     local tank = type(config) == 'table' and config.tank or nil
     local enmity = type(tank) == 'table' and tank.enmity or nil
     return type(enmity) == 'table' and enmity.include_pets == true
+end
+
+function M.tank_enmity_action_configured_from_config(config, action_name)
+    local needle = tostring(action_name or ''):match('^%s*(.-)%s*function M.tank_enabled(settings)
+    local s = settings_or_default(settings)
+    return M.active_value_or_flat('config.tank.enabled', s.tank)
+end
+
+function M.tank_enmity_actions(settings)
+    local s = settings_or_default(settings)
+    return M.active_value_or_flat('config.tank.enmity.actions', s.tank_enmity_actions)
+end
+
+function M.tank_enmity_include_pets(settings)
+    local s = settings_or_default(settings)
+    local flat_value = rawget(s, 'tank_enmity_include_pets')
+    if flat_value ~= nil then
+        return truthy(flat_value)
+    end
+    return active_bool_or_flat('config.tank.enmity.include_pets', nil)
+end
+
+function M.defensive_enemy_buffs_remove(settings)
+    local s = settings_or_default(settings)
+    return M.active_value_or_flat('config.defensive.enemy_buffs.remove', s.def_remove_enemy_buffs)
+end
+
+return M
+) or ''
+    if needle == '' then
+        return false
+    end
+    needle = needle:lower()
+    for _, entry in ipairs(M.tank_enmity_actions_from_config(config)) do
+        local raw = type(entry) == 'table'
+            and tostring(entry.name or entry.entry or entry.raw or '')
+            or tostring(entry or '')
+        local _, explicit_name = raw:match('^(%a+)%s*:%s*(.+)function M.tank_enabled(settings)
+    local s = settings_or_default(settings)
+    return M.active_value_or_flat('config.tank.enabled', s.tank)
+end
+
+function M.tank_enmity_actions(settings)
+    local s = settings_or_default(settings)
+    return M.active_value_or_flat('config.tank.enmity.actions', s.tank_enmity_actions)
+end
+
+function M.tank_enmity_include_pets(settings)
+    local s = settings_or_default(settings)
+    local flat_value = rawget(s, 'tank_enmity_include_pets')
+    if flat_value ~= nil then
+        return truthy(flat_value)
+    end
+    return active_bool_or_flat('config.tank.enmity.include_pets', nil)
+end
+
+function M.defensive_enemy_buffs_remove(settings)
+    local s = settings_or_default(settings)
+    return M.active_value_or_flat('config.defensive.enemy_buffs.remove', s.def_remove_enemy_buffs)
+end
+
+return M
+)
+        if explicit_name ~= nil then raw = explicit_name end
+        raw = raw:match('^%s*(.-)%s*function M.tank_enabled(settings)
+    local s = settings_or_default(settings)
+    return M.active_value_or_flat('config.tank.enabled', s.tank)
+end
+
+function M.tank_enmity_actions(settings)
+    local s = settings_or_default(settings)
+    return M.active_value_or_flat('config.tank.enmity.actions', s.tank_enmity_actions)
+end
+
+function M.tank_enmity_include_pets(settings)
+    local s = settings_or_default(settings)
+    local flat_value = rawget(s, 'tank_enmity_include_pets')
+    if flat_value ~= nil then
+        return truthy(flat_value)
+    end
+    return active_bool_or_flat('config.tank.enmity.include_pets', nil)
+end
+
+function M.defensive_enemy_buffs_remove(settings)
+    local s = settings_or_default(settings)
+    return M.active_value_or_flat('config.defensive.enemy_buffs.remove', s.def_remove_enemy_buffs)
+end
+
+return M
+) or ''
+        if raw:lower() == needle then
+            return true
+        end
+    end
+    return false
 end
 
 function M.tank_enabled(settings)
