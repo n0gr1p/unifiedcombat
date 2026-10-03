@@ -1052,7 +1052,7 @@ local function spacing_compute_heading(spacing, me, target, min_real, max_real)
 	local me_model_raw = tonumber(me and me.model_size) or 0
 	local target_model_raw = tonumber(target and target.model_size) or 0
 	local me_model_eff = movement_model_size_raw(me)
-	local target_model_eff = movement_target_model_size(target, settings)
+	local target_model_eff = movement_target_model_size(target, spacing)
 	_G.UC_SPACING_DIAG = ('mode=%s aid=%d slot=- anchor=- forced=- dist_t=%.2f range=[%.2f,%.2f] pref=%.2f goal=%s,%s me_sz=%.2f->%.2f tgt_sz=%.2f->%.2f'):format(
 		tostring(mode or ''),
 		local_id,
