@@ -125,8 +125,8 @@ local function main()
         sleepspell = 'Repose',
     }
 
-    assert_equal(runtime_overrides.fight_leader_enabled(flat_override), true, 'fight leader should prefer legacy/runtime override value')
-    assert_equal(runtime_overrides.fight_leader_id(flat_override), 77, 'fight leader id should prefer legacy/runtime override value')
+    assert_equal(runtime_overrides.fight_leader_enabled(flat_override), false, 'fight leader canonical durable value must beat conflicting flat override')
+    assert_equal(runtime_overrides.fight_leader_id(flat_override), 22, 'fight leader canonical identity must beat conflicting flat override')
     assert_equal(runtime_overrides.add_priority_names(flat_override)[1], 'Override A', 'add priority should prefer legacy/runtime override list')
     assert_equal(runtime_overrides.add_priority_names(flat_override)[2], 'Override B', 'add priority should dedupe but preserve order')
     assert_equal(#runtime_overrides.add_priority_names(flat_override), 2, 'add priority override list should be deduped')
@@ -149,7 +149,7 @@ local function main()
         sleep = true,
         sleepspell = 'Repose',
     })
-    assert_equal(runtime_overrides.fight_leader_id(), 101, 'global settings fallback should remain available')
+    assert_equal(runtime_overrides.fight_leader_id(), 22, 'active canonical fight leader identity must beat global flat settings')
     assert_equal(runtime_overrides.add_priority_names()[1], 'Global Value', 'global add priority fallback should remain available')
     assert_equal(runtime_overrides.sleep_spell_names()[1], 'Repose', 'global sleep spell fallback should remain available')
 
