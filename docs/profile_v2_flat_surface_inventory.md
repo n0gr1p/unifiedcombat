@@ -288,6 +288,17 @@ The sixth Phase 3 slice moves modern camp-pulling policy to canonical Profile V2
 - The flat `camp_pulling` field remains only as a compatibility projection/default surface for legacy/UI consumers.
 - Hunter/path pull-action settings remain under `config.movement.path` and are intentionally deferred to the pathing migration slice.
 
+## Phase 3 spacing authority boundary
+
+The seventh Phase 3 slice moves unified scheduler/core spacing policy to canonical Profile V2 authority:
+
+- `config.movement.spacing` is resolved once per unified combat movement tick and supplies enablement, band geometry, model-size floor, prediction, repel timing/weighting, and deadbands.
+- Scheduler movement already passes a tick-stable canonical config into `unified_combat_core.lua`; spacing now consumes that canonical subtree instead of the projected flat spacing fields.
+- Flat `spacing` / `spacing_*` reads remain only inside one explicit no-config compatibility projection in `unified_combat_core.lua`. Permanent regression coverage asserts those tokens do not appear elsewhere in unified core movement.
+- There is therefore no numeric flat-surface guard reduction in this slice; this is an authority cutover plus containment of the compatibility fallback.
+- Legacy-sensitive `melee_engine.lua` and `dd2_module.lua` still proxy/read flat settings and remain separately classified migration debt. Their execution is bypassed when the unified engine is active.
+- `config.movement.move`, formation policy, follow policy, pathing policy, and other movement-owned durable settings remain separate later Phase 3 domains.
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.
