@@ -384,7 +384,7 @@ function M.new(deps)
 		if ctx.player_present ~= true then
 			return
 		end
-		local tank_mode = bool_setting(tank_enabled(ctx.settings), false)
+		local tank_mode = bool_setting(tank_enabled(ctx.config), false)
 		local engage_priority = tank_mode and tank_engage_priority or default_engage_priority
 		local engage_urgency = tank_mode and tank_engage_urgency or default_engage_urgency
 		local engaged = tonumber(player.status) == 1
@@ -622,7 +622,7 @@ function M.new(deps)
 				return
 			end
 		end
-		local tank_mode = bool_setting(tank_enabled(ctx.settings), false)
+		local tank_mode = bool_setting(tank_enabled(ctx.config), false)
 		local ordered = require('uc_run_ownership').filter_generic_abilities(
 			ctx.settings,
 			collect_ordered_abilities(ctx.config, 6)
