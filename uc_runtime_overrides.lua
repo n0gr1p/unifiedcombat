@@ -1,4 +1,5 @@
 local uc_active_config = require('uc_active_config')
+local uc_follow_config = require('uc_follow_config')
 
 local M = {}
 
@@ -146,65 +147,42 @@ local function resolve_party_member_name_by_id(id)
 end
 
 function M.fight_leader_enabled(settings)
+    local config = uc_active_config.get_config()
+    if type(config) == 'table' then
+        local fight = uc_follow_config.fight(config)
+        if type(fight) == 'table' then
+            return fight.leader == true
+        end
+    end
     local s = settings_or_default(settings)
-    local flat_value = rawget(s, 'fight_leader')
-    if flat_value ~= nil then
-        return truthy(flat_value)
-    end
-    local active_value = uc_active_config.get_path('config.follow.fight.leader')
-    if active_value ~= nil then
-        return active_value == true
-    end
     return truthy(s.fight_leader)
 end
 
 function M.fight_leader_id(settings)
-	local s = settings_or_default(settings)
-	local flat_name = rawget(s, 'fight_leader_name')
-	if type(flat_name) == 'string' and trim_string(flat_name) ~= '' then
-		local flat_name_id = resolve_party_member_id_by_name(flat_name)
-		if flat_name_id > 0 then
-			return flat_name_id
-		end
-	end
-	local flat_value = rawget(s, 'fight_leader_id')
-	if flat_value ~= nil then
-		return tonumber(flat_value) or 0
-	end
-	local active_name = uc_active_config.get_path('config.follow.fight.leader_name')
-	if type(active_name) == 'string' and trim_string(active_name) ~= '' then
-		local active_name_id = resolve_party_member_id_by_name(active_name)
-		if active_name_id > 0 then
-			return active_name_id
-		end
-	end
-	local active_value = uc_active_config.get_path('config.follow.fight.leader_id')
-	if active_value ~= nil then
-		return tonumber(active_value) or 0
-	end
-	return tonumber(s.fight_leader_id) or 0
+    local config = uc_active_config.get_config()
+    if type(config) == 'table' and type(uc_follow_config.fight(config)) == 'table' then
+        return uc_follow_config.fight_leader_id(config)
+    end
+    local s = settings_or_default(settings)
+    local name = trim_string(s.fight_leader_name)
+    if name ~= '' then
+        local id = resolve_party_member_id_by_name(name)
+        if id > 0 then return id end
+    end
+    return tonumber(s.fight_leader_id) or 0
 end
 
 function M.fight_leader_name(settings)
-	local s = settings_or_default(settings)
-	local flat_name = rawget(s, 'fight_leader_name')
-	if type(flat_name) == 'string' and trim_string(flat_name) ~= '' then
-		return trim_string(flat_name)
-	end
-	local flat_id_name = resolve_party_member_name_by_id(rawget(s, 'fight_leader_id'))
-	if type(flat_id_name) == 'string' and flat_id_name ~= '' then
-		return flat_id_name
-	end
-	local active_name = uc_active_config.get_path('config.follow.fight.leader_name')
-	if type(active_name) == 'string' and trim_string(active_name) ~= '' then
-		return trim_string(active_name)
-	end
-	local active_id = uc_active_config.get_path('config.follow.fight.leader_id')
-	local active_name_from_id = resolve_party_member_name_by_id(active_id)
-	if type(active_name_from_id) == 'string' and active_name_from_id ~= '' then
-		return active_name_from_id
-	end
-	return nil
+    local config = uc_active_config.get_config()
+    if type(config) == 'table' and type(uc_follow_config.fight(config)) == 'table' then
+        local name = uc_follow_config.fight_leader_name(config)
+        if name ~= '' then return name end
+        return resolve_party_member_name_by_id(uc_follow_config.fight_leader_id(config))
+    end
+    local s = settings_or_default(settings)
+    local name = trim_string(s.fight_leader_name)
+    if name ~= '' then return name end
+    return resolve_party_member_name_by_id(s.fight_leader_id)
 end
 
 function M.add_priority_names(settings)
