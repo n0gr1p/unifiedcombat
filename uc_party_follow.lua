@@ -93,8 +93,11 @@ local function follow_enabled()
 end
 
 local function party_follow_enabled(_)
-	local party = uc_follow_config.party(active_follow_config())
-	return type(party) == 'table' and party.enabled == true
+	local config = active_follow_config()
+	local party = uc_follow_config.party(config)
+	return uc_follow_config.enabled(config)
+		and type(party) == 'table'
+		and party.enabled == true
 end
 
 local function party_follow_id(_)
