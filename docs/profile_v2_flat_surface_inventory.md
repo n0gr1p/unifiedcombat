@@ -276,6 +276,18 @@ The fifth Phase 3 slice moves common tank/enmity policy to canonical Profile V2 
 - RUN no-TP facing now receives canonical tank state at both movement and combat-dispatch call sites.
 - The pet-enmity path now has an explicit canonical tank-enabled gate; it can no longer emit recovery actions when Profile V2 tank mode is off.
 
+## Phase 3 pulling burn-down
+
+The sixth Phase 3 slice moves modern camp-pulling policy to canonical Profile V2 authority:
+
+- `uc_camp_puller.lua`: `ctx.settings` count reduced from 4 to 0. Pull configuration and target-ignore evaluation now come entirely from `ctx.config`.
+- `unified_scheduler.lua`: `ctx.settings` count reduced from 12 to 11 by moving camp-puller dispatch configuration to canonical tick config.
+- Scheduler-wide camp-pulling lookups used by movement ownership and asynchronous action-result handling now resolve `config.combat.pulling` from the active canonical config instead of the projected flat mirror.
+- `uc_party_follow.lua` and `uc_pathing.lua` now consult canonical `config.combat.pulling` for camp-puller movement ownership. A missing canonical subtree fails closed as disabled; there is no flat fallback.
+- A branch-head source audit shows no remaining runtime reads of flat `camp_pulling` in the camp-puller, scheduler, follow, or pathing consumers.
+- The flat `camp_pulling` field remains only as a compatibility projection/default surface for legacy/UI consumers.
+- Hunter/path pull-action settings remain under `config.movement.path` and are intentionally deferred to the pathing migration slice.
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.
