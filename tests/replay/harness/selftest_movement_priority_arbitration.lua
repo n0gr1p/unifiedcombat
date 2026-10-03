@@ -680,10 +680,14 @@ local function main()
     set_active_profile({
         follow = {},
     })
+    run_calls = {}
     _G.UC_MOVEMENT_OWNER = nil
     _G.UC_MOVEMENT_LOCK_UNTIL = nil
     follow.prerender()
-    assert_equal(_G.UC_MOVEMENT_OWNER, 'follow', 'party follow prerender must preserve flat fallback when active path is missing')
+    assert_equal(_G.UC_MOVEMENT_OWNER == 'follow', false,
+        'party follow must fail closed when canonical follow.party is missing despite flat follow enabled')
+    assert_equal(#run_calls, 0,
+        'missing canonical follow.party must not issue flat-fallback movement')
 
     package.loaded['uc_party_follow'] = follow
     local pathing = dofile('uc_pathing.lua')
