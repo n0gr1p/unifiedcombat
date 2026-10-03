@@ -16,7 +16,9 @@ end
 
 function M.enabled(config)
     local follow = config_follow(config)
-    return type(follow) == 'table' and follow.enabled == true
+    if type(follow) ~= 'table' then return false end
+    if follow.enabled == nil then return true end
+    return follow.enabled == true
 end
 
 function M.party(config)
@@ -136,7 +138,7 @@ function M.apply_runtime_view(view, config)
     local partner = M.partner(config) or {}
     local partner_ids = M.partner_ids(config)
 
-    view.domain_follow_enabled = follow.enabled == true
+    view.domain_follow_enabled = M.enabled(config)
     view.party_follow = party.enabled == true
     view.party_follow_id = M.party_leader_id(config)
     view.party_follow_leader_name = trim(party.leader_name)
