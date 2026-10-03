@@ -253,6 +253,17 @@ The third Phase 3 slice moves scheduler-owned configured ability policy to canon
 - Remaining generic-JA `ctx.settings` reads are for separately owned concerns such as RUN JA ownership filtering, tank weighting, partner targeting, and other not-yet-migrated domains—not for ability configuration authority.
 - `abilities.wsabilities` remains a legacy-engine compatibility field; the scheduler configured-JA provider does not consume it.
 
+## Phase 3 target-control / priority-ignore burn-down
+
+The fourth Phase 3 slice moves scheduler-owned targeting policy to canonical Profile V2 authority:
+
+- `config.targeting.add_control`, ordered target/add names, and `config.targeting.target_ignore_names` are overlaid into the scheduler core view before target selection.
+- `config.targeting.targets` is the canonical ordered list; normalized `add_priority_names` is retained only as a compatibility fallback when `targets` is empty.
+- Both target-control collection and fight-leader engage arbitration use the canonical Add Control result.
+- Target-ignore evaluation inside normal target selection, tank violation selection, add selection, and death-switch revalidation receives canonical target-ignore names through the scheduler view.
+- No guard-count reduction is expected in this slice because Add Control still needs the unmigrated fight-leader compatibility context from `ctx.settings`.
+- `targeting.targetability` and `targeting.ignore` are not scheduler targeting consumers and remain legacy/UI compatibility surfaces.
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.
