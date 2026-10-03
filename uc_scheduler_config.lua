@@ -127,6 +127,15 @@ function M.combat_prime(settings)
     return M.active_value_or_flat('config.combat.prime', s.prime)
 end
 
+function M.combat_pulling_from_config(config)
+    local combat = type(config) == 'table' and config.combat or nil
+    local pulling = type(combat) == 'table' and combat.pulling or nil
+    if type(pulling) ~= 'table' then
+        return nil
+    end
+    return pulling
+end
+
 function M.targeting_add_control_from_config(config)
     local targeting = type(config) == 'table' and config.targeting or nil
     return type(targeting) == 'table' and targeting.add_control == true
