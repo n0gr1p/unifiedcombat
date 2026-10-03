@@ -37,9 +37,6 @@ return {
 			["sync_flat_settings"] = 1,
 			["uc_settings"] = 4,
 		},
-		["uc_camp_puller.lua"] = {
-			["ctx_settings"] = 4,
-		},
 		["uc_combat_commitment.lua"] = {
 			["ctx_settings"] = 3,
 		},
