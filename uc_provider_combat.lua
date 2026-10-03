@@ -464,7 +464,7 @@ function M.new(deps)
 			if current_target_id == fight_leader_force_target_id then
 				return
 			end
-			if bool_setting(add_control_enabled(ctx.settings), false) then
+			if bool_setting(add_control_enabled(ctx.settings, ctx.config), false) then
 				return
 			end
 		end
