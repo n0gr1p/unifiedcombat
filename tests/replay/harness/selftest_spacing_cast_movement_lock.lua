@@ -102,7 +102,7 @@ end
 assert_before(
 	movement_body,
 	"scheduler.apply_cast_movement_hold('MOVE_COORD_CASTING_ACTION', now)",
-	'combat_core.apply_movement_for_scheduler(s, movement_executor)',
+	'combat_core.apply_movement_for_scheduler(s, movement_executor, get_tick_ctx().config)',
 	'cast movement hold must run before spacing/core movement execution'
 )
 
