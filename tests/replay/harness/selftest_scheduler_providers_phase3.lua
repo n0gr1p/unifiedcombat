@@ -344,6 +344,7 @@ local function assert_tank_proposal_shape()
     package.loaded.uc_provider_tank_enmity = nil
     local provider = require("uc_provider_tank_enmity").new({
         bool_setting = function(value) return value == true end,
+        abilities_allow_unengaged = function() return false end,
         select_tank_enmity = function()
             return {
                 kind = "ja",
@@ -359,6 +360,7 @@ local function assert_tank_proposal_shape()
             }
         end,
         action_ready = function() return true, "READY", "ja" end,
+        action_effective_range = function() return 20 end,
         log_tank_sched = function() end,
         clamp_urgency = function(value) return value end,
     })
@@ -369,7 +371,12 @@ local function assert_tank_proposal_shape()
         now = 20,
         player_present = true,
         player = { status = 1 },
-        settings = {},
+        config = {
+            tank = { enabled = true, enmity = { actions = { 'ja:Provoke' }, include_pets = false } },
+            targeting = { target_ignore_names = {} },
+            abilities = { allow_unengaged = false },
+        },
+        settings = { tank = false },
     }, proposals)
     _G.Start_Engine = old_engine
     assert_equal(#proposals, 1, "tank provider proposal count")
