@@ -18,6 +18,14 @@ local movement_dispatcher = require('uc_movement_dispatcher').build({
 local uc_time = require('uc_time')
 local socket_gettime = uc_time.gettime
 
+local function canonical_camp_pulling_config()
+	local config = uc_active_config.get_path('config.combat.pulling')
+	if type(config) ~= 'table' then
+		error('normalized canonical combat.pulling configuration is required')
+	end
+	return config
+end
+
 local function now_s()
 	-- C7 unified timing source for follow/movement gating (no os.clock fallback).
 	return socket_gettime()
@@ -799,7 +807,7 @@ end
 M.should_suppress_follow_or_path_return_now = should_suppress_follow_or_path_return_now
 
 local function combat_engine_suppresses_follow(s)
-	if uc_camp_puller.movement_reserved(s.camp_pulling) then
+	if uc_camp_puller.movement_reserved(canonical_camp_pulling_config()) then
 		return true, 'camp_puller'
 	end
 	local now = now_s()
