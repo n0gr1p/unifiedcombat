@@ -2,9 +2,21 @@ package.path = './?.lua;' .. package.path
 
 local include_pets = false
 package.loaded.uc_scheduler_config = {
-	tank_enabled = function(settings) return settings and settings.tank == true end,
-	tank_enmity_actions = function() return { 'Flash' } end,
-	tank_enmity_include_pets = function() return include_pets end,
+	tank_enabled_from_config = function(config)
+		return type(config) == 'table' and type(config.tank) == 'table' and config.tank.enabled == true
+	end,
+	tank_enmity_actions_from_config = function(config)
+		local enmity = type(config) == 'table' and type(config.tank) == 'table' and config.tank.enmity or nil
+		return type(enmity) == 'table' and enmity.actions or {}
+	end,
+	tank_enmity_include_pets_from_config = function(config)
+		local enmity = type(config) == 'table' and type(config.tank) == 'table' and config.tank.enmity or nil
+		return type(enmity) == 'table' and enmity.include_pets == true
+	end,
+	targeting_ignore_names_from_config = function(config)
+		local targeting = type(config) == 'table' and config.targeting or nil
+		return type(targeting) == 'table' and targeting.target_ignore_names or {}
+	end,
 }
 package.loaded.uc_provider_run_tank = {
 	new = function()
@@ -76,8 +88,12 @@ local provider = require('uc_provider_tank_enmity').new({
 
 local ctx = {
 	now = 10,
-	config = { abilities = { enabled = true, allow_unengaged = true, configured = {}, legacy_slots = {} } },
-	settings = { tank = true, ability_allow_unengaged = true },
+	config = {
+		abilities = { enabled = true, allow_unengaged = true, configured = {}, legacy_slots = {} },
+		tank = { enabled = true, enmity = { actions = { 'Flash' }, include_pets = false } },
+		targeting = { target_ignore_names = {} },
+	},
+	settings = { tank = false, ability_allow_unengaged = true, tank_enmity_actions = { 'Provoke' }, tank_enmity_include_pets = true },
 	player_present = true,
 	player = tank,
 	mobs_by_id = { [enemy.id] = enemy },
@@ -88,6 +104,7 @@ provider.collect(ctx, out)
 if #out ~= 0 then error('disabled pet enmity toggle must preserve player-only behavior') end
 
 include_pets = true
+ctx.config.tank.enmity.include_pets = true
 out = {}
 provider.collect(ctx, out)
 if #out ~= 1 then error(('enabled pet enmity toggle expected one proposal, got %d'):format(#out)) end
