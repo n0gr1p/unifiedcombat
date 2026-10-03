@@ -2343,7 +2343,15 @@ local function apply_movement(settings, target, executor, config)
 		return
 	end
 	local spacing = movement_spacing_config(settings, config)
-	local puller_allowed = puller_engage_allowed(settings, target)
+	local puller_settings = settings
+	if type(config) == 'table' then
+		puller_settings = {}
+		for key, value in pairs(settings or {}) do
+			puller_settings[key] = value
+		end
+		require('uc_follow_config').apply_runtime_view(puller_settings, config)
+	end
+	local puller_allowed = puller_engage_allowed(puller_settings, target)
 	if not puller_allowed then
 		-- Puller gate blocks combat-close movement: explicitly stop current run vector and
 		-- let party-follow own movement for a short window to avoid orphan/stuck trajectories.
@@ -3640,6 +3648,9 @@ local function scheduler_settings_view(settings, config)
 		view.tank_enmity_actions = scheduler_config.tank_enmity_actions(base)
 		view.tank_enmity_include_pets = scheduler_config.tank_enmity_include_pets(base)
 	end
+	if type(config) == 'table' then
+		require('uc_follow_config').apply_runtime_view(view, config)
+	end
 	return view
 end
 
@@ -3769,8 +3780,14 @@ function core.add_control_enabled_for_scheduler(settings, config)
 	return uc_add_control.enabled(scheduler_settings_view(settings, config))
 end
 
-function core.puller_engage_allowed_for_scheduler(settings, target)
-	return puller_engage_allowed(settings or get_settings() or {}, target)
+function core.puller_engage_allowed_for_scheduler(settings, target, config)
+	local view = settings or get_settings() or {}
+	if type(config) == 'table' then
+		local copy = {}
+		for key, value in pairs(view) do copy[key] = value end
+		view = require('uc_follow_config').apply_runtime_view(copy, config)
+	end
+	return puller_engage_allowed(view, target)
 end
 
 function core.select_pull_for_scheduler(settings)
