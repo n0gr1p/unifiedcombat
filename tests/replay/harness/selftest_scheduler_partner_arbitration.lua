@@ -73,8 +73,8 @@ assert_equal(decision.action, 'switch', 'occupied alternate must not prevent swi
 assert_equal(decision.target_id, 903, 'partner-occupied alternate mob must be excluded')
 
 local scheduler_source = read_file('unified_scheduler.lua')
-local arbitration_start = assert(scheduler_source:find('function scheduler.try_partner_tiebreak(settings)', 1, true))
-local arbitration_call = assert(scheduler_source:find('scheduler.try_partner_tiebreak(s)', 1, true))
+local arbitration_start = assert(scheduler_source:find('function scheduler.try_partner_tiebreak(settings, config)', 1, true))
+local arbitration_call = assert(scheduler_source:find('scheduler.try_partner_tiebreak(s, get_tick_ctx().config)', 1, true))
 local reaction_lock_call = assert(scheduler_source:find('scheduler.refresh_reaction_lock()', arbitration_call, true))
 assert_equal(arbitration_call < reaction_lock_call, true, 'partner arbitration must run before normal scheduler locks')
 assert_equal(scheduler_source:find("kind = 'switch_target'", arbitration_start, true) ~= nil, true,
