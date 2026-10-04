@@ -249,7 +249,7 @@ Exit criteria:
 
 ### Phase 4 — Migrate job-specific configuration
 
-Status: **IN PROGRESS — SMN canonical runtime cutover implemented; CI proof pending**
+Status: **IN PROGRESS — SMN canonical runtime cutover is CI-proven; PUP is next**
 
 Targets:
 
@@ -266,7 +266,7 @@ Goals:
 
 Exit criteria:
 
-- [ ] SMN consumes canonical Profile V2 config;
+- [x] SMN consumes canonical Profile V2 config;
 - [ ] PUP consumes canonical Profile V2 config;
 - [ ] SCH consumes canonical Profile V2 config;
 - [ ] BRD/COR/GEO have no remaining durable flat dependencies.
@@ -281,7 +281,7 @@ Exit criteria:
 - Added `tests/replay/harness/selftest_phase4_smn_authority.lua` with deliberately contradictory canonical-vs-flat state covering disabled/enabled authority, avatar selection, revalidation, Assault enablement, and Rage enablement/action selection.
 - Existing SMN maintenance, pet-combat, integration, and replay fixtures were updated to provide canonical `config.summoner` while retaining flat settings only as compatibility/test state.
 - Flat-surface burn-down: `uc_smn_maintenance.lua` `ctx.settings` 2→0; `uc_smn_pet_combat_adapter.lua` 1→0. Both files are removed from the Profile V2 flat-surface allowlist.
-- Dedicated Phase 4 SMN CI coverage is wired into the PR workflow. Automated proof is pending on the implementation head.
+- Dedicated Phase 4 SMN CI coverage is wired into the PR workflow. Implementation head `4541f3b9212fbd97281c410af79b4e2c2be2d470` is proven by workflow `37209447842`: Phase 4 SMN canonical-authority PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms PASS.
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
