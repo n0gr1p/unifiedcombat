@@ -220,8 +220,8 @@ local function test_static_wiring()
         'core movement puller gate must use canonical follow partner policy')
     assert_contains(scheduler, "local follow_config = require('uc_follow_config')",
         'scheduler partner arbitration must use canonical follow adapter')
-    assert_contains(scheduler, "local fight_cfg = require('uc_follow_config').fight(get_tick_ctx().config)",
-        'scheduler fight-follow hold must use canonical fight config')
+    assert_contains(scheduler, "local fight_cfg = require('uc_follow_config').fight(config)",
+        'scheduler fight-follow hold must use the coordinator canonical config')
     assert_contains(addon, "get_path('config.ownership.domain_follow_enabled')",
         'follow domain participation must use canonical ownership gate')
     assert_contains(addon, "local follow_config = require('uc_follow_config')",
