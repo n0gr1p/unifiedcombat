@@ -339,6 +339,19 @@ The final listed Phase 3 movement slice removes the remaining unified movement a
 - DD2/melee legacy movement settings remain explicit compatibility debt.
 
 
+
+## Phase 3 automated exit-audit burn-down
+
+The common scheduler/core exit audit removes the remaining flat authority seams discovered after the listed Phase 3 domains were migrated:
+
+- `uc_scheduler_ranker.lua`: required-setting validation is canonical/fail-closed; unknown dependencies no longer consult `ctx.settings`.
+- `uc_combat_commitment.lua`: runtime Prime and fight-leader commitment policy use the explicit canonical tick config; its `ctx.settings` count falls from 3 to 1, with the survivor belonging to the generic dependency callback contract rather than runtime durable policy.
+- `uc_provider_charm_sleeper.lua` and `uc_provider_sleep_waker.lua`: both drop all `ctx.settings` and `active_value_or_flat` usage.
+- `uc_scheduler_action_state.lua`: the final direct `UC_SETTINGS` diagnostic read is removed in favor of canonical debug config.
+- Production scheduler `required_setting` tokens are mechanically enumerated and required to resolve through canonical Profile V2 paths.
+- Remaining job-specific flat consumers are assigned to Phase 4; runtime cadence/state and explicit legacy/no-config compatibility paths are not being misclassified as durable authority.
+
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.

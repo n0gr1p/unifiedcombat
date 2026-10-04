@@ -8784,8 +8784,6 @@ scheduler.providers.defensive = require('uc_provider_defensive').new({
 	critical_cure_priority = scheduler.PRIORITY_BAND_CRITICAL_CURE,
 })
 scheduler.providers.charm_sleeper = require('uc_provider_charm_sleeper').new({
-	bool_setting = bool_setting,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	get_party_members = get_party_members,
 	get_mob_by_id = windower.ffxi.get_mob_by_id,
 	action_ready = action_ready,
@@ -8804,8 +8802,6 @@ scheduler.providers.charm_sleeper = require('uc_provider_charm_sleeper').new({
 	priority_band = scheduler.PRIORITY_BAND_CHARM_SLEEPER,
 })
 scheduler.providers.sleep_waker = require('uc_provider_sleep_waker').new({
-	bool_setting = bool_setting,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	get_party_members = get_party_members,
 	get_mob_by_id = windower.ffxi.get_mob_by_id,
 	in_party_cast_range = in_party_cast_range,

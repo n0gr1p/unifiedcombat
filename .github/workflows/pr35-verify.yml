@@ -133,6 +133,15 @@ jobs:
           lua5.1 tests/replay/harness/selftest_run_no_tp_mode.lua
           lua5.1 tests/replay/harness/selftest_scheduler_defensive_cure_movement_lock.lua
           lua5.1 tests/replay/harness/selftest_scheduler_support_priority_bands.lua
+      - name: Phase 3 automated exit audit
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_exit_audit.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_ranker.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_sleep_toggle.lua
+          lua5.1 tests/replay/harness/selftest_charm_sleeper.lua
+          lua5.1 tests/replay/harness/selftest_sleep_waker.lua
+          lua5.1 tests/replay/harness/selftest_combat_commitment.lua
+          lua5.1 tests/replay/harness/selftest_action_state_fixtures.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test

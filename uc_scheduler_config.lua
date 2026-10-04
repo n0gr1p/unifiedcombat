@@ -84,6 +84,16 @@ function M.combat_autotarget_from_config(config)
     return type(combat) == 'table' and combat.autotarget == true
 end
 
+function M.combat_prime_from_config(config)
+    local combat = type(config) == 'table' and config.combat or nil
+    return type(combat) == 'table' and combat.prime == true
+end
+
+function M.sleep_enabled_from_config(config)
+    local sleep = type(config) == 'table' and config.sleep or nil
+    return type(sleep) == 'table' and sleep.enabled == true
+end
+
 function M.combat_autotarget(settings)
     local s = settings_or_default(settings)
     return M.active_value_or_flat('config.combat.autotarget', s.autotarget)
@@ -115,6 +125,9 @@ function M.required_setting_value_from_config(config, setting_name)
     end
     if name == 'ability_active' then
         return M.abilities_enabled_from_config(config)
+    end
+    if name == 'sleep' then
+        return M.sleep_enabled_from_config(config)
     end
     if name == 'tank' then
         return M.tank_enabled_from_config(config)

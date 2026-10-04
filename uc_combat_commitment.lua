@@ -1,16 +1,5 @@
 local M = {}
 
-local function truthy(value)
-	if value == true or value == 1 then
-		return true
-	end
-	if type(value) == 'string' then
-		local lowered = value:lower()
-		return lowered == 'true' or lowered == 'on' or lowered == '1' or lowered == 'yes'
-	end
-	return false
-end
-
 local function call_build_set(fn)
 	if type(fn) ~= 'function' then
 		return {}
@@ -101,13 +90,14 @@ function M.evaluate_runtime(ctx, target, opts)
 	local targeting_common = require('uc_targeting_common')
 	local camp_pull_registry = require('uc_camp_pull_registry')
 	local scheduler_config = require('uc_scheduler_config')
-	local runtime_overrides = require('uc_runtime_overrides')
+	local follow_config = require('uc_follow_config')
 	local fight_leader = require('uc_fight_leader')
-	local settings = type(ctx.settings) == 'table' and ctx.settings or {}
+	local config = type(ctx.config) == 'table' and ctx.config or {}
 
 	local force_target_id = 0
-	if runtime_overrides.fight_leader_enabled(settings) then
-		local leader_id = runtime_overrides.fight_leader_id(settings)
+	local fight = follow_config.fight(config)
+	if type(fight) == 'table' and fight.leader == true then
+		local leader_id = follow_config.fight_leader_id(config)
 		if leader_id > 0 then
 			force_target_id = tonumber(fight_leader.leader_target_id(leader_id)) or 0
 		end
@@ -119,7 +109,7 @@ function M.evaluate_runtime(ctx, target, opts)
 	end
 
 	local function prime_unclaimed_party_aggressive_ok(_, mob, party_ids)
-		if not truthy(scheduler_config.combat_prime(settings)) then
+		if not scheduler_config.combat_prime_from_config(config) then
 			return false
 		end
 		if not mob or (tonumber(mob.claim_id) or 0) ~= 0 then

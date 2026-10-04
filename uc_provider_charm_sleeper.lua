@@ -20,8 +20,6 @@ end
 
 function M.new(deps)
 	deps = require_table(deps, 'deps')
-	local bool_setting = require_function(deps, 'bool_setting')
-	local active_value_or_flat = require_function(deps, 'active_value_or_flat')
 	local get_party_members = require_function(deps, 'get_party_members')
 	local get_mob_by_id = require_function(deps, 'get_mob_by_id')
 	local action_ready = require_function(deps, 'action_ready')
@@ -172,14 +170,12 @@ function M.new(deps)
 	function provider.collect(ctx, out)
 		require_table(ctx, 'ctx')
 		require_table(out, 'out')
-		local settings = require_table(ctx.settings, 'ctx.settings')
-		local enabled = bool_setting(
-			active_value_or_flat('config.defensive.enabled', settings.defensive_enabled),
-			false
-		) and bool_setting(
-			active_value_or_flat('config.defensive.charm_sleeper.enabled', settings.def_charm_sleeper_enabled),
-			false
-		)
+		local defensive = type(ctx.config) == 'table' and ctx.config.defensive or nil
+		local charm_sleeper = type(defensive) == 'table' and defensive.charm_sleeper or nil
+		local enabled = type(defensive) == 'table'
+			and defensive.enabled == true
+			and type(charm_sleeper) == 'table'
+			and charm_sleeper.enabled == true
 		if not enabled then
 			provider.reset('DISABLED')
 			publish_status('disabled')

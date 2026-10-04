@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **IN PROGRESS — all listed Phase 3 runtime domain slices are implemented and CI-proven; exit audit and live behavior verification remain**
+Status: **IN PROGRESS — all listed Phase 3 runtime domain slices are implemented and CI-proven; automated exit audit implemented with CI proof pending; live behavior verification remains**
 
 Domains to treat separately:
 
@@ -634,6 +634,21 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Flat-surface guard burn-down: `UnifiedCombat.lua` literal `UC_SETTINGS` count 79 → 77 by removing the two participant helpers' flat settings dependency.
 - Existing legacy DD2/melee engine movement controls remain separately classified compatibility debt and are not claimed as migrated by this unified scheduler/core slice.
 - Live-game smoke verification remains required for explicit Move mode, Manual/Static movement suppression, ordinary Face on/off, formation participation, and coordinator mode transitions before Phase 3 live acceptance is complete.
+
+
+### 2026-10-04 — Phase 3 automated exit audit implemented
+
+- Audited the common scheduler/core durable-authority boundary after all listed Phase 3 domain slices.
+- Scheduler proposal revalidation is now canonical/fail-closed: `uc_scheduler_ranker.lua` no longer falls back to `ctx.settings[required_setting]` when a proposal dependency is unmapped.
+- Added canonical `sleep` required-setting resolution through `config.sleep.enabled`; production `required_setting` tokens are now enumerated by the exit regression so future unmapped proposal dependencies fail CI.
+- Added explicit canonical `config.combat.prime` access and moved combat-commitment fight-leader evaluation to the tick's `ctx.config` / `uc_follow_config` snapshot. Contradictory flat Prime/fight state can no longer influence runtime commitment.
+- Migrated the common charm-sleeper and sleep-waker feature gates to `ctx.config.defensive.*` directly. Their focused tests now deliberately oppose canonical and flat values on every collection pass.
+- Removed the Phase 2-deferred direct `UC_SETTINGS.log_combat_sched` read from `uc_scheduler_action_state.lua`; core action-state diagnostics now use canonical `config.debug.combat_sched`.
+- Added `tests/replay/harness/selftest_phase3_exit_audit.lua` to freeze the common authority contract: every production scheduler `required_setting` must have a canonical mapping, common defensive providers may not receive flat fallback authority, combat commitment must use explicit canonical config, and core's sole direct `UC_SETTINGS` accessor remains the explicit no-config compatibility seam.
+- Flat-surface burn-down in this audit: `uc_combat_commitment.lua` `ctx.settings` 3→1; `uc_scheduler_ranker.lua` 3→2; `uc_provider_charm_sleeper.lua` and `uc_provider_sleep_waker.lua` drop their `ctx.settings` / `active_value_or_flat` surfaces entirely; `uc_scheduler_action_state.lua` drops its final direct `UC_SETTINGS` read.
+- Remaining flat scheduler/provider surfaces are explicitly outside this common Phase 3 authority boundary: RUN/SCH/SMN/PUP job configuration moves to Phase 4, scheduler cadence fields such as `_sched_next_*` are runtime state, diagnostic helpers are non-action authority, and explicit no-config core/legacy callers remain compatibility-only.
+- The prior follow/pathing tests continue to prove configured names are durable while resolved party/fight/partner/puller IDs are live-derived; path route/session state remains non-authoritative compatibility schema debt rather than scheduler policy.
+- Automated CI proof is pending on the implementation head. Live-game smoke verification remains required before Phase 3 live acceptance is complete.
 
 ## Working checklist
 

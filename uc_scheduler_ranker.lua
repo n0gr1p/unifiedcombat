@@ -25,15 +25,12 @@ function M.validate_proposal(ctx, proposal, deps)
 		return false, identity_reason
 	end
 
-	local bool_setting = require_function(deps, 'bool_setting')
 	local required_setting = tostring(proposal.required_setting or '')
 	if required_setting ~= '' then
 		local required_value = require_function(deps, 'required_setting_value')(ctx.config, required_setting)
-		local enabled = required_value
-		if enabled == nil then
-			enabled = bool_setting(ctx.settings[required_setting], false)
-		end
-		if enabled ~= true then
+		-- Required-setting revalidation is a scheduler authority boundary.
+		-- Unknown/unmapped settings fail closed instead of consulting ctx.settings.
+		if required_value ~= true then
 			return false, 'settings_disabled'
 		end
 	end

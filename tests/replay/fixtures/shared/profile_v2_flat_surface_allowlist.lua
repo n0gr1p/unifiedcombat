@@ -38,7 +38,7 @@ return {
 			["uc_settings"] = 4,
 		},
 		["uc_combat_commitment.lua"] = {
-			["ctx_settings"] = 3,
+			["ctx_settings"] = 1,
 		},
 		["uc_combat_extension_config.lua"] = {
 			["uc_settings"] = 1,
@@ -64,10 +64,6 @@ return {
 		["uc_profile_v2.lua"] = {
 			["project_flat_settings"] = 1,
 		},
-		["uc_provider_charm_sleeper.lua"] = {
-			["active_value_or_flat"] = 2,
-			["ctx_settings"] = 2,
-		},
 		["uc_provider_combat.lua"] = {
 			["ctx_settings"] = 20,
 		},
@@ -76,10 +72,6 @@ return {
 		},
 		["uc_provider_sch_maintenance.lua"] = {
 			["ctx_settings"] = 1,
-		},
-		["uc_provider_sleep_waker.lua"] = {
-			["active_value_or_flat"] = 2,
-			["ctx_settings"] = 2,
 		},
 		["uc_provider_tank_enmity.lua"] = {
 			["ctx_settings"] = 2,
@@ -96,9 +88,6 @@ return {
 		["uc_runtime_overrides.lua"] = {
 			["uc_settings"] = 1,
 		},
-		["uc_scheduler_action_state.lua"] = {
-			["uc_settings"] = 1,
-		},
 		["uc_scheduler_config.lua"] = {
 			["active_value_or_flat"] = 6,
 			["uc_settings"] = 1,
@@ -110,7 +99,7 @@ return {
 			["ctx_settings"] = 2,
 		},
 		["uc_scheduler_ranker.lua"] = {
-			["ctx_settings"] = 3,
+			["ctx_settings"] = 2,
 		},
 		["uc_smn_maintenance.lua"] = {
 			["ctx_settings"] = 2,

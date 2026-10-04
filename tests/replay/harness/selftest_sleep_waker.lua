@@ -38,12 +38,6 @@ local mobs = {}
 local ready = true
 local logs = {}
 local provider = require('uc_provider_sleep_waker').new({
-	bool_setting = function(value)
-		return value == true
-	end,
-	active_value_or_flat = function(_, flat)
-		return flat
-	end,
 	get_party_members = function()
 		return members
 	end,
@@ -81,11 +75,21 @@ local function settings(enabled)
 	}
 end
 
+local function config(enabled)
+	return {
+		defensive = {
+			enabled = true,
+			sleep_waker = { enabled = enabled },
+		},
+	}
+end
+
 local function collect(now, enabled)
 	local out = {}
 	provider.collect({
 		now = now,
-		settings = settings(enabled),
+		config = config(enabled),
+		settings = settings(not enabled),
 	}, out)
 	return out
 end

@@ -112,6 +112,14 @@ local disabled_ok, disabled_reason = ranker.validate_proposal(ctx, disabled, dep
 assert_equal(disabled_ok, false, 'disabled proposal rejected')
 assert_equal(disabled_reason, 'settings_disabled', 'disabled rejection reason')
 
+ctx.settings.enabled = true
+local flat_only = proposal('flat_only', 'combat', 70, 0, 101)
+flat_only.required_setting = 'enabled'
+local flat_only_ok, flat_only_reason = ranker.validate_proposal(ctx, flat_only, deps)
+assert_equal(flat_only_ok, false, 'unmapped required setting must fail closed despite flat true')
+assert_equal(flat_only_reason, 'settings_disabled', 'unmapped required setting fail-closed reason')
+ctx.settings.enabled = nil
+
 ctx.settings.ability_active = false
 ctx.config.required_settings.ability_active = true
 local canonical_on = proposal('canonical_on', 'combat', 70, 0, 101)

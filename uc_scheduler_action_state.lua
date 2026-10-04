@@ -1,3 +1,5 @@
+local uc_active_config = require('uc_active_config')
+
 local M = {}
 local ENGAGE_ACTION_TAIL_S = 0.35
 local SPELL_SUCCESS_TAIL_S = 0.2
@@ -786,8 +788,7 @@ end
 function M.action_dispatch_blocked(scheduler, now_s, globals)
 	local st = M.action_state(scheduler)
 	local now = now_s()
-	local settings = rawget(globals, 'UC_SETTINGS') or {}
-	local combat_log_on = (settings.log_combat_sched == true) or (settings.log_combat_sched == 1) or (tostring(settings.log_combat_sched or ''):lower() == 'true')
+	local combat_log_on = uc_active_config.get_path('config.debug.combat_sched') == true
 	local diag = rawget(globals, 'UC_LOG_DIAG')
 	local function direct_combat_log(msg)
 		if not combat_log_on then
