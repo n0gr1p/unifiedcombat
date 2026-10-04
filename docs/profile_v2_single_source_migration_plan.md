@@ -241,10 +241,10 @@ This is the highest-risk runtime phase. Each domain should be migrated independe
 
 Exit criteria:
 
-- [ ] scheduler action selection uses canonical durable config;
-- [ ] core combat no longer requires flat durable settings;
+- [x] scheduler action selection uses canonical durable config;
+- [x] core combat no longer requires flat durable settings;
 - [x] follow/pathing durable settings no longer require flat settings;
-- [ ] runtime-only IDs and live state remain outside Profile V2;
+- [x] runtime-only IDs and live state remain outside Profile V2;
 - [ ] live behavior checks completed for each migrated domain.
 
 ### Phase 4 — Migrate job-specific configuration
