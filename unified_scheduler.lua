@@ -8698,17 +8698,15 @@ scheduler.providers.sch_maintenance = require('uc_provider_sch_maintenance').new
 			priority = status_removal_priority[status_key] or 5,
 		}
 	end,
-	is_critical_defensive = function(proposal)
-		return scheduler.p1_is_critical_defensive_proposal(require('uc_scheduler_context_utils').get_config(), proposal)
+	is_critical_defensive = function(proposal, config)
+		return scheduler.p1_is_critical_defensive_proposal(config, proposal)
 	end,
 	get_sublimation_safety = scheduler.sch_sublimation_safety,
 	get_sublimation_release_mechanics = require('uc_sch_sublimation').production_release_mechanics,
-	ignore_trusts = function(settings)
-		local value = settings.def_heal_ignore_trusts
-		if type(value) ~= 'boolean' then
-			error('normalized defensive cure ignore_trusts setting is required')
-		end
-		return value
+	ignore_trusts = function(config)
+		local defensive = uc_scheduler_config.defensive_from_config(config)
+		local cure = type(defensive.cure) == 'table' and defensive.cure or {}
+		return cure.ignore_trusts ~= false
 	end,
 	routine_priority = scheduler.PRIORITY_BAND_SCH_ROUTINE,
 	prepared_priority = scheduler.PRIORITY_BAND_SCH_PREPARED,

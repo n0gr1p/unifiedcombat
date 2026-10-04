@@ -127,6 +127,13 @@ local function default_skillchain_snapshot(target_id)
 	return core.get_skillchain_snapshot(target_id)
 end
 
+function M.config_from_context(ctx)
+	require_table(ctx, 'Scholar provider context')
+	local root_config = require_table(ctx.config, 'Scholar provider canonical config')
+	local config, validation = sch_config.copy_validated(root_config.sch, root_config.profile)
+	return config, validation
+end
+
 function M.new(deps)
 	deps = require_table(deps, 'Scholar provider dependencies')
 	local get_party_members = require_function(deps.get_party_members, 'deps.get_party_members')
@@ -200,11 +207,8 @@ function M.new(deps)
 	function provider.collect(ctx, out)
 		require_table(ctx, 'Scholar provider context')
 		require_table(out, 'Scholar provider output')
-		local settings = require_table(ctx.settings, 'Scholar provider settings')
-		local config = settings.sch
-		if config == nil then
-			config = sch_config.default_config()
-		end
+		local root_config = require_table(ctx.config, 'Scholar provider canonical config')
+		local config = M.config_from_context(ctx)
 		local config_signature = signature(config)
 		if provider.config_signature ~= config_signature then
 			provider.config_signature = config_signature
@@ -216,7 +220,7 @@ function M.new(deps)
 		local party_members = get_party_members(ctx)
 		local party_snapshot = sch_party.observe(provider.party_tracker, party_members, ctx.now)
 		local observed_party_members = party_snapshot.members
-		local ignore_trusts_enabled = ignore_trusts(settings)
+		local ignore_trusts_enabled = ignore_trusts(root_config)
 		if type(ignore_trusts_enabled) ~= 'boolean' then
 			error('Scholar provider ignore_trusts must return a boolean')
 		end
@@ -264,7 +268,7 @@ function M.new(deps)
 		local runtime_snapshot = runtime.snapshot()
 		local critical_cure_present = false
 		for proposal_index = 1, #out do
-			if is_critical_defensive(out[proposal_index], settings) then
+			if is_critical_defensive(out[proposal_index], root_config) then
 				critical_cure_present = true
 				break
 			end
@@ -282,7 +286,11 @@ function M.new(deps)
 			sublimation_release_mechanics = get_sublimation_release_mechanics(),
 			defensive_enabled = ctx.defensive_enabled,
 			critical_cure_present = critical_cure_present,
-			critical_hpp = tonumber(settings.defensive_critical_hpp) or 35,
+			critical_hpp = tonumber(
+				type(root_config.defensive) == 'table'
+				and type(root_config.defensive.thresholds) == 'table'
+				and root_config.defensive.thresholds.critical_hpp
+			) or 35,
 			party_generation = party_snapshot.generation,
 			status_removal_for_buff = status_removal_for_buff,
 			spell_ready = sch_spell_ready,

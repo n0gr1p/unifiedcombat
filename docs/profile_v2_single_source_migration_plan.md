@@ -249,7 +249,7 @@ Exit criteria:
 
 ### Phase 4 — Migrate job-specific configuration
 
-Status: **IN PROGRESS — SMN and PUP canonical runtime cutovers are CI-proven; SCH is next**
+Status: **IN PROGRESS — SMN and PUP are CI-proven; SCH canonical provider cutover implemented with CI proof pending**
 
 Targets:
 
@@ -295,6 +295,18 @@ Exit criteria:
 - Existing PUP profile and automaton-control tests now provide canonical scheduler config explicitly while continuing to characterize compatibility conversion separately.
 - Flat-surface burn-down: `uc_pup_runtime.lua` `ctx.settings` 1→0; `uc_pup_pet_combat_adapter.lua` 1→0. Both files are removed from the flat-surface allowlist.
 - Dedicated Phase 4 PUP CI coverage is wired into the PR workflow. Implementation head `4825e797f998a52fadae59273a1c5754c6a0a823` is proven by workflow `37212592184`: Phase 4 PUP canonical-authority PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms PASS.
+
+### 2026-10-04 — Phase 4 SCH runtime cutover implemented
+
+- `config.sch` is now the only durable Scholar runtime authority at the scheduler/provider boundary.
+- `uc_provider_sch_maintenance.config_from_context(ctx)` copies and validates the canonical Scholar subtree from `ctx.config`; the provider no longer reads `ctx.settings.sch`.
+- Scholar provider generation/signature tracking, runtime configuration, maintenance planning, defensive planning, Sublimation, Storm/Regen maintenance, and skillchain runtime all receive that canonical subtree.
+- Shared defensive inputs used by Scholar are canonical too: trust filtering, critical-cure classification, and the critical-HPP threshold now come from the explicit canonical root config instead of flat defensive mirrors.
+- Durable Scholar policy remains separate from observed runtime state: Arts/buffs, stratagem recast/charge evidence, party roster/buffs/vitals, owned-buff evidence, active sequence state, skillchain target state, and action-result observations remain runtime-owned.
+- Added `tests/replay/harness/selftest_phase4_sch_authority.lua` with canonical and compatibility Scholar trees intentionally opposed across Arts, Sublimation, Regen, Storms, defensive stratagem policies, and skillchain configuration.
+- Existing Scholar provider integration coverage now supplies `ctx.config.sch` explicitly; the first live provider case deliberately leaves the compatibility mirror disabled while canonical Scholar policy remains enabled.
+- Flat-surface burn-down: `uc_provider_sch_maintenance.lua` `ctx.settings` 1→0; the file is removed from the Profile V2 flat-surface allowlist.
+- Dedicated Phase 4 SCH CI coverage is wired into the PR workflow. Automated proof is pending on the implementation head.
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 

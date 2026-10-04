@@ -340,6 +340,14 @@ The final listed Phase 3 movement slice removes the remaining unified movement a
 
 
 
+## Phase 4 SCH burn-down
+
+Scholar runtime authority is cut over to canonical `config.sch`:
+
+- `uc_provider_sch_maintenance.lua`: `ctx.settings` 1→0. Scholar provider configuration is copied/validated from the canonical scheduler config.
+- Scholar trust filtering, critical-cure classification, and critical-HPP policy now receive canonical common defensive config rather than the flat compatibility mirror.
+- Scholar runtime observations—Arts/buffs, charge/recast evidence, party state, owned effects, sequence state, and skillchain observations—remain runtime-only state.
+
 ## Phase 4 PUP burn-down
 
 Puppetmaster runtime authority is cut over to canonical `config.puppetmaster`:

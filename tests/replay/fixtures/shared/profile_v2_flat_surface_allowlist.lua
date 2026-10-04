@@ -70,9 +70,6 @@ return {
 		["uc_provider_run_tank.lua"] = {
 			["ctx_settings"] = 1,
 		},
-		["uc_provider_sch_maintenance.lua"] = {
-			["ctx_settings"] = 1,
-		},
 		["uc_provider_tank_enmity.lua"] = {
 			["ctx_settings"] = 2,
 		},
