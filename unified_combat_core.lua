@@ -2328,13 +2328,16 @@ local function apply_movement(settings, target, executor, config)
 	end
 	local explicit_move = movement_controls.move == true
 	local scheduler_config = require('uc_scheduler_config')
-	local autotarget = type(config) == 'table'
-		and scheduler_config.combat_autotarget_from_config(config)
-		or scheduler_config.combat_autotarget(settings)
 	local extension_config = require('uc_combat_extension_config')
-	local auto_engage = type(config) == 'table'
-		and extension_config.auto_engage_enabled_from_config(config)
-		or extension_config.auto_engage_enabled(settings)
+	local autotarget
+	local auto_engage
+	if type(config) == 'table' then
+		autotarget = scheduler_config.combat_autotarget_from_config(config)
+		auto_engage = extension_config.auto_engage_enabled_from_config(config)
+	else
+		autotarget = scheduler_config.combat_autotarget(settings)
+		auto_engage = extension_config.auto_engage_enabled(settings)
+	end
 	if (not explicit_move) and ((not setting_enabled(autotarget)) or (not auto_engage)) then
 		if core.last_run_active then
 			stop_run(executor)
