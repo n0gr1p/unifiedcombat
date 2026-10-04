@@ -8729,8 +8729,10 @@ scheduler.providers.geo_maintenance = require('uc_geo_maintenance').new({
 	resolve_camp_anchor = require('uc_camp_anchor').resolve_current_anchor,
 	action_effective_range = action_effective_range,
 	target_is_actionable = combat_core.is_live_actionable_combat_target,
-	target_is_ignored = function(settings, mob)
-		return require('uc_target_ignore').is_mob_blocked(settings, mob)
+	target_is_ignored = function(config, mob)
+		return require('uc_target_ignore').is_mob_blocked({
+			target_ignore_names = uc_scheduler_config.targeting_ignore_names_from_config(config),
+		}, mob)
 	end,
 	player_is_moving = smn_player_is_moving,
 	pull_active = function()
