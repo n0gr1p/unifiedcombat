@@ -75,6 +75,11 @@ windower = {
 		end,
 	},
 }
+local path_separator = package.config:sub(1, 1)
+local mkdir_command = path_separator == '\\'
+	and 'if not exist data\\logs mkdir data\\logs'
+	or 'mkdir -p data/logs'
+os.execute(mkdir_command)
 local ready = function(name)
 	if name == 'Nightingale' or name == 'Troubadour' or name == 'Marcato' or name == 'Clarion Call'
 		or name == 'Soul Voice' or name == 'Pianissimo' then
