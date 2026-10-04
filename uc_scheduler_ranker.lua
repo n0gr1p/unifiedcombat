@@ -29,7 +29,7 @@ function M.validate_proposal(ctx, proposal, deps)
 	if required_setting ~= '' then
 		local required_value = require_function(deps, 'required_setting_value')(ctx.config, required_setting)
 		-- Required-setting revalidation is a scheduler authority boundary.
-		-- Unknown/unmapped settings fail closed instead of consulting ctx.settings.
+		-- Unknown/unmapped settings fail closed instead of consulting flat compatibility state.
 		if required_value ~= true then
 			return false, 'settings_disabled'
 		end
