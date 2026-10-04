@@ -249,7 +249,7 @@ Exit criteria:
 
 ### Phase 4 — Migrate job-specific configuration
 
-Status: **IN VERIFICATION — SMN, PUP, SCH, GEO, BRD, and COR runtime authority are CI-proven; automated Phase 4 exit audit is pending**
+Status: **COMPLETE — SMN, PUP, SCH, GEO, BRD, and COR canonical runtime authority is CI-proven**
 
 Targets:
 
@@ -271,7 +271,8 @@ Exit criteria:
 - [x] SCH consumes canonical Profile V2 config;
 - [x] GEO maintenance consumes canonical Profile V2 config;
 - [x] BRD maintenance consumes the tick-stable canonical Profile V2 config;
-- [x] COR has no remaining durable runtime compatibility dependency.
+- [x] COR has no remaining durable runtime compatibility dependency;
+- [x] automated Phase 4 exit audit freezes the combined job-runtime authority boundary.
 
 ### 2026-10-04 — Phase 4 SMN runtime cutover implemented
 
@@ -354,7 +355,7 @@ Exit criteria:
 - The audit requires SMN maintenance/pet combat, PUP runtime/pet combat, SCH, GEO, the shared BRD/COR maintenance provider, BRD maintenance, and COR maintenance to remain free of `ctx.settings`, `UC_SETTINGS`, `uc_active_config`, and `active_value_or_flat` runtime reads.
 - It also asserts the positive canonical wiring for every job family: SMN/PUP config adapters, SCH/GEO canonical context adapters, BRD's canonical maintenance + pulling subtrees, and COR's `cor_propose(ctx.config)` route plus configured-ability fallback.
 - Input normalizers, editor/bridge compatibility fields, canonical-to-flat projection, and runtime observation state remain outside this Phase 4 action-authority boundary and are handled by later UI/projection cleanup phases.
-- CI proof is pending on the exit-audit head.
+- Exit-audit head `3eff4da4c5fa35eef963ebea239bceb5672f7cb0` is proven by workflow `37245104164`: Phase 4 automated exit audit PASS, SMN/PUP/SCH/GEO/BRD/COR authority suites PASS, BRD and COR focused runtime suites PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS. Phase 4 is complete; live-game smoke validation remains part of the final acceptance work rather than runtime-authority migration.
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
