@@ -243,7 +243,9 @@ function M.new(deps)
 				gate.cor_rolls = 0
 			end
 		elseif job == 'BRD' or tostring(player.sub_job or '') == 'BRD' then
-			local brd_config = require('uc_active_config').get_path('config.maintenance.brd')
+			local root_config = require_table(ctx.config, 'ctx.config')
+			local maintenance_config = require_table(root_config.maintenance, 'ctx.config.maintenance')
+			local brd_config = require_table(maintenance_config.brd, 'ctx.config.maintenance.brd')
 			local brd_maintenance = require('uc_brd_maintenance')
 			local brd_positioning = require('uc_brd_positioning')
 			local brd_party_members = get_party_members(ctx)
@@ -269,7 +271,8 @@ function M.new(deps)
 			})
 			if type(action) == 'table' and tostring(action.action_name or '') ~= '' then
 				local camp_anchor = require('uc_camp_anchor').resolve_current_anchor()
-				local pulling_config = require('uc_active_config').get_path('config.combat.pulling')
+				local combat_config = require_table(root_config.combat, 'ctx.config.combat')
+				local pulling_config = require_table(combat_config.pulling, 'ctx.config.combat.pulling')
 				local formation_status = rawget(_G, 'UC_FORMATION_STATUS')
 				local allow_formation_partial = type(formation_status) == 'table'
 					and formation_status.enabled == true
