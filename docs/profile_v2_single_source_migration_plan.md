@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, abilities, target-control/priority-ignore, tank/enmity, pulling, spacing, and follow slices implemented and CI-proven**
+Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, abilities, target-control/priority-ignore, tank/enmity, pulling, spacing, follow, and pathing slices implemented and CI-proven**
 
 Domains to treat separately:
 
@@ -243,7 +243,7 @@ Exit criteria:
 
 - [ ] scheduler action selection uses canonical durable config;
 - [ ] core combat no longer requires flat durable settings;
-- [ ] follow/pathing durable settings no longer require flat settings;
+- [x] follow/pathing durable settings no longer require flat settings;
 - [ ] runtime-only IDs and live state remain outside Profile V2;
 - [ ] live behavior checks completed for each migrated domain.
 
