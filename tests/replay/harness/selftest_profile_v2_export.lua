@@ -826,10 +826,6 @@ local function build_expected_config()
 			path = {
 				recording = false,
 				follow_enabled = true,
-				file_name = 'route-a',
-				route_type = 'unknown',
-				distance_to_start = 0,
-				points = { '1,2,3' },
 				party_gate_yalms = 3.0,
 				resume_index_window = 12,
 				hunter_targets = {},
