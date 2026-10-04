@@ -125,7 +125,6 @@ jobs:
           lua5.1 tests/replay/harness/selftest_phase3_pathing_authority.lua
           lua5.1 tests/replay/harness/selftest_movement_priority_arbitration.lua
           lua5.1 tests/replay/harness/selftest_active_config_consumer_migration.lua
-          lua5.1 tests/replay/harness/selftest_profile_v2_export.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test

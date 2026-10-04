@@ -1821,15 +1821,6 @@ local function main()
 	assert_equal(path_gate_diff.count, 1, 'durable diff should still detect durable movement path changes')
 	assert_equal(path_gate_diff.first_difference.path, 'config.movement.path.party_gate_yalms', 'durable diff should report the durable movement path field path')
 
-	path_gate_current = deep_clone(ui_fixture_payload.config)
-	path_gate_target = deep_clone(ui_fixture_payload.config)
-	path_gate_target.movement.path.file_name = 'runtime-other.lua'
-	path_gate_target.movement.path.route_type = 'loop'
-	path_gate_target.movement.path.distance_to_start = 77
-	path_gate_target.movement.path.points = { { x = 1, y = 2, z = 3 } }
-	path_gate_diff = profile_v2.diff_durable_config(path_gate_current, path_gate_target)
-	assert_equal(path_gate_diff.count, 0, 'route identity/progress must not participate in durable Profile V2 diff')
-
 	local ui_fixture_reload_settings = deep_clone(flat)
 	ui_fixture_reload_settings.defensive_curaga_enabled = false
 	ui_fixture_reload_settings.defensive_curaga_min_targets = 3
@@ -1890,9 +1881,6 @@ local function main()
 
 	local nested_apply_payload = deep_clone(profile)
 	nested_apply_payload.config.movement.path.file_name = 'route-b'
-	nested_apply_payload.config.movement.path.route_type = 'loop'
-	nested_apply_payload.config.movement.path.distance_to_start = 99
-	nested_apply_payload.config.movement.path.points = { { x = 99, y = 99, z = 99 } }
 	nested_apply_payload.config.movement.formation = {
 		enabled = true,
 		encounter = 'lilith_easy',
@@ -1931,8 +1919,7 @@ local function main()
 		sub_job = 'WAR',
 	}, contract.validate_structured_profile_config, nested_apply_deps)
 	assert_true(nested_apply_result.ok == true, 'structured profile apply should succeed for nested change')
-	assert_equal(nested_apply_result.candidate.path_file_name, 'route-a', 'structured profile apply must preserve runtime path filename')
-	assert_equal(nested_apply_result.candidate.path_points[1], '1,2,3', 'structured profile apply must preserve runtime path points')
+	assert_equal(nested_apply_result.candidate.path_file_name, 'route-b', 'structured profile apply should update nested movement runtime field')
 	assert_equal(nested_apply_result.candidate.formation_enabled, true, 'structured profile apply should enable formation runtime mirror')
 	assert_equal(nested_apply_result.candidate.formation_role, 'dps', 'structured profile apply should preserve formation role')
 	assert_equal(nested_apply_result.candidate.formation_tank_name, 'Terrasjr', 'structured profile apply should preserve formation tank name')

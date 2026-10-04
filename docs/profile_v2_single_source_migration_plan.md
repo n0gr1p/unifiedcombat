@@ -611,7 +611,7 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Scheduler pull selection overlays canonical path/hunter policy for hunter enablement, path-follow gate, target list, pull action type/name, and attack fallback. Both target-control and combat providers pass `ctx.config` into pull selection.
 - Missing canonical path policy uses canonical defaults/fails closed rather than reviving contradictory flat path-follow or hunter state.
 - Added `tests/replay/harness/selftest_phase3_pathing_authority.lua` covering canonical-vs-flat route/hunter/pull policy, canonical OFF precedence, default fail-closed behavior, and preservation of live route/session state.
-- Strengthened movement arbitration and Profile V2 apply/diff regressions so stale flat path-follow state and persisted route-state placeholders cannot regain authority.
+- Strengthened movement arbitration and added a focused Profile V2 durable-diff regression so stale flat path-follow state and route-session placeholders cannot regain authority.
 - Flat-surface guard burn-down: `uc_pathing.lua` `active_value_or_flat` count 7 → 0.
 - No intentional route geometry, pause/resume arbitration, hunter candidate ranking, pull readiness/range, or movement-dispatch semantics changed except that canonical Profile V2 now wins for durable path policy.
 - Live-game smoke verification remains required for path recording start/stop, route-file rebinding, route follow, hunter target filtering, configured pull action/fallback, and follow/path/camp-pull movement handoff before Phase 3 is complete.

@@ -34,6 +34,7 @@ local function read_all(path)
 end
 
 local path_config = require('uc_path_config')
+local profile_v2 = require('uc_profile_v2')
 
 local canonical = {
     legacy = { hunter = true },
@@ -150,6 +151,42 @@ local function test_missing_path_uses_canonical_defaults()
     assert_equal(view.path_file_name, 'runtime_route.lua', 'canonical defaults must not erase runtime filename')
 end
 
+local function test_route_session_state_is_not_durable_authority()
+    local current = {
+        movement = {
+            path = {
+                follow_enabled = true,
+                file_name = 'runtime-a.lua',
+                route_type = 'patrol',
+                distance_to_start = 12,
+                points = { 'runtime-a' },
+                party_gate_yalms = 3,
+            },
+        },
+    }
+    local target = {
+        movement = {
+            path = {
+                follow_enabled = true,
+                file_name = 'profile-b.lua',
+                route_type = 'loop',
+                distance_to_start = 99,
+                points = { 'profile-b' },
+                party_gate_yalms = 3,
+            },
+        },
+    }
+
+    local runtime_only_diff = profile_v2.diff_durable_config(current, target)
+    assert_equal(runtime_only_diff.count, 0,
+        'route filename/type/distance/points must not participate in durable authority diff')
+
+    target.movement.path.party_gate_yalms = 4
+    local policy_diff = profile_v2.diff_durable_config(current, target)
+    assert_true(policy_diff.count > 0,
+        'durable path policy must still participate in Profile V2 diff')
+end
+
 local function test_static_wiring()
     local pathing = read_all('uc_pathing.lua')
     local core = read_all('unified_combat_core.lua')
@@ -193,6 +230,7 @@ end
 test_canonical_on_beats_flat_off()
 test_canonical_off_beats_flat_on()
 test_missing_path_uses_canonical_defaults()
+test_route_session_state_is_not_durable_authority()
 test_static_wiring()
 
 io.stdout:write('selftest_phase3_pathing_authority: OK (route + hunter + pull policy)\n')
