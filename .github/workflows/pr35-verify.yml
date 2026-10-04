@@ -169,6 +169,13 @@ jobs:
           lua5.1 tests/replay/harness/selftest_phase4_geo_authority.lua
           lua5.1 tests/replay/harness/selftest_geo_maintenance.lua
           lua5.1 tests/replay/harness/selftest_geo_sequences.lua
+      - name: Phase 4 BRD canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase4_brd_authority.lua
+          lua5.1 tests/replay/harness/selftest_brd_maintenance.lua
+          lua5.1 tests/replay/harness/selftest_brd_maintenance_movement_safety.lua
+          lua5.1 tests/replay/harness/selftest_brd_positioning.lua
+          lua5.1 tests/replay/harness/selftest_bard_song_identity_tracking.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
