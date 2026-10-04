@@ -1821,14 +1821,14 @@ local function main()
 	assert_equal(path_gate_diff.count, 1, 'durable diff should still detect durable movement path changes')
 	assert_equal(path_gate_diff.first_difference.path, 'config.movement.path.party_gate_yalms', 'durable diff should report the durable movement path field path')
 
-	local path_runtime_current = deep_clone(ui_fixture_payload.config)
-	local path_runtime_target = deep_clone(ui_fixture_payload.config)
-	path_runtime_target.movement.path.file_name = 'runtime-other.lua'
-	path_runtime_target.movement.path.route_type = 'loop'
-	path_runtime_target.movement.path.distance_to_start = 77
-	path_runtime_target.movement.path.points = { { x = 1, y = 2, z = 3 } }
-	local path_runtime_diff = profile_v2.diff_durable_config(path_runtime_current, path_runtime_target)
-	assert_equal(path_runtime_diff.count, 0, 'route identity/progress must not participate in durable Profile V2 diff')
+	path_gate_current = deep_clone(ui_fixture_payload.config)
+	path_gate_target = deep_clone(ui_fixture_payload.config)
+	path_gate_target.movement.path.file_name = 'runtime-other.lua'
+	path_gate_target.movement.path.route_type = 'loop'
+	path_gate_target.movement.path.distance_to_start = 77
+	path_gate_target.movement.path.points = { { x = 1, y = 2, z = 3 } }
+	path_gate_diff = profile_v2.diff_durable_config(path_gate_current, path_gate_target)
+	assert_equal(path_gate_diff.count, 0, 'route identity/progress must not participate in durable Profile V2 diff')
 
 	local ui_fixture_reload_settings = deep_clone(flat)
 	ui_fixture_reload_settings.defensive_curaga_enabled = false
