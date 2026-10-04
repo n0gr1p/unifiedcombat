@@ -152,12 +152,17 @@ local function context(now)
 	}
 	return {
 		now = now,
-		settings = {
-			config = {
-				maintenance = {
-					geo = config(),
-				},
+		config = {
+			maintenance = {
+				geo = config(),
 			},
+			targeting = {
+				target_ignore_names = {},
+			},
+		},
+		settings = {
+			maintenance_geo = { enabled = false },
+			target_ignore_names = { 'Apex Bat' },
 		},
 		player_present = true,
 		player = {
@@ -223,8 +228,8 @@ rawset(_G, 'Start_Engine', true)
 
 local independent_camp_provider = new_provider()
 local independent_camp_ctx = context(0.5)
-independent_camp_ctx.settings.config.maintenance.geo.luopan.placement = 'camp'
-independent_camp_ctx.settings.config.maintenance.geo.require_camp = false
+independent_camp_ctx.config.maintenance.geo.luopan.placement = 'camp'
+independent_camp_ctx.config.maintenance.geo.require_camp = false
 local independent_out = {}
 independent_camp_provider.collect(independent_camp_ctx, independent_out)
 assert_equal(#independent_out, 1, 'camp placement must not require provider camp restriction')
@@ -412,8 +417,8 @@ assert_equal(tonumber(healthy_block_counters.resolve_camp_anchor) or 0, blocked_
 
 local camp_outside_provider = new_provider()
 local camp_outside_ctx = context(10.0)
-camp_outside_ctx.settings.config.maintenance.geo.luopan.placement = 'camp'
-camp_outside_ctx.settings.config.maintenance.geo.luopan.replace_out_of_position = true
+camp_outside_ctx.config.maintenance.geo.luopan.placement = 'camp'
+camp_outside_ctx.config.maintenance.geo.luopan.replace_out_of_position = true
 converge_owned_luopan(camp_outside_provider, camp_outside_ctx, 10, 20)
 camp_outside_ctx.now = 13.0
 camp_outside_ctx.mobs_by_id[200].x = 18
@@ -426,8 +431,8 @@ assert_equal(camp_outside_provider.status_snapshot().sequence, nil, 'camp placem
 
 local camp_inside_provider = new_provider()
 local camp_inside_ctx = context(20.0)
-camp_inside_ctx.settings.config.maintenance.geo.luopan.placement = 'camp'
-camp_inside_ctx.settings.config.maintenance.geo.luopan.replace_out_of_position = true
+camp_inside_ctx.config.maintenance.geo.luopan.placement = 'camp'
+camp_inside_ctx.config.maintenance.geo.luopan.replace_out_of_position = true
 converge_owned_luopan(camp_inside_provider, camp_inside_ctx, 10, 20)
 camp_inside_ctx.now = 23.0
 camp_inside_ctx.mobs_by_id[200].x = 16
@@ -440,7 +445,7 @@ assert_equal(camp_inside_provider.status_snapshot().sequence, nil, 'inside-radiu
 
 local camp_no_replace_provider = new_provider()
 local camp_no_replace_ctx = context(25.0)
-camp_no_replace_ctx.settings.config.maintenance.geo.luopan.placement = 'camp'
+camp_no_replace_ctx.config.maintenance.geo.luopan.placement = 'camp'
 converge_owned_luopan(camp_no_replace_provider, camp_no_replace_ctx, 10, 20)
 camp_no_replace_ctx.now = 28.0
 camp_no_replace_ctx.pet.x = 20
@@ -452,7 +457,7 @@ assert_equal(camp_no_replace_provider.status_snapshot().sequence, nil, 'disabled
 
 local target_old_replace_provider = new_provider()
 local target_old_replace_ctx = context(29.0)
-target_old_replace_ctx.settings.config.maintenance.geo.luopan.replace_out_of_position = true
+target_old_replace_ctx.config.maintenance.geo.luopan.replace_out_of_position = true
 converge_owned_luopan(target_old_replace_provider, target_old_replace_ctx, 10, 20)
 target_old_replace_ctx.now = 32.0
 target_old_replace_ctx.pet.x = 20
@@ -514,7 +519,7 @@ assert_equal(tonumber(perf_counters.get_friendly_claims) or 0, baseline_claims,
 	'missing Indi self-cast must not scan enemy targets')
 
 local cached_spell_resource = tonumber(perf_counters.get_spell_resource) or 0
-perf_ctx.settings.config.maintenance.geo.camp_tolerance_yalms = 1.25
+perf_ctx.config.maintenance.geo.camp_tolerance_yalms = 1.25
 perf_ctx.now = perf_ctx.now + 0.20
 out = {}
 perf_provider.collect(perf_ctx, out)
