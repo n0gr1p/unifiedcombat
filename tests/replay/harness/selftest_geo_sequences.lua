@@ -82,12 +82,17 @@ local function context(config)
 	}
 	return {
 		now = 1.0,
-		settings = {
-			config = {
-				maintenance = {
-					geo = config,
-				},
+		config = {
+			maintenance = {
+				geo = config,
 			},
+			targeting = {
+				target_ignore_names = {},
+			},
+		},
+		settings = {
+			maintenance_geo = { enabled = false },
+			target_ignore_names = { 'Apex Bat' },
 		},
 		player_present = true,
 		player = {
