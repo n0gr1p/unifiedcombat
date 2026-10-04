@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **IN PROGRESS — combat enablement/autotarget, weaponskill, abilities, target-control/priority-ignore, tank/enmity, pulling, spacing, follow, and pathing slices implemented and CI-proven**
+Status: **IN PROGRESS — all listed Phase 3 runtime domain slices are implemented and CI-proven; exit audit and live behavior verification remain**
 
 Domains to treat separately:
 
@@ -629,6 +629,8 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - `UC_IsCombatParticipant` and `UC_IsMovementParticipant` now classify participation from canonical Profile V2 through `uc_movement_config`, while current engine-running state remains runtime-owned through `Start_Engine`.
 - Canonical participation covers autotarget, explicit move, base/named formations, tank, hunter+path-follow, puller, add-control, and spacing (movement participation only). Formation/named-formation runtime itself was already canonical and required no rewrite.
 - Added `tests/replay/harness/selftest_phase3_movement_authority.lua` proving contradictory canonical-vs-flat authority for move/manual/static, canonical participant/domain behavior, face policy, explicit coordinator config plumbing, and protection against hidden `get_tick_ctx` fallback.
+- The contradictory-state movement test exposed a pre-existing core authority leak in the earlier combat-enable cutover: Lua's `a and canonical_false or flat_value` idiom caused canonical `autotarget=false` / `auto_engage=false` to fall through to conflicting flat `true`. Core movement now uses explicit canonical-vs-compatibility branches, so canonical false is authoritative.
+- Automated proof on implementation head `367201f60d99156133bea2726813e6f3ebad7a02`: workflow `37200907676` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 movement authority PASS, formation activation PASS, spacing cast-lock PASS, RUN no-TP PASS, defensive/support movement-lock tests PASS, all earlier Phase 2/3 authority suites PASS, and the flat-surface guard PASS.
 - Flat-surface guard burn-down: `UnifiedCombat.lua` literal `UC_SETTINGS` count 79 → 77 by removing the two participant helpers' flat settings dependency.
 - Existing legacy DD2/melee engine movement controls remain separately classified compatibility debt and are not claimed as migrated by this unified scheduler/core slice.
 - Live-game smoke verification remains required for explicit Move mode, Manual/Static movement suppression, ordinary Face on/off, formation participation, and coordinator mode transitions before Phase 3 live acceptance is complete.
