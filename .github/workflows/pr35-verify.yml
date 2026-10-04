@@ -176,6 +176,12 @@ jobs:
           lua5.1 tests/replay/harness/selftest_brd_maintenance_movement_safety.lua
           lua5.1 tests/replay/harness/selftest_brd_positioning.lua
           lua5.1 tests/replay/harness/selftest_bard_song_identity_tracking.lua
+      - name: Phase 4 COR canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase4_cor_authority.lua
+          lua5.1 tests/replay/harness/selftest_cor_dia_lightshot_static.lua
+          lua5.1 tests/replay/harness/selftest_cor_dia_lightshot_runtime.lua
+          lua5.1 tests/replay/harness/selftest_active_config_defensive_maintenance_readers.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
