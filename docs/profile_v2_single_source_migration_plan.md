@@ -222,7 +222,7 @@ Exit criteria:
 
 ### Phase 3 — Migrate core scheduler/combat domains
 
-Status: **IN PROGRESS — all listed Phase 3 runtime domain slices are implemented and CI-proven; automated exit audit implemented with CI proof pending; live behavior verification remains**
+Status: **IN PROGRESS — all listed Phase 3 runtime domain slices and the automated exit audit are CI-proven; live behavior verification remains**
 
 Domains to treat separately:
 
@@ -652,7 +652,7 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Combat Prime and fight-leader collection now consume canonical `ctx.config` as well as the earlier commitment path. `uc_provider_combat.lua` flat-context markers fall 20→11; survivors are partner/pull/WS/job-runtime seams tracked separately rather than Sleep/Prime/fight durable authority.
 - Remaining flat scheduler/provider surfaces are explicitly outside this common Phase 3 authority boundary: RUN/SCH/SMN/PUP job configuration moves to Phase 4, scheduler cadence fields such as `_sched_next_*` are runtime state, diagnostic helpers are non-action authority, and explicit no-config core/legacy callers remain compatibility-only.
 - The prior follow/pathing tests continue to prove configured names are durable while resolved party/fight/partner/puller IDs are live-derived; path route/session state remains non-authoritative compatibility schema debt rather than scheduler policy.
-- Automated CI proof is pending on the implementation head. Live-game smoke verification remains required before Phase 3 live acceptance is complete.
+- Automated proof on implementation head `a3670fa83a055ad582be0b5ff6bab7821f4a2950`: workflow `37205168055` completed successfully with `lua-sequence` PASS, the Phase 3 automated exit audit PASS, flat-surface guard PASS, all earlier Phase 2/3 authority suites PASS, and `winforms` PASS. Live-game smoke verification remains required before Phase 3 live acceptance is complete.
 
 ## Working checklist
 
