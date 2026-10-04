@@ -249,7 +249,7 @@ Exit criteria:
 
 ### Phase 4 — Migrate job-specific configuration
 
-Status: **IN PROGRESS — SMN, PUP, SCH, GEO, and BRD canonical runtime cutovers are CI-proven; COR authority audit is in verification**
+Status: **IN VERIFICATION — SMN, PUP, SCH, GEO, BRD, and COR runtime authority are CI-proven; automated Phase 4 exit audit is pending**
 
 Targets:
 
@@ -271,7 +271,7 @@ Exit criteria:
 - [x] SCH consumes canonical Profile V2 config;
 - [x] GEO maintenance consumes canonical Profile V2 config;
 - [x] BRD maintenance consumes the tick-stable canonical Profile V2 config;
-- [ ] COR has no remaining durable compatibility dependency (authority audit in verification).
+- [x] COR has no remaining durable runtime compatibility dependency.
 
 ### 2026-10-04 — Phase 4 SMN runtime cutover implemented
 
@@ -345,8 +345,16 @@ Exit criteria:
 - Added `tests/replay/harness/selftest_phase4_cor_authority.lua`. It installs deliberately conflicting flat COR globals plus a fail-fast fake `uc_active_config`, proves canonical roll/Crooked/Luzaf/range/ability-fallback decisions, proves the maintenance provider passes `ctx.config` by identity, and freezes the static no-flat/no-resample runtime boundary.
 - Dedicated Phase 4 COR CI also runs the existing Dia/Light Shot static and runtime suites plus the earlier active-config maintenance regression.
 - No flat-surface allowlist change is expected in this slice because COR's remaining flat names are producer/normalizer/editor compatibility surfaces rather than scheduler runtime consumers.
-- CI proof is pending on the audit head.
+- Audit head `07f4f743a43f2c1c43758c75020090f55f2a4e19` is proven by workflow `37244992663`: Phase 4 COR canonical-authority PASS, Dia/Light Shot static and runtime suites PASS, the active-config maintenance regression PASS, all prior Phase 4 job suites PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 - No intentional roll selection, Double-Up/Snake Eye/Fold logic, Crooked Cards behavior, Luzaf range semantics, Dia/Light Shot behavior, or incoming-chunk state tracking changed.
+
+### 2026-10-04 — Phase 4 automated exit audit added
+
+- Added `tests/replay/harness/selftest_phase4_exit_audit.lua` to freeze the combined job-runtime authority boundary after the six independent job slices.
+- The audit requires SMN maintenance/pet combat, PUP runtime/pet combat, SCH, GEO, the shared BRD/COR maintenance provider, BRD maintenance, and COR maintenance to remain free of `ctx.settings`, `UC_SETTINGS`, `uc_active_config`, and `active_value_or_flat` runtime reads.
+- It also asserts the positive canonical wiring for every job family: SMN/PUP config adapters, SCH/GEO canonical context adapters, BRD's canonical maintenance + pulling subtrees, and COR's `cor_propose(ctx.config)` route plus configured-ability fallback.
+- Input normalizers, editor/bridge compatibility fields, canonical-to-flat projection, and runtime observation state remain outside this Phase 4 action-authority boundary and are handled by later UI/projection cleanup phases.
+- CI proof is pending on the exit-audit head.
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
