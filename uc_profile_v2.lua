@@ -890,7 +890,7 @@ end
 
 function M.build_durable_config(settings, meta)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
-	return strip_path_runtime_state(canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta))))))
+	return canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta)))))
 end
 
 function M.format_structured_profile_diff_value(value)
