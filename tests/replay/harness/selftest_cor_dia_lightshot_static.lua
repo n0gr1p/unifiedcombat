@@ -40,6 +40,6 @@ assert_contains(ownership, 'cor_light_shot_target_stale', 'stale target must bec
 
 assert_contains(normalizer, 'light_shot_dia', 'canonical COR utility config must include Light Shot Dia')
 assert_contains(normalizer, 'value = true', 'COR Dia Light Shot must default on')
-assert_contains(normalizer_entry, "require('uc_config_normalizer_cor').wrap(sequence)", 'COR config wrapper must be installed')
+assert_contains(normalizer_entry, "require('uc_config_normalizer_cor').wrap(once)", 'COR config wrapper must be installed after once-per-instance normalization')
 
 io.stdout:write('selftest_cor_dia_lightshot_static: OK\n')
