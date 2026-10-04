@@ -1,5 +1,11 @@
 package.path = './?.lua;' .. package.path
 
+package.loaded.uc_reaction_runtime = {
+	smn_rage_should_hold = function()
+		return false, '', nil
+	end,
+}
+
 local coordinator = require('uc_pet_command_coordinator')
 local maintenance_module = require('uc_smn_maintenance')
 local adapter_module = require('uc_smn_pet_combat_adapter')
