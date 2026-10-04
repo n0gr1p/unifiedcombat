@@ -249,7 +249,7 @@ Exit criteria:
 
 ### Phase 4 — Migrate job-specific configuration
 
-Status: **IN PROGRESS — SMN, PUP, SCH, and GEO canonical runtime cutovers are CI-proven; BRD implementation is in verification; COR remains**
+Status: **IN PROGRESS — SMN, PUP, SCH, GEO, and BRD canonical runtime cutovers are CI-proven; COR authority audit is in verification**
 
 Targets:
 
@@ -270,8 +270,8 @@ Exit criteria:
 - [x] PUP consumes canonical Profile V2 config;
 - [x] SCH consumes canonical Profile V2 config;
 - [x] GEO maintenance consumes canonical Profile V2 config;
-- [ ] BRD maintenance consumes the tick-stable canonical Profile V2 config (implementation in verification);
-- [ ] COR has no remaining durable compatibility dependency.
+- [x] BRD maintenance consumes the tick-stable canonical Profile V2 config;
+- [ ] COR has no remaining durable compatibility dependency (authority audit in verification).
 
 ### 2026-10-04 — Phase 4 SMN runtime cutover implemented
 
@@ -331,9 +331,22 @@ Exit criteria:
 - Added `tests/replay/harness/selftest_phase4_brd_authority.lua`. The regression makes any `uc_active_config.get_path()` call fail immediately, opposes canonical BRD enablement/range/reposition policy against compatibility state in both directions, and proves the canonical pulling leash reaches positioning.
 - Existing BRD maintenance, movement-safety, positioning, and song-identity suites are included in the dedicated Phase 4 BRD CI step.
 - This slice has no flat-surface allowlist count change because the BRD provider was not reading `ctx.settings` or `UC_SETTINGS`; the removed seam was a global canonical resample that bypassed the scheduler context rather than a flat read.
-- CI proof is pending on the implementation head.
+- Implementation head `c5a7f66d12d303f70ba0de6715c9e7c0b614c4ed` is proven by workflow `37244782699`: Phase 4 BRD canonical-authority PASS, BRD maintenance/movement-safety/positioning/song-identity suites PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS. The run also exposed and fixed a pre-existing replay-harness assumption by making the BRD diagnostic-log fixture create its scratch `data/logs` directory before use.
 - No intentional song ordering, dummy-song capacity logic, Nitro/Soul Voice/Clarion/Marcato sequencing, Pianissimo targeting, recovery-range geometry, positioning algorithm, or dispatch behavior changed; the change is authority/snapshot consistency only.
 - Live-game smoke verification remains required for ordinary song maintenance, targeted/Pianissimo songs, Nitro/Soul Voice/Clarion/Marcato sequencing, and reposition-for-party-songs behavior before final migration acceptance.
+
+### 2026-10-04 — Phase 4 COR authority audit implemented
+
+- The COR scheduler/runtime path was already canonical from the earlier maintenance migration, so this slice intentionally makes no production decision-logic rewrite.
+- `uc_provider_maintenance.lua` passes the tick-stable canonical root to COR by identity through `cor_propose(ctx.config)`.
+- `uc_cor_maintenance.propose(config)` derives COR roll selection, Crooked Cards slot, Elevens policy, Luzaf/range policy, Light Shot-on-Dia enablement, and configured-ability roll fallback only from the explicit canonical config argument. It has no `ctx.settings`, `UC_SETTINGS`, `uc_active_config`, or `active_value_or_flat` runtime reader.
+- Remaining `cor_*` flat names are compatibility/edit/projection inputs in `UnifiedCombat.lua`, `uc_active_config.lua`, WinForms, the remote bridge, and normalization. They do not feed the COR action-decision path after canonical config has been built.
+- `uc_config_normalizer_cor.lua` is explicitly classified as an input/migration compatibility adapter: it accepts legacy/mixed input shapes to materialize canonical `config.maintenance.cor.light_shot_dia`, but `uc_cor_maintenance.lua` never invokes that normalizer at action time.
+- Added `tests/replay/harness/selftest_phase4_cor_authority.lua`. It installs deliberately conflicting flat COR globals plus a fail-fast fake `uc_active_config`, proves canonical roll/Crooked/Luzaf/range/ability-fallback decisions, proves the maintenance provider passes `ctx.config` by identity, and freezes the static no-flat/no-resample runtime boundary.
+- Dedicated Phase 4 COR CI also runs the existing Dia/Light Shot static and runtime suites plus the earlier active-config maintenance regression.
+- No flat-surface allowlist change is expected in this slice because COR's remaining flat names are producer/normalizer/editor compatibility surfaces rather than scheduler runtime consumers.
+- CI proof is pending on the audit head.
+- No intentional roll selection, Double-Up/Snake Eye/Fold logic, Crooked Cards behavior, Luzaf range semantics, Dia/Light Shot behavior, or incoming-chunk state tracking changed.
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
