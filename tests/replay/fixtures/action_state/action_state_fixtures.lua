@@ -238,10 +238,12 @@ return {
             now_s = function()
                 return 10.5
             end,
+            active_profile = {
+                version = 2,
+                profile = {},
+                config = { debug = { combat_sched = true } },
+            },
             globals = {
-                UC_SETTINGS = {
-                    log_combat_sched = true,
-                },
                 UC_LOG_DIAG = function(topic, msg)
                     local sink = _G.__diag_sink
                     sink[#sink + 1] = {
@@ -288,11 +290,12 @@ return {
             now_s = function()
                 return 20
             end,
-            globals = {
-                UC_SETTINGS = {
-                    log_combat_sched = false,
-                },
+            active_profile = {
+                version = 2,
+                profile = {},
+                config = { debug = { combat_sched = false } },
             },
+            globals = {},
         },
         expected = {
             result = {

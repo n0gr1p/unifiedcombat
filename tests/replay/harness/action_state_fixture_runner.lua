@@ -41,9 +41,17 @@ local function call_helper(fixture)
     end
 
     if fixture.helper == "action_dispatch_blocked" then
-        local blocked, code, sink = run_with_diag_sink(function()
-            return action_state.action_dispatch_blocked(scheduler, input.now_s, input.globals or {})
+        local previous_active_profile = rawget(_G, "UC_ACTIVE_PROFILE")
+        _G.UC_ACTIVE_PROFILE = input.active_profile
+        local ok, blocked, code, sink = pcall(function()
+            return run_with_diag_sink(function()
+                return action_state.action_dispatch_blocked(scheduler, input.now_s, input.globals or {})
+            end)
         end)
+        _G.UC_ACTIVE_PROFILE = previous_active_profile
+        if not ok then
+            error(blocked)
+        end
         return { blocked, code }, scheduler.action_state, sink
     end
 
