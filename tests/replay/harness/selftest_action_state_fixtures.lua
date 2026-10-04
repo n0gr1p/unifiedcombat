@@ -27,16 +27,6 @@ local function main()
         suite_id = "action_state",
     })
 
-    if not result.ok then
-        for _, entry in ipairs(result.entries or {}) do
-            if entry.ok ~= true then
-                io.stdout:write(("action_state fixture failed: %s\n"):format(tostring(entry.fixture_id)))
-                for _, mismatch in ipairs(entry.mismatches or {}) do
-                    io.stdout:write("  - " .. tostring(mismatch) .. "\n")
-                end
-            end
-        end
-    end
     assert_true(result.ok, "action state suite should fully pass")
     assert_equal(result.suite_id, "action_state", "suite id mismatch")
     assert_equal(result.total, 10, "fixture count mismatch")

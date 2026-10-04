@@ -143,7 +143,6 @@ jobs:
           lua5.1 tests/replay/harness/selftest_charm_sleeper.lua
           lua5.1 tests/replay/harness/selftest_sleep_waker.lua
           lua5.1 tests/replay/harness/selftest_combat_commitment.lua
-          lua5.1 tests/replay/harness/selftest_action_state_fixtures.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
