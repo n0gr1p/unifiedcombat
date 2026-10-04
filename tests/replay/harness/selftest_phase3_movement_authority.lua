@@ -371,7 +371,7 @@ local function test_static_wiring()
         'flat face may remain only in explicit no-config compatibility branch')
 
     local coordinator_start = assert(scheduler_source:find('local function run_movement_coordinator_tick(config)', 1, true))
-    local coordinator_end = assert(scheduler_source:find('function scheduler.p1_pick_preemptive_engage', coordinator_start, true))
+    local coordinator_end = assert(scheduler_source:find('local function tank_enmity_diag', coordinator_start, true))
     local coordinator = scheduler_source:sub(coordinator_start, coordinator_end)
     assert_not_contains(coordinator, 'get_tick_ctx().config',
         'movement coordinator must not reach out to process_tick local state')
