@@ -52,9 +52,6 @@ return {
 		["uc_config_runtime.lua"] = {
 			["uc_settings"] = 2,
 		},
-		["uc_geo_maintenance.lua"] = {
-			["ctx_settings"] = 3,
-		},
 		["uc_party_follow.lua"] = {
 			["uc_settings"] = 5,
 		},
