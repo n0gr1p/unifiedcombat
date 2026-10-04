@@ -151,6 +151,11 @@ jobs:
           lua5.1 tests/replay/harness/selftest_pet_combat_provider.lua
           lua5.1 tests/replay/harness/selftest_smn_cross_provider_integration.lua
           lua5.1 tests/replay/harness/selftest_smn_replay_fixtures.lua
+      - name: Phase 4 PUP canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase4_pup_authority.lua
+          lua5.1 tests/replay/harness/selftest_pup_profile_v2.lua
+          lua5.1 tests/replay/harness/selftest_pup_automaton_control.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test

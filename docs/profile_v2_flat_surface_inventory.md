@@ -340,6 +340,15 @@ The final listed Phase 3 movement slice removes the remaining unified movement a
 
 
 
+## Phase 4 PUP burn-down
+
+Puppetmaster runtime authority is cut over to canonical `config.puppetmaster`:
+
+- `uc_pup_runtime.lua`: `ctx.settings` 1→0. Runtime observation fallback reads canonical scheduler config.
+- `uc_pup_pet_combat_adapter.lua`: `ctx.settings` 1→0. Activate, Deploy, Maneuver pattern/enablement, recovery hold, and burden ceiling all originate from canonical config.
+- `uc_pup_runtime.config_from_settings()` remains a compatibility/direct-caller helper only and is not used by scheduler runtime authority.
+- Live automaton identity, lifecycle, observed Maneuver buffs, burden estimation, recasts, targets, and combat generation remain runtime-only state.
+
 ## Phase 4 SMN burn-down
 
 Summoner runtime authority is now cut over to canonical `config.summoner`:

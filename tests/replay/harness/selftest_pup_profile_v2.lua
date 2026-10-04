@@ -66,8 +66,11 @@ assert_true(conversion.candidate.puppetmaster_enabled, 'autoload candidate must 
 assert_true(type(conversion.candidate_config.puppetmaster) == 'table', 'autoload candidate durable config must retain puppetmaster domain')
 assert_true(conversion.candidate_config.puppetmaster.enabled, 'autoload candidate durable config must retain enabled=true')
 
-local no_profile_config = runtime.config_from_settings({ profile = { main_job = 'PUP' } })
-assert_false(no_profile_config.enabled, 'missing profile-owned PUP config must disable automation')
+local no_profile_config = runtime.config_from_config({ profile = { main_job = 'PUP' } })
+assert_false(no_profile_config.enabled, 'missing canonical PUP config must disable automation')
+
+local compatibility_no_profile = runtime.config_from_settings({ profile = { main_job = 'PUP' } })
+assert_false(compatibility_no_profile.enabled, 'legacy/direct PUP compatibility parser must preserve disabled default')
 
 local ok_non_pup = pcall(function()
     normalizer.normalize(flat_settings(), { character = 'Tester', main_job = 'WAR', sub_job = 'NIN' })

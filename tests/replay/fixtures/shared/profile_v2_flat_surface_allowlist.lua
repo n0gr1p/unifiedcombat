@@ -79,12 +79,6 @@ return {
 		["uc_provider_target_control.lua"] = {
 			["ctx_settings"] = 3,
 		},
-		["uc_pup_pet_combat_adapter.lua"] = {
-			["ctx_settings"] = 1,
-		},
-		["uc_pup_runtime.lua"] = {
-			["ctx_settings"] = 1,
-		},
 		["uc_runtime_overrides.lua"] = {
 			["uc_settings"] = 1,
 		},

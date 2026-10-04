@@ -249,7 +249,7 @@ Exit criteria:
 
 ### Phase 4 — Migrate job-specific configuration
 
-Status: **IN PROGRESS — SMN canonical runtime cutover is CI-proven; PUP is next**
+Status: **IN PROGRESS — SMN is CI-proven; PUP canonical runtime cutover implemented with CI proof pending**
 
 Targets:
 
@@ -282,6 +282,19 @@ Exit criteria:
 - Existing SMN maintenance, pet-combat, integration, and replay fixtures were updated to provide canonical `config.summoner` while retaining flat settings only as compatibility/test state.
 - Flat-surface burn-down: `uc_smn_maintenance.lua` `ctx.settings` 2→0; `uc_smn_pet_combat_adapter.lua` 1→0. Both files are removed from the Profile V2 flat-surface allowlist.
 - Dedicated Phase 4 SMN CI coverage is wired into the PR workflow. Implementation head `4541f3b9212fbd97281c410af79b4e2c2be2d470` is proven by workflow `37209447842`: Phase 4 SMN canonical-authority PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms PASS.
+
+### 2026-10-04 — Phase 4 PUP runtime cutover implemented
+
+- `config.puppetmaster` is now the only durable runtime authority for Puppetmaster automaton maintenance and pet-combat policy.
+- `uc_pup_runtime.config_from_config(config)` validates/copies the canonical Puppetmaster subtree directly. `config_from_settings(settings)` remains only as a bounded compatibility/direct-caller helper.
+- `uc_pup_runtime.observe()` no longer falls back to `ctx.settings.puppetmaster`; its implicit config path is canonical `ctx.config`.
+- `uc_pup_pet_combat_adapter.lua` snapshot policy now consumes canonical config directly.
+- Durable PUP policy includes automation enablement, Activate-if-missing, Deploy-on-combat-start, Maneuver enablement/pattern, post-activation recovery duration, and safe burden ceiling.
+- Observed automaton identity, pet lifecycle transitions, Maneuver buffs, estimated burden, recasts, target state, combat generation, and current zone remain runtime state outside Profile V2.
+- Added `tests/replay/harness/selftest_phase4_pup_authority.lua` with intentionally contradictory canonical and compatibility-mirror state across every durable PUP setting.
+- Existing PUP profile and automaton-control tests now provide canonical scheduler config explicitly while continuing to characterize compatibility conversion separately.
+- Flat-surface burn-down: `uc_pup_runtime.lua` `ctx.settings` 1→0; `uc_pup_pet_combat_adapter.lua` 1→0. Both files are removed from the flat-surface allowlist.
+- Dedicated Phase 4 PUP CI coverage is wired into the PR workflow. Automated proof is pending on the implementation head.
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 

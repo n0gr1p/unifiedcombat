@@ -46,6 +46,19 @@ local function require_table(value, name)
 	return value
 end
 
+function M.config_from_config(config)
+	local source = type(config) == 'table' and config.puppetmaster or nil
+	local meta = type(config) == 'table' and config.profile or nil
+	local canonical, validation = uc_pup_config.copy_validated(source, meta)
+	if canonical == nil or validation.valid ~= true then
+		local first = validation and validation.errors and validation.errors[1]
+		error(first and first.message or 'Puppetmaster configuration validation failed')
+	end
+	return canonical
+end
+
+-- Compatibility parser for legacy/direct callers and migration tests only.
+-- Scheduler/runtime authority must use config_from_config().
 function M.config_from_settings(settings)
 	local source = type(settings) == 'table' and settings.puppetmaster or nil
 	local meta = type(settings) == 'table' and settings.profile or nil
@@ -196,7 +209,7 @@ end
 function M.observe(state, ctx, now, config)
 	require_table(state, 'Puppetmaster burden state')
 	require_table(ctx, 'Puppetmaster scheduler context')
-	config = config or M.config_from_settings(ctx.settings)
+	config = config or M.config_from_config(ctx.config)
 	now = tonumber(now) or tonumber(ctx.now) or 0
 	decay(state, now)
 
