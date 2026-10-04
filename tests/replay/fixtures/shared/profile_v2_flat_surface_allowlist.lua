@@ -101,12 +101,6 @@ return {
 		["uc_scheduler_ranker.lua"] = {
 			["ctx_settings"] = 2,
 		},
-		["uc_smn_maintenance.lua"] = {
-			["ctx_settings"] = 2,
-		},
-		["uc_smn_pet_combat_adapter.lua"] = {
-			["ctx_settings"] = 1,
-		},
 		["unified_combat_core.lua"] = {
 			["uc_settings"] = 1,
 		},

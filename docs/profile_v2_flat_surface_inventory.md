@@ -340,6 +340,15 @@ The final listed Phase 3 movement slice removes the remaining unified movement a
 
 
 
+## Phase 4 SMN burn-down
+
+Summoner runtime authority is now cut over to canonical `config.summoner`:
+
+- `uc_smn_maintenance.lua`: `ctx.settings` 2→0. Collection and commit-time revalidation both consume the canonical scheduler config.
+- `uc_smn_pet_combat_adapter.lua`: `ctx.settings` 1→0. Avatar correctness, Assault policy, and Rage policy are derived from the canonical Summoner subtree.
+- `uc_smn_runtime.config_from_settings()` remains a bounded compatibility parser for legacy/direct callers and migration tests, not a scheduler authority path.
+- Live pet identity, pet TP, recasts, target state, combat generation, and reaction runtime remain non-durable observed state.
+
 ## Phase 3 automated exit-audit burn-down
 
 The common scheduler/core exit audit removes the remaining flat authority seams discovered after the listed Phase 3 domains were migrated:

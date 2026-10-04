@@ -143,6 +143,14 @@ jobs:
           lua5.1 tests/replay/harness/selftest_charm_sleeper.lua
           lua5.1 tests/replay/harness/selftest_sleep_waker.lua
           lua5.1 tests/replay/harness/selftest_combat_commitment.lua
+      - name: Phase 4 SMN canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase4_smn_authority.lua
+          lua5.1 tests/replay/harness/selftest_summoner_configuration.lua
+          lua5.1 tests/replay/harness/selftest_smn_maintenance.lua
+          lua5.1 tests/replay/harness/selftest_pet_combat_provider.lua
+          lua5.1 tests/replay/harness/selftest_smn_cross_provider_integration.lua
+          lua5.1 tests/replay/harness/selftest_smn_replay_fixtures.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test

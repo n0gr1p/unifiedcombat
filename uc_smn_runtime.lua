@@ -100,6 +100,14 @@ local function optional_gate(settings, enabled_name, value_name, default_value, 
 	}
 end
 
+function M.config_from_config(config)
+	config = require_table(config, 'Summoner canonical config')
+	local summoner = require_table(config.summoner, 'config.summoner')
+	return summoner, smn_config.validate(summoner)
+end
+
+-- Compatibility parser for legacy/direct callers and migration tests only.
+-- Scheduler/runtime authority must use config_from_config().
 function M.config_from_settings(settings)
 	settings = require_table(settings, 'Summoner runtime settings')
 	require_boolean(settings.summoner_enabled, 'summoner_enabled')

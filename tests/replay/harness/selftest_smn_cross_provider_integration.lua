@@ -5,6 +5,7 @@ local maintenance_module = require('uc_smn_maintenance')
 local adapter_module = require('uc_smn_pet_combat_adapter')
 local pet_provider_module = require('uc_pet_combat_provider')
 local pet_state_module = require('uc_pet_combat_state')
+local runtime = require('uc_smn_runtime')
 
 local function assert_equal(actual, expected, message)
 	if actual ~= expected then
@@ -19,7 +20,7 @@ local function assert_true(value, message)
 end
 
 local function context()
-	return {
+	local ctx = {
 		now = 10,
 		settings = {
 			summoner_enabled = true,
@@ -80,6 +81,8 @@ local function context()
 			[174] = 0,
 		},
 	}
+	ctx.config = { summoner = select(1, runtime.config_from_settings(ctx.settings)) }
+	return ctx
 end
 
 local command_state = coordinator.new({
@@ -261,23 +264,23 @@ local function test_optional_rage_gates()
 	assert_true(contains_kind(collect_all(ctx), 'rage'), 'disabled gates must not require pet TP')
 
 	ctx.pet_tp = 3000
-	ctx.settings.summoner_rage_target_hpp_above_enabled = true
+	ctx.config.summoner.pet_combat.offensive_action.target_hpp_above_enabled = true
 	ctx.target.hpp = 50
 	assert_equal(contains_kind(collect_all(ctx), 'rage'), false, 'target HPP equal to threshold must suppress Rage')
 	ctx.target.hpp = 51
 	assert_true(contains_kind(collect_all(ctx), 'rage'), 'target HPP above threshold must allow Rage')
 
-	ctx.settings.summoner_rage_target_hpp_above_enabled = false
-	ctx.settings.summoner_rage_pet_tp_above_enabled = true
-	ctx.settings.summoner_rage_pet_tp_above = 2000
+	ctx.config.summoner.pet_combat.offensive_action.target_hpp_above_enabled = false
+	ctx.config.summoner.pet_combat.offensive_action.pet_tp_above_enabled = true
+	ctx.config.summoner.pet_combat.offensive_action.pet_tp_above = 2000
 	ctx.pet_tp = 2000
 	assert_equal(contains_kind(collect_all(ctx), 'rage'), false, 'pet TP equal to threshold must suppress Rage')
 	ctx.pet_tp = 2001
 	assert_true(contains_kind(collect_all(ctx), 'rage'), 'pet TP above threshold must allow Rage')
 
 	ctx.settings.summoner_rage_target_hpp_above_enabled = true
-	ctx.settings.summoner_rage_target_hpp_above = 50
-	ctx.settings.summoner_rage_pet_tp_above = 2999
+	ctx.config.summoner.pet_combat.offensive_action.target_hpp_above = 50
+	ctx.config.summoner.pet_combat.offensive_action.pet_tp_above = 2999
 	ctx.target.hpp = 51
 	ctx.pet_tp = 3000
 	assert_true(contains_kind(collect_all(ctx), 'rage'), 'both enabled gates must allow Rage when both pass')

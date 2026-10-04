@@ -169,7 +169,7 @@ function M.new(deps)
 			return
 		end
 
-		local config, validation = runtime.config_from_settings(ctx.settings)
+		local config, validation = runtime.config_from_config(ctx.config)
 		if config.enabled ~= true then
 			set_status('disabled', '')
 			return
@@ -352,7 +352,7 @@ function M.new(deps)
 		require_table(selected, 'selected')
 		require_table(ctx, 'ctx')
 		local detail = require_table(selected.detail, 'selected.detail')
-		local config, validation = runtime.config_from_settings(ctx.settings)
+		local config, validation = runtime.config_from_config(ctx.config)
 		if config.enabled ~= true or validation.avatar_valid ~= true then
 			return false, 'summoner_config_invalid'
 		end

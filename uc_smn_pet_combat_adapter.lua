@@ -78,7 +78,7 @@ function M.new(deps)
 			}
 		end
 		active_job_adapter = 'SMN'
-		local config, validation = runtime.config_from_settings(ctx.settings)
+		local config, validation = runtime.config_from_config(ctx.config)
 		local snapshot = {
 			enabled = false,
 			valid = false,

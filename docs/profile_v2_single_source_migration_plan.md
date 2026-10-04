@@ -249,7 +249,7 @@ Exit criteria:
 
 ### Phase 4 — Migrate job-specific configuration
 
-Status: **NOT STARTED**
+Status: **IN PROGRESS — SMN canonical runtime cutover implemented; CI proof pending**
 
 Targets:
 
@@ -270,6 +270,18 @@ Exit criteria:
 - [ ] PUP consumes canonical Profile V2 config;
 - [ ] SCH consumes canonical Profile V2 config;
 - [ ] BRD/COR/GEO have no remaining durable flat dependencies.
+
+### 2026-10-04 — Phase 4 SMN runtime cutover implemented
+
+- `config.summoner` is now the only durable runtime authority for Summoner maintenance and Summoner pet combat.
+- `uc_smn_runtime.config_from_config(config)` validates and exposes the canonical Summoner subtree directly. The existing flat `config_from_settings(settings)` parser is retained only as an explicit compatibility/migration-test helper.
+- `uc_smn_maintenance.lua` collect and revalidation paths now consume `ctx.config` directly; both prior `ctx.settings` reads are removed.
+- `uc_smn_pet_combat_adapter.lua` snapshot/configuration now consumes `ctx.config` directly; its prior `ctx.settings` read is removed.
+- Durable policy remains separated from observed runtime state: live avatar/pet identity, recasts, MP, pet TP, target state, combat generation, and reaction holds remain scheduler/runtime observations and are not written into Profile V2.
+- Added `tests/replay/harness/selftest_phase4_smn_authority.lua` with deliberately contradictory canonical-vs-flat state covering disabled/enabled authority, avatar selection, revalidation, Assault enablement, and Rage enablement/action selection.
+- Existing SMN maintenance, pet-combat, integration, and replay fixtures were updated to provide canonical `config.summoner` while retaining flat settings only as compatibility/test state.
+- Flat-surface burn-down: `uc_smn_maintenance.lua` `ctx.settings` 2→0; `uc_smn_pet_combat_adapter.lua` 1→0. Both files are removed from the Profile V2 flat-surface allowlist.
+- Dedicated Phase 4 SMN CI coverage is wired into the PR workflow. Automated proof is pending on the implementation head.
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 

@@ -3,6 +3,7 @@ package.path = './?.lua;' .. package.path
 local adapter_module = require('uc_smn_pet_combat_adapter')
 local provider_module = require('uc_pet_combat_provider')
 local state_module = require('uc_pet_combat_state')
+local runtime = require('uc_smn_runtime')
 
 local function assert_equal(actual, expected, message)
 	if actual ~= expected then
@@ -31,9 +32,11 @@ local function settings()
 end
 
 local function context()
+	local flat = settings()
 	return {
 		now = 10,
-		settings = settings(),
+		settings = flat,
+		config = { summoner = select(1, runtime.config_from_settings(flat)) },
 		player_present = true,
 		player = {
 			id = 100,
@@ -236,7 +239,7 @@ local function test_hard_prerequisites_and_rage_guards()
 	assert_equal(#collect(ctx), 0, 'wrong avatar must block Assault and Rage')
 
 	ctx = context()
-	ctx.settings.summoner_engage_on_combat_start = false
+	ctx.config.summoner.pet_combat.engage_on_combat_start = false
 	local actions = collect(ctx)
 	assert_equal(find(actions, 'assault'), nil, 'disabled engagement')
 	assert_true(find(actions, 'rage') ~= nil, 'Rage must not require Assault to be enabled')
@@ -260,6 +263,7 @@ local function test_non_summoner_ignores_summoner_settings()
 	local ctx = context()
 	ctx.player.main_job = 'PLD'
 	ctx.settings = {}
+	ctx.config = {}
 	assert_equal(#collect(ctx), 0, 'non-Summoner must not evaluate Summoner configuration')
 	assert_equal(_G.UC_SMN_PET_COMBAT_STATUS.state, 'disabled', 'non-Summoner status')
 end
