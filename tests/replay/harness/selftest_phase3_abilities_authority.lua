@@ -246,8 +246,9 @@ local function test_required_setting_resolver()
 		'canonical required-setting weaponskill false must be preserved')
 	assert_false(scheduler_config.required_setting_value_from_config(config, 'ability_active'),
 		'canonical required-setting ability false must be preserved')
-	assert_equal(scheduler_config.required_setting_value_from_config(config, 'sleep'), nil,
-		'unmigrated required settings must retain flat fallback')
+	config.sleep = { enabled = false }
+	assert_false(scheduler_config.required_setting_value_from_config(config, 'sleep'),
+		'canonical required-setting Sleep false must be preserved')
 
 	config.combat.autotarget = true
 	config.combat.weaponskill.enabled = true
