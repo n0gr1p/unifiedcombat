@@ -249,7 +249,7 @@ Exit criteria:
 
 ### Phase 4 — Migrate job-specific configuration
 
-Status: **IN PROGRESS — SMN is CI-proven; PUP canonical runtime cutover implemented with CI proof pending**
+Status: **IN PROGRESS — SMN and PUP canonical runtime cutovers are CI-proven; SCH is next**
 
 Targets:
 
@@ -267,7 +267,7 @@ Goals:
 Exit criteria:
 
 - [x] SMN consumes canonical Profile V2 config;
-- [ ] PUP consumes canonical Profile V2 config;
+- [x] PUP consumes canonical Profile V2 config;
 - [ ] SCH consumes canonical Profile V2 config;
 - [ ] BRD/COR/GEO have no remaining durable flat dependencies.
 
@@ -294,7 +294,7 @@ Exit criteria:
 - Added `tests/replay/harness/selftest_phase4_pup_authority.lua` with intentionally contradictory canonical and compatibility-mirror state across every durable PUP setting.
 - Existing PUP profile and automaton-control tests now provide canonical scheduler config explicitly while continuing to characterize compatibility conversion separately.
 - Flat-surface burn-down: `uc_pup_runtime.lua` `ctx.settings` 1→0; `uc_pup_pet_combat_adapter.lua` 1→0. Both files are removed from the flat-surface allowlist.
-- Dedicated Phase 4 PUP CI coverage is wired into the PR workflow. Automated proof is pending on the implementation head.
+- Dedicated Phase 4 PUP CI coverage is wired into the PR workflow. Implementation head `4825e797f998a52fadae59273a1c5754c6a0a823` is proven by workflow `37212592184`: Phase 4 PUP canonical-authority PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms PASS.
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
