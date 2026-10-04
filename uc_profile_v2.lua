@@ -272,6 +272,13 @@ local function pick_durable_config_domains(config, meta)
 	return out
 end
 
+local function strip_path_runtime_state(config)
+	if type(config) ~= 'table' then
+		return config
+	end
+	return strip_path_runtime_state(config)
+end
+
 local function strip_durable_profile_overrides(config)
 	if type(config) ~= 'table' then
 		return config
@@ -849,7 +856,7 @@ end
 function M.build_structured_profile(settings, meta)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
 	local resolved_meta = normalized_meta(meta)
-	local durable_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta)))))
+	local durable_config = strip_path_runtime_state(canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta))))))
 	if resolved_meta.profile_key ~= nil then
 		return {
 			version = 2,
@@ -883,7 +890,7 @@ end
 
 function M.build_durable_config(settings, meta)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
-	return canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta)))))
+	return strip_path_runtime_state(canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta))))))
 end
 
 function M.format_structured_profile_diff_value(value)
