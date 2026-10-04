@@ -249,7 +249,7 @@ Exit criteria:
 
 ### Phase 4 — Migrate job-specific configuration
 
-Status: **IN PROGRESS — SMN and PUP are CI-proven; SCH canonical provider cutover implemented with CI proof pending**
+Status: **IN PROGRESS — SMN, PUP, and SCH canonical runtime cutovers are CI-proven; BRD/COR/GEO compatibility audit is next**
 
 Targets:
 
@@ -268,7 +268,7 @@ Exit criteria:
 
 - [x] SMN consumes canonical Profile V2 config;
 - [x] PUP consumes canonical Profile V2 config;
-- [ ] SCH consumes canonical Profile V2 config;
+- [x] SCH consumes canonical Profile V2 config;
 - [ ] BRD/COR/GEO have no remaining durable flat dependencies.
 
 ### 2026-10-04 — Phase 4 SMN runtime cutover implemented
@@ -306,7 +306,7 @@ Exit criteria:
 - Added `tests/replay/harness/selftest_phase4_sch_authority.lua` with canonical and compatibility Scholar trees intentionally opposed across Arts, Sublimation, Regen, Storms, defensive stratagem policies, and skillchain configuration.
 - Existing Scholar provider integration coverage now supplies `ctx.config.sch` explicitly; the first live provider case deliberately leaves the compatibility mirror disabled while canonical Scholar policy remains enabled.
 - Flat-surface burn-down: `uc_provider_sch_maintenance.lua` `ctx.settings` 1→0; the file is removed from the Profile V2 flat-surface allowlist.
-- Dedicated Phase 4 SCH CI coverage is wired into the PR workflow. Automated proof is pending on the implementation head.
+- Dedicated Phase 4 SCH CI coverage is wired into the PR workflow. Implementation head `cb79e69a421bff49b65a3e70bd6d405b28e83ecf` is proven by workflow `37217954383`: Phase 4 SCH canonical-authority PASS, Scholar configuration/maintenance/runtime/duration/action-result suites PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms PASS.
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
