@@ -164,6 +164,11 @@ jobs:
           lua5.1 tests/replay/harness/selftest_sch_runtime.lua
           lua5.1 tests/replay/harness/selftest_sch_duration.lua
           lua5.1 tests/replay/harness/selftest_sch_action_results.lua
+      - name: Phase 4 GEO canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase4_geo_authority.lua
+          lua5.1 tests/replay/harness/selftest_geo_maintenance.lua
+          lua5.1 tests/replay/harness/selftest_geo_sequences.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
