@@ -580,7 +580,7 @@ assert_true(
 	coordinator:find("UC_MOVEMENT_OWNER = 'scheduler_formation'", formation_at, true) ~= nil,
 	'scheduler formation ownership publication must remain in the existing coordinator path'
 )
-local doom_at = assert(scheduler_source:find('local doom_blocked, doom_reason = try_doom_water_emergency(s)', 1, true))
+local doom_at = assert(scheduler_source:find('local doom_blocked, doom_reason = try_doom_water_emergency(s, get_tick_ctx())', 1, true))
 local movement_at = assert(scheduler_source:find('move_acted, move_reason = run_movement_coordinator_tick(get_tick_ctx().config)', doom_at, true))
 assert_true(doom_at < movement_at, 'Doom handling must remain above the movement coordinator')
 

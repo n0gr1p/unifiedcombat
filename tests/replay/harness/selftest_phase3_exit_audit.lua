@@ -110,6 +110,8 @@ local function test_common_scheduler_core_wiring()
     local action_state = read_all('uc_scheduler_action_state.lua')
     local charm = read_all('uc_provider_charm_sleeper.lua')
     local wake = read_all('uc_provider_sleep_waker.lua')
+    local combat_provider = read_all('uc_provider_combat.lua')
+    local defensive_provider = read_all('uc_provider_defensive.lua')
     local core = read_all('unified_combat_core.lua')
     local scheduler = read_all('unified_scheduler.lua')
 
@@ -152,9 +154,32 @@ local function test_common_scheduler_core_wiring()
         'scheduler-facing movement must consume explicit canonical config')
     assert_contains(scheduler, 'ctx.config',
         'scheduler contexts must retain canonical config')
-    assert_not_contains(scheduler,
-        'active_value_or_flat = scheduler.active_value_or_flat',
-        'common defensive providers must not receive flat fallback authority')
+    assert_not_contains(scheduler, 'active_value_or_flat(',
+        'unified scheduler must not retain canonical-first flat fallback authority')
+    assert_not_contains(scheduler, "require('uc_runtime_overrides')",
+        'unified scheduler common policy must not route through runtime override compatibility readers')
+    assert_contains(scheduler, 'sleep_enabled = uc_scheduler_config.sleep_enabled_from_config',
+        'scheduler Sleep enablement must be canonical')
+    assert_contains(scheduler, 'sleep_spell_list = scheduler.sleep_spell_list_from_config',
+        'scheduler Sleep order must be canonical')
+    assert_contains(scheduler, 'uc_scheduler_config.defensive_from_config(config)',
+        'common defensive selection must consume canonical config')
+    assert_not_contains(defensive_provider, 'ctx.settings',
+        'defensive provider must not consume flat scheduler settings')
+    assert_not_contains(defensive_provider, 'active_value_or_flat',
+        'defensive provider must not retain flat fallback authority')
+    assert_contains(combat_provider, 'sleep_enabled(ctx.config)',
+        'combat provider Sleep collection must use canonical config')
+    assert_contains(combat_provider, 'fight_leader_enabled(ctx.config)',
+        'combat provider fight-leader collection must use canonical config')
+    assert_contains(combat_provider, 'combat_prime(ctx.config)',
+        'combat provider Prime collection must use canonical config')
+    assert_not_contains(combat_provider, 'sleep_enabled(ctx.settings)',
+        'combat provider Sleep collection must not use flat settings')
+    assert_not_contains(combat_provider, 'fight_leader_enabled(ctx.settings)',
+        'combat provider fight-leader collection must not use flat settings')
+    assert_not_contains(combat_provider, 'combat_prime(ctx.settings)',
+        'combat provider Prime collection must not use flat settings')
 end
 
 test_required_setting_authority()

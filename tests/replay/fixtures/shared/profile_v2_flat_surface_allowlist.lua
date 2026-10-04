@@ -65,7 +65,7 @@ return {
 			["project_flat_settings"] = 1,
 		},
 		["uc_provider_combat.lua"] = {
-			["ctx_settings"] = 20,
+			["ctx_settings"] = 11,
 		},
 		["uc_provider_run_tank.lua"] = {
 			["ctx_settings"] = 1,
@@ -114,8 +114,7 @@ return {
 			["uc_settings"] = 1,
 		},
 		["unified_scheduler.lua"] = {
-			["active_value_or_flat"] = 32,
-			["ctx_settings"] = 11,
+			["ctx_settings"] = 2,
 		},
 	},
 	["patterns"] = {

@@ -94,6 +94,41 @@ function M.sleep_enabled_from_config(config)
     return type(sleep) == 'table' and sleep.enabled == true
 end
 
+function M.sleep_order_from_config(config)
+    local sleep = type(config) == 'table' and config.sleep or nil
+    if type(sleep) ~= 'table' then return {} end
+    local order = type(sleep.order) == 'table' and sleep.order or nil
+    if type(order) == 'table' and #order > 0 then
+        local out = {}
+        for i = 1, #order do out[i] = order[i] end
+        return out
+    end
+    local primary = tostring(sleep.legacy_primary or ''):match('^%s*(.-)%s*$') or ''
+    return primary ~= '' and { primary } or {}
+end
+
+function M.sleep_max_target_range_from_config(config)
+    local sleep = type(config) == 'table' and config.sleep or nil
+    return tonumber(type(sleep) == 'table' and sleep.max_target_range) or 6.0
+end
+
+function M.defensive_from_config(config)
+    local defensive = type(config) == 'table' and config.defensive or nil
+    return type(defensive) == 'table' and defensive or {}
+end
+
+function M.defensive_critical_hpp_from_config(config)
+    local defensive = M.defensive_from_config(config)
+    local thresholds = type(defensive.thresholds) == 'table' and defensive.thresholds or nil
+    return tonumber(type(thresholds) == 'table' and thresholds.critical_hpp) or 35
+end
+
+function M.defensive_doom_water_enabled_from_config(config)
+    local defensive = M.defensive_from_config(config)
+    local doom = type(defensive.doom) == 'table' and defensive.doom or nil
+    return defensive.enabled == true and type(doom) == 'table' and doom.holy_water_enabled == true
+end
+
 function M.combat_autotarget(settings)
     local s = settings_or_default(settings)
     return M.active_value_or_flat('config.combat.autotarget', s.autotarget)

@@ -237,7 +237,7 @@ function M.new(deps)
 			return
 		end
 		local candidates = build_defensive_candidates(ctx)
-		local action, reason = choose_defensive_action(candidates)
+		local action, reason = choose_defensive_action(candidates, ctx.config)
 		local action_name = type(action) == 'table' and tostring(action.action_name or action.spell or '') or ''
 		if not action or action_name == '' or not action.target or not action.target.name then
 			return

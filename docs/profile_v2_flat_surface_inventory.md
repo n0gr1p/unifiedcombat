@@ -348,6 +348,9 @@ The common scheduler/core exit audit removes the remaining flat authority seams 
 - `uc_combat_commitment.lua`: runtime Prime and fight-leader commitment policy use the explicit canonical tick config; its `ctx.settings` count falls from 3 to 1, with the survivor belonging to the generic dependency callback contract rather than runtime durable policy.
 - `uc_provider_charm_sleeper.lua` and `uc_provider_sleep_waker.lua`: both drop all `ctx.settings` and `active_value_or_flat` usage.
 - `uc_scheduler_action_state.lua`: the final direct `UC_SETTINGS` diagnostic read is removed in favor of canonical debug config.
+- `unified_scheduler.lua`: `active_value_or_flat(` falls 32→0 and `ctx.settings` falls 11→2. Common defensive, Sleep, Prime, fight-leader, Doom, and critical-cure arbitration no longer consult flat compatibility state.
+- `uc_provider_combat.lua`: `ctx.settings` falls 20→11 after moving Sleep, Prime, and fight-leader collection to `ctx.config`.
+- `uc_provider_defensive.lua`: remains at zero flat scheduler/config surfaces; candidate selection now also receives canonical config for final defensive arbitration.
 - Production scheduler `required_setting` tokens are mechanically enumerated and required to resolve through canonical Profile V2 paths.
 - Remaining job-specific flat consumers are assigned to Phase 4; runtime cadence/state and explicit legacy/no-config compatibility paths are not being misclassified as durable authority.
 

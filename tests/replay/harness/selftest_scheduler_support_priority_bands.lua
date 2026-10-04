@@ -184,7 +184,7 @@ local function main()
 		"Scholar Sublimation safety must fail closed on stale defensive proposal evidence")
 	assert_contains(source, "player_doom_present = player_has_doom(ctx.player)",
 		"Scholar Sublimation safety must reuse the existing Doom observation")
-	assert_contains(source, "return scheduler.p1_is_critical_defensive_proposal(ctx.settings, proposal)",
+	assert_contains(source, "return scheduler.p1_is_critical_defensive_proposal(ctx.config, proposal)",
 		"Scholar Sublimation safety must reuse the established critical-cure classifier")
 	assert_contains(source, "get_sublimation_safety = scheduler.sch_sublimation_safety",
 		"Scholar provider must receive the scheduler-owned safety evidence boundary")
@@ -225,7 +225,7 @@ local function main()
 		"ready Luopan recovery must prevent a new pull journey")
 	assert_contains(source, "if ctx.geo_creation_preempts_pull ~= true then\n\t\t\tscheduler.providers.camp_puller.collect(ctx, out)",
 		"ready Luopan recovery must suppress collection-time pull acquisition")
-    assert_before(process_tick, "try_doom_water_emergency(s)", "scheduler.dispatch_selected_plan(s)",
+    assert_before(process_tick, "try_doom_water_emergency(s, get_tick_ctx())", "scheduler.dispatch_selected_plan(s)",
         "Doom must remain the sole hard prepass ahead of Bard scheduler arbitration")
     assert_contains(process_tick, "if not brd_lane_reserved and not camp_lane_reserved and not sch_lane_holds then\n\t\tlocal target_ctx = nil",
         "Bard, Scholar, and camp-puller lanes must hold nonblocking target acquisition")

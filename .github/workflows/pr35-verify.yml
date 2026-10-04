@@ -138,6 +138,8 @@ jobs:
           lua5.1 tests/replay/harness/selftest_phase3_exit_audit.lua
           lua5.1 tests/replay/harness/selftest_scheduler_ranker.lua
           lua5.1 tests/replay/harness/selftest_scheduler_sleep_toggle.lua
+          lua5.1 tests/replay/harness/selftest_sleep_spell_selection.lua
+          lua5.1 tests/replay/harness/selftest_sleep_target_state_suppression.lua
           lua5.1 tests/replay/harness/selftest_charm_sleeper.lua
           lua5.1 tests/replay/harness/selftest_sleep_waker.lua
           lua5.1 tests/replay/harness/selftest_combat_commitment.lua

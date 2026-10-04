@@ -247,10 +247,10 @@ function M.new(deps)
 			return false
 		end
 		local dist = mob.distance and mob.distance:sqrt() or 999
-		if dist > sleep_max_target_distance(ctx.settings) then
+		if dist > sleep_max_target_distance(ctx.config) then
 			return false
 		end
-		if target_sleep_suppressed(ctx.settings, tid, ctx.now) then
+		if target_sleep_suppressed(ctx.config, tid, ctx.now) then
 			return false
 		end
 		return true
@@ -265,10 +265,10 @@ function M.new(deps)
 		if not bool_setting(combat_domain_enabled(), false) then
 			return
 		end
-		if not bool_setting(sleep_enabled(ctx.settings), false) then
+		if not bool_setting(sleep_enabled(ctx.config), false) then
 			return
 		end
-		local configured_sleep_spells = sleep_spell_list(ctx.settings)
+		local configured_sleep_spells = sleep_spell_list(ctx.config)
 		if #configured_sleep_spells == 0 then
 			return
 		end
@@ -287,7 +287,7 @@ function M.new(deps)
 		local marray = ctx.mob_array
 		for _, mob in pairs(marray) do
 			if provider.sleep_target_eligible(ctx, mob, current_target_id, claims_set, partner_target_set) then
-				local spell_pick = select_sleep_spell(ctx.settings, mob)
+				local spell_pick = select_sleep_spell(ctx.config, mob)
 				if spell_pick then
 					local tid = tonumber(mob.id) or 0
 					local dist = tonumber(spell_pick.dist) or 999
@@ -451,8 +451,8 @@ function M.new(deps)
 			), 0.50)
 		end
 		local fight_leader_force_target_id = 0
-		local fight_leader_on = bool_setting(fight_leader_enabled(ctx.settings), false)
-		local leader_id = fight_leader_id(ctx.settings)
+		local fight_leader_on = bool_setting(fight_leader_enabled(ctx.config), false)
+		local leader_id = fight_leader_id(ctx.config)
 		if fight_leader_on and leader_id > 0 then
 			fight_leader_force_target_id = tonumber(fight_leader_target_id(leader_id)) or 0
 		end
@@ -521,7 +521,7 @@ function M.new(deps)
 		local party_claimed_ok = claims_set[claim_id] == true
 		local camp_pull_order = camp_pull_registry.combat_order(target, claims_set)
 		local camp_pull_ok = camp_pull_order ~= nil
-		local prime_unclaimed_ok = prime_unclaimed_party_aggressive_ok(ctx.settings, target, party_ids)
+		local prime_unclaimed_ok = prime_unclaimed_party_aggressive_ok(ctx.config, target, party_ids)
 		local force_leader_engage = fight_leader_force_target_id > 0
 			and fight_leader_force_target_id == (tonumber(target.id) or 0)
 		local claim_check = ('party_claimed=%s,camp_pull=%s,prime_unclaimed=%s,force_leader=%s,hunter_fallback=%s,claim_id=%d'):format(
@@ -541,7 +541,7 @@ function M.new(deps)
 				_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:policy claim=%d st=%d prime=%s'):format(
 					claim_id,
 					tonumber(target.status) or 0,
-					tostring(bool_setting(combat_prime(ctx.settings), false))
+					tostring(bool_setting(combat_prime(ctx.config), false))
 				)
 			end
 			log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', target, 'claim_policy', pull_owner_state, claim_check)
