@@ -249,7 +249,7 @@ Exit criteria:
 
 ### Phase 4 — Migrate job-specific configuration
 
-Status: **IN PROGRESS — SMN, PUP, and SCH canonical runtime cutovers are CI-proven; BRD/COR/GEO compatibility audit is next**
+Status: **IN PROGRESS — SMN, PUP, and SCH canonical runtime cutovers are CI-proven; GEO implementation is in verification; BRD/COR remain**
 
 Targets:
 
@@ -269,7 +269,8 @@ Exit criteria:
 - [x] SMN consumes canonical Profile V2 config;
 - [x] PUP consumes canonical Profile V2 config;
 - [x] SCH consumes canonical Profile V2 config;
-- [ ] BRD/COR/GEO have no remaining durable flat dependencies.
+- [ ] GEO maintenance consumes canonical Profile V2 config (implementation in verification);
+- [ ] BRD/COR have no remaining durable flat dependencies.
 
 ### 2026-10-04 — Phase 4 SMN runtime cutover implemented
 
@@ -307,6 +308,19 @@ Exit criteria:
 - Existing Scholar provider integration coverage now supplies `ctx.config.sch` explicitly; the first live provider case deliberately leaves the compatibility mirror disabled while canonical Scholar policy remains enabled.
 - Flat-surface burn-down: `uc_provider_sch_maintenance.lua` `ctx.settings` 1→0; the file is removed from the Profile V2 flat-surface allowlist.
 - Dedicated Phase 4 SCH CI coverage is wired into the PR workflow. Implementation head `cb79e69a421bff49b65a3e70bd6d405b28e83ecf` is proven by workflow `37217954383`: Phase 4 SCH canonical-authority PASS, Scholar configuration/maintenance/runtime/duration/action-result suites PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms PASS.
+
+### 2026-10-04 — Phase 4 GEO runtime cutover implemented
+
+- `config.maintenance.geo` is now the sole durable runtime authority for GEO maintenance policy in `uc_geo_maintenance.lua`.
+- `uc_geo_maintenance.config_from_context(ctx)` reads the canonical scheduler root at `ctx.config.maintenance.geo`; the provider no longer reads `ctx.settings` or the nested compatibility mirror at `settings.config.maintenance.geo`.
+- GEO enemy revalidation now passes canonical `ctx.config` into target-ignore evaluation. The scheduler wiring projects `config.targeting.target_ignore_names` explicitly, so stale flat `target_ignore_names` can no longer change GEO target eligibility.
+- Durable GEO policy remains separate from observed runtime state: current Luopan identity/HPP/position, owned Geo/Indi/Entrust evidence, current enemy identity/claim state, pending actions, sequence state, retry/backoff timing, Bolster arm state, camp/player geometry, and action-result observations remain runtime-owned.
+- Existing GEO maintenance and sequence suites now provide canonical `ctx.config.maintenance.geo` explicitly while retaining deliberately disabled/conflicting compatibility state so they fail if flat authority returns.
+- Added `tests/replay/harness/selftest_phase4_geo_authority.lua` with contradictory canonical-vs-compatibility coverage for GEO enablement in both directions and target-ignore authority in both directions, plus static boundary assertions.
+- Flat-surface burn-down: `uc_geo_maintenance.lua` `ctx.settings` 3→0; the file is removed from the Profile V2 flat-surface allowlist.
+- Dedicated Phase 4 GEO CI coverage is wired into the PR workflow together with the existing GEO maintenance and sequence suites. CI proof is pending on the implementation head.
+- No intentional Luopan/Indi/Entrust ordering, placement geometry, Blaze/Ecliptic/Life Cycle sequencing, retry timing, camp restriction, target ranking, or dispatch semantics changed; this slice changes durable authority only.
+- Live-game smoke verification remains required for target-placed and camp-placed Luopans, enemy target-ignore behavior, Entrust, optional Luopan abilities, and replacement/recovery behavior before final migration acceptance.
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
