@@ -486,7 +486,7 @@ function M.new(deps)
 		end
 		local pull_owner_state = 'inactive'
 		local hunter_attack_fallback = false
-		local pull_pick = select_pull(ctx.settings)
+		local pull_pick = select_pull(ctx.settings, ctx.config)
 		if type(pull_pick) == 'table' then
 			local pull_tid = tonumber(pull_pick.target_id) or 0
 			local this_tid = tonumber(target.id) or 0

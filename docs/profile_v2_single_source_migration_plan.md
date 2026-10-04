@@ -3,7 +3,7 @@
 Status: **Active working document**  
 Branch: `refactor/profile-v2-single-source`  
 Started: 2026-10-02  
-Last updated: 2026-10-02
+Last updated: 2026-10-04
 
 ## Purpose
 
@@ -129,7 +129,7 @@ The Phase 0 baseline is frozen in `docs/profile_v2_flat_surface_inventory.md`; t
 | `uc_provider_maintenance.lua` BRD | Direct canonical `config.maintenance.brd` | Already near target |
 | `uc_geo_camp_placement.lua` | Canonical then `UC_SETTINGS.maintenance_geo` fallback | Low |
 | `uc_party_follow.lua` | Mixed canonical/flat reads | Medium |
-| `uc_pathing.lua` | Passes flat settings into follow/path policy | Medium/High |
+| `uc_pathing.lua` | Canonical path/follow policy; flat table retained only for live route/session state and compatibility plumbing | Medium/High |
 | `uc_raise_accept.lua` | Direct flat config read | Low |
 | `uc_recovery_hold.lua` | Canonical plus flat fallback | Low |
 | `uc_smn_runtime.lua` | Reconstructs SMN config from flat `summoner_*` fields | Medium/High |
@@ -597,6 +597,24 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Automated proof on implementation head `272149baa442a03b65b0e1757fadf2a73a926281`: workflow `37143116074` completed successfully with `lua-sequence` PASS, `winforms` PASS, Phase 3 follow authority PASS, movement-priority arbitration PASS, runtime-overrides PASS, partner-arbitration PASS, all earlier Phase 3 authority suites PASS, and the flat-surface guard PASS.
 - No intentional party-follow geometry, zone replay, combat transition suppression, partner arbitration ranking, puller leash geometry, or fight-follow timing semantics changed except canonical Profile V2 now wins over conflicting flat follow state.
 - Live-game smoke verification remains required for same-zone party follow, zone replay, fight-follow distance changes, partner target coordination, player/camp puller leash modes, and follow/path movement handoff before Phase 3 is complete.
+
+
+### 2026-10-04 — Phase 3 pathing slice implemented
+
+- Migrated unified route-follow and path-hunter policy to canonical Profile V2 authority.
+- Added `uc_path_config.lua` as the canonical runtime adapter for durable `config.movement.path` policy plus the existing canonical `config.legacy.hunter` gate.
+- `uc_pathing.lua` now reads recording enablement, path-follow enablement, party gate distance, and resume-index window only from canonical path policy. Its `active_value_or_flat` count is 7 → 0.
+- Route identity/progress is explicitly runtime-owned: selected path filename, classified route type, distance-to-start, and recorded point list stay on live/session state and are not projected from Profile V2 over the runtime.
+- Profile V2 durable diff/export now excludes those four route/session fields, and canonical-to-flat apply preserves the live values already present in the runtime settings table.
+- The WinForms structured writer no longer persists route type, distance-to-start, or recorded points. The profile contract classifies all four route/session fields, including filename, as `runtime_owned_by_addon`.
+- Unified target selection overlays canonical path/hunter policy before evaluating hunter enablement, target names, vertical tolerance, and target range.
+- Scheduler pull selection overlays canonical path/hunter policy for hunter enablement, path-follow gate, target list, pull action type/name, and attack fallback. Both target-control and combat providers pass `ctx.config` into pull selection.
+- Missing canonical path policy uses canonical defaults/fails closed rather than reviving contradictory flat path-follow or hunter state.
+- Added `tests/replay/harness/selftest_phase3_pathing_authority.lua` covering canonical-vs-flat route/hunter/pull policy, canonical OFF precedence, default fail-closed behavior, and preservation of live route/session state.
+- Strengthened movement arbitration and Profile V2 apply/diff regressions so stale flat path-follow state and persisted route-state placeholders cannot regain authority.
+- Flat-surface guard burn-down: `uc_pathing.lua` `active_value_or_flat` count 7 → 0.
+- No intentional route geometry, pause/resume arbitration, hunter candidate ranking, pull readiness/range, or movement-dispatch semantics changed except that canonical Profile V2 now wins for durable path policy.
+- Live-game smoke verification remains required for path recording start/stop, route-file rebinding, route follow, hunter target filtering, configured pull action/fallback, and follow/path/camp-pull movement handoff before Phase 3 is complete.
 
 ## Working checklist
 

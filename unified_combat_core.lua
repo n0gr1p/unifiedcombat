@@ -3650,6 +3650,7 @@ local function scheduler_settings_view(settings, config)
 	end
 	if type(config) == 'table' then
 		require('uc_follow_config').apply_runtime_view(view, config)
+		require('uc_path_config').apply_runtime_view(view, config)
 	end
 	return view
 end
@@ -3790,8 +3791,8 @@ function core.puller_engage_allowed_for_scheduler(settings, target, config)
 	return puller_engage_allowed(view, target)
 end
 
-function core.select_pull_for_scheduler(settings)
-	local s = settings or get_settings() or {}
+function core.select_pull_for_scheduler(settings, config)
+	local s = scheduler_settings_view(settings, config)
 	local player = windower.ffxi.get_player()
 	local target = get_current_target()
 	if not player or not target or not target.id then

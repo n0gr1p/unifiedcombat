@@ -873,10 +873,8 @@ local function apply_structured_config_to_candidate(candidate, config)
 		if type(config.movement.path) == 'table' then
 			candidate.path_recording = config.movement.path.recording
 			candidate.path_follow_enabled = config.movement.path.follow_enabled
-			candidate.path_file_name = config.movement.path.file_name
-			candidate.path_route_type = config.movement.path.route_type
-			candidate.path_distance_to_start = config.movement.path.distance_to_start
-			candidate.path_points = clone_value(config.movement.path.points)
+			-- Route identity/progress is live session state. Preserve the base
+			-- runtime values instead of projecting Profile V2 placeholders over it.
 			candidate.path_party_gate_yalms = config.movement.path.party_gate_yalms
 			candidate.path_resume_index_window = config.movement.path.resume_index_window
 			candidate.path_hunter_targets = clone_value(config.movement.path.hunter_targets)

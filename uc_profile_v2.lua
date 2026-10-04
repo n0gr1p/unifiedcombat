@@ -303,8 +303,11 @@ local function strip_durable_profile_overrides(config)
 		config.targeting.ignore = nil
 	end
 	if type(config.movement) == 'table' and type(config.movement.path) == 'table' then
-		-- The selected path filename is addon/session state, not durable profile config.
+		-- Route identity/progress is addon/session state, not durable profile policy.
 		config.movement.path.file_name = nil
+		config.movement.path.route_type = nil
+		config.movement.path.distance_to_start = nil
+		config.movement.path.points = nil
 	end
 	return config
 end

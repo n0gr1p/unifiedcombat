@@ -142,7 +142,7 @@ function M.new(deps)
 		if not bool_setting(combat_autotarget(ctx.config), false) then
 			return
 		end
-		local pick = select_pull(ctx.settings)
+		local pick = select_pull(ctx.settings, ctx.config)
 		if type(pick) ~= 'table' then
 			return
 		end

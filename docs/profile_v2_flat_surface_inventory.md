@@ -312,6 +312,19 @@ The eighth Phase 3 slice moves unified follow policy to canonical Profile V2 aut
 - Nyzul follow configuration was already canonical and required no migration.
 - Legacy-sensitive melee/DD2 engines remain separately tracked flat ownership debt.
 
+
+## Phase 3 pathing burn-down
+
+The ninth Phase 3 slice moves unified pathing/hunter policy to canonical Profile V2 authority:
+
+- `uc_pathing.lua`: `active_value_or_flat` count reduced from 7 to 0. Recording/follow gates and path tuning now use the canonical path adapter.
+- Unified core target/pull selection consumes canonical path/hunter policy through a copied runtime view, so contradictory flat hunter targets/tuning/pull-action state has no scheduler authority.
+- Target-control and combat providers pass canonical `ctx.config` into pull selection.
+- Selected route filename, classified route type, distance-to-start, and recorded points are runtime/session state; they are preserved across Profile V2 apply instead of being projected from durable config.
+- Profile V2 durable diff/export and the ownership contract now classify those route-state fields as non-durable runtime state.
+- Legacy-sensitive engines remain separately tracked compatibility debt.
+
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.

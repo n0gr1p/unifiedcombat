@@ -709,7 +709,7 @@ local function main()
         path_recording = false,
         path_follow_enabled = false,
         path_file_name = expected_path_file_name,
-        path_route_type = 'unknown',
+        path_route_type = 'patrol',
         path_points = {
             { x = 5, y = 0, z = 0 },
         },
@@ -770,7 +770,33 @@ local function main()
         },
     })
     pathing.tick()
-    assert_true(#run_calls > 0, 'pathing tick must preserve flat fallback when active path-follow setting is missing')
+    assert_equal(#run_calls, 1, 'missing canonical path-follow policy must stop the prior path vector once')
+    assert_equal(run_calls[1].x, false, 'missing canonical path-follow policy must fail closed despite flat follow enabled')
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'none', 'canonical path-follow default OFF must release path ownership')
+
+    run_calls = {}
+    _G.__TEST_NOW = 101.5
+    set_active_profile({
+        ownership = {
+            domain_movement_enabled = true,
+        },
+        movement = {
+            path = {
+                follow_enabled = true,
+                party_gate_yalms = 3.0,
+                resume_index_window = 12,
+            },
+        },
+        follow = {
+            party = {
+                enabled = false,
+                leader_id = 0,
+            },
+        },
+    })
+    pathing.tick()
+    assert_true(#run_calls > 0, 'canonical path-follow enablement must reacquire path movement after fail-closed stop')
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'path', 're-enabled canonical path follow must own movement before domain shutdown')
 
     run_calls = {}
     _G.__TEST_NOW = 102

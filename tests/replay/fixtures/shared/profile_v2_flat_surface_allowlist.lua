@@ -59,7 +59,6 @@ return {
 			["uc_settings"] = 5,
 		},
 		["uc_pathing.lua"] = {
-			["active_value_or_flat"] = 7,
 			["uc_settings"] = 2,
 		},
 		["uc_profile_v2.lua"] = {
