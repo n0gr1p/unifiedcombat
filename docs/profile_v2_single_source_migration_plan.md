@@ -249,7 +249,7 @@ Exit criteria:
 
 ### Phase 4 — Migrate job-specific configuration
 
-Status: **IN PROGRESS — SMN, PUP, SCH, and GEO canonical runtime cutovers are CI-proven; BRD/COR remain**
+Status: **IN PROGRESS — SMN, PUP, SCH, and GEO canonical runtime cutovers are CI-proven; BRD implementation is in verification; COR remains**
 
 Targets:
 
@@ -270,7 +270,8 @@ Exit criteria:
 - [x] PUP consumes canonical Profile V2 config;
 - [x] SCH consumes canonical Profile V2 config;
 - [x] GEO maintenance consumes canonical Profile V2 config;
-- [ ] BRD/COR have no remaining durable flat dependencies.
+- [ ] BRD maintenance consumes the tick-stable canonical Profile V2 config (implementation in verification);
+- [ ] COR has no remaining durable compatibility dependency.
 
 ### 2026-10-04 — Phase 4 SMN runtime cutover implemented
 
@@ -321,6 +322,18 @@ Exit criteria:
 - Dedicated Phase 4 GEO CI coverage is wired into the PR workflow together with the existing GEO maintenance and sequence suites. Implementation head `7d14ebef5c6ec94c4415f4bc340746206cf3cc29` is proven by workflow `37244333785`: Phase 4 GEO canonical-authority PASS, GEO maintenance/sequence suites PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 - No intentional Luopan/Indi/Entrust ordering, placement geometry, Blaze/Ecliptic/Life Cycle sequencing, retry timing, camp restriction, target ranking, or dispatch semantics changed; this slice changes durable authority only.
 - Live-game smoke verification remains required for target-placed and camp-placed Luopans, enemy target-ignore behavior, Entrust, optional Luopan abilities, and replacement/recovery behavior before final migration acceptance.
+
+### 2026-10-04 — Phase 4 BRD runtime cutover implemented
+
+- BRD maintenance now consumes the scheduler tick's canonical `ctx.config.maintenance.brd` subtree directly in `uc_provider_maintenance.lua`.
+- Removed both BRD-side global active-config resamples from the maintenance provider: `config.maintenance.brd` and the positioning dependency `config.combat.pulling`. Bard positioning now uses the same tick-stable `ctx.config.combat.pulling` snapshot as the rest of the scheduler.
+- `uc_brd_maintenance.lua` itself remains a pure typed-policy/state machine: it receives the canonical BRD subtree as an explicit argument and still owns only observed song identity/duration, pending transactions, Nitro/Soul Voice/Clarion/Marcato sequence state, targeted-song delivery evidence, failure/retry state, and diagnostics.
+- Added `tests/replay/harness/selftest_phase4_brd_authority.lua`. The regression makes any `uc_active_config.get_path()` call fail immediately, opposes canonical BRD enablement/range/reposition policy against compatibility state in both directions, and proves the canonical pulling leash reaches positioning.
+- Existing BRD maintenance, movement-safety, positioning, and song-identity suites are included in the dedicated Phase 4 BRD CI step.
+- This slice has no flat-surface allowlist count change because the BRD provider was not reading `ctx.settings` or `UC_SETTINGS`; the removed seam was a global canonical resample that bypassed the scheduler context rather than a flat read.
+- CI proof is pending on the implementation head.
+- No intentional song ordering, dummy-song capacity logic, Nitro/Soul Voice/Clarion/Marcato sequencing, Pianissimo targeting, recovery-range geometry, positioning algorithm, or dispatch behavior changed; the change is authority/snapshot consistency only.
+- Live-game smoke verification remains required for ordinary song maintenance, targeted/Pianissimo songs, Nitro/Soul Voice/Clarion/Marcato sequencing, and reposition-for-party-songs behavior before final migration acceptance.
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
