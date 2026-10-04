@@ -249,7 +249,7 @@ Exit criteria:
 
 ### Phase 4 — Migrate job-specific configuration
 
-Status: **IN PROGRESS — SMN, PUP, and SCH canonical runtime cutovers are CI-proven; GEO implementation is in verification; BRD/COR remain**
+Status: **IN PROGRESS — SMN, PUP, SCH, and GEO canonical runtime cutovers are CI-proven; BRD/COR remain**
 
 Targets:
 
@@ -269,7 +269,7 @@ Exit criteria:
 - [x] SMN consumes canonical Profile V2 config;
 - [x] PUP consumes canonical Profile V2 config;
 - [x] SCH consumes canonical Profile V2 config;
-- [ ] GEO maintenance consumes canonical Profile V2 config (implementation in verification);
+- [x] GEO maintenance consumes canonical Profile V2 config;
 - [ ] BRD/COR have no remaining durable flat dependencies.
 
 ### 2026-10-04 — Phase 4 SMN runtime cutover implemented
@@ -318,7 +318,7 @@ Exit criteria:
 - Existing GEO maintenance and sequence suites now provide canonical `ctx.config.maintenance.geo` explicitly while retaining deliberately disabled/conflicting compatibility state so they fail if flat authority returns.
 - Added `tests/replay/harness/selftest_phase4_geo_authority.lua` with contradictory canonical-vs-compatibility coverage for GEO enablement in both directions and target-ignore authority in both directions, plus static boundary assertions.
 - Flat-surface burn-down: `uc_geo_maintenance.lua` `ctx.settings` 3→0; the file is removed from the Profile V2 flat-surface allowlist.
-- Dedicated Phase 4 GEO CI coverage is wired into the PR workflow together with the existing GEO maintenance and sequence suites. CI proof is pending on the implementation head.
+- Dedicated Phase 4 GEO CI coverage is wired into the PR workflow together with the existing GEO maintenance and sequence suites. Implementation head `7d14ebef5c6ec94c4415f4bc340746206cf3cc29` is proven by workflow `37244333785`: Phase 4 GEO canonical-authority PASS, GEO maintenance/sequence suites PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 - No intentional Luopan/Indi/Entrust ordering, placement geometry, Blaze/Ecliptic/Life Cycle sequencing, retry timing, camp restriction, target ranking, or dispatch semantics changed; this slice changes durable authority only.
 - Live-game smoke verification remains required for target-placed and camp-placed Luopans, enemy target-ignore behavior, Entrust, optional Luopan abilities, and replacement/recovery behavior before final migration acceptance.
 
