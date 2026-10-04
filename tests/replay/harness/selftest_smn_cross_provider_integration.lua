@@ -284,7 +284,7 @@ local function test_optional_rage_gates()
 	ctx.pet_tp = 2001
 	assert_true(contains_kind(collect_all(ctx), 'rage'), 'pet TP above threshold must allow Rage')
 
-	ctx.settings.summoner_rage_target_hpp_above_enabled = true
+	ctx.config.summoner.pet_combat.offensive_action.target_hpp_above_enabled = true
 	ctx.config.summoner.pet_combat.offensive_action.target_hpp_above = 50
 	ctx.config.summoner.pet_combat.offensive_action.pet_tp_above = 2999
 	ctx.target.hpp = 51
