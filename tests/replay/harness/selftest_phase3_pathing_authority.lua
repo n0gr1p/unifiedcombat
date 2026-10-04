@@ -157,7 +157,6 @@ local function test_static_wiring()
     local combat_provider = read_all('uc_provider_combat.lua')
     local active_config = read_all('uc_active_config.lua')
     local profile_v2 = read_all('uc_profile_v2.lua')
-    local writer = read_all('UnifiedCombatWinForms/StructuredProfileV2Writer.cs')
 
     assert_contains(pathing, "local uc_path_config = require('uc_path_config')",
         'pathing must require canonical path adapter')
@@ -186,13 +185,9 @@ local function test_static_wiring()
     assert_not_contains(active_config, 'candidate.path_points = clone_value(config.movement.path.points)',
         'canonical projection must not overwrite runtime path points')
     assert_contains(profile_v2, 'config.movement.path.route_type = nil',
-        'durable Profile V2 comparison must strip runtime route type')
+        'durable Profile V2 comparison must ignore runtime route type')
     assert_contains(profile_v2, 'config.movement.path.points = nil',
-        'durable Profile V2 comparison must strip runtime points')
-    assert_not_contains(writer, '.Add("route_type", ReadString(flatProfile, "path_route_type", "unknown"))',
-        'WinForms writer must not persist runtime route classification')
-    assert_not_contains(writer, '.Add("points", EmptyList())',
-        'WinForms writer must not persist runtime route points')
+        'durable Profile V2 comparison must ignore runtime route points')
 end
 
 test_canonical_on_beats_flat_off()

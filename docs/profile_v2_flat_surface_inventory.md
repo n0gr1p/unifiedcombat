@@ -321,7 +321,7 @@ The ninth Phase 3 slice moves unified pathing/hunter policy to canonical Profile
 - Unified core target/pull selection consumes canonical path/hunter policy through a copied runtime view, so contradictory flat hunter targets/tuning/pull-action state has no scheduler authority.
 - Target-control and combat providers pass canonical `ctx.config` into pull selection.
 - Selected route filename, classified route type, distance-to-start, and recorded points are runtime/session state; they are preserved across Profile V2 apply instead of being projected from durable config.
-- Profile V2 durable diff/export and the ownership contract now classify those route-state fields as non-durable runtime state.
+- Profile V2 durable diff ignores those route-state fields and runtime projection preserves them. The existing serialized/profile-contract fields remain compatibility schema debt rather than runtime authority.
 - Legacy-sensitive engines remain separately tracked compatibility debt.
 
 

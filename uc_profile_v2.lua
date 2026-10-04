@@ -856,7 +856,7 @@ end
 function M.build_structured_profile(settings, meta)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
 	local resolved_meta = normalized_meta(meta)
-	local durable_config = strip_path_runtime_state(canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta))))))
+	local durable_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta)))))
 	if resolved_meta.profile_key ~= nil then
 		return {
 			version = 2,

@@ -605,8 +605,8 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - Added `uc_path_config.lua` as the canonical runtime adapter for durable `config.movement.path` policy plus the existing canonical `config.legacy.hunter` gate.
 - `uc_pathing.lua` now reads recording enablement, path-follow enablement, party gate distance, and resume-index window only from canonical path policy. Its `active_value_or_flat` count is 7 → 0.
 - Route identity/progress is explicitly runtime-owned: selected path filename, classified route type, distance-to-start, and recorded point list stay on live/session state and are not projected from Profile V2 over the runtime.
-- Profile V2 durable diff/export now excludes those four route/session fields, and canonical-to-flat apply preserves the live values already present in the runtime settings table.
-- The WinForms structured writer no longer persists route type, distance-to-start, or recorded points. The profile contract classifies all four route/session fields, including filename, as `runtime_owned_by_addon`.
+- Profile V2 durable comparison ignores those four route/session fields, and canonical-to-flat apply preserves the live values already present in the runtime settings table. Existing Profile V2 files may still carry route-state compatibility fields; this slice does not rewrite the file schema.
+- The existing Profile V2/WinForms route-state fields remain compatibility schema debt for now. Runtime authority is removed without changing their serialized compatibility shape in this slice.
 - Unified target selection overlays canonical path/hunter policy before evaluating hunter enablement, target names, vertical tolerance, and target range.
 - Scheduler pull selection overlays canonical path/hunter policy for hunter enablement, path-follow gate, target list, pull action type/name, and attack fallback. Both target-control and combat providers pass `ctx.config` into pull selection.
 - Missing canonical path policy uses canonical defaults/fails closed rather than reviving contradictory flat path-follow or hunter state.
