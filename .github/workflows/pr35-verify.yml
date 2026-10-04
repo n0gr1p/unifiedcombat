@@ -125,6 +125,14 @@ jobs:
           lua5.1 tests/replay/harness/selftest_phase3_pathing_authority.lua
           lua5.1 tests/replay/harness/selftest_movement_priority_arbitration.lua
           lua5.1 tests/replay/harness/selftest_active_config_consumer_migration.lua
+      - name: Phase 3 movement canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_movement_authority.lua
+          lua5.1 tests/replay/harness/selftest_formation_activation.lua
+          lua5.1 tests/replay/harness/selftest_spacing_cast_movement_lock.lua
+          lua5.1 tests/replay/harness/selftest_run_no_tp_mode.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_defensive_cure_movement_lock.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_support_priority_bands.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test

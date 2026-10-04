@@ -325,6 +325,20 @@ The ninth Phase 3 slice moves unified pathing/hunter policy to canonical Profile
 - Legacy-sensitive engines remain separately tracked compatibility debt.
 
 
+
+## Phase 3 movement-owned durable settings burn-down
+
+The final listed Phase 3 movement slice removes the remaining unified movement authority leaks:
+
+- `uc_movement_config.lua` owns canonical move/manual/static/face access plus canonical combat/movement participation classification.
+- Scheduler movement receives one explicit `ctx.config` snapshot; it no longer reaches for an out-of-scope `get_tick_ctx()` from inside the coordinator.
+- Ordinary facing, RUN no-TP movement integration, fight-follow hold timing, and core combat-close movement all reuse that same canonical snapshot.
+- `UnifiedCombat.lua` combat/movement participant helpers no longer inspect the flat compatibility table; this removes two literal `UC_SETTINGS` surfaces (79 → 77).
+- Flat core movement fields remain only behind the explicit no-config compatibility path for non-scheduler/legacy callers.
+- Formation and named-formation decision runtimes were already direct canonical consumers and remain unchanged.
+- DD2/melee legacy movement settings remain explicit compatibility debt.
+
+
 ## Phase 0 conclusion
 
 The flat surface is now mechanically frozen. Migration work can shrink the allowlist, but adding a new `UC_SETTINGS`, `ctx.settings`, `active_value_or_flat`, flat WinForms live-set, or flat-profile translation seam requires an explicit guardrail update and review. This converts the debt from an open-ended compatibility surface into a measurable burn-down list.

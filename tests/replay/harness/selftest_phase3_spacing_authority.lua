@@ -351,8 +351,8 @@ local function test_static_wiring()
     assert_contains(core_source, 'local band_dead = tonumber(spacing.band_deadband) or 0.20',
         'spacing band deadband must use canonical spacing view')
     assert_contains(scheduler_source,
-        'combat_core.apply_movement_for_scheduler(s, movement_executor, get_tick_ctx().config)',
-        'scheduler movement coordinator must pass canonical tick config into core movement')
+        'combat_core.apply_movement_for_scheduler(s, movement_executor, config)',
+        'scheduler movement coordinator must pass its canonical config into core movement')
     local legacy_spacing_tokens = {
         'settings.spacing)',
         'settings.spacing_band_min',

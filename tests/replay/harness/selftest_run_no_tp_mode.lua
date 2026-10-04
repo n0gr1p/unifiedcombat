@@ -55,8 +55,8 @@ assert_true(predicates.ja_requires_engaged_front('Shield Bash', { id = 46 }), 'S
 
 local scheduler_source = assert(io.open('unified_scheduler.lua', 'r')):read('*a')
 assert_contains(scheduler_source, "local requires_engaged = ja_requires_engaged(name, ja)", 'scheduler must enforce engaged-only JA predicate')
-assert_contains(scheduler_source, "require('uc_run_no_tp').target_id(s, p, t, require('uc_scheduler_context_utils').get_config())", 'movement coordinator must apply persistent no-TP facing with canonical tank config')
-assert_contains(scheduler_source, "p1_apply_face_to_target(s, no_tp_tid, true, true, 'unified_scheduler:run_no_tp')", 'movement coordinator must turn RUN away')
+assert_contains(scheduler_source, "require('uc_run_no_tp').target_id(s, p, t, config)", 'movement coordinator must apply persistent no-TP facing with canonical tank config')
+assert_contains(scheduler_source, "p1_apply_face_to_target(s, no_tp_tid, true, true, 'unified_scheduler:run_no_tp', config)", 'movement coordinator must turn RUN away')
 assert_contains(scheduler_source, "require('uc_run_no_tp').target_id(settings, player, current_target, config)", 'combat dispatch must honor no-TP facing with canonical tank config')
 
 print('RUN no-TP mode self-test: ok')

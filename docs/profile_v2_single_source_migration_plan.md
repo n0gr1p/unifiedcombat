@@ -616,6 +616,23 @@ Canonical Profile V2 -> runtime active config -> editor -> save must preserve du
 - No intentional route geometry, pause/resume arbitration, hunter candidate ranking, pull readiness/range, or movement-dispatch semantics changed except that canonical Profile V2 now wins for durable path policy.
 - Live-game smoke verification remains required for path recording start/stop, route-file rebinding, route follow, hunter target filtering, configured pull action/fallback, and follow/path/camp-pull movement handoff before Phase 3 is complete.
 
+
+### 2026-10-04 — Phase 3 movement-owned durable settings slice implemented
+
+- Added `uc_movement_config.lua` as the canonical adapter for movement-owned durable policy.
+- The remaining scheduler movement controls now come from canonical Profile V2: `config.movement.move`, `config.combat.manual`, `config.combat.static`, and `config.combat.face`.
+- `unified_combat_core.lua` uses one canonical movement-control view when a scheduler config snapshot is supplied. Flat `move`/`manual`/`static` reads remain only as an explicit compatibility path for callers that omit canonical config entirely.
+- Scheduler ordinary facing now receives canonical config explicitly and uses canonical `config.combat.face`; forced turn-away behavior remains force-owned and is unchanged.
+- `run_movement_coordinator_tick` now receives the tick-stable canonical config explicitly instead of reaching for the process-local `get_tick_ctx()` symbol from outside its lexical scope.
+- The same explicit snapshot is reused for RUN no-TP facing, fight-follow hold timing, ordinary facing, and core combat-close movement.
+- Removed the movement coordinator's residual flat `fight_follow_hold_s` fallback. Missing canonical fight timing uses the established 8-second default rather than stale flat state.
+- `UC_IsCombatParticipant` and `UC_IsMovementParticipant` now classify participation from canonical Profile V2 through `uc_movement_config`, while current engine-running state remains runtime-owned through `Start_Engine`.
+- Canonical participation covers autotarget, explicit move, base/named formations, tank, hunter+path-follow, puller, add-control, and spacing (movement participation only). Formation/named-formation runtime itself was already canonical and required no rewrite.
+- Added `tests/replay/harness/selftest_phase3_movement_authority.lua` proving contradictory canonical-vs-flat authority for move/manual/static, canonical participant/domain behavior, face policy, explicit coordinator config plumbing, and protection against hidden `get_tick_ctx` fallback.
+- Flat-surface guard burn-down: `UnifiedCombat.lua` literal `UC_SETTINGS` count 79 → 77 by removing the two participant helpers' flat settings dependency.
+- Existing legacy DD2/melee engine movement controls remain separately classified compatibility debt and are not claimed as migrated by this unified scheduler/core slice.
+- Live-game smoke verification remains required for explicit Move mode, Manual/Static movement suppression, ordinary Face on/off, formation participation, and coordinator mode transitions before Phase 3 live acceptance is complete.
+
 ## Working checklist
 
 When completing any migration slice:

@@ -2313,8 +2313,20 @@ local function apply_movement(settings, target, executor, config)
 	-- Generic combat-close movement belongs to automatic melee engagement.
 	-- Auto Target may still maintain <t> for support/reaction actions while Auto Engage
 	-- is off, so do not let target ownership alone pull followers into melee range.
-	-- Explicit move mode remains an intentional override for callers that own movement.
-	local explicit_move = setting_enabled(settings.move)
+	-- Explicit move/manual/static are movement-owned durable policy. Scheduler
+	-- callers provide one canonical tick config; flat reads remain only for
+	-- explicit legacy callers that omit config entirely.
+	local movement_controls
+	if type(config) == 'table' then
+		movement_controls = require('uc_movement_config').controls(config)
+	else
+		movement_controls = {
+			move = setting_enabled(settings.move),
+			manual = setting_enabled(settings.manual),
+			static = setting_enabled(settings.static),
+		}
+	end
+	local explicit_move = movement_controls.move == true
 	local scheduler_config = require('uc_scheduler_config')
 	local autotarget = type(config) == 'table'
 		and scheduler_config.combat_autotarget_from_config(config)
@@ -2329,7 +2341,7 @@ local function apply_movement(settings, target, executor, config)
 		end
 		return
 	end
-	if setting_enabled(settings.manual) or setting_enabled(settings.static) or not target then
+	if movement_controls.manual == true or movement_controls.static == true or not target then
 		if core.last_run_active then
 			stop_run(executor)
 		end

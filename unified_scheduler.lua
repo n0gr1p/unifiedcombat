@@ -15,6 +15,7 @@ local scheduler_locks = require('uc_scheduler_locks')
 local scheduler_pending = require('uc_scheduler_pending')
 local uc_scheduler_config = require('uc_scheduler_config')
 local domain_ownership = require('uc_domain_ownership')
+local movement_config = require('uc_movement_config')
 local pet_command_coordinator = require('uc_pet_command_coordinator')
 local sleep_status = require('uc_sleep_status')
 sleep_status.validate_resources(res.buffs)
@@ -2643,7 +2644,8 @@ local function ensure_diag_logs_initialized()
 	end
 end
 
-local function run_movement_coordinator_tick()
+local function run_movement_coordinator_tick(config)
+	config = type(config) == 'table' and config or {}
 	local s = get_settings()
 	local now = now_s()
 	if not domain_ownership.is_enabled('movement') then
@@ -2754,11 +2756,11 @@ local function run_movement_coordinator_tick()
 		local t = windower.ffxi.get_mob_by_target('t')
 		local tid = tonumber(t and t.id) or 0
 		if tid > 0 then
-			local no_tp_tid = require('uc_run_no_tp').target_id(s, p, t, require('uc_scheduler_context_utils').get_config())
+			local no_tp_tid = require('uc_run_no_tp').target_id(s, p, t, config)
 			if no_tp_tid > 0 then
-				p1_apply_face_to_target(s, no_tp_tid, true, true, 'unified_scheduler:run_no_tp')
+				p1_apply_face_to_target(s, no_tp_tid, true, true, 'unified_scheduler:run_no_tp', config)
 			else
-				p1_apply_face_to_target(s, tid)
+				p1_apply_face_to_target(s, tid, false, false, nil, config)
 			end
 		end
 	end
@@ -2868,9 +2870,8 @@ local function run_movement_coordinator_tick()
 	end
 	-- Keep fight-follow hold semantics only for active combat participants.
 	if engaged and combat_participant then
-		local fight_cfg = require('uc_follow_config').fight(get_tick_ctx().config)
-		local hold_s = tonumber(type(fight_cfg) == 'table' and fight_cfg.hold_s)
-		if hold_s == nil then hold_s = tonumber(s and s.fight_follow_hold_s) or 8.0 end
+		local fight_cfg = require('uc_follow_config').fight(config)
+		local hold_s = tonumber(type(fight_cfg) == 'table' and fight_cfg.hold_s) or 8.0
 		if hold_s < 0 then
 			hold_s = 0
 		elseif hold_s > 30 then
@@ -2926,7 +2927,7 @@ local function run_movement_coordinator_tick()
 		turn = windower.ffxi.turn,
 	})
 	local ok_call, call_err = pcall(function()
-		ok = combat_core.apply_movement_for_scheduler(s, movement_executor, get_tick_ctx().config) == true
+		ok = combat_core.apply_movement_for_scheduler(s, movement_executor, config) == true
 	end)
 	if not ok_call then
 		_G.UC_LAST_SCHED_ACTION = '[move]error:' .. tostring(call_err or '')
@@ -5428,8 +5429,11 @@ function p1_combat_helpers.spell_target_dispatch_ready(selected, expected_tid, t
 	return true
 end
 
-p1_apply_face_to_target = function(settings, target_id, turn_away, force_face, source_override)
-	if turn_away ~= true and force_face ~= true and not bool_setting(settings and settings.face, false) then
+p1_apply_face_to_target = function(settings, target_id, turn_away, force_face, source_override, config)
+	local face_enabled = type(config) == 'table'
+		and movement_config.face_enabled(config)
+		or bool_setting(settings and settings.face, false)
+	if turn_away ~= true and force_face ~= true and not face_enabled then
 		return false
 	end
 	local tid = tonumber(target_id) or 0
@@ -6425,9 +6429,9 @@ local function p1_dispatch_combat(selected, settings, phase, config)
 		local current_target = windower.ffxi.get_mob_by_target('t')
 		local no_tp_tid = require('uc_run_no_tp').target_id(settings, player, current_target, config)
 		if no_tp_tid > 0 then
-			p1_apply_face_to_target(settings, no_tp_tid, true, true, 'unified_scheduler:run_no_tp')
+			p1_apply_face_to_target(settings, no_tp_tid, true, true, 'unified_scheduler:run_no_tp', config)
 		else
-			p1_apply_face_to_target(settings, tonumber(selected.target_id) or 0)
+			p1_apply_face_to_target(settings, tonumber(selected.target_id) or 0, false, false, nil, config)
 		end
 	end
 	log_combat_sched(('dispatch_select type=%s name=\"%s\" target=\"%s\" tid=%d provider=%s family=%s'):format(
@@ -7629,7 +7633,7 @@ function scheduler.process_tick(cadence)
 	camp_lane_reserved = combat_domain_enabled and scheduler.providers.camp_puller.active()
 	local move_acted, move_reason = false, ''
 	if camp_lane_reserved or (not brd_lane_reserved and not sch_lane_holds) then
-		move_acted, move_reason = run_movement_coordinator_tick()
+		move_acted, move_reason = run_movement_coordinator_tick(get_tick_ctx().config)
 	elseif brd_lane_reserved then
 		scheduler.apply_brd_maintenance_lane_movement(brd_lane_reason, now_s())
 		_G.UC_MOVEMENT_BLOCK_REASON = 'BRD_LANE:' .. tostring(brd_lane_reason or '')

@@ -488,19 +488,12 @@ local function uc_domain_enabled(s, key)
 	return false
 end
 
-local function uc_is_combat_participant(s)
-	local st = s or _G.UC_SETTINGS or {}
-	if not uc_domain_enabled(st, 'combat') then
+local function uc_is_combat_participant(_)
+	if rawget(_G, 'Start_Engine') ~= true then
 		return false
 	end
-	return uc_truthy(st.autotarget)
-		or uc_truthy(st.move)
-		or uc_truthy(st.formation_enabled)
-		or uc_truthy(st.named_formations_enabled)
-		or uc_truthy(st.tank)
-		or (uc_truthy(st.hunter) and uc_truthy(st.path_follow_enabled))
-		or uc_truthy(st.puller)
-		or uc_truthy(st.add_control)
+	local active_config = require('uc_active_config').get_config()
+	return require('uc_movement_config').combat_participant(active_config)
 end
 
 local function uc_is_defensive_participant(s)
@@ -508,19 +501,12 @@ local function uc_is_defensive_participant(s)
 	return uc_domain_enabled(st, 'defensive') and uc_truthy(st.defensive_enabled)
 end
 
-local function uc_is_movement_participant(s)
-	local st = s or _G.UC_SETTINGS or {}
-	return uc_domain_enabled(st, 'movement') and (
-		uc_truthy(st.move)
-		or uc_truthy(st.formation_enabled)
-		or uc_truthy(st.named_formations_enabled)
-		or uc_truthy(st.spacing)
-		or uc_truthy(st.autotarget)
-		or (uc_truthy(st.hunter) and uc_truthy(st.path_follow_enabled))
-		or uc_truthy(st.puller)
-		or uc_truthy(st.tank)
-		or uc_truthy(st.add_control)
-	)
+local function uc_is_movement_participant(_)
+	if rawget(_G, 'Start_Engine') ~= true then
+		return false
+	end
+	local active_config = require('uc_active_config').get_config()
+	return require('uc_movement_config').movement_participant(active_config)
 end
 
 local function uc_is_follow_participant(s)

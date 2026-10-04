@@ -561,7 +561,7 @@ assert_equal(lilith_run_calls, 1, 'Lilith compatibility run call count mismatch'
 local scheduler_file = assert(io.open('unified_scheduler.lua', 'rb'))
 local scheduler_source = scheduler_file:read('*a')
 scheduler_file:close()
-local coordinator_start = assert(scheduler_source:find('local function run_movement_coordinator_tick()', 1, true))
+local coordinator_start = assert(scheduler_source:find('local function run_movement_coordinator_tick(config)', 1, true))
 local coordinator_end = assert(scheduler_source:find('function scheduler.p1_pick_preemptive_engage', coordinator_start, true))
 local coordinator = scheduler_source:sub(coordinator_start, coordinator_end)
 local nyzul_at = assert(coordinator:find("nyzul_runtime.is_movement_held()", 1, true))
@@ -581,7 +581,7 @@ assert_true(
 	'scheduler formation ownership publication must remain in the existing coordinator path'
 )
 local doom_at = assert(scheduler_source:find('local doom_blocked, doom_reason = try_doom_water_emergency(s)', 1, true))
-local movement_at = assert(scheduler_source:find('move_acted, move_reason = run_movement_coordinator_tick()', doom_at, true))
+local movement_at = assert(scheduler_source:find('move_acted, move_reason = run_movement_coordinator_tick(get_tick_ctx().config)', doom_at, true))
 assert_true(doom_at < movement_at, 'Doom handling must remain above the movement coordinator')
 
 local addon_file = assert(io.open('UnifiedCombat.lua', 'rb'))
@@ -591,8 +591,8 @@ local combat_participant_start = assert(addon_source:find('local function uc_is_
 local combat_participant_end = assert(addon_source:find('local function uc_is_defensive_participant', combat_participant_start, true))
 local combat_participant_source = addon_source:sub(combat_participant_start, combat_participant_end)
 assert_true(
-	combat_participant_source:find('uc_truthy(st.formation_enabled)', 1, true) ~= nil,
-	'enabled formation must remain eligible when the local character is engaged'
+	combat_participant_source:find("require('uc_movement_config').combat_participant(active_config)", 1, true) ~= nil,
+	'enabled canonical formation must remain eligible through canonical combat participation'
 )
 
 io.stdout:write('selftest_formation_activation: OK\n')

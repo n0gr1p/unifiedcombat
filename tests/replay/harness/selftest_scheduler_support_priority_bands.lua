@@ -231,7 +231,7 @@ local function main()
         "Bard, Scholar, and camp-puller lanes must hold nonblocking target acquisition")
     assert_contains(process_tick, "scheduler.p1_try_nonblocking_target_acquire(s, target_ctx)",
         "Bard lane target acquisition must use the tick-stable context")
-    assert_contains(process_tick, "if camp_lane_reserved or (not brd_lane_reserved and not sch_lane_holds) then\n\t\tmove_acted, move_reason = run_movement_coordinator_tick()",
+    assert_contains(process_tick, "if camp_lane_reserved or (not brd_lane_reserved and not sch_lane_holds) then\n\t\tmove_acted, move_reason = run_movement_coordinator_tick(get_tick_ctx().config)",
         "Bard and Scholar must hold movement coordination while camp-puller ownership retains its movement path")
 	assert_contains(process_tick, "scheduler.apply_sch_lane_movement(sch_lane.reason, now_s())",
 		"Scholar lane reservation must actively stop movement")
