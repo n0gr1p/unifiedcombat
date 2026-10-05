@@ -14,9 +14,7 @@ local res = require('resources')
 local uc_ws_memory = require('uc_ws_memory')
 local uc_ignore = require('uc_ignore')
 local uc_partner_list = require('uc_partner_list')
-local uc_target_ignore = require('uc_target_ignore')
 local uc_no_skillchain_targets = require('uc_no_skillchain_targets')
-local uc_add_priority = require('uc_add_priority')
 local uc_path_hunter = require('uc_path_hunter')
 local uc_config_runtime = require('uc_config_runtime')
 local uc_active_config = require('uc_active_config')
@@ -1863,6 +1861,7 @@ function uc_remote_tick()
 			detail = '',
 		}
 	end
+	local current_target_name, current_target_id = uc_current_target_snapshot()
 	local pull_runtime = rawget(_G, 'UC_CAMP_PULLER_STATUS')
 	if type(pull_runtime) ~= 'table' then
 		pull_runtime = {
@@ -1893,6 +1892,8 @@ function uc_remote_tick()
 		camp_coordinate_mode = camp_status.coordinate_mode,
 		camp_set_by = camp_status.set_by,
 		camp_last_op = camp_last_op,
+		current_target_id = current_target_id,
+		current_target_name = current_target_name,
 		geo_runtime_state = geo_runtime.state,
 		geo_runtime_reason = geo_runtime.reason,
 		geo_runtime_detail = geo_runtime.detail,
