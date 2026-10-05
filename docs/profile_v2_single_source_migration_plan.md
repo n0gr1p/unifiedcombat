@@ -359,7 +359,7 @@ Exit criteria:
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
-Status: **IN PROGRESS — generic WinForms `op=set` is classified as a durable local Profile V2 edit; list/edit bridge operations remain**
+Status: **IN PROGRESS — generic scalar edits plus target-ignore/add-priority list edits are canonical; remaining list/edit bridge operations remain**
 
 Goals:
 
@@ -373,7 +373,7 @@ Goals:
 Exit criteria:
 
 - [ ] durable UI edits are represented in Profile V2 (generic scalar `op=set` now updates per-session working Profile V2 state);
-- [ ] addon bridge no longer mutates flat durable settings as an authority;
+- [ ] addon bridge no longer mutates flat durable settings as an authority (target-ignore/add-priority now edit active Profile V2 first and only reproject flat compatibility state);
 - [ ] runtime commands remain explicit and separate;
 - [ ] activity apply still deploys canonical Profile V2 only;
 - [ ] editor initialization still comes from canonical runtime config/transient working state.
@@ -389,6 +389,21 @@ Exit criteria:
 - The legacy `remote_bridge.lua` `op=set` / `apply_set` path remains for compatibility and is intentionally not removed in this slice. It is now provably unreachable from the normal WinForms `Forward` path and will be addressed as a later Phase 5 addon-bridge cutover.
 - Legacy list/edit operations such as target-ignore, hunter, partner, COR range, Sleep ordering, and ability replacement remain to be classified/migrated independently.
 - Implementation head `4c4b0a927eb5fd60cbed70ac84d82caf976c5e56` is proven by workflow `37296952941`: Phase 5 UI write-pipeline authority PASS, Phase 4 exit audit PASS, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
+
+### 2026-10-05 — Phase 5 targeting-list write pipeline implemented
+
+- The first bespoke list slice covers target-ignore and add-priority policy.
+- Durable target-ignore policy is edited at `config.targeting.target_ignore_names`.
+- Durable add-priority policy is edited at `config.targeting.targets`. The legacy `config.targeting.add_priority_names` field remains compatibility-only and is intentionally not used as the durable edit target.
+- Added canonical active-profile list editor helpers in `uc_active_config.lua`: replace, append, remove-by-index, and ordered move. These mutate the existing canonical list in place, preserving runtime table identity.
+- `remote_bridge.lua` target-ignore/add-priority replace/add/add-current/remove/move handlers now edit canonical active Profile V2 first. After a successful canonical edit, the bridge refreshes `_G.UC_SETTINGS` only through `project_flat_settings` + `sync_flat_settings_in_place` as a compatibility projection.
+- The bridge no longer requires `uc_target_ignore` or `uc_add_priority`, and no longer assigns `s.target_ignore_names` or `s.add_priority_names`.
+- WinForms target-ignore/add-priority add/remove/reorder actions no longer emit live bridge mutations. They update the local editor rows and immediately call `CaptureWorkingProfileFromUi(sid)`.
+- The two Add Current Target actions now consume runtime observation instead of issuing a durable bridge mutation. `remote_bridge.lua` exposes `current_target_name` / `current_target_id` in the state snapshot; WinForms copies the observed name into the local working profile.
+- `PushFullFormState` no longer emits target-ignore or add-priority replace operations.
+- Added `tests/replay/harness/selftest_phase5_targeting_list_write_pipeline.lua` covering canonical list mutation semantics, compatibility projection, no-flat bridge ownership, local-only WinForms edits, Add Current runtime observation, and removal of full-form target-list pushes.
+- Remaining bespoke list domains include wait-ignore/partner/no-skillchain, abilities, tank enmity, Sleep ordering, path-hunter targets, COR range participants, and related identity-bearing operations.
+- CI proof is pending on the implementation head.
 
 ### Phase 6 — Retire the durable flat projection
 
