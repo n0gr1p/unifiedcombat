@@ -1549,6 +1549,25 @@ function M.remove_string_list_index(path, index)
 	return true, 'REMOVED'
 end
 
+function M.remove_string_list_value(path, value)
+	local target = M.get_path(path)
+	if type(target) ~= 'table' then
+		return false, 'active config string list missing'
+	end
+	local normalized = normalize_optional_string(value)
+	if normalized == nil then
+		return false, 'string list value required'
+	end
+	local key = normalized:lower()
+	for i = 1, #target do
+		if tostring(target[i] or ''):lower() == key then
+			table.remove(target, i)
+			return true, 'REMOVED'
+		end
+	end
+	return false, 'NOT_FOUND'
+end
+
 function M.move_string_list_index(path, index, delta)
 	local target = M.get_path(path)
 	if type(target) ~= 'table' then
