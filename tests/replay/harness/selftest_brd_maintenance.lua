@@ -200,7 +200,9 @@ brd.on_status_snapshot({ [100] = { count = 2, endtimes = { future_one, future_tw
 assert_true(brd._test.state.owners['Victory March'] ~= nil, 'same-family exact song must receive its own timer owner')
 
 brd.reset('live_timer_jitter_test')
-local jitter_honor = 3523079878
+-- Keep the captured live jitter delta stable without depending on an absolute
+-- server timestamp that can age past the test's current calibrated clock.
+local jitter_honor = brd._test.server_now_raw(os.time()) + 36000
 brd.on_status_snapshot({ [100] = { count = 1, endtimes = { jitter_honor } } }, 3)
 brd._test.state.owners['Honor March'] = { status_id = 100, endtime = jitter_honor, recipients = { 77 } }
 action = brd.propose(config, { now = 3.1, player = player, action_ready = ready })
@@ -212,7 +214,7 @@ brd.on_action({
 	param = 2,
 	targets = { { id = 77, actions = { { message = 230, param = 100 } } } },
 }, 77, 3.2)
-local jitter_victory = 3523078810
+local jitter_victory = jitter_honor - 1068
 brd.on_status_snapshot({ [100] = { count = 2, endtimes = { jitter_victory, jitter_honor + 3 } } }, 3.3)
 assert_true(brd._test.state.owners['Honor March'] ~= nil, 'ordinary packet timer jitter must not prune an existing song owner')
 assert_equal(brd._test.state.owners['Honor March'].endtime, jitter_honor + 3, 'preserved owner must track the newest packet timer observation')
