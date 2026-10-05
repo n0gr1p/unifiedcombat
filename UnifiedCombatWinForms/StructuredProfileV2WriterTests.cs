@@ -1081,6 +1081,21 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "\"Ally One\"", "wait ignore names must strip display indexes");
         AssertContains(content, "\"Ally Two\"", "wait ignore names must include all names");
         AssertNotContains(content, "Ally One [101]", "wait ignore names must not serialize display indexes");
+
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        AssertNotContains(logic, "[\"op\"] = \"ignore_replace_names\"",
+            "wait-ignore durable policy must not be pushed live from the editor");
+        AssertNotContains(logic, "[\"op\"] = \"ignore_add\"",
+            "wait-ignore add-by-name must remain a local working-profile edit");
+        AssertNotContains(logic, "[\"op\"] = \"ignore_add_current\"",
+            "wait-ignore Add Current must use runtime observation locally");
+        AssertNotContains(logic, "[\"op\"] = \"ignore_remove\"",
+            "wait-ignore remove must remain a local working-profile edit");
+        AssertContains(logic, "CurrentRuntimeTargetName()",
+            "wait-ignore Add Current must consume the observed current target name");
+        AssertContains(logic, "CaptureWorkingProfileFromUi(sid);",
+            "wait-ignore edits must capture the per-session working profile");
+
         AssertContains(content, "target_ignore_names = {", "target ignore names must be serialized");
         AssertContains(content, "\"Mob One\"", "target ignore names must strip display indexes");
         AssertContains(content, "\"Mob Two\"", "target ignore names must include all names");
