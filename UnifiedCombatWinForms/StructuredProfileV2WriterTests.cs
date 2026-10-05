@@ -1978,7 +1978,18 @@ internal static class StructuredProfileV2WriterTests
         var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
         var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
         AssertContains(ui, "No Skillchain Targets", "no-skillchain target UI section missing");
-        AssertContains(logic, "no_skillchain_target_replace_names", "no-skillchain target live update missing");
+        AssertNotContains(logic, "[\"op\"] = \"no_skillchain_target_replace_names\"",
+            "no-skillchain durable edits must not emit a live replace operation");
+        AssertNotContains(logic, "[\"op\"] = \"no_skillchain_target_add\"",
+            "no-skillchain durable edits must not emit a live add operation");
+        AssertNotContains(logic, "[\"op\"] = \"no_skillchain_target_add_current\"",
+            "no-skillchain Add Current must consume runtime observation locally");
+        AssertNotContains(logic, "[\"op\"] = \"no_skillchain_target_remove\"",
+            "no-skillchain durable edits must not emit a live remove operation");
+        AssertContains(logic, "CurrentRuntimeTargetName()",
+            "no-skillchain Add Current must use observed current target state");
+        AssertContains(logic, "CaptureWorkingProfileFromUi(sid);",
+            "no-skillchain edits must capture the per-session working profile");
         AssertContains(store, "[\"no_skillchain_target_entries\"]", "no-skillchain target profile persistence missing");
     }
 
