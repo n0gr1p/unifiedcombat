@@ -388,7 +388,7 @@ Exit criteria:
 - Added `tests/replay/harness/selftest_phase5_ui_write_pipeline.lua` to prove `set` is excluded from runtime traffic, durable edits capture the working profile before the live enqueue boundary, and existing Profile V2 file-only Save contracts remain intact.
 - The legacy `remote_bridge.lua` `op=set` / `apply_set` path remains for compatibility and is intentionally not removed in this slice. It is now provably unreachable from the normal WinForms `Forward` path and will be addressed as a later Phase 5 addon-bridge cutover.
 - Legacy list/edit operations such as target-ignore, hunter, partner, COR range, Sleep ordering, and ability replacement remain to be classified/migrated independently.
-- CI proof is pending on the implementation head.
+- Implementation head `4c4b0a927eb5fd60cbed70ac84d82caf976c5e56` is proven by workflow `37296952941`: Phase 5 UI write-pipeline authority PASS, Phase 4 exit audit PASS, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 
 ### Phase 6 — Retire the durable flat projection
 
