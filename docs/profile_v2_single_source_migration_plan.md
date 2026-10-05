@@ -403,7 +403,7 @@ Exit criteria:
 - `PushFullFormState` no longer emits target-ignore or add-priority replace operations.
 - Added `tests/replay/harness/selftest_phase5_targeting_list_write_pipeline.lua` covering canonical list mutation semantics, compatibility projection, no-flat bridge ownership, local-only WinForms edits, Add Current runtime observation, and removal of full-form target-list pushes.
 - Remaining bespoke list domains include wait-ignore/partner/no-skillchain, abilities, tank enmity, Sleep ordering, path-hunter targets, COR range participants, and related identity-bearing operations.
-- CI proof is pending on the implementation head.
+- Implementation head `b1940027994f3af942e2d6a5fb06b682e0585a09` is proven by workflow `37300224572`: Phase 5 targeting-list write-pipeline PASS, Phase 5 generic UI write-pipeline PASS, Phase 4 exit audit PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS. The guard baseline intentionally burns `remote_bridge.lua` direct `UC_SETTINGS` references from 44 to 36; the new `project_flat_settings`/`sync_flat_settings_in_place` counts represent compatibility reprojection after canonical mutation, not flat authority.
 
 ### Phase 6 — Retire the durable flat projection
 
