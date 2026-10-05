@@ -359,7 +359,7 @@ Exit criteria:
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
-Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, no-skillchain, and wait-ignore edits are canonical; remaining bespoke list/edit bridge operations remain**
+Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, no-skillchain, wait-ignore, and path-hunter edits are canonical; remaining bespoke list/edit bridge operations remain**
 
 Goals:
 
@@ -434,6 +434,19 @@ Exit criteria:
 - Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 32→28.
 - Runtime WS coordination remains name-based through `uc_ignore.is_name_blocked(settings, value.name)`; this slice changes write authority only.
 - Implementation head `59aaed1144f051c8b029f66b983f1e9e51579496` is proven by workflow `37307864263`: Phase 5 wait-ignore write-pipeline PASS, prior Phase 5 write-pipeline suites PASS, Phase 4 exit audit PASS, Profile V2 flat-surface guard PASS at the 28-reference bridge baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS. The first implementation run also exposed a pre-existing BRD timer-jitter fixture that depended on an aging absolute captured server timestamp; the fixture now anchors the same jitter delta to the test's synthetic current server clock without changing BRD production logic.
+
+### 2026-10-05 — Phase 5 path-hunter target write pipeline implemented
+
+- Migrated path-hunter durable editing to canonical `config.movement.path.hunter_targets`.
+- `remote_bridge.lua` `path_hunter_replace_names`, `path_hunter_add`, and `path_hunter_remove` now reuse the canonical active-profile list editor API. The bridge no longer requires `uc_path_hunter` for editing and no longer assigns `s.path_hunter_targets`.
+- After successful canonical edits, the existing compatibility projection refreshes flat `path_hunter_targets`; the projected list is compatibility output only.
+- WinForms path-hunter add/remove already captured the per-session working profile; this slice removes their remaining live bridge emits. `PushFullFormState` no longer emits `path_hunter_replace_names`.
+- The structured writer remains unchanged: `path_hunter_entries` persists to `config.movement.path.hunter_targets`.
+- `RuntimeProfileEditorAdapter` continues to reconstruct editor rows from canonical `path_hunter_targets`.
+- Runtime hunter matching remains unchanged in `uc_path_hunter.matches_mob`; Phase 3 canonical path authority already ensures runtime policy comes from `config.movement.path`.
+- Added `tests/replay/harness/selftest_phase5_path_hunter_write_pipeline.lua` covering canonical list mutation, case-insensitive dedupe, compatibility projection, no-flat bridge ownership, local-only WinForms editing, structured writer/adapter mapping, canonical path adapter wiring, and removal of the full-form push.
+- Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 28→25.
+- CI proof is pending on the implementation head.
 
 ### Phase 6 — Retire the durable flat projection
 
