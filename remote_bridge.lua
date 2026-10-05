@@ -748,6 +748,43 @@ local function uc_unique_sorted(values)
 	return out
 end
 
+local function uc_sync_active_config_flat_projection()
+	local active_profile = uc_active_config.get_active_profile()
+	if type(active_profile) ~= 'table' then
+		return false, 'NO_ACTIVE_PROFILE'
+	end
+	local settings = rawget(_G, 'UC_SETTINGS')
+	if type(settings) ~= 'table' then
+		return false, 'NO_SETTINGS'
+	end
+	local projected, projection_err = uc_active_config.project_flat_settings(active_profile, settings)
+	if type(projected) ~= 'table' then
+		return false, 'PROJECTION_FAILED:' .. tostring(projection_err)
+	end
+	local ok, sync_err = uc_active_config.sync_flat_settings_in_place(settings, projected)
+	if ok ~= true then
+		return false, 'SYNC_FAILED:' .. tostring(sync_err)
+	end
+	return true, ''
+end
+
+local function uc_apply_active_list_edit(method_name, path, ...)
+	local method = uc_active_config[method_name]
+	if type(method) ~= 'function' then
+		return false, 'ACTIVE_CONFIG_EDITOR_UNAVAILABLE'
+	end
+	local ok, reason = method(path, ...)
+	if ok ~= true then
+		return false, tostring(reason or 'ACTIVE_CONFIG_EDIT_FAILED')
+	end
+	local projected, projection_reason = uc_sync_active_config_flat_projection()
+	if projected ~= true then
+		return false, tostring(projection_reason or 'ACTIVE_CONFIG_PROJECTION_FAILED')
+	end
+	last_state_send = 0
+	return true, tostring(reason or '')
+end
+
 local function uc_targets_include_enemy(targets)
 	if type(targets) == 'string' then
 		return targets:find('Enemy', 1, true) ~= nil
@@ -1364,22 +1401,11 @@ local function process_line(line)
 		end
 		last_state_send = 0
 	elseif op == 'target_ignore_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			local out = {}
-			local seen = {}
-			for _, name in ipairs(vals) do
-				local n = uc_trim(name)
-				local k = n:lower()
-				if n ~= '' and not seen[k] then
-					seen[k] = true
-					out[#out + 1] = n
-				end
-			end
-			s.target_ignore_names = out
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.targeting.target_ignore_names',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'cor_roll_range_replace_names' then
 		local s = _G.UC_SETTINGS
 		if s then
@@ -1407,22 +1433,11 @@ local function process_line(line)
 		end
 		last_state_send = 0
 	elseif op == 'add_priority_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			local out = {}
-			local seen = {}
-			for _, name in ipairs(vals) do
-				local n = uc_trim(name)
-				local k = n:lower()
-				if n ~= '' and not seen[k] then
-					seen[k] = true
-					out[#out + 1] = n
-				end
-			end
-			s.add_priority_names = out
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.targeting.targets',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'sleep_replace_spells' then
 		local s = _G.UC_SETTINGS
 		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
@@ -1527,129 +1542,128 @@ local function process_line(line)
 		end
 		last_state_send = 0
 	elseif op == 'target_ignore_add' then
-		local s = _G.UC_SETTINGS
 		local name = uc_trim(msg.name)
-		if not s or name == '' then
+		if name == '' then
 			_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ADD_NO_NAME'
 		else
-			local ok, why = uc_target_ignore.append_name(s, name)
-			if ok and why == 'TARGET_IGNORE_ALREADY' then
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.targeting.target_ignore_names',
+				name
+			)
+			if ok and why == 'ALREADY' then
 				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ALREADY:' .. name
 			elseif ok then
 				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ADD_OK:' .. name
 			else
-				_G.UC_LAST_TARGET_IGNORE_OP = tostring(why or 'TARGET_IGNORE_ADD_FAIL')
+				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'target_ignore_add_current' then
-		local s = _G.UC_SETTINGS
-		if not s then
-			_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_NO_SETTINGS'
+		local tname, tid = uc_current_target_snapshot()
+		if tid == 0 then
+			_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_NO_TARGET'
 		else
-			local tname, tid = uc_current_target_snapshot()
-			if tid == 0 then
-				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_NO_TARGET'
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.targeting.target_ignore_names',
+				tname
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ALREADY:' .. tname
+			elseif ok then
+				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ADD_OK:' .. tname
 			else
-				local ok, why = uc_target_ignore.append_name(s, tname)
-				if ok and why == 'TARGET_IGNORE_ALREADY' then
-					_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ALREADY:' .. tname
-				elseif ok then
-					_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ADD_OK:' .. tname
-				else
-					_G.UC_LAST_TARGET_IGNORE_OP = tostring(why or 'TARGET_IGNORE_ADD_FAIL')
-				end
+				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'target_ignore_remove' then
-		local s = _G.UC_SETTINGS
 		local idx = uc_remote_list_index(msg, line)
-		if not s then
-			_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_REMOVE_NO_SETTINGS'
-		elseif not idx then
+		if not idx then
 			_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_REMOVE_BAD_INDEX'
 		else
-			local ok, why = uc_target_ignore.remove_index(s, math.floor(idx + 0.5))
+			local ok, why = uc_apply_active_list_edit(
+				'remove_string_list_index',
+				'config.targeting.target_ignore_names',
+				math.floor(idx + 0.5)
+			)
 			if ok then
 				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_REMOVE_OK:' .. tostring(idx)
 			else
-				_G.UC_LAST_TARGET_IGNORE_OP = tostring(why or 'TARGET_IGNORE_REMOVE_FAIL')
+				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_REMOVE_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'add_priority_add' then
-		local s = _G.UC_SETTINGS
 		local name = uc_trim(msg.name)
-		if not s or name == '' then
+		if name == '' then
 			_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ADD_NO_NAME'
 		else
-			local ok, why = uc_add_priority.append_name(s, name)
-			if not ok then
-				if why == 'ADD_PRIORITY_ALREADY' then
-					_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ALREADY:' .. name
-				else
-					_G.UC_LAST_ADD_PRIORITY_OP = tostring(why or 'ADD_PRIORITY_ADD_FAIL')
-				end
-			else
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.targeting.targets',
+				name
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ALREADY:' .. name
+			elseif ok then
 				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ADD_OK:' .. name
-			end
-		end
-		last_state_send = 0
-	elseif op == 'add_priority_add_current' then
-		local s = _G.UC_SETTINGS
-		if not s then
-			_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_NO_SETTINGS'
-		else
-			local tname, tid = uc_current_target_snapshot()
-			if tid == 0 then
-				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_NO_TARGET'
 			else
-				local ok, why = uc_add_priority.append_name(s, tname)
-				if not ok then
-					if why == 'ADD_PRIORITY_ALREADY' then
-						_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ALREADY:' .. tname
-					else
-						_G.UC_LAST_ADD_PRIORITY_OP = tostring(why or 'ADD_PRIORITY_ADD_FAIL')
-					end
-				else
-					_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ADD_OK:' .. tname
-				end
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
+	elseif op == 'add_priority_add_current' then
+		local tname, tid = uc_current_target_snapshot()
+		if tid == 0 then
+			_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_NO_TARGET'
+		else
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.targeting.targets',
+				tname
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ALREADY:' .. tname
+			elseif ok then
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ADD_OK:' .. tname
+			else
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ADD_FAIL:' .. tostring(why)
+			end
+		end
 	elseif op == 'add_priority_remove' then
-		local s = _G.UC_SETTINGS
 		local idx = uc_remote_list_index(msg, line)
-		if not s then
-			_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_REMOVE_NO_SETTINGS'
-		elseif not idx then
+		if not idx then
 			_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_REMOVE_BAD_INDEX'
 		else
-			local ok, why = uc_add_priority.remove_index(s, math.floor(idx + 0.5))
+			local ok, why = uc_apply_active_list_edit(
+				'remove_string_list_index',
+				'config.targeting.targets',
+				math.floor(idx + 0.5)
+			)
 			if ok then
 				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_REMOVE_OK:' .. tostring(idx)
 			else
-				_G.UC_LAST_ADD_PRIORITY_OP = tostring(why or 'ADD_PRIORITY_REMOVE_FAIL')
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_REMOVE_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'add_priority_move' then
-		local s = _G.UC_SETTINGS
 		local idx = uc_remote_list_index(msg, line)
 		local dir = tostring(uc_trim(tostring(msg.direction or msg.Direction or msg.dir or msg.Dir or ''))):lower()
 		local delta = (dir == 'up' or dir == '-1') and -1 or ((dir == 'down' or dir == '1') and 1 or nil)
-		if not s or not idx or idx < 1 or not delta then
+		if not idx or idx < 1 or not delta then
 			_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_MOVE_BAD_ARGS'
 		else
-			local ok, why = uc_add_priority.move_index(s, math.floor(idx + 0.5), delta)
+			local ok, why = uc_apply_active_list_edit(
+				'move_string_list_index',
+				'config.targeting.targets',
+				math.floor(idx + 0.5),
+				delta
+			)
 			if ok then
 				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_MOVE_OK:' .. tostring(idx) .. ':' .. dir
 			else
-				_G.UC_LAST_ADD_PRIORITY_OP = tostring(why or 'ADD_PRIORITY_MOVE_FAIL')
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_MOVE_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'sleep_add_spell' then
 		local s = _G.UC_SETTINGS
 		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
