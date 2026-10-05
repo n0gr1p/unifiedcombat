@@ -31,7 +31,7 @@ return {
 			["bridge_apply_set"] = 2,
 			["project_flat_settings"] = 2,
 			["sync_flat_settings"] = 1,
-			["uc_settings"] = 28,
+			["uc_settings"] = 25,
 		},
 		["uc_active_config.lua"] = {
 			["project_flat_settings"] = 1,
