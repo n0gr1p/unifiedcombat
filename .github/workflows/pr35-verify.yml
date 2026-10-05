@@ -186,6 +186,8 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_phase4_exit_audit.lua
       - name: Phase 5 UI write-pipeline authority self-test
         run: lua5.1 tests/replay/harness/selftest_phase5_ui_write_pipeline.lua
+      - name: Phase 5 targeting-list write-pipeline self-test
+        run: lua5.1 tests/replay/harness/selftest_phase5_targeting_list_write_pipeline.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
