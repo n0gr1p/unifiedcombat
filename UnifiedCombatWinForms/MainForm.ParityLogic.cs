@@ -5385,9 +5385,8 @@ public partial class MainForm
         {
             _ignoreRows.Add((NextId(_ignoreRows), name));
             RebindIgnoreListUi();
+            CaptureWorkingProfileFromUi(sid);
         }
-
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "ignore_add", ["name"] = name });
     }
 
     private void IgnoreAddCurrent()
@@ -5398,7 +5397,14 @@ public partial class MainForm
             return;
         }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "ignore_add_current" });
+        var name = CurrentRuntimeTargetName();
+        if (name.Length == 0 || HasName(_ignoreRows, name))
+        {
+            return;
+        }
+        _ignoreRows.Add((NextId(_ignoreRows), name));
+        RebindIgnoreListUi();
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void IgnoreRemove()
@@ -5415,21 +5421,16 @@ public partial class MainForm
             return;
         }
 
-        var tid = idx < _ignoreRows.Count ? _ignoreRows[idx].Id : SessionStateHelper.ParseTrailingBracketId(_ignoreList.Items[idx]?.ToString() ?? "");
-        if (tid is null or 0)
-        {
-            return;
-        }
         if (idx < _ignoreRows.Count)
         {
             _ignoreRows.RemoveAt(idx);
+            for (var i = 0; i < _ignoreRows.Count; i++)
+            {
+                _ignoreRows[i] = (i + 1, _ignoreRows[i].Name);
+            }
             RebindIgnoreListUi();
+            CaptureWorkingProfileFromUi(sid);
         }
-
-        Forward(
-            sid,
-            new Dictionary<string, object?> { ["op"] = "ignore_remove", ["mob_id"] = tid.Value, ["id"] = tid.Value }
-        );
     }
 
     private void PartnerAddByName()
@@ -6134,7 +6135,6 @@ public partial class MainForm
             ["value"] = decimal.ToInt32(_wsMinimumTp.Value),
         });
         SendAbilitiesUpdate();
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "ignore_replace_names", ["value"] = string.Join("|", _ignoreRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = string.Join("|", _sleepSpellRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_replace_names", ["value"] = string.Join("|", _pathHunterRows.Select(r => r.Name)) });
