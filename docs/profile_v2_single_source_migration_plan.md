@@ -359,7 +359,7 @@ Exit criteria:
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
-Status: **IN PROGRESS — generic scalar edits plus target-ignore/add-priority list edits are canonical; remaining list/edit bridge operations remain**
+Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, and no-skillchain list edits are canonical; remaining bespoke list/edit bridge operations remain**
 
 Goals:
 
@@ -404,6 +404,20 @@ Exit criteria:
 - Added `tests/replay/harness/selftest_phase5_targeting_list_write_pipeline.lua` covering canonical list mutation semantics, compatibility projection, no-flat bridge ownership, local-only WinForms edits, Add Current runtime observation, and removal of full-form target-list pushes.
 - Remaining bespoke list domains include wait-ignore/partner/no-skillchain, abilities, tank enmity, Sleep ordering, path-hunter targets, COR range participants, and related identity-bearing operations.
 - Implementation head `b1940027994f3af942e2d6a5fb06b682e0585a09` is proven by workflow `37300224572`: Phase 5 targeting-list write-pipeline PASS, Phase 5 generic UI write-pipeline PASS, Phase 4 exit audit PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS. The guard baseline intentionally burns `remote_bridge.lua` direct `UC_SETTINGS` references from 44 to 36; the new `project_flat_settings`/`sync_flat_settings_in_place` counts represent compatibility reprojection after canonical mutation, not flat authority.
+
+### 2026-10-05 — Phase 5 no-skillchain target write pipeline implemented
+
+- Migrated the no-skillchain target editor/write channel to canonical `config.combat.weaponskill.no_skillchain_targets`.
+- `remote_bridge.lua` replace/add/add-current/remove compatibility handlers now reuse the canonical active-profile list editor API and no longer require `uc_no_skillchain_targets` or mutate `weaponskill_no_skillchain_targets` directly.
+- After a successful canonical edit, the existing bridge compatibility projection refreshes flat runtime state; the flat field is output compatibility only, not edit authority.
+- WinForms no-skillchain add/remove operations now update local rows and call `CaptureWorkingProfileFromUi(sid)` without emitting bridge mutations.
+- Add Current Target reuses the runtime-observed `current_target_name` introduced in the prior targeting-list slice, keeping live observation separate from durable policy.
+- `PushFullFormState` no longer emits `no_skillchain_target_replace_names`.
+- The structured Profile V2 writer already maps `no_skillchain_target_entries` to `config.combat.weaponskill.no_skillchain_targets`; this slice therefore removes the parallel live-write path without changing serialization shape.
+- Added `tests/replay/harness/selftest_phase5_no_skillchain_write_pipeline.lua` covering canonical list mutation, compatibility projection, no-flat bridge ownership, local-only WinForms editing, Add Current runtime observation, writer mapping, and removal of the full-form replace push.
+- Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 36→32.
+- The existing `selftest_no_skillchain_targets.lua` remains because `uc_no_skillchain_targets.lua` is still a runtime matching/gating helper even though it is no longer a bridge writer.
+- CI proof is pending on the implementation head.
 
 ### Phase 6 — Retire the durable flat projection
 
