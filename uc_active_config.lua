@@ -1482,6 +1482,93 @@ function M.get_path(path, default_value)
 	return current
 end
 
+local function normalized_string_list(values)
+	if type(values) ~= 'table' then
+		return nil, 'string list values must be a table'
+	end
+	local out = {}
+	local seen = {}
+	for i = 1, #values do
+		local value = normalize_optional_string(values[i])
+		if value ~= nil then
+			local key = value:lower()
+			if not seen[key] then
+				seen[key] = true
+				out[#out + 1] = value
+			end
+		end
+	end
+	return out
+end
+
+function M.replace_string_list(path, values)
+	local target = M.get_path(path)
+	if type(target) ~= 'table' then
+		return false, 'active config string list missing'
+	end
+	local normalized, err = normalized_string_list(values)
+	if type(normalized) ~= 'table' then
+		return false, err
+	end
+	local ok, sync_err = sync_table_in_place(target, normalized)
+	if ok ~= true then
+		return false, sync_err
+	end
+	return true, 'REPLACED'
+end
+
+function M.append_string_list(path, value)
+	local target = M.get_path(path)
+	if type(target) ~= 'table' then
+		return false, 'active config string list missing'
+	end
+	local normalized = normalize_optional_string(value)
+	if normalized == nil then
+		return false, 'string list value required'
+	end
+	local key = normalized:lower()
+	for i = 1, #target do
+		if tostring(target[i] or ''):lower() == key then
+			return true, 'ALREADY'
+		end
+	end
+	target[#target + 1] = normalized
+	return true, 'ADDED'
+end
+
+function M.remove_string_list_index(path, index)
+	local target = M.get_path(path)
+	if type(target) ~= 'table' then
+		return false, 'active config string list missing'
+	end
+	local resolved = tonumber(index)
+	if resolved == nil or resolved % 1 ~= 0 or resolved < 1 or resolved > #target then
+		return false, 'BAD_INDEX'
+	end
+	table.remove(target, resolved)
+	return true, 'REMOVED'
+end
+
+function M.move_string_list_index(path, index, delta)
+	local target = M.get_path(path)
+	if type(target) ~= 'table' then
+		return false, 'active config string list missing'
+	end
+	local resolved_index = tonumber(index)
+	local resolved_delta = tonumber(delta)
+	if resolved_index == nil or resolved_index % 1 ~= 0
+		or resolved_delta == nil or resolved_delta % 1 ~= 0
+		or resolved_index < 1 or resolved_index > #target then
+		return false, 'BAD_INDEX'
+	end
+	local destination = resolved_index + resolved_delta
+	if destination < 1 or destination > #target then
+		return false, 'EDGE'
+	end
+	target[resolved_index], target[destination] = target[destination], target[resolved_index]
+	return true, 'MOVED'
+end
+
 function M.project_flat_settings(active_profile, base_settings)
 	if not is_structured_profile(active_profile) then
 		return nil, 'active profile must be a structured v2 table'
