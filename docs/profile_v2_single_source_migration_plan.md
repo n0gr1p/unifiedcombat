@@ -433,7 +433,7 @@ Exit criteria:
 - The WinForms Profile V2 round-trip contract now explicitly requires wait-ignore editing to stay local and forbids the retired live `ignore_*` operations.
 - Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 32→28.
 - Runtime WS coordination remains name-based through `uc_ignore.is_name_blocked(settings, value.name)`; this slice changes write authority only.
-- CI proof is pending on the implementation head.
+- Implementation head `59aaed1144f051c8b029f66b983f1e9e51579496` is proven by workflow `37307864263`: Phase 5 wait-ignore write-pipeline PASS, prior Phase 5 write-pipeline suites PASS, Phase 4 exit audit PASS, Profile V2 flat-surface guard PASS at the 28-reference bridge baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS. The first implementation run also exposed a pre-existing BRD timer-jitter fixture that depended on an aging absolute captured server timestamp; the fixture now anchors the same jitter delta to the test's synthetic current server clock without changing BRD production logic.
 
 ### Phase 6 — Retire the durable flat projection
 
