@@ -13,7 +13,6 @@ local json = require('json')
 local res = require('resources')
 local uc_ws_memory = require('uc_ws_memory')
 local uc_partner_list = require('uc_partner_list')
-local uc_path_hunter = require('uc_path_hunter')
 local uc_config_runtime = require('uc_config_runtime')
 local uc_active_config = require('uc_active_config')
 local uc_camp_anchor = require('uc_camp_anchor')
@@ -1423,22 +1422,11 @@ local function process_line(line)
 		end
 		last_state_send = 0
 	elseif op == 'path_hunter_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			local out = {}
-			local seen = {}
-			for _, name in ipairs(vals) do
-				local n = uc_trim(name)
-				local k = n:lower()
-				if n ~= '' and not seen[k] then
-					seen[k] = true
-					out[#out + 1] = n
-				end
-			end
-			s.path_hunter_targets = out
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.movement.path.hunter_targets',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'ignore_add' then
 		local name = uc_trim(msg.name)
 		if name == '' then
@@ -1674,35 +1662,39 @@ local function process_line(line)
 		end
 		last_state_send = 0
 	elseif op == 'path_hunter_add' then
-		local s = _G.UC_SETTINGS
 		local name = uc_trim(msg.name)
-		if not s or name == '' then
+		if name == '' then
 			_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_ADD_NO_NAME'
 		else
-			local ok, why = uc_path_hunter.append_name(s, name)
-			if ok then
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.movement.path.hunter_targets',
+				name
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_ALREADY:' .. name
+			elseif ok then
 				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_ADD_OK:' .. name
 			else
-				_G.UC_LAST_PATH_HUNTER_OP = tostring(why or 'PATH_HUNTER_ADD_FAIL')
+				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'path_hunter_remove' then
-		local s = _G.UC_SETTINGS
 		local idx = uc_remote_list_index(msg, line)
-		if not s then
-			_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_NO_SETTINGS'
-		elseif not idx then
+		if not idx then
 			_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_BAD_INDEX'
 		else
-			local ok, why = uc_path_hunter.remove_index(s, math.floor(idx + 0.5))
+			local ok, why = uc_apply_active_list_edit(
+				'remove_string_list_index',
+				'config.movement.path.hunter_targets',
+				math.floor(idx + 0.5)
+			)
 			if ok then
 				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_OK:' .. tostring(idx)
 			else
-				_G.UC_LAST_PATH_HUNTER_OP = tostring(why or 'PATH_HUNTER_REMOVE_FAIL')
+				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'toggle' and msg.key == 'Start_Engine' then
 		local was_running = Start_Engine
 		Start_Engine = not Start_Engine
