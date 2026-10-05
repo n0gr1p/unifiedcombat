@@ -359,7 +359,7 @@ Exit criteria:
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
-Status: **NOT STARTED**
+Status: **IN PROGRESS — generic WinForms `op=set` is classified as a durable local Profile V2 edit; list/edit bridge operations remain**
 
 Goals:
 
@@ -372,11 +372,23 @@ Goals:
 
 Exit criteria:
 
-- [ ] durable UI edits are represented in Profile V2;
+- [ ] durable UI edits are represented in Profile V2 (generic scalar `op=set` now updates per-session working Profile V2 state);
 - [ ] addon bridge no longer mutates flat durable settings as an authority;
 - [ ] runtime commands remain explicit and separate;
 - [ ] activity apply still deploys canonical Profile V2 only;
 - [ ] editor initialization still comes from canonical runtime config/transient working state.
+
+### 2026-10-05 — Phase 5 generic scalar edit channel implemented
+
+- The WinForms outbound boundary already allowed only explicit runtime/session operations: engine start/stop, addon reload, camp set/clear, and state/options requests. Legacy generic `op=set` calls therefore never reached the addon bridge, but many older handlers still called `Forward(... set ...)` and some did not separately capture their unsaved working profile.
+- `MainForm.Forward` now classifies generic `op=set` explicitly as a durable editor mutation. It calls `CaptureWorkingProfileFromUi(sid)` and returns before the mirror enqueue boundary.
+- This preserves existing live behavior: generic scalar edits still do not mutate the running addon's flat settings and do not become runtime commands. The change makes their durable/local effect explicit and prevents older scalar controls from losing unsaved state when the editor is rebuilt from the per-session working profile.
+- Explicit runtime commands remain separate and continue through `IsRuntimeSessionOutboundOp`: `start_engine`, `stop_engine`, `addon_reload`, `camp_set`, `camp_clear`, `request_state`, and `request_options`.
+- Profile persistence remains explicit-only through Save; this slice does not turn a UI edit into an automatic file write.
+- Added `tests/replay/harness/selftest_phase5_ui_write_pipeline.lua` to prove `set` is excluded from runtime traffic, durable edits capture the working profile before the live enqueue boundary, and existing Profile V2 file-only Save contracts remain intact.
+- The legacy `remote_bridge.lua` `op=set` / `apply_set` path remains for compatibility and is intentionally not removed in this slice. It is now provably unreachable from the normal WinForms `Forward` path and will be addressed as a later Phase 5 addon-bridge cutover.
+- Legacy list/edit operations such as target-ignore, hunter, partner, COR range, Sleep ordering, and ability replacement remain to be classified/migrated independently.
+- CI proof is pending on the implementation head.
 
 ### Phase 6 — Retire the durable flat projection
 
