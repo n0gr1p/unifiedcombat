@@ -4277,7 +4277,6 @@ public partial class MainForm
             CaptureWorkingProfileFromUi(sid);
         }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_add", ["name"] = name });
         _pathHunterName.Text = "";
     }
 
@@ -4307,7 +4306,6 @@ public partial class MainForm
             CaptureWorkingProfileFromUi(sid);
         }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_remove", ["index"] = idx + 1 });
     }
 
     private static string NormalizeTankEnmityEntry(string type, string name)
@@ -6137,7 +6135,6 @@ public partial class MainForm
         SendAbilitiesUpdate();
         Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = string.Join("|", _sleepSpellRows.Select(r => r.Name)) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_replace_names", ["value"] = string.Join("|", _pathHunterRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "tank_enmity_replace_actions", ["value"] = string.Join("|", _tankEnmityRows) });
         foreach (var key in HubUiConstants.BoolKeys)
         {
