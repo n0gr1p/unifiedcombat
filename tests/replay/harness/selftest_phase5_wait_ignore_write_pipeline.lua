@@ -111,18 +111,19 @@ local ok, err = pcall(function()
 
     local changed, reason = active_config.append_string_list(
         'config.combat.weaponskill.wait_ignore_names',
-        ' ponponponponpon '
+        ' Ponponponponpon '
     )
     assert_true(changed, 'wait-ignore append should succeed')
     assert_equal(reason, 'ADDED', 'wait-ignore append reason')
-    assert_equal(names[3], 'ponponponponpon', 'canonical append preserves normalized user spelling')
+    assert_equal(names[3], 'Ponponponponpon', 'canonical append preserves normalized user spelling')
 
     changed, reason = active_config.append_string_list(
         'config.combat.weaponskill.wait_ignore_names',
-        'NIIGHTS IIDE'
+        'NIIGHTSIIDE'
     )
-    assert_true(changed, 'different spelling remains a distinct durable name')
-    assert_equal(reason, 'ADDED', 'distinct wait-ignore spelling reason')
+    assert_true(changed, 'case-only duplicate is a successful no-op')
+    assert_equal(reason, 'ALREADY', 'case-only wait-ignore duplicate reason')
+    assert_equal(#names, 3, 'case-only duplicate must not grow durable names')
 
     changed, reason = active_config.remove_string_list_value(
         'config.combat.weaponskill.wait_ignore_names',
@@ -130,9 +131,9 @@ local ok, err = pcall(function()
     )
     assert_true(changed, 'remove-by-name should succeed case-insensitively')
     assert_equal(reason, 'REMOVED', 'wait-ignore remove-by-name reason')
-    assert_equal(#names, 3, 'wait-ignore remove-by-name count')
+    assert_equal(#names, 2, 'wait-ignore remove-by-name count')
     assert_equal(names[1], 'Niightsiide', 'first durable name remains')
-    assert_equal(names[2], 'ponponponponpon', 'ordered names close after removal')
+    assert_equal(names[2], 'Ponponponponpon', 'ordered names close after removal')
 
     projected, projection_err = active_config.project_flat_settings(
         rawget(_G, 'UC_ACTIVE_PROFILE'),
