@@ -359,7 +359,7 @@ Exit criteria:
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
-Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, and no-skillchain list edits are canonical; remaining bespoke list/edit bridge operations remain**
+Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, no-skillchain, and wait-ignore edits are canonical; remaining bespoke list/edit bridge operations remain**
 
 Goals:
 
@@ -418,6 +418,22 @@ Exit criteria:
 - Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 36→32.
 - The existing `selftest_no_skillchain_targets.lua` remains because `uc_no_skillchain_targets.lua` is still a runtime matching/gating helper even though it is no longer a bridge writer.
 - Implementation head `e29d8106df2d308b929f6a32023b099deb86b130` is proven by workflow `37304464552`: Phase 5 no-skillchain write-pipeline PASS, existing no-skillchain runtime gate PASS, Phase 5 targeting-list pipeline PASS, Phase 5 generic UI pipeline PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS. The first WinForms run exposed a stale writer-contract assertion that still required the retired live `no_skillchain_target_replace_names` emit; that contract was updated to require local working-profile capture plus no live bridge mutation.
+
+### 2026-10-05 — Phase 5 wait-ignore write pipeline implemented
+
+- Migrated wait-ignore durable editing to canonical `config.combat.weaponskill.wait_ignore_names`.
+- Preserved the intended identity split: durable policy is a case-insensitive ordered name list; legacy runtime `ignore` IDs are derived from the currently resolvable party roster during compatibility projection and are never written as durable authority.
+- Added `uc_active_config.remove_string_list_value(path, value)` so the legacy `ignore_remove(mob_id)` compatibility operation can translate the live party ID back to its current name and remove that canonical durable name.
+- `remote_bridge.lua` `ignore_replace_names`, `ignore_add`, `ignore_add_current`, and `ignore_remove` now edit canonical Profile V2 first through the active-profile list editor API. The bridge no longer requires `uc_ignore`, no longer assigns `s.wait_ignore_names`, and no longer mutates `s.ignore`.
+- `uc_active_config.project_flat_settings()` remains the single compatibility derivation point: `wait_ignore_names` is copied from canonical policy and `ignore` is rebuilt from names that resolve to current party-member IDs. Offline/unresolved durable names remain in Profile V2 but produce no transient ID until resolvable.
+- WinForms wait-ignore add/remove operations now edit local rows and call `CaptureWorkingProfileFromUi(sid)` only. Add Current consumes the runtime-observed `current_target_name`; it does not send a durable mutation command to the addon.
+- `PushFullFormState` no longer emits `ignore_replace_names`.
+- The existing structured writer remains unchanged: `ignore_entries` serializes to canonical `config.combat.weaponskill.wait_ignore_names`.
+- Added `tests/replay/harness/selftest_phase5_wait_ignore_write_pipeline.lua` covering durable-name editing, case-insensitive dedupe/remove, offline-name persistence, current-party name→ID compatibility projection, legacy remove-ID→name translation, no-flat bridge ownership, local-only WinForms editing, and removal of the full-form push.
+- The WinForms Profile V2 round-trip contract now explicitly requires wait-ignore editing to stay local and forbids the retired live `ignore_*` operations.
+- Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 32→28.
+- Runtime WS coordination remains name-based through `uc_ignore.is_name_blocked(settings, value.name)`; this slice changes write authority only.
+- CI proof is pending on the implementation head.
 
 ### Phase 6 — Retire the durable flat projection
 
