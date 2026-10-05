@@ -417,7 +417,7 @@ Exit criteria:
 - Added `tests/replay/harness/selftest_phase5_no_skillchain_write_pipeline.lua` covering canonical list mutation, compatibility projection, no-flat bridge ownership, local-only WinForms editing, Add Current runtime observation, writer mapping, and removal of the full-form replace push.
 - Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 36→32.
 - The existing `selftest_no_skillchain_targets.lua` remains because `uc_no_skillchain_targets.lua` is still a runtime matching/gating helper even though it is no longer a bridge writer.
-- CI proof is pending on the implementation head.
+- Implementation head `e29d8106df2d308b929f6a32023b099deb86b130` is proven by workflow `37304464552`: Phase 5 no-skillchain write-pipeline PASS, existing no-skillchain runtime gate PASS, Phase 5 targeting-list pipeline PASS, Phase 5 generic UI pipeline PASS, Profile V2 flat-surface guard PASS, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS. The first WinForms run exposed a stale writer-contract assertion that still required the retired live `no_skillchain_target_replace_names` emit; that contract was updated to require local working-profile capture plus no live bridge mutation.
 
 ### Phase 6 — Retire the durable flat projection
 
