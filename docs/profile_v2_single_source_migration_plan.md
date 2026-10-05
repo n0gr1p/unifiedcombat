@@ -446,7 +446,7 @@ Exit criteria:
 - Runtime hunter matching remains unchanged in `uc_path_hunter.matches_mob`; Phase 3 canonical path authority already ensures runtime policy comes from `config.movement.path`.
 - Added `tests/replay/harness/selftest_phase5_path_hunter_write_pipeline.lua` covering canonical list mutation, case-insensitive dedupe, compatibility projection, no-flat bridge ownership, local-only WinForms editing, structured writer/adapter mapping, canonical path adapter wiring, and removal of the full-form push.
 - Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 28→25.
-- CI proof is pending on the implementation head.
+- Implementation head `045223fe226e177325d86ea16f16d2725f572cf0` is proven by workflow `37337795481`: Phase 5 path-hunter write-pipeline PASS, prior Phase 5 write-pipeline suites PASS, Phase 3 pathing authority PASS, Profile V2 flat-surface guard PASS at the 25-reference bridge baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 
 ### Phase 6 — Retire the durable flat projection
 
