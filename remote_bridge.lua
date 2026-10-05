@@ -12,7 +12,6 @@ local uc_time = require('uc_time')
 local json = require('json')
 local res = require('resources')
 local uc_ws_memory = require('uc_ws_memory')
-local uc_ignore = require('uc_ignore')
 local uc_partner_list = require('uc_partner_list')
 local uc_path_hunter = require('uc_path_hunter')
 local uc_config_runtime = require('uc_config_runtime')
@@ -1352,27 +1351,11 @@ local function process_line(line)
 		end
 		last_state_send = 0
 	elseif op == 'ignore_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			local out = {}
-			local seen_name = {}
-			s.ignore = {}
-			for _, name in ipairs(vals) do
-				local n = uc_trim(name)
-				local nk = n:lower()
-				if n ~= '' and not seen_name[nk] then
-					seen_name[nk] = true
-					out[#out + 1] = n
-				end
-				local tid = uc_resolve_target_id_by_name(n)
-				if tid and tid ~= 0 then
-					uc_ignore.append_id(s, tid)
-				end
-			end
-			s.wait_ignore_names = out
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.combat.weaponskill.wait_ignore_names',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'partner_replace_names' then
 		local s = _G.UC_SETTINGS
 		if s then
@@ -1457,60 +1440,63 @@ local function process_line(line)
 		end
 		last_state_send = 0
 	elseif op == 'ignore_add' then
-		local s = _G.UC_SETTINGS
 		local name = uc_trim(msg.name)
-		if not s or name == '' then
+		if name == '' then
 			_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_NO_NAME'
 		else
-			local tid = uc_resolve_target_id_by_name(name)
-			if not tid then
-				_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_NAME_NOT_FOUND:' .. name
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.combat.weaponskill.wait_ignore_names',
+				name
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_ALREADY:' .. name
+			elseif ok then
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_OK:' .. name
 			else
-				local ok, why = uc_ignore.append_id(s, tid)
-				if ok and why == 'IGNORE_ALREADY' then
-					_G.UC_LAST_IGNORE_OP = 'IGNORE_ALREADY:' .. name
-				elseif ok then
-					_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_OK:' .. name
-				else
-					_G.UC_LAST_IGNORE_OP = tostring(why or 'IGNORE_ADD_FAIL')
-				end
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'ignore_add_current' then
-		local s = _G.UC_SETTINGS
-		if not s then
-			_G.UC_LAST_IGNORE_OP = 'IGNORE_NO_SETTINGS'
+		local tname, tid = uc_current_target_snapshot()
+		if tid == 0 then
+			_G.UC_LAST_IGNORE_OP = 'IGNORE_NO_TARGET'
 		else
-			local tname, tid = uc_current_target_snapshot()
-			if tid == 0 then
-				_G.UC_LAST_IGNORE_OP = 'IGNORE_NO_TARGET'
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.combat.weaponskill.wait_ignore_names',
+				tname
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_ALREADY:' .. tname
+			elseif ok then
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_OK:' .. tname
 			else
-				local ok, why = uc_ignore.append_id(s, tid)
-				if ok and why == 'IGNORE_ALREADY' then
-					_G.UC_LAST_IGNORE_OP = 'IGNORE_ALREADY:' .. tname
-				elseif ok then
-					_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_OK:' .. tname
-				else
-					_G.UC_LAST_IGNORE_OP = tostring(why or 'IGNORE_ADD_FAIL')
-				end
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'ignore_remove' then
-		local s = _G.UC_SETTINGS
 		local tid = uc_remote_message_mob_id(msg, 'mob_id', 'id')
-		if not s or not tid or tid == 0 then
+		if not tid or tid == 0 then
 			_G.UC_LAST_IGNORE_OP = 'IGNORE_REMOVE_BAD_ID'
 		else
-			local ok, why = uc_ignore.remove_id(s, tid)
-			if ok then
-				_G.UC_LAST_IGNORE_OP = 'IGNORE_REMOVE_OK:' .. tostring(tid)
+			local _, _, id_to_name = uc_get_party_name_maps(true)
+			local name = id_to_name[tid]
+			if not name or name == '' then
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_REMOVE_ID_NOT_FOUND:' .. tostring(tid)
 			else
-				_G.UC_LAST_IGNORE_OP = tostring(why or 'IGNORE_REMOVE_FAIL')
+				local ok, why = uc_apply_active_list_edit(
+					'remove_string_list_value',
+					'config.combat.weaponskill.wait_ignore_names',
+					name
+				)
+				if ok then
+					_G.UC_LAST_IGNORE_OP = 'IGNORE_REMOVE_OK:' .. tostring(tid)
+				else
+					_G.UC_LAST_IGNORE_OP = 'IGNORE_REMOVE_FAIL:' .. tostring(why)
+				end
 			end
 		end
-		last_state_send = 0
 	elseif op == 'no_skillchain_target_add' then
 		local name = uc_trim(msg.name)
 		if name ~= '' then
