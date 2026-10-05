@@ -5584,9 +5584,8 @@ public partial class MainForm
         {
             _noSkillchainTargetRows.Add((NextSlot(_noSkillchainTargetRows), name));
             RebindNoSkillchainTargetListUi();
+            CaptureWorkingProfileFromUi(sid);
         }
-
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "no_skillchain_target_add", ["name"] = name });
     }
 
     private void NoSkillchainTargetAddCurrent()
@@ -5596,7 +5595,15 @@ public partial class MainForm
         {
             return;
         }
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "no_skillchain_target_add_current" });
+
+        var name = CurrentRuntimeTargetName();
+        if (name.Length == 0 || HasName(_noSkillchainTargetRows, name))
+        {
+            return;
+        }
+        _noSkillchainTargetRows.Add((NextSlot(_noSkillchainTargetRows), name));
+        RebindNoSkillchainTargetListUi();
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void NoSkillchainTargetRemove()
@@ -5618,12 +5625,7 @@ public partial class MainForm
             _noSkillchainTargetRows[i] = (i + 1, _noSkillchainTargetRows[i].Name);
         }
         RebindNoSkillchainTargetListUi();
-        Forward(sid, new Dictionary<string, object?>
-        {
-            ["op"] = "no_skillchain_target_remove",
-            ["index"] = slot,
-            ["slot"] = slot,
-        });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void AddPriorityByName()
@@ -6134,7 +6136,6 @@ public partial class MainForm
         SendAbilitiesUpdate();
         Forward(sid, new Dictionary<string, object?> { ["op"] = "ignore_replace_names", ["value"] = string.Join("|", _ignoreRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "no_skillchain_target_replace_names", ["value"] = string.Join("|", _noSkillchainTargetRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = string.Join("|", _sleepSpellRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_replace_names", ["value"] = string.Join("|", _pathHunterRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "tank_enmity_replace_actions", ["value"] = string.Join("|", _tankEnmityRows) });
