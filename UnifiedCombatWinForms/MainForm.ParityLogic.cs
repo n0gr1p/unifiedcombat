@@ -5758,8 +5758,7 @@ public partial class MainForm
         _sleepSpellRows = [(1, name)];
         RebindSleepSpellListUi();
         _sleepSpellList.SelectedIndex = 0;
-
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = name });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void SleepSpellAddByName()
@@ -5780,9 +5779,8 @@ public partial class MainForm
             _sleepSpellRows.Add((NextSlot(_sleepSpellRows), name));
             RebindSleepSpellListUi();
             _sleepSpellList.SelectedIndex = _sleepSpellRows.Count - 1;
+            CaptureWorkingProfileFromUi(sid);
         }
-
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_add_spell", ["name"] = name });
     }
 
     private void SleepSpellRemove()
@@ -5799,11 +5797,6 @@ public partial class MainForm
             return;
         }
 
-        var slot = idx < _sleepSpellRows.Count ? _sleepSpellRows[idx].Slot : SessionStateHelper.ParseTrailingBracketId(_sleepSpellList.Items[idx]?.ToString() ?? "");
-        if (!slot.HasValue || slot.Value < 1)
-        {
-            return;
-        }
         if (idx < _sleepSpellRows.Count)
         {
             _sleepSpellRows.RemoveAt(idx);
@@ -5812,17 +5805,8 @@ public partial class MainForm
                 _sleepSpellRows[i] = (i + 1, _sleepSpellRows[i].Name);
             }
             RebindSleepSpellListUi();
+            CaptureWorkingProfileFromUi(sid);
         }
-
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "sleep_remove_spell",
-                ["index"] = slot.Value,
-                ["slot"] = slot.Value,
-            }
-        );
     }
 
     private void SleepSpellClear()
@@ -5835,7 +5819,7 @@ public partial class MainForm
 
         _sleepSpellRows = [];
         RebindSleepSpellListUi();
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = "" });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void SleepSpellMove(string direction)
@@ -5851,7 +5835,6 @@ public partial class MainForm
         {
             return;
         }
-        var localSlot = idx + 1;
         if (idx < _sleepSpellRows.Count)
         {
             var next = string.Equals(direction, "up", StringComparison.OrdinalIgnoreCase) ? idx - 1 : idx + 1;
@@ -5864,30 +5847,9 @@ public partial class MainForm
                 }
                 RebindSleepSpellListUi();
                 _sleepSpellList.SelectedIndex = next;
-                localSlot = idx + 1;
+                CaptureWorkingProfileFromUi(sid);
             }
         }
-
-        int? slot = localSlot;
-        if (idx >= _sleepSpellRows.Count)
-        {
-            slot = SessionStateHelper.ParseTrailingBracketId(_sleepSpellList.Items[idx]?.ToString() ?? "") ?? 0;
-        }
-        if (!slot.HasValue || slot.Value < 1)
-        {
-            return;
-        }
-
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "sleep_move_spell",
-                ["index"] = slot.Value,
-                ["slot"] = slot.Value,
-                ["direction"] = direction,
-            }
-        );
     }
 
     private void SaveRemote()
@@ -6134,7 +6096,6 @@ public partial class MainForm
         });
         SendAbilitiesUpdate();
         Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = string.Join("|", _sleepSpellRows.Select(r => r.Name)) });
         Forward(sid, new Dictionary<string, object?> { ["op"] = "tank_enmity_replace_actions", ["value"] = string.Join("|", _tankEnmityRows) });
         foreach (var key in HubUiConstants.BoolKeys)
         {
