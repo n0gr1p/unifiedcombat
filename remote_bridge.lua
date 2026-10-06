@@ -1324,14 +1324,11 @@ local function process_line(line)
 		end
 		last_state_send = 0
 	elseif op == 'set_abilities' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			s.abilities = vals
-			for i = 1, 6 do
-				s['ability' .. tostring(i)] = vals[i] or ''
-			end
-		end
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.abilities.configured',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'tank_enmity_replace_actions' then
 		uc_apply_active_list_edit(
 			'replace_string_list',
