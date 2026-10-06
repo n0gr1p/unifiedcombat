@@ -203,6 +203,10 @@ jobs:
           lua5.1 tests/replay/harness/selftest_phase5_tank_enmity_write_pipeline.lua
           lua5.1 tests/replay/harness/selftest_tank_pet_enmity_config.lua
           lua5.1 tests/replay/harness/selftest_tank_pet_enmity_provider.lua
+      - name: Phase 5 abilities write-pipeline self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase5_abilities_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase3_abilities_authority.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
