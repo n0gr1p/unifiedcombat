@@ -359,7 +359,7 @@ Exit criteria:
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
-Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, no-skillchain, wait-ignore, path-hunter, Sleep ordering, and tank-enmity edits are canonical; remaining bespoke list/edit bridge operations remain**
+Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, no-skillchain, wait-ignore, path-hunter, Sleep ordering, tank-enmity, and abilities edits are canonical; remaining bespoke identity-bearing bridge operations remain**
 
 Goals:
 
@@ -480,6 +480,22 @@ Exit criteria:
 - Dedicated Phase 5 tank-enmity CI also runs the existing tank pet-enmity config and provider suites.
 - Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 21→20.
 - Implementation head `c4fa5130879e3239ce20c003d430c1a8d6b34d10` is proven by workflow `37427996454`: Phase 5 tank-enmity write-pipeline PASS, tank pet-enmity config/provider suites PASS, prior Phase 5 write-pipeline suites PASS, Profile V2 flat-surface guard PASS at the 20-reference bridge baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
+
+### 2026-10-06 — Phase 5 abilities write pipeline implemented
+
+- Migrated ability-list editing to canonical `config.abilities.configured`.
+- `remote_bridge.lua` `set_abilities` now uses the canonical active-profile list editor API and no longer reads or mutates `_G.UC_SETTINGS`.
+- Compatibility projection now derives flat `ability1`…`ability6` from canonical `config.abilities.configured` when that list is non-empty. Canonical `legacy_slots` are used only as fallback for older profiles whose configured list is empty.
+- This removes the previous duplicate-write behavior where `set_abilities` manually wrote both flat `abilities` and six numbered slots. New Profile V2 serialization continues to leave `legacy_slots` empty instead of duplicating configured policy.
+- Flat `abilities` preserves the complete canonical configured list; the numbered compatibility slots expose only the first six entries and explicitly clear unused slots.
+- WinForms `SendAbilitiesUpdate` is now local-only: it captures the selected session's working Profile V2 and emits no `set_abilities` bridge operation. Add, Remove, Move Up, Move Down, and full-form capture therefore share the same local durable-edit path.
+- The structured writer remains unchanged: `abilities_selected` persists to `config.abilities.configured`, while `legacy_slots` remains empty for new profiles.
+- `RuntimeProfileEditorAdapter` continues rebuilding `abilities_selected` from projected canonical `abilities`.
+- Runtime semantics remain unchanged: `uc_ability_pipeline.collect_ordered_from_config` consumes canonical configured abilities first and retains canonical legacy-slot fallback when configured is empty; the scheduler-facing core view also uses canonical configured abilities.
+- Added `tests/replay/harness/selftest_phase5_abilities_write_pipeline.lua` covering canonical mutation/dedupe, full-list projection, first-six compatibility slot derivation, old-profile legacy-slot fallback, no-flat bridge ownership, local-only WinForms editing, writer/adapter mapping, and canonical runtime consumption.
+- The focused Phase 5 CI step also reruns `selftest_phase3_abilities_authority.lua`.
+- Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 20→19.
+- CI proof is pending on the implementation head.
 
 ### Phase 6 — Retire the durable flat projection
 
