@@ -1501,6 +1501,22 @@ local function normalized_string_list(values)
 	return out
 end
 
+local function sync_string_list_dependents(path, target)
+	local segments = normalize_path(path)
+	if type(segments) ~= 'table' then
+		return
+	end
+	if #segments == 3
+		and segments[1] == 'config'
+		and segments[2] == 'sleep'
+		and segments[3] == 'order' then
+		local sleep = M.get_path('config.sleep')
+		if type(sleep) == 'table' then
+			sleep.legacy_primary = tostring(target[1] or '')
+		end
+	end
+end
+
 function M.replace_string_list(path, values)
 	local target = M.get_path(path)
 	if type(target) ~= 'table' then
@@ -1514,6 +1530,7 @@ function M.replace_string_list(path, values)
 	if ok ~= true then
 		return false, sync_err
 	end
+	sync_string_list_dependents(path, target)
 	return true, 'REPLACED'
 end
 
@@ -1529,10 +1546,12 @@ function M.append_string_list(path, value)
 	local key = normalized:lower()
 	for i = 1, #target do
 		if tostring(target[i] or ''):lower() == key then
+			sync_string_list_dependents(path, target)
 			return true, 'ALREADY'
 		end
 	end
 	target[#target + 1] = normalized
+	sync_string_list_dependents(path, target)
 	return true, 'ADDED'
 end
 
@@ -1546,6 +1565,7 @@ function M.remove_string_list_index(path, index)
 		return false, 'BAD_INDEX'
 	end
 	table.remove(target, resolved)
+	sync_string_list_dependents(path, target)
 	return true, 'REMOVED'
 end
 
@@ -1562,6 +1582,7 @@ function M.remove_string_list_value(path, value)
 	for i = 1, #target do
 		if tostring(target[i] or ''):lower() == key then
 			table.remove(target, i)
+			sync_string_list_dependents(path, target)
 			return true, 'REMOVED'
 		end
 	end
@@ -1585,6 +1606,7 @@ function M.move_string_list_index(path, index, delta)
 		return false, 'EDGE'
 	end
 	target[resolved_index], target[destination] = target[destination], target[resolved_index]
+	sync_string_list_dependents(path, target)
 	return true, 'MOVED'
 end
 
