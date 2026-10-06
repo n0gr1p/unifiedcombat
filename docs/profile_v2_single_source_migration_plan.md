@@ -359,7 +359,7 @@ Exit criteria:
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
-Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, no-skillchain, wait-ignore, path-hunter, Sleep ordering, tank-enmity, and abilities edits are canonical; remaining bespoke identity-bearing bridge operations remain**
+Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, no-skillchain, wait-ignore, path-hunter, Sleep ordering, tank-enmity, abilities, and COR range-participant edits are canonical; partner/follow identity editing remains**
 
 Goals:
 
@@ -496,6 +496,22 @@ Exit criteria:
 - The focused Phase 5 CI step also reruns `selftest_phase3_abilities_authority.lua`.
 - Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 20→19.
 - Implementation head `7480827f867d8f67717101c4099db080a1188599` is proven by workflow `37451144564`: Phase 5 abilities write-pipeline PASS, Phase 3 abilities authority PASS, prior Phase 5 write-pipeline suites PASS, Profile V2 flat-surface guard PASS at the 19-reference bridge baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
+
+### 2026-10-06 — Phase 5 COR range participant write pipeline implemented
+
+- Migrated COR roll-range participant editing to canonical durable `config.maintenance.cor.range_selected`.
+- Preserved the intended identity split: durable policy is a pipe-delimited, case-insensitively deduplicated participant-name selection; live party IDs are derived from the current roster and are not durable authority.
+- Added `uc_active_config.replace_pipe_string_list(path, values)` for canonical pipe-delimited name policy. For `config.maintenance.cor.range_selected`, every edit explicitly clears canonical `range_require_ids` so stale runtime IDs cannot survive a durable-name edit.
+- Compatibility projection now derives flat `cor_roll_range_require_ids` from currently resolvable names in canonical `range_selected`. If no durable names are configured, old canonical `range_require_ids` remain a legacy fallback.
+- `remote_bridge.lua` `cor_roll_range_replace_names` now edits canonical participant names and no longer writes flat `cor_roll_range_selected` or `cor_roll_range_require_ids`.
+- WinForms COR range checkbox edits now call `CaptureWorkingProfileFromUi(sid)` and emit no live bridge mutation. `PushFullFormState` no longer emits `cor_roll_range_replace_names`.
+- The structured writer remains unchanged and expresses the durable/runtime split directly: `range_selected` is persisted from `cor_roll_range_selected`, while new profiles always write `range_require_ids = {}`.
+- `uc_cor_maintenance.lua` now resolves `range_selected` names against the current party at proposal time. Only currently resolvable names produce live required IDs; offline/unresolved durable names remain policy but create no transient requirement until present. If `range_selected` is empty, legacy `range_require_ids` remain supported.
+- Runtime range semantics are otherwise unchanged: a resolved required member still blocks rolling when missing/dead/outside the current roll radius.
+- Added `tests/replay/harness/selftest_phase5_cor_range_write_pipeline.lua` covering canonical name editing/dedupe, clearing stale IDs, live compatibility projection, offline-name persistence, behavioral current-party name→ID range gating, legacy-ID fallback, no-flat bridge ownership, local-only WinForms editing, and writer persistence.
+- The focused Phase 5 CI step also reruns `selftest_phase4_cor_authority.lua`.
+- Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 19→18.
+- CI proof is pending on the implementation head.
 
 ### Phase 6 — Retire the durable flat projection
 
