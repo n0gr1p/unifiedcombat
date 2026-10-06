@@ -1368,31 +1368,11 @@ local function process_line(line)
 			uc_split_pipe(msg.value)
 		)
 	elseif op == 'cor_roll_range_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			local out = {}
-			local seen = {}
-			local keep_names = {}
-			local seen_name = {}
-			local _, name_to_id = uc_get_party_name_maps(false)
-			for _, name in ipairs(vals) do
-				local n = uc_trim(name)
-				local pid = name_to_id[n] or 0
-				if n ~= '' and pid ~= 0 and not seen[pid] then
-					seen[pid] = true
-					out[#out + 1] = pid
-					local nk = n:lower()
-					if not seen_name[nk] then
-						seen_name[nk] = true
-						keep_names[#keep_names + 1] = n
-					end
-				end
-			end
-			s.cor_roll_range_require_ids = out
-			s.cor_roll_range_selected = table.concat(keep_names, '|')
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_pipe_string_list',
+			'config.maintenance.cor.range_selected',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'add_priority_replace_names' then
 		uc_apply_active_list_edit(
 			'replace_string_list',
