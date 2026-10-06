@@ -5288,7 +5288,7 @@ public partial class MainForm
             return;
         }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_abilities", ["value"] = string.Join("|", _selectedAbilities) });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void AddAbility()
