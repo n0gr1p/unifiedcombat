@@ -495,7 +495,7 @@ Exit criteria:
 - Added `tests/replay/harness/selftest_phase5_abilities_write_pipeline.lua` covering canonical mutation/dedupe, full-list projection, first-six compatibility slot derivation, old-profile legacy-slot fallback, no-flat bridge ownership, local-only WinForms editing, writer/adapter mapping, and canonical runtime consumption.
 - The focused Phase 5 CI step also reruns `selftest_phase3_abilities_authority.lua`.
 - Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 20→19.
-- CI proof is pending on the implementation head.
+- Implementation head `7480827f867d8f67717101c4099db080a1188599` is proven by workflow `37451144564`: Phase 5 abilities write-pipeline PASS, Phase 3 abilities authority PASS, prior Phase 5 write-pipeline suites PASS, Profile V2 flat-surface guard PASS at the 19-reference bridge baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 
 ### Phase 6 — Retire the durable flat projection
 
