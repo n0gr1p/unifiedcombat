@@ -194,6 +194,10 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_phase5_wait_ignore_write_pipeline.lua
       - name: Phase 5 path-hunter write-pipeline self-test
         run: lua5.1 tests/replay/harness/selftest_phase5_path_hunter_write_pipeline.lua
+      - name: Phase 5 Sleep ordering write-pipeline self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase5_sleep_order_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_sleep_spell_selection.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
