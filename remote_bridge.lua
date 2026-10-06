@@ -1333,22 +1333,11 @@ local function process_line(line)
 			end
 		end
 	elseif op == 'tank_enmity_replace_actions' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			local out = {}
-			local seen = {}
-			for _, entry in ipairs(vals) do
-				local n = uc_trim(entry)
-				local k = n:lower()
-				if n ~= '' and not seen[k] then
-					seen[k] = true
-					out[#out + 1] = n
-				end
-			end
-			s.tank_enmity_actions = out
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.tank.enmity.actions',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'ignore_replace_names' then
 		uc_apply_active_list_edit(
 			'replace_string_list',
