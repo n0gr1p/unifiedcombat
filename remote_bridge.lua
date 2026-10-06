@@ -1414,13 +1414,17 @@ local function process_line(line)
 			uc_split_pipe(msg.value)
 		)
 	elseif op == 'sleep_replace_spells' then
-		local s = _G.UC_SETTINGS
 		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
-		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.replace_names) == 'function' then
-			local vals = uc_split_pipe(msg.value)
-			sleep_cfg.replace_names(s, vals)
+		if type(sleep_cfg) == 'table' and type(sleep_cfg.validate_names) == 'function' then
+			local validated = sleep_cfg.validate_names(uc_split_pipe(msg.value))
+			if type(validated) == 'table' then
+				uc_apply_active_list_edit(
+					'replace_string_list',
+					'config.sleep.order',
+					validated
+				)
+			end
 		end
-		last_state_send = 0
 	elseif op == 'path_hunter_replace_names' then
 		uc_apply_active_list_edit(
 			'replace_string_list',
@@ -1636,31 +1640,39 @@ local function process_line(line)
 			end
 		end
 	elseif op == 'sleep_add_spell' then
-		local s = _G.UC_SETTINGS
 		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
 		local name = uc_trim(msg.name)
-		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.append_name) == 'function' and name ~= '' then
-			sleep_cfg.append_name(s, name)
+		if name ~= '' and type(sleep_cfg) == 'table' and type(sleep_cfg.validate_names) == 'function' then
+			local validated = sleep_cfg.validate_names({ name })
+			if type(validated) == 'table' and #validated == 1 then
+				uc_apply_active_list_edit(
+					'append_string_list',
+					'config.sleep.order',
+					validated[1]
+				)
+			end
 		end
-		last_state_send = 0
 	elseif op == 'sleep_remove_spell' then
-		local s = _G.UC_SETTINGS
-		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
 		local idx = uc_remote_list_index(msg, line)
-		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.remove_index) == 'function' and idx then
-			sleep_cfg.remove_index(s, math.floor(idx + 0.5))
+		if idx then
+			uc_apply_active_list_edit(
+				'remove_string_list_index',
+				'config.sleep.order',
+				math.floor(idx + 0.5)
+			)
 		end
-		last_state_send = 0
 	elseif op == 'sleep_move_spell' then
-		local s = _G.UC_SETTINGS
-		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
 		local idx = uc_remote_list_index(msg, line)
 		local dir = tostring(uc_trim(tostring(msg.direction or msg.Direction or msg.dir or msg.Dir or ''))):lower()
 		local delta = (dir == 'up' or dir == '-1') and -1 or ((dir == 'down' or dir == '1') and 1 or nil)
-		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.move_index) == 'function' and idx and delta then
-			sleep_cfg.move_index(s, math.floor(idx + 0.5), delta)
+		if idx and delta then
+			uc_apply_active_list_edit(
+				'move_string_list_index',
+				'config.sleep.order',
+				math.floor(idx + 0.5),
+				delta
+			)
 		end
-		last_state_send = 0
 	elseif op == 'path_hunter_add' then
 		local name = uc_trim(msg.name)
 		if name == '' then
