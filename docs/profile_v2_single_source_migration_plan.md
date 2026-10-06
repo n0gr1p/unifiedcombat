@@ -359,7 +359,7 @@ Exit criteria:
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
-Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, no-skillchain, wait-ignore, and path-hunter edits are canonical; remaining bespoke list/edit bridge operations remain**
+Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, no-skillchain, wait-ignore, path-hunter, and Sleep ordering edits are canonical; remaining bespoke list/edit bridge operations remain**
 
 Goals:
 
@@ -447,6 +447,23 @@ Exit criteria:
 - Added `tests/replay/harness/selftest_phase5_path_hunter_write_pipeline.lua` covering canonical list mutation, case-insensitive dedupe, compatibility projection, no-flat bridge ownership, local-only WinForms editing, structured writer/adapter mapping, canonical path adapter wiring, and removal of the full-form push.
 - Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 28→25.
 - Implementation head `045223fe226e177325d86ea16f16d2725f572cf0` is proven by workflow `37337795481`: Phase 5 path-hunter write-pipeline PASS, prior Phase 5 write-pipeline suites PASS, Phase 3 pathing authority PASS, Profile V2 flat-surface guard PASS at the 25-reference bridge baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
+
+### 2026-10-06 — Phase 5 Sleep ordering write pipeline implemented
+
+- Migrated Sleep ordering edits to canonical `config.sleep.order`.
+- Preserved the coupled compatibility field: every canonical Sleep order replace/add/remove/move now automatically synchronizes `config.sleep.legacy_primary` to the first ordered spell, or clears it when the list becomes empty.
+- Exposed `UC_SleepSpell.validate_names(names)` as a validation-only surface. Bridge compatibility edits still validate spell names against FFXI spell resources and reject unknown entries before canonical mutation; validation no longer requires mutating flat `sleepspells`.
+- `remote_bridge.lua` `sleep_replace_spells`, `sleep_add_spell`, `sleep_remove_spell`, and `sleep_move_spell` now edit canonical Profile V2 through the active-profile list editor API. The bridge no longer reads `_G.UC_SETTINGS` in these handlers.
+- After successful canonical edits, the existing compatibility projection refreshes flat `sleepspells` / `sleepspell`; those fields are compatibility output only.
+- WinForms Sleep Set Only, Add, Remove, Clear, and Move operations now edit local rows and call `CaptureWorkingProfileFromUi(sid)`; no Sleep ordering operation is emitted to the addon bridge.
+- `PushFullFormState` no longer emits `sleep_replace_spells`.
+- The existing structured writer remains canonical: `sleep_spell_entries` serializes to `config.sleep.order`, and `legacy_primary` is derived from the first ordered entry.
+- `RuntimeProfileEditorAdapter` continues reconstructing Sleep editor rows from projected canonical `sleepspells`.
+- Runtime Sleep selection remains unchanged and canonical through `scheduler.sleep_spell_list_from_config(config)` / `uc_scheduler_config.sleep_order_from_config(config)`.
+- Added `tests/replay/harness/selftest_phase5_sleep_order_write_pipeline.lua` covering ordered-list mutation, case-insensitive dedupe, `legacy_primary` coupling, compatibility projection, validation-before-edit bridge behavior, local-only WinForms editing, writer/adapter mapping, and canonical scheduler consumption.
+- Updated `selftest_sleep_spell_selection.lua` to require the new local-only UI contract rather than the retired live Sleep edit operations.
+- Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 25→21.
+- CI proof is pending on the implementation head.
 
 ### Phase 6 — Retire the durable flat projection
 
