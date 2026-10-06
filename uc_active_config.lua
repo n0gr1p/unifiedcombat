@@ -172,6 +172,25 @@ local function resolve_party_member_ids_by_names(names)
 	return out
 end
 
+local function split_pipe_name_list(value)
+	if type(value) ~= 'string' or value == '' then
+		return {}
+	end
+	local out = {}
+	local seen = {}
+	for part in value:gmatch('[^|]+') do
+		local name = normalize_optional_string(part)
+		if name ~= nil then
+			local key = name:lower()
+			if not seen[key] then
+				seen[key] = true
+				out[#out + 1] = name
+			end
+		end
+	end
+	return out
+end
+
 local function resolve_party_member_names_by_ids(ids)
 	if type(ids) ~= 'table' then
 		return {}
@@ -1092,7 +1111,12 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.cor_luzaf_range_override = config.maintenance.cor.luzaf_range_override
 			candidate.cor_light_shot_dia = config.maintenance.cor.light_shot_dia
 			candidate.cor_roll_range_selected = config.maintenance.cor.range_selected
-			candidate.cor_roll_range_require_ids = clone_value(config.maintenance.cor.range_require_ids)
+			local range_names = split_pipe_name_list(config.maintenance.cor.range_selected)
+			if #range_names > 0 then
+				candidate.cor_roll_range_require_ids = resolve_party_member_ids_by_names(range_names)
+			else
+				candidate.cor_roll_range_require_ids = clone_value(config.maintenance.cor.range_require_ids)
+			end
 		end
 		if type(config.maintenance.brd) == 'table' then
 			candidate.maintenance_brd = clone_value(config.maintenance.brd)
@@ -1501,6 +1525,36 @@ local function normalized_string_list(values)
 		end
 	end
 	return out
+end
+
+function M.replace_pipe_string_list(path, values)
+	local segments = normalize_path(path)
+	if type(segments) ~= 'table' or #segments < 2 then
+		return false, 'active config pipe-list path missing'
+	end
+	local normalized, err = normalized_string_list(values)
+	if type(normalized) ~= 'table' then
+		return false, err
+	end
+	local parent = M.get_active_profile()
+	for i = 1, #segments - 1 do
+		if type(parent) ~= 'table' then
+			return false, 'active config pipe-list parent missing'
+		end
+		parent = parent[segments[i]]
+	end
+	if type(parent) ~= 'table' then
+		return false, 'active config pipe-list parent missing'
+	end
+	parent[segments[#segments]] = table.concat(normalized, '|')
+	if #segments == 4
+		and segments[1] == 'config'
+		and segments[2] == 'maintenance'
+		and segments[3] == 'cor'
+		and segments[4] == 'range_selected' then
+		parent.range_require_ids = {}
+	end
+	return true, 'REPLACED'
 end
 
 local function sync_string_list_dependents(path, target)
