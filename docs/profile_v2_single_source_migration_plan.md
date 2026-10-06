@@ -479,7 +479,7 @@ Exit criteria:
 - Added `tests/replay/harness/selftest_phase5_tank_enmity_write_pipeline.lua` covering canonical ordered mutation, full-entry case-insensitive dedupe, typed-vs-bare compatibility semantics, compatibility projection, no-flat bridge ownership, local-only WinForms editing, writer/adapter mapping, and canonical runtime consumption.
 - Dedicated Phase 5 tank-enmity CI also runs the existing tank pet-enmity config and provider suites.
 - Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 21→20.
-- CI proof is pending on the implementation head.
+- Implementation head `c4fa5130879e3239ce20c003d430c1a8d6b34d10` is proven by workflow `37427996454`: Phase 5 tank-enmity write-pipeline PASS, tank pet-enmity config/provider suites PASS, prior Phase 5 write-pipeline suites PASS, Profile V2 flat-surface guard PASS at the 20-reference bridge baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 
 ### Phase 6 — Retire the durable flat projection
 
