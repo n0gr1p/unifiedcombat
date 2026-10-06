@@ -207,6 +207,10 @@ jobs:
         run: |
           lua5.1 tests/replay/harness/selftest_phase5_abilities_write_pipeline.lua
           lua5.1 tests/replay/harness/selftest_phase3_abilities_authority.lua
+      - name: Phase 5 COR range participant write-pipeline self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase5_cor_range_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase4_cor_authority.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
