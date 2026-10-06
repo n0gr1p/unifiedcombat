@@ -3989,14 +3989,7 @@ public partial class MainForm
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "cor_roll_range_replace_names",
-                ["value"] = string.Join("|", names),
-            }
-        );
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void OnPathPartyGateChanged()
@@ -6140,7 +6133,6 @@ public partial class MainForm
             .Select(c => c.Tag?.ToString() ?? c.Text)
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .Distinct(StringComparer.OrdinalIgnoreCase);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "cor_roll_range_replace_names", ["value"] = string.Join("|", corRangeNames) });
 
         UpdateBooleanCardVisuals();
     }
