@@ -221,68 +221,7 @@ local function split_selected_range_names(value)
 	local out = {}
 	local seen = {}
 	for part in value:gmatch('[^|]+') do
-		local name = tostring(part or ''):match('^%s*(.-)%s*$')
-		if name ~= '' then
-			local key = name:lower()
-			if not seen[key] then
-				seen[key] = true
-				out[#out + 1] = name
-			end
-		end
-	end
-	return out
-end
-
-local function selected_range_ids(cor)
-	local names = split_selected_range_names(cor.range_selected)
-	if #names == 0 then
-		return type(cor.range_require_ids) == 'table' and cor.range_require_ids or {}
-	end
-
-	local party = windower.ffxi.get_party and windower.ffxi.get_party() or nil
-	local player = windower.ffxi.get_player and windower.ffxi.get_player() or nil
-	local self_id = player and tonumber(player.id) or 0
-	local by_name = {}
-	for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
-		local entry = party and party[key]
-		local mob = entry and entry.mob
-		local id = mob and tonumber(mob.id) or 0
-		local name = mob and tostring(mob.name or '') or ''
-		if id > 0 and id ~= self_id and name ~= '' then
-			by_name[name:lower()] = id
-		end
-	end
-
-	local out = {}
-	local seen = {}
-	for _, name in ipairs(names) do
-		local id = by_name[name:lower()]
-		if id and id > 0 and not seen[id] then
-			seen[id] = true
-			out[#out + 1] = id
-		end
-	end
-	return out
-end
-
-local function in_required_roll_range(cor, max_range)
-	local req = selected_range_ids(cor)
-	if type(req) ~= 'table' or #req == 0 then
-		return true, nil
-	end
-	for _, pid in ipairs(req) do
-		local member = windower.ffxi.get_mob_by_id(tonumber(pid) or 0)
-		if not member or member.hpp <= 0 then
-			return false, pid
-		end
-		local d = member.distance and member.distance:sqrt() or 999
-		if d >= max_range then
-			return false, pid
-		end
-	end
-	return true, nil
-end
-
+		local name = tostring(part or ''):match('^%s*(.-)%s*
 local function dia_generation(row)
 	if type(row) ~= 'table' then
 		return ''
