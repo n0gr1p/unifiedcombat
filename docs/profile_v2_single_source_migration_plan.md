@@ -463,7 +463,7 @@ Exit criteria:
 - Added `tests/replay/harness/selftest_phase5_sleep_order_write_pipeline.lua` covering ordered-list mutation, case-insensitive dedupe, `legacy_primary` coupling, compatibility projection, validation-before-edit bridge behavior, local-only WinForms editing, writer/adapter mapping, and canonical scheduler consumption.
 - Updated `selftest_sleep_spell_selection.lua` to require the new local-only UI contract rather than the retired live Sleep edit operations.
 - Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 25→21.
-- CI proof is pending on the implementation head.
+- Implementation head `ec0f200f70fcfd0c73d3bc00a1b235bcf54282e7` is proven by workflow `37426656092`: Phase 5 Sleep ordering write-pipeline PASS, existing Sleep spell selection PASS, prior Phase 5 write-pipeline suites PASS, Profile V2 flat-surface guard PASS at the 21-reference bridge baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 
 ### Phase 6 — Retire the durable flat projection
 
