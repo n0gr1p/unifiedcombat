@@ -611,11 +611,13 @@ local function apply_structured_config_to_candidate(candidate, config)
 	if type(config.abilities) == 'table' then
 		candidate.ability_active = config.abilities.enabled
 		candidate.ability_allow_unengaged = config.abilities.allow_unengaged
-		candidate.abilities = clone_value(config.abilities.configured)
+		local configured = type(config.abilities.configured) == 'table' and config.abilities.configured or {}
+		candidate.abilities = clone_value(configured)
 		candidate.wsabilities = clone_value(config.abilities.wsabilities)
 		local legacy_slots = type(config.abilities.legacy_slots) == 'table' and config.abilities.legacy_slots or {}
+		local compatibility_slots = #configured > 0 and configured or legacy_slots
 		for i = 1, 6 do
-			candidate['ability' .. tostring(i)] = legacy_slots[i]
+			candidate['ability' .. tostring(i)] = compatibility_slots[i] or ''
 		end
 	end
 
