@@ -4345,18 +4345,6 @@ public partial class MainForm
         }
     }
 
-    private void PushTankEnmityActions(string sid)
-    {
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "tank_enmity_replace_actions",
-                ["value"] = string.Join("|", _tankEnmityRows),
-            }
-        );
-    }
-
     private void OnTankEnmityTypeChanged()
     {
         if (_suppressEvents)
@@ -4401,7 +4389,7 @@ public partial class MainForm
             _tankEnmityRows.Add(entry);
             RebindTankEnmityListUi();
         }
-        PushTankEnmityActions(sid);
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void OnTankEnmityRemove()
@@ -4422,7 +4410,7 @@ public partial class MainForm
         }
         _tankEnmityRows.RemoveAt(idx);
         RebindTankEnmityListUi();
-        PushTankEnmityActions(sid);
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void OnTankEnmityMove(string direction)
@@ -4449,7 +4437,7 @@ public partial class MainForm
         (_tankEnmityRows[next], _tankEnmityRows[idx]) = (_tankEnmityRows[idx], _tankEnmityRows[next]);
         RebindTankEnmityListUi();
         _tankEnmityList.SelectedIndex = next;
-        PushTankEnmityActions(sid);
+        CaptureWorkingProfileFromUi(sid);
     }
 
 	private void OnCampSet()
@@ -6096,7 +6084,6 @@ public partial class MainForm
         });
         SendAbilitiesUpdate();
         Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "tank_enmity_replace_actions", ["value"] = string.Join("|", _tankEnmityRows) });
         foreach (var key in HubUiConstants.BoolKeys)
         {
             var val = ReadPersistedBoolValue(sid, key, running);
