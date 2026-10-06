@@ -359,7 +359,7 @@ Exit criteria:
 
 ### Phase 5 — Migrate UI/edit/write pipeline
 
-Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, no-skillchain, wait-ignore, path-hunter, and Sleep ordering edits are canonical; remaining bespoke list/edit bridge operations remain**
+Status: **IN PROGRESS — generic scalar, target-ignore/add-priority, no-skillchain, wait-ignore, path-hunter, Sleep ordering, and tank-enmity edits are canonical; remaining bespoke list/edit bridge operations remain**
 
 Goals:
 
@@ -464,6 +464,22 @@ Exit criteria:
 - Updated `selftest_sleep_spell_selection.lua` to require the new local-only UI contract rather than the retired live Sleep edit operations.
 - Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 25→21.
 - Implementation head `ec0f200f70fcfd0c73d3bc00a1b235bcf54282e7` is proven by workflow `37426656092`: Phase 5 Sleep ordering write-pipeline PASS, existing Sleep spell selection PASS, prior Phase 5 write-pipeline suites PASS, Profile V2 flat-surface guard PASS at the 21-reference bridge baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
+
+### 2026-10-06 — Phase 5 tank-enmity action write pipeline implemented
+
+- Migrated tank-enmity durable editing to canonical `config.tank.enmity.actions`.
+- Preserved the existing entry contract: ordered strings may be explicit `ja:Name` / `spell:Name` entries or legacy bare names. Canonical list dedupe is case-insensitive over the complete entry, so explicit type prefixes remain semantically distinct from bare compatibility entries.
+- `remote_bridge.lua` `tank_enmity_replace_actions` now uses the canonical active-profile list editor API and no longer reads or mutates `_G.UC_SETTINGS`.
+- After successful canonical mutation, the existing compatibility projection refreshes flat `tank_enmity_actions`; the projected list is compatibility output only.
+- Removed the WinForms `PushTankEnmityActions` live bridge helper. Add, Remove, and Move now update `_tankEnmityRows` and call `CaptureWorkingProfileFromUi(sid)`.
+- `PushFullFormState` no longer emits `tank_enmity_replace_actions`.
+- The structured writer remains unchanged: `tank_enmity_actions` persists to `config.tank.enmity.actions`.
+- `RuntimeProfileEditorAdapter` continues reconstructing the editor pipe list from canonical projected `tank_enmity_actions`.
+- Runtime parsing/selection is unchanged: `unified_combat_core.lua` preserves explicit `type:name` parsing and legacy bare-name JA/spell inference, while `uc_provider_tank_enmity.lua` consumes `scheduler_config.tank_enmity_actions_from_config(config)`.
+- Added `tests/replay/harness/selftest_phase5_tank_enmity_write_pipeline.lua` covering canonical ordered mutation, full-entry case-insensitive dedupe, typed-vs-bare compatibility semantics, compatibility projection, no-flat bridge ownership, local-only WinForms editing, writer/adapter mapping, and canonical runtime consumption.
+- Dedicated Phase 5 tank-enmity CI also runs the existing tank pet-enmity config and provider suites.
+- Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references 21→20.
+- CI proof is pending on the implementation head.
 
 ### Phase 6 — Retire the durable flat projection
 
