@@ -2285,6 +2285,10 @@ local function uc_sleep_spell_validate_names(names)
 	return out, ''
 end
 
+function uc_sleep_spell.validate_names(names)
+	return uc_sleep_spell_validate_names(names or {})
+end
+
 function uc_sleep_spell.replace_names(settings, names)
 	if type(settings) ~= 'table' then
 		return false, 'SLEEP_NO_SETTINGS'
