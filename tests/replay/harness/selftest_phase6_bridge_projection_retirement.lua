@@ -177,8 +177,8 @@ assert_equal(count_literal(bridge, 'project_flat_settings('), 1,
     'remote bridge must retain only the read-only state-snapshot projection')
 assert_equal(count_literal(bridge, 'sync_flat_settings_in_place('), 0,
     'remote bridge must contain no flat settings publication')
-assert_equal(count_literal(bridge, 'UC_SETTINGS'), 10,
-    'remote bridge flat-surface baseline should burn down from 11 to 10 references')
+assert_equal(count_literal(bridge, 'UC_SETTINGS'), 9,
+    'remote bridge flat-surface baseline should now be 9 references after generic set retirement')
 
 local state_tick = extract(
     bridge,
