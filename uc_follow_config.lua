@@ -72,8 +72,10 @@ function M.resolve_party_member_id_by_name(name)
 end
 
 local function configured_id(name, id)
-    local resolved = M.resolve_party_member_id_by_name(name)
-    if resolved > 0 then return resolved end
+    local durable_name = trim(name)
+    if durable_name ~= '' then
+        return M.resolve_party_member_id_by_name(durable_name)
+    end
     return tonumber(id) or 0
 end
 
