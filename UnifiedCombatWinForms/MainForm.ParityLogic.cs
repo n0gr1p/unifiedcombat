@@ -4543,8 +4543,7 @@ public partial class MainForm
             return;
         }
 
-        var name = SelectedPartyName(_pullerCombo);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_partner", ["slot"] = "puller", ["name"] = name });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void OnFightLeaderSelected()
@@ -4560,8 +4559,7 @@ public partial class MainForm
             return;
         }
 
-        var name = SelectedPartyName(_fightLeaderCombo);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_fight_leader", ["name"] = name });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void OnPartyFollowSelected()
@@ -4577,8 +4575,7 @@ public partial class MainForm
             return;
         }
 
-        var name = SelectedPartyName(_partyFollowCombo);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_party_follow", ["name"] = name });
+        CaptureWorkingProfileFromUi(sid);
         UpdatePartyFollowModeWarning(sid);
     }
 
@@ -5421,17 +5418,14 @@ public partial class MainForm
         }
 
         var name = _partnerName.Text.Trim();
-        if (name.Length == 0)
+        if (name.Length == 0 || HasName(_partnerRows, name))
         {
             return;
         }
-        if (!HasName(_partnerRows, name))
-        {
-            _partnerRows.Add((NextId(_partnerRows), name));
-            RebindPartnerListUi();
-        }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_add", ["name"] = name });
+        _partnerRows.Add((NextId(_partnerRows), name));
+        RebindPartnerListUi();
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void PartnerAddCurrent()
@@ -5442,7 +5436,15 @@ public partial class MainForm
             return;
         }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_add_current" });
+        var name = CurrentRuntimeTargetName();
+        if (name.Length == 0 || HasName(_partnerRows, name))
+        {
+            return;
+        }
+
+        _partnerRows.Add((NextId(_partnerRows), name));
+        RebindPartnerListUi();
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void PartnerRemove()
@@ -5454,26 +5456,18 @@ public partial class MainForm
         }
 
         var idx = _partnerList.SelectedIndex;
-        if (idx < 0)
+        if (idx < 0 || idx >= _partnerRows.Count)
         {
             return;
         }
 
-        var tid = idx < _partnerRows.Count ? _partnerRows[idx].Id : SessionStateHelper.ParseTrailingBracketId(_partnerList.Items[idx]?.ToString() ?? "");
-        if (tid is null or 0)
+        _partnerRows.RemoveAt(idx);
+        for (var i = 0; i < _partnerRows.Count; i++)
         {
-            return;
+            _partnerRows[i] = (i + 1, _partnerRows[i].Name);
         }
-        if (idx < _partnerRows.Count)
-        {
-            _partnerRows.RemoveAt(idx);
-            RebindPartnerListUi();
-        }
-
-        Forward(
-            sid,
-            new Dictionary<string, object?> { ["op"] = "partner_remove", ["mob_id"] = tid.Value, ["id"] = tid.Value }
-        );
+        RebindPartnerListUi();
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void TargetIgnAddByName()
@@ -6076,7 +6070,6 @@ public partial class MainForm
             ["value"] = decimal.ToInt32(_wsMinimumTp.Value),
         });
         SendAbilitiesUpdate();
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });
         foreach (var key in HubUiConstants.BoolKeys)
         {
             var val = ReadPersistedBoolValue(sid, key, running);
@@ -6101,12 +6094,6 @@ public partial class MainForm
         var prov = (_defProviderCombo.SelectedItem as string) ?? "internal";
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_provider", ["value"] = prov });
         PushDefensiveThresholdsForSid(sid);
-        var pull = SelectedPartyName(_pullerCombo);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_partner", ["slot"] = "puller", ["name"] = pull });
-        var fl = SelectedPartyName(_fightLeaderCombo);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_fight_leader", ["name"] = fl });
-        var pf = SelectedPartyName(_partyFollowCombo);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_party_follow", ["name"] = pf });
         PushPartyFollowDistances(sid);
 
         // COR maintenance settings (must be explicitly pushed on full state reapply).
