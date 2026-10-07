@@ -172,6 +172,14 @@ local function resolve_party_member_ids_by_names(names)
 	return out
 end
 
+local function resolve_configured_identity_id(name, legacy_id)
+	local durable_name = normalize_optional_string(name)
+	if durable_name ~= nil then
+		return resolve_party_member_id_by_name(durable_name)
+	end
+	return normalize_number(legacy_id, 0, { integer = true }) or 0
+end
+
 local function split_pipe_name_list(value)
 	if type(value) ~= 'string' or value == '' then
 		return {}
@@ -913,7 +921,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 		candidate.domain_follow_enabled = config.follow.enabled
 		if type(config.follow.party) == 'table' then
 			candidate.party_follow = config.follow.party.enabled
-			candidate.party_follow_id = config.follow.party.leader_id
+			candidate.party_follow_id = resolve_configured_identity_id(config.follow.party.leader_name, config.follow.party.leader_id)
 			candidate.party_follow_leader_name = config.follow.party.leader_name
 			candidate.party_follow_min = config.follow.party.min
 			candidate.party_follow_max = config.follow.party.max
@@ -922,10 +930,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.fight_leader = config.follow.fight.leader
 			candidate.fight_leader_selected = config.follow.fight.leader_name
 			candidate.fight_leader_name = config.follow.fight.leader_name
-			local fight_leader_id = resolve_party_member_id_by_name(config.follow.fight.leader_name)
-			if fight_leader_id == 0 then
-				fight_leader_id = normalize_number(config.follow.fight.leader_id, 0, { integer = true }) or 0
-			end
+			local fight_leader_id = resolve_configured_identity_id(config.follow.fight.leader_name, config.follow.fight.leader_id)
 			candidate.fight_leader_id = fight_leader_id
 			candidate.fight_follow_min = config.follow.fight.min
 			candidate.fight_follow_hold_s = config.follow.fight.hold_s
@@ -966,7 +971,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			candidate.follow.enabled = config.follow.enabled
 			candidate.follow.party = {
 				enabled = config.follow.party and config.follow.party.enabled or nil,
-				leader_id = config.follow.party and config.follow.party.leader_id or nil,
+				leader_id = config.follow.party and resolve_configured_identity_id(config.follow.party.leader_name, config.follow.party.leader_id) or nil,
 				leader_name = config.follow.party and config.follow.party.leader_name or nil,
 				min = config.follow.party and config.follow.party.min or nil,
 				max = config.follow.party and config.follow.party.max or nil,
@@ -980,10 +985,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 				hold_s = config.follow.fight and config.follow.fight.hold_s or nil,
 			}
 			candidate.follow.fight.leader_name = config.follow.fight.leader_name
-			local fight_leader_id = resolve_party_member_id_by_name(config.follow.fight.leader_name)
-			if fight_leader_id == 0 then
-				fight_leader_id = normalize_number(config.follow.fight.leader_id, 0, { integer = true }) or 0
-			end
+			local fight_leader_id = resolve_configured_identity_id(config.follow.fight.leader_name, config.follow.fight.leader_id)
 			candidate.follow.fight.leader_id = fight_leader_id
 			candidate.fight_leader_name = config.follow.fight.leader_name
 			candidate.fight_leader_id = fight_leader_id
@@ -1000,10 +1002,7 @@ local function apply_structured_config_to_candidate(candidate, config)
 			}
 			local puller_id = 0
 			if leash_source == 'player' then
-				puller_id = resolve_party_member_id_by_name(config.follow.partner.puller_name)
-				if puller_id == 0 then
-					puller_id = normalize_number(config.follow.partner.puller_id, 0, { integer = true }) or 0
-				end
+				puller_id = resolve_configured_identity_id(config.follow.partner.puller_name, config.follow.partner.puller_id)
 			end
 			candidate.puller_id = puller_id
 			candidate.follow.partner.puller_id = puller_id
@@ -1508,6 +1507,34 @@ function M.get_path(path, default_value)
 	return current
 end
 
+function M.replace_name(path, value)
+	local segments = normalize_path(path)
+	if type(segments) ~= 'table' or #segments < 2 then
+		return false, 'active config name path missing'
+	end
+	local parent = M.get_active_profile()
+	for i = 1, #segments - 1 do
+		if type(parent) ~= 'table' then
+			return false, 'active config name parent missing'
+		end
+		parent = parent[segments[i]]
+	end
+	if type(parent) ~= 'table' then
+		return false, 'active config name parent missing'
+	end
+	parent[segments[#segments]] = trim_string(value)
+	if #segments == 4 and segments[1] == 'config' and segments[2] == 'follow' then
+		if segments[3] == 'party' and segments[4] == 'leader_name' then
+			parent.leader_id = 0
+		elseif segments[3] == 'fight' and segments[4] == 'leader_name' then
+			parent.leader_id = 0
+		elseif segments[3] == 'partner' and segments[4] == 'puller_name' then
+			parent.puller_id = 0
+		end
+	end
+	return true, 'REPLACED'
+end
+
 local function normalized_string_list(values)
 	if type(values) ~= 'table' then
 		return nil, 'string list values must be a table'
@@ -1569,6 +1596,15 @@ local function sync_string_list_dependents(path, target)
 		local sleep = M.get_path('config.sleep')
 		if type(sleep) == 'table' then
 			sleep.legacy_primary = tostring(target[1] or '')
+		end
+	elseif #segments == 4
+		and segments[1] == 'config'
+		and segments[2] == 'follow'
+		and segments[3] == 'partner'
+		and segments[4] == 'names' then
+		local partner = M.get_path('config.follow.partner')
+		if type(partner) == 'table' then
+			partner.ids = {}
 		end
 	end
 end
