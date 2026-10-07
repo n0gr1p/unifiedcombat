@@ -29,7 +29,7 @@ return {
 		},
 		["remote_bridge.lua"] = {
 			["project_flat_settings"] = 1,
-			["uc_settings"] = 9,
+			["uc_settings"] = 7,
 		},
 		["uc_active_config.lua"] = {
 			["project_flat_settings"] = 1,
