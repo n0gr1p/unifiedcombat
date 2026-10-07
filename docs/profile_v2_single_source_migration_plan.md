@@ -530,7 +530,7 @@ Exit criteria:
 
 ### Phase 6 — Retire the durable flat projection
 
-Status: **IN PROGRESS — bridge canonical edits no longer republish durable policy into flat settings; generic legacy `op=set`, profile-apply publication, and remaining compatibility/runtime flat seams remain**
+Status: **IN PROGRESS — bridge direct flat-settings authority/read coupling is retired; the read-only editor-wire flat projection, Profile V2 apply publication, and remaining addon compatibility flat seams remain**
 
 Goals:
 
@@ -583,6 +583,19 @@ Exit criteria:
 - Historical Phase 6 bridge regressions were lowered to the new seven-reference baseline so each prior cut remains enforced at the current tighter boundary.
 - Implementation head `868a900ce9126cc08153aba6b96a09821771ac6a` is proven by workflow `37700397358`: bridge status decoupling PASS, generic-set retirement PASS, bridge projection-retirement PASS, all Phase 5 pipelines PASS, flat-surface guard PASS at seven references, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 - The remaining bridge flat references are now the header's compatibility note plus the runtime `Start_Engine` → `UC_SETTINGS.engine_enabled` mirrors. Those are command/runtime state rather than durable policy and require a separate consumer audit before retirement.
+
+### 2026-10-07 — Phase 6 live engine command mirror retired
+
+- Made global `Start_Engine` the sole live engine start/stop command state. Bridge `toggle`, `start_engine`, and `stop_engine` operations no longer mirror their result into `_G.UC_SETTINGS.engine_enabled`.
+- Removed the corresponding flat engine mirror writes from addon slash commands `//uc start` and `//uc stop`, so UI and slash-command control now share the same runtime-state contract.
+- `uc_domain_enabled(...)` now gates non-follow live domains from `Start_Engine` instead of `settings.engine_enabled`; follow keeps its established independent canonical ownership semantics.
+- Profile contract status now reports `engine_enabled = Start_Engine == true`, and the scheduler debug overlay reports `Start_Engine` directly, eliminating the two visible consumers that could otherwise become stale after removing the mirror.
+- The initialization/default compatibility fields `engine_enabled` and `command.engine_enabled_default` are intentionally not removed in this slice; they remain part of legacy normalization/profile compatibility rather than live command authority.
+- Added `tests/replay/harness/selftest_phase6_engine_command_authority.lua`, proving bridge commands, slash commands, domain gating, profile-status reporting, and scheduler diagnostics all use live `Start_Engine`, while the bridge contains no direct flat-settings access.
+- Flat-surface burn-down: `remote_bridge.lua` direct `UC_SETTINGS` references **7→0**. The bridge allowlist now permits only its single read-only `project_flat_settings(active_profile, {})` editor-wire translation. `UnifiedCombat.lua` direct `UC_SETTINGS` references also fell **77→71**.
+- Verification surfaced only expected test/guard maintenance: workflow `37700954876` caught the addon flat-surface count reduction; `37701105233` and `37701209317` exposed two source-marker mistakes in the new static regression; `37701327180` proved the engine regression itself green but then failed an unrelated extra direct Linux invocation of an older Windows-path test. The focused gate was corrected without any production rollback.
+- Final implementation/test head `fedfaa4668694b9613c2ee6bcfb79e29089af116` is proven by workflow `37701437816`: engine command-authority PASS, all prior Phase 6 gates PASS, every Phase 5 pipeline PASS, flat-surface guard PASS with zero bridge `UC_SETTINGS` references, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
+- The bridge now has one remaining flat compatibility mechanism: its **read-only** `active_config` payload is built through `project_flat_settings(active_profile, {})` because `RuntimeProfileEditorAdapter` still expects the projected editor shape. Retiring that projection is an isolated UI wire-format migration, not a runtime-authority cut.
 
 ### Phase 7 — Final cleanup and conformance
 
