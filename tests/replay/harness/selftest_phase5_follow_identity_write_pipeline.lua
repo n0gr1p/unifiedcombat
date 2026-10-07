@@ -109,7 +109,9 @@ rawset(_G, 'UC_ACTIVE_PROFILE', {
 })
 
 local ok, err = pcall(function()
+    local runtime_config = active_config.get_path('config')
     local follow = active_config.get_path('config.follow')
+    assert_true(type(runtime_config) == 'table', 'active root config missing')
     assert_true(type(follow) == 'table', 'active follow config missing')
 
     local changed, reason = active_config.replace_name(
@@ -194,13 +196,13 @@ local ok, err = pcall(function()
     assert_equal(projected.puller_name, 'OfflinePuller',
         'offline durable puller name must survive')
 
-    assert_equal(follow_config.party_leader_id(follow), 0,
+    assert_equal(follow_config.party_leader_id(runtime_config), 0,
         'follow runtime adapter must ignore non-party get_mob_by_name fallback')
-    assert_equal(follow_config.fight_leader_id(follow), 0,
+    assert_equal(follow_config.fight_leader_id(runtime_config), 0,
         'follow runtime adapter must not use stale fight leader id when a name is configured')
-    assert_equal(follow_config.puller_id(follow), 0,
+    assert_equal(follow_config.puller_id(runtime_config), 0,
         'follow runtime adapter must not use stale puller id when a name is configured')
-    assert_equal(#follow_config.partner_ids(follow), 0,
+    assert_equal(#follow_config.partner_ids(runtime_config), 0,
         'follow runtime adapter must preserve offline names without stale partner ids')
 
     -- Legacy IDs remain compatibility fallback only when durable names are absent.
@@ -225,13 +227,13 @@ local ok, err = pcall(function()
     assert_equal(projected.partner_ids[1], 713, 'partner legacy id fallback first id')
     assert_equal(projected.partner_ids[2], 714, 'partner legacy id fallback second id')
 
-    assert_equal(follow_config.party_leader_id(follow), 711, 'follow adapter party legacy fallback')
-    assert_equal(follow_config.fight_leader_id(follow), 712, 'follow adapter fight legacy fallback')
-    assert_equal(follow_config.puller_id(follow), 715, 'follow adapter puller legacy fallback')
-    assert_equal(follow_config.partner_ids(follow)[1], 713, 'follow adapter partner legacy fallback')
+    assert_equal(follow_config.party_leader_id(runtime_config), 711, 'follow adapter party legacy fallback')
+    assert_equal(follow_config.fight_leader_id(runtime_config), 712, 'follow adapter fight legacy fallback')
+    assert_equal(follow_config.puller_id(runtime_config), 715, 'follow adapter puller legacy fallback')
+    assert_equal(follow_config.partner_ids(runtime_config)[1], 713, 'follow adapter partner legacy fallback')
 
     follow.partner.leash_source = 'camp'
-    assert_equal(follow_config.puller_id(follow), 0, 'camp leash must never expose a player puller id')
+    assert_equal(follow_config.puller_id(runtime_config), 0, 'camp leash must never expose a player puller id')
 end)
 
 rawset(_G, 'UC_ACTIVE_PROFILE', previous_active)
