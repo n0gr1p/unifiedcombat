@@ -752,8 +752,8 @@ local function uc_apply_active_list_edit(method_name, path, ...)
 		return false, tostring(reason or 'ACTIVE_CONFIG_EDIT_FAILED')
 	end
 	-- Phase 6: canonical edits are authoritative immediately. Do not republish
-	-- durable policy into _G.UC_SETTINGS; migrated runtime consumers read the
-	-- active Profile V2 config directly. The bridge still invalidates its state
+	-- durable policy into the legacy flat settings table; migrated runtime
+	-- consumers read the active Profile V2 config directly. The bridge still invalidates its state
 	-- snapshot so the UI observes the canonical edit promptly.
 	last_state_send = 0
 	return true, tostring(reason or '')
