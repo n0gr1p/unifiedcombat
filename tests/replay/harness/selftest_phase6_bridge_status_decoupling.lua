@@ -73,8 +73,8 @@ assert_not_contains(bridge, 'config_contract_status(_G.UC_SETTINGS)',
     'bridge config status must not normalize or read flat settings')
 assert_not_contains(bridge, 'config_contract_status = _G.UC_CONFIG_CONTRACT_STATUS',
     'bridge must not expose the mutable published global directly')
-assert_equal(count_literal(bridge, 'UC_SETTINGS'), 7,
-    'remote bridge flat-surface baseline should be 7 after status decoupling')
+assert_equal(count_literal(bridge, 'UC_SETTINGS'), 0,
+    'remote bridge must now contain zero direct UC_SETTINGS references')
 assert_equal(count_literal(bridge, 'project_flat_settings('), 1,
     'read-only editor active-config projection remains the only bridge projection')
 assert_equal(count_literal(bridge, 'sync_flat_settings_in_place('), 0,
