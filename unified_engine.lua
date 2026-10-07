@@ -115,7 +115,7 @@ local function render_sched_overlay()
 		end
 		return false
 	end
-	qlines[#qlines + 1] = ('EngineEnabled: %s'):format(tostring(bool_setting(s.engine_enabled, false)))
+	qlines[#qlines + 1] = ('EngineEnabled: %s'):format(tostring(rawget(_G, 'Start_Engine') == true))
 	qlines[#qlines + 1] = ('DomainCombatLive: %s'):format(tostring(domain_live('combat')))
 	qlines[#qlines + 1] = ('DomainMovementLive: %s'):format(tostring(domain_live('movement')))
 	qlines[#qlines + 1] = ('DomainDefensiveLive: %s'):format(tostring(domain_live('defensive')))
