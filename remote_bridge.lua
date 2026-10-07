@@ -719,7 +719,7 @@ local function process_line(line)
 			sub_job = p.sub_job,
 			engine = _G.UC_ENGINE,
 			profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS,
-			config_contract_status = uc_config_runtime.config_contract_status(_G.UC_SETTINGS),
+			config_contract_status = uc_config_runtime.config_contract_status(nil, nil, nil, _G.UC_CONFIG_CONTRACT_STATUS),
 			ability_options = uc_get_cached_ability_options(),
 			weaponskill_options = uc_join_pipe(uc_get_weaponskill_names()),
 			path_pull_ja_options = select(1, uc_get_cached_pull_action_options()),
@@ -1374,7 +1374,7 @@ function uc_remote_tick()
 		camp_pull_runtime_quota = pull_runtime.quota,
 		camp_pull_runtime_intent = pull_runtime.last_intent,
 		profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS,
-		config_contract_status = uc_config_runtime.config_contract_status(_G.UC_SETTINGS),
+		config_contract_status = uc_config_runtime.config_contract_status(nil, nil, nil, _G.UC_CONFIG_CONTRACT_STATUS),
 	}
 	local active_profile = uc_active_config.get_active_profile()
 	if type(active_profile) ~= 'table' then
