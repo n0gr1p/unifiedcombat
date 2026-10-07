@@ -251,7 +251,7 @@ local active_source = read_all('uc_active_config.lua')
 
 local bridge_identity = extract(
     bridge,
-    "elseif op == 'set_partner' then",
+    "if op == 'set_partner' then",
     "elseif op == 'set_abilities' then"
 )
 assert_not_contains(bridge_identity, 'UC_SETTINGS',
