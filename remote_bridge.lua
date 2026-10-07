@@ -4,7 +4,7 @@ end
 
 --[[
   Non-blocking TCP client to Python hub. NDJSON over newline.
-  Expect _G.UC_SETTINGS, _G.UC_ENGINE, Start_Engine, windower.
+  Expects runtime engine/session globals plus Windower.
 ]]
 
 local socket = require('socket')
@@ -1189,9 +1189,6 @@ local function process_line(line)
 	elseif op == 'toggle' and msg.key == 'Start_Engine' then
 		local was_running = Start_Engine
 		Start_Engine = not Start_Engine
-		if _G.UC_SETTINGS then
-			_G.UC_SETTINGS.engine_enabled = (Start_Engine == true)
-		end
 		if was_running and (not Start_Engine) and type(_G.UC_ResetMovementLocksForFollow) == 'function' then
 			_G.UC_ResetMovementLocksForFollow()
 		end
@@ -1204,17 +1201,11 @@ local function process_line(line)
 	elseif op == 'start_engine' then
 		local was_running = Start_Engine
 		Start_Engine = true
-		if _G.UC_SETTINGS then
-			_G.UC_SETTINGS.engine_enabled = true
-		end
 		if not was_running then
 			maybe_start_active_engine()
 		end
 	elseif op == 'stop_engine' then
 		Start_Engine = false
-		if _G.UC_SETTINGS then
-			_G.UC_SETTINGS.engine_enabled = false
-		end
 		if type(_G.UC_ResetMovementLocksForFollow) == 'function' then
 			_G.UC_ResetMovementLocksForFollow()
 		end
