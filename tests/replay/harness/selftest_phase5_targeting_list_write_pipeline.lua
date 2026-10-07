@@ -141,8 +141,10 @@ assert_not_contains(bridge, 's.target_ignore_names =',
     'bridge must not assign flat target-ignore authority')
 assert_not_contains(bridge, 's.add_priority_names =',
     'bridge must not assign flat add-priority authority')
-assert_contains(bridge, 'uc_sync_active_config_flat_projection',
-    'bridge may refresh flat state only as a post-canonical compatibility projection')
+assert_not_contains(bridge, 'uc_sync_active_config_flat_projection',
+    'Phase 6 bridge edits must not republish canonical durable policy into flat settings')
+assert_not_contains(bridge, 'sync_flat_settings_in_place(',
+    'Phase 6 bridge edit path must contain no flat compatibility publication')
 assert_contains(bridge, 'current_target_name = current_target_name',
     'remote state must expose current target name as runtime observation')
 assert_contains(bridge, 'current_target_id = current_target_id',
