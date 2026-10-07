@@ -228,6 +228,13 @@ jobs:
           lua5.1 tests/replay/harness/selftest_phase5_abilities_write_pipeline.lua
           lua5.1 tests/replay/harness/selftest_phase5_cor_range_write_pipeline.lua
           lua5.1 tests/replay/harness/selftest_phase5_follow_identity_write_pipeline.lua
+      - name: Phase 6 generic bridge set-retirement self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase6_bridge_generic_set_retirement.lua
+          lua5.1 tests/replay/harness/selftest_phase5_ui_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_config_status.lua
+          lua5.1 tests/replay/harness/selftest_bridge_config_status_consumer.lua
+          lua5.1 tests/replay/harness/selftest_config_first_consumer.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
