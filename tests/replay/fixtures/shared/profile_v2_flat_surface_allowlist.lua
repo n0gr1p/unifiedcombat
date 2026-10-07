@@ -28,9 +28,8 @@ return {
 			["uc_settings"] = 11,
 		},
 		["remote_bridge.lua"] = {
-			["bridge_apply_set"] = 2,
 			["project_flat_settings"] = 1,
-			["uc_settings"] = 10,
+			["uc_settings"] = 9,
 		},
 		["uc_active_config.lua"] = {
 			["project_flat_settings"] = 1,
