@@ -55,8 +55,8 @@ assert_not_contains(bridge, "op == 'set'",
     'bridge protocol must no longer accept generic set messages')
 assert_not_contains(bridge, 'cfg_version',
     'generic-set version gate must be removed with the retired protocol')
-assert_equal(count_literal(bridge, 'UC_SETTINGS'), 7,
-    'remote bridge flat-surface baseline should now be 7 references after config-status decoupling')
+assert_equal(count_literal(bridge, 'UC_SETTINGS'), 0,
+    'remote bridge must now contain zero direct UC_SETTINGS references')
 assert_equal(count_literal(bridge, 'project_flat_settings('), 1,
     'bridge must retain only the read-only active-config editor snapshot projection')
 assert_equal(count_literal(bridge, 'sync_flat_settings_in_place('), 0,
