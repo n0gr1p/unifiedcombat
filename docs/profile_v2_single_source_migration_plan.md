@@ -573,6 +573,17 @@ Exit criteria:
 - Implementation head `38c97c63b576512a019ceb490b27cef7813d37d9` is proven by workflow `37693486987`: generic bridge set retirement PASS, bridge projection-retirement PASS, all Phase 5 pipelines PASS, flat-surface guard PASS at 9 bridge references, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 - The next bridge flat-read slice is config-status publication. Both bridge snapshots currently pass `_G.UC_SETTINGS` into `uc_config_runtime.config_contract_status(...)`, but the accessor returns the already-published cloned `_G.UC_CONFIG_CONTRACT_STATUS` first; the flat settings argument is therefore inert coupling in normal runtime.
 
+### 2026-10-07 — Phase 6 bridge config-status flat read decoupled
+
+- Removed the two inert `_G.UC_SETTINGS` arguments from bridge config-status publication. Both options/state snapshots now call `uc_config_runtime.config_contract_status(nil, nil, nil, _G.UC_CONFIG_CONTRACT_STATUS)`, preserving the accessor's clone semantics while making the already-published status object explicit.
+- This does not change normal runtime status behavior: `config_contract_status(...)` has always returned a clone of the supplied/current published status before invoking the normalizer, so the previous flat-settings argument was unreachable in the supported bridge lifecycle.
+- Updated config-status consumer tests to require the published-status accessor call and prohibit `config_contract_status(_G.UC_SETTINGS)`.
+- Added `tests/replay/harness/selftest_phase6_bridge_status_decoupling.lua`. It proves status can be cloned with no settings input, nested status data is cloned rather than aliased, both bridge snapshots use the settings-free publication path, and no flat settings are republished.
+- Flat-surface burn-down in `remote_bridge.lua`: direct `UC_SETTINGS` references **9→7**; the sole read-only editor `project_flat_settings(active_profile, {})` projection remains; flat sync remains **0**.
+- Historical Phase 6 bridge regressions were lowered to the new seven-reference baseline so each prior cut remains enforced at the current tighter boundary.
+- Implementation head `868a900ce9126cc08153aba6b96a09821771ac6a` is proven by workflow `37700397358`: bridge status decoupling PASS, generic-set retirement PASS, bridge projection-retirement PASS, all Phase 5 pipelines PASS, flat-surface guard PASS at seven references, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
+- The remaining bridge flat references are now the header's compatibility note plus the runtime `Start_Engine` → `UC_SETTINGS.engine_enabled` mirrors. Those are command/runtime state rather than durable policy and require a separate consumer audit before retirement.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
