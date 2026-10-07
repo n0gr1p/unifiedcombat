@@ -240,6 +240,12 @@ jobs:
           lua5.1 tests/replay/harness/selftest_phase6_bridge_status_decoupling.lua
           lua5.1 tests/replay/harness/selftest_config_status.lua
           lua5.1 tests/replay/harness/selftest_bridge_config_status_consumer.lua
+      - name: Phase 6 engine command-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase6_engine_command_authority.lua
+          lua5.1 tests/replay/harness/selftest_phase5_ui_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_profile_v2_source_of_truth_contract.lua
+          lua5.1 tests/replay/harness/selftest_profile_v2_autoload_lifecycle.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
