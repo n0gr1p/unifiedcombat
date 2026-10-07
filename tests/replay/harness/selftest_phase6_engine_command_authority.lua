@@ -76,15 +76,10 @@ assert_contains(domain_gate, "rawget(_G, 'Start_Engine') ~= true",
 assert_not_contains(domain_gate, 'engine_enabled',
     'domain engine gate must not depend on flat engine_enabled')
 
-local profile_status = extract(
-    addon,
-    'uc_update_profile_contract_status({',
-    'uc_update_config_contract_status({'
-)
-assert_contains(profile_status, 'engine_enabled = Start_Engine == true',
-    'profile contract status must report live Start_Engine command state')
-assert_not_contains(profile_status, 'UC_SETTINGS.engine_enabled',
-    'profile contract status must not report stale flat engine mirror')
+assert_contains(addon, 'engine_enabled = Start_Engine == true',
+    'profile contract status/default compatibility must derive engine state from live Start_Engine')
+assert_not_contains(addon, 'UC_SETTINGS.engine_enabled',
+    'addon must contain no direct live flat engine mirror reads or writes')
 
 local addon_commands = extract(
     addon,
