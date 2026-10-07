@@ -107,16 +107,6 @@ local function resolve_party_member_id_by_name(name)
 		end
 	end
 
-	local get_mob_by_name = ffxi.get_mob_by_name
-	if type(get_mob_by_name) == 'function' then
-		local ok_mob, mob = pcall(get_mob_by_name, trimmed)
-		if ok_mob and mob then
-			local mob_id = tonumber(mob.id) or 0
-			if mob_id > 0 then
-				return mob_id
-			end
-		end
-	end
 
 	return 0
 end
