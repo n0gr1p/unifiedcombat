@@ -473,7 +473,7 @@ local function uc_domain_enabled(s, key)
 		end
 		return uc_truthy(st.domain_follow_enabled)
 	end
-	if not uc_truthy(st.engine_enabled) then
+	if rawget(_G, 'Start_Engine') ~= true then
 		return false
 	end
 	if key == 'combat' then
@@ -2119,7 +2119,7 @@ local function uc_load_profiles_for_character(char_name)
 		warnings = validation_warnings,
 		errors = validation_errors,
 		engine_state = {
-			engine_enabled = _G.UC_SETTINGS and _G.UC_SETTINGS.engine_enabled or nil,
+			engine_enabled = Start_Engine == true,
 		},
 		scheduler_summary = {
 			profile_character = profile_character,
@@ -2597,9 +2597,6 @@ windower.register_event('addon command', function(...)
 	if a == 'start' then
 		if not Start_Engine then
 			Start_Engine = true
-			if _G.UC_SETTINGS then
-				_G.UC_SETTINGS.engine_enabled = true
-			end
 			_G.UC_ZONE_SUSPEND_UNTIL = nil
 			uc_start_active_engine_if_running()
 			windower.add_to_chat(207, 'UnifiedCombat: engine started')
@@ -2615,9 +2612,6 @@ windower.register_event('addon command', function(...)
 		uc_encounter_runtime.reset('engine_stop')
 		require('uc_lilith_easy_encounter').reset('engine_stop')
 		require('uc_formation_runtime').reset('engine_stop')
-		if _G.UC_SETTINGS then
-			_G.UC_SETTINGS.engine_enabled = false
-		end
 		if type(_G.UC_ResetMovementLocksForFollow) == 'function' then
 			_G.UC_ResetMovementLocksForFollow()
 		end
