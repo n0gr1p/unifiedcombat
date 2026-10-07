@@ -63,11 +63,6 @@ function M.resolve_party_member_id_by_name(name)
             end
         end
     end
-    if type(ffxi.get_mob_by_name) == 'function' then
-        local ok, mob = pcall(ffxi.get_mob_by_name, wanted)
-        local id = ok and tonumber(mob and mob.id) or 0
-        if id > 0 then return id end
-    end
     return 0
 end
 
