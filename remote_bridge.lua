@@ -12,7 +12,6 @@ local uc_time = require('uc_time')
 local json = require('json')
 local res = require('resources')
 local uc_ws_memory = require('uc_ws_memory')
-local uc_partner_list = require('uc_partner_list')
 local uc_config_runtime = require('uc_config_runtime')
 local uc_active_config = require('uc_active_config')
 local uc_camp_anchor = require('uc_camp_anchor')
@@ -1220,109 +1219,118 @@ local function process_line(line)
 		end
 		apply_set(set_path, set_value)
 	elseif op == 'set_partner' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local slot = tostring(msg.slot or '')
-			local name = tostring(msg.name or '')
-			if slot == 'puller' then
+		local slot = tostring(msg.slot or '')
+		local name = uc_trim(tostring(msg.name or ''))
+		if slot == 'puller' then
+			local ok, why = uc_apply_active_list_edit(
+				'replace_name',
+				'config.follow.partner.puller_name',
+				name
+			)
+			if ok then
 				local _, name_to_id = uc_get_party_name_maps(true)
-				local id = name_to_id[name] or 0
-				if name ~= '' and id == 0 then
+				if name ~= '' and (name_to_id[name] or 0) == 0 then
 					_G.UC_LAST_PARTNER_OP = 'PULLER_NAME_NOT_IN_PARTY:' .. name
+				else
+					_G.UC_LAST_PARTNER_OP = ''
 				end
-				s.puller_name = name
-				s.puller_id = id
 			else
-				_G.UC_LAST_PARTNER_OP = 'PARTNER_SET_LEGACY_IGNORED:' .. slot
+				_G.UC_LAST_PARTNER_OP = 'PULLER_SET_FAIL:' .. tostring(why)
 			end
+		else
+			_G.UC_LAST_PARTNER_OP = 'PARTNER_SET_LEGACY_IGNORED:' .. slot
 		end
 	elseif op == 'set_fight_leader' then
-		local s = _G.UC_SETTINGS
-		if s then
+		local name = uc_trim(tostring(msg.name or ''))
+		local ok, why = uc_apply_active_list_edit(
+			'replace_name',
+			'config.follow.fight.leader_name',
+			name
+		)
+		if ok then
 			local _, name_to_id = uc_get_party_name_maps()
-			local name = tostring(msg.name or '')
-			local id = name_to_id[name] or 0
-			if name ~= '' and id == 0 then
+			if name ~= '' and (name_to_id[name] or 0) == 0 then
 				_G.UC_LAST_FIGHT_LEADER_OP = 'FIGHT_LEADER_NAME_NOT_IN_PARTY:' .. name
 			else
 				_G.UC_LAST_FIGHT_LEADER_OP = ''
 			end
-			s.fight_leader_id = id
+		else
+			_G.UC_LAST_FIGHT_LEADER_OP = 'FIGHT_LEADER_SET_FAIL:' .. tostring(why)
 		end
 	elseif op == 'set_party_follow' then
-		local s = _G.UC_SETTINGS
-		if s then
+		local name = uc_trim(tostring(msg.name or ''))
+		local ok, why = uc_apply_active_list_edit(
+			'replace_name',
+			'config.follow.party.leader_name',
+			name
+		)
+		if ok then
 			local _, name_to_id = uc_get_party_name_maps()
-			local name = tostring(msg.name or '')
-			local id = name_to_id[name] or 0
-			if name ~= '' and id == 0 then
+			if name ~= '' and (name_to_id[name] or 0) == 0 then
 				_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_NAME_NOT_IN_PARTY:' .. name
 			else
 				_G.UC_LAST_PARTY_FOLLOW_OP = ''
 			end
-			s.party_follow_id = id
-			if id > 0 and name ~= '' then
-				s.party_follow_leader_name = name
-			else
-				s.party_follow_leader_name = ''
-			end
+		else
+			_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_SET_FAIL:' .. tostring(why)
 		end
-		last_state_send = 0
 	elseif op == 'partner_add' then
-		local s = _G.UC_SETTINGS
-		local name = uc_trim(msg.name)
-		if not s or name == '' then
+		local name = uc_trim(tostring(msg.name or ''))
+		if name == '' then
 			_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_NO_NAME'
 		else
-			local tid = uc_resolve_target_id_by_name(name)
-			if not tid then
-				_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_NAME_NOT_FOUND:' .. name
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.follow.partner.names',
+				name
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_ALREADY:' .. name
+			elseif ok then
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_OK:' .. name
 			else
-				local ok, why = uc_partner_list.append_id(s, tid)
-				if ok and why == 'PARTNER_ALREADY' then
-					_G.UC_LAST_PARTNER_OP = 'PARTNER_ALREADY:' .. name
-				elseif ok then
-					_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_OK:' .. name
-				else
-					_G.UC_LAST_PARTNER_OP = tostring(why or 'PARTNER_ADD_FAIL')
-				end
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'partner_add_current' then
-		local s = _G.UC_SETTINGS
-		if not s then
-			_G.UC_LAST_PARTNER_OP = 'PARTNER_NO_SETTINGS'
+		local tname, tid = uc_current_target_snapshot()
+		if tid == 0 or uc_trim(tostring(tname or '')) == '' then
+			_G.UC_LAST_PARTNER_OP = 'PARTNER_NO_TARGET'
 		else
-			local tname, tid = uc_current_target_snapshot()
-			if tid == 0 then
-				_G.UC_LAST_PARTNER_OP = 'PARTNER_NO_TARGET'
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.follow.partner.names',
+				tname
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_ALREADY:' .. tname
+			elseif ok then
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_OK:' .. tname
 			else
-				local ok, why = uc_partner_list.append_id(s, tid)
-				if ok and why == 'PARTNER_ALREADY' then
-					_G.UC_LAST_PARTNER_OP = 'PARTNER_ALREADY:' .. tname
-				elseif ok then
-					_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_OK:' .. tname
-				else
-					_G.UC_LAST_PARTNER_OP = tostring(why or 'PARTNER_ADD_FAIL')
-				end
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'partner_remove' then
-		local s = _G.UC_SETTINGS
+		local name = uc_trim(tostring(msg.name or ''))
 		local tid = uc_remote_message_mob_id(msg, 'mob_id', 'id')
-		if not s or not tid or tid == 0 then
+		if name == '' and tid and tid ~= 0 then
+			local _, _, id_to_name = uc_get_party_name_maps(true)
+			name = uc_trim(tostring(id_to_name[tid] or ''))
+		end
+		if name == '' then
 			_G.UC_LAST_PARTNER_OP = 'PARTNER_REMOVE_BAD_ID'
 		else
-			local ok, why = uc_partner_list.remove_id(s, tid)
+			local ok, why = uc_apply_active_list_edit(
+				'remove_string_list_value',
+				'config.follow.partner.names',
+				name
+			)
 			if ok then
-				_G.UC_LAST_PARTNER_OP = 'PARTNER_REMOVE_OK:' .. tostring(tid)
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_REMOVE_OK:' .. name
 			else
-				_G.UC_LAST_PARTNER_OP = tostring(why or 'PARTNER_REMOVE_FAIL')
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_REMOVE_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'set_abilities' then
 		uc_apply_active_list_edit(
 			'replace_string_list',
@@ -1342,19 +1350,11 @@ local function process_line(line)
 			uc_split_pipe(msg.value)
 		)
 	elseif op == 'partner_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(uc_msg_get(msg, 'value'))
-			s.partner_ids = {}
-			for _, name in ipairs(vals) do
-				local tid = uc_resolve_target_id_by_name(name)
-				if tid and tid ~= 0 then
-					uc_partner_list.append_id(s, tid)
-				end
-			end
-			uc_partner_list.sync_legacy_partner_fields(s)
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.follow.partner.names',
+			uc_split_pipe(uc_msg_get(msg, 'value'))
+		)
 	elseif op == 'no_skillchain_target_replace_names' then
 		uc_apply_active_list_edit(
 			'replace_string_list',
