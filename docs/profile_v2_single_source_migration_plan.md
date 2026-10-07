@@ -560,6 +560,19 @@ Exit criteria:
 - Implementation head `fa9b3673c23548ec997542e67120a20ffd8ec30f` is proven by workflow `37691933955`: Phase 6 bridge projection-retirement PASS, every Phase 5 write-pipeline suite PASS, Profile V2 flat-surface guard PASS at the 10-reference / one-read-only-projection bridge baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 - The next independent Phase 6 slice is the generic legacy bridge `op=set` path. Normal WinForms durable edits have been unable to send it since Phase 5, but `remote_bridge.lua` still accepts that compatibility message and writes `_G.UC_SETTINGS` directly through `apply_set(...)`; retiring or canonicalizing that latent flat writer is the next clean authority cut.
 
+### 2026-10-07 — Phase 6 generic bridge `op=set` writer retired
+
+- Removed the generic bridge `op == 'set'` receiver and the entire `apply_set(path, value)` flat mutation subsystem from `remote_bridge.lua`.
+- Removed `last_cfg_version` / `cfg_version`; version gating existed only for the retired generic set protocol.
+- Removed the generic setter's path-specific coercion/validation/diagnostic branches for follow distances, spacing, pathing selectors/ranges, COR crooked-roll slot, `def_heal_min_missing_hp`, and `def_remove_enemy_buffs`. Those code paths were unreachable from supported WinForms because Phase 5 `Forward(...)` consumes generic `op=set` locally and returns before mirror enqueue.
+- The WinForms internal `op=set` messages intentionally remain as a local durable-edit signal: `Forward(...)` captures the per-session working Profile V2 and never sends them to the addon. Explicit runtime/session operations remain separately allowlisted.
+- Updated historical config-status/first-consumer tests that previously froze `apply_set` and `cfg_version` as protected bridge behavior; they now assert those retired surfaces stay absent.
+- Added `tests/replay/harness/selftest_phase6_bridge_generic_set_retirement.lua`, proving the bridge no longer accepts generic set messages or contains a generic flat writer/version gate, while WinForms still treats local `op=set` as a working-Profile-V2 capture signal before the outbound boundary.
+- Flat-surface burn-down in `remote_bridge.lua`: direct `UC_SETTINGS` references **10→9**; `bridge_apply_set` allowance **2→0**; the sole read-only `project_flat_settings(active_profile, {})` editor snapshot remains; flat sync remains **0**.
+- Workflow `37693099436` first exposed a stale Phase 5 follow regression marker because deleting the preceding generic-set branch changed `set_partner` from `elseif` to the first `if` branch. After correcting that static marker, workflow `37693237235` reached the Phase 6 gates and exposed only the earlier Phase 6 regression's expected baseline of 10 versus the new 9 references. The baseline was lowered; neither failure required a production-code rollback.
+- Implementation head `38c97c63b576512a019ceb490b27cef7813d37d9` is proven by workflow `37693486987`: generic bridge set retirement PASS, bridge projection-retirement PASS, all Phase 5 pipelines PASS, flat-surface guard PASS at 9 bridge references, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
+- The next bridge flat-read slice is config-status publication. Both bridge snapshots currently pass `_G.UC_SETTINGS` into `uc_config_runtime.config_contract_status(...)`, but the accessor returns the already-published cloned `_G.UC_CONFIG_CONTRACT_STATUS` first; the flat settings argument is therefore inert coupling in normal runtime.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
