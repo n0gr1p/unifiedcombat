@@ -742,26 +742,6 @@ local function uc_unique_sorted(values)
 	return out
 end
 
-local function uc_sync_active_config_flat_projection()
-	local active_profile = uc_active_config.get_active_profile()
-	if type(active_profile) ~= 'table' then
-		return false, 'NO_ACTIVE_PROFILE'
-	end
-	local settings = rawget(_G, 'UC_SETTINGS')
-	if type(settings) ~= 'table' then
-		return false, 'NO_SETTINGS'
-	end
-	local projected, projection_err = uc_active_config.project_flat_settings(active_profile, settings)
-	if type(projected) ~= 'table' then
-		return false, 'PROJECTION_FAILED:' .. tostring(projection_err)
-	end
-	local ok, sync_err = uc_active_config.sync_flat_settings_in_place(settings, projected)
-	if ok ~= true then
-		return false, 'SYNC_FAILED:' .. tostring(sync_err)
-	end
-	return true, ''
-end
-
 local function uc_apply_active_list_edit(method_name, path, ...)
 	local method = uc_active_config[method_name]
 	if type(method) ~= 'function' then
@@ -771,10 +751,10 @@ local function uc_apply_active_list_edit(method_name, path, ...)
 	if ok ~= true then
 		return false, tostring(reason or 'ACTIVE_CONFIG_EDIT_FAILED')
 	end
-	local projected, projection_reason = uc_sync_active_config_flat_projection()
-	if projected ~= true then
-		return false, tostring(projection_reason or 'ACTIVE_CONFIG_PROJECTION_FAILED')
-	end
+	-- Phase 6: canonical edits are authoritative immediately. Do not republish
+	-- durable policy into _G.UC_SETTINGS; migrated runtime consumers read the
+	-- active Profile V2 config directly. The bridge still invalidates its state
+	-- snapshot so the UI observes the canonical edit promptly.
 	last_state_send = 0
 	return true, tostring(reason or '')
 end
