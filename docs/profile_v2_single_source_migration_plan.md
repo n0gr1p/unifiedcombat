@@ -530,7 +530,7 @@ Exit criteria:
 
 ### Phase 6 — Retire the durable flat projection
 
-Status: **NOT STARTED**
+Status: **IN PROGRESS — bridge canonical edits no longer republish durable policy into flat settings; generic legacy `op=set`, profile-apply publication, and remaining compatibility/runtime flat seams remain**
 
 Goals:
 
@@ -547,6 +547,18 @@ Exit criteria:
 - [ ] canonical config is the only durable authority;
 - [ ] mixed flat/nested normalizer ambiguity is removed from normal runtime;
 - [ ] compatibility surfaces are documented and intentionally bounded.
+
+### 2026-10-07 — Phase 6 bridge post-edit projection retired
+
+- Retired the bridge's canonical-edit → flat-writeback loop. `uc_apply_active_list_edit(...)` now mutates active Profile V2 through the existing canonical editor API, invalidates the next bridge state snapshot, and returns; it no longer calls `project_flat_settings` or `sync_flat_settings_in_place`.
+- Removed `uc_sync_active_config_flat_projection()` from `remote_bridge.lua`. Compatibility edit operations retained from Phase 5 therefore cannot republish durable policy into the legacy flat settings table.
+- This cut is intentionally narrower than removing all bridge flat state. The remaining bridge `UC_SETTINGS` references are separately classified as the legacy generic `op=set` writer, config-status observation, and runtime `Start_Engine` compatibility mirroring. The read-only `active_config` state snapshot still uses one `project_flat_settings(active_profile, {})` translation for the existing WinForms/editor wire shape; it does not publish into runtime settings.
+- Added `tests/replay/harness/selftest_phase6_bridge_projection_retirement.lua`. It proves canonical edits leave contradictory flat settings untouched while canonical follow runtime behavior immediately observes the edits; statically it requires the bridge edit helper to contain no `project_flat_settings`, `sync_flat_settings_in_place`, or direct flat-settings access.
+- The Phase 6 CI gate reruns every Phase 5 write-pipeline suite after the new regression, freezing the assumption that migrated runtime domains do not require post-edit flat publication.
+- Flat-surface burn-down in `remote_bridge.lua`: direct `UC_SETTINGS` references **11→10**; `project_flat_settings` calls **2→1**; `sync_flat_settings_in_place` calls **1→0**.
+- Workflow `37691665746` initially failed in the older Phase 5 targeting-list static contract because that test still required the just-retired bridge projection helper. Its dynamic canonical behavior had passed. The stale assertion was inverted to require no flat publication; no production rollback was needed.
+- Implementation head `fa9b3673c23548ec997542e67120a20ffd8ec30f` is proven by workflow `37691933955`: Phase 6 bridge projection-retirement PASS, every Phase 5 write-pipeline suite PASS, Profile V2 flat-surface guard PASS at the 10-reference / one-read-only-projection bridge baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
+- The next independent Phase 6 slice is the generic legacy bridge `op=set` path. Normal WinForms durable edits have been unable to send it since Phase 5, but `remote_bridge.lua` still accepts that compatibility message and writes `_G.UC_SETTINGS` directly through `apply_set(...)`; retiring or canonicalizing that latent flat writer is the next clean authority cut.
 
 ### Phase 7 — Final cleanup and conformance
 
