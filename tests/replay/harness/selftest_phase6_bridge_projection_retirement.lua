@@ -177,8 +177,8 @@ assert_equal(count_literal(bridge, 'project_flat_settings('), 1,
     'remote bridge must retain only the read-only state-snapshot projection')
 assert_equal(count_literal(bridge, 'sync_flat_settings_in_place('), 0,
     'remote bridge must contain no flat settings publication')
-assert_equal(count_literal(bridge, 'UC_SETTINGS'), 7,
-    'remote bridge flat-surface baseline should now be 7 references after config-status decoupling')
+assert_equal(count_literal(bridge, 'UC_SETTINGS'), 0,
+    'remote bridge must now contain zero direct UC_SETTINGS references')
 
 local state_tick = extract(
     bridge,
