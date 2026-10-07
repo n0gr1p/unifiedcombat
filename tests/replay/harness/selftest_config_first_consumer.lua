@@ -89,7 +89,8 @@ local function main()
     assert_not_contains(export_source, "config = ", "export must not include full normalized config")
     assert_not_contains(scheduler_source, "config.ui.show_ingame_ui", "scheduler must not consume migrated UI config")
     assert_not_contains(scheduler_source, "uc_config_runtime", "scheduler/provider code must not use first-consumer runtime helper")
-    assert_contains(bridge_source, "apply_set(set_path, set_value)", "bridge write behavior must remain apply_set based")
+    assert_not_contains(bridge_source, "apply_set(", "retired generic bridge flat writer must stay removed")
+    assert_not_contains(bridge_source, "op == 'set'", "retired generic bridge set receiver must stay removed")
 
     io.stdout:write("selftest_config_first_consumer: OK\n")
 end
