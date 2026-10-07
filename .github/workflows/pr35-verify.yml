@@ -235,6 +235,11 @@ jobs:
           lua5.1 tests/replay/harness/selftest_config_status.lua
           lua5.1 tests/replay/harness/selftest_bridge_config_status_consumer.lua
           lua5.1 tests/replay/harness/selftest_config_first_consumer.lua
+      - name: Phase 6 bridge config-status decoupling self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase6_bridge_status_decoupling.lua
+          lua5.1 tests/replay/harness/selftest_config_status.lua
+          lua5.1 tests/replay/harness/selftest_bridge_config_status_consumer.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
