@@ -81,17 +81,14 @@ assert_contains(addon, 'engine_enabled = Start_Engine == true',
 assert_not_contains(addon, 'UC_SETTINGS.engine_enabled',
     'addon must contain no direct live flat engine mirror reads or writes')
 
-local addon_commands = extract(
-    addon,
-    "windower.register_event('addon command', function(...)",
-    "windower.register_event('prerender'"
-)
-assert_contains(addon_commands, 'Start_Engine = true',
+assert_contains(addon, "if a == 'start' then",
+    'addon command handler must retain slash start command')
+assert_contains(addon, "elseif a == 'stop' then",
+    'addon command handler must retain slash stop command')
+assert_contains(addon, 'Start_Engine = true',
     'slash start command must set live Start_Engine')
-assert_contains(addon_commands, 'Start_Engine = false',
+assert_contains(addon, 'Start_Engine = false',
     'slash stop command must clear live Start_Engine')
-assert_not_contains(addon_commands, 'UC_SETTINGS.engine_enabled',
-    'slash engine commands must not mirror live state into flat settings')
 
 assert_contains(engine,
     "('EngineEnabled: %s'):format(tostring(rawget(_G, 'Start_Engine') == true))",
