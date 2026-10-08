@@ -27,9 +27,6 @@ return {
 		["melee_engine.lua"] = {
 			["uc_settings"] = 11,
 		},
-		["remote_bridge.lua"] = {
-			["project_flat_settings"] = 1,
-		},
 		["uc_active_config.lua"] = {
 			["project_flat_settings"] = 1,
 			["sync_flat_settings"] = 1,
