@@ -73,6 +73,19 @@ internal static class RuntimeProfileEditorAdapterTests
         AssertEqual(editor["nyzul_parking_order"]?.GetValue<string>(), "Redrogue|Niightsiide", "Nyzul projection");
         AssertEqual(editor["formation_required_party_names"]?.GetValue<string>(), "Redrogue", "formation roster projection");
         AssertEqual(editor["cor_roll_1"]?.GetValue<string>(), "Chaos Roll", "COR roll projection");
+        AssertEqual(editor["puller_selected"]?.GetValue<string>(), "Niightsiide", "puller identity projection");
+        AssertEqual(editor["fight_leader_selected"]?.GetValue<string>(), "Terrasjr", "fight leader identity projection");
+        AssertEqual(editor["partner_entries"]?.GetValue<string>(), "1:Ponponponponpon", "partner durable-name projection");
+        AssertEqual(editor["defensive_targeted_buffs"]?.GetValue<string>(), "Terrasjr:Haste", "targeted buff projection");
+        AssertEqual(editor["formation_enabled"]?.GetValue<bool>(), true, "formation enabled projection");
+        AssertEqual(editor["formation_required_party_names"]?.GetValue<string>(), "Redrogue", "formation required roster projection");
+        AssertEqual(editor["path_pull_attack_fallback_enabled"]?.GetValue<bool>(), true, "path pull fallback projection");
+        AssertEqual(editor["food_item"]?.GetValue<string>(), "Grape Daifuku", "food projection");
+        AssertEqual(editor["target_ignore_entries"]?.GetValue<string>(), "1:Apex Crab", "target ignore projection");
+        AssertEqual(editor["add_priority_entries"]?.GetValue<string>(), "1:Apex Bat", "add priority projection");
+        AssertEqual(editor["sleep_spell_entries"]?.GetValue<string>(), "1:Horde Lullaby II", "sleep order projection");
+        AssertEqual(editor["tank_enmity_include_pets"]?.GetValue<bool>(), true, "tank pet-enmity projection");
+        AssertEqual(editor["domain_follow_enabled"]?.GetValue<bool>(), true, "ownership projection");
 
         var content = StructuredProfileV2Writer.BuildStructuredProfileFile(
             editor,
