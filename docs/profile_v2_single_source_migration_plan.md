@@ -530,7 +530,7 @@ Exit criteria:
 
 ### Phase 6 — Retire the durable flat projection
 
-Status: **IN PROGRESS — bridge direct flat-settings authority/read coupling is retired; the read-only editor-wire flat projection, Profile V2 apply publication, and remaining addon compatibility flat seams remain**
+Status: **IN PROGRESS — the bridge now publishes canonical Profile V2 directly with zero flat settings/projection surface; Profile V2 apply publication and remaining addon/runtime compatibility flat seams remain**
 
 Goals:
 
@@ -596,6 +596,21 @@ Exit criteria:
 - Verification surfaced only expected test/guard maintenance: workflow `37700954876` caught the addon flat-surface count reduction; `37701105233` and `37701209317` exposed two source-marker mistakes in the new static regression; `37701327180` proved the engine regression itself green but then failed an unrelated extra direct Linux invocation of an older Windows-path test. The focused gate was corrected without any production rollback.
 - Final implementation/test head `fedfaa4668694b9613c2ee6bcfb79e29089af116` is proven by workflow `37701437816`: engine command-authority PASS, all prior Phase 6 gates PASS, every Phase 5 pipeline PASS, flat-surface guard PASS with zero bridge `UC_SETTINGS` references, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 - The bridge now has one remaining flat compatibility mechanism: its **read-only** `active_config` payload is built through `project_flat_settings(active_profile, {})` because `RuntimeProfileEditorAdapter` still expects the projected editor shape. Retiring that projection is an isolated UI wire-format migration, not a runtime-authority cut.
+
+### 2026-10-08 — Phase 6 canonical runtime editor wire completed
+
+- Removed the final bridge-side canonical→flat editor projection. `remote_bridge.lua` now sends the active Profile V2 object directly as `state.active_config`; it contains **zero** direct `UC_SETTINGS` references and **zero** `project_flat_settings(...)` calls.
+- Runtime/session state remains outside canonical configuration. In particular, `Start_Engine` and runtime option catalogs stay on the surrounding session snapshot rather than being injected into `active_config`.
+- Added `UnifiedCombatWinForms/CanonicalRuntimeEditorProjection.cs` as the sole canonical Profile V2 → flat editor-model translation boundary. The existing WinForms control model and `StructuredProfileV2Writer` persistence contract remain unchanged; only the source wire shape changed from addon-projected flat state to canonical `config.*`.
+- `RuntimeProfileEditorAdapter.Build(...)` now invokes the canonical projector and then hydrates only live/session-owned fields such as `engine`, `Start_Engine`, ability/WS/action catalogs, and party option lists from the session snapshot.
+- The projector covers durable combat/WS/recurring/pulling, abilities, defensive support, encounters, spacing/pathing/formations, follow/partner/Nyzul identities, targeting/reactions/tank/RUN/sleep/spells, COR/BRD/GEO/food, SMN/PUP/SCH, debug, ownership, and legacy editor fields. Durable names/lists remain names/lists; runtime party IDs are not reintroduced into the editor contract.
+- Kept a bounded transitional fallback for an older addon snapshot that still sends the already-projected editor object. This compatibility path is local to WinForms and does not restore addon flat authority.
+- Reworked `RuntimeProfileEditorAdapterTests.cs` around a full canonical Profile V2 reconnect fixture and retained a legacy-projected-snapshot compatibility case. The canonical fixture round-trips through `StructuredProfileV2Writer` and explicitly covers runtime engine hydration, follow identities, durable partner names, defensive targeted buffs, formation roster/geometry, targeting/sleep lists, tank pet-enmity policy, food, path fallback, and ownership gates.
+- Added `tests/replay/harness/selftest_phase6_canonical_editor_wire.lua`, proving the bridge publishes `active_profile` directly, the adapter performs the local canonical projection, session command state stays outside canonical config, and the durable writer remains the save boundary.
+- Removed `remote_bridge.lua` from `profile_v2_flat_surface_allowlist.lua` entirely. All earlier Phase 6 bridge regressions now require both direct `UC_SETTINGS` and `project_flat_settings` counts to remain **0**.
+- Initial workflow `37857205931` caught two test-contract issues rather than production regressions: the WinForms source-contract test itself introduced the guard literal `project_flat_settings(`, and the new canonical reconnect fixture used invalid generic-formation values. Workflow `37857272652` retained the formation-fixture failure after the guard assertion was made guard-neutral. The fixture was corrected to a valid Sortie generic formation with matching canonical encounter policy, `polar_band` placement, valid boss anchoring/axis, and a required-party constraint.
+- Implementation head `d4440e684012d96046f86f49ff195f18f7326131` is proven by workflow `37857378221`: Phase 6 canonical editor wire PASS, all prior Phase 6 gates PASS, every Phase 5 pipeline PASS, flat-surface guard PASS with no bridge allowlist entry, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
+- The next independent Phase 6 slice is **Profile V2 apply publication**. `uc_profile_v2.apply_result_to_active_profile(...)` still creates a flat `candidate` through `uc_active_config.project_flat_settings(...)` for conversion verification, and `UnifiedCombat.lua::uc_apply_profile_v2_file(...)` then publishes that candidate into `_G.UC_SETTINGS` through `sync_flat_settings_in_place(...)`. Separating conversion validation from flat runtime publication is the next clean authority cut.
 
 ### Phase 7 — Final cleanup and conformance
 
