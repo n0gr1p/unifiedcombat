@@ -1371,12 +1371,10 @@ function uc_remote_tick()
 	if type(active_profile) ~= 'table' then
 		error('remote bridge state requires an active configuration')
 	end
-	local active_settings, projection_err = uc_active_config.project_flat_settings(active_profile, {})
-	if type(active_settings) ~= 'table' then
-		error('remote bridge active-config projection failed: ' .. tostring(projection_err))
-	end
-	active_settings.Start_Engine = Start_Engine == true
-	st.active_config = active_settings
+	-- Phase 6: publish canonical Profile V2 directly. WinForms owns the
+	-- canonical-config -> editor-model translation; runtime command state such
+	-- as Start_Engine remains on the surrounding session snapshot.
+	st.active_config = active_profile
 	if not safe_send_line(json_encode_simple(st)) then
 		return
 	end
