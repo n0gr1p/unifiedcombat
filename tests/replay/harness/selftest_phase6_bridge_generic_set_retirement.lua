@@ -57,8 +57,8 @@ assert_not_contains(bridge, 'cfg_version',
     'generic-set version gate must be removed with the retired protocol')
 assert_equal(count_literal(bridge, 'UC_SETTINGS'), 0,
     'remote bridge must now contain zero direct UC_SETTINGS references')
-assert_equal(count_literal(bridge, 'project_flat_settings('), 1,
-    'bridge must retain only the read-only active-config editor snapshot projection')
+assert_equal(count_literal(bridge, 'project_flat_settings('), 0,
+    'bridge must contain no canonical-to-flat editor projection')
 assert_equal(count_literal(bridge, 'sync_flat_settings_in_place('), 0,
     'bridge must contain no flat compatibility publication')
 
