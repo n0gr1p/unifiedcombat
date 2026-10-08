@@ -173,8 +173,8 @@ assert_not_contains(edit_helper, 'UC_SETTINGS',
 assert_contains(edit_helper, 'last_state_send = 0',
     'bridge canonical edit helper must still invalidate the state snapshot after edits')
 
-assert_equal(count_literal(bridge, 'project_flat_settings('), 1,
-    'remote bridge must retain only the read-only state-snapshot projection')
+assert_equal(count_literal(bridge, 'project_flat_settings('), 0,
+    'remote bridge must contain no canonical-to-flat projection')
 assert_equal(count_literal(bridge, 'sync_flat_settings_in_place('), 0,
     'remote bridge must contain no flat settings publication')
 assert_equal(count_literal(bridge, 'UC_SETTINGS'), 0,
@@ -185,9 +185,11 @@ local state_tick = extract(
     'function uc_remote_tick()',
     'function uc_remote_unload()'
 )
-assert_contains(state_tick, 'project_flat_settings(active_profile, {})',
-    'the surviving bridge projection must be the read-only editor/state snapshot view')
+assert_contains(state_tick, 'st.active_config = active_profile',
+    'state snapshot must publish the canonical active Profile V2 payload directly')
+assert_not_contains(state_tick, 'project_flat_settings(',
+    'state snapshot must not build a flat editor projection')
 assert_not_contains(state_tick, 'sync_flat_settings_in_place(',
-    'state snapshot projection must not publish back into flat settings')
+    'state snapshot must not publish back into flat settings')
 
 print('selftest_phase6_bridge_projection_retirement: OK (canonical bridge edits no longer republish flat settings)')
