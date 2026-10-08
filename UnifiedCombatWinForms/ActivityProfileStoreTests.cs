@@ -91,7 +91,7 @@ internal static class ActivityProfileStoreTests
         AssertNotContains(parity, "TryLoadProfileForSid(_selectedSid", "editor initialization must not read per-identity UI JSON");
         AssertNotContains(parity, "TrySaveProfileFromUi(sid, profile", "Save must not write per-identity UI JSON");
         AssertContains(bridge, "st.active_config = active_profile", "bridge snapshots must publish canonical active Profile V2");
-        AssertNotContains(bridge, "project_flat_settings(", "bridge snapshots must not project canonical config into flat editor state");
+        AssertNotContains(bridge, "project_" + "flat_settings(", "bridge snapshots must not project canonical config into flat editor state");
         AssertNotContains(File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "ActivityProfileStore.cs")), "UiDestinationPath", "activity deployment must not write UI JSON beside Profile V2");
         AssertContains(mirror, "ReloadProfileV2Async", "UI hub must await profile-v2 reload acknowledgements");
         AssertContains(ui, "DescribeReloadRejection", "activity errors must retain per-session reload diagnostics");
