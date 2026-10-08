@@ -306,6 +306,21 @@ internal static class RuntimeProfileEditorAdapterTests
                     },
                     ["thresholds"] = new JsonObject { ["critical_hpp"] = 35, ["medium_hpp"] = 55 },
                 },
+                ["encounter"] = new JsonObject
+                {
+                    ["enabled"] = true,
+                    ["id"] = "sortie_ghatjot",
+                    ["policy"] = new JsonObject
+                    {
+                        ["water_damage"] = "enforce",
+                        ["water_skillchain"] = "enforce",
+                        ["repeat_action_wall"] = "off",
+                    },
+                    ["tuning"] = new JsonObject
+                    {
+                        ["repeat_action_guard_s"] = 10.0,
+                    },
+                },
                 ["movement"] = new JsonObject
                 {
                     ["enabled"] = true,
@@ -342,30 +357,12 @@ internal static class RuntimeProfileEditorAdapterTests
                     {
                         ["enabled"] = true,
                         ["encounter"] = "sortie_ghatjot",
-                        ["role"] = "dps",
-                        ["tank_name"] = "Terrasjr",
-                        ["required_party_names"] = new JsonArray("Redrogue"),
-                        ["capture_stable_s"] = 1.0,
-                        ["capture_tolerance"] = 0.5,
-                        ["safe_radius"] = 2.0,
                         ["mock"] = new JsonObject { ["enabled"] = false, ["mob_name"] = "" },
-                        ["tank"] = new JsonObject { ["accept_radius"] = 1.0, ["return_radius"] = 2.0 },
-                        ["dps"] = new JsonObject { ["flank_angle_deg"] = 90.0, ["melee_radius"] = 2.5, ["position_tolerance"] = 0.5 },
-                        ["healer"] = new JsonObject
-                        {
-                            ["preferred_radius"] = 15.0,
-                            ["minimum_boss_distance"] = 8.0,
-                            ["maximum_party_range"] = 20.0,
-                            ["cone_half_angle_deg"] = 45.0,
-                            ["cone_safety_margin_deg"] = 5.0,
-                            ["sample_step_deg"] = 5.0,
-                        },
                         ["placement"] = new JsonObject
                         {
-                            ["mode"] = "polar",
-                            ["anchor"] = "target",
-                            ["anchor_member"] = "",
-                            ["axis"] = new JsonObject { ["type"] = "party_member", ["member"] = "Terrasjr" },
+                            ["mode"] = "polar_band",
+                            ["anchor"] = "boss",
+                            ["axis"] = new JsonObject { ["type"] = "boss_to_member", ["member"] = "Terrasjr" },
                             ["preferred_radius"] = 2.5,
                             ["minimum_radius"] = 1.0,
                             ["maximum_radius"] = 4.0,
@@ -382,7 +379,7 @@ internal static class RuntimeProfileEditorAdapterTests
                             ["safe_origin_radius"] = 0.0,
                             ["minimum_boss_distance"] = 0.0,
                             ["maximum_boss_distance"] = 0.0,
-                            ["maximum_party_range"] = 0.0,
+                            ["maximum_party_range"] = 18.0,
                             ["required_party_names"] = new JsonArray("Redrogue"),
                         },
                     },
