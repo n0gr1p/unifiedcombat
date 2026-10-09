@@ -1,8 +1,8 @@
 return {
 	["files"] = {
 		["UnifiedCombat.lua"] = {
-			["sync_flat_settings"] = 3,
-			["uc_settings"] = 71,
+			["sync_flat_settings"] = 2,
+			["uc_settings"] = 61,
 		},
 		["UnifiedCombatWinForms/MainForm.ActivityProfiles.cs"] = {
 			["build_profile_from_ui"] = 1,
@@ -52,9 +52,6 @@ return {
 		},
 		["uc_pathing.lua"] = {
 			["uc_settings"] = 2,
-		},
-		["uc_profile_v2.lua"] = {
-			["project_flat_settings"] = 1,
 		},
 		["uc_provider_combat.lua"] = {
 			["ctx_settings"] = 11,
