@@ -761,30 +761,53 @@ local function uc_profile_v2_contract_validator(payload)
 	return UC_PROFILE_CONTRACT.validate_structured_profile_config(payload)
 end
 
+local function uc_current_profile_v2_config(context, meta)
+	context = type(context) == 'table' and context or {}
+	if type(context.config) == 'table' then
+		return context.config
+	end
+	local active_config = uc_active_config.get_config()
+	if type(active_config) == 'table' then
+		return active_config
+	end
+	local settings = context.settings or _G.UC_SETTINGS
+	if type(settings) == 'table' then
+		local ok, config = pcall(uc_profile_v2.build_durable_config, settings, meta)
+		if ok and type(config) == 'table' then
+			return config
+		end
+	end
+	return nil
+end
+
 local function uc_update_profile_v2_contract_status(context)
 	context = type(context) == 'table' and context or {}
-	local settings = context.settings or _G.UC_SETTINGS
 	local meta = {
 		character = context.character,
 		main_job = context.main_job,
 		sub_job = context.sub_job,
-		source = context.source or 'UC_SETTINGS',
+		source = context.source or 'UC_ACTIVE_PROFILE',
 		addon_path = context.addon_path,
 	}
-	if not settings or meta.character == nil or meta.character == '' or meta.main_job == nil or meta.main_job == '' or meta.sub_job == nil or meta.sub_job == '' then
+	local current_config = uc_current_profile_v2_config(context, meta)
+	if type(current_config) ~= 'table' or meta.character == nil or meta.character == '' or meta.main_job == nil or meta.main_job == '' or meta.sub_job == nil or meta.sub_job == '' then
 		return {
 			path = uc_profile_v2.default_export_path(meta),
 			state = 'error',
 			valid = false,
 			diff_count = 0,
-			reason = 'missing settings or profile identity',
+			reason = 'missing canonical config or profile identity',
 			source = meta.source,
 			character = meta.character,
 			main_job = meta.main_job,
 			sub_job = meta.sub_job,
 		}
 	end
-	local status = uc_profile_v2.inspect_structured_profile_status(settings, meta, uc_profile_v2_contract_validator)
+	local status = uc_profile_v2.inspect_structured_profile_status_against_config(
+		current_config,
+		meta,
+		uc_profile_v2_contract_validator
+	)
 	if type(status) ~= 'table' then
 		return {
 			path = uc_profile_v2.default_export_path(meta),
@@ -826,15 +849,15 @@ local function uc_update_config_contract_status(context)
 		return status
 	end
 
-	local settings = context.settings or _G.UC_SETTINGS
 	local meta = {
 		character = context.character,
 		main_job = context.main_job,
 		sub_job = context.sub_job,
 		source = status.source,
 	}
-	local ok, config = pcall(UC_CONFIG_NORMALIZER.normalize, settings, meta)
-	if ok and type(config) == 'table' then
+	local config = uc_current_profile_v2_config(context, meta)
+	local ok = type(config) == 'table'
+	if ok then
 		local summoner = uc_smn_config.validate(config.summoner)
 		status.ok = summoner.valid
 		status.summoner = {
@@ -1051,7 +1074,8 @@ local function uc_validate_profile_v2_file(meta)
 end
 
 local function uc_diff_profile_v2_file(meta, settings)
-	local result = uc_profile_v2.diff_structured_profile_file_against_settings(settings, meta, function(payload)
+	local current_config = uc_current_profile_v2_config({ settings = settings }, meta)
+	local result = uc_profile_v2.diff_structured_profile_file_against_config(current_config, meta, function(payload)
 		return uc_validate_structured_profile_export(payload)
 	end)
 	if type(result) ~= 'table' then
@@ -1061,7 +1085,8 @@ local function uc_diff_profile_v2_file(meta, settings)
 end
 
 local function uc_diff_profile_v2_detail_file(meta, settings)
-	local result = uc_profile_v2.diff_structured_profile_file_against_settings(settings, meta, function(payload)
+	local current_config = uc_current_profile_v2_config({ settings = settings }, meta)
+	local result = uc_profile_v2.diff_structured_profile_file_against_config(current_config, meta, function(payload)
 		return uc_validate_structured_profile_export(payload)
 	end)
 	if type(result) ~= 'table' then
@@ -1071,7 +1096,8 @@ local function uc_diff_profile_v2_detail_file(meta, settings)
 end
 
 local function uc_status_profile_v2_file(meta, settings)
-	local result = uc_profile_v2.inspect_structured_profile_file_against_settings(settings, meta, function(payload)
+	local current_config = uc_current_profile_v2_config({ settings = settings }, meta)
+	local result = uc_profile_v2.inspect_structured_profile_file_against_config(current_config, meta, function(payload)
 		return uc_validate_structured_profile_export(payload)
 	end)
 	if type(result) ~= 'table' then
@@ -1260,13 +1286,14 @@ local function uc_queue_profile_v2_autoload(expected_main_job, resume_engine)
 end
 
 local function uc_apply_profile_v2_file(meta, settings)
-	local result = uc_profile_v2.apply_structured_profile_file_to_settings(settings, meta, function(payload)
+	local current_config = uc_current_profile_v2_config({ settings = settings }, meta)
+	local result = uc_profile_v2.apply_structured_profile_file_to_active_config(current_config, meta, function(payload)
 		return uc_validate_structured_profile_export(payload)
 	end)
 	if type(result) ~= 'table' then
 		return false, uc_profile_v2_file_path(meta), 'profile v2 apply returned invalid result', nil
 	end
-	if result.ok ~= true or type(result.active_profile) ~= 'table' or type(result.candidate) ~= 'table' then
+	if result.ok ~= true or type(result.active_profile) ~= 'table' then
 		local failure_error = result.error
 		if result.stage == 'convert' and type(result.detail) == 'string' and result.detail ~= '' then
 			failure_error = tostring(failure_error or 'unknown error') .. ': ' .. result.detail
@@ -1277,11 +1304,6 @@ local function uc_apply_profile_v2_file(meta, settings)
 	if active_ok ~= true then
 		return false, result.path or uc_profile_v2_file_path(meta), active_err, nil
 	end
-	local sync_ok, sync_err = uc_active_config.sync_flat_settings_in_place(settings, result.candidate)
-	if sync_ok ~= true then
-		return false, result.path or uc_profile_v2_file_path(meta), sync_err, nil
-	end
-	uc_normalize_settings_table(settings)
 	uc_profile_v2_auto_reload_note_applied(meta, uc_profile_v2_meta_key(meta), result.path)
 	return true, result.path, nil, result.count
 end
@@ -1336,8 +1358,8 @@ local function uc_establish_profile_v2_identity(player, job_for_defaults)
 		profile_key = key,
 		addon_path = uc_addon_path(),
 	}
-	local inspection = uc_profile_v2.inspect_structured_profile_status(
-		_G.UC_SETTINGS,
+	local inspection = uc_profile_v2.inspect_structured_profile_status_against_config(
+		uc_active_config.get_config(),
 		meta,
 		function(payload)
 			return uc_validate_structured_profile_export(payload)
@@ -1702,10 +1724,10 @@ local function uc_run_profile_v2_auto_reload()
 		}
 	end
 
-	local inspector = uc_profile_v2.inspect_structured_profile_file_against_settings
+	local inspector = uc_profile_v2.inspect_structured_profile_file_against_config
 	local status = nil
 	if type(inspector) == 'function' then
-		status = inspector(_G.UC_SETTINGS, {
+		status = inspector(uc_active_config.get_config(), {
 			character = p.name,
 			main_job = p.main_job,
 			sub_job = p.sub_job,
@@ -2200,12 +2222,13 @@ end
 
 local function uc_save_active_profile()
 	local p = windower.ffxi.get_player()
-	if not p or not p.name or not p.main_job or not p.sub_job or not _G.UC_SETTINGS then
-		return false, nil, 'missing exact player identity or settings'
+	local active_profile = uc_active_config.get_active_profile()
+	if not p or not p.name or not p.main_job or not p.sub_job or type(active_profile) ~= 'table' then
+		return false, nil, 'missing exact player identity or active Profile V2'
 	end
 	local meta = uc_profile_v2_meta(p, os.date('!%Y-%m-%dT%H:%M:%SZ'))
-	meta.source = 'UC_SETTINGS'
-	local ok_build, profile = pcall(uc_profile_v2.build_structured_profile, _G.UC_SETTINGS, meta)
+	meta.source = 'exported_from_active_profile'
+	local ok_build, profile = pcall(uc_profile_v2.build_structured_profile_from_active_profile, active_profile, meta)
 	if not ok_build or type(profile) ~= 'table' then
 		return false, uc_profile_v2_file_path(meta), tostring(profile or 'profile build failed')
 	end
@@ -3105,17 +3128,14 @@ windower.register_event('addon command', function(...)
 		local sub = args[2] and tostring(args[2]):lower() or ''
 		if sub == 'export' then
 			local p = windower.ffxi.get_player()
-			if not p or not p.name then
-				uc_profile_v2_export_failure('missing player')
-				return
-			end
-			if not _G.UC_SETTINGS then
-				uc_profile_v2_export_failure('missing settings')
+			local active_profile = uc_active_config.get_active_profile()
+			if not p or not p.name or type(active_profile) ~= 'table' then
+				uc_profile_v2_export_failure('missing player or active Profile V2')
 				return
 			end
 			local meta = uc_profile_v2_meta(p, os.date('!%Y-%m-%dT%H:%M:%SZ'))
-			meta.source = 'UC_SETTINGS'
-			local ok_build, profile = pcall(uc_profile_v2.build_structured_profile, _G.UC_SETTINGS, meta)
+			meta.source = 'exported_from_active_profile'
+			local ok_build, profile = pcall(uc_profile_v2.build_structured_profile_from_active_profile, active_profile, meta)
 			if not ok_build or type(profile) ~= 'table' then
 				uc_profile_v2_export_failure('profile build failed')
 				return
