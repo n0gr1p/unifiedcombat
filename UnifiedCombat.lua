@@ -622,25 +622,20 @@ end
 
 uc_try_load_local_ownership_flags()
 
-local function uc_apply_job_defaults(job)
-	if not job or not _G.UC_SETTINGS then
-		return
+local function uc_job_default_key(job)
+	if job == nil then
+		return nil
 	end
-	local j = job
-	if type(j) ~= 'string' then
-		j = res.jobs:with('id', j).english_short
+	local resolved = job
+	if type(resolved) ~= 'string' then
+		local job_resource = res.jobs:with('id', resolved)
+		resolved = (job_resource and job_resource.english_short) or tostring(resolved)
 	end
-	j = j:upper()
-	local d = UC_JOB_DEFAULTS[j]
-	if not d then
-		return
+	resolved = tostring(resolved):upper()
+	if resolved == '' then
+		return nil
 	end
-	for k, v in pairs(d) do
-		local cur = _G.UC_SETTINGS[k]
-		if cur == nil or cur == '' then
-			_G.UC_SETTINGS[k] = v
-		end
-	end
+	return resolved
 end
 
 local PROFILE_KEYS = {
@@ -1111,7 +1106,6 @@ local function uc_status_profile_v2_file(meta, settings)
 	return result
 end
 
-local uc_sync_table_in_place
 local uc_normalize_settings_table
 local uc_profile_v2_autoload_pending_key = nil
 local uc_profile_v2_autoload_completed_key = nil
@@ -1309,24 +1303,21 @@ local function uc_apply_profile_v2_file(meta, settings)
 end
 
 local function uc_initialize_safe_profile_v2_identity(player, job_for_defaults)
-	if type(player) ~= 'table' or not player.name or not player.main_job or not player.sub_job or not _G.UC_SETTINGS then
-		return false, 'missing exact player identity or settings'
+	if type(player) ~= 'table' or not player.name or not player.main_job or not player.sub_job then
+		return false, 'missing exact player identity'
 	end
-	local defaults = uc_new_settings_defaults()
-	defaults.engine_enabled = Start_Engine == true
-	local sync_ok, sync_err = uc_active_config.sync_flat_settings_in_place(_G.UC_SETTINGS, defaults)
-	if sync_ok ~= true then
-		return false, sync_err
-	end
-	uc_apply_job_defaults(job_for_defaults or player.main_job)
-	uc_normalize_settings_table(_G.UC_SETTINGS)
-	local active_profile = uc_active_config.build_active_profile_from_settings(_G.UC_SETTINGS, {
+	local active_profile, build_err = uc_active_config.build_default_active_profile({
 		character = player.name,
 		main_job = player.main_job,
 		sub_job = player.sub_job,
 		profile_key = uc_profile_v2_session_key(player),
 		source = 'UC_DEFAULTS',
-	})
+		engine_enabled = Start_Engine == true,
+		job_for_defaults = uc_job_default_key(job_for_defaults or player.main_job),
+	}, UC_JOB_DEFAULTS)
+	if type(active_profile) ~= 'table' then
+		return false, tostring(build_err or 'canonical default profile build failed')
+	end
 	local active_ok, active_err = uc_active_config.set_active_profile(active_profile)
 	if active_ok ~= true then
 		return false, active_err
@@ -1760,10 +1751,6 @@ local function uc_run_profile_v2_auto_reload()
 		diff_count = diff_count,
 		status = status,
 	}
-end
-
-uc_sync_table_in_place = function(dst, src)
-	return uc_active_config.sync_flat_settings_in_place(dst, src)
 end
 
 local function uc_read_profiles_file(char_name)
