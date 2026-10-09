@@ -62,7 +62,7 @@ assert_equal(projected.puppetmaster_maneuver_pattern, 'Fire Maneuver|Fire Maneuv
 
 local conversion = profile_v2.build_settings_candidate_from_structured_profile({}, structured, meta)
 assert_true(conversion.ok, 'enabled PUP profile-v2 conversion must round-trip: ' .. tostring(conversion.error or conversion.detail))
-assert_true(conversion.candidate.puppetmaster_enabled, 'autoload candidate must retain PUP enabled=true')
+assert_true(conversion.candidate == nil, 'canonical PUP conversion must not build a flat candidate')
 assert_true(type(conversion.candidate_config.puppetmaster) == 'table', 'autoload candidate durable config must retain puppetmaster domain')
 assert_true(conversion.candidate_config.puppetmaster.enabled, 'autoload candidate durable config must retain enabled=true')
 
