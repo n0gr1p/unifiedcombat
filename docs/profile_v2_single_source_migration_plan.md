@@ -530,7 +530,7 @@ Exit criteria:
 
 ### Phase 6 — Retire the durable flat projection
 
-Status: **IN PROGRESS — bridge/editor and Profile V2 apply/save/status paths are canonical-only; safe identity bootstrap and remaining addon/runtime compatibility flat seams remain**
+Status: **IN PROGRESS — bridge/editor, Profile V2 apply/save/status, and identity-transition default bootstrap are canonical-only; initial addon bootstrap and orphaned compatibility adapters remain**
 
 Goals:
 
@@ -627,6 +627,21 @@ Exit criteria:
 - The first verification after the production cut exposed one stale config-status static assertion that still required `UC_CONFIG_NORMALIZER.normalize(settings, meta)`. It was updated to require canonical `uc_current_profile_v2_config(...)`; no production rollback was needed.
 - Implementation/test head `921e1a160b195bdcea1b1cc217d6fcee0f4d1efd` is proven by workflow `37917685735`: the new apply-publication retirement gate PASS, every prior Phase 6 gate PASS, every Phase 5 pipeline PASS, Profile V2 flat-surface guard PASS at the reduced baseline, full Lua sequence PASS, and WinForms/Profile V2/Activity Profile tests PASS.
 - The next independent Phase 6 slice is **safe identity/default bootstrap**. `uc_initialize_safe_profile_v2_identity(...)` still resets the entire `_G.UC_SETTINGS` table from `uc_new_settings_defaults()`, applies job defaults there, normalizes it, and only then builds the canonical active profile. That is now the only live full-table `sync_flat_settings_in_place(...)` publication in the addon. The other addon sync literal is an uncalled local compatibility alias, and `uc_active_config.project_flat_settings(...)` itself has no production callers; once bootstrap is canonicalized those orphaned compatibility surfaces can be retired cleanly.
+
+### 2026-10-09 — Phase 6 safe identity/default bootstrap canonicalized
+
+- Replaced the identity-transition default path that previously rebuilt `_G.UC_SETTINGS` from `uc_new_settings_defaults()`, applied legacy job defaults into that global table, normalized it in place, and then derived a new active profile from the flat result.
+- Added `uc_active_config.build_default_active_profile(...)`. It starts from `uc_config_normalizer.default_config(meta)`, applies the current engine state only to the compatibility command default, applies the legacy per-job WS/ability defaults directly to canonical `config.combat.weaponskill.primary` and `config.abilities`, and returns a validated Profile V2 active profile.
+- Preserved the exact old ability-default semantics: sparse legacy job slots are compacted in order before becoming `config.abilities.configured`, matching the old `uc_normalize_abilities(...)` behavior; the compact list is also retained in `legacy_slots` strictly as compatibility data. Job default WS/abilities remain configured but disabled by default, as before.
+- `uc_initialize_safe_profile_v2_identity(...)` now requires only exact identity, builds canonical safe defaults through `build_default_active_profile(...)`, and publishes them with `set_active_profile(...)`. It contains no `UC_SETTINGS` access, no `uc_new_settings_defaults()`, no flat normalizer pass, no `build_active_profile_from_settings(...)`, and no flat sync.
+- Removed the now-unused `uc_apply_job_defaults(...)` global-flat mutator. Numeric job IDs are still resolved through the new pure `uc_job_default_key(...)` helper before canonical defaults are selected.
+- Removed the dead addon-local `uc_sync_table_in_place` alias. `UnifiedCombat.lua` now contains **zero** `sync_flat_settings_in_place(...)` calls.
+- Added `tests/replay/harness/selftest_phase6_safe_identity_bootstrap.lua`. It proves exact Profile V2 identity/source/profile-key construction, current engine compatibility default, WAR/SAM/DRG job-default behavior including sparse DRG ability compaction, no-default-job behavior, canonical publish, and—critically—that a deliberately contradictory/stale `_G.UC_SETTINGS` table is left byte-for-byte untouched.
+- The regression also statically freezes the authority boundary: the safe identity helper may call only the canonical default builder/publisher and is prohibited from touching the flat settings table, flat default builder, flat normalizer, flat sync, or flat→canonical active-profile builder.
+- Flat-surface burn-down in `UnifiedCombat.lua`: direct `UC_SETTINGS` references **61→54** and `sync_flat_settings_in_place(...)` literals **2→0**.
+- Implementation/test head `62ef3f3e416a12530cf9d7b9cd213780e81d5c71` is proven by workflow `37985299481`: safe identity bootstrap PASS, all prior Phase 6 gates PASS, every Phase 5 write pipeline PASS, flat-surface guard PASS at the reduced baseline, full Lua sequence PASS, and WinForms/Profile V2/RUN/reaction/Activity Profile tests PASS.
+- Post-cut direct source audit confirms `UnifiedCombat.lua`, `uc_profile_v2.lua`, and `remote_bridge.lua` all contain **zero** `project_flat_settings(...)` and **zero** `sync_flat_settings_in_place(...)` calls. The only remaining definitions live in `uc_active_config.lua`, and they have no production callers.
+- The next independent Phase 6 slice is therefore **orphaned flat projection/sync API retirement**: remove `uc_active_config.project_flat_settings(...)` and `sync_flat_settings_in_place(...)`, then convert or delete regressions that exist only to preserve those retired canonical→flat compatibility contracts. Keep the separate initial addon-load flat→canonical `initialize_active_profile(_G.UC_SETTINGS, ...)` seam explicitly tracked for a later bootstrap cut rather than conflating the two directions of compatibility.
 
 ### Phase 7 — Final cleanup and conformance
 
