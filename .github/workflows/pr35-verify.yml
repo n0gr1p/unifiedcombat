@@ -250,6 +250,8 @@ jobs:
           lua5.1 tests/replay/harness/selftest_phase6_canonical_editor_wire.lua
           lua5.1 tests/replay/harness/selftest_phase6_bridge_projection_retirement.lua
           lua5.1 tests/replay/harness/selftest_profile_v2_autoload_lifecycle.lua
+      - name: Phase 6 Profile V2 apply-publication retirement self-test
+        run: lua5.1 tests/replay/harness/selftest_phase6_profile_apply_publication_retirement.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
