@@ -428,10 +428,14 @@ local function main()
 		0,
 		"pre-recurring-spells Profile V2 must default the recurring spell list empty"
 	)
+	assert_true(
+		legacy_recurring_apply.candidate == nil,
+		"pre-recurring-spells Profile V2 conversion must not build a flat settings candidate"
+	)
 	assert_equal(
-		legacy_recurring_apply.candidate.recurring_spells,
-		"",
-		"pre-recurring-spells Profile V2 projection must clear stale live recurring spells"
+		current_with_recurring_spells.recurring_spells,
+		"Absorb-TP|Absorb-STR",
+		"canonical conversion must not overwrite stale live recurring-spell state"
 	)
 
     local unrelated_ownership = deep_clone(structured_config)
