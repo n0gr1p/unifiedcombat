@@ -1317,6 +1317,60 @@ function M.build_active_profile_from_settings(settings, context)
 	}
 end
 
+local function compact_job_default_abilities(defaults)
+	local out = {}
+	if type(defaults) ~= 'table' then
+		return out
+	end
+	for i = 1, 6 do
+		local value = normalize_optional_string(defaults['ability' .. tostring(i)])
+		if value ~= nil then
+			out[#out + 1] = value
+		end
+	end
+	return out
+end
+
+function M.build_default_active_profile(context, job_defaults)
+	local resolved_context = type(context) == 'table' and context or {}
+	local meta = resolve_meta(resolved_context, 'UC_DEFAULTS')
+	meta.source = normalize_string(resolved_context.source, 'UC_DEFAULTS')
+	local config = uc_config_normalizer.default_config(meta)
+	if type(config) ~= 'table' then
+		return nil, 'canonical default config builder returned invalid result'
+	end
+
+	if type(config.command) == 'table' then
+		config.command.engine_enabled_default = resolved_context.engine_enabled == true
+	end
+
+	local job_key = normalize_optional_string(resolved_context.job_for_defaults) or meta.main_job
+	if type(job_key) == 'string' then
+		job_key = job_key:upper()
+	end
+	local defaults = type(job_defaults) == 'table' and job_defaults[job_key] or nil
+	if type(defaults) == 'table' then
+		local primary_ws = normalize_optional_string(defaults.ws1 or defaults.weaponskill)
+		if primary_ws ~= nil
+			and type(config.combat) == 'table'
+			and type(config.combat.weaponskill) == 'table' then
+			config.combat.weaponskill.primary = primary_ws
+		end
+		if type(config.abilities) == 'table' then
+			local abilities = compact_job_default_abilities(defaults)
+			config.abilities.configured = clone_value(abilities)
+			config.abilities.legacy_slots = clone_value(abilities)
+		end
+	end
+
+	local payload = {
+		version = 2,
+		profile = clone_value(config.profile or {}),
+		config = config,
+	}
+	return M.build_active_profile_from_v2_payload(payload, meta)
+end
+
 function M.build_active_profile_from_v2_payload(payload, context)
 	if type(payload) ~= 'table' then
 		return nil, 'structured profile payload must be a table'
