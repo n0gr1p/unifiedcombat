@@ -251,8 +251,10 @@ local function main()
 		'legacy structured Scholar profile must load: ' .. tostring(legacy_apply.error))
 	assert_equal(legacy_apply.diff_count, 0,
 		'legacy activation MPP must not create a structured-profile conversion difference')
-	assert_true(legacy_apply.candidate.sch_sublimation_activate_when_mpp_at_least == nil,
-		'legacy structured profile apply must remove the flat activation MPP setting')
+	assert_true(legacy_apply.candidate == nil,
+		'legacy structured profile apply must not build a flat settings candidate')
+	assert_true(legacy_apply.candidate_config.sch.sublimation.activate_when_mpp_at_least == nil,
+		'legacy structured profile apply must discard the activation MPP setting canonically')
 	assert_equal(projected.sch.support.regen.spells[1], 'Regen V', 'projected maintenance spell mismatch')
 	assert_equal(projected.sch_accession_perpetuance_spells, 'Regen V',
 		'projected maintenance spell list mismatch')
