@@ -73,8 +73,9 @@ assert_true(
 		.. ' '
 		.. tostring(apply_result.detail or '')
 )
-assert_false(apply_result.candidate.food_enabled, 'legacy apply must replace stale live food_enabled=true')
-assert_equal(apply_result.candidate.food_item, '', 'legacy apply must replace stale live food item')
+assert_true(apply_result.candidate == nil, 'legacy apply must not build a flat settings candidate')
+assert_true(live_settings.food_enabled, 'canonical conversion must leave stale live food state untouched')
+assert_equal(live_settings.food_item, 'Grape Daifuku', 'canonical conversion must leave stale live food item untouched')
 assert_false(
 	apply_result.active_profile.config.maintenance.food.enabled,
 	'converted active Profile V2 must keep the disabled food default'
