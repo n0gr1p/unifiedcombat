@@ -888,6 +888,48 @@ function M.build_structured_profile(settings, meta)
 	}
 end
 
+function M.build_structured_profile_from_active_profile(active_profile, meta)
+	if type(active_profile) ~= 'table' or active_profile.version ~= 2 then
+		error('active profile must be Profile V2')
+	end
+	if type(active_profile.profile) ~= 'table' or type(active_profile.config) ~= 'table' then
+		error('active profile metadata/config missing')
+	end
+	local meta_table = type(meta) == 'table' and meta or {}
+	local source_profile = active_profile.profile
+	local resolved_meta = normalized_meta({
+		character = meta_table.character or meta_table.char or source_profile.character,
+		main_job = meta_table.main_job or meta_table.job or source_profile.main_job,
+		sub_job = meta_table.sub_job or source_profile.sub_job,
+		profile_key = meta_table.profile_key or source_profile.profile_key,
+		exported_at = meta_table.exported_at,
+	})
+	local source = normalize_optional_string(meta_table.source, 'exported_from_active_profile')
+	local durable_config = canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(
+		pick_durable_config_domains(active_profile.config, {
+			main_job = resolved_meta.main_job,
+			sub_job = resolved_meta.sub_job,
+		})
+	))))
+	local profile = {
+		schema_version = 2,
+		engine = 'UC',
+		character = resolved_meta.character,
+		main_job = safe_job_component(resolved_meta.main_job),
+		sub_job = safe_job_component(resolved_meta.sub_job),
+		source = source,
+		exported_at = resolved_meta.exported_at,
+	}
+	if resolved_meta.profile_key ~= nil then
+		profile.profile_key = resolved_meta.profile_key
+	end
+	return {
+		version = 2,
+		profile = profile,
+		config = durable_config,
+	}
+end
+
 function M.build_durable_config(settings, meta)
 	local normalized = uc_config_normalizer.normalize(settings, meta)
 	return canonicalize_empty_nyzul(canonicalize_unset_puller_name(canonicalize_leash_source(canonicalize_disabled_fight_leader_name(pick_durable_config_domains(normalized, meta)))))
@@ -1466,7 +1508,7 @@ function M.diff_durable_config(current_config, target_config)
 	}
 end
 
-function M.diff_structured_profile_file_against_settings(settings, meta, validator, deps)
+function M.diff_structured_profile_file_against_config(current_config, meta, validator, deps)
 	local validation = M.validate_structured_profile_file(meta, validator, deps)
 	if type(validation) ~= 'table' or validation.ok ~= true or type(validation.payload) ~= 'table' then
 		if type(validation) == 'table' then
@@ -1480,10 +1522,10 @@ function M.diff_structured_profile_file_against_settings(settings, meta, validat
 		return validation
 	end
 
-	local current_config = M.build_durable_config(settings, meta)
+	local runtime_config = type(current_config) == 'table' and clone_value(current_config) or {}
 	local target_config = clone_value(validation.payload.config)
-	current_config, target_config = strip_non_applicable_maintenance(current_config, target_config, meta)
-	local diff = M.diff_durable_config(current_config, target_config)
+	runtime_config, target_config = strip_non_applicable_maintenance(runtime_config, target_config, meta)
+	local diff = M.diff_durable_config(runtime_config, target_config)
 	return {
 		ok = true,
 		path = validation.path,
@@ -1496,8 +1538,35 @@ function M.diff_structured_profile_file_against_settings(settings, meta, validat
 		details = diff.details,
 		diff_details = diff.diff_details,
 		first_difference = diff.first_difference,
-		current_config = current_config,
+		current_config = runtime_config,
 	}
+end
+
+function M.diff_structured_profile_file_against_settings(settings, meta, validator, deps)
+	local ok_current, current_config = pcall(M.build_durable_config, settings, meta)
+	if not ok_current or type(current_config) ~= 'table' then
+		return {
+			ok = false,
+			path = M.default_export_path(meta),
+			stage = 'convert',
+			error = tostring(current_config or 'runtime config normalization failed'),
+		}
+	end
+	return M.diff_structured_profile_file_against_config(current_config, meta, validator, deps)
+end
+
+function M.inspect_structured_profile_file_against_config(current_config, meta, validator, deps)
+	local diff = M.diff_structured_profile_file_against_config(current_config, meta, validator, deps)
+	if type(diff) ~= 'table' then
+		return {
+			ok = false,
+			path = M.default_export_path(meta),
+			stage = 'inspect',
+			error = 'structured profile status helper returned invalid result',
+			reason = 'inspect failed',
+		}
+	end
+	return diff
 end
 
 function M.inspect_structured_profile_file_against_settings(settings, meta, validator, deps)
@@ -1545,7 +1614,7 @@ local function structured_profile_status_result(path, state, valid, reason, diff
 	}
 end
 
-function M.inspect_structured_profile_status(settings, meta, validator, deps)
+local function inspect_structured_profile_status_against_resolved_config(current_config, meta, validator, deps)
 	deps = resolve_fs_deps(deps)
 	local path = M.default_export_path(meta)
 
@@ -1567,23 +1636,43 @@ function M.inspect_structured_profile_status(settings, meta, validator, deps)
 		return structured_profile_status_result(validation.path or path, state, false, tostring(reason), 0, meta, validation.payload)
 	end
 
-	local ok_current_config, current_config = pcall(M.build_durable_config, settings, meta)
-	if not ok_current_config or type(current_config) ~= 'table' then
-		return structured_profile_status_result(validation.path or path, 'error', false, tostring(current_config or 'runtime config normalization failed'), 0, meta, validation.payload)
+	if type(current_config) ~= 'table' then
+		return structured_profile_status_result(validation.path or path, 'error', false, 'runtime canonical config missing', 0, meta, validation.payload)
 	end
+	local runtime_config = clone_value(current_config)
 	local target_config = clone_value(validation.payload.config)
-	current_config, target_config = strip_non_applicable_maintenance(current_config, target_config, meta)
-	local diff = M.diff_durable_config(current_config, target_config)
+	runtime_config, target_config = strip_non_applicable_maintenance(runtime_config, target_config, meta)
+	local diff = M.diff_durable_config(runtime_config, target_config)
 	local state = diff.count == 0 and 'valid_match' or 'valid_diff'
 	local reason = diff.count == 0 and 'runtime matches file' or 'runtime differs from file'
 	return structured_profile_status_result(validation.path or path, state, true, reason, diff, meta, validation.payload)
 end
 
-local function apply_result_to_active_profile(current_settings, payload, meta, deps)
+function M.inspect_structured_profile_status_against_config(current_config, meta, validator, deps)
+	return inspect_structured_profile_status_against_resolved_config(current_config, meta, validator, deps)
+end
+
+function M.inspect_structured_profile_status(settings, meta, validator, deps)
+	deps = resolve_fs_deps(deps)
+	local path = M.default_export_path(meta)
+	local exists, exists_err = dep_exists(deps, path)
+	if exists_err ~= nil then
+		return structured_profile_status_result(path, 'error', false, tostring(exists_err), 0, meta)
+	end
+	if not exists then
+		return structured_profile_status_result(path, 'missing', false, 'missing file', 0, meta)
+	end
+	local ok_current_config, current_config = pcall(M.build_durable_config, settings, meta)
+	if not ok_current_config or type(current_config) ~= 'table' then
+		return structured_profile_status_result(path, 'error', false, tostring(current_config or 'runtime config normalization failed'), 0, meta)
+	end
+	return inspect_structured_profile_status_against_resolved_config(current_config, meta, validator, deps)
+end
+
+local function apply_result_to_active_profile(payload, meta, deps)
 	deps = type(deps) == 'table' and deps or {}
-	local build_durable_config = deps.build_durable_config or M.build_durable_config
 	local diff_durable_config = deps.diff_durable_config or M.diff_durable_config
-	if type(build_durable_config) ~= 'function' or type(diff_durable_config) ~= 'function' then
+	if type(diff_durable_config) ~= 'function' then
 		return {
 			ok = false,
 			stage = 'convert',
@@ -1614,26 +1703,7 @@ local function apply_result_to_active_profile(current_settings, payload, meta, d
 		}
 	end
 
-	local candidate, projection_err = uc_active_config.project_flat_settings(active_profile, current_settings)
-	if type(candidate) ~= 'table' then
-		return {
-			ok = false,
-			stage = 'convert',
-			error = tostring(projection_err or 'structured profile projection failed'),
-			active_profile = active_profile,
-		}
-	end
-
-	local ok_current, candidate_config = pcall(build_durable_config, candidate, meta)
-	if not ok_current or type(candidate_config) ~= 'table' then
-		return {
-			ok = false,
-			stage = 'convert',
-			error = tostring(candidate_config),
-			active_profile = active_profile,
-		}
-	end
-
+	local candidate_config = clone_value(active_profile.config)
 	local target_config = clone_value(payload.config)
 	candidate_config, target_config = strip_non_applicable_maintenance(candidate_config, target_config, meta)
 	local diff = diff_durable_config(candidate_config, target_config)
@@ -1658,7 +1728,6 @@ local function apply_result_to_active_profile(current_settings, payload, meta, d
 			details = diff.details or {},
 			diff_details = diff.diff_details or {},
 			active_profile = active_profile,
-			candidate = candidate,
 			candidate_config = candidate_config,
 		}
 	end
@@ -1667,8 +1736,6 @@ local function apply_result_to_active_profile(current_settings, payload, meta, d
 		ok = true,
 		stage = 'done',
 		active_profile = active_profile,
-		candidate = candidate,
-		projected_settings = candidate,
 		candidate_config = candidate_config,
 		count = diff.count,
 		diff_count = diff.diff_count,
@@ -1679,17 +1746,23 @@ local function apply_result_to_active_profile(current_settings, payload, meta, d
 	}
 end
 
-function M.build_settings_candidate_from_structured_profile(current_settings, payload, meta, deps)
-	return apply_result_to_active_profile(current_settings, payload, meta, deps)
+function M.build_active_profile_from_structured_profile(payload, meta, deps)
+	return apply_result_to_active_profile(payload, meta, deps)
 end
 
-function M.apply_structured_profile_file_to_settings(current_settings, meta, validator, deps)
+function M.build_settings_candidate_from_structured_profile(_, payload, meta, deps)
+	-- Transitional API name retained for callers/tests that predate canonical
+	-- apply. It no longer constructs or publishes a flat settings candidate.
+	return apply_result_to_active_profile(payload, meta, deps)
+end
+
+function M.apply_structured_profile_file_to_active_config(current_config, meta, validator, deps)
 	local validation = M.validate_structured_profile_file(meta, validator, deps)
 	if type(validation) ~= 'table' or validation.ok ~= true or type(validation.payload) ~= 'table' then
 		return validation
 	end
 
-	local apply_result = apply_result_to_active_profile(current_settings, validation.payload, meta, deps)
+	local apply_result = apply_result_to_active_profile(validation.payload, meta, deps)
 	if type(apply_result) ~= 'table' then
 		return {
 			ok = false,
@@ -1703,10 +1776,10 @@ function M.apply_structured_profile_file_to_settings(current_settings, meta, val
 		return apply_result
 	end
 
-	local current_config = M.build_durable_config(current_settings, meta)
+	local runtime_config = type(current_config) == 'table' and clone_value(current_config) or {}
 	local target_config = clone_value(validation.payload.config)
-	current_config, target_config = strip_non_applicable_maintenance(current_config, target_config, meta)
-	local diff = M.diff_durable_config(current_config, target_config)
+	runtime_config, target_config = strip_non_applicable_maintenance(runtime_config, target_config, meta)
+	local diff = M.diff_durable_config(runtime_config, target_config)
 
 	return {
 		ok = true,
@@ -1715,8 +1788,6 @@ function M.apply_structured_profile_file_to_settings(current_settings, meta, val
 		payload = validation.payload,
 		validation = validation.validation,
 		active_profile = apply_result.active_profile,
-		candidate = apply_result.candidate,
-		projected_settings = apply_result.projected_settings,
 		candidate_config = apply_result.candidate_config,
 		count = diff.count,
 		diff_count = diff.diff_count,
@@ -1724,8 +1795,21 @@ function M.apply_structured_profile_file_to_settings(current_settings, meta, val
 		details = diff.details,
 		diff_details = diff.diff_details,
 		first_difference = diff.first_difference,
-		current_config = current_config,
+		current_config = runtime_config,
 	}
+end
+
+function M.apply_structured_profile_file_to_settings(current_settings, meta, validator, deps)
+	local ok_current, current_config = pcall(M.build_durable_config, current_settings, meta)
+	if not ok_current or type(current_config) ~= 'table' then
+		return {
+			ok = false,
+			path = M.default_export_path(meta),
+			stage = 'convert',
+			error = tostring(current_config or 'runtime config normalization failed'),
+		}
+	end
+	return M.apply_structured_profile_file_to_active_config(current_config, meta, validator, deps)
 end
 
 function M.autoload_structured_profile_file_to_settings(current_settings, meta, validator, deps)
