@@ -111,15 +111,13 @@ local active, active_error = active_config.build_active_profile_from_v2_payload(
 assert_true(type(active) == 'table', active_error or 'reaction active profile must build')
 assert_true(active_config.set_active_profile(active), 'reaction active profile must install')
 assert_equal(active_config.get_path({ 'config', 'reactions', 'rules', 1, 'name' }), 'Cold Stare', 'active config must preserve reaction name')
-local projected, projection_error = active_config.project_flat_settings(active, {})
-assert_true(type(projected) == 'table', projection_error or 'reaction compatibility projection must build')
-assert_true(projected.reaction_enabled, 'reaction enabled flag must project')
-assert_equal(projected.reaction_rules[2].name, 'Dread Spikes', 'reaction rule list must project')
-assert_equal(projected.reaction_rules[3].distance, 12.0, 'run-away distance must project through compatibility settings')
-assert_equal(projected.reaction_rules[4].distance, 12.0, 'move-to-range distance must project through compatibility settings')
-local durable = profile_v2.build_durable_config(projected, meta)
+assert_true(active.config.reactions.enabled, 'canonical reaction enabled flag must survive Profile V2 load')
+assert_equal(active.config.reactions.rules[2].name, 'Dread Spikes', 'canonical reaction rule list must survive Profile V2 load')
+assert_equal(active.config.reactions.rules[3].distance, 12.0, 'canonical run-away distance must survive Profile V2 load')
+assert_equal(active.config.reactions.rules[4].distance, 12.0, 'canonical move-to-range distance must survive Profile V2 load')
+local durable = profile_v2.build_durable_config(active.config, meta)
 local diff = profile_v2.diff_durable_config(durable.reactions, payload.config.reactions)
-assert_equal(diff.count, 0, 'reaction config must round-trip without durable diffs')
+assert_equal(diff.count, 0, 'reaction config must remain durable without projection')
 
 local old_payload = {
     version = 2,
@@ -127,11 +125,8 @@ local old_payload = {
     config = {},
 }
 local old_active = assert(active_config.build_active_profile_from_v2_payload(old_payload, meta))
-local cleared_projection = assert(active_config.project_flat_settings(old_active, projected))
-assert_true(cleared_projection.reaction_enabled == false, 'omitted optional reaction domain must clear stale compatibility enable flag')
-assert_equal(#cleared_projection.reaction_rules, 0, 'omitted optional reaction domain must clear stale compatibility rules')
-assert_true(profile_v2.build_durable_config(cleared_projection, meta).reactions == nil, 'disabled empty reaction projection must remain equivalent to omission')
-assert_true(active_config.set_active_profile(active), 'reaction active profile must reinstall after omission projection test')
+assert_true(old_active.config.reactions == nil, 'omitted optional reaction domain must remain absent canonically')
+assert_true(active_config.set_active_profile(active), 'reaction active profile must reinstall after omission compatibility test')
 
 local wrong_actor = reactions.on_action({
     actor_id = 901,
