@@ -530,7 +530,7 @@ Exit criteria:
 
 ### Phase 6 — Retire the durable flat projection
 
-Status: **IN PROGRESS — bridge/editor, Profile V2 apply/save/status, and identity-transition default bootstrap are canonical-only; initial addon bootstrap and orphaned compatibility adapters remain**
+Status: **IN PROGRESS — canonical→flat runtime projection/publication is retired; initial addon flat→canonical bootstrap and remaining bounded runtime flat-read compatibility surfaces remain**
 
 Goals:
 
@@ -642,6 +642,20 @@ Exit criteria:
 - Implementation/test head `62ef3f3e416a12530cf9d7b9cd213780e81d5c71` is proven by workflow `37985299481`: safe identity bootstrap PASS, all prior Phase 6 gates PASS, every Phase 5 write pipeline PASS, flat-surface guard PASS at the reduced baseline, full Lua sequence PASS, and WinForms/Profile V2/RUN/reaction/Activity Profile tests PASS.
 - Post-cut direct source audit confirms `UnifiedCombat.lua`, `uc_profile_v2.lua`, and `remote_bridge.lua` all contain **zero** `project_flat_settings(...)` and **zero** `sync_flat_settings_in_place(...)` calls. The only remaining definitions live in `uc_active_config.lua`, and they have no production callers.
 - The next independent Phase 6 slice is therefore **orphaned flat projection/sync API retirement**: remove `uc_active_config.project_flat_settings(...)` and `sync_flat_settings_in_place(...)`, then convert or delete regressions that exist only to preserve those retired canonical→flat compatibility contracts. Keep the separate initial addon-load flat→canonical `initialize_active_profile(_G.UC_SETTINGS, ...)` seam explicitly tracked for a later bootstrap cut rather than conflating the two directions of compatibility.
+
+### 2026-10-10 — Phase 6 orphaned flat projection/sync API retired
+
+- Removed `uc_active_config.project_flat_settings(...)` and `sync_flat_settings_in_place(...)` completely. No production module retains either canonical→flat API.
+- Deleted the private canonical→flat implementation rather than leaving dead serialization code behind: `apply_structured_config_to_candidate(...)`, durable-name→runtime-ID projection helpers, defensive targeted-buff serialization, BRD targeted-song serialization, SCH storm serialization, Summoner flat-gate projection, and related compatibility-only helpers are gone.
+- `uc_active_config.lua` shrank from **1,787 lines / 67,816 bytes** at the preceding verified head to **857 lines / 25,441 bytes** after this cut.
+- Preserved the opposite-direction compatibility intentionally: `build_active_profile_from_settings(...)` and `initialize_active_profile(...)` remain because initial addon startup still performs one flat→canonical bootstrap. They are explicitly not part of the retired canonical→flat contract.
+- Converted projection-dependent domain regressions to assert canonical state directly: Kei, generic/named formations, PUP, configurable puller/Sleep ranges, SCH, reaction runtime, Summoner, active-config coverage, runtime consumers, and Profile V2 source-of-truth tests.
+- Projection-only round trips were removed rather than recreated through a test-only adapter. Runtime-ID behavior remains covered by the dedicated Phase 5 follow/COR identity suites, where live name→ID resolution now actually belongs.
+- Added `tests/replay/harness/selftest_phase6_flat_projection_api_retirement.lua`. It requires both retired module members to be nil, prohibits the old serializer/helper graph from returning, requires addon/bridge/Profile V2 production sources to contain no projection/publication calls, and explicitly freezes the separate initial flat→canonical bootstrap seam for the next cut.
+- Tightened `profile_v2_flat_surface_allowlist.lua`: `uc_active_config.lua` now has **0 allowed `project_flat_settings`** and **0 allowed `sync_flat_settings`** hits; only its four still-tracked `UC_SETTINGS` compatibility references remain.
+- Exact PR-head source audit confirms `UnifiedCombat.lua`, `remote_bridge.lua`, `uc_profile_v2.lua`, and `uc_active_config.lua` each contain **0** `project_flat_settings(...)` calls and **0** `sync_flat_settings_in_place(...)` calls.
+- Implementation head `c43c9ba79a05d007686029caa9b4a70404ff4e64` is source-audited but **not yet CI-proven**. Workflow `38096450801` failed on both attempt 1 and attempt 2 before either `lua-sequence` or `winforms` produced a single workflow step; the check records completed within ~3 seconds and expose annotations but the connector does not expose their text. No Lua/WinForms test assertion has executed on that workflow head yet.
+- The next independent Phase 6 slice, once this head receives an executable green verification run, is **initial addon flat→canonical bootstrap**: replace `uc_active_config.initialize_active_profile(_G.UC_SETTINGS, { source = 'UC_SETTINGS' })` at addon load with a canonical default bootstrap, while retaining `_G.UC_SETTINGS` only for truly transient/legacy compatibility state.
 
 ### Phase 7 — Final cleanup and conformance
 
