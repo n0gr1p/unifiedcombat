@@ -27,8 +27,6 @@ return {
 			["uc_settings"] = 11,
 		},
 		["uc_active_config.lua"] = {
-			["project_flat_settings"] = 1,
-			["sync_flat_settings"] = 1,
 			["uc_settings"] = 4,
 		},
 		["uc_combat_commitment.lua"] = {
