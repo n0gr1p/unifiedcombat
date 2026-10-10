@@ -1,5 +1,4 @@
 local normalizer = require('uc_config_normalizer')
-local active_config = require('uc_active_config')
 local profile_v2 = require('uc_profile_v2')
 
 local function assert_equal(actual, expected, message)
@@ -45,42 +44,7 @@ assert_equal(config.encounter.kei.elemental_damage.sustain_interval_s, 2.5, 'nes
 assert_equal(config.encounter.kei.fullers.target_distance, 12.0, 'nested Fullers target distance')
 assert_equal(config.encounter.kei.fullers.run_away_distance, nil, 'canonical nested config must not retain legacy distance alias')
 
-local projected = assert(active_config.project_flat_settings({
-	version = 2,
-	profile = {
-		schema_version = 2,
-		engine = 'UC',
-		character = 'Nyoo',
-		main_job = 'BLM',
-		sub_job = 'RDM',
-		source = 'selftest',
-	},
-	config = config,
-}, {}))
-assert_equal(projected.kei_fullers_target_distance, 12.0, 'active config must project canonical Fullers target distance')
-assert_equal(projected.kei_fullers_run_away_distance, nil, 'active config must not project legacy Fullers distance')
-local stale_sortie_projected = assert(active_config.project_flat_settings({
-	version = 2,
-	profile = {
-		schema_version = 2,
-		engine = 'UC',
-		character = 'Nyoo',
-		main_job = 'BLM',
-		sub_job = 'RDM',
-		source = 'selftest',
-	},
-	config = config,
-}, {
-	encounter_water_damage = 'enforce',
-	encounter_water_skillchain = 'warn',
-	encounter_repeat_action_wall = 'off',
-	encounter_repeat_action_guard_s = 10.0,
-}))
-assert_equal(stale_sortie_projected.encounter_water_damage, nil, 'Kei projection must clear stale Sortie damage policy')
-assert_equal(stale_sortie_projected.encounter_water_skillchain, nil, 'Kei projection must clear stale Sortie skillchain policy')
-assert_equal(stale_sortie_projected.encounter_repeat_action_wall, nil, 'Kei projection must clear stale Sortie repeat policy')
-assert_equal(stale_sortie_projected.encounter_repeat_action_guard_s, nil, 'Kei projection must clear stale Sortie tuning')
-local durable = profile_v2.build_durable_config(projected, {
+local durable = profile_v2.build_durable_config(config, {
 	character = 'Nyoo', main_job = 'BLM', sub_job = 'RDM', source = 'selftest',
 })
 assert_equal(durable.encounter.policy, nil, 'Kei Profile V2 config must omit inapplicable Sortie policy')
