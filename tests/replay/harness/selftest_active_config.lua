@@ -383,23 +383,15 @@ local function main()
 	})
 	assert_equal(encounter_profile.config.encounter.enabled, true, 'encounter domain enabled mismatch')
 	assert_equal(encounter_profile.config.encounter.id, 'sortie_ghatjot', 'encounter domain ID mismatch')
-	local encounter_projected = active_config.project_flat_settings(encounter_profile, {})
-	assert_equal(encounter_projected.encounter_enabled, true, 'projected encounter enabled mismatch')
-	assert_equal(encounter_projected.encounter_id, 'sortie_ghatjot', 'projected encounter ID mismatch')
-	assert_equal(encounter_projected.encounter_water_skillchain, 'warn', 'projected encounter policy mismatch')
-	assert_equal(encounter_projected.encounter_repeat_action_guard_s, 10.0, 'projected encounter tuning mismatch')
+	assert_equal(encounter_profile.config.encounter.policy.water_skillchain, 'warn', 'canonical encounter policy mismatch')
+	assert_equal(encounter_profile.config.encounter.tuning.repeat_action_guard_s, 10.0, 'canonical encounter tuning mismatch')
 	local disabled_encounter_profile = active_config.build_active_profile_from_v2_payload(ui_fixture, {
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
 		source = 'UC_PROFILE_V2',
 	})
-	local disabled_encounter_projected = active_config.project_flat_settings(disabled_encounter_profile, {
-		encounter_enabled = true,
-		encounter_id = 'sortie_dhartok',
-	})
-	assert_equal(disabled_encounter_projected.encounter_enabled, false, 'disabled encounter projection must clear stale enabled state')
-	assert_equal(disabled_encounter_projected.encounter_id, 'sortie_ghatjot', 'disabled encounter projection identity mismatch')
+	assert_true(disabled_encounter_profile.config.encounter == nil, 'disabled optional encounter domain must remain absent canonically')
 
 	local formation_fixture = deep_clone(ui_fixture)
 	formation_fixture.config.movement.formation = {
@@ -435,15 +427,13 @@ local function main()
 		sub_job = 'WAR',
 		source = 'UC_PROFILE_V2',
 	})
-	local formation_projected = active_config.project_flat_settings(formation_profile, {})
 	assert_equal(formation_profile.config.movement.formation.role, 'healer', 'formation role should remain durable')
-	assert_equal(formation_projected.formation_enabled, true, 'enabled formation should qualify as a movement participant')
-	assert_equal(formation_projected.formation_role, 'healer', 'formation role should project to flat runtime settings')
-	assert_equal(formation_projected.formation_tank_name, 'Terrasjr', 'formation tank name should project to flat runtime settings')
-	assert_equal(formation_projected.formation_required_party_names[2], 'Etamame', 'formation coverage members should project to flat runtime settings')
-	assert_equal(formation_projected.formation_tank_return_radius, 3, 'formation tank radius should project to flat runtime settings')
-	assert_equal(formation_projected.formation_dps_flank_angle_deg, 90, 'formation DPS angle should project to flat runtime settings')
-	assert_equal(formation_projected.formation_healer_maximum_party_range, 18, 'formation healer range should project to flat runtime settings')
+	assert_true(formation_profile.config.movement.formation.enabled, 'enabled formation should remain canonical')
+	assert_equal(formation_profile.config.movement.formation.tank_name, 'Terrasjr', 'formation tank name should remain canonical')
+	assert_equal(formation_profile.config.movement.formation.required_party_names[2], 'Etamame', 'formation coverage members should remain canonical')
+	assert_equal(formation_profile.config.movement.formation.tank.return_radius, 3, 'formation tank radius should remain canonical')
+	assert_equal(formation_profile.config.movement.formation.dps.flank_angle_deg, 90, 'formation DPS angle should remain canonical')
+	assert_equal(formation_profile.config.movement.formation.healer.maximum_party_range, 18, 'formation healer range should remain canonical')
 
 	local normalized = normalizer.normalize(flat, {
 		character = 'Redrogue',
@@ -497,26 +487,13 @@ local function main()
 	assert_true(type(migrated_profile.config.maintenance.geo) == 'table', 'legacy profile must receive normalized GEO configuration')
 	assert_false(migrated_profile.config.maintenance.geo.enabled, 'migrated GEO configuration must remain disabled')
 	assert_equal(migrated_profile.config.maintenance.geo.luopan.placement, 'target', 'migrated GEO placement must default to target')
-	local migrated_projected, migrated_project_err = active_config.project_flat_settings(migrated_profile, {
-		defensive_curaga_enabled = true,
-		defensive_curaga_min_targets = 6,
-		defensive_waltz_enabled = true,
-		defensive_waltz_tp_reserve = 1000,
-		defensive_divine_waltz_min_targets = 6,
-		def_maintain_enemy_debuffs = true,
-		defensive_enemy_debuffs = 'Distract',
-	})
-	assert_true(type(migrated_projected) == 'table', 'migrated GEO profile should project to runtime settings')
-	assert_true(migrated_project_err == nil, 'migrated GEO profile projection should not report an error')
-	assert_true(type(migrated_projected.camp_pulling) == 'table', 'migrated runtime settings must include camp pulling configuration')
-	assert_true(type(migrated_projected.maintenance_geo) == 'table', 'migrated runtime settings must include GEO configuration')
-	assert_false(migrated_projected.defensive_curaga_enabled, 'legacy profile projection must disable stale Curaga')
-	assert_equal(migrated_projected.defensive_curaga_min_targets, 3, 'legacy profile projection must restore the Curaga minimum target default')
-	assert_false(migrated_projected.defensive_waltz_enabled, 'legacy profile projection must disable stale Waltz')
-	assert_equal(migrated_projected.defensive_waltz_tp_reserve, 0, 'legacy profile projection must restore the Waltz TP reserve default')
-	assert_equal(migrated_projected.defensive_divine_waltz_min_targets, 3, 'legacy profile projection must restore the Divine Waltz minimum target default')
-	assert_false(migrated_projected.def_maintain_enemy_debuffs, 'legacy profile projection must disable stale enemy debuff maintenance')
-	assert_equal(migrated_projected.defensive_enemy_debuffs, '', 'legacy profile projection must clear a stale enemy debuff list')
+	assert_true(type(migrated_profile.config.combat.pulling) == 'table', 'migrated canonical config must include camp pulling configuration')
+	assert_false(migrated_profile.config.defensive.cure.curaga.enabled, 'legacy profile canonical migration must disable Curaga')
+	assert_equal(migrated_profile.config.defensive.cure.curaga.min_targets, 3, 'legacy profile canonical migration must restore the Curaga minimum target default')
+	assert_false(migrated_profile.config.defensive.waltz.enabled, 'legacy profile canonical migration must disable Waltz')
+	assert_equal(migrated_profile.config.defensive.waltz.tp_reserve, 0, 'legacy profile canonical migration must restore the Waltz TP reserve default')
+	assert_false(migrated_profile.config.defensive.enemy_debuffs.enabled, 'legacy profile canonical migration must disable enemy debuff maintenance')
+	assert_equal(migrated_profile.config.defensive.enemy_debuffs.list, '', 'legacy profile canonical migration must clear enemy debuff list')
 
 	local invalid_enemy_debuffs_profile, invalid_enemy_debuffs_err = active_config.build_active_profile_from_v2_payload({
 		version = 2,
