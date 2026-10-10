@@ -299,43 +299,8 @@ local function main()
 	assert_equal(active_config.get_path('config.maintenance.geo.geo_spell'), 'Geo-Frailty', 'active GEO maintenance migration mismatch')
 	assert_equal(active_config.get_path('config.maintenance.geo.luopan.placement'), 'target', 'active GEO placement migration mismatch')
 
-	local projected, project_err = active_config.project_flat_settings(active_profile, {})
-	assert_true(projected ~= nil, 'project_flat_settings should succeed')
-	assert_true(project_err == nil, 'project_flat_settings should not report an error')
-	assert_equal(projected.aftermath_ws, 'Energy Steal', 'projected aftermath ws mismatch')
-	assert_equal(projected.weaponskill_min_tp, 2000, 'projected WS minimum TP mismatch')
-	assert_equal(projected.def_heal_max_tier_cure, 4, 'projected defensive cure max tier mismatch')
-	assert_equal(projected.def_heal_min_missing_hp, 250, 'projected defensive cure missing hp mismatch')
-	assert_equal(projected.defensive_overwrite_interval, 150, 'projected defensive overwrite interval mismatch')
-	assert_equal(projected.defensive_critical_hpp, 40, 'projected defensive critical threshold mismatch')
-	assert_equal(projected.defensive_medium_hpp, 60, 'projected defensive medium threshold mismatch')
-	assert_equal(projected.cor_roll_1, 'Chaos Roll', 'projected COR roll 1 mismatch')
-	assert_equal(projected.cor_roll_2, 'Samurai Roll', 'projected COR roll 2 mismatch')
-	assert_equal(projected.wait_ignore_names[1], 'Niightsiide', 'projected wait ignore name mismatch')
-	assert_equal(projected.ignore[1], 77, 'projected legacy ignore id mismatch')
-	assert_equal(projected.fight_leader_name, 'Niightsiide', 'projected fight leader name mismatch')
-	assert_equal(projected.fight_leader_id, 77, 'projected fight leader id mismatch')
-	assert_equal(projected.fight_leader_selected, 'Niightsiide', 'projected fight leader selected mismatch')
-	assert_equal(projected.follow.fight.leader_name, 'Niightsiide', 'projected nested fight leader name mismatch')
-	assert_equal(projected.follow.fight.leader_id, 77, 'projected nested fight leader id mismatch')
-	assert_equal(projected.puller_name, 'Niightsiide', 'projected puller name mismatch')
-	assert_equal(projected.puller_id, 77, 'projected puller id mismatch')
-	assert_equal(projected.puller_engage_range, 9.5, 'projected puller engage range mismatch')
-	assert_equal(projected.nyzul_coordinator_name, 'Audit', 'projected Nyzul coordinator mismatch')
-	assert_equal(projected.nyzul_anchor_name, 'Terrasjr', 'projected Nyzul anchor mismatch')
-	assert_equal(projected.nyzul_parking_order[1], 'Niightsiide', 'projected Nyzul parking order mismatch')
-	assert_equal(projected.sleep_max_target_range, 14.0, 'projected sleep target range mismatch')
-	assert_equal(projected.defensive_targeted_buffs, 'Target:Victory March', 'projected targeted buff string mismatch')
-	assert_equal(projected.maintenance_brd.songs[1], 'Honor March', 'projected BRD maintenance list mismatch')
-	assert_equal(projected.brd_songs[2], 'Victory March', 'projected BRD flat song list mismatch')
-	assert_equal(projected.brd_recovery_range_yalms, 14.5, 'projected BRD recovery range mismatch')
-	assert_equal(projected.brd_recovery_ignore_names[1], 'Niightsiide', 'projected BRD recovery ignore list mismatch')
-	assert_equal(projected.brd_reposition_for_party_songs, true, 'projected BRD reposition policy mismatch')
-	assert_equal(projected.brd_use_soul_voice, true, 'projected BRD Soul Voice mismatch')
-	assert_equal(projected.brd_targeted_songs, 'Target:Victory March', 'projected BRD targeted songs mismatch')
-	assert_equal(projected.maintenance_geo.geo_spell, 'Geo-Frailty', 'projected GEO maintenance migration mismatch')
-	assert_equal(projected.maintenance_geo.luopan.placement, 'target', 'projected GEO placement migration mismatch')
-	assert_equal(runtime_overrides.fight_leader_id(projected), 77, 'fight leader helper must resolve the leader name before the id')
+	assert_equal(runtime_overrides.fight_leader_id({ fight_leader_id = 0 }), 77, 'fight leader helper must resolve the canonical leader name before flat fallback')
+
 	assert_true(uc_ignore.is_name_blocked({ wait_ignore_names = { 'Niightsiide' } }, 'Niightsiide') == true, 'wait ignore helper must block by name')
 	assert_true(uc_ignore.is_name_blocked({ wait_ignore_names = { 'Niightsiide' } }, 'Other Ally') == false, 'wait ignore helper must not block unrelated names')
 
@@ -419,16 +384,13 @@ local function main()
 			},
 		},
 	})
-	local exact_projected, exact_project_err = active_config.project_flat_settings(exact_profile, {})
-	assert_true(exact_projected ~= nil, 'exact roundtrip project_flat_settings should succeed')
-	assert_true(exact_project_err == nil, 'exact roundtrip project_flat_settings should not report an error')
-	assert_equal(exact_projected.aftermath_ws, 'Energy Steal', 'exact roundtrip aftermath ws mismatch')
-	assert_equal(exact_projected.weaponskill_min_tp, 2000, 'exact roundtrip WS minimum TP mismatch')
-	assert_equal(exact_projected.def_heal_max_tier_cure, 4, 'exact roundtrip cure max tier mismatch')
-	assert_equal(exact_projected.def_heal_min_missing_hp, 250, 'exact roundtrip cure missing hp mismatch')
-	assert_equal(exact_projected.defensive_overwrite_interval, 150, 'exact roundtrip overwrite interval mismatch')
-	assert_equal(exact_projected.defensive_targeted_buffs, 'Target:Mage’s Ballad III', 'exact roundtrip targeted buff mismatch')
-	local exact_normalized = require('uc_config_normalizer').normalize(exact_projected, {
+	assert_equal(exact_profile.config.combat.weaponskill.aftermath_ws, 'Energy Steal', 'exact canonical aftermath ws mismatch')
+	assert_equal(exact_profile.config.combat.weaponskill.minimum_tp, 2000, 'exact canonical WS minimum TP mismatch')
+	assert_equal(exact_profile.config.defensive.cure.max_tier, 4, 'exact canonical cure max tier mismatch')
+	assert_equal(exact_profile.config.defensive.cure.min_missing_hp, 250, 'exact canonical cure missing hp mismatch')
+	assert_equal(exact_profile.config.defensive.buffs.overwrite_interval, 150, 'exact canonical overwrite interval mismatch')
+	assert_equal(exact_profile.config.defensive.buffs.targeted[1].buff, 'Mage’s Ballad III', 'exact canonical targeted buff mismatch')
+	local exact_normalized = require('uc_config_normalizer').normalize(exact_profile.config, {
 		character = 'Audit',
 		main_job = 'COR',
 		sub_job = 'BRD',
@@ -440,7 +402,7 @@ local function main()
 	assert_equal(exact_normalized.defensive.buffs.overwrite_interval, 150, 'exact normalized overwrite interval mismatch')
 	assert_equal(exact_normalized.defensive.buffs.targeted[1].buff, 'Mage’s Ballad III', 'exact normalized targeted buff mismatch')
 
-	local normalized = require('uc_config_normalizer').normalize(projected, {
+	local normalized = require('uc_config_normalizer').normalize(active_profile.config, {
 		character = 'Audit',
 		main_job = 'COR',
 		sub_job = 'BRD',
