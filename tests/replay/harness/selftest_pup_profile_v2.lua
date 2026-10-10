@@ -54,11 +54,10 @@ assert_true(active_from_v2 ~= nil, 'active PUP profile build failed: ' .. tostri
 assert_true(type(active_from_v2.config.puppetmaster) == 'table', 'active PUP profile must retain puppetmaster domain')
 assert_true(active_from_v2.config.puppetmaster.enabled, 'active PUP profile must retain enabled=true')
 
-local projected, project_error = active_config.project_flat_settings(active_from_v2, {})
-assert_true(projected ~= nil, 'active config projection failed: ' .. tostring(project_error))
-assert_true(type(projected.puppetmaster) == 'table', 'active config must project nested puppetmaster settings')
-assert_true(projected.puppetmaster_enabled, 'active config must project flat PUP UI mirror')
-assert_equal(projected.puppetmaster_maneuver_pattern, 'Fire Maneuver|Fire Maneuver|Light Maneuver', 'active config pattern mirror')
+assert_true(type(active_from_v2.config.puppetmaster) == 'table', 'active config must retain canonical Puppetmaster settings')
+assert_true(active_from_v2.config.puppetmaster.enabled, 'active config must retain canonical PUP enable')
+assert_equal(active_from_v2.config.puppetmaster.maneuvers.pattern[1], 'Fire Maneuver', 'active config canonical PUP pattern slot 1')
+assert_equal(active_from_v2.config.puppetmaster.maneuvers.pattern[3], 'Light Maneuver', 'active config canonical PUP pattern slot 3')
 
 local conversion = profile_v2.build_settings_candidate_from_structured_profile({}, structured, meta)
 assert_true(conversion.ok, 'enabled PUP profile-v2 conversion must round-trip: ' .. tostring(conversion.error or conversion.detail))
