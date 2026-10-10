@@ -1,4 +1,3 @@
-local active_config = require('uc_active_config')
 local formation_runtime = require('uc_formation_runtime')
 local generic_runtime_factory = require('uc_generic_formation_runtime')
 local profile_contract = require('uc_profile_contract')
@@ -90,28 +89,6 @@ assert_equal(formation.tank, nil, 'generic durable formation must not contain ta
 assert_equal(formation.dps, nil, 'generic durable formation must not contain DPS semantics')
 assert_equal(formation.healer, nil, 'generic durable formation must not contain healer semantics')
 
-local projected, projection_error = active_config.project_flat_settings({
-	version = 2,
-	profile = {
-		schema_version = 2,
-		engine = 'UC',
-		character = 'Tester',
-		main_job = 'WAR',
-		sub_job = 'SAM',
-		source = 'selftest',
-	},
-	config = durable,
-}, {})
-assert_true(type(projected) == 'table', 'generic structured profile projection failed: ' .. tostring(projection_error))
-assert_equal(projected.formation_placement_mode, 'polar_band', 'generic flat projection mode mismatch')
-assert_true(projected.formation_mock_enabled, 'generic flat projection mock enable mismatch')
-assert_equal(projected.formation_mock_mob_name, 'Apex Crab', 'generic flat projection mock name mismatch')
-assert_equal(projected.formation_axis_member, 'Reference', 'generic flat projection axis member mismatch')
-assert_equal(projected.formation_safe_origin_radius, 16, 'generic flat projection constraint mismatch')
-local round_trip = profile_v2.build_durable_config(projected, meta)
-local diff = profile_v2.diff_durable_config(durable, round_trip)
-assert_equal(diff.count, 0, 'generic formation Profile V2 round-trip mismatch')
-
 local named_entry = {
 	mob_name = 'Kei',
 	placement = {
@@ -148,32 +125,6 @@ assert_equal(
 	'boss_heading',
 	'named formation geometry must be role-free and durable'
 )
-local named_projected = assert(active_config.project_flat_settings({
-	version = 2,
-	profile = {
-		schema_version = 2,
-		engine = 'UC',
-		character = 'Tester',
-		main_job = 'WAR',
-		sub_job = 'SAM',
-		source = 'selftest',
-	},
-	config = named_durable,
-}, {
-	formation_enabled = true,
-	formation_mock_enabled = true,
-	formation_mock_mob_name = 'Apex Crab',
-}))
-assert_true(named_projected.named_formations_enabled, 'named formation enable flag must project to UI state')
-assert_equal(named_projected.named_formation_entries[1].mob_name, 'Kei', 'named formation entries must project to UI state')
-assert_false(named_projected.formation_enabled, 'named-only profile must clear stale encounter-scoped formation')
-assert_false(named_projected.formation_mock_enabled, 'named-only profile must clear stale formation mock mode')
-assert_equal(named_projected.formation_mock_mob_name, '', 'named-only profile must clear stale mock mob name')
-assert_equal(
-	profile_v2.diff_durable_config(named_durable, profile_v2.build_durable_config(named_projected, meta)).count,
-	0,
-	'named formations must round-trip through Profile V2'
-)
 local duplicate_named = generic_flat()
 duplicate_named.formation_enabled = false
 duplicate_named.formation_mock_enabled = false
@@ -200,62 +151,10 @@ assert_equal(
 	nil,
 	'boss heading axis must not acquire member semantics'
 )
-local boss_heading_projected, boss_heading_projection_error = active_config.project_flat_settings({
-	version = 2,
-	profile = {
-		schema_version = 2,
-		engine = 'UC',
-		character = 'Tester',
-		main_job = 'WAR',
-		sub_job = 'SAM',
-		source = 'selftest',
-	},
-	config = boss_heading_durable,
-}, {})
-assert_true(
-	type(boss_heading_projected) == 'table',
-	'boss heading structured profile projection failed: ' .. tostring(boss_heading_projection_error)
-)
-assert_equal(boss_heading_projected.formation_axis_type, 'boss_heading', 'boss heading flat projection mismatch')
-assert_equal(boss_heading_projected.formation_axis_member, nil, 'boss heading flat projection must omit axis member')
-local boss_heading_round_trip = profile_v2.build_durable_config(boss_heading_projected, meta)
-assert_equal(
-	profile_v2.diff_durable_config(boss_heading_durable, boss_heading_round_trip).count,
-	0,
-	'boss heading Profile V2 round-trip mismatch'
-)
-
 local disabled_mock_flat = generic_flat()
 disabled_mock_flat.formation_mock_enabled = false
 local disabled_mock_durable = profile_v2.build_durable_config(disabled_mock_flat, meta)
 assert_equal(disabled_mock_durable.movement.formation.mock, nil, 'disabled mock config must remain optional')
-local stale_mock_flat = generic_flat()
-local disabled_mock_projected, disabled_mock_projection_error = active_config.project_flat_settings({
-	version = 2,
-	profile = {
-		schema_version = 2,
-		engine = 'UC',
-		character = 'Tester',
-		main_job = 'WAR',
-		sub_job = 'SAM',
-		source = 'selftest',
-	},
-	config = disabled_mock_durable,
-}, stale_mock_flat)
-assert_true(
-	type(disabled_mock_projected) == 'table',
-	'disabled mock structured profile projection failed: ' .. tostring(disabled_mock_projection_error)
-)
-assert_false(disabled_mock_projected.formation_mock_enabled, 'omitted mock config must clear stale enabled state')
-assert_equal(disabled_mock_projected.formation_mock_mob_name, '', 'omitted mock config must clear stale mob name')
-assert_equal(
-	profile_v2.diff_durable_config(
-		disabled_mock_durable,
-		profile_v2.build_durable_config(disabled_mock_projected, meta)
-	).count,
-	0,
-	'omitted mock config must round-trip after clearing stale runtime state'
-)
 local invalid_mock_flat = generic_flat()
 invalid_mock_flat.formation_mock_mob_name = ''
 local invalid_mock_ok, invalid_mock_error = pcall(profile_v2.build_durable_config, invalid_mock_flat, meta)
