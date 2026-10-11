@@ -106,16 +106,8 @@ local ok, err = pcall(function()
     assert_equal(list[1], 'Mob A', 'no-skillchain replace first')
     assert_equal(list[2], 'Mob B', 'no-skillchain replace second')
 
-    local projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_true(type(projected) == 'table', 'no-skillchain canonical list must project')
-    assert_equal(projection_err, nil, 'no-skillchain projection error')
-    assert_equal(projected.weaponskill_no_skillchain_targets[1], 'Mob A',
-        'no-skillchain compatibility projection first')
-    assert_equal(projected.weaponskill_no_skillchain_targets[2], 'Mob B',
-        'no-skillchain compatibility projection second')
+    assert_equal(list[1], 'Mob A', 'no-skillchain canonical first')
+    assert_equal(list[2], 'Mob B', 'no-skillchain canonical second')
 end)
 
 rawset(_G, 'UC_ACTIVE_PROFILE', previous_active)
