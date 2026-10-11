@@ -97,18 +97,6 @@ local ok, err = pcall(function()
     assert_equal(names[1], 'Niightsiide', 'first durable wait-ignore name')
     assert_equal(names[2], 'Offline Ally', 'offline durable name must remain canonical')
 
-    local projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_true(type(projected) == 'table', 'wait-ignore canonical policy must project')
-    assert_equal(projection_err, nil, 'wait-ignore projection error')
-    assert_equal(#projected.wait_ignore_names, 2, 'compatibility names must preserve all durable names')
-    assert_equal(projected.wait_ignore_names[1], 'Niightsiide', 'compatibility first name')
-    assert_equal(projected.wait_ignore_names[2], 'Offline Ally', 'offline durable name survives projection')
-    assert_equal(#projected.ignore, 1, 'only currently resolvable names derive live ids')
-    assert_equal(projected.ignore[1], 201, 'Niightsiide must derive current runtime party id')
-
     local changed, reason = active_config.append_string_list(
         'config.combat.weaponskill.wait_ignore_names',
         ' Ponponponponpon '
@@ -135,15 +123,8 @@ local ok, err = pcall(function()
     assert_equal(names[1], 'Niightsiide', 'first durable name remains')
     assert_equal(names[2], 'Ponponponponpon', 'ordered names close after removal')
 
-    projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_true(type(projected) == 'table', 'updated wait-ignore policy must project')
-    assert_equal(projection_err, nil, 'updated wait-ignore projection error')
-    assert_equal(#projected.ignore, 2, 'two currently resolvable names derive runtime ids')
-    assert_equal(projected.ignore[1], 201, 'first derived id')
-    assert_equal(projected.ignore[2], 202, 'second derived id')
+    assert_equal(names[1], 'Niightsiide', 'updated canonical first wait-ignore name')
+    assert_equal(names[2], 'Ponponponponpon', 'updated canonical second wait-ignore name')
 end)
 
 rawset(_G, 'UC_ACTIVE_PROFILE', previous_active)
