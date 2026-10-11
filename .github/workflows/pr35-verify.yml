@@ -256,6 +256,8 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_phase6_safe_identity_bootstrap.lua
       - name: Phase 6 flat projection API retirement self-test
         run: lua5.1 tests/replay/harness/selftest_phase6_flat_projection_api_retirement.lua
+      - name: Phase 6 initial canonical bootstrap self-test
+        run: lua5.1 tests/replay/harness/selftest_phase6_initial_canonical_bootstrap.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test
