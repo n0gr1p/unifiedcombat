@@ -32,9 +32,9 @@ assert_nil(active_config.project_flat_settings,
 assert_nil(active_config.sync_flat_settings_in_place,
     'flat full-table sync API must remain retired')
 assert_true(type(active_config.build_active_profile_from_settings) == 'function',
-    'separate flat->canonical compatibility builder must remain available for the later bootstrap cut')
-assert_true(type(active_config.initialize_active_profile) == 'function',
-    'separate initial addon bootstrap seam must remain explicitly tracked')
+    'bounded flat->canonical compatibility builder remains for separate cleanup')
+assert_nil(active_config.initialize_active_profile,
+    'startup-only flat->canonical wrapper must remain retired')
 
 local active_source = read_all('uc_active_config.lua')
 assert_not_contains(active_source, 'function M.project_' .. 'flat_settings',
@@ -67,8 +67,8 @@ for _, path in ipairs({
 end
 
 assert_contains(active_source, 'function M.build_active_profile_from_settings(settings, context)',
-    'flat->canonical compatibility must remain distinct from retired canonical->flat projection')
-assert_contains(active_source, 'function M.initialize_active_profile(settings, context)',
-    'initial addon flat->canonical bootstrap must remain visible for the next dedicated cut')
+    'bounded flat->canonical compatibility conversion remains distinct from retired projection')
+assert_not_contains(active_source, 'function M.initialize_active_profile(settings, context)',
+    'startup-only flat->canonical wrapper must remain retired')
 
 print('selftest_phase6_flat_projection_api_retirement: OK (canonical->flat projection/sync API removed)')
