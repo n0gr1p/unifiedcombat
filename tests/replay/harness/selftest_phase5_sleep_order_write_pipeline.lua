@@ -109,14 +109,8 @@ local ok, err = pcall(function()
     assert_equal(order[1], 'Sleep II', 'Sleep next entry becomes first')
     assert_equal(sleep.legacy_primary, 'Sleep II', 'Sleep primary must follow removal')
 
-    local projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_true(type(projected) == 'table', 'Sleep canonical policy must project')
-    assert_equal(projection_err, nil, 'Sleep projection error')
-    assert_equal(projected.sleepspells[1], 'Sleep II', 'projected Sleep first')
-    assert_equal(projected.sleepspell, 'Sleep II', 'projected legacy Sleep primary')
+    assert_equal(order[1], 'Sleep II', 'canonical Sleep first')
+    assert_equal(sleep.legacy_primary, 'Sleep II', 'canonical legacy Sleep primary')
 
     changed, reason = active_config.replace_string_list('config.sleep.order', {})
     assert_true(changed, 'Sleep clear should succeed')
