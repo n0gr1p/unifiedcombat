@@ -530,7 +530,7 @@ Exit criteria:
 
 ### Phase 6 — Retire the durable flat projection
 
-Status: **IN PROGRESS — canonical→flat runtime projection/publication is retired; initial addon flat→canonical bootstrap and remaining bounded runtime flat-read compatibility surfaces remain**
+Status: **IN PROGRESS — canonical startup, identity transition, apply/save/status, bridge, and UI wire paths no longer derive durable authority from flat settings; orphaned flat→canonical conversion and bounded runtime flat-read compatibility surfaces remain**
 
 Goals:
 
@@ -657,6 +657,22 @@ Exit criteria:
 - Initial workflow `38096450801` (and its rerun) failed before either job produced a single step because GitHub Actions billing blocked runner startup; the same occurred on the first documentation-head run. After the repository was made public, hosted runners executed normally and exposed two **test-only** cleanup regressions from deleting the projection API: `selftest_profile_v2_runtime_consumers.lua` normalized an identity-preserved active-profile table after installing a second profile, and several Phase 5 write-pipeline regressions still called the retired `project_flat_settings(...)` API. The runtime-consumer test now normalizes the original profile before replacement, and all ten Phase 5 write-pipeline files were audited so no real projection calls remain; meaningful live identity coverage was moved to the runtime adapters that own it.
 - Final implementation/test head `c39abc4dcc22fc45087115e2a7b65a549b1359be` is **CI-proven** by workflow `38167177476`: full Lua sequence PASS, Phase 6 flat-projection API retirement PASS, every prior Phase 6 gate PASS, every Phase 5 write pipeline PASS, WinForms build PASS, full Profile V2 self-test PASS, RUN/reaction persistence PASS, and Activity Profile tests PASS.
 - The next independent Phase 6 slice is **initial addon flat→canonical bootstrap**: replace `uc_active_config.initialize_active_profile(_G.UC_SETTINGS, { source = 'UC_SETTINGS' })` at addon load with a canonical default bootstrap, while retaining `_G.UC_SETTINGS` only for truly transient/legacy compatibility state.
+
+### 2026-10-11 — Phase 6 initial addon bootstrap canonicalized
+
+- Retired the final live startup call to `uc_active_config.initialize_active_profile(_G.UC_SETTINGS, ...)`. `_G.UC_SETTINGS = uc_new_settings_defaults()` still creates the transient/legacy runtime table, but it is no longer an input to startup durable configuration.
+- Startup now builds `uc_startup_active_profile` directly through `uc_active_config.build_default_active_profile({ source = 'UC_DEFAULTS', engine_enabled = Start_Engine == true })` and publishes it with `set_active_profile(...)`.
+- Startup intentionally does **not** pass `UC_JOB_DEFAULTS`. This preserves the old pre-identity behavior: even when `windower.ffxi.get_player()` already exposes a SAM/DRG/etc. identity, job-specific WS/ability defaults remain deferred to the exact Profile V2 identity transition.
+- Removed the now-orphaned `uc_active_config.initialize_active_profile(...)` wrapper and the dead addon-local `uc_sync_active_profile_from_settings(...)` helper. No production code now performs generic flat-settings → active-profile publication.
+- Added `tests/replay/harness/selftest_phase6_initial_canonical_bootstrap.lua`. It dynamically extracts the old `uc_new_settings_defaults()` table, builds the historical flat-normalized active profile, compares it with the new canonical startup profile, and statically freezes the no-flat-input startup boundary.
+- That equivalence test surfaced exactly one intentional historical leak: the old flat bootstrap imported transient v1 storage `profiles = { UC = {} }` into `config.legacy.profiles.UC`. Canonical startup keeps `config.legacy.profiles = {}`. After excluding that transient profile-storage tree, the old and new durable startup configs diff at **0** paths.
+- The focused test also proves a visible SAM identity at startup still receives no `Tachi: Kasha` or job-default ability list until the later exact-identity bootstrap.
+- Updated the preceding flat-projection retirement gate so the old startup wrapper is now required to remain absent while the lower-level `build_active_profile_from_settings(...)` compatibility converter remains temporarily isolated for a separate cleanup.
+- Flat-surface burn-down in `UnifiedCombat.lua`: direct `UC_SETTINGS` references **54→50**. Production occurrences of `initialize_active_profile(...)` are now **0**; production calls to `build_active_profile_from_settings(...)` are also **0**.
+- Workflow `38181543720` first proved every earlier Phase 5/6 gate green and failed only in the new equivalence test because it initially required literal zero differences. The test was tightened to characterize the single transient `config.legacy.profiles.UC` leak instead of preserving it.
+- Final implementation/test head `f67eafeb8fc7531ade2acd8ed9ccc691e4845263` is **CI-proven** by workflow `38181741718`: initial canonical bootstrap PASS, every prior Phase 6 gate PASS, every Phase 5 write pipeline PASS, full Lua sequence PASS, WinForms build PASS, full Profile V2 self-test PASS, RUN/reaction persistence PASS, and Activity Profile tests PASS.
+- Post-cut direct source audit confirms `UnifiedCombat.lua`, `uc_profile_v2.lua`, and `remote_bridge.lua` contain **0** calls to both `initialize_active_profile(...)` and `build_active_profile_from_settings(...)`. `uc_active_config.lua` retains only the latter function definition; its private party-ID→name/wait-ignore recovery helpers are now referenced only by that orphaned converter.
+- The next independent Phase 6 slice is therefore **orphaned flat→canonical active-profile conversion retirement**: remove `uc_active_config.build_active_profile_from_settings(...)` and its now-private compatibility helper graph, then convert the small set of tests that still use it as legacy fixture construction. Keep the broader settings normalizer/Profile V2 import/export compatibility APIs separately scoped until their own consumer audit.
 
 ### Phase 7 — Final cleanup and conformance
 
