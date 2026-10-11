@@ -117,6 +117,7 @@ local SELFTESTS = {
     "tests/replay/harness/selftest_engage_action_state_bypass.lua",
     "tests/replay/harness/selftest_action_economy_timeline_logging.lua",
     "tests/replay/harness/selftest_target_acquire_nonblocking.lua",
+    "tests/replay/harness/selftest_settarget_camera_unlock.lua",
     "tests/replay/harness/selftest_stale_spell_lockout_target_transition.lua",
     "tests/replay/harness/selftest_pending_engage_confirmation.lua",
     "tests/replay/harness/selftest_engage_rejection_retry.lua",
