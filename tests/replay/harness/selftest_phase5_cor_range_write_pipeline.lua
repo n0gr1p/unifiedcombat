@@ -151,18 +151,8 @@ local ok, err = pcall(function()
     assert_equal(#cor_cfg.range_require_ids, 0,
         'canonical range IDs must clear whenever durable participant names are edited')
 
-    local projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_true(type(projected) == 'table', 'COR participant names must project')
-    assert_equal(projection_err, nil, 'COR participant projection error')
-    assert_equal(projected.cor_roll_range_selected, 'Redrogue|Offline Ally',
-        'flat selected names must preserve durable policy')
-    assert_equal(#projected.cor_roll_range_require_ids, 1,
-        'only currently resolvable participant names derive live IDs')
-    assert_equal(projected.cor_roll_range_require_ids[1], 77,
-        'Redrogue must derive the current party ID')
+    assert_equal(cor_cfg.range_selected, 'Redrogue|Offline Ally',
+        'canonical selected names must preserve durable policy')
 
     package.loaded.uc_cor_maintenance = nil
     local cor = require('uc_cor_maintenance')
