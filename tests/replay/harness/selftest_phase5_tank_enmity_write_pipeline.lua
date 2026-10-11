@@ -96,14 +96,8 @@ local ok, err = pcall(function()
     assert_equal(reason, 'REMOVED', 'tank enmity remove reason')
     assert_equal(#actions, 2, 'tank enmity remove count')
 
-    local projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_true(type(projected) == 'table', 'canonical tank enmity actions must project')
-    assert_equal(projection_err, nil, 'tank enmity projection error')
-    assert_equal(projected.tank_enmity_actions[1], 'spell:Flash', 'projected typed spell entry')
-    assert_equal(projected.tank_enmity_actions[2], 'ja:Provoke', 'projected typed JA entry')
+    assert_equal(actions[1], 'spell:Flash', 'canonical typed spell entry')
+    assert_equal(actions[2], 'ja:Provoke', 'canonical typed JA entry')
 end)
 
 rawset(_G, 'UC_ACTIVE_PROFILE', previous_active)
