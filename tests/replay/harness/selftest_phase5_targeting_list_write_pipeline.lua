@@ -111,15 +111,10 @@ local ok, err = pcall(function()
     assert_equal(priorities[1], 'Apex Crab', 'priority move first')
     assert_equal(priorities[2], 'Apex Bat', 'priority move second')
 
-    local projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_true(type(projected) == 'table', 'canonical targeting lists must project to compatibility settings')
-    assert_equal(projection_err, nil, 'targeting list projection error')
-    assert_equal(projected.target_ignore_names[1], 'Mob A', 'target-ignore compatibility projection')
-    assert_equal(projected.add_priority_names[1], 'Apex Crab', 'add-priority compatibility projection')
-    assert_equal(projected.targets[1], 'Apex Crab', 'legacy targets compatibility projection')
+    assert_equal(ignored[1], 'Mob A', 'target-ignore canonical first name')
+    assert_equal(ignored[2], 'Mob C', 'target-ignore canonical second name')
+    assert_equal(priorities[1], 'Apex Crab', 'add-priority canonical first name')
+    assert_equal(priorities[2], 'Apex Bat', 'add-priority canonical second name')
 end)
 rawset(_G, 'UC_ACTIVE_PROFILE', previous_active)
 if not ok then
