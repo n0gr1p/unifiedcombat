@@ -449,9 +449,17 @@ local function uc_new_settings_defaults()
 end
 
 _G.UC_SETTINGS = uc_new_settings_defaults()
-uc_active_config.initialize_active_profile(_G.UC_SETTINGS, {
-	source = 'UC_SETTINGS',
+local uc_startup_active_profile, uc_startup_active_profile_err = uc_active_config.build_default_active_profile({
+	source = 'UC_DEFAULTS',
+	engine_enabled = Start_Engine == true,
 })
+if type(uc_startup_active_profile) ~= 'table' then
+	error('UnifiedCombat canonical startup profile build failed: ' .. tostring(uc_startup_active_profile_err))
+end
+local uc_startup_active_ok, uc_startup_active_err = uc_active_config.set_active_profile(uc_startup_active_profile)
+if uc_startup_active_ok ~= true then
+	error('UnifiedCombat canonical startup profile publish failed: ' .. tostring(uc_startup_active_err))
+end
 
 local function uc_truthy(v)
 	if v == true or v == 1 then
@@ -2189,21 +2197,6 @@ local function uc_apply_active_profile()
 		s[key] = uc_clone_value(src[key])
 	end
 	uc_normalize_active_settings()
-	return true
-end
-
-local function uc_sync_active_profile_from_settings(source)
-	local s = _G.UC_SETTINGS
-	if type(s) ~= 'table' then
-		return false
-	end
-	local active_profile = uc_active_config.build_active_profile_from_settings(s, {
-		source = source or 'UC_SETTINGS',
-	})
-	local ok, err = uc_active_config.set_active_profile(active_profile)
-	if ok ~= true then
-		return false, err
-	end
 	return true
 end
 
