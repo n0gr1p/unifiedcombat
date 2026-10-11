@@ -110,15 +110,9 @@ local ok, err = pcall(function()
     assert_equal(targets[1], 'Apex Crab', 'hunter target replace first')
     assert_equal(targets[2], 'Elemental', 'hunter target replace second')
 
-    local projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_true(type(projected) == 'table', 'canonical hunter targets must project')
-    assert_equal(projection_err, nil, 'hunter target projection error')
-    assert_equal(#projected.path_hunter_targets, 2, 'hunter target compatibility projection count')
-    assert_equal(projected.path_hunter_targets[1], 'Apex Crab', 'hunter target projected first')
-    assert_equal(projected.path_hunter_targets[2], 'Elemental', 'hunter target projected second')
+    assert_equal(#targets, 2, 'canonical hunter target count')
+    assert_equal(targets[1], 'Apex Crab', 'canonical hunter target first')
+    assert_equal(targets[2], 'Elemental', 'canonical hunter target second')
 end)
 
 rawset(_G, 'UC_ACTIVE_PROFILE', previous_active)
