@@ -151,20 +151,13 @@ local ok, err = pcall(function()
     assert_equal(follow.partner.names[2], 'Offline Partner', 'offline durable partner must survive')
     assert_equal(#follow.partner.ids, 0, 'partner name edit must clear stale legacy ids')
 
-    local projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_true(type(projected) == 'table', 'follow config must project')
-    assert_equal(projection_err, nil, 'follow projection error')
-    assert_equal(projected.party_follow_leader_name, 'PartyLeader', 'durable party leader name projection')
-    assert_equal(projected.party_follow_id, 101, 'party leader id must resolve from current party')
-    assert_equal(projected.fight_leader_name, 'FightLeader', 'durable fight leader name projection')
-    assert_equal(projected.fight_leader_id, 202, 'fight leader id must resolve from current party')
-    assert_equal(projected.puller_name, 'Puller', 'durable puller name projection')
-    assert_equal(projected.puller_id, 404, 'puller id must resolve from current party')
-    assert_equal(#projected.partner_ids, 1, 'only current party partners derive runtime ids')
-    assert_equal(projected.partner_ids[1], 303, 'partner id must resolve from current party')
+    assert_equal(follow.party.leader_name, 'PartyLeader', 'durable party leader name remains canonical')
+    assert_equal(follow.fight.leader_name, 'FightLeader', 'durable fight leader name remains canonical')
+    assert_equal(follow.partner.puller_name, 'Puller', 'durable puller name remains canonical')
+    assert_equal(follow_config.party_leader_id(runtime_config), 101, 'party leader id resolves from current party')
+    assert_equal(follow_config.fight_leader_id(runtime_config), 202, 'fight leader id resolves from current party')
+    assert_equal(follow_config.puller_id(runtime_config), 404, 'puller id resolves from current party')
+    assert_equal(follow_config.partner_ids(runtime_config)[1], 303, 'partner id resolves from current party')
 
     -- A configured but currently unresolved durable name must beat stale legacy IDs.
     follow.party.leader_name = 'OfflineGhost'
@@ -176,24 +169,11 @@ local ok, err = pcall(function()
     follow.partner.puller_name = 'OfflinePuller'
     follow.partner.puller_id = 704
 
-    projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_equal(projection_err, nil, 'offline follow projection error')
-    assert_equal(projected.party_follow_id, 0,
-        'configured offline party leader must not revive stale id or non-party get_mob result')
-    assert_equal(projected.fight_leader_id, 0,
-        'configured offline fight leader must not revive stale id')
-    assert_equal(projected.puller_id, 0,
-        'configured offline puller must not revive stale id')
-    assert_equal(#projected.partner_ids, 0,
-        'configured offline partners must produce no transient ids')
-    assert_equal(projected.party_follow_leader_name, 'OfflineGhost',
+    assert_equal(follow.party.leader_name, 'OfflineGhost',
         'offline durable party leader name must survive')
-    assert_equal(projected.fight_leader_name, 'OfflineFight',
+    assert_equal(follow.fight.leader_name, 'OfflineFight',
         'offline durable fight leader name must survive')
-    assert_equal(projected.puller_name, 'OfflinePuller',
+    assert_equal(follow.partner.puller_name, 'OfflinePuller',
         'offline durable puller name must survive')
 
     assert_equal(follow_config.party_leader_id(runtime_config), 0,
@@ -215,17 +195,6 @@ local ok, err = pcall(function()
     follow.partner.puller_name = ''
     follow.partner.puller_id = 715
     follow.partner.leash_source = 'player'
-
-    projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_equal(projection_err, nil, 'legacy fallback projection error')
-    assert_equal(projected.party_follow_id, 711, 'party leader legacy fallback requires no durable name')
-    assert_equal(projected.fight_leader_id, 712, 'fight leader legacy fallback requires no durable name')
-    assert_equal(projected.puller_id, 715, 'puller legacy fallback requires no durable name')
-    assert_equal(projected.partner_ids[1], 713, 'partner legacy id fallback first id')
-    assert_equal(projected.partner_ids[2], 714, 'partner legacy id fallback second id')
 
     assert_equal(follow_config.party_leader_id(runtime_config), 711, 'follow adapter party legacy fallback')
     assert_equal(follow_config.fight_leader_id(runtime_config), 712, 'follow adapter fight legacy fallback')
