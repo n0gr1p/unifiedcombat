@@ -76,8 +76,12 @@ assert_true(type(canonical_startup) == 'table',
     'canonical startup profile must build: ' .. tostring(canonical_err))
 
 local diff = profile_v2.diff_durable_config(legacy_startup.config, canonical_startup.config)
+local first = diff.first_difference or {}
 assert_equal(diff.count, 0,
-    'canonical startup defaults must match the old flat-default normalization semantics')
+    'canonical startup defaults must match the old flat-default normalization semantics; first='
+        .. tostring(first.path)
+        .. ' legacy=' .. tostring(first.left)
+        .. ' canonical=' .. tostring(first.right))
 assert_equal(canonical_startup.profile.character, 'Etamame',
     'startup canonical profile may observe current player identity')
 assert_equal(canonical_startup.profile.main_job, 'SAM',
