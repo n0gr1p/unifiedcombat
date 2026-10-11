@@ -317,6 +317,18 @@ local function main()
 	assert_true(type(cor_action) == 'table', 'cor maintenance should propose a roll from active config')
 	assert_equal(cor_action.action_name, 'Chaos Roll', 'cor maintenance must consume active config rolls')
 
+	local normalized = require('uc_config_normalizer').normalize(active_profile.config, {
+		character = 'Audit',
+		main_job = 'COR',
+		sub_job = 'BRD',
+	})
+	assert_equal(normalized.combat.weaponskill.aftermath_ws, 'Energy Steal', 'normalized aftermath ws mismatch')
+	assert_equal(normalized.combat.weaponskill.minimum_tp, 2000, 'normalized WS minimum TP mismatch')
+	assert_equal(normalized.defensive.cure.max_tier, 4, 'normalized cure max tier mismatch')
+	assert_equal(normalized.defensive.cure.min_missing_hp, 250, 'normalized cure missing hp mismatch')
+	assert_equal(normalized.defensive.buffs.overwrite_interval, 150, 'normalized overwrite interval mismatch')
+	assert_equal(normalized.defensive.buffs.targeted[1].buff, 'Victory March', 'normalized targeted buff mismatch')
+
 	local exact_profile = set_active_profile(active_config, {
 		version = 2,
 		profile = {
@@ -401,18 +413,6 @@ local function main()
 	assert_equal(exact_normalized.defensive.cure.min_missing_hp, 250, 'exact normalized cure missing hp mismatch')
 	assert_equal(exact_normalized.defensive.buffs.overwrite_interval, 150, 'exact normalized overwrite interval mismatch')
 	assert_equal(exact_normalized.defensive.buffs.targeted[1].buff, 'Mage’s Ballad III', 'exact normalized targeted buff mismatch')
-
-	local normalized = require('uc_config_normalizer').normalize(active_profile.config, {
-		character = 'Audit',
-		main_job = 'COR',
-		sub_job = 'BRD',
-	})
-	assert_equal(normalized.combat.weaponskill.aftermath_ws, 'Energy Steal', 'normalized aftermath ws mismatch')
-	assert_equal(normalized.combat.weaponskill.minimum_tp, 2000, 'normalized WS minimum TP mismatch')
-	assert_equal(normalized.defensive.cure.max_tier, 4, 'normalized cure max tier mismatch')
-	assert_equal(normalized.defensive.cure.min_missing_hp, 250, 'normalized cure missing hp mismatch')
-	assert_equal(normalized.defensive.buffs.overwrite_interval, 150, 'normalized overwrite interval mismatch')
-	assert_equal(normalized.defensive.buffs.targeted[1].buff, 'Victory March', 'normalized targeted buff mismatch')
 
 	local helpers = make_helpers()
 	local brd_general_flat = {
