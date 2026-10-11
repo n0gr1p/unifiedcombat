@@ -77,11 +77,19 @@ assert_true(type(canonical_startup) == 'table',
 
 local diff = profile_v2.diff_durable_config(legacy_startup.config, canonical_startup.config)
 local first = diff.first_difference or {}
-assert_equal(diff.count, 0,
-    'canonical startup defaults must match the old flat-default normalization semantics; first='
-        .. tostring(first.path)
-        .. ' legacy=' .. tostring(first.left)
-        .. ' canonical=' .. tostring(first.right))
+assert_equal(diff.count, 1,
+    'startup authority cut may differ only by the retired legacy profile-tree leak')
+assert_equal(first.path, 'config.legacy.profiles.UC',
+    'the only old startup difference must be the transient v1 profile tree')
+assert_true(type(first.left) == 'table' and first.right == nil,
+    'old startup must be the side carrying the transient profiles.UC table')
+
+legacy_startup.config.legacy.profiles = {}
+local durable_diff = profile_v2.diff_durable_config(legacy_startup.config, canonical_startup.config)
+assert_equal(durable_diff.count, 0,
+    'all durable startup defaults must match once the transient v1 profile tree is excluded')
+assert_equal(next(canonical_startup.config.legacy.profiles), nil,
+    'canonical startup must not import transient v1 profile storage into active policy')
 assert_equal(canonical_startup.profile.character, 'Etamame',
     'startup canonical profile may observe current player identity')
 assert_equal(canonical_startup.profile.main_job, 'SAM',
