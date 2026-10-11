@@ -95,7 +95,6 @@ return {
             injected_ipc_send = 1,
         },
         ["uc_settarget.lua"] = {
-            direct_send_command = 1,
             packet_inject = 1,
         },
         ["uc_raise_accept.lua"] = {
