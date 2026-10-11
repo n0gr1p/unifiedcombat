@@ -600,11 +600,6 @@ function M.set_active_profile(active_profile)
 	return true, current
 end
 
-function M.initialize_active_profile(settings, context)
-	local active_profile = M.build_active_profile_from_settings(settings, context)
-	return M.set_active_profile(active_profile)
-end
-
 function M.get_config()
 	local active_profile = M.get_active_profile()
 	if type(active_profile) ~= 'table' then
