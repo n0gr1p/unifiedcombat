@@ -70,31 +70,20 @@ local ok, err = pcall(function()
     assert_equal(configured[1], 'Sentinel', 'configured ability 1')
     assert_equal(configured[7], 'Cover', 'configured ability 7')
 
-    local projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_true(type(projected) == 'table', 'canonical abilities must project')
-    assert_equal(projection_err, nil, 'ability projection error')
-    assert_equal(#projected.abilities, 7, 'flat abilities list must preserve all canonical configured entries')
-    assert_equal(projected.ability1, 'Sentinel', 'compat slot 1 derives from configured')
-    assert_equal(projected.ability2, 'Rampart', 'compat slot 2 derives from configured')
-    assert_equal(projected.ability6, 'Invincible', 'compat slot 6 derives from configured')
-    assert_equal(projected.abilities[7], 'Cover', 'configured entries beyond compatibility slots survive')
+    assert_equal(#configured, 7, 'canonical abilities list must preserve all configured entries')
+    assert_equal(configured[1], 'Sentinel', 'canonical ability 1')
+    assert_equal(configured[2], 'Rampart', 'canonical ability 2')
+    assert_equal(configured[6], 'Invincible', 'canonical ability 6')
+    assert_equal(configured[7], 'Cover', 'canonical ability beyond legacy slot count')
 
     changed, reason = active_config.replace_string_list('config.abilities.configured', {})
     assert_true(changed, 'ability clear should succeed')
     assert_equal(reason, 'REPLACED', 'ability clear reason')
 
-    projected, projection_err = active_config.project_flat_settings(
-        rawget(_G, 'UC_ACTIVE_PROFILE'),
-        {}
-    )
-    assert_true(type(projected) == 'table', 'legacy ability fallback must project')
-    assert_equal(#projected.abilities, 0, 'flat configured list stays empty when canonical configured is empty')
-    assert_equal(projected.ability1, 'Warcry', 'legacy slot fallback 1')
-    assert_equal(projected.ability2, 'Berserk', 'legacy slot fallback 2')
-    assert_equal(projected.ability3, '', 'unused compatibility slots must be cleared')
+    assert_equal(#configured, 0, 'canonical configured ability list must clear')
+    local legacy_slots = active_config.get_path('config.abilities.legacy_slots')
+    assert_equal(legacy_slots[1], 'Warcry', 'legacy compatibility slot 1 remains canonical compatibility data')
+    assert_equal(legacy_slots[2], 'Berserk', 'legacy compatibility slot 2 remains canonical compatibility data')
 end)
 
 rawset(_G, 'UC_ACTIVE_PROFILE', previous_active)
