@@ -209,9 +209,42 @@ local function main()
 	local active_config = require('uc_active_config')
 	local normalizer = require('uc_config_normalizer')
 
+	-- Legacy normalization here constructs test fixtures only; the production
+	-- active-profile API must not accept flat settings.
+	local function build_legacy_fixture(settings, meta)
+		local normalized = normalizer.normalize(settings, meta)
+		local profile = deep_clone(normalized.profile)
+		profile.schema_version = 2
+		profile.engine = profile.engine or 'UC'
+		profile.source = profile.source or meta.source
+		local config = {}
+		for _, domain in ipairs({
+			'ui', 'command', 'combat', 'abilities', 'defensive', 'encounter',
+			'movement', 'follow', 'targeting', 'reactions', 'tank', 'sleep',
+			'spells', 'maintenance', 'summoner', 'puppetmaster', 'sch',
+			'debug', 'ownership', 'legacy',
+		}) do
+			if type(normalized[domain]) == 'table' then
+				config[domain] = deep_clone(normalized[domain])
+			end
+		end
+		if config.targeting then config.targeting.ignore = nil end
+		if config.ownership then
+			config.ownership.profile_v2_autoload = nil
+			config.ownership.profile_v2_auto_reload_on_change = nil
+		end
+		if config.encounter and config.encounter.enabled ~= true then config.encounter = nil end
+		if config.reactions and config.reactions.enabled ~= true
+			and type(config.reactions.rules) == 'table' and #config.reactions.rules == 0 then
+			config.reactions = nil
+		end
+		if profile.main_job ~= 'PUP' then config.puppetmaster = nil end
+		return { version = 2, profile = profile, config = config }
+	end
+
 	local flat = build_flat_settings()
 	local flat_snapshot = deep_clone(flat)
-	local active_profile = active_config.build_active_profile_from_settings(flat, {
+	local active_profile = build_legacy_fixture(flat, {
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
@@ -252,7 +285,7 @@ local function main()
 
 	local disabled_flat = deep_clone(flat)
 	disabled_flat.profile_v2_auto_reload_on_change = false
-	local disabled_active = active_config.build_active_profile_from_settings(disabled_flat, {
+	local disabled_active = build_legacy_fixture(disabled_flat, {
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
@@ -267,7 +300,7 @@ local function main()
 	assert_true(type(stored_profile) == 'table', 'stored active profile must be a table')
 	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE') == stored_profile, 'stored active profile should be published globally')
 
-	local replacement_profile = active_config.build_active_profile_from_settings(flat, {
+	local replacement_profile = build_legacy_fixture(flat, {
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
