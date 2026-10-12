@@ -50,17 +50,6 @@ local function normalize_string(value, default_value)
 	return trimmed
 end
 
-local function normalize_number(value, default_value, options)
-	local number_value = tonumber(value)
-	if number_value == nil then
-		return default_value
-	end
-	if type(options) == 'table' and options.integer == true then
-		number_value = math.floor(number_value)
-	end
-	return number_value
-end
-
 local function clone_value(value, seen)
 	if type(value) ~= 'table' then
 		return value
@@ -76,75 +65,6 @@ local function clone_value(value, seen)
 	end
 	visited[value] = nil
 	return out
-end
-
-local function resolve_party_member_name_by_id(id)
-	local member_id = normalize_number(id, 0, { integer = true }) or 0
-	if member_id == 0 then
-		return nil
-	end
-
-	local windower_ref = rawget(_G, 'windower')
-	local ffxi = type(windower_ref) == 'table' and windower_ref.ffxi or nil
-	if type(ffxi) ~= 'table' then
-		return nil
-	end
-
-	local get_party = ffxi.get_party
-	if type(get_party) == 'function' then
-		local ok_party, party = pcall(get_party)
-		if ok_party and type(party) == 'table' then
-			for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
-				local entry = party[key]
-				local mob = entry and entry.mob
-				if mob then
-					local mob_id = tonumber(mob.id) or 0
-					if mob_id == member_id then
-						local name = normalize_optional_string(mob.name)
-						if name ~= nil then
-							return name
-						end
-					end
-				end
-			end
-		end
-	end
-
-	return nil
-end
-
-local function resolve_party_member_names_by_ids(ids)
-	if type(ids) ~= 'table' then
-		return {}
-	end
-	local out = {}
-	local seen = {}
-	for i = 1, #ids do
-		local name = resolve_party_member_name_by_id(ids[i])
-		if type(name) == 'string' and name ~= '' then
-			local key = name:lower()
-			if not seen[key] then
-				seen[key] = true
-				out[#out + 1] = name
-			end
-		end
-	end
-	return out
-end
-
-local function resolve_wait_ignore_names(settings)
-	if type(settings) ~= 'table' then
-		return {}
-	end
-	local wait_ignore_names = settings.wait_ignore_names
-	if type(wait_ignore_names) == 'table' and #wait_ignore_names > 0 then
-		return clone_value(wait_ignore_names)
-	end
-	local legacy_ids = settings.ignore
-	if type(legacy_ids) == 'table' and #legacy_ids > 0 then
-		return resolve_party_member_names_by_ids(legacy_ids)
-	end
-	return {}
 end
 
 local function current_meta()
@@ -408,20 +328,6 @@ local function sync_table_in_place(target, source)
 		end
 	end
 	return true
-end
-
-function M.build_active_profile_from_settings(settings, context)
-	local meta = resolve_meta(context, 'UC_SETTINGS')
-	local normalized = uc_config_normalizer.normalize(settings, meta)
-	if type(normalized.combat) == 'table' and type(normalized.combat.weaponskill) == 'table' then
-		normalized.combat.weaponskill.wait_ignore_names = resolve_wait_ignore_names(settings)
-	end
-	local profile = build_profile_record(normalized.profile, meta, 'UC_SETTINGS')
-	return {
-		version = 2,
-		profile = profile,
-		config = pick_durable_config_domains(normalized, profile),
-	}
 end
 
 local function compact_job_default_abilities(defaults)
