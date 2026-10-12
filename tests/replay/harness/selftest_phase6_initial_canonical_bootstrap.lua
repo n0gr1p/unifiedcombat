@@ -65,9 +65,40 @@ package.loaded.uc_active_config = nil
 local active_config = require('uc_active_config')
 local profile_v2 = require('uc_profile_v2')
 
-local legacy_startup = active_config.build_active_profile_from_settings(flat_defaults, {
+-- Historical flat settings are normalized only inside this regression fixture.
+-- No production flat-to-active-profile conversion API is retained.
+local legacy_normalized = require('uc_config_normalizer').normalize(flat_defaults, {
     source = 'UC_SETTINGS',
 })
+local legacy_startup = {
+    version = 2,
+    profile = legacy_normalized.profile,
+    config = (function()
+        local config = {}
+        for _, domain in ipairs({
+            'ui', 'command', 'combat', 'abilities', 'defensive', 'encounter',
+            'movement', 'follow', 'targeting', 'reactions', 'tank', 'sleep',
+            'spells', 'maintenance', 'summoner', 'puppetmaster', 'sch',
+            'debug', 'ownership', 'legacy',
+        }) do
+            if type(legacy_normalized[domain]) == 'table' then
+                config[domain] = legacy_normalized[domain]
+            end
+        end
+        if config.targeting then config.targeting.ignore = nil end
+        if config.reactions and config.reactions.enabled ~= true
+            and type(config.reactions.rules) == 'table' and #config.reactions.rules == 0 then
+            config.reactions = nil
+        end
+        if config.encounter and config.encounter.enabled ~= true then config.encounter = nil end
+        if config.ownership then
+            config.ownership.profile_v2_autoload = nil
+            config.ownership.profile_v2_auto_reload_on_change = nil
+        end
+        if legacy_normalized.profile.main_job ~= 'PUP' then config.puppetmaster = nil end
+        return config
+    end)(),
+}
 local canonical_startup, canonical_err = active_config.build_default_active_profile({
     source = 'UC_DEFAULTS',
     engine_enabled = false,
@@ -136,7 +167,7 @@ assert_not_contains(addon, 'uc_sync_active_profile_from_settings',
 local active_source = read_all('uc_active_config.lua')
 assert_not_contains(active_source, 'function M.initialize_active_profile(',
     'startup-only flat->canonical wrapper must remain retired')
-assert_contains(active_source, 'function M.build_active_profile_from_settings(settings, context)',
-    'bounded legacy conversion helper remains for separate cleanup')
+assert_not_contains(active_source, 'function M.build_active_profile_from_settings(',
+    'orphaned legacy conversion API must remain retired')
 
 print('selftest_phase6_initial_canonical_bootstrap: OK (startup active profile no longer derives from flat settings)')
