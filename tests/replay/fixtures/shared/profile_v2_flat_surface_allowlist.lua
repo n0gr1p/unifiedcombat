@@ -27,7 +27,7 @@ return {
 			["uc_settings"] = 11,
 		},
 		["uc_active_config.lua"] = {
-			["uc_settings"] = 4,
+			["uc_settings"] = 2,
 		},
 		["uc_combat_commitment.lua"] = {
 			["ctx_settings"] = 1,
