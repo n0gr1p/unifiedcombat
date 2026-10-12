@@ -31,8 +31,8 @@ assert_nil(active_config.project_flat_settings,
     'canonical->flat project_flat_settings API must remain retired')
 assert_nil(active_config.sync_flat_settings_in_place,
     'flat full-table sync API must remain retired')
-assert_true(type(active_config.build_active_profile_from_settings) == 'function',
-    'bounded flat->canonical compatibility builder remains for separate cleanup')
+assert_nil(active_config.build_active_profile_from_settings,
+    'orphaned flat->canonical compatibility builder must remain retired')
 assert_nil(active_config.initialize_active_profile,
     'startup-only flat->canonical wrapper must remain retired')
 
@@ -66,8 +66,8 @@ for _, path in ipairs({
         path .. ' must not call retired full-table flat publication')
 end
 
-assert_contains(active_source, 'function M.build_active_profile_from_settings(settings, context)',
-    'bounded flat->canonical compatibility conversion remains distinct from retired projection')
+assert_not_contains(active_source, 'function M.build_active_profile_from_settings(',
+    'orphaned flat->canonical conversion must remain retired')
 assert_not_contains(active_source, 'function M.initialize_active_profile(settings, context)',
     'startup-only flat->canonical wrapper must remain retired')
 
