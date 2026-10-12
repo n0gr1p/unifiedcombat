@@ -674,6 +674,16 @@ Exit criteria:
 - Post-cut direct source audit confirms `UnifiedCombat.lua`, `uc_profile_v2.lua`, and `remote_bridge.lua` contain **0** calls to both `initialize_active_profile(...)` and `build_active_profile_from_settings(...)`. `uc_active_config.lua` retains only the latter function definition; its private party-ID→name/wait-ignore recovery helpers are now referenced only by that orphaned converter.
 - The next independent Phase 6 slice is therefore **orphaned flat→canonical active-profile conversion retirement**: remove `uc_active_config.build_active_profile_from_settings(...)` and its now-private compatibility helper graph, then convert the small set of tests that still use it as legacy fixture construction. Keep the broader settings normalizer/Profile V2 import/export compatibility APIs separately scoped until their own consumer audit.
 
+### 2026-10-12 — Phase 6 orphaned flat-to-canonical profile converter retired
+
+- Removed `uc_active_config.build_active_profile_from_settings(...)` and the private party-ID-to-name / wait-ignore recovery helpers used only by that obsolete conversion.
+- Converted legacy startup equivalence and active-config regression construction into test-local normalization fixtures; the legacy food-apply regression now constructs its active profile canonically, without resurrecting the removed production API.
+- Strengthened Phase 6 flat projection and startup guards to require the converter to remain absent.
+- Tightened `uc_active_config.lua` `UC_SETTINGS` flat-surface allowlist from **4 to 2**, preserving the source-burn-down guard.
+- Retained `uc_config_normalizer.normalize(...)` and Profile V2 import/export compatibility, pending their separately scoped consumer audit.
+- CI workflow `38297021964`: full Lua sequence **PASS**, including phase guards and converted regressions; WinForms verification was in progress at the time of this ledger update.
+- The next Phase 6 work is the remaining bounded runtime flat-read / compatibility surface audit, not another startup or generic flat-to-canonical profile converter.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
