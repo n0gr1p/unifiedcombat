@@ -272,12 +272,12 @@ function M.tank_enmity_actions(settings)
 end
 
 function M.tank_enmity_include_pets(settings)
-    local s = settings_or_default(settings)
-    local flat_value = rawget(s, 'tank_enmity_include_pets')
-    if flat_value ~= nil then
-        return truthy(flat_value)
+    local canonical = uc_active_config.get_path('config.tank.enmity.include_pets')
+    if canonical ~= nil then
+        return canonical == true
     end
-    return active_bool_or_flat('config.tank.enmity.include_pets', nil)
+    local s = settings_or_default(settings)
+    return truthy(rawget(s, 'tank_enmity_include_pets'))
 end
 
 function M.defensive_enemy_buffs_remove(settings)
