@@ -684,6 +684,15 @@ Exit criteria:
 - CI workflow `38297021964`: full Lua sequence **PASS**, including phase guards and converted regressions; WinForms verification was in progress at the time of this ledger update.
 - The next Phase 6 work is the remaining bounded runtime flat-read / compatibility surface audit, not another startup or generic flat-to-canonical profile converter.
 
+### 2026-10-13 — Phase 6 bounded flat-read audit: tank pet-enmity precedence
+
+- Inspected the remaining compatibility surfaces in `uc_scheduler_config.lua`, `uc_runtime_overrides.lua`, `uc_config_runtime.lua`, and `uc_combat_extension_config.lua`.
+- Found a concrete flat-first durable authority leak: `uc_scheduler_config.tank_enmity_include_pets(settings)` preferred `settings.tank_enmity_include_pets` over an explicitly configured `config.tank.enmity.include_pets`.
+- Corrected the reader to honor canonical true **and** canonical false; flat compatibility is consulted only if the canonical leaf is missing.
+- Added contradictory-state coverage to the Phase 3 exit regression and updated the older tank-pet-enmity config regression that previously enshrined flat-first behavior.
+- Broader runtime compatibility remains tracked for separate cuts, especially `uc_runtime_overrides` flat-first target-control / Sleep helper paths and reaction-rule merging in `uc_combat_extension_config`; the latter needs a specific reaction/UI workflow audit before removal.
+- CI workflow `38410315350` is the verification for the final implementation/test head `d6c7c71d97e04bf2af0d554f475c52da0d69f6f8` (pending at this documentation update).
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
