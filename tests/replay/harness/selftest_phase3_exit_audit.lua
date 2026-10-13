@@ -182,7 +182,35 @@ local function test_common_scheduler_core_wiring()
         'combat provider Prime collection must not use flat settings')
 end
 
+local function test_tank_pet_enmity_canonical_authority()
+    local active_config = require('uc_active_config')
+    local previous = rawget(_G, 'UC_ACTIVE_PROFILE')
+    local previous_flat = rawget(_G, 'UC_SETTINGS')
+    local active = assert(active_config.build_default_active_profile({
+        character = 'Terrasjr',
+        main_job = 'PLD',
+        sub_job = 'WAR',
+        source = 'UC_DEFAULTS',
+    }))
+    assert_true(active_config.set_active_profile(active))
+    rawset(_G, 'UC_SETTINGS', { tank_enmity_include_pets = true })
+    local canonical = active_config.get_path('config.tank.enmity')
+    assert_true(type(canonical) == 'table', 'tank enmity canonical domain must exist')
+    canonical.include_pets = false
+    assert_false(scheduler_config.tank_enmity_include_pets({ tank_enmity_include_pets = true }),
+        'canonical false must defeat contradictory flat true')
+    canonical.include_pets = true
+    assert_true(scheduler_config.tank_enmity_include_pets({ tank_enmity_include_pets = false }),
+        'canonical true must defeat contradictory flat false')
+    canonical.include_pets = nil
+    assert_true(scheduler_config.tank_enmity_include_pets({ tank_enmity_include_pets = true }),
+        'pre-profile legacy compatibility may use flat setting only when canonical leaf is missing')
+    rawset(_G, 'UC_ACTIVE_PROFILE', previous)
+    rawset(_G, 'UC_SETTINGS', previous_flat)
+end
+
 test_required_setting_authority()
 test_common_scheduler_core_wiring()
+test_tank_pet_enmity_canonical_authority()
 
 io.stdout:write('selftest_phase3_exit_audit: OK (common scheduler/core durable authority)\n')
