@@ -5427,10 +5427,9 @@ function p1_combat_helpers.spell_target_dispatch_ready(selected, expected_tid, t
 end
 
 p1_apply_face_to_target = function(settings, target_id, turn_away, force_face, source_override, config)
-	local face_enabled = type(config) == 'table'
-		and movement_config.face_enabled(config)
-		or bool_setting(settings and settings.face, false)
-	if turn_away ~= true and force_face ~= true and not face_enabled then
+	-- Canonical face=false disables routine facing. Forced reaction turns,
+	-- restoration, and RUN no-TP turning deliberately bypass that preference.
+	if not require('uc_scheduler_context_utils').face_turn_allowed(settings, config, turn_away, force_face) then
 		return false
 	end
 	local tid = tonumber(target_id) or 0
