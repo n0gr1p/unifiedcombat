@@ -72,7 +72,32 @@ decision = arbitration.decide(input)
 assert_equal(decision.action, 'switch', 'occupied alternate must not prevent switching to a free mob')
 assert_equal(decision.target_id, 903, 'partner-occupied alternate mob must be excluded')
 
+-- The scheduler executes this same gate for both partner-target set building
+-- and revalidation/arbitration. Opposed legacy flats cannot resurrect either.
+local context_utils = require('uc_scheduler_context_utils')
+local canonical = { follow = { partner = { enabled = false } } }
+assert_equal(context_utils.partner_enabled({ partner = true }, canonical), false,
+    'canonical partner OFF must defeat stale flat ON')
+canonical.follow.partner.enabled = true
+assert_equal(context_utils.partner_enabled({ partner = false }, canonical), true,
+    'canonical partner ON must defeat stale flat OFF')
+canonical.follow.partner = nil
+assert_equal(context_utils.partner_enabled({ partner = true }, canonical), false,
+    'missing canonical partner leaf must not resurrect stale flat ON')
+canonical.follow = nil
+assert_equal(context_utils.partner_enabled({ partner = true }, canonical), false,
+    'missing canonical follow domain must not resurrect stale flat ON')
+assert_equal(context_utils.partner_enabled({ partner = 'on' }, nil), true,
+    'genuine no-profile partner settings retain legacy toggle support')
+assert_equal(context_utils.partner_enabled({ partner = false }, nil), false,
+    'no-profile explicit disabled partner remains disabled')
+
 local scheduler_source = read_file('unified_scheduler.lua')
+local policy_reader = "require('uc_scheduler_context_utils').partner_enabled(settings, config)"
+local _, reader_calls = scheduler_source:gsub(policy_reader:gsub('([^%w])', '%%%1'), '')
+assert_equal(reader_calls, 2, 'both partner target set and arbitration must share canonical authority')
+assert_equal(scheduler_source:find('or bool_setting(settings and settings.partner, false)', 1, true), nil,
+    'canonical partner=false must not fall through to flat partner=true')
 local arbitration_start = assert(scheduler_source:find('function scheduler.try_partner_tiebreak(settings, config)', 1, true))
 local arbitration_call = assert(scheduler_source:find('scheduler.try_partner_tiebreak(s, get_tick_ctx().config)', 1, true))
 local reaction_lock_call = assert(scheduler_source:find('scheduler.refresh_reaction_lock()', arbitration_call, true))
