@@ -731,6 +731,18 @@ Exit criteria:
 - Implementation and test head `eae62f64527d671e2fe04f4fb9f6405f3eea9483` is **CI-proven** by workflow `38519010323`: full Lua sequence PASS and WinForms build/Profile V2/Activity Profile self-tests PASS.
 - Remaining separate Phase 6 targets: classify `uc_scheduler_config.lua` canonical-first flat fallback accessors and `uc_scheduler_context_utils.get_settings()` / legacy core no-config entrypoints by actual runtime consumers. Keep transient/runtime settings distinct from durable authority.
 
+### 2026-10-14 — Phase 6 scheduler-domain fallback authority and no-config seam audit
+
+- Audited `uc_scheduler_config.lua`, `unified_scheduler.lua`, `unified_combat_core.lua`, `uc_scheduler_context_utils.lua`, and `unified_engine.lua` for canonical-vs-flat ownership.
+- Replaced the generic exported `active_value_or_flat(...)` facade with private, domain-aware `canonical_or_legacy(...)`. A missing leaf under an existing canonical debug/combat/tank/defensive domain now uses the canonical default (false or empty action list) instead of stale flat settings. Explicit canonical true/false continues to win; entirely absent canonical domains retain legacy fallback for actual no-profile callers.
+- Hardened all scheduler debug controls (enabled, combat/JA/defensive/tank logs, and action timeline), autotarget/Prime, tank enabled/actions/pet inclusion, and defensive enemy-buff removal against the missing-leaf fallback leak. The action-timeline process-global override `UC_DEBUG_ACTION_TIMELINE` remains effective only in a no-canonical-debug-domain compatibility context.
+- Fixed `unified_combat_core.scheduler_settings_view(settings, config)` so an explicit `config.combat.prime` is read directly from its supplied canonical snapshot instead of global active/flat state. Its no-config path stays compatibility-only.
+- Added contradictory canonical-vs-flat and missing-leaf cases to `selftest_phase3_exit_audit.lua`, including all debug gates, Prime, autotarget, tank settings, pet inclusion, defensive buff-removal, empty actions, and genuine no-profile legacy fallback; core Prime explicit wiring is statically guarded.
+- Tightened `profile_v2_flat_surface_allowlist.lua`: generic `active_value_or_flat(` occurrences in `uc_scheduler_config.lua` **6 → 0**. The remaining `UC_SETTINGS` occurrence is the intentionally bounded pre-profile compatibility accessor.
+- **No-config consumer classification:** `uc_scheduler_context_utils.get_settings()` is consumed by `unified_scheduler.lua` for mixed session/runtime state, including cadence `_sched_next_*`, Doom item-event handling, movement/action mechanics, and diagnostics. It is **not** itself an authoritative Profile V2 policy API and cannot yet be deleted or naively replaced with a canonical config table. `get_config()` remains the separate canonical accessor. `unified_combat_core.lua` retains explicit no-config movement, pull, and legacy-facing fallbacks; its scheduler-facing calls use canonical `config` where supplied.
+- **Outstanding classified debt:** `unified_engine.lua`'s scheduler-overlay gate and `unified_combat_core.lua` diagnostic log helpers still inspect legacy `settings.debug` via their own `get_settings()`. These need a focused diagnostic-output audit before retirement. The remaining transient scheduler settings fields require consumer-specific treatment rather than wholesale removal.
+- Workflow `38587669736` on implementation/test head `88d4e5533986ba8f93621c51e9e8eebb1deddbe8`: full Lua sequence **PASS**; WinForms verification was running when this entry was authored.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
