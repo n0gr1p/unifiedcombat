@@ -693,6 +693,16 @@ Exit criteria:
 - Broader runtime compatibility remains tracked for separate cuts, especially `uc_runtime_overrides` flat-first target-control / Sleep helper paths and reaction-rule merging in `uc_combat_extension_config`; the latter needs a specific reaction/UI workflow audit before removal.
 - CI workflow `38410315350` is the verification for the final implementation/test head `d6c7c71d97e04bf2af0d554f475c52da0d69f6f8` (pending at this documentation update).
 
+### 2026-10-13 — Phase 6 runtime-override targeting and Sleep authority cut
+
+- Audited `uc_runtime_overrides.lua` and its legacy callers/tests. The targeting priority and Sleep readers still chose flat settings even when canonical Profile V2 explicitly disagreed.
+- `add_priority_names(...)` now reads durable `config.targeting.targets` first (with the old canonical `add_priority_names` alias only if needed). Explicit empty canonical lists stay empty.
+- `sleep_enabled(...)` now honors canonical `config.sleep.enabled` first, including false. `sleep_spell_names(...)` honors canonical `config.sleep.order` / `legacy_primary` and never resurrects flat spells when canonical Sleep is present but empty.
+- Flat fallback remains only when the corresponding canonical domain/leaf is absent for pre-profile compatibility. Fight-leader adapters were left untouched.
+- Updated `selftest_runtime_overrides.lua` with deliberately contradictory flat/canonical state, empty-list cases, and pre-profile fallback. Updated Sleep selection source guard to freeze the canonical-first read.
+- Verification workflow `38516094428` validates this implementation (pending at ledger authoring).
+- Next audit target remains reaction-rule merging in `uc_combat_extension_config.lua`, which requires identifying legitimate UI/workflow paths before cutting flat influence.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
