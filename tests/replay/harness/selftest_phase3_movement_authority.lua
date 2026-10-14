@@ -365,10 +365,18 @@ local function test_static_wiring()
     assert_contains(scheduler_source,
         'p1_apply_face_to_target = function(settings, target_id, turn_away, force_face, source_override, config)',
         'face helper must accept canonical config')
-    assert_contains(scheduler_source, 'and movement_config.face_enabled(config)',
-        'face helper must derive ordinary facing from canonical config')
-    assert_equal(count_plain(scheduler_source, 'settings and settings.face'), 1,
-        'flat face may remain only in explicit no-config compatibility branch')
+    assert_contains(scheduler_source,
+        "require('uc_scheduler_context_utils').face_turn_allowed(settings, config, turn_away, force_face)",
+        'face helper must delegate to the canonical/forced facing policy')
+    local context_source = read_all('uc_scheduler_context_utils.lua')
+    assert_contains(context_source, "return require('uc_movement_config').face_enabled(config)",
+        'ordinary facing must derive its gate from canonical config')
+    assert_contains(context_source, "if turn_away == true or force_face == true then",
+        'explicit safety and forced turns must bypass routine face preference')
+    assert_equal(count_plain(context_source, 'settings.face'), 1,
+        'flat face may remain only inside the no-config compatibility helper')
+    assert_equal(count_plain(scheduler_source, 'settings and settings.face'), 0,
+        'scheduler must not independently inspect flat face state')
 
     local coordinator_start = assert(scheduler_source:find('local function run_movement_coordinator_tick(config)', 1, true))
     local coordinator_end = assert(scheduler_source:find('local function tank_enmity_diag', coordinator_start, true))
