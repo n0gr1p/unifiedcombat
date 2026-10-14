@@ -41,6 +41,17 @@ function M.is_city_zone_for_maintenance(maintenance_blocked_zone_names)
 	return false
 end
 
+-- Scheduler action/revalidation gates must not re-enable partner actions
+-- using transient flat state after Profile V2 explicitly disables them.
+function M.partner_enabled(settings, config)
+    if type(config) == 'table' then
+        local partner = require('uc_follow_config').partner(config)
+        return type(partner) == 'table' and partner.enabled == true
+    end
+    local enabled = type(settings) == 'table' and settings.partner or nil
+    return enabled == true or enabled == 1 or enabled == 'true'
+end
+
 function M.build_partner_target_set(deps, settings)
 	local out = {}
 	if not deps.bool_setting(settings and settings.partner, false) then
