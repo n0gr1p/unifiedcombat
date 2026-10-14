@@ -3653,7 +3653,11 @@ local function scheduler_settings_view(settings, config)
 	else
 		view.autotarget = scheduler_config.combat_autotarget(base)
 	end
-	view.prime = scheduler_config.combat_prime(base)
+	if type(config) == 'table' then
+		view.prime = scheduler_config.combat_prime_from_config(config)
+	else
+		view.prime = scheduler_config.combat_prime(base)
+	end
 	if type(config) == 'table' then
 		view.tank = scheduler_config.tank_enabled_from_config(config)
 		view.tank_enmity_actions = scheduler_config.tank_enmity_actions_from_config(config)
