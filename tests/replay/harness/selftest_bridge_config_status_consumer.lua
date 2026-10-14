@@ -119,6 +119,45 @@ local function main()
     assert_true(list_has(unavailable.warnings, "config normalizer unavailable"), "unavailable status warning mismatch")
     assert_true(list_has(unavailable.errors, "config normalizer unavailable"), "unavailable status error mismatch")
 
+    -- A missing published status must summarize the active Profile V2,
+    -- not reconstruct an apparently valid status from contradictory flats.
+    local previous_active = rawget(_G, "UC_ACTIVE_PROFILE")
+    local canonical = normalizer.default_config({
+        character = "Canonical",
+        main_job = "WAR",
+        sub_job = "NIN",
+        source = "UC_PROFILE_V2",
+    })
+    canonical.combat.autotarget = false
+    rawset(_G, "UC_ACTIVE_PROFILE", {
+        version = 2,
+        profile = canonical.profile,
+        config = canonical,
+    })
+    local flat_normalizations = 0
+    local forbidden_normalizer = {
+        normalize = function()
+            flat_normalizations = flat_normalizations + 1
+            error("must not normalize stale flats when active v2 exists")
+        end,
+        version = normalizer.version,
+    }
+    local from_active = runtime.config_contract_status({
+        autotarget = true,
+        show_ingame_ui = true,
+    }, { source = "UC_SETTINGS", character = "Stale" }, forbidden_normalizer)
+    assert_equal(flat_normalizations, 0, "canonical status must not normalize flat state")
+    assert_equal(from_active.ok, true, "canonical fallback status should validate")
+    assert_equal(from_active.character, "Canonical", "canonical status identity must win over stale metadata")
+    assert_equal(from_active.source, "UC_PROFILE_V2", "canonical status source must not report UC_SETTINGS")
+    assert_true(list_has(from_active.domains, "combat"), "canonical status must enumerate active combat domain")
+    local no_normalizer = runtime.config_contract_status({
+        autotarget = true,
+    }, { source = "UC_SETTINGS" }, false)
+    assert_equal(no_normalizer.ok, true, "active status must remain available without flat normalizer")
+    assert_equal(no_normalizer.available, true, "active status must report available canonical data")
+    rawset(_G, "UC_ACTIVE_PROFILE", previous_active)
+
     _G.UC_CONFIG_CONTRACT_STATUS = previous_global_status
 
     local bridge_source = read_file("remote_bridge.lua")
