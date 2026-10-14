@@ -106,7 +106,7 @@ local function main()
             },
         },
         targeting = {
-            add_priority_names = { 'Active Bat', 'Active Beetle' },
+            targets = { 'Active Bat', 'Active Beetle' },
         },
         sleep = {
             enabled = false,
@@ -127,13 +127,13 @@ local function main()
 
     assert_equal(runtime_overrides.fight_leader_enabled(flat_override), false, 'fight leader canonical durable value must beat conflicting flat override')
     assert_equal(runtime_overrides.fight_leader_id(flat_override), 22, 'fight leader canonical identity must beat conflicting flat override')
-    assert_equal(runtime_overrides.add_priority_names(flat_override)[1], 'Override A', 'add priority should prefer legacy/runtime override list')
-    assert_equal(runtime_overrides.add_priority_names(flat_override)[2], 'Override B', 'add priority should dedupe but preserve order')
-    assert_equal(#runtime_overrides.add_priority_names(flat_override), 2, 'add priority override list should be deduped')
-    assert_equal(runtime_overrides.sleep_enabled(flat_override), true, 'sleep should prefer legacy/runtime override value')
-    assert_equal(runtime_overrides.sleep_spell_names(flat_override)[1], 'Horde Lullaby II', 'sleep spell list should prefer legacy/runtime override list')
-    assert_equal(runtime_overrides.sleep_spell_names(flat_override)[2], 'Sleep II', 'sleep spell list should preserve ordered override values')
-    assert_equal(#runtime_overrides.sleep_spell_names(flat_override), 2, 'sleep spell list should dedupe repeated override values')
+    assert_equal(runtime_overrides.add_priority_names(flat_override)[1], 'Active Bat', 'canonical priority must override stale flat list')
+    assert_equal(runtime_overrides.add_priority_names(flat_override)[2], 'Active Beetle', 'canonical priority must preserve order')
+    assert_equal(#runtime_overrides.add_priority_names(flat_override), 2, 'canonical priority count')
+    assert_equal(runtime_overrides.sleep_enabled(flat_override), false, 'canonical disabled Sleep must override flat enabled')
+    assert_equal(runtime_overrides.sleep_spell_names(flat_override)[1], 'Sleep II', 'canonical Sleep order must override flat list')
+    assert_equal(runtime_overrides.sleep_spell_names(flat_override)[2], 'Sleep', 'canonical Sleep order preserved')
+    assert_equal(#runtime_overrides.sleep_spell_names(flat_override), 2, 'canonical Sleep list count')
 
     local active_only = {}
     assert_equal(runtime_overrides.fight_leader_enabled(active_only), false, 'fight leader should fall back to active durable value when flat key missing')
@@ -150,8 +150,27 @@ local function main()
         sleepspell = 'Repose',
     })
     assert_equal(runtime_overrides.fight_leader_id(), 22, 'active canonical fight leader identity must beat global flat settings')
-    assert_equal(runtime_overrides.add_priority_names()[1], 'Global Value', 'global add priority fallback should remain available')
-    assert_equal(runtime_overrides.sleep_spell_names()[1], 'Repose', 'global sleep spell fallback should remain available')
+    assert_equal(runtime_overrides.add_priority_names()[1], 'Active Bat', 'canonical priority must beat global flat state')
+    assert_equal(runtime_overrides.sleep_spell_names()[1], 'Sleep II', 'canonical Sleep must beat global flat state')
+
+    -- Explicit canonical empty lists must not resurrect stale flat entries.
+    local config = active_config.get_config()
+    config.targeting.targets = {}
+    config.sleep.order = {}
+    config.sleep.legacy_primary = ''
+    assert_equal(#runtime_overrides.add_priority_names(flat_override), 0, 'empty canonical target list must stay empty')
+    assert_equal(#runtime_overrides.sleep_spell_names(flat_override), 0, 'empty canonical Sleep list must stay empty')
+    config.targeting.targets = { 'Active Bat', 'Active Beetle' }
+    config.sleep.order = { 'Sleep II', 'Sleep' }
+    config.sleep.legacy_primary = 'Sleep II'
+    -- Legacy fallback remains only when the corresponding canonical domain is absent.
+    config.targeting = nil
+    config.sleep = nil
+    assert_equal(runtime_overrides.add_priority_names(flat_override)[1], 'Override A', 'pre-profile targeting fallback')
+    assert_equal(runtime_overrides.sleep_spell_names(flat_override)[1], 'Horde Lullaby II', 'pre-profile Sleep fallback')
+    assert_equal(runtime_overrides.sleep_enabled(flat_override), true, 'pre-profile Sleep enabled fallback')
+    config.targeting = { targets = { 'Active Bat', 'Active Beetle' } }
+    config.sleep = { enabled = false, order = { 'Sleep II', 'Sleep' }, legacy_primary = 'Sleep II' }
 
     assert_deep_equal(active_config.get_active_profile(), active_snapshot, 'runtime override reads must not mutate UC_ACTIVE_PROFILE')
 
