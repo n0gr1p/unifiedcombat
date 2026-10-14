@@ -743,6 +743,17 @@ Exit criteria:
 - **Outstanding classified debt:** `unified_engine.lua`'s scheduler-overlay gate and `unified_combat_core.lua` diagnostic log helpers still inspect legacy `settings.debug` via their own `get_settings()`. These need a focused diagnostic-output audit before retirement. The remaining transient scheduler settings fields require consumer-specific treatment rather than wholesale removal.
 - Workflow `38587669736` on implementation/test head `88d4e5533986ba8f93621c51e9e8eebb1deddbe8`: full Lua sequence **PASS**; WinForms verification was running when this entry was authored.
 
+### 2026-10-14 — Phase 6 canonical diagnostic gates for engine overlay and core logs
+
+- Audited `unified_engine.lua` scheduler-overlay gating and `unified_combat_core.lua` JA/tank diagnostic log gates. Both used `UC_SETTINGS.debug` even when canonical Profile V2 debug was explicitly disabled or enabled, so stale flats could wrongly suppress or trigger diagnostics and file creation.
+- The engine overlay now checks `uc_scheduler_config.debug_enabled(s)`; `s` is deliberately retained only for transient/session domain-state diagnostics passed to `UC_DomainEnabled(s, name)`. The stale flat debug boolean and orphaned local boolean parser were removed.
+- Core's `debug_log_channel` and `debug_tank` use a shared `core_debug_enabled()` adapter backed by `uc_scheduler_config.debug_enabled()`. The core's sole `get_settings()` compatibility accessor remains for pull/movement/runtime state; no generic flat-settings retirement was attempted.
+- The scheduler-config facade already enforces canonical true/false and missing-leaf defaults; its no-profile flat fallback remains for genuine legacy callers. This cut routes the last two independent diagnostic gates through that proven contract rather than inventing new configuration authority.
+- Expanded `selftest_phase3_exit_audit.lua` with executable `unified_engine` render gating under opposing canonical/flat values: canonical false suppresses overlay creation, canonical true shows all three panels despite flat false, later canonical false hides them, and no-profile flat true still works. Source guards freeze both core file-log gates and prohibit direct flat debug checks; the pre-existing contradictory scheduler-debug matrix remains in force.
+- Flat-surface guard remains unchanged at one `UC_SETTINGS` literal in `unified_engine.lua` and exactly one `rawget(_G, 'UC_SETTINGS')` accessor in `unified_combat_core.lua`. A first CI run `38616136393` caught only a redundant source comment literal; this was removed rather than weakening the allowlist.
+- Implementation/test head `ba055f5378f5c51088aee5271742f2b71f4be501` passed the full Lua sequence in workflow `38616222412`; WinForms validation was in progress when this ledger entry was committed.
+- Next Phase 6 work: continue bounded inspection of legacy/no-config consumers and flat-versus-transient settings in core and scheduler; preserve session-only cadence, movement, and item-event fields until independent consumers are proven canonical.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
