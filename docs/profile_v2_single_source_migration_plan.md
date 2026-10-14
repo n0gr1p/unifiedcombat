@@ -754,6 +754,14 @@ Exit criteria:
 - Implementation/test head `ba055f5378f5c51088aee5271742f2b71f4be501` passed the full Lua sequence in workflow `38616222412`; WinForms validation was in progress when this ledger entry was committed.
 - Next Phase 6 work: continue bounded inspection of legacy/no-config consumers and flat-versus-transient settings in core and scheduler; preserve session-only cadence, movement, and item-event fields until independent consumers are proven canonical.
 
+### 2026-10-14 — Phase 6 canonical pull dispatch
+
+- Core and scheduler caller audit separated durable pull policy from transient session state (cadence, Doom item handling, movement and domain diagnostics).
+- Fixed pull dispatch: the scheduler now passes its active Profile V2 configuration to the core; the core dispatch handler uses the same canonical runtime view as pull proposal selection. No-profile callers preserve legacy compatibility.
+- Added conflicting-state regression proving canonical action selection at dispatch, canonical-disabled behavior, and explicit no-profile fallback; updated the dispatcher source-contract test.
+- Full Lua sequence passed in verification workflow 38619063878 on commit 1326ec1c; WinForms validation pending at the time of this note.
+- Remaining Phase 6 work: audit event and revalidation entrypoints with explicit no-config behavior before changing transient settings accessors.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
