@@ -53,10 +53,53 @@ assert_false(predicates.ja_requires_engaged_front('Rayke', {}), 'Rayke does not 
 assert_true(predicates.ja_requires_engaged('Shield Bash', { id = 46 }), 'front-required JA also requires engagement')
 assert_true(predicates.ja_requires_engaged_front('Shield Bash', { id = 46 }), 'Shield Bash retains front requirement')
 
+-- Face preference is canonical policy; forced defensive turns are not.
+local face_policy = require('uc_scheduler_context_utils').face_turn_allowed
+local canonical_off = { combat = { face = false } }
+local canonical_on = { combat = { face = true } }
+assert_false(face_policy({ face = true }, canonical_off, false, false),
+    'canonical face OFF must block routine turning despite stale flat ON')
+assert_true(face_policy({ face = false }, canonical_on, false, false),
+    'canonical face ON must allow routine turning despite stale flat OFF')
+assert_false(face_policy({ face = true }, { combat = {} }, false, false),
+    'missing canonical face leaf must not resurrect flat ON')
+assert_false(face_policy({ face = true }, {}, false, false),
+    'missing canonical combat domain must not resurrect flat ON')
+assert_true(face_policy({ face = true }, nil, false, false),
+    'genuine no-profile flat ON must remain compatible')
+assert_true(face_policy({ face = 'on' }, nil, false, false),
+    'genuine no-profile string toggle remains compatible')
+assert_false(face_policy({ face = false }, nil, false, false),
+    'genuine no-profile flat OFF must remain disabled')
+assert_true(face_policy({ face = true }, canonical_off, true, true),
+    'reaction turn-away must bypass canonical face OFF')
+assert_true(face_policy({ face = true }, canonical_off, false, true),
+    'post-reaction restoration must bypass canonical face OFF')
+assert_true(face_policy({ face = false }, canonical_off, true, true),
+    'RUN no-TP emergency turn must bypass both canonical and flat face OFF')
+assert_true(face_policy({ face = false }, canonical_off, true, false),
+    'explicit turn-away semantics must not be governed by routine face')
+assert_true(face_policy({ face = false }, canonical_off, false, true),
+    'explicit forced-facing semantics must not be governed by routine face')
+
 local scheduler_source = assert(io.open('unified_scheduler.lua', 'r')):read('*a')
 assert_contains(scheduler_source, "local requires_engaged = ja_requires_engaged(name, ja)", 'scheduler must enforce engaged-only JA predicate')
 assert_contains(scheduler_source, "require('uc_run_no_tp').target_id(s, p, t, config)", 'movement coordinator must apply persistent no-TP facing with canonical tank config')
 assert_contains(scheduler_source, "p1_apply_face_to_target(s, no_tp_tid, true, true, 'unified_scheduler:run_no_tp', config)", 'movement coordinator must turn RUN away')
 assert_contains(scheduler_source, "require('uc_run_no_tp').target_id(settings, player, current_target, config)", 'combat dispatch must honor no-TP facing with canonical tank config')
+
+assert_contains(scheduler_source, "face_turn_allowed(settings, config, turn_away, force_face)",
+    'scheduler facing path must consume shared canonical/forced policy')
+assert_contains(scheduler_source, "p1_apply_face_to_target(s, tid, false, false, nil, config)",
+    'normal facing must pass the canonical tick config without forcing')
+assert_contains(scheduler_source, "p1_apply_face_to_target(settings, tonumber(selected.target_id) or 0, false, false, nil, config)",
+    'combat dispatch normal facing must pass canonical config without forcing')
+assert_contains(scheduler_source, "scheduler.apply_reaction_turn({ actor_id = current_target_id }, false)",
+    'reaction completion must still restore facing after an emergency turn')
+assert_contains(scheduler_source, "tonumber(lock.actor_id) or 0,",
+    'reaction facing must retain its explicit actor target')
+assert_contains(scheduler_source, "turn_away == true,",
+    'reaction facing must retain turn-away direction and force flag')
+
 
 print('RUN no-TP mode self-test: ok')
