@@ -5681,7 +5681,10 @@ local function p1_dispatch_pull_control(selected, settings)
 	if target_id <= 0 then
 		return false, nil
 	end
-	local ok, reason = combat_core.dispatch_pull_for_scheduler(settings, target_id, p1_build_pull_executor())
+	local ok, reason = combat_core.dispatch_pull_for_scheduler(
+		settings, target_id, p1_build_pull_executor(),
+		require('uc_active_config').get_config()
+	)
 	if not ok then
 		return false, nil
 	end
