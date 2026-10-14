@@ -66,7 +66,6 @@ return {
 			["uc_settings"] = 1,
 		},
 		["uc_scheduler_config.lua"] = {
-			["active_value_or_flat"] = 6,
 			["uc_settings"] = 1,
 		},
 		["uc_scheduler_context_utils.lua"] = {
