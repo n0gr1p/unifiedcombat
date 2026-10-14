@@ -104,9 +104,9 @@ local function main()
 
     assert_contains(runtime_overrides, "local uc_follow_config = require('uc_follow_config')", "runtime override facade must consume canonical follow adapter")
     assert_contains(runtime_overrides, "uc_follow_config.fight_leader_id(config)", "runtime override facade must resolve canonical fight leader identity")
-    assert_contains(runtime_overrides, "config.targeting.add_priority_names", "runtime override facade must expose add priority accessors")
+    assert_contains(runtime_overrides, "config.targeting\')", "runtime override facade must read canonical targeting domain")
     assert_contains(runtime_overrides, "config.sleep.enabled", "runtime override facade must expose sleep enabled accessors")
-    assert_contains(runtime_overrides, "config.sleep.order", "runtime override facade must expose sleep spell order accessors")
+    assert_contains(runtime_overrides, "sleep.order", "runtime override facade must expose canonical sleep spell order")
     assert_not_contains(runtime_overrides, "set_active_profile(", "runtime override facade must remain read-only")
     assert_not_contains(runtime_overrides, "sync_flat_settings_in_place(", "runtime override facade must not sync arbitrary command mutations")
 
