@@ -3876,9 +3876,12 @@ function core.select_pull_for_scheduler(settings, config)
 	}
 end
 
-function core.dispatch_pull_for_scheduler(settings, target_id, executor)
+function core.dispatch_pull_for_scheduler(settings, target_id, executor, config)
 	require_pull_executor(executor)
-	local s = settings or get_settings() or {}
+	-- Dispatch must re-evaluate the same canonical pull policy used when the
+	-- scheduler selected the proposal. Session settings remain live input only
+	-- for transient fields; no-config legacy callers retain the old view.
+	local s = scheduler_settings_view(settings, config)
 	local player = windower.ffxi.get_player()
 	local target = windower.ffxi.get_mob_by_id(tonumber(target_id) or 0)
 	if not player or not target then
