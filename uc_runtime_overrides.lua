@@ -186,44 +186,34 @@ function M.fight_leader_name(settings)
 end
 
 function M.add_priority_names(settings)
+    local targeting = uc_active_config.get_path('config.targeting')
+    if type(targeting) == 'table' then
+        local names = targeting.targets
+        if type(names) ~= 'table' then
+            names = targeting.add_priority_names
+        end
+        -- An explicit empty canonical list is authoritative.
+        return normalize_name_list(clone_array(names), nil)
+    end
     local s = settings_or_default(settings)
-    local flat_value = rawget(s, 'add_priority_names')
-    if flat_value ~= nil then
-        return normalize_name_list(flat_value, nil)
-    end
-    local active_value = uc_active_config.get_path('config.targeting.add_priority_names')
-    if active_value ~= nil then
-        return normalize_name_list(clone_array(active_value), nil)
-    end
-    return normalize_name_list(s.add_priority_names, nil)
+    return normalize_name_list(rawget(s, 'add_priority_names'), nil)
 end
 
 function M.sleep_enabled(settings)
-    local s = settings_or_default(settings)
-    local flat_value = rawget(s, 'sleep')
-    if flat_value ~= nil then
-        return truthy(flat_value)
-    end
     local active_value = uc_active_config.get_path('config.sleep.enabled')
     if active_value ~= nil then
         return active_value == true
     end
-    return truthy(s.sleep)
+    return truthy(settings_or_default(settings).sleep)
 end
 
 function M.sleep_spell_names(settings)
+    local sleep = uc_active_config.get_path('config.sleep')
+    if type(sleep) == 'table' then
+        return normalize_name_list(clone_array(sleep.order), sleep.legacy_primary)
+    end
     local s = settings_or_default(settings)
-    if rawget(s, 'sleepspells') ~= nil or rawget(s, 'sleepspell') ~= nil then
-        return normalize_name_list(rawget(s, 'sleepspells'), rawget(s, 'sleepspell'))
-    end
-
-    local active_order = uc_active_config.get_path('config.sleep.order')
-    local active_primary = uc_active_config.get_path('config.sleep.legacy_primary')
-    if active_order ~= nil or active_primary ~= nil then
-        return normalize_name_list(clone_array(active_order), active_primary)
-    end
-
-    return normalize_name_list(s.sleepspells, s.sleepspell)
+    return normalize_name_list(rawget(s, 'sleepspells'), rawget(s, 'sleepspell'))
 end
 
 return M
