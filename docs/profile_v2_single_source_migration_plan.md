@@ -762,6 +762,15 @@ Exit criteria:
 - Full Lua sequence passed in verification workflow 38619063878 on commit 1326ec1c; WinForms validation pending at the time of this note.
 - Remaining Phase 6 work: audit event and revalidation entrypoints with explicit no-config behavior before changing transient settings accessors.
 
+### 2026-10-14 — Phase 6 partner-arbitration revalidation authority cut
+
+- Audited scheduler event handlers and action revalidation entrypoints against flat session state. Item-add/Doom confirmation, incoming action/message observations, and scheduler cadence remain intentionally transient. Weaponskill plan revalidation already takes the canonical config snapshot.
+- Found a Lua and/or false-fallthrough in `scheduler.try_partner_tiebreak(settings, config)`: canonical `follow.partner.enabled=false` could be overridden by legacy `settings.partner=true`, enabling unintended partner arbitration/disengagement. The related `build_partner_target_set(settings, config)` would also consult flats if a canonical partner domain was absent.
+- Added `uc_scheduler_context_utils.partner_enabled(settings, config)` as a shared canonical-first helper. Any supplied canonical config makes disabled or missing partner policy false; only genuine no-config callers use the previous legacy truthy toggle forms. Both scheduler partner arbitration and partner-target-set collection now share this gate.
+- Updated `selftest_scheduler_partner_arbitration.lua` with direct contradictory-state and missing-domain behavior, pre-profile fallback, and source-contract checks requiring both scheduler consumers use the shared helper.
+- Implementation and regression head `d0df452e11a9f94bca94ee1d2a0457fcad75e57d`; workflow `38620996677` full Lua sequence PASS (WinForms pending when recorded).
+- The explicit reaction/face-to-target movement helper also has a canonical-false/flat-true fallthrough candidate; audit its event, forced-turn, and normal-facing consumers separately before changing that contract. Preserve the transient settings surface for movement and inventory events.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
