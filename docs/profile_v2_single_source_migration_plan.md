@@ -703,6 +703,14 @@ Exit criteria:
 - Verification workflow `38516094428` validates this implementation (pending at ledger authoring).
 - Next audit target remains reaction-rule merging in `uc_combat_extension_config.lua`, which requires identifying legitimate UI/workflow paths before cutting flat influence.
 
+### 2026-10-13 — Phase 6 canonical reaction-rule collection
+
+- Removed `uc_combat_extension_config.reaction_rules()` merging flat `party_action_complete` rules into canonical Profile V2 rules. Previously stale flat state could silently add a party-action trigger or resurrect action/sequence rules after the user disabled/removed them canonically.
+- An existing `config.reactions` domain now owns the complete ruleset: enabled=true returns canonical rules unchanged; disabled or empty canonical rules return an empty collection. Legacy flat `reaction_enabled`/`reaction_rules` are read only when the entire canonical reactions domain is absent for pre-profile compatibility.
+- Removed private action-rule identity/merge helpers used only by the retired flat merge. Left action/sequence validation and all runtime dispatch behavior unchanged.
+- Extended `selftest_combat_extensions.lua` with contradictory canonical/flat party-action sequence rules, canonical-disabled and canonical-empty cases, and pre-profile fallback coverage.
+- Verification workflow `38518033226` runs full Lua and WinForms gates for implementation/test head `2910cbaf72e4e27ee22150c7852bc09bd8e35359`.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
