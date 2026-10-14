@@ -698,6 +698,77 @@ local function test_camp_range_gate_uses_shared_runtime_geometry()
 	_G.__TEST_ZONE = nil
 end
 
+local function test_pull_dispatch_profile_v2_authority()
+    -- A pull proposal is selected using the canonical path adapter. Ensure its
+    -- later dispatch never resurrects different stale flat pull policy.
+    local previous_target = rawget(_G, '__TEST_TARGET')
+    local previous_player = rawget(_G, '__TEST_PLAYER_STATUS')
+    local path_hunter = package.loaded['uc_path_hunter']
+    local old_matches = path_hunter.matches_mob
+    local target = {
+        id = 502, name = 'Pull Target', valid_target = true,
+        spawn_type = 16, hpp = 100, claim_id = 0,
+        distance = make_distance(4), x = 0, y = 0, z = 0,
+    }
+    set_mob_by_id({ [502] = target })
+    _G.__TEST_TARGET = nil
+    _G.__TEST_PLAYER_STATUS = 0
+    path_hunter.matches_mob = function() return true end
+    core.pull_lock_until = 0
+    core.pull_spell_waiting = false
+    core.pull_last_sent_at = {}
+
+    local picked
+    local executor = {
+        stop = function() end,
+        run_heading = function() end,
+        select_target = function(_, metadata)
+            picked = metadata
+            return false -- stop before sending, but capture the selected action
+        end,
+        sleep = function() end,
+        send_command = function() end,
+    }
+    local flat = {
+        hunter = false, path_follow_enabled = false,
+        path_pull_action_type = 'ja', path_pull_action_name = 'Berserk',
+    }
+    local canonical = {
+        legacy = { hunter = true },
+        movement = { path = {
+            follow_enabled = true, pull_action_type = 'ja',
+            pull_action_name = 'Provoke',
+        } },
+    }
+
+    local ok, reason = core.dispatch_pull_for_scheduler(flat, 502, executor, canonical)
+    assert_true(ok, 'canonical pull should reach target preparation despite stale flat disabled')
+    assert_equal(reason, 'PULL_TARGET_SET_FAIL', 'target-prep stub reason')
+    assert_equal(picked.action_name, 'Provoke',
+        'canonical configured JA must defeat contradictory flat Berserk')
+
+    canonical.legacy.hunter = false
+    picked = nil
+    ok = core.dispatch_pull_for_scheduler({
+        hunter = true, path_follow_enabled = true,
+        path_pull_action_name = 'Provoke',
+    }, 502, executor, canonical)
+    assert_false(ok, 'canonical disabled hunter must block stale flat enabled pull')
+    assert_equal(picked, nil, 'disabled canonical pull must not send target preparation')
+
+    picked = nil
+    ok, reason = core.dispatch_pull_for_scheduler({
+        hunter = true, path_follow_enabled = true,
+        path_pull_action_type = 'ja', path_pull_action_name = 'Provoke',
+    }, 502, executor)
+    assert_true(ok, 'genuine no-config legacy pull path must remain available')
+    assert_equal(picked.action_name, 'Provoke', 'legacy pull action remains intact')
+
+    path_hunter.matches_mob = old_matches
+    _G.__TEST_TARGET = previous_target
+    _G.__TEST_PLAYER_STATUS = previous_player
+end
+
 local function test_source_wiring()
     local targeting_source = read_file('uc_targeting_common.lua')
     local core_source = read_file('unified_combat_core.lua')
@@ -739,6 +810,7 @@ local function main()
 	test_engaged_death_switch_selection_and_revalidation()
     test_puller_range_gate_uses_live_puller_geometry()
 	test_camp_range_gate_uses_shared_runtime_geometry()
+    test_pull_dispatch_profile_v2_authority()
     test_source_wiring()
     io.stdout:write('selftest_alliance_target_scope: OK\n')
 end
