@@ -70,9 +70,15 @@ function M.auto_engage_enabled_from_config(config)
 end
 
 function M.auto_engage_enabled(settings)
-    local active_value = active_config().get_path('config.combat.auto_engage')
+    local config_reader = active_config()
+    local active_value = config_reader.get_path('config.combat.auto_engage')
     if active_value ~= nil then
         return active_value ~= false
+    end
+    -- A canonical combat domain with a missing leaf owns the default (on).
+    -- Do not consult a stale flat toggle in a partially populated v2 profile.
+    if type(config_reader.get_path('config.combat')) == 'table' then
+        return true
     end
     local flat = flat_value(settings, 'auto_engage')
     if flat ~= nil then
@@ -81,40 +87,52 @@ function M.auto_engage_enabled(settings)
     return true
 end
 
-function M.magic_burst(settings)
-    local spells = active_config().get_path('config.spells')
-    local enabled
-    local spell
-    local mode
-    local family
-    local max_tier
-    if type(spells) == 'table' and spells.magic_burst ~= nil then
-        enabled = spells.magic_burst == true
-        spell = trim(spells.configured)
-        mode = trim(spells.magic_burst_mode):lower()
-        family = trim(spells.magic_burst_family):lower()
-        max_tier = tonumber(spells.magic_burst_max_tier)
-    else
-        enabled = flat_value(settings, 'magic_burst_enabled') == true
-        spell = trim(flat_value(settings, 'spell'))
-        mode = trim(flat_value(settings, 'magic_burst_mode')):lower()
-        family = trim(flat_value(settings, 'magic_burst_family')):lower()
-        max_tier = tonumber(flat_value(settings, 'magic_burst_max_tier'))
-    end
-    if mode == '' then mode = 'exact' end
-    if family == '' then family = 'spell' end
+local function normalize_magic_burst(enabled, spell, mode, family, max_tier)
+    mode = trim(mode):lower()
+    family = trim(family):lower()
     if mode ~= 'exact' and mode ~= 'auto' then mode = 'exact' end
     if family ~= 'spell' and family ~= 'ra' and family ~= 'helix' then family = 'spell' end
-    max_tier = math.floor(max_tier or 0)
+    max_tier = math.floor(tonumber(max_tier) or 0)
     if max_tier < 0 then max_tier = 0 end
     if max_tier > 5 then max_tier = 5 end
     return {
-        enabled = enabled,
-        spell = spell,
+        enabled = enabled == true,
+        spell = trim(spell),
         mode = mode,
         family = family,
         max_tier = max_tier,
     }
+end
+
+function M.magic_burst_from_config(config)
+    local spells = type(config) == 'table' and config.spells or nil
+    if type(spells) ~= 'table' then
+        return normalize_magic_burst(false, '', nil, nil, nil)
+    end
+    return normalize_magic_burst(
+        spells.magic_burst == true,
+        spells.configured,
+        spells.magic_burst_mode,
+        spells.magic_burst_family,
+        spells.magic_burst_max_tier
+    )
+end
+
+function M.magic_burst(settings)
+    local spells = active_config().get_path('config.spells')
+    if type(spells) == 'table' then
+        -- Even if the magic_burst leaf is missing, canonical spells own the
+        -- safe disabled default. Flat settings cannot resurrect a burst.
+        return M.magic_burst_from_config({ spells = spells })
+    end
+    -- Explicit legacy/no-canonical-domain compatibility only.
+    return normalize_magic_burst(
+        flat_value(settings, 'magic_burst_enabled') == true,
+        flat_value(settings, 'spell'),
+        flat_value(settings, 'magic_burst_mode'),
+        flat_value(settings, 'magic_burst_family'),
+        flat_value(settings, 'magic_burst_max_tier')
+    )
 end
 
 function M.reaction_rules()
