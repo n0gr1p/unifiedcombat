@@ -148,6 +148,20 @@ local function test_common_scheduler_core_wiring()
     assert_contains(action_state, "uc_active_config.get_path('config.debug.combat_sched')",
         'core action-state diagnostics must use canonical debug config')
 
+    local engine_source = read_all('unified_engine.lua')
+    assert_contains(engine_source, "require('uc_scheduler_config').debug_enabled(s)",
+        'engine scheduler overlay visibility must use the canonical debug facade')
+    assert_not_contains(engine_source, 'bool_setting(s.debug, false)',
+        'flat debug may not control the scheduler overlay')
+    assert_contains(engine_source, "domain_enabled_fn(s, name)",
+        'engine overlay must still pass transient runtime state to domain diagnostics')
+    assert_contains(core, "return require('uc_scheduler_config').debug_enabled()",
+        'core debug gate must use canonical debug facade')
+    assert_equal(count_plain(core, 'if not core_debug_enabled() then'), 2,
+        'core JA and tank diagnostic file writers must share canonical debug gate')
+    assert_not_contains(core, 'setting_enabled(s and s.debug)',
+        'flat debug may not control core diagnostic file writes')
+
     assert_equal(count_plain(core, "rawget(_G, 'UC_SETTINGS')"), 1,
         'core may retain exactly one explicit no-config compatibility accessor')
     assert_contains(core, "require('uc_movement_config').controls(config)",
@@ -296,9 +310,100 @@ local function test_scheduler_domain_compatibility_authority()
     rawset(_G, 'UC_DEBUG_ACTION_TIMELINE', old_timeline)
 end
 
+-- Execute the actual engine overlay render path with a stub scheduler/text
+-- implementation. Static source guards above also freeze the core log gates.
+local function test_engine_overlay_canonical_debug_authority()
+    local active = require('uc_active_config')
+    local old_active = rawget(_G, 'UC_ACTIVE_PROFILE')
+    local old_flat = rawget(_G, 'UC_SETTINGS')
+    local old_engine = rawget(_G, 'Start_Engine')
+    local old_domain_enabled = rawget(_G, 'UC_DomainEnabled')
+    local old_schedule = coroutine.schedule
+    local modules = { 'unified_engine', 'unified_scheduler', 'unified_combat_core', 'texts', 'uc_time' }
+    local saved_modules = {}
+    for _, name in ipairs(modules) do saved_modules[name] = package.loaded[name] end
+
+    local calls = { created = 0, shown = 0, hidden = 0, domain = 0 }
+    local now = 100
+    local scheduled
+    local function text_box()
+        calls.created = calls.created + 1
+        return {
+            show = function() calls.shown = calls.shown + 1 end,
+            hide = function() calls.hidden = calls.hidden + 1 end,
+            text = function() end,
+            pos = function() end,
+            pos_x = function() return 100 end,
+            pos_y = function() return 100 end,
+        }
+    end
+    package.loaded.unified_engine = nil
+    package.loaded.unified_scheduler = {
+        process_tick = function() return false, nil end,
+        get_debug_overlay = function() return { queued = {}, rejected = {} } end,
+        get_action_state = function() return {} end,
+        get_enemy_effect_table_overlay = function() return { lines = {} } end,
+    }
+    package.loaded.unified_combat_core = { assert_no_job_branch = function() return true end }
+    package.loaded.texts = { new = text_box }
+    package.loaded.uc_time = { gettime = function() return now end }
+    coroutine.schedule = function(fn) scheduled = fn end
+    rawset(_G, 'UC_DomainEnabled', function(settings)
+        calls.domain = calls.domain + 1
+        assert_true(type(settings) == 'table', 'domain diagnostics still need runtime settings')
+        return false
+    end)
+
+    local ok, err = xpcall(function()
+        local profile = assert(active.build_default_active_profile({
+            character = 'Terrasjr', main_job = 'PLD', sub_job = 'WAR',
+            source = 'UC_DEFAULTS',
+        }))
+        assert_true(active.set_active_profile(profile))
+        local config = active.get_config()
+        config.debug.enabled = false
+        rawset(_G, 'UC_SETTINGS', { debug = true })
+        rawset(_G, 'Start_Engine', true)
+        local engine = require('unified_engine')
+        engine.start()
+        assert_equal(calls.created, 0, 'stale flat debug=true must not create overlay')
+        assert_true(type(scheduled) == 'function', 'engine must schedule next tick')
+
+        config.debug.enabled = true
+        rawset(_G, 'UC_SETTINGS', { debug = false })
+        now = 101
+        scheduled()
+        assert_equal(calls.created, 3, 'canonical debug=true must create all three overlay panels')
+        assert_true(calls.shown >= 3, 'canonical debug=true must display the panels')
+        assert_true(calls.domain > 0, 'domain diagnostics must retain transient settings')
+
+        config.debug.enabled = false
+        rawset(_G, 'UC_SETTINGS', { debug = true })
+        now = 102
+        scheduled()
+        assert_true(calls.hidden >= 3, 'canonical debug=false must hide previously visible panels')
+
+        rawset(_G, 'UC_ACTIVE_PROFILE', nil)
+        local before = calls.shown
+        now = 103
+        scheduled()
+        assert_true(calls.shown > before, 'no-profile flat debug fallback must still show overlay')
+        engine.stop()
+    end, debug.traceback)
+
+    for _, name in ipairs(modules) do package.loaded[name] = saved_modules[name] end
+    coroutine.schedule = old_schedule
+    rawset(_G, 'UC_ACTIVE_PROFILE', old_active)
+    rawset(_G, 'UC_SETTINGS', old_flat)
+    rawset(_G, 'Start_Engine', old_engine)
+    rawset(_G, 'UC_DomainEnabled', old_domain_enabled)
+    if not ok then error(err) end
+end
+
 test_required_setting_authority()
 test_common_scheduler_core_wiring()
 test_tank_pet_enmity_canonical_authority()
 test_scheduler_domain_compatibility_authority()
+test_engine_overlay_canonical_debug_authority()
 
 io.stdout:write('selftest_phase3_exit_audit: OK (common scheduler/core durable authority)\n')
