@@ -771,6 +771,15 @@ Exit criteria:
 - Implementation and regression head `d0df452e11a9f94bca94ee1d2a0457fcad75e57d`; workflow `38620996677` full Lua sequence PASS (WinForms pending when recorded).
 - The explicit reaction/face-to-target movement helper also has a canonical-false/flat-true fallthrough candidate; audit its event, forced-turn, and normal-facing consumers separately before changing that contract. Preserve the transient settings surface for movement and inventory events.
 
+### 2026-10-14 — Phase 6 canonical ordinary facing vs. forced safety turns
+
+- Audited every `p1_apply_face_to_target(...)` caller in `unified_scheduler.lua`: ordinary movement-tick and combat-dispatch facing are unforced, whereas RUN no-TP turning and reaction turn-away/restore requests are explicitly forced. Reaction facing does not supply a durable config snapshot but already deliberately passes `force_face=true`; that emergency path must not depend on the user's routine face preference.
+- Removed the Lua `and ... or ...` false-fallthrough from the scheduler facing gate. Previously, `config.combat.face=false` followed by stale flat `settings.face=true` enabled unintended routine turns. Both normal caller paths now use a shared `uc_scheduler_context_utils.face_turn_allowed(settings, config, turn_away, force_face)` gate.
+- The gate checks forced turn-away or explicit force first. Otherwise any supplied canonical Profile V2 config owns ordinary face enablement through `uc_movement_config.face_enabled(config)`, including disabled/missing canonical leaves; flat `settings.face` remains consulted only by genuine no-config legacy callers using the existing boolean parser.
+- Expanded the already CI-wired `selftest_run_no_tp_mode.lua` to prove opposed canonical-vs-flat values, absent canonical face leaf/combat domain, no-profile compatibility, and safety bypasses for reaction turn-away, restoration, RUN no-TP turning, and explicit force. Updated `selftest_phase3_movement_authority.lua` to freeze the delegated source contract and retire its inline legacy flat-face expectation.
+- Initial workflow `38650875426` found a stale static Phase 3 guard expecting the prior inline expression; the guard was updated without reverting the behavior or loosening any flat-surface allowance. Corrected code/test head `d7e1e91ae7adf983b03851d934d8b545d7dfac26` passed the full Lua sequence in workflow `38650971122`; WinForms verification was running when this entry was recorded.
+- Next independent Phase 6 audit: identify other scheduler action/revalidation decisions with canonical-false/flat-true fallthrough or implicit no-config policy, especially reaction completion and movement/event entrypoint boundaries, without changing transient state owners.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
