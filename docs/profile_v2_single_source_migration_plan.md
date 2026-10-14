@@ -711,6 +711,16 @@ Exit criteria:
 - Extended `selftest_combat_extensions.lua` with contradictory canonical/flat party-action sequence rules, canonical-disabled and canonical-empty cases, and pre-profile fallback coverage.
 - Verification workflow `38518033226` runs full Lua and WinForms gates for implementation/test head `2910cbaf72e4e27ee22150c7852bc09bd8e35359`.
 
+### 2026-10-13 — Phase 6 combat-extension auto-engage/Magic Burst cutover
+
+- Audited `uc_combat_extension_config.lua`, `uc_combat_extensions_base.lua`, and `uc_provider_combat.lua`. The primary auto-engage provider already invokes `auto_engage_enabled_from_config(ctx.config)`, while the Magic Burst proposal collector still passed `ctx.settings` through a global/flat-compatible reader.
+- Added `uc_combat_extension_config.magic_burst_from_config(config)` and routed scheduler Magic Burst collection through the explicit tick-stable `ctx.config` snapshot. A legacy/no-config caller can still invoke `magic_burst(settings)`, but it cannot affect normal canonical scheduler proposals.
+- Sealed missing-leaf flat fallbacks: canonical `config.spells` with no `magic_burst` flag defaults disabled rather than consulting stale flat `magic_burst_enabled`; canonical `config.combat` without `auto_engage` defaults enabled rather than consulting stale flat `auto_engage`. Flat fallback remains only when the corresponding canonical domain is absent.
+- Centralized burst normalization so canonical and legacy paths consistently interpret exact/auto mode, spell/ra/helix family, configured spell, and 0–5 maximum tier.
+- Expanded `selftest_combat_extensions.lua` with contrary canonical-vs-flat settings, missing-leaf cases, normalization checks, and Magic Burst proposals proving the tick config wins over stale live/global state.
+- Implementation and test head `31f97c014f00d9bbe0010065773dbe42a10ba5c3` is **CI-proven** by workflow `38518439374`: full Lua sequence PASS, WinForms build/Profile V2 and Activity Profile tests PASS.
+- Next Phase 6 work: audit and retire remaining bounded legacy flat read surfaces, especially no-canonical-config entrypoints and status/debug compatibility paths, without weakening valid startup or explicit legacy caller behavior.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
