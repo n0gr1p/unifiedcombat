@@ -43,6 +43,21 @@ end
 
 -- Scheduler action/revalidation gates must not re-enable partner actions
 -- using transient flat state after Profile V2 explicitly disables them.
+-- Routine facing is durable combat policy; emergency and explicitly forced
+-- turns are action ownership, not the face-on-target preference. In particular,
+-- canonical false must not fall through to a stale flat face=true value.
+function M.face_turn_allowed(settings, config, turn_away, force_face)
+    if turn_away == true or force_face == true then
+        return true
+    end
+    if type(config) == 'table' then
+        return require('uc_movement_config').face_enabled(config)
+    end
+    return require('uc_scheduler_numeric_utils').bool_setting(
+        type(settings) == 'table' and settings.face or nil, false
+    )
+end
+
 function M.partner_enabled(settings, config)
     if type(config) == 'table' then
         local partner = require('uc_follow_config').partner(config)
