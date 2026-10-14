@@ -49,7 +49,12 @@ function M.partner_enabled(settings, config)
         return type(partner) == 'table' and partner.enabled == true
     end
     local enabled = type(settings) == 'table' and settings.partner or nil
-    return enabled == true or enabled == 1 or enabled == 'true'
+    if enabled == true or enabled == 1 then return true end
+    if type(enabled) == 'string' then
+        local value = enabled:lower()
+        return value == 'true' or value == 'on' or value == '1' or value == 'yes'
+    end
+    return false
 end
 
 function M.build_partner_target_set(deps, settings)
