@@ -507,9 +507,14 @@ local function ensure_log_dir()
 	return log_dir
 end
 
+local function core_debug_enabled()
+	-- The scheduler debug facade preserves no-profile legacy compatibility,
+	-- but an active Profile V2 profile always owns diagnostic visibility.
+	return require('uc_scheduler_config').debug_enabled()
+end
+
 local function debug_log_channel(channel, msg)
-	local s = get_settings()
-	if not setting_enabled(s and s.debug) then
+	if not core_debug_enabled() then
 		return
 	end
 	local line = tostring(msg or '')
@@ -1602,8 +1607,7 @@ end
 
 
 local function debug_tank(msg, force)
-	local s = get_settings()
-	if not setting_enabled(s and s.debug) then
+	if not core_debug_enabled() then
 		return
 	end
 	local line = tostring(msg or '')
