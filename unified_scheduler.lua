@@ -1790,11 +1790,10 @@ local function build_partner_target_set(settings, config)
 	local follow_config = require('uc_follow_config')
 	local enabled = false
 	local partner_ids = {}
-	if type(config) == 'table' and type(follow_config.partner(config)) == 'table' then
-		enabled = follow_config.partner(config).enabled == true
+	enabled = require('uc_scheduler_context_utils').partner_enabled(settings, config)
+	if type(config) == 'table' then
 		partner_ids = follow_config.partner_ids(config)
 	else
-		enabled = bool_setting(settings and settings.partner, false)
 		partner_ids = uc_partner_list.as_ordered_ids(settings or {})
 	end
 	local out = {}
@@ -1838,9 +1837,7 @@ end
 function scheduler.try_partner_tiebreak(settings, config)
 	local follow_config = require('uc_follow_config')
 	local partner_cfg = type(config) == 'table' and follow_config.partner(config) or nil
-	local partner_enabled = type(partner_cfg) == 'table'
-		and partner_cfg.enabled == true
-		or bool_setting(settings and settings.partner, false)
+	local partner_enabled = require('uc_scheduler_context_utils').partner_enabled(settings, config)
 	if not partner_enabled then
 		return false, nil
 	end
