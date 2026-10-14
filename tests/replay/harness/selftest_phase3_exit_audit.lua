@@ -152,6 +152,14 @@ local function test_common_scheduler_core_wiring()
         'core may retain exactly one explicit no-config compatibility accessor')
     assert_contains(core, "require('uc_movement_config').controls(config)",
         'scheduler-facing movement must consume explicit canonical config')
+    assert_contains(core, 'view.prime = scheduler_config.combat_prime_from_config(config)',
+        'core scheduler view must use supplied canonical Prime rather than global/flat')
+    assert_not_contains(core, 'view.prime = scheduler_config.combat_prime(base)\n\tif type(config)',
+        'core must not defer canonical Prime until after compatibility lookup')
+    local facade = read_all('uc_scheduler_config.lua')
+    assert_not_contains(facade, 'active_value_or_flat(',
+        'generic flat fallback adapter must remain retired')
+
     assert_contains(scheduler, 'ctx.config',
         'scheduler contexts must retain canonical config')
     assert_not_contains(scheduler, 'active_value_or_flat(',
@@ -203,14 +211,94 @@ local function test_tank_pet_enmity_canonical_authority()
     assert_true(scheduler_config.tank_enmity_include_pets({ tank_enmity_include_pets = false }),
         'canonical true must defeat contradictory flat false')
     canonical.include_pets = nil
-    assert_true(scheduler_config.tank_enmity_include_pets({ tank_enmity_include_pets = true }),
-        'pre-profile legacy compatibility may use flat setting only when canonical leaf is missing')
+    assert_false(scheduler_config.tank_enmity_include_pets({ tank_enmity_include_pets = true }),
+        'missing canonical tank leaf must not fall back to stale flat true')
     rawset(_G, 'UC_ACTIVE_PROFILE', previous)
     rawset(_G, 'UC_SETTINGS', previous_flat)
+end
+
+local function test_scheduler_domain_compatibility_authority()
+    local active = require('uc_active_config')
+    local old_profile = rawget(_G, 'UC_ACTIVE_PROFILE')
+    local old_flat = rawget(_G, 'UC_SETTINGS')
+    local old_timeline = rawget(_G, 'UC_DEBUG_ACTION_TIMELINE')
+    local profile = assert(active.build_default_active_profile({
+        character = 'Terrasjr', main_job = 'PLD', sub_job = 'WAR',
+        source = 'UC_DEFAULTS',
+    }))
+    assert_true(active.set_active_profile(profile))
+    local config = active.get_config()
+    config.debug = {}
+    config.combat = {}
+    config.tank = { enmity = {} }
+    config.defensive = { enemy_buffs = {} }
+    local stale = {
+        debug = true, log_combat_sched = true, log_ja_sched = true,
+        log_ja_debug = true, log_def_sched = true, log_tank_sched = true,
+        log_action_timeline = true, autotarget = true, prime = true,
+        tank = true, tank_enmity_actions = { 'Flash' },
+        tank_enmity_include_pets = true, def_remove_enemy_buffs = true,
+    }
+    rawset(_G, 'UC_SETTINGS', stale)
+    rawset(_G, 'UC_DEBUG_ACTION_TIMELINE', true)
+
+    for _, test in ipairs({
+        { 'debug enabled', function() return scheduler_config.debug_enabled(stale) end },
+        { 'debug combat', function() return scheduler_config.debug_log_combat_sched(stale) end },
+        { 'debug JA', function() return scheduler_config.debug_log_ja_sched(stale) end },
+        { 'debug JA detail', function() return scheduler_config.debug_log_ja_debug(stale) end },
+        { 'debug defensive', function() return scheduler_config.debug_log_def_sched(stale) end },
+        { 'debug tank', function() return scheduler_config.debug_log_tank_sched(stale) end },
+        { 'debug action timeline', function() return scheduler_config.debug_action_timeline(stale) end },
+        { 'combat autotarget', function() return scheduler_config.combat_autotarget(stale) end },
+        { 'combat prime', function() return scheduler_config.combat_prime(stale) end },
+        { 'tank enabled', function() return scheduler_config.tank_enabled(stale) end },
+        { 'tank include pets', function() return scheduler_config.tank_enmity_include_pets(stale) end },
+        { 'enemy buff removal', function() return scheduler_config.defensive_enemy_buffs_remove(stale) end },
+    }) do
+        assert_false(test[2](), 'canonical missing leaf must beat stale flat: ' .. test[1])
+    end
+    assert_equal(#scheduler_config.tank_enmity_actions(stale), 0,
+        'canonical missing enmity actions must not restore stale flat Flash')
+
+    config.debug.enabled = true
+    config.debug.combat_sched = true
+    config.debug.action_timeline = true
+    config.combat.prime = true
+    config.tank.enabled = true
+    config.tank.enmity.include_pets = true
+    config.defensive.enemy_buffs.remove = true
+    local opposed = {
+        debug = false, log_combat_sched = false, log_action_timeline = false,
+        prime = false, tank = false, tank_enmity_include_pets = false,
+        def_remove_enemy_buffs = false,
+    }
+    assert_true(scheduler_config.debug_enabled(opposed), 'canonical debug true beats flat false')
+    assert_true(scheduler_config.debug_log_combat_sched(opposed), 'canonical log true beats flat false')
+    assert_true(scheduler_config.debug_action_timeline(opposed), 'canonical timeline true beats flat false')
+    assert_true(scheduler_config.combat_prime(opposed), 'canonical Prime true beats flat false')
+    assert_true(scheduler_config.tank_enabled(opposed), 'canonical tank true beats flat false')
+    assert_true(scheduler_config.tank_enmity_include_pets(opposed), 'canonical pet true beats flat false')
+    assert_true(scheduler_config.defensive_enemy_buffs_remove(opposed),
+        'canonical buff-removal true beats flat false')
+
+    -- No-profile compatibility remains available to genuine legacy callers.
+    rawset(_G, 'UC_ACTIVE_PROFILE', nil)
+    assert_true(scheduler_config.combat_prime(stale), 'no-profile Prime compatibility')
+    assert_true(scheduler_config.debug_enabled(), 'no-profile global debug compatibility')
+    assert_true(scheduler_config.debug_action_timeline(stale), 'no-profile timeline compatibility')
+    assert_true(scheduler_config.tank_enabled(stale), 'no-profile tank compatibility')
+    assert_true(scheduler_config.tank_enmity_include_pets(stale), 'no-profile pets compatibility')
+    assert_equal(scheduler_config.tank_enmity_actions(stale)[1], 'Flash',
+        'no-profile tank-actions compatibility')
+    rawset(_G, 'UC_ACTIVE_PROFILE', old_profile)
+    rawset(_G, 'UC_SETTINGS', old_flat)
+    rawset(_G, 'UC_DEBUG_ACTION_TIMELINE', old_timeline)
 end
 
 test_required_setting_authority()
 test_common_scheduler_core_wiring()
 test_tank_pet_enmity_canonical_authority()
+test_scheduler_domain_compatibility_authority()
 
 io.stdout:write('selftest_phase3_exit_audit: OK (common scheduler/core durable authority)\n')
