@@ -721,6 +721,16 @@ Exit criteria:
 - Implementation and test head `31f97c014f00d9bbe0010065773dbe42a10ba5c3` is **CI-proven** by workflow `38518439374`: full Lua sequence PASS, WinForms build/Profile V2 and Activity Profile tests PASS.
 - Next Phase 6 work: audit and retire remaining bounded legacy flat read surfaces, especially no-canonical-config entrypoints and status/debug compatibility paths, without weakening valid startup or explicit legacy caller behavior.
 
+### 2026-10-13 — Phase 6 config-runtime canonical UI/status fallback cut
+
+- Audited `uc_config_runtime.lua` and its live callers. `melee_engine.lua` and `dd2_module.lua` call `ingame_ui_enabled(_G.UC_SETTINGS)` during rendering; `remote_bridge.lua` already provides the published `_G.UC_CONFIG_CONTRACT_STATUS` to `config_contract_status(...)`.
+- Added an explicit read-only check for the published `UC_ACTIVE_PROFILE` Version 2 envelope. In-game UI visibility now uses `config.ui.show_ingame_ui` directly when canonical state exists; an absent canonical UI/domain defaults hidden instead of resurrecting stale flat settings. The old legacy normalizer/visibility fallback remains only when no canonical profile exists.
+- The compact status accessor still returns a cloned explicit/published status first. When neither status snapshot exists but an active Profile V2 is present, it now validates/enumerates that active config and reports canonical profile identity/source without invoking the flat settings normalizer. Existing no-active-profile diagnostic normalization remains a legacy fallback.
+- Retained the independent `normalize_current_config(...)` normalization API for intentional import/tests; no arbitrary full normalized config is published to the bridge.
+- Expanded `selftest_config_first_consumer.lua` and `selftest_bridge_config_status_consumer.lua` with contradictory canonical/flat state, missing canonical UI leaf/domain, active-status identity/source, no-flat-normalization checks, and no-normalizer canonical availability.
+- Implementation and test head `eae62f64527d671e2fe04f4fb9f6405f3eea9483` is **CI-proven** by workflow `38519010323`: full Lua sequence PASS and WinForms build/Profile V2/Activity Profile self-tests PASS.
+- Remaining separate Phase 6 targets: classify `uc_scheduler_config.lua` canonical-first flat fallback accessors and `uc_scheduler_context_utils.get_settings()` / legacy core no-config entrypoints by actual runtime consumers. Keep transient/runtime settings distinct from durable authority.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
