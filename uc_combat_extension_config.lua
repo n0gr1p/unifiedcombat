@@ -28,56 +28,6 @@ local function flat_value(settings, key)
     return global_settings()[key]
 end
 
-local function has_action_rule(rules)
-    if type(rules) ~= 'table' then
-        return false
-    end
-    for i = 1, #rules do
-        if type(rules[i]) == 'table'
-            and (rules[i].response == 'use_action' or rules[i].response == 'use_sequence') then
-            return true
-        end
-    end
-    return false
-end
-
-local function reaction_identity(rule)
-    if type(rule) ~= 'table' then
-        return ''
-    end
-    return table.concat({
-        trim(rule.trigger):lower(),
-        trim(rule.source_name):lower(),
-        trim(rule.action_type):lower(),
-        trim(rule.name):lower(),
-        trim(rule.response):lower(),
-    }, '\031')
-end
-
-local function merge_party_action_rules(active_rules, flat_rules)
-    local merged = {}
-    local seen = {}
-    for i = 1, #(active_rules or {}) do
-        local rule = active_rules[i]
-        merged[#merged + 1] = rule
-        local identity = reaction_identity(rule)
-        if identity ~= '' then
-            seen[identity] = true
-        end
-    end
-    for i = 1, #(flat_rules or {}) do
-        local rule = flat_rules[i]
-        if type(rule) == 'table' and rule.trigger == 'party_action_complete' then
-            local identity = reaction_identity(rule)
-            if identity ~= '' and seen[identity] ~= true then
-                merged[#merged + 1] = rule
-                seen[identity] = true
-            end
-        end
-    end
-    return merged
-end
-
 local function validate_sequence_step(step, index, count)
     if type(step) ~= 'table' then
         return false, ('use_sequence step %d must be a table'):format(index)
@@ -169,23 +119,23 @@ end
 
 function M.reaction_rules()
     local active = active_config().get_path('config.reactions')
-    local active_rules = type(active) == 'table' and active.enabled == true and type(active.rules) == 'table'
-        and active.rules or nil
-    local flat = global_settings()
-    local flat_rules = flat.reaction_enabled == true and type(flat.reaction_rules) == 'table'
-        and flat.reaction_rules or nil
+    if type(active) == 'table' then
+        -- Canonical Profile V2 owns the entire rule collection. In particular,
+        -- disabled or empty canonical rules must never resurrect stale flat
+        -- party-action or sequence rules.
+        if active.enabled ~= true then
+            return {}
+        end
+        return type(active.rules) == 'table' and active.rules or {}
+    end
 
-    -- Structured v2 remains authoritative for existing reactions. Party-action
-    -- rules are also merged from the flat UI projection so mixed profiles cannot
-    -- lose a newly configured party trigger during the structured-profile
-    -- compatibility window.
-    if has_action_rule(active_rules) then
-        return merge_party_action_rules(active_rules, flat_rules)
+    -- Only pre-profile sessions without a canonical reactions domain may
+    -- consult legacy flat state.
+    local flat = global_settings()
+    if flat.reaction_enabled == true and type(flat.reaction_rules) == 'table' then
+        return flat.reaction_rules
     end
-    if has_action_rule(flat_rules) then
-        return flat_rules
-    end
-    return active_rules or flat_rules
+    return {}
 end
 
 function M.validate_action_rule(rule)
