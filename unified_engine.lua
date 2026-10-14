@@ -80,7 +80,7 @@ end
 local function render_sched_overlay()
 	local s = get_settings()
 	-- Durable visibility follows the active Profile V2 debug policy, not a
-	-- stale UC_SETTINGS.debug projection. Keep 's' for runtime domain state.
+	-- stale flat debug projection. Keep 's' for runtime domain state.
 	if not require('uc_scheduler_config').debug_enabled(s) then
 		hide_sched_overlay()
 		return
