@@ -83,6 +83,34 @@ local ok, err = xpcall(function()
     assert_equal(burst.spell, 'Fire V', 'flat magic burst spell mismatch')
     local fallback_rules = extension_config.reaction_rules()
     assert_equal(fallback_rules[1].action_name, 'Stun', 'flat action reaction fallback mismatch')
+    -- Profile V2 reactions are an atomic durable collection. Flat party-action
+    -- and sequence rules cannot augment, replace, or revive canonical rules.
+    local canonical_rule = {
+        trigger = 'party_action_complete',
+        source_name = 'Etamame',
+        action_type = 'ja',
+        name = 'Meditate',
+        response = 'use_sequence',
+        steps = { { action_type = 'spell', action_name = 'Stun', target = 'actor' } },
+    }
+    local stale_rule = {
+        trigger = 'party_action_complete',
+        source_name = 'Ponpon',
+        action_type = 'ja',
+        name = 'Berserk',
+        response = 'use_sequence',
+    }
+    _G.UC_SETTINGS.reaction_rules[#_G.UC_SETTINGS.reaction_rules + 1] = stale_rule
+    active_values['config.reactions'] = { enabled = true, rules = { canonical_rule } }
+    local canonical_rules = extension_config.reaction_rules()
+    assert_equal(#canonical_rules, 1, 'stale flat party-action rule must not merge into Profile V2')
+    assert_true(canonical_rules[1] == canonical_rule, 'canonical sequence must preserve its rule identity')
+    active_values['config.reactions'] = { enabled = false, rules = { canonical_rule } }
+    assert_equal(#extension_config.reaction_rules(), 0, 'disabled canonical reactions must not revive flat rules')
+    active_values['config.reactions'] = { enabled = true, rules = {} }
+    assert_equal(#extension_config.reaction_rules(), 0, 'empty canonical reactions must not revive flat rules')
+    active_values['config.reactions'] = nil
+    assert_equal(#extension_config.reaction_rules(), 2, 'missing canonical domain retains pre-profile fallback')
     local invalid_ok, invalid_error = extension_config.validate_action_rule({
         trigger = 'ability_window', response = 'use_action', action_type = 'ja', action_name = 'Weapon Bash',
     })
