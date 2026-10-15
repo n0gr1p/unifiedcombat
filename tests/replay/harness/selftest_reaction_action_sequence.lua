@@ -56,9 +56,10 @@ package.preload.uc_combat_extension_config = function()
     }
 end
 
+local defensive_lock = nil
 local base = {
     on_action = function() return {} end,
-    evaluate = function() return nil, nil end,
+    evaluate = function() return defensive_lock, nil end,
     prune_invalid_ability_windows = function() return nil end,
     get_action_lock = function() return nil end,
     blocks_proposal = function() return false end,
@@ -67,7 +68,7 @@ local base = {
     requires_disengage = function() return false end,
     cancel = function() return nil, nil end,
     reset = function() return nil end,
-    status = function() return { enabled = true, rule_count = 1, active = {}, last_transition = 'base' } end,
+    status = function() return { enabled = true, rule_count = 1, active = defensive_lock and { defensive_lock } or {}, last_transition = 'base' } end,
 }
 
 reset('uc_reaction_sequence_runtime')
@@ -211,6 +212,26 @@ ready = reactions.on_action({
 sequence_rule.steps[1].optional = false
 assert_true(reactions.get_action_lock() == nil, 'optional-step policy edit releases cached sequence')
 sequence_rule.steps[1].optional = true
+
+-- A reconfigured sequence must not clear an unrelated defensive turn-away
+-- reaction. Only sequence-owned state is released by policy pruning.
+defensive_lock = {
+    key = 'ability_window:901:cold stare', trigger = 'ability_window',
+    response = 'turn_away', name = 'Cold Stare', actor_id = 901,
+}
+ready = reactions.on_action({
+    actor_id = 900, category = 7,
+    targets = { { actions = { { param = 100 } } } },
+}, 900, 43.0, true)
+rule_enabled = false
+local defense_continues = reactions.evaluate(900, {}, 43.1)
+assert_equal(defense_continues.key, defensive_lock.key,
+    'disabling sequence leaves active unrelated defensive reaction intact')
+assert_true(reactions.get_action_lock() == nil,
+    'defensive turn-away is not misclassified as a stale sequence action')
+assert_equal(#reactions.status().active, 1, 'defensive lock remains in status after sequence cleanup')
+rule_enabled = true
+defensive_lock = nil
 
 -- Provider wrapper: unavailable optional Elemental Seal must be skipped immediately
 -- and required Stun must still be emitted in the same collection pass.
