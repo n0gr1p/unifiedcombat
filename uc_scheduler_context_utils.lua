@@ -66,7 +66,9 @@ function M.partner_autotarget_enabled(settings, config)
     if type(config) == 'table' then
         return scheduler_config.combat_autotarget_from_config(config) == true
     end
-    return scheduler_config.combat_autotarget(settings) == true
+    return require('uc_scheduler_numeric_utils').bool_setting(
+        scheduler_config.combat_autotarget(settings), false
+    )
 end
 
 function M.partner_enabled(settings, config)
