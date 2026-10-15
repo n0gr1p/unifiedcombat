@@ -5925,6 +5925,7 @@ local function p1_dispatch_maintenance_cor(selected, settings, provider)
 		send_command = windower.send_command,
 		intent = intent,
 		command = maintenance_cor_command,
+		config = require('uc_active_config').get_config(),
 	})
 	scheduler.action_timeline_log('MAINT_BUFF_DISPATCHED', {
 		action = tostring(ability or ''),
