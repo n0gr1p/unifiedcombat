@@ -805,6 +805,16 @@ Exit criteria:
 - Implementation/test commit `353f1193c4d51426e93f518273e963df3ac3c6df` passed full Lua verification in workflow `38774567624`; WinForms was running when recorded.
 - This slice prevents follow-up **execution** but does not proactively prune/release stale sequence locks when a policy is edited mid-window. A further Phase 6 slice should audit reaction-lock lifecycle/pruning to avoid stale holds on movement or ordinary actions, while preserving explicitly forced safety reactions and once-per-instance bookkeeping.
 
+### 2026-10-15 — Phase 6 Profile V2 reaction-sequence lock lifecycle cleanup
+
+- Followed the packet-completed `use_sequence` path from `uc_reaction_sequence_runtime.lua` (ability-window), `uc_reaction_party_sequence_runtime.lua` (party-action-complete), through `uc_reaction_once_runtime.lua`, scheduler reaction refresh, and the previously proven dispatch-commit guard. The sequence runtimes held copied steps after the originating canonical rule changed; their actor-validity pruning did not consult configured rules, allowing stale sequence holds even when follow-up dispatch was already rejected.
+- Added `uc_reaction_sequence_policy.lua` as a single rule identity / complete step-list matching contract. The existing commit-time `reaction_policy_changed` gate and both runtime lifecycle pruners now apply the same rule comparison. Disabled, removed, reordered, source-edited, trigger-edited, and step-edited sequence rules can no longer keep copied locks authoritative.
+- Ability-window and party-action sequence runtimes prune stale config locks on periodic scheduler pruning/evaluation and when exposing the next action lock or processing packet completion. Existing actor-invalid and normal completion paths remain intact. An invalid rule releases only the sequence-owned lock, rather than resetting unrelated defensive reaction state.
+- The once-per-instance extension clears pending reservations whose originating locks were pruned, using the lower runtime's active lock set after pruning; it deliberately **retains consumed one-shot history** for the enemy instance after a dispatched step. Existing actor-despawn/zone reset still clears consumed history on its normal lifecycle.
+- Expanded CI-wired `selftest_reaction_action_sequence.lua` with disabled-rule release after a packet advances to a pending next step, modified spell/optional step pruning, immediate lane release, and unrelated defensive turn-away survival. Expanded `selftest_reaction_party_action_complete.lua` to prove pending reservation cancellation, re-arming if no step was sent, source-identity reconfiguration release, and preservation of already-consumed one-shot state.
+- Implementation/test head `dacd2944adcddfbbe4673fa4cd36b22e125c2e3e` passed the full Lua sequence in workflow `38777432001` (WinForms validation still running at ledger authoring).
+- Next independent Phase 6 work: audit any other cached action-owner state that survives durable policy changes outside reaction sequences, especially pet/formation/scheduler maintenance state. Do not broadly reset packet evidence, forced safety responses, or transient cooldown bookkeeping.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
