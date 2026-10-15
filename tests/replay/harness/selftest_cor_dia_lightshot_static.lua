@@ -16,6 +16,7 @@ local ownership = read('uc_scheduler_command_ownership.lua')
 local tracker = read('uc_enemy_effect_tracker.lua')
 local normalizer = read('uc_config_normalizer_cor.lua')
 local normalizer_entry = read('uc_config_normalizer.lua')
+local scheduler = read('unified_scheduler.lua')
 
 assert_contains(cor, '[23] = 60', 'Dia I must be supported')
 assert_contains(cor, '[24] = 120', 'Dia II must be supported')
@@ -37,6 +38,17 @@ assert_contains(ownership, "meta.action_name or '') ~= 'Light Shot'", 'command o
 assert_contains(ownership, 'resolve_pending_light_shot_target', 'dispatch must revalidate the current target')
 assert_contains(ownership, 'intent.command = \'input /ja "Light Shot" <t>\'', 'Light Shot must target the selected enemy, not self')
 assert_contains(ownership, 'cor_light_shot_target_stale', 'stale target must become a safe no-op')
+assert_contains(cor, 'function mod.resolve_pending_light_shot_target(config)',
+    'COR target resolver must receive canonical configuration explicitly')
+assert_contains(cor, "not cor_light_shot_dia(cor_config(config))",
+    'pending target must be cancelled when current canonical COR setting is disabled')
+assert_contains(ownership, 'cor.resolve_pending_light_shot_target(config)',
+    'command ownership must pass canonical config into COR target resolution')
+assert_contains(ownership, 'prepare_cor_targeted_utility(intent, opts.config)',
+    'command ownership must not lose canonical COR policy during dispatch')
+assert_contains(scheduler, "config = require('uc_active_config').get_config(),",
+    'scheduler COR maintenance dispatch must supply the current Profile V2 config')
+
 
 assert_contains(normalizer, 'light_shot_dia', 'canonical COR utility config must include Light Shot Dia')
 assert_contains(normalizer, 'value = true', 'COR Dia Light Shot must default on')
