@@ -32,6 +32,66 @@ function M.p1_build_dispatch_plan(scheduler, ctx, selected, p1_number)
 	return plan
 end
 
+-- Packet completion can advance a copied reaction sequence after the
+-- originating rule has been disabled or edited. Before issuing a follow-up
+-- command, confirm that both the live lock and its original canonical rule
+-- still authorize the exact current step.
+local function sequence_step_still_configured(ctx, selected)
+    local detail = type(selected.detail) == 'table' and selected.detail or {}
+    local runtime = require('uc_reaction_runtime')
+    local lock = runtime.get_action_lock()
+    if type(lock) ~= 'table' or tostring(lock.response or '') ~= 'use_sequence'
+        or tostring(lock.key or '') ~= tostring(detail.reaction_key or '')
+        or (tonumber(lock.step_index) or 0) ~= (tonumber(detail.reaction_step_index) or -1)
+        or tostring(lock.action_type or '') ~= tostring(selected.action_type or '')
+        or tostring(lock.action_name or '') ~= tostring(selected.action_name or '') then
+        return false
+    end
+
+    local rules
+    if type(ctx.config) == 'table' then
+        local reactions = ctx.config.reactions
+        if type(reactions) ~= 'table' or reactions.enabled ~= true then
+            return false
+        end
+        rules = reactions.rules
+    else
+        -- The scheduler normally has a v2 config snapshot. Keep legacy
+        -- behavior for genuine pre-profile callers only.
+        rules = require('uc_combat_extension_config').reaction_rules()
+    end
+    local index = tonumber(lock.rule_index) or 0
+    local rule = type(rules) == 'table' and index > 0 and rules[index] or nil
+    if type(rule) ~= 'table'
+        or tostring(rule.trigger or '') ~= tostring(lock.trigger or '')
+        or tostring(rule.response or '') ~= 'use_sequence'
+        or tostring(rule.name or ''):lower() ~= tostring(lock.name or ''):lower() then
+        return false
+    end
+    if rule.trigger == 'party_action_complete'
+        and (tostring(rule.source_name or ''):lower() ~= tostring(lock.event_actor_name or ''):lower()
+        or tostring(rule.action_type or ''):lower() ~= tostring(lock.completed_action_type or ''):lower()) then
+        return false
+    end
+    local configured_steps = rule.steps
+    local captured_steps = lock.steps
+    if type(configured_steps) ~= 'table' or type(captured_steps) ~= 'table'
+        or #configured_steps ~= #captured_steps then
+        return false
+    end
+    for i = 1, #captured_steps do
+        local original, current = captured_steps[i], configured_steps[i]
+        if type(original) ~= 'table' or type(current) ~= 'table'
+            or tostring(original.action_type or ''):lower() ~= tostring(current.action_type or ''):lower()
+            or tostring(original.action_name or '') ~= tostring(current.action_name or '')
+            or tostring(original.target or ''):lower() ~= tostring(current.target or ''):lower()
+            or (original.optional == true) ~= (current.optional == true) then
+            return false
+        end
+    end
+    return true
+end
+
 function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, windower, combat_core)
 	if not selected or not plan then
 		return false, 'invalid_plan'
@@ -41,6 +101,10 @@ function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, 
 	end
 	if p1_number(plan.commit_deadline, 0) < ctx.now then
 		return false, 'commit_deadline'
+	end
+	if tostring(selected.family_id or '') == 'combat.reaction.sequence'
+		and not sequence_step_still_configured(ctx, selected) then
+		return false, 'reaction_policy_changed'
 	end
 	-- Rank-time enablement can change before commit. Recheck the same
 	-- canonical-only required-setting contract at the action boundary;
