@@ -789,6 +789,14 @@ Exit criteria:
 - Implementation/test head `8976086ade2776d4c9fa4a06de1b4bf28f53d2d4`: workflow `38663879768` full Lua sequence PASS; WinForms validation was in progress when documented.
 - The remaining Phase 6 work should continue a bounded audit of other scheduler event/action confirmation paths and ensure stale flat-state cannot resurrect explicitly disabled canonical actions. Avoid replacing session cadence, combat packet evidence, or forced defensive controls with durable policy.
 
+### 2026-10-15 — Phase 6 canonical required-setting revalidation at action commit
+
+- Audited scheduler event/action confirmation and revalidation call chains: spell, JA, and combat packet handlers primarily observe transient evidence to update pending-action state; explicit defensive reaction and Doom item event paths already retain their separately owned safety policy. The ranker `uc_scheduler_ranker.validate_proposal(ctx, proposal, deps)` had canonical required-setting validation, but `uc_scheduler_dispatch_plan.p1_revalidate_plan_commit(...)` checked only expiry/deadline, target validity, AoE, skillchain, and encounter policy. Thus a proposal selected while canonical policy was true could reach the commit boundary after its required setting became false.
+- Added a second `required_setting` check at final plan commit using the **same** `uc_scheduler_config.required_setting_value_from_config(ctx.config, required_setting)` contract as the ranker. Unknown or missing canonical values return `settings_disabled`; no `ctx.settings`/flat fallback is used. Proposals without a `required_setting` retain the former validation semantics. This covers every selected action family with a declared required setting, without changing event/packet bookkeeping or safety reactions.
+- Extended the CI-wired `selftest_dispatch_plan_fixtures.lua` with a stateful same-proposal rank-to-commit policy change and deliberately opposed canonical/flat settings: WS enabled→disabled after selection, canonical true versus flat false, missing canonical WS leaf, disabled/enabled JA settings, unknown required settings, no canonical config, and unrestricted proposals.
+- Implementation/test head `6c3ad0acee13698af61d6e8604116601f47e6efb`. Verification workflow `38758495384` full Lua sequence PASS; WinForms validation pending at ledger update.
+- Next Phase 6 work: audit callbacks that execute *new* commands from packet/confirmation state after initial action selection, ensuring they revalidate durable policy while retaining transient action confirmation, completion logging, and forced defensive mechanics. Do not globally retire `get_settings()` because it still carries session state.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
