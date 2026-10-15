@@ -15,6 +15,7 @@ local function assert_equal(actual, expected, message)
     end
 end
 
+local rule_enabled = true
 local sequence_rule = {
     trigger = 'ability_window',
     name = 'Just Desserts',
@@ -50,7 +51,7 @@ end
 reset('uc_combat_extension_config')
 package.preload.uc_combat_extension_config = function()
     return {
-        reaction_rules = function() return { sequence_rule } end,
+        reaction_rules = function() return rule_enabled and { sequence_rule } or {} end,
         validate_action_rule = function() return true end,
     }
 end
@@ -171,6 +172,45 @@ sequence_rule.steps = {
     { action_type = 'ja', action_name = 'Elemental Seal', target = 'self', optional = true },
     { action_type = 'spell', action_name = 'Stun', target = 'actor', optional = false },
 }
+
+-- Mid-sequence Profile V2 edits must release stale locks, not just block
+-- follow-up dispatch. No unrelated defensive reaction state is reset.
+reactions.reset('policy_pruning')
+ready = reactions.on_action({
+    actor_id = 900, category = 7,
+    targets = { { actions = { { param = 100 } } } },
+}, 900, 40.0, true)
+assert_true(type(ready.activated) == 'table', 'policy test sequence activates')
+marked = reactions.note_sequence_action_dispatched(
+    ready.activated.key, 'ja', 'Elemental Seal', 'self', 1, 1, 40.1
+)
+assert_true(marked, 'policy test opener dispatched')
+local completed = reactions.on_action({ actor_id = 1, category = 6, param = 200 }, 900, 40.2, false)
+assert_equal(completed.activated.action_name, 'Stun', 'packet completion must advance before policy change')
+rule_enabled = false
+local released = reactions.prune_invalid_ability_windows(function() return true end)
+assert_equal(released.key, ready.activated.key, 'canonical disable releases copied sequence lock')
+assert_true(reactions.get_action_lock() == nil, 'disabled sequence cannot reserve action lane')
+assert_equal(#reactions.status().active, 0, 'disabled rule clears sequence status')
+rule_enabled = true
+
+ready = reactions.on_action({
+    actor_id = 900, category = 7,
+    targets = { { actions = { { param = 100 } } } },
+}, 900, 41.0, true)
+sequence_rule.steps[2].action_name = 'Sleep II'
+local dropped = reactions.evaluate(900, {}, 41.1)
+assert_true(dropped == nil, 'edited second step invalidates copied active sequence on evaluate')
+assert_true(reactions.get_action_lock() == nil, 'edited rule releases action lane immediately')
+sequence_rule.steps[2].action_name = 'Stun'
+
+ready = reactions.on_action({
+    actor_id = 900, category = 7,
+    targets = { { actions = { { param = 100 } } } },
+}, 900, 42.0, true)
+sequence_rule.steps[1].optional = false
+assert_true(reactions.get_action_lock() == nil, 'optional-step policy edit releases cached sequence')
+sequence_rule.steps[1].optional = true
 
 -- Provider wrapper: unavailable optional Elemental Seal must be skipped immediately
 -- and required Stun must still be emitted in the same collection pass.
