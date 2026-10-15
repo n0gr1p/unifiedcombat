@@ -181,6 +181,21 @@ function M.extend(base)
         end
     end
 
+    local function clear_orphaned_pending()
+        -- A policy-pruned sequence must free its *pending* one-shot reservation,
+        -- but completed/consumed per-instance history stays intact.
+        local active = {}
+        local status = base_status()
+        for _, lock in ipairs(type(status) == 'table' and type(status.active) == 'table' and status.active or {}) do
+            active[tostring(lock.key or '')] = true
+        end
+        local stale = {}
+        for key in pairs(pending_by_lock) do
+            if active[key] ~= true then stale[#stale + 1] = key end
+        end
+        for _, key in ipairs(stale) do clear_pending_lock(key) end
+    end
+
     local function cleanup_released(result)
         if type(result) == 'table' and type(result.released) == 'table' then
             clear_pending_lock(result.released.key)
@@ -266,7 +281,9 @@ function M.extend(base)
             error('reaction once-per-instance pruning requires an enemy-validity function')
         end
         clear_invalid_actor_state(actor_is_valid_enemy)
-        return base_prune(actor_is_valid_enemy)
+        local released = base_prune(actor_is_valid_enemy)
+        clear_orphaned_pending()
+        return released
     end
 
     function base.reset(reason)
