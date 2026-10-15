@@ -1771,14 +1771,17 @@ local function try_doom_water_emergency(settings, ctx)
 end
 
 function scheduler.on_add_item(bag, index, item_id, count)
-	local settings = get_settings()
+	-- Event completion must recheck the active canonical defensive policy.
+	-- Flat session state is not a Profile V2 config and must never decide
+	-- whether a staged Holy Water may be used after an inventory move.
+	local config = require('uc_scheduler_context_utils').get_config()
 	local acted, reason = require('uc_doom_water').on_add_item(
 		scheduler.doom_water_state,
 		bag,
 		index,
 		item_id,
 		count,
-		doom_water_dependencies(settings)
+		doom_water_dependencies(config)
 	)
 	if acted then
 		_G.UC_LAST_BLOCK_REASON = tostring(reason or 'BLOCK_DOOM_WATER')
@@ -1879,7 +1882,7 @@ function scheduler.try_partner_tiebreak(settings, config)
 
 	local decision = require('uc_scheduler_partner_arbitration').decide({
 		partner_enabled = true,
-		autotarget_enabled = bool_setting(type(config) == 'table' and uc_scheduler_config.combat_autotarget_from_config(config) or uc_scheduler_config.combat_autotarget(settings), false),
+		autotarget_enabled = require('uc_scheduler_context_utils').partner_autotarget_enabled(settings, config),
 		my_id = player and player.id,
 		player_status = player and player.status,
 		current_target = current,
