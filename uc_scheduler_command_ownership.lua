@@ -145,7 +145,7 @@ local function consume_dispatched_reaction_action(intent)
     return released
 end
 
-local function prepare_cor_targeted_utility(intent)
+local function prepare_cor_targeted_utility(intent, config)
     local meta = type(intent.meta) == 'table' and intent.meta or nil
     if meta == nil
         or tostring(meta.provider or '') ~= 'maintenance_cor'
@@ -157,7 +157,7 @@ local function prepare_cor_targeted_utility(intent)
     if type(cor.resolve_pending_light_shot_target) ~= 'function' then
         return false, 'cor_light_shot_target_resolver_missing'
     end
-    local target = cor.resolve_pending_light_shot_target()
+    local target = cor.resolve_pending_light_shot_target(config)
     local target_id = tonumber(target and target.id) or 0
     if type(target) ~= 'table' or target_id <= 0 then
         return false, 'cor_light_shot_target_stale'
@@ -232,7 +232,7 @@ function M.apply_command_ownership(opts)
         return status
     end
 
-    local prepared, prepare_reason = prepare_cor_targeted_utility(intent)
+    local prepared, prepare_reason = prepare_cor_targeted_utility(intent, opts.config)
     if not prepared then
         -- A stale target, missing tracked Dia, or already-consumed Dia generation
         -- is a safe no-op. Nothing is marked handled unless a dispatch succeeds.
