@@ -383,9 +383,7 @@ local function test_scheduler_pet_owner_source_contract()
 		'disabled owner cancellation must release scheduler pending-action state')
 end
 
-local function test_disabled_domain_pet_reservation_release()
-test_scheduler_pet_owner_source_contract()
-test_pet_pending_does_not_lock_movement()
+local function test_pet_pending_does_not_lock_movement()
 	local scheduler = {
 		phase1 = {
 			pending = {
@@ -412,6 +410,8 @@ test_serialization_and_completion()
 test_action_events_and_stale_identity()
 test_failure_timeout_and_backoff()
 test_conduit_rage_lifecycle()
+test_disabled_domain_pet_reservation_release()
+test_scheduler_pet_owner_source_contract()
 test_pet_pending_does_not_lock_movement()
 
 print('selftest_pet_command_infrastructure: OK')
