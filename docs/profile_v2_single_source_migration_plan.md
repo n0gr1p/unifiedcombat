@@ -780,6 +780,15 @@ Exit criteria:
 - Initial workflow `38650875426` found a stale static Phase 3 guard expecting the prior inline expression; the guard was updated without reverting the behavior or loosening any flat-surface allowance. Corrected code/test head `d7e1e91ae7adf983b03851d934d8b545d7dfac26` passed the full Lua sequence in workflow `38650971122`; WinForms verification was running when this entry was recorded.
 - Next independent Phase 6 audit: identify other scheduler action/revalidation decisions with canonical-false/flat-true fallthrough or implicit no-config policy, especially reaction completion and movement/event entrypoint boundaries, without changing transient state owners.
 
+### 2026-10-14 — Phase 6 event/revalidation policy: partner autotarget and Doom item confirmation
+
+- Audited `unified_scheduler.lua` movement and event boundaries following the forced-facing cutover. Event-owned item/cadence state remains transient; a Profile V2 policy reader must still own whether an action can execute.
+- Fixed partner arbitration's second canonical-false fallthrough: `autotarget_enabled = bool_setting(type(config) == 'table' and ... or flat ...)` previously revived flat `autotarget=true` when canonical `config.combat.autotarget=false`. Added `uc_scheduler_context_utils.partner_autotarget_enabled(settings, config)` with authoritative canonical true/false and missing-leaf defaults. Only no-config callers retain legacy autotarget boolean parsing. Safe disengagement from a contested mob remains possible when autotarget is disabled, but the stale flat setting cannot authorize a target switch.
+- Corrected `scheduler.on_add_item(...)`: the staged Holy Water confirmation event previously called `doom_water_dependencies(settings)` where `settings` came from flat `get_settings()` instead of the canonical config expected by `doom_water_enabled(config)`. It now loads `uc_scheduler_context_utils.get_config()` and passes that to the event dependencies, matching `try_doom_water_emergency` policy. If the canonical policy changes while staging, the existing `uc_doom_water.on_add_item` gate cancels the dispatch and releases its lane.
+- Extended `selftest_scheduler_partner_arbitration.lua` with opposing canonical/flat autotarget values, missing-leaf behavior, real arbitration switch/disengage decisions, legacy compatibility, and scheduler source guards. Extended `selftest_doom_water.lua` with scheduler event source-contract guards and actual staged-move + item-arrival behavior against canonical enable/disable transitions.
+- Implementation/test head `8976086ade2776d4c9fa4a06de1b4bf28f53d2d4`: workflow `38663879768` full Lua sequence PASS; WinForms validation was in progress when documented.
+- The remaining Phase 6 work should continue a bounded audit of other scheduler event/action confirmation paths and ensure stale flat-state cannot resurrect explicitly disabled canonical actions. Avoid replacing session cadence, combat packet evidence, or forced defensive controls with durable policy.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
