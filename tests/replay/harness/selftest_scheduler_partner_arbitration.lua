@@ -92,7 +92,47 @@ assert_equal(context_utils.partner_enabled({ partner = 'on' }, nil), true,
 assert_equal(context_utils.partner_enabled({ partner = false }, nil), false,
     'no-profile explicit disabled partner remains disabled')
 
+-- Autotarget is a separate arbitration decision: canonical OFF allows the
+-- safety disengage but never resurrects a stale flat target switch.
+local flat_autotarget_on = { autotarget = true }
+local flat_autotarget_off = { autotarget = false }
+local canonical_target_off = { combat = { autotarget = false } }
+local canonical_target_on = { combat = { autotarget = true } }
+local autotarget_policy = context_utils.partner_autotarget_enabled
+assert_equal(autotarget_policy(flat_autotarget_on, canonical_target_off), false,
+    'canonical autotarget OFF must defeat stale flat ON')
+assert_equal(autotarget_policy(flat_autotarget_off, canonical_target_on), true,
+    'canonical autotarget ON must defeat stale flat OFF')
+assert_equal(autotarget_policy(flat_autotarget_on, { combat = {} }), false,
+    'missing canonical autotarget must not revive flat ON')
+assert_equal(autotarget_policy(flat_autotarget_on, {}), false,
+    'missing canonical combat domain must not revive flat ON')
+assert_equal(autotarget_policy(flat_autotarget_on, nil), true,
+    'genuine no-config autotarget ON remains compatible')
+assert_equal(autotarget_policy(flat_autotarget_off, nil), false,
+    'genuine no-config autotarget OFF remains disabled')
+input = base_input()
+input.mobs = {
+    { id = 902, claim_id = 100, valid_target = true, spawn_type = 16, hpp = 75, distance = 9 },
+}
+input.autotarget_enabled = autotarget_policy(flat_autotarget_on, canonical_target_off)
+decision = arbitration.decide(input)
+assert_equal(decision.action, 'disengage',
+    'canonical autotarget OFF must retain safe disengage instead of switching')
+input.autotarget_enabled = autotarget_policy(flat_autotarget_off, canonical_target_on)
+decision = arbitration.decide(input)
+assert_equal(decision.action, 'switch', 'canonical autotarget ON permits normal reassignment')
+assert_equal(decision.target_id, 902, 'canonical autotarget ON picks the alternate target')
+
 local scheduler_source = read_file('unified_scheduler.lua')
+assert_equal(scheduler_source:find(
+    "autotarget_enabled = require('uc_scheduler_context_utils').partner_autotarget_enabled(settings, config)",
+    1, true) ~= nil, true,
+    'partner arbitration must consume canonical autotarget without and/or false fallthrough')
+assert_equal(scheduler_source:find(
+    "and uc_scheduler_config.combat_autotarget_from_config(config) or uc_scheduler_config.combat_autotarget(settings)",
+    1, true), nil,
+    'stale flat autotarget must never override canonical false at arbitration')
 local policy_reader = "require('uc_scheduler_context_utils').partner_enabled(settings, config)"
 local _, reader_calls = scheduler_source:gsub(policy_reader:gsub('([^%w])', '%%%1'), '')
 assert_equal(reader_calls, 2, 'both partner target set and arbitration must share canonical authority')
