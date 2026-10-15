@@ -42,6 +42,18 @@ function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, 
 	if p1_number(plan.commit_deadline, 0) < ctx.now then
 		return false, 'commit_deadline'
 	end
+	-- Rank-time enablement can change before commit. Recheck the same
+	-- canonical-only required-setting contract at the action boundary;
+	-- neither transient flat values nor unknown settings may revive a plan.
+	local required_setting = tostring(selected.required_setting or '')
+	if required_setting ~= '' then
+		local enabled = require('uc_scheduler_config').required_setting_value_from_config(
+			ctx.config, required_setting
+		)
+		if enabled ~= true then
+			return false, 'settings_disabled'
+		end
+	end
 	if plan.smart_aoe_guard == true then
 		if type(combat_core) ~= 'table' or type(combat_core.revalidate_smart_ws_aoe) ~= 'function' then
 			error('Smart WS dispatch plan requires AoE commit revalidation')
