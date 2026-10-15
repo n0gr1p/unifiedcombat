@@ -1993,6 +1993,29 @@ local function maybe_marcato(config, ctx, song_name, nitro_active)
 	return nil
 end
 
+-- Disabling a durable BRD policy must retire planned JA/song transactions.
+-- Do not reset observed timers/owners/snapshots or an already-sent song's
+-- packet confirmation: those represent real game state, not policy authority.
+local function release_disabled_actuation()
+	state.force = nil
+	state.targeted_transaction = nil
+	state.targeted_completed = {}
+	state.targeted_skip_reasons = {}
+	state.targeted_blocker = ''
+	state.nitro_armed = false
+	state.nitro_was_active = false
+	state.nitro_phase = ''
+	state.nitro_phase_started_at = 0
+	state.marcato_reservation = ''
+	state.clarion_reserved = false
+	state.clarion_dispatched_at = 0
+	state.soul_voice_generation = nil
+	state.pianissimo_consumed_wait = false
+	party_song_state.suspend('policy_disabled')
+	state.last_transition = 'policy_disabled'
+	release_action_lane('disabled')
+end
+
 function M.propose(config, ctx)
 	ctx = type(ctx) == 'table' and ctx or {}
 	if state.suspended == true then
@@ -2022,7 +2045,7 @@ function M.propose(config, ctx)
 	end
 	if config.enabled ~= true then
 		state.last_blocker = 'disabled'
-		release_action_lane('disabled')
+		release_disabled_actuation()
 		return nil
 	end
 	local signature = config_signature(config, player)
