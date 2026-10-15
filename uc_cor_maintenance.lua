@@ -357,6 +357,15 @@ function mod.resolve_pending_light_shot_target()
 	if type(pending) ~= 'table' then
 		return nil
 	end
+	-- A selected target/generation is not permission to issue a future shot.
+	-- Recheck the current durable COR setting at command ownership, not a
+	-- flat projection or the cached proposal. Leave observed Dia and handled
+	-- generations untouched; only the obsolete proposal is retired.
+	local config = require('uc_active_config').get_config()
+	if type(config) == 'table' and not cor_light_shot_dia(cor_config(config)) then
+		state.pending_light_shot = nil
+		return nil
+	end
 	local target = windower.ffxi.get_mob_by_target('t')
 	local tid = tonumber(target and target.id) or 0
 	if not target or target.valid_target == false or tonumber(target.spawn_type) ~= 16
