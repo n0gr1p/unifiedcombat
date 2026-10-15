@@ -58,6 +58,17 @@ function M.face_turn_allowed(settings, config, turn_away, force_face)
     )
 end
 
+-- Canonical autotarget=false must not permit a stale flat autotarget=true
+-- to select a new target during partner arbitration. Disengagement from an
+-- already-contested target remains the arbitration module's safety decision.
+function M.partner_autotarget_enabled(settings, config)
+    local scheduler_config = require('uc_scheduler_config')
+    if type(config) == 'table' then
+        return scheduler_config.combat_autotarget_from_config(config) == true
+    end
+    return scheduler_config.combat_autotarget(settings) == true
+end
+
 function M.partner_enabled(settings, config)
     if type(config) == 'table' then
         local partner = require('uc_follow_config').partner(config)
