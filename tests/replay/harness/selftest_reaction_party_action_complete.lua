@@ -43,6 +43,7 @@ _G.windower = {
     },
 }
 
+local rule_enabled = true
 local rule = {
     trigger = 'party_action_complete',
     source_name = 'Etamame',
@@ -70,7 +71,7 @@ local ja_rule = {
 package.loaded.uc_combat_extension_config = nil
 package.preload.uc_combat_extension_config = function()
     return {
-        reaction_rules = function() return { rule, ja_rule } end,
+        reaction_rules = function() return rule_enabled and { rule, ja_rule } or {} end,
         validate_action_rule = function(candidate)
             local valid = candidate == rule or candidate == ja_rule
             return valid, valid and nil or 'unexpected rule'
@@ -164,5 +165,45 @@ enemy_valid = true
 local reused_enemy = reactions.on_action({ actor_id = 200, category = 4, param = 501 }, 900, 3.0, false)
 assert_true(type(reused_enemy.activated) == 'table',
     'new enemy instance reusing actor id must be eligible after invalidation cleanup')
+
+-- A disabled rule must release a still-pending one-shot sequence and its
+-- pending reservation. A dispatched/consumed instance must retain history
+-- even when its sequence is later cancelled by a profile edit.
+assert_equal(reactions.status().once_per_instance.pending_count, 1,
+    'new enemy instance starts with one pending one-shot sequence')
+rule_enabled = false
+local policy_released = reactions.prune_invalid_ability_windows(function() return true end)
+assert_equal(policy_released.key, reused_enemy.activated.key, 'disabled party rule releases lock')
+assert_true(reactions.get_action_lock() == nil, 'disabled party rule frees action lane')
+assert_equal(reactions.status().once_per_instance.pending_count, 0,
+    'disabled rule frees orphaned pending once-per-instance reservation')
+assert_equal(reactions.status().once_per_instance.consumed_count, 0,
+    'pending cancellation does not fabricate consumed one-shot history')
+rule_enabled = true
+
+local resumed = reactions.on_action({ actor_id = 200, category = 4, param = 501 }, 900, 4.0, false)
+assert_true(type(resumed.activated) == 'table', 're-enabled rule can re-arm before first dispatch')
+local marked_after_rearm = reactions.note_sequence_action_dispatched(
+    resumed.activated.key, 'ja', 'Astral Flow', 'self', 100, 100, 4.1
+)
+assert_true(marked_after_rearm, 're-armed sequence dispatches')
+assert_equal(reactions.status().once_per_instance.consumed_count, 1,
+    'dispatched step consumes the enemy instance')
+local next_step = reactions.on_action({ actor_id = 100, category = 6, param = 701 }, 900, 4.2, false)
+assert_equal(next_step.activated.action_name, 'Astral Conduit',
+    'packet completion advances to pending second step')
+rule.source_name = 'Redrogue'
+local source_released = reactions.prune_invalid_ability_windows(function() return true end)
+assert_equal(source_released.key, resumed.activated.key,
+    'party source edit releases stale sequence immediately')
+assert_true(reactions.get_action_lock() == nil, 'party source edit frees action lane')
+assert_equal(reactions.status().once_per_instance.pending_count, 0,
+    'party source edit cannot leave orphaned pending reservation')
+assert_equal(reactions.status().once_per_instance.consumed_count, 1,
+    'already consumed one-shot instance survives profile edit')
+rule.source_name = 'Etamame'
+local again = reactions.on_action({ actor_id = 200, category = 4, param = 501 }, 900, 4.3, false)
+assert_true(again.once_per_instance_suppressed == true,
+    'profile edit must not let consumed enemy trigger a second one-shot sequence')
 
 print('selftest_reaction_party_action_complete: OK')
