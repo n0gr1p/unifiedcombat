@@ -150,24 +150,24 @@ do
     local proposed = live.propose(active_config)
     assert_equal(proposed.action_name, 'Light Shot',
         'observed Dia must produce configured COR Light Shot proposal')
-    assert_equal(live.resolve_pending_light_shot_target().id, mob.id,
+    assert_equal(live.resolve_pending_light_shot_target(active_config).id, mob.id,
         'current valid Dia generation authorizes staged target')
 
     rawset(_G, 'UC_SETTINGS', { cor_light_shot_dia = true })
     active_config.maintenance.cor.light_shot_dia = false
-    assert_equal(live.resolve_pending_light_shot_target(), nil,
+    assert_equal(live.resolve_pending_light_shot_target(active_config), nil,
         'canonical COR OFF rejects stale flat ON at command ownership')
     active_config.maintenance.cor.light_shot_dia = true
-    assert_equal(live.resolve_pending_light_shot_target(), nil,
+    assert_equal(live.resolve_pending_light_shot_target(active_config), nil,
         'disabled policy retires the old cached target/generation')
     proposed = live.propose(active_config)
     assert_equal(proposed.action_name, 'Light Shot',
         'observed Dia remains available after policy-only cancellation')
     rawset(_G, 'UC_SETTINGS', { cor_light_shot_dia = false })
-    assert_equal(live.resolve_pending_light_shot_target().id, mob.id,
+    assert_equal(live.resolve_pending_light_shot_target(active_config).id, mob.id,
         'canonical COR ON defeats stale flat OFF at dispatch')
     active_config = nil
-    assert_equal(live.resolve_pending_light_shot_target().id, mob.id,
+    assert_equal(live.resolve_pending_light_shot_target(active_config).id, mob.id,
         'genuine no-profile compatibility retains pre-profile target resolution')
     string.unpack = old_string_unpack
     windower = old_windower
