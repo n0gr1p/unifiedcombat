@@ -223,8 +223,13 @@ function M.can_attempt(state, retry_key, now)
 	return true, '', 0
 end
 
-function M.begin(state, command, now)
+function M.begin(state, command, now, owner_provider)
 	state = require_table(state, 'pet command coordinator state')
+	if owner_provider ~= nil
+		and owner_provider ~= 'pet_combat'
+		and owner_provider ~= 'maintenance_summoner' then
+		error('pet command owner provider must be pet_combat or maintenance_summoner')
+	end
 	pet_commands.validate(command)
 	now = require_now(now)
 	if type(state.pending) == 'table' then
@@ -238,6 +243,7 @@ function M.begin(state, command, now)
 		error('cannot begin pet command: ' .. reason)
 	end
 	local pending = copy_command(command)
+	pending.owner_provider = owner_provider
 	pending.dispatched_at = now
 	pending.deadline = now + (
 		pending.kind == 'rage' and pending.astral_conduit == true
@@ -277,6 +283,40 @@ function M.begin(state, command, now)
 		at = now,
 	}
 	return pending
+end
+
+-- A durable domain toggle retires only that domain's in-flight pet
+-- reservation. Do not reset recast/retry history or pet packet observations.
+-- Reaction-owned pet steps are forced safety work; their own reaction policy
+-- controls their lifecycle, not a routine combat/maintenance toggle.
+function M.cancel_disabled_owner(state, combat_enabled, maintenance_enabled, now)
+	state = require_table(state, 'pet command coordinator state')
+	local pending = state.pending
+	if type(pending) ~= 'table'
+		or (type(pending.reaction_key) == 'string' and pending.reaction_key ~= '') then
+		return nil
+	end
+	local owner = tostring(pending.owner_provider or '')
+	local disabled = (owner == 'pet_combat' and combat_enabled == false)
+		or (owner == 'maintenance_summoner' and maintenance_enabled == false)
+	if not disabled then return nil end
+	now = require_now(now)
+	local event = {
+		outcome = 'cancelled',
+		reason = 'owner_domain_disabled',
+		kind = pending.kind,
+		action_name = pending.action_name,
+		retry_key = pending.retry_key,
+		pet_id = pending.pet_id,
+		target_id = pending.target_id,
+		combat_generation = pending.combat_generation,
+		owner_provider = owner,
+		at = now,
+		retry_delay = 0,
+	}
+	state.pending = nil
+	state.last_event = event
+	return event
 end
 
 function M.complete(state, now, reason)
