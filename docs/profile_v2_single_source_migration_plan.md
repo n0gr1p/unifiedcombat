@@ -797,6 +797,14 @@ Exit criteria:
 - Implementation/test head `6c3ad0acee13698af61d6e8604116601f47e6efb`. Verification workflow `38758495384` full Lua sequence PASS; WinForms validation pending at ledger update.
 - Next Phase 6 work: audit callbacks that execute *new* commands from packet/confirmation state after initial action selection, ensuring they revalidate durable policy while retaining transient action confirmation, completion logging, and forced defensive mechanics. Do not globally retire `get_settings()` because it still carries session state.
 
+### 2026-10-15 — Phase 6 packet-completed reaction sequence follow-up authorization
+
+- Audited action/message and packet handlers in `unified_scheduler.lua`, reaction sequence extensions (`uc_reaction_sequence_runtime.lua`, `uc_reaction_party_sequence_runtime.lua`), and `uc_scheduler_command_ownership.lua`. Ordinary spell/pet/JA action confirmations update pending and cooldown state; forced reaction turns remain safety actions. The reaction sequence runtimes, however, retain copied steps and advance on packet completion, and `get_action_lock()` may expose those cached follow-ups after a rule has been disabled, removed, or edited.
+- Added a narrow final authorization gate in `uc_scheduler_dispatch_plan.p1_revalidate_plan_commit` for `family_id = 'combat.reaction.sequence'` proposals (both action and pet sequences). It matches the live reaction lock's key/step/action to the proposal, and validates the originating rule index, trigger/response/name, party trigger identity when applicable, and every captured step against current `ctx.config.reactions`. Disabling/removing/editing a rule now rejects a stale follow-up command with `reaction_policy_changed` before dispatch. Genuine no-config callers use the existing reaction-rules compatibility reader. Unrelated proposals are unaffected.
+- Extended the CI-wired `selftest_dispatch_plan_fixtures.lua` with an in-flight completed-step scenario: matching canonical rule passes; canonical disable/remove/edit, obsolete step index and released lock reject; party-action source changes reject; unrelated families continue normally. Stale flat `reaction_enabled=true` is deliberately opposed to canonical disabled state.
+- Implementation/test commit `353f1193c4d51426e93f518273e963df3ac3c6df` passed full Lua verification in workflow `38774567624`; WinForms was running when recorded.
+- This slice prevents follow-up **execution** but does not proactively prune/release stale sequence locks when a policy is edited mid-window. A further Phase 6 slice should audit reaction-lock lifecycle/pruning to avoid stale holds on movement or ordinary actions, while preserving explicitly forced safety reactions and once-per-instance bookkeeping.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
