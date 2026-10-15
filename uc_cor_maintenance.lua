@@ -352,7 +352,7 @@ local function observe_action_for_dia(act, me_id)
 	end
 end
 
-function mod.resolve_pending_light_shot_target()
+function mod.resolve_pending_light_shot_target(config)
 	local pending = state.pending_light_shot
 	if type(pending) ~= 'table' then
 		return nil
@@ -361,7 +361,6 @@ function mod.resolve_pending_light_shot_target()
 	-- Recheck the current durable COR setting at command ownership, not a
 	-- flat projection or the cached proposal. Leave observed Dia and handled
 	-- generations untouched; only the obsolete proposal is retired.
-	local config = require('uc_active_config').get_config()
 	if type(config) == 'table' and not cor_light_shot_dia(cor_config(config)) then
 		state.pending_light_shot = nil
 		return nil
