@@ -2170,6 +2170,48 @@ assert_true(brd.diagnostic_log_status() == false, 'clearing the local Bard diagn
 os.remove(auto_log_path)
 _G.UC_BRD_DIAGNOSTIC_LOG = old_auto_brd_log
 
+-- Durable disable must release the deferred JA/song transaction but preserve
+-- real packet-confirmation evidence, observed owners and song timer snapshots.
+brd.reset('disabled_policy_authority_test')
+local bstate = brd._test.state
+local observed_owner = { status_id = 100, endtime = 12345, recipients = { 77 } }
+local observed_snapshot = { { id = 77, name = 'Redrogue', status_id = 100 } }
+local packet_pending = { name = 'Honor March', phase = 'awaiting_snapshot', dispatched_at = 43 }
+bstate.owners['Honor March'] = observed_owner
+bstate.snapshot = observed_snapshot
+bstate.pending = packet_pending
+bstate.force = { songs = { 'Honor March' } }
+bstate.targeted_transaction = {
+    song_name = 'Victory March', recipient_id = 77, phase = 'awaiting_song',
+}
+bstate.marcato_reservation = 'Victory March'
+bstate.nitro_armed = true
+bstate.clarion_reserved = true
+bstate.action_lane_reserved = true
+local disabled_config = {}
+for key, value in pairs(config) do disabled_config[key] = value end
+disabled_config.enabled = false
+assert_equal(brd.propose(disabled_config, {
+    now = 44, player = player, action_ready = ready,
+}), nil, 'disabled BRD policy cannot propose stale targeted transaction')
+assert_equal(bstate.action_lane_reserved, false,
+    'disabled BRD policy releases cached action lane')
+assert_equal(bstate.targeted_transaction, nil,
+    'disabled BRD policy discards cached targeted song transaction')
+assert_equal(bstate.force, nil, 'disabled BRD policy cancels pending force generation')
+assert_equal(bstate.marcato_reservation, '',
+    'disabled BRD policy clears deferred Marcato reservation')
+assert_equal(bstate.nitro_armed, false,
+    'disabled BRD policy clears deferred Nitro generation')
+assert_equal(bstate.clarion_reserved, false,
+    'disabled BRD policy clears deferred Clarion reservation')
+assert_true(bstate.pending == packet_pending,
+    'previously sent song retains in-flight packet confirmation ownership')
+assert_true(bstate.owners['Honor March'] == observed_owner,
+    'observed song ownership survives durable policy disable')
+assert_true(bstate.snapshot == observed_snapshot,
+    'observed song timers survive durable policy disable')
+
 package.loaded.uc_brd_maintenance = old_module
 package.loaded.resources = old_resources
 windower = old_windower
