@@ -4914,7 +4914,7 @@ local function p1_apply_pet_command_event(event)
 	end
 	if event.outcome == 'complete' then
 		scheduler.p1_pending_mark_complete(event.at, 'pet_' .. tostring(event.reason))
-	elseif event.outcome == 'failed' then
+	elseif event.outcome == 'failed' or event.outcome == 'cancelled' then
 		scheduler.p1_pending_mark_failed(
 			event.at,
 			'pet_' .. tostring(event.reason),
@@ -4938,6 +4938,13 @@ local function p1_prepare_pet_context(ctx)
 		error('pet runtime requires scheduler context')
 	end
 	ctx.combat_domain_enabled = domain_ownership.is_enabled('combat')
+	local canceled = pet_command_coordinator.cancel_disabled_owner(
+		scheduler.pet_command_state,
+		ctx.combat_domain_enabled,
+		domain_ownership.is_enabled('maintenance'),
+		ctx.now
+	)
+	p1_apply_pet_command_event(canceled)
 	scheduler.providers.pet_combat.observe_target(ctx)
 	local scheduler_pending_action = scheduler.phase1.pending
 	if type(scheduler_pending_action) == 'table'
@@ -7304,7 +7311,7 @@ local function p1_dispatch_pet_command(selected, settings)
 	if type(result) ~= 'table' or result.ok ~= true or result.executed ~= true then
 		return false, nil
 	end
-	pet_command_coordinator.begin(scheduler.pet_command_state, command_spec, ctx.now)
+	pet_command_coordinator.begin(scheduler.pet_command_state, command_spec, ctx.now, provider_name)
 	local dispatch_ctx = { now = ctx.now, tick = p1_number(scheduler.phase1.tick, 0) }
 	scheduler.record_dispatch(dispatch_ctx)
 	scheduler.p1_set_pending_globals()
