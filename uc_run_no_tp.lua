@@ -34,7 +34,7 @@ function M.enabled(settings, player, config)
 	elseif not truthy(scheduler_config.tank_enabled(settings)) then
 		return false
 	end
-	local cfg = run_config.active(settings)
+	local cfg = run_config.active(settings, config)
 	return cfg.enabled == true and cfg.no_tp_mode == true
 end
 
