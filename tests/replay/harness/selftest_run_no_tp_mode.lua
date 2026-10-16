@@ -11,6 +11,9 @@ end
 
 package.loaded.uc_scheduler_config = {
     tank_enabled = function(settings) return settings and settings.tank end,
+    tank_enabled_from_config = function(config)
+        return type(config) == 'table' and type(config.tank) == 'table' and config.tank.enabled == true
+    end,
 }
 
 local no_tp = require('uc_run_no_tp')
@@ -45,6 +48,23 @@ settings.tank_run.no_tp_mode = false
 assert_false(no_tp.enabled(settings, player), 'no-TP option defaults/acts off')
 settings.tank_run.no_tp_mode = true
 assert_equal(no_tp.target_id(settings, player, { id = 99, valid_target = true, spawn_type = 16, hpp = 0 }), 0, 'dead target must not own facing')
+
+-- Canonical RUN no-TP follows the supplied Profile V2 snapshot, not the
+-- previous flat mirror. Preserve no-config compatibility separately.
+local run_on = { tank = { enabled = true, run = { enabled = true, no_tp_mode = true } } }
+local run_off = { tank = { enabled = true, run = { enabled = false, no_tp_mode = false } } }
+settings.tank_run.enabled = true
+settings.tank_run.no_tp_mode = true
+assert_false(no_tp.enabled(settings, player, run_off), 'canonical RUN OFF overrides stale flat ON')
+assert_equal(no_tp.target_id(settings, player, enemy, run_off), 0,
+    'canonical no-TP OFF must not return a facing target')
+settings.tank_run.enabled = false
+settings.tank_run.no_tp_mode = false
+assert_true(no_tp.enabled(settings, player, run_on), 'canonical RUN ON overrides stale flat OFF')
+assert_equal(no_tp.target_id(settings, player, enemy, run_on), 99,
+    'canonical no-TP ON must preserve target id')
+assert_false(no_tp.enabled(settings, player, { tank = { enabled = true } }),
+    'missing RUN subtree must fail closed rather than inherit flat settings')
 
 assert_true(predicates.ja_requires_engaged('Gambit', {}), 'Gambit requires engagement')
 assert_true(predicates.ja_requires_engaged('Rayke', {}), 'Rayke requires engagement')
