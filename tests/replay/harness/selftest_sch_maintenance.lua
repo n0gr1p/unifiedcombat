@@ -1291,6 +1291,47 @@ local function main()
 	assert_true(logs_contain(logs, 'blocker=party_snapshot_inconsistent'),
 		'inconsistent party snapshot blocker must be observable')
 
+	-- Active Immanence steps must obey today's canonical recipe, not the
+	-- cached recipe selected before an activity/profile edit.
+	local sc_runtime = require('uc_sch_skillchain_runtime')
+	local sc_rules = require('uc_sch_skillchain')
+	local sc_config = base_config()
+	sc_config.offense.skillchain.enabled = true
+	local sc_plan = sc_rules.plans(sc_config)[1]
+	assert_true(sc_plan ~= nil, 'SCH policy regression requires a legal recipe')
+	local function armed_sc()
+		local run = sc_runtime.new()
+		run.active = {
+			plan = sc_plan,
+			phase = 'ensure_dark_arts',
+			deadline = 1000,
+			target_id = 200,
+		}
+		return run
+	end
+	local function sc_input(cfg)
+		return { now = 300, config = cfg, engine_enabled = true,
+			maintenance_enabled = true, target = { id = 200, hpp = 100, valid_target = true },
+			player_buffs = {}, skillchain_snapshot = {} }
+	end
+	local stopped = armed_sc()
+	sc_config.offense.skillchain.enabled = false
+	stopped:update(sc_input(sc_config))
+	assert_equal(stopped.active, nil, 'canonical skillchain disable must release active reservation')
+	assert_equal(stopped.last_blocker, 'skillchain_disabled', 'disable must identify owner policy')
+	sc_config.offense.skillchain.enabled = true
+	local edited = armed_sc()
+	sc_config.offense.skillchain.plans = { { result = 'Distortion' } }
+	edited:update(sc_input(sc_config))
+	assert_equal(edited.active, nil, 'canonical recipe edit must release old Immanence sequence')
+	assert_equal(edited.last_blocker, 'skillchain_recipe_changed', 'recipe edit rejection reason')
+	local domain = armed_sc()
+	sc_config.offense.skillchain.plans = { { result = sc_plan.result } }
+	domain:update({ now = 300, config = sc_config, engine_enabled = true,
+		maintenance_enabled = false, target = { id = 200, hpp = 100, valid_target = true } })
+	assert_equal(domain.active, nil, 'maintenance domain disable must release Immanence reservation')
+	assert_equal(domain.last_blocker, 'engine_or_maintenance_disabled', 'domain owner release reason')
+
 	print('selftest_sch_maintenance: OK')
 end
 
