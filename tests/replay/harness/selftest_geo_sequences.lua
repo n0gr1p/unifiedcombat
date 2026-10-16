@@ -990,6 +990,41 @@ placement_provider.reset('GEO_ZONE_CHANGE')
 assert_true(not placement_provider.runtime_active(), 'zone reset must clear GEO sequence and arm state')
 assert_true(not placement_provider.status_snapshot().bolster_armed, 'zone reset must disarm Bolster')
 
+-- Profile V2 contract changes must retire unsent GEO reservations, not
+-- packet-confirmed pending observations or observed Luopan identity.
+local policy_config = base_config()
+policy_config.luopan.use_blaze_of_glory = true
+local policy_provider = new_provider({}, { active = false })
+local policy_ctx = context(policy_config)
+local policy_action = collect_one(policy_provider, policy_ctx)
+assert_equal(policy_action.action_name, 'Blaze of Glory', 'policy-edit setup must plan Blaze')
+policy_provider.note_dispatch(policy_action, 1.1)
+policy_ctx.now = 2.0
+policy_ctx.player.buffs = { geo_maintenance.BLAZE_OF_GLORY_BUFF_ID }
+local policy_step = collect_one(policy_provider, policy_ctx)
+assert_equal(policy_step.action_name, 'Geo-Frailty', 'Blaze confirmation must plan Geo')
+assert_true(policy_provider.lane_reserved(), 'confirmed Blaze must hold atomic lane')
+policy_config.luopan.use_blaze_of_glory = false
+local policy_valid, policy_reason = policy_provider.revalidate(policy_step, policy_ctx)
+assert_equal(policy_valid, false, 'stale Geo follow-up must fail after Blaze policy edit')
+assert_equal(policy_reason, 'geo_configuration_changed', 'stale Geo contract rejection reason')
+assert_equal(policy_provider.lane_reserved(), false, 'policy edit must retire obsolete atomic sequence')
+local policy_out = {}
+policy_provider.collect(policy_ctx, policy_out)
+assert_equal(policy_provider.lane_reserved(), false, 'disabled Blaze must not restore old atomic lane')
+
+local pending_config = base_config()
+pending_config.luopan.use_blaze_of_glory = true
+local pending_provider = new_provider({}, { active = false })
+local pending_ctx = context(pending_config)
+local pending_action = collect_one(pending_provider, pending_ctx)
+pending_provider.note_dispatch(pending_action, 1.1)
+pending_config.luopan.use_blaze_of_glory = false
+pending_ctx.now = 2.0
+pending_provider.collect(pending_ctx, {})
+assert_true(pending_provider.runtime_active(), 'contract edit must retain dispatched Blaze confirmation token')
+assert_equal(pending_provider.status_snapshot().sequence, nil, 'contract edit must cancel copied Blaze sequence')
+
 local scheduler_file = assert(io.open('unified_scheduler.lua', 'rb'))
 local scheduler_source = scheduler_file:read('*a')
 scheduler_file:close()
