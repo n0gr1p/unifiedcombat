@@ -843,6 +843,15 @@ Exit criteria:
 - Verification pending: do not mark CI-proven until Lua and WinForms checks finish. Live-game SCH/GEO profile-transition acceptance remains outstanding.
 - Next candidate: formation/target-owner cached reservations and scheduler lane reconciliation.
 
+### 2026-10-16 — Phase 6 formal exit assessment and RUN canonical-authority blocker
+
+- Agreed stopping rule: Phase 6 audits are **bounded to its five original durable configuration-authority exit criteria**. Do not prolong Phase 6 through general scheduler owner-state auditing or unproven hypothetical problems. The evidence matrix, classification and handoff are now tracked in `docs/profile_v2_phase6_exit_assessment.md`.
+- A concrete authority violation was found, not merely an audit opportunity: the RUN primary provider, RUN no-TP facing, and generic JA ownership filter consumed `uc_run_config.active(ctx.settings)` / legacy `settings.tank_run` preferentially over the live Profile V2 `config.tank.run`. Explicit canonical config is now passed by all three scheduler consumers, and a supplied-but-missing RUN subtree uses canonical defaults rather than flat compatibility. Genuine no-config callers retain their legacy behavior.
+- Added contradictory canonical/flat RUN tests to existing CI-wired `selftest_run_tank.lua` and `selftest_run_no_tp_mode.lua` (RUN on/off, generic ownership, missing subtree, no-TP facing).
+- Preliminary exit matrix: criterion 2 (durable UI writes) PASS; criterion 4 (normal runtime mixed-shape normalization) PASS by source/contract; criteria 1 and 3 PROVISIONAL pending new RUN regression/full CI; criterion 5 OPEN for explicit disposition of remaining allowlisted compatibility surfaces. Do not mark Phase 6 complete yet.
+- Exposed a bounded compatibility concern for acceptance: older slash commands for fight leader, add priority, and Sleep still write/list flat state despite canonical runtime ownership. Assess their public command contract and either canonicalize or retire them explicitly; do not mistake flat-only command feedback for a durable edit.
+- Next steps are **RUN CI verification**, a finite residual compatibility classification, and only confirmed source-of-truth repairs. Phase 7 follows once the five criteria are proven; PR #73 remains unmerged.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
