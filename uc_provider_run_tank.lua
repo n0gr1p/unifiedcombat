@@ -214,7 +214,7 @@ function M.new(deps)
             return
         end
         if not bool_setting(scheduler_config.tank_enabled_from_config(ctx.config)) then return end
-        local cfg = run_config.active(ctx.settings)
+        local cfg = run_config.active(ctx.settings, ctx.config)
         if cfg.enabled ~= true then
             publish('disabled', 'RUN_AUTOMATION_DISABLED', '', cfg.runes.desired, {})
             return
