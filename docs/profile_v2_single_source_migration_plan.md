@@ -834,6 +834,15 @@ Exit criteria:
 - Implementation/regression head `19145ff5ef01afd17be41c876495578a5b47293b`: workflow `38803305079` passed the full Lua sequence; WinForms was still running when this entry was authored. Prior implementation commit workflow `38803190085` completed both Lua and WinForms successfully.
 - Next Phase 6 slice: examine remaining provider-side sequence ownership and target-plan lifecycle (particularly SCH skillchain sequences, GEO maintenance and formation target changes), separating cached intent from real packet evidence rather than resetting unrelated cooldowns, target claims, or forced safety behavior.
 
+### 2026-10-16 — Phase 6 cached SCH/GEO sequence policy retirement (verification pending)
+
+- SCH Immanence skillchain sequence now checks live canonical SCH and skillchain enablement, maintenance ownership, and normalized configured recipes before advancing a cached sequence. Obsolete sequences release target bindings without rewriting combat packet observations.
+- GEO maintenance retires obsolete copied geo_create/entrust sequences on a canonical contract signature change, preserving pending sent actions and already-observed Geo/Indi identity.
+- GEO proposals capture their originating config contract signature and commit revalidation rejects a stale proposal after a policy edit.
+- Expanded CI-wired GEO sequence and SCH maintenance regressions for policy edits, atomic lane release and preserved pending evidence.
+- Verification pending: do not mark CI-proven until Lua and WinForms checks finish. Live-game SCH/GEO profile-transition acceptance remains outstanding.
+- Next candidate: formation/target-owner cached reservations and scheduler lane reconciliation.
+
 ### Phase 7 — Final cleanup and conformance
 
 Status: **NOT STARTED**
