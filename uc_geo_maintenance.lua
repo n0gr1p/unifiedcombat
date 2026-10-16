@@ -163,6 +163,7 @@ local function proposal(ctx, spec)
 			sequence_kind = tostring(spec.sequence_kind or ''),
 			sequence_step = tostring(spec.sequence_step or ''),
 			blaze_enhanced = spec.blaze_enhanced == true,
+			config_contract_signature = spec.config_contract_signature,
 		},
 		legacy_command = '',
 	}
@@ -532,6 +533,10 @@ function M.new(deps)
 	local function validate_config_cached(config)
 		local signature = config_contract_signature(config)
 		if signature ~= provider.state.config_contract_signature then
+			-- Retire copied sequence intent, never already-sent pending evidence.
+			if provider.state.config_contract_signature ~= '' then
+				provider.state.sequence = nil
+			end
 			provider.state.config_contract_signature = signature
 			provider.state.config_contracts, provider.state.config_validation_reason =
 				validate_config(config)
@@ -818,6 +823,7 @@ function M.new(deps)
 			sequence_kind = sequence and sequence.kind or '',
 			sequence_step = sequence and sequence.step or '',
 			blaze_enhanced = sequence and sequence.blaze_enhanced == true,
+			config_contract_signature = provider.state.config_contract_signature,
 		})
 		publish_status(kind .. '_proposed', spell_name)
 		return true
@@ -849,6 +855,7 @@ function M.new(deps)
 			expected_effect = effect,
 			sequence_kind = sequence and sequence.kind or '',
 			sequence_step = sequence and sequence.step or '',
+			config_contract_signature = provider.state.config_contract_signature,
 		})
 		publish_status('ja_proposed', action_name)
 		return true
@@ -1711,6 +1718,9 @@ function M.new(deps)
 		end
 		local detail = require_table(selected.detail, 'selected.detail')
 		local kind = tostring(detail.geo_kind or '')
+		if tostring(detail.config_contract_signature or '') ~= provider.state.config_contract_signature then
+			return false, 'geo_configuration_changed'
+		end
 		local sequence = provider.state.sequence
 		if pull_active()
 			and not (type(sequence) == 'table' and sequence.atomic == true)
