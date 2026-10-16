@@ -160,7 +160,14 @@ function M.normalize(value, flat_source)
     return out
 end
 
-function M.active(settings)
+-- The scheduler must supply its tick-stable Profile V2 config explicitly.
+-- Flat tank_run remains a compatibility source only for genuine no-config
+-- legacy callers, never a fallback from a supplied canonical snapshot.
+function M.active(settings, config)
+    if type(config) == 'table' then
+        local tank = type(config.tank) == 'table' and config.tank or nil
+        return M.normalize(type(tank) == 'table' and tank.run or nil)
+    end
     if type(settings) == 'table' and type(settings.tank_run) == 'table' then
         return M.normalize(settings.tank_run)
     end
