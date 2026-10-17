@@ -3,7 +3,7 @@
 Status: **Active working document**  
 Branch: `refactor/profile-v2-single-source`  
 Started: 2026-10-02  
-Last updated: 2026-10-04
+Last updated: 2026-10-16
 
 ## Purpose
 
@@ -530,7 +530,7 @@ Exit criteria:
 
 ### Phase 6 — Retire the durable flat projection
 
-Status: **IN PROGRESS — canonical startup, identity transition, apply/save/status, bridge, and UI wire paths no longer derive durable authority from flat settings; orphaned flat→canonical conversion and bounded runtime flat-read compatibility surfaces remain**
+Status: **COMPLETE — all five original exit criteria satisfied; residual compatibility bounded; Phase 7 acceptance remains**
 
 Goals:
 
@@ -542,11 +542,11 @@ Goals:
 
 Exit criteria:
 
-- [ ] no durable runtime behavior depends on `_G.UC_SETTINGS`;
-- [ ] no durable UI write mutates `_G.UC_SETTINGS` as source of truth;
-- [ ] canonical config is the only durable authority;
-- [ ] mixed flat/nested normalizer ambiguity is removed from normal runtime;
-- [ ] compatibility surfaces are documented and intentionally bounded.
+- [x] no durable runtime behavior depends on `_G.UC_SETTINGS`;
+- [x] no durable UI write mutates `_G.UC_SETTINGS` as source of truth;
+- [x] canonical config is the only durable authority;
+- [x] mixed flat/nested normalizer ambiguity is removed from normal runtime;
+- [x] compatibility surfaces are documented and intentionally bounded.
 
 ### 2026-10-07 — Phase 6 bridge post-edit projection retired
 
@@ -852,9 +852,17 @@ Exit criteria:
 - Exposed a bounded compatibility concern for acceptance: older slash commands for fight leader, add priority, and Sleep still write/list flat state despite canonical runtime ownership. Assess their public command contract and either canonicalize or retire them explicitly; do not mistake flat-only command feedback for a durable edit.
 - Next steps are **RUN CI verification**, a finite residual compatibility classification, and only confirmed source-of-truth repairs. Phase 7 follows once the five criteria are proven; PR #73 remains unmerged.
 
+### 2026-10-16 — Phase 6 closed under bounded five-criterion exit rule
+
+- All five original exit criteria passed. Full evidence matrix: `docs/profile_v2_phase6_exit_assessment.md`.
+- All **28** remaining allowlisted flat-reference source files have explicit dispositions in `docs/profile_v2_phase6_residual_flat_classification.md`; legacy, runtime/session, editor-local and metadata compatibility are not normal durable authority.
+- Confirmed RUN authority defects were corrected in automation, generic JA ownership and no-TP facing; canonical `config.tank.run` defeats contradictory flat `tank_run`. Public `//uc fight_leader`, `//uc add_priority`, and `//uc sleep` commands now edit the active canonical Profile V2 (explicit save/export remains required to persist).
+- The addon flat-surface allowlist fell **50 → 47** references. The implementation head `d009155f4cb6bde3d10066f937be8d8b4a80d40b` passed full Lua, WinForms, Profile V2 and Activity Profile verification in [workflow 38986661407](https://github.com/n0gr1p/UnifiedCombat/actions/runs/38986661407). Subsequent documentation-only exit commits do not change runtime behavior.
+- Do **not** resume open-ended Phase 6 provider/scheduler audits without a reproducible Profile V2 source-of-truth violation. PR #73 remains unmerged and is not certified playable until Phase 7 live tests pass.
+
 ### Phase 7 — Final cleanup and conformance
 
-Status: **NOT STARTED**
+Status: **IN PROGRESS — Phase 6 closed; final source cleanup, architecture documentation and live-game acceptance pending**
 
 Goals:
 
@@ -888,6 +896,8 @@ Exit criteria:
 - [ ] automated suites green;
 - [ ] targeted live acceptance completed;
 - [ ] architecture docs describe the final ownership model accurately.
+
+Phase 7 acceptance checklist: `docs/profile_v2_phase7_acceptance_plan.md`. Passing automated tests is not sufficient to declare PR #73 playable or merge-ready.
 
 ## Regression scenarios that must survive the migration
 
