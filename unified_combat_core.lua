@@ -293,8 +293,44 @@ local function list_has_name(list, name)
 	return false
 end
 
-local function movement_model_size_floor(settings)
-	local n = tonumber(settings and settings.spacing_model_size_floor)
+local DEFAULT_MOVEMENT_SPACING = {
+	enabled = false,
+	band_min = -0.9,
+	band_max = 0.4,
+	model_size_floor = DEFAULT_MOVEMENT_MODEL_SIZE_FLOOR,
+	use_prediction = true,
+	lookahead_s = 0.25,
+	repel_hold_ticks = 5,
+	overlap_deadband = 0.10,
+	repel_weight = 0.35,
+	band_deadband = 0.20,
+}
+
+local function movement_spacing_config(settings, config)
+	if type(config) == 'table' then
+		local canonical = require('uc_scheduler_config').movement_spacing_from_config(config)
+		if type(canonical) == 'table' then
+			return canonical
+		end
+		return DEFAULT_MOVEMENT_SPACING
+	end
+	settings = settings or {}
+	return {
+		enabled = setting_enabled(settings.spacing),
+		band_min = settings.spacing_band_min,
+		band_max = settings.spacing_band_max,
+		model_size_floor = settings.spacing_model_size_floor,
+		use_prediction = settings.spacing_use_prediction,
+		lookahead_s = settings.spacing_lookahead_s,
+		repel_hold_ticks = settings.spacing_repel_hold_ticks,
+		overlap_deadband = settings.spacing_overlap_deadband,
+		repel_weight = settings.spacing_repel_weight,
+		band_deadband = settings.spacing_band_deadband,
+	}
+end
+
+local function movement_model_size_floor(spacing)
+	local n = tonumber(spacing and spacing.model_size_floor)
 	if n == nil then
 		n = DEFAULT_MOVEMENT_MODEL_SIZE_FLOOR
 	end
@@ -471,9 +507,14 @@ local function ensure_log_dir()
 	return log_dir
 end
 
+local function core_debug_enabled()
+	-- The scheduler debug facade preserves no-profile legacy compatibility,
+	-- but an active Profile V2 profile always owns diagnostic visibility.
+	return require('uc_scheduler_config').debug_enabled()
+end
+
 local function debug_log_channel(channel, msg)
-	local s = get_settings()
-	if not setting_enabled(s and s.debug) then
+	if not core_debug_enabled() then
 		return
 	end
 	local line = tostring(msg or '')
@@ -542,16 +583,16 @@ local function movement_model_size_raw(mob)
 	return tonumber(mob and mob.model_size) or 0
 end
 
-local function movement_target_model_size(mob, settings)
+local function movement_target_model_size(mob, spacing)
 	local n = tonumber(mob and mob.model_size) or 0
-	local floor = movement_model_size_floor(settings or get_settings())
+	local floor = movement_model_size_floor(spacing)
 	if n < floor then
 		return floor
 	end
 	return n
 end
 
-local function target_real_distance_movement(mob, settings)
+local function target_real_distance_movement(mob, spacing)
 	if not mob then
 		return 999
 	end
@@ -559,7 +600,7 @@ local function target_real_distance_movement(mob, settings)
 	if not me or mob.distance == nil then
 		return 999
 	end
-	return mob.distance:sqrt() - movement_target_model_size(mob, settings) - movement_model_size_raw(me)
+	return mob.distance:sqrt() - movement_target_model_size(mob, spacing) - movement_model_size_raw(me)
 end
 
 local function mob_distance(a, b)
@@ -793,7 +834,7 @@ local function spacing_dist_xy(ax, ay, bx, by)
 	return math.sqrt((dx * dx) + (dy * dy))
 end
 
-local function spacing_collect_agents(me, settings)
+local function spacing_collect_agents(me)
 	local out = {}
 	local party = windower.ffxi.get_party() or {}
 	local keys = { 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }
@@ -859,8 +900,8 @@ local function spacing_predict_target(target, st, use_prediction, lookahead_s)
 	return px, py
 end
 
-local function spacing_compute_band(target, agents, min_real, max_real, settings)
-	local tmodel = movement_target_model_size(target, settings)
+local function spacing_compute_band(target, agents, min_real, max_real, spacing)
+	local tmodel = movement_target_model_size(target, spacing)
 	local sum_model = 0
 	local count = 0
 	for _, a in ipairs(agents) do
@@ -881,37 +922,37 @@ local function spacing_compute_band(target, agents, min_real, max_real, settings
 	return min_range, max_range, preferred, emergency_margin
 end
 
-local function spacing_compute_heading(settings, me, target, min_real, max_real)
+local function spacing_compute_heading(spacing, me, target, min_real, max_real)
 	local st = core.spacing or {}
 	st.tick = (tonumber(st.tick) or 0) + 1
 	core.spacing = st
-	local use_prediction = setting_enabled(settings.spacing_use_prediction)
-	local lookahead_s = tonumber(settings.spacing_lookahead_s) or 0.25
+	local use_prediction = setting_enabled(spacing.use_prediction)
+	local lookahead_s = tonumber(spacing.lookahead_s) or 0.25
 	if lookahead_s < 0 then
 		lookahead_s = 0
 	elseif lookahead_s > 1.5 then
 		lookahead_s = 1.5
 	end
 
-	local band_dead = tonumber(settings.spacing_band_deadband) or 0.20
+	local band_dead = tonumber(spacing.band_deadband) or 0.20
 	if band_dead < 0.05 then
 		band_dead = 0.05
 	elseif band_dead > 1.0 then
 		band_dead = 1.0
 	end
-	local repel_weight = tonumber(settings.spacing_repel_weight) or 0.35
+	local repel_weight = tonumber(spacing.repel_weight) or 0.35
 	if repel_weight < 0.05 then
 		repel_weight = 0.05
 	elseif repel_weight > 1.5 then
 		repel_weight = 1.5
 	end
-	local repel_deadband = tonumber(settings.spacing_overlap_deadband) or 0.10
+	local repel_deadband = tonumber(spacing.overlap_deadband) or 0.10
 	if repel_deadband < 0.05 then
 		repel_deadband = 0.05
 	elseif repel_deadband > 1.0 then
 		repel_deadband = 1.0
 	end
-	local hold_s = tonumber(settings.spacing_repel_hold_ticks) or 5
+	local hold_s = tonumber(spacing.repel_hold_ticks) or 5
 	hold_s = hold_s * 0.04
 	if hold_s < 0.08 then
 		hold_s = 0.08
@@ -919,13 +960,13 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 		hold_s = 0.35
 	end
 
-	local agents = spacing_collect_agents(me, settings)
+	local agents = spacing_collect_agents(me)
 	local local_id = tonumber(me and me.id) or 0
 	if local_id <= 0 or #agents == 0 then
 		return nil, 'HOLD_POSITION'
 	end
 	local tx, ty = spacing_predict_target(target, st, use_prediction, lookahead_s)
-	local min_range, max_range, preferred_radius = spacing_compute_band(target, agents, min_real, max_real, settings)
+	local min_range, max_range, preferred_radius = spacing_compute_band(target, agents, min_real, max_real, spacing)
 	local mode = 'HOLD_POSITION'
 	local dist_t = spacing_dist_xy(me.x, me.y, tx, ty)
 	local rvx, rvy = 0, 0
@@ -991,7 +1032,7 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 				tonumber(me and me.model_size) or 0,
 				me_model,
 				tonumber(target and target.model_size) or 0,
-				movement_target_model_size(target, settings)
+				movement_target_model_size(target, spacing)
 			)
 			return nil, 'HOLD_POSITION'
 		end
@@ -1016,7 +1057,7 @@ local function spacing_compute_heading(settings, me, target, min_real, max_real)
 	local me_model_raw = tonumber(me and me.model_size) or 0
 	local target_model_raw = tonumber(target and target.model_size) or 0
 	local me_model_eff = movement_model_size_raw(me)
-	local target_model_eff = movement_target_model_size(target, settings)
+	local target_model_eff = movement_target_model_size(target, spacing)
 	_G.UC_SPACING_DIAG = ('mode=%s aid=%d slot=- anchor=- forced=- dist_t=%.2f range=[%.2f,%.2f] pref=%.2f goal=%s,%s me_sz=%.2f->%.2f tgt_sz=%.2f->%.2f'):format(
 		tostring(mode or ''),
 		local_id,
@@ -1036,7 +1077,7 @@ end
 
 -- Real-time spacing-aware approach heading:
 -- attract toward target while repelling from nearby party members.
-local function uc_spacing_aware_approach_heading(settings, me, target)
+local function uc_spacing_aware_approach_heading(spacing, me, target)
 	if not me or not target or me.x == nil or me.y == nil or target.x == nil or target.y == nil then
 		return nil
 	end
@@ -1062,7 +1103,7 @@ local function uc_spacing_aware_approach_heading(settings, me, target)
 		if pid ~= 0 and pid ~= me.id then
 			local member = windower.ffxi.get_mob_by_id(pid)
 			if member and member.x ~= nil and member.y ~= nil then
-				local pdist = mob_real_distance_movement(me, member, settings)
+				local pdist = mob_real_distance_movement(me, member, spacing)
 				if pdist < repel_range then
 					local dx = me.x - member.x
 					local dy = me.y - member.y
@@ -1566,8 +1607,7 @@ end
 
 
 local function debug_tank(msg, force)
-	local s = get_settings()
-	if not setting_enabled(s and s.debug) then
+	if not core_debug_enabled() then
 		return
 	end
 	local line = tostring(msg or '')
@@ -2271,22 +2311,44 @@ local function run_heading_guarded(target, me, heading, tag, is_retreat_intent, 
 	return true
 end
 
-local function apply_movement(settings, target, executor)
+local function apply_movement(settings, target, executor, config)
 	set_preengage_approach_active(false)
 	_G.UC_PULLER_APPROACH_BLOCK_UNTIL = 0
 	-- Generic combat-close movement belongs to automatic melee engagement.
 	-- Auto Target may still maintain <t> for support/reaction actions while Auto Engage
 	-- is off, so do not let target ownership alone pull followers into melee range.
-	-- Explicit move mode remains an intentional override for callers that own movement.
-	local explicit_move = setting_enabled(settings.move)
-	local auto_engage = require('uc_combat_extension_config').auto_engage_enabled(settings)
-	if (not explicit_move) and ((not setting_enabled(settings.autotarget)) or (not auto_engage)) then
+	-- Explicit move/manual/static are movement-owned durable policy. Scheduler
+	-- callers provide one canonical tick config; flat reads remain only for
+	-- explicit legacy callers that omit config entirely.
+	local movement_controls
+	if type(config) == 'table' then
+		movement_controls = require('uc_movement_config').controls(config)
+	else
+		movement_controls = {
+			move = setting_enabled(settings.move),
+			manual = setting_enabled(settings.manual),
+			static = setting_enabled(settings.static),
+		}
+	end
+	local explicit_move = movement_controls.move == true
+	local scheduler_config = require('uc_scheduler_config')
+	local extension_config = require('uc_combat_extension_config')
+	local autotarget
+	local auto_engage
+	if type(config) == 'table' then
+		autotarget = scheduler_config.combat_autotarget_from_config(config)
+		auto_engage = extension_config.auto_engage_enabled_from_config(config)
+	else
+		autotarget = scheduler_config.combat_autotarget(settings)
+		auto_engage = extension_config.auto_engage_enabled(settings)
+	end
+	if (not explicit_move) and ((not setting_enabled(autotarget)) or (not auto_engage)) then
 		if core.last_run_active then
 			stop_run(executor)
 		end
 		return
 	end
-	if setting_enabled(settings.manual) or setting_enabled(settings.static) or not target then
+	if movement_controls.manual == true or movement_controls.static == true or not target then
 		if core.last_run_active then
 			stop_run(executor)
 		end
@@ -2299,7 +2361,16 @@ local function apply_movement(settings, target, executor)
 		_G.UC_MOVE_DIAG = 'move_skip_not_actionable_target'
 		return
 	end
-	local puller_allowed = puller_engage_allowed(settings, target)
+	local spacing = movement_spacing_config(settings, config)
+	local puller_settings = settings
+	if type(config) == 'table' then
+		puller_settings = {}
+		for key, value in pairs(settings or {}) do
+			puller_settings[key] = value
+		end
+		require('uc_follow_config').apply_runtime_view(puller_settings, config)
+	end
+	local puller_allowed = puller_engage_allowed(puller_settings, target)
 	if not puller_allowed then
 		-- Puller gate blocks combat-close movement: explicitly stop current run vector and
 		-- let party-follow own movement for a short window to avoid orphan/stuck trajectories.
@@ -2308,10 +2379,10 @@ local function apply_movement(settings, target, executor)
 		_G.UC_PULLER_APPROACH_BLOCK_UNTIL = uc_now_s() + 0.6
 		return
 	end
-	local dist = target_real_distance_movement(target, settings)
+	local dist = target_real_distance_movement(target, spacing)
 	-- Comfortable fight-distance band around target.
-	local max_range = tonumber(settings.spacing_band_max) or 0.4
-	local min_range = tonumber(settings.spacing_band_min) or -0.9
+	local max_range = tonumber(spacing.band_max) or 0.4
+	local min_range = tonumber(spacing.band_min) or -0.9
 	if min_range < -5 then
 		min_range = -5
 	elseif min_range > 2 then
@@ -2331,9 +2402,9 @@ local function apply_movement(settings, target, executor)
 	local g = ensure_move_guard_state()
 	movement_guard_sample(g, me, dist, uc_now_s())
 	-- Spacing is combat-only behavior; never apply it while out of combat/following.
-	local spacing_on = setting_enabled(settings.spacing) and p and (tonumber(p.status) or 0) == 1
+	local spacing_on = setting_enabled(spacing.enabled) and p and (tonumber(p.status) or 0) == 1
 	if spacing_on and me then
-		local heading, mode = spacing_compute_heading(settings, me, target, min_range, max_range)
+		local heading, mode = spacing_compute_heading(spacing, me, target, min_range, max_range)
 		if mode == 'HOLD_POSITION' then
 			if core.last_run_active then
 				stop_run(executor)
@@ -2385,7 +2456,7 @@ local function apply_movement(settings, target, executor)
 	if dist > max_range then
 		local moved = false
 		if spacing_on and me then
-			local heading = uc_spacing_aware_approach_heading(settings, me, target)
+			local heading = uc_spacing_aware_approach_heading(spacing, me, target)
 			if heading then
 				moved = run_heading_guarded(target, me, heading, 'close_spacing', false, executor)
 			end
@@ -3050,6 +3121,50 @@ local function chivalry_ws_reservation_reason(settings, player)
 	return 'CHIVALRY_READY'
 end
 
+local function scheduler_weaponskill_settings_view(settings, config)
+	local base = settings or get_settings() or {}
+	local view = {}
+	for key, value in pairs(base) do
+		view[key] = value
+	end
+	if type(config) ~= 'table' then
+		return view
+	end
+	local combat = type(config.combat) == 'table' and config.combat or nil
+	local weaponskill = type(combat) == 'table' and combat.weaponskill or nil
+	if type(weaponskill) ~= 'table' then
+		error('scheduler weaponskill config requires config.combat.weaponskill')
+	end
+	view.weaponskill_active = weaponskill.enabled == true
+	view.weaponskill = tostring(weaponskill.primary or '')
+	view.ws1 = view.weaponskill
+	view.ws_mode = tostring(weaponskill.mode or 'smart')
+	view.weaponskill_min_tp = weaponskill.minimum_tp
+	view.weaponskill_allow_aoe = weaponskill.allow_aoe ~= false
+	view.fast_skillchain = weaponskill.fast_skillchain == true
+	view.weaponskill_no_skillchain_targets = weaponskill.no_skillchain_targets or {}
+	view.skillchain_target = tostring(weaponskill.skillchain_target or 'auto')
+	view.wait_ignore_names = weaponskill.wait_ignore_names or {}
+	view.aftermath_enabled = weaponskill.aftermath_enabled == true
+	view.aftermath_ws = tostring(weaponskill.aftermath_ws or '')
+	view.spam = combat.spam == true
+	local abilities = type(config.abilities) == 'table' and config.abilities or nil
+	if type(abilities) == 'table' then
+		view.ability_active = abilities.enabled == true
+		view.ability_allow_unengaged = abilities.allow_unengaged == true
+		view.abilities = abilities.configured or {}
+		local legacy_slots = type(abilities.legacy_slots) == 'table' and abilities.legacy_slots or {}
+		for i = 1, 6 do
+			view['ability' .. tostring(i)] = legacy_slots[i]
+		end
+	end
+	local legacy = type(config.legacy) == 'table' and config.legacy or nil
+	if type(legacy) == 'table' and legacy.solo ~= nil then
+		view.solo = legacy.solo == true
+	end
+	return view
+end
+
 local function select_aftermath_maintenance_ws(settings, player)
 	if not setting_enabled(settings and settings.aftermath_enabled) then
 		return nil, nil
@@ -3313,13 +3428,15 @@ function core.assert_no_job_branch()
 	return true
 end
 
-function core.select_smart_ws_for_scheduler(settings, target_id)
-	local ws_name, ws_reason = select_smart_ws(settings or {}, target_id)
+function core.select_smart_ws_for_scheduler(settings, target_id, config)
+	local ws_settings = scheduler_weaponskill_settings_view(settings, config)
+	local ws_name, ws_reason = select_smart_ws(ws_settings, target_id)
 	return tostring(ws_name or ''), tostring(ws_reason or '')
 end
 
-function core.select_ws_plan_for_scheduler(settings, target_id)
-	local ws_name, ws_reason, skillchain_plan = select_smart_ws(settings or {}, target_id)
+function core.select_ws_plan_for_scheduler(settings, target_id, config)
+	local ws_settings = scheduler_weaponskill_settings_view(settings, config)
+	local ws_name, ws_reason, skillchain_plan = select_smart_ws(ws_settings, target_id)
 	if tostring(ws_name or '') == '' then
 		return nil, tostring(ws_reason or '')
 	end
@@ -3330,7 +3447,7 @@ function core.select_ws_plan_for_scheduler(settings, target_id)
 		or ws_reason == 'SC_WINDOW_HIGH_RISK'
 		or ws_reason == 'SC_NOT_READY'
 		or ws_reason == 'SC_DISPATCH_PENDING_RESULT' then
-		required_tp = require_weaponskill_minimum_tp(settings)
+		required_tp = require_weaponskill_minimum_tp(ws_settings)
 	elseif ws_reason == 'AM_READY' then
 		required_tp = 3000
 	elseif ws_reason == 'WS_MODE_PRIMARY_ONLY_READY' then
@@ -3343,36 +3460,39 @@ function core.select_ws_plan_for_scheduler(settings, target_id)
 		reason = tostring(ws_reason or ''),
 		skillchain_plan = skillchain_plan,
 		required_tp = required_tp,
-		smart_aoe_guard = get_ws_mode(settings) == 'smart'
-			and not setting_enabled(settings.spam)
-			and not setting_enabled(settings.solo),
+		smart_aoe_guard = get_ws_mode(ws_settings) == 'smart'
+			and not setting_enabled(ws_settings.spam)
+			and not setting_enabled(ws_settings.solo),
 	}, tostring(ws_reason or '')
 end
 
-function core.revalidate_no_skillchain_target(settings, target_id, ws_id_or_name)
+function core.revalidate_no_skillchain_target(settings, target_id, ws_id_or_name, config)
+	local ws_settings = scheduler_weaponskill_settings_view(settings, config)
 	local actor_context = local_skillchain_actor_context()
-	if no_skillchain_target_blocks_ws(settings or {}, target_id, ws_id_or_name, actor_context) then
+	if no_skillchain_target_blocks_ws(ws_settings, target_id, ws_id_or_name, actor_context) then
 		return false, 'NO_SKILLCHAIN_TARGET_HOLD'
 	end
 	return true, ''
 end
 
-function core.revalidate_smart_ws_aoe(settings, ws_id_or_name)
-	if not smart_ws_allowed(settings or {}, ws_id_or_name) then
+function core.revalidate_smart_ws_aoe(settings, ws_id_or_name, config)
+	local ws_settings = scheduler_weaponskill_settings_view(settings, config)
+	if not smart_ws_allowed(ws_settings, ws_id_or_name) then
 		return false, 'SMART_WS_AOE_BLOCKED'
 	end
 	return true, ''
 end
 
-function core.revalidate_skillchain_plan(plan, settings, expected_target_id, expected_ws_name, commit_stage)
+function core.revalidate_skillchain_plan(plan, settings, expected_target_id, expected_ws_name, commit_stage, config)
 	if type(plan) ~= 'table' then
 		return false, 'SC_INTENT_LOST'
 	end
-	local sc_allowed, sc_reason = core.revalidate_no_skillchain_target(settings, expected_target_id, plan.ws_id)
+	local ws_settings = scheduler_weaponskill_settings_view(settings, config)
+	local sc_allowed, sc_reason = core.revalidate_no_skillchain_target(ws_settings, expected_target_id, plan.ws_id)
 	if not sc_allowed then
 		return false, sc_reason
 	end
-	local aoe_allowed, aoe_reason = core.revalidate_smart_ws_aoe(settings, plan.ws_id)
+	local aoe_allowed, aoe_reason = core.revalidate_smart_ws_aoe(ws_settings, plan.ws_id)
 	if not aoe_allowed then
 		return false, aoe_reason
 	end
@@ -3396,7 +3516,7 @@ function core.revalidate_skillchain_plan(plan, settings, expected_target_id, exp
 	local reaction_lock = rawget(_G, 'UC_REACTION_LOCK')
 	local ok, reason = skillchain_runtime:revalidate_plan(plan, {
 		now = uc_time.now(),
-		engine_enabled = rawget(_G, 'Start_Engine') == true and setting_enabled(settings and settings.weaponskill_active),
+		engine_enabled = rawget(_G, 'Start_Engine') == true and setting_enabled(ws_settings.weaponskill_active),
 		current_target_id = current_target_id,
 		target_valid = target_valid and true or false,
 		ws_available = ws_name == tostring(plan.ws_name or '') and ws_is_currently_available(plan.ws_id),
@@ -3408,7 +3528,7 @@ function core.revalidate_skillchain_plan(plan, settings, expected_target_id, exp
 		range_valid = target_valid and target_distance(target) <= WS_DISPATCH_MAX_DISTANCE or false,
 		reaction_hold = type(reaction_lock) == 'table',
 		intent_valid = target_id == tonumber(plan.target_id) and ws_name == tostring(plan.ws_name or ''),
-		skillchain_target = settings and settings.skillchain_target or 'auto',
+		skillchain_target = ws_settings.skillchain_target or 'auto',
 		actor_context = actor_context,
 		effective_properties = effective_properties,
 		commit_stage = tostring(commit_stage or 'unspecified'),
@@ -3416,7 +3536,8 @@ function core.revalidate_skillchain_plan(plan, settings, expected_target_id, exp
 	return ok, reason
 end
 
-function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillchain_plan)
+function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillchain_plan, config)
+	local ws_settings = scheduler_weaponskill_settings_view(settings, config)
 	local ws = tostring(ws_name or '')
 	local tid = tonumber(target_id) or 0
 	if ws == '' or tid <= 0 then
@@ -3436,11 +3557,11 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillcha
 	if target_distance(target) > WS_DISPATCH_MAX_DISTANCE then
 		return false, 'WS_OUT_OF_RANGE'
 	end
-	local sc_allowed, sc_reason = core.revalidate_no_skillchain_target(settings or get_settings(), tid, ws)
+	local sc_allowed, sc_reason = core.revalidate_no_skillchain_target(ws_settings, tid, ws)
 	if not sc_allowed then
 		return false, sc_reason
 	end
-	local ok, why = ws_intent_gate(settings or get_settings(), ws, tid, skillchain_plan)
+	local ok, why = ws_intent_gate(ws_settings, ws, tid, skillchain_plan)
 	if not ok then
 		return false, tostring(why or 'WS_INTENT_BLOCK')
 	end
@@ -3449,7 +3570,7 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillcha
 		hooks.revalidate = function()
 			return core.revalidate_skillchain_plan(
 				skillchain_plan,
-				settings or get_settings(),
+				ws_settings,
 				tid,
 				ws,
 				'dispatch_commit'
@@ -3462,7 +3583,7 @@ function core.try_dispatch_ws_with_intent(ws_name, target_id, settings, skillcha
 			end
 			return true
 		end
-	elseif fast_skillchain_restart_enabled(settings or get_settings(), skillchain_runtime:get_state(tid)) then
+	elseif fast_skillchain_restart_enabled(ws_settings, skillchain_runtime:get_state(tid)) then
 		hooks.on_executed = function()
 			skillchain_runtime:clear_target(tid, 'fast_skillchain_restart')
 			return true
@@ -3520,22 +3641,45 @@ function core.reset_skillchain_state(reason)
 	ws_intent_clear_pending()
 end
 
-local function scheduler_settings_view(settings)
+local function scheduler_settings_view(settings, config)
 	local base = settings or get_settings() or {}
 	local view = {}
 	for key, value in pairs(base) do
 		view[key] = value
 	end
 	local scheduler_config = require('uc_scheduler_config')
-	view.autotarget = scheduler_config.combat_autotarget(base)
-	view.prime = scheduler_config.combat_prime(base)
-	view.tank = scheduler_config.tank_enabled(base)
-	view.tank_enmity_actions = scheduler_config.tank_enmity_actions(base)
+	if type(config) == 'table' then
+		view.autotarget = scheduler_config.combat_autotarget_from_config(config)
+		view.add_control = scheduler_config.targeting_add_control_from_config(config)
+		view.add_priority_names = scheduler_config.targeting_priority_names_from_config(config)
+		view.targets = view.add_priority_names
+		view.target_ignore_names = scheduler_config.targeting_ignore_names_from_config(config)
+	else
+		view.autotarget = scheduler_config.combat_autotarget(base)
+	end
+	if type(config) == 'table' then
+		view.prime = scheduler_config.combat_prime_from_config(config)
+	else
+		view.prime = scheduler_config.combat_prime(base)
+	end
+	if type(config) == 'table' then
+		view.tank = scheduler_config.tank_enabled_from_config(config)
+		view.tank_enmity_actions = scheduler_config.tank_enmity_actions_from_config(config)
+		view.tank_enmity_include_pets = scheduler_config.tank_enmity_include_pets_from_config(config)
+	else
+		view.tank = scheduler_config.tank_enabled(base)
+		view.tank_enmity_actions = scheduler_config.tank_enmity_actions(base)
+		view.tank_enmity_include_pets = scheduler_config.tank_enmity_include_pets(base)
+	end
+	if type(config) == 'table' then
+		require('uc_follow_config').apply_runtime_view(view, config)
+		require('uc_path_config').apply_runtime_view(view, config)
+	end
 	return view
 end
 
-function core.select_tank_enmity_for_scheduler(settings)
-	local s = scheduler_settings_view(settings)
+function core.select_tank_enmity_for_scheduler(settings, config)
+	local s = scheduler_settings_view(settings, config)
 	if not setting_enabled(s.tank) or not setting_enabled(s.autotarget) then
 		return nil
 	end
@@ -3589,8 +3733,8 @@ function core.select_tank_enmity_for_scheduler(settings)
 	return nil
 end
 
-function core.select_target_for_scheduler(settings)
-	local s = scheduler_settings_view(settings)
+function core.select_target_for_scheduler(settings, config)
+	local s = scheduler_settings_view(settings, config)
 	if not setting_enabled(s.autotarget) then
 		return nil
 	end
@@ -3619,7 +3763,7 @@ function core.select_target_for_scheduler(settings)
 	}
 end
 
-function core.revalidate_death_switch_for_scheduler(settings, target_id, incumbent_id)
+function core.revalidate_death_switch_for_scheduler(settings, target_id, incumbent_id, config)
 	local tid = tonumber(target_id) or 0
 	local expected_incumbent_id = tonumber(incumbent_id) or 0
 	if tid <= 0 or expected_incumbent_id <= 0 then
@@ -3646,7 +3790,7 @@ function core.revalidate_death_switch_for_scheduler(settings, target_id, incumbe
 	if not is_live_actionable_combat_target(destination, uc_now_s(), true) then
 		return false, 'death_switch_destination_invalid'
 	end
-	local selected = core.select_target_for_scheduler(settings)
+	local selected = core.select_target_for_scheduler(settings, config)
 	if type(selected) ~= 'table'
 		or selected.death_switch ~= true
 		or tonumber(selected.death_switch_incumbent_id) ~= expected_incumbent_id
@@ -3656,16 +3800,22 @@ function core.revalidate_death_switch_for_scheduler(settings, target_id, incumbe
 	return true, 'death_switch_valid'
 end
 
-function core.add_control_enabled_for_scheduler(settings)
-	return uc_add_control.enabled(scheduler_settings_view(settings))
+function core.add_control_enabled_for_scheduler(settings, config)
+	return uc_add_control.enabled(scheduler_settings_view(settings, config))
 end
 
-function core.puller_engage_allowed_for_scheduler(settings, target)
-	return puller_engage_allowed(settings or get_settings() or {}, target)
+function core.puller_engage_allowed_for_scheduler(settings, target, config)
+	local view = settings or get_settings() or {}
+	if type(config) == 'table' then
+		local copy = {}
+		for key, value in pairs(view) do copy[key] = value end
+		view = require('uc_follow_config').apply_runtime_view(copy, config)
+	end
+	return puller_engage_allowed(view, target)
 end
 
-function core.select_pull_for_scheduler(settings)
-	local s = settings or get_settings() or {}
+function core.select_pull_for_scheduler(settings, config)
+	local s = scheduler_settings_view(settings, config)
 	local player = windower.ffxi.get_player()
 	local target = get_current_target()
 	if not player or not target or not target.id then
@@ -3726,9 +3876,12 @@ function core.select_pull_for_scheduler(settings)
 	}
 end
 
-function core.dispatch_pull_for_scheduler(settings, target_id, executor)
+function core.dispatch_pull_for_scheduler(settings, target_id, executor, config)
 	require_pull_executor(executor)
-	local s = settings or get_settings() or {}
+	-- Dispatch must re-evaluate the same canonical pull policy used when the
+	-- scheduler selected the proposal. Session settings remain live input only
+	-- for transient fields; no-config legacy callers retain the old view.
+	local s = scheduler_settings_view(settings, config)
 	local player = windower.ffxi.get_player()
 	local target = windower.ffxi.get_mob_by_id(tonumber(target_id) or 0)
 	if not player or not target then
@@ -3741,14 +3894,14 @@ function core.dispatch_pull_for_scheduler(settings, target_id, executor)
 	return false, 'PULL_NOT_APPLICABLE'
 end
 
-function core.apply_movement_for_scheduler(settings, movement_executor)
+function core.apply_movement_for_scheduler(settings, movement_executor, config)
 	if type(movement_executor) ~= 'table' then
 		error('core.apply_movement_for_scheduler movement_executor must be a table')
 	end
 	local s = settings or get_settings() or {}
 	local current = get_current_target()
 	local before_run = (core.last_run_active == true)
-	apply_movement(s, current, movement_executor)
+	apply_movement(s, current, movement_executor, config)
 	local after_run = (core.last_run_active == true)
 	local preengage = (rawget(_G, 'UC_PREENGAGE_APPROACH_ACTIVE') == true)
 	-- Movement coordinator should only claim ownership when this tick produced

@@ -346,6 +346,10 @@ function M.new(deps)
     local action_effective_range = require_function(deps, 'action_effective_range')
     local api = {}
 
+    function api.auto_engage_enabled_from_config(config)
+        return extension_config().auto_engage_enabled_from_config(config)
+    end
+
     function api.auto_engage_enabled(settings)
         return extension_config().auto_engage_enabled(settings)
     end
@@ -382,7 +386,15 @@ function M.new(deps)
             end
         end
 
-        local burst = config.magic_burst(ctx.settings)
+        -- The scheduler's tick-stable Profile V2 config is the sole durable
+        -- burst policy. Only legacy callers without a config snapshot use
+        -- the compatibility reader.
+        local burst
+        if type(ctx.config) == 'table' then
+            burst = config.magic_burst_from_config(ctx.config)
+        else
+            burst = config.magic_burst(ctx.settings)
+        end
         if burst.enabled ~= true then
   return false
         end

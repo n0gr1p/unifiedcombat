@@ -1,5 +1,6 @@
 local policy = require('uc_camp_puller_policy')
 local pull_registry = require('uc_camp_pull_registry')
+local scheduler_config = require('uc_scheduler_config')
 
 local M = {}
 
@@ -303,10 +304,9 @@ function M.new(deps)
 	end
 
 	local function config_from_context(ctx)
-		local settings = require_table(ctx.settings, 'ctx.settings')
-		local config = settings.camp_pulling
+		local config = scheduler_config.combat_pulling_from_config(ctx.config)
 		if type(config) ~= 'table' then
-			error('normalized combat.pulling configuration is required')
+			error('normalized canonical combat.pulling configuration is required')
 		end
 		return config
 	end
@@ -463,7 +463,7 @@ function M.new(deps)
 			friendly_claims,
 			provider.state.cooldowns,
 			function(mob)
-				return ignored(ctx.settings, mob) or pull_registry.candidate_excluded(mob.id)
+				return ignored(ctx.config, mob) or pull_registry.candidate_excluded(mob.id)
 			end
 		)
 		if candidate == nil then
@@ -720,7 +720,7 @@ function M.new(deps)
 				anchor,
 				provider.state.cooldowns,
 				function(candidate)
-					return ignored(ctx.settings, candidate) or pull_registry.candidate_excluded(candidate.id)
+					return ignored(ctx.config, candidate) or pull_registry.candidate_excluded(candidate.id)
 				end,
 				mob
 			)

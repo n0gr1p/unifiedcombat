@@ -284,6 +284,34 @@ function Runtime:_advance(input)
 	end
 end
 
+-- An active Immanence sequence is cached intent, not an irrevocable command.
+-- Keep the packet-confirmed skillchain snapshot in the combat core, but do
+-- not continue a copied recipe after its current Profile V2 policy changes.
+local function active_recipe_authorized(config, active)
+	local sch = type(config) == 'table' and type(config.offense) == 'table'
+		and config.offense.skillchain or nil
+	if type(config) ~= 'table' or config.enabled ~= true then
+		return false, 'sch_disabled'
+	end
+	if type(sch) ~= 'table' or sch.enabled ~= true then
+		return false, 'skillchain_disabled'
+	end
+	local plans = skillchain.plans(config)
+	for i = 1, #plans do
+		local plan = plans[i]
+		local previous = active.plan
+		if plan.result == previous.result
+			and plan.opener == previous.opener
+			and plan.closer == previous.closer
+			and plan.opener_property == previous.opener_property
+			and plan.closer_property == previous.closer_property
+			and plan.requires_addendum_black == previous.requires_addendum_black then
+			return true, ''
+		end
+	end
+	return false, 'skillchain_recipe_changed'
+end
+
 function Runtime:update(input)
 	if type(input) ~= 'table' then
 		error('Scholar skillchain runtime update requires input')
@@ -291,6 +319,20 @@ function Runtime:update(input)
 	local now = tonumber(input.now)
 	if now == nil then
 		error('Scholar skillchain runtime update requires numeric now')
+	end
+	-- Check live durable policy before advancing any cached sequence step.
+	-- Domain disable also releases its reservation; observations remain in
+	-- the separately owned action/skillchain packet state.
+	if self.active ~= nil then
+		local authorized, reason = active_recipe_authorized(input.config, self.active)
+		if not authorized then
+			self:_abort(reason, now)
+			return false
+		end
+		if input.engine_enabled ~= true or input.maintenance_enabled ~= true then
+			self:_abort('engine_or_maintenance_disabled', now)
+			return false
+		end
 	end
 	self:_advance(input)
 	if self.active ~= nil then

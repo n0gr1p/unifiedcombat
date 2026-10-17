@@ -29,8 +29,8 @@ local function main()
 
     assert_true(result.ok, "context utils suite should fully pass")
     assert_equal(result.suite_id, "context_utils", "suite id mismatch")
-    assert_equal(result.total, 12, "fixture count mismatch")
-    assert_equal(result.passed, 12, "all fixtures should pass")
+    assert_equal(result.total, 14, "fixture count mismatch")
+    assert_equal(result.passed, 14, "all fixtures should pass")
     assert_equal(result.failed, 0, "no fixtures should fail")
 
     local zone_entry = find_entry(result.entries, "context_current_zone_id_reads_zone")

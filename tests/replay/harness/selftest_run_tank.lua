@@ -52,7 +52,12 @@ package.loaded.resources = {
     buffs = resources(buff_entries),
 }
 package.loaded.uc_scheduler_config = {
-    tank_enabled = function(settings) return settings and settings.tank end,
+    tank_enabled_from_config = function(config)
+        return type(config) == 'table' and type(config.tank) == 'table' and config.tank.enabled == true
+    end,
+    abilities_allow_unengaged_from_config = function(config)
+        return type(config) == 'table' and type(config.abilities) == 'table' and config.abilities.allow_unengaged == true
+    end,
 }
 package.loaded.uc_active_config = {
     get_path = function() return nil end,
@@ -107,6 +112,7 @@ local ward_bad_ok = pcall(function()
 end)
 assert_true(not ward_bad_ok, 'Vallation and Valiance cannot both be automated')
 
+local runtime_run_config = normalized
 local settings = {
     tank = true,
     ability_allow_unengaged = false,
@@ -136,6 +142,10 @@ local function collect()
     provider.collect({
         now = 10.0,
         settings = settings,
+        config = {
+            tank = { enabled = true, run = runtime_run_config },
+            abilities = { allow_unengaged = settings.ability_allow_unengaged == true },
+        },
         player = player,
         player_present = true,
         target = target,
@@ -201,5 +211,33 @@ ready.Gambit = false
 ready.Rayke = false
 out = collect()
 assert_equal(#out, 0, 'Liement should suppress Vallation restore while active')
+
+-- Phase 6 exit: canonical policy must defeat deliberately contradictory
+-- legacy tank_run settings, for both RUN automation and JA ownership.
+settings.tank_run = normalized
+runtime_run_config = { enabled = false }
+player.buffs = {}
+ready.Gambit = nil
+ready.Rayke = nil
+out = collect()
+assert_equal(#out, 0, 'canonical RUN OFF must beat flat RUN ON')
+local retained = ownership.filter_generic_abilities(settings, { 'Ignis', 'Rayke' },
+    { tank = { run = { enabled = false } } })
+assert_equal(table.concat(retained, '|'), 'Ignis|Rayke',
+    'canonical RUN disabled must not filter generic abilities using flat ON')
+settings.tank_run = { enabled = false }
+runtime_run_config = normalized
+out = collect()
+assert_equal(#out, 1, 'canonical RUN ON must beat flat RUN OFF')
+assert_equal(out[1].action_name, 'Ignis', 'RUN enabled from canonical config must maintain runes')
+local owned = ownership.filter_generic_abilities(settings, { 'Ignis', 'Rayke', 'Sentinel' },
+    { tank = { run = normalized } })
+assert_equal(table.concat(owned, '|'), 'Sentinel',
+    'canonical RUN ON must own configured abilities despite flat OFF')
+local missing_run = run_config.active({ tank_run = normalized }, { tank = {} })
+assert_equal(missing_run.enabled, false,
+    'a supplied canonical tank without RUN subtree must not revive stale flat RUN ON')
+local legacy = run_config.active({ tank_run = normalized })
+assert_true(legacy.enabled, 'explicit legacy no-config caller must remain compatible')
 
 print('RUN tank self-test: ok')

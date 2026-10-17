@@ -4,7 +4,7 @@ end
 
 --[[
   Non-blocking TCP client to Python hub. NDJSON over newline.
-  Expect _G.UC_SETTINGS, _G.UC_ENGINE, Start_Engine, windower.
+  Expects runtime engine/session globals plus Windower.
 ]]
 
 local socket = require('socket')
@@ -12,12 +12,6 @@ local uc_time = require('uc_time')
 local json = require('json')
 local res = require('resources')
 local uc_ws_memory = require('uc_ws_memory')
-local uc_ignore = require('uc_ignore')
-local uc_partner_list = require('uc_partner_list')
-local uc_target_ignore = require('uc_target_ignore')
-local uc_no_skillchain_targets = require('uc_no_skillchain_targets')
-local uc_add_priority = require('uc_add_priority')
-local uc_path_hunter = require('uc_path_hunter')
 local uc_config_runtime = require('uc_config_runtime')
 local uc_active_config = require('uc_active_config')
 local uc_camp_anchor = require('uc_camp_anchor')
@@ -203,7 +197,6 @@ local sock = nil
 local recv_buf = ''
 local last_connect_try = 0
 local last_state_send = 0
-local last_cfg_version = 0
 local session_id = nil
 local cached_ability_options = ''
 local last_ability_signature = ''
@@ -296,425 +289,6 @@ local function try_connect()
 	end
 end
 
-local function apply_set(path, value)
-	local s = _G.UC_SETTINGS
-	if not s or not path then
-		return
-	end
-	local parts = {}
-	for part in tostring(path):gmatch('[^.]+') do
-		parts[#parts + 1] = part
-	end
-	local t = s
-	for i = 1, #parts - 1 do
-		local k = parts[i]
-		if t[k] == nil then
-			t[k] = {}
-		end
-		t = t[k]
-	end
-	local key = parts[#parts]
-	local existing = t[key]
-	-- Keep numeric selector keys as numeric strings; generic bool coercion
-	-- would turn "1" into true and break tonumber parsing later.
-	if type(value) == 'string' and key ~= 'cor_crooked_roll_slot' then
-		local v = value:lower()
-		if v == 'true' or v == 'on' or v == '1' then
-			value = true
-		elseif v == 'false' or v == 'off' or v == '0' then
-			value = false
-		end
-	end
-	-- Keep bool settings as bool even if transport sent strings.
-	if type(existing) == 'boolean' and type(value) ~= 'boolean' then
-		value = not (value == nil or value == false or value == '' or value == 0)
-	end
-	if key == 'party_follow_min' or key == 'party_follow_max' then
-		local n = tonumber(tostring(value))
-		if not n then
-			_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_BAD_NUMBER:' .. key .. ':' .. tostring(value)
-			return
-		end
-		local cur_min = tonumber(s.party_follow_min) or 0.5
-		local cur_max = tonumber(s.party_follow_max) or 50
-		local next_min, next_max = cur_min, cur_max
-		if key == 'party_follow_min' then
-			if n < 0.01 then
-				n = 0.01
-			elseif n > 99 then
-				n = 99
-			end
-			next_min = n
-		else
-			if n < 0.1 then
-				n = 0.1
-			elseif n > 200 then
-				n = 200
-			end
-			next_max = n
-		end
-		if next_min >= next_max then
-			_G.UC_LAST_PARTY_FOLLOW_OP = ('PARTY_FOLLOW_MIN_NOT_LT_MAX:min=%.4g max=%.4g'):format(next_min, next_max)
-			return
-		end
-		if key == 'party_follow_min' then
-			s.party_follow_min = next_min
-		else
-			s.party_follow_max = next_max
-		end
-		_G.UC_LAST_PARTY_FOLLOW_OP = ''
-		last_state_send = 0
-		return
-	end
-	if key == 'fight_follow_min' then
-		local n = tonumber(tostring(value))
-		if not n then
-			_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_BAD_NUMBER:' .. key .. ':' .. tostring(value)
-			return
-		end
-		if n < 0.01 then
-			n = 0.01
-		elseif n > 99 then
-			n = 99
-		end
-		s.fight_follow_min = n
-		_G.UC_LAST_PARTY_FOLLOW_OP = ''
-		last_state_send = 0
-		return
-	end
-	if key == 'fight_follow_hold_s' then
-		local n = tonumber(tostring(value))
-		if not n then
-			_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_BAD_NUMBER:' .. key .. ':' .. tostring(value)
-			return
-		end
-		if n < 0 then
-			n = 0
-		elseif n > 60 then
-			n = 60
-		end
-		s.fight_follow_hold_s = n
-		_G.UC_LAST_PARTY_FOLLOW_OP = ''
-		last_state_send = 0
-		return
-	end
-	if key == 'spacing_band_min' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < -5 then
-			n = -5
-		elseif n > 2 then
-			n = 2
-		end
-		s.spacing_band_min = n
-		last_state_send = 0
-		return
-	end
-	if key == 'spacing_band_max' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < -1 then
-			n = -1
-		elseif n > 5 then
-			n = 5
-		end
-		s.spacing_band_max = n
-		last_state_send = 0
-		return
-	end
-	if key == 'spacing_model_size_floor' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 0 then
-			n = 0
-		elseif n > 3 then
-			n = 3
-		end
-		s.spacing_model_size_floor = n
-		last_state_send = 0
-		return
-	end
-	if key == 'spacing_lookahead_s' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 0 then
-			n = 0
-		elseif n > 1.5 then
-			n = 1.5
-		end
-		s.spacing_lookahead_s = n
-		last_state_send = 0
-		return
-	end
-	if key == 'spacing_repel_hold_ticks' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		n = math.floor(n + 0.5)
-		if n < 1 then
-			n = 1
-		elseif n > 9 then
-			n = 9
-		end
-		s.spacing_repel_hold_ticks = n
-		last_state_send = 0
-		return
-	end
-	if key == 'spacing_overlap_deadband' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 0.05 then
-			n = 0.05
-		elseif n > 1 then
-			n = 1
-		end
-		s.spacing_overlap_deadband = n
-		last_state_send = 0
-		return
-	end
-	if key == 'spacing_repel_weight' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 0.05 then
-			n = 0.05
-		elseif n > 1.5 then
-			n = 1.5
-		end
-		s.spacing_repel_weight = n
-		last_state_send = 0
-		return
-	end
-	if key == 'spacing_band_deadband' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 0.05 then
-			n = 0.05
-		elseif n > 1 then
-			n = 1
-		end
-		s.spacing_band_deadband = n
-		last_state_send = 0
-		return
-	end
-	if key == 'path_party_gate_yalms' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 0.5 then
-			n = 0.5
-		elseif n > 50 then
-			n = 50
-		end
-		s.path_party_gate_yalms = n
-		last_state_send = 0
-		return
-	end
-	if key == 'path_resume_index_window' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		n = math.floor(n + 0.5)
-		if n < 1 then
-			n = 1
-		elseif n > 200 then
-			n = 200
-		end
-		s.path_resume_index_window = n
-		last_state_send = 0
-		return
-	end
-	if key == 'path_hunter_max_z_delta' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 0 then
-			n = 0
-		elseif n > 20 then
-			n = 20
-		end
-		s.path_hunter_max_z_delta = n
-		last_state_send = 0
-		return
-	end
-	if key == 'path_hunter_max_target_range' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 1 then
-			n = 1
-		elseif n > 80 then
-			n = 80
-		end
-		s.path_hunter_max_target_range = n
-		last_state_send = 0
-		return
-	end
-	if key == 'path_hunter_claim_timeout_s' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 0.5 then
-			n = 0.5
-		elseif n > 30 then
-			n = 30
-		end
-		s.path_hunter_claim_timeout_s = n
-		last_state_send = 0
-		return
-	end
-	if key == 'path_hunter_ignore_cooldown_s' then
-		local n = tonumber(tostring(value))
-		if not n then
-			return
-		end
-		if n < 0 then
-			n = 0
-		elseif n > 120 then
-			n = 120
-		end
-		s.path_hunter_ignore_cooldown_s = n
-		last_state_send = 0
-		return
-	end
-	if key == 'path_pull_action_type' then
-		local v = tostring(value or ''):lower()
-		if v ~= 'ja' and v ~= 'spell' then
-			v = 'ja'
-		end
-		s.path_pull_action_type = v
-		if not uc_pull_action_name_valid(v, s.path_pull_action_name) then
-			s.path_pull_action_name = ''
-		end
-		last_state_send = 0
-		return
-	end
-	if key == 'path_pull_action_name' then
-		local v = uc_trim(value or '')
-		local at = tostring(s.path_pull_action_type or 'ja')
-		if uc_pull_action_name_valid(at, v) then
-			s.path_pull_action_name = v
-		else
-			s.path_pull_action_name = ''
-		end
-		last_state_send = 0
-		return
-	end
-	if key == 'cor_crooked_roll_slot' then
-		local n = tonumber(tostring(value))
-		if not n then
-			n = 0
-		end
-		n = math.floor(n + 0.5)
-		if n < 0 then
-			n = 0
-		elseif n > 2 then
-			n = 2
-		end
-		s.cor_crooked_roll_slot = n
-		last_state_send = 0
-		return
-	end
-	if key == 'def_heal_min_missing_hp' then
-		if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
-			local p = windower.ffxi.get_player() or {}
-			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_RECV key=def_heal_min_missing_hp raw=%s type=%s char=%s job=%s'):format(
-				tostring(value),
-				type(value),
-				tostring(p.name or '?'),
-				tostring(p.main_job or '?')
-			))
-		end
-		local n = tonumber(tostring(value))
-		if not n then
-			if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
-				pcall(_G.UC_LOG_DIAG, 'def_sched', 'DEF_CFG_REJECT key=def_heal_min_missing_hp reason=bad_number')
-			end
-			return
-		end
-		n = math.floor(n + 0.5)
-		if n < 0 then
-			n = 0
-		elseif n > 5000 then
-			n = 5000
-		end
-		if tonumber(s.def_heal_min_missing_hp) == n then
-			return
-		end
-		s.def_heal_min_missing_hp = n
-		if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
-			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_APPLY key=def_heal_min_missing_hp value=%d'):format(n))
-		end
-		last_state_send = 0
-		return
-	end
-	if key == 'def_remove_enemy_buffs' then
-		if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
-			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_RECV key=def_remove_enemy_buffs raw=%s type=%s'):format(
-				tostring(value),
-				type(value)
-			))
-		end
-		local b = value
-		if type(b) == 'string' then
-			local v = b:lower()
-			if v == 'true' or v == 'on' or v == '1' or v == 'yes' then
-				b = true
-			elseif v == 'false' or v == 'off' or v == '0' or v == 'no' then
-				b = false
-			else
-				b = nil
-			end
-		elseif type(b) == 'number' then
-			b = (b ~= 0)
-		end
-		if type(b) ~= 'boolean' then
-			if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
-				pcall(_G.UC_LOG_DIAG, 'def_sched',
-					'DEF_CFG_REJECT key=def_remove_enemy_buffs reason=bad_bool')
-			end
-			return
-		end
-		if s.def_remove_enemy_buffs == b then
-			return
-		end
-		s.def_remove_enemy_buffs = b
-		if rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
-			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_APPLY key=def_remove_enemy_buffs value=%s'):format(
-				tostring(b)
-			))
-		end
-		last_state_send = 0
-		return
-	end
-	if t[key] == value then
-		return
-	end
-	t[key] = value
-	if key == 'path_recording' or key == 'path_follow_enabled' or key == 'path_pull_attack_fallback_enabled' then
-		last_state_send = 0
-	end
-end
-
 local function uc_split_pipe(raw)
 	local out = {}
 	if not raw or raw == '' then
@@ -746,6 +320,23 @@ local function uc_unique_sorted(values)
 	end
 	table.sort(out)
 	return out
+end
+
+local function uc_apply_active_list_edit(method_name, path, ...)
+	local method = uc_active_config[method_name]
+	if type(method) ~= 'function' then
+		return false, 'ACTIVE_CONFIG_EDITOR_UNAVAILABLE'
+	end
+	local ok, reason = method(path, ...)
+	if ok ~= true then
+		return false, tostring(reason or 'ACTIVE_CONFIG_EDIT_FAILED')
+	end
+	-- Phase 6: canonical edits are authoritative immediately. Do not republish
+	-- durable policy into the legacy flat settings table; migrated runtime
+	-- consumers read the active Profile V2 config directly. The bridge still invalidates its state
+	-- snapshot so the UI observes the canonical edit promptly.
+	last_state_send = 0
+	return true, tostring(reason or '')
 end
 
 local function uc_targets_include_enemy(targets)
@@ -1128,7 +719,7 @@ local function process_line(line)
 			sub_job = p.sub_job,
 			engine = _G.UC_ENGINE,
 			profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS,
-			config_contract_status = uc_config_runtime.config_contract_status(_G.UC_SETTINGS),
+			config_contract_status = uc_config_runtime.config_contract_status(nil, nil, nil, _G.UC_CONFIG_CONTRACT_STATUS),
 			ability_options = uc_get_cached_ability_options(),
 			weaponskill_options = uc_join_pipe(uc_get_weaponskill_names()),
 			path_pull_ja_options = select(1, uc_get_cached_pull_action_options()),
@@ -1140,578 +731,464 @@ local function process_line(line)
 		}
 		safe_send_line(json_encode_simple(st))
 	end
-	if op == 'set' then
-		local cfg_ver = tonumber(uc_msg_get(msg, 'cfg_version')) or 0
-		if cfg_ver > 0 then
-			if cfg_ver <= last_cfg_version then
-				return
-			end
-			last_cfg_version = cfg_ver
-		end
-		local set_path = uc_msg_get(msg, 'path')
-		local set_value = uc_msg_get(msg, 'value')
-		local set_trace = uc_msg_get(msg, 'trace_id')
-		if set_path == 'def_remove_enemy_buffs' and rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
-			local raw_line = tostring(line or '')
-			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_SET_OP path=%s raw=%s type=%s trace=%s line=%s'):format(
-				tostring(set_path),
-				tostring(set_value),
-				type(set_value),
-				tostring(set_trace or ''),
-				raw_line
-			))
-		end
-		-- Fallback parse for malformed decoder tables where key lookup loses numeric fields.
-		if set_value == nil and type(line) == 'string' and set_path == 'def_heal_min_missing_hp' then
-			local parsed_num = tonumber(line:match('"value"%s*:%s*(-?%d+)'))
-			if parsed_num ~= nil then
-				set_value = parsed_num
-			end
-		end
-		-- Parse boolean directly from raw json when table decode loses "value".
-		if set_value == nil and type(line) == 'string' and set_path == 'def_remove_enemy_buffs' then
-			local parsed_bool = line:match('"value"%s*:%s*(true|false)')
-			if parsed_bool ~= nil then
-				set_value = (parsed_bool == 'true')
-			end
-		end
-		if set_path == 'def_heal_min_missing_hp' and rawget(_G, 'UC_LOG_DEF_SCHED') == true and type(rawget(_G, 'UC_LOG_DIAG')) == 'function' then
-			local raw_val = tostring(set_value)
-			local raw_type = type(set_value)
-			local raw_line = tostring(line or '')
-			pcall(_G.UC_LOG_DIAG, 'def_sched', ('DEF_CFG_SET_OP path=%s raw=%s type=%s line=%s'):format(
-				tostring(set_path),
-				raw_val,
-				raw_type,
-				raw_line
-			))
-		end
-		apply_set(set_path, set_value)
-	elseif op == 'set_partner' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local slot = tostring(msg.slot or '')
-			local name = tostring(msg.name or '')
-			if slot == 'puller' then
+	if op == 'set_partner' then
+		local slot = tostring(msg.slot or '')
+		local name = uc_trim(tostring(msg.name or ''))
+		if slot == 'puller' then
+			local ok, why = uc_apply_active_list_edit(
+				'replace_name',
+				'config.follow.partner.puller_name',
+				name
+			)
+			if ok then
 				local _, name_to_id = uc_get_party_name_maps(true)
-				local id = name_to_id[name] or 0
-				if name ~= '' and id == 0 then
+				if name ~= '' and (name_to_id[name] or 0) == 0 then
 					_G.UC_LAST_PARTNER_OP = 'PULLER_NAME_NOT_IN_PARTY:' .. name
+				else
+					_G.UC_LAST_PARTNER_OP = ''
 				end
-				s.puller_name = name
-				s.puller_id = id
 			else
-				_G.UC_LAST_PARTNER_OP = 'PARTNER_SET_LEGACY_IGNORED:' .. slot
+				_G.UC_LAST_PARTNER_OP = 'PULLER_SET_FAIL:' .. tostring(why)
 			end
+		else
+			_G.UC_LAST_PARTNER_OP = 'PARTNER_SET_LEGACY_IGNORED:' .. slot
 		end
 	elseif op == 'set_fight_leader' then
-		local s = _G.UC_SETTINGS
-		if s then
+		local name = uc_trim(tostring(msg.name or ''))
+		local ok, why = uc_apply_active_list_edit(
+			'replace_name',
+			'config.follow.fight.leader_name',
+			name
+		)
+		if ok then
 			local _, name_to_id = uc_get_party_name_maps()
-			local name = tostring(msg.name or '')
-			local id = name_to_id[name] or 0
-			if name ~= '' and id == 0 then
+			if name ~= '' and (name_to_id[name] or 0) == 0 then
 				_G.UC_LAST_FIGHT_LEADER_OP = 'FIGHT_LEADER_NAME_NOT_IN_PARTY:' .. name
 			else
 				_G.UC_LAST_FIGHT_LEADER_OP = ''
 			end
-			s.fight_leader_id = id
+		else
+			_G.UC_LAST_FIGHT_LEADER_OP = 'FIGHT_LEADER_SET_FAIL:' .. tostring(why)
 		end
 	elseif op == 'set_party_follow' then
-		local s = _G.UC_SETTINGS
-		if s then
+		local name = uc_trim(tostring(msg.name or ''))
+		local ok, why = uc_apply_active_list_edit(
+			'replace_name',
+			'config.follow.party.leader_name',
+			name
+		)
+		if ok then
 			local _, name_to_id = uc_get_party_name_maps()
-			local name = tostring(msg.name or '')
-			local id = name_to_id[name] or 0
-			if name ~= '' and id == 0 then
+			if name ~= '' and (name_to_id[name] or 0) == 0 then
 				_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_NAME_NOT_IN_PARTY:' .. name
 			else
 				_G.UC_LAST_PARTY_FOLLOW_OP = ''
 			end
-			s.party_follow_id = id
-			if id > 0 and name ~= '' then
-				s.party_follow_leader_name = name
-			else
-				s.party_follow_leader_name = ''
-			end
+		else
+			_G.UC_LAST_PARTY_FOLLOW_OP = 'PARTY_FOLLOW_SET_FAIL:' .. tostring(why)
 		end
-		last_state_send = 0
 	elseif op == 'partner_add' then
-		local s = _G.UC_SETTINGS
-		local name = uc_trim(msg.name)
-		if not s or name == '' then
+		local name = uc_trim(tostring(msg.name or ''))
+		if name == '' then
 			_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_NO_NAME'
 		else
-			local tid = uc_resolve_target_id_by_name(name)
-			if not tid then
-				_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_NAME_NOT_FOUND:' .. name
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.follow.partner.names',
+				name
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_ALREADY:' .. name
+			elseif ok then
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_OK:' .. name
 			else
-				local ok, why = uc_partner_list.append_id(s, tid)
-				if ok and why == 'PARTNER_ALREADY' then
-					_G.UC_LAST_PARTNER_OP = 'PARTNER_ALREADY:' .. name
-				elseif ok then
-					_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_OK:' .. name
-				else
-					_G.UC_LAST_PARTNER_OP = tostring(why or 'PARTNER_ADD_FAIL')
-				end
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'partner_add_current' then
-		local s = _G.UC_SETTINGS
-		if not s then
-			_G.UC_LAST_PARTNER_OP = 'PARTNER_NO_SETTINGS'
+		local tname, tid = uc_current_target_snapshot()
+		if tid == 0 or uc_trim(tostring(tname or '')) == '' then
+			_G.UC_LAST_PARTNER_OP = 'PARTNER_NO_TARGET'
 		else
-			local tname, tid = uc_current_target_snapshot()
-			if tid == 0 then
-				_G.UC_LAST_PARTNER_OP = 'PARTNER_NO_TARGET'
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.follow.partner.names',
+				tname
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_ALREADY:' .. tname
+			elseif ok then
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_OK:' .. tname
 			else
-				local ok, why = uc_partner_list.append_id(s, tid)
-				if ok and why == 'PARTNER_ALREADY' then
-					_G.UC_LAST_PARTNER_OP = 'PARTNER_ALREADY:' .. tname
-				elseif ok then
-					_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_OK:' .. tname
-				else
-					_G.UC_LAST_PARTNER_OP = tostring(why or 'PARTNER_ADD_FAIL')
-				end
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'partner_remove' then
-		local s = _G.UC_SETTINGS
+		local name = uc_trim(tostring(msg.name or ''))
 		local tid = uc_remote_message_mob_id(msg, 'mob_id', 'id')
-		if not s or not tid or tid == 0 then
+		if name == '' and tid and tid ~= 0 then
+			local _, _, id_to_name = uc_get_party_name_maps(true)
+			name = uc_trim(tostring(id_to_name[tid] or ''))
+		end
+		if name == '' then
 			_G.UC_LAST_PARTNER_OP = 'PARTNER_REMOVE_BAD_ID'
 		else
-			local ok, why = uc_partner_list.remove_id(s, tid)
+			local ok, why = uc_apply_active_list_edit(
+				'remove_string_list_value',
+				'config.follow.partner.names',
+				name
+			)
 			if ok then
-				_G.UC_LAST_PARTNER_OP = 'PARTNER_REMOVE_OK:' .. tostring(tid)
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_REMOVE_OK:' .. name
 			else
-				_G.UC_LAST_PARTNER_OP = tostring(why or 'PARTNER_REMOVE_FAIL')
+				_G.UC_LAST_PARTNER_OP = 'PARTNER_REMOVE_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'set_abilities' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			s.abilities = vals
-			for i = 1, 6 do
-				s['ability' .. tostring(i)] = vals[i] or ''
-			end
-		end
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.abilities.configured',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'tank_enmity_replace_actions' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			local out = {}
-			local seen = {}
-			for _, entry in ipairs(vals) do
-				local n = uc_trim(entry)
-				local k = n:lower()
-				if n ~= '' and not seen[k] then
-					seen[k] = true
-					out[#out + 1] = n
-				end
-			end
-			s.tank_enmity_actions = out
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.tank.enmity.actions',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'ignore_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			local out = {}
-			local seen_name = {}
-			s.ignore = {}
-			for _, name in ipairs(vals) do
-				local n = uc_trim(name)
-				local nk = n:lower()
-				if n ~= '' and not seen_name[nk] then
-					seen_name[nk] = true
-					out[#out + 1] = n
-				end
-				local tid = uc_resolve_target_id_by_name(n)
-				if tid and tid ~= 0 then
-					uc_ignore.append_id(s, tid)
-				end
-			end
-			s.wait_ignore_names = out
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.combat.weaponskill.wait_ignore_names',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'partner_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(uc_msg_get(msg, 'value'))
-			s.partner_ids = {}
-			for _, name in ipairs(vals) do
-				local tid = uc_resolve_target_id_by_name(name)
-				if tid and tid ~= 0 then
-					uc_partner_list.append_id(s, tid)
-				end
-			end
-			uc_partner_list.sync_legacy_partner_fields(s)
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.follow.partner.names',
+			uc_split_pipe(uc_msg_get(msg, 'value'))
+		)
 	elseif op == 'no_skillchain_target_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			s.weaponskill_no_skillchain_targets = {}
-			for _, name in ipairs(vals) do
-				uc_no_skillchain_targets.append_name(s, name)
-			end
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.combat.weaponskill.no_skillchain_targets',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'target_ignore_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			local out = {}
-			local seen = {}
-			for _, name in ipairs(vals) do
-				local n = uc_trim(name)
-				local k = n:lower()
-				if n ~= '' and not seen[k] then
-					seen[k] = true
-					out[#out + 1] = n
-				end
-			end
-			s.target_ignore_names = out
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.targeting.target_ignore_names',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'cor_roll_range_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			local out = {}
-			local seen = {}
-			local keep_names = {}
-			local seen_name = {}
-			local _, name_to_id = uc_get_party_name_maps(false)
-			for _, name in ipairs(vals) do
-				local n = uc_trim(name)
-				local pid = name_to_id[n] or 0
-				if n ~= '' and pid ~= 0 and not seen[pid] then
-					seen[pid] = true
-					out[#out + 1] = pid
-					local nk = n:lower()
-					if not seen_name[nk] then
-						seen_name[nk] = true
-						keep_names[#keep_names + 1] = n
-					end
-				end
-			end
-			s.cor_roll_range_require_ids = out
-			s.cor_roll_range_selected = table.concat(keep_names, '|')
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_pipe_string_list',
+			'config.maintenance.cor.range_selected',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'add_priority_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			local out = {}
-			local seen = {}
-			for _, name in ipairs(vals) do
-				local n = uc_trim(name)
-				local k = n:lower()
-				if n ~= '' and not seen[k] then
-					seen[k] = true
-					out[#out + 1] = n
-				end
-			end
-			s.add_priority_names = out
-		end
-		last_state_send = 0
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.targeting.targets',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'sleep_replace_spells' then
-		local s = _G.UC_SETTINGS
 		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
-		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.replace_names) == 'function' then
-			local vals = uc_split_pipe(msg.value)
-			sleep_cfg.replace_names(s, vals)
-		end
-		last_state_send = 0
-	elseif op == 'path_hunter_replace_names' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local vals = uc_split_pipe(msg.value)
-			local out = {}
-			local seen = {}
-			for _, name in ipairs(vals) do
-				local n = uc_trim(name)
-				local k = n:lower()
-				if n ~= '' and not seen[k] then
-					seen[k] = true
-					out[#out + 1] = n
-				end
+		if type(sleep_cfg) == 'table' and type(sleep_cfg.validate_names) == 'function' then
+			local validated = sleep_cfg.validate_names(uc_split_pipe(msg.value))
+			if type(validated) == 'table' then
+				uc_apply_active_list_edit(
+					'replace_string_list',
+					'config.sleep.order',
+					validated
+				)
 			end
-			s.path_hunter_targets = out
 		end
-		last_state_send = 0
+	elseif op == 'path_hunter_replace_names' then
+		uc_apply_active_list_edit(
+			'replace_string_list',
+			'config.movement.path.hunter_targets',
+			uc_split_pipe(msg.value)
+		)
 	elseif op == 'ignore_add' then
-		local s = _G.UC_SETTINGS
 		local name = uc_trim(msg.name)
-		if not s or name == '' then
+		if name == '' then
 			_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_NO_NAME'
 		else
-			local tid = uc_resolve_target_id_by_name(name)
-			if not tid then
-				_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_NAME_NOT_FOUND:' .. name
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.combat.weaponskill.wait_ignore_names',
+				name
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_ALREADY:' .. name
+			elseif ok then
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_OK:' .. name
 			else
-				local ok, why = uc_ignore.append_id(s, tid)
-				if ok and why == 'IGNORE_ALREADY' then
-					_G.UC_LAST_IGNORE_OP = 'IGNORE_ALREADY:' .. name
-				elseif ok then
-					_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_OK:' .. name
-				else
-					_G.UC_LAST_IGNORE_OP = tostring(why or 'IGNORE_ADD_FAIL')
-				end
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'ignore_add_current' then
-		local s = _G.UC_SETTINGS
-		if not s then
-			_G.UC_LAST_IGNORE_OP = 'IGNORE_NO_SETTINGS'
+		local tname, tid = uc_current_target_snapshot()
+		if tid == 0 then
+			_G.UC_LAST_IGNORE_OP = 'IGNORE_NO_TARGET'
 		else
-			local tname, tid = uc_current_target_snapshot()
-			if tid == 0 then
-				_G.UC_LAST_IGNORE_OP = 'IGNORE_NO_TARGET'
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.combat.weaponskill.wait_ignore_names',
+				tname
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_ALREADY:' .. tname
+			elseif ok then
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_OK:' .. tname
 			else
-				local ok, why = uc_ignore.append_id(s, tid)
-				if ok and why == 'IGNORE_ALREADY' then
-					_G.UC_LAST_IGNORE_OP = 'IGNORE_ALREADY:' .. tname
-				elseif ok then
-					_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_OK:' .. tname
-				else
-					_G.UC_LAST_IGNORE_OP = tostring(why or 'IGNORE_ADD_FAIL')
-				end
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'ignore_remove' then
-		local s = _G.UC_SETTINGS
 		local tid = uc_remote_message_mob_id(msg, 'mob_id', 'id')
-		if not s or not tid or tid == 0 then
+		if not tid or tid == 0 then
 			_G.UC_LAST_IGNORE_OP = 'IGNORE_REMOVE_BAD_ID'
 		else
-			local ok, why = uc_ignore.remove_id(s, tid)
-			if ok then
-				_G.UC_LAST_IGNORE_OP = 'IGNORE_REMOVE_OK:' .. tostring(tid)
+			local _, _, id_to_name = uc_get_party_name_maps(true)
+			local name = id_to_name[tid]
+			if not name or name == '' then
+				_G.UC_LAST_IGNORE_OP = 'IGNORE_REMOVE_ID_NOT_FOUND:' .. tostring(tid)
 			else
-				_G.UC_LAST_IGNORE_OP = tostring(why or 'IGNORE_REMOVE_FAIL')
+				local ok, why = uc_apply_active_list_edit(
+					'remove_string_list_value',
+					'config.combat.weaponskill.wait_ignore_names',
+					name
+				)
+				if ok then
+					_G.UC_LAST_IGNORE_OP = 'IGNORE_REMOVE_OK:' .. tostring(tid)
+				else
+					_G.UC_LAST_IGNORE_OP = 'IGNORE_REMOVE_FAIL:' .. tostring(why)
+				end
 			end
 		end
-		last_state_send = 0
 	elseif op == 'no_skillchain_target_add' then
-		local s = _G.UC_SETTINGS
 		local name = uc_trim(msg.name)
-		if s and name ~= '' then
-			uc_no_skillchain_targets.append_name(s, name)
+		if name ~= '' then
+			uc_apply_active_list_edit(
+				'append_string_list',
+				'config.combat.weaponskill.no_skillchain_targets',
+				name
+			)
 		end
-		last_state_send = 0
 	elseif op == 'no_skillchain_target_add_current' then
-		local s = _G.UC_SETTINGS
-		if s then
-			local tname, tid = uc_current_target_snapshot()
-			if tid ~= 0 then
-				uc_no_skillchain_targets.append_name(s, tname)
-			end
+		local tname, tid = uc_current_target_snapshot()
+		if tid ~= 0 then
+			uc_apply_active_list_edit(
+				'append_string_list',
+				'config.combat.weaponskill.no_skillchain_targets',
+				tname
+			)
 		end
-		last_state_send = 0
 	elseif op == 'no_skillchain_target_remove' then
-		local s = _G.UC_SETTINGS
 		local idx = uc_remote_list_index(msg, line)
-		if s and idx then
-			uc_no_skillchain_targets.remove_index(s, math.floor(idx + 0.5))
+		if idx then
+			uc_apply_active_list_edit(
+				'remove_string_list_index',
+				'config.combat.weaponskill.no_skillchain_targets',
+				math.floor(idx + 0.5)
+			)
 		end
-		last_state_send = 0
 	elseif op == 'target_ignore_add' then
-		local s = _G.UC_SETTINGS
 		local name = uc_trim(msg.name)
-		if not s or name == '' then
+		if name == '' then
 			_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ADD_NO_NAME'
 		else
-			local ok, why = uc_target_ignore.append_name(s, name)
-			if ok and why == 'TARGET_IGNORE_ALREADY' then
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.targeting.target_ignore_names',
+				name
+			)
+			if ok and why == 'ALREADY' then
 				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ALREADY:' .. name
 			elseif ok then
 				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ADD_OK:' .. name
 			else
-				_G.UC_LAST_TARGET_IGNORE_OP = tostring(why or 'TARGET_IGNORE_ADD_FAIL')
+				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'target_ignore_add_current' then
-		local s = _G.UC_SETTINGS
-		if not s then
-			_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_NO_SETTINGS'
+		local tname, tid = uc_current_target_snapshot()
+		if tid == 0 then
+			_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_NO_TARGET'
 		else
-			local tname, tid = uc_current_target_snapshot()
-			if tid == 0 then
-				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_NO_TARGET'
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.targeting.target_ignore_names',
+				tname
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ALREADY:' .. tname
+			elseif ok then
+				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ADD_OK:' .. tname
 			else
-				local ok, why = uc_target_ignore.append_name(s, tname)
-				if ok and why == 'TARGET_IGNORE_ALREADY' then
-					_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ALREADY:' .. tname
-				elseif ok then
-					_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ADD_OK:' .. tname
-				else
-					_G.UC_LAST_TARGET_IGNORE_OP = tostring(why or 'TARGET_IGNORE_ADD_FAIL')
-				end
+				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'target_ignore_remove' then
-		local s = _G.UC_SETTINGS
 		local idx = uc_remote_list_index(msg, line)
-		if not s then
-			_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_REMOVE_NO_SETTINGS'
-		elseif not idx then
+		if not idx then
 			_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_REMOVE_BAD_INDEX'
 		else
-			local ok, why = uc_target_ignore.remove_index(s, math.floor(idx + 0.5))
+			local ok, why = uc_apply_active_list_edit(
+				'remove_string_list_index',
+				'config.targeting.target_ignore_names',
+				math.floor(idx + 0.5)
+			)
 			if ok then
 				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_REMOVE_OK:' .. tostring(idx)
 			else
-				_G.UC_LAST_TARGET_IGNORE_OP = tostring(why or 'TARGET_IGNORE_REMOVE_FAIL')
+				_G.UC_LAST_TARGET_IGNORE_OP = 'TARGET_IGNORE_REMOVE_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'add_priority_add' then
-		local s = _G.UC_SETTINGS
 		local name = uc_trim(msg.name)
-		if not s or name == '' then
+		if name == '' then
 			_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ADD_NO_NAME'
 		else
-			local ok, why = uc_add_priority.append_name(s, name)
-			if not ok then
-				if why == 'ADD_PRIORITY_ALREADY' then
-					_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ALREADY:' .. name
-				else
-					_G.UC_LAST_ADD_PRIORITY_OP = tostring(why or 'ADD_PRIORITY_ADD_FAIL')
-				end
-			else
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.targeting.targets',
+				name
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ALREADY:' .. name
+			elseif ok then
 				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ADD_OK:' .. name
-			end
-		end
-		last_state_send = 0
-	elseif op == 'add_priority_add_current' then
-		local s = _G.UC_SETTINGS
-		if not s then
-			_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_NO_SETTINGS'
-		else
-			local tname, tid = uc_current_target_snapshot()
-			if tid == 0 then
-				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_NO_TARGET'
 			else
-				local ok, why = uc_add_priority.append_name(s, tname)
-				if not ok then
-					if why == 'ADD_PRIORITY_ALREADY' then
-						_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ALREADY:' .. tname
-					else
-						_G.UC_LAST_ADD_PRIORITY_OP = tostring(why or 'ADD_PRIORITY_ADD_FAIL')
-					end
-				else
-					_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ADD_OK:' .. tname
-				end
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
+	elseif op == 'add_priority_add_current' then
+		local tname, tid = uc_current_target_snapshot()
+		if tid == 0 then
+			_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_NO_TARGET'
+		else
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.targeting.targets',
+				tname
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ALREADY:' .. tname
+			elseif ok then
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ADD_OK:' .. tname
+			else
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_ADD_FAIL:' .. tostring(why)
+			end
+		end
 	elseif op == 'add_priority_remove' then
-		local s = _G.UC_SETTINGS
 		local idx = uc_remote_list_index(msg, line)
-		if not s then
-			_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_REMOVE_NO_SETTINGS'
-		elseif not idx then
+		if not idx then
 			_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_REMOVE_BAD_INDEX'
 		else
-			local ok, why = uc_add_priority.remove_index(s, math.floor(idx + 0.5))
+			local ok, why = uc_apply_active_list_edit(
+				'remove_string_list_index',
+				'config.targeting.targets',
+				math.floor(idx + 0.5)
+			)
 			if ok then
 				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_REMOVE_OK:' .. tostring(idx)
 			else
-				_G.UC_LAST_ADD_PRIORITY_OP = tostring(why or 'ADD_PRIORITY_REMOVE_FAIL')
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_REMOVE_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'add_priority_move' then
-		local s = _G.UC_SETTINGS
 		local idx = uc_remote_list_index(msg, line)
 		local dir = tostring(uc_trim(tostring(msg.direction or msg.Direction or msg.dir or msg.Dir or ''))):lower()
 		local delta = (dir == 'up' or dir == '-1') and -1 or ((dir == 'down' or dir == '1') and 1 or nil)
-		if not s or not idx or idx < 1 or not delta then
+		if not idx or idx < 1 or not delta then
 			_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_MOVE_BAD_ARGS'
 		else
-			local ok, why = uc_add_priority.move_index(s, math.floor(idx + 0.5), delta)
+			local ok, why = uc_apply_active_list_edit(
+				'move_string_list_index',
+				'config.targeting.targets',
+				math.floor(idx + 0.5),
+				delta
+			)
 			if ok then
 				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_MOVE_OK:' .. tostring(idx) .. ':' .. dir
 			else
-				_G.UC_LAST_ADD_PRIORITY_OP = tostring(why or 'ADD_PRIORITY_MOVE_FAIL')
+				_G.UC_LAST_ADD_PRIORITY_OP = 'ADD_PRIORITY_MOVE_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'sleep_add_spell' then
-		local s = _G.UC_SETTINGS
 		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
 		local name = uc_trim(msg.name)
-		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.append_name) == 'function' and name ~= '' then
-			sleep_cfg.append_name(s, name)
+		if name ~= '' and type(sleep_cfg) == 'table' and type(sleep_cfg.validate_names) == 'function' then
+			local validated = sleep_cfg.validate_names({ name })
+			if type(validated) == 'table' and #validated == 1 then
+				uc_apply_active_list_edit(
+					'append_string_list',
+					'config.sleep.order',
+					validated[1]
+				)
+			end
 		end
-		last_state_send = 0
 	elseif op == 'sleep_remove_spell' then
-		local s = _G.UC_SETTINGS
-		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
 		local idx = uc_remote_list_index(msg, line)
-		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.remove_index) == 'function' and idx then
-			sleep_cfg.remove_index(s, math.floor(idx + 0.5))
+		if idx then
+			uc_apply_active_list_edit(
+				'remove_string_list_index',
+				'config.sleep.order',
+				math.floor(idx + 0.5)
+			)
 		end
-		last_state_send = 0
 	elseif op == 'sleep_move_spell' then
-		local s = _G.UC_SETTINGS
-		local sleep_cfg = rawget(_G, 'UC_SleepSpell')
 		local idx = uc_remote_list_index(msg, line)
 		local dir = tostring(uc_trim(tostring(msg.direction or msg.Direction or msg.dir or msg.Dir or ''))):lower()
 		local delta = (dir == 'up' or dir == '-1') and -1 or ((dir == 'down' or dir == '1') and 1 or nil)
-		if s and type(sleep_cfg) == 'table' and type(sleep_cfg.move_index) == 'function' and idx and delta then
-			sleep_cfg.move_index(s, math.floor(idx + 0.5), delta)
+		if idx and delta then
+			uc_apply_active_list_edit(
+				'move_string_list_index',
+				'config.sleep.order',
+				math.floor(idx + 0.5),
+				delta
+			)
 		end
-		last_state_send = 0
 	elseif op == 'path_hunter_add' then
-		local s = _G.UC_SETTINGS
 		local name = uc_trim(msg.name)
-		if not s or name == '' then
+		if name == '' then
 			_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_ADD_NO_NAME'
 		else
-			local ok, why = uc_path_hunter.append_name(s, name)
-			if ok then
+			local ok, why = uc_apply_active_list_edit(
+				'append_string_list',
+				'config.movement.path.hunter_targets',
+				name
+			)
+			if ok and why == 'ALREADY' then
+				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_ALREADY:' .. name
+			elseif ok then
 				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_ADD_OK:' .. name
 			else
-				_G.UC_LAST_PATH_HUNTER_OP = tostring(why or 'PATH_HUNTER_ADD_FAIL')
+				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_ADD_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'path_hunter_remove' then
-		local s = _G.UC_SETTINGS
 		local idx = uc_remote_list_index(msg, line)
-		if not s then
-			_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_NO_SETTINGS'
-		elseif not idx then
+		if not idx then
 			_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_BAD_INDEX'
 		else
-			local ok, why = uc_path_hunter.remove_index(s, math.floor(idx + 0.5))
+			local ok, why = uc_apply_active_list_edit(
+				'remove_string_list_index',
+				'config.movement.path.hunter_targets',
+				math.floor(idx + 0.5)
+			)
 			if ok then
 				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_OK:' .. tostring(idx)
 			else
-				_G.UC_LAST_PATH_HUNTER_OP = tostring(why or 'PATH_HUNTER_REMOVE_FAIL')
+				_G.UC_LAST_PATH_HUNTER_OP = 'PATH_HUNTER_REMOVE_FAIL:' .. tostring(why)
 			end
 		end
-		last_state_send = 0
 	elseif op == 'toggle' and msg.key == 'Start_Engine' then
 		local was_running = Start_Engine
 		Start_Engine = not Start_Engine
-		if _G.UC_SETTINGS then
-			_G.UC_SETTINGS.engine_enabled = (Start_Engine == true)
-		end
 		if was_running and (not Start_Engine) and type(_G.UC_ResetMovementLocksForFollow) == 'function' then
 			_G.UC_ResetMovementLocksForFollow()
 		end
@@ -1724,17 +1201,11 @@ local function process_line(line)
 	elseif op == 'start_engine' then
 		local was_running = Start_Engine
 		Start_Engine = true
-		if _G.UC_SETTINGS then
-			_G.UC_SETTINGS.engine_enabled = true
-		end
 		if not was_running then
 			maybe_start_active_engine()
 		end
 	elseif op == 'stop_engine' then
 		Start_Engine = false
-		if _G.UC_SETTINGS then
-			_G.UC_SETTINGS.engine_enabled = false
-		end
 		if type(_G.UC_ResetMovementLocksForFollow) == 'function' then
 			_G.UC_ResetMovementLocksForFollow()
 		end
@@ -1849,6 +1320,7 @@ function uc_remote_tick()
 			detail = '',
 		}
 	end
+	local current_target_name, current_target_id = uc_current_target_snapshot()
 	local pull_runtime = rawget(_G, 'UC_CAMP_PULLER_STATUS')
 	if type(pull_runtime) ~= 'table' then
 		pull_runtime = {
@@ -1879,6 +1351,8 @@ function uc_remote_tick()
 		camp_coordinate_mode = camp_status.coordinate_mode,
 		camp_set_by = camp_status.set_by,
 		camp_last_op = camp_last_op,
+		current_target_id = current_target_id,
+		current_target_name = current_target_name,
 		geo_runtime_state = geo_runtime.state,
 		geo_runtime_reason = geo_runtime.reason,
 		geo_runtime_detail = geo_runtime.detail,
@@ -1891,18 +1365,16 @@ function uc_remote_tick()
 		camp_pull_runtime_quota = pull_runtime.quota,
 		camp_pull_runtime_intent = pull_runtime.last_intent,
 		profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS,
-		config_contract_status = uc_config_runtime.config_contract_status(_G.UC_SETTINGS),
+		config_contract_status = uc_config_runtime.config_contract_status(nil, nil, nil, _G.UC_CONFIG_CONTRACT_STATUS),
 	}
 	local active_profile = uc_active_config.get_active_profile()
 	if type(active_profile) ~= 'table' then
 		error('remote bridge state requires an active configuration')
 	end
-	local active_settings, projection_err = uc_active_config.project_flat_settings(active_profile, {})
-	if type(active_settings) ~= 'table' then
-		error('remote bridge active-config projection failed: ' .. tostring(projection_err))
-	end
-	active_settings.Start_Engine = Start_Engine == true
-	st.active_config = active_settings
+	-- Phase 6: publish canonical Profile V2 directly. WinForms owns the
+	-- canonical-config -> editor-model translation; runtime command state such
+	-- as Start_Engine remains on the surrounding session snapshot.
+	st.active_config = active_profile
 	if not safe_send_line(json_encode_simple(st)) then
 		return
 	end

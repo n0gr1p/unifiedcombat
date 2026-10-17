@@ -46,6 +46,17 @@ local function finite_number(value)
 	return number
 end
 
+function M.config_from_context(ctx)
+	ctx = require_table(ctx, 'ctx')
+	local root = require_table(ctx.config, 'ctx.config')
+	local maintenance = require_table(root.maintenance, 'ctx.config.maintenance')
+	local config = maintenance.geo
+	if type(config) ~= 'table' then
+		error('canonical maintenance.geo configuration is required')
+	end
+	return config
+end
+
 local function luopan_present(ctx)
 	if type(ctx) ~= 'table' or ctx.pet_present ~= true then
 		return false
@@ -152,6 +163,7 @@ local function proposal(ctx, spec)
 			sequence_kind = tostring(spec.sequence_kind or ''),
 			sequence_step = tostring(spec.sequence_step or ''),
 			blaze_enhanced = spec.blaze_enhanced == true,
+			config_contract_signature = spec.config_contract_signature,
 		},
 		legacy_command = '',
 	}
@@ -367,20 +379,6 @@ function M.new(deps)
 		provider.state.next_slow_maintenance_at = 0
 	end
 
-	local function config_from_context(ctx)
-		local settings = require_table(ctx.settings, 'ctx.settings')
-		local config = settings.maintenance_geo
-		if type(settings.config) == 'table'
-			and type(settings.config.maintenance) == 'table'
-			and type(settings.config.maintenance.geo) == 'table' then
-			config = settings.config.maintenance.geo
-		end
-		if type(config) ~= 'table' then
-			error('normalized maintenance.geo configuration is required')
-		end
-		return config
-	end
-
 	local function config_contract_signature(config)
 		local target = type(config.geo_target) == 'table' and config.geo_target or {}
 		local luopan = type(config.luopan) == 'table' and config.luopan or {}
@@ -535,6 +533,10 @@ function M.new(deps)
 	local function validate_config_cached(config)
 		local signature = config_contract_signature(config)
 		if signature ~= provider.state.config_contract_signature then
+			-- Retire copied sequence intent, never already-sent pending evidence.
+			if provider.state.config_contract_signature ~= '' then
+				provider.state.sequence = nil
+			end
 			provider.state.config_contract_signature = signature
 			provider.state.config_contracts, provider.state.config_validation_reason =
 				validate_config(config)
@@ -559,7 +561,7 @@ function M.new(deps)
 		if not target_is_actionable(mob, ctx.now, true) then
 			return false
 		end
-		if target_is_ignored(ctx.settings, mob) then
+		if target_is_ignored(ctx.config, mob) then
 			return false
 		end
 		local claim_id = tonumber(mob.claim_id) or 0
@@ -821,6 +823,7 @@ function M.new(deps)
 			sequence_kind = sequence and sequence.kind or '',
 			sequence_step = sequence and sequence.step or '',
 			blaze_enhanced = sequence and sequence.blaze_enhanced == true,
+			config_contract_signature = provider.state.config_contract_signature,
 		})
 		publish_status(kind .. '_proposed', spell_name)
 		return true
@@ -852,6 +855,7 @@ function M.new(deps)
 			expected_effect = effect,
 			sequence_kind = sequence and sequence.kind or '',
 			sequence_step = sequence and sequence.step or '',
+			config_contract_signature = provider.state.config_contract_signature,
 		})
 		publish_status('ja_proposed', action_name)
 		return true
@@ -1184,7 +1188,7 @@ function M.new(deps)
 
 	function provider.creation_preempts_pull(ctx)
 		require_table(ctx, 'ctx')
-		local config = config_from_context(ctx)
+		local config = M.config_from_context(ctx)
 		if rawget(_G, 'Start_Engine') ~= true
 			or config.enabled ~= true
 			or ctx.player_present ~= true
@@ -1234,7 +1238,7 @@ function M.new(deps)
 	function provider.collect(ctx, out)
 		require_table(ctx, 'ctx')
 		require_table(out, 'out')
-		local config = config_from_context(ctx)
+		local config = M.config_from_context(ctx)
 		if rawget(_G, 'Start_Engine') ~= true then
 			reset_identity()
 			publish_status('engine_off', '')
@@ -1697,7 +1701,7 @@ function M.new(deps)
 	function provider.revalidate(selected, ctx)
 		require_table(selected, 'selected')
 		require_table(ctx, 'ctx')
-		local config = config_from_context(ctx)
+		local config = M.config_from_context(ctx)
 		local contracts, validation_reason = validate_config_cached(config)
 		if contracts == nil then
 			return false, validation_reason
@@ -1714,6 +1718,9 @@ function M.new(deps)
 		end
 		local detail = require_table(selected.detail, 'selected.detail')
 		local kind = tostring(detail.geo_kind or '')
+		if tostring(detail.config_contract_signature or '') ~= provider.state.config_contract_signature then
+			return false, 'geo_configuration_changed'
+		end
 		local sequence = provider.state.sequence
 		if pull_active()
 			and not (type(sequence) == 'table' and sequence.atomic == true)

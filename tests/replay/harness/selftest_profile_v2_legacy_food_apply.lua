@@ -47,7 +47,14 @@ local live_settings = {
 	food_item = 'Grape Daifuku',
 }
 
-local current_profile = active_config.build_active_profile_from_settings(live_settings, meta)
+-- Canonical test fixture: represent the current session with food enabled.
+-- The flat settings above exist only to assert that apply leaves them untouched.
+local current_profile = assert(active_config.build_default_active_profile(meta))
+current_profile.config.maintenance.enabled = true
+current_profile.config.maintenance.food = {
+    enabled = true,
+    item = 'Grape Daifuku',
+}
 assert_true(current_profile.config.maintenance.food.enabled, 'test setup must start with live food enabled')
 assert_equal(current_profile.config.maintenance.food.item, 'Grape Daifuku', 'test setup food item')
 
@@ -73,8 +80,9 @@ assert_true(
 		.. ' '
 		.. tostring(apply_result.detail or '')
 )
-assert_false(apply_result.candidate.food_enabled, 'legacy apply must replace stale live food_enabled=true')
-assert_equal(apply_result.candidate.food_item, '', 'legacy apply must replace stale live food item')
+assert_true(apply_result.candidate == nil, 'legacy apply must not build a flat settings candidate')
+assert_true(live_settings.food_enabled, 'canonical conversion must leave stale live food state untouched')
+assert_equal(live_settings.food_item, 'Grape Daifuku', 'canonical conversion must leave stale live food item untouched')
 assert_false(
 	apply_result.active_profile.config.maintenance.food.enabled,
 	'converted active Profile V2 must keep the disabled food default'

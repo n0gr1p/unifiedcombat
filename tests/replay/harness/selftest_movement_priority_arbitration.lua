@@ -447,14 +447,53 @@ local function main()
     assert_true(#run_calls > 0, 'party follow prerender must issue movement for a named leader with no durable id')
 
     _G.Start_Engine = true
-    _G.UC_SETTINGS.camp_pulling.enabled = true
+    _G.UC_SETTINGS.camp_pulling.enabled = false
+    set_active_profile({
+        combat = {
+            pulling = { enabled = true },
+        },
+        follow = {
+            party = {
+                enabled = true,
+                leader_id = 0,
+                leader_name = 'Leader',
+                min = 1.25,
+                max = 22,
+            },
+        },
+    })
     _G.UC_PARTY_FOLLOW_NEEDS_CATCHUP = true
     _G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL = _G.__TEST_NOW + 0.4
     follow.prerender()
     assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP, false,
-        'camp-puller movement ownership must clear party-follow catch-up intent')
+        'canonical camp-puller ON + flat OFF must clear party-follow catch-up intent')
     assert_equal(_G.UC_PARTY_FOLLOW_NEEDS_CATCHUP_UNTIL, 0,
-        'camp-puller movement ownership must clear the party-follow catch-up hold window')
+        'canonical camp-puller ownership must clear the party-follow catch-up hold window')
+
+    _G.UC_SETTINGS.camp_pulling.enabled = true
+    set_active_profile({
+        combat = {
+            pulling = { enabled = false },
+        },
+        follow = {
+            party = {
+                enabled = true,
+                leader_id = 0,
+                leader_name = 'Leader',
+                min = 1.25,
+                max = 22,
+            },
+        },
+    })
+    run_calls = {}
+    _G.UC_MOVEMENT_OWNER = nil
+    _G.UC_MOVEMENT_LOCK_UNTIL = nil
+    follow.prerender()
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'follow',
+        'canonical camp-puller OFF + flat ON must not suppress party follow')
+    assert_true(#run_calls > 0,
+        'canonical camp-puller OFF must allow party-follow movement despite flat ON')
+
     _G.UC_SETTINGS.camp_pulling.enabled = false
     _G.Start_Engine = false
     follow.prerender()
@@ -641,10 +680,14 @@ local function main()
     set_active_profile({
         follow = {},
     })
+    run_calls = {}
     _G.UC_MOVEMENT_OWNER = nil
     _G.UC_MOVEMENT_LOCK_UNTIL = nil
     follow.prerender()
-    assert_equal(_G.UC_MOVEMENT_OWNER, 'follow', 'party follow prerender must preserve flat fallback when active path is missing')
+    assert_equal(_G.UC_MOVEMENT_OWNER == 'follow', false,
+        'party follow must fail closed when canonical follow.party is missing despite flat follow enabled')
+    assert_equal(#run_calls, 0,
+        'missing canonical follow.party must not issue flat-fallback movement')
 
     package.loaded['uc_party_follow'] = follow
     local pathing = dofile('uc_pathing.lua')
@@ -666,7 +709,7 @@ local function main()
         path_recording = false,
         path_follow_enabled = false,
         path_file_name = expected_path_file_name,
-        path_route_type = 'unknown',
+        path_route_type = 'patrol',
         path_points = {
             { x = 5, y = 0, z = 0 },
         },
@@ -727,7 +770,33 @@ local function main()
         },
     })
     pathing.tick()
-    assert_true(#run_calls > 0, 'pathing tick must preserve flat fallback when active path-follow setting is missing')
+    assert_equal(#run_calls, 1, 'missing canonical path-follow policy must stop the prior path vector once')
+    assert_equal(run_calls[1].x, false, 'missing canonical path-follow policy must fail closed despite flat follow enabled')
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'none', 'canonical path-follow default OFF must release path ownership')
+
+    run_calls = {}
+    _G.__TEST_NOW = 101.5
+    set_active_profile({
+        ownership = {
+            domain_movement_enabled = true,
+        },
+        movement = {
+            path = {
+                follow_enabled = true,
+                party_gate_yalms = 3.0,
+                resume_index_window = 12,
+            },
+        },
+        follow = {
+            party = {
+                enabled = false,
+                leader_id = 0,
+            },
+        },
+    })
+    pathing.tick()
+    assert_true(#run_calls > 0, 'canonical path-follow enablement must reacquire path movement after fail-closed stop')
+    assert_equal(_G.UC_MOVEMENT_OWNER, 'path', 're-enabled canonical path follow must own movement before domain shutdown')
 
     run_calls = {}
     _G.__TEST_NOW = 102

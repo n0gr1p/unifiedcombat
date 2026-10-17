@@ -40,6 +40,7 @@ function M.new(deps)
 	local clamp_urgency = require_function(deps, 'clamp_urgency')
 	local build_partner_target_set = require_function(deps, 'build_partner_target_set')
 	local select_ws_plan = require_function(deps, 'select_ws_plan')
+	local weaponskill_enabled = require_function(deps, 'weaponskill_enabled')
 	local action_timeline_log = require_function(deps, 'action_timeline_log')
 	local combat_domain_enabled = require_function(deps, 'combat_domain_enabled')
 	local sleep_enabled = require_function(deps, 'sleep_enabled')
@@ -64,6 +65,8 @@ function M.new(deps)
 	local pending_engage_state = require_function(deps, 'pending_engage_state')
 	local pending_engage_live = require_function(deps, 'pending_engage_live')
 	local collect_ordered_abilities = require_function(deps, 'collect_ordered_abilities')
+	local abilities_enabled = require_function(deps, 'abilities_enabled')
+	local abilities_allow_unengaged = require_function(deps, 'abilities_allow_unengaged')
 	local get_ja_resource = require_function(deps, 'get_ja_resource')
 	local action_ready = require_function(deps, 'action_ready')
 	local action_effective_range = require_function(deps, 'action_effective_range')
@@ -93,7 +96,7 @@ function M.new(deps)
 		if extensions.collect_priority_offense(ctx, out) then
 			return
 		end
-		if not bool_setting(ctx.settings.weaponskill_active, false) then
+		if not bool_setting(weaponskill_enabled(ctx.config), false) then
 			return
 		end
 		local player = ctx.player
@@ -109,11 +112,11 @@ function M.new(deps)
 			or target.spawn_type ~= 16 or (tonumber(target.hpp) or 0) <= 0 then
 			return
 		end
-		local partner_target_set = build_partner_target_set(ctx.settings)
+		local partner_target_set = build_partner_target_set(ctx.settings, ctx.config)
 		if partner_target_set[tonumber(target.id) or 0] == true then
 			return
 		end
-		local ws_selection, ws_pick_reason = select_ws_plan(ctx.settings, tonumber(target.id) or 0)
+		local ws_selection, ws_pick_reason = select_ws_plan(ctx.settings, tonumber(target.id) or 0, ctx.config)
 		if type(ws_selection) ~= 'table' then
 			return
 		end
@@ -244,10 +247,10 @@ function M.new(deps)
 			return false
 		end
 		local dist = mob.distance and mob.distance:sqrt() or 999
-		if dist > sleep_max_target_distance(ctx.settings) then
+		if dist > sleep_max_target_distance(ctx.config) then
 			return false
 		end
-		if target_sleep_suppressed(ctx.settings, tid, ctx.now) then
+		if target_sleep_suppressed(ctx.config, tid, ctx.now) then
 			return false
 		end
 		return true
@@ -262,10 +265,10 @@ function M.new(deps)
 		if not bool_setting(combat_domain_enabled(), false) then
 			return
 		end
-		if not bool_setting(sleep_enabled(ctx.settings), false) then
+		if not bool_setting(sleep_enabled(ctx.config), false) then
 			return
 		end
-		local configured_sleep_spells = sleep_spell_list(ctx.settings)
+		local configured_sleep_spells = sleep_spell_list(ctx.config)
 		if #configured_sleep_spells == 0 then
 			return
 		end
@@ -279,12 +282,12 @@ function M.new(deps)
 			current_target_id = tonumber(current_target.id) or 0
 		end
 		local _, claims_set = build_friendly_claims()
-		local partner_target_set = build_partner_target_set(ctx.settings)
+		local partner_target_set = build_partner_target_set(ctx.settings, ctx.config)
 		local best = nil
 		local marray = ctx.mob_array
 		for _, mob in pairs(marray) do
 			if provider.sleep_target_eligible(ctx, mob, current_target_id, claims_set, partner_target_set) then
-				local spell_pick = select_sleep_spell(ctx.settings, mob)
+				local spell_pick = select_sleep_spell(ctx.config, mob)
 				if spell_pick then
 					local tid = tonumber(mob.id) or 0
 					local dist = tonumber(spell_pick.dist) or 999
@@ -371,17 +374,17 @@ function M.new(deps)
 		if not bool_setting(combat_domain_enabled(), false) then
 			return
 		end
-		if not bool_setting(combat_autotarget(ctx.settings), false) then
+		if not bool_setting(combat_autotarget(ctx.config), false) then
 			return
 		end
-		if not extensions.auto_engage_enabled(ctx.settings) then
+		if not extensions.auto_engage_enabled_from_config(ctx.config) then
 			return
 		end
 		local player = ctx.player
 		if ctx.player_present ~= true then
 			return
 		end
-		local tank_mode = bool_setting(tank_enabled(ctx.settings), false)
+		local tank_mode = bool_setting(tank_enabled(ctx.config), false)
 		local engage_priority = tank_mode and tank_engage_priority or default_engage_priority
 		local engage_urgency = tank_mode and tank_engage_urgency or default_engage_urgency
 		local engaged = tonumber(player.status) == 1
@@ -448,8 +451,8 @@ function M.new(deps)
 			), 0.50)
 		end
 		local fight_leader_force_target_id = 0
-		local fight_leader_on = bool_setting(fight_leader_enabled(ctx.settings), false)
-		local leader_id = fight_leader_id(ctx.settings)
+		local fight_leader_on = bool_setting(fight_leader_enabled(ctx.config), false)
+		local leader_id = fight_leader_id(ctx.config)
 		if fight_leader_on and leader_id > 0 then
 			fight_leader_force_target_id = tonumber(fight_leader_target_id(leader_id)) or 0
 		end
@@ -461,7 +464,7 @@ function M.new(deps)
 			if current_target_id == fight_leader_force_target_id then
 				return
 			end
-			if bool_setting(add_control_enabled(ctx.settings), false) then
+			if bool_setting(add_control_enabled(ctx.settings, ctx.config), false) then
 				return
 			end
 		end
@@ -483,7 +486,7 @@ function M.new(deps)
 		end
 		local pull_owner_state = 'inactive'
 		local hunter_attack_fallback = false
-		local pull_pick = select_pull(ctx.settings)
+		local pull_pick = select_pull(ctx.settings, ctx.config)
 		if type(pull_pick) == 'table' then
 			local pull_tid = tonumber(pull_pick.target_id) or 0
 			local this_tid = tonumber(target.id) or 0
@@ -518,7 +521,7 @@ function M.new(deps)
 		local party_claimed_ok = claims_set[claim_id] == true
 		local camp_pull_order = camp_pull_registry.combat_order(target, claims_set)
 		local camp_pull_ok = camp_pull_order ~= nil
-		local prime_unclaimed_ok = prime_unclaimed_party_aggressive_ok(ctx.settings, target, party_ids)
+		local prime_unclaimed_ok = prime_unclaimed_party_aggressive_ok(ctx.config, target, party_ids)
 		local force_leader_engage = fight_leader_force_target_id > 0
 			and fight_leader_force_target_id == (tonumber(target.id) or 0)
 		local claim_check = ('party_claimed=%s,camp_pull=%s,prime_unclaimed=%s,force_leader=%s,hunter_fallback=%s,claim_id=%d'):format(
@@ -538,7 +541,7 @@ function M.new(deps)
 				_G.UC_LAST_SCHED_ACTION = ('[p1]engage:collect_skip:policy claim=%d st=%d prime=%s'):format(
 					claim_id,
 					tonumber(target.status) or 0,
-					tostring(bool_setting(combat_prime(ctx.settings), false))
+					tostring(bool_setting(combat_prime(ctx.config), false))
 				)
 			end
 			log_engage_proposal_probe('ENGAGE_PROPOSAL_SKIPPED', target, 'claim_policy', pull_owner_state, claim_check)
@@ -604,7 +607,7 @@ function M.new(deps)
 		if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 			return
 		end
-		if not bool_setting(ctx.settings.ability_active, false) then
+		if not bool_setting(abilities_enabled(ctx.config), false) then
 			return
 		end
 		local player = ctx.player
@@ -613,21 +616,22 @@ function M.new(deps)
 		end
 		local target = ctx.target_present == true and ctx.target or nil
 		local engaged = tonumber(player.status) == 1
-		local allow_unengaged = bool_setting(ctx.settings.ability_allow_unengaged, false)
+		local allow_unengaged = bool_setting(abilities_allow_unengaged(ctx.config), false)
 		if not engaged then
 			if not allow_unengaged or not valid_enemy_target(target) then
 				return
 			end
 		end
-		local tank_mode = bool_setting(tank_enabled(ctx.settings), false)
+		local tank_mode = bool_setting(tank_enabled(ctx.config), false)
 		local ordered = require('uc_run_ownership').filter_generic_abilities(
 			ctx.settings,
-			collect_ordered_abilities(ctx.settings, 6)
+			collect_ordered_abilities(ctx.config, 6),
+			ctx.config
 		)
 		if #ordered == 0 then
 			return
 		end
-		local partner_target_set = build_partner_target_set(ctx.settings)
+		local partner_target_set = build_partner_target_set(ctx.settings, ctx.config)
 		for _, name in ipairs(ordered) do
 			local ja = get_ja_resource(name)
 			if ja then

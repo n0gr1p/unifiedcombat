@@ -21,11 +21,43 @@ local function assert_not_contains(text, needle, label)
 end
 
 local source = read_file('unified_scheduler.lua')
+local context_source = read_file('uc_scheduler_context.lua')
+local context_utils_source = read_file('uc_scheduler_context_utils.lua')
 
 assert_contains(
 	source,
 	"local ctx = require('uc_scheduler_context').build(settings, scheduler.phase1, {",
 	'scheduler context wrapper must use the extracted builder'
+)
+assert_contains(
+	source,
+	"get_config = require('uc_scheduler_context_utils').get_config,",
+	'scheduler context wrapper must inject the canonical Profile V2 config accessor'
+)
+assert_contains(
+	context_source,
+	"config = config,",
+	'scheduler tick context must expose canonical config explicitly'
+)
+assert_contains(
+	context_source,
+	"settings = settings or {},",
+	'scheduler tick context must preserve flat settings during migration'
+)
+assert_not_contains(
+	context_source,
+	"require('uc_active_config')",
+	'scheduler context builder must receive canonical config through its injected boundary'
+)
+assert_contains(
+	context_utils_source,
+	"function M.get_config()",
+	'context utils must own the scheduler canonical-config accessor'
+)
+assert_contains(
+	context_utils_source,
+	"require('uc_active_config').get_config()",
+	'context utils canonical accessor must read the applied active Profile V2 config'
 )
 
 local process_tick = source:match(

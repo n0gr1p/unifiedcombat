@@ -25,6 +25,9 @@ local function make_provider(leader_target_id, leader_enabled, friendly_claims, 
 		select_ws_plan = function()
 			return nil
 		end,
+		weaponskill_enabled = function()
+			return false
+		end,
 		action_timeline_log = function()
 		end,
 		combat_domain_enabled = function()

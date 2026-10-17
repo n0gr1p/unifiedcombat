@@ -81,8 +81,38 @@ local ok, err = xpcall(function()
     local burst = extension_config.magic_burst({})
     assert_true(burst.enabled, 'flat magic burst fallback must be honored')
     assert_equal(burst.spell, 'Fire V', 'flat magic burst spell mismatch')
+    assert_equal(burst.mode, 'exact', 'flat burst default mode')
+    assert_equal(burst.family, 'spell', 'flat burst default family')
     local fallback_rules = extension_config.reaction_rules()
     assert_equal(fallback_rules[1].action_name, 'Stun', 'flat action reaction fallback mismatch')
+    -- Profile V2 reactions are an atomic durable collection. Flat party-action
+    -- and sequence rules cannot augment, replace, or revive canonical rules.
+    local canonical_rule = {
+        trigger = 'party_action_complete',
+        source_name = 'Etamame',
+        action_type = 'ja',
+        name = 'Meditate',
+        response = 'use_sequence',
+        steps = { { action_type = 'spell', action_name = 'Stun', target = 'actor' } },
+    }
+    local stale_rule = {
+        trigger = 'party_action_complete',
+        source_name = 'Ponpon',
+        action_type = 'ja',
+        name = 'Berserk',
+        response = 'use_sequence',
+    }
+    _G.UC_SETTINGS.reaction_rules[#_G.UC_SETTINGS.reaction_rules + 1] = stale_rule
+    active_values['config.reactions'] = { enabled = true, rules = { canonical_rule } }
+    local canonical_rules = extension_config.reaction_rules()
+    assert_equal(#canonical_rules, 1, 'stale flat party-action rule must not merge into Profile V2')
+    assert_true(canonical_rules[1] == canonical_rule, 'canonical sequence must preserve its rule identity')
+    active_values['config.reactions'] = { enabled = false, rules = { canonical_rule } }
+    assert_equal(#extension_config.reaction_rules(), 0, 'disabled canonical reactions must not revive flat rules')
+    active_values['config.reactions'] = { enabled = true, rules = {} }
+    assert_equal(#extension_config.reaction_rules(), 0, 'empty canonical reactions must not revive flat rules')
+    active_values['config.reactions'] = nil
+    assert_equal(#extension_config.reaction_rules(), 2, 'missing canonical domain retains pre-profile fallback')
     local invalid_ok, invalid_error = extension_config.validate_action_rule({
         trigger = 'ability_window', response = 'use_action', action_type = 'ja', action_name = 'Weapon Bash',
     })
@@ -93,6 +123,36 @@ local ok, err = xpcall(function()
     active_values['config.spells'] = { magic_burst = false, configured = 'Blizzard V' }
     assert_true(extension_config.auto_engage_enabled({ auto_engage = false }), 'active auto_engage must override flat compatibility value')
     assert_true(extension_config.magic_burst({}).enabled == false, 'active magic burst disable must override flat compatibility value')
+    active_values['config.combat.auto_engage'] = false
+    assert_true(not extension_config.auto_engage_enabled({ auto_engage = true }),
+        'canonical auto_engage false must beat stale flat true')
+    active_values['config.combat.auto_engage'] = nil
+    active_values['config.combat'] = {}
+    assert_true(extension_config.auto_engage_enabled({ auto_engage = false }),
+        'canonical combat missing auto_engage leaf must use safe on default, not stale flat false')
+    active_values['config.spells'] = { configured = 'Blizzard V' }
+    local missing_burst_leaf = extension_config.magic_burst({ magic_burst_enabled = true, spell = 'Fire V' })
+    assert_true(not missing_burst_leaf.enabled,
+        'canonical spells missing magic_burst must stay disabled despite stale flat enabled')
+    assert_equal(missing_burst_leaf.spell, 'Blizzard V',
+        'canonical spell selection must beat stale flat even when magic_burst leaf is missing')
+    assert_equal(missing_burst_leaf.mode, 'exact', 'canonical burst mode default')
+    assert_equal(missing_burst_leaf.family, 'spell', 'canonical burst family default')
+    assert_equal(missing_burst_leaf.max_tier, 0, 'canonical burst max tier default')
+    local configured_burst = extension_config.magic_burst_from_config({
+        spells = {
+            magic_burst = true, configured = 'Thunder V',
+            magic_burst_mode = 'auto', magic_burst_family = 'helix',
+            magic_burst_max_tier = 99,
+        },
+    })
+    assert_true(configured_burst.enabled, 'explicit canonical burst adapter must enable configured burst')
+    assert_equal(configured_burst.spell, 'Thunder V', 'canonical burst spell')
+    assert_equal(configured_burst.mode, 'auto', 'canonical burst mode')
+    assert_equal(configured_burst.family, 'helix', 'canonical burst family')
+    assert_equal(configured_burst.max_tier, 5, 'canonical burst tier clamp')
+    assert_true(not extension_config.magic_burst_from_config({}).enabled,
+        'canonical config with missing spells must fail closed')
     active_values = {}
 
     -- Reaction runtime: use_action is a real authoritative ability-window lock.
@@ -226,6 +286,9 @@ local ok, err = xpcall(function()
         clamp_urgency = function(v) return v end,
         build_partner_target_set = function() return {} end,
         select_ws_plan = function() return nil end,
+        weaponskill_enabled = function() return false end,
+		abilities_enabled = function() return false end,
+		abilities_allow_unengaged = function() return false end,
         action_timeline_log = function() end,
         combat_domain_enabled = function() return true end,
         sleep_enabled = function() return false end,
@@ -262,7 +325,15 @@ local ok, err = xpcall(function()
     _G.Start_Engine = true
     local ctx = {
         now = 100,
-        settings = { weaponskill_active = false },
+        config = {
+            combat = { autotarget = true, auto_engage = true },
+            spells = { magic_burst = true, configured = 'Fire V', magic_burst_mode = 'exact' },
+        },
+        settings = {
+            weaponskill_active = false,
+            magic_burst_enabled = false,
+            spell = 'Blizzard V',
+        },
         player_present = true,
         player = { id = 1, name = 'Niightsiide', status = 0, vitals = { tp = 0 } },
         target_present = true,
@@ -286,6 +357,14 @@ local ok, err = xpcall(function()
     assert_equal(#proposals, 1, 'Fusion must create configured Fire V burst proposal')
     assert_equal(proposals[1].action_name, 'Fire V', 'magic burst spell mismatch')
     assert_equal(proposals[1].family_id, 'combat.magic_burst', 'magic burst family mismatch')
+    -- Direct tick config must control burst collection independently of both
+    -- stale flat session settings and a conflicting global active config.
+    ctx.config.spells.magic_burst = false
+    ctx.settings.magic_burst_enabled = true
+    proposals = {}
+    provider.collect_offense(ctx, proposals)
+    assert_equal(#proposals, 0, 'canonical burst OFF must suppress stale flat and global enabled flags')
+    ctx.config.spells.magic_burst = true
     current_skillchain = { last_confirmed_result = 'Distortion', active_properties = { 'Distortion' }, magic_burst_expires_at = 110 }
     proposals = {}
     provider.collect_offense(ctx, proposals)
@@ -295,6 +374,7 @@ local ok, err = xpcall(function()
     provider.collect_offense(ctx, proposals)
     assert_equal(#proposals, 0, 'short remaining burst window must not create a late proposal')
     config_values['config.combat.auto_engage'] = false
+    ctx.config.combat.auto_engage = false
     proposals = {}
     provider.collect_engage(ctx, proposals)
     assert_equal(#proposals, 0, 'auto_engage=false must suppress engage proposals only')

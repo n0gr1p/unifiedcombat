@@ -5,6 +5,8 @@ end
 local files = require('files')
 local res = require('resources')
 local uc_active_config = require('uc_active_config')
+local uc_follow_config = require('uc_follow_config')
+local uc_path_config = require('uc_path_config')
 local uc_camp_puller = require('uc_camp_puller')
 local domain_ownership = require('uc_domain_ownership')
 local uc_party_follow = require('uc_party_follow')
@@ -18,6 +20,14 @@ local movement_dispatcher = require('uc_movement_dispatcher').build({
 local texts_ok, texts = pcall(require, 'texts')
 
 local mod = {}
+
+local function canonical_camp_pulling_config()
+	local config = uc_active_config.get_path('config.combat.pulling')
+	if type(config) ~= 'table' then
+		return { enabled = false }
+	end
+	return config
+end
 
 local last_recording = false
 local last_follow_enabled = false
@@ -38,44 +48,50 @@ local follow_paused = false
 local follow_pause_anchor_index = nil
 local follow_pause_reason = 'NONE'
 
-local function active_value_or_flat(path, flat_value)
-	local active_value = uc_active_config.get_path(path)
-	if active_value ~= nil then
-		return active_value
-	end
-	return flat_value
+local function active_path_config()
+	return uc_active_config.get_config()
 end
 
-local function path_recording_enabled(settings)
-	return active_value_or_flat('config.movement.path.recording', settings and settings.path_recording) == true
+local function path_recording_enabled(_)
+	return uc_path_config.recording_enabled(active_path_config())
 end
 
-local function path_follow_enabled(settings)
-	return active_value_or_flat('config.movement.path.follow_enabled', settings and settings.path_follow_enabled) == true
+local function path_follow_enabled(_)
+	return uc_path_config.follow_enabled(active_path_config())
 end
 
+-- Selected route identity/progress is live session state. The path runtime
+-- derives and mutates these values; durable Profile V2 policy must not replace
+-- them while recording or following a route.
 local function path_file_name(settings)
-	return tostring(active_value_or_flat('config.movement.path.file_name', settings and settings.path_file_name) or '')
+	return tostring(settings and settings.path_file_name or '')
 end
 
 local function path_route_type(settings)
-	return tostring(active_value_or_flat('config.movement.path.route_type', settings and settings.path_route_type) or 'unknown')
+	return tostring(settings and settings.path_route_type or 'unknown')
 end
 
-local function path_party_gate_yalms(settings)
-	return tonumber(active_value_or_flat('config.movement.path.party_gate_yalms', settings and settings.path_party_gate_yalms)) or 3.0
+local function path_party_gate_yalms(_)
+	return uc_path_config.party_gate_yalms(active_path_config())
 end
 
-local function path_resume_index_window(settings)
-	return tonumber(active_value_or_flat('config.movement.path.resume_index_window', settings and settings.path_resume_index_window)) or 12
+local function path_resume_index_window(_)
+	return uc_path_config.resume_index_window(active_path_config())
 end
 
-local function party_follow_enabled(settings)
-	return active_value_or_flat('config.follow.party.enabled', settings and settings.party_follow) == true
+local function party_follow_enabled(_)
+	local config = uc_active_config.get_config()
+	if type(config) ~= 'table' or not uc_follow_config.enabled(config) then
+		return false
+	end
+	local party = uc_follow_config.party(config)
+	return type(party) == 'table' and party.enabled == true
 end
 
-local function party_follow_id(settings)
-	return tonumber(active_value_or_flat('config.follow.party.leader_id', settings and settings.party_follow_id)) or 0
+local function party_follow_id(_)
+	local config = uc_active_config.get_config()
+	if type(config) ~= 'table' then return 0 end
+	return uc_follow_config.party_leader_id(config)
 end
 
 local function sanitize_name(s)
@@ -834,7 +850,7 @@ local function should_pause_for_combat(settings)
 	if not Start_Engine then
 		return false, 'ENGINE_OFF'
 	end
-	if uc_camp_puller.movement_reserved(settings.camp_pulling) then
+	if uc_camp_puller.movement_reserved(canonical_camp_pulling_config()) then
 		return true, 'OWNER_camp_puller'
 	end
 	local now = uc_now_s()

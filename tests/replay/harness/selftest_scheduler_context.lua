@@ -12,6 +12,7 @@ local calls = {
 	mob_by_index = 0,
 	party = 0,
 	mobs = 0,
+	config = 0,
 	now = 0,
 }
 local player = { id = 101, name = 'Player', status = 1 }
@@ -25,9 +26,14 @@ local mob_array = {
 }
 local phase1 = { tick = 7 }
 local settings = { autotarget = true }
+local config = { combat = { enabled = true } }
 
 context.start_pet_target_diagnostic()
 local snapshot = context.build(settings, phase1, {
+	get_config = function()
+		calls.config = calls.config + 1
+		return config
+	end,
 	get_player = function()
 		calls.player = calls.player + 1
 		return player
@@ -67,6 +73,7 @@ local snapshot = context.build(settings, phase1, {
 assert_equal(snapshot.now, 123.5, 'snapshot time')
 assert_equal(snapshot.tick, 8, 'snapshot tick')
 assert_equal(phase1.tick, 8, 'phase tick incremented once')
+assert_equal(snapshot.config, config, 'canonical config identity')
 assert_equal(snapshot.settings, settings, 'settings identity')
 assert_equal(snapshot.player, player, 'player identity')
 assert_equal(snapshot.target, target, 'target identity')
@@ -83,6 +90,7 @@ assert_equal(calls.target, 3, 'me, target, and pet sampled once each')
 assert_equal(calls.mob_by_index, 1, 'pet target sampled by raw index once')
 assert_equal(calls.party, 1, 'party sampled once')
 assert_equal(calls.mobs, 1, 'mob array sampled once')
+assert_equal(calls.config, 1, 'canonical config sampled once')
 assert_equal(calls.now, 1, 'time sampled once')
 local diagnostic = context.stop_pet_target_diagnostic()
 assert_equal(diagnostic.samples, 1, 'pet target diagnostic sample count')
@@ -94,6 +102,9 @@ pet.status = 1
 pet.target_index = 0
 context.start_pet_target_diagnostic()
 context.build(settings, {}, {
+	get_config = function()
+		return config
+	end,
 	get_player = function()
 		return player
 	end,
@@ -137,6 +148,9 @@ assert_equal(snapshot.player_status, 1, 'derived status remains tick-stable')
 assert_equal(snapshot.target_name, nil, 'no unsanctioned derived target name')
 
 local empty = context.build({}, {}, {
+	get_config = function()
+		return nil
+	end,
 	get_player = function()
 		return nil
 	end,
@@ -156,6 +170,7 @@ local empty = context.build({}, {}, {
 		return 0
 	end,
 })
+assert_equal(next(empty.config), nil, 'missing canonical config defaults empty')
 assert_equal(empty.player_present, false, 'missing player recorded')
 assert_equal(empty.pet_target_matches_current, false, 'missing pet cannot match current target')
 assert_equal(empty.target_present, false, 'missing target recorded')

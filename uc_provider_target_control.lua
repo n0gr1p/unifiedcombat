@@ -47,7 +47,7 @@ function M.new(deps)
 		if not bool_setting(rawget(_G, 'Start_Engine'), false) then
 			return
 		end
-		if not bool_setting(combat_autotarget(ctx.settings), false) then
+		if not bool_setting(combat_autotarget(ctx.config), false) then
 			return
 		end
 		local player = ctx.player
@@ -55,8 +55,8 @@ function M.new(deps)
 			return
 		end
 		local engaged = tonumber(player.status) == 1
-		local add_control_retarget = engaged and add_control_enabled(ctx.settings)
-		local pick = select_target(ctx.settings)
+		local add_control_retarget = engaged and add_control_enabled(ctx.settings, ctx.config)
+		local pick = select_target(ctx.settings, ctx.config)
 		if type(pick) ~= 'table' then
 			return
 		end
@@ -73,7 +73,7 @@ function M.new(deps)
 		if tid <= 0 then
 			return
 		end
-		local tank_mode = bool_setting(tank_enabled(ctx.settings), false)
+		local tank_mode = bool_setting(tank_enabled(ctx.config), false)
 		local priority_band = death_switch and death_switch_priority or (tank_mode and tank_target_priority or 84)
 		local urgency = death_switch and death_switch_urgency or (tank_mode and tank_target_urgency or 0.55)
 		local cur = ctx.target_present == true and ctx.target or nil
@@ -139,10 +139,10 @@ function M.new(deps)
 		if not bool_setting(combat_domain_enabled(), false) then
 			return
 		end
-		if not bool_setting(combat_autotarget(ctx.settings), false) then
+		if not bool_setting(combat_autotarget(ctx.config), false) then
 			return
 		end
-		local pick = select_pull(ctx.settings)
+		local pick = select_pull(ctx.settings, ctx.config)
 		if type(pick) ~= 'table' then
 			return
 		end

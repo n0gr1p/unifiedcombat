@@ -7,8 +7,8 @@ for _, name in ipairs(run_config.rune_names()) do
     RUNE_NAMES[name:lower()] = true
 end
 
-local function owned_set(settings)
-    local cfg = run_config.active(settings)
+local function owned_set(settings, config)
+    local cfg = run_config.active(settings, config)
     if cfg.enabled ~= true then
         return {}
     end
@@ -29,16 +29,16 @@ local function owned_set(settings)
     return out
 end
 
-function M.owns_ja(settings, name)
+function M.owns_ja(settings, name, config)
     local key = tostring(name or ''):lower()
-    return owned_set(settings)[key] == true
+    return owned_set(settings, config)[key] == true
 end
 
-function M.filter_generic_abilities(settings, abilities)
+function M.filter_generic_abilities(settings, abilities, config)
     if type(abilities) ~= 'table' then
         return {}
     end
-    local owned = owned_set(settings)
+    local owned = owned_set(settings, config)
     if next(owned) == nil then
         local copy = {}
         for i = 1, #abilities do copy[i] = abilities[i] end

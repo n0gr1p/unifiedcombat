@@ -58,15 +58,15 @@ assert_equal(
 active_value = false
 assert_equal(
 	scheduler_config.tank_enmity_include_pets({ tank_enmity_include_pets = true }),
-	true,
-	'live flat on overrides active false'
+	false,
+	'canonical false overrides stale flat on'
 )
 
 active_value = true
 assert_equal(
 	scheduler_config.tank_enmity_include_pets({ tank_enmity_include_pets = false }),
-	false,
-	'live flat off overrides active true'
+	true,
+	'canonical true overrides stale flat off'
 )
 
 print('selftest_tank_pet_enmity_config: OK')

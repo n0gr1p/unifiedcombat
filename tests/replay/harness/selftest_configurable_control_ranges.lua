@@ -72,14 +72,8 @@ local function main()
     assert_equal(normalized.follow.partner.engage_range, 9.5, 'structured puller engage range must normalize')
     assert_equal(normalized.sleep.max_target_range, 14.0, 'structured sleep range must normalize')
 
-    local profile = {
-        version = 2,
-        profile = normalized.profile,
-        config = normalized,
-    }
-    local projected = active_config.project_flat_settings(profile, {})
-    assert_equal(projected.puller_engage_range, 9.5, 'puller engage range must project to compatibility settings')
-    assert_equal(projected.sleep_max_target_range, 14.0, 'sleep range must project to compatibility settings')
+    assert_equal(normalized.follow.partner.engage_range, 9.5, 'canonical puller engage range must remain durable')
+    assert_equal(normalized.sleep.max_target_range, 14.0, 'canonical sleep range must remain durable')
 
     local disabled_sleep_meta = {
         character = 'Nyoourke',
@@ -110,11 +104,9 @@ local function main()
     }
     local disabled_active, disabled_active_err = active_config.build_active_profile_from_v2_payload(disabled_sleep_profile, disabled_sleep_meta)
     assert_true(type(disabled_active) == 'table', 'disabled Sleep v2 profile must build active config: ' .. tostring(disabled_active_err))
-    local disabled_projected = active_config.project_flat_settings(disabled_active, {})
-    assert_equal(disabled_projected.sleepspell, '', 'disabled Sleep projection must preserve an empty compatibility primary')
-    local disabled_round_trip = profile_v2.build_durable_config(disabled_projected, disabled_sleep_meta)
-    local disabled_diff = profile_v2.diff_durable_config(disabled_round_trip, disabled_sleep_config)
-    assert_equal(disabled_diff.count, 0, 'disabled empty Sleep profile must survive profilev2 conversion without durable diffs')
+    assert_equal(disabled_active.config.sleep.legacy_primary, '', 'disabled Sleep active config must preserve an empty compatibility primary')
+    local disabled_diff = profile_v2.diff_durable_config(disabled_active.config.sleep, disabled_sleep_config.sleep)
+    assert_equal(disabled_diff.count, 0, 'disabled empty Sleep profile must survive canonical Profile V2 conversion without durable diffs')
 
     local allowed, reason = puller_gate_mock({
         max_range = 9.5,
@@ -147,7 +139,7 @@ local function main()
     local scheduler_source = read_file('unified_scheduler.lua')
     assert_contains(core_source, 'local function puller_engage_range(settings)', 'core must read the configured puller engage range')
     assert_contains(core_source, 'if dist <= range then', 'core puller gate must compare mob-to-puller distance with configured range')
-    assert_contains(core_source, 'local puller_allowed = puller_engage_allowed(settings, target)', 'combat-close movement must use the shared puller gate')
+    assert_contains(core_source, 'local puller_allowed = puller_engage_allowed(puller_settings, target)', 'combat-close movement must use the canonical follow runtime view for the shared puller gate')
     assert_contains(core_source, "return false, 'PULLER_UNRESOLVED'", 'configured unresolved puller must fail closed')
     assert_contains(core_source, "return false, 'PULLER_UNAVAILABLE'", 'configured unavailable puller must fail closed')
     assert_not_contains(scheduler_source, 'combat_core.puller_engage_allowed_for_scheduler', 'puller range must not block targeting or attack engagement')

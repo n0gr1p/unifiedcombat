@@ -119,6 +119,45 @@ local function main()
     assert_true(list_has(unavailable.warnings, "config normalizer unavailable"), "unavailable status warning mismatch")
     assert_true(list_has(unavailable.errors, "config normalizer unavailable"), "unavailable status error mismatch")
 
+    -- A missing published status must summarize the active Profile V2,
+    -- not reconstruct an apparently valid status from contradictory flats.
+    local previous_active = rawget(_G, "UC_ACTIVE_PROFILE")
+    local canonical = normalizer.default_config({
+        character = "Canonical",
+        main_job = "WAR",
+        sub_job = "NIN",
+        source = "UC_PROFILE_V2",
+    })
+    canonical.combat.autotarget = false
+    rawset(_G, "UC_ACTIVE_PROFILE", {
+        version = 2,
+        profile = canonical.profile,
+        config = canonical,
+    })
+    local flat_normalizations = 0
+    local forbidden_normalizer = {
+        normalize = function()
+            flat_normalizations = flat_normalizations + 1
+            error("must not normalize stale flats when active v2 exists")
+        end,
+        version = normalizer.version,
+    }
+    local from_active = runtime.config_contract_status({
+        autotarget = true,
+        show_ingame_ui = true,
+    }, { source = "UC_SETTINGS", character = "Stale" }, forbidden_normalizer)
+    assert_equal(flat_normalizations, 0, "canonical status must not normalize flat state")
+    assert_equal(from_active.ok, true, "canonical fallback status should validate")
+    assert_equal(from_active.character, "Canonical", "canonical status identity must win over stale metadata")
+    assert_equal(from_active.source, "UC_PROFILE_V2", "canonical status source must not report UC_SETTINGS")
+    assert_true(list_has(from_active.domains, "combat"), "canonical status must enumerate active combat domain")
+    local no_normalizer = runtime.config_contract_status({
+        autotarget = true,
+    }, { source = "UC_SETTINGS" }, false)
+    assert_equal(no_normalizer.ok, true, "active status must remain available without flat normalizer")
+    assert_equal(no_normalizer.available, true, "active status must report available canonical data")
+    rawset(_G, "UC_ACTIVE_PROFILE", previous_active)
+
     _G.UC_CONFIG_CONTRACT_STATUS = previous_global_status
 
     local bridge_source = read_file("remote_bridge.lua")
@@ -127,11 +166,13 @@ local function main()
     local scheduler_source = read_file("unified_scheduler.lua")
 
     assert_contains(bridge_source, "local uc_config_runtime = require('uc_config_runtime')", "bridge must require config runtime helper")
-    assert_contains(bridge_source, "config_contract_status = uc_config_runtime.config_contract_status(_G.UC_SETTINGS)", "bridge state/options must use runtime status accessor")
+    assert_contains(bridge_source, "config_contract_status = uc_config_runtime.config_contract_status(nil, nil, nil, _G.UC_CONFIG_CONTRACT_STATUS)", "bridge state/options must clone the published config status through the runtime accessor")
+    assert_not_contains(bridge_source, "config_contract_status(_G.UC_SETTINGS)", "bridge config status must not normalize flat settings")
     assert_not_contains(bridge_source, "config_contract_status = _G.UC_CONFIG_CONTRACT_STATUS", "bridge must not publish config status through direct global coupling")
     assert_contains(bridge_source, "profile_contract_status = _G.UC_PROFILE_CONTRACT_STATUS", "bridge must keep profile status")
-    assert_contains(bridge_source, "local cfg_ver = tonumber(uc_msg_get(msg, 'cfg_version')) or 0", "bridge cfg_version gate must remain")
-    assert_contains(bridge_source, "apply_set(set_path, set_value)", "bridge write behavior must remain apply_set based")
+    assert_not_contains(bridge_source, "cfg_version", "retired generic bridge set version gate must stay removed")
+    assert_not_contains(bridge_source, "apply_set(", "retired generic bridge flat writer must stay removed")
+    assert_not_contains(bridge_source, "op == 'set'", "retired generic bridge set receiver must stay removed")
     assert_not_contains(bridge_source, "normalized_config =", "bridge must not expose full normalized config")
     assert_not_contains(bridge_source, "UC_SETTINGS =", "bridge snapshots must not expose settings as a field")
 

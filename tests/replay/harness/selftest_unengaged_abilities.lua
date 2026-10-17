@@ -11,6 +11,16 @@ local function assert_true(value, message)
 end
 
 local original_start_engine = rawget(_G, 'Start_Engine')
+local saved_modules = {}
+for _, name in ipairs({
+	'resources',
+	'uc_scheduler_config',
+	'uc_provider_run_tank',
+	'uc_tank_pet_enmity',
+	'uc_provider_tank_enmity',
+}) do
+	saved_modules[name] = package.loaded[name]
+end
 
 local function generic_deps(ability_name, ja_targets)
 	return {
@@ -21,6 +31,13 @@ local function generic_deps(ability_name, ja_targets)
 		clamp_urgency = function(value) return value end,
 		build_partner_target_set = function() return {} end,
 		select_ws_plan = function() return nil end,
+		weaponskill_enabled = function() return false end,
+		abilities_enabled = function(config)
+			return type(config) == 'table' and type(config.abilities) == 'table' and config.abilities.enabled == true
+		end,
+		abilities_allow_unengaged = function(config)
+			return type(config) == 'table' and type(config.abilities) == 'table' and config.abilities.allow_unengaged == true
+		end,
 		action_timeline_log = function() end,
 		combat_domain_enabled = function() return true end,
 		sleep_enabled = function() return false end,
@@ -44,7 +61,10 @@ local function generic_deps(ability_name, ja_targets)
 		prime_unclaimed_party_aggressive_ok = function() return false end,
 		pending_engage_state = function() return nil end,
 		pending_engage_live = function() return false end,
-		collect_ordered_abilities = function() return { ability_name } end,
+		collect_ordered_abilities = function(config)
+			if type(config) == 'table' and type(config.abilities) == 'table' then return { ability_name } end
+			return {}
+		end,
 		get_ja_resource = function(name)
 			if name ~= ability_name then return nil end
 			return { name = name, targets = ja_targets, range = 0 }
@@ -87,7 +107,8 @@ local ok, err = xpcall(function()
 	local provider = combat_provider.new(generic_deps('Provoke', '{Enemy}'))
 	local ctx = {
 		now = 10,
-		settings = { ability_active = true, ability_allow_unengaged = false },
+		config = { abilities = { enabled = true, allow_unengaged = false, configured = { 'Provoke' }, legacy_slots = {} } },
+		settings = { ability_active = false, ability_allow_unengaged = true },
 		player_present = true,
 		player = { id = 1, name = 'PLD', status = 0, vitals = { tp = 0 } },
 		target_present = true,
@@ -99,7 +120,8 @@ local ok, err = xpcall(function()
 	assert_equal(#out, 0, 'toggle-off unengaged JA must remain gated')
 
 	-- Toggle on still requires a live enemy target; it is not an idle prebuff switch.
-	ctx.settings.ability_allow_unengaged = true
+	ctx.config.abilities.allow_unengaged = true
+	ctx.settings.ability_allow_unengaged = false
 	ctx.target_present = false
 	ctx.target = nil
 	out = {}
@@ -126,17 +148,42 @@ local ok, err = xpcall(function()
 
 	-- Engaged behavior is unchanged even when the new toggle is off.
 	ctx.player.status = 1
-	ctx.settings.ability_allow_unengaged = false
+	ctx.config.abilities.allow_unengaged = false
+	ctx.settings.ability_allow_unengaged = true
 	out = {}
 	provider.collect_ja(ctx, out)
 	assert_equal(#out, 1, 'engaged JA behavior must remain unchanged')
 
 	-- Dedicated tank-enmity provider has the same gate so PLD's tank action list
 	-- does not remain partially engagement-locked.
+	package.loaded.resources = {
+		spells = { with = function() return nil end },
+		job_abilities = { with = function() return nil end },
+	}
+	package.loaded.uc_scheduler_config = {
+		tank_enabled_from_config = function(config)
+			return type(config) == 'table' and type(config.tank) == 'table' and config.tank.enabled == true
+		end,
+		tank_enmity_actions_from_config = function() return {} end,
+		tank_enmity_include_pets_from_config = function() return false end,
+		targeting_ignore_names_from_config = function() return {} end,
+	}
+	package.loaded.uc_provider_run_tank = {
+		new = function()
+			return { collect = function() end }
+		end,
+	}
+	package.loaded.uc_tank_pet_enmity = {
+		find_violation = function() return nil end,
+	}
+	package.loaded.uc_provider_tank_enmity = nil
 	local tank_provider = require('uc_provider_tank_enmity').new({
 		bool_setting = function(value, default_value)
 			if value == nil then return default_value end
 			return value == true
+		end,
+		abilities_allow_unengaged = function(config)
+			return type(config) == 'table' and type(config.abilities) == 'table' and config.abilities.allow_unengaged == true
 		end,
 		select_tank_enmity = function()
 			return {
@@ -145,17 +192,22 @@ local ok, err = xpcall(function()
 			}
 		end,
 		action_ready = function() return true, 'OK', 'ja' end,
+		action_effective_range = function() return 20 end,
 		log_tank_sched = function() end,
 		clamp_urgency = function(value) return value end,
 	})
 	ctx.player.status = 0
-	ctx.settings.ability_allow_unengaged = false
+	ctx.config.tank = { enabled = true, enmity = { actions = { 'ja:Provoke' }, include_pets = false } }
+	ctx.config.targeting = { target_ignore_names = {} }
+	ctx.config.abilities.allow_unengaged = false
+	ctx.settings.ability_allow_unengaged = true
 	ctx.mobs_by_id = { [900] = enemy_target(900) }
 	out = {}
 	tank_provider.collect(ctx, out)
 	assert_equal(#out, 0, 'tank enmity must remain gated while override is off')
 
-	ctx.settings.ability_allow_unengaged = true
+	ctx.config.abilities.allow_unengaged = true
+	ctx.settings.ability_allow_unengaged = false
 	out = {}
 	tank_provider.collect(ctx, out)
 	assert_equal(#out, 1, 'tank enmity must be usable unengaged with valid target')
@@ -168,6 +220,9 @@ local ok, err = xpcall(function()
 end, debug.traceback)
 
 _G.Start_Engine = original_start_engine
+for name, value in pairs(saved_modules) do
+	package.loaded[name] = value
+end
 if not ok then
 	error(err)
 end

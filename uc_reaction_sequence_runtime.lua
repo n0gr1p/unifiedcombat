@@ -140,6 +140,17 @@ local function release_sequence(lock, reason)
     return public_lock(lock)
 end
 
+local function prune_unconfigured_sequences()
+    local released
+    for _, lock in pairs(sequence_locks) do
+        if not require('uc_reaction_sequence_policy').current(lock) then
+            local removed = release_sequence(lock, 'config_changed')
+            released = released or removed
+        end
+    end
+    return released
+end
+
 local function clear_sequence_windows_for_actor(actor_id, keep_key)
     local released = nil
     local id = tonumber(actor_id) or 0
@@ -228,6 +239,7 @@ function M.extend(base)
     local base_status = base.status
 
     function base.on_action(act, current_target_id, now, actor_is_valid_enemy)
+        prune_unconfigured_sequences()
         local completed = local_sequence_completion(act)
         if completed ~= nil then
             return completed
@@ -288,6 +300,7 @@ function M.extend(base)
     end
 
     function base.evaluate(current_target_id, effects, now)
+        prune_unconfigured_sequences()
         local lock = current_sequence()
         if type(lock) == 'table' then
             return public_lock(lock), nil
@@ -296,10 +309,11 @@ function M.extend(base)
     end
 
     function base.prune_invalid_ability_windows(actor_is_valid_enemy)
-        local released_sequence = nil
+        local released_sequence = prune_unconfigured_sequences()
         for _, lock in pairs(sequence_locks) do
             if actor_is_valid_enemy(tonumber(lock.actor_id) or 0) ~= true then
-                released_sequence = released_sequence or release_sequence(lock, 'actor_unavailable')
+                local removed = release_sequence(lock, 'actor_unavailable')
+                released_sequence = released_sequence or removed
             end
         end
         local released_base = base_prune(actor_is_valid_enemy)
@@ -307,6 +321,7 @@ function M.extend(base)
     end
 
     function base.get_action_lock()
+        prune_unconfigured_sequences()
         local lock = current_sequence()
         if type(lock) == 'table' then
             return public_lock(lock)

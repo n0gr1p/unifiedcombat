@@ -54,20 +54,22 @@ assert_true(active_from_v2 ~= nil, 'active PUP profile build failed: ' .. tostri
 assert_true(type(active_from_v2.config.puppetmaster) == 'table', 'active PUP profile must retain puppetmaster domain')
 assert_true(active_from_v2.config.puppetmaster.enabled, 'active PUP profile must retain enabled=true')
 
-local projected, project_error = active_config.project_flat_settings(active_from_v2, {})
-assert_true(projected ~= nil, 'active config projection failed: ' .. tostring(project_error))
-assert_true(type(projected.puppetmaster) == 'table', 'active config must project nested puppetmaster settings')
-assert_true(projected.puppetmaster_enabled, 'active config must project flat PUP UI mirror')
-assert_equal(projected.puppetmaster_maneuver_pattern, 'Fire Maneuver|Fire Maneuver|Light Maneuver', 'active config pattern mirror')
+assert_true(type(active_from_v2.config.puppetmaster) == 'table', 'active config must retain canonical Puppetmaster settings')
+assert_true(active_from_v2.config.puppetmaster.enabled, 'active config must retain canonical PUP enable')
+assert_equal(active_from_v2.config.puppetmaster.maneuvers.pattern[1], 'Fire Maneuver', 'active config canonical PUP pattern slot 1')
+assert_equal(active_from_v2.config.puppetmaster.maneuvers.pattern[3], 'Light Maneuver', 'active config canonical PUP pattern slot 3')
 
 local conversion = profile_v2.build_settings_candidate_from_structured_profile({}, structured, meta)
 assert_true(conversion.ok, 'enabled PUP profile-v2 conversion must round-trip: ' .. tostring(conversion.error or conversion.detail))
-assert_true(conversion.candidate.puppetmaster_enabled, 'autoload candidate must retain PUP enabled=true')
+assert_true(conversion.candidate == nil, 'canonical PUP conversion must not build a flat candidate')
 assert_true(type(conversion.candidate_config.puppetmaster) == 'table', 'autoload candidate durable config must retain puppetmaster domain')
 assert_true(conversion.candidate_config.puppetmaster.enabled, 'autoload candidate durable config must retain enabled=true')
 
-local no_profile_config = runtime.config_from_settings({ profile = { main_job = 'PUP' } })
-assert_false(no_profile_config.enabled, 'missing profile-owned PUP config must disable automation')
+local no_profile_config = runtime.config_from_config({ profile = { main_job = 'PUP' } })
+assert_false(no_profile_config.enabled, 'missing canonical PUP config must disable automation')
+
+local compatibility_no_profile = runtime.config_from_settings({ profile = { main_job = 'PUP' } })
+assert_false(compatibility_no_profile.enabled, 'legacy/direct PUP compatibility parser must preserve disabled default')
 
 local ok_non_pup = pcall(function()
     normalizer.normalize(flat_settings(), { character = 'Tester', main_job = 'WAR', sub_job = 'NIN' })

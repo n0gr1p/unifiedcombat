@@ -39,8 +39,8 @@ local function resource_by_name(collection, name)
 	return nil
 end
 
-local function configured_enmity_actions(settings)
-	local source = scheduler_config.tank_enmity_actions(settings)
+local function configured_enmity_actions(config)
+	local source = scheduler_config.tank_enmity_actions_from_config(config)
 	if type(source) == 'string' then
 		local parsed = {}
 		for token in source:gmatch('[^|]+') do parsed[#parsed + 1] = token end
@@ -70,13 +70,19 @@ local function action_range(action_name, kind, action_effective_range)
 	return range
 end
 
-local function pet_pick(settings, player, action_ready, action_effective_range)
-	if scheduler_config.tank_enmity_include_pets(settings) ~= true then return nil end
-	local violation = pet_enmity.find_violation(settings, player)
+local function pet_pick(settings, config, player, action_ready, action_effective_range)
+	if scheduler_config.tank_enmity_include_pets_from_config(config) ~= true then return nil end
+	local pet_settings = settings
+	if type(config) == 'table' then
+		pet_settings = {}
+		for key, value in pairs(settings or {}) do pet_settings[key] = value end
+		pet_settings.target_ignore_names = scheduler_config.targeting_ignore_names_from_config(config)
+	end
+	local violation = pet_enmity.find_violation(pet_settings, player)
 	if type(violation) ~= 'table' or type(violation.mob) ~= 'table' then return nil end
 	local target_id = tonumber(violation.mob.id) or 0
 	if target_id <= 0 then return nil end
-	for _, action_name in ipairs(configured_enmity_actions(settings)) do
+	for _, action_name in ipairs(configured_enmity_actions(config)) do
 		local ready, _, kind = action_ready(action_name, target_id)
 		kind = tostring(kind or ''):lower()
 		if ready == true and (kind == 'ja' or kind == 'spell') then
@@ -146,6 +152,7 @@ end
 function M.new(deps)
 	deps = require_table(deps, 'deps')
 	local bool_setting = require_function(deps, 'bool_setting')
+	local abilities_allow_unengaged = require_function(deps, 'abilities_allow_unengaged')
 	local select_tank_enmity = require_function(deps, 'select_tank_enmity')
 	local action_ready = require_function(deps, 'action_ready')
 	local action_effective_range = require_function(deps, 'action_effective_range')
@@ -166,13 +173,14 @@ function M.new(deps)
 		if not bool_setting(rawget(_G, 'Start_Engine'), false) then return end
 		local player = ctx.player
 		if ctx.player_present ~= true then return end
+		if scheduler_config.tank_enabled_from_config(ctx.config) ~= true then return end
 		run_provider.collect(ctx, out)
 		local engaged = tonumber(player.status) == 1
-		local allow_unengaged = bool_setting(ctx.settings.ability_allow_unengaged, false)
+		local allow_unengaged = bool_setting(abilities_allow_unengaged(ctx.config), false)
 		if not engaged and not allow_unengaged then return end
 		local pick = prefer_pet_pick(
-			pet_pick(ctx.settings, player, action_ready, action_effective_range),
-			select_tank_enmity(ctx.settings)
+			pet_pick(ctx.settings, ctx.config, player, action_ready, action_effective_range),
+			select_tank_enmity(ctx.settings, ctx.config)
 		)
 		if type(pick) ~= 'table' then return end
 		local kind = tostring(pick.kind or ''):lower()
@@ -235,6 +243,7 @@ function M.new(deps)
 			can_preempt_movement = true,
 			can_preempt_same_band = true,
 			reason_code = 'tank_enmity_violation',
+			required_setting = 'tank',
 			detail = {
 				tank_enmity = true,
 				victim_id = tonumber(pick.victim_id) or 0,

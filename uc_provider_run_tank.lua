@@ -136,6 +136,7 @@ function M.new(deps)
             can_preempt_movement = true,
             can_preempt_same_band = false,
             reason_code = spec.reason,
+            required_setting = 'tank',
             detail = {
                 run_tank = true,
                 category = spec.category,
@@ -212,14 +213,14 @@ function M.new(deps)
             publish('inactive', 'RUN_JOB_REQUIRED', '', {}, {})
             return
         end
-        if not bool_setting(scheduler_config.tank_enabled(ctx.settings)) then return end
-        local cfg = run_config.active(ctx.settings)
+        if not bool_setting(scheduler_config.tank_enabled_from_config(ctx.config)) then return end
+        local cfg = run_config.active(ctx.settings, ctx.config)
         if cfg.enabled ~= true then
             publish('disabled', 'RUN_AUTOMATION_DISABLED', '', cfg.runes.desired, {})
             return
         end
         local engaged = tonumber(player.status) == 1
-        if not engaged and not bool_setting(ctx.settings.ability_allow_unengaged) then return end
+        if not engaged and not bool_setting(scheduler_config.abilities_allow_unengaged_from_config(ctx.config)) then return end
         local desired = cfg.runes.desired or {}
         local observed = {}
 

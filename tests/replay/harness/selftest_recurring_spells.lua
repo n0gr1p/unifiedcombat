@@ -13,7 +13,6 @@ local function assert_true(value, message)
 	if value ~= true then error(message) end
 end
 
-local active = {}
 local ready = {
 	['Absorb-TP'] = false,
 	['Absorb-STR'] = true,
@@ -22,11 +21,6 @@ local provider = recurring.new({
 	bool_setting = function(value, default)
 		if value == nil then return default end
 		return value == true
-	end,
-	active_value_or_flat = function(path, flat)
-		local value = active[path]
-		if value ~= nil then return value end
-		return flat
 	end,
 	get_spell_resource = function(name)
 		local spells = {
@@ -56,9 +50,17 @@ local function collect(status, target)
 	local out = {}
 	provider.collect({
 		now = 12.5,
+		config = {
+			combat = {
+				recurring_spells = {
+					enabled = true,
+					list = { 'Absorb-TP', 'Absorb-STR' },
+				},
+			},
+		},
 		settings = {
-			recurring_spells_enabled = true,
-			recurring_spells = 'Absorb-TP|Absorb-STR',
+			recurring_spells_enabled = false,
+			recurring_spells = 'Cure',
 		},
 		player_present = true,
 		player = { status = status },
@@ -119,9 +121,27 @@ local foreign_claimed_target = {
 }
 assert_equal(#collect(0, foreign_claimed_target), 0, 'recurring spells must reject targets claimed outside the friendly claim set')
 
-active['config.combat.recurring_spells.enabled'] = false
-assert_equal(#collect(1, target), 0, 'canonical disabled setting must override flat compatibility setting')
-active = {}
+local disabled_out = {}
+provider.collect({
+	now = 13.0,
+	config = {
+		combat = {
+			recurring_spells = {
+				enabled = false,
+				list = { 'Absorb-TP' },
+			},
+		},
+	},
+	settings = {
+		recurring_spells_enabled = true,
+		recurring_spells = 'Absorb-TP',
+	},
+	player_present = true,
+	player = { status = 1 },
+	target_present = true,
+	target = target,
+}, disabled_out)
+assert_equal(#disabled_out, 0, 'canonical disabled setting must ignore stale flat compatibility enablement')
 
 local nested = normalizer.normalize({
 	combat = {

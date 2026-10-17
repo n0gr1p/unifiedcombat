@@ -21,7 +21,6 @@ local ready = {
 }
 local provider = require('uc_provider_defensive').new({
 	bool_setting = function(value) return value == true end,
-	active_value_or_flat = function(_, flat) return flat end,
 	build_defensive_candidates = function() return {} end,
 	choose_defensive_action = function() return nil end,
 	action_ready = function(name)
@@ -44,10 +43,19 @@ local function collect(now, enabled, priority)
 	local out = {}
 	provider.collect_resurrection({
 		now = now,
+		config = {
+			defensive = {
+				enabled = true,
+				resurrection = {
+					enabled = enabled,
+					priority = priority or { 'Arise', 'Raise III', 'Raise II', 'Raise' },
+				},
+			},
+		},
 		settings = {
-			defensive_enabled = true,
-			defensive_resurrection_enabled = enabled,
-			defensive_resurrection_priority = priority or 'Arise|Raise III|Raise II|Raise',
+			defensive_enabled = false,
+			defensive_resurrection_enabled = not enabled,
+			defensive_resurrection_priority = 'Raise',
 		},
 	}, out)
 	return out

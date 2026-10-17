@@ -54,10 +54,10 @@ local function main()
 
     local core = read("unified_combat_core.lua")
     local scheduler = read("unified_scheduler.lua")
-    assert(core:find("function core.apply_movement_for_scheduler(settings, movement_executor)", 1, true), "core scheduler movement must require an executor")
-    assert(core:find("apply_movement(s, current, movement_executor)", 1, true), "core scheduler movement must use the injected executor")
+    assert(core:find("function core.apply_movement_for_scheduler(settings, movement_executor, config)", 1, true), "core scheduler movement must accept canonical config")
+    assert(core:find("apply_movement(s, current, movement_executor, config)", 1, true), "core scheduler movement must use the injected executor and canonical config")
     assert(scheduler:find("require('uc_scheduler_movement_facade').build({", 1, true), "scheduler must build the dispatcher movement facade")
-    assert(scheduler:find("combat_core.apply_movement_for_scheduler(s, movement_executor)", 1, true), "scheduler must inject the movement facade")
+    assert(scheduler:find("combat_core.apply_movement_for_scheduler(s, movement_executor, config)", 1, true), "scheduler movement coordinator must inject its explicit canonical tick config")
 
     io.stdout:write("selftest_scheduler_movement_facade: OK\n")
 end

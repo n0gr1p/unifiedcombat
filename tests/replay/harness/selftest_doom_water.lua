@@ -194,4 +194,65 @@ do
 	assert_equal(f.use_count, 1, 'last-water use count')
 end
 
+-- Integration boundary: after an inventory move, the event must re-check the
+-- active canonical defensive policy rather than the transient flat table.
+do
+    local scheduler_file = assert(io.open('unified_scheduler.lua', 'rb'))
+    local scheduler_source = scheduler_file:read('*a')
+    scheduler_file:close()
+    local start_at = assert(scheduler_source:find(
+        'function scheduler.on_add_item(bag, index, item_id, count)', 1, true))
+    local end_at = assert(scheduler_source:find('\nend', start_at, true))
+    local event_source = scheduler_source:sub(start_at, end_at)
+    assert_true(event_source:find(
+        "local config = require('uc_scheduler_context_utils').get_config()", 1, true) ~= nil,
+        'inventory event must load active canonical config')
+    assert_true(event_source:find('doom_water_dependencies(config)', 1, true) ~= nil,
+        'inventory event must pass canonical config into enabled gate')
+    assert_equal(event_source:find('doom_water_dependencies(settings)', 1, true), nil,
+        'inventory event cannot pass flat settings as a canonical config')
+    
+    local prev_profile = rawget(_G, 'UC_ACTIVE_PROFILE')
+    local prev_settings = rawget(_G, 'UC_SETTINGS')
+    local current_config = require('uc_scheduler_context_utils').get_config
+    local enabled_from_config = require('uc_scheduler_config').defensive_doom_water_enabled_from_config
+    local cfg = { defensive = { enabled = true, doom = { holy_water_enabled = true } } }
+    rawset(_G, 'UC_ACTIVE_PROFILE', {
+        version = 2, profile = { main_job = 'WHM' }, config = cfg,
+    })
+    rawset(_G, 'UC_SETTINGS', { defensive = false, holy_water_enabled = false })
+    local f = new_fixture()
+    f.items[5] = { { id = 1234, count = 1, slot = 9 } }
+    f.deps.enabled = function() return enabled_from_config(current_config()) end
+    local state = doom_water.new_state()
+    local blocked = doom_water.step(state, f.deps)
+    assert_true(blocked, 'canonical enabled Doom recovery must stage despite flat OFF')
+    assert_equal(state.phase, 'staging', 'canonical enabled staged')
+    f.items[0] = { { id = 1234, count = 1, slot = 4 } }
+    local acted, reason = doom_water.on_add_item(state, 0, 4, 1234, 1, f.deps)
+    assert_true(acted, 'canonical enabled Doom must use confirmed staged Holy Water')
+    assert_equal(reason, 'BLOCK_DOOM_WATER', 'canonical enabled event result')
+    assert_equal(f.use_count, 1, 'canonical enabled event dispatches exactly one item')
+
+    -- Policy may change between the staging tick and event callback; canonical
+    -- OFF must cancel, even when a stale flat flag still says enabled.
+    cfg.defensive.doom.holy_water_enabled = true
+    local f2 = new_fixture()
+    f2.items[5] = { { id = 1234, count = 1, slot = 9 } }
+    f2.deps.enabled = function() return enabled_from_config(current_config()) end
+    local state2 = doom_water.new_state()
+    assert_true(doom_water.step(state2, f2.deps), 'policy-change setup staged')
+    cfg.defensive.doom.holy_water_enabled = false
+    rawset(_G, 'UC_SETTINGS', { defensive = true, holy_water_enabled = true })
+    f2.items[0] = { { id = 1234, count = 1, slot = 4 } }
+    local changed_acted, changed_reason = doom_water.on_add_item(state2, 0, 4, 1234, 1, f2.deps)
+    assert_equal(changed_acted, false, 'canonical OFF must cancel staged recovery')
+    assert_equal(changed_reason, 'DOOM_GONE_BEFORE_STAGE_CONFIRM', 'disabled-policy confirmation reason')
+    assert_equal(f2.use_count, 0, 'stale flat ON must not dispatch Holy Water')
+    assert_equal(state2.phase, 'idle', 'canonical OFF resets staging')
+
+    rawset(_G, 'UC_ACTIVE_PROFILE', prev_profile)
+    rawset(_G, 'UC_SETTINGS', prev_settings)
+end
+
 io.stdout:write('selftest_doom_water: OK\n')

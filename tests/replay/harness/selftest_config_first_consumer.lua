@@ -74,6 +74,32 @@ local function main()
         "normalizer failure must preserve legacy behavior"
     )
 
+    -- Even the legacy melee/DD2 UI reader must honor the already-published
+    -- Profile V2; a stale flat setting cannot re-enable or hide the UI.
+    local previous_active = rawget(_G, "UC_ACTIVE_PROFILE")
+    rawset(_G, "UC_ACTIVE_PROFILE", {
+        version = 2,
+        profile = { schema_version = 2, engine = "UC" },
+        config = { ui = { show_ingame_ui = false } },
+    })
+    local forbidden_normalizer = {
+        normalize = function()
+            error("flat normalizer must not run when canonical UI exists")
+        end,
+    }
+    assert_equal(runtime.ingame_ui_enabled({ show_ingame_ui = true }, nil, forbidden_normalizer), false,
+        "canonical UI false must beat contradictory flat true")
+    _G.UC_ACTIVE_PROFILE.config.ui.show_ingame_ui = true
+    assert_equal(runtime.ingame_ui_enabled({ show_ingame_ui = false }, nil, forbidden_normalizer), true,
+        "canonical UI true must beat contradictory flat false")
+    _G.UC_ACTIVE_PROFILE.config.ui = {}
+    assert_equal(runtime.ingame_ui_enabled({ show_ingame_ui = true }, nil, forbidden_normalizer), false,
+        "missing canonical UI leaf must use hidden default, not stale flat true")
+    _G.UC_ACTIVE_PROFILE.config.ui = nil
+    assert_equal(runtime.ingame_ui_enabled({ show_ingame_ui = true }, nil, forbidden_normalizer), false,
+        "missing canonical UI domain must not revive flat visibility")
+    rawset(_G, "UC_ACTIVE_PROFILE", previous_active)
+
     local addon_source = read_file("UnifiedCombat.lua")
     local bridge_source = read_file("remote_bridge.lua")
     local export_source = read_file("uc_config_status_export.lua")
@@ -89,7 +115,8 @@ local function main()
     assert_not_contains(export_source, "config = ", "export must not include full normalized config")
     assert_not_contains(scheduler_source, "config.ui.show_ingame_ui", "scheduler must not consume migrated UI config")
     assert_not_contains(scheduler_source, "uc_config_runtime", "scheduler/provider code must not use first-consumer runtime helper")
-    assert_contains(bridge_source, "apply_set(set_path, set_value)", "bridge write behavior must remain apply_set based")
+    assert_not_contains(bridge_source, "apply_set(", "retired generic bridge flat writer must stay removed")
+    assert_not_contains(bridge_source, "op == 'set'", "retired generic bridge set receiver must stay removed")
 
     io.stdout:write("selftest_config_first_consumer: OK\n")
 end

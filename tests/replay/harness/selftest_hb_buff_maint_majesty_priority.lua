@@ -1,4 +1,5 @@
 package.loaded['uc_hb_buff_maint'] = nil
+package.loaded['uc_time'] = { gettime = function() return 100 end }
 
 windower = windower or {}
 windower.addon_path = './'
@@ -102,13 +103,26 @@ local function make_members(buff_ids)
     }
 end
 
+local function buff_config(list, self_only)
+	return {
+		defensive = {
+			buffs = {
+				enabled = true,
+				list = list or '',
+				targeted = {},
+				self_only = self_only ~= false,
+				overwrite_enabled = false,
+				overwrite_interval = 150,
+			},
+		},
+		maintenance = {
+			brd = { enabled = false },
+		},
+	}
+end
+
 local function main()
-    local settings = {
-        defensive_buffs = 'Protect|Majesty',
-        defensive_targeted_buffs = '',
-        defensive_buff_self_only = true,
-        defensive_overwrite_enabled = false,
-    }
+    local settings = buff_config('Protect|Majesty', true)
 
     local picked = hb_buff_maint.choose(settings, make_members({}), make_helpers())
     assert_true(type(picked) == 'table', 'expected a picked buff candidate')
@@ -138,12 +152,7 @@ local function main()
     picked = hb_buff_maint.choose(settings, make_members({ 101, 102 }), make_helpers())
     assert_equal(picked, nil, 'no candidate expected when all listed buffs are already present')
 
-    local party_buff_settings = {
-        defensive_buffs = 'Barwatera',
-        defensive_targeted_buffs = '',
-        defensive_buff_self_only = false,
-        defensive_overwrite_enabled = false,
-    }
+    local party_buff_settings = buff_config('Barwatera', false)
     local party_members = {
         { name = 'Redrogue', is_self = true, buffs = { 105 } },
         { name = 'Terrasjr', is_self = false, buffs = {} },

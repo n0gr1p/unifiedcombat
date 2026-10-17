@@ -216,30 +216,24 @@ local function assert_missing_new_defensive_settings_apply(profile_v2, exporter,
 		sub_job = 'WAR',
 	}, contract.validate_structured_profile_config, deps)
 	assert_true(result.ok == true, 'structured profile missing new defensive settings must apply cleanly')
-	assert_false(result.candidate.defensive_curaga_enabled, 'missing Curaga enabled value must project as false')
-	assert_equal(result.candidate.defensive_curaga_min_targets, 3, 'missing Curaga minimum must project as 3')
-	assert_false(result.candidate.defensive_waltz_enabled, 'missing Waltz enabled value must project as false')
-	assert_equal(result.candidate.defensive_waltz_tp_reserve, 0, 'missing Waltz TP reserve must project as 0')
-	assert_equal(result.candidate.defensive_divine_waltz_min_targets, 3, 'missing Divine Waltz minimum must project as 3')
-	assert_false(result.candidate.def_maintain_enemy_debuffs, 'missing enemy debuff enabled value must project as false')
-	assert_equal(result.candidate.defensive_enemy_debuffs, '', 'missing enemy debuff list must project as empty')
+	assert_true(result.candidate == nil, 'canonical apply must not build a flat settings candidate')
+	assert_false(result.candidate_config.defensive.cure.curaga.enabled, 'missing Curaga enabled value must default false canonically')
+	assert_equal(result.candidate_config.defensive.cure.curaga.min_targets, 3, 'missing Curaga minimum must default to 3 canonically')
+	assert_false(result.candidate_config.defensive.waltz.enabled, 'missing Waltz enabled value must default false canonically')
+	assert_equal(result.candidate_config.defensive.waltz.tp_reserve, 0, 'missing Waltz TP reserve must default to 0 canonically')
+	assert_equal(result.candidate_config.defensive.waltz.divine_min_targets, 3, 'missing Divine Waltz minimum must default to 3 canonically')
+	assert_false(result.candidate_config.defensive.enemy_debuffs.enabled, 'missing enemy debuff enabled value must default false canonically')
+	assert_equal(result.candidate_config.defensive.enemy_debuffs.list, '', 'missing enemy debuff list must default empty canonically')
 end
 
 local function load_profile_v2_apply_from_addon(addon_source, exporter_stub, validator_stub)
 	local apply_block = extract_source_block(
 		addon_source,
-		"local uc_sync_table_in_place\nlocal uc_normalize_settings_table",
-		"\n\nlocal function uc_read_profiles_file"
-	)
-	local normalize_block = extract_source_block(
-		addon_source,
-		"uc_normalize_settings_table = function(s)",
-		"\n\nlocal function uc_normalize_active_settings"
+		"local function uc_apply_profile_v2_file(meta, settings)",
+		"\n\nlocal function uc_initialize_safe_profile_v2_identity"
 	)
 	local chunk_source = table.concat({
 		apply_block,
-		'',
-		normalize_block,
 		'',
 		'return uc_apply_profile_v2_file',
 	}, '\n')
@@ -269,9 +263,16 @@ local function load_profile_v2_apply_from_addon(addon_source, exporter_stub, val
 			end,
 		},
 		uc_profile_v2 = {
-			apply_structured_profile_file_to_settings = exporter_stub,
+			apply_structured_profile_file_to_active_config = exporter_stub,
 		},
 		uc_active_config = require('uc_active_config'),
+		uc_current_profile_v2_config = function(context, meta)
+			local config = require('uc_active_config').get_config()
+			if type(config) == 'table' then return config end
+			return require('uc_profile_v2').build_durable_config(context and context.settings or {}, meta)
+		end,
+		uc_profile_v2_auto_reload_note_applied = function() end,
+		uc_profile_v2_meta_key = function() return 'test|PLD|WAR' end,
 		uc_profile_v2_file_path = function()
 			return 'data/profiles_v2/test.lua'
 		end,
@@ -505,8 +506,9 @@ local function run_profile_v2_autoload_selftest(profile_v2, active_config, contr
 		false_deps
 	)
 	assert_true(type(false_result) == 'table' and false_result.ok == true, 'autoload must apply when legacy lifecycle flags are explicitly false')
-	assert_true(false_result.candidate.profile_v2_autoload == nil, 'false legacy autoload must be inert')
-	assert_true(false_result.candidate.profile_v2_auto_reload_on_change == nil, 'false legacy auto-reload must be inert')
+	assert_true(false_result.candidate == nil, 'autoload conversion must not build a flat settings candidate')
+	assert_true(false_result.candidate_config.ownership.profile_v2_autoload == nil, 'false legacy autoload must be inert')
+	assert_true(false_result.candidate_config.ownership.profile_v2_auto_reload_on_change == nil, 'false legacy auto-reload must be inert')
 	assert_equal(#false_state.read_calls, 1, 'false lifecycle flags must not add a second read path')
 
 	local enabled_payload = profile_v2.build_structured_profile(flat, profile_meta)
@@ -546,8 +548,9 @@ local function run_profile_v2_autoload_selftest(profile_v2, active_config, contr
 	assert_true(type(enabled_result.active_profile) == 'table', 'enabled autoload must return an active profile')
 	assert_true(_G.UC_ACTIVE_PROFILE.config.ownership.profile_v2_autoload == nil, 'legacy autoload must not enter active config')
 	assert_true(_G.UC_ACTIVE_PROFILE.config.ownership.profile_v2_auto_reload_on_change == nil, 'legacy auto-reload must not enter active config')
-	assert_true(enabled_result.candidate.profile_v2_autoload == nil, 'legacy autoload must not project into candidate settings')
-	assert_true(enabled_result.candidate.profile_v2_auto_reload_on_change == nil, 'legacy auto-reload must not project into candidate settings')
+	assert_true(enabled_result.candidate == nil, 'legacy autoload must not build a flat candidate')
+	assert_true(enabled_result.candidate_config.ownership.profile_v2_autoload == nil, 'legacy autoload must remain absent canonically')
+	assert_true(enabled_result.candidate_config.ownership.profile_v2_auto_reload_on_change == nil, 'legacy auto-reload must remain absent canonically')
 	assert_equal(#enabled_state.read_calls, 1, 'autoload should read the file once')
 	assert_equal(#enabled_state.open_calls, 0, 'enabled autoload must not write files')
 	assert_true(_G.Start_Engine == false, 'enabled autoload must not start the engine')
@@ -1779,12 +1782,10 @@ local function main()
 		sub_job = 'WAR',
 	}, contract.validate_structured_profile_config, no_diff_deps)
 	assert_true(no_diff_apply_result.ok == true, 'structured profile without Nyzul config should replace stale runtime roster')
-	assert_nil(no_diff_apply_result.candidate.nyzul_coordinator_name, 'Nyzul removal must clear projected coordinator')
-	assert_nil(no_diff_apply_result.candidate.nyzul_anchor_name, 'Nyzul removal must clear projected anchor')
-	assert_nil(no_diff_apply_result.candidate.nyzul_parking_order, 'Nyzul removal must clear projected parking order')
+	assert_true(no_diff_apply_result.candidate == nil, 'Nyzul apply must not build a flat candidate')
 	assert_true(
-		type(no_diff_apply_result.candidate.follow) ~= 'table' or no_diff_apply_result.candidate.follow.nyzul == nil,
-		'Nyzul removal must clear projected nested roster'
+		type(no_diff_apply_result.candidate_config.follow) ~= 'table' or no_diff_apply_result.candidate_config.follow.nyzul == nil,
+		'Nyzul removal must clear the canonical roster'
 	)
 	assert_nil(no_diff_settings.nyzul_coordinator_name, 'Nyzul removal must clear applied coordinator')
 	assert_true(
@@ -1841,7 +1842,7 @@ local function main()
 	assert_equal(ui_fixture_reload_result.count, 1, 'UI-authored structured profile reload/apply helper should report one config difference')
 	assert_equal(ui_fixture_reload_result.diff_count, 1, 'UI-authored structured profile reload/apply helper diff_count mismatch')
 	assert_true(ui_fixture_reload_settings == ui_fixture_reload_identity, 'UI-authored structured profile reload/apply helper must preserve settings table identity')
-	assert_true(ui_fixture_reload_result.candidate.face, 'UI-authored structured profile reload/apply helper should restore runtime values without addon-export metadata')
+	assert_true(ui_fixture_reload_result.candidate_config.combat.face, 'UI-authored structured profile reload/apply helper should preserve canonical values without addon-export metadata')
 	assert_equal(ui_fixture_reload_result.payload.profile.source, 'ui', 'UI-authored structured profile reload/apply helper must preserve source metadata')
 	assert_nil(ui_fixture_reload_result.payload.profile.exported_at, 'UI-authored structured profile reload/apply helper must not require exported_at metadata')
 	assert_nil(ui_fixture_reload_result.payload.profile.profile_key, 'UI-authored structured profile reload/apply helper must not require profile_key metadata')
@@ -1875,8 +1876,9 @@ local function main()
 	assert_true(scalar_apply_result.ok == true, 'structured profile apply should succeed for scalar change')
 	assert_equal(scalar_apply_result.count, 1, 'structured profile apply should report one scalar change')
 	assert_true(scalar_apply_settings == scalar_apply_identity, 'structured profile apply should preserve settings table identity')
-	assert_false(scalar_apply_result.candidate.face, 'structured profile apply candidate should update scalar runtime setting')
-	assert_equal(scalar_apply_result.candidate.weaponskill, 'Savage Blade', 'structured profile apply candidate should preserve unrelated runtime setting values')
+	assert_true(scalar_apply_result.candidate == nil, 'structured profile apply must not build a flat candidate')
+	assert_false(scalar_apply_result.candidate_config.combat.face, 'structured profile apply must update canonical scalar policy')
+	assert_equal(scalar_apply_result.candidate_config.combat.weaponskill.primary, 'Savage Blade', 'structured profile apply must preserve unrelated canonical policy')
 	assert_equal(#scalar_apply_state.open_calls, 0, 'structured profile apply should not write files on scalar apply')
 
 	local nested_apply_payload = deep_clone(profile)
@@ -1919,16 +1921,13 @@ local function main()
 		sub_job = 'WAR',
 	}, contract.validate_structured_profile_config, nested_apply_deps)
 	assert_true(nested_apply_result.ok == true, 'structured profile apply should succeed for nested change')
-	assert_equal(nested_apply_result.candidate.path_file_name, 'route-b', 'structured profile apply should update nested movement runtime field')
-	assert_equal(nested_apply_result.candidate.formation_enabled, true, 'structured profile apply should enable formation runtime mirror')
-	assert_equal(nested_apply_result.candidate.formation_role, 'dps', 'structured profile apply should preserve formation role')
-	assert_equal(nested_apply_result.candidate.formation_tank_name, 'Terrasjr', 'structured profile apply should preserve formation tank name')
-	assert_equal(nested_apply_result.candidate.formation_required_party_names[2], 'Etamame', 'structured profile apply should preserve formation coverage members')
-	assert_equal(nested_apply_result.candidate.formation_healer_maximum_party_range, 18, 'structured profile apply should preserve formation healer range')
+	assert_true(nested_apply_result.candidate == nil, 'nested apply must not build a flat settings candidate')
+	assert_equal(nested_apply_result.candidate_config.movement.formation.enabled, true, 'structured profile apply should enable canonical formation policy')
+	assert_equal(nested_apply_result.candidate_config.movement.formation.role, 'dps', 'structured profile apply should preserve canonical formation role')
+	assert_equal(nested_apply_result.candidate_config.movement.formation.tank_name, 'Terrasjr', 'structured profile apply should preserve canonical formation tank name')
+	assert_equal(nested_apply_result.candidate_config.movement.formation.required_party_names[2], 'Etamame', 'structured profile apply should preserve canonical formation coverage members')
+	assert_equal(nested_apply_result.candidate_config.movement.formation.healer.maximum_party_range, 18, 'structured profile apply should preserve canonical formation healer range')
 	assert_equal(nested_apply_result.candidate_config.movement.formation.dps.flank_angle_deg, 90, 'structured profile conversion should round-trip formation geometry')
-	assert_equal(nested_apply_result.candidate.partner_ids[1], 99, 'structured profile apply should update nested partner id list')
-	assert_equal(nested_apply_result.candidate.partner_id, 99, 'structured profile apply should sync primary partner legacy field')
-	assert_equal(nested_apply_result.candidate.partner_id2, 100, 'structured profile apply should sync secondary partner legacy field')
 
 	do
 		local legacy_ws_apply_payload = deep_clone(profile)
@@ -1946,10 +1945,10 @@ local function main()
 			sub_job = 'WAR',
 		}, contract.validate_structured_profile_config, legacy_ws_apply_deps)
 		assert_true(legacy_ws_apply_result.ok == true, 'legacy structured profile without current Smart WS settings should apply')
-		assert_equal(legacy_ws_apply_result.candidate.weaponskill_min_tp, 1000, 'legacy structured profile should project the Smart WS minimum TP compatibility default')
-		assert_equal(legacy_ws_apply_result.candidate.weaponskill_allow_aoe, true, 'legacy structured profile should project the Smart WS AoE compatibility default')
-		assert_equal(legacy_ws_apply_result.candidate.fast_skillchain, false, 'legacy structured profile should project the Fast Skillchain compatibility default')
-		assert_deep_equal(legacy_ws_apply_result.candidate.wait_ignore_names, {}, 'legacy structured profile should project the Smart WS wait-ignore compatibility default')
+		assert_equal(legacy_ws_apply_result.candidate_config.combat.weaponskill.minimum_tp, 1000, 'legacy structured profile should receive the Smart WS minimum TP canonical default')
+		assert_equal(legacy_ws_apply_result.candidate_config.combat.weaponskill.allow_aoe, true, 'legacy structured profile should receive the Smart WS AoE canonical default')
+		assert_equal(legacy_ws_apply_result.candidate_config.combat.weaponskill.fast_skillchain, false, 'legacy structured profile should receive the Fast Skillchain canonical default')
+		assert_deep_equal(legacy_ws_apply_result.candidate_config.combat.weaponskill.wait_ignore_names, {}, 'legacy structured profile should receive the Smart WS wait-ignore canonical default')
 	end
 
 	local metadata_apply_payload = deep_clone(profile)
@@ -1967,11 +1966,7 @@ local function main()
 	}, contract.validate_structured_profile_config, metadata_apply_deps)
 	assert_true(metadata_apply_result.ok == true, 'structured profile apply should succeed for metadata-only differences')
 	assert_equal(metadata_apply_result.count, 0, 'structured profile apply should ignore profile metadata differences')
-	assert_equal(profile_v2.diff_durable_config(profile_v2.build_durable_config(metadata_apply_result.candidate, {
-		character = 'Redrogue',
-		main_job = 'PLD',
-		sub_job = 'WAR',
-	}), profile.config).count, 0, 'structured profile apply should ignore profile metadata changes')
+	assert_equal(profile_v2.diff_durable_config(metadata_apply_result.candidate_config, profile.config).count, 0, 'structured profile apply should ignore profile metadata changes')
 
 	local conversion_fail_snapshot = deep_clone(flat)
 	local conversion_fail_deps = make_fake_fs({
@@ -2007,14 +2002,15 @@ local function main()
 	assert_contains(addon, "local uc_active_config = require('uc_active_config')", 'addon must require the active config helper')
 	assert_contains(addon, "uc_profile_v2.write_structured_profile_export(profile, meta)", 'addon must use structured profile export helper')
 	assert_contains(addon, "uc_profile_v2.validate_structured_profile_file(meta, function(payload)", 'addon must use structured profile validate helper')
-	assert_contains(addon, "uc_profile_v2.diff_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile diff helper')
+	assert_contains(addon, "uc_profile_v2.diff_structured_profile_file_against_config(current_config, meta, function(payload)", 'addon must use canonical structured profile diff helper')
 	assert_contains(addon, "uc_profile_v2.format_structured_profile_diff_detail_lines(diff_result, 5)", 'addon must format structured diff detail lines')
-	assert_contains(addon, "uc_profile_v2.inspect_structured_profile_file_against_settings(settings, meta, function(payload)", 'addon must use structured profile status helper')
+	assert_contains(addon, "uc_profile_v2.inspect_structured_profile_file_against_config(current_config, meta, function(payload)", 'addon must use canonical structured profile status helper')
 	assert_contains(addon, "uc_update_profile_v2_contract_status(context)", 'addon must build profile v2 status snapshots')
 	assert_contains(addon, "profile_v2 = uc_update_profile_v2_contract_status(context)", 'addon config status snapshot must include profile v2 status')
-	assert_contains(addon, "uc_profile_v2.apply_structured_profile_file_to_settings(settings, meta, function(payload)", 'addon must use structured profile apply helper')
+	assert_contains(addon, "uc_profile_v2.apply_structured_profile_file_to_active_config(current_config, meta, function(payload)", 'addon must use canonical structured profile apply helper')
 	assert_contains(addon, "uc_active_config.set_active_profile(result.active_profile)", 'addon apply path must publish the active profile')
-	assert_contains(addon, "uc_active_config.sync_flat_settings_in_place(settings, result.candidate)", 'addon apply path must project into flat settings through active config')
+	local addon_apply_block = extract_source_block(addon, "local function uc_apply_profile_v2_file(meta, settings)", "\n\nlocal function uc_initialize_safe_profile_v2_identity")
+	assert_not_contains(addon_apply_block, "sync_flat_settings_in_place(", 'addon apply path must not publish canonical Profile V2 into flat settings')
 	assert_contains(addon, "UC profile v2 status: valid, runtime matches file", 'addon must report matching status tersely')
 	assert_contains(addon, "UC profile v2 status: valid, ", 'addon must report differing status tersely')
 	assert_contains(addon, "UC profile v2 status: invalid: ", 'addon must report invalid status tersely')
@@ -2032,7 +2028,7 @@ local function main()
 	assert_contains(addon, "uc_begin_profile_v2_identity_transition()", 'startup hooks must begin profilev2 identity resolution')
 	assert_contains(addon, "uc_run_queued_profile_v2_autoload()", 'addon must run queued profilev2 autoload from prerender')
 	assert_contains(addon, "uc_run_profile_v2_auto_reload()", 'addon must run profilev2 auto-reload from prerender')
-	assert_contains(addon, "uc_profile_v2.inspect_structured_profile_status(", 'addon identity load must distinguish missing and invalid files before applying')
+	assert_contains(addon, "uc_profile_v2.inspect_structured_profile_status_against_config(", 'addon identity load must compare canonical config before applying')
 	assert_contains(addon, "uc_apply_profile_v2_file(", 'addon autoload must use the shared apply path')
 	assert_contains(addon, "local detail_mode = args[3] and tostring(args[3]):lower() == 'detail'", 'addon must recognize the diff detail command')
 	assert_contains(addon, "local ok_reload, _, reload_err, reload_count = uc_apply_profile_v2_file(", 'addon reload command must use the shared apply path')
@@ -2066,12 +2062,13 @@ local function main()
 	})
 	local live_apply = load_profile_v2_apply_from_addon(
 		addon,
-		function(settings, meta, validator)
-			return profile_v2.apply_structured_profile_file_to_settings(settings, meta, validator, live_apply_deps)
+		function(current_config, meta, validator)
+			return profile_v2.apply_structured_profile_file_to_active_config(current_config, meta, validator, live_apply_deps)
 		end,
 		contract.validate_structured_profile_config
 	)
 	local live_apply_settings = deep_clone(flat)
+	local live_apply_snapshot = deep_clone(live_apply_settings)
 	local live_apply_identity = live_apply_settings
 	_G.UC_ACTIVE_PROFILE = live_apply_active_seed
 	local live_apply_active_identity = rawget(_G, 'UC_ACTIVE_PROFILE')
@@ -2085,12 +2082,10 @@ local function main()
 	assert_nil(live_apply_err, 'live profilev2 apply should not report an error')
 	assert_true(type(live_apply_count) == 'number' and live_apply_count > 0, 'live profilev2 apply should report applied differences')
 	assert_true(live_apply_settings == live_apply_identity, 'live profilev2 apply must preserve settings table identity')
+	assert_deep_equal(live_apply_settings, live_apply_snapshot, 'live profilev2 apply must leave flat/transient settings untouched')
 	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE') == live_apply_active_identity, 'live profilev2 apply must preserve active profile table identity')
 	assert_equal(_G.UC_ACTIVE_PROFILE.profile.source, live_apply_payload.profile.source, 'live profilev2 apply must preserve profile source metadata')
-	assert_false(live_apply_settings.face, 'live profilev2 apply should update runtime scalar values')
-	assert_equal(live_apply_settings.partner_ids[1], 99, 'live profilev2 apply should update partner id list')
-	assert_equal(live_apply_settings.partner_id, 99, 'live profilev2 apply should sync primary partner legacy field')
-	assert_equal(live_apply_settings.partner_id2, 100, 'live profilev2 apply should sync secondary partner legacy field')
+	assert_false(_G.UC_ACTIVE_PROFILE.config.combat.face, 'live profilev2 apply must update canonical scalar policy')
 
 	local live_validation_failure_apply = load_profile_v2_apply_from_addon(addon, function()
 		return {

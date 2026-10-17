@@ -1,4 +1,3 @@
-local uc_active_config = require('uc_active_config')
 local res = require('resources')
 
 local function uc_now_s()
@@ -108,40 +107,22 @@ local function normalize_roll_name(name)
 	return s:lower()
 end
 
-local function active_value_or_flat(path, flat_value)
-	local active_value = uc_active_config.get_path(path)
-	if active_value ~= nil then
-		return active_value
-	end
-	return flat_value
+local function cor_config(config)
+	local maintenance = type(config) == 'table' and type(config.maintenance) == 'table'
+		and config.maintenance or {}
+	return type(maintenance.cor) == 'table' and maintenance.cor or {}
 end
 
-local function cor_roll_1(settings)
-	return active_value_or_flat('config.maintenance.cor.roll_1', settings and settings.cor_roll_1)
+local function configured_abilities(config)
+	local abilities = type(config) == 'table' and type(config.abilities) == 'table'
+		and config.abilities or {}
+	return type(abilities.configured) == 'table' and abilities.configured or {}
 end
 
-local function cor_roll_2(settings)
-	return active_value_or_flat('config.maintenance.cor.roll_2', settings and settings.cor_roll_2)
-end
-
-local function cor_crooked_roll_slot(settings)
-	return active_value_or_flat('config.maintenance.cor.crooked_roll_slot', settings and settings.cor_crooked_roll_slot)
-end
-
-local function cor_elevens(settings)
-	return active_value_or_flat('config.maintenance.cor.elevens', settings and settings.cor_elevens)
-end
-
-local function cor_luzaf_range_override(settings)
-	return active_value_or_flat('config.maintenance.cor.luzaf_range_override', settings and settings.cor_luzaf_range_override)
-end
-
-local function cor_roll_range_require_ids(settings)
-	return active_value_or_flat('config.maintenance.cor.range_require_ids', settings and settings.cor_roll_range_require_ids)
-end
-
-local function cor_light_shot_dia(settings)
-	return active_value_or_flat('config.maintenance.cor.light_shot_dia', settings and settings.cor_light_shot_dia) == true
+local function cor_light_shot_dia(cor)
+	-- The normalized Profile V2 default is enabled. Keep that default for
+	-- older canonical payloads that predate this leaf without consulting flat state.
+	return cor.light_shot_dia ~= false
 end
 
 local roll_by_name = {}
@@ -187,16 +168,16 @@ local function make_target_action(ja_name, target, reason_code, urgency, detail)
 	}
 end
 
-local function resolve_roll_pair(settings)
-	local r1_raw = tostring(cor_roll_1(settings) or "")
-	local r2_raw = tostring(cor_roll_2(settings) or "")
+local function resolve_roll_pair(config, cor)
+	local r1_raw = tostring(cor.roll_1 or "")
+	local r2_raw = tostring(cor.roll_2 or "")
 	local r1 = roll_by_name[normalize_roll_name(r1_raw)]
 	local r2 = roll_by_name[normalize_roll_name(r2_raw)]
 	if r1 and r2 then
 		return r1.en, r2.en, "configured"
 	end
 	local picks = {}
-	for _, a in ipairs(settings and settings.abilities or {}) do
+	for _, a in ipairs(configured_abilities(config)) do
 		local info = roll_by_name[normalize_roll_name(a)]
 		if info then
 			picks[#picks + 1] = info.en
@@ -226,15 +207,66 @@ local function has_luzaf_ring_anywhere()
 	return false
 end
 
-local function roll_aoe_range(settings)
-	if cor_luzaf_range_override(settings) == true then
+local function roll_aoe_range(cor)
+	if cor.luzaf_range_override == true then
 		return 16
 	end
 	return has_luzaf_ring_anywhere() and 16 or 8
 end
 
-local function in_required_roll_range(settings, max_range)
-	local req = cor_roll_range_require_ids(settings) or {}
+local function split_selected_range_names(value)
+	if type(value) ~= 'string' or value == '' then
+		return {}
+	end
+	local out = {}
+	local seen = {}
+	for part in value:gmatch('[^|]+') do
+		local name = tostring(part or ''):match('^%s*(.-)%s*$')
+		if name ~= '' then
+			local key = name:lower()
+			if not seen[key] then
+				seen[key] = true
+				out[#out + 1] = name
+			end
+		end
+	end
+	return out
+end
+
+local function selected_range_ids(cor)
+	local names = split_selected_range_names(cor.range_selected)
+	if #names == 0 then
+		return type(cor.range_require_ids) == 'table' and cor.range_require_ids or {}
+	end
+
+	local party = windower.ffxi.get_party and windower.ffxi.get_party() or nil
+	local player = windower.ffxi.get_player and windower.ffxi.get_player() or nil
+	local self_id = player and tonumber(player.id) or 0
+	local by_name = {}
+	for _, key in ipairs({ 'p0', 'p1', 'p2', 'p3', 'p4', 'p5' }) do
+		local entry = party and party[key]
+		local mob = entry and entry.mob
+		local id = mob and tonumber(mob.id) or 0
+		local name = mob and tostring(mob.name or '') or ''
+		if id > 0 and id ~= self_id and name ~= '' then
+			by_name[name:lower()] = id
+		end
+	end
+
+	local out = {}
+	local seen = {}
+	for _, name in ipairs(names) do
+		local id = by_name[name:lower()]
+		if id and id > 0 and not seen[id] then
+			seen[id] = true
+			out[#out + 1] = id
+		end
+	end
+	return out
+end
+
+local function in_required_roll_range(cor, max_range)
+	local req = selected_range_ids(cor)
 	if type(req) ~= 'table' or #req == 0 then
 		return true, nil
 	end
@@ -320,9 +352,17 @@ local function observe_action_for_dia(act, me_id)
 	end
 end
 
-function mod.resolve_pending_light_shot_target()
+function mod.resolve_pending_light_shot_target(config)
 	local pending = state.pending_light_shot
 	if type(pending) ~= 'table' then
+		return nil
+	end
+	-- A selected target/generation is not permission to issue a future shot.
+	-- Recheck the current durable COR setting at command ownership, not a
+	-- flat projection or the cached proposal. Leave observed Dia and handled
+	-- generations untouched; only the obsolete proposal is retired.
+	if type(config) == 'table' and not cor_light_shot_dia(cor_config(config)) then
+		state.pending_light_shot = nil
 		return nil
 	end
 	local target = windower.ffxi.get_mob_by_target('t')
@@ -340,8 +380,8 @@ function mod.resolve_pending_light_shot_target()
 	return target
 end
 
-local function propose_dia_light_shot(settings, player)
-	if tostring(player and player.main_job or '') ~= 'COR' or not cor_light_shot_dia(settings) then
+local function propose_dia_light_shot(cor, player)
+	if tostring(player and player.main_job or '') ~= 'COR' or not cor_light_shot_dia(cor) then
 		state.pending_light_shot = nil
 		return nil
 	end
@@ -463,7 +503,9 @@ function mod.update_from_incoming_chunk(id, data)
 	end
 end
 
-function mod.propose(settings)
+function mod.propose(config)
+	config = type(config) == 'table' and config or {}
+	local cor = cor_config(config)
 	local p = windower.ffxi.get_player()
 	if not p then
 		cor_diag("no_player", "skip no_player")
@@ -488,29 +530,29 @@ function mod.propose(settings)
 		return nil
 	end
 
-	local light_shot = propose_dia_light_shot(settings, p)
+	local light_shot = propose_dia_light_shot(cor, p)
 	if light_shot then
 		return light_shot
 	end
 
-	local max_range = roll_aoe_range(settings or {})
-	local in_range, bad_id = in_required_roll_range(settings or {}, max_range)
+	local max_range = roll_aoe_range(cor)
+	local in_range, bad_id = in_required_roll_range(cor, max_range)
 	if not in_range then
 		cor_diag("range_gate", ("skip range_gate max=%.1f bad_id=%s"):format(tonumber(max_range) or 0, tostring(bad_id or 0)))
 		return nil
 	end
 	local recasts = windower.ffxi.get_ability_recasts() or {}
-	local roll1, roll2, source = resolve_roll_pair(settings or {})
+	local roll1, roll2, source = resolve_roll_pair(config, cor)
 	local infos = { roll_by_name[normalize_roll_name(roll1)], roll_by_name[normalize_roll_name(roll2)] }
 	local roll_count = (main == "COR") and 2 or 1
-	local crooked_slot = tonumber(cor_crooked_roll_slot(settings)) or 0
+	local crooked_slot = tonumber(cor.crooked_roll_slot) or 0
 	if main ~= "COR" then
 		crooked_slot = 0
 	end
 	if crooked_slot < 0 or crooked_slot > 2 then
 		crooked_slot = 0
 	end
-	local elevens = cor_elevens(settings) == true
+	local elevens = cor.elevens == true
 	local has_bust = has_buff(p, 309)
 	cor_diag(
 		("cfg:%s|%s|slot=%d|e11=%s|max=%.1f|r96=%d|r193=%d"):format(

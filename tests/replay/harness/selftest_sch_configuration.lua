@@ -223,15 +223,9 @@ local function main()
 		{ main_job = 'SCH', sub_job = 'RDM' }
 	)
 	assert_true(type(active_profile) == 'table', 'Scholar active profile failed: ' .. tostring(active_error))
-	local projected, projection_error = active_config.project_flat_settings(active_profile, {
-		sch_sublimation_activate_when_mpp_at_least = 95,
-	})
-	assert_true(type(projected) == 'table', 'Scholar projection failed: ' .. tostring(projection_error))
-	assert_true(type(projected.sch) == 'table', 'projected settings must carry exact nested Scholar config')
-	assert_true(projected.sch.sublimation.activate_when_mpp_at_least == nil,
-		'projected nested Scholar config must omit legacy activation MPP')
-	assert_true(projected.sch_sublimation_activate_when_mpp_at_least == nil,
-		'projected flat Scholar settings must omit legacy activation MPP')
+	assert_true(type(active_profile.config.sch) == 'table', 'active profile must carry canonical Scholar config')
+	assert_true(active_profile.config.sch.sublimation.activate_when_mpp_at_least == nil,
+		'canonical Scholar config must omit legacy activation MPP')
 	local legacy_apply_payload = profile_v2.build_structured_profile(
 		normalizer.normalize({ sch = legacy_sublimation }, { main_job = 'SCH', sub_job = 'RDM' }),
 		{
@@ -251,25 +245,21 @@ local function main()
 		'legacy structured Scholar profile must load: ' .. tostring(legacy_apply.error))
 	assert_equal(legacy_apply.diff_count, 0,
 		'legacy activation MPP must not create a structured-profile conversion difference')
-	assert_true(legacy_apply.candidate.sch_sublimation_activate_when_mpp_at_least == nil,
-		'legacy structured profile apply must remove the flat activation MPP setting')
-	assert_equal(projected.sch.support.regen.spells[1], 'Regen V', 'projected maintenance spell mismatch')
-	assert_equal(projected.sch_accession_perpetuance_spells, 'Regen V',
-		'projected maintenance spell list mismatch')
-	assert_equal(projected.sch_enabled, true, 'projected Scholar enabled mismatch')
-	assert_equal(projected.sch_arts_minimum_commit_s, 12, 'projected Scholar Arts commitment mismatch')
-	assert_equal(projected.sch_regen_enabled, true, 'projected Scholar Regen enabled mismatch')
-	assert_equal(projected.sch_regen_minimum_coverage, 4, 'projected Scholar Regen coverage mismatch')
-	assert_equal(projected.sch_storms_enabled, true, 'projected Scholar storms enabled mismatch')
-	assert_equal(
-		projected.sch_storm_assignments,
-		'Aurorastorm II:Redrogue,Terrasjr|Thunderstorm II:Nyoourke',
-		'projected Scholar storm assignments mismatch'
-	)
-	assert_equal(projected.sch_sublimation_enabled, true, 'projected Scholar Sublimation enabled mismatch')
-	assert_equal(projected.sch_sublimation_release_when_mpp_at_most, 45, 'projected Scholar release MPP mismatch')
-	local round_trip = normalizer.normalize(projected, { main_job = 'SCH' })
-	assert_equal(round_trip.sch.support.storms.assignments[1].targets[2], 'Terrasjr', 'Scholar round-trip mismatch')
+	assert_true(legacy_apply.candidate == nil,
+		'legacy structured profile apply must not build a flat settings candidate')
+	assert_true(legacy_apply.candidate_config.sch.sublimation.activate_when_mpp_at_least == nil,
+		'legacy structured profile apply must discard the activation MPP setting canonically')
+	assert_equal(active_profile.config.sch.support.regen.spells[1], 'Regen V', 'canonical Scholar maintenance spell mismatch')
+	assert_equal(active_profile.config.sch.arts.minimum_commit_s, 12, 'canonical Scholar Arts commitment mismatch')
+	assert_equal(active_profile.config.sch.support.regen.enabled, true, 'canonical Scholar Regen enabled mismatch')
+	assert_equal(active_profile.config.sch.support.regen.minimum_coverage, 4, 'canonical Scholar Regen coverage mismatch')
+	assert_equal(active_profile.config.sch.support.storms.enabled, true, 'canonical Scholar storms enabled mismatch')
+	assert_equal(active_profile.config.sch.support.storms.assignments[1].spell, 'Aurorastorm II', 'canonical Scholar storm assignment mismatch')
+	assert_equal(active_profile.config.sch.support.storms.assignments[1].targets[2], 'Terrasjr', 'canonical Scholar storm target mismatch')
+	assert_equal(active_profile.config.sch.sublimation.enabled, true, 'canonical Scholar Sublimation enabled mismatch')
+	assert_equal(active_profile.config.sch.sublimation.release_when_mpp_at_most, 45, 'canonical Scholar release MPP mismatch')
+	local round_trip = normalizer.normalize({ sch = active_profile.config.sch }, { main_job = 'SCH' })
+	assert_equal(round_trip.sch.support.storms.assignments[1].targets[2], 'Terrasjr', 'Scholar canonical normalization mismatch')
 	local exported = profile_v2.build_structured_profile({ sch = enabled }, {
 		character = 'Tester',
 		main_job = 'SCH',

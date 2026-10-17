@@ -9,6 +9,14 @@ function M.get_settings()
 	return rawget(_G, 'UC_SETTINGS') or {}
 end
 
+function M.get_config()
+	local config = require('uc_active_config').get_config()
+	if type(config) == 'table' then
+		return config
+	end
+	return {}
+end
+
 function M.is_city_zone_for_maintenance(maintenance_blocked_zone_names)
 	local info = windower.ffxi.get_info()
 	if not info then
@@ -31,6 +39,50 @@ function M.is_city_zone_for_maintenance(maintenance_blocked_zone_names)
 		return true
 	end
 	return false
+end
+
+-- Scheduler action/revalidation gates must not re-enable partner actions
+-- using transient flat state after Profile V2 explicitly disables them.
+-- Routine facing is durable combat policy; emergency and explicitly forced
+-- turns are action ownership, not the face-on-target preference. In particular,
+-- canonical false must not fall through to a stale flat face=true value.
+function M.face_turn_allowed(settings, config, turn_away, force_face)
+    if turn_away == true or force_face == true then
+        return true
+    end
+    if type(config) == 'table' then
+        return require('uc_movement_config').face_enabled(config)
+    end
+    return require('uc_scheduler_numeric_utils').bool_setting(
+        type(settings) == 'table' and settings.face or nil, false
+    )
+end
+
+-- Canonical autotarget=false must not permit a stale flat autotarget=true
+-- to select a new target during partner arbitration. Disengagement from an
+-- already-contested target remains the arbitration module's safety decision.
+function M.partner_autotarget_enabled(settings, config)
+    local scheduler_config = require('uc_scheduler_config')
+    if type(config) == 'table' then
+        return scheduler_config.combat_autotarget_from_config(config) == true
+    end
+    return require('uc_scheduler_numeric_utils').bool_setting(
+        scheduler_config.combat_autotarget(settings), false
+    )
+end
+
+function M.partner_enabled(settings, config)
+    if type(config) == 'table' then
+        local partner = require('uc_follow_config').partner(config)
+        return type(partner) == 'table' and partner.enabled == true
+    end
+    local enabled = type(settings) == 'table' and settings.partner or nil
+    if enabled == true or enabled == 1 then return true end
+    if type(enabled) == 'string' then
+        local value = enabled:lower()
+        return value == 'true' or value == 'on' or value == '1' or value == 'yes'
+    end
+    return false
 end
 
 function M.build_partner_target_set(deps, settings)

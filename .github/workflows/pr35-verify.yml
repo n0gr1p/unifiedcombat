@@ -53,6 +53,215 @@ jobs:
         run: lua5.1 tests/replay/harness/selftest_config_normalizer.lua
       - name: Legacy Profile V2 food apply self-test
         run: lua5.1 tests/replay/harness/selftest_profile_v2_legacy_food_apply.lua
+      - name: Profile V2 flat-surface guard self-test
+        run: lua5.1 tests/replay/harness/selftest_profile_v2_flat_surface_guard.lua
+      - name: Profile V2 mixed-shape characterization self-test
+        run: lua5.1 tests/replay/harness/selftest_profile_v2_mixed_shape_characterization.lua
+      - name: Scheduler canonical context self-test
+        run: lua5.1 tests/replay/harness/selftest_scheduler_context.lua
+      - name: Scheduler canonical context static self-test
+        run: lua5.1 tests/replay/harness/selftest_scheduler_tick_context_static.lua
+      - name: Scheduler context utils fixture self-test
+        run: lua5.1 tests/replay/harness/selftest_context_utils_fixtures.lua
+      - name: Phase 2 canonical leaf self-tests
+        run: |
+          lua5.1 tests/replay/harness/selftest_food_maintenance.lua
+          lua5.1 tests/replay/harness/selftest_recurring_spells.lua
+          lua5.1 tests/replay/harness/selftest_defensive_resurrection.lua
+          lua5.1 tests/replay/harness/selftest_enemy_debuff_maintenance.lua
+          lua5.1 tests/replay/harness/selftest_phase2_canonical_leaf_consumers.lua
+          lua5.1 tests/replay/harness/selftest_phase2_canonical_authority.lua
+          lua5.1 tests/replay/harness/selftest_raise_accept.lua
+          lua5.1 tests/replay/harness/selftest_deathsickness_recovery_hold.lua
+          lua5.1 tests/replay/harness/selftest_geo_camp_placement.lua
+          lua5.1 tests/replay/harness/selftest_hb_buff_maint_majesty_priority.lua
+          lua5.1 tests/replay/harness/selftest_bard_song_identity_tracking.lua
+          lua5.1 tests/replay/harness/selftest_active_config_defensive_maintenance_readers.lua
+          lua5.1 tests/replay/harness/selftest_profile_v2_runtime_consumers.lua
+          lua5.1 tests/replay/harness/selftest_active_config_consumer_migration.lua
+      - name: Phase 3 combat enablement canonical-authority self-test
+        run: lua5.1 tests/replay/harness/selftest_phase3_combat_enablement_authority.lua
+      - name: Phase 3 weaponskill canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_weaponskill_authority.lua
+          lua5.1 tests/replay/harness/selftest_ws_maintenance_precedence.lua
+      - name: Phase 3 abilities canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_abilities_authority.lua
+          lua5.1 tests/replay/harness/selftest_unengaged_abilities.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_ranker.lua
+          lua5.1 tests/replay/harness/selftest_ws_maintenance_precedence.lua
+      - name: Phase 3 targeting canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_targeting_authority.lua
+          lua5.1 tests/replay/harness/selftest_add_control_priority_eligibility.lua
+      - name: Phase 3 tank-enmity canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_tank_enmity_authority.lua
+          lua5.1 tests/replay/harness/selftest_tank_pet_enmity_provider.lua
+          lua5.1 tests/replay/harness/selftest_run_tank.lua
+          lua5.1 tests/replay/harness/selftest_run_no_tp_mode.lua
+          lua5.1 tests/replay/harness/selftest_tank_configured_ja_starvation.lua
+          lua5.1 tests/replay/harness/selftest_tank_engage_priority.lua
+      - name: Phase 3 pulling canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_pulling_authority.lua
+          lua5.1 tests/replay/harness/selftest_camp_puller.lua
+          lua5.1 tests/replay/harness/selftest_camp_puller_policy.lua
+          lua5.1 tests/replay/harness/selftest_movement_priority_arbitration.lua
+      - name: Phase 3 spacing canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_spacing_authority.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_movement_facade.lua
+          lua5.1 tests/replay/harness/selftest_spacing_cast_movement_lock.lua
+      - name: Phase 3 follow canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_follow_authority.lua
+          lua5.1 tests/replay/harness/selftest_runtime_overrides.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_partner_arbitration.lua
+          lua5.1 tests/replay/harness/selftest_movement_priority_arbitration.lua
+      - name: Phase 3 pathing canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_pathing_authority.lua
+          lua5.1 tests/replay/harness/selftest_movement_priority_arbitration.lua
+          lua5.1 tests/replay/harness/selftest_active_config_consumer_migration.lua
+      - name: Phase 3 movement canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_movement_authority.lua
+          lua5.1 tests/replay/harness/selftest_formation_activation.lua
+          lua5.1 tests/replay/harness/selftest_spacing_cast_movement_lock.lua
+          lua5.1 tests/replay/harness/selftest_run_no_tp_mode.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_defensive_cure_movement_lock.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_support_priority_bands.lua
+      - name: Phase 3 automated exit audit
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase3_exit_audit.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_ranker.lua
+          lua5.1 tests/replay/harness/selftest_scheduler_sleep_toggle.lua
+          lua5.1 tests/replay/harness/selftest_sleep_spell_selection.lua
+          lua5.1 tests/replay/harness/selftest_sleep_target_state_suppression.lua
+          lua5.1 tests/replay/harness/selftest_charm_sleeper.lua
+          lua5.1 tests/replay/harness/selftest_sleep_waker.lua
+          lua5.1 tests/replay/harness/selftest_combat_commitment.lua
+      - name: Phase 4 SMN canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase4_smn_authority.lua
+          lua5.1 tests/replay/harness/selftest_summoner_configuration.lua
+          lua5.1 tests/replay/harness/selftest_smn_maintenance.lua
+          lua5.1 tests/replay/harness/selftest_pet_combat_provider.lua
+          lua5.1 tests/replay/harness/selftest_smn_cross_provider_integration.lua
+          lua5.1 tests/replay/harness/selftest_smn_replay_fixtures.lua
+      - name: Phase 4 PUP canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase4_pup_authority.lua
+          lua5.1 tests/replay/harness/selftest_pup_profile_v2.lua
+          lua5.1 tests/replay/harness/selftest_pup_automaton_control.lua
+      - name: Phase 4 SCH canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase4_sch_authority.lua
+          lua5.1 tests/replay/harness/selftest_sch_configuration.lua
+          lua5.1 tests/replay/harness/selftest_sch_maintenance.lua
+          lua5.1 tests/replay/harness/selftest_sch_runtime.lua
+          lua5.1 tests/replay/harness/selftest_sch_duration.lua
+          lua5.1 tests/replay/harness/selftest_sch_action_results.lua
+      - name: Phase 4 GEO canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase4_geo_authority.lua
+          lua5.1 tests/replay/harness/selftest_geo_maintenance.lua
+          lua5.1 tests/replay/harness/selftest_geo_sequences.lua
+      - name: Phase 4 BRD canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase4_brd_authority.lua
+          lua5.1 tests/replay/harness/selftest_brd_maintenance.lua
+          lua5.1 tests/replay/harness/selftest_brd_maintenance_movement_safety.lua
+          lua5.1 tests/replay/harness/selftest_brd_positioning.lua
+          lua5.1 tests/replay/harness/selftest_bard_song_identity_tracking.lua
+      - name: Phase 4 COR canonical-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase4_cor_authority.lua
+          lua5.1 tests/replay/harness/selftest_cor_dia_lightshot_static.lua
+          lua5.1 tests/replay/harness/selftest_cor_dia_lightshot_runtime.lua
+          lua5.1 tests/replay/harness/selftest_active_config_defensive_maintenance_readers.lua
+      - name: Phase 4 automated exit audit
+        run: lua5.1 tests/replay/harness/selftest_phase4_exit_audit.lua
+      - name: Phase 5 UI write-pipeline authority self-test
+        run: lua5.1 tests/replay/harness/selftest_phase5_ui_write_pipeline.lua
+      - name: Phase 5 targeting-list write-pipeline self-test
+        run: lua5.1 tests/replay/harness/selftest_phase5_targeting_list_write_pipeline.lua
+      - name: Phase 5 no-skillchain write-pipeline self-test
+        run: lua5.1 tests/replay/harness/selftest_phase5_no_skillchain_write_pipeline.lua
+      - name: Phase 5 wait-ignore write-pipeline self-test
+        run: lua5.1 tests/replay/harness/selftest_phase5_wait_ignore_write_pipeline.lua
+      - name: Phase 5 path-hunter write-pipeline self-test
+        run: lua5.1 tests/replay/harness/selftest_phase5_path_hunter_write_pipeline.lua
+      - name: Phase 5 Sleep ordering write-pipeline self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase5_sleep_order_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_sleep_spell_selection.lua
+      - name: Phase 5 tank-enmity write-pipeline self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase5_tank_enmity_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_tank_pet_enmity_config.lua
+          lua5.1 tests/replay/harness/selftest_tank_pet_enmity_provider.lua
+      - name: Phase 5 abilities write-pipeline self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase5_abilities_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase3_abilities_authority.lua
+      - name: Phase 5 COR range participant write-pipeline self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase5_cor_range_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase4_cor_authority.lua
+      - name: Phase 5 partner/follow identity write-pipeline self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase5_follow_identity_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase3_follow_authority.lua
+      - name: Phase 6 bridge projection-retirement self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase6_bridge_projection_retirement.lua
+          lua5.1 tests/replay/harness/selftest_phase5_ui_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase5_targeting_list_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase5_no_skillchain_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase5_wait_ignore_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase5_path_hunter_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase5_sleep_order_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase5_tank_enmity_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase5_abilities_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase5_cor_range_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_phase5_follow_identity_write_pipeline.lua
+      - name: Phase 6 generic bridge set-retirement self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase6_bridge_generic_set_retirement.lua
+          lua5.1 tests/replay/harness/selftest_phase5_ui_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_config_status.lua
+          lua5.1 tests/replay/harness/selftest_bridge_config_status_consumer.lua
+          lua5.1 tests/replay/harness/selftest_config_first_consumer.lua
+      - name: Phase 6 bridge config-status decoupling self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase6_bridge_status_decoupling.lua
+          lua5.1 tests/replay/harness/selftest_config_status.lua
+          lua5.1 tests/replay/harness/selftest_bridge_config_status_consumer.lua
+      - name: Phase 7 dead flat-profile adapter retirement self-test
+        run: lua5.1 tests/replay/harness/selftest_phase7_dead_flat_profile_retirement.lua
+      - name: Phase 6 slash-command canonical authority self-test
+        run: lua5.1 tests/replay/harness/selftest_phase6_slash_command_authority.lua
+      - name: Phase 6 engine command-authority self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase6_engine_command_authority.lua
+          lua5.1 tests/replay/harness/selftest_phase5_ui_write_pipeline.lua
+          lua5.1 tests/replay/harness/selftest_profile_v2_autoload_lifecycle.lua
+      - name: Phase 6 canonical editor wire-contract self-test
+        run: |
+          lua5.1 tests/replay/harness/selftest_phase6_canonical_editor_wire.lua
+          lua5.1 tests/replay/harness/selftest_phase6_bridge_projection_retirement.lua
+          lua5.1 tests/replay/harness/selftest_profile_v2_autoload_lifecycle.lua
+      - name: Phase 6 Profile V2 apply-publication retirement self-test
+        run: lua5.1 tests/replay/harness/selftest_phase6_profile_apply_publication_retirement.lua
+      - name: Phase 6 safe identity bootstrap self-test
+        run: lua5.1 tests/replay/harness/selftest_phase6_safe_identity_bootstrap.lua
+      - name: Phase 6 flat projection API retirement self-test
+        run: lua5.1 tests/replay/harness/selftest_phase6_flat_projection_api_retirement.lua
+      - name: Phase 6 initial canonical bootstrap self-test
+        run: lua5.1 tests/replay/harness/selftest_phase6_initial_canonical_bootstrap.lua
       - name: No-skillchain target self-test
         run: lua5.1 tests/replay/harness/selftest_no_skillchain_targets.lua
       - name: Scholar configuration self-test

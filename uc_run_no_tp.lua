@@ -20,22 +20,26 @@ local function valid_enemy(target)
 		and (tonumber(target.id) or 0) > 0
 end
 
-function M.enabled(settings, player)
+function M.enabled(settings, player, config)
 	if type(player) ~= 'table' or tostring(player.main_job or '') ~= 'RUN' then
 		return false
 	end
 	if tonumber(player.status) ~= 1 then
 		return false
 	end
-	if not truthy(scheduler_config.tank_enabled(settings)) then
+	if type(config) == 'table' then
+		if not truthy(scheduler_config.tank_enabled_from_config(config)) then
+			return false
+		end
+	elseif not truthy(scheduler_config.tank_enabled(settings)) then
 		return false
 	end
-	local cfg = run_config.active(settings)
+	local cfg = run_config.active(settings, config)
 	return cfg.enabled == true and cfg.no_tp_mode == true
 end
 
-function M.target_id(settings, player, target)
-	if not M.enabled(settings, player) or not valid_enemy(target) then
+function M.target_id(settings, player, target, config)
+	if not M.enabled(settings, player, config) or not valid_enemy(target) then
 		return 0
 	end
 	return tonumber(target.id) or 0

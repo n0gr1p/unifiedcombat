@@ -1081,6 +1081,21 @@ internal static class StructuredProfileV2WriterTests
         AssertContains(content, "\"Ally One\"", "wait ignore names must strip display indexes");
         AssertContains(content, "\"Ally Two\"", "wait ignore names must include all names");
         AssertNotContains(content, "Ally One [101]", "wait ignore names must not serialize display indexes");
+
+        var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
+        AssertNotContains(logic, "[\"op\"] = \"ignore_replace_names\"",
+            "wait-ignore durable policy must not be pushed live from the editor");
+        AssertNotContains(logic, "[\"op\"] = \"ignore_add\"",
+            "wait-ignore add-by-name must remain a local working-profile edit");
+        AssertNotContains(logic, "[\"op\"] = \"ignore_add_current\"",
+            "wait-ignore Add Current must use runtime observation locally");
+        AssertNotContains(logic, "[\"op\"] = \"ignore_remove\"",
+            "wait-ignore remove must remain a local working-profile edit");
+        AssertContains(logic, "CurrentRuntimeTargetName()",
+            "wait-ignore Add Current must consume the observed current target name");
+        AssertContains(logic, "CaptureWorkingProfileFromUi(sid);",
+            "wait-ignore edits must capture the per-session working profile");
+
         AssertContains(content, "target_ignore_names = {", "target ignore names must be serialized");
         AssertContains(content, "\"Mob One\"", "target ignore names must strip display indexes");
         AssertContains(content, "\"Mob Two\"", "target ignore names must include all names");
@@ -1978,7 +1993,18 @@ internal static class StructuredProfileV2WriterTests
         var logic = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ParityLogic.cs");
         var store = ReadRepoFile("UnifiedCombatWinForms", "MainForm.ProfileStore.cs");
         AssertContains(ui, "No Skillchain Targets", "no-skillchain target UI section missing");
-        AssertContains(logic, "no_skillchain_target_replace_names", "no-skillchain target live update missing");
+        AssertNotContains(logic, "[\"op\"] = \"no_skillchain_target_replace_names\"",
+            "no-skillchain durable edits must not emit a live replace operation");
+        AssertNotContains(logic, "[\"op\"] = \"no_skillchain_target_add\"",
+            "no-skillchain durable edits must not emit a live add operation");
+        AssertNotContains(logic, "[\"op\"] = \"no_skillchain_target_add_current\"",
+            "no-skillchain Add Current must consume runtime observation locally");
+        AssertNotContains(logic, "[\"op\"] = \"no_skillchain_target_remove\"",
+            "no-skillchain durable edits must not emit a live remove operation");
+        AssertContains(logic, "CurrentRuntimeTargetName()",
+            "no-skillchain Add Current must use observed current target state");
+        AssertContains(logic, "CaptureWorkingProfileFromUi(sid);",
+            "no-skillchain edits must capture the per-session working profile");
         AssertContains(store, "[\"no_skillchain_target_entries\"]", "no-skillchain target profile persistence missing");
     }
 

@@ -25,10 +25,14 @@ function M.validate_proposal(ctx, proposal, deps)
 		return false, identity_reason
 	end
 
-	local bool_setting = require_function(deps, 'bool_setting')
 	local required_setting = tostring(proposal.required_setting or '')
-	if required_setting ~= '' and not bool_setting(ctx.settings[required_setting], false) then
-		return false, 'settings_disabled'
+	if required_setting ~= '' then
+		local required_value = require_function(deps, 'required_setting_value')(ctx.config, required_setting)
+		-- Required-setting revalidation is a scheduler authority boundary.
+		-- Unknown/unmapped settings fail closed instead of consulting flat compatibility state.
+		if required_value ~= true then
+			return false, 'settings_disabled'
+		end
 	end
 	if proposals.created_age(ctx, proposal) > 0.8 then
 		return false, 'stale_snapshot'

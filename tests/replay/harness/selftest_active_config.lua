@@ -209,9 +209,42 @@ local function main()
 	local active_config = require('uc_active_config')
 	local normalizer = require('uc_config_normalizer')
 
+	-- Legacy normalization here constructs test fixtures only; the production
+	-- active-profile API must not accept flat settings.
+	local function build_legacy_fixture(settings, meta)
+		local normalized = normalizer.normalize(settings, meta)
+		local profile = deep_clone(normalized.profile)
+		profile.schema_version = 2
+		profile.engine = profile.engine or 'UC'
+		profile.source = profile.source or meta.source
+		local config = {}
+		for _, domain in ipairs({
+			'ui', 'command', 'combat', 'abilities', 'defensive', 'encounter',
+			'movement', 'follow', 'targeting', 'reactions', 'tank', 'sleep',
+			'spells', 'maintenance', 'summoner', 'puppetmaster', 'sch',
+			'debug', 'ownership', 'legacy',
+		}) do
+			if type(normalized[domain]) == 'table' then
+				config[domain] = deep_clone(normalized[domain])
+			end
+		end
+		if config.targeting then config.targeting.ignore = nil end
+		if config.ownership then
+			config.ownership.profile_v2_autoload = nil
+			config.ownership.profile_v2_auto_reload_on_change = nil
+		end
+		if config.encounter and config.encounter.enabled ~= true then config.encounter = nil end
+		if config.reactions and config.reactions.enabled ~= true
+			and type(config.reactions.rules) == 'table' and #config.reactions.rules == 0 then
+			config.reactions = nil
+		end
+		if profile.main_job ~= 'PUP' then config.puppetmaster = nil end
+		return { version = 2, profile = profile, config = config }
+	end
+
 	local flat = build_flat_settings()
 	local flat_snapshot = deep_clone(flat)
-	local active_profile = active_config.build_active_profile_from_settings(flat, {
+	local active_profile = build_legacy_fixture(flat, {
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
@@ -252,7 +285,7 @@ local function main()
 
 	local disabled_flat = deep_clone(flat)
 	disabled_flat.profile_v2_auto_reload_on_change = false
-	local disabled_active = active_config.build_active_profile_from_settings(disabled_flat, {
+	local disabled_active = build_legacy_fixture(disabled_flat, {
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
@@ -261,16 +294,13 @@ local function main()
 	assert_true(type(disabled_active) == 'table', 'disabled active profile from settings must be a table')
 	assert_true(type(disabled_active.config.ownership) == 'table', 'disabled active profile must retain ownership table')
 	assert_true(disabled_active.config.ownership.profile_v2_auto_reload_on_change == nil, 'disabled auto-reload flag must be omitted from durable active config')
-	local disabled_projected = active_config.project_flat_settings(disabled_active, disabled_flat)
-	assert_true(type(disabled_projected) == 'table', 'disabled projection should still succeed')
-	assert_true(disabled_projected.profile_v2_auto_reload_on_change == nil, 'disabled auto-reload flag must stay omitted from projected settings')
 
 	local set_ok, stored_profile = active_config.set_active_profile(active_profile)
 	assert_true(set_ok == true, 'setting active profile should succeed')
 	assert_true(type(stored_profile) == 'table', 'stored active profile must be a table')
 	assert_true(rawget(_G, 'UC_ACTIVE_PROFILE') == stored_profile, 'stored active profile should be published globally')
 
-	local replacement_profile = active_config.build_active_profile_from_settings(flat, {
+	local replacement_profile = build_legacy_fixture(flat, {
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
@@ -288,117 +318,31 @@ local function main()
 	assert_equal(active_config.get_path({ 'config', 'combat', 'weaponskill', 'primary' }), 'Savage Blade', 'get_path table mismatch')
 	assert_equal(active_config.get_path('config.missing.path', 'fallback'), 'fallback', 'get_path default mismatch')
 
-	local projected = active_config.project_flat_settings(active_config.get_active_profile(), flat)
-	assert_true(type(projected) == 'table', 'projected settings should be a table')
-	assert_true(projected ~= flat, 'projected settings must be a new table')
-	assert_equal(projected.weaponskill, 'Savage Blade', 'projected weaponskill mismatch')
-	assert_equal(projected.ws1, 'Savage Blade', 'projected ws1 mismatch')
-	assert_equal(projected.weaponskill_allow_aoe, false, 'projected Smart WS AoE preference mismatch')
-	assert_equal(projected.fast_skillchain, true, 'projected Fast Skillchain preference mismatch')
-	assert_equal(projected.weaponskill_no_skillchain_targets[1], 'Gyre', 'projected no-skillchain target mismatch')
-	assert_equal(projected.skillchain_target, 'light', 'projected skillchain target mismatch')
-	assert_equal(projected.sleep, true, 'projected sleep mismatch')
-	assert_equal(projected.sleepspell, 'Horde Lullaby II', 'projected sleep mirror mismatch')
-	assert_equal(projected.sleepspells[1], 'Horde Lullaby II', 'projected sleep list mismatch')
-	assert_equal(projected.sleep_max_target_range, 14.0, 'projected sleep target range mismatch')
-	assert_equal(projected.def_charm_sleeper_enabled, true, 'projected charm sleeper mirror mismatch')
-	assert_equal(projected.def_sleep_waker_enabled, true, 'projected sleep waker mirror mismatch')
-	assert_equal(projected.defensive_na_limit_enabled, true, 'projected status-removal limit mismatch')
-	assert_equal(projected.defensive_na_priority, 'Poison|Paralyze|Dia', 'projected status-removal priority mismatch')
-	assert_equal(projected.defensive_curaga_enabled, true, 'projected Curaga enabled mismatch')
-	assert_equal(projected.defensive_curaga_min_targets, 4, 'projected Curaga minimum mismatch')
-	assert_equal(projected.defensive_waltz_enabled, true, 'projected Waltz enabled mismatch')
-	assert_equal(projected.defensive_waltz_tp_reserve, 1000, 'projected Waltz reserve mismatch')
-	assert_equal(projected.defensive_divine_waltz_min_targets, 2, 'projected Divine Waltz minimum mismatch')
-	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'projected targeted buff mirror mismatch')
-	assert_equal(projected.def_maintain_enemy_debuffs, true, 'projected enemy debuff maintenance mismatch')
-	assert_equal(projected.defensive_enemy_debuffs, 'Dia III|Distract III', 'projected enemy debuff list mismatch')
-	assert_equal(projected.wait_ignore_names[1], 'Niightsiide', 'projected wait ignore names mismatch')
-	assert_equal(projected.ignore[1], 77, 'projected compatibility ignore id mismatch')
-	assert_true(projected.profile_v2_auto_reload_on_change == nil, 'projection must omit legacy auto-reload flag')
-	assert_equal(projected.pause_automation_while_weakened, true, 'projected recovery hold mismatch')
-	assert_equal(projected.fight_leader_name, 'Niightsiide', 'projected fight leader name mismatch')
-	assert_equal(projected.fight_leader_id, 77, 'projected fight leader id should resolve from fight leader name')
-	assert_equal(projected.fight_leader_selected, 'Niightsiide', 'projected fight leader selected mismatch')
-	assert_equal(projected.follow.fight.leader_name, 'Niightsiide', 'projected nested fight leader name mismatch')
-	assert_equal(projected.follow.fight.leader_id, 77, 'projected nested fight leader id mismatch')
-	assert_equal(projected.follow.fight.leader_selected, 'Niightsiide', 'projected nested fight leader selected mismatch')
-	assert_equal(projected.puller_name, 'Niightsiide', 'projected puller name mismatch')
-	assert_equal(projected.puller_leash_source, 'player', 'projected puller leash source mismatch')
-	assert_equal(projected.puller_id, 77, 'projected puller id should resolve from puller name')
-	assert_equal(projected.follow.partner.puller_name, 'Niightsiide', 'projected nested puller name mismatch')
-	assert_equal(projected.puller_engage_range, 9.5, 'projected puller engage range mismatch')
-	assert_equal(projected.follow.partner.engage_range, 9.5, 'projected nested puller engage range mismatch')
-	assert_equal(projected.follow.partner.puller_id, 77, 'projected nested puller id mismatch')
-	local camp_profile = deep_clone(active_profile)
-	camp_profile.config.follow.partner.leash_source = 'camp'
-	local camp_projected, camp_project_error = active_config.project_flat_settings(camp_profile, {})
-	assert_true(camp_projected ~= nil and camp_project_error == nil, 'camp leash profile should project cleanly')
-	assert_equal(camp_projected.puller_leash_source, 'camp', 'camp leash source projection mismatch')
-	assert_equal(camp_projected.puller_id, 0, 'camp leash must not resolve a stale player id')
-	assert_equal(projected.nyzul_coordinator_name, 'Redrogue', 'projected Nyzul coordinator mismatch')
-	assert_equal(projected.nyzul_anchor_name, 'Terrasjr', 'projected Nyzul anchor mismatch')
-	assert_equal(projected.nyzul_parking_order[1], 'Nyoourke', 'projected Nyzul parking order mismatch')
-	assert_equal(projected.follow.nyzul.anchor_name, 'Terrasjr', 'projected nested Nyzul anchor mismatch')
-	local no_nyzul_profile = deep_clone(active_profile)
-	no_nyzul_profile.config.follow.nyzul = nil
-	local no_nyzul_projected, no_nyzul_error = active_config.project_flat_settings(no_nyzul_profile, flat)
-	assert_true(no_nyzul_projected ~= nil and no_nyzul_error == nil, 'profile without Nyzul config should project cleanly')
-	assert_true(no_nyzul_projected.nyzul_coordinator_name == nil, 'omitted Nyzul config must clear stale coordinator')
-	assert_true(no_nyzul_projected.nyzul_anchor_name == nil, 'omitted Nyzul config must clear stale anchor')
-	assert_true(no_nyzul_projected.nyzul_parking_order == nil, 'omitted Nyzul config must clear stale parking order')
-	assert_true(no_nyzul_projected.follow.nyzul == nil, 'omitted Nyzul config must clear stale nested roster')
-	local stale_canonical_base = deep_clone(flat)
-	stale_canonical_base.config = deep_clone(active_profile.config)
-	stale_canonical_base.config.combat.weaponskill.minimum_tp = 3000
-	stale_canonical_base.config.encounter = {
-		enabled = true,
-		id = 'sortie_ghatjot',
-		policy = {
-			water_damage = 'enforce',
-			water_skillchain = 'enforce',
-			repeat_action_wall = 'off',
-		},
-		tuning = {
-			repeat_action_guard_s = 10,
-		},
-	}
-	stale_canonical_base.combat = deep_clone(stale_canonical_base.config.combat)
-	stale_canonical_base.encounter = deep_clone(stale_canonical_base.config.encounter)
-	local replacement_profile = deep_clone(active_profile)
-	replacement_profile.config.combat.weaponskill.minimum_tp = 2000
-	replacement_profile.config.encounter = nil
-	local replacement_projected, replacement_error = active_config.project_flat_settings(replacement_profile, stale_canonical_base)
-	assert_true(replacement_projected ~= nil and replacement_error == nil, 'profile replacement should discard stale canonical config sources')
-	assert_true(replacement_projected.config == nil, 'flat profile projection must remove a stale config wrapper')
-	assert_true(replacement_projected.combat == nil, 'flat profile projection must remove a stale canonical combat domain')
-	assert_true(replacement_projected.encounter == nil, 'flat profile projection must remove a stale canonical encounter domain')
-	assert_equal(replacement_projected.weaponskill_min_tp, 2000, 'replacement profile must own the projected WS minimum TP')
-	assert_equal(replacement_projected.encounter_enabled, false, 'omitted replacement encounter must disable the stale encounter')
-	local replacement_config = normalizer.normalize(replacement_projected, {
-		character = 'Redrogue',
-		main_job = 'PLD',
-		sub_job = 'WAR',
-	})
-	assert_equal(replacement_config.combat.weaponskill.minimum_tp, 2000, 'replacement WS minimum TP must survive canonical normalization')
-	assert_equal(replacement_config.encounter.enabled, false, 'stale encounter must remain disabled after canonical normalization')
-	assert_equal(projected.targets[1], 'Apex Bat', 'projected add priority targets mismatch')
-	assert_equal(projected.add_priority_names[1], 'Apex Bat', 'projected add priority compatibility names mismatch')
-	assert_equal(projected.partner_names[1], 'Ponponponponpon', 'projected primary partner name mismatch')
-	assert_equal(projected.partner_names[2], 'Nyoourke', 'projected secondary partner name mismatch')
-	assert_equal(projected.partner_ids[1], 568177, 'projected primary partner id must resolve from durable name')
-	assert_equal(projected.partner_ids[2], 558393, 'projected secondary partner id must resolve from durable name')
-	assert_equal(projected.follow.partner.names[1], 'Ponponponponpon', 'projected nested primary partner name mismatch')
-	assert_equal(projected.follow.partner.ids[1], 568177, 'projected nested primary partner id mismatch')
-
-	local projected_snapshot = deep_clone(projected)
-	local sync_target = deep_clone(flat)
-	local sync_identity = sync_target
-	local sync_ok, sync_err = active_config.sync_flat_settings_in_place(sync_target, projected)
-	assert_true(sync_ok == true, 'syncing projected settings should succeed')
-	assert_true(sync_target == sync_identity, 'sync should preserve target identity')
-	assert_deep_equal(sync_target, projected_snapshot, 'sync should copy projected settings in place')
-	assert_deep_equal(flat, flat_snapshot, 'projection and sync should not mutate source settings')
+	local canonical = active_config.get_config()
+	assert_equal(canonical.combat.weaponskill.primary, 'Savage Blade', 'canonical weaponskill mismatch')
+	assert_equal(canonical.combat.weaponskill.allow_aoe, false, 'canonical Smart WS AoE preference mismatch')
+	assert_equal(canonical.combat.weaponskill.fast_skillchain, true, 'canonical Fast Skillchain preference mismatch')
+	assert_equal(canonical.combat.weaponskill.no_skillchain_targets[1], 'Gyre', 'canonical no-skillchain target mismatch')
+	assert_equal(canonical.combat.weaponskill.skillchain_target, 'light', 'canonical skillchain target mismatch')
+	assert_equal(canonical.sleep.order[1], 'Horde Lullaby II', 'canonical sleep order mismatch')
+	assert_equal(canonical.sleep.max_target_range, 14.0, 'canonical sleep target range mismatch')
+	assert_equal(canonical.defensive.cure.curaga.enabled, true, 'canonical Curaga enabled mismatch')
+	assert_equal(canonical.defensive.cure.curaga.min_targets, 4, 'canonical Curaga minimum mismatch')
+	assert_equal(canonical.defensive.waltz.enabled, true, 'canonical Waltz enabled mismatch')
+	assert_equal(canonical.defensive.waltz.tp_reserve, 1000, 'canonical Waltz reserve mismatch')
+	assert_equal(canonical.defensive.buffs.targeted[1].character, 'Terrasjr', 'canonical targeted buff character mismatch')
+	assert_equal(canonical.defensive.enemy_debuffs.list, 'Dia III|Distract III', 'canonical enemy debuff list mismatch')
+	assert_equal(canonical.combat.weaponskill.wait_ignore_names[1], 'Niightsiide', 'canonical wait-ignore name mismatch')
+	assert_equal(canonical.ownership.pause_automation_while_weakened, true, 'canonical recovery hold mismatch')
+	assert_equal(canonical.follow.fight.leader_name, 'Niightsiide', 'canonical fight leader name mismatch')
+	assert_equal(canonical.follow.partner.puller_name, 'Niightsiide', 'canonical puller name mismatch')
+	assert_equal(canonical.follow.partner.leash_source, 'player', 'canonical puller leash source mismatch')
+	assert_equal(canonical.follow.partner.engage_range, 9.5, 'canonical puller engage range mismatch')
+	assert_equal(canonical.follow.nyzul.coordinator_name, 'Redrogue', 'canonical Nyzul coordinator mismatch')
+	assert_equal(canonical.follow.nyzul.anchor_name, 'Terrasjr', 'canonical Nyzul anchor mismatch')
+	assert_equal(canonical.follow.partner.names[1], 'Ponponponponpon', 'canonical primary partner name mismatch')
+	assert_equal(canonical.follow.partner.names[2], 'Nyoourke', 'canonical secondary partner name mismatch')
+	assert_deep_equal(flat, flat_snapshot, 'canonical active-profile construction must not mutate source settings')
 
 	local ui_fixture = load_lua_fixture('tests/replay/fixtures/shared/ui_authored_profile_v2_fixture.lua')
 	local ui_fixture_snapshot = deep_clone(ui_fixture)
@@ -472,23 +416,15 @@ local function main()
 	})
 	assert_equal(encounter_profile.config.encounter.enabled, true, 'encounter domain enabled mismatch')
 	assert_equal(encounter_profile.config.encounter.id, 'sortie_ghatjot', 'encounter domain ID mismatch')
-	local encounter_projected = active_config.project_flat_settings(encounter_profile, {})
-	assert_equal(encounter_projected.encounter_enabled, true, 'projected encounter enabled mismatch')
-	assert_equal(encounter_projected.encounter_id, 'sortie_ghatjot', 'projected encounter ID mismatch')
-	assert_equal(encounter_projected.encounter_water_skillchain, 'warn', 'projected encounter policy mismatch')
-	assert_equal(encounter_projected.encounter_repeat_action_guard_s, 10.0, 'projected encounter tuning mismatch')
+	assert_equal(encounter_profile.config.encounter.policy.water_skillchain, 'warn', 'canonical encounter policy mismatch')
+	assert_equal(encounter_profile.config.encounter.tuning.repeat_action_guard_s, 10.0, 'canonical encounter tuning mismatch')
 	local disabled_encounter_profile = active_config.build_active_profile_from_v2_payload(ui_fixture, {
 		character = 'Redrogue',
 		main_job = 'PLD',
 		sub_job = 'WAR',
 		source = 'UC_PROFILE_V2',
 	})
-	local disabled_encounter_projected = active_config.project_flat_settings(disabled_encounter_profile, {
-		encounter_enabled = true,
-		encounter_id = 'sortie_dhartok',
-	})
-	assert_equal(disabled_encounter_projected.encounter_enabled, false, 'disabled encounter projection must clear stale enabled state')
-	assert_equal(disabled_encounter_projected.encounter_id, 'sortie_ghatjot', 'disabled encounter projection identity mismatch')
+	assert_true(disabled_encounter_profile.config.encounter == nil, 'disabled optional encounter domain must remain absent canonically')
 
 	local formation_fixture = deep_clone(ui_fixture)
 	formation_fixture.config.movement.formation = {
@@ -524,15 +460,13 @@ local function main()
 		sub_job = 'WAR',
 		source = 'UC_PROFILE_V2',
 	})
-	local formation_projected = active_config.project_flat_settings(formation_profile, {})
 	assert_equal(formation_profile.config.movement.formation.role, 'healer', 'formation role should remain durable')
-	assert_equal(formation_projected.formation_enabled, true, 'enabled formation should qualify as a movement participant')
-	assert_equal(formation_projected.formation_role, 'healer', 'formation role should project to flat runtime settings')
-	assert_equal(formation_projected.formation_tank_name, 'Terrasjr', 'formation tank name should project to flat runtime settings')
-	assert_equal(formation_projected.formation_required_party_names[2], 'Etamame', 'formation coverage members should project to flat runtime settings')
-	assert_equal(formation_projected.formation_tank_return_radius, 3, 'formation tank radius should project to flat runtime settings')
-	assert_equal(formation_projected.formation_dps_flank_angle_deg, 90, 'formation DPS angle should project to flat runtime settings')
-	assert_equal(formation_projected.formation_healer_maximum_party_range, 18, 'formation healer range should project to flat runtime settings')
+	assert_true(formation_profile.config.movement.formation.enabled, 'enabled formation should remain canonical')
+	assert_equal(formation_profile.config.movement.formation.tank_name, 'Terrasjr', 'formation tank name should remain canonical')
+	assert_equal(formation_profile.config.movement.formation.required_party_names[2], 'Etamame', 'formation coverage members should remain canonical')
+	assert_equal(formation_profile.config.movement.formation.tank.return_radius, 3, 'formation tank radius should remain canonical')
+	assert_equal(formation_profile.config.movement.formation.dps.flank_angle_deg, 90, 'formation DPS angle should remain canonical')
+	assert_equal(formation_profile.config.movement.formation.healer.maximum_party_range, 18, 'formation healer range should remain canonical')
 
 	local normalized = normalizer.normalize(flat, {
 		character = 'Redrogue',
@@ -586,26 +520,13 @@ local function main()
 	assert_true(type(migrated_profile.config.maintenance.geo) == 'table', 'legacy profile must receive normalized GEO configuration')
 	assert_false(migrated_profile.config.maintenance.geo.enabled, 'migrated GEO configuration must remain disabled')
 	assert_equal(migrated_profile.config.maintenance.geo.luopan.placement, 'target', 'migrated GEO placement must default to target')
-	local migrated_projected, migrated_project_err = active_config.project_flat_settings(migrated_profile, {
-		defensive_curaga_enabled = true,
-		defensive_curaga_min_targets = 6,
-		defensive_waltz_enabled = true,
-		defensive_waltz_tp_reserve = 1000,
-		defensive_divine_waltz_min_targets = 6,
-		def_maintain_enemy_debuffs = true,
-		defensive_enemy_debuffs = 'Distract',
-	})
-	assert_true(type(migrated_projected) == 'table', 'migrated GEO profile should project to runtime settings')
-	assert_true(migrated_project_err == nil, 'migrated GEO profile projection should not report an error')
-	assert_true(type(migrated_projected.camp_pulling) == 'table', 'migrated runtime settings must include camp pulling configuration')
-	assert_true(type(migrated_projected.maintenance_geo) == 'table', 'migrated runtime settings must include GEO configuration')
-	assert_false(migrated_projected.defensive_curaga_enabled, 'legacy profile projection must disable stale Curaga')
-	assert_equal(migrated_projected.defensive_curaga_min_targets, 3, 'legacy profile projection must restore the Curaga minimum target default')
-	assert_false(migrated_projected.defensive_waltz_enabled, 'legacy profile projection must disable stale Waltz')
-	assert_equal(migrated_projected.defensive_waltz_tp_reserve, 0, 'legacy profile projection must restore the Waltz TP reserve default')
-	assert_equal(migrated_projected.defensive_divine_waltz_min_targets, 3, 'legacy profile projection must restore the Divine Waltz minimum target default')
-	assert_false(migrated_projected.def_maintain_enemy_debuffs, 'legacy profile projection must disable stale enemy debuff maintenance')
-	assert_equal(migrated_projected.defensive_enemy_debuffs, '', 'legacy profile projection must clear a stale enemy debuff list')
+	assert_true(type(migrated_profile.config.combat.pulling) == 'table', 'migrated canonical config must include camp pulling configuration')
+	assert_false(migrated_profile.config.defensive.cure.curaga.enabled, 'legacy profile canonical migration must disable Curaga')
+	assert_equal(migrated_profile.config.defensive.cure.curaga.min_targets, 3, 'legacy profile canonical migration must restore the Curaga minimum target default')
+	assert_false(migrated_profile.config.defensive.waltz.enabled, 'legacy profile canonical migration must disable Waltz')
+	assert_equal(migrated_profile.config.defensive.waltz.tp_reserve, 0, 'legacy profile canonical migration must restore the Waltz TP reserve default')
+	assert_false(migrated_profile.config.defensive.enemy_debuffs.enabled, 'legacy profile canonical migration must disable enemy debuff maintenance')
+	assert_equal(migrated_profile.config.defensive.enemy_debuffs.list, '', 'legacy profile canonical migration must clear enemy debuff list')
 
 	local invalid_enemy_debuffs_profile, invalid_enemy_debuffs_err = active_config.build_active_profile_from_v2_payload({
 		version = 2,

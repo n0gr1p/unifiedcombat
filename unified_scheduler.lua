@@ -15,6 +15,7 @@ local scheduler_locks = require('uc_scheduler_locks')
 local scheduler_pending = require('uc_scheduler_pending')
 local uc_scheduler_config = require('uc_scheduler_config')
 local domain_ownership = require('uc_domain_ownership')
+local movement_config = require('uc_movement_config')
 local pet_command_coordinator = require('uc_pet_command_coordinator')
 local sleep_status = require('uc_sleep_status')
 sleep_status.validate_resources(res.buffs)
@@ -1042,7 +1043,7 @@ function scheduler.p1_refresh_pending_engage(phase, player_status, at)
 	return true, 'active'
 end
 
-function scheduler.p1_is_critical_defensive_proposal(settings, selected)
+function scheduler.p1_is_critical_defensive_proposal(config, selected)
 	if type(selected) ~= 'table' then
 		return false
 	end
@@ -1055,7 +1056,7 @@ function scheduler.p1_is_critical_defensive_proposal(settings, selected)
 	if (action_type ~= 'spell' and action_type ~= 'ja') or tostring(detail.def_action_type or '') ~= 'cure' then
 		return false
 	end
-	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', settings and settings.defensive_critical_hpp)) or 35
+	local critical_hpp = uc_scheduler_config.defensive_critical_hpp_from_config(config)
 	local target_hpp = tonumber(detail.target_hpp) or -1
 	return target_hpp > 0 and target_hpp <= critical_hpp
 end
@@ -1074,13 +1075,13 @@ function scheduler.p1_clear_pending_engage_for_critical_dispatch(phase, action_n
 	scheduler.p1_clear_pending_engage(phase)
 end
 
-function scheduler.p1_selected_is_critical_cure(settings, selected)
+function scheduler.p1_selected_is_critical_cure(config, selected)
 	if type(selected) ~= 'table' then
 		return false
 	end
 	local detail = type(selected.detail) == 'table' and selected.detail or {}
 	local target_hpp = tonumber(detail.target_hpp or -1) or -1
-	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', settings and settings.defensive_critical_hpp)) or 35
+	local critical_hpp = uc_scheduler_config.defensive_critical_hpp_from_config(config)
 	local action_type = tostring(selected.action_type or '')
 	return (action_type == 'spell' or action_type == 'ja')
 		and tostring(detail.def_action_type or '') == 'cure'
@@ -1088,12 +1089,12 @@ function scheduler.p1_selected_is_critical_cure(settings, selected)
 		and target_hpp <= critical_hpp
 end
 
-function scheduler.p1_maybe_clear_pending_engage_for_selected_critical(settings, selected)
+function scheduler.p1_maybe_clear_pending_engage_for_selected_critical(config, selected)
 	local phase = scheduler.phase1 or {}
 	if not scheduler.p1_pending_engage_live(phase, now_s()) then
 		return
 	end
-	if not scheduler.p1_selected_is_critical_cure(settings, selected) then
+	if not scheduler.p1_selected_is_critical_cure(config, selected) then
 		return
 	end
 	scheduler.p1_clear_pending_engage_for_critical_dispatch(
@@ -1611,16 +1612,12 @@ local function get_settings()
 end
 
 camp_pulling_config = function()
-	local settings = get_settings()
-	local config = settings.camp_pulling
+	local root = require('uc_scheduler_context_utils').get_config()
+	local config = uc_scheduler_config.combat_pulling_from_config(root)
 	if type(config) ~= 'table' then
-		error('normalized combat.pulling configuration is required')
+		error('normalized canonical combat.pulling configuration is required')
 	end
 	return config
-end
-
-function scheduler.active_value_or_flat(path, flat_value)
-	return uc_scheduler_config.active_value_or_flat(path, flat_value)
 end
 
 local function bool_setting(v, default_value)
@@ -1636,10 +1633,9 @@ local function player_has_doom(player)
 	return require('uc_scheduler_defensive_utils').player_has_doom(resolve_doom_buff_id, player)
 end
 
-local function doom_water_enabled(settings)
+local function doom_water_enabled(config)
 	return domain_ownership.is_enabled('defensive')
-		and bool_setting(scheduler.active_value_or_flat('config.defensive.enabled', settings and settings.defensive_enabled), false)
-		and bool_setting(scheduler.active_value_or_flat('config.defensive.doom.holy_water_enabled', settings and settings.defensive_doom_water), false)
+		and uc_scheduler_config.defensive_doom_water_enabled_from_config(config)
 end
 
 local function reserve_doom_water_lane(reason)
@@ -1735,11 +1731,11 @@ local function dispatch_doom_holy_water()
 	return false
 end
 
-local function doom_water_dependencies(settings)
+local function doom_water_dependencies(config)
 	return {
 		now = now_s,
 		enabled = function()
-			return doom_water_enabled(settings)
+			return doom_water_enabled(config)
 		end,
 		player_has_doom = function()
 			local player = windower.ffxi.get_player()
@@ -1756,12 +1752,13 @@ local function doom_water_dependencies(settings)
 	}
 end
 
-local function try_doom_water_emergency(settings)
+local function try_doom_water_emergency(settings, ctx)
+	local config = type(ctx) == 'table' and ctx.config or nil
 	local blocked, reason = require('uc_doom_water').step(
 		scheduler.doom_water_state,
-		doom_water_dependencies(settings)
+		doom_water_dependencies(config)
 	)
-	if blocked ~= true and doom_water_enabled(settings) then
+	if blocked ~= true and doom_water_enabled(config) then
 		local player = windower.ffxi.get_player()
 		if player ~= nil and player_has_doom(player) then
 			-- Holy Water was not a viable action. Force the normal defensive
@@ -1774,14 +1771,17 @@ local function try_doom_water_emergency(settings)
 end
 
 function scheduler.on_add_item(bag, index, item_id, count)
-	local settings = get_settings()
+	-- Event completion must recheck the active canonical defensive policy.
+	-- Flat session state is not a Profile V2 config and must never decide
+	-- whether a staged Holy Water may be used after an inventory move.
+	local config = require('uc_scheduler_context_utils').get_config()
 	local acted, reason = require('uc_doom_water').on_add_item(
 		scheduler.doom_water_state,
 		bag,
 		index,
 		item_id,
 		count,
-		doom_water_dependencies(settings)
+		doom_water_dependencies(config)
 	)
 	if acted then
 		_G.UC_LAST_BLOCK_REASON = tostring(reason or 'BLOCK_DOOM_WATER')
@@ -1789,16 +1789,33 @@ function scheduler.on_add_item(bag, index, item_id, count)
 	return acted, reason
 end
 
-local function build_partner_target_set(settings)
-	return require('uc_scheduler_context_utils').build_partner_target_set({
-		bool_setting = bool_setting,
-		uc_partner_list = uc_partner_list,
-	}, settings)
+local function build_partner_target_set(settings, config)
+	local follow_config = require('uc_follow_config')
+	local enabled = false
+	local partner_ids = {}
+	enabled = require('uc_scheduler_context_utils').partner_enabled(settings, config)
+	if type(config) == 'table' then
+		partner_ids = follow_config.partner_ids(config)
+	else
+		partner_ids = uc_partner_list.as_ordered_ids(settings or {})
+	end
+	local out = {}
+	if not enabled then
+		return out
+	end
+	for _, pid in ipairs(partner_ids) do
+		local pm = windower.ffxi.get_mob_by_id(tonumber(pid) or 0)
+		if pm and pm.target_index then
+			local tm = windower.ffxi.get_mob_by_index(pm.target_index)
+			local tid = tonumber(tm and tm.id) or 0
+			if tid > 0 then out[tid] = true end
+		end
+	end
+	return out
 end
 
-function scheduler.sleep_spell_list_from_settings(settings)
-	local runtime_overrides = require('uc_runtime_overrides')
-	return runtime_overrides.sleep_spell_names(settings)
+function scheduler.sleep_spell_list_from_config(config)
+	return uc_scheduler_config.sleep_order_from_config(config)
 end
 
 scheduler.SLEEP_MAX_TARGET_DISTANCE = 6.0
@@ -1806,11 +1823,8 @@ scheduler.SLEEP_TARGET_SUPPRESSION_TIMEOUT_S = 45.0
 scheduler.TANK_TARGET_ACQUIRE_PRIORITY = 106
 scheduler.TANK_TARGET_ACQUIRE_URGENCY = 0.80
 
-function scheduler.sleep_max_target_distance(settings)
-	local configured = tonumber(scheduler.active_value_or_flat(
-		'config.sleep.max_target_range',
-		settings and settings.sleep_max_target_range
-	))
+function scheduler.sleep_max_target_distance(config)
+	local configured = uc_scheduler_config.sleep_max_target_range_from_config(config)
 	if configured == nil then
 		configured = scheduler.SLEEP_MAX_TARGET_DISTANCE
 	end
@@ -1823,15 +1837,21 @@ function scheduler.sleep_max_target_distance(settings)
 	return configured
 end
 
-function scheduler.try_partner_tiebreak(settings)
-	if not bool_setting(settings and settings.partner, false) then
+function scheduler.try_partner_tiebreak(settings, config)
+	local follow_config = require('uc_follow_config')
+	local partner_cfg = type(config) == 'table' and follow_config.partner(config) or nil
+	local partner_enabled = require('uc_scheduler_context_utils').partner_enabled(settings, config)
+	if not partner_enabled then
 		return false, nil
 	end
 
+	local partner_ids = type(partner_cfg) == 'table'
+		and follow_config.partner_ids(config)
+		or uc_partner_list.as_ordered_ids(settings)
 	local player = windower.ffxi.get_player()
 	local current = windower.ffxi.get_mob_by_target('t')
 	local partner_snapshots = {}
-	for _, partner_id in ipairs(uc_partner_list.as_ordered_ids(settings)) do
+	for _, partner_id in ipairs(partner_ids) do
 		local partner = windower.ffxi.get_mob_by_id(partner_id)
 		local target = partner and partner.target_index and windower.ffxi.get_mob_by_index(partner.target_index) or nil
 		partner_snapshots[#partner_snapshots + 1] = {
@@ -1847,16 +1867,22 @@ function scheduler.try_partner_tiebreak(settings)
 	local _, claims_set = uc_targeting_common.build_friendly_claims()
 	assert(type(claims_set) == 'table', 'scheduler partner arbitration requires friendly claims')
 	local blocked_mob_ids = {}
+	local ignore_context = settings
+	if type(config) == 'table' then
+		ignore_context = {
+			target_ignore_names = uc_scheduler_config.targeting_ignore_names_from_config(config),
+		}
+	end
 	for _, mob in pairs(mobs) do
 		local mob_id = tonumber(mob and mob.id) or 0
-		if mob_id > 0 and require('uc_target_ignore').is_mob_blocked(settings, mob) then
+		if mob_id > 0 and require('uc_target_ignore').is_mob_blocked(ignore_context, mob) then
 			blocked_mob_ids[mob_id] = true
 		end
 	end
 
 	local decision = require('uc_scheduler_partner_arbitration').decide({
 		partner_enabled = true,
-		autotarget_enabled = bool_setting(uc_scheduler_config.combat_autotarget(settings), false),
+		autotarget_enabled = require('uc_scheduler_context_utils').partner_autotarget_enabled(settings, config),
 		my_id = player and player.id,
 		player_status = player and player.status,
 		current_target = current,
@@ -2610,7 +2636,8 @@ local function ensure_diag_logs_initialized()
 	end
 end
 
-local function run_movement_coordinator_tick()
+local function run_movement_coordinator_tick(config)
+	config = type(config) == 'table' and config or {}
 	local s = get_settings()
 	local now = now_s()
 	if not domain_ownership.is_enabled('movement') then
@@ -2721,11 +2748,11 @@ local function run_movement_coordinator_tick()
 		local t = windower.ffxi.get_mob_by_target('t')
 		local tid = tonumber(t and t.id) or 0
 		if tid > 0 then
-			local no_tp_tid = require('uc_run_no_tp').target_id(s, p, t)
+			local no_tp_tid = require('uc_run_no_tp').target_id(s, p, t, config)
 			if no_tp_tid > 0 then
-				p1_apply_face_to_target(s, no_tp_tid, true, true, 'unified_scheduler:run_no_tp')
+				p1_apply_face_to_target(s, no_tp_tid, true, true, 'unified_scheduler:run_no_tp', config)
 			else
-				p1_apply_face_to_target(s, tid)
+				p1_apply_face_to_target(s, tid, false, false, nil, config)
 			end
 		end
 	end
@@ -2835,7 +2862,8 @@ local function run_movement_coordinator_tick()
 	end
 	-- Keep fight-follow hold semantics only for active combat participants.
 	if engaged and combat_participant then
-		local hold_s = tonumber(s and s.fight_follow_hold_s) or 8.0
+		local fight_cfg = require('uc_follow_config').fight(config)
+		local hold_s = tonumber(type(fight_cfg) == 'table' and fight_cfg.hold_s) or 8.0
 		if hold_s < 0 then
 			hold_s = 0
 		elseif hold_s > 30 then
@@ -2891,7 +2919,7 @@ local function run_movement_coordinator_tick()
 		turn = windower.ffxi.turn,
 	})
 	local ok_call, call_err = pcall(function()
-		ok = combat_core.apply_movement_for_scheduler(s, movement_executor) == true
+		ok = combat_core.apply_movement_for_scheduler(s, movement_executor, config) == true
 	end)
 	if not ok_call then
 		_G.UC_LAST_SCHED_ACTION = '[move]error:' .. tostring(call_err or '')
@@ -3090,8 +3118,8 @@ local function p1_build_party_id_set()
 	return id_set
 end
 
-local function p1_prime_unclaimed_party_aggressive_ok(settings, mob, party_ids)
-	if not bool_setting(uc_scheduler_config.combat_prime(settings), false) then
+local function p1_prime_unclaimed_party_aggressive_ok(config, mob, party_ids)
+	if not uc_scheduler_config.combat_prime_from_config(config) then
 		return false
 	end
 	if not mob or (tonumber(mob.claim_id) or 0) ~= 0 then
@@ -3327,7 +3355,7 @@ local function sch_spell_ready(name, target_id, mp_multiplier)
 	return true, '', 'spell'
 end
 
-function scheduler.select_sleep_spell_for_target(settings, target)
+function scheduler.select_sleep_spell_for_target(config, target)
 	if type(target) ~= 'table' then
 		return nil, 'SLEEP_BAD_TARGET'
 	end
@@ -3336,8 +3364,8 @@ function scheduler.select_sleep_spell_for_target(settings, target)
 		return nil, 'SLEEP_BAD_TARGET'
 	end
 	local dist = target.distance and target.distance:sqrt() or 999
-	local configured_max_range = scheduler.sleep_max_target_distance(settings)
-	local sleep_spells = scheduler.sleep_spell_list_from_settings(settings)
+	local configured_max_range = scheduler.sleep_max_target_distance(config)
+	local sleep_spells = scheduler.sleep_spell_list_from_config(config)
 	for index, spell_name in ipairs(sleep_spells) do
 		local sp = get_spell_resource(spell_name)
 		local ok_ready, ready_reason, action_kind = action_ready(spell_name, target_id)
@@ -3371,9 +3399,9 @@ function scheduler.sleep_target_state_map()
 	return p.sleep_targets
 end
 
-function scheduler.sleep_spell_effect_id_set_from_settings(settings)
+function scheduler.sleep_spell_effect_id_set_from_config(config)
 	local out = {}
-	local sleep_spells = scheduler.sleep_spell_list_from_settings(settings)
+	local sleep_spells = scheduler.sleep_spell_list_from_config(config)
 	for i = 1, #sleep_spells do
 		local sp = get_spell_resource(sleep_spells[i])
 		local eid = require('uc_scheduler_enemy_effect_state').spell_effect_id(
@@ -3393,7 +3421,7 @@ function scheduler.observe_local_sleep_action(act, player_id, at)
 	end
 	local spell = res.spells and res.spells[tonumber(act.param) or 0] or nil
 	local spell_name = tostring(spell and spell.en or '')
-	if spell_name == '' or not scheduler.is_sleep_spell_name(get_settings(), spell_name) then
+	if spell_name == '' or not scheduler.is_sleep_spell_name(require('uc_scheduler_context_utils').get_config(), spell_name) then
 		return 0
 	end
 	local marked = 0
@@ -3528,12 +3556,12 @@ function scheduler.handle_local_spell_finish_action(act, player_id, observed_at)
 	return true, 'cast_complete_action_packet'
 end
 
-function scheduler.is_sleep_spell_name(settings, spell_name)
+function scheduler.is_sleep_spell_name(config, spell_name)
 	local want = tostring(spell_name or ''):lower()
 	if want == '' then
 		return false
 	end
-	local sleep_spells = scheduler.sleep_spell_list_from_settings(settings)
+	local sleep_spells = scheduler.sleep_spell_list_from_config(config)
 	for i = 1, #sleep_spells do
 		if tostring(sleep_spells[i] or ''):lower() == want then
 			return true
@@ -3569,7 +3597,7 @@ function scheduler.mark_sleep_target_suppressed(target_id, spell_name, at)
 	return true
 end
 
-function scheduler.target_has_active_sleep_effect(settings, target_id, at)
+function scheduler.target_has_active_sleep_effect(config, target_id, at)
 	local tid = tonumber(target_id) or 0
 	if tid <= 0 then
 		return false
@@ -3579,7 +3607,7 @@ function scheduler.target_has_active_sleep_effect(settings, target_id, at)
 	if type(effects) ~= 'table' then
 		return false
 	end
-	local sleep_effect_ids = scheduler.sleep_spell_effect_id_set_from_settings(settings)
+	local sleep_effect_ids = scheduler.sleep_spell_effect_id_set_from_config(config)
 	for effect_id, _ in pairs(sleep_effect_ids) do
 		if effects[effect_id] ~= nil then
 			return true, effect_id
@@ -3588,7 +3616,7 @@ function scheduler.target_has_active_sleep_effect(settings, target_id, at)
 	return false
 end
 
-function scheduler.prune_sleep_target_state(settings, at)
+function scheduler.prune_sleep_target_state(config, at)
 	local now = tonumber(at) or now_s()
 	local st = scheduler.sleep_target_state_map()
 	enemy_effect_state_prune_expired(now)
@@ -3607,7 +3635,7 @@ function scheduler.prune_sleep_target_state(settings, at)
 					remove = true
 				end
 			end
-			if not remove and scheduler.target_has_active_sleep_effect(settings, tid, now) then
+			if not remove and scheduler.target_has_active_sleep_effect(config, tid, now) then
 				remove = true
 			end
 		end
@@ -3617,14 +3645,14 @@ function scheduler.prune_sleep_target_state(settings, at)
 	end
 end
 
-function scheduler.target_sleep_suppressed(settings, target_id, at)
+function scheduler.target_sleep_suppressed(config, target_id, at)
 	local tid = tonumber(target_id) or 0
 	if tid <= 0 then
 		return false
 	end
 	local now = tonumber(at) or now_s()
-	scheduler.prune_sleep_target_state(settings, now)
-	if scheduler.target_has_active_sleep_effect(settings, tid, now) then
+	scheduler.prune_sleep_target_state(config, now)
+	if scheduler.target_has_active_sleep_effect(config, tid, now) then
 		return true, 'effect'
 	end
 	local row = scheduler.sleep_target_state_map()[tid]
@@ -3683,13 +3711,11 @@ local function get_usable_cure_from_tier(orig_tier, min_tier)
 end
 
 local function sch_select_cure_spell(member, mp_multiplier)
-	local s = get_settings()
-	local min_tier = tonumber(scheduler.active_value_or_flat(
-		'config.defensive.cure.min_tier', s.def_heal_min_tier_cure
-	)) or 2
-	local max_tier = tonumber(scheduler.active_value_or_flat(
-		'config.defensive.cure.max_tier', s.def_heal_max_tier_cure
-	)) or 4
+	local config = require('uc_scheduler_context_utils').get_config()
+	local defensive = uc_scheduler_config.defensive_from_config(config)
+	local cure = type(defensive.cure) == 'table' and defensive.cure or {}
+	local min_tier = tonumber(cure.min_tier) or 3
+	local max_tier = tonumber(cure.max_tier) or 4
 	min_tier = math.max(1, math.min(min_tier, 4))
 	max_tier = math.max(min_tier, math.min(max_tier, 4))
 	local wanted_tier = cure_tier_for_missing_hp(estimate_missing_hp(member), max_tier)
@@ -3997,7 +4023,13 @@ local function family_tokens_for(member_name, buff_id)
 end
 
 local function build_defensive_candidates(ctx)
-	local s = type(ctx) == 'table' and ctx.settings or get_settings()
+	local config = type(ctx) == 'table' and type(ctx.config) == 'table' and ctx.config or {}
+	local defensive = uc_scheduler_config.defensive_from_config(config)
+	local cure = type(defensive.cure) == 'table' and defensive.cure or {}
+	local curaga = type(cure.curaga) == 'table' and cure.curaga or {}
+	local waltz = type(defensive.waltz) == 'table' and defensive.waltz or {}
+	local buffs = type(defensive.buffs) == 'table' and defensive.buffs or {}
+	local na = type(defensive.na) == 'table' and defensive.na or {}
 	local members = get_party_members(ctx)
 	local out = {
 		cure = nil,
@@ -4006,13 +4038,13 @@ local function build_defensive_candidates(ctx)
 		overwrite = nil,
 	}
 	local now = type(ctx) == 'table' and ctx.now or now_s()
-	local ignore_trusts = bool_setting(scheduler.active_value_or_flat('config.defensive.cure.ignore_trusts', s.def_heal_ignore_trusts), true)
-	local cure_enabled = bool_setting(scheduler.active_value_or_flat('config.defensive.cure.enabled', s.defensive_cure_enabled), true)
-	local curaga_enabled = bool_setting(scheduler.active_value_or_flat('config.defensive.cure.curaga.enabled', s.defensive_curaga_enabled), false)
-	local curaga_min_targets = tonumber(scheduler.active_value_or_flat('config.defensive.cure.curaga.min_targets', s.defensive_curaga_min_targets)) or 3
-	local waltz_enabled = bool_setting(scheduler.active_value_or_flat('config.defensive.waltz.enabled', s.defensive_waltz_enabled), false)
-	local waltz_tp_reserve = tonumber(scheduler.active_value_or_flat('config.defensive.waltz.tp_reserve', s.defensive_waltz_tp_reserve)) or 0
-	local divine_min_targets = tonumber(scheduler.active_value_or_flat('config.defensive.waltz.divine_min_targets', s.defensive_divine_waltz_min_targets)) or 3
+	local ignore_trusts = cure.ignore_trusts ~= false
+	local cure_enabled = cure.enabled == true
+	local curaga_enabled = curaga.enabled == true
+	local curaga_min_targets = tonumber(curaga.min_targets) or 3
+	local waltz_enabled = waltz.enabled == true
+	local waltz_tp_reserve = tonumber(waltz.tp_reserve) or 0
+	local divine_min_targets = tonumber(waltz.divine_min_targets) or 3
 	if curaga_min_targets < 2 or curaga_min_targets > 6 or curaga_min_targets % 1 ~= 0 then
 		error('normalized defensive Curaga minimum targets must be an integer from 2 through 6')
 	end
@@ -4027,15 +4059,15 @@ local function build_defensive_candidates(ctx)
 	local injured_members = {}
 	local injured_ids = {}
 	local critical_injured_ids = {}
-	local missing_gate = math.max(0, tonumber(scheduler.active_value_or_flat('config.defensive.cure.min_missing_hp', s.def_heal_min_missing_hp)) or 250)
-	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', s.defensive_critical_hpp)) or 35
+	local missing_gate = math.max(0, tonumber(cure.min_missing_hp) or 250)
+	local critical_hpp = uc_scheduler_config.defensive_critical_hpp_from_config(config)
 	local actor_silenced = waltz_enabled and player_has_named_buff(windower.ffxi.get_player(), 'silence') == true
 
-	if bool_setting(scheduler.active_value_or_flat('config.defensive.buffs.enabled', s.defensive_buff_enabled), true) then
+	if buffs.enabled == true then
 		log_def_sched(('BUFF_SCAN mode=%s buffs="%s" targeted="%s" members=%d'):format(
-			bool_setting(scheduler.active_value_or_flat('config.defensive.buffs.self_only', s.defensive_buff_self_only), true) and 'self_only' or 'party',
-			tostring(scheduler.active_value_or_flat('config.defensive.buffs.list', s.defensive_buffs) or ''),
-			tostring(s.defensive_targeted_buffs or ''),
+			buffs.self_only ~= false and 'self_only' or 'party',
+			tostring(buffs.list or ''),
+			tostring(type(buffs.targeted) == 'table' and #buffs.targeted or 0),
 			#members
 		))
 		for _, m in ipairs(members or {}) do
@@ -4058,7 +4090,7 @@ local function build_defensive_candidates(ctx)
 					buff_members[#buff_members + 1] = m
 				end
 			end
-			picked = hb_buff_maint.choose(s, buff_members, {
+			picked = hb_buff_maint.choose(type(ctx.config) == 'table' and ctx.config or {}, buff_members, {
 				bool_setting = bool_setting,
 				in_party_cast_range = in_party_cast_range,
 				action_ready = action_ready,
@@ -4119,7 +4151,12 @@ local function build_defensive_candidates(ctx)
 							tostring(m.name or '?'), tonumber(m.hp) or 0, tonumber(m.hpp) or 0,
 							missing_hp, missing_gate
 						))
-						local spell = actor_silenced and nil or choose_cure_spell(m)
+						local spell = actor_silenced and nil or choose_cure_spell(
+							m,
+							tonumber(cure.min_tier) or 3,
+							tonumber(cure.max_tier) or 4,
+							critical_hpp
+						)
 						local ready = spell and spell_ready(spell) or false
 						if ready and attempt_allowed('cure', m.name, spell, now, 2.5) then
 							local candidate = {
@@ -4323,9 +4360,9 @@ local function build_defensive_candidates(ctx)
 		end
 	end
 	out.debuff = require('uc_scheduler_na_policy').choose_status_removal(na_members, {
-		enabled = bool_setting(scheduler.active_value_or_flat('config.defensive.na.enabled', s.defensive_na_enabled), true),
-		limit_enabled = bool_setting(scheduler.active_value_or_flat('config.defensive.na.limit_enabled', s.defensive_na_limit_enabled), false),
-		priority = scheduler.active_value_or_flat('config.defensive.na.priority', s.defensive_na_priority),
+		enabled = na.enabled == true,
+		limit_enabled = na.limit_enabled == true,
+		priority = na.priority,
 		now = now,
 	}, {
 		buffs = res.buffs,
@@ -4383,21 +4420,20 @@ ensure_maintenance_state_tables = function()
 end
 
 
-local function choose_defensive_action(c)
-	local s = get_settings()
-	local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', s.defensive_critical_hpp)) or 35
+local function choose_defensive_action(c, config)
+	local critical_hpp = uc_scheduler_config.defensive_critical_hpp_from_config(config)
 	return require('uc_scheduler_na_policy').choose_defensive_action(c, critical_hpp)
 end
 
 
-choose_cure_spell = function(member)
-	local s = get_settings()
+choose_cure_spell = function(member, min_tier, max_tier_cfg, critical_hpp)
 	local max_available = available_cure_tier_max()
 	if max_available <= 0 then
 		return nil
 	end
-	local min_tier = tonumber(scheduler.active_value_or_flat('config.defensive.cure.min_tier', s.def_heal_min_tier_cure)) or 2
-	local max_tier_cfg = tonumber(scheduler.active_value_or_flat('config.defensive.cure.max_tier', s.def_heal_max_tier_cure)) or 4
+	min_tier = tonumber(min_tier) or 3
+	max_tier_cfg = tonumber(max_tier_cfg) or 4
+	critical_hpp = tonumber(critical_hpp) or 35
 	local max_tier = math.max(1, math.min(max_available, max_tier_cfg, 6))
 	min_tier = math.max(1, math.min(min_tier, max_tier, 6))
 	local missing = estimate_missing_hp(member)
@@ -4408,7 +4444,7 @@ choose_cure_spell = function(member)
 	end
 	-- Last-resort fallback for very low HP if configured floor blocked all options.
 	local hpp = tonumber(member and member.hpp) or 100
-	if hpp <= (tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', s.defensive_critical_hpp)) or 35) then
+	if hpp <= critical_hpp then
 		return get_usable_cure_from_tier(max_tier, 1)
 	end
 	return nil
@@ -4425,6 +4461,7 @@ end
 
 local function p1_build_ctx(settings)
 	local ctx = require('uc_scheduler_context').build(settings, scheduler.phase1, {
+		get_config = require('uc_scheduler_context_utils').get_config,
 		get_player = windower.ffxi.get_player,
 		get_mob_by_target = windower.ffxi.get_mob_by_target,
 		get_mob_by_index = windower.ffxi.get_mob_by_index,
@@ -4569,7 +4606,7 @@ local function p1_collect_proposals(ctx)
 			local proposal = out[i]
 			local provider = tostring(proposal and proposal.provider or '')
 			local critical_cure = scheduler.p1_is_critical_defensive_proposal(
-				ctx.settings,
+				ctx.config,
 				proposal
 			)
 			local allowed = critical_cure
@@ -4630,7 +4667,7 @@ local function p1_collect_proposals(ctx)
 			local decision = sch_lane_policy.decide(
 				sch_lane,
 				proposal,
-				scheduler.p1_is_critical_defensive_proposal(ctx.settings, proposal),
+				scheduler.p1_is_critical_defensive_proposal(ctx.config, proposal),
 				provider == 'charm_sleeper'
 			)
 			if not decision.allowed then
@@ -4663,7 +4700,7 @@ local function p1_collect_proposals(ctx)
 				if action_type == 'spell' and tostring(detail.def_action_type or '') == 'cure' then
 					local event_code = 'SLEEP_WAKE_PROPOSED'
 					if tostring(detail.cure_intent or '') ~= 'sleep_wake' then
-						local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings and ctx.settings.defensive_critical_hpp)) or 35
+						local critical_hpp = uc_scheduler_config.defensive_critical_hpp_from_config(ctx.config)
 						local target_hpp = tonumber(detail.target_hpp or -1) or -1
 						event_code = (target_hpp > 0 and target_hpp <= critical_hpp) and 'CRITICAL_CURE_PROPOSED' or 'NONCRITICAL_CURE_PROPOSED'
 					end
@@ -4781,6 +4818,7 @@ end
 local function p1_ranker_dependencies()
 	return {
 		bool_setting = bool_setting,
+		required_setting_value = uc_scheduler_config.required_setting_value_from_config,
 		phase1 = scheduler.phase1,
 		pending_engage_live = scheduler.p1_pending_engage_live,
 		pending_engage_state = scheduler.p1_pending_engage_state,
@@ -4876,7 +4914,7 @@ local function p1_apply_pet_command_event(event)
 	end
 	if event.outcome == 'complete' then
 		scheduler.p1_pending_mark_complete(event.at, 'pet_' .. tostring(event.reason))
-	elseif event.outcome == 'failed' then
+	elseif event.outcome == 'failed' or event.outcome == 'cancelled' then
 		scheduler.p1_pending_mark_failed(
 			event.at,
 			'pet_' .. tostring(event.reason),
@@ -4900,6 +4938,13 @@ local function p1_prepare_pet_context(ctx)
 		error('pet runtime requires scheduler context')
 	end
 	ctx.combat_domain_enabled = domain_ownership.is_enabled('combat')
+	local canceled = pet_command_coordinator.cancel_disabled_owner(
+		scheduler.pet_command_state,
+		ctx.combat_domain_enabled,
+		domain_ownership.is_enabled('maintenance'),
+		ctx.now
+	)
+	p1_apply_pet_command_event(canceled)
 	scheduler.providers.pet_combat.observe_target(ctx)
 	local scheduler_pending_action = scheduler.phase1.pending
 	if type(scheduler_pending_action) == 'table'
@@ -5014,7 +5059,7 @@ local function p1_run_dry(settings, ctx)
 		local selected_provider_for_weave = tostring(selected.provider or '')
 		local detail = type(selected.detail) == 'table' and selected.detail or nil
 		local target_hpp = tonumber(detail and detail.target_hpp or -1) or -1
-		local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', ctx.settings and ctx.settings.defensive_critical_hpp)) or 35
+		local critical_hpp = uc_scheduler_config.defensive_critical_hpp_from_config(ctx.config)
 		local is_defensive_cure_selected = (
 			(selected_provider_for_weave == 'defensive_internal' or selected_provider_for_weave == 'defensive_healbot')
 			and (tostring(selected.action_type or '') == 'spell' or tostring(selected.action_type or '') == 'ja')
@@ -5248,7 +5293,8 @@ function scheduler.p1_dispatch_target_control(selected, ctx)
 				return combat_core.revalidate_death_switch_for_scheduler(
 					ctx.settings,
 					tid,
-					detail.death_switch_incumbent_id
+					detail.death_switch_incumbent_id,
+					ctx.config
 				)
 			end,
 		})
@@ -5390,8 +5436,10 @@ function p1_combat_helpers.spell_target_dispatch_ready(selected, expected_tid, t
 	return true
 end
 
-p1_apply_face_to_target = function(settings, target_id, turn_away, force_face, source_override)
-	if turn_away ~= true and force_face ~= true and not bool_setting(settings and settings.face, false) then
+p1_apply_face_to_target = function(settings, target_id, turn_away, force_face, source_override, config)
+	-- Canonical face=false disables routine facing. Forced reaction turns,
+	-- restoration, and RUN no-TP turning deliberately bypass that preference.
+	if not require('uc_scheduler_context_utils').face_turn_allowed(settings, config, turn_away, force_face) then
 		return false
 	end
 	local tid = tonumber(target_id) or 0
@@ -5639,7 +5687,10 @@ local function p1_dispatch_pull_control(selected, settings)
 	if target_id <= 0 then
 		return false, nil
 	end
-	local ok, reason = combat_core.dispatch_pull_for_scheduler(settings, target_id, p1_build_pull_executor())
+	local ok, reason = combat_core.dispatch_pull_for_scheduler(
+		settings, target_id, p1_build_pull_executor(),
+		require('uc_active_config').get_config()
+	)
 	if not ok then
 		return false, nil
 	end
@@ -5673,9 +5724,9 @@ local function p1_dispatch_camp_puller(selected, settings)
 		_G.UC_LAST_SCHED_ACTION = '[camp_pull]commit_rejected:' .. tostring(reason)
 		return false, nil
 	end
-	local config = ctx.settings.camp_pulling
+	local config = uc_scheduler_config.combat_pulling_from_config(ctx.config)
 	if type(config) ~= 'table' then
-		error('camp pull dispatch requires normalized configuration')
+		error('camp pull dispatch requires normalized canonical configuration')
 	end
 	local action_type = tostring(selected.action_type or '')
 	local executor = p1_build_pull_executor()
@@ -5874,6 +5925,7 @@ local function p1_dispatch_maintenance_cor(selected, settings, provider)
 		send_command = windower.send_command,
 		intent = intent,
 		command = maintenance_cor_command,
+		config = require('uc_active_config').get_config(),
 	})
 	scheduler.action_timeline_log('MAINT_BUFF_DISPATCHED', {
 		action = tostring(ability or ''),
@@ -6152,7 +6204,7 @@ function scheduler.defensive_spell_movement_blocked(selected, action_kind, now_g
 	return false, nil
 end
 
-local function p1_dispatch_defensive_internal(selected, settings)
+local function p1_dispatch_defensive_internal(selected, settings, config)
 	if not domain_ownership.is_enabled('defensive') then
 		return false, nil
 	end
@@ -6250,7 +6302,7 @@ local function p1_dispatch_defensive_internal(selected, settings)
 		scheduler.providers.defensive.note_dispatch(selected, now_gate)
 	end
 	local target_hpp = tonumber(type(detail) == 'table' and detail.target_hpp or -1) or -1
-	scheduler.p1_maybe_clear_pending_engage_for_selected_critical(settings, selected)
+	scheduler.p1_maybe_clear_pending_engage_for_selected_critical(config, selected)
 	local can_apply_defensive_spell_lock = (
 		action_kind == 'spell'
 		and cmd ~= ''
@@ -6270,7 +6322,7 @@ local function p1_dispatch_defensive_internal(selected, settings)
 	})
 	if action_kind == 'spell' then
 		local is_cure = tostring(type(detail) == 'table' and detail.def_action_type or '') == 'cure'
-		local critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', settings and settings.defensive_critical_hpp)) or 35
+		local critical_hpp = uc_scheduler_config.defensive_critical_hpp_from_config(config)
 		local event_code = 'MAINT_BUFF_DISPATCHED'
 		if tostring(type(detail) == 'table' and detail.def_action_type or '') == 'resurrection' then
 			event_code = 'RESURRECTION_DISPATCHED'
@@ -6319,7 +6371,7 @@ local function p1_dispatch_defensive_internal(selected, settings)
 	return true, 'BLOCK_SCHED_P1_DARKLAUNCH'
 end
 
-local function p1_dispatch_defensive_healbot(selected, settings)
+local function p1_dispatch_defensive_healbot(selected, settings, config)
 	if not domain_ownership.is_enabled('defensive') then
 		return false, nil
 	end
@@ -6355,9 +6407,9 @@ local function p1_dispatch_defensive_healbot(selected, settings)
 		target_kind = tostring(selected.target_kind or ''),
 	})
 	local hb_detail = type(selected.detail) == 'table' and selected.detail or {}
-	scheduler.p1_maybe_clear_pending_engage_for_selected_critical(settings, selected)
+	scheduler.p1_maybe_clear_pending_engage_for_selected_critical(config, selected)
 	local hb_target_hpp = tonumber(hb_detail.target_hpp or -1) or -1
-	local hb_critical_hpp = tonumber(scheduler.active_value_or_flat('config.defensive.thresholds.critical_hpp', settings and settings.defensive_critical_hpp)) or 35
+	local hb_critical_hpp = uc_scheduler_config.defensive_critical_hpp_from_config(config)
 	local hb_event_code = 'MAINT_BUFF_DISPATCHED'
 	if tostring(hb_detail.def_action_type or '') == 'cure' then
 		hb_event_code = (hb_target_hpp > 0 and hb_target_hpp <= hb_critical_hpp) and 'CRITICAL_CURE_DISPATCHED' or 'NONCRITICAL_CURE_DISPATCHED'
@@ -6377,7 +6429,7 @@ local function p1_dispatch_defensive_healbot(selected, settings)
 	return true, 'BLOCK_SCHED_P1_DARKLAUNCH_HEALBOT'
 end
 
-local function p1_dispatch_combat(selected, settings, phase)
+local function p1_dispatch_combat(selected, settings, phase, config)
 	_G.UC_TANK_ENMITY_BLOCK = ''
 	if not domain_ownership.is_enabled('combat') then
 		return false, nil
@@ -6385,11 +6437,11 @@ local function p1_dispatch_combat(selected, settings, phase)
 	do
 		local player = windower.ffxi.get_player()
 		local current_target = windower.ffxi.get_mob_by_target('t')
-		local no_tp_tid = require('uc_run_no_tp').target_id(settings, player, current_target)
+		local no_tp_tid = require('uc_run_no_tp').target_id(settings, player, current_target, config)
 		if no_tp_tid > 0 then
-			p1_apply_face_to_target(settings, no_tp_tid, true, true, 'unified_scheduler:run_no_tp')
+			p1_apply_face_to_target(settings, no_tp_tid, true, true, 'unified_scheduler:run_no_tp', config)
 		else
-			p1_apply_face_to_target(settings, tonumber(selected.target_id) or 0)
+			p1_apply_face_to_target(settings, tonumber(selected.target_id) or 0, false, false, nil, config)
 		end
 	end
 	log_combat_sched(('dispatch_select type=%s name=\"%s\" target=\"%s\" tid=%d provider=%s family=%s'):format(
@@ -6403,6 +6455,16 @@ local function p1_dispatch_combat(selected, settings, phase)
 	local action_type = tostring(selected.action_type or '')
 	local tank_enmity = p1_is_tank_enmity_selected(selected)
 	local expected_tid = tonumber(selected.target_id) or 0
+	if tank_enmity and type(config) == 'table' then
+		if uc_scheduler_config.tank_enabled_from_config(config) ~= true then
+			tank_enmity_diag('TANK_ENMITY_DROP_TANK_DISABLED', selected, '')
+			return false, nil
+		end
+		if not uc_scheduler_config.tank_enmity_action_configured_from_config(config, selected.action_name) then
+			tank_enmity_diag('TANK_ENMITY_DROP_ACTION_UNCONFIGURED', selected, '')
+			return false, nil
+		end
+	end
 	local target_kind = tostring(selected.target_kind or 'self')
 	if action_type ~= 'engage' then
 		_G.UC_ACTION_TIMELINE_CURRENT_ACTION = nil
@@ -6525,7 +6587,7 @@ local function p1_dispatch_combat(selected, settings, phase)
 		if not combat_core or type(combat_core.try_dispatch_ws_with_intent) ~= 'function' then
 			error('scheduler combat WS dispatch requires core intent owner')
 		end
-		local sent, why = combat_core.try_dispatch_ws_with_intent(ws, expected_tid, settings, selected.skillchain_plan)
+		local sent, why = combat_core.try_dispatch_ws_with_intent(ws, expected_tid, settings, selected.skillchain_plan, config)
 		if not sent then
 			_G.UC_LAST_SCHED_ACTION = ('[p1]ws_hold:%s:%s'):format(ws, tostring(why or 'BLOCK'))
 			if type(selected.skillchain_plan) == 'table' then
@@ -7250,7 +7312,7 @@ local function p1_dispatch_pet_command(selected, settings)
 	if type(result) ~= 'table' or result.ok ~= true or result.executed ~= true then
 		return false, nil
 	end
-	pet_command_coordinator.begin(scheduler.pet_command_state, command_spec, ctx.now)
+	pet_command_coordinator.begin(scheduler.pet_command_state, command_spec, ctx.now, provider_name)
 	local dispatch_ctx = { now = ctx.now, tick = p1_number(scheduler.phase1.tick, 0) }
 	scheduler.record_dispatch(dispatch_ctx)
 	scheduler.p1_set_pending_globals()
@@ -7325,7 +7387,7 @@ function scheduler.dispatch_selected_plan(settings)
 		return p1_dispatch_camp_puller(selected, settings)
 	end
 	if provider == 'combat' or provider == 'encounter_kei' or provider == 'encounter_saved_by_bell' then
-		return p1_dispatch_combat(selected, settings, phase)
+		return p1_dispatch_combat(selected, settings, phase, require('uc_scheduler_context_utils').get_config())
 	end
 	if provider == 'defensive_internal' then
 		_G.UC_DEFENSIVE_CHAIN_ACTION = {
@@ -7339,10 +7401,10 @@ function scheduler.dispatch_selected_plan(settings)
 		if blocked then
 			return true, b_reason
 		end
-		return p1_dispatch_defensive_internal(selected, settings)
+		return p1_dispatch_defensive_internal(selected, settings, require('uc_scheduler_context_utils').get_config())
 	end
 	if provider == 'defensive_healbot' then
-		return p1_dispatch_defensive_healbot(selected, settings)
+		return p1_dispatch_defensive_healbot(selected, settings, require('uc_scheduler_context_utils').get_config())
 	end
 	if provider == 'maintenance_food' then
 		return p1_dispatch_maintenance_food(selected, settings)
@@ -7515,7 +7577,7 @@ function scheduler.process_tick(cadence)
 		end
 	end
 	if defensive_domain_enabled and not camp_lane_reserved then
-		local doom_blocked, doom_reason = try_doom_water_emergency(s)
+		local doom_blocked, doom_reason = try_doom_water_emergency(s, get_tick_ctx())
 		if doom_blocked then
 			local ctx = { now = now_s(), tick = p1_number(scheduler.phase1.tick, 0) }
 			scheduler.record_dispatch(ctx)
@@ -7531,7 +7593,7 @@ function scheduler.process_tick(cadence)
 		camp_lane_reserved = scheduler.providers.camp_puller.active()
 	end
 	if combat_domain_enabled and not camp_lane_reserved then
-		local partner_blocked, partner_reason = scheduler.try_partner_tiebreak(s)
+		local partner_blocked, partner_reason = scheduler.try_partner_tiebreak(s, get_tick_ctx().config)
 		if partner_blocked then
 			return true, partner_reason
 		end
@@ -7581,7 +7643,7 @@ function scheduler.process_tick(cadence)
 	camp_lane_reserved = combat_domain_enabled and scheduler.providers.camp_puller.active()
 	local move_acted, move_reason = false, ''
 	if camp_lane_reserved or (not brd_lane_reserved and not sch_lane_holds) then
-		move_acted, move_reason = run_movement_coordinator_tick()
+		move_acted, move_reason = run_movement_coordinator_tick(get_tick_ctx().config)
 	elseif brd_lane_reserved then
 		scheduler.apply_brd_maintenance_lane_movement(brd_lane_reason, now_s())
 		_G.UC_MOVEMENT_BLOCK_REASON = 'BRD_LANE:' .. tostring(brd_lane_reason or '')
@@ -8587,9 +8649,6 @@ function scheduler.sch_sublimation_safety(ctx, proposals)
 	if type(ctx) ~= 'table' then
 		error('Scholar Sublimation safety requires scheduler context')
 	end
-	if type(ctx.settings) ~= 'table' then
-		error('Scholar Sublimation safety requires scheduler settings')
-	end
 	if type(ctx.player) ~= 'table' then
 		error('Scholar Sublimation safety requires the player snapshot')
 	end
@@ -8601,7 +8660,7 @@ function scheduler.sch_sublimation_safety(ctx, proposals)
 		player_doom_present = player_has_doom(ctx.player),
 		defensive_evidence_current = ctx.sch_defensive_evidence_current,
 		is_critical_defensive = function(proposal)
-			return scheduler.p1_is_critical_defensive_proposal(ctx.settings, proposal)
+			return scheduler.p1_is_critical_defensive_proposal(ctx.config, proposal)
 		end,
 		source = 'unified_scheduler:existing_critical_defense_doom_charm_signals',
 	})
@@ -8649,17 +8708,15 @@ scheduler.providers.sch_maintenance = require('uc_provider_sch_maintenance').new
 			priority = status_removal_priority[status_key] or 5,
 		}
 	end,
-	is_critical_defensive = function(proposal, settings)
-		return scheduler.p1_is_critical_defensive_proposal(settings, proposal)
+	is_critical_defensive = function(proposal, config)
+		return scheduler.p1_is_critical_defensive_proposal(config, proposal)
 	end,
 	get_sublimation_safety = scheduler.sch_sublimation_safety,
 	get_sublimation_release_mechanics = require('uc_sch_sublimation').production_release_mechanics,
-	ignore_trusts = function(settings)
-		local value = settings.def_heal_ignore_trusts
-		if type(value) ~= 'boolean' then
-			error('normalized defensive cure ignore_trusts setting is required')
-		end
-		return value
+	ignore_trusts = function(config)
+		local defensive = uc_scheduler_config.defensive_from_config(config)
+		local cure = type(defensive.cure) == 'table' and defensive.cure or {}
+		return cure.ignore_trusts ~= false
 	end,
 	routine_priority = scheduler.PRIORITY_BAND_SCH_ROUTINE,
 	prepared_priority = scheduler.PRIORITY_BAND_SCH_PREPARED,
@@ -8682,8 +8739,10 @@ scheduler.providers.geo_maintenance = require('uc_geo_maintenance').new({
 	resolve_camp_anchor = require('uc_camp_anchor').resolve_current_anchor,
 	action_effective_range = action_effective_range,
 	target_is_actionable = combat_core.is_live_actionable_combat_target,
-	target_is_ignored = function(settings, mob)
-		return require('uc_target_ignore').is_mob_blocked(settings, mob)
+	target_is_ignored = function(config, mob)
+		return require('uc_target_ignore').is_mob_blocked({
+			target_ignore_names = uc_scheduler_config.targeting_ignore_names_from_config(config),
+		}, mob)
 	end,
 	player_is_moving = smn_player_is_moving,
 	pull_active = function()
@@ -8707,7 +8766,6 @@ scheduler.providers.geo_maintenance = require('uc_geo_maintenance').new({
 })
 scheduler.providers.defensive = require('uc_provider_defensive').new({
 	bool_setting = bool_setting,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	build_defensive_candidates = build_defensive_candidates,
 	choose_defensive_action = choose_defensive_action,
 	action_ready = action_ready,
@@ -8733,8 +8791,6 @@ scheduler.providers.defensive = require('uc_provider_defensive').new({
 	critical_cure_priority = scheduler.PRIORITY_BAND_CRITICAL_CURE,
 })
 scheduler.providers.charm_sleeper = require('uc_provider_charm_sleeper').new({
-	bool_setting = bool_setting,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	get_party_members = get_party_members,
 	get_mob_by_id = windower.ffxi.get_mob_by_id,
 	action_ready = action_ready,
@@ -8753,8 +8809,6 @@ scheduler.providers.charm_sleeper = require('uc_provider_charm_sleeper').new({
 	priority_band = scheduler.PRIORITY_BAND_CHARM_SLEEPER,
 })
 scheduler.providers.sleep_waker = require('uc_provider_sleep_waker').new({
-	bool_setting = bool_setting,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	get_party_members = get_party_members,
 	get_mob_by_id = windower.ffxi.get_mob_by_id,
 	in_party_cast_range = in_party_cast_range,
@@ -8767,7 +8821,6 @@ scheduler.providers.sleep_waker = require('uc_provider_sleep_waker').new({
 })
 scheduler.providers.enemy_buff_removal = require('uc_provider_enemy_buff_removal').new({
 	bool_setting = bool_setting,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	log = enemy_dispel_log,
 	build_friendly_claims = uc_targeting_common.build_friendly_claims,
 	list_targets = enemy_effect_tracker.list_targets,
@@ -8785,7 +8838,6 @@ scheduler.providers.enemy_buff_removal = require('uc_provider_enemy_buff_removal
 })
 scheduler.providers.enemy_debuff_maintenance = require('uc_provider_enemy_debuff_maintenance').new({
 	bool_setting = bool_setting,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	get_spell_resource = get_spell_resource,
 	get_spell_by_id = function(spell_id)
 		return res.spells[tonumber(spell_id) or 0]
@@ -8802,6 +8854,7 @@ scheduler.providers.enemy_debuff_maintenance = require('uc_provider_enemy_debuff
 })
 scheduler.providers.tank_enmity = require('uc_provider_tank_enmity').new({
 	bool_setting = bool_setting,
+	abilities_allow_unengaged = uc_scheduler_config.abilities_allow_unengaged_from_config,
 	select_tank_enmity = combat_core.select_tank_enmity_for_scheduler,
 	action_ready = action_ready,
 	action_effective_range = action_effective_range,
@@ -8810,11 +8863,11 @@ scheduler.providers.tank_enmity = require('uc_provider_tank_enmity').new({
 })
 scheduler.providers.target_control = require('uc_provider_target_control').new({
 	bool_setting = bool_setting,
-	combat_autotarget = uc_scheduler_config.combat_autotarget,
+	combat_autotarget = uc_scheduler_config.combat_autotarget_from_config,
 	combat_domain_enabled = function()
 		return domain_ownership.is_enabled('combat')
 	end,
-	tank_enabled = uc_scheduler_config.tank_enabled,
+	tank_enabled = uc_scheduler_config.tank_enabled_from_config,
 	select_target = combat_core.select_target_for_scheduler,
 	add_control_enabled = combat_core.add_control_enabled_for_scheduler,
 	select_pull = combat_core.select_pull_for_scheduler,
@@ -8829,7 +8882,6 @@ scheduler.providers.target_control = require('uc_provider_target_control').new({
 })
 scheduler.providers.recurring_spells = require('uc_provider_recurring_spells').new({
 	bool_setting = bool_setting,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	get_spell_resource = get_spell_resource,
 	action_ready = action_ready,
 	action_effective_range = action_effective_range,
@@ -8852,26 +8904,32 @@ scheduler.providers.combat = require('uc_provider_combat').new({
 	clamp_urgency = p1_clamp_urgency,
 	build_partner_target_set = build_partner_target_set,
 	select_ws_plan = combat_core.select_ws_plan_for_scheduler,
+	weaponskill_enabled = uc_scheduler_config.combat_weaponskill_enabled_from_config,
 	action_timeline_log = function(...)
 		return scheduler.action_timeline_log(...)
 	end,
 	combat_domain_enabled = function()
 		return domain_ownership.is_enabled('combat')
 	end,
-	sleep_enabled = require('uc_runtime_overrides').sleep_enabled,
-	sleep_spell_list = scheduler.sleep_spell_list_from_settings,
+	sleep_enabled = uc_scheduler_config.sleep_enabled_from_config,
+	sleep_spell_list = scheduler.sleep_spell_list_from_config,
 	is_live_actionable_target = combat_core.is_live_actionable_combat_target,
 	build_friendly_claims = uc_targeting_common.build_friendly_claims,
 	mob_targets_friendly_member = uc_targeting_common.mob_targets_friendly_member,
 	sleep_max_target_distance = scheduler.sleep_max_target_distance,
 	target_sleep_suppressed = scheduler.target_sleep_suppressed,
 	select_sleep_spell = scheduler.select_sleep_spell_for_target,
-	combat_autotarget = uc_scheduler_config.combat_autotarget,
-	tank_enabled = uc_scheduler_config.tank_enabled,
+	combat_autotarget = uc_scheduler_config.combat_autotarget_from_config,
+	tank_enabled = uc_scheduler_config.tank_enabled_from_config,
 	debug_enabled = uc_scheduler_config.debug_enabled,
-	combat_prime = uc_scheduler_config.combat_prime,
-	fight_leader_enabled = require('uc_runtime_overrides').fight_leader_enabled,
-	fight_leader_id = require('uc_runtime_overrides').fight_leader_id,
+	combat_prime = uc_scheduler_config.combat_prime_from_config,
+	fight_leader_enabled = function(config)
+		local fight = require('uc_follow_config').fight(config)
+		return type(fight) == 'table' and fight.leader == true
+	end,
+	fight_leader_id = function(config)
+		return require('uc_follow_config').fight_leader_id(config)
+	end,
 	fight_leader_target_id = uc_fight_leader.leader_target_id,
 	add_control_enabled = combat_core.add_control_enabled_for_scheduler,
 	select_pull = combat_core.select_pull_for_scheduler,
@@ -8879,7 +8937,9 @@ scheduler.providers.combat = require('uc_provider_combat').new({
 	prime_unclaimed_party_aggressive_ok = p1_prime_unclaimed_party_aggressive_ok,
 	pending_engage_state = scheduler.p1_pending_engage_state,
 	pending_engage_live = scheduler.p1_pending_engage_live,
-	collect_ordered_abilities = ability_pipeline.collect_ordered,
+	collect_ordered_abilities = ability_pipeline.collect_ordered_from_config,
+	abilities_enabled = uc_scheduler_config.abilities_enabled_from_config,
+	abilities_allow_unengaged = uc_scheduler_config.abilities_allow_unengaged_from_config,
 	get_ja_resource = get_ja_resource,
 	action_ready = action_ready,
 	action_effective_range = action_effective_range,
@@ -8920,8 +8980,9 @@ scheduler.providers.camp_puller = require('uc_camp_puller').new({
 		local _, id_set = uc_targeting_common.get_friendly_combat_member_ids()
 		return id_set
 	end,
-	ignored = function(settings, mob)
-		return require('uc_target_ignore').is_mob_blocked(settings, mob)
+	ignored = function(config, mob)
+		local names = uc_scheduler_config.targeting_ignore_names_from_config(config)
+		return require('uc_target_ignore').is_mob_blocked({ target_ignore_names = names }, mob)
 	end,
 	get_spell_resource = get_spell_resource,
 	get_ja_resource = get_ja_resource,
@@ -8978,7 +9039,6 @@ scheduler.providers.camp_puller = require('uc_camp_puller').new({
 })
 scheduler.providers.food = require('uc_provider_food').new({
 	get_items = windower.ffxi.get_items,
-	active_value_or_flat = scheduler.active_value_or_flat,
 	player_is_moving = smn_player_is_moving,
 	clamp_urgency = p1_clamp_urgency,
 	build_action_command = build_action_command,

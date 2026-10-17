@@ -32,6 +32,35 @@ function M.p1_build_dispatch_plan(scheduler, ctx, selected, p1_number)
 	return plan
 end
 
+-- Packet completion can advance a copied reaction sequence after the
+-- originating rule has been disabled or edited. Before issuing a follow-up
+-- command, confirm that both the live lock and its original canonical rule
+-- still authorize the exact current step.
+local function sequence_step_still_configured(ctx, selected)
+    local detail = type(selected.detail) == 'table' and selected.detail or {}
+    local lock = require('uc_reaction_runtime').get_action_lock()
+    if type(lock) ~= 'table' or tostring(lock.response or '') ~= 'use_sequence'
+        or tostring(lock.key or '') ~= tostring(detail.reaction_key or '')
+        or (tonumber(lock.step_index) or 0) ~= (tonumber(detail.reaction_step_index) or -1)
+        or tostring(lock.action_type or '') ~= tostring(selected.action_type or '')
+        or tostring(lock.action_name or '') ~= tostring(selected.action_name or '') then
+        return false
+    end
+
+    local rules
+    if type(ctx.config) == 'table' then
+        local reactions = ctx.config.reactions
+        if type(reactions) ~= 'table' or reactions.enabled ~= true then
+            return false
+        end
+        rules = reactions.rules
+    else
+        -- Explicit pre-profile callers retain the existing compatibility reader.
+        rules = require('uc_combat_extension_config').reaction_rules()
+    end
+    return require('uc_reaction_sequence_policy').matches(lock, rules)
+end
+
 function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, windower, combat_core)
 	if not selected or not plan then
 		return false, 'invalid_plan'
@@ -42,13 +71,30 @@ function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, 
 	if p1_number(plan.commit_deadline, 0) < ctx.now then
 		return false, 'commit_deadline'
 	end
+	if tostring(selected.family_id or '') == 'combat.reaction.sequence'
+		and not sequence_step_still_configured(ctx, selected) then
+		return false, 'reaction_policy_changed'
+	end
+	-- Rank-time enablement can change before commit. Recheck the same
+	-- canonical-only required-setting contract at the action boundary;
+	-- neither transient flat values nor unknown settings may revive a plan.
+	local required_setting = tostring(selected.required_setting or '')
+	if required_setting ~= '' then
+		local enabled = require('uc_scheduler_config').required_setting_value_from_config(
+			ctx.config, required_setting
+		)
+		if enabled ~= true then
+			return false, 'settings_disabled'
+		end
+	end
 	if plan.smart_aoe_guard == true then
 		if type(combat_core) ~= 'table' or type(combat_core.revalidate_smart_ws_aoe) ~= 'function' then
 			error('Smart WS dispatch plan requires AoE commit revalidation')
 		end
 		local aoe_allowed, aoe_reason = combat_core.revalidate_smart_ws_aoe(
 			ctx.settings or {},
-			selected.action_name
+			selected.action_name,
+			ctx.config
 		)
 		if not aoe_allowed then
 			return false, aoe_reason
@@ -63,7 +109,8 @@ function M.p1_revalidate_plan_commit(scheduler, ctx, selected, plan, p1_number, 
 			ctx.settings or {},
 			selected.target_id,
 			selected.action_name,
-			'rank_commit'
+			'rank_commit',
+			ctx.config
 		)
 	end
 	local target_kind = tostring(selected.target_kind or 'none')

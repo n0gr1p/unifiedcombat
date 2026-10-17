@@ -25,6 +25,17 @@ local function base_config()
 	return config
 end
 
+local function provider_root_config(sch)
+	return {
+		profile = { main_job = 'SCH' },
+		sch = sch,
+		defensive = {
+			cure = { ignore_trusts = false },
+			thresholds = { critical_hpp = 35 },
+		},
+	}
+end
+
 local function runtime_snapshot(art, charge_confidence, charges)
 	return {
 		eligibility = 'eligible',
@@ -886,7 +897,8 @@ local function main()
 	local out = {}
 	local emitted = provider.collect({
 		now = 100,
-		settings = { sch = provider_config },
+		config = provider_root_config(provider_config),
+		settings = { sch = require('uc_sch_config').default_config(), defensive_critical_hpp = 99 },
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
@@ -928,7 +940,8 @@ local function main()
 	local traced_out = {}
 	provider.collect({
 		now = 101,
-		settings = { sch = provider_config },
+		config = provider_root_config(provider_config),
+		settings = { sch = base_config(), defensive_critical_hpp = 99 },
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
@@ -955,7 +968,8 @@ local function main()
 	}, provider_player.id, 101.3)
 	provider.collect({
 		now = 104,
-		settings = { sch = provider_config },
+		config = provider_root_config(provider_config),
+		settings = { sch = base_config(), defensive_critical_hpp = 99 },
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
@@ -983,7 +997,8 @@ local function main()
 	provider_members[2].buffs = { 593 }
 	provider.collect({
 		now = 105,
-		settings = { sch = provider_config },
+		config = provider_root_config(provider_config),
+		settings = { sch = base_config(), defensive_critical_hpp = 99 },
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
@@ -998,7 +1013,8 @@ local function main()
 	provider_members[3] = nil
 	provider.collect({
 		now = 106,
-		settings = { sch = provider_config },
+		config = provider_root_config(provider_config),
+		settings = { sch = base_config(), defensive_critical_hpp = 99 },
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
@@ -1094,7 +1110,8 @@ local function main()
 	local trust_party_out = {}
 	provider.collect({
 		now = 240,
-		settings = { sch = trust_party_config },
+		config = provider_root_config(trust_party_config),
+		settings = { sch = base_config(), defensive_critical_hpp = 99 },
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
@@ -1117,7 +1134,8 @@ local function main()
 	local ready_out = {}
 	provider.collect({
 		now = 250,
-		settings = { sch = ready_config },
+		config = provider_root_config(ready_config),
+		settings = { sch = base_config(), defensive_critical_hpp = 99 },
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
@@ -1153,7 +1171,8 @@ local function main()
 	local sublimation_out = {}
 	provider.collect({
 		now = 260,
-		settings = { sch = sublimation_config },
+		config = provider_root_config(sublimation_config),
+		settings = { sch = base_config(), defensive_critical_hpp = 99 },
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
@@ -1186,7 +1205,8 @@ local function main()
 	local arts_out = {}
 	provider.collect({
 		now = 270,
-		settings = { sch = arts_config },
+		config = provider_root_config(arts_config),
+		settings = { sch = base_config(), defensive_critical_hpp = 99 },
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
@@ -1222,7 +1242,8 @@ local function main()
 	local defensive_out = {}
 	provider.collect({
 		now = 280,
-		settings = { sch = defensive_config, defensive_critical_hpp = 35 },
+		config = provider_root_config(defensive_config),
+		settings = { sch = base_config(), defensive_critical_hpp = 99 },
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
@@ -1251,7 +1272,8 @@ local function main()
 	local inconsistent_party_out = {}
 	local inconsistent_party_emitted = provider.collect({
 		now = 290,
-		settings = { sch = arts_config },
+		config = provider_root_config(arts_config),
+		settings = { sch = base_config(), defensive_critical_hpp = 99 },
 		player = provider_player,
 		engine_enabled = true,
 		maintenance_enabled = true,
@@ -1268,6 +1290,47 @@ local function main()
 		'missing player party snapshot blocker mismatch')
 	assert_true(logs_contain(logs, 'blocker=party_snapshot_inconsistent'),
 		'inconsistent party snapshot blocker must be observable')
+
+	-- Active Immanence steps must obey today's canonical recipe, not the
+	-- cached recipe selected before an activity/profile edit.
+	local sc_runtime = require('uc_sch_skillchain_runtime')
+	local sc_rules = require('uc_sch_skillchain')
+	local sc_config = base_config()
+	sc_config.offense.skillchain.enabled = true
+	local sc_plan = sc_rules.plans(sc_config)[1]
+	assert_true(sc_plan ~= nil, 'SCH policy regression requires a legal recipe')
+	local function armed_sc()
+		local run = sc_runtime.new()
+		run.active = {
+			plan = sc_plan,
+			phase = 'ensure_dark_arts',
+			deadline = 1000,
+			target_id = 200,
+		}
+		return run
+	end
+	local function sc_input(cfg)
+		return { now = 300, config = cfg, engine_enabled = true,
+			maintenance_enabled = true, target = { id = 200, hpp = 100, valid_target = true },
+			player_buffs = {}, skillchain_snapshot = {} }
+	end
+	local stopped = armed_sc()
+	sc_config.offense.skillchain.enabled = false
+	stopped:update(sc_input(sc_config))
+	assert_equal(stopped.active, nil, 'canonical skillchain disable must release active reservation')
+	assert_equal(stopped.last_blocker, 'skillchain_disabled', 'disable must identify owner policy')
+	sc_config.offense.skillchain.enabled = true
+	local edited = armed_sc()
+	sc_config.offense.skillchain.plans = { { result = 'Distortion' } }
+	edited:update(sc_input(sc_config))
+	assert_equal(edited.active, nil, 'canonical recipe edit must release old Immanence sequence')
+	assert_equal(edited.last_blocker, 'skillchain_recipe_changed', 'recipe edit rejection reason')
+	local domain = armed_sc()
+	sc_config.offense.skillchain.plans = { { result = sc_plan.result } }
+	domain:update({ now = 300, config = sc_config, engine_enabled = true,
+		maintenance_enabled = false, target = { id = 200, hpp = 100, valid_target = true } })
+	assert_equal(domain.active, nil, 'maintenance domain disable must release Immanence reservation')
+	assert_equal(domain.last_blocker, 'engine_or_maintenance_disabled', 'domain owner release reason')
 
 	print('selftest_sch_maintenance: OK')
 end

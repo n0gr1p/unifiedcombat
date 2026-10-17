@@ -319,6 +319,70 @@ local function test_conduit_rage_lifecycle()
 	assert_equal(allowed, true, 'Conduit Rage fast retry expiry')
 end
 
+local function test_disabled_domain_pet_reservation_release()
+	local state = new_state()
+	local assault = base_command('assault')
+	coordinator.begin(state, assault, 1, 'pet_combat')
+	assert_true(coordinator.is_pending(state), 'combat pet command reserves shared lane')
+	assert_equal(coordinator.cancel_disabled_owner(state, true, true, 1.1), nil,
+		'enabled combat and maintenance must preserve live pending command')
+	assert_equal(coordinator.cancel_disabled_owner(state, true, false, 1.2), nil,
+		'disabling unrelated maintenance may not cancel combat pet command')
+	local cancel = coordinator.cancel_disabled_owner(state, false, true, 1.3)
+	assert_equal(cancel.outcome, 'cancelled', 'disabled combat owner releases pet reservation')
+	assert_equal(cancel.reason, 'owner_domain_disabled', 'disabled owner cancellation reason')
+	assert_equal(cancel.owner_provider, 'pet_combat', 'cancellation keeps precise owner')
+	assert_true(not coordinator.is_pending(state), 'cancel frees shared pet-command lane')
+	local allowed = coordinator.can_attempt(state, assault.retry_key, 1.4)
+	assert_true(allowed, 'policy cancellation must not introduce retry backoff')
+	assert_equal(coordinator.observe_action(state, { actor_id = 200, targets = { { id = 300 } } }, 1.5),
+		nil, 'post-cancellation packet must not complete obsolete reservation')
+	assert_equal(state.last_event.outcome, 'cancelled', 'diagnostic cancellation evidence remains intact')
+
+	local ward = base_command('ward')
+	coordinator.begin(state, ward, 2, 'maintenance_summoner')
+	assert_equal(coordinator.cancel_disabled_owner(state, false, true, 2.1), nil,
+		'disabling unrelated combat must preserve Summoner maintenance reservation')
+	cancel = coordinator.cancel_disabled_owner(state, true, false, 2.2)
+	assert_equal(cancel.owner_provider, 'maintenance_summoner',
+		'disabled maintenance releases only its owned command')
+	assert_true(not coordinator.is_pending(state), 'maintenance cancellation releases reservation')
+
+	local forced = base_command('assault')
+	forced.reaction_key = 'ability_window:900:just desserts'
+	-- A reaction-linked pending command is safety-owned, not ordinary combat
+	-- policy; the reaction runtime owns whether it should be released.
+	local prior_reaction = package.loaded.uc_reaction_runtime
+	package.loaded.uc_reaction_runtime = {
+		note_sequence_action_dispatched = function() return true, 'dispatched' end,
+	}
+	coordinator.begin(state, forced, 3, 'pet_combat')
+	assert_equal(coordinator.cancel_disabled_owner(state, false, true, 3.1), nil,
+		'forced reaction pet step must survive routine combat-domain disable')
+	assert_true(coordinator.is_pending(state), 'forced reaction owns pending pet lane')
+	package.loaded.uc_reaction_runtime = prior_reaction
+	coordinator.reset(state, 'test_cleanup')
+
+	coordinator.begin(state, assault, 4)
+	assert_equal(coordinator.cancel_disabled_owner(state, false, false, 4.1), nil,
+		'legacy untagged pending pet commands preserve their original lifecycle')
+	coordinator.reset(state, 'test_cleanup')
+end
+
+local function test_scheduler_pet_owner_source_contract()
+	local file = assert(io.open('unified_scheduler.lua', 'rb'))
+	local source = file:read('*a')
+	file:close()
+	assert_true(source:find('pet_command_coordinator.cancel_disabled_owner(', 1, true) ~= nil,
+		'scheduler must reconcile owner before observing pet coordinator')
+	assert_true(source:find("domain_ownership.is_enabled('maintenance')", 1, true) ~= nil,
+		'scheduler pet reconciling must use runtime domain ownership')
+	assert_true(source:find('pet_command_coordinator.begin(scheduler.pet_command_state, command_spec, ctx.now, provider_name)',
+		1, true) ~= nil, 'scheduler must tag pet command owner when dispatch succeeds')
+	assert_true(source:find("event.outcome == 'failed' or event.outcome == 'cancelled'", 1, true) ~= nil,
+		'disabled owner cancellation must release scheduler pending-action state')
+end
+
 local function test_pet_pending_does_not_lock_movement()
 	local scheduler = {
 		phase1 = {
@@ -346,6 +410,8 @@ test_serialization_and_completion()
 test_action_events_and_stale_identity()
 test_failure_timeout_and_backoff()
 test_conduit_rage_lifecycle()
+test_disabled_domain_pet_reservation_release()
+test_scheduler_pet_owner_source_contract()
 test_pet_pending_does_not_lock_movement()
 
 print('selftest_pet_command_infrastructure: OK')

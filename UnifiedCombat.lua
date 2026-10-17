@@ -153,6 +153,7 @@ require('actions')
 
 local uc_partner_list = require('uc_partner_list')
 local uc_add_priority = require('uc_add_priority')
+local uc_profile_v2_command_edits = require('uc_profile_v2_command_edits')
 local uc_camp_anchor = require('uc_camp_anchor')
 local uc_camp_pull_registry = require('uc_camp_pull_registry')
 local uc_config_status_export = require('uc_config_status_export')
@@ -449,9 +450,17 @@ local function uc_new_settings_defaults()
 end
 
 _G.UC_SETTINGS = uc_new_settings_defaults()
-uc_active_config.initialize_active_profile(_G.UC_SETTINGS, {
-	source = 'UC_SETTINGS',
+local uc_startup_active_profile, uc_startup_active_profile_err = uc_active_config.build_default_active_profile({
+	source = 'UC_DEFAULTS',
+	engine_enabled = Start_Engine == true,
 })
+if type(uc_startup_active_profile) ~= 'table' then
+	error('UnifiedCombat canonical startup profile build failed: ' .. tostring(uc_startup_active_profile_err))
+end
+local uc_startup_active_ok, uc_startup_active_err = uc_active_config.set_active_profile(uc_startup_active_profile)
+if uc_startup_active_ok ~= true then
+	error('UnifiedCombat canonical startup profile publish failed: ' .. tostring(uc_startup_active_err))
+end
 
 local function uc_truthy(v)
 	if v == true or v == 1 then
@@ -467,9 +476,13 @@ end
 local function uc_domain_enabled(s, key)
 	local st = s or _G.UC_SETTINGS or {}
 	if key == 'follow' then
+		local active = require('uc_active_config').get_path('config.ownership.domain_follow_enabled')
+		if type(active) == 'boolean' then
+			return active
+		end
 		return uc_truthy(st.domain_follow_enabled)
 	end
-	if not uc_truthy(st.engine_enabled) then
+	if rawget(_G, 'Start_Engine') ~= true then
 		return false
 	end
 	if key == 'combat' then
@@ -484,19 +497,12 @@ local function uc_domain_enabled(s, key)
 	return false
 end
 
-local function uc_is_combat_participant(s)
-	local st = s or _G.UC_SETTINGS or {}
-	if not uc_domain_enabled(st, 'combat') then
+local function uc_is_combat_participant(_)
+	if rawget(_G, 'Start_Engine') ~= true then
 		return false
 	end
-	return uc_truthy(st.autotarget)
-		or uc_truthy(st.move)
-		or uc_truthy(st.formation_enabled)
-		or uc_truthy(st.named_formations_enabled)
-		or uc_truthy(st.tank)
-		or (uc_truthy(st.hunter) and uc_truthy(st.path_follow_enabled))
-		or uc_truthy(st.puller)
-		or uc_truthy(st.add_control)
+	local active_config = require('uc_active_config').get_config()
+	return require('uc_movement_config').combat_participant(active_config)
 end
 
 local function uc_is_defensive_participant(s)
@@ -504,23 +510,25 @@ local function uc_is_defensive_participant(s)
 	return uc_domain_enabled(st, 'defensive') and uc_truthy(st.defensive_enabled)
 end
 
-local function uc_is_movement_participant(s)
-	local st = s or _G.UC_SETTINGS or {}
-	return uc_domain_enabled(st, 'movement') and (
-		uc_truthy(st.move)
-		or uc_truthy(st.formation_enabled)
-		or uc_truthy(st.named_formations_enabled)
-		or uc_truthy(st.spacing)
-		or uc_truthy(st.autotarget)
-		or (uc_truthy(st.hunter) and uc_truthy(st.path_follow_enabled))
-		or uc_truthy(st.puller)
-		or uc_truthy(st.tank)
-		or uc_truthy(st.add_control)
-	)
+local function uc_is_movement_participant(_)
+	if rawget(_G, 'Start_Engine') ~= true then
+		return false
+	end
+	local active_config = require('uc_active_config').get_config()
+	return require('uc_movement_config').movement_participant(active_config)
 end
 
 local function uc_is_follow_participant(s)
 	local st = s or _G.UC_SETTINGS or {}
+	local active_config = require('uc_active_config').get_config()
+	if type(active_config) == 'table' then
+		local follow_config = require('uc_follow_config')
+		local party = follow_config.party(active_config)
+		return uc_domain_enabled(st, 'follow')
+			and follow_config.enabled(active_config)
+			and type(party) == 'table'
+			and party.enabled == true
+	end
 	return uc_domain_enabled(st, 'follow') and uc_truthy(st.party_follow)
 end
 
@@ -623,76 +631,21 @@ end
 
 uc_try_load_local_ownership_flags()
 
-local function uc_apply_job_defaults(job)
-	if not job or not _G.UC_SETTINGS then
-		return
+local function uc_job_default_key(job)
+	if job == nil then
+		return nil
 	end
-	local j = job
-	if type(j) ~= 'string' then
-		j = res.jobs:with('id', j).english_short
+	local resolved = job
+	if type(resolved) ~= 'string' then
+		local job_resource = res.jobs:with('id', resolved)
+		resolved = (job_resource and job_resource.english_short) or tostring(resolved)
 	end
-	j = j:upper()
-	local d = UC_JOB_DEFAULTS[j]
-	if not d then
-		return
+	resolved = tostring(resolved):upper()
+	if resolved == '' then
+		return nil
 	end
-	for k, v in pairs(d) do
-		local cur = _G.UC_SETTINGS[k]
-		if cur == nil or cur == '' then
-			_G.UC_SETTINGS[k] = v
-		end
-	end
+	return resolved
 end
-
-local PROFILE_KEYS = {
-	'ability1', 'ability2', 'ability3', 'ability4', 'ability5', 'ability6',
-	'ability_active', 'abilities', 'wsabilities',
-	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode', 'weaponskill_min_tp', 'weaponskill_allow_aoe', 'fast_skillchain', 'weaponskill_no_skillchain_targets', 'recurring_spells_enabled', 'recurring_spells',
-	'aftermath_enabled', 'aftermath_ws',
-	'engine_mode',
-	'show_ingame_ui',
-	'defensive_enabled', 'defensive_provider', 'defensive_resurrection_enabled', 'defensive_resurrection_priority', 'defensive_cure_enabled', 'defensive_curaga_enabled', 'defensive_waltz_enabled', 'defensive_doom_water', 'def_charm_sleeper_enabled', 'def_sleep_waker_enabled', 'def_remove_enemy_buffs', 'def_maintain_enemy_debuffs', 'defensive_enemy_debuffs', 'defensive_na_enabled', 'defensive_na_limit_enabled', 'defensive_na_priority', 'defensive_buff_enabled',
-	'defensive_critical_hpp', 'defensive_medium_hpp',
-	'defensive_curaga_min_targets', 'defensive_waltz_tp_reserve', 'defensive_divine_waltz_min_targets',
-	'defensive_overwrite_enabled', 'defensive_overwrite_interval', 'defensive_buff_self_only', 'defensive_buffs',
-	'defensive_targeted_buffs',
-	'engine_enabled', 'auto_accept_raise', 'pause_automation_while_weakened', 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled',
-	'cor_roll_1', 'cor_roll_2', 'cor_crooked_roll_slot', 'cor_elevens', 'cor_luzaf_range_override', 'cor_roll_range_selected', 'cor_roll_range_require_ids',
-	'summoner_enabled', 'summoner_avatar', 'summoner_avatar_favor',
-	'summoner_ward_enabled', 'summoner_ward_action', 'summoner_ward_actions',
-	'summoner_engage_on_combat_start', 'summoner_rage_enabled',
-	'summoner_rage_action', 'summoner_rage_usage',
-	'summoner_rage_target_hpp_above_enabled', 'summoner_rage_target_hpp_above',
-	'summoner_rage_pet_tp_above_enabled', 'summoner_rage_pet_tp_above',
-	'sch_enabled', 'sch_arts_minimum_commit_s', 'sch_arts_emergency_off_art_casts',
-	'sch_regen_enabled', 'sch_accession_perpetuance_spells',
-	'sch_regen_minimum_coverage', 'sch_regen_refresh_before_s',
-	'sch_storms_enabled', 'sch_storm_assignments', 'sch_storms_refresh_before_s',
-	'sch_sublimation_enabled',
-	'sch_sublimation_release_when_mpp_at_most', 'sch_sublimation_release_when_complete',
-	'sch_sublimation_minimum_hpp_to_activate',
-	'sch_accession_cure_enabled', 'sch_accession_status_removal_enabled',
-	'sch_rapture_enabled', 'sch_penury_enabled',
-	'path_recording', 'path_follow_enabled', 'path_file_name', 'path_route_type', 'path_distance_to_start', 'path_points', 'path_party_gate_yalms', 'path_resume_index_window', 'path_hunter_targets', 'path_hunter_max_z_delta', 'path_hunter_max_target_range', 'path_hunter_claim_timeout_s', 'path_hunter_ignore_cooldown_s', 'path_pull_action_type', 'path_pull_action_name', 'path_pull_attack_fallback_enabled',
-	'autotarget', 'spam', 'closer', 'manual', 'prime', 'static', 'spacing', 'face',
-	'spacing_band_min', 'spacing_band_max', 'spacing_use_prediction', 'spacing_lookahead_s',
-	'spacing_model_size_floor',
-	'spacing_repel_hold_ticks', 'spacing_overlap_deadband', 'spacing_repel_weight', 'spacing_band_deadband',
-	'encounter_enabled', 'encounter_id', 'encounter_water_damage', 'encounter_water_skillchain', 'encounter_repeat_action_wall', 'encounter_repeat_action_guard_s',
-	'kei_elemental_dealer_name', 'kei_water_probe_spell', 'kei_water_damage_spell', 'kei_ice_probe_spell', 'kei_ice_damage_spell',
-	'kei_sustain_interval_s', 'kei_probe_timeout_s', 'kei_fullers_target_distance', 'kei_fullers_run_away_distance', 'kei_fullers_prearm_hpp_margin',
-	'named_formations_enabled', 'named_formation_entries',
-	'partner', 'partner2', 'puller', 'puller_name', 'puller_leash_source', 'puller_engage_range', 'puller_distance_only', 'partner_id', 'partner_id2', 'partner_ids', 'puller_id',
-	'fight_leader', 'fight_leader_id', 'party_follow', 'party_follow_id', 'party_follow_leader_name', 'party_follow_min', 'party_follow_max', 'fight_follow_min', 'fight_follow_hold_s',
-	'nyzul_coordinator_name', 'nyzul_anchor_name', 'nyzul_parking_order',
-	'add_control', 'add_priority_names',
-	'sub', 'sub2', 'move', 'debug', 'log_action_timeline', 'log_combat_sched', 'log_ja_sched', 'log_ja_debug', 'log_def_sched', 'log_tank_sched', 'solo', 'aeonic', 'color', 'tank', 'sleep', 'command', 'hunter',
-	'tank_enmity_actions',
-	'target1', 'target2', 'target3', 'targets',
-	'targetability', 'targetability_active',
-	'spell', 'spell_active', 'sleepspell', 'sleepspells', 'sleep_max_target_range',
-	'dd2_spell_slots', 'wait_ignore_names', 'ignore', 'target_ignore_names',
-}
 
 local function uc_clone_value(v)
 	if type(v) ~= 'table' then
@@ -762,30 +715,53 @@ local function uc_profile_v2_contract_validator(payload)
 	return UC_PROFILE_CONTRACT.validate_structured_profile_config(payload)
 end
 
+local function uc_current_profile_v2_config(context, meta)
+	context = type(context) == 'table' and context or {}
+	if type(context.config) == 'table' then
+		return context.config
+	end
+	local active_config = uc_active_config.get_config()
+	if type(active_config) == 'table' then
+		return active_config
+	end
+	local settings = context.settings or _G.UC_SETTINGS
+	if type(settings) == 'table' then
+		local ok, config = pcall(uc_profile_v2.build_durable_config, settings, meta)
+		if ok and type(config) == 'table' then
+			return config
+		end
+	end
+	return nil
+end
+
 local function uc_update_profile_v2_contract_status(context)
 	context = type(context) == 'table' and context or {}
-	local settings = context.settings or _G.UC_SETTINGS
 	local meta = {
 		character = context.character,
 		main_job = context.main_job,
 		sub_job = context.sub_job,
-		source = context.source or 'UC_SETTINGS',
+		source = context.source or 'UC_ACTIVE_PROFILE',
 		addon_path = context.addon_path,
 	}
-	if not settings or meta.character == nil or meta.character == '' or meta.main_job == nil or meta.main_job == '' or meta.sub_job == nil or meta.sub_job == '' then
+	local current_config = uc_current_profile_v2_config(context, meta)
+	if type(current_config) ~= 'table' or meta.character == nil or meta.character == '' or meta.main_job == nil or meta.main_job == '' or meta.sub_job == nil or meta.sub_job == '' then
 		return {
 			path = uc_profile_v2.default_export_path(meta),
 			state = 'error',
 			valid = false,
 			diff_count = 0,
-			reason = 'missing settings or profile identity',
+			reason = 'missing canonical config or profile identity',
 			source = meta.source,
 			character = meta.character,
 			main_job = meta.main_job,
 			sub_job = meta.sub_job,
 		}
 	end
-	local status = uc_profile_v2.inspect_structured_profile_status(settings, meta, uc_profile_v2_contract_validator)
+	local status = uc_profile_v2.inspect_structured_profile_status_against_config(
+		current_config,
+		meta,
+		uc_profile_v2_contract_validator
+	)
 	if type(status) ~= 'table' then
 		return {
 			path = uc_profile_v2.default_export_path(meta),
@@ -827,15 +803,15 @@ local function uc_update_config_contract_status(context)
 		return status
 	end
 
-	local settings = context.settings or _G.UC_SETTINGS
 	local meta = {
 		character = context.character,
 		main_job = context.main_job,
 		sub_job = context.sub_job,
 		source = status.source,
 	}
-	local ok, config = pcall(UC_CONFIG_NORMALIZER.normalize, settings, meta)
-	if ok and type(config) == 'table' then
+	local config = uc_current_profile_v2_config(context, meta)
+	local ok = type(config) == 'table'
+	if ok then
 		local summoner = uc_smn_config.validate(config.summoner)
 		status.ok = summoner.valid
 		status.summoner = {
@@ -1052,7 +1028,8 @@ local function uc_validate_profile_v2_file(meta)
 end
 
 local function uc_diff_profile_v2_file(meta, settings)
-	local result = uc_profile_v2.diff_structured_profile_file_against_settings(settings, meta, function(payload)
+	local current_config = uc_current_profile_v2_config({ settings = settings }, meta)
+	local result = uc_profile_v2.diff_structured_profile_file_against_config(current_config, meta, function(payload)
 		return uc_validate_structured_profile_export(payload)
 	end)
 	if type(result) ~= 'table' then
@@ -1062,7 +1039,8 @@ local function uc_diff_profile_v2_file(meta, settings)
 end
 
 local function uc_diff_profile_v2_detail_file(meta, settings)
-	local result = uc_profile_v2.diff_structured_profile_file_against_settings(settings, meta, function(payload)
+	local current_config = uc_current_profile_v2_config({ settings = settings }, meta)
+	local result = uc_profile_v2.diff_structured_profile_file_against_config(current_config, meta, function(payload)
 		return uc_validate_structured_profile_export(payload)
 	end)
 	if type(result) ~= 'table' then
@@ -1072,7 +1050,8 @@ local function uc_diff_profile_v2_detail_file(meta, settings)
 end
 
 local function uc_status_profile_v2_file(meta, settings)
-	local result = uc_profile_v2.inspect_structured_profile_file_against_settings(settings, meta, function(payload)
+	local current_config = uc_current_profile_v2_config({ settings = settings }, meta)
+	local result = uc_profile_v2.inspect_structured_profile_file_against_config(current_config, meta, function(payload)
 		return uc_validate_structured_profile_export(payload)
 	end)
 	if type(result) ~= 'table' then
@@ -1086,8 +1065,6 @@ local function uc_status_profile_v2_file(meta, settings)
 	return result
 end
 
-local uc_sync_table_in_place
-local uc_normalize_settings_table
 local uc_profile_v2_autoload_pending_key = nil
 local uc_profile_v2_autoload_completed_key = nil
 local uc_profile_v2_autoload_expected_main_job = nil
@@ -1261,13 +1238,14 @@ local function uc_queue_profile_v2_autoload(expected_main_job, resume_engine)
 end
 
 local function uc_apply_profile_v2_file(meta, settings)
-	local result = uc_profile_v2.apply_structured_profile_file_to_settings(settings, meta, function(payload)
+	local current_config = uc_current_profile_v2_config({ settings = settings }, meta)
+	local result = uc_profile_v2.apply_structured_profile_file_to_active_config(current_config, meta, function(payload)
 		return uc_validate_structured_profile_export(payload)
 	end)
 	if type(result) ~= 'table' then
 		return false, uc_profile_v2_file_path(meta), 'profile v2 apply returned invalid result', nil
 	end
-	if result.ok ~= true or type(result.active_profile) ~= 'table' or type(result.candidate) ~= 'table' then
+	if result.ok ~= true or type(result.active_profile) ~= 'table' then
 		local failure_error = result.error
 		if result.stage == 'convert' and type(result.detail) == 'string' and result.detail ~= '' then
 			failure_error = tostring(failure_error or 'unknown error') .. ': ' .. result.detail
@@ -1278,34 +1256,26 @@ local function uc_apply_profile_v2_file(meta, settings)
 	if active_ok ~= true then
 		return false, result.path or uc_profile_v2_file_path(meta), active_err, nil
 	end
-	local sync_ok, sync_err = uc_active_config.sync_flat_settings_in_place(settings, result.candidate)
-	if sync_ok ~= true then
-		return false, result.path or uc_profile_v2_file_path(meta), sync_err, nil
-	end
-	uc_normalize_settings_table(settings)
 	uc_profile_v2_auto_reload_note_applied(meta, uc_profile_v2_meta_key(meta), result.path)
 	return true, result.path, nil, result.count
 end
 
 local function uc_initialize_safe_profile_v2_identity(player, job_for_defaults)
-	if type(player) ~= 'table' or not player.name or not player.main_job or not player.sub_job or not _G.UC_SETTINGS then
-		return false, 'missing exact player identity or settings'
+	if type(player) ~= 'table' or not player.name or not player.main_job or not player.sub_job then
+		return false, 'missing exact player identity'
 	end
-	local defaults = uc_new_settings_defaults()
-	defaults.engine_enabled = Start_Engine == true
-	local sync_ok, sync_err = uc_active_config.sync_flat_settings_in_place(_G.UC_SETTINGS, defaults)
-	if sync_ok ~= true then
-		return false, sync_err
-	end
-	uc_apply_job_defaults(job_for_defaults or player.main_job)
-	uc_normalize_settings_table(_G.UC_SETTINGS)
-	local active_profile = uc_active_config.build_active_profile_from_settings(_G.UC_SETTINGS, {
+	local active_profile, build_err = uc_active_config.build_default_active_profile({
 		character = player.name,
 		main_job = player.main_job,
 		sub_job = player.sub_job,
 		profile_key = uc_profile_v2_session_key(player),
 		source = 'UC_DEFAULTS',
-	})
+		engine_enabled = Start_Engine == true,
+		job_for_defaults = uc_job_default_key(job_for_defaults or player.main_job),
+	}, UC_JOB_DEFAULTS)
+	if type(active_profile) ~= 'table' then
+		return false, tostring(build_err or 'canonical default profile build failed')
+	end
 	local active_ok, active_err = uc_active_config.set_active_profile(active_profile)
 	if active_ok ~= true then
 		return false, active_err
@@ -1337,8 +1307,8 @@ local function uc_establish_profile_v2_identity(player, job_for_defaults)
 		profile_key = key,
 		addon_path = uc_addon_path(),
 	}
-	local inspection = uc_profile_v2.inspect_structured_profile_status(
-		_G.UC_SETTINGS,
+	local inspection = uc_profile_v2.inspect_structured_profile_status_against_config(
+		uc_active_config.get_config(),
 		meta,
 		function(payload)
 			return uc_validate_structured_profile_export(payload)
@@ -1703,10 +1673,10 @@ local function uc_run_profile_v2_auto_reload()
 		}
 	end
 
-	local inspector = uc_profile_v2.inspect_structured_profile_file_against_settings
+	local inspector = uc_profile_v2.inspect_structured_profile_file_against_config
 	local status = nil
 	if type(inspector) == 'function' then
-		status = inspector(_G.UC_SETTINGS, {
+		status = inspector(uc_active_config.get_config(), {
 			character = p.name,
 			main_job = p.main_job,
 			sub_job = p.sub_job,
@@ -1741,10 +1711,6 @@ local function uc_run_profile_v2_auto_reload()
 	}
 end
 
-uc_sync_table_in_place = function(dst, src)
-	return uc_active_config.sync_flat_settings_in_place(dst, src)
-end
-
 local function uc_read_profiles_file(char_name)
 	local path = uc_profiles_file_path(char_name)
 	if not files.exists(path) then
@@ -1770,76 +1736,6 @@ local function uc_read_profiles_file(char_name)
 		return payload
 	end
 	return nil
-end
-
-local uc_get_active_profile_coords
-
-local function uc_normalize_abilities(s)
-	local out = {}
-	if type(s.abilities) == 'table' then
-		for _, a in ipairs(s.abilities) do
-			if a and a ~= '' then
-				out[#out + 1] = a
-			end
-		end
-	end
-	if #out == 0 then
-		for i = 1, 6 do
-			local a = s['ability' .. tostring(i)]
-			if a and a ~= '' then
-				out[#out + 1] = a
-			end
-		end
-	end
-	s.abilities = out
-	for i = 1, 6 do
-		s['ability' .. tostring(i)] = out[i] or ''
-	end
-end
-
-local function uc_normalize_targets(s)
-	if type(s.targets) ~= 'table' then
-		s.targets = {}
-	end
-	if #s.targets == 0 then
-		local arr = {}
-		for i = 1, 3 do
-			local t = s['target' .. tostring(i)]
-			if t and t ~= '' then
-				arr[#arr + 1] = t
-			end
-		end
-		s.targets = arr
-	else
-		for i = 1, 3 do
-			s['target' .. tostring(i)] = s.targets[i] or ''
-		end
-	end
-end
-
-local function uc_normalize_ws_for_engine(s, eng)
-	local ws = s.weaponskill or s.ws1 or ''
-	s.weaponskill = ws
-	s.ws1 = ws
-	if s.weaponskill_min_tp == nil then
-		s.weaponskill_min_tp = 1000
-	elseif type(s.weaponskill_min_tp) ~= 'number'
-		or s.weaponskill_min_tp % 1 ~= 0
-		or s.weaponskill_min_tp < 1000
-		or s.weaponskill_min_tp > 3000 then
-		error('weaponskill_min_tp must be an integer from 1000 to 3000')
-	end
-	if s.weaponskill_allow_aoe == nil then
-		s.weaponskill_allow_aoe = true
-	elseif type(s.weaponskill_allow_aoe) ~= 'boolean' then
-		error('weaponskill_allow_aoe must be a boolean')
-	end
-	if s.fast_skillchain == nil then
-		s.fast_skillchain = false
-	elseif type(s.fast_skillchain) ~= 'boolean' then
-		error('fast_skillchain must be a boolean')
-	end
-	s.engine_mode = eng
 end
 
 local function uc_trim_string(v)
@@ -1894,87 +1790,6 @@ local function uc_normalize_sleep_spell_list(s)
 	s.sleepspell = out[1] or ''
 end
 
-local function uc_normalize_domain_settings(s)
-	if type(s) ~= 'table' then
-		return
-	end
-	-- Canonical domain settings migration:
-	-- - legacy behavior implied combat/defensive/movement/maintenance/follow domains enabled.
-	-- - preserve existing runtime engine flag when available.
-	if s.engine_enabled == nil then
-		s.engine_enabled = Start_Engine == true
-	end
-	if s.domain_combat_enabled == nil then
-		s.domain_combat_enabled = true
-	end
-	if s.domain_defensive_enabled == nil then
-		s.domain_defensive_enabled = true
-	end
-	if s.domain_movement_enabled == nil then
-		s.domain_movement_enabled = true
-	end
-	if s.domain_maintenance_enabled == nil then
-		s.domain_maintenance_enabled = true
-	end
-	if s.domain_follow_enabled == nil then
-		s.domain_follow_enabled = true
-	end
-	if s.auto_accept_raise == nil then
-		s.auto_accept_raise = false
-	end
-	if s.pause_automation_while_weakened == nil then
-		s.pause_automation_while_weakened = false
-	end
-	if type(s.wait_ignore_names) ~= 'table' then
-		s.wait_ignore_names = {}
-	end
-end
-
-uc_normalize_settings_table = function(s)
-	if type(s) ~= 'table' then
-		return
-	end
-	local eng = nil
-	if type(s.main_job) == 'string' and s.main_job ~= '' then
-		eng = tostring(s.main_job):upper()
-	else
-		local p = windower.ffxi.get_player()
-		local job = p and p.main_job or 'UNKNOWN'
-		if type(job) ~= 'string' then
-			local rj = res.jobs:with('id', job)
-			job = (rj and rj.english_short) or tostring(job)
-		end
-		eng = tostring(job):upper()
-	end
-	uc_normalize_abilities(s)
-	uc_normalize_targets(s)
-	uc_normalize_ws_for_engine(s, eng)
-	uc_normalize_sleep_spell_list(s)
-	uc_normalize_domain_settings(s)
-	uc_partner_list.migrate_from_legacy(s)
-	uc_partner_list.sync_legacy_partner_fields(s)
-end
-
-local function uc_normalize_active_settings()
-	local s = _G.UC_SETTINGS
-	if not s then
-		return
-	end
-	uc_normalize_settings_table(s)
-end
-
-uc_get_active_profile_coords = function()
-	local p = windower.ffxi.get_player()
-	local eng = 'UC'
-	local job = p and p.main_job or 'UNKNOWN'
-	if type(job) ~= 'string' then
-		local rj = res.jobs:with('id', job)
-		job = (rj and rj.english_short) or tostring(job)
-	end
-	job = tostring(job):upper()
-	return eng, job
-end
-
 local function uc_get_profiles_root()
 	local s = _G.UC_SETTINGS
 	if not s then
@@ -1987,16 +1802,6 @@ local function uc_get_profiles_root()
 		s.profiles.UC = {}
 	end
 	return s.profiles
-end
-
-local function uc_table_has_any(t)
-	if type(t) ~= 'table' then
-		return false
-	end
-	for _ in pairs(t) do
-		return true
-	end
-	return false
 end
 
 uc_normalize_profiles_tree = function(profiles)
@@ -2120,7 +1925,7 @@ local function uc_load_profiles_for_character(char_name)
 		warnings = validation_warnings,
 		errors = validation_errors,
 		engine_state = {
-			engine_enabled = _G.UC_SETTINGS and _G.UC_SETTINGS.engine_enabled or nil,
+			engine_enabled = Start_Engine == true,
 		},
 		scheduler_summary = {
 			profile_character = profile_character,
@@ -2146,67 +1951,15 @@ local function uc_load_profiles_for_character(char_name)
 	return true
 end
 
-local function uc_capture_active_profile()
-	local s = _G.UC_SETTINGS
-	local profiles = uc_get_profiles_root()
-	if not s or not profiles then
-		return false
-	end
-	uc_normalize_active_settings()
-	local eng, job = uc_get_active_profile_coords()
-	profiles[eng][job] = profiles[eng][job] or {}
-	local dst = profiles[eng][job]
-	for _, key in ipairs(PROFILE_KEYS) do
-		if s[key] ~= nil then
-			dst[key] = uc_clone_value(s[key])
-		else
-			dst[key] = nil
-		end
-	end
-	return true
-end
-
-local function uc_apply_active_profile()
-	local s = _G.UC_SETTINGS
-	local profiles = uc_get_profiles_root()
-	if not s or not profiles then
-		return false
-	end
-	local eng, job = uc_get_active_profile_coords()
-	local src = profiles[eng] and profiles[eng][job] or nil
-	if type(src) ~= 'table' or not uc_table_has_any(src) then
-		return false
-	end
-	for _, key in ipairs(PROFILE_KEYS) do
-		s[key] = uc_clone_value(src[key])
-	end
-	uc_normalize_active_settings()
-	return true
-end
-
-local function uc_sync_active_profile_from_settings(source)
-	local s = _G.UC_SETTINGS
-	if type(s) ~= 'table' then
-		return false
-	end
-	local active_profile = uc_active_config.build_active_profile_from_settings(s, {
-		source = source or 'UC_SETTINGS',
-	})
-	local ok, err = uc_active_config.set_active_profile(active_profile)
-	if ok ~= true then
-		return false, err
-	end
-	return true
-end
-
 local function uc_save_active_profile()
 	local p = windower.ffxi.get_player()
-	if not p or not p.name or not p.main_job or not p.sub_job or not _G.UC_SETTINGS then
-		return false, nil, 'missing exact player identity or settings'
+	local active_profile = uc_active_config.get_active_profile()
+	if not p or not p.name or not p.main_job or not p.sub_job or type(active_profile) ~= 'table' then
+		return false, nil, 'missing exact player identity or active Profile V2'
 	end
 	local meta = uc_profile_v2_meta(p, os.date('!%Y-%m-%dT%H:%M:%SZ'))
-	meta.source = 'UC_SETTINGS'
-	local ok_build, profile = pcall(uc_profile_v2.build_structured_profile, _G.UC_SETTINGS, meta)
+	meta.source = 'exported_from_active_profile'
+	local ok_build, profile = pcall(uc_profile_v2.build_structured_profile_from_active_profile, active_profile, meta)
 	if not ok_build or type(profile) ~= 'table' then
 		return false, uc_profile_v2_file_path(meta), tostring(profile or 'profile build failed')
 	end
@@ -2284,6 +2037,10 @@ local function uc_sleep_spell_validate_names(names)
 		end
 	end
 	return out, ''
+end
+
+function uc_sleep_spell.validate_names(names)
+	return uc_sleep_spell_validate_names(names or {})
 end
 
 function uc_sleep_spell.replace_names(settings, names)
@@ -2594,9 +2351,6 @@ windower.register_event('addon command', function(...)
 	if a == 'start' then
 		if not Start_Engine then
 			Start_Engine = true
-			if _G.UC_SETTINGS then
-				_G.UC_SETTINGS.engine_enabled = true
-			end
 			_G.UC_ZONE_SUSPEND_UNTIL = nil
 			uc_start_active_engine_if_running()
 			windower.add_to_chat(207, 'UnifiedCombat: engine started')
@@ -2612,9 +2366,6 @@ windower.register_event('addon command', function(...)
 		uc_encounter_runtime.reset('engine_stop')
 		require('uc_lilith_easy_encounter').reset('engine_stop')
 		require('uc_formation_runtime').reset('engine_stop')
-		if _G.UC_SETTINGS then
-			_G.UC_SETTINGS.engine_enabled = false
-		end
 		if type(_G.UC_ResetMovementLocksForFollow) == 'function' then
 			_G.UC_ResetMovementLocksForFollow()
 		end
@@ -3108,17 +2859,14 @@ windower.register_event('addon command', function(...)
 		local sub = args[2] and tostring(args[2]):lower() or ''
 		if sub == 'export' then
 			local p = windower.ffxi.get_player()
-			if not p or not p.name then
-				uc_profile_v2_export_failure('missing player')
-				return
-			end
-			if not _G.UC_SETTINGS then
-				uc_profile_v2_export_failure('missing settings')
+			local active_profile = uc_active_config.get_active_profile()
+			if not p or not p.name or type(active_profile) ~= 'table' then
+				uc_profile_v2_export_failure('missing player or active Profile V2')
 				return
 			end
 			local meta = uc_profile_v2_meta(p, os.date('!%Y-%m-%dT%H:%M:%SZ'))
-			meta.source = 'UC_SETTINGS'
-			local ok_build, profile = pcall(uc_profile_v2.build_structured_profile, _G.UC_SETTINGS, meta)
+			meta.source = 'exported_from_active_profile'
+			local ok_build, profile = pcall(uc_profile_v2.build_structured_profile_from_active_profile, active_profile, meta)
 			if not ok_build or type(profile) ~= 'table' then
 				uc_profile_v2_export_failure('profile build failed')
 				return
@@ -3347,51 +3095,31 @@ windower.register_event('addon command', function(...)
 		windower.add_to_chat(207, 'UnifiedCombat engine: ' .. UC_ENGINE)
 		return
 	elseif a == 'fight_leader' or a == 'fightleader' then
-		local s = _G.UC_SETTINGS
-		if not s then
-			return
-		end
 		local sub = args[2] and tostring(args[2]):lower() or ''
-		if sub == 'on' then
-			s.fight_leader = true
-			windower.add_to_chat(207, 'Fight leader: on')
-			return
-		elseif sub == 'off' then
-			s.fight_leader = false
-			windower.add_to_chat(207, 'Fight leader: off')
-			return
-		elseif sub == 'clear' then
-			s.fight_leader_id = 0
-			windower.add_to_chat(207, 'Fight leader: id cleared')
-			return
-		elseif args[2] then
-			local nm = tostring(args[2])
-			local pid = uc_fight_leader_party_id_by_name(nm)
-			if pid == 0 then
-				windower.add_to_chat(167, 'Fight leader: not in party: ' .. nm)
-				return
-			end
-			s.fight_leader = true
-			s.fight_leader_id = pid
-			windower.add_to_chat(207, 'Fight leader set: ' .. nm)
+		if sub == '' then
+			windower.add_to_chat(207, '//uc fight_leader on|off|clear|<party name>')
 			return
 		end
-		windower.add_to_chat(207, '//uc fight_leader on|off|clear|<party name>')
+		local op = (sub == 'on' or sub == 'off' or sub == 'clear') and sub or 'set'
+		local name = op == 'set' and table.concat(args, ' ', 2) or ''
+		local ok, result = uc_profile_v2_command_edits.fight_leader(op, name, uc_fight_leader_party_id_by_name)
+		if not ok then
+			windower.add_to_chat(167, 'Fight leader edit failed: ' .. tostring(result))
+		elseif op == 'clear' then
+			windower.add_to_chat(207, 'Fight leader: configured name cleared')
+		elseif op == 'set' then
+			windower.add_to_chat(207, 'Fight leader set: ' .. tostring(result))
+		else
+			windower.add_to_chat(207, 'Fight leader: ' .. sub)
+		end
 		return
 	elseif a == 'add_priority' or a == 'addpriority' then
-		local s = _G.UC_SETTINGS
-		if not s then
-			return
-		end
 		local sub = args[2] and tostring(args[2]):lower() or ''
-		if sub == 'clear' then
-			s.add_priority_names = {}
-			_G.UC_LAST_ADD_PRIORITY_OP = 'clear'
-			windower.add_to_chat(207, 'Add priority list cleared (add control will stay on the fight leader target).')
-			return
-		elseif sub == 'list' then
-			local arr = uc_add_priority.as_ordered_names(s)
-			if #arr == 0 then
+		if sub == 'list' then
+			local ok, arr = uc_profile_v2_command_edits.add_priority('list')
+			if not ok then
+				windower.add_to_chat(167, 'Add priority list unavailable: ' .. tostring(arr))
+			elseif #arr == 0 then
 				windower.add_to_chat(207, 'Add priority list: (empty)')
 			else
 				for i, nm in ipairs(arr) do
@@ -3399,108 +3127,53 @@ windower.register_event('addon command', function(...)
 				end
 			end
 			return
-		elseif sub == 'add' then
-			local raw = table.concat(args, ' ', 3)
-			local nm = type(raw) == 'string' and (raw:match('^%s*(.-)%s*$') or '') or ''
-			if nm == '' then
-				windower.add_to_chat(167, 'Add priority: need name after add')
-				return
-			end
-			local ok, why = uc_add_priority.append_name(s, nm)
+		end
+		if sub == 'clear' or sub == 'add' or sub == 'remove' then
+			local value = sub == 'add' and table.concat(args, ' ', 3) or args[3]
+			local ok, reason = uc_profile_v2_command_edits.add_priority(sub, value)
 			if not ok then
-				if why == 'ADD_PRIORITY_ALREADY' then
-					windower.add_to_chat(167, 'Add priority: already listed: ' .. nm)
-				else
-					windower.add_to_chat(167, 'Add priority: could not add: ' .. tostring(why))
-				end
-				return
+				windower.add_to_chat(167, 'Add priority ' .. sub .. ' failed: ' .. tostring(reason))
+			else
+				_G.UC_LAST_ADD_PRIORITY_OP = sub .. ':' .. tostring(value or '')
+				windower.add_to_chat(207, 'Add priority ' .. sub .. ' applied to active Profile V2')
 			end
-			_G.UC_LAST_ADD_PRIORITY_OP = 'add:' .. nm
-			windower.add_to_chat(207, 'Add priority appended: ' .. nm)
-			return
-		elseif sub == 'remove' and args[3] then
-			local idx = tonumber(args[3])
-			local ok, why = uc_add_priority.remove_index(s, idx)
-			if not ok then
-				windower.add_to_chat(167, 'Add priority remove failed: ' .. tostring(why) .. ' (use //uc add_priority list)')
-				return
-			end
-			_G.UC_LAST_ADD_PRIORITY_OP = 'remove:' .. tostring(idx)
-			windower.add_to_chat(207, 'Add priority removed index ' .. tostring(idx))
 			return
 		end
 		windower.add_to_chat(207, '//uc add_priority add <mob name>|remove <n>|list|clear')
 		return
 	elseif a == 'sleep' then
-		local s = _G.UC_SETTINGS
-		if not s then
+		local sub = args[2] and tostring(args[2]):lower() or ''
+		if sub == 'list' or sub == '' then
+			local ok, status = uc_profile_v2_command_edits.sleep('list')
+			if not ok then
+				windower.add_to_chat(167, 'Sleep list unavailable: ' .. tostring(status))
+			else
+				windower.add_to_chat(207, 'Sleep: ' .. (status.enabled and 'on' or 'off'))
+				if #status.order == 0 then
+					windower.add_to_chat(207, 'Sleep spell list: (empty)')
+				else
+					for i, spell_name in ipairs(status.order) do
+						windower.add_to_chat(207, ('  %d. %s'):format(i, spell_name))
+					end
+				end
+			end
 			return
 		end
-		local sub = args[2] and tostring(args[2]):lower() or ''
-		if sub == 'on' then
-			s.sleep = true
-			windower.add_to_chat(207, 'Sleep: on')
-			return
-		elseif sub == 'off' then
-			s.sleep = false
-			windower.add_to_chat(207, 'Sleep: off')
-			return
-		elseif sub == 'list' or sub == '' then
-			windower.add_to_chat(207, 'Sleep: ' .. (uc_runtime_overrides.sleep_enabled(s) and 'on' or 'off'))
-			for _, line in ipairs(uc_sleep_spell_list_lines(s)) do
-				windower.add_to_chat(207, line)
-			end
-			return
-		elseif sub == 'clear' then
-			uc_sleep_spell.replace_names(s, {})
-			windower.add_to_chat(207, 'Sleep spell list cleared')
-			return
-		elseif sub == 'set' or sub == 'spell' then
-			local ok, why = uc_sleep_spell.replace_names(s, { table.concat(args, ' ', 3) })
+		if sub == 'on' or sub == 'off' or sub == 'clear'
+			or sub == 'set' or sub == 'spell' or sub == 'add'
+			or sub == 'remove' or sub == 'move' then
+			local value = (sub == 'set' or sub == 'spell' or sub == 'add')
+				and table.concat(args, ' ', 3) or args[3]
+			local direction = args[4] and tostring(args[4]):lower() or ''
+			local ok, reason = uc_profile_v2_command_edits.sleep(sub, value, direction, function(raw)
+				local spell = res.spells:with('en', uc_normalize_sleep_spell_entry(raw))
+				return spell and tostring(spell.en) or nil
+			end)
 			if not ok then
-				if why == 'SLEEP_SPELL_UNKNOWN' then
-					windower.add_to_chat(167, 'Sleep spell set failed: unknown spell')
-				else
-					windower.add_to_chat(167, 'Sleep spell set failed: ' .. tostring(why))
-				end
-				return
+				windower.add_to_chat(167, 'Sleep ' .. sub .. ' failed: ' .. tostring(reason))
+			else
+				windower.add_to_chat(207, 'Sleep ' .. sub .. ' applied to active Profile V2')
 			end
-			windower.add_to_chat(207, 'Sleep spell list set: ' .. tostring(s.sleepspell or ''))
-			return
-		elseif sub == 'add' then
-			local raw = table.concat(args, ' ', 3)
-			local spell_name = uc_normalize_sleep_spell_entry(raw)
-			local ok, why = uc_sleep_spell.append_name(s, raw)
-			if not ok then
-				if why == 'SLEEP_SPELL_UNKNOWN' then
-					windower.add_to_chat(167, 'Sleep spell add failed: unknown spell')
-				elseif why == 'SLEEP_SPELL_ALREADY' then
-					windower.add_to_chat(167, 'Sleep spell add failed: already listed')
-				else
-					windower.add_to_chat(167, 'Sleep spell add failed: ' .. tostring(why))
-				end
-				return
-			end
-			windower.add_to_chat(207, 'Sleep spell appended: ' .. spell_name)
-			return
-		elseif sub == 'remove' then
-			local ok, why = uc_sleep_spell.remove_index(s, args[3])
-			if not ok then
-				windower.add_to_chat(167, 'Sleep spell remove failed: use //uc sleep list')
-				return
-			end
-			windower.add_to_chat(207, 'Sleep spell removed index ' .. tostring(args[3]))
-			return
-		elseif sub == 'move' then
-			local idx = tonumber(args[3])
-			local dir = args[4] and tostring(args[4]):lower() or ''
-			local delta = (dir == 'up') and -1 or ((dir == 'down') and 1 or nil)
-			local ok, why = uc_sleep_spell.move_index(s, idx, delta)
-			if not ok then
-				windower.add_to_chat(167, 'Sleep spell move failed: ' .. tostring(why))
-				return
-			end
-			windower.add_to_chat(207, 'Sleep spell moved index ' .. tostring(idx) .. ' ' .. dir)
 			return
 		end
 		windower.add_to_chat(207, '//uc sleep on|off|list|clear|set <spell>|add <spell>|remove <n>|move <n> up|down')

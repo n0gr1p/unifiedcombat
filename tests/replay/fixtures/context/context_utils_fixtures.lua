@@ -85,6 +85,40 @@ return {
         },
     },
     {
+        fixture_id = "context_get_config_reads_active_profile_config",
+        helper = "get_config",
+        description = "returns canonical config from the active Profile V2 object",
+        globals = {
+            UC_ACTIVE_PROFILE = {
+                version = 2,
+                profile = {},
+                config = {
+                    maintenance = {
+                        enabled = true,
+                    },
+                },
+            },
+        },
+        expected = {
+            result = {
+                maintenance = {
+                    enabled = true,
+                },
+            },
+        },
+    },
+    {
+        fixture_id = "context_get_config_missing_returns_empty_table",
+        helper = "get_config",
+        description = "missing canonical active profile yields an empty config view",
+        globals = {
+            UC_ACTIVE_PROFILE = nil,
+        },
+        expected = {
+            result = {},
+        },
+    },
+    {
         fixture_id = "context_city_zone_blocked_name_true",
         helper = "is_city_zone_for_maintenance",
         description = "blocked zone names table match returns true",

@@ -44,6 +44,7 @@ internal static class ActivityProfileStoreTests
         var main = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "MainForm.cs"));
         var parity = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "MainForm.ParityLogic.cs"));
         var runtimeAdapter = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "RuntimeProfileEditorAdapter.cs"));
+        var canonicalRuntimeProjection = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "CanonicalRuntimeEditorProjection.cs"));
         var profileStore = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "MainForm.ProfileStore.cs"));
         var mirror = File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "MirrorDuplex.cs"));
         var bridge = File.ReadAllText(Path.Combine(addonRoot, "remote_bridge.lua"));
@@ -84,10 +85,13 @@ internal static class ActivityProfileStoreTests
         AssertNotContains(main, "listSessions.Refresh()", "label refresh must not rely on repainting a cached item string");
         AssertContains(parity, "TryLoadWorkingProfileForSid(_selectedSid", "session switching must prefer unsaved working state");
         AssertContains(parity, "RuntimeProfileEditorAdapter.Build(session, activeConfig)", "editor initialization must use the runtime active config adapter");
+        AssertContains(runtimeAdapter, "CanonicalRuntimeEditorProjection.Project(activeConfig)", "runtime adapter must project canonical Profile V2 locally");
         AssertContains(runtimeAdapter, "FlattenGeoMaintenance(profile)", "runtime config adapter must project GEO maintenance into the editor model");
+        AssertContains(canonicalRuntimeProjection, "root[\"config\"] is not JsonObject config", "canonical runtime projector must consume Profile V2 config");
         AssertNotContains(parity, "TryLoadProfileForSid(_selectedSid", "editor initialization must not read per-identity UI JSON");
         AssertNotContains(parity, "TrySaveProfileFromUi(sid, profile", "Save must not write per-identity UI JSON");
-        AssertContains(bridge, "st.active_config = active_settings", "bridge snapshots must publish active-config projection");
+        AssertContains(bridge, "st.active_config = active_profile", "bridge snapshots must publish canonical active Profile V2");
+        AssertNotContains(bridge, "project_" + "flat_settings(", "bridge snapshots must not project canonical config into flat editor state");
         AssertNotContains(File.ReadAllText(Path.Combine(addonRoot, "UnifiedCombatWinForms", "ActivityProfileStore.cs")), "UiDestinationPath", "activity deployment must not write UI JSON beside Profile V2");
         AssertContains(mirror, "ReloadProfileV2Async", "UI hub must await profile-v2 reload acknowledgements");
         AssertContains(ui, "DescribeReloadRejection", "activity errors must retain per-session reload diagnostics");

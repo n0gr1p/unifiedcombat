@@ -1,6 +1,7 @@
 package.path = './?.lua;' .. package.path
 
 local maintenance = require('uc_smn_maintenance')
+local runtime = require('uc_smn_runtime')
 
 local function assert_equal(actual, expected, message)
 	if actual ~= expected then
@@ -30,9 +31,11 @@ local function settings()
 end
 
 local function context()
+	local flat = settings()
 	return {
 		now = 10,
-		settings = settings(),
+		settings = flat,
+		config = { summoner = select(1, runtime.config_from_settings(flat)) },
 		player_present = true,
 		player = {
 			id = 100,
@@ -169,8 +172,7 @@ local function test_favor_and_ward_satisfaction()
 	assert_equal(#collect(ctx), 0, 'Ward insufficient MP')
 
 	ctx.player.vitals.mp = 1000
-	ctx.settings.summoner_ward_action = 'Not a Ward'
-	ctx.settings.summoner_ward_actions = 'Not a Ward'
+	ctx.config.summoner.maintenance.ward.actions = { 'Not a Ward' }
 	actions = collect(ctx)
 	assert_equal(#actions, 0, 'unsupported Ward must remain suppressed')
 	assert_equal(provider.status.state, 'avatar_converged', 'invalid Ward must not invalidate desired avatar')
@@ -178,8 +180,7 @@ end
 
 local function test_multi_effect_fenrir_ward()
 	local ctx = context()
-	ctx.settings.summoner_ward_action = 'Ecliptic Growl'
-	ctx.settings.summoner_ward_actions = 'Ecliptic Growl'
+	ctx.config.summoner.maintenance.ward.actions = { 'Ecliptic Growl' }
 	ctx.pet_present = true
 	ctx.pet_id = 202
 	ctx.pet_name = 'Ifrit'
@@ -203,8 +204,7 @@ end
 
 local function test_cross_avatar_ward_rotation()
 	local ctx = context()
-	ctx.settings.summoner_ward_actions = 'Crimson Howl|Hastega II'
-	ctx.settings.summoner_ward_action = 'Crimson Howl'
+	ctx.config.summoner.maintenance.ward.actions = { 'Crimson Howl', 'Hastega II' }
 	ctx.pet_present = true
 	ctx.pet_id = 202
 	ctx.pet_name = 'Ifrit'

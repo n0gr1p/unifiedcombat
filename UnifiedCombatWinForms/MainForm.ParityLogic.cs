@@ -3989,14 +3989,7 @@ public partial class MainForm
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "cor_roll_range_replace_names",
-                ["value"] = string.Join("|", names),
-            }
-        );
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void OnPathPartyGateChanged()
@@ -4277,7 +4270,6 @@ public partial class MainForm
             CaptureWorkingProfileFromUi(sid);
         }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_add", ["name"] = name });
         _pathHunterName.Text = "";
     }
 
@@ -4307,7 +4299,6 @@ public partial class MainForm
             CaptureWorkingProfileFromUi(sid);
         }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_remove", ["index"] = idx + 1 });
     }
 
     private static string NormalizeTankEnmityEntry(string type, string name)
@@ -4345,18 +4336,6 @@ public partial class MainForm
         {
             _tankEnmityNameCombo.SelectedIndex = next.Count > 0 ? 0 : -1;
         }
-    }
-
-    private void PushTankEnmityActions(string sid)
-    {
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "tank_enmity_replace_actions",
-                ["value"] = string.Join("|", _tankEnmityRows),
-            }
-        );
     }
 
     private void OnTankEnmityTypeChanged()
@@ -4403,7 +4382,7 @@ public partial class MainForm
             _tankEnmityRows.Add(entry);
             RebindTankEnmityListUi();
         }
-        PushTankEnmityActions(sid);
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void OnTankEnmityRemove()
@@ -4424,7 +4403,7 @@ public partial class MainForm
         }
         _tankEnmityRows.RemoveAt(idx);
         RebindTankEnmityListUi();
-        PushTankEnmityActions(sid);
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void OnTankEnmityMove(string direction)
@@ -4451,7 +4430,7 @@ public partial class MainForm
         (_tankEnmityRows[next], _tankEnmityRows[idx]) = (_tankEnmityRows[idx], _tankEnmityRows[next]);
         RebindTankEnmityListUi();
         _tankEnmityList.SelectedIndex = next;
-        PushTankEnmityActions(sid);
+        CaptureWorkingProfileFromUi(sid);
     }
 
 	private void OnCampSet()
@@ -4502,6 +4481,15 @@ public partial class MainForm
 	private bool SelectedSessionSupportsCampRuntime()
 	{
 		return TryGetSelectedRuntimeState(out var state) && state.TryGetProperty("camp_active", out _);
+	}
+
+	private string CurrentRuntimeTargetName()
+	{
+		if (!TryGetSelectedRuntimeState(out var state))
+		{
+			return "";
+		}
+		return SessionStateHelper.GetString(state, "current_target_name", "").Trim();
 	}
 
 	private void RefreshCampRuntimeStatus()
@@ -4555,8 +4543,7 @@ public partial class MainForm
             return;
         }
 
-        var name = SelectedPartyName(_pullerCombo);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_partner", ["slot"] = "puller", ["name"] = name });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void OnFightLeaderSelected()
@@ -4572,8 +4559,7 @@ public partial class MainForm
             return;
         }
 
-        var name = SelectedPartyName(_fightLeaderCombo);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_fight_leader", ["name"] = name });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void OnPartyFollowSelected()
@@ -4589,8 +4575,7 @@ public partial class MainForm
             return;
         }
 
-        var name = SelectedPartyName(_partyFollowCombo);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_party_follow", ["name"] = name });
+        CaptureWorkingProfileFromUi(sid);
         UpdatePartyFollowModeWarning(sid);
     }
 
@@ -5293,7 +5278,7 @@ public partial class MainForm
             return;
         }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_abilities", ["value"] = string.Join("|", _selectedAbilities) });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void AddAbility()
@@ -5376,9 +5361,8 @@ public partial class MainForm
         {
             _ignoreRows.Add((NextId(_ignoreRows), name));
             RebindIgnoreListUi();
+            CaptureWorkingProfileFromUi(sid);
         }
-
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "ignore_add", ["name"] = name });
     }
 
     private void IgnoreAddCurrent()
@@ -5389,7 +5373,14 @@ public partial class MainForm
             return;
         }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "ignore_add_current" });
+        var name = CurrentRuntimeTargetName();
+        if (name.Length == 0 || HasName(_ignoreRows, name))
+        {
+            return;
+        }
+        _ignoreRows.Add((NextId(_ignoreRows), name));
+        RebindIgnoreListUi();
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void IgnoreRemove()
@@ -5406,21 +5397,16 @@ public partial class MainForm
             return;
         }
 
-        var tid = idx < _ignoreRows.Count ? _ignoreRows[idx].Id : SessionStateHelper.ParseTrailingBracketId(_ignoreList.Items[idx]?.ToString() ?? "");
-        if (tid is null or 0)
-        {
-            return;
-        }
         if (idx < _ignoreRows.Count)
         {
             _ignoreRows.RemoveAt(idx);
+            for (var i = 0; i < _ignoreRows.Count; i++)
+            {
+                _ignoreRows[i] = (i + 1, _ignoreRows[i].Name);
+            }
             RebindIgnoreListUi();
+            CaptureWorkingProfileFromUi(sid);
         }
-
-        Forward(
-            sid,
-            new Dictionary<string, object?> { ["op"] = "ignore_remove", ["mob_id"] = tid.Value, ["id"] = tid.Value }
-        );
     }
 
     private void PartnerAddByName()
@@ -5432,17 +5418,14 @@ public partial class MainForm
         }
 
         var name = _partnerName.Text.Trim();
-        if (name.Length == 0)
+        if (name.Length == 0 || HasName(_partnerRows, name))
         {
             return;
         }
-        if (!HasName(_partnerRows, name))
-        {
-            _partnerRows.Add((NextId(_partnerRows), name));
-            RebindPartnerListUi();
-        }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_add", ["name"] = name });
+        _partnerRows.Add((NextId(_partnerRows), name));
+        RebindPartnerListUi();
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void PartnerAddCurrent()
@@ -5453,7 +5436,15 @@ public partial class MainForm
             return;
         }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_add_current" });
+        var name = CurrentRuntimeTargetName();
+        if (name.Length == 0 || HasName(_partnerRows, name))
+        {
+            return;
+        }
+
+        _partnerRows.Add((NextId(_partnerRows), name));
+        RebindPartnerListUi();
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void PartnerRemove()
@@ -5465,26 +5456,18 @@ public partial class MainForm
         }
 
         var idx = _partnerList.SelectedIndex;
-        if (idx < 0)
+        if (idx < 0 || idx >= _partnerRows.Count)
         {
             return;
         }
 
-        var tid = idx < _partnerRows.Count ? _partnerRows[idx].Id : SessionStateHelper.ParseTrailingBracketId(_partnerList.Items[idx]?.ToString() ?? "");
-        if (tid is null or 0)
+        _partnerRows.RemoveAt(idx);
+        for (var i = 0; i < _partnerRows.Count; i++)
         {
-            return;
+            _partnerRows[i] = (i + 1, _partnerRows[i].Name);
         }
-        if (idx < _partnerRows.Count)
-        {
-            _partnerRows.RemoveAt(idx);
-            RebindPartnerListUi();
-        }
-
-        Forward(
-            sid,
-            new Dictionary<string, object?> { ["op"] = "partner_remove", ["mob_id"] = tid.Value, ["id"] = tid.Value }
-        );
+        RebindPartnerListUi();
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void TargetIgnAddByName()
@@ -5504,9 +5487,8 @@ public partial class MainForm
         {
             _targetIgnoreRows.Add((NextSlot(_targetIgnoreRows), name));
             RebindTargetIgnoreListUi();
+            CaptureWorkingProfileFromUi(sid);
         }
-
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "target_ignore_add", ["name"] = name });
     }
 
     private void TargetIgnAddCurrent()
@@ -5517,7 +5499,14 @@ public partial class MainForm
             return;
         }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "target_ignore_add_current" });
+        var name = CurrentRuntimeTargetName();
+        if (name.Length == 0 || HasName(_targetIgnoreRows, name))
+        {
+            return;
+        }
+        _targetIgnoreRows.Add((NextSlot(_targetIgnoreRows), name));
+        RebindTargetIgnoreListUi();
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void TargetIgnRemove()
@@ -5549,15 +5538,7 @@ public partial class MainForm
             RebindTargetIgnoreListUi();
         }
 
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "target_ignore_remove",
-                ["index"] = slot.Value,
-                ["slot"] = slot.Value,
-            }
-        );
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void NoSkillchainTargetAddByName()
@@ -5577,9 +5558,8 @@ public partial class MainForm
         {
             _noSkillchainTargetRows.Add((NextSlot(_noSkillchainTargetRows), name));
             RebindNoSkillchainTargetListUi();
+            CaptureWorkingProfileFromUi(sid);
         }
-
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "no_skillchain_target_add", ["name"] = name });
     }
 
     private void NoSkillchainTargetAddCurrent()
@@ -5589,7 +5569,15 @@ public partial class MainForm
         {
             return;
         }
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "no_skillchain_target_add_current" });
+
+        var name = CurrentRuntimeTargetName();
+        if (name.Length == 0 || HasName(_noSkillchainTargetRows, name))
+        {
+            return;
+        }
+        _noSkillchainTargetRows.Add((NextSlot(_noSkillchainTargetRows), name));
+        RebindNoSkillchainTargetListUi();
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void NoSkillchainTargetRemove()
@@ -5611,12 +5599,7 @@ public partial class MainForm
             _noSkillchainTargetRows[i] = (i + 1, _noSkillchainTargetRows[i].Name);
         }
         RebindNoSkillchainTargetListUi();
-        Forward(sid, new Dictionary<string, object?>
-        {
-            ["op"] = "no_skillchain_target_remove",
-            ["index"] = slot,
-            ["slot"] = slot,
-        });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void AddPriorityByName()
@@ -5636,9 +5619,8 @@ public partial class MainForm
         {
             _addPriorityRows.Add((NextSlot(_addPriorityRows), name));
             RebindAddPriorityListUi();
+            CaptureWorkingProfileFromUi(sid);
         }
-
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "add_priority_add", ["name"] = name });
     }
 
     private void AddPriorityCurrent()
@@ -5649,7 +5631,14 @@ public partial class MainForm
             return;
         }
 
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "add_priority_add_current" });
+        var name = CurrentRuntimeTargetName();
+        if (name.Length == 0 || HasName(_addPriorityRows, name))
+        {
+            return;
+        }
+        _addPriorityRows.Add((NextSlot(_addPriorityRows), name));
+        RebindAddPriorityListUi();
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void AddPriorityRemove()
@@ -5681,15 +5670,7 @@ public partial class MainForm
             RebindAddPriorityListUi();
         }
 
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "add_priority_remove",
-                ["index"] = slot.Value,
-                ["slot"] = slot.Value,
-            }
-        );
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void AddPriorityMove(string direction)
@@ -5732,16 +5713,7 @@ public partial class MainForm
             return;
         }
 
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "add_priority_move",
-                ["index"] = slot.Value,
-                ["slot"] = slot.Value,
-                ["direction"] = direction,
-            }
-        );
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void SleepSpellSetOnly()
@@ -5761,8 +5733,7 @@ public partial class MainForm
         _sleepSpellRows = [(1, name)];
         RebindSleepSpellListUi();
         _sleepSpellList.SelectedIndex = 0;
-
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = name });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void SleepSpellAddByName()
@@ -5783,9 +5754,8 @@ public partial class MainForm
             _sleepSpellRows.Add((NextSlot(_sleepSpellRows), name));
             RebindSleepSpellListUi();
             _sleepSpellList.SelectedIndex = _sleepSpellRows.Count - 1;
+            CaptureWorkingProfileFromUi(sid);
         }
-
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_add_spell", ["name"] = name });
     }
 
     private void SleepSpellRemove()
@@ -5802,11 +5772,6 @@ public partial class MainForm
             return;
         }
 
-        var slot = idx < _sleepSpellRows.Count ? _sleepSpellRows[idx].Slot : SessionStateHelper.ParseTrailingBracketId(_sleepSpellList.Items[idx]?.ToString() ?? "");
-        if (!slot.HasValue || slot.Value < 1)
-        {
-            return;
-        }
         if (idx < _sleepSpellRows.Count)
         {
             _sleepSpellRows.RemoveAt(idx);
@@ -5815,17 +5780,8 @@ public partial class MainForm
                 _sleepSpellRows[i] = (i + 1, _sleepSpellRows[i].Name);
             }
             RebindSleepSpellListUi();
+            CaptureWorkingProfileFromUi(sid);
         }
-
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "sleep_remove_spell",
-                ["index"] = slot.Value,
-                ["slot"] = slot.Value,
-            }
-        );
     }
 
     private void SleepSpellClear()
@@ -5838,7 +5794,7 @@ public partial class MainForm
 
         _sleepSpellRows = [];
         RebindSleepSpellListUi();
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = "" });
+        CaptureWorkingProfileFromUi(sid);
     }
 
     private void SleepSpellMove(string direction)
@@ -5854,7 +5810,6 @@ public partial class MainForm
         {
             return;
         }
-        var localSlot = idx + 1;
         if (idx < _sleepSpellRows.Count)
         {
             var next = string.Equals(direction, "up", StringComparison.OrdinalIgnoreCase) ? idx - 1 : idx + 1;
@@ -5867,30 +5822,9 @@ public partial class MainForm
                 }
                 RebindSleepSpellListUi();
                 _sleepSpellList.SelectedIndex = next;
-                localSlot = idx + 1;
+                CaptureWorkingProfileFromUi(sid);
             }
         }
-
-        int? slot = localSlot;
-        if (idx >= _sleepSpellRows.Count)
-        {
-            slot = SessionStateHelper.ParseTrailingBracketId(_sleepSpellList.Items[idx]?.ToString() ?? "") ?? 0;
-        }
-        if (!slot.HasValue || slot.Value < 1)
-        {
-            return;
-        }
-
-        Forward(
-            sid,
-            new Dictionary<string, object?>
-            {
-                ["op"] = "sleep_move_spell",
-                ["index"] = slot.Value,
-                ["slot"] = slot.Value,
-                ["direction"] = direction,
-            }
-        );
     }
 
     private void SaveRemote()
@@ -6136,14 +6070,6 @@ public partial class MainForm
             ["value"] = decimal.ToInt32(_wsMinimumTp.Value),
         });
         SendAbilitiesUpdate();
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "ignore_replace_names", ["value"] = string.Join("|", _ignoreRows.Select(r => r.Name)) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "partner_replace_names", ["value"] = string.Join("|", _partnerRows.Select(r => r.Name)) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "target_ignore_replace_names", ["value"] = string.Join("|", _targetIgnoreRows.Select(r => r.Name)) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "no_skillchain_target_replace_names", ["value"] = string.Join("|", _noSkillchainTargetRows.Select(r => r.Name)) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "add_priority_replace_names", ["value"] = string.Join("|", _addPriorityRows.Select(r => r.Name)) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "sleep_replace_spells", ["value"] = string.Join("|", _sleepSpellRows.Select(r => r.Name)) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "path_hunter_replace_names", ["value"] = string.Join("|", _pathHunterRows.Select(r => r.Name)) });
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "tank_enmity_replace_actions", ["value"] = string.Join("|", _tankEnmityRows) });
         foreach (var key in HubUiConstants.BoolKeys)
         {
             var val = ReadPersistedBoolValue(sid, key, running);
@@ -6168,12 +6094,6 @@ public partial class MainForm
         var prov = (_defProviderCombo.SelectedItem as string) ?? "internal";
         Forward(sid, new Dictionary<string, object?> { ["op"] = "set", ["path"] = "defensive_provider", ["value"] = prov });
         PushDefensiveThresholdsForSid(sid);
-        var pull = SelectedPartyName(_pullerCombo);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_partner", ["slot"] = "puller", ["name"] = pull });
-        var fl = SelectedPartyName(_fightLeaderCombo);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_fight_leader", ["name"] = fl });
-        var pf = SelectedPartyName(_partyFollowCombo);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "set_party_follow", ["name"] = pf });
         PushPartyFollowDistances(sid);
 
         // COR maintenance settings (must be explicitly pushed on full state reapply).
@@ -6200,7 +6120,6 @@ public partial class MainForm
             .Select(c => c.Tag?.ToString() ?? c.Text)
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .Distinct(StringComparer.OrdinalIgnoreCase);
-        Forward(sid, new Dictionary<string, object?> { ["op"] = "cor_roll_range_replace_names", ["value"] = string.Join("|", corRangeNames) });
 
         UpdateBooleanCardVisuals();
     }

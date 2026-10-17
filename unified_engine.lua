@@ -21,20 +21,6 @@ local sched_overlay_q = nil
 local sched_overlay_r = nil
 local sched_overlay_enemy = nil
 
-local function bool_setting(v, default_value)
-	if v == nil then
-		return default_value == true
-	end
-	if v == true or v == 1 then
-		return true
-	end
-	if type(v) == 'string' then
-		local s = v:lower()
-		return s == 'true' or s == 'on' or s == '1' or s == 'yes'
-	end
-	return false
-end
-
 local function get_settings()
 	return rawget(_G, 'UC_SETTINGS') or {}
 end
@@ -93,7 +79,9 @@ end
 
 local function render_sched_overlay()
 	local s = get_settings()
-	if not bool_setting(s.debug, false) then
+	-- Durable visibility follows the active Profile V2 debug policy, not a
+	-- stale flat debug projection. Keep 's' for runtime domain state.
+	if not require('uc_scheduler_config').debug_enabled(s) then
 		hide_sched_overlay()
 		return
 	end
@@ -115,7 +103,7 @@ local function render_sched_overlay()
 		end
 		return false
 	end
-	qlines[#qlines + 1] = ('EngineEnabled: %s'):format(tostring(bool_setting(s.engine_enabled, false)))
+	qlines[#qlines + 1] = ('EngineEnabled: %s'):format(tostring(rawget(_G, 'Start_Engine') == true))
 	qlines[#qlines + 1] = ('DomainCombatLive: %s'):format(tostring(domain_live('combat')))
 	qlines[#qlines + 1] = ('DomainMovementLive: %s'):format(tostring(domain_live('movement')))
 	qlines[#qlines + 1] = ('DomainDefensiveLive: %s'):format(tostring(domain_live('defensive')))

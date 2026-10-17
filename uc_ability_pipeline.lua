@@ -1,5 +1,33 @@
 local M = {}
 
+local function append_unique(out, seen, ability)
+	if ability and ability ~= '' and not seen[ability] then
+		seen[ability] = true
+		out[#out + 1] = ability
+	end
+end
+
+function M.collect_ordered_from_config(config, slots_count)
+	local out = {}
+	local seen = {}
+	local abilities = type(config) == 'table' and config.abilities or nil
+	if type(abilities) ~= 'table' then
+		return out
+	end
+	local configured = type(abilities.configured) == 'table' and abilities.configured or {}
+	for i = 1, #configured do
+		append_unique(out, seen, configured[i])
+	end
+	if #out == 0 then
+		local legacy_slots = type(abilities.legacy_slots) == 'table' and abilities.legacy_slots or {}
+		local n = math.min(tonumber(slots_count) or 6, #legacy_slots)
+		for i = 1, n do
+			append_unique(out, seen, legacy_slots[i])
+		end
+	end
+	return out
+end
+
 function M.collect_ordered(settings, slots_count)
 	local out = {}
 	local seen = {}

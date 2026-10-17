@@ -372,31 +372,21 @@ local function main()
 	assert_nil(active_err, 'structured payload should build without error')
 	assert_nil(active_profile.config.ownership.profile_v2_auto_reload_on_change, 'structured active profile must ignore the legacy auto-reload flag')
 
-	local projected, project_err = active_config.project_flat_settings(active_profile, build_flat_settings())
-	assert_true(type(projected) == 'table', 'structured payload should project into flat settings')
-	assert_nil(project_err, 'structured payload should project without error')
-	assert_equal(projected.puller_name, 'Niightsiide', 'puller_name must remain durable in the projected settings')
-	assert_equal(projected.puller_id, 77, 'puller_name must resolve to the live runtime id when projected')
-	assert_equal(projected.fight_leader_name, 'Niightsiide', 'fight leader name must remain durable in the projected settings')
-	assert_equal(projected.fight_leader_id, 77, 'fight leader name must resolve to the live runtime id when projected')
-	assert_equal(projected.fight_leader_selected, 'Niightsiide', 'fight leader selected name must be projected for the UI')
-	assert_equal(projected.follow.fight.leader_name, 'Niightsiide', 'nested fight leader name must remain durable in the projected settings')
-	assert_equal(projected.follow.fight.leader_id, 77, 'nested fight leader id must resolve to the live runtime id when projected')
-	assert_equal(projected.follow.fight.leader_selected, 'Niightsiide', 'nested fight leader selected name must be projected for the UI')
-	assert_equal(projected.targets[1], 'Apex Bat', 'add priority targets must remain durable in the projected settings')
-	assert_equal(projected.add_priority_names[1], 'Apex Bat', 'add priority compatibility names must be projected for runtime consumers')
-	assert_equal(projected.follow.party.leader_name, 'Leader', 'party follow leader name must remain durable in the projected settings')
-	assert_equal(projected.wait_ignore_names[1], 'Ally One', 'wait ignore names must remain durable in the projected settings')
-	assert_equal(projected.ignore[1], nil, 'wait ignore names should not invent runtime ids when they are not resolvable')
-	assert_nil(projected.profile_v2_auto_reload_on_change, 'legacy auto-reload flag must not project into runtime settings')
-	assert_equal(projected.aftermath_ws, 'Atonement', 'weaponskill aftermath ws must round-trip')
-	assert_equal(projected.weaponskill_min_tp, 2000, 'weaponskill minimum TP must round-trip')
-	assert_equal(projected.defensive_overwrite_interval, 150, 'defensive overwrite interval must round-trip')
-	assert_equal(projected.defensive_critical_hpp, 35, 'defensive critical threshold must round-trip')
-	assert_equal(projected.defensive_medium_hpp, 55, 'defensive medium threshold must round-trip')
-	assert_equal(projected.defensive_na_limit_enabled, true, 'status-removal limit must round-trip')
-	assert_equal(projected.defensive_na_priority, 'Poison|Paralyze|Dia', 'status-removal priority must round-trip')
-	assert_equal(projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'targeted defensive buffs must round-trip')
+	assert_equal(active_profile.config.follow.partner.puller_name, 'Niightsiide', 'puller name must remain durable canonically')
+	assert_equal(active_profile.config.follow.fight.leader_name, 'Niightsiide', 'fight leader name must remain durable canonically')
+	assert_equal(active_profile.config.follow.party.leader_name, 'Leader', 'party follow leader name must remain durable canonically')
+	assert_equal(active_profile.config.targeting.targets[1], 'Apex Bat', 'add priority target must remain durable canonically')
+	assert_equal(active_profile.config.combat.weaponskill.wait_ignore_names[1], 'Ally One', 'wait ignore names must remain durable canonically')
+	assert_nil(active_profile.config.ownership.profile_v2_auto_reload_on_change, 'legacy auto-reload flag must remain outside durable config')
+	assert_equal(active_profile.config.combat.weaponskill.aftermath_ws, 'Atonement', 'weaponskill aftermath ws must remain durable')
+	assert_equal(active_profile.config.combat.weaponskill.minimum_tp, 2000, 'weaponskill minimum TP must remain durable')
+	assert_equal(active_profile.config.defensive.buffs.overwrite_interval, 150, 'defensive overwrite interval must remain durable')
+	assert_equal(active_profile.config.defensive.thresholds.critical_hpp, 35, 'defensive critical threshold must remain durable')
+	assert_equal(active_profile.config.defensive.thresholds.medium_hpp, 55, 'defensive medium threshold must remain durable')
+	assert_equal(active_profile.config.defensive.na.limit_enabled, true, 'status-removal limit must remain durable')
+	assert_equal(active_profile.config.defensive.na.priority, 'Poison|Paralyze|Dia', 'status-removal priority must remain durable')
+	assert_equal(active_profile.config.defensive.buffs.targeted[1].character, 'Terrasjr', 'targeted defensive buff character must remain durable')
+	assert_equal(active_profile.config.defensive.buffs.targeted[2].buff, 'Valor Minuet V', 'targeted defensive buff value must remain durable')
 
 	local enabled_mismatch_payload = make_fight_leader_payload('Terrasjr')
 	enabled_mismatch_payload.config.follow.fight.leader = true
@@ -405,7 +395,7 @@ local function main()
 	local enabled_mismatch_deps = make_fake_fs({
 		[enabled_mismatch_path] = profile_v2.serialize_structured_profile(enabled_mismatch_payload),
 	})
-	local enabled_mismatch_status = profile_v2.inspect_structured_profile_status(deep_clone(projected), enabled_mismatch_meta, contract.validate_structured_profile_config, enabled_mismatch_deps)
+	local enabled_mismatch_status = profile_v2.inspect_structured_profile_status_against_config(deep_clone(active_profile.config), enabled_mismatch_meta, contract.validate_structured_profile_config, enabled_mismatch_deps)
 	assert_true(enabled_mismatch_status.valid == true, 'enabled fight leader mismatch case must validate')
 	assert_true(enabled_mismatch_status.diff_count > 0, 'enabled fight leader mismatch case must report a real difference')
 	assert_equal(enabled_mismatch_status.first_difference.path, 'config.follow.fight.leader_name', 'enabled fight leader mismatch path mismatch')
@@ -413,15 +403,13 @@ local function main()
 	local base_settings = build_flat_settings()
 	local non_cor_apply = profile_v2.apply_structured_profile_file_to_settings(deep_clone(base_settings), meta, contract.validate_structured_profile_config, deps_missing_cor)
 	assert_true(type(non_cor_apply) == 'table' and non_cor_apply.ok == true, 'non-COR profile must apply cleanly before drift checks')
-	local non_cor_current = non_cor_apply.candidate
-	assert_true(type(non_cor_current) == 'table', 'non-COR apply must return a current settings table')
+	local non_cor_current = non_cor_apply.candidate_config
+	assert_true(type(non_cor_current) == 'table', 'non-COR apply must return canonical current config')
+	assert_true(non_cor_apply.candidate == nil, 'non-COR apply must not build a flat settings candidate')
 	local disabled_settings = deep_clone(non_cor_current)
-	disabled_settings.fight_leader = false
-	disabled_settings.fight_leader_selected = 'Terrasjr'
 	if type(disabled_settings.follow) == 'table' and type(disabled_settings.follow.fight) == 'table' then
 		disabled_settings.follow.fight.leader = false
 		disabled_settings.follow.fight.leader_name = 'Terrasjr'
-		disabled_settings.follow.fight.leader_selected = 'Terrasjr'
 	end
 	local disabled_cases = {
 		{
@@ -444,11 +432,11 @@ local function main()
 		local case_deps = make_fake_fs({
 			[case_path] = profile_v2.serialize_structured_profile(case.payload),
 		})
-		local case_status = profile_v2.inspect_structured_profile_status(disabled_settings, case_meta, contract.validate_structured_profile_config, case_deps)
+		local case_status = profile_v2.inspect_structured_profile_status_against_config(disabled_settings, case_meta, contract.validate_structured_profile_config, case_deps)
 		assert_true(case_status.valid == true, 'disabled fight leader ' .. case.label .. ' case must validate')
 		assert_equal(case_status.diff_count, 0, 'disabled fight leader ' .. case.label .. ' case must report zero differences')
 		assert_equal(case_status.reason, 'runtime matches file', 'disabled fight leader ' .. case.label .. ' case reason mismatch')
-		local case_apply = profile_v2.apply_structured_profile_file_to_settings(deep_clone(disabled_settings), case_meta, contract.validate_structured_profile_config, case_deps)
+		local case_apply = profile_v2.apply_structured_profile_file_to_active_config(deep_clone(disabled_settings), case_meta, contract.validate_structured_profile_config, case_deps)
 		assert_true(case_apply.ok == true, 'disabled fight leader ' .. case.label .. ' case must apply cleanly')
 		assert_equal(case_apply.count, 0, 'disabled fight leader ' .. case.label .. ' case must apply with zero diffs')
 		local case_autoload = profile_v2.autoload_structured_profile_file_to_settings(deep_clone(disabled_settings), case_meta, contract.validate_structured_profile_config, case_deps)
@@ -465,25 +453,22 @@ local function main()
 		[unset_puller_path] = profile_v2.serialize_structured_profile(unset_puller_payload),
 	})
 	local unset_puller_settings = deep_clone(non_cor_current)
-	unset_puller_settings.puller = false
-	unset_puller_settings.puller_name = ''
 	if type(unset_puller_settings.follow) == 'table' and type(unset_puller_settings.follow.partner) == 'table' then
 		unset_puller_settings.follow.partner.puller = false
-		unset_puller_settings.follow.partner.puller_name = ''
+		unset_puller_settings.follow.partner.puller_name = nil
 	end
-	local unset_puller_config = profile_v2.build_durable_config(unset_puller_settings, unset_puller_meta)
-	assert_nil(unset_puller_config.follow.partner.puller_name, 'blank puller name must be omitted from durable config')
-	local unset_puller_status = profile_v2.inspect_structured_profile_status(unset_puller_settings, unset_puller_meta, contract.validate_structured_profile_config, unset_puller_deps)
+	assert_nil(unset_puller_settings.follow.partner.puller_name, 'blank puller name must be omitted from durable config')
+	local unset_puller_status = profile_v2.inspect_structured_profile_status_against_config(unset_puller_settings, unset_puller_meta, contract.validate_structured_profile_config, unset_puller_deps)
 	assert_true(unset_puller_status.valid == true, 'omitted puller name profile must validate')
 	assert_equal(unset_puller_status.diff_count, 0, 'omitted puller name profile must report zero differences')
-	local unset_puller_apply = profile_v2.apply_structured_profile_file_to_settings(deep_clone(unset_puller_settings), unset_puller_meta, contract.validate_structured_profile_config, unset_puller_deps)
+	local unset_puller_apply = profile_v2.apply_structured_profile_file_to_active_config(deep_clone(unset_puller_settings), unset_puller_meta, contract.validate_structured_profile_config, unset_puller_deps)
 	assert_true(unset_puller_apply.ok == true, 'omitted puller name profile must apply cleanly')
 	assert_equal(unset_puller_apply.count, 0, 'omitted puller name profile must apply with zero diffs')
 	local unset_puller_autoload = profile_v2.autoload_structured_profile_file_to_settings(deep_clone(unset_puller_settings), unset_puller_meta, contract.validate_structured_profile_config, unset_puller_deps)
 	assert_true(type(unset_puller_autoload) == 'table' and unset_puller_autoload.ok == true, 'omitted puller name profile must autoload cleanly')
 	assert_equal(unset_puller_autoload.count, 0, 'omitted puller name profile must autoload with zero diffs')
 
-	local runtime_only = deep_clone(non_cor_current)
+	local runtime_only = build_flat_settings()
 	runtime_only.engine_enabled = true
 	runtime_only.party_follow_id = 101
 	runtime_only.fight_leader_id = 202
@@ -495,11 +480,11 @@ local function main()
 
 	local validate_missing_cor = contract.validate_structured_profile_config(fixture)
 	assert_true(validate_missing_cor.ok == true, 'non-COR profile missing maintenance.cor must validate')
-	local status_missing_cor = profile_v2.inspect_structured_profile_status(non_cor_current, meta, contract.validate_structured_profile_config, deps_missing_cor)
+	local status_missing_cor = profile_v2.inspect_structured_profile_status_against_config(non_cor_current, meta, contract.validate_structured_profile_config, deps_missing_cor)
 	assert_true(status_missing_cor.valid == true, 'non-COR status with missing maintenance.cor must validate')
 	assert_equal(status_missing_cor.diff_count, 0, 'non-COR status with missing maintenance.cor must be clean')
 	assert_equal(status_missing_cor.reason, 'runtime matches file', 'non-COR status with missing maintenance.cor reason mismatch')
-	local apply_missing_cor = profile_v2.apply_structured_profile_file_to_settings(deep_clone(non_cor_current), meta, contract.validate_structured_profile_config, deps_missing_cor)
+	local apply_missing_cor = profile_v2.apply_structured_profile_file_to_active_config(deep_clone(non_cor_current), meta, contract.validate_structured_profile_config, deps_missing_cor)
 	assert_true(apply_missing_cor.ok == true, 'non-COR apply with missing maintenance.cor must succeed')
 	assert_equal(apply_missing_cor.count, 0, 'non-COR apply with missing maintenance.cor must report zero diffs')
 	local autoload_missing_cor = profile_v2.autoload_structured_profile_file_to_settings(deep_clone(non_cor_current), meta, contract.validate_structured_profile_config, deps_missing_cor)
@@ -518,7 +503,7 @@ local function main()
 	})
 	local empty_brd_apply = profile_v2.apply_structured_profile_file_to_settings(build_flat_settings(), empty_brd_meta, contract.validate_structured_profile_config, empty_brd_deps)
 	assert_true(type(empty_brd_apply) == 'table' and empty_brd_apply.ok == true, 'legacy empty BRD maintenance section must apply cleanly')
-	local empty_brd_status = profile_v2.inspect_structured_profile_status(empty_brd_apply.candidate, empty_brd_meta, contract.validate_structured_profile_config, empty_brd_deps)
+	local empty_brd_status = profile_v2.inspect_structured_profile_status_against_config(empty_brd_apply.candidate_config, empty_brd_meta, contract.validate_structured_profile_config, empty_brd_deps)
 	assert_true(empty_brd_status.valid == true, 'legacy empty BRD maintenance section must remain valid after apply')
 	assert_equal(empty_brd_status.diff_count, 0, 'legacy empty BRD maintenance section must match the post-apply runtime')
 	local empty_brd_autoload = profile_v2.autoload_structured_profile_file_to_settings(build_flat_settings(), empty_brd_meta, contract.validate_structured_profile_config, empty_brd_deps)
@@ -541,25 +526,20 @@ local function main()
 	})
 	local legacy_enabled_brd_apply = profile_v2.apply_structured_profile_file_to_settings(build_flat_settings(), empty_brd_meta, contract.validate_structured_profile_config, legacy_enabled_brd_deps)
 	assert_true(type(legacy_enabled_brd_apply) == 'table' and legacy_enabled_brd_apply.ok == true, 'legacy enabled BRD maintenance must tolerate newly added optional durable fields')
-	assert_equal(legacy_enabled_brd_apply.candidate.brd_recovery_range_yalms, 9.9, 'legacy enabled BRD maintenance must receive the recovery range migration default')
+	assert_equal(legacy_enabled_brd_apply.candidate_config.maintenance.brd.recovery_range_yalms, 9.9, 'legacy enabled BRD maintenance must receive the recovery range migration default')
 
 	local cor_payload = make_cor_payload()
 	local cor_meta = make_meta(cor_payload.profile.main_job, cor_payload.profile.sub_job)
 	local cor_active, cor_err = active_config.build_active_profile_from_v2_payload(cor_payload, cor_meta)
 	assert_true(type(cor_active) == 'table', 'COR payload should build an active profile')
 	assert_nil(cor_err, 'COR payload should build without error')
-	local cor_base_settings = build_flat_settings()
-	cor_base_settings.main_job = 'COR'
-	cor_base_settings.sub_job = 'BRD'
-	local cor_projected, cor_project_err = active_config.project_flat_settings(cor_active, cor_base_settings)
-	assert_true(type(cor_projected) == 'table', 'COR payload should project into flat settings')
-	assert_nil(cor_project_err, 'COR payload should project without error')
-	assert_equal(cor_projected.cor_roll_1, 'Chaos Roll', 'COR roll 1 must remain durable')
-	assert_equal(cor_projected.cor_roll_2, 'Samurai Roll', 'COR roll 2 must remain durable')
-	assert_equal(cor_projected.puller_name, 'Niightsiide', 'durable puller name must remain present for COR profiles too')
-	assert_equal(cor_projected.aftermath_ws, 'Atonement', 'combat aftermath ws must remain durable')
-	assert_equal(cor_projected.defensive_overwrite_interval, 150, 'defensive overwrite interval must remain durable for COR profiles')
-	assert_equal(cor_projected.defensive_targeted_buffs, 'Terrasjr:Honor March|Nyoourke:Valor Minuet V', 'BRD targeted buffs must remain durable for COR profiles')
+	assert_equal(cor_active.config.maintenance.cor.roll_1, 'Chaos Roll', 'COR roll 1 must remain durable')
+	assert_equal(cor_active.config.maintenance.cor.roll_2, 'Samurai Roll', 'COR roll 2 must remain durable')
+	assert_equal(cor_active.config.follow.partner.puller_name, 'Niightsiide', 'durable puller name must remain present for COR profiles too')
+	assert_equal(cor_active.config.combat.weaponskill.aftermath_ws, 'Atonement', 'combat aftermath ws must remain durable')
+	assert_equal(cor_active.config.defensive.buffs.overwrite_interval, 150, 'defensive overwrite interval must remain durable for COR profiles')
+	assert_equal(cor_active.config.defensive.buffs.targeted[1].character, 'Terrasjr', 'BRD targeted buff character must remain durable for COR profiles')
+	assert_equal(cor_active.config.defensive.buffs.targeted[2].buff, 'Valor Minuet V', 'BRD targeted buff value must remain durable for COR profiles')
 
 	end)
 	rawset(_G, 'windower', previous_windower)

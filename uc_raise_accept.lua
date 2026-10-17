@@ -21,18 +21,6 @@ local runtime = {
 	last_reason = '',
 }
 
-local function truthy(value)
-	if value == true or value == 1 then
-		return true
-	end
-	if type(value) == 'string' then
-		local normalized = value:lower()
-		return normalized == 'true' or normalized == 'on'
-			or normalized == '1' or normalized == 'yes'
-	end
-	return false
-end
-
 local function log(message)
 	local line = tostring(message or '')
 	local diag = rawget(_G, 'UC_LOG_DIAG')
@@ -71,12 +59,9 @@ local function current_player_mob()
 	return player
 end
 
-function M.setting_enabled(settings)
+function M.setting_enabled()
 	local ok, configured = pcall(active_config.get_path, 'config.ownership.auto_accept_raise')
-	if ok and configured ~= nil then
-		return configured == true
-	end
-	return truthy(type(settings) == 'table' and settings.auto_accept_raise or nil)
+	return ok and configured == true
 end
 
 function M.player_is_dead(player)
@@ -124,7 +109,7 @@ function M.on_incoming_chunk(id, data, at)
 	if tonumber(id) ~= M.RAISE_DIALOG_PACKET_ID then
 		return false, 'NOT_RAISE_PACKET'
 	end
-	if not M.setting_enabled(rawget(_G, 'UC_SETTINGS')) then
+	if not M.setting_enabled() then
 		runtime.last_reason = 'DISABLED'
 		return false, runtime.last_reason
 	end

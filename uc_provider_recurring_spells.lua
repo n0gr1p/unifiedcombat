@@ -75,7 +75,6 @@ end
 function M.new(deps)
 	deps = require_table(deps, 'deps')
 	local bool_setting = require_function(deps, 'bool_setting')
-	local active_value_or_flat = require_function(deps, 'active_value_or_flat')
 	local get_spell_resource = require_function(deps, 'get_spell_resource')
 	local action_ready = require_function(deps, 'action_ready')
 	local action_effective_range = require_function(deps, 'action_effective_range')
@@ -93,16 +92,12 @@ function M.new(deps)
 		if not bool_setting(rawget(_G, 'Start_Engine'), false) then return end
 		if not combat_domain_enabled() then return end
 
-		local enabled = active_value_or_flat(
-			'config.combat.recurring_spells.enabled',
-			ctx.settings and ctx.settings.recurring_spells_enabled
-		)
-		if not bool_setting(enabled, false) then return end
+		local config = type(ctx.config) == 'table' and ctx.config or {}
+		local combat = type(config.combat) == 'table' and config.combat or {}
+		local recurring_config = type(combat.recurring_spells) == 'table' and combat.recurring_spells or {}
+		if not bool_setting(recurring_config.enabled, false) then return end
 
-		local names = configured_names(active_value_or_flat(
-			'config.combat.recurring_spells.list',
-			ctx.settings and ctx.settings.recurring_spells
-		))
+		local names = configured_names(recurring_config.list)
 		if #names == 0 then
 			error('Recurring combat spells are enabled but no spells are configured')
 		end

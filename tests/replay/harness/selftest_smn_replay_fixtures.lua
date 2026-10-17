@@ -3,6 +3,7 @@ package.path = './?.lua;./tests/replay/fixtures/?.lua;' .. package.path
 local fixtures = dofile('tests/replay/fixtures/summoner/summoner_replay_fixtures.lua')
 local coordinator = require('uc_pet_command_coordinator')
 local maintenance_module = require('uc_smn_maintenance')
+local runtime = require('uc_smn_runtime')
 
 local function assert_equal(actual, expected, message)
 	if actual ~= expected then
@@ -127,6 +128,7 @@ local function replay_maintenance(fixture)
 			[174] = 0,
 		},
 	}
+	ctx.config = { summoner = select(1, runtime.config_from_settings(ctx.settings)) }
 	local out = {}
 	maintenance.collect(ctx, out)
 	assert_equal(#out, #fixture.expected, fixture.name .. ' action count')

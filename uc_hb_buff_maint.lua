@@ -1,19 +1,10 @@
 local res = require('resources')
-local uc_active_config = require('uc_active_config')
 local action_metadata = require('uc_scheduler_action_metadata')
 local uc_time = require('uc_time')
 local socket_gettime = uc_time.gettime
 
 local function now_s()
 	return socket_gettime()
-end
-
-local function active_value_or_flat(path, flat_value)
-	local active_value = uc_active_config.get_path(path)
-	if active_value ~= nil then
-		return active_value
-	end
-	return flat_value
 end
 
 local mod = {}
@@ -74,41 +65,22 @@ local function split_actions(raw)
 	return out
 end
 
-local function parse_targeted_buffs(raw)
+local function targeted_buffs(entries)
 	local out = {}
-	for token in tostring(raw or ''):gmatch('[^|]+') do
-		local t = tostring(token or ''):gsub('^%s+', ''):gsub('%s+$', '')
-		local sep = t:find(':', 1, true)
-		if sep and sep > 1 and sep < #t then
-			local target = normalize_name(t:sub(1, sep - 1))
-			local action = normalize_name(t:sub(sep + 1))
+	if type(entries) ~= 'table' then
+		return out
+	end
+	for i = 1, #entries do
+		local entry = entries[i]
+		if type(entry) == 'table' then
+			local target = normalize_name(entry.character or entry.target or entry.name)
+			local action = normalize_name(entry.buff or entry.action)
 			if target ~= '' and action ~= '' then
 				out[#out + 1] = { target = target, action = action }
 			end
 		end
 	end
 	return out
-end
-
-local function active_targeted_buffs(settings)
-	local structured = uc_active_config.get_path('config.defensive.buffs.targeted')
-	if structured ~= nil then
-		local out = {}
-		if type(structured) == 'table' then
-			for i = 1, #structured do
-				local entry = structured[i]
-				if type(entry) == 'table' then
-					local target = normalize_name(entry.character or entry.target or entry.name)
-					local action = normalize_name(entry.buff or entry.action)
-					if target ~= '' and action ~= '' then
-						out[#out + 1] = { target = target, action = action }
-					end
-				end
-			end
-		end
-		return out
-	end
-	return parse_targeted_buffs(settings.defensive_targeted_buffs or '')
 end
 
 -- HealBot-style action->buff family aliases.
@@ -367,13 +339,18 @@ function mod._reset_test_state()
 	state.confirmed_bard_song_identity = {}
 end
 
-function mod.choose(settings, members, helpers)
-	local desired = split_actions(active_value_or_flat('config.defensive.buffs.list', settings.defensive_buffs) or '')
-	local targeted = active_targeted_buffs(settings)
-	local dedicated_brd_enabled = uc_active_config.get_path('config.maintenance.brd.enabled') == true
-	local self_only = helpers.bool_setting(active_value_or_flat('config.defensive.buffs.self_only', settings.defensive_buff_self_only), true)
-	local overwrite = helpers.bool_setting(active_value_or_flat('config.defensive.buffs.overwrite_enabled', settings.defensive_overwrite_enabled), false)
-	local overwrite_interval = tonumber(active_value_or_flat('config.defensive.buffs.overwrite_interval', settings.defensive_overwrite_interval) or 150) or 150
+function mod.choose(config, members, helpers)
+	config = type(config) == 'table' and config or {}
+	local defensive = type(config.defensive) == 'table' and config.defensive or {}
+	local buffs = type(defensive.buffs) == 'table' and defensive.buffs or {}
+	local maintenance = type(config.maintenance) == 'table' and config.maintenance or {}
+	local brd = type(maintenance.brd) == 'table' and maintenance.brd or {}
+	local desired = split_actions(buffs.list or '')
+	local targeted = targeted_buffs(buffs.targeted)
+	local dedicated_brd_enabled = brd.enabled == true
+	local self_only = helpers.bool_setting(buffs.self_only, true)
+	local overwrite = helpers.bool_setting(buffs.overwrite_enabled, false)
+	local overwrite_interval = tonumber(buffs.overwrite_interval or 150) or 150
 	local now = now_s()
 	local first_eligible_non_majesty = nil
 	local action_metadata_deps = {

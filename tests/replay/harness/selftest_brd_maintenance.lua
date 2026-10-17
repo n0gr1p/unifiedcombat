@@ -75,6 +75,11 @@ windower = {
 		end,
 	},
 }
+local path_separator = package.config:sub(1, 1)
+local mkdir_command = path_separator == '\\'
+	and 'if not exist data\\logs mkdir data\\logs'
+	or 'mkdir -p data/logs'
+os.execute(mkdir_command)
 local ready = function(name)
 	if name == 'Nightingale' or name == 'Troubadour' or name == 'Marcato' or name == 'Clarion Call'
 		or name == 'Soul Voice' or name == 'Pianissimo' then
@@ -195,7 +200,9 @@ brd.on_status_snapshot({ [100] = { count = 2, endtimes = { future_one, future_tw
 assert_true(brd._test.state.owners['Victory March'] ~= nil, 'same-family exact song must receive its own timer owner')
 
 brd.reset('live_timer_jitter_test')
-local jitter_honor = 3523079878
+-- Keep the captured live jitter delta stable without depending on an absolute
+-- server timestamp that can age past the test's current calibrated clock.
+local jitter_honor = brd._test.server_now_raw(os.time()) + 36000
 brd.on_status_snapshot({ [100] = { count = 1, endtimes = { jitter_honor } } }, 3)
 brd._test.state.owners['Honor March'] = { status_id = 100, endtime = jitter_honor, recipients = { 77 } }
 action = brd.propose(config, { now = 3.1, player = player, action_ready = ready })
@@ -207,7 +214,7 @@ brd.on_action({
 	param = 2,
 	targets = { { id = 77, actions = { { message = 230, param = 100 } } } },
 }, 77, 3.2)
-local jitter_victory = 3523078810
+local jitter_victory = jitter_honor - 1068
 brd.on_status_snapshot({ [100] = { count = 2, endtimes = { jitter_victory, jitter_honor + 3 } } }, 3.3)
 assert_true(brd._test.state.owners['Honor March'] ~= nil, 'ordinary packet timer jitter must not prune an existing song owner')
 assert_equal(brd._test.state.owners['Honor March'].endtime, jitter_honor + 3, 'preserved owner must track the newest packet timer observation')
@@ -2162,6 +2169,48 @@ brd.propose(config, { now = 40.1, player = player, action_ready = ready })
 assert_true(brd.diagnostic_log_status() == false, 'clearing the local Bard diagnostic flag must stop only an auto-started log')
 os.remove(auto_log_path)
 _G.UC_BRD_DIAGNOSTIC_LOG = old_auto_brd_log
+
+-- Durable disable must release the deferred JA/song transaction but preserve
+-- real packet-confirmation evidence, observed owners and song timer snapshots.
+brd.reset('disabled_policy_authority_test')
+local bstate = brd._test.state
+local observed_owner = { status_id = 100, endtime = 12345, recipients = { 77 } }
+local observed_snapshot = { { id = 77, name = 'Redrogue', status_id = 100 } }
+local packet_pending = { name = 'Honor March', phase = 'awaiting_snapshot', dispatched_at = 43 }
+bstate.owners['Honor March'] = observed_owner
+bstate.snapshot = observed_snapshot
+bstate.pending = packet_pending
+bstate.force = { songs = { 'Honor March' } }
+bstate.targeted_transaction = {
+    song_name = 'Victory March', recipient_id = 77, phase = 'awaiting_song',
+}
+bstate.marcato_reservation = 'Victory March'
+bstate.nitro_armed = true
+bstate.clarion_reserved = true
+bstate.action_lane_reserved = true
+local disabled_config = {}
+for key, value in pairs(config) do disabled_config[key] = value end
+disabled_config.enabled = false
+assert_equal(brd.propose(disabled_config, {
+    now = 44, player = player, action_ready = ready,
+}), nil, 'disabled BRD policy cannot propose stale targeted transaction')
+assert_equal(bstate.action_lane_reserved, false,
+    'disabled BRD policy releases cached action lane')
+assert_equal(bstate.targeted_transaction, nil,
+    'disabled BRD policy discards cached targeted song transaction')
+assert_equal(bstate.force, nil, 'disabled BRD policy cancels pending force generation')
+assert_equal(bstate.marcato_reservation, '',
+    'disabled BRD policy clears deferred Marcato reservation')
+assert_equal(bstate.nitro_armed, false,
+    'disabled BRD policy clears deferred Nitro generation')
+assert_equal(bstate.clarion_reserved, false,
+    'disabled BRD policy clears deferred Clarion reservation')
+assert_true(bstate.pending == packet_pending,
+    'previously sent song retains in-flight packet confirmation ownership')
+assert_true(bstate.owners['Honor March'] == observed_owner,
+    'observed song ownership survives durable policy disable')
+assert_true(bstate.snapshot == observed_snapshot,
+    'observed song timers survive durable policy disable')
 
 package.loaded.uc_brd_maintenance = old_module
 package.loaded.resources = old_resources

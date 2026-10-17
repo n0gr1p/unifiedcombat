@@ -152,6 +152,17 @@ local function current_meta()
     return meta
 end
 
+-- A published Profile V2 is authoritative even if the compact status snapshot
+-- has not yet been refreshed. Never reconstruct active policy from flat state.
+local function current_active_profile()
+    local active = rawget(_G, 'UC_ACTIVE_PROFILE')
+    if type(active) == 'table' and active.version == 2
+        and type(active.config) == 'table' and type(active.profile) == 'table' then
+        return active
+    end
+    return nil
+end
+
 local function normalizer_from_arg(normalizer)
     if type(normalizer) == 'table' and type(normalizer.normalize) == 'function' then
         return normalizer
@@ -188,11 +199,12 @@ function M.config_contract_status(settings, meta, normalizer, current_status)
         return status
     end
 
+    local active_profile = current_active_profile()
     local resolved = normalizer_from_arg(normalizer)
     local out = {
         schema_version = 1,
         ok = false,
-        available = resolved ~= nil,
+        available = resolved ~= nil or active_profile ~= nil,
         normalizer_version = type(resolved) == 'table' and type(resolved.version) == 'function' and resolved.version() or nil,
         source = 'UC_SETTINGS',
         domains = {},
@@ -207,12 +219,24 @@ function M.config_contract_status(settings, meta, normalizer, current_status)
         out.sub_job = resolved_meta.sub_job
         out.profile_key = resolved_meta.profile_key
     end
-    if not resolved then
+    if active_profile ~= nil then
+        local profile = active_profile.profile
+        out.source = profile.source or out.source
+        out.character = profile.character or out.character
+        out.main_job = profile.main_job or out.main_job
+        out.sub_job = profile.sub_job or out.sub_job
+        out.profile_key = profile.profile_key or out.profile_key
+    elseif not resolved then
         out.warnings[#out.warnings + 1] = 'config normalizer unavailable'
         out.errors[#out.errors + 1] = 'config normalizer unavailable'
         return out
     end
-    local ok, config = pcall(resolved.normalize, settings, resolved_meta)
+    local ok, config
+    if active_profile ~= nil then
+        ok, config = true, active_profile.config
+    else
+        ok, config = pcall(resolved.normalize, settings, resolved_meta)
+    end
     if ok and type(config) == 'table' then
         local summoner_validator = require('uc_smn_config')
         local summoner = summoner_validator.validate(config.summoner)
@@ -256,6 +280,15 @@ function M.config_contract_status(settings, meta, normalizer, current_status)
 end
 
 function M.ingame_ui_enabled(settings, meta, normalizer)
+    local active_profile = current_active_profile()
+    if active_profile ~= nil then
+        local ui = active_profile.config.ui
+        -- Canonical UI defaults to hidden, even if this old flat session
+        -- still holds a contradictory show_ingame_ui value.
+        return type(ui) == 'table' and ui.show_ingame_ui == true
+    end
+    -- Old melee/DD2 and pre-profile callers retain their historical import
+    -- semantics without turning the flat result into active durable policy.
     local source = ui_source(settings)
     local config = M.normalize_current_config(source, meta, normalizer)
     if type(config) == 'table' and type(config.ui) == 'table' and config.ui.show_ingame_ui ~= nil then

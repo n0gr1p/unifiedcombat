@@ -75,7 +75,7 @@ function M.new(deps)
 				job = 'PUP',
 			}
 		end
-		local config = runtime.config_from_settings(ctx.settings)
+		local config = runtime.config_from_config(ctx.config)
 		last_player_id = tonumber(ctx.player_id) or tonumber(ctx.player.id) or 0
 		last_ctx_now = tonumber(ctx.now) or last_ctx_now
 		local previous_pet_id = tonumber(burden_state.pet_id) or 0

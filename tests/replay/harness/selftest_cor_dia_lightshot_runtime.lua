@@ -104,4 +104,78 @@ package.loaded['uc_cor_maintenance'] = previous_cor
 package.loaded['uc_enemy_effect_tracker'] = previous_tracker
 package.loaded['uc_reaction_runtime'] = previous_reaction
 
+-- The real COR provider stages a target-scoped Dia proposal. The later
+-- command-ownership resolution must reject a changed canonical setting,
+-- preserving observed Dia so re-enabling can stage a fresh proposal.
+do
+    local old_resources = package.loaded.resources
+    local old_time = package.loaded.uc_time
+    local old_active = package.loaded.uc_active_config
+    local old_cor_module = package.loaded.uc_cor_maintenance
+    local old_windower = windower
+    local old_string_unpack = string.unpack
+    local old_flat = rawget(_G, 'UC_SETTINGS')
+    local active_config = { maintenance = { cor = { light_shot_dia = true } } }
+    local mob = {
+        id = 555, name = 'Light Shot Target', spawn_type = 16,
+        valid_target = true, hpp = 100,
+        distance = { sqrt = function() return 4 end },
+    }
+    package.loaded.resources = { job_abilities = { [131] = { recast_id = 193 } } }
+    package.loaded.uc_time = { now = function() return 10 end }
+    package.loaded.uc_active_config = { get_config = function() return active_config end }
+    package.loaded.uc_cor_maintenance = nil
+    windower = {
+        ffxi = {
+            get_player = function() return { main_job = 'COR', sub_job = 'NIN', status = 1, buffs = {} } end,
+            get_mob_by_target = function(slot)
+                return slot == 'me' and { id = 100 } or mob
+            end,
+            get_ability_recasts = function() return { [193] = 0 } end,
+        },
+        packets = {
+            parse_action = function()
+                return {
+                    actor_id = 200, category = 4, param = 23,
+                    targets = { { id = mob.id, actions = { { message = 2 } } } },
+                }
+            end,
+        },
+    }
+    -- Incoming test packet belongs to another caster; its Dia observation
+    -- should still be tracked without triggering local COR busy state.
+    string.unpack = function() return 200 end
+    local live = require('uc_cor_maintenance')
+    live.update_from_incoming_chunk(0x028, 'mock_packet')
+    local proposed = live.propose(active_config)
+    assert_equal(proposed.action_name, 'Light Shot',
+        'observed Dia must produce configured COR Light Shot proposal')
+    assert_equal(live.resolve_pending_light_shot_target(active_config).id, mob.id,
+        'current valid Dia generation authorizes staged target')
+
+    rawset(_G, 'UC_SETTINGS', { cor_light_shot_dia = true })
+    active_config.maintenance.cor.light_shot_dia = false
+    assert_equal(live.resolve_pending_light_shot_target(active_config), nil,
+        'canonical COR OFF rejects stale flat ON at command ownership')
+    active_config.maintenance.cor.light_shot_dia = true
+    assert_equal(live.resolve_pending_light_shot_target(active_config), nil,
+        'disabled policy retires the old cached target/generation')
+    proposed = live.propose(active_config)
+    assert_equal(proposed.action_name, 'Light Shot',
+        'observed Dia remains available after policy-only cancellation')
+    rawset(_G, 'UC_SETTINGS', { cor_light_shot_dia = false })
+    assert_equal(live.resolve_pending_light_shot_target(active_config).id, mob.id,
+        'canonical COR ON defeats stale flat OFF at dispatch')
+    active_config = nil
+    assert_equal(live.resolve_pending_light_shot_target(active_config).id, mob.id,
+        'genuine no-profile compatibility retains pre-profile target resolution')
+    string.unpack = old_string_unpack
+    windower = old_windower
+    rawset(_G, 'UC_SETTINGS', old_flat)
+    package.loaded.resources = old_resources
+    package.loaded.uc_time = old_time
+    package.loaded.uc_active_config = old_active
+    package.loaded.uc_cor_maintenance = old_cor_module
+end
+
 io.stdout:write('selftest_cor_dia_lightshot_runtime: OK\n')

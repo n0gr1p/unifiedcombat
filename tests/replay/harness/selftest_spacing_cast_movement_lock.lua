@@ -41,12 +41,12 @@ local settle_body = function_body(
 )
 local movement_body = function_body(
 	source,
-	'local function run_movement_coordinator_tick()',
+	'local function run_movement_coordinator_tick(config)',
 	'local function p1_number'
 )
 local combat_dispatch_body = function_body(
 	source,
-	'local function p1_dispatch_combat(selected, settings, phase)',
+	'local function p1_dispatch_combat(selected, settings, phase, config)',
 	'local function p1_dispatch_summoner_maintenance(selected, settings)'
 )
 local selected_dispatch_body = function_body(
@@ -102,7 +102,7 @@ end
 assert_before(
 	movement_body,
 	"scheduler.apply_cast_movement_hold('MOVE_COORD_CASTING_ACTION', now)",
-	'combat_core.apply_movement_for_scheduler(s, movement_executor)',
+	'combat_core.apply_movement_for_scheduler(s, movement_executor, config)',
 	'cast movement hold must run before spacing/core movement execution'
 )
 

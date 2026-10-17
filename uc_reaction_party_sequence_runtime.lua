@@ -74,6 +74,14 @@ local function release(reason)
 	return released
 end
 
+local function prune_unconfigured_party_sequence()
+    if type(party_lock) == 'table'
+        and not require('uc_reaction_sequence_policy').current(party_lock) then
+        return release('config_changed')
+    end
+    return nil
+end
+
 local function advance_step(reason)
 	if type(party_lock) ~= 'table' then
 		return nil, nil
@@ -165,6 +173,7 @@ function M.extend(base)
 	local base_status = base.status
 
 	function base.on_action(act, current_target_id, now, actor_is_valid_enemy)
+		prune_unconfigured_party_sequence()
 		local completed = local_sequence_completion(act)
 		if completed ~= nil then
 			return completed
@@ -230,6 +239,7 @@ function M.extend(base)
 	end
 
 	function base.evaluate(current_target_id, effects, now)
+		prune_unconfigured_party_sequence()
 		if type(party_lock) == 'table' then
 			return public_lock(party_lock), nil
 		end
@@ -237,7 +247,7 @@ function M.extend(base)
 	end
 
 	function base.prune_invalid_ability_windows(actor_is_valid_enemy)
-		local released = nil
+		local released = prune_unconfigured_party_sequence()
 		if type(party_lock) == 'table'
 			and actor_is_valid_enemy(tonumber(party_lock.actor_id) or 0) ~= true then
 			released = release('actor_unavailable')
@@ -246,6 +256,7 @@ function M.extend(base)
 	end
 
 	function base.get_action_lock()
+		prune_unconfigured_party_sequence()
 		if type(party_lock) == 'table' then
 			return public_lock(party_lock)
 		end

@@ -15,6 +15,7 @@ local function assert_equal(actual, expected, message)
     end
 end
 
+local rule_enabled = true
 local sequence_rule = {
     trigger = 'ability_window',
     name = 'Just Desserts',
@@ -50,14 +51,15 @@ end
 reset('uc_combat_extension_config')
 package.preload.uc_combat_extension_config = function()
     return {
-        reaction_rules = function() return { sequence_rule } end,
+        reaction_rules = function() return rule_enabled and { sequence_rule } or {} end,
         validate_action_rule = function() return true end,
     }
 end
 
+local defensive_lock = nil
 local base = {
     on_action = function() return {} end,
-    evaluate = function() return nil, nil end,
+    evaluate = function() return defensive_lock, nil end,
     prune_invalid_ability_windows = function() return nil end,
     get_action_lock = function() return nil end,
     blocks_proposal = function() return false end,
@@ -66,7 +68,7 @@ local base = {
     requires_disengage = function() return false end,
     cancel = function() return nil, nil end,
     reset = function() return nil end,
-    status = function() return { enabled = true, rule_count = 1, active = {}, last_transition = 'base' } end,
+    status = function() return { enabled = true, rule_count = 1, active = defensive_lock and { defensive_lock } or {}, last_transition = 'base' } end,
 }
 
 reset('uc_reaction_sequence_runtime')
@@ -171,6 +173,65 @@ sequence_rule.steps = {
     { action_type = 'ja', action_name = 'Elemental Seal', target = 'self', optional = true },
     { action_type = 'spell', action_name = 'Stun', target = 'actor', optional = false },
 }
+
+-- Mid-sequence Profile V2 edits must release stale locks, not just block
+-- follow-up dispatch. No unrelated defensive reaction state is reset.
+reactions.reset('policy_pruning')
+ready = reactions.on_action({
+    actor_id = 900, category = 7,
+    targets = { { actions = { { param = 100 } } } },
+}, 900, 40.0, true)
+assert_true(type(ready.activated) == 'table', 'policy test sequence activates')
+marked = reactions.note_sequence_action_dispatched(
+    ready.activated.key, 'ja', 'Elemental Seal', 'self', 1, 1, 40.1
+)
+assert_true(marked, 'policy test opener dispatched')
+local completed = reactions.on_action({ actor_id = 1, category = 6, param = 200 }, 900, 40.2, false)
+assert_equal(completed.activated.action_name, 'Stun', 'packet completion must advance before policy change')
+rule_enabled = false
+local released = reactions.prune_invalid_ability_windows(function() return true end)
+assert_equal(released.key, ready.activated.key, 'canonical disable releases copied sequence lock')
+assert_true(reactions.get_action_lock() == nil, 'disabled sequence cannot reserve action lane')
+assert_equal(#reactions.status().active, 0, 'disabled rule clears sequence status')
+rule_enabled = true
+
+ready = reactions.on_action({
+    actor_id = 900, category = 7,
+    targets = { { actions = { { param = 100 } } } },
+}, 900, 41.0, true)
+sequence_rule.steps[2].action_name = 'Sleep II'
+local dropped = reactions.evaluate(900, {}, 41.1)
+assert_true(dropped == nil, 'edited second step invalidates copied active sequence on evaluate')
+assert_true(reactions.get_action_lock() == nil, 'edited rule releases action lane immediately')
+sequence_rule.steps[2].action_name = 'Stun'
+
+ready = reactions.on_action({
+    actor_id = 900, category = 7,
+    targets = { { actions = { { param = 100 } } } },
+}, 900, 42.0, true)
+sequence_rule.steps[1].optional = false
+assert_true(reactions.get_action_lock() == nil, 'optional-step policy edit releases cached sequence')
+sequence_rule.steps[1].optional = true
+
+-- A reconfigured sequence must not clear an unrelated defensive turn-away
+-- reaction. Only sequence-owned state is released by policy pruning.
+defensive_lock = {
+    key = 'ability_window:901:cold stare', trigger = 'ability_window',
+    response = 'turn_away', name = 'Cold Stare', actor_id = 901,
+}
+ready = reactions.on_action({
+    actor_id = 900, category = 7,
+    targets = { { actions = { { param = 100 } } } },
+}, 900, 43.0, true)
+rule_enabled = false
+local defense_continues = reactions.evaluate(900, {}, 43.1)
+assert_equal(defense_continues.key, defensive_lock.key,
+    'disabling sequence leaves active unrelated defensive reaction intact')
+assert_true(reactions.get_action_lock() == nil,
+    'defensive turn-away is not misclassified as a stale sequence action')
+assert_equal(#reactions.status().active, 1, 'defensive lock remains in status after sequence cleanup')
+rule_enabled = true
+defensive_lock = nil
 
 -- Provider wrapper: unavailable optional Elemental Seal must be skipped immediately
 -- and required Stun must still be emitted in the same collection pass.

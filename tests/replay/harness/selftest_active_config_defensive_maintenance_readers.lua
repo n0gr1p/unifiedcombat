@@ -130,6 +130,9 @@ local function main()
             get_items = function()
                 return { enabled = false }
             end,
+            get_mob_by_target = function()
+                return nil
+            end,
             get_mob_by_id = function(id)
                 return fake_members_by_id[tonumber(id) or 0]
             end,
@@ -168,7 +171,7 @@ local function main()
             },
         },
     })
-    local picked = hb_buff_maint.choose(hb_flat, {
+    local picked = hb_buff_maint.choose(active_config.get_config(), {
         {
             name = 'Tester',
             is_self = true,
@@ -192,7 +195,7 @@ local function main()
             },
         },
     })
-    picked = hb_buff_maint.choose(hb_flat, {
+    picked = hb_buff_maint.choose(active_config.get_config(), {
         {
             name = 'Target',
             is_self = false,
@@ -207,15 +210,14 @@ local function main()
             buffs = {},
         },
     })
-    picked = hb_buff_maint.choose(hb_flat, {
+    picked = hb_buff_maint.choose(active_config.get_config(), {
         {
             name = 'Tester',
             is_self = true,
             buffs = {},
         },
     }, make_hb_helpers())
-    assert_true(type(picked) == 'table', 'hb buff maintenance should still pick a fallback candidate when active list path is missing')
-    assert_equal(picked.spell, 'Protect', 'hb buff maintenance must preserve flat fallback when the active buff list path is missing')
+    assert_equal(picked, nil, 'hb buff maintenance must not consult flat fallback when canonical buff list is missing')
 
     local hb_targeted_flat = {
         defensive_buffs = '',
@@ -235,15 +237,14 @@ local function main()
             },
         },
     })
-    picked = hb_buff_maint.choose(hb_targeted_flat, {
+    picked = hb_buff_maint.choose(active_config.get_config(), {
         {
             name = 'Target',
             is_self = false,
             buffs = {},
         },
     }, make_hb_helpers())
-    assert_true(type(picked) == 'table', 'hb buff maintenance should still pick a fallback targeted candidate when structured path is missing')
-    assert_equal(picked.spell, 'Victory March', 'hb buff maintenance must preserve flat fallback when the active targeted path is missing')
+    assert_equal(picked, nil, 'hb buff maintenance must not consult flat targeted fallback when canonical targeted config is missing')
 
     local hb_self_only_flat = {
         defensive_buffs = 'Protect',
@@ -261,7 +262,7 @@ local function main()
             },
         },
     })
-    picked = hb_buff_maint.choose(hb_self_only_flat, {
+    picked = hb_buff_maint.choose(active_config.get_config(), {
         {
             name = 'Ally',
             is_self = false,
@@ -293,7 +294,7 @@ local function main()
             },
         },
     })
-    local action = cor_maintenance.propose(cor_flat)
+    local action = cor_maintenance.propose(active_config.get_config())
     assert_true(type(action) == 'table', 'cor maintenance should propose a roll when active config is populated')
     assert_equal(action.action_name, 'Chaos Roll', 'cor maintenance must honor active config roll selection when flat settings differ')
 
@@ -302,9 +303,9 @@ local function main()
             cor = {},
         },
     })
-    action = cor_maintenance.propose(cor_flat)
-    assert_true(type(action) == 'table', 'cor maintenance should still propose a roll when active roll paths are missing')
-    assert_equal(action.action_name, 'Ninja Roll', 'cor maintenance must preserve flat fallback when the active roll path is missing')
+    action = cor_maintenance.propose(active_config.get_config())
+    assert_true(type(action) == 'table', 'cor maintenance should use canonical defaults when roll paths are missing')
+    assert_equal(action.action_name, "Corsair's Roll", 'cor maintenance must not consult stale flat roll selection')
 
     set_active_profile(active_config, {
         maintenance = {
@@ -318,7 +319,7 @@ local function main()
             },
         },
     })
-    action = cor_maintenance.propose(cor_flat)
+    action = cor_maintenance.propose(active_config.get_config())
     assert_true(type(action) == 'table', 'cor maintenance should propose a crooked-roll prep action when configured in active config')
     assert_equal(action.action_name, 'Crooked Cards', 'cor maintenance must honor active config crooked roll slot when flat settings differ')
 

@@ -8,6 +8,7 @@ local function apply_globals(globals_spec)
         windower = rawget(_G, "windower"),
         res = rawget(_G, "res"),
         UC_SETTINGS = rawget(_G, "UC_SETTINGS"),
+        UC_ACTIVE_PROFILE = rawget(_G, "UC_ACTIVE_PROFILE"),
     }
 
     if globals_spec then
@@ -28,10 +29,17 @@ local function apply_globals(globals_spec)
         else
             _G.UC_SETTINGS = nil
         end
+
+        if globals_spec.UC_ACTIVE_PROFILE ~= nil then
+            _G.UC_ACTIVE_PROFILE = globals_spec.UC_ACTIVE_PROFILE
+        else
+            _G.UC_ACTIVE_PROFILE = nil
+        end
     else
         _G.windower = nil
         _G.res = nil
         _G.UC_SETTINGS = nil
+        _G.UC_ACTIVE_PROFILE = nil
     end
 
     return prev
@@ -41,6 +49,7 @@ local function restore_globals(prev)
     _G.windower = prev.windower
     _G.res = prev.res
     _G.UC_SETTINGS = prev.UC_SETTINGS
+    _G.UC_ACTIVE_PROFILE = prev.UC_ACTIVE_PROFILE
 end
 
 local function call_helper(helper, input)
@@ -49,6 +58,9 @@ local function call_helper(helper, input)
     end
     if helper == "get_settings" then
         return context_utils.get_settings()
+    end
+    if helper == "get_config" then
+        return context_utils.get_config()
     end
     if helper == "is_city_zone_for_maintenance" then
         return context_utils.is_city_zone_for_maintenance(input and input.maintenance_blocked_zone_names or {})

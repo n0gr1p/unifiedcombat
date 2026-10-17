@@ -116,7 +116,6 @@ end
 function M.new(deps)
 	deps = require_table(deps, 'deps')
 	local bool_setting = require_function(deps, 'bool_setting')
-	local active_value_or_flat = require_function(deps, 'active_value_or_flat')
 	local get_spell_resource = require_function(deps, 'get_spell_resource')
 	local get_spell_by_id = require_function(deps, 'get_spell_by_id')
 	local build_friendly_claims = require_function(deps, 'build_friendly_claims')
@@ -134,23 +133,17 @@ function M.new(deps)
 	function provider.collect(ctx, out)
 		require_table(ctx, 'ctx')
 		require_table(out, 'out')
-		if not bool_setting(active_value_or_flat(
-			'config.defensive.enemy_debuffs.enabled',
-			ctx.settings.def_maintain_enemy_debuffs
-		), false) then
+		local config = type(ctx.config) == 'table' and ctx.config or {}
+		local defensive = type(config.defensive) == 'table' and config.defensive or {}
+		local enemy_debuffs = type(defensive.enemy_debuffs) == 'table' and defensive.enemy_debuffs or {}
+		if not bool_setting(enemy_debuffs.enabled, false) then
 			return
 		end
-		if not bool_setting(active_value_or_flat(
-			'config.defensive.enabled',
-			ctx.settings.defensive_enabled
-		), false) then
+		if not bool_setting(defensive.enabled, false) then
 			return
 		end
 
-		local configured = active_value_or_flat(
-			'config.defensive.enemy_debuffs.list',
-			ctx.settings.defensive_enemy_debuffs
-		)
+		local configured = enemy_debuffs.list
 		local actions = normalized_actions(configured, get_spell_resource)
 		if #actions == 0 then
 			error('Enemy debuff maintenance is enabled but no debuffs are configured')

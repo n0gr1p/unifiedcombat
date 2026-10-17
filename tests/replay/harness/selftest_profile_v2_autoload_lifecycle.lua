@@ -72,7 +72,7 @@ local function test_automatic_identity_lifecycle(addon)
 end
 
 local function test_unconditional_watcher(addon)
-	local watcher = source_block(addon, 'local function uc_run_profile_v2_auto_reload', 'local function uc_normalize_targets')
+	local watcher = source_block(addon, 'local function uc_run_profile_v2_auto_reload', 'local function uc_read_profiles_file(char_name)')
 	assert_contains(watcher, 'UC_PROFILE_V2_AUTO_RELOAD_POLL_SEC', 'watcher must poll continuously')
 	assert_contains(watcher, 'UC_PROFILE_V2_AUTO_RELOAD_STABLE_SEC', 'watcher must debounce file writes')
 	assert_contains(watcher, 'uc_profile_v2_content_hash', 'watcher must suppress unchanged content by hash')
@@ -83,7 +83,7 @@ local function test_unconditional_watcher(addon)
 end
 
 local function test_watcher_state_machine(addon)
-	local watcher_source = source_block(addon, 'local function uc_run_profile_v2_auto_reload', 'local function uc_normalize_targets')
+	local watcher_source = source_block(addon, 'local function uc_run_profile_v2_auto_reload', 'local function uc_read_profiles_file(char_name)')
 	local state = {
 		now = 1.1,
 		content = nil,
@@ -236,11 +236,14 @@ local function test_ui_single_authority()
 	local logic = read_file('UnifiedCombatWinForms/MainForm.ParityLogic.cs')
 	local activity = read_file('UnifiedCombatWinForms/MainForm.ActivityProfiles.cs')
 	local adapter = read_file('UnifiedCombatWinForms/RuntimeProfileEditorAdapter.cs')
+	local canonical_adapter = read_file('UnifiedCombatWinForms/CanonicalRuntimeEditorProjection.cs')
 	local writer = read_file('UnifiedCombatWinForms/StructuredProfileV2Writer.cs')
 	local constants = read_file('UnifiedCombatWinForms/HubUiConstants.cs')
 	assert_contains(logic, '"active_config"', 'editor initialization must come from runtime active config')
 	assert_contains(logic, 'RuntimeProfileEditorAdapter.Build(session, activeConfig)', 'runtime config must use the editor adapter')
+	assert_contains(adapter, 'CanonicalRuntimeEditorProjection.Project(activeConfig)', 'runtime adapter must project canonical Profile V2 locally')
 	assert_contains(adapter, 'FlattenGeoMaintenance(profile)', 'runtime config must convert GEO maintenance into the editor model')
+	assert_contains(canonical_adapter, 'root["config"] is not JsonObject config', 'canonical runtime adapter must consume Profile V2 config')
 	assert_contains(logic, 'TrySaveStructuredProfileV2FromUi(sid, profile', 'durable Save must write Profile V2')
 	assert_not_contains(logic, 'TrySaveProfileFromUi(', 'durable Save must not write per-identity UI JSON')
 	assert_not_contains(logic, 'TryLoadProfileForSid(', 'editor must not load per-identity UI JSON as authority')
@@ -253,8 +256,9 @@ end
 
 local function test_bridge_publishes_runtime_config()
 	local bridge = read_file('remote_bridge.lua')
-	assert_contains(bridge, "require('uc_active_config')", 'bridge must project the canonical active profile')
-	assert_contains(bridge, 'st.active_config = active_settings', 'bridge snapshots must expose active runtime config to the editor')
+	assert_contains(bridge, "require('uc_active_config')", 'bridge must publish the canonical active profile')
+	assert_contains(bridge, 'st.active_config = active_profile', 'bridge snapshots must expose canonical active Profile V2 to the editor')
+	assert_not_contains(bridge, 'project_flat_settings(', 'bridge must not build a flat editor projection')
 	assert_contains(bridge, 'json_encode_value', 'bridge JSON must encode the nested active config')
 	local encoder_source = source_block(bridge, 'local function json_escape_simple', '\n\nlocal sock = nil')
 	local chunk, load_err = loadstring(encoder_source .. '\nreturn json_encode_simple', '@bridge_active_config_json')

@@ -217,6 +217,15 @@ public partial class MainForm : Form
         }
 
         var op = msg.TryGetValue("op", out var ov) ? Convert.ToString(ov) ?? "" : "";
+        if (string.Equals(op, "set", StringComparison.Ordinal))
+        {
+            // Generic set messages are durable editor mutations, not live runtime commands.
+            // Capture the current per-session working profile and keep the addon bridge out
+            // of the durable write path. Explicit Save remains the only persistence boundary.
+            CaptureWorkingProfileFromUi(sid);
+            return;
+        }
+
         if (!IsRuntimeSessionOutboundOp(op))
         {
             return;

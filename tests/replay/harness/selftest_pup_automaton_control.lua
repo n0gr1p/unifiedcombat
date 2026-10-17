@@ -41,10 +41,15 @@ end
 
 local function ctx(now, pet_present, buffs)
 	local player_buffs = buffs or {}
+	local canonical = config()
 	return {
 		now = now,
 		settings = {
 			puppetmaster = config(),
+		},
+		config = {
+			profile = { main_job = 'PUP' },
+			puppetmaster = canonical,
 		},
 		player_present = true,
 		player_id = 100,

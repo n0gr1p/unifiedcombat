@@ -12,10 +12,11 @@ internal static class RuntimeProfileEditorAdapter
             throw new InvalidDataException("Runtime active configuration must be a JSON object.");
         }
 
-        var profile = JsonNode.Parse(activeConfig.GetRawText())?.AsObject()
-            ?? throw new InvalidDataException("Runtime active configuration must be a JSON object.");
+        var profile = CanonicalRuntimeEditorProjection.Project(activeConfig);
         foreach (var key in new[]
         {
+            "engine",
+            "Start_Engine",
             "ability_options",
             "weaponskill_options",
             "path_pull_ja_options",
@@ -24,6 +25,8 @@ internal static class RuntimeProfileEditorAdapter
             "cor_roll_options",
             "brd_song_options",
             "party_options",
+            "partner_options",
+            "puller_options",
         })
         {
             if (session.TryGetProperty(key, out var value))
