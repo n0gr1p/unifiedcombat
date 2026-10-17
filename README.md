@@ -6,7 +6,11 @@ The current runtime has one engine and one scheduler-owned action path. The sche
 
 ## Current status
 
-Status of the current checkout (`3f78bf5`, 2026-07-31):
+**Profile V2 migration branch:** `refactor/profile-v2-single-source` ([draft PR #73](https://github.com/n0gr1p/UnifiedCombat/pull/73)) has completed Phases 0–6 and is in **Phase 7 final conformance**. Automated regression coverage and WinForms CI prove source-of-truth boundaries, but **the PR is not yet certified playable or merge-ready**; the in-game acceptance matrix is still outstanding. `master` is not changed by this branch.
+
+The earlier scheduler refactor and field work below describe the established baseline, not live acceptance of the new Profile V2 migration.
+
+See the [final Profile V2 architecture](docs/profile_v2_final_architecture.md), [Phase 6 exit evidence](docs/profile_v2_phase6_exit_assessment.md), and [Phase 7 live acceptance plan](docs/profile_v2_phase7_acceptance_plan.md).
 
 ### Complete and established
 
@@ -54,6 +58,14 @@ See the [scheduler RFC index](RFC/README.md), [phase-6 exit audit](RFC/UnifiedCo
 
 `domain_combat_enabled`, `domain_defensive_enabled`, `domain_movement_enabled`, `domain_maintenance_enabled`, and `domain_follow_enabled` determine participation. The engine must be running for combat, defensive, movement, and maintenance domains; party follow is independently domain-gated and can operate with the engine stopped.
 
+### Profile V2: durable policy versus transient state
+
+The single durable configuration authority on the migration branch is `_G.UC_ACTIVE_PROFILE.config`, loaded from an exact character/main/subjob structured Profile V2 document. Scheduler and providers consume canonical `ctx.config`. Flat `UC_SETTINGS` survives only as bounded compatibility/session state and must not override a canonical value.
+
+The desktop UI receives `active_config` and projects it into editor-local fields; its Save action writes a structured Profile V2 file. The in-game `//uc fight_leader`, `//uc add_priority`, and `//uc sleep` commands modify the active canonical profile; use explicit Profile V2 export/save to persist such edits.
+
+Queued actions, cooldowns, skillchain observations, pet responses, targeting IDs, reaction locks, and movement ownership are runtime evidence or plans, not durable profile fields. A policy edit invalidates no-longer-authorized *planned* commands, but preserves observed/completed actions and forced defensive safety behavior. See [Profile V2 runtime architecture](docs/profile_v2_final_architecture.md).
+
 ### Legacy/reference files
 
 `dd2_engine.lua`, `dd2_module.lua`, and `melee_engine.lua` remain for compatibility/reference and parse coverage. They are not active engine choices. `unified_combat_ui.py` is historical development material; the normal UI path is the WinForms application.
@@ -99,6 +111,8 @@ See the [scheduler RFC index](RFC/README.md), [phase-6 exit audit](RFC/UnifiedCo
 - Profile-scoped, role-free formations keyed by exact named-mob or boss name, selected automatically when that enemy is the engaged current target. See [named mob formations](docs/named_mob_formations.md).
 
 ## Installation
+
+For testing PR #73, use a **separate test copy** and back up per-character `data/profiles_v2` files first. Do not overwrite the current playable `master` installation. Detailed rollback and staged field validation are in the [Phase 7 acceptance plan](docs/profile_v2_phase7_acceptance_plan.md).
 
 1. Place this directory at `Windower/addons/UnifiedCombat`.
 2. Load the addon on each character:
