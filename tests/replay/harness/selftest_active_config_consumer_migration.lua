@@ -166,7 +166,7 @@ local function main()
     assert_contains(fight_leader, "uc_runtime_overrides.fight_leader_enabled(settings)", "fight leader helper must consult runtime override enablement")
     assert_contains(fight_leader, "uc_runtime_overrides.fight_leader_id(settings)", "fight leader helper must consult runtime override leader id")
     assert_contains(addon, "local uc_runtime_overrides = require('uc_runtime_overrides')", "addon command helpers must require runtime overrides")
-    assert_contains(addon, "uc_runtime_overrides.sleep_enabled(s)", "addon sleep command status must consult runtime override enablement")
+    assert_contains(addon, "uc_profile_v2_command_edits.sleep('list')", "addon sleep command status must read canonical Profile V2")
     assert_contains(addon, "uc_runtime_overrides.sleep_spell_names(settings)", "addon sleep spell list helper must consult runtime override spell names")
 
     local addon_command_block = slice_between(
@@ -209,7 +209,7 @@ local function main()
         "uc_active_config.sync_flat_settings_in_place(",
         "addon command handlers must not project command mutations through active-profile sync"
     )
-    assert_contains(addon_command_block, "elseif a == 'fight_leader' or a == 'fightleader' then", "fight_leader command block must remain deferred rather than migrated through generic sync")
+    assert_contains(addon_command_block, "elseif a == 'fight_leader' or a == 'fightleader' then", "fight_leader command must remain available after canonical cutover")
     assert_contains(
         start_command_block,
         "_G.UC_ZONE_SUSPEND_UNTIL = nil",
