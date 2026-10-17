@@ -647,56 +647,6 @@ local function uc_job_default_key(job)
 	return resolved
 end
 
-local PROFILE_KEYS = {
-	'ability1', 'ability2', 'ability3', 'ability4', 'ability5', 'ability6',
-	'ability_active', 'abilities', 'wsabilities',
-	'ws1', 'weaponskill', 'weaponskill_active', 'ws_mode', 'weaponskill_min_tp', 'weaponskill_allow_aoe', 'fast_skillchain', 'weaponskill_no_skillchain_targets', 'recurring_spells_enabled', 'recurring_spells',
-	'aftermath_enabled', 'aftermath_ws',
-	'engine_mode',
-	'show_ingame_ui',
-	'defensive_enabled', 'defensive_provider', 'defensive_resurrection_enabled', 'defensive_resurrection_priority', 'defensive_cure_enabled', 'defensive_curaga_enabled', 'defensive_waltz_enabled', 'defensive_doom_water', 'def_charm_sleeper_enabled', 'def_sleep_waker_enabled', 'def_remove_enemy_buffs', 'def_maintain_enemy_debuffs', 'defensive_enemy_debuffs', 'defensive_na_enabled', 'defensive_na_limit_enabled', 'defensive_na_priority', 'defensive_buff_enabled',
-	'defensive_critical_hpp', 'defensive_medium_hpp',
-	'defensive_curaga_min_targets', 'defensive_waltz_tp_reserve', 'defensive_divine_waltz_min_targets',
-	'defensive_overwrite_enabled', 'defensive_overwrite_interval', 'defensive_buff_self_only', 'defensive_buffs',
-	'defensive_targeted_buffs',
-	'engine_enabled', 'auto_accept_raise', 'pause_automation_while_weakened', 'domain_combat_enabled', 'domain_defensive_enabled', 'domain_movement_enabled', 'domain_maintenance_enabled', 'domain_follow_enabled',
-	'cor_roll_1', 'cor_roll_2', 'cor_crooked_roll_slot', 'cor_elevens', 'cor_luzaf_range_override', 'cor_roll_range_selected', 'cor_roll_range_require_ids',
-	'summoner_enabled', 'summoner_avatar', 'summoner_avatar_favor',
-	'summoner_ward_enabled', 'summoner_ward_action', 'summoner_ward_actions',
-	'summoner_engage_on_combat_start', 'summoner_rage_enabled',
-	'summoner_rage_action', 'summoner_rage_usage',
-	'summoner_rage_target_hpp_above_enabled', 'summoner_rage_target_hpp_above',
-	'summoner_rage_pet_tp_above_enabled', 'summoner_rage_pet_tp_above',
-	'sch_enabled', 'sch_arts_minimum_commit_s', 'sch_arts_emergency_off_art_casts',
-	'sch_regen_enabled', 'sch_accession_perpetuance_spells',
-	'sch_regen_minimum_coverage', 'sch_regen_refresh_before_s',
-	'sch_storms_enabled', 'sch_storm_assignments', 'sch_storms_refresh_before_s',
-	'sch_sublimation_enabled',
-	'sch_sublimation_release_when_mpp_at_most', 'sch_sublimation_release_when_complete',
-	'sch_sublimation_minimum_hpp_to_activate',
-	'sch_accession_cure_enabled', 'sch_accession_status_removal_enabled',
-	'sch_rapture_enabled', 'sch_penury_enabled',
-	'path_recording', 'path_follow_enabled', 'path_file_name', 'path_route_type', 'path_distance_to_start', 'path_points', 'path_party_gate_yalms', 'path_resume_index_window', 'path_hunter_targets', 'path_hunter_max_z_delta', 'path_hunter_max_target_range', 'path_hunter_claim_timeout_s', 'path_hunter_ignore_cooldown_s', 'path_pull_action_type', 'path_pull_action_name', 'path_pull_attack_fallback_enabled',
-	'autotarget', 'spam', 'closer', 'manual', 'prime', 'static', 'spacing', 'face',
-	'spacing_band_min', 'spacing_band_max', 'spacing_use_prediction', 'spacing_lookahead_s',
-	'spacing_model_size_floor',
-	'spacing_repel_hold_ticks', 'spacing_overlap_deadband', 'spacing_repel_weight', 'spacing_band_deadband',
-	'encounter_enabled', 'encounter_id', 'encounter_water_damage', 'encounter_water_skillchain', 'encounter_repeat_action_wall', 'encounter_repeat_action_guard_s',
-	'kei_elemental_dealer_name', 'kei_water_probe_spell', 'kei_water_damage_spell', 'kei_ice_probe_spell', 'kei_ice_damage_spell',
-	'kei_sustain_interval_s', 'kei_probe_timeout_s', 'kei_fullers_target_distance', 'kei_fullers_run_away_distance', 'kei_fullers_prearm_hpp_margin',
-	'named_formations_enabled', 'named_formation_entries',
-	'partner', 'partner2', 'puller', 'puller_name', 'puller_leash_source', 'puller_engage_range', 'puller_distance_only', 'partner_id', 'partner_id2', 'partner_ids', 'puller_id',
-	'fight_leader', 'fight_leader_id', 'party_follow', 'party_follow_id', 'party_follow_leader_name', 'party_follow_min', 'party_follow_max', 'fight_follow_min', 'fight_follow_hold_s',
-	'nyzul_coordinator_name', 'nyzul_anchor_name', 'nyzul_parking_order',
-	'add_control', 'add_priority_names',
-	'sub', 'sub2', 'move', 'debug', 'log_action_timeline', 'log_combat_sched', 'log_ja_sched', 'log_ja_debug', 'log_def_sched', 'log_tank_sched', 'solo', 'aeonic', 'color', 'tank', 'sleep', 'command', 'hunter',
-	'tank_enmity_actions',
-	'target1', 'target2', 'target3', 'targets',
-	'targetability', 'targetability_active',
-	'spell', 'spell_active', 'sleepspell', 'sleepspells', 'sleep_max_target_range',
-	'dd2_spell_slots', 'wait_ignore_names', 'ignore', 'target_ignore_names',
-}
-
 local function uc_clone_value(v)
 	if type(v) ~= 'table' then
 		return v
@@ -1115,7 +1065,6 @@ local function uc_status_profile_v2_file(meta, settings)
 	return result
 end
 
-local uc_normalize_settings_table
 local uc_profile_v2_autoload_pending_key = nil
 local uc_profile_v2_autoload_completed_key = nil
 local uc_profile_v2_autoload_expected_main_job = nil
@@ -1789,76 +1738,6 @@ local function uc_read_profiles_file(char_name)
 	return nil
 end
 
-local uc_get_active_profile_coords
-
-local function uc_normalize_abilities(s)
-	local out = {}
-	if type(s.abilities) == 'table' then
-		for _, a in ipairs(s.abilities) do
-			if a and a ~= '' then
-				out[#out + 1] = a
-			end
-		end
-	end
-	if #out == 0 then
-		for i = 1, 6 do
-			local a = s['ability' .. tostring(i)]
-			if a and a ~= '' then
-				out[#out + 1] = a
-			end
-		end
-	end
-	s.abilities = out
-	for i = 1, 6 do
-		s['ability' .. tostring(i)] = out[i] or ''
-	end
-end
-
-local function uc_normalize_targets(s)
-	if type(s.targets) ~= 'table' then
-		s.targets = {}
-	end
-	if #s.targets == 0 then
-		local arr = {}
-		for i = 1, 3 do
-			local t = s['target' .. tostring(i)]
-			if t and t ~= '' then
-				arr[#arr + 1] = t
-			end
-		end
-		s.targets = arr
-	else
-		for i = 1, 3 do
-			s['target' .. tostring(i)] = s.targets[i] or ''
-		end
-	end
-end
-
-local function uc_normalize_ws_for_engine(s, eng)
-	local ws = s.weaponskill or s.ws1 or ''
-	s.weaponskill = ws
-	s.ws1 = ws
-	if s.weaponskill_min_tp == nil then
-		s.weaponskill_min_tp = 1000
-	elseif type(s.weaponskill_min_tp) ~= 'number'
-		or s.weaponskill_min_tp % 1 ~= 0
-		or s.weaponskill_min_tp < 1000
-		or s.weaponskill_min_tp > 3000 then
-		error('weaponskill_min_tp must be an integer from 1000 to 3000')
-	end
-	if s.weaponskill_allow_aoe == nil then
-		s.weaponskill_allow_aoe = true
-	elseif type(s.weaponskill_allow_aoe) ~= 'boolean' then
-		error('weaponskill_allow_aoe must be a boolean')
-	end
-	if s.fast_skillchain == nil then
-		s.fast_skillchain = false
-	elseif type(s.fast_skillchain) ~= 'boolean' then
-		error('fast_skillchain must be a boolean')
-	end
-	s.engine_mode = eng
-end
-
 local function uc_trim_string(v)
 	if type(v) ~= 'string' then
 		return ''
@@ -1911,87 +1790,6 @@ local function uc_normalize_sleep_spell_list(s)
 	s.sleepspell = out[1] or ''
 end
 
-local function uc_normalize_domain_settings(s)
-	if type(s) ~= 'table' then
-		return
-	end
-	-- Canonical domain settings migration:
-	-- - legacy behavior implied combat/defensive/movement/maintenance/follow domains enabled.
-	-- - preserve existing runtime engine flag when available.
-	if s.engine_enabled == nil then
-		s.engine_enabled = Start_Engine == true
-	end
-	if s.domain_combat_enabled == nil then
-		s.domain_combat_enabled = true
-	end
-	if s.domain_defensive_enabled == nil then
-		s.domain_defensive_enabled = true
-	end
-	if s.domain_movement_enabled == nil then
-		s.domain_movement_enabled = true
-	end
-	if s.domain_maintenance_enabled == nil then
-		s.domain_maintenance_enabled = true
-	end
-	if s.domain_follow_enabled == nil then
-		s.domain_follow_enabled = true
-	end
-	if s.auto_accept_raise == nil then
-		s.auto_accept_raise = false
-	end
-	if s.pause_automation_while_weakened == nil then
-		s.pause_automation_while_weakened = false
-	end
-	if type(s.wait_ignore_names) ~= 'table' then
-		s.wait_ignore_names = {}
-	end
-end
-
-uc_normalize_settings_table = function(s)
-	if type(s) ~= 'table' then
-		return
-	end
-	local eng = nil
-	if type(s.main_job) == 'string' and s.main_job ~= '' then
-		eng = tostring(s.main_job):upper()
-	else
-		local p = windower.ffxi.get_player()
-		local job = p and p.main_job or 'UNKNOWN'
-		if type(job) ~= 'string' then
-			local rj = res.jobs:with('id', job)
-			job = (rj and rj.english_short) or tostring(job)
-		end
-		eng = tostring(job):upper()
-	end
-	uc_normalize_abilities(s)
-	uc_normalize_targets(s)
-	uc_normalize_ws_for_engine(s, eng)
-	uc_normalize_sleep_spell_list(s)
-	uc_normalize_domain_settings(s)
-	uc_partner_list.migrate_from_legacy(s)
-	uc_partner_list.sync_legacy_partner_fields(s)
-end
-
-local function uc_normalize_active_settings()
-	local s = _G.UC_SETTINGS
-	if not s then
-		return
-	end
-	uc_normalize_settings_table(s)
-end
-
-uc_get_active_profile_coords = function()
-	local p = windower.ffxi.get_player()
-	local eng = 'UC'
-	local job = p and p.main_job or 'UNKNOWN'
-	if type(job) ~= 'string' then
-		local rj = res.jobs:with('id', job)
-		job = (rj and rj.english_short) or tostring(job)
-	end
-	job = tostring(job):upper()
-	return eng, job
-end
-
 local function uc_get_profiles_root()
 	local s = _G.UC_SETTINGS
 	if not s then
@@ -2004,16 +1802,6 @@ local function uc_get_profiles_root()
 		s.profiles.UC = {}
 	end
 	return s.profiles
-end
-
-local function uc_table_has_any(t)
-	if type(t) ~= 'table' then
-		return false
-	end
-	for _ in pairs(t) do
-		return true
-	end
-	return false
 end
 
 uc_normalize_profiles_tree = function(profiles)
@@ -2160,44 +1948,6 @@ local function uc_load_profiles_for_character(char_name)
 		updated_at = uc_now_s(),
 	})
 	uc_get_profiles_root()
-	return true
-end
-
-local function uc_capture_active_profile()
-	local s = _G.UC_SETTINGS
-	local profiles = uc_get_profiles_root()
-	if not s or not profiles then
-		return false
-	end
-	uc_normalize_active_settings()
-	local eng, job = uc_get_active_profile_coords()
-	profiles[eng][job] = profiles[eng][job] or {}
-	local dst = profiles[eng][job]
-	for _, key in ipairs(PROFILE_KEYS) do
-		if s[key] ~= nil then
-			dst[key] = uc_clone_value(s[key])
-		else
-			dst[key] = nil
-		end
-	end
-	return true
-end
-
-local function uc_apply_active_profile()
-	local s = _G.UC_SETTINGS
-	local profiles = uc_get_profiles_root()
-	if not s or not profiles then
-		return false
-	end
-	local eng, job = uc_get_active_profile_coords()
-	local src = profiles[eng] and profiles[eng][job] or nil
-	if type(src) ~= 'table' or not uc_table_has_any(src) then
-		return false
-	end
-	for _, key in ipairs(PROFILE_KEYS) do
-		s[key] = uc_clone_value(src[key])
-	end
-	uc_normalize_active_settings()
 	return true
 end
 
