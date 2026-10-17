@@ -1,7 +1,7 @@
 return {
 	["files"] = {
 		["UnifiedCombat.lua"] = {
-			["uc_settings"] = 50,
+			["uc_settings"] = 47,
 		},
 		["UnifiedCombatWinForms/MainForm.ActivityProfiles.cs"] = {
 			["build_profile_from_ui"] = 1,
