@@ -72,7 +72,7 @@ local function test_automatic_identity_lifecycle(addon)
 end
 
 local function test_unconditional_watcher(addon)
-	local watcher = source_block(addon, 'local function uc_run_profile_v2_auto_reload', 'local function uc_normalize_targets')
+	local watcher = source_block(addon, 'local function uc_run_profile_v2_auto_reload', 'local function uc_read_profiles_file(char_name)')
 	assert_contains(watcher, 'UC_PROFILE_V2_AUTO_RELOAD_POLL_SEC', 'watcher must poll continuously')
 	assert_contains(watcher, 'UC_PROFILE_V2_AUTO_RELOAD_STABLE_SEC', 'watcher must debounce file writes')
 	assert_contains(watcher, 'uc_profile_v2_content_hash', 'watcher must suppress unchanged content by hash')
@@ -83,7 +83,7 @@ local function test_unconditional_watcher(addon)
 end
 
 local function test_watcher_state_machine(addon)
-	local watcher_source = source_block(addon, 'local function uc_run_profile_v2_auto_reload', 'local function uc_normalize_targets')
+	local watcher_source = source_block(addon, 'local function uc_run_profile_v2_auto_reload', 'local function uc_read_profiles_file(char_name)')
 	local state = {
 		now = 1.1,
 		content = nil,
