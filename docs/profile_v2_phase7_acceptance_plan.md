@@ -1,9 +1,9 @@
 # Profile V2 — Phase 7 Final Conformance and Live Acceptance
 
-Status: **IN PROGRESS — planning and CI complete; live-game acceptance not yet started**  
+Status: **IN PROGRESS — dead adapter cleanup, architecture/README and full code CI complete; controlled live-game acceptance NOT STARTED**  
 PR: #73 (`refactor/profile-v2-single-source`)  
 Entry: Phase 6 completed under five-criterion exit evidence in `docs/profile_v2_phase6_exit_assessment.md`.  
-Implementation baseline: `d009155f4cb6bde3d10066f937be8d8b4a80d40b`, workflow [38986661407](https://github.com/n0gr1p/UnifiedCombat/actions/runs/38986661407) (Lua + WinForms PASS). Subsequent documentation-only commits do not change runtime code.
+Phase 6 verified baseline: `d009155f4cb6bde3d10066f937be8d8b4a80d40b`, workflow [38986661407](https://github.com/n0gr1p/UnifiedCombat/actions/runs/38986661407). Phase 7 verified implementation: `24365f64dccc40bc4fc829dc9df7c336d26b35e1`, workflow [39001702411](https://github.com/n0gr1p/UnifiedCombat/actions/runs/39001702411), both Lua and WinForms PASS. Later changes to the architecture and acceptance documentation do not alter runtime behavior.
 
 ## Required Phase 7 deliverables
 
@@ -40,12 +40,19 @@ Implementation baseline: `d009155f4cb6bde3d10066f937be8d8b4a80d40b`, workflow [3
 | Pull, follow and pathing | Camp pull, fight leader, partner/follow and path return | Names remain durable, IDs resolve live, session route state remains separate |
 | Reaction locks and action confirmations | Disable one configured reaction/maintenance chain mid-flight | Retire future unapproved commands while preserving real confirmations and safety reactions |
 
+## Phase 7 implementation evidence
+
+- **Cleanup:** Removed the unreachable flat `uc_capture_active_profile`/`uc_apply_active_profile` adapter chain, exclusive flat normalizer helpers, and the unused `PROFILE_KEYS` mirror (250 lines). Preserved canonical save/export and active identity lifecycle; `selftest_phase7_dead_flat_profile_retirement.lua` prevents reintroduction. The frozen source guard's `UnifiedCombat.lua` baseline fell **47 → 44**.
+- **Architecture:** Updated `README.md` and added `docs/profile_v2_final_architecture.md` detailing Profile V2 durable ownership, bridge/editor-local translation, packet evidence, session/runtime state, and bounded compatibility.
+- **Automated verification:** Workflow [39001702411](https://github.com/n0gr1p/UnifiedCombat/actions/runs/39001702411) passed the complete Lua sequence, WinForms build, Profile V2 tests, RUN tank persistence, reaction sequence persistence, and Activity Profile tests.
+- **Live evidence:** `docs/profile_v2_phase7_field_acceptance_record.md` contains a staged, rollback-first field matrix. All live scenarios are **NOT RUN**; test-client access and human/game observations are required.
+
 ## Exit gate
 
-- [ ] Dead adapter cleanup limited to proven-unreferenced code and green tests
-- [ ] Architecture docs and README reflect final normal runtime and compatibility separation
-- [ ] Final-head Lua + WinForms CI green
+- [x] Dead adapter cleanup limited to proven-unreferenced code and green tests
+- [x] Architecture docs and README reflect final normal runtime and compatibility separation
+- [x] Phase 7 implementation Lua + WinForms CI green (verified at `24365f64`; later documentation-only changes)
 - [ ] Controlled live-game matrix accepted, with captured evidence and zero critical regressions
 - [ ] Reviewer approves PR #73 merge readiness; until then `master` remains unchanged
 
-Failure to achieve the live matrix should create a **specific repro/bug**, not reopen endless Phase 6-style audits. The branch is not considered fully playable/merge-ready until this Phase 7 gate is completed.
+Live evidence should be recorded in `docs/profile_v2_phase7_field_acceptance_record.md`. Failure to achieve the live matrix should create a **specific repro/bug**, not reopen endless Phase 6-style audits. The branch is not considered fully playable/merge-ready until this Phase 7 gate is completed.
