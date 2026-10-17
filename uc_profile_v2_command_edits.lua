@@ -1,5 +1,5 @@
 -- Legacy slash commands must edit the active canonical Profile V2, never
--- _G.UC_SETTINGS. These are live active-profile edits; saving is explicit.
+-- the legacy global settings mirror. These are active-profile edits; saving is explicit.
 local active = require('uc_active_config')
 local M = {}
 
