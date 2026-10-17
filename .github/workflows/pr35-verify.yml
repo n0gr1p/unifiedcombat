@@ -240,6 +240,8 @@ jobs:
           lua5.1 tests/replay/harness/selftest_phase6_bridge_status_decoupling.lua
           lua5.1 tests/replay/harness/selftest_config_status.lua
           lua5.1 tests/replay/harness/selftest_bridge_config_status_consumer.lua
+      - name: Phase 7 dead flat-profile adapter retirement self-test
+        run: lua5.1 tests/replay/harness/selftest_phase7_dead_flat_profile_retirement.lua
       - name: Phase 6 slash-command canonical authority self-test
         run: lua5.1 tests/replay/harness/selftest_phase6_slash_command_authority.lua
       - name: Phase 6 engine command-authority self-test
