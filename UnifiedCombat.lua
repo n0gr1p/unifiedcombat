@@ -153,6 +153,7 @@ require('actions')
 
 local uc_partner_list = require('uc_partner_list')
 local uc_add_priority = require('uc_add_priority')
+local uc_profile_v2_command_edits = require('uc_profile_v2_command_edits')
 local uc_camp_anchor = require('uc_camp_anchor')
 local uc_camp_pull_registry = require('uc_camp_pull_registry')
 local uc_config_status_export = require('uc_config_status_export')
@@ -3344,51 +3345,31 @@ windower.register_event('addon command', function(...)
 		windower.add_to_chat(207, 'UnifiedCombat engine: ' .. UC_ENGINE)
 		return
 	elseif a == 'fight_leader' or a == 'fightleader' then
-		local s = _G.UC_SETTINGS
-		if not s then
-			return
-		end
 		local sub = args[2] and tostring(args[2]):lower() or ''
-		if sub == 'on' then
-			s.fight_leader = true
-			windower.add_to_chat(207, 'Fight leader: on')
-			return
-		elseif sub == 'off' then
-			s.fight_leader = false
-			windower.add_to_chat(207, 'Fight leader: off')
-			return
-		elseif sub == 'clear' then
-			s.fight_leader_id = 0
-			windower.add_to_chat(207, 'Fight leader: id cleared')
-			return
-		elseif args[2] then
-			local nm = tostring(args[2])
-			local pid = uc_fight_leader_party_id_by_name(nm)
-			if pid == 0 then
-				windower.add_to_chat(167, 'Fight leader: not in party: ' .. nm)
-				return
-			end
-			s.fight_leader = true
-			s.fight_leader_id = pid
-			windower.add_to_chat(207, 'Fight leader set: ' .. nm)
+		if sub == '' then
+			windower.add_to_chat(207, '//uc fight_leader on|off|clear|<party name>')
 			return
 		end
-		windower.add_to_chat(207, '//uc fight_leader on|off|clear|<party name>')
+		local op = (sub == 'on' or sub == 'off' or sub == 'clear') and sub or 'set'
+		local name = op == 'set' and table.concat(args, ' ', 2) or ''
+		local ok, result = uc_profile_v2_command_edits.fight_leader(op, name, uc_fight_leader_party_id_by_name)
+		if not ok then
+			windower.add_to_chat(167, 'Fight leader edit failed: ' .. tostring(result))
+		elseif op == 'clear' then
+			windower.add_to_chat(207, 'Fight leader: configured name cleared')
+		elseif op == 'set' then
+			windower.add_to_chat(207, 'Fight leader set: ' .. tostring(result))
+		else
+			windower.add_to_chat(207, 'Fight leader: ' .. sub)
+		end
 		return
 	elseif a == 'add_priority' or a == 'addpriority' then
-		local s = _G.UC_SETTINGS
-		if not s then
-			return
-		end
 		local sub = args[2] and tostring(args[2]):lower() or ''
-		if sub == 'clear' then
-			s.add_priority_names = {}
-			_G.UC_LAST_ADD_PRIORITY_OP = 'clear'
-			windower.add_to_chat(207, 'Add priority list cleared (add control will stay on the fight leader target).')
-			return
-		elseif sub == 'list' then
-			local arr = uc_add_priority.as_ordered_names(s)
-			if #arr == 0 then
+		if sub == 'list' then
+			local ok, arr = uc_profile_v2_command_edits.add_priority('list')
+			if not ok then
+				windower.add_to_chat(167, 'Add priority list unavailable: ' .. tostring(arr))
+			elseif #arr == 0 then
 				windower.add_to_chat(207, 'Add priority list: (empty)')
 			else
 				for i, nm in ipairs(arr) do
@@ -3396,108 +3377,53 @@ windower.register_event('addon command', function(...)
 				end
 			end
 			return
-		elseif sub == 'add' then
-			local raw = table.concat(args, ' ', 3)
-			local nm = type(raw) == 'string' and (raw:match('^%s*(.-)%s*$') or '') or ''
-			if nm == '' then
-				windower.add_to_chat(167, 'Add priority: need name after add')
-				return
-			end
-			local ok, why = uc_add_priority.append_name(s, nm)
+		end
+		if sub == 'clear' or sub == 'add' or sub == 'remove' then
+			local value = sub == 'add' and table.concat(args, ' ', 3) or args[3]
+			local ok, reason = uc_profile_v2_command_edits.add_priority(sub, value)
 			if not ok then
-				if why == 'ADD_PRIORITY_ALREADY' then
-					windower.add_to_chat(167, 'Add priority: already listed: ' .. nm)
-				else
-					windower.add_to_chat(167, 'Add priority: could not add: ' .. tostring(why))
-				end
-				return
+				windower.add_to_chat(167, 'Add priority ' .. sub .. ' failed: ' .. tostring(reason))
+			else
+				_G.UC_LAST_ADD_PRIORITY_OP = sub .. ':' .. tostring(value or '')
+				windower.add_to_chat(207, 'Add priority ' .. sub .. ' applied to active Profile V2')
 			end
-			_G.UC_LAST_ADD_PRIORITY_OP = 'add:' .. nm
-			windower.add_to_chat(207, 'Add priority appended: ' .. nm)
-			return
-		elseif sub == 'remove' and args[3] then
-			local idx = tonumber(args[3])
-			local ok, why = uc_add_priority.remove_index(s, idx)
-			if not ok then
-				windower.add_to_chat(167, 'Add priority remove failed: ' .. tostring(why) .. ' (use //uc add_priority list)')
-				return
-			end
-			_G.UC_LAST_ADD_PRIORITY_OP = 'remove:' .. tostring(idx)
-			windower.add_to_chat(207, 'Add priority removed index ' .. tostring(idx))
 			return
 		end
 		windower.add_to_chat(207, '//uc add_priority add <mob name>|remove <n>|list|clear')
 		return
 	elseif a == 'sleep' then
-		local s = _G.UC_SETTINGS
-		if not s then
+		local sub = args[2] and tostring(args[2]):lower() or ''
+		if sub == 'list' or sub == '' then
+			local ok, status = uc_profile_v2_command_edits.sleep('list')
+			if not ok then
+				windower.add_to_chat(167, 'Sleep list unavailable: ' .. tostring(status))
+			else
+				windower.add_to_chat(207, 'Sleep: ' .. (status.enabled and 'on' or 'off'))
+				if #status.order == 0 then
+					windower.add_to_chat(207, 'Sleep spell list: (empty)')
+				else
+					for i, spell_name in ipairs(status.order) do
+						windower.add_to_chat(207, ('  %d. %s'):format(i, spell_name))
+					end
+				end
+			end
 			return
 		end
-		local sub = args[2] and tostring(args[2]):lower() or ''
-		if sub == 'on' then
-			s.sleep = true
-			windower.add_to_chat(207, 'Sleep: on')
-			return
-		elseif sub == 'off' then
-			s.sleep = false
-			windower.add_to_chat(207, 'Sleep: off')
-			return
-		elseif sub == 'list' or sub == '' then
-			windower.add_to_chat(207, 'Sleep: ' .. (uc_runtime_overrides.sleep_enabled(s) and 'on' or 'off'))
-			for _, line in ipairs(uc_sleep_spell_list_lines(s)) do
-				windower.add_to_chat(207, line)
-			end
-			return
-		elseif sub == 'clear' then
-			uc_sleep_spell.replace_names(s, {})
-			windower.add_to_chat(207, 'Sleep spell list cleared')
-			return
-		elseif sub == 'set' or sub == 'spell' then
-			local ok, why = uc_sleep_spell.replace_names(s, { table.concat(args, ' ', 3) })
+		if sub == 'on' or sub == 'off' or sub == 'clear'
+			or sub == 'set' or sub == 'spell' or sub == 'add'
+			or sub == 'remove' or sub == 'move' then
+			local value = (sub == 'set' or sub == 'spell' or sub == 'add')
+				and table.concat(args, ' ', 3) or args[3]
+			local direction = args[4] and tostring(args[4]):lower() or ''
+			local ok, reason = uc_profile_v2_command_edits.sleep(sub, value, direction, function(raw)
+				local spell = res.spells:with('en', uc_normalize_sleep_spell_entry(raw))
+				return spell and tostring(spell.en) or nil
+			end)
 			if not ok then
-				if why == 'SLEEP_SPELL_UNKNOWN' then
-					windower.add_to_chat(167, 'Sleep spell set failed: unknown spell')
-				else
-					windower.add_to_chat(167, 'Sleep spell set failed: ' .. tostring(why))
-				end
-				return
+				windower.add_to_chat(167, 'Sleep ' .. sub .. ' failed: ' .. tostring(reason))
+			else
+				windower.add_to_chat(207, 'Sleep ' .. sub .. ' applied to active Profile V2')
 			end
-			windower.add_to_chat(207, 'Sleep spell list set: ' .. tostring(s.sleepspell or ''))
-			return
-		elseif sub == 'add' then
-			local raw = table.concat(args, ' ', 3)
-			local spell_name = uc_normalize_sleep_spell_entry(raw)
-			local ok, why = uc_sleep_spell.append_name(s, raw)
-			if not ok then
-				if why == 'SLEEP_SPELL_UNKNOWN' then
-					windower.add_to_chat(167, 'Sleep spell add failed: unknown spell')
-				elseif why == 'SLEEP_SPELL_ALREADY' then
-					windower.add_to_chat(167, 'Sleep spell add failed: already listed')
-				else
-					windower.add_to_chat(167, 'Sleep spell add failed: ' .. tostring(why))
-				end
-				return
-			end
-			windower.add_to_chat(207, 'Sleep spell appended: ' .. spell_name)
-			return
-		elseif sub == 'remove' then
-			local ok, why = uc_sleep_spell.remove_index(s, args[3])
-			if not ok then
-				windower.add_to_chat(167, 'Sleep spell remove failed: use //uc sleep list')
-				return
-			end
-			windower.add_to_chat(207, 'Sleep spell removed index ' .. tostring(args[3]))
-			return
-		elseif sub == 'move' then
-			local idx = tonumber(args[3])
-			local dir = args[4] and tostring(args[4]):lower() or ''
-			local delta = (dir == 'up') and -1 or ((dir == 'down') and 1 or nil)
-			local ok, why = uc_sleep_spell.move_index(s, idx, delta)
-			if not ok then
-				windower.add_to_chat(167, 'Sleep spell move failed: ' .. tostring(why))
-				return
-			end
-			windower.add_to_chat(207, 'Sleep spell moved index ' .. tostring(idx) .. ' ' .. dir)
 			return
 		end
 		windower.add_to_chat(207, '//uc sleep on|off|list|clear|set <spell>|add <spell>|remove <n>|move <n> up|down')
